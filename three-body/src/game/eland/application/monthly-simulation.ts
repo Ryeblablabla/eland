@@ -193,6 +193,19 @@ function lastModelDecisionMonth(state: SimulationState, personId: PersonId): num
   return null;
 }
 
+function unconsideredExposureEscalation(state: SimulationState, person: PersonState): boolean {
+  const lastDecision = lastModelDecisionMonth(state, person.id) ?? -1;
+  return state.world.past.some((event) => event.kind === 'environment'
+    && event.who === person.id
+    && event.change === 'condition'
+    && (event.diff.condition === 'cold' || event.diff.condition === 'heat')
+    && event.diff.exited !== true
+    && Number(event.diff.stage) >= 2
+    // Body conditions are settled after that month's model decision, so an
+    // escalation stamped in the same month has not yet been considered.
+    && event.atMonth >= lastDecision);
+}
+
 function optionScore(context: DecisionContext, optionId: string): number {
   const option = [...context.options, ...context.followUpOptions].find((candidate) => candidate.id === optionId);
   if (!option) return -999;
@@ -252,6 +265,10 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
   if (!context.activeIntent) { probability += 0.32; reasons.push('没有战略或社会意图'); }
   if (!context.activeIntent && context.options.some((option) => option.domain === 'social')) { probability += 0.16; reasons.push('空闲时出现社会互动机会'); }
   if (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push('意图停滞'); }
+  if (unconsideredExposureEscalation(state, person)) {
+    probability += 0.72;
+    reasons.push('寒冷或炎热已经进入新的危险阶段，需要重评长期手段');
+  }
   const acceptedExchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
   if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
     probability += 0.72;
@@ -652,10 +669,12 @@ function prepareMonth(input: SimulationState) {
     const { probability, reasons } = decisionProbability(state, context);
     const sample = seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${context.person.id}`);
     const requiredSocialResponse = hasRequiredSocialResponse(context);
+    const exposureEscalated = unconsideredExposureEscalation(state, context.person);
     const meaningful = !context.activeIntent
       || requiredSocialResponse
+      || exposureEscalated
       || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
-    const triggered = meaningful && (requiredSocialResponse || sample < probability);
+    const triggered = meaningful && (requiredSocialResponse || exposureEscalated || sample < probability);
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,
       kind: 'decision-opportunity', atMonth, orderInMonth: events.length,
@@ -776,6 +795,8 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   const importance = (context: DecisionContext) => {
     let score = hasRequiredSocialResponse(context)
       ? 2_000
+      : unconsideredExposureEscalation(prepared.state, context.person)
+        ? 1_500
       : context.options.some((option) => option.id.startsWith('fulfill-assist:') || option.id.startsWith('meet-to-assist:') || option.id.startsWith('join-water-assist:') || option.id.startsWith('rejoin-companion:'))
         ? 1_200
         : context.options.some((option) => option.domain === 'social')

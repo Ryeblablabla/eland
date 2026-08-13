@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-monthly-test-'));
 const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
+const decisionBundlePath = path.join(temporaryDirectory, 'decision-context.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -16,8 +17,12 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/agreement.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${agreementBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/kimi-decider.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
+  const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 14);
@@ -32,6 +37,27 @@ try {
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
+
+  const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const pressured = pressureState.people[0];
+  pressured.conditions.push({ id: 'test-severe-cold', kind: 'cold', stage: 2, sinceMonth: 0, sourceEventIds: ['test-cold-escalation'] });
+  pressureState.world.past.push({ id: 'test-cold-escalation', kind: 'environment', atMonth: 0, orderInMonth: 0, cellId: pressured.position.cellId, who: pressured.id, change: 'condition', result: '寒冷加重', diff: { condition: 'cold', stage: 2 } });
+  const pressureIntentId = 'intent-before-cold-escalation';
+  pressureState.intents.push({
+    id: pressureIntentId, ownerId: pressured.id, summary: '继续原有远行', domain: 'strategic',
+    goal: { kind: 'at-cell', cellId: pressured.position.cellId }, nextAction: { kind: 'move', toCellId: pressured.position.cellId },
+    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
+    sourceDecisionEventId: 'decision-before-cold-escalation', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+  });
+  pressured.activeIntentId = pressureIntentId;
+  const pressureContext = buildDecisionContexts(pressureState).find((context) => context.person.id === pressured.id);
+  assert.ok(pressureContext, '危险暴露测试必须拥有决策上下文');
+  const projectedPressure = buildDecisionRequestContext(pressureContext);
+  assert.deepEqual(projectedPressure.activePressures[0], { kind: 'cold', stage: 2, consequences: ['营养消耗加速', '操作与移动能力下降'] }, '模型应看到状态造成的可结算后果，而不是只看到状态名');
+  assert.ok(projectedPressure.visibleDrops.every((drop) => Array.isArray(drop.properties)), '地面物质应向模型暴露材料定义中的可观察性质');
+  const afterPressure = stepSimulation(pressureState, { decide() { return { kind: 'idle', reason: '已重新评估危险暴露' }; } });
+  const pressureOpportunity = afterPressure.world.past.find((event) => event.kind === 'decision-opportunity' && event.atMonth === 1 && event.who === pressured.id);
+  assert.ok(pressureOpportunity?.triggered && pressureOpportunity.reasons.some((reason) => reason.includes('危险阶段')), '2–3 级暴露加重必须打断仍在推进的旧意图并触发关键重评估');
 
   const agreementState = createInitialState(31, { endpoint: { kind: 'months', value: 24 } });
   const requester = agreementState.people[0];

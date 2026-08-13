@@ -1,4 +1,4 @@
-import { materialDefinition } from './domain/material';
+import { materialDefinition, type MaterialTag } from './domain/material';
 import { projectMemories } from './domain/memory';
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simulation';
 
@@ -12,12 +12,13 @@ export interface DecisionRequestContext {
     capacities: DecisionContext['person']['baselineCapacities'];
     drives: DecisionContext['person']['driveBias'];
     currentChoice: string;
-    inventory: Array<{ stackId: string; materialId: number; name: string; quantity: number }>;
+    inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
     memories: ReturnType<typeof projectMemories>;
   };
   clock: { elapsedMonths: number };
   climate: DecisionContext['state']['civilization']['climate'];
+  activePressures: Array<{ kind: string; stage: number; consequences: string[] }>;
   activeIntent?: { id: string; summary: string; progress: number; nextActionKind: string };
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
   agreements: Array<{
@@ -32,7 +33,18 @@ export interface DecisionRequestContext {
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target'];
   }>;
   visiblePeople: Array<{ id: string; name: string; health: number; hydration: number; nutrition: number; cellId: number; trust: number; bond: number; fear: number }>;
-  visibleDrops: Array<{ id: string; materialId: number; name: string; quantity: number; cellId: number }>;
+  visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number }>;
+}
+
+function pressureConsequences(kind: string, stage: number): string[] {
+  if (kind === 'cold') return ['营养消耗加速', '操作与移动能力下降', ...(stage >= 3 ? ['每月损失健康'] : [])];
+  if (kind === 'heat') return ['水分消耗加速', '操作与移动能力下降', ...(stage >= 3 ? ['每月损失健康'] : [])];
+  if (kind === 'wound') return ['行动能力下降', ...(stage >= 2 ? ['持续损失健康并增加患病风险'] : [])];
+  if (kind === 'illness') return ['水分与营养消耗加速', '行动能力下降', ...(stage >= 2 ? ['持续损失健康'] : [])];
+  if (kind === 'aging') return ['恢复与行动能力下降', ...(stage >= 2 ? ['匮乏时额外损失健康'] : [])];
+  if (kind === 'pregnancy') return ['水分与营养消耗增加', ...(stage >= 2 ? ['行动能力下降'] : [])];
+  if (kind === 'restrained') return ['无法正常移动', '只能近身尝试分离拘束物质或等待他人解除'];
+  return [];
 }
 
 export interface DecideApiResponse {
@@ -55,12 +67,20 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       capacities: person.baselineCapacities,
       drives: person.driveBias,
       currentChoice: person.lastDecisionText.slice(0, 140),
-      inventory: person.inventory.map((stack) => ({ stackId: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+      inventory: person.inventory.map((stack) => {
+        const material = materialDefinition(stack.materialId);
+        return { stackId: stack.id, materialId: stack.materialId, name: material.name, properties: [...material.tags], quantity: stack.quantity };
+      }),
       knowledge: person.knowledge.sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(({ id, summary, confidence }) => ({ id, summary, confidence })),
       memories: projectMemories(person, state.clock.elapsedMonths),
     },
     clock: { elapsedMonths: state.clock.elapsedMonths },
     climate: state.civilization.climate,
+    activePressures: person.conditions.map((condition) => ({
+      kind: condition.kind,
+      stage: condition.stage,
+      consequences: pressureConsequences(condition.kind, condition.stage),
+    })),
     ...(context.activeIntent ? { activeIntent: { id: context.activeIntent.id, summary: context.activeIntent.summary, progress: context.activeIntent.progress, nextActionKind: context.activeIntent.nextAction.kind } } : {}),
     suspendedIntents: state.intents.filter((intent) => intent.ownerId === person.id && intent.status === 'suspended').map((intent) => ({ id: intent.id, summary: intent.summary, progress: intent.progress, nextActionKind: intent.nextAction.kind })),
     agreements: state.agreements
@@ -74,7 +94,10 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       const relation = person.relations.find((item) => item.personId === other.id);
       return { id: other.id, name: other.name, ...other.body, cellId: other.position.cellId, trust: relation?.trust ?? 0, bond: relation?.bond ?? 0, fear: relation?.fear ?? 0 };
     }),
-    visibleDrops: context.visibleDrops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, quantity: drop.quantity, cellId: drop.cellId })),
+    visibleDrops: context.visibleDrops.map((drop) => {
+      const material = materialDefinition(drop.materialId);
+      return { id: drop.id, materialId: drop.materialId, name: material.name, properties: [...material.tags], quantity: drop.quantity, cellId: drop.cellId };
+    }),
   };
 }
 

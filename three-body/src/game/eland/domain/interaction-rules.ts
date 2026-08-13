@@ -6,6 +6,14 @@ export interface InventoryCombinationRule {
   output: { materialId: MaterialId; quantity: number };
 }
 
+export interface ExertionRule {
+  id: string;
+  toolMaterialId: MaterialId;
+  inputMaterialId: MaterialId;
+  targetMaterialId: MaterialId;
+  outputMaterialId: MaterialId;
+}
+
 const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
   {
     id: 'twist-fiber',
@@ -16,6 +24,16 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     id: 'haft-stone',
     inputs: [{ materialId: Material.Stone, quantity: 1 }, { materialId: Material.Wood, quantity: 1 }],
     output: { materialId: Material.StoneTool, quantity: 1 },
+  },
+] as const;
+
+const EXERTION_RULES: readonly ExertionRule[] = [
+  {
+    id: 'friction-ignition',
+    toolMaterialId: Material.StoneTool,
+    inputMaterialId: Material.Fiber,
+    targetMaterialId: Material.Air,
+    outputMaterialId: Material.Fire,
   },
 ] as const;
 
@@ -42,4 +60,18 @@ export function inventoryCombinationTechniqueId(rule: InventoryCombinationRule):
 export function inventoryCombinationSummary(rule: InventoryCombinationRule): string {
   const inputs = rule.inputs.map((input) => `${materialDefinition(input.materialId).name}${input.quantity > 1 ? ` × ${input.quantity}` : ''}`).join('与');
   return `${inputs}可结合为${materialDefinition(rule.output.materialId).name}`;
+}
+
+export function exertionRuleFor(toolMaterialId: MaterialId, inputMaterialId: MaterialId, targetMaterialId: MaterialId): ExertionRule | undefined {
+  return EXERTION_RULES.find((rule) => rule.toolMaterialId === toolMaterialId
+    && rule.inputMaterialId === inputMaterialId
+    && rule.targetMaterialId === targetMaterialId);
+}
+
+export function exertionTechniqueId(rule: ExertionRule): string {
+  return `technique:exert:${rule.toolMaterialId}:${rule.inputMaterialId}:${rule.targetMaterialId}:${rule.outputMaterialId}`;
+}
+
+export function exertionTechniqueSummary(rule: ExertionRule): string {
+  return `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可使${materialDefinition(rule.targetMaterialId).name}转化为${materialDefinition(rule.outputMaterialId).name}`;
 }

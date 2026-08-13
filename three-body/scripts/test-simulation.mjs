@@ -282,6 +282,44 @@ try {
   ]);
   assert.equal(toolState.people[0].inventory.find((stack) => stack.materialId === 24)?.quantity, 1, '石与木应形成只属于制作者背包的石制工具');
   assert.ok(toolState.people[0].knowledge.some((fact) => fact.kind === 'technique' && fact.confidence < 55), '一次制作只能形成待核验的个人经验');
+  assert.ok(toolState.derived.milestones.some((milestone) => milestone.id === '16'), '真实制作出石制工具后才能观察为制造工具');
+
+  let fireState = createInitialState(382, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
+  const fireMakerId = fireState.people[0].id;
+  fireState.people[0].inventory = [
+    { id: 'fire-tool', materialId: 24, quantity: 1, sourceEventIds: [] },
+    { id: 'fire-fiber', materialId: 20, quantity: 2, sourceEventIds: [] },
+  ];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const fireMaker = fireState.people.find((person) => person.id === fireMakerId);
+    const fireContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
+    const fireOption = fireContext?.options.find((option) => option.id.startsWith(attempt ? 'repeat-exert:' : 'try-exert:'));
+    assert.ok(fireMaker && fireOption, '工具、纤维与邻格空气应产生 exert 物质试验机会');
+    if (!attempt) assert.ok(!fireOption.summary.includes('火') && !fireOption.reason.includes('火'), '未知施力试验不得向模型泄露火产物');
+    const intentId = `intent-test-fire-${attempt}`;
+    fireState.intents.push({
+      id: intentId, ownerId: fireMakerId, summary: fireOption.summary, domain: 'strategic', goal: fireOption.goal,
+      nextAction: fireOption.nextAction, target: fireOption.target, status: 'active', createdAtMonth: fireState.clock.elapsedMonths,
+      lastProgressAtMonth: fireState.clock.elapsedMonths, progress: 0, sourceDecisionEventId: `decision-test-fire-${attempt}`,
+      sourceFactIds: fireOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+    });
+    fireMaker.activeIntentId = intentId;
+    fireState.decisionBudget.credits = 0;
+    fireState = await stepSimulationAsync(fireState, {
+      async decideAll() { throw new Error('固定生火试验不应额外调用模型'); },
+      takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+    });
+  }
+  const ignitionFacts = fireState.world.past.filter((event) => event.kind === 'action'
+    && event.action.kind === 'act'
+    && event.action.operation === 'exert'
+    && event.diff.outputMaterialId === 16);
+  const fireTechnique = fireState.people.find((person) => person.id === fireMakerId)?.knowledge.find((fact) => fact.id.startsWith('technique:exert:'));
+  assert.equal(ignitionFacts.length, 2, '两次生火必须分别形成真实 exert 动作事实');
+  assert.equal(fireState.people.find((person) => person.id === fireMakerId)?.inventory.some((stack) => stack.materialId === 20), false, '每次生火都必须消耗一份私人纤维');
+  assert.ok((fireTechnique?.confidence ?? 0) >= 55, '重复生火应把一次暂定经验提升为可靠技术');
+  assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '17'), '真实产生火体素后才能观察为掌控火种');
+  assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '59'), '重复生火也应构成实验检验的证据链');
 
   const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const experimenter = repeatedExperimentState.people[0];

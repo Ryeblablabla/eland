@@ -1,4 +1,5 @@
 import type { ActionFact, MilestoneObservation, SimulationState, WorldEvent } from '../domain/model';
+import { Material } from '../domain/material';
 
 function actions(state: SimulationState): ActionFact[] {
   return state.world.past.filter((event): event is ActionFact => event.kind === 'action' && event.status === 'completed');
@@ -49,6 +50,9 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   const deaths = environment.filter((event) => event.change === 'death');
   add(result, '9', '死亡', deaths, '人物因身体耗尽或寿命终结而死亡，并留下私有物品。');
 
+  const aging = environment.filter((event) => event.change === 'condition' && event.diff.condition === 'aging');
+  add(result, '8', '衰老', aging, '年龄压力经过月度概率结算，使人物进入不可逆的衰老阶段。');
+
   const gifts = completed.filter((event) => event.action.kind === 'transfer'
     && event.action.from.kind === 'person'
     && event.action.to.kind === 'person'
@@ -73,13 +77,29 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   const famine = environment.filter((event) => event.change === 'body' && Number(event.diff.nutrition) < 10);
   add(result, '36', '遭遇饥荒', famine, '至少一人的营养储备跌入持续伤害区间。');
 
+  const tools = completed.filter((event) => event.action.kind === 'act'
+    && event.action.operation === 'combine'
+    && Number(event.diff.outputMaterialId) === Material.StoneTool);
+  add(result, '16', '制造工具', tools, '人物把真实石和木材料结合为私人背包中的石制工具。');
+
+  const ignitions = completed.filter((event) => event.action.kind === 'act'
+    && event.action.operation === 'exert'
+    && Number(event.diff.outputMaterialId) === Material.Fire);
+  add(result, '17', '掌控火种', ignitions, '人物用已有施力原语让工具和引火物发生物质响应，产生了真实火体素。');
+
+  const fireWarming = environment.filter((event) => event.change === 'condition'
+    && event.diff.condition === 'cold'
+    && event.diff.exited === true
+    && event.diff.protectedByFire === true);
+  add(result, '143', '取暖、降温与通风', fireWarming, '邻近火体素改变寒冷负荷，并使人物退出寒冷状态。');
+
   const verifiedTechniques = state.people.flatMap((person) => person.knowledge.filter((fact) => {
     if (fact.kind !== 'technique' || fact.confidence < 55) return false;
     const evidence = fact.sourceEventIds.flatMap((id) => state.world.past.filter((event) => event.id === id));
     const successfulTrials = evidence.filter((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'act'
-      && event.action.operation === 'combine');
+      && (event.action.operation === 'combine' || event.action.operation === 'exert'));
     const activeVerification = evidence.some((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'attend'

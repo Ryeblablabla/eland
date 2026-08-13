@@ -20,7 +20,12 @@ import {
 import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
-import { inventoryCombinationFor, inventoryCombinationTechniqueId } from '../domain/interaction-rules';
+import {
+  exertionRuleFor,
+  exertionTechniqueId,
+  inventoryCombinationFor,
+  inventoryCombinationTechniqueId,
+} from '../domain/interaction-rules';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -126,6 +131,22 @@ function nextPlankPosition(state: SimulationState, person: PersonState): { x: nu
   return voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Air ? position : null;
 }
 
+function nextFirePosition(state: SimulationState, person: PersonState): { x: number; y: number; z: number } | null {
+  const occupied = new Set(state.people.filter(isAlive).map((candidate) => candidate.position.cellId));
+  const targetCell = neighbors4(person.position.cellId)
+    .filter((cellId) => {
+      const surface = surfaceMaterial(state.world.grid, cellId);
+      return surface !== Material.Air && surface !== Material.Water && surface !== Material.Fire && !occupied.has(cellId);
+    })
+    .sort((a, b) => a - b)
+    .find((cellId) => {
+      const z = topZ(state.world.grid, cellId) + 1;
+      return z >= 0 && z < state.world.grid.levels && voxelAt(state.world.grid, cellX(cellId), cellY(cellId), z) === Material.Air;
+    });
+  if (targetCell === undefined) return null;
+  return { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
+}
+
 function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const visible = new Set(visibleCells);
@@ -229,6 +250,33 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       },
       estimatedDuration: 'one-month',
       sourceFactIds: [...new Set([...first.sourceEventIds, ...second.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
+    });
+  }
+
+  const stoneTool = person.inventory.find((stack) => stack.materialId === Material.StoneTool && stack.quantity > 0);
+  const tinder = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
+  const firePosition = stoneTool && tinder ? nextFirePosition(state, person) : null;
+  const fireRule = stoneTool && tinder ? exertionRuleFor(stoneTool.materialId, tinder.materialId, Material.Air) : undefined;
+  if (stoneTool && tinder && firePosition && fireRule) {
+    const techniqueId = exertionTechniqueId(fireRule);
+    const known = person.knowledge.find((fact) => fact.id === techniqueId);
+    options.push({
+      id: `${known ? 'repeat-exert' : 'try-exert'}:${stoneTool.id}:${tinder.id}:${firePosition.x}:${firePosition.y}:${firePosition.z}`,
+      summary: known ? `尝试复现“${known.summary}”` : '尝试用石制工具向纤维施力',
+      reason: known ? '自己已有这项物质经验' : '手中的硬质工具与纤维可以进行局部施力尝试，但结果未知',
+      goal: known
+        ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
+        : { kind: 'knowledge', factId: `attempt:exert:${state.clock.elapsedMonths}:${person.id}` },
+      nextAction: {
+        kind: 'act', operation: 'exert', toolStackId: stoneTool.id,
+        targets: [
+          { kind: 'inventory-stack', personId: person.id, stackId: tinder.id },
+          { kind: 'voxel', position: firePosition },
+        ],
+      },
+      target: { kind: 'voxel', position: firePosition },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [...new Set([...stoneTool.sourceEventIds, ...tinder.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
     });
   }
 
@@ -517,14 +565,17 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
     const source = state.world.past.find((event) => event.id === sourceId);
-    if (source?.kind !== 'action' || source.action.kind !== 'act' || source.action.operation !== 'combine') return false;
+    if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert'].includes(source.action.operation)) return false;
     const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
     if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return false;
     const cell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
     return visible.has(cell) && voxelAt(state.world.grid, Number(position?.x), Number(position?.y), Number(position?.z)) === Number(source.diff.outputMaterialId);
   }));
   if (tentativeTechnique) {
-    const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id) && event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'combine');
+    const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id)
+      && event.kind === 'action'
+      && event.action.kind === 'act'
+      && ['combine', 'exert'].includes(event.action.operation));
     const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
     const outputStackId = source?.kind === 'action' && typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
     const verificationTarget = rawPosition

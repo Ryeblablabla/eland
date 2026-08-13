@@ -99,6 +99,10 @@ function nearbyPlanks(state: SimulationState, person: PersonState): number {
   return cellsInRadius(person.position.cellId, 2).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Plank).length;
 }
 
+function nearbyFires(state: SimulationState, person: PersonState): number {
+  return cellsInRadius(person.position.cellId, 2).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Fire).length;
+}
+
 function condition(state: SimulationState, person: PersonState, kind: ConditionInstance['kind']): ConditionInstance | undefined {
   void state;
   return person.conditions.find((item) => item.kind === kind);
@@ -111,6 +115,7 @@ function upsertExposureCondition(
   kind: 'cold' | 'heat',
   load: number,
   protectedHere: boolean,
+  protectedByFire: boolean,
   events: EnvironmentFact[],
 ): void {
   const current = condition(state, person, kind);
@@ -131,7 +136,7 @@ function upsertExposureCondition(
     const probability = protectedHere ? 0.7 : 0.35;
     if (seededFraction(state.seed, `condition-exit:${atMonth}:${person.id}:${kind}`) < probability) {
       person.conditions = person.conditions.filter((item) => item.id !== current.id);
-      event(state, atMonth, events, 'condition', `${person.name}退出${kind === 'cold' ? '寒冷' : '炎热'}状态`, { condition: kind, exited: true }, person);
+      event(state, atMonth, events, 'condition', `${person.name}退出${kind === 'cold' ? '寒冷' : '炎热'}状态`, { condition: kind, exited: true, ...(protectedByFire ? { protectedByFire: true } : {}) }, person);
     }
   }
 }
@@ -276,13 +281,16 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     }
     const planks = nearbyPlanks(state, person);
     const sheltered = planks >= 3;
+    const fires = nearbyFires(state, person);
+    const fireProtected = fires > 0;
     const climate = state.civilization.climate;
-    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0)) : 0;
-    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0)) : 0;
-    upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, sheltered && climate.kind !== 'cold', events);
-    upsertExposureCondition(state, person, atMonth, 'heat', heatLoad, sheltered && climate.kind === 'temperate', events);
+    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0) - (fireProtected ? 2.2 : 0)) : 0;
+    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0) + (fireProtected ? 0.6 : 0)) : 0;
+    upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, coldLoad <= 0 && (sheltered || fireProtected), fireProtected, events);
+    upsertExposureCondition(state, person, atMonth, 'heat', heatLoad, heatLoad <= 0 && sheltered, false, events);
 
-    const cold = condition(state, person, 'cold')?.stage ?? 0;
+    const coldCondition = condition(state, person, 'cold')?.stage ?? 0;
+    const cold = fireProtected ? Math.max(0, coldCondition - 2) : coldCondition;
     const heat = condition(state, person, 'heat')?.stage ?? 0;
     const wound = condition(state, person, 'wound')?.stage ?? 0;
     const illness = condition(state, person, 'illness')?.stage ?? 0;
@@ -302,11 +310,11 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     if (heat >= 3) healthDelta -= 3;
     healthDelta -= Math.max(0, wound - 1) * 1.5 + Math.max(0, illness - 1) * 1.5;
     if (aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45)) healthDelta -= aging === 3 ? 1.5 : 0.5;
-    if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || climate.kind === 'temperate') && !wound && !illness) {
+    if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || fireProtected || climate.kind === 'temperate') && !wound && !illness) {
       healthDelta += 1.4 * (aging === 1 ? 0.9 : aging === 2 ? 0.65 : aging === 3 ? 0.3 : 1);
     }
     person.body.health = clamp(person.body.health + healthDelta);
-    recoverInjuries(state, person, atMonth, sheltered, events);
+    recoverInjuries(state, person, atMonth, sheltered || fireProtected, events);
     advancePregnancies(state, person, atMonth, events);
     const ageRatio = (atMonth - person.bornAtMonth) / Math.max(1, person.lifespanMonths);
     const terminalRisk = aging === 3

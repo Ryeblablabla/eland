@@ -8,7 +8,14 @@ import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
 import { agreementById, recordAgreementAction } from './agreement';
-import { inventoryCombinationFor, inventoryCombinationSummary, inventoryCombinationTechniqueId } from './interaction-rules';
+import {
+  exertionRuleFor,
+  exertionTechniqueId,
+  exertionTechniqueSummary,
+  inventoryCombinationFor,
+  inventoryCombinationSummary,
+  inventoryCombinationTechniqueId,
+} from './interaction-rules';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -374,8 +381,47 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   };
 }
 
-function executeExert(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
-  const target = targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
+function executeExert(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+  const stackRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'inventory-stack' }> => item.kind === 'inventory-stack');
+  const voxelRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'voxel' }> => item.kind === 'voxel');
+  if (stackRef && voxelRef) {
+    const stack = stackRef.personId === person.id ? person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0) : undefined;
+    const tool = action.toolStackId ? person.inventory.find((candidate) => candidate.id === action.toolStackId && candidate.quantity > 0) : undefined;
+    if (!stack || !tool || distanceToPosition(person, voxelRef.position) > 1) return { status: 'blocked' as const, result: '施力所需的工具、材料或目标不在近身范围', diff: {} };
+    if (voxelRef.position.z < 0 || voxelRef.position.z >= state.world.grid.levels) return { status: 'blocked' as const, result: '施力目标不在世界范围内', diff: {} };
+    const targetMaterialId = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
+    const rule = exertionRuleFor(tool.materialId, stack.materialId, targetMaterialId);
+    if (!rule) return { status: 'blocked' as const, result: '这些物质当前没有可发生的施力响应', diff: { toolMaterialId: tool.materialId, inputMaterialId: stack.materialId, targetMaterialId } };
+    stack.quantity -= 1;
+    removeEmptyStacks(person);
+    setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, rule.outputMaterialId);
+    const techniqueId = exertionTechniqueId(rule);
+    const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+    if (knownTechnique) {
+      knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
+      knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
+    } else person.knowledge.push({
+      id: techniqueId,
+      kind: 'technique',
+      summary: exertionTechniqueSummary(rule),
+      confidence: 46,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId],
+    });
+    return {
+      status: 'completed' as const,
+      result: `${materialDefinition(tool.materialId).name}向${materialDefinition(stack.materialId).name}施力后产生${materialDefinition(rule.outputMaterialId).name}`,
+      diff: {
+        toolMaterialId: tool.materialId,
+        inputMaterialId: stack.materialId,
+        targetMaterialId,
+        outputMaterialId: rule.outputMaterialId,
+        position: voxelRef.position,
+        sourceEventId: eventId,
+      },
+    };
+  }
+  const target = action.targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const victim = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
   if (!victim || victim.id === person.id || victim.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '受力目标不在近身范围', diff: {} };
   const damage = Math.max(3, Math.round(person.baselineCapacities.manipulation / 12));
@@ -421,7 +467,7 @@ function executeAct(state: SimulationState, person: PersonState, action: Extract
   if (action.operation === 'ingest') return executeIngest(state, person, action.targets);
   if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
-  if (action.operation === 'exert') return executeExert(state, person, action.targets, atMonth, eventId);
+  if (action.operation === 'exert') return executeExert(state, person, action, atMonth, eventId);
   if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
   const fire = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Fire);
   const water = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Water);
@@ -462,7 +508,7 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
     const materialId = voxelAt(state.world.grid, attendedPosition.x, attendedPosition.y, attendedPosition.z);
     const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
       const source = state.world.past.find((event) => event.id === sourceId);
-      if (source?.kind !== 'action' || source.action.kind !== 'act' || source.action.operation !== 'combine') return false;
+      if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert'].includes(source.action.operation)) return false;
       const position = source.diff.position as VoxelPosition | undefined;
       return position?.x === attendedPosition.x
         && position.y === attendedPosition.y

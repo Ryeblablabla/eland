@@ -436,7 +436,7 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
       && fact.status === 'completed';
     const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
-      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine');
+      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine' || fact.action.operation === 'exert');
     if (representationCompleted || processAttemptCompleted || goalSatisfied(state, person, intent.goal)) {
       intent.status = 'completed';
       intent.progress = 1;

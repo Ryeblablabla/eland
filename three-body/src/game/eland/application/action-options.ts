@@ -782,7 +782,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
       ? { ...option, requiresFollowUp: true }
       : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective):/.test(option.id));
   return {
     state,
     person,
@@ -796,10 +796,9 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
-  const agreementContinuation = [...state.agreements].reverse().flatMap((agreement) => {
-    if (agreement.status !== 'active' || !(intent.sourceFactIds ?? []).some((sourceId) => agreement.sourceEventIds.includes(sourceId))) return [];
-    return compileAgreementContinuations(state, agreement.id).filter((continuation) => continuation.personId === person.id);
-  })[0];
+  const agreementContinuation = intent.agreementId
+    ? compileAgreementContinuations(state, intent.agreementId).find((continuation) => continuation.personId === person.id)
+    : undefined;
   if (agreementContinuation) return agreementContinuation.nextAction;
   if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;

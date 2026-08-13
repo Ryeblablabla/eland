@@ -106,6 +106,10 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     && writtenRecords.some((written) => written.who !== event.who && written.diff.recordPayloadId === event.diff.recordPayloadId));
   add(result, '51', '创造文字', recordReading.length ? [...writtenRecords, ...recordReading] : [], '一人把有来源的知识写入实体载体，并通过对话建立共同编码；另一人取得并读懂同一载体。');
 
+  const collectiveEvidence = state.collectives.flatMap((collective) => collective.sourceEventIds)
+    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+  add(result, '29', '结成友谊与联盟', collectiveEvidence, '至少两人基于已有合作与事实信任，自愿接受持续共同体成员关系；身份可在以后退出或因死亡终止。');
+
   const fireWarming = environment.filter((event) => event.change === 'condition'
     && event.diff.condition === 'cold'
     && event.diff.exited === true

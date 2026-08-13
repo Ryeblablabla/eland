@@ -8,6 +8,7 @@ import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
 import { agreementById, recordAgreementAction } from './agreement';
+import { recordCollectiveAction } from './collective';
 import {
   exertionRuleFor,
   exertionTechniqueId,
@@ -696,8 +697,9 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
   }
   for (const listener of reached) {
     // Words create familiarity, not evidence that a person is trustworthy.
-    applyRelationEvidence(listener, person.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
-    applyRelationEvidence(person, listener.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
+    const familiarity = action.content.kind === 'reject' || action.content.kind === 'withdraw' ? 0 : 1;
+    applyRelationEvidence(listener, person.id, eventId, { bond: familiarity });
+    applyRelationEvidence(person, listener.id, eventId, { bond: familiarity });
   }
   const assertedKnowledge = content.kind === 'claim' && content.factId ? person.knowledge.find((fact) => fact.id === content.factId) : undefined;
   return {
@@ -761,6 +763,7 @@ export function executePrimitiveAction(
     diff: outcome.diff,
   };
   recordAgreementAction(state, fact);
+  recordCollectiveAction(state, fact);
   rememberAction(state, fact);
   return fact;
 }

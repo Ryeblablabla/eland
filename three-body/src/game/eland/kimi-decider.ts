@@ -24,6 +24,7 @@ export interface DecisionRequestContext {
   agreements: Array<{
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number; fulfilledByPersonIds: string[];
   }>;
+  collectives: Array<{ id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number }>;
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
@@ -88,6 +89,16 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
       .slice(0, 6)
       .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
+    collectives: state.collectives.flatMap((collective) => {
+      const own = collective.memberships.find((membership) => membership.personId === person.id && membership.status === 'active');
+      return own ? [{
+        id: collective.id,
+        purposeSummary: collective.purposeSummary,
+        status: collective.status,
+        activeMemberIds: collective.memberships.filter((membership) => membership.status === 'active').map((membership) => membership.personId),
+        joinedAtMonth: own.joinedAtMonth,
+      }] : [];
+    }),
     options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp }) => ({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp) })),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {

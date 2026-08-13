@@ -93,6 +93,14 @@ export function openCompanionOfferFor(state: SimulationState, personId: PersonId
   return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
 }
 
+export function openCollectiveOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
+  const agreement = [...state.agreements].reverse().find((item) => item.status === 'proposed' && item.proposal.kind === 'collective' && item.responderId === personId && item.acceptByMonth >= state.clock.elapsedMonths);
+  if (!agreement) return null;
+  const facts = agreementFacts(state, agreement);
+  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+}
+
 export function hasOpenAssistRequestBetween(state: SimulationState, requesterId: PersonId, helperId: PersonId): boolean {
   return state.agreements.some((agreement) => agreement.status === 'proposed'
     && agreement.proposal.kind === 'assist'
@@ -104,6 +112,14 @@ export function hasOpenAssistRequestBetween(state: SimulationState, requesterId:
 export function hasOpenCompanionOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
   return state.agreements.some((agreement) => agreement.status === 'proposed'
     && agreement.proposal.kind === 'companion'
+    && agreement.proposal.proposerId === proposerId
+    && agreement.proposal.partnerId === partnerId
+    && agreement.acceptByMonth >= state.clock.elapsedMonths);
+}
+
+export function hasOpenCollectiveOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
+  return state.agreements.some((agreement) => agreement.status === 'proposed'
+    && agreement.proposal.kind === 'collective'
     && agreement.proposal.proposerId === proposerId
     && agreement.proposal.partnerId === partnerId
     && agreement.acceptByMonth >= state.clock.elapsedMonths);

@@ -5,6 +5,7 @@ import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
 import type { Agreement } from './agreement';
 import type { RecordPayload } from './record';
+import type { CollectiveState } from './collective';
 
 export * from './action';
 export * from './material';
@@ -167,6 +168,7 @@ export interface SimulationState {
   intents: Intent[];
   agreements: Agreement[];
   records: RecordPayload[];
+  collectives: CollectiveState[];
   civilization: {
     number: number;
     status: 'running' | 'ended';

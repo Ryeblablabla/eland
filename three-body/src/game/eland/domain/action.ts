@@ -20,12 +20,14 @@ export type RepresentationInput =
   | { id: string; kind: 'request'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string; summary?: string }
-  | { id: string; kind: 'reject'; referenceId: string; summary?: string };
+  | { id: string; kind: 'reject'; referenceId: string; summary?: string }
+  | { id: string; kind: 'withdraw'; collectiveId: string; summary: string };
 
 export type SocialProposal =
   | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
   | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
   | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
+  | { kind: 'collective'; proposerId: PersonId; partnerId: PersonId; purposeSummary: string; expiresAtMonth: number }
   | {
       kind: 'exchange'; offererId: PersonId; partnerId: PersonId;
       offererMaterialId: MaterialId; offererQuantity: number;
@@ -71,6 +73,7 @@ export interface Intent {
   lastProgressAtMonth: number;
   progress: number;
   sourceDecisionEventId: string;
+  agreementId?: string;
   sourceFactIds?: string[];
   actionEventIds: string[];
   blockedReason?: string;

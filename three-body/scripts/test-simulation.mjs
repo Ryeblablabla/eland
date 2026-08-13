@@ -37,6 +37,7 @@ try {
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
   assert.deepEqual(initial.records, [], '开局不应凭空存在任何文字记录');
+  assert.deepEqual(initial.collectives, [], '开局不应凭空存在任何共同体成员身份');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
   const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -530,6 +531,66 @@ try {
   recordState = runRecordOption(recordState, readerId, readOption, 'read-record');
   assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)), '掌握编码的读者应从实体记录取得其中知识');
   assert.ok(recordState.derived.milestones.some((milestone) => milestone.id === '51'), '刻写、教授编码、交付载体、异人读懂的完整事实链才能观察为创造文字');
+
+  let collectiveState = createInitialState(385, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const founder = collectiveState.people[0];
+  const partner = collectiveState.people[1];
+  founder.bornAtMonth = -20 * 12;
+  partner.bornAtMonth = -20 * 12;
+  partner.position.cellId = founder.position.cellId;
+  partner.position.previousCellId = founder.position.cellId;
+  founder.driveBias.affiliation = 90;
+  const priorAssistId = 'test-prior-fulfilled-assist';
+  const priorRequest = actionFact('test-prior-assist-request', 0, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, priorRequest);
+  collectiveState.world.past.push(priorRequest);
+  const priorAcceptance = actionFact('test-prior-assist-acceptance', 0, partner.id, { kind: 'communicate', content: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, audience: [founder.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, priorAcceptance);
+  collectiveState.world.past.push(priorAcceptance);
+  const priorFulfillment = actionFact('test-prior-assist-fulfillment', 0, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: priorAssistId });
+  recordAgreementAction(collectiveState, priorFulfillment);
+  collectiveState.world.past.push(priorFulfillment);
+  const collectiveContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const collectiveOffer = collectiveContext?.options.find((option) => option.id.startsWith('offer-collective:'));
+  assert.ok(collectiveOffer?.requiresFollowUp, '成立共同体的提议仍是对话，必须与同次模型决策中的真实后续行动绑定');
+  const collectiveFollowUp = collectiveContext.followUpOptions.find((option) => option.nextAction.kind !== 'communicate');
+  assert.ok(collectiveFollowUp, '共同体提议测试需要一个真实后续行动');
+  const collectiveIntentId = 'intent-test-found-collective';
+  collectiveState.intents.push({
+    id: collectiveIntentId, ownerId: founder.id, summary: `${collectiveOffer.summary}，随后${collectiveFollowUp.summary}`, domain: 'social',
+    goal: collectiveFollowUp.goal, openingAction: collectiveOffer.nextAction, openingActionCompleted: false,
+    nextAction: collectiveFollowUp.nextAction, ...(collectiveFollowUp.target ? { target: collectiveFollowUp.target } : {}),
+    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
+    sourceDecisionEventId: 'decision-test-found-collective', sourceFactIds: [...new Set([...collectiveOffer.sourceFactIds, ...collectiveFollowUp.sourceFactIds])], actionEventIds: [], replanCount: 0,
+  });
+  founder.activeIntentId = collectiveIntentId;
+  collectiveState = stepSimulation(collectiveState, { decide() { return { kind: 'idle', reason: '不干扰共同体提议测试' }; } });
+  const formationAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'collective');
+  assert.equal(formationAgreement?.status, 'proposed', '共同体提议必须等待另一人明确接受，不能由发起者单方面成立');
+  assert.ok(formationAgreement?.sourceEventIds.includes(priorFulfillment.id), '共同体提议必须保留使它成为选项的既往合作来源');
+  const proposalActions = collectiveState.world.past.filter((event) => event.kind === 'action' && event.intentId === collectiveIntentId);
+  assert.equal(proposalActions[0]?.action.kind, 'communicate', '共同体形成链先发生真实沟通');
+  assert.ok(proposalActions.slice(1).some((event) => event.action.kind !== 'communicate'), '共同体提议之后仍要执行同次决策选择的真实行动');
+
+  const collectiveResponseContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  assert.deepEqual(new Set(collectiveResponseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-collective', 'reject-collective']), '收到共同体提议后必须由本人明确接受或拒绝');
+  const acceptCollective = collectiveResponseContext?.options.find((option) => option.id.startsWith('accept-collective:'));
+  collectiveState = runRecordOption(collectiveState, partner.id, acceptCollective, 'accept-collective');
+  const collective = collectiveState.collectives[0];
+  assert.ok(collective && collective.status === 'active' && collective.memberships.filter((membership) => membership.status === 'active').length === 2, '双方接受后应形成具有持续成员身份的共同体领域事实');
+  assert.equal(collectiveState.derived.institutions.length, 0, '只有成员身份还不是制度；必须等待共同规则被接受并反复执行');
+  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.id === '29'), '真实合作、提议、接受和成员身份链应观察为结成友谊与联盟');
+
+  const withdrawing = collectiveState.people.find((person) => person.id === founder.id);
+  const strainedRelation = withdrawing.relations.find((relation) => relation.personId === partner.id);
+  strainedRelation.trust = -20;
+  const withdrawalContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const withdrawal = withdrawalContext?.options.find((option) => option.id.startsWith('withdraw-collective:'));
+  assert.ok(withdrawal, '低信任或恐惧下，成员必须可以通过沟通退出，而不是被共同体标签永久锁定');
+  collectiveState = runRecordOption(collectiveState, founder.id, withdrawal, 'withdraw-collective');
+  const updatedCollective = collectiveState.collectives.find((candidate) => candidate.id === collective.id);
+  assert.equal(updatedCollective?.memberships.find((membership) => membership.personId === founder.id)?.status, 'withdrawn', '退出沟通必须终止本人的持续成员身份');
+  assert.equal(updatedCollective?.status, 'dormant', '只剩一名成员时共同体应休眠，而不是继续冒充完整组织');
 
   const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const experimenter = repeatedExperimentState.people[0];

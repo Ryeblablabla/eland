@@ -6,6 +6,7 @@ import type { PersonId, PersonState } from '../domain/person';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 export interface AgreementContinuation {
+  agreementId: string;
   personId: PersonId;
   summary: string;
   goal: FactPredicate;
@@ -47,6 +48,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
       const stack = helper.inventory.find((item) => item.quantity > 0 && materialHas(item.materialId, 'edible'));
       if (!stack) return [];
       return [{
+        agreementId: agreement.id,
         personId: helper.id,
         summary: `履行对${requester.name}的食物帮助承诺`,
         goal: { kind: 'inventory-at-least', materialId: stack.materialId, quantity: requester.inventory.filter((item) => item.materialId === stack.materialId).reduce((sum, item) => sum + item.quantity, 0) + 1, personId: requester.id },
@@ -64,6 +66,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
       const helperAtWater = helper.position.cellId === water.bankCell;
       const requesterAtWater = requester.position.cellId === water.bankCell;
       const continuations: AgreementContinuation[] = [{
+        agreementId: agreement.id,
         personId: helper.id,
         summary: `履行承诺，带${requester.name}前往并确认水源`,
         goal: { kind: 'representation-made', representationId },
@@ -76,6 +79,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
         sourceFactIds,
       }];
       if (requester.position.cellId !== water.bankCell && findPath(state.world.grid, requester.position.cellId, water.bankCell).length) continuations.push({
+        agreementId: agreement.id,
         personId: requester.id,
         summary: `沿${helper.name}确认的路线去水边`,
         goal: { kind: 'at-cell', cellId: water.bankCell },
@@ -100,6 +104,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
       if (!person || !receiver || !stack) return [];
       const receiverQuantity = receiver.inventory.filter((item) => item.materialId === materialId).reduce((sum, item) => sum + item.quantity, 0);
       return [{
+        agreementId: agreement.id,
         personId,
         summary: `履行已接受的物质交换`,
         goal: { kind: 'inventory-at-least' as const, materialId, quantity: receiverQuantity + quantity, personId: receiver.id },
@@ -117,6 +122,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
     if (!responder || !proposer) return [];
     const female = responder.sex === 'female' ? responder : proposer.sex === 'female' ? proposer : undefined;
     return [{
+      agreementId: agreement.id,
       personId: responder.id,
       summary: `履行与${proposer.name}共同接受的生殖尝试`,
       goal: female ? { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true } : { kind: 'near-person', personId: proposer.id },

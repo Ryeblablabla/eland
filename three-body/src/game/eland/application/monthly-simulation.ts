@@ -42,6 +42,7 @@ import { chooseSurvivalReflex } from '../domain/survival-reflex';
 import { chooseDependentCareReflex } from '../domain/dependent-care';
 import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
+import { advanceCollectiveLifecycle } from '../domain/collective';
 import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
 import {
   WORLD_CELL_COUNT,
@@ -151,6 +152,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     intents: [],
     agreements: [],
     records: [],
+    collectives: [],
     civilization: {
       number: config.civilizationNo,
       status: 'running',
@@ -183,7 +185,7 @@ function urgency(context: DecisionContext): number {
 }
 
 function hasRequiredSocialResponse(context: DecisionContext): boolean {
-  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce):/.test(option.id));
+  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective):/.test(option.id));
 }
 
 function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
@@ -234,6 +236,10 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('accept-exchange:')) score += 44;
   if (option.id.startsWith('settle-exchange:')) score += 82;
   if (option.id.startsWith('offer-exchange:')) score += 25;
+  if (option.id.startsWith('offer-collective:')) score += 22 + person.driveBias.affiliation * 0.3;
+  if (option.id.startsWith('accept-collective:')) score += 42 + person.driveBias.affiliation * 0.25;
+  if (option.id.startsWith('rejoin-collective:')) score += 28 + person.driveBias.affiliation * 0.24;
+  if (option.id.startsWith('withdraw-collective:')) score += 72;
   if (option.id.startsWith('teach:')) score += 25 + person.driveBias.affiliation * 0.25;
   if (option.id.startsWith('attend:')) score += person.driveBias.inquiryCreation * 0.32;
   if (option.id.startsWith('explore:')) score += person.driveBias.inquiryCreation * 0.18;
@@ -341,6 +347,7 @@ function installAgreementContinuation(state: SimulationState, currentIntent: Int
     lastProgressAtMonth: atMonth,
     progress: 0.2,
     sourceDecisionEventId: currentIntent.sourceDecisionEventId,
+    agreementId: continuation.agreementId,
     sourceFactIds: [...continuation.sourceFactIds],
     actionEventIds: [],
     replanCount: 0,
@@ -356,6 +363,7 @@ function installAgreementContinuation(state: SimulationState, currentIntent: Int
     delete intent.openingActionCompleted;
     delete intent.completionAction;
     intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...continuation.sourceFactIds])];
+    intent.agreementId = continuation.agreementId;
     intent.progress = 0.2;
   } else state.intents.push(intent);
   owner.activeIntentId = intent.id;
@@ -423,7 +431,7 @@ function applyDecision(
 function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number, actionTick: number): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
-  const sourceAgreement = [...state.agreements].reverse().find((agreement) => (intent.sourceFactIds ?? []).some((sourceId) => agreement.sourceEventIds.includes(sourceId)));
+  const sourceAgreement = intent.agreementId ? state.agreements.find((agreement) => agreement.id === intent.agreementId) : undefined;
   if (sourceAgreement && sourceAgreement.status !== 'proposed' && sourceAgreement.status !== 'active') {
     intent.status = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 'completed' : 'failed';
     intent.progress = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 1 : intent.progress;
@@ -695,6 +703,7 @@ function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: numb
   events.forEach((event, index) => { event.orderInMonth = index; });
   state.clock.elapsedMonths = atMonth;
   state.world.past.push(...events);
+  advanceCollectiveLifecycle(state, atMonth);
   state.lastStep = events;
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   state.derived = deriveObservations(state);
@@ -826,6 +835,7 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   if (Number((input as { schemaVersion?: number }).schemaVersion) !== 14) throw new Error('schemaVersion 13 及更早存档不支持继续演化；请建立新的协议事实文明');
   const state = structuredClone(input);
   state.records ??= [];
+  state.collectives ??= [];
   state.world.grid = hydrateWorld(input.world.grid);
   for (const person of state.people) {
     const start = person.position.previousCellId ?? person.position.cellId;
@@ -833,6 +843,13 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
     person.position.tickPath = person.position.tickPath?.length
       ? person.position.tickPath
       : Array.from({ length: RULE_ACTION_TICKS_PER_MONTH + 1 }, (_, index) => index === RULE_ACTION_TICKS_PER_MONTH ? person.position.cellId : start);
+  }
+  for (const intent of state.intents) {
+    if (intent.agreementId) continue;
+    const agreement = state.agreements.find((candidate) => candidate.status === 'active'
+      && (intent.sourceFactIds ?? []).includes(candidate.proposalEventId)
+      && Boolean(candidate.responseEventId && (intent.sourceFactIds ?? []).includes(candidate.responseEventId)));
+    if (agreement) intent.agreementId = agreement.id;
   }
   return state;
 }

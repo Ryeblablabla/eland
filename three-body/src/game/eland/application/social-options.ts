@@ -7,13 +7,16 @@ import {
   acceptedAssistFor,
   acceptedCompanionBetween,
   hasOpenAssistRequestBetween,
+  hasOpenCollectiveOfferBetween,
   hasOpenCompanionOfferBetween,
   openAssistRequestFor,
+  openCollectiveOfferFor,
   openCompanionOfferFor,
 } from '../domain/social-facts';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
+import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -32,7 +35,7 @@ function reachableWaterBank(state: SimulationState, person: PersonState): { wate
   return candidates.sort((a, b) => a.pathLength - b.pathLength || a.waterCell - b.waterCell)[0] ?? null;
 }
 
-function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion'): ActionOption {
+function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective'): ActionOption {
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
   const response = { kind: 'communicate' as const, content: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
@@ -41,7 +44,7 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const distance = Math.max(0, findPath(state.world.grid, person.position.cellId, other.position.cellId).length - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
-    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : '结伴提议'}`,
+    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : '共同体提议'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
     nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId },
@@ -56,6 +59,7 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
 export function buildSocialOptions(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
+  const personCollectives = activeCollectivesFor(state, person.id);
   const requestedWaterAssist = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'assist'
     && agreement.proposal.need === 'water'
@@ -171,6 +175,49 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       options.push(responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'));
     }
   }
+  const incomingCollective = openCollectiveOfferFor(state, person.id);
+  if (incomingCollective) {
+    const proposer = state.people.find((other) => other.id === incomingCollective.fact.who);
+    const proposal = incomingCollective.content.proposal;
+    if (proposer && proposal?.kind === 'collective') {
+      options.push({ ...responseOption(state, person, incomingCollective.content.id, proposer, true, 'collective'), sourceFactIds: [incomingCollective.fact.id] });
+      options.push({ ...responseOption(state, person, incomingCollective.content.id, proposer, false, 'collective'), sourceFactIds: [incomingCollective.fact.id] });
+    }
+  }
+
+  for (const collective of personCollectives) {
+    const memberIds = new Set(activeMemberIds(state, collective));
+    const visibleMember = visiblePeople.find((other) => memberIds.has(other.id) && other.position.cellId !== person.position.cellId);
+    if (visibleMember) {
+      const path = findPath(state.world.grid, person.position.cellId, visibleMember.position.cellId);
+      if (path.length) options.push({
+        id: `rejoin-collective:${collective.id}:${visibleMember.id}`,
+        summary: `重新与共同体成员${visibleMember.name}会合`,
+        reason: `双方仍属于以“${collective.purposeSummary}”为目的的持续共同体`,
+        goal: { kind: 'near-person', personId: visibleMember.id }, nextAction: { kind: 'move', toCellId: visibleMember.position.cellId },
+        target: { kind: 'person', personId: visibleMember.id }, estimatedDuration: 'several-months',
+        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
+        risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+      });
+    }
+    const localMember = localPeople.find((other) => memberIds.has(other.id));
+    const relations = activeMemberIds(state, collective)
+      .filter((id) => id !== person.id)
+      .map((id) => relationTo(person, id));
+    const membershipUnderStrain = relations.some((relation) => (relation?.trust ?? 0) <= -8 || (relation?.fear ?? 0) >= 55);
+    if (localMember && membershipUnderStrain) {
+      const representationId = `withdraw:${state.clock.elapsedMonths}:${collective.id}:${person.id}`;
+      options.push({
+        id: `withdraw-collective:${collective.id}`,
+        summary: `向${localMember.name}声明退出共同体`,
+        reason: '共同体内部的低信任或恐惧已经超过继续维持成员关系的收益',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'withdraw', collectiveId: collective.id, summary: '我不再作为这个共同体的成员继续行动' }, audience: [localMember.id], channel: 'voice' },
+        target: { kind: 'person', personId: localMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...(relationTo(person, localMember.id)?.sourceEventIds ?? [])],
+      });
+    }
+  }
 
   for (const other of localPeople.slice(0, 3)) {
     const relation = relationTo(person, other.id);
@@ -198,6 +245,33 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         goal: { kind: 'representation-made', representationId },
         nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: '希望今后一段时间结伴行动', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: state.clock.elapsedMonths + 6 } }, audience: [other.id], channel: 'voice' },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: relation?.sourceEventIds ?? [],
+      });
+    }
+    const sharedFulfillment = [...state.agreements].reverse().find((agreement) => agreement.status === 'fulfilled'
+      && agreement.partyIds.includes(person.id)
+      && agreement.partyIds.includes(other.id)
+      && (agreement.proposal.kind === 'assist' || agreement.proposal.kind === 'exchange' || agreement.proposal.kind === 'companion'));
+    if (!personCollectives.some((collective) => collective.status === 'active')
+      && !activeCollectivesFor(state, other.id).some((collective) => collective.status === 'active')
+      && sharedFulfillment
+      && (relation?.trust ?? 0) >= 6
+      && person.driveBias.affiliation >= 45
+      && !hasOpenCollectiveOfferBetween(state, person.id, other.id)
+      && !hasOpenCollectiveOfferBetween(state, other.id, person.id)) {
+      const representationId = `offer-collective:${state.clock.elapsedMonths}:${person.id}:${other.id}`;
+      const purposeSummary = sharedFulfillment.proposal.kind === 'exchange'
+        ? '持续交换物质并互相履约'
+        : sharedFulfillment.proposal.kind === 'companion'
+          ? '长期结伴并共同生活'
+          : '持续互助并共同应对生存压力';
+      options.push({
+        id: representationId,
+        summary: `邀请${other.name}把已经发生的合作延续为共同体`,
+        reason: '双方已有真实履约与信任来源，可以自愿形成跨协议持续的成员关系',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: `我们已经一起做成过事情，愿不愿意以后继续${purposeSummary}？`, proposal: { kind: 'collective', proposerId: person.id, partnerId: other.id, purposeSummary, expiresAtMonth: state.clock.elapsedMonths + 6 } }, audience: [other.id], channel: 'voice' },
+        target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...sharedFulfillment.sourceEventIds],
       });
     }
     const representationId = `talk:${state.clock.elapsedMonths}:${person.id}:${other.id}`;

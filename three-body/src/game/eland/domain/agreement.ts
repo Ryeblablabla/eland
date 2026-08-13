@@ -36,6 +36,7 @@ function parties(proposal: SocialProposal): { proposerId: PersonId; responderId:
 
 function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'companion') return 24;
+  if (proposal.kind === 'collective') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
   return 4;
@@ -89,6 +90,9 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     const content = action.content;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
       const pair = parties(content.proposal);
+      const intentSources = fact.intentId
+        ? state.intents.find((intent) => intent.id === fact.intentId)?.sourceFactIds ?? []
+        : [];
       state.agreements.push({
         id: content.id,
         proposal: structuredClone(content.proposal),
@@ -101,7 +105,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         fulfillmentEventIds: [],
         fulfilledByPersonIds: [],
         coLocatedMonths: 0,
-        sourceEventIds: [fact.id],
+        sourceEventIds: [...new Set([...intentSources, fact.id])],
       });
       return;
     }

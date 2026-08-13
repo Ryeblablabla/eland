@@ -59,8 +59,8 @@ function summaryFor(
     elapsedMonths: state.clock.elapsedMonths,
     civilizationNo: state.civilization.number,
     status: state.civilization.status,
-    livingAgents: state.agents.filter((agent) => agent.body.state !== "dead").length,
-    agentCount: state.agents.length,
+    livingAgents: state.people.filter((person) => person.diedAtMonth === undefined && person.body.health > 0).length,
+    agentCount: state.people.length,
     eventCount: state.world.past.length,
     milestoneCount: state.derived.milestones.length,
   };

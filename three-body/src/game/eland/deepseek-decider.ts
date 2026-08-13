@@ -1,22 +1,25 @@
+import { materialDefinition } from './domain/material';
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simulation';
 
 export interface DecisionRequestContext {
-  agent: {
+  person: {
     id: string;
     name: string;
     description: string;
-    body: DecisionContext['agent']['body'];
-    needs: DecisionContext['agent']['mind']['needs'];
-    abilities: DecisionContext['agent']['limbs']['abilities'];
+    body: DecisionContext['person']['body'];
+    conditions: DecisionContext['person']['conditions'];
+    capacities: DecisionContext['person']['baselineCapacities'];
+    drives: DecisionContext['person']['driveBias'];
     currentChoice: string;
+    inventory: Array<{ stackId: string; materialId: number; name: string; quantity: number }>;
   };
   clock: { elapsedMonths: number };
   climate: DecisionContext['state']['civilization']['climate'];
-  activePlan?: DecisionContext['activePlan'];
-  suspendedPlans: Array<{ id: string; objective: string; mode: string; progress: number }>;
-  affordances: DecisionContext['affordances'];
-  visibleAgents: Array<{ id: string; name: string; state: string; cellId: number }>;
-  visibleMatter: Array<{ id: string; kind: string; name: string; quantity: number; cellId: number; traits: string[] }>;
+  activeIntent?: { id: string; summary: string; progress: number; nextActionKind: string };
+  suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
+  options: DecisionContext['options'];
+  visiblePeople: Array<{ id: string; name: string; health: number; hydration: number; nutrition: number; cellId: number }>;
+  visibleDrops: Array<{ id: string; materialId: number; name: string; quantity: number; cellId: number }>;
 }
 
 export interface DecideApiResponse {
@@ -28,33 +31,26 @@ export interface DecideApiResponse {
 }
 
 export function buildDecisionRequestContext(context: DecisionContext): DecisionRequestContext {
-  const { agent, state } = context;
+  const { person, state } = context;
   return {
-    agent: {
-      id: agent.id,
-      name: agent.name,
-      description: agent.profile.description.slice(0, 240),
-      body: agent.body,
-      needs: agent.mind.needs,
-      abilities: agent.limbs.abilities,
-      currentChoice: agent.mind.cognition.choice.slice(0, 100),
+    person: {
+      id: person.id,
+      name: person.name,
+      description: person.profile.description.slice(0, 240),
+      body: person.body,
+      conditions: person.conditions,
+      capacities: person.baselineCapacities,
+      drives: person.driveBias,
+      currentChoice: person.lastDecisionText.slice(0, 140),
+      inventory: person.inventory.map((stack) => ({ stackId: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
     },
     clock: { elapsedMonths: state.clock.elapsedMonths },
     climate: state.civilization.climate,
-    ...(context.activePlan ? { activePlan: context.activePlan } : {}),
-    suspendedPlans: state.plans
-      .filter((plan) => plan.ownerId === agent.id && plan.status === 'suspended')
-      .map(({ id, objective, mode, progress }) => ({ id, objective, mode, progress })),
-    affordances: context.affordances,
-    visibleAgents: context.visibleAgents.map((other) => ({ id: other.id, name: other.name, state: other.body.state, cellId: other.position.cellId })),
-    visibleMatter: context.visibleMatter.map((matter) => ({
-      id: matter.id,
-      kind: matter.kind,
-      name: matter.name,
-      quantity: matter.quantity,
-      cellId: matter.holder.kind === 'cell' ? matter.holder.cellId : agent.position.cellId,
-      traits: matter.traits,
-    })),
+    ...(context.activeIntent ? { activeIntent: { id: context.activeIntent.id, summary: context.activeIntent.summary, progress: context.activeIntent.progress, nextActionKind: context.activeIntent.nextAction.kind } } : {}),
+    suspendedIntents: state.intents.filter((intent) => intent.ownerId === person.id && intent.status === 'suspended').map((intent) => ({ id: intent.id, summary: intent.summary, progress: intent.progress, nextActionKind: intent.nextAction.kind })),
+    options: context.options,
+    visiblePeople: context.visiblePeople.map((other) => ({ id: other.id, name: other.name, ...other.body, cellId: other.position.cellId })),
+    visibleDrops: context.visibleDrops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, quantity: drop.quantity, cellId: drop.cellId })),
   };
 }
 

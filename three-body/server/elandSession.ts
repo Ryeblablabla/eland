@@ -36,9 +36,9 @@ interface BranchTimeline {
 function entriesFor(state: SimulationState, events: WorldEvent[]): FrameEntry[] {
   const important = events.filter((event) =>
     event.kind === 'decision'
-    || (event.kind === 'plan-progress' && (event.status === 'completed' || event.status === 'blocked'))
+    || (event.kind === 'action' && (event.status === 'completed' || event.status === 'blocked'))
     || (event.kind === 'environment' && event.change === 'death'));
-  const source = important.length ? important : events.filter((event) => event.kind === 'plan-progress');
+  const source = important.length ? important : events.filter((event) => event.kind === 'action');
   const entries = source.slice(0, 4).flatMap((event) => {
     const chronicle = eventToChronicle(event);
     if (!chronicle) return [];

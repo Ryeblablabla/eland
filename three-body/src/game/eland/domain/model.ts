@@ -1,29 +1,16 @@
-import type { BiologicalSex } from '../population';
 import { MONTHS_PER_YEAR } from './calendar';
-import type { ComponentKind, StructureEffects } from './structure-policy';
-import type { PixelWorld } from '../world/grid';
+import type { ActionOption, Intent, IntentDecision, PrimitiveAction } from './action';
+import type { MaterialId } from './material';
+import type { PersonId, PersonState } from './person';
+import type { VoxelWorld } from '../world/grid';
 
-export type { ComponentKind, StructureEffects } from './structure-policy';
+export * from './action';
+export * from './material';
+export * from './person';
 
-export type AgentId = string;
-export type MatterKind = string;
-export type MatterTrait =
-  | 'raw'
-  | 'edible'
-  | 'rigid'
-  | 'building'
-  | 'fuel'
-  | 'recordable'
-  | 'crafted'
-  | 'structure'
-  | 'shelter'
-  | 'botanical';
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
 export type ClimateBias = 'balanced' | 'cold' | 'hot';
-export type MaslowNeedLevel = 'physiological' | 'safety' | 'belonging' | 'esteem' | 'selfActualization';
-export type PlanMode = 'explore' | 'travel' | 'gather' | 'carry' | 'build' | 'recover';
-export type PlanStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';
 
 export interface SimulationConfig {
   civilizationNo: number;
@@ -33,160 +20,26 @@ export interface SimulationConfig {
   characterIds?: string[];
 }
 
-export interface MaslowPersonalityLayer {
-  level: MaslowNeedLevel;
-  label: string;
-  baselineWeight: number;
-  evidence: string[];
-}
-
-export interface MaslowPersonality {
-  dominantLevel: MaslowNeedLevel;
-  summary: string;
-  layers: MaslowPersonalityLayer[];
-}
-
-export interface NeedLayer {
-  level: MaslowNeedLevel;
-  label: string;
-  intensity: number;
-  activeNeeds: Array<{ kind: string; label: string; intensity: number; reason: string }>;
-}
-
-export interface MatterState {
+export interface DropState {
   id: string;
-  kind: MatterKind;
-  name: string;
-  holder:
-    | { kind: 'cell'; cellId: number }
-    | { kind: 'agent'; agentId: AgentId }
-    | { kind: 'structure'; structureId: string; slot: string };
-  quantity: number;
-  unitMass: number;
-  composition: Record<string, number>;
-  traits: MatterTrait[];
-  madeBy?: AgentId;
-  sourceEventIds: string[];
-}
-
-export interface StructureComponent {
-  id: string;
-  structureId: string;
-  kind: ComponentKind;
+  materialId: MaterialId;
   cellId: number;
-  materialKinds: string[];
-  integrity: number;
-  sourceEventIds: string[];
-}
-
-export interface StructureState {
-  id: string;
-  name?: string;
-  builderIds: AgentId[];
-  componentIds: string[];
-  occupiedCells: number[];
-  interiorCells: number[];
-  effects: StructureEffects;
-  useEventIds: string[];
-  sourceEventIds: string[];
-}
-
-export type SpatialTarget =
-  | { kind: 'cell'; cellId: number }
-  | { kind: 'matter'; matterId: string; cellId: number }
-  | { kind: 'structure'; structureId: string; cellId: number };
-
-export interface AgentPlan {
-  id: string;
-  ownerId: AgentId;
-  objective: string;
-  mode: PlanMode;
-  target: SpatialTarget;
-  status: PlanStatus;
+  quantity: number;
   createdAtMonth: number;
-  lastProgressAtMonth: number;
-  progress: number;
-  workRemaining: number;
-  requestedQuantity?: number;
-  acquiredQuantity?: number;
-  path: number[];
-  pathCursor: number;
-  sourceDecisionEventId: string;
-  progressEventIds: string[];
-  blockedReason?: string;
-  structureId?: string;
+  sourceEventIds: string[];
 }
-
-export interface AgentState {
-  id: AgentId;
-  name: string;
-  color: string;
-  profile: { description: string; personality: MaslowPersonality };
-  position: { cellId: number; previousCellId: number; lastPath: number[] };
-  activePlanId?: string;
-  suspendedPlanIds: string[];
-  mind: {
-    needs: { focus: string; intensity: number; dominantLevel: MaslowNeedLevel; layers: NeedLayer[] };
-    cognition: {
-      perception: string;
-      choice: string;
-      interpretation: string;
-      knownCells: number[];
-      rememberedTargets: Array<{ kind: string; id: string; cellId: number; sourceEventIds: string[]; lastSeenAtMonth: number }>;
-      memory: Array<{ id: string; atMonth: number; summary: string; sourceEventIds: string[] }>;
-    };
-  };
-  limbs: {
-    actionText: string;
-    abilities: { move: number; interact: number; craft: number; build: number; observe: number; reason: number };
-  };
-  relations: Array<{ agentId: AgentId; strength: number; word: string; sourceEventIds: string[] }>;
-  lineage: { generation: number; motherId?: string; fatherId?: string };
-  standing: { respect: number; correctPredictions: number; failedPredictions: number; careTrust: number };
-  body: {
-    state: 'active' | 'dehydrated' | 'dead';
-    hydration: number;
-    nutrition: number;
-    health: number;
-    fatigue: number;
-    temperature: number;
-    ageMonths: number;
-    sex: BiologicalSex;
-    lifespanMonths: number;
-  };
-}
-
-export interface Affordance {
-  id: string;
-  planMode: PlanMode;
-  target: SpatialTarget;
-  requiredRange: 0 | 1;
-  visibleReason: string;
-  estimatedDurationBand: 'one-month' | 'several-months' | 'long' | 'unknown';
-  sourceFactIds: string[];
-}
-
-export type PlanDecision =
-  | { kind: 'start'; affordanceId?: string; exploration?: { direction: 'n' | 'e' | 's' | 'w'; distanceBand: 'near' | 'far' }; reason: string }
-  | { kind: 'continue'; planId: string; reason: string }
-  | { kind: 'revise'; planId: string; affordanceId: string; reason: string }
-  | { kind: 'suspend'; planId: string; reason: string }
-  | { kind: 'resume'; planId: string; reason: string }
-  | { kind: 'abandon'; planId: string; reason: string }
-  | { kind: 'idle'; reason: string };
-
-export type Decision = PlanDecision;
 
 export interface DecisionContext {
   state: SimulationState;
-  agent: AgentState;
+  person: PersonState;
   visibleCells: number[];
-  visibleAgents: AgentState[];
-  visibleMatter: MatterState[];
-  affordances: Affordance[];
-  activePlan?: AgentPlan;
+  visiblePeople: PersonState[];
+  visibleDrops: DropState[];
+  options: ActionOption[];
+  activeIntent?: Intent;
 }
 
+export type Decision = IntentDecision;
 export interface TokenUsage { inputTokens: number; outputTokens: number }
 export interface AgentDecider { decide(context: DecisionContext): Decision }
 export interface BatchDecider {
@@ -194,13 +47,16 @@ export interface BatchDecider {
   takeUsage?(): TokenUsage;
 }
 
-export interface DecisionOpportunityFact {
+export interface BaseEvent {
   id: string;
-  kind: 'decision-opportunity';
   atMonth: number;
   orderInMonth: number;
-  who: AgentId;
   cellId: number;
+}
+
+export interface DecisionOpportunityFact extends BaseEvent {
+  kind: 'decision-opportunity';
+  who: PersonId;
   probability: number;
   sample: number;
   triggered: boolean;
@@ -208,55 +64,43 @@ export interface DecisionOpportunityFact {
   result: string;
 }
 
-export interface DecisionFact {
-  id: string;
+export interface DecisionFact extends BaseEvent {
   kind: 'decision';
-  atMonth: number;
-  orderInMonth: number;
-  who: AgentId;
-  cellId: number;
+  who: PersonId;
   decision: Decision;
-  planId?: string;
+  intentId?: string;
   usedModel: boolean;
   result: string;
 }
 
-export interface PlanProgressFact {
-  id: string;
-  kind: 'plan-progress';
-  atMonth: number;
-  orderInMonth: number;
-  who: AgentId;
-  cellId: number;
-  planId: string;
+export interface ActionFact extends BaseEvent {
+  kind: 'action';
+  who: PersonId;
+  intentId: string;
+  action: PrimitiveAction;
   fromCellId: number;
   toCellId: number;
   pathSegment: number[];
   status: 'progressed' | 'completed' | 'blocked' | 'failed';
-  progressBefore: number;
-  progressAfter: number;
   result: string;
   diff: Record<string, unknown>;
 }
 
-export interface EnvironmentFact {
-  id: string;
+export interface EnvironmentFact extends BaseEvent {
   kind: 'environment';
-  atMonth: number;
-  orderInMonth: number;
-  cellId: number;
-  change: 'climate' | 'body' | 'death' | 'resource';
+  change: 'climate' | 'body' | 'condition' | 'death' | 'resource' | 'material';
+  who?: PersonId;
   result: string;
   diff: Record<string, unknown>;
 }
 
-export type WorldEvent = DecisionOpportunityFact | DecisionFact | PlanProgressFact | EnvironmentFact;
+export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact;
 
 export interface PracticeObservation {
   key: string;
   label: string;
   count: number;
-  agentIds: AgentId[];
+  agentIds: PersonId[];
   eventIds: string[];
   stability: number;
 }
@@ -266,13 +110,26 @@ export interface MilestoneObservation { id: string; label: string; evidenceEvent
 
 export interface EmergentRegion {
   id: string;
-  kind: 'natural' | 'residential' | 'trail';
+  kind: 'natural' | 'residential' | 'trail' | 'cultivated';
   cells: number[];
   confidence: number;
   evidenceEventIds: string[];
   firstObservedMonth: number;
   lastObservedMonth: number;
   label?: string;
+}
+
+export interface DerivedStructure {
+  id: string;
+  name: string;
+  occupiedCells: number[];
+  interiorCells: number[];
+  materialIds: MaterialId[];
+  weatherProtection: number;
+  thermalInsulation: number;
+  capacity: number;
+  complete: boolean;
+  sourceEventIds: string[];
 }
 
 export interface DecisionMonthLedger {
@@ -286,19 +143,13 @@ export interface DecisionMonthLedger {
 }
 
 export interface SimulationState {
-  schemaVersion: 11;
+  schemaVersion: 12;
   seed: number;
   branchId: string;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
-  world: {
-    grid: PixelWorld;
-    matter: MatterState[];
-    structures: StructureState[];
-    components: StructureComponent[];
-    past: WorldEvent[];
-  };
-  agents: AgentState[];
-  plans: AgentPlan[];
+  world: { grid: VoxelWorld; drops: DropState[]; past: WorldEvent[] };
+  people: PersonState[];
+  intents: Intent[];
   civilization: {
     number: number;
     status: 'running' | 'ended';
@@ -316,6 +167,7 @@ export interface SimulationState {
     institutions: InstitutionObservation[];
     milestones: MilestoneObservation[];
     regions: EmergentRegion[];
+    structures: DerivedStructure[];
   };
   lastStep: WorldEvent[];
 }
@@ -330,7 +182,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 11;
+  schemaVersion: 12;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

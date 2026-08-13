@@ -1,17 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
 import { findArchiveCharacter } from '@/data/characters';
-import type { AgentHistoryItem, PlanView, SocietyAgent } from '@/game/societyContract';
+import type { AgentHistoryItem, IntentView, SocietyAgent } from '@/game/societyContract';
 
 interface Props {
   agent: SocietyAgent;
-  plans: PlanView[];
+  intents: IntentView[];
   history: AgentHistoryItem[];
   historyLoading: boolean;
   worldWidth: number;
   onClose: () => void;
 }
 
-type CardTab = 'status' | 'needs' | 'history';
+type CardTab = 'status' | 'inventory' | 'needs' | 'history';
 
 interface DragState {
   pointerId: number;
@@ -23,6 +23,7 @@ interface DragState {
 
 const TAB_LABELS: Array<{ id: CardTab; label: string }> = [
   { id: 'status', label: '状态' },
+  { id: 'inventory', label: '背包' },
   { id: 'needs', label: '需求' },
   { id: 'history', label: '经历' },
 ];
@@ -43,9 +44,9 @@ function monthLabel(month: number): string {
   return `第 ${Math.floor((month - 1) / 12) + 1} 年 · ${((month - 1) % 12) + 1} 月`;
 }
 
-function Meter({ label, value, inverse = false }: { label: string; value: number; inverse?: boolean }) {
+function Meter({ label, value }: { label: string; value: number }) {
   const normalized = clamp(Math.round(value), 0, 100);
-  const danger = inverse ? normalized >= 72 : normalized <= 28;
+  const danger = normalized <= 28;
   return (
     <div>
       <div className="mb-1 flex justify-between text-[10px] text-slate-400"><span>{label}</span><span className="tabular-nums">{normalized}</span></div>
@@ -56,13 +57,13 @@ function Meter({ label, value, inverse = false }: { label: string; value: number
   );
 }
 
-export default function AgentCard({ agent, plans, history, historyLoading, worldWidth, onClose }: Props) {
+export default function AgentCard({ agent, intents, history, historyLoading, worldWidth, onClose }: Props) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [tab, setTab] = useState<CardTab>('status');
   const [position, setPosition] = useState({ x: 72, y: 94 });
   const archive = useMemo(() => findArchiveCharacter({ id: agent.id, name: agent.name }), [agent.id, agent.name]);
-  const activePlan = agent.activePlanId ? plans.find((plan) => plan.id === agent.activePlanId) : undefined;
+  const activeIntent = agent.activeIntentId ? intents.find((intent) => intent.id === agent.activeIntentId) : undefined;
   const reversedHistory = useMemo(() => [...history].reverse(), [history]);
 
   const moveCard = (clientX: number, clientY: number) => {
@@ -117,7 +118,7 @@ export default function AgentCard({ agent, plans, history, historyLoading, world
         >✕</button>
       </div>
 
-      <div role="tablist" aria-label="人物卡片页面" className="grid grid-cols-3 border-b border-white/10">
+      <div role="tablist" aria-label="人物卡片页面" className="grid grid-cols-4 border-b border-white/10">
         {TAB_LABELS.map((item) => (
           <button
             key={item.id}
@@ -140,11 +141,17 @@ export default function AgentCard({ agent, plans, history, historyLoading, world
               <div className="mt-2 text-xs leading-5 text-slate-500">{agent.title}</div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-white/10 py-4">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-3 border-y border-white/10 py-4">
               <Meter label="健康" value={agent.body.health} />
               <Meter label="水分" value={agent.body.hydration} />
               <Meter label="营养" value={agent.body.nutrition} />
-              <Meter label="疲劳" value={agent.body.fatigue} inverse />
+            </div>
+
+            <div>
+              <div className="mb-2 text-[10px] tracking-[0.24em] text-slate-500">过程状态</div>
+              {agent.conditions.length ? <div className="flex flex-wrap gap-2">{agent.conditions.map((condition) => (
+                <span key={condition.id} className="border border-rose-200/15 bg-rose-100/[0.04] px-2 py-1 text-[10px] text-rose-100/80">{condition.label} · {condition.stage} 级</span>
+              ))}</div> : <div className="text-xs text-slate-600">当前没有持续性状态。</div>}
             </div>
 
             <div className="space-y-3 text-xs leading-5">
@@ -153,15 +160,26 @@ export default function AgentCard({ agent, plans, history, historyLoading, world
               <div><span className="mr-3 text-slate-600">理解</span><span className="text-slate-300">{agent.mind.ought}</span></div>
             </div>
 
-            {activePlan ? (
+            {activeIntent ? (
               <div className="border border-amber-100/15 bg-amber-50/[0.03] p-4 text-xs leading-5 text-slate-300">
                 <div className="mb-2 flex items-center justify-between text-[10px] tracking-[0.2em] text-amber-100/75">
-                  <span>长期计划 · {activePlan.mode}</span><span>{Math.round(activePlan.progress)}%</span>
+                  <span>当前意图 · 下一动作 {activeIntent.actionKind}</span><span>{Math.round(activeIntent.progress * 100)}%</span>
                 </div>
-                <div>{activePlan.objective}</div>
-                <div className="mt-2 text-[10px] text-slate-600">始于第 {activePlan.createdAtMonth} 月 · 最近推进第 {activePlan.lastProgressAtMonth} 月</div>
+                <div>{activeIntent.summary}</div>
+                <div className="mt-2 text-[10px] text-slate-600">始于第 {activeIntent.createdAtMonth} 月 · 最近推进第 {activeIntent.lastProgressAtMonth} 月</div>
               </div>
-            ) : <div className="text-xs text-slate-600">当前没有长期计划。</div>}
+            ) : <div className="text-xs text-slate-600">当前没有活动意图。</div>}
+          </div>
+        )}
+
+        {tab === 'inventory' && (
+          <div>
+            <div className="mb-5 text-xs leading-5 text-slate-500">背包中的每一堆物品由这个人私有持有；给予、丢下或被取走都必须发生真实转移。</div>
+            {agent.inventory.length ? <div className="space-y-2">{agent.inventory.map((stack) => (
+              <div key={stack.id} className="flex items-center justify-between border border-white/10 bg-white/[0.025] px-3 py-3 text-xs">
+                <span className="text-slate-300">{stack.name}</span><span className="tabular-nums text-amber-100/80">× {stack.quantity}</span>
+              </div>
+            ))}</div> : <div className="py-10 text-center text-xs text-slate-600">背包是空的。</div>}
           </div>
         )}
 

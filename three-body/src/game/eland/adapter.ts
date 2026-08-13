@@ -1,7 +1,10 @@
 /** 领域状态到 UI 读取模型的纯投影。 */
-import type { AgentHistoryItem, AgentHistoryView, EraKey, SocietyState } from '../societyContract';
+import type { AgentHistoryItem, AgentHistoryView, EraKey, SocietyAgent, SocietyState } from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
 import { calendarDate } from './domain/calendar';
+import { materialDefinition } from './domain/material';
+import { ageMonths, isAlive, type PersonState } from './domain/person';
+import { WORLD_CELL_COUNT, columnMaterials, surfaceMaterial, topZ } from './world/grid';
 
 export const ERA_TO_ENV: Record<EraKey, { epoch: EpochKind; kind: ClimateKind; severity: number }> = {
   stable: { epoch: 'stable', kind: 'temperate', severity: 1 },
@@ -13,113 +16,93 @@ export const ERA_TO_ENV: Record<EraKey, { epoch: EpochKind; kind: ClimateKind; s
   extinct: { epoch: 'chaotic', kind: 'fire', severity: 10 },
 };
 
-const dense = (value: ArrayLike<number>): number[] => Array.from(value);
+const NEED_LEVELS = [
+  ['physiological', '生理需求'],
+  ['safety', '安全需求'],
+  ['belonging', '归属与爱'],
+  ['esteem', '尊重需求'],
+  ['selfActualization', '自我实现'],
+] as const;
+
+const CONDITION_LABELS: Record<string, string> = {
+  cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', pregnancy: '妊娠', restrained: '拘束',
+};
+
+function needsFor(person: PersonState): SocietyAgent['needs'] {
+  const physiological = Math.max(100 - person.body.health, 100 - person.body.hydration, 100 - person.body.nutrition);
+  const safety = Math.max(person.conditions.reduce((value, condition) => Math.max(value, condition.stage * 25), 0), 100 - person.body.health);
+  const belonging = Math.max(0, 72 - person.driveBias.affiliation - person.relations.reduce((sum, relation) => sum + relation.bond, 0) / Math.max(1, person.relations.length));
+  const esteem = Math.max(10, (person.driveBias.autonomy + person.driveBias.recognition) / 2 - 25);
+  const selfActualization = Math.max(8, person.driveBias.inquiryCreation - physiological * 0.45);
+  const values = [physiological, safety, belonging, esteem, selfActualization].map((value) => Math.max(0, Math.min(100, value)));
+  const dominantIndex = values.indexOf(Math.max(...values));
+  return NEED_LEVELS.map(([level, label], index) => ({ level, label, intensity: values[index], dominant: index === dominantIndex }));
+}
+
+function personView(state: SimulationState, person: PersonState): SocietyAgent {
+  const needs = needsFor(person);
+  const active = state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active');
+  const currentNeed = needs.find((need) => need.dominant)?.label ?? '维持生活';
+  return {
+    id: person.id,
+    name: person.name,
+    title: person.profile.description,
+    cellId: person.position.cellId,
+    previousCellId: person.position.previousCellId,
+    lastPath: person.position.lastPath,
+    state: !isAlive(person) ? 'dead' : person.body.hydration < 10 ? 'dehydrated' : 'active',
+    doing: person.currentActionText,
+    ...(person.activeIntentId ? { activeIntentId: person.activeIntentId } : {}),
+    sex: person.sex,
+    lifespanMonths: person.lifespanMonths,
+    generation: person.generation,
+    respect: Math.round(person.relations.reduce((sum, relation) => sum + relation.trust, 0) / Math.max(1, person.relations.length)),
+    mind: {
+      want: `当前最迫切的是${currentNeed}`,
+      choice: person.lastDecisionText,
+      ought: active ? `意图：${active.summary}` : person.knowledge.at(-1)?.summary ?? '只依据自己见过和经历过的事实',
+    },
+    needs,
+    body: { ...person.body, ageMonths: ageMonths(person, state.clock.elapsedMonths) },
+    conditions: person.conditions.map((condition) => ({ id: condition.id, kind: condition.kind, label: CONDITION_LABELS[condition.kind] ?? condition.kind, stage: condition.stage, sinceMonth: condition.sinceMonth })),
+    inventory: person.inventory.map((stack) => ({ id: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+  };
+}
 
 export function toSocietyState(state: SimulationState): SocietyState {
   const { grid } = state.world;
+  const traffic = new Array<number>(WORLD_CELL_COUNT).fill(0);
+  const transfer = new Array<number>(WORLD_CELL_COUNT).fill(0);
+  const action = new Array<number>(WORLD_CELL_COUNT).fill(0);
+  const attention = new Array<number>(WORLD_CELL_COUNT).fill(0);
+  for (const event of state.world.past) {
+    if (event.kind !== 'action') continue;
+    if (event.action.kind === 'move') event.pathSegment.forEach((cell) => { traffic[cell] += 1; });
+    else if (event.action.kind === 'transfer') transfer[event.cellId] += 1;
+    else if (event.action.kind === 'attend') attention[event.cellId] += 1;
+    else action[event.cellId] += 1;
+  }
   return {
     world: {
       width: grid.width,
-      height: grid.height,
+      height: grid.depth,
+      levels: grid.levels,
       generator: grid.generator,
-      cells: {
-        terrainKind: dense(grid.cells.terrainKind),
-        elevation: dense(grid.cells.elevation),
-        fertility: dense(grid.cells.fertility),
-        waterDepth: dense(grid.cells.waterDepth),
-        surfaceCover: dense(grid.cells.surfaceCover),
-        moisture: dense(grid.cells.moisture),
-        temperature: dense(grid.cells.temperature),
-        vegetation: dense(grid.cells.vegetation),
-        fire: dense(grid.cells.fire),
-        ice: dense(grid.cells.ice),
-      },
-      traces: {
-        traffic: dense(grid.traces.traffic),
-        rest: dense(grid.traces.rest),
-        gathering: dense(grid.traces.gathering),
-        cultivation: dense(grid.traces.cultivation),
-        care: dense(grid.traces.care),
-        trade: dense(grid.traces.trade),
-        burial: dense(grid.traces.burial),
-      },
+      palette: grid.palette.map(({ id, key, name, color, tags }) => ({ id, key, name, color, tags: [...tags] })),
+      surface: Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => surfaceMaterial(grid, cell)),
+      elevation: Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => topZ(grid, cell)),
+      columns: Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => columnMaterials(grid, cell)),
+      activity: { traffic, transfer, action, attention },
     },
-    agents: state.agents.map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      title: agent.profile.personality.summary,
-      cellId: agent.position.cellId,
-      previousCellId: agent.position.previousCellId,
-      lastPath: agent.position.lastPath,
-      state: agent.body.state,
-      doing: agent.limbs.actionText,
-      ...(agent.activePlanId ? { activePlanId: agent.activePlanId } : {}),
-      sex: agent.body.sex,
-      lifespanMonths: agent.body.lifespanMonths,
-      generation: agent.lineage.generation,
-      respect: agent.standing.respect,
-      mind: {
-        want: agent.mind.needs.focus,
-        choice: agent.mind.cognition.choice,
-        ought: agent.mind.cognition.interpretation,
-      },
-      needs: agent.mind.needs.layers.map((need) => ({
-        level: need.level,
-        label: need.label,
-        intensity: need.intensity,
-        dominant: need.level === agent.mind.needs.dominantLevel,
-      })),
-      body: {
-        health: agent.body.health,
-        nutrition: agent.body.nutrition,
-        hydration: agent.body.hydration,
-        fatigue: agent.body.fatigue,
-        ageMonths: agent.body.ageMonths,
-      },
-    })),
-    matter: state.world.matter.flatMap((matter) => matter.holder.kind === 'cell' ? [{
-      id: matter.id,
-      kind: matter.kind,
-      name: matter.name,
-      cellId: matter.holder.cellId,
-      quantity: matter.quantity,
-      traits: matter.traits,
-    }] : []),
-    structures: state.world.structures.map((structure) => ({
-      id: structure.id,
-      name: structure.name ?? '未命名结构',
-      occupiedCells: structure.occupiedCells,
-      interiorCells: structure.interiorCells,
-      componentCount: structure.componentIds.length,
-      complete: structure.effects.accessible,
-      effects: {
-        structuralStability: structure.effects.structuralStability,
-        weatherProtection: structure.effects.weatherProtection,
-        thermalInsulation: structure.effects.thermalInsulation,
-        enclosure: structure.effects.enclosure,
-        capacity: structure.effects.capacity,
-      },
-      useCount: structure.useEventIds.length,
+    agents: state.people.map((person) => personView(state, person)),
+    drops: state.world.drops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, cellId: drop.cellId, quantity: drop.quantity })),
+    structures: state.derived.structures.map((structure) => ({
+      id: structure.id, name: structure.name, occupiedCells: structure.occupiedCells, interiorCells: structure.interiorCells,
+      componentCount: structure.sourceEventIds.length, complete: structure.complete,
+      effects: { weatherProtection: structure.weatherProtection, thermalInsulation: structure.thermalInsulation, capacity: structure.capacity },
       sourceEventIds: structure.sourceEventIds,
     })),
-    components: state.world.components.map((component) => ({
-      id: component.id,
-      structureId: component.structureId,
-      kind: component.kind,
-      cellId: component.cellId,
-      integrity: component.integrity,
-    })),
-    plans: state.plans.map((plan) => ({
-      id: plan.id,
-      ownerId: plan.ownerId,
-      objective: plan.objective,
-      mode: plan.mode,
-      status: plan.status,
-      targetCellId: plan.target.cellId,
-      progress: plan.progress,
-      createdAtMonth: plan.createdAtMonth,
-      lastProgressAtMonth: plan.lastProgressAtMonth,
-    })),
+    intents: state.intents.map((intent) => ({ id: intent.id, ownerId: intent.ownerId, summary: intent.summary, actionKind: intent.nextAction.kind, status: intent.status, progress: intent.progress, createdAtMonth: intent.createdAtMonth, lastProgressAtMonth: intent.lastProgressAtMonth })),
     regions: state.derived.regions.map(({ id, kind, cells, confidence, label }) => ({ id, kind, cells, confidence, ...(label ? { label } : {}) })),
     observations: {
       practices: state.derived.practices.map(({ key, label, count, stability }) => ({ key, label, count, stability })),
@@ -129,90 +112,39 @@ export function toSocietyState(state: SimulationState): SocietyState {
   };
 }
 
-/**
- * 人物经历读取模型。只投影与人物直接相关的事实，并限制条数，避免把完整世界历史
- * 重复塞进每个月的 GameFrame。
- */
 export function toAgentHistory(state: SimulationState, agentId: string, limit = 80): AgentHistoryView | null {
-  if (!state.agents.some((agent) => agent.id === agentId)) return null;
+  if (!state.people.some((person) => person.id === agentId)) return null;
   const events = state.world.past.flatMap((event): AgentHistoryItem[] => {
     if (event.kind === 'decision-opportunity') {
       if (event.who !== agentId || event.triggered) return [];
-      return [{
-        id: event.id,
-        month: event.atMonth,
-        orderInMonth: event.orderInMonth,
-        cellId: event.cellId,
-        kind: 'continuation',
-        label: '延续安排',
-        summary: event.result,
-      }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'continuation', label: '延续意图', summary: event.result }];
     }
     if (event.kind === 'decision') {
       if (event.who !== agentId) return [];
-      return [{
-        id: event.id,
-        month: event.atMonth,
-        orderInMonth: event.orderInMonth,
-        cellId: event.cellId,
-        kind: 'decision',
-        label: '关键决策',
-        summary: event.result,
-        ...(event.planId ? { planId: event.planId } : {}),
-        usedModel: event.usedModel,
-      }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: '关键决策', summary: event.result, ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
     }
-    if (event.kind === 'plan-progress') {
+    if (event.kind === 'action') {
       if (event.who !== agentId) return [];
-      const label = event.status === 'completed' ? '完成行动'
-        : event.status === 'blocked' ? '行动受阻'
-          : event.status === 'failed' ? '行动失败' : '推进计划';
-      return [{
-        id: event.id,
-        month: event.atMonth,
-        orderInMonth: event.orderInMonth,
-        cellId: event.cellId,
-        kind: 'action',
-        label,
-        summary: event.result,
-        planId: event.planId,
-        status: event.status,
-      }];
+      const label = event.status === 'completed' ? '完成原子动作' : event.status === 'blocked' ? '动作受阻' : event.status === 'failed' ? '动作失败' : '推进原子动作';
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'action', label, summary: event.result, intentId: event.intentId, status: event.status }];
     }
-    if (event.kind === 'environment' && event.change === 'death' && event.diff.agentId === agentId) {
-      return [{
-        id: event.id,
-        month: event.atMonth,
-        orderInMonth: event.orderInMonth,
-        cellId: event.cellId,
-        kind: 'life',
-        label: '生命事件',
-        summary: event.result,
-        status: event.change,
-      }];
+    if (event.kind === 'environment' && event.who === agentId && (event.change === 'death' || event.change === 'condition' || event.change === 'body')) {
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: event.result, status: event.change }];
     }
     return [];
   });
-  return {
-    agentId,
-    throughMonth: state.clock.elapsedMonths,
-    events: events.slice(-Math.max(1, Math.min(240, Math.floor(limit)))),
-  };
+  return { agentId, throughMonth: state.clock.elapsedMonths, events: events.slice(-Math.max(1, Math.min(240, Math.floor(limit)))) };
 }
 
 export function eventToChronicle(event: WorldEvent): { text: string; tone: 'plain' | 'good' | 'bad' | 'era' } | null {
   if (event.kind === 'decision-opportunity' && !event.triggered) return null;
-  const tone = event.kind === 'environment' && event.change === 'death'
-    ? 'bad'
-    : event.kind === 'plan-progress' && event.status === 'completed'
-      ? 'good'
-      : event.kind === 'environment' && event.change === 'climate'
-        ? 'era'
-        : 'plain';
+  const tone = event.kind === 'environment' && event.change === 'death' ? 'bad'
+    : event.kind === 'action' && event.status === 'completed' ? 'good'
+      : event.kind === 'environment' && event.change === 'climate' ? 'era' : 'plain';
   return { text: `${calendarDate(event.atMonth).label}：${event.result}`, tone };
 }
 
 export function monthSpeaker(state: SimulationState, events: WorldEvent[]): string | null {
-  const person = [...events].reverse().find((event) => 'who' in event && event.who);
-  return person && 'who' in person ? state.agents.find((agent) => agent.id === person.who)?.name ?? null : null;
+  const fact = [...events].reverse().find((event) => 'who' in event && event.who);
+  return fact && 'who' in fact ? state.people.find((person) => person.id === fact.who)?.name ?? null : null;
 }

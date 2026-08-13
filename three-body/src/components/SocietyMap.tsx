@@ -15,15 +15,6 @@ interface Props {
   seed: number;
 }
 
-const COMPONENT_COLOR: Record<string, string> = {
-  foundation: '#80684f',
-  support: '#c3955a',
-  floor: '#9c784e',
-  wall: '#b48658',
-  opening: '#161718',
-  roof: '#754d3d',
-};
-
 interface CameraState {
   zoom: number;
   panX: number;
@@ -135,29 +126,24 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         const color = cellColor(world, cellId);
         context.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
         context.fillRect(x * scale, y * scale, scale, scale);
-        const traffic = world.traces.traffic[cellId];
+        const traffic = world.activity.traffic[cellId];
         if (traffic >= 3) {
           context.fillStyle = `rgba(194,166,118,${Math.min(0.62, traffic / 28)})`;
           context.fillRect(x * scale + scale * 0.3, y * scale + scale * 0.42, scale * 0.4, scale * 0.25);
         }
-        if (world.traces.gathering[cellId] > 0) {
+        if (world.activity.transfer[cellId] > 0) {
           context.fillStyle = 'rgba(214,225,166,0.6)';
           context.fillRect(x * scale + scale * 0.12, y * scale + scale * 0.12, Math.max(2, scale * 0.16), Math.max(2, scale * 0.16));
         }
       }
 
-      for (const matter of society.matter) {
-        if (matter.quantity <= 0) continue;
-        const { x, y } = cellCoordinates(matter.cellId, world.width);
-        context.fillStyle = matter.kind === 'berries' ? '#d7616c' : matter.kind === 'wood' ? '#5b3926' : matter.kind === 'stone' ? '#b5b1a7' : '#9c6948';
+      for (const drop of society.drops) {
+        if (drop.quantity <= 0) continue;
+        const { x, y } = cellCoordinates(drop.cellId, world.width);
+        const material = world.palette[drop.materialId];
+        const [r, g, b] = material?.color ?? [156, 105, 72];
+        context.fillStyle = `rgb(${r},${g},${b})`;
         context.fillRect(x * scale + scale * 0.33, y * scale + scale * 0.33, scale * 0.34, scale * 0.34);
-      }
-
-      for (const component of society.components) {
-        const { x, y } = cellCoordinates(component.cellId, world.width);
-        context.fillStyle = COMPONENT_COLOR[component.kind] ?? '#d1a66d';
-        const inset = scale * (component.kind === 'roof' ? 0.08 : component.kind === 'support' ? 0.33 : 0.16);
-        context.fillRect(x * scale + inset, y * scale + inset, scale - inset * 2, scale - inset * 2);
       }
 
       for (const agent of society.agents) {
@@ -193,7 +179,7 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
     return () => cancelAnimationFrame(handle);
   }, [camera, society, selectedAgentId, selectedCell, speaker, viewportRevision, world]);
 
-  const cellMatter = useMemo(() => selectedCell === null ? [] : society.matter.filter((matter) => matter.cellId === selectedCell), [selectedCell, society.matter]);
+  const cellDrops = useMemo(() => selectedCell === null ? [] : society.drops.filter((drop) => drop.cellId === selectedCell), [selectedCell, society.drops]);
   const cellStructures = useMemo(() => selectedCell === null ? [] : society.structures.filter((structure) => structure.occupiedCells.includes(selectedCell)), [selectedCell, society.structures]);
   const cellAgents = useMemo(() => selectedCell === null ? [] : society.agents.filter((agent) => agent.cellId === selectedCell), [selectedCell, society.agents]);
 
@@ -316,12 +302,21 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
           <>
             <div className="mt-4 text-lg tracking-[0.2em] text-slate-100">{cellLabel(selectedCell, world.width)}</div>
             <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-              <span>高度 {world.cells.elevation[selectedCell]}</span>
-              <span>肥力 {world.cells.fertility[selectedCell]}</span>
-              <span>水深 {world.cells.waterDepth[selectedCell]}</span>
-              <span>植被 {world.cells.vegetation[selectedCell]}</span>
-              <span>通行 {world.traces.traffic[selectedCell]}</span>
-              <span>休息 {world.traces.rest[selectedCell]}</span>
+              <span>最高层 {world.elevation[selectedCell]}</span>
+              <span>层数 {world.columns[selectedCell].length}</span>
+            </div>
+            <div className="mt-4 border-y border-white/10 py-3">
+              <div className="mb-2 text-[9px] tracking-[0.22em] text-slate-600">物质柱 · 自上而下</div>
+              <div className="space-y-1 text-xs text-slate-300">{world.columns[selectedCell].map((materialId, index) => {
+                const material = world.palette[materialId];
+                return <div key={`${materialId}-${index}`} className="flex items-center justify-between"><span>{index === 0 ? '表面' : `下层 ${index}`} · {material?.name ?? '未知物质'}</span><span className="text-slate-700">#{materialId}</span></div>;
+              })}</div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-slate-600">
+              <span>近 史通行 {world.activity.traffic[selectedCell]}</span>
+              <span>转移 {world.activity.transfer[selectedCell]}</span>
+              <span>作用 {world.activity.action[selectedCell]}</span>
+              <span>观察 {world.activity.attention[selectedCell]}</span>
             </div>
             <div className="mt-5 space-y-2">
               {cellAgents.map((agent) => (
@@ -329,13 +324,13 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
                   {agent.name} · {agent.doing}
                 </button>
               ))}
-              {cellMatter.map((matter) => (
-                <button key={matter.id} className="block w-full border-l border-white/10 pl-3 text-left text-xs text-slate-300">
-                  {matter.name} × {matter.quantity}
+              {cellDrops.map((drop) => (
+                <button key={drop.id} className="block w-full border-l border-white/10 pl-3 text-left text-xs text-slate-300">
+                  地面物品 · {drop.name} × {drop.quantity}
                 </button>
               ))}
-              {cellStructures.map((structure) => <div key={structure.id} className="border-l border-amber-200/30 pl-3 text-xs text-amber-100/80">{structure.name} · {structure.componentCount}/7 构件 · 防护 {Math.round(structure.effects.weatherProtection)}</div>)}
-              {!cellAgents.length && !cellMatter.length && !cellStructures.length && <div className="text-xs text-slate-600">这格尚无人物、物质或构件。</div>}
+              {cellStructures.map((structure) => <div key={structure.id} className="border-l border-amber-200/30 pl-3 text-xs text-amber-100/80">{structure.name} · {structure.componentCount} 次连接证据 · 防护 {Math.round(structure.effects.weatherProtection)}</div>)}
+              {!cellAgents.length && !cellDrops.length && !cellStructures.length && <div className="text-xs text-slate-600">这格只有物质柱，没有地面实体。</div>}
             </div>
           </>
         )}
@@ -346,7 +341,7 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         <AgentCard
           key={focusAgent.id}
           agent={focusAgent}
-          plans={society.plans}
+          intents={society.intents}
           history={agentHistory}
           historyLoading={agentHistoryLoading}
           worldWidth={world.width}

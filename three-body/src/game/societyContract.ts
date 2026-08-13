@@ -1,39 +1,30 @@
-/**
- * 人间地图读取模型。
- *
- * 这是应用层给界面的投影，不是领域状态本身。网格、物质、构件、人物位置均来自
- * ELAND 权威世界；界面不得另行生成地点、道路或建筑。
- */
+/** 应用层给 UI 的读取模型；不复制领域规则。 */
 
-export interface GridLayersView {
-  terrainKind: number[];
-  elevation: number[];
-  fertility: number[];
-  waterDepth: number[];
-  surfaceCover: number[];
-  moisture: number[];
-  temperature: number[];
-  vegetation: number[];
-  fire: number[];
-  ice: number[];
+export interface MaterialView {
+  id: number;
+  key: string;
+  name: string;
+  color: readonly [number, number, number];
+  tags: string[];
 }
 
-export interface TraceLayersView {
+export interface ActivityLayersView {
   traffic: number[];
-  rest: number[];
-  gathering: number[];
-  cultivation: number[];
-  care: number[];
-  trade: number[];
-  burial: number[];
+  transfer: number[];
+  action: number[];
+  attention: number[];
 }
 
 export interface PixelWorldView {
   width: 84;
   height: 52;
+  levels: 12;
   generator: { version: string; seed: number };
-  cells: GridLayersView;
-  traces: TraceLayersView;
+  palette: MaterialView[];
+  surface: number[];
+  elevation: number[];
+  columns: number[][];
+  activity: ActivityLayersView;
 }
 
 export interface SocietyAgent {
@@ -45,14 +36,16 @@ export interface SocietyAgent {
   lastPath: number[];
   state: 'active' | 'dehydrated' | 'dead';
   doing: string;
-  activePlanId?: string;
+  activeIntentId?: string;
   sex: 'female' | 'male';
   lifespanMonths: number;
   generation: number;
   respect: number;
   mind: { want: string; choice: string; ought: string };
   needs: { level: string; label: string; intensity: number; dominant: boolean }[];
-  body: { health: number; nutrition: number; hydration: number; fatigue: number; ageMonths: number };
+  body: { health: number; nutrition: number; hydration: number; ageMonths: number };
+  conditions: { id: string; kind: string; label: string; stage: number; sinceMonth: number }[];
+  inventory: { id: string; materialId: number; name: string; quantity: number }[];
 }
 
 export interface AgentHistoryItem {
@@ -63,7 +56,7 @@ export interface AgentHistoryItem {
   kind: 'decision' | 'action' | 'continuation' | 'life';
   label: string;
   summary: string;
-  planId?: string;
+  intentId?: string;
   status?: string;
   usedModel?: boolean;
 }
@@ -74,13 +67,12 @@ export interface AgentHistoryView {
   events: AgentHistoryItem[];
 }
 
-export interface MatterView {
+export interface DropView {
   id: string;
-  kind: string;
+  materialId: number;
   name: string;
   cellId: number;
   quantity: number;
-  traits: string[];
 }
 
 export interface StructureView {
@@ -90,32 +82,16 @@ export interface StructureView {
   interiorCells: number[];
   componentCount: number;
   complete: boolean;
-  effects: {
-    structuralStability: number;
-    weatherProtection: number;
-    thermalInsulation: number;
-    enclosure: number;
-    capacity: number;
-  };
-  useCount: number;
+  effects: { weatherProtection: number; thermalInsulation: number; capacity: number };
   sourceEventIds: string[];
 }
 
-export interface StructureComponentView {
-  id: string;
-  structureId: string;
-  kind: 'foundation' | 'support' | 'floor' | 'wall' | 'roof' | 'opening';
-  cellId: number;
-  integrity: number;
-}
-
-export interface PlanView {
+export interface IntentView {
   id: string;
   ownerId: string;
-  objective: string;
-  mode: 'explore' | 'travel' | 'gather' | 'carry' | 'build' | 'recover';
+  summary: string;
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
   status: 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';
-  targetCellId: number;
   progress: number;
   createdAtMonth: number;
   lastProgressAtMonth: number;
@@ -124,11 +100,10 @@ export interface PlanView {
 export interface SocietyState {
   world: PixelWorldView;
   agents: SocietyAgent[];
-  matter: MatterView[];
+  drops: DropView[];
   structures: StructureView[];
-  components: StructureComponentView[];
-  plans: PlanView[];
-  regions: { id: string; kind: 'natural' | 'residential' | 'trail'; cells: number[]; confidence: number; label?: string }[];
+  intents: IntentView[];
+  regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];
   observations: {
     practices: { key: string; label: string; count: number; stability: number }[];
     institutions: { key: string; label: string; note: string }[];

@@ -72,7 +72,7 @@ function asObject(value: unknown): Record<string, unknown> {
 function stateFrom(value: unknown): SimulationState {
   const object = asObject(value);
   const candidate = object.state ?? object.finalState ?? (object.run as Record<string, unknown> | undefined)?.state ?? value;
-  if (!candidate || typeof candidate !== "object" || !Array.isArray((candidate as SimulationState).agents) || !(candidate as SimulationState).world) {
+  if (!candidate || typeof candidate !== "object" || !Array.isArray((candidate as SimulationState).people) || !(candidate as SimulationState).world) {
     throw new HttpError(400, "没有找到可导入的 SimulationState");
   }
   try {

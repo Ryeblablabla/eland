@@ -9,13 +9,12 @@ const MODEL_CONFIG = {
 const MAX_AGENTS = 12;
 
 const SYSTEM_PROMPT = [
-  '你是像素世界中的一个普通人。你只知道输入里的身体、记忆、当前计划、眼前人物、物质和可供性。',
+  '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
   '这次是一次月度关键决策；日常执行会由规则引擎在后续月份持续推进，不要把长期行动压缩成一个月。',
   '严格输出一个 JSON 对象，不输出解释。格式只能是以下之一：',
-  '{"kind":"start","affordanceId":"输入中的可供性id","reason":"简短理由"}',
-  '{"kind":"start","exploration":{"direction":"n|e|s|w","distanceBand":"near|far"},"reason":"简短理由"}',
-  '{"kind":"continue|suspend|resume|abandon","planId":"输入中的计划id","reason":"简短理由"}',
-  '{"kind":"revise","planId":"当前计划id","affordanceId":"输入中的可供性id","reason":"简短理由"}',
+  '{"kind":"start","optionId":"输入中的行动选项id","reason":"简短理由"}',
+  '{"kind":"continue|suspend|resume|abandon","intentId":"输入中的意图id","reason":"简短理由"}',
+  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","reason":"简短理由"}',
   '{"kind":"idle","reason":"简短理由"}',
   '只能引用输入 id，不得凭空生成物质、地点或能力。先照顾迫切的生理和安全需要。',
 ].join('\n');
@@ -33,26 +32,20 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const raw = input as Record<string, unknown>;
   const kind = raw.kind;
   const reason = text(raw.reason) || '根据眼前处境重新安排';
-  const affordanceId = text(raw.affordanceId, 100);
-  const planId = text(raw.planId, 100);
-  const affordanceExists = context.affordances.some((item) => item.id === affordanceId);
-  const activePlanId = context.activePlan?.id;
-  const suspendedPlanIds = new Set(context.suspendedPlans.map((plan) => plan.id));
+  const optionId = text(raw.optionId, 100);
+  const intentId = text(raw.intentId, 100);
+  const optionExists = context.options.some((item) => item.id === optionId);
+  const activeIntentId = context.activeIntent?.id;
+  const suspendedIntentIds = new Set(context.suspendedIntents.map((intent) => intent.id));
   if (kind === 'start') {
-    if (affordanceExists) return { kind, affordanceId, reason };
-    const exploration = raw.exploration as Record<string, unknown> | undefined;
-    const direction = exploration?.direction;
-    const distanceBand = exploration?.distanceBand;
-    if ((direction === 'n' || direction === 'e' || direction === 's' || direction === 'w') && (distanceBand === 'near' || distanceBand === 'far')) {
-      return { kind, exploration: { direction, distanceBand }, reason };
-    }
+    if (optionExists) return { kind, optionId, reason };
     return null;
   }
-  if (kind === 'continue' && planId === activePlanId) return { kind, planId, reason };
-  if (kind === 'revise' && planId === activePlanId && affordanceExists) return { kind, planId, affordanceId, reason };
-  if (kind === 'suspend' && planId === activePlanId) return { kind, planId, reason };
-  if (kind === 'resume' && suspendedPlanIds.has(planId)) return { kind, planId, reason };
-  if (kind === 'abandon' && planId === activePlanId) return { kind, planId, reason };
+  if (kind === 'continue' && intentId === activeIntentId) return { kind, intentId, reason };
+  if (kind === 'revise' && intentId === activeIntentId && optionExists) return { kind, intentId, optionId, reason };
+  if (kind === 'suspend' && intentId === activeIntentId) return { kind, intentId, reason };
+  if (kind === 'resume' && suspendedIntentIds.has(intentId)) return { kind, intentId, reason };
+  if (kind === 'abandon' && intentId === activeIntentId) return { kind, intentId, reason };
   if (kind === 'idle') return { kind, reason };
   return null;
 }
@@ -90,7 +83,7 @@ async function decideOne(context: DecisionRequestContext, apiKey: string, provid
 function isContext(value: unknown): value is DecisionRequestContext {
   if (!value || typeof value !== 'object') return false;
   const context = value as DecisionRequestContext;
-  return Boolean(context.agent?.id && Array.isArray(context.affordances) && Array.isArray(context.visibleMatter));
+  return Boolean(context.person?.id && Array.isArray(context.options) && Array.isArray(context.visibleDrops));
 }
 
 export async function handleDecide(payload: unknown, apiKey: string, requestedProvider: ModelProvider = DEFAULT_MODEL_PROVIDER): Promise<{ status: number; body: unknown }> {

@@ -1,60 +1,19 @@
+import { MATERIAL_PALETTE, Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
+
 export const WORLD_WIDTH = 84;
-export const WORLD_HEIGHT = 52;
-export const WORLD_CELL_COUNT = WORLD_WIDTH * WORLD_HEIGHT;
+export const WORLD_DEPTH = 52;
+export const WORLD_LEVELS = 12;
+export const WORLD_CELL_COUNT = WORLD_WIDTH * WORLD_DEPTH;
+export const WORLD_VOXEL_COUNT = WORLD_CELL_COUNT * WORLD_LEVELS;
 
-export const TerrainKind = {
-  Soil: 0,
-  Rock: 1,
-  Sand: 2,
-  Clay: 3,
-  Waterbed: 4,
-} as const;
-
-export const SurfaceCover = {
-  Bare: 0,
-  Grass: 1,
-  Shrub: 2,
-  Tree: 3,
-  Crop: 4,
-  Ash: 5,
-  Snow: 6,
-} as const;
-
-export type DenseU8 = Uint8Array;
-export type DenseU16 = Uint16Array;
-export type DenseI16 = Int16Array;
-
-export interface CellLayers {
-  terrainKind: DenseU8;
-  elevation: DenseI16;
-  fertility: DenseU8;
-  waterDepth: DenseU8;
-  surfaceCover: DenseU8;
-  moisture: DenseU8;
-  temperature: DenseI16;
-  vegetation: DenseU8;
-  fire: DenseU8;
-  ice: DenseU8;
-  contamination: DenseU8;
-}
-
-export interface TraceLayers {
-  traffic: DenseU16;
-  rest: DenseU16;
-  cultivation: DenseU16;
-  care: DenseU16;
-  trade: DenseU16;
-  gathering: DenseU16;
-  burial: DenseU16;
-}
-
-export interface PixelWorld {
-  version: 1;
+export interface VoxelWorld {
+  version: 2;
   width: typeof WORLD_WIDTH;
-  height: typeof WORLD_HEIGHT;
-  generator: { version: "pixel-world-v1"; seed: number };
-  cells: CellLayers;
-  traces: TraceLayers;
+  depth: typeof WORLD_DEPTH;
+  levels: typeof WORLD_LEVELS;
+  generator: { version: 'material-world-v1'; seed: number };
+  palette: typeof MATERIAL_PALETTE;
+  voxels: Uint16Array;
 }
 
 export function cellId(x: number, y: number): number {
@@ -73,6 +32,65 @@ export function isCellId(id: number): boolean {
   return Number.isInteger(id) && id >= 0 && id < WORLD_CELL_COUNT;
 }
 
+export function voxelIndex(x: number, y: number, z: number): number {
+  return z * WORLD_CELL_COUNT + cellId(x, y);
+}
+
+export function voxelAt(world: VoxelWorld, x: number, y: number, z: number): MaterialId {
+  if (x < 0 || x >= world.width || y < 0 || y >= world.depth || z < 0 || z >= world.levels) return Material.Air;
+  return world.voxels[voxelIndex(x, y, z)] ?? Material.Air;
+}
+
+export function setVoxel(world: VoxelWorld, x: number, y: number, z: number, materialId: MaterialId): void {
+  if (x < 0 || x >= world.width || y < 0 || y >= world.depth || z < 0 || z >= world.levels) return;
+  world.voxels[voxelIndex(x, y, z)] = materialId;
+}
+
+export function topZ(world: VoxelWorld, id: number): number {
+  if (!isCellId(id)) return -1;
+  const x = cellX(id);
+  const y = cellY(id);
+  for (let z = world.levels - 1; z >= 0; z -= 1) {
+    if (voxelAt(world, x, y, z) !== Material.Air) return z;
+  }
+  return -1;
+}
+
+export function surfaceMaterial(world: VoxelWorld, id: number): MaterialId {
+  const z = topZ(world, id);
+  return z < 0 ? Material.Air : voxelAt(world, cellX(id), cellY(id), z);
+}
+
+export function columnMaterials(world: VoxelWorld, id: number): MaterialId[] {
+  if (!isCellId(id)) return [];
+  const result: MaterialId[] = [];
+  const x = cellX(id);
+  const y = cellY(id);
+  for (let z = world.levels - 1; z >= 0; z -= 1) {
+    const materialId = voxelAt(world, x, y, z);
+    if (materialId !== Material.Air) result.push(materialId);
+  }
+  return result;
+}
+
+export function waterDepth(world: VoxelWorld, id: number): number {
+  if (!isCellId(id)) return 0;
+  const x = cellX(id);
+  const y = cellY(id);
+  let depth = 0;
+  for (let z = world.levels - 1; z >= 0; z -= 1) {
+    const materialId = voxelAt(world, x, y, z);
+    if (materialId === Material.Air && depth === 0) continue;
+    if (materialId !== Material.Water) break;
+    depth += 1;
+  }
+  return depth;
+}
+
+export function topPosition(world: VoxelWorld, id: number): { x: number; y: number; z: number } {
+  return { x: cellX(id), y: cellY(id), z: Math.max(0, topZ(world, id)) };
+}
+
 export function neighbors4(id: number): number[] {
   const x = cellX(id);
   const y = cellY(id);
@@ -80,111 +98,32 @@ export function neighbors4(id: number): number[] {
   if (y > 0) result.push(id - WORLD_WIDTH);
   if (x > 0) result.push(id - 1);
   if (x + 1 < WORLD_WIDTH) result.push(id + 1);
-  if (y + 1 < WORLD_HEIGHT) result.push(id + WORLD_WIDTH);
+  if (y + 1 < WORLD_DEPTH) result.push(id + WORLD_WIDTH);
   return result;
 }
 
-export function createCellLayers(): CellLayers {
-  return {
-    terrainKind: new Uint8Array(WORLD_CELL_COUNT),
-    elevation: new Int16Array(WORLD_CELL_COUNT),
-    fertility: new Uint8Array(WORLD_CELL_COUNT),
-    waterDepth: new Uint8Array(WORLD_CELL_COUNT),
-    surfaceCover: new Uint8Array(WORLD_CELL_COUNT),
-    moisture: new Uint8Array(WORLD_CELL_COUNT),
-    temperature: new Int16Array(WORLD_CELL_COUNT),
-    vegetation: new Uint8Array(WORLD_CELL_COUNT),
-    fire: new Uint8Array(WORLD_CELL_COUNT),
-    ice: new Uint8Array(WORLD_CELL_COUNT),
-    contamination: new Uint8Array(WORLD_CELL_COUNT),
-  };
-}
-
-export function createTraceLayers(): TraceLayers {
-  return {
-    traffic: new Uint16Array(WORLD_CELL_COUNT),
-    rest: new Uint16Array(WORLD_CELL_COUNT),
-    cultivation: new Uint16Array(WORLD_CELL_COUNT),
-    care: new Uint16Array(WORLD_CELL_COUNT),
-    trade: new Uint16Array(WORLD_CELL_COUNT),
-    gathering: new Uint16Array(WORLD_CELL_COUNT),
-    burial: new Uint16Array(WORLD_CELL_COUNT),
-  };
-}
-
-function asTyped<T extends Uint8Array | Uint16Array | Int16Array>(
-  value: unknown,
-  Type: { new(length: number): T; new(values: ArrayLike<number>): T },
-): T {
-  if (value instanceof Type) return new Type(value);
-  if (Array.isArray(value)) return new Type(value);
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const numeric = Object.keys(record)
-      .filter((key) => /^\d+$/.test(key))
-      .sort((a, b) => Number(a) - Number(b))
-      .map((key) => Number(record[key]));
-    if (numeric.length) return new Type(numeric);
-  }
-  return new Type(WORLD_CELL_COUNT);
-}
-
-export function hydrateWorld(input: PixelWorld): PixelWorld {
-  return {
-    version: 1,
-    width: WORLD_WIDTH,
-    height: WORLD_HEIGHT,
-    generator: { version: "pixel-world-v1", seed: Number(input.generator?.seed ?? 0) },
-    cells: {
-      terrainKind: asTyped(input.cells?.terrainKind, Uint8Array),
-      elevation: asTyped(input.cells?.elevation, Int16Array),
-      fertility: asTyped(input.cells?.fertility, Uint8Array),
-      waterDepth: asTyped(input.cells?.waterDepth, Uint8Array),
-      surfaceCover: asTyped(input.cells?.surfaceCover, Uint8Array),
-      moisture: asTyped(input.cells?.moisture, Uint8Array),
-      temperature: asTyped(input.cells?.temperature, Int16Array),
-      vegetation: asTyped(input.cells?.vegetation, Uint8Array),
-      fire: asTyped(input.cells?.fire, Uint8Array),
-      ice: asTyped(input.cells?.ice, Uint8Array),
-      contamination: asTyped(input.cells?.contamination, Uint8Array),
-    },
-    traces: {
-      traffic: asTyped(input.traces?.traffic, Uint16Array),
-      rest: asTyped(input.traces?.rest, Uint16Array),
-      cultivation: asTyped(input.traces?.cultivation, Uint16Array),
-      care: asTyped(input.traces?.care, Uint16Array),
-      trade: asTyped(input.traces?.trade, Uint16Array),
-      gathering: asTyped(input.traces?.gathering, Uint16Array),
-      burial: asTyped(input.traces?.burial, Uint16Array),
-    },
-  };
-}
-
-export function copyWorld(input: PixelWorld): PixelWorld {
-  return hydrateWorld(input);
-}
-
-export function isPassable(world: PixelWorld, id: number): boolean {
+export function isPassable(world: VoxelWorld, id: number): boolean {
   if (!isCellId(id)) return false;
-  const cells = world.cells;
-  return cells.waterDepth[id] <= 35 && cells.fire[id] < 45;
+  const surface = surfaceMaterial(world, id);
+  if (surface === Material.Air || surface === Material.Water || surface === Material.Fire) return false;
+  if (surface === Material.Wood || surface === Material.Leaves) return false;
+  return materialHas(surface, 'ground') || materialHas(surface, 'plant') || surface === Material.Ice || surface === Material.Plank;
 }
 
-export function movementCost(world: PixelWorld, from: number, to: number): number {
-  const cells = world.cells;
-  const climb = Math.max(0, cells.elevation[to] - cells.elevation[from]);
-  const vegetation = cells.vegetation[to];
-  const water = cells.waterDepth[to];
-  const ice = cells.ice[to];
-  const roadRelief = Math.min(3, Math.floor(world.traces.traffic[to] / 12));
-  return Math.max(1, 2 + Math.ceil(climb / 8) + Math.ceil(vegetation / 30) + Math.ceil(water / 15) + Math.ceil(ice / 35) - roadRelief);
+export function movementCost(world: VoxelWorld, from: number, to: number): number {
+  const climb = Math.max(0, topZ(world, to) - topZ(world, from));
+  const surface = surfaceMaterial(world, to);
+  const material = materialDefinition(surface);
+  const plantPenalty = material.tags.includes('plant') && surface !== Material.Grass ? 1 : 0;
+  const roadRelief = surface === Material.PackedSoil || surface === Material.Plank ? 1 : 0;
+  return Math.max(1, 2 + climb + plantPenalty - roadRelief);
 }
 
 function manhattan(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
 }
 
-export function findPath(world: PixelWorld, start: number, goal: number): number[] {
+export function findPath(world: VoxelWorld, start: number, goal: number): number[] {
   if (!isPassable(world, start) || !isPassable(world, goal)) return [];
   if (start === goal) return [start];
   const open = new Set<number>([start]);
@@ -193,13 +132,12 @@ export function findPath(world: PixelWorld, start: number, goal: number): number
   const fScore = new Float64Array(WORLD_CELL_COUNT).fill(Number.POSITIVE_INFINITY);
   gScore[start] = 0;
   fScore[start] = manhattan(start, goal);
-
   while (open.size) {
     let current = -1;
     let best = Number.POSITIVE_INFINITY;
     for (const candidate of open) {
       const score = fScore[candidate];
-      if (score < best || (score === best && candidate < current)) {
+      if (score < best || (score === best && (current < 0 || candidate < current))) {
         current = candidate;
         best = score;
       }
@@ -214,7 +152,7 @@ export function findPath(world: PixelWorld, start: number, goal: number): number
     }
     open.delete(current);
     for (const next of neighbors4(current)) {
-      if (!isPassable(world, next)) continue;
+      if (!isPassable(world, next) || Math.abs(topZ(world, next) - topZ(world, current)) > 1) continue;
       const tentative = gScore[current] + movementCost(world, current, next);
       if (tentative >= gScore[next]) continue;
       cameFrom[next] = current;
@@ -230,7 +168,7 @@ export function cellsInRadius(origin: number, radius: number): number[] {
   const ox = cellX(origin);
   const oy = cellY(origin);
   const result: number[] = [];
-  for (let y = Math.max(0, oy - radius); y <= Math.min(WORLD_HEIGHT - 1, oy + radius); y += 1) {
+  for (let y = Math.max(0, oy - radius); y <= Math.min(WORLD_DEPTH - 1, oy + radius); y += 1) {
     for (let x = Math.max(0, ox - radius); x <= Math.min(WORLD_WIDTH - 1, ox + radius); x += 1) {
       if (Math.abs(x - ox) + Math.abs(y - oy) <= radius) result.push(cellId(x, y));
     }
@@ -249,4 +187,36 @@ export function nearestCell(origin: number, candidates: Iterable<number>): numbe
     }
   }
   return best;
+}
+
+function asVoxels(value: unknown): Uint16Array {
+  if (value instanceof Uint16Array) return new Uint16Array(value);
+  if (Array.isArray(value)) return new Uint16Array(value);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const numeric = Object.keys(record)
+      .filter((key) => /^\d+$/.test(key))
+      .sort((a, b) => Number(a) - Number(b))
+      .map((key) => Number(record[key]));
+    return new Uint16Array(numeric);
+  }
+  return new Uint16Array(WORLD_VOXEL_COUNT);
+}
+
+export function hydrateWorld(input: VoxelWorld): VoxelWorld {
+  const voxels = asVoxels(input.voxels);
+  if (voxels.length !== WORLD_VOXEL_COUNT) throw new Error(`体素数量错误：${voxels.length}`);
+  return {
+    version: 2,
+    width: WORLD_WIDTH,
+    depth: WORLD_DEPTH,
+    levels: WORLD_LEVELS,
+    generator: { version: 'material-world-v1', seed: Number(input.generator?.seed ?? 0) },
+    palette: MATERIAL_PALETTE,
+    voxels,
+  };
+}
+
+export function copyWorld(input: VoxelWorld): VoxelWorld {
+  return hydrateWorld(input);
 }

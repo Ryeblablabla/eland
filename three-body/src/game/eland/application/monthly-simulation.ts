@@ -1,55 +1,54 @@
-import { CHARACTER_PROFILES, type CharacterProfile } from "../character-profiles";
+import { CHARACTER_PROFILES, type CharacterProfile } from '../character-profiles';
 import {
   createBiologicalSex,
   createFounderAgeMonths,
   createLifespanMonths,
   deterministicFraction,
-} from "../population";
+} from '../population';
+import { MONTHS_PER_YEAR } from '../domain/calendar';
+import { availableModelContexts, availableModelTokens, rollingDecisionUsage } from '../domain/decision-budget';
+import { executeIntentAction, goalSatisfied, addDrop } from '../domain/action-executor';
+import { advanceBodies, advanceWorldProcesses, resolveClimate } from '../domain/monthly-processes';
+import { Material, materialDefinition } from '../domain/material';
+import { ageMonths, isAlive, type PersonId, type PersonState } from '../domain/person';
+import type {
+  AgentDecider,
+  BatchDecider,
+  ClimateKind,
+  Decision,
+  DecisionContext,
+  DecisionFact,
+  DecisionMonthLedger,
+  DecisionOpportunityFact,
+  DerivedStructure,
+  EmergentRegion,
+  EnvironmentEventInput,
+  EnvironmentFact,
+  EpochKind,
+  EvolutionReport,
+  Intent,
+  MilestoneObservation,
+  PracticeObservation,
+  SimulationConfig,
+  SimulationState,
+  TokenUsage,
+  WorldEvent,
+} from '../domain/model';
+import { buildDecisionContext, recompileNextAction } from './action-options';
 import {
   WORLD_CELL_COUNT,
-  cellsInRadius,
+  WORLD_LEVELS,
   cellX,
   cellY,
   copyWorld,
-  findPath,
   hydrateWorld,
   isCellId,
-  isPassable,
-  movementCost,
-  nearestCell,
-  neighbors4,
-} from "../world/grid";
-import { generatePixelWorld, seededFraction } from "../world/generator";
-import { MONTHS_PER_YEAR } from "../domain/calendar";
-import { availableModelContexts, availableModelTokens, rollingDecisionUsage } from "../domain/decision-budget";
-import { SHELTER_BLUEPRINT, evaluateStructure } from "../domain/structure-policy";
-import type {
-  Affordance, AgentDecider, AgentId, AgentPlan, AgentState, BatchDecider,
-  ClimateKind, Decision, DecisionContext, DecisionFact, DecisionMonthLedger,
-  EmergentRegion, EnvironmentEventInput, EnvironmentFact,
-  EpochKind, EvolutionReport, MaslowNeedLevel, MaslowPersonality,
-  MatterState, MatterTrait, MilestoneObservation, NeedLayer, PlanDecision,
-  PlanProgressFact, PracticeObservation, SimulationConfig, SimulationState, SpatialTarget,
-  StructureComponent, StructureState, TokenUsage, WorldEvent,
-} from "../domain/model";
+  surfaceMaterial,
+  voxelAt,
+} from '../world/grid';
+import { generateVoxelWorld, seededFraction } from '../world/generator';
 
-export * from "../domain/model";
-
-const NEED_LABELS: Record<MaslowNeedLevel, string> = {
-  physiological: "生理需求",
-  safety: "安全需求",
-  belonging: "归属与爱",
-  esteem: "尊重需求",
-  selfActualization: "自我实现",
-};
-
-const PERSONALITY_WORDS: Record<MaslowNeedLevel, string[]> = {
-  physiological: ["食物", "水", "身体", "健康", "休息", "生存", "劳作", "务实"],
-  safety: ["安全", "稳定", "秩序", "谨慎", "克制", "保存", "周到"],
-  belonging: ["同伴", "群体", "亲近", "家庭", "互助", "分享", "照料", "陪伴"],
-  esteem: ["认可", "尊重", "责任", "带领", "组织", "贡献", "果断"],
-  selfActualization: ["好奇", "创造", "探索", "理解", "观察", "推理", "记录", "表达"],
-};
+export * from '../domain/model';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -59,20 +58,6 @@ function copyState(input: SimulationState): SimulationState {
   const copy = structuredClone(input);
   copy.world.grid = copyWorld(input.world.grid);
   return copy;
-}
-
-function inferPersonality(description: string): MaslowPersonality {
-  const levels = Object.keys(NEED_LABELS) as MaslowNeedLevel[];
-  const layers = levels.map((level) => {
-    const evidence = PERSONALITY_WORDS[level].filter((word) => description.includes(word));
-    return { level, label: NEED_LABELS[level], baselineWeight: clamp(28 + evidence.length * 9, 28, 82), evidence };
-  });
-  const dominant = [...layers].sort((a, b) => b.baselineWeight - a.baselineWeight)[0];
-  return {
-    dominantLevel: dominant.level,
-    summary: `${dominant.label}是长期人格底色，迫切的低层缺口仍可改变当月选择。`,
-    layers,
-  };
 }
 
 function chooseProfiles(seed: number, civilizationNo: number, characterIds?: string[]): CharacterProfile[] {
@@ -89,924 +74,434 @@ function chooseProfiles(seed: number, civilizationNo: number, characterIds?: str
 export function createDefaultSimulationConfig(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
   return {
     civilizationNo: Math.max(1, Math.round(overrides.civilizationNo ?? 1)),
-    climateBias: overrides.climateBias === "cold" || overrides.climateBias === "hot" ? overrides.climateBias : "balanced",
+    climateBias: overrides.climateBias === 'cold' || overrides.climateBias === 'hot' ? overrides.climateBias : 'balanced',
     chaosIntensity: clamp(Math.round(overrides.chaosIntensity ?? 0), 0, 10),
     endpoint: {
-      kind: overrides.endpoint?.kind === "milestones" ? "milestones" : "months",
+      kind: overrides.endpoint?.kind === 'milestones' ? 'milestones' : 'months',
       value: Math.max(1, Math.round(overrides.endpoint?.value ?? 1200)),
     },
     ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, 10) } : {}),
   };
 }
 
-function baseMatter(
-  id: string,
-  kind: string,
-  name: string,
-  holder: MatterState["holder"],
-  quantity: number,
-  unitMass: number,
-  composition: Record<string, number>,
-  traits: MatterTrait[],
-): MatterState {
-  return { id, kind, name, holder, quantity, unitMass, composition, traits, sourceEventIds: [] };
-}
-
-function initialAgent(seed: number, profile: CharacterProfile, spawnCell: number, allProfiles: CharacterProfile[]): AgentState {
-  const personality = inferPersonality(profile.description);
-  const founderAgeMonths = createFounderAgeMonths(seed, profile.id);
-  const abilities = {
-    move: 48 + Math.floor(deterministicFraction(seed, `move:${profile.id}`) * 35),
-    interact: 45 + Math.floor(deterministicFraction(seed, `interact:${profile.id}`) * 35),
-    craft: 40 + Math.floor(deterministicFraction(seed, `craft:${profile.id}`) * 42),
-    build: 42 + Math.floor(deterministicFraction(seed, `build:${profile.id}`) * 40),
-    observe: 42 + Math.floor(deterministicFraction(seed, `observe:${profile.id}`) * 40),
-    reason: 42 + Math.floor(deterministicFraction(seed, `reason:${profile.id}`) * 40),
-  };
+function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, profiles: CharacterProfile[]): PersonState {
+  const founderAge = createFounderAgeMonths(seed, profile.id);
+  const capacity = (key: string, floor: number, span: number) => floor + Math.floor(deterministicFraction(seed, `${key}:${profile.id}`) * span);
   return {
     id: profile.id,
     name: profile.name,
     color: profile.color,
-    profile: { description: profile.description, personality },
+    profile: { description: profile.description },
+    bornAtMonth: -founderAge,
+    lifespanMonths: createLifespanMonths(seed, profile.id, founderAge),
+    sex: createBiologicalSex(seed, profile.id),
+    geneticParents: [],
+    generation: 0,
     position: { cellId: spawnCell, previousCellId: spawnCell, lastPath: [spawnCell] },
-    suspendedPlanIds: [],
-    mind: {
-      needs: { focus: "观察眼前并维持身体", intensity: 30, dominantLevel: "physiological", layers: [] },
-      cognition: {
-        perception: "我只知道眼前所见",
-        choice: "先观察周围",
-        interpretation: "世界刚刚开始",
-        knownCells: [spawnCell],
-        rememberedTargets: [],
-        memory: [],
-      },
+    body: { health: 92, hydration: 82, nutrition: 78 },
+    baselineCapacities: {
+      locomotion: capacity('locomotion', 48, 35),
+      manipulation: capacity('manipulation', 45, 35),
+      perception: capacity('perception', 42, 40),
+      communication: capacity('communication', 42, 40),
+      cognition: capacity('cognition', 42, 40),
     },
-    limbs: { actionText: "观察周围", abilities },
-    relations: allProfiles.filter((other) => other.id !== profile.id).map((other) => ({
-      agentId: other.id,
-      strength: 18 + Math.floor(deterministicFraction(seed, `relation:${profile.id}:${other.id}`) * 24),
-      word: "尚在形成",
+    driveBias: {
+      affiliation: capacity('affiliation', 35, 55),
+      autonomy: capacity('autonomy', 35, 55),
+      recognition: capacity('recognition', 35, 55),
+      inquiryCreation: capacity('inquiry', 35, 55),
+    },
+    conditions: [],
+    inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
+    knowledge: [],
+    relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
+      personId: other.id,
+      trust: 20 + Math.floor(deterministicFraction(seed, `trust:${profile.id}:${other.id}`) * 20),
+      bond: 15 + Math.floor(deterministicFraction(seed, `bond:${profile.id}:${other.id}`) * 22),
+      fear: 0,
       sourceEventIds: [],
     })),
-    lineage: { generation: 0 },
-    standing: { respect: 40, correctPredictions: 0, failedPredictions: 0, careTrust: 0 },
-    body: {
-      state: "active",
-      hydration: 82,
-      nutrition: 78,
-      health: 92,
-      fatigue: 18,
-      temperature: 50,
-      ageMonths: founderAgeMonths,
-      sex: createBiologicalSex(seed, profile.id),
-      lifespanMonths: createLifespanMonths(seed, profile.id, founderAgeMonths),
-    },
+    currentActionText: '观察身边的物质',
+    lastDecisionText: '尚未作出关键决定',
   };
 }
 
 export function createInitialState(seed = 17, inputConfig: Partial<SimulationConfig> = {}): SimulationState {
   const config = createDefaultSimulationConfig(inputConfig);
-  const generated = generatePixelWorld(seed);
+  const generated = generateVoxelWorld(seed);
   const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
-  const agents = profiles.map((profile, index) => initialAgent(seed + config.civilizationNo * 997, profile, generated.spawnCells[index] ?? generated.spawnCells[0], profiles));
-  const matter: MatterState[] = generated.resources.map((resource) => baseMatter(
-    resource.id,
-    resource.kind,
-    resource.name,
-    { kind: "cell", cellId: resource.cellId },
-    resource.quantity,
-    resource.unitMass,
-    resource.composition,
-    resource.traits as MatterTrait[],
-  ));
-  for (const agent of agents) {
-    matter.push(baseMatter(`ration-${agent.id}`, "berries", "随身野果", { kind: "agent", agentId: agent.id }, 2, 0.2, { biomass: 1 }, ["raw", "edible", "botanical"]));
-  }
-  const state: SimulationState = {
-    schemaVersion: 11,
+  const people = profiles.map((profile, index) => initialPerson(seed + config.civilizationNo * 997, profile, generated.spawnCells[index] ?? generated.spawnCells[0], profiles));
+  return {
+    schemaVersion: 12,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
-    clock: { unit: "month", elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
-    world: { grid: generated.world, matter, structures: [], components: [], past: [] },
-    agents,
-    plans: [],
+    clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
+    world: { grid: generated.world, drops: generated.drops, past: [] },
+    people,
+    intents: [],
     civilization: {
       number: config.civilizationNo,
-      status: "running",
-      stage: "自然群体",
-      epoch: "stable",
-      climate: { kind: "temperate", severity: 1, sinceMonth: 0 },
+      status: 'running',
+      stage: '自然群体',
+      epoch: 'stable',
+      climate: { kind: 'temperate', severity: 1, sinceMonth: 0 },
       conditions: config,
       integrity: 100,
     },
     decisionBudget: { credits: 0, tokensPerContext: 8_000, ledgers: [] },
-    derived: { practices: [], institutions: [], milestones: [], regions: [] },
+    derived: { practices: [], institutions: [], milestones: [], regions: [], structures: [] },
     lastStep: [],
   };
-  refreshNeeds(state);
-  return state;
 }
 
-function carried(state: SimulationState, agentId: AgentId): MatterState[] {
-  return state.world.matter.filter((matter) => matter.quantity > 0 && matter.holder.kind === "agent" && matter.holder.agentId === agentId);
-}
-
-function visibleRadius(agent: AgentState): number {
-  return 5 + Math.floor(agent.limbs.abilities.observe / 18);
-}
-
-function visibleCellsFor(_state: SimulationState, agent: AgentState): number[] {
-  return cellsInRadius(agent.position.cellId, visibleRadius(agent));
-}
-
-function refreshKnownWorld(state: SimulationState, agent: AgentState, visibleCells: number[]): void {
-  agent.mind.cognition.knownCells = [...new Set([...agent.mind.cognition.knownCells, ...visibleCells])].slice(-900);
-  for (const matter of state.world.matter) {
-    if (matter.holder.kind !== "cell" || !visibleCells.includes(matter.holder.cellId) || matter.quantity <= 0) continue;
-    const previous = agent.mind.cognition.rememberedTargets.find((target) => target.kind === "matter" && target.id === matter.id);
-    if (previous) {
-      previous.cellId = matter.holder.cellId;
-      previous.lastSeenAtMonth = state.clock.elapsedMonths;
-    } else {
-      agent.mind.cognition.rememberedTargets.push({
-        kind: "matter",
-        id: matter.id,
-        cellId: matter.holder.cellId,
-        sourceEventIds: matter.sourceEventIds.slice(-4),
-        lastSeenAtMonth: state.clock.elapsedMonths,
-      });
-    }
-  }
-  agent.mind.cognition.rememberedTargets = agent.mind.cognition.rememberedTargets.slice(-80);
-}
-
-function structureAtInterior(state: SimulationState, targetCellId: number): StructureState | undefined {
-  return state.world.structures.find((structure) => structure.interiorCells.includes(targetCellId) && structure.effects.accessible);
-}
-
-function buildAffordances(state: SimulationState, agent: AgentState): Affordance[] {
-  const visibleCells = visibleCellsFor(state, agent);
-  refreshKnownWorld(state, agent, visibleCells);
-  const visibleMatter = state.world.matter.filter((matter) => matter.holder.kind === "cell" && visibleCells.includes(matter.holder.cellId) && matter.quantity > 0);
-  const held = carried(state, agent.id);
-  const affordances: Affordance[] = [];
-
-  for (const matter of visibleMatter) {
-    if (matter.traits.includes("edible")) affordances.push({
-      id: `gather:${matter.id}`,
-      planMode: "gather",
-      target: { kind: "matter", matterId: matter.id, cellId: matter.holder.kind === "cell" ? matter.holder.cellId : agent.position.cellId },
-      requiredRange: 0,
-      visibleReason: `看见可以采集的${matter.name}`,
-      estimatedDurationBand: matter.holder.kind === "cell" && matter.holder.cellId === agent.position.cellId ? "one-month" : "several-months",
-      sourceFactIds: matter.sourceEventIds,
-    });
-    if (matter.kind === "wood") affordances.push({
-      id: `gather:${matter.id}`,
-      planMode: "gather",
-      target: { kind: "matter", matterId: matter.id, cellId: matter.holder.kind === "cell" ? matter.holder.cellId : agent.position.cellId },
-      requiredRange: 0,
-      visibleReason: "看见可以搬运和连接的木材",
-      estimatedDurationBand: "several-months",
-      sourceFactIds: matter.sourceEventIds,
-    });
-  }
-
-  for (const id of visibleCells) {
-    if (state.world.grid.cells.waterDepth[id] >= 40) affordances.push({
-      id: `water:${id}`,
-      planMode: "travel",
-      target: { kind: "cell", cellId: id },
-      requiredRange: 1,
-      visibleReason: "看见可以接近的地表水",
-      estimatedDurationBand: id === agent.position.cellId ? "one-month" : "several-months",
-      sourceFactIds: [],
-    });
-  }
-
-  const heldFood = held.find((matter) => matter.traits.includes("edible"));
-  if (heldFood) affordances.push({
-    id: `eat:${heldFood.id}`,
-    planMode: "recover",
-    target: { kind: "matter", matterId: heldFood.id, cellId: agent.position.cellId },
-    requiredRange: 0,
-    visibleReason: `携带着${heldFood.name}`,
-    estimatedDurationBand: "one-month",
-    sourceFactIds: heldFood.sourceEventIds,
-  });
-
-  const heldWood = held.reduce((sum, matter) => sum + (matter.kind === "wood" ? matter.quantity : 0), 0);
-  if (heldWood > 0) {
-    const unfinished = state.world.structures
-      .filter((structure) => !structure.effects.accessible && structure.occupiedCells.some((id) => visibleCells.includes(id)))
-      .sort((a, b) => (a.occupiedCells[0] ?? 0) - (b.occupiedCells[0] ?? 0))[0];
-    const nearbyBuilders = state.agents
-      .filter((other) => other.body.state !== "dead" && visibleCells.includes(other.position.cellId))
-      .filter((other) => carried(state, other.id).some((matter) => matter.kind === "wood" && matter.quantity > 0))
-      .map((other) => other.id)
-      .sort();
-    const mayOpenConstruction = Boolean(unfinished) || nearbyBuilders[0] === agent.id;
-    const buildCell = unfinished?.occupiedCells[0]
-      ?? nearestCell(agent.position.cellId, [agent.position.cellId, ...neighbors4(agent.position.cellId)].filter((id) => isPassable(state.world.grid, id)))
-      ?? agent.position.cellId;
-    if (mayOpenConstruction) affordances.push({
-      id: `build:${buildCell}`,
-      planMode: "build",
-      target: unfinished
-        ? { kind: "structure", structureId: unfinished.id, cellId: buildCell }
-        : { kind: "cell", cellId: buildCell },
-      requiredRange: 0,
-      visibleReason: unfinished
-        ? `携带 ${heldWood} 份木材，可以继续未完成的遮蔽结构`
-        : `携带 ${heldWood} 份木材，可以连接成遮蔽结构`,
-      estimatedDurationBand: "long",
-      sourceFactIds: held.flatMap((matter) => matter.sourceEventIds),
-    });
-  }
-
-  const shelter = structureAtInterior(state, agent.position.cellId);
-  affordances.push({
-    id: `rest:${agent.position.cellId}`,
-    planMode: "recover",
-    target: shelter
-      ? { kind: "structure", structureId: shelter.id, cellId: agent.position.cellId }
-      : { kind: "cell", cellId: agent.position.cellId },
-    requiredRange: 0,
-    visibleReason: shelter ? `${shelter.name ?? "这座结构"}内部可以休息` : "可以在当前地面暂时休息",
-    estimatedDurationBand: "one-month",
-    sourceFactIds: shelter?.sourceEventIds ?? [],
-  });
-
-  return [...new Map(affordances.map((affordance) => [affordance.id, affordance])).values()];
-}
-
-function activePlan(state: SimulationState, agent: AgentState): AgentPlan | undefined {
-  return agent.activePlanId ? state.plans.find((plan) => plan.id === agent.activePlanId && plan.status === "active") : undefined;
-}
-
-function contextFor(state: SimulationState, agent: AgentState): DecisionContext {
-  const visibleCells = visibleCellsFor(state, agent);
-  const visibleSet = new Set(visibleCells);
-  return {
-    state: copyState(state),
-    agent: structuredClone(agent),
-    visibleCells,
-    visibleAgents: state.agents.filter((other) => other.id !== agent.id && other.body.state !== "dead" && visibleSet.has(other.position.cellId)).map((other) => structuredClone(other)),
-    visibleMatter: state.world.matter.filter((matter) => matter.holder.kind === "cell" && visibleSet.has(matter.holder.cellId) && matter.quantity > 0).map((matter) => structuredClone(matter)),
-    affordances: structuredClone(buildAffordances(state, agent)),
-    activePlan: structuredClone(activePlan(state, agent)),
-  };
+function personCanDecide(state: SimulationState, person: PersonState): boolean {
+  return ageMonths(person, state.clock.elapsedMonths) >= 12 * 12 && isAlive(person);
 }
 
 export function buildDecisionContexts(state: SimulationState): DecisionContext[] {
-  return state.agents.filter((agent) => agent.body.state !== "dead").map((agent) => contextFor(state, agent));
+  return state.people.filter(isAlive).map((person) => {
+    const context = buildDecisionContext(state, person);
+    return personCanDecide(state, person) ? context : { ...context, options: [] };
+  });
 }
 
-function chooseAffordance(context: DecisionContext): Affordance | undefined {
-  const { agent, affordances } = context;
-  const heldWood = carried(context.state, agent.id).reduce((sum, matter) => sum + (matter.kind === "wood" ? matter.quantity : 0), 0);
-  const water = affordances.filter((item) => item.id.startsWith("water:")).sort((a, b) => {
-    const distance = (cellId: number) => Math.abs(cellX(cellId) - cellX(agent.position.cellId)) + Math.abs(cellY(cellId) - cellY(agent.position.cellId));
-    return distance(a.target.cellId) - distance(b.target.cellId) || a.target.cellId - b.target.cellId;
-  })[0];
-  const edible = affordances.find((item) => item.id.startsWith("eat:"));
-  const gatherFood = affordances.find((item) => item.id.startsWith("gather:") && context.visibleMatter.some((matter) => matter.id === (item.target.kind === "matter" ? item.target.matterId : "") && matter.traits.includes("edible")));
-  const gatherWood = affordances.find((item) => {
-    if (!item.id.startsWith("gather:") || item.target.kind !== "matter") return false;
-    const matterId = item.target.matterId;
-    return context.visibleMatter.some((matter) => matter.id === matterId && matter.kind === "wood");
-  });
-  const build = affordances.find((item) => item.id.startsWith("build:"));
-  const rest = affordances.find((item) => item.id.startsWith("rest:"));
-  if (agent.body.hydration < 60 && water) return water;
-  if (agent.body.nutrition < 68 && edible) return edible;
-  if (agent.body.nutrition < 72 && gatherFood) return gatherFood;
-  if (agent.body.fatigue > 72 && rest) return rest;
-  if (heldWood >= 2 && build) return build;
-  if (gatherWood) return gatherWood;
-  return gatherFood ?? water ?? rest;
+function urgency(context: DecisionContext): number {
+  const person = context.person;
+  return Math.max(100 - person.body.health, 100 - person.body.hydration, 100 - person.body.nutrition);
+}
+
+function optionScore(context: DecisionContext, optionId: string): number {
+  const option = context.options.find((candidate) => candidate.id === optionId);
+  if (!option) return -999;
+  const person = context.person;
+  let score = seededFraction(context.state.seed, `option-score:${context.state.clock.elapsedMonths}:${person.id}:${option.id}`) * 8;
+  if (option.id.startsWith('drink:')) score += 110 - person.body.hydration;
+  if (option.id.startsWith('eat:')) score += 105 - person.body.nutrition;
+  if (option.id.startsWith('collect:')) {
+    const materialId = option.goal.kind === 'inventory-at-least' ? option.goal.materialId : Material.Air;
+    score += materialId === Material.Food ? 72 - person.body.nutrition : materialId === Material.Seed ? 18 : materialId === Material.Wood ? 25 : 10;
+  }
+  if (option.id.startsWith('harvest:')) score += 66 - person.body.nutrition;
+  if (option.id.startsWith('plant:')) score += 36 + person.driveBias.inquiryCreation * 0.08;
+  if (option.id.startsWith('build:')) score += 22 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 28 : 0);
+  if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
+  if (option.id.startsWith('attend:')) score += person.driveBias.inquiryCreation * 0.32;
+  if (option.id.startsWith('explore:')) score += person.driveBias.inquiryCreation * 0.18;
+  return score;
 }
 
 export class MockDecider implements AgentDecider {
   decide(context: DecisionContext): Decision {
-    if (context.activePlan && context.activePlan.status === "active") {
-      if (context.agent.body.hydration < 35 && context.activePlan.mode !== "travel") {
-        const water = context.affordances.find((item) => item.id.startsWith("water:"));
-        if (water) return { kind: "revise", planId: context.activePlan.id, affordanceId: water.id, reason: "身体缺水已经压过原计划" };
+    const active = context.activeIntent;
+    const person = context.person;
+    const best = [...context.options].sort((a, b) => optionScore(context, b.id) - optionScore(context, a.id) || a.id.localeCompare(b.id))[0];
+    if (active) {
+      const emergency = person.body.hydration < 28 || person.body.nutrition < 28;
+      if (emergency && best && (best.id.startsWith('drink:') || best.id.startsWith('eat:') || best.id.includes(`:${Material.Food}`))) {
+        return { kind: 'revise', intentId: active.id, optionId: best.id, reason: '身体储备已压过原有长期意图' };
       }
-      return { kind: "continue", planId: context.activePlan.id, reason: "眼前计划仍能推进" };
+      return { kind: 'continue', intentId: active.id, reason: '目标尚未完成，继续沿已知动作推进' };
     }
-    const chosen = chooseAffordance(context);
-    if (chosen) return { kind: "start", affordanceId: chosen.id, reason: chosen.visibleReason };
-    const direction = (["n", "e", "s", "w"] as const)[Math.floor(seededFraction(context.state.seed, `explore:${context.state.branchId}:${context.state.clock.elapsedMonths}:${context.agent.id}`) * 4)];
-    return { kind: "start", exploration: { direction, distanceBand: "near" }, reason: "眼前没有已知手段，向未知处探索" };
+    return best ? { kind: 'start', optionId: best.id, reason: best.reason } : { kind: 'idle', reason: personCanDecide(context.state, person) ? '眼前没有值得改变安排的新机会' : '当前年龄尚不能独立行动' };
   }
 }
 
-function decisionProbability(state: SimulationState, agent: AgentState): { probability: number; reasons: string[] } {
-  const plan = activePlan(state, agent);
+function decisionProbability(state: SimulationState, context: DecisionContext): { probability: number; reasons: string[] } {
+  const person = context.person;
   const reasons: string[] = [];
-  let probability = 0.015;
-  if (!plan) { probability += 0.72; reasons.push("当前没有活动计划"); }
-  if (plan?.status === "blocked") { probability += 0.55; reasons.push("计划受阻"); }
-  if (plan && state.clock.elapsedMonths - plan.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push("计划连续没有进展"); }
-  if (agent.body.hydration < 45) { probability += 0.65; reasons.push("身体严重缺水"); }
-  if (agent.body.nutrition < 45) { probability += 0.55; reasons.push("身体严重缺粮"); }
-  if (agent.body.health < 55) { probability += 0.45; reasons.push("健康明显下降"); }
-  if (agent.body.fatigue > 82) { probability += 0.4; reasons.push("疲劳难以继续"); }
-  if (plan && plan.status === "active" && state.clock.elapsedMonths === plan.lastProgressAtMonth) probability -= 0.01;
-  return { probability: clamp(probability, 0.01, 1), reasons: reasons.length ? reasons : ["当月重新考虑的微小可能"] };
+  let probability = personCanDecide(state, person) ? 0.06 : 0.015;
+  if (!context.activeIntent) { probability += 0.58; reasons.push('没有活动意图'); }
+  if (person.body.hydration < 35) { probability += (35 - person.body.hydration) / 45; reasons.push('水分压力'); }
+  if (person.body.nutrition < 35) { probability += (35 - person.body.nutrition) / 45; reasons.push('营养压力'); }
+  if (person.body.health < 45) { probability += (45 - person.body.health) / 70; reasons.push('健康压力'); }
+  if (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push('意图停滞'); }
+  if (!reasons.length) reasons.push('每月非零重新考虑概率');
+  return { probability: clamp(probability, 0.01, 0.96), reasons };
 }
 
-function exploreTarget(state: SimulationState, agent: AgentState, exploration: NonNullable<Extract<PlanDecision, { kind: "start" }>["exploration"]>): number {
-  const distance = exploration.distanceBand === "far" ? 14 : 8;
-  const delta = exploration.direction === "n" ? -state.world.grid.width * distance
-    : exploration.direction === "s" ? state.world.grid.width * distance
-      : exploration.direction === "e" ? distance : -distance;
-  let candidate = clamp(agent.position.cellId + delta, 0, WORLD_CELL_COUNT - 1);
-  if (!isPassable(state.world.grid, candidate)) {
-    candidate = nearestCell(candidate, cellsInRadius(candidate, 5).filter((id) => isPassable(state.world.grid, id))) ?? agent.position.cellId;
-  }
-  return candidate;
-}
-
-function createPlan(state: SimulationState, agent: AgentState, decision: Extract<Decision, { kind: "start" | "revise" }>, decisionEventId: string, affordances: Affordance[]): AgentPlan | null {
-  const affordance = "affordanceId" in decision && decision.affordanceId ? affordances.find((item) => item.id === decision.affordanceId) : undefined;
-  const target: SpatialTarget = affordance?.target ?? ("exploration" in decision && decision.exploration
-    ? { kind: "cell", cellId: exploreTarget(state, agent, decision.exploration) }
-    : { kind: "cell", cellId: agent.position.cellId });
-  const mode = affordance?.planMode ?? "explore";
-  const id = `plan-${state.clock.elapsedMonths + 1}-${agent.id}-${state.plans.length}`;
-  const existingStructure = target.kind === "structure"
-    ? state.world.structures.find((structure) => structure.id === target.structureId)
-    : undefined;
-  const availableMatter = target.kind === "matter"
-    ? state.world.matter.find((matter) => matter.id === target.matterId)
-    : undefined;
-  const workRemaining = mode === "gather"
-    ? Math.min(2, availableMatter?.quantity ?? 1)
-    : mode === "build"
-      ? Math.max(1, SHELTER_BLUEPRINT.length - (existingStructure?.componentIds.length ?? 0))
-      : 1;
-  const plan: AgentPlan = {
-    id,
-    ownerId: agent.id,
-    objective: affordance?.visibleReason ?? "探索未知地表",
-    mode,
-    target,
-    status: "active",
-    createdAtMonth: state.clock.elapsedMonths + 1,
-    lastProgressAtMonth: state.clock.elapsedMonths,
+function startIntent(state: SimulationState, person: PersonState, context: DecisionContext, optionId: string, decisionEventId: string, atMonth: number): Intent | null {
+  const option = context.options.find((candidate) => candidate.id === optionId);
+  if (!option) return null;
+  const previous = activeIntent(state, person);
+  if (previous) previous.status = 'abandoned';
+  const intent: Intent = {
+    id: `intent-${atMonth}-${person.id}-${state.intents.length}`,
+    ownerId: person.id,
+    summary: option.summary,
+    goal: structuredClone(option.goal),
+    nextAction: structuredClone(option.nextAction),
+    ...(option.target ? { target: structuredClone(option.target) } : {}),
+    status: 'active',
+    createdAtMonth: atMonth,
+    lastProgressAtMonth: atMonth,
     progress: 0,
-    workRemaining,
-    requestedQuantity: mode === "gather" ? workRemaining : undefined,
-    acquiredQuantity: mode === "gather" ? 0 : undefined,
-    path: [],
-    pathCursor: 0,
     sourceDecisionEventId: decisionEventId,
-    progressEventIds: [],
+    actionEventIds: [],
   };
-  if (existingStructure) plan.structureId = existingStructure.id;
-  return plan;
+  state.intents.push(intent);
+  person.activeIntentId = intent.id;
+  return intent;
+}
+
+function activeIntent(state: SimulationState, person: PersonState): Intent | undefined {
+  return state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active');
 }
 
 function applyDecision(
   state: SimulationState,
-  agent: AgentState,
+  person: PersonState,
   context: DecisionContext,
   decision: Decision,
   usedModel: boolean,
-  order: number,
+  atMonth: number,
+  orderInMonth: number,
 ): DecisionFact {
-  const atMonth = state.clock.elapsedMonths + 1;
-  const id = `d-${atMonth}-${agent.id}`;
-  let planId: string | undefined;
-  let result = `${agent.name}决定暂时观察`;
-  const current = activePlan(state, agent);
-  if (decision.kind === "start" || decision.kind === "revise") {
-    if (current) current.status = "abandoned";
-    const plan = createPlan(state, agent, decision, id, context.affordances);
-    if (plan) {
-      state.plans.push(plan);
-      agent.activePlanId = plan.id;
-      planId = plan.id;
-      result = `${agent.name}决定${plan.objective}`;
+  const id = `e-${atMonth}-decision-${person.id}`;
+  let intentId: string | undefined;
+  let result = decision.reason;
+  const current = activeIntent(state, person);
+  if (decision.kind === 'start') {
+    const started = startIntent(state, person, context, decision.optionId, id, atMonth);
+    intentId = started?.id;
+    result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
+  } else if (decision.kind === 'continue') {
+    intentId = current?.id;
+    result = current ? `${person.name}继续：${current.summary}` : `${person.name}没有可继续的意图`;
+  } else if (decision.kind === 'revise') {
+    if (current && current.id === decision.intentId) current.status = 'abandoned';
+    const started = startIntent(state, person, context, decision.optionId, id, atMonth);
+    intentId = started?.id;
+    result = started ? `${person.name}改为：${started.summary}` : `${person.name}未能改换目标`;
+  } else if (decision.kind === 'suspend' && current?.id === decision.intentId) {
+    current.status = 'suspended';
+    delete person.activeIntentId;
+    intentId = current.id;
+    result = `${person.name}暂停：${current.summary}`;
+  } else if (decision.kind === 'resume') {
+    const resumed = state.intents.find((intent) => intent.id === decision.intentId && intent.ownerId === person.id && intent.status === 'suspended');
+    if (resumed) {
+      if (current) current.status = 'suspended';
+      resumed.status = 'active';
+      person.activeIntentId = resumed.id;
+      intentId = resumed.id;
+      result = `${person.name}恢复：${resumed.summary}`;
     }
-  } else if (decision.kind === "continue" && current?.id === decision.planId) {
-    planId = current.id;
-    result = `${agent.name}决定继续：${current.objective}`;
-  } else if (decision.kind === "suspend" && current?.id === decision.planId) {
-    current.status = "suspended";
-    agent.suspendedPlanIds = [...new Set([...agent.suspendedPlanIds, current.id])];
-    delete agent.activePlanId;
-    planId = current.id;
-    result = `${agent.name}暂时挂起：${current.objective}`;
-  } else if (decision.kind === "resume") {
-    const plan = state.plans.find((item) => item.id === decision.planId && item.ownerId === agent.id && item.status === "suspended");
-    if (plan) {
-      plan.status = "active";
-      agent.activePlanId = plan.id;
-      agent.suspendedPlanIds = agent.suspendedPlanIds.filter((idValue) => idValue !== plan.id);
-      planId = plan.id;
-      result = `${agent.name}重新开始：${plan.objective}`;
-    }
-  } else if (decision.kind === "abandon" && current?.id === decision.planId) {
-    current.status = "abandoned";
-    delete agent.activePlanId;
-    planId = current.id;
-    result = `${agent.name}放弃：${current.objective}`;
+  } else if (decision.kind === 'abandon' && current?.id === decision.intentId) {
+    current.status = 'abandoned';
+    delete person.activeIntentId;
+    intentId = current.id;
+    result = `${person.name}放弃：${current.summary}`;
+  } else if (decision.kind === 'idle') {
+    result = `${person.name}本月保持空闲：${decision.reason}`;
   }
-  agent.mind.cognition.choice = decision.reason;
-  agent.limbs.actionText = result.replace(`${agent.name}`, "");
-  return { id, kind: "decision", atMonth, orderInMonth: order, who: agent.id, cellId: agent.position.cellId, decision, planId, usedModel, result };
+  person.lastDecisionText = result;
+  return { id, kind: 'decision', atMonth, orderInMonth, cellId: person.position.cellId, who: person.id, decision, ...(intentId ? { intentId } : {}), usedModel, result };
 }
 
-function monthlyBudget(agent: AgentState): number {
-  const health = 0.35 + agent.body.health / 150;
-  const hydration = 0.35 + agent.body.hydration / 150;
-  const nutrition = 0.4 + agent.body.nutrition / 170;
-  const fatigue = 1 - agent.body.fatigue / 150;
-  return Math.max(3, Math.floor((4 + agent.limbs.abilities.move / 7) * health * hydration * nutrition * fatigue));
-}
-
-function targetCell(plan: AgentPlan): number {
-  return plan.target.cellId;
-}
-
-function advanceAlongPath(state: SimulationState, agent: AgentState, plan: AgentPlan, budget: number): { spent: number; pathSegment: number[]; reached: boolean } {
-  const target = targetCell(plan);
-  const goal = isPassable(state.world.grid, target)
-    ? target
-    : nearestCell(agent.position.cellId, neighbors4(target).filter((id) => isPassable(state.world.grid, id))) ?? target;
-  if (!plan.path.length || plan.path[plan.pathCursor] !== agent.position.cellId || plan.path.at(-1) !== goal) {
-    plan.path = findPath(state.world.grid, agent.position.cellId, goal);
-    plan.pathCursor = 0;
+function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number): WorldEvent | null {
+  const intent = activeIntent(state, person);
+  if (!intent) return null;
+  if (goalSatisfied(state, person, intent.goal)) {
+    intent.status = 'completed';
+    intent.progress = 1;
+    delete person.activeIntentId;
+    person.currentActionText = `已经完成：${intent.summary}`;
+    return null;
   }
-  if (!plan.path.length) return { spent: 0, pathSegment: [agent.position.cellId], reached: false };
-  const segment = [agent.position.cellId];
-  let spent = 0;
-  while (plan.pathCursor + 1 < plan.path.length) {
-    const next = plan.path[plan.pathCursor + 1];
-    const cost = movementCost(state.world.grid, agent.position.cellId, next);
-    // 月是很长的尺度；健康仍允许行动的人至少能跨过一个相邻可通行格。
-    if (spent > 0 && spent + cost > budget) break;
-    agent.position.previousCellId = agent.position.cellId;
-    agent.position.cellId = next;
-    agent.position.lastPath = [...segment, next];
-    state.world.grid.traces.traffic[next] = Math.min(65535, state.world.grid.traces.traffic[next] + 1);
-    plan.pathCursor += 1;
-    spent += cost;
-    segment.push(next);
+  const next = recompileNextAction(state, person, intent);
+  if (!next) {
+    intent.status = 'blocked';
+    intent.blockedReason = '目标未满足，但无法编译出下一原子动作';
+    delete person.activeIntentId;
+    return null;
   }
-  return { spent, pathSegment: segment, reached: agent.position.cellId === goal };
-}
-
-function removeMatter(state: SimulationState, matter: MatterState, quantity: number): MatterState {
-  const taken = structuredClone(matter);
-  taken.quantity = Math.min(quantity, matter.quantity);
-  matter.quantity -= taken.quantity;
-  state.world.matter = state.world.matter.filter((item) => item.quantity > 0);
-  return taken;
-}
-
-function mergeCarried(state: SimulationState, agentId: AgentId, portion: MatterState, eventId: string): void {
-  const existing = state.world.matter.find((matter) =>
-    matter.holder.kind === "agent" &&
-    matter.holder.agentId === agentId &&
-    matter.kind === portion.kind &&
-    matter.traits.join("|") === portion.traits.join("|"));
-  if (existing) {
-    existing.quantity += portion.quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...portion.sourceEventIds, eventId])];
+  intent.nextAction = next;
+  const fact = executeIntentAction(state, person, intent, atMonth, orderInMonth);
+  intent.actionEventIds.push(fact.id);
+  person.currentActionText = fact.result;
+  if (fact.status === 'blocked' || fact.status === 'failed') {
+    intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
+    intent.blockedReason = fact.result;
+    delete person.activeIntentId;
   } else {
-    state.world.matter.push({
-      ...portion,
-      id: `${portion.kind}-${agentId}-${eventId}`,
-      holder: { kind: "agent", agentId },
-      sourceEventIds: [...new Set([...portion.sourceEventIds, eventId])],
+    intent.lastProgressAtMonth = atMonth;
+    intent.progress = clamp(intent.progress + (fact.status === 'completed' ? 0.32 : 0.16), 0, 0.95);
+    if (goalSatisfied(state, person, intent.goal)) {
+      intent.status = 'completed';
+      intent.progress = 1;
+      delete person.activeIntentId;
+    } else {
+      const compiled = recompileNextAction(state, person, intent);
+      if (compiled) intent.nextAction = compiled;
+    }
+  }
+  return fact;
+}
+
+function structureComponents(state: SimulationState): Array<{ x: number; y: number; z: number }> {
+  const components: Array<{ x: number; y: number; z: number }> = [];
+  for (let z = 0; z < WORLD_LEVELS; z += 1) {
+    for (let cell = 0; cell < WORLD_CELL_COUNT; cell += 1) {
+      if (voxelAt(state.world.grid, cellX(cell), cellY(cell), z) === Material.Plank) components.push({ x: cellX(cell), y: cellY(cell), z });
+    }
+  }
+  return components;
+}
+
+function deriveStructures(state: SimulationState): DerivedStructure[] {
+  const all = structureComponents(state);
+  const byKey = new Map(all.map((position) => [`${position.x}:${position.y}:${position.z}`, position]));
+  const visited = new Set<string>();
+  const structures: DerivedStructure[] = [];
+  for (const origin of all) {
+    const originKey = `${origin.x}:${origin.y}:${origin.z}`;
+    if (visited.has(originKey)) continue;
+    const queue = [origin];
+    const group: typeof all = [];
+    visited.add(originKey);
+    while (queue.length) {
+      const current = queue.shift();
+      if (!current) break;
+      group.push(current);
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+        const key = `${current.x + dx}:${current.y + dy}:${current.z + dz}`;
+        const next = byKey.get(key);
+        if (next && !visited.has(key)) { visited.add(key); queue.push(next); }
+      }
+    }
+    const occupiedCells = [...new Set(group.map((position) => position.x + position.y * state.world.grid.width))];
+    const sourceEventIds = state.world.past.filter((event) => {
+      if (event.kind !== 'action' || event.action.kind !== 'act' || event.action.operation !== 'combine' || Number(event.diff.outputMaterialId) !== Material.Plank) return false;
+      const position = event.diff.position as { x?: unknown; y?: unknown } | undefined;
+      const targetCell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
+      return Number.isFinite(targetCell) && occupiedCells.includes(targetCell);
+    }).map((event) => event.id);
+    const complete = group.length >= 4 && occupiedCells.length >= 3;
+    structures.push({
+      id: `structure-${originKey}`,
+      name: complete ? '木质遮蔽结构' : '未完成木质结构',
+      occupiedCells,
+      interiorCells: complete ? occupiedCells.slice(0, 1) : [],
+      materialIds: [Material.Plank],
+      weatherProtection: clamp(group.length * 13),
+      thermalInsulation: clamp(group.length * 10),
+      capacity: Math.max(1, Math.floor(group.length / 3)),
+      complete,
+      sourceEventIds,
     });
   }
+  return structures;
 }
 
-function componentCell(baseCell: number, dx: number, dy: number, width: number): number {
-  const x = clamp(cellX(baseCell) + dx, 0, width - 1);
-  const y = clamp(cellY(baseCell) + dy, 0, 51);
-  return y * width + x;
-}
-
-function recomputeStructure(state: SimulationState, structure: StructureState): void {
-  const components = state.world.components.filter((component) => component.structureId === structure.id && component.integrity > 0);
-  const evaluation = evaluateStructure(components);
-  structure.componentIds = components.map((component) => component.id);
-  structure.occupiedCells = evaluation.occupiedCells;
-  structure.interiorCells = evaluation.interiorCells;
-  structure.effects = evaluation.effects;
-}
-
-function placeNextComponent(state: SimulationState, agent: AgentState, plan: AgentPlan, eventId: string): { worked: boolean; message: string } {
-  const existing = plan.structureId ? state.world.structures.find((structure) => structure.id === plan.structureId) : undefined;
-  const structure: StructureState = existing ?? {
-    id: `structure-${plan.id}`,
-    name: "未命名遮蔽结构",
-    builderIds: [agent.id],
-    componentIds: [],
-    occupiedCells: [],
-    interiorCells: [],
-    effects: { structuralStability: 0, weatherProtection: 0, thermalInsulation: 0, enclosure: 0, capacity: 0, accessible: false },
-    useEventIds: [],
-    sourceEventIds: [plan.sourceDecisionEventId],
-  };
-  if (!existing) {
-    state.world.structures.push(structure);
-    plan.structureId = structure.id;
-  }
-  const sequenceIndex = state.world.components.filter((component) => component.structureId === structure.id).length;
-  if (sequenceIndex >= SHELTER_BLUEPRINT.length) return { worked: false, message: "结构已经完成" };
-  const wood = carried(state, agent.id).find((matter) => matter.kind === "wood" && matter.quantity > 0);
-  if (!wood) return { worked: false, message: "缺少继续施工的木材" };
-  const spec = SHELTER_BLUEPRINT[sequenceIndex];
-  const cellId = componentCell(targetCell(plan), spec.dx, spec.dy, state.world.grid.width);
-  if (!isPassable(state.world.grid, cellId)) return { worked: false, message: "目标格无法放置构件" };
-  const portion = removeMatter(state, wood, 1);
-  const component: StructureComponent = {
-    id: `component-${eventId}-${sequenceIndex}`,
-    structureId: structure.id,
-    kind: spec.kind,
-    cellId,
-    materialKinds: Object.keys(portion.composition),
-    integrity: 100,
-    sourceEventIds: [...portion.sourceEventIds, eventId],
-  };
-  state.world.components.push(component);
-  structure.sourceEventIds.push(eventId);
-  structure.builderIds = [...new Set([...structure.builderIds, agent.id])];
-  recomputeStructure(state, structure);
-  return { worked: true, message: `放置了${spec.kind}构件` };
-}
-
-function executePlan(state: SimulationState, agent: AgentState, plan: AgentPlan, order: number): PlanProgressFact {
-  const atMonth = state.clock.elapsedMonths + 1;
-  const id = `p-${atMonth}-${agent.id}`;
-  const fromCellId = agent.position.cellId;
-  const before = plan.progress;
-  let result = "";
-  let status: PlanProgressFact["status"] = "progressed";
-  let pathSegment = [fromCellId];
-  let acquiredKind = "";
-  let acquiredTraits: MatterTrait[] = [];
-  const budget = monthlyBudget(agent);
-  const movement = advanceAlongPath(state, agent, plan, budget);
-  pathSegment = movement.pathSegment;
-  let interactionWorked = false;
-
-  if (!movement.reached) {
-    if (movement.spent === 0) {
-      status = "blocked";
-      plan.blockedReason = "没有可通行路径或当月预算不足";
-      result = `${agent.name}前往目标的计划受阻`;
-    } else {
-      plan.progress = clamp(plan.progress + 2);
-      plan.lastProgressAtMonth = atMonth;
-      result = `${agent.name}沿真实地表向目标移动了 ${pathSegment.length - 1} 格`;
-    }
-  } else if (plan.mode === "gather" && plan.target.kind === "matter") {
-    const matterId = plan.target.matterId;
-    const matter = state.world.matter.find((item) => item.id === matterId && item.holder.kind === "cell" && item.holder.cellId === agent.position.cellId);
-    if (!matter) {
-      status = "blocked";
-      plan.blockedReason = "记忆中的资源已经不存在";
-      result = `${agent.name}抵达后发现目标资源已经不存在`;
-    } else {
-      const portion = removeMatter(state, matter, 1);
-      acquiredKind = portion.kind;
-      acquiredTraits = portion.traits;
-      mergeCarried(state, agent.id, portion, id);
-      state.world.grid.traces.gathering[agent.position.cellId] = Math.min(65535, state.world.grid.traces.gathering[agent.position.cellId] + 1);
-      plan.acquiredQuantity = (plan.acquiredQuantity ?? 0) + portion.quantity;
-      plan.workRemaining = Math.max(0, plan.workRemaining - portion.quantity);
-      plan.progress = clamp(((plan.acquiredQuantity ?? 0) / Math.max(1, plan.requestedQuantity ?? 1)) * 100);
-      plan.lastProgressAtMonth = atMonth;
-      interactionWorked = true;
-      result = `${agent.name}在第 ${atMonth} 月取得一份${portion.name}`;
-    }
-  } else if (plan.mode === "travel" && plan.target.kind === "cell" && state.world.grid.cells.waterDepth[plan.target.cellId] >= 40) {
-    const adjacent = agent.position.cellId === plan.target.cellId || neighbors4(agent.position.cellId).includes(plan.target.cellId);
-    if (adjacent) {
-      agent.body.hydration = clamp(agent.body.hydration + 55);
-      plan.workRemaining = 0;
-      plan.progress = 100;
-      plan.lastProgressAtMonth = atMonth;
-      interactionWorked = true;
-      result = `${agent.name}抵达水边并补充了身体水分`;
-    }
-  } else if (plan.mode === "recover") {
-    if (plan.target.kind === "matter") {
-      const matterId = plan.target.matterId;
-      const food = carried(state, agent.id).find((matter) => matter.id === matterId && matter.traits.includes("edible"));
-      if (food) {
-        removeMatter(state, food, 1);
-        agent.body.nutrition = clamp(agent.body.nutrition + 40);
-        interactionWorked = true;
-        result = `${agent.name}吃了一份${food.name}`;
-      } else result = `${agent.name}没有找到原本携带的食物`;
-    } else {
-      const shelter = structureAtInterior(state, agent.position.cellId);
-      const protectedRest = Boolean(shelter && shelter.effects.weatherProtection >= 58);
-      agent.body.fatigue = clamp(agent.body.fatigue - (protectedRest ? 45 : 28));
-      agent.body.health = clamp(agent.body.health + (protectedRest ? 4 : 1));
-      state.world.grid.traces.rest[agent.position.cellId] = Math.min(65535, state.world.grid.traces.rest[agent.position.cellId] + 1);
-      if (shelter) shelter.useEventIds.push(id);
-      interactionWorked = true;
-      result = `${agent.name}${protectedRest ? `在${shelter?.name ?? "结构"}内部` : "就地"}休息了一个月`;
-    }
-    plan.workRemaining = 0;
-    plan.progress = 100;
-    plan.lastProgressAtMonth = atMonth;
-  } else if (plan.mode === "build") {
-    const built = placeNextComponent(state, agent, plan, id);
-    if (built.worked) {
-      plan.workRemaining = Math.max(0, plan.workRemaining - 1);
-      const builtCount = SHELTER_BLUEPRINT.length - plan.workRemaining;
-      plan.progress = clamp(builtCount / SHELTER_BLUEPRINT.length * 100);
-      plan.lastProgressAtMonth = atMonth;
-      interactionWorked = true;
-      result = `${agent.name}${built.message}，结构进度达到 ${Math.round(plan.progress)}%`;
-    } else {
-      status = "blocked";
-      plan.blockedReason = built.message;
-      result = `${agent.name}的建造计划受阻：${built.message}`;
-    }
-  } else if (plan.mode === "explore" || plan.mode === "travel" || plan.mode === "carry") {
-    plan.workRemaining = 0;
-    plan.progress = 100;
-    plan.lastProgressAtMonth = atMonth;
-    interactionWorked = true;
-    result = `${agent.name}抵达了此前未知的格子`;
-  }
-
-  const complete = interactionWorked && plan.workRemaining <= 0;
-  if (complete) {
-    status = "completed";
-    plan.status = "completed";
-    plan.progress = 100;
-    delete agent.activePlanId;
-  } else if (status === "blocked") {
-    plan.status = "blocked";
-  }
-  plan.progressEventIds.push(id);
-  agent.position.lastPath = pathSegment;
-  agent.limbs.actionText = result.replace(`${agent.name}`, "");
-  agent.body.fatigue = clamp(agent.body.fatigue + Math.max(1, Math.round(movement.spent / 3)) + (interactionWorked ? 4 : 0));
-  return {
-    id,
-    kind: "plan-progress",
-    atMonth,
-    orderInMonth: order,
-    who: agent.id,
-    cellId: agent.position.cellId,
-    planId: plan.id,
-    fromCellId,
-    toCellId: agent.position.cellId,
-    pathSegment,
-    status,
-    progressBefore: before,
-    progressAfter: plan.progress,
-    result,
-    diff: {
-      movementCost: movement.spent,
-      interactionWorked,
-      structureId: plan.structureId ?? "",
-      acquiredQuantity: plan.acquiredQuantity ?? 0,
-      acquiredKind,
-      acquiredTraits,
-    },
-  };
-}
-
-function refreshNeeds(state: SimulationState): void {
-  for (const agent of state.agents) {
-    const physiological = clamp((100 - agent.body.hydration) * 0.65 + (100 - agent.body.nutrition) * 0.5 + agent.body.fatigue * 0.3);
-    const hasShelter = Boolean(structureAtInterior(state, agent.position.cellId));
-    const safety = clamp((100 - agent.body.health) * 0.7 + (hasShelter ? 5 : 35) + (state.civilization.epoch === "chaotic" ? 28 : 0));
-    const companions = state.agents.filter((other) => other.id !== agent.id && other.body.state !== "dead" && other.position.cellId === agent.position.cellId).length;
-    const belonging = clamp(45 - companions * 10);
-    const personality = agent.profile.personality;
-    const layer = (level: MaslowNeedLevel, situational: number): NeedLayer => ({
-      level,
-      label: NEED_LABELS[level],
-      intensity: clamp(situational + ((personality.layers.find((item) => item.level === level)?.baselineWeight ?? 28) - 28) * 0.25),
-      activeNeeds: [{ kind: level, label: NEED_LABELS[level], intensity: situational, reason: "身体、环境与经历共同形成当月强度" }],
-    });
-    const layers = [
-      layer("physiological", physiological),
-      layer("safety", safety),
-      layer("belonging", belonging),
-      layer("esteem", 26),
-      layer("selfActualization", 24),
-    ];
-    const urgent = layers.find((item) => item.level === "physiological" && item.intensity >= 62)
-      ?? layers.find((item) => item.level === "safety" && item.intensity >= 62)
-      ?? [...layers].sort((a, b) => b.intensity - a.intensity)[0];
-    agent.mind.needs = { focus: urgent.label, intensity: urgent.intensity, dominantLevel: urgent.level, layers };
-  }
-}
-
-function advanceEnvironment(state: SimulationState): EnvironmentFact[] {
-  const atMonth = state.clock.elapsedMonths + 1;
-  const climate = state.civilization.externalClimate ?? {
-    epoch: seededFraction(state.seed, `epoch:${atMonth}`) < state.civilization.conditions.chaosIntensity / 20 ? "chaotic" : "stable",
-    kind: "temperate" as ClimateKind,
-    severity: 1,
-  };
-  state.civilization.epoch = climate.epoch;
-  state.civilization.climate = { kind: climate.kind, severity: climate.severity, sinceMonth: atMonth };
-  const facts: EnvironmentFact[] = [{
-    id: `e-${atMonth}-climate`,
-    kind: "environment",
-    atMonth,
-    orderInMonth: 0,
-    cellId: 0,
-    change: "climate",
-    result: `第 ${atMonth} 月处于${climate.epoch === "stable" ? "恒纪元" : "乱纪元"}，地表为${climate.kind}`,
-    diff: { ...climate },
-  }];
-
-  for (const agent of state.agents) {
-    if (agent.body.state === "dead") continue;
-    agent.body.ageMonths += 1;
-    agent.body.hydration = clamp(agent.body.hydration - (climate.kind === "heat" || climate.kind === "fire" ? 5 : 2));
-    agent.body.nutrition = clamp(agent.body.nutrition - 2);
-    agent.body.fatigue = clamp(agent.body.fatigue + 2);
-    if (agent.body.hydration <= 8) {
-      agent.body.state = "dehydrated";
-      agent.body.health = clamp(agent.body.health - 8);
-    } else if (agent.body.state === "dehydrated" && agent.body.hydration >= 35) {
-      agent.body.state = "active";
-    }
-    if (agent.body.nutrition <= 5) agent.body.health = clamp(agent.body.health - 7);
-    if (climate.kind === "fire") agent.body.health = clamp(agent.body.health - climate.severity * 0.8);
-    if (agent.body.health <= 0 || agent.body.ageMonths >= agent.body.lifespanMonths) {
-      agent.body.state = "dead";
-      const plan = activePlan(state, agent);
-      if (plan) plan.status = "failed";
-      delete agent.activePlanId;
-      facts.push({
-        id: `e-${atMonth}-death-${agent.id}`,
-        kind: "environment",
-        atMonth,
-        orderInMonth: facts.length,
-        cellId: agent.position.cellId,
-        change: "death",
-        result: `${agent.name}在第 ${atMonth} 月死亡`,
-        diff: { agentId: agent.id, ageMonths: agent.body.ageMonths },
-      });
-    }
-  }
-  return facts;
-}
-
-function deriveObservations(state: SimulationState): SimulationState["derived"] {
-  const progress = state.world.past.filter((event): event is PlanProgressFact => event.kind === "plan-progress");
-  const gatherings = progress.filter((event) => Number(event.diff.acquiredQuantity) > 0);
-  const movements = progress.filter((event) => event.pathSegment.length > 1);
-  const rests = progress.filter((event) => state.world.structures.some((structure) => structure.useEventIds.includes(event.id)));
-  const completedShelters = state.world.structures.filter((structure) => structure.effects.accessible && structure.effects.weatherProtection >= 58);
+function deriveObservations(state: SimulationState): SimulationState['derived'] {
+  const actions = state.world.past.filter((event) => event.kind === 'action');
+  const transfers = actions.filter((event) => event.action.kind === 'transfer' && event.status === 'completed');
+  const movements = actions.filter((event) => event.action.kind === 'move' && event.pathSegment.length > 1);
+  const cultivation = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'combine' && Number(event.diff.outputMaterialId) === Material.CropSprout);
+  const harvests = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'separate' && Number(event.diff.sourceMaterialId) === Material.CropMature);
+  const structures = deriveStructures(state);
+  const trailCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.PackedSoil);
+  const cultivatedCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.CropSprout || surfaceMaterial(state.world.grid, cell) === Material.CropMature || surfaceMaterial(state.world.grid, cell) === Material.ExhaustedSoil);
   const milestones: MilestoneObservation[] = [];
-  if (gatherings.some((event) => Array.isArray(event.diff.acquiredTraits) && event.diff.acquiredTraits.includes("edible"))) milestones.push({
-    id: "11",
-    label: "采集食物",
-    evidenceEventIds: gatherings.map((event) => event.id),
-    note: "人物在具体格子取得可食物质。",
-  });
-  for (const structure of completedShelters) {
-    const useFacts = rests.filter((event) => structure.useEventIds.includes(event.id));
-    if (new Set(useFacts.map((event) => event.atMonth)).size >= 2) milestones.push({
-      id: "20",
-      label: "建造住所",
-      evidenceEventIds: [...structure.sourceEventIds, ...useFacts.map((event) => event.id)],
-      note: "多格构件产生客观防护，人物在不同月份实际进入休息。",
-    });
-  }
-  const trailCells = Array.from(state.world.grid.traces.traffic.entries()).filter(([, count]) => count >= 5).map(([id]) => id);
-  if (trailCells.length >= 4) milestones.push({
-    id: "42",
-    label: "开辟道路",
-    evidenceEventIds: movements.filter((event) => event.pathSegment.some((id) => trailCells.includes(id))).map((event) => event.id),
-    note: "连续格子的重复真实通行形成小径。",
-  });
+  const foodGathering = transfers.filter((fact) => fact.action.kind === 'transfer' && fact.action.materialId === Material.Food && fact.action.from.kind === 'ground');
+  if (foodGathering.length) milestones.push({ id: '11', label: '采集食物', evidenceEventIds: foodGathering.map((fact) => fact.id), note: '人物从具体格子的掉落物取得可食物质。' });
+  const shelterEvidence = structures.filter((structure) => structure.complete).flatMap((structure) => structure.sourceEventIds);
+  if (shelterEvidence.length) milestones.push({ id: '20', label: '建造住所', evidenceEventIds: shelterEvidence, note: '多个相邻木板体素形成了具有遮蔽效果的空间结构。' });
+  if (cultivation.length && harvests.length) milestones.push({ id: '32', label: '种植并收获作物', evidenceEventIds: [...cultivation, ...harvests].map((fact) => fact.id), note: '种子与土壤结合，作物经自然生长后被分离收获。' });
+  if (trailCells.length >= 4) milestones.push({ id: '42', label: '开辟道路', evidenceEventIds: movements.filter((fact) => fact.pathSegment.some((cell) => trailCells.includes(cell))).map((fact) => fact.id), note: '重复真实通行把连续地表物质压实为夯土。' });
   const practices: PracticeObservation[] = [
-    gatherings.length ? { key: "gather", label: "反复采集", count: gatherings.length, agentIds: [...new Set(gatherings.map((event) => event.who))], eventIds: gatherings.map((event) => event.id), stability: clamp(gatherings.length * 8) } : null,
-    movements.length ? { key: "travel", label: "跨格迁行", count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 5) } : null,
+    transfers.length ? { key: 'transfer', label: '反复转移物质', count: transfers.length, agentIds: [...new Set(transfers.map((event) => event.who))], eventIds: transfers.map((event) => event.id), stability: clamp(transfers.length * 5) } : null,
+    movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,
+    cultivation.length ? { key: 'cultivation', label: '种植实践', count: cultivation.length, agentIds: [...new Set(cultivation.map((event) => event.who))], eventIds: cultivation.map((event) => event.id), stability: clamp(cultivation.length * 12) } : null,
   ].filter((item): item is PracticeObservation => Boolean(item));
   const regions: EmergentRegion[] = [];
-  const waterCells = Array.from(state.world.grid.cells.waterDepth.entries()).filter(([, depth]) => depth >= 40).map(([id]) => id);
-  if (waterCells.length) regions.push({ id: "natural-water", kind: "natural", cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: "水域" });
-  if (trailCells.length) regions.push({ id: "travel-trail", kind: "trail", cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: movements.map((event) => event.id), firstObservedMonth: movements[0]?.atMonth ?? 0, lastObservedMonth: state.clock.elapsedMonths, label: "反复通行带" });
-  for (const structure of completedShelters) {
-    if (structure.useEventIds.length >= 2) regions.push({
-      id: `residential-${structure.id}`,
-      kind: "residential",
-      cells: structure.occupiedCells,
-      confidence: clamp(structure.useEventIds.length / 6),
-      evidenceEventIds: [...structure.sourceEventIds, ...structure.useEventIds],
-      firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? 0,
-      lastObservedMonth: state.clock.elapsedMonths,
-      label: "居住活动区",
-    });
-  }
-  return { practices, institutions: [], milestones, regions };
-}
-
-function finishMonth(state: SimulationState, events: WorldEvent[]): SimulationState {
-  state.clock.elapsedMonths += 1;
-  state.world.past.push(...events);
-  state.lastStep = events;
-  refreshNeeds(state);
-  state.derived = deriveObservations(state);
-  if (state.agents.every((agent) => agent.body.state === "dead")) {
-    state.civilization.status = "ended";
-    state.civilization.outcome = { kind: "destroyed", cause: "全员死亡", atMonth: state.clock.elapsedMonths, summary: "文明没有留下仍在世的人。" };
-  } else if (state.civilization.conditions.endpoint.kind === "months" && state.clock.elapsedMonths >= state.civilization.conditions.endpoint.value) {
-    state.civilization.status = "ended";
-    state.civilization.outcome = { kind: "boundary", cause: "达到模拟月数", atMonth: state.clock.elapsedMonths, summary: `文明演化至第 ${state.clock.elapsedMonths} 月。` };
-  }
-  return state;
+  const waterCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water || surfaceMaterial(state.world.grid, cell) === Material.Ice);
+  if (waterCells.length) regions.push({ id: 'natural-water', kind: 'natural', cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: '水域' });
+  if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: movements.map((event) => event.id), firstObservedMonth: movements[0]?.atMonth ?? 0, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
+  if (cultivatedCells.length) regions.push({ id: 'cultivated', kind: 'cultivated', cells: cultivatedCells, confidence: clamp(cultivatedCells.length / 12), evidenceEventIds: [...cultivation, ...harvests].map((event) => event.id), firstObservedMonth: cultivation[0]?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '耕作区' });
+  for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '木质活动区' });
+  return { practices, institutions: [], milestones, regions, structures };
 }
 
 function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
   return rollingDecisionUsage(state.decisionBudget.ledgers, state.clock.elapsedMonths);
 }
 
-function allowedModelContexts(state: SimulationState, livingAgents: number): number {
-  return availableModelContexts(currentRollingLedgers(state), livingAgents);
-}
-
-function allowedModelTokens(state: SimulationState, livingAgents: number): number {
-  return availableModelTokens(currentRollingLedgers(state), livingAgents, state.decisionBudget.tokensPerContext);
-}
-
-function prepareMonth(input: SimulationState): {
-  state: SimulationState;
-  events: WorldEvent[];
-  contexts: DecisionContext[];
-  candidates: DecisionContext[];
-} {
+function prepareMonth(input: SimulationState) {
   const state = copyState(input);
-  if (state.civilization.status === "ended") return { state, events: [], contexts: [], candidates: [] };
-  const events: WorldEvent[] = advanceEnvironment(state);
-  refreshNeeds(state);
+  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], atMonth: state.clock.elapsedMonths };
+  const atMonth = state.clock.elapsedMonths + 1;
+  const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth), ...advanceBodies(state, atMonth)];
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
   for (const context of contexts) {
-    const { probability, reasons } = decisionProbability(state, context.agent);
-    const sample = seededFraction(state.seed, `decision:${state.branchId}:${state.clock.elapsedMonths + 1}:${context.agent.id}`);
+    const { probability, reasons } = decisionProbability(state, context);
+    const sample = seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${context.person.id}`);
     const triggered = sample < probability;
-    events.push({
-      id: `o-${state.clock.elapsedMonths + 1}-${context.agent.id}`,
-      kind: "decision-opportunity",
-      atMonth: state.clock.elapsedMonths + 1,
-      orderInMonth: events.length,
-      who: context.agent.id,
-      cellId: context.agent.position.cellId,
-      probability,
-      sample,
-      triggered,
-      reasons,
-      result: triggered ? `${context.agent.name}在本月重新考虑下一步` : `${context.agent.name}本月延续既有安排`,
-    });
+    const opportunity: DecisionOpportunityFact = {
+      id: `e-${atMonth}-opportunity-${context.person.id}`,
+      kind: 'decision-opportunity', atMonth, orderInMonth: events.length,
+      who: context.person.id, cellId: context.person.position.cellId,
+      probability, sample, triggered, reasons,
+      result: triggered ? `${context.person.name}本月重新考虑下一步` : `${context.person.name}本月延续已有意图`,
+    };
+    events.push(opportunity);
     if (triggered) candidates.push(context);
   }
-  return { state, events, contexts, candidates };
+  return { state, events, contexts, candidates, atMonth };
+}
+
+function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: number): SimulationState {
+  events.forEach((event, index) => { event.orderInMonth = index; });
+  state.clock.elapsedMonths = atMonth;
+  state.world.past.push(...events);
+  state.lastStep = events;
+  state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
+  state.derived = deriveObservations(state);
+  const living = state.people.filter(isAlive);
+  state.civilization.integrity = living.length ? clamp(living.reduce((sum, person) => sum + person.body.health, 0) / living.length) : 0;
+  state.civilization.stage = state.derived.milestones.some((milestone) => milestone.id === '32') ? '定居耕作群体' : state.derived.milestones.some((milestone) => milestone.id === '20') ? '物质建造群体' : '自然群体';
+  if (!living.length) {
+    state.civilization.status = 'ended';
+    state.civilization.outcome = { kind: 'destroyed', cause: '全员死亡', atMonth, summary: '文明没有留下仍在世的人。' };
+  } else if (state.civilization.conditions.endpoint.kind === 'months' && atMonth >= state.civilization.conditions.endpoint.value) {
+    state.civilization.status = 'ended';
+    state.civilization.outcome = { kind: 'boundary', cause: '达到模拟月数', atMonth, summary: `文明演化至第 ${atMonth} 月。` };
+  } else if (state.civilization.conditions.endpoint.kind === 'milestones' && state.derived.milestones.length >= state.civilization.conditions.endpoint.value) {
+    state.civilization.status = 'ended';
+    state.civilization.outcome = { kind: 'milestones', cause: '达到里程碑数量', atMonth, summary: `文明观察到 ${state.derived.milestones.length} 项里程碑。` };
+  }
+  return state;
 }
 
 function executePrepared(
   prepared: ReturnType<typeof prepareMonth>,
-  decisions: Map<AgentId, { decision: Decision; usedModel: boolean }>,
+  decisions: Map<PersonId, { decision: Decision; usedModel: boolean }>,
   usage: TokenUsage,
-  attemptedModelContexts = 0,
+  attemptedModelContexts: number,
 ): SimulationState {
-  const { state, events, contexts, candidates } = prepared;
-  if (state.civilization.status === "ended") return state;
+  const { state, events, contexts, candidates, atMonth } = prepared;
+  if (state.civilization.status === 'ended') return state;
   const fallback = new MockDecider();
   for (const candidate of candidates) {
-    const liveAgent = state.agents.find((agent) => agent.id === candidate.agent.id);
-    if (!liveAgent || liveAgent.body.state === "dead") continue;
-    const picked = decisions.get(liveAgent.id) ?? { decision: fallback.decide(contextFor(state, liveAgent)), usedModel: false };
-    events.push(applyDecision(state, liveAgent, contextFor(state, liveAgent), picked.decision, picked.usedModel, events.length));
+    const person = state.people.find((item) => item.id === candidate.person.id);
+    if (!person || !isAlive(person)) continue;
+    const freshContext = buildDecisionContext(state, person);
+    const picked = decisions.get(person.id) ?? { decision: fallback.decide(freshContext), usedModel: false };
+    events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length));
   }
-  const order = state.agents
-    .filter((agent) => agent.body.state !== "dead" && activePlan(state, agent))
-    .sort((a, b) => seededFraction(state.seed, `order:${state.branchId}:${state.clock.elapsedMonths + 1}:${a.id}`) - seededFraction(state.seed, `order:${state.branchId}:${state.clock.elapsedMonths + 1}:${b.id}`) || a.id.localeCompare(b.id));
-  for (const agent of order) {
-    const plan = activePlan(state, agent);
-    if (plan) events.push(executePlan(state, agent, plan, events.length));
+  const order = state.people
+    .filter((person) => isAlive(person) && activeIntent(state, person))
+    .sort((a, b) => seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${a.id}`) - seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${b.id}`) || a.id.localeCompare(b.id));
+  for (const person of order) {
+    const fact = executeActiveIntent(state, person, atMonth, events.length);
+    if (fact) events.push(fact);
   }
   const modelContexts = attemptedModelContexts;
-  const chargedTokens = modelContexts
-    ? Math.max(usage.inputTokens + usage.outputTokens, modelContexts * state.decisionBudget.tokensPerContext)
-    : 0;
+  const chargedTokens = modelContexts ? Math.max(usage.inputTokens + usage.outputTokens, modelContexts * state.decisionBudget.tokensPerContext) : 0;
   state.decisionBudget.ledgers = [...currentRollingLedgers(state), {
-    atMonth: state.clock.elapsedMonths + 1,
+    atMonth,
     livingAgents: contexts.length,
     candidates: candidates.length,
     modelContexts,
@@ -1015,51 +510,41 @@ function executePrepared(
     chargedTokens,
   }].slice(-24);
   state.decisionBudget.credits = clamp(state.decisionBudget.credits + contexts.length / 12 - modelContexts, 0, Math.max(1, contexts.length));
-  return finishMonth(state, events);
+  return finishMonth(state, events, atMonth);
 }
 
 export function stepSimulation(input: SimulationState, decider: AgentDecider = new MockDecider()): SimulationState {
   const prepared = prepareMonth(input);
-  const decisions = new Map<AgentId, { decision: Decision; usedModel: boolean }>();
-  for (const context of prepared.candidates) decisions.set(context.agent.id, { decision: decider.decide(context), usedModel: false });
+  const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
+  for (const context of prepared.candidates) decisions.set(context.person.id, { decision: decider.decide(context), usedModel: false });
   return executePrepared(prepared, decisions, { inputTokens: 0, outputTokens: 0 }, 0);
 }
 
 export async function stepSimulationAsync(input: SimulationState, batch: BatchDecider, fallback: AgentDecider = new MockDecider()): Promise<SimulationState> {
   const prepared = prepareMonth(input);
   const living = prepared.contexts.length;
+  const rolling = currentRollingLedgers(prepared.state);
   const maxContexts = Math.min(
     prepared.candidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / 12),
-    allowedModelContexts(prepared.state, living),
-    Math.floor(allowedModelTokens(prepared.state, living) / prepared.state.decisionBudget.tokensPerContext),
+    availableModelContexts(rolling, living),
+    Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext) / prepared.state.decisionBudget.tokensPerContext),
   );
-  const ranked = [...prepared.candidates].sort((a, b) =>
-    b.agent.mind.needs.intensity - a.agent.mind.needs.intensity ||
-    a.agent.id.localeCompare(b.agent.id));
+  const ranked = [...prepared.candidates].sort((a, b) => urgency(b) - urgency(a) || a.person.id.localeCompare(b.person.id));
   const modelContexts = ranked.slice(0, maxContexts);
   let modelDecisions: (Decision | null)[] = [];
-  try {
-    modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
-  } catch {
-    modelDecisions = [];
-  }
-  const decisions = new Map<AgentId, { decision: Decision; usedModel: boolean }>();
-  prepared.candidates.forEach((context) => decisions.set(context.agent.id, { decision: fallback.decide(context), usedModel: false }));
+  try { modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : []; } catch { modelDecisions = []; }
+  const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
+  prepared.candidates.forEach((context) => decisions.set(context.person.id, { decision: fallback.decide(context), usedModel: false }));
   modelContexts.forEach((context, index) => {
     const decision = modelDecisions[index];
-    if (decision) decisions.set(context.agent.id, { decision, usedModel: true });
+    if (decision) decisions.set(context.person.id, { decision, usedModel: true });
   });
-  return executePrepared(
-    prepared,
-    decisions,
-    batch.takeUsage?.() ?? { inputTokens: 0, outputTokens: 0 },
-    modelContexts.length,
-  );
+  return executePrepared(prepared, decisions, batch.takeUsage?.() ?? { inputTokens: 0, outputTokens: 0 }, modelContexts.length);
 }
 
 export function migrateSimulationState(input: SimulationState): SimulationState {
-  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 11) throw new Error("schemaVersion 10 及更早存档不支持继续演化；请建立新的像素世界文明");
+  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 12) throw new Error('schemaVersion 11 及更早存档不支持继续演化；请建立新的物质体素文明');
   const state = structuredClone(input);
   state.world.grid = hydrateWorld(input.world.grid);
   return state;
@@ -1100,18 +585,23 @@ export function createSimulation(options: { seed?: number; decider?: AgentDecide
       return copyState(state);
     },
     injectEvent(input) {
-      if (!isCellId(input.cellId)) throw new Error("环境事件 cellId 无效");
+      if (!isCellId(input.cellId)) throw new Error('环境事件 cellId 无效');
       const atMonth = state.clock.elapsedMonths;
       const event: EnvironmentFact = {
         id: `e-${atMonth}-injected-${state.world.past.length}`,
-        kind: "environment",
-        atMonth,
-        orderInMonth: 0,
-        cellId: input.cellId,
+        kind: 'environment', atMonth, orderInMonth: 0, cellId: input.cellId,
         change: input.kind,
         result: input.description ?? `格子 ${input.cellId} 的环境发生变化`,
-        diff: { severity: input.severity ?? 0, resource: input.resource ?? "", delta: input.delta ?? 0 },
+        diff: { severity: input.severity ?? 0, resource: input.resource ?? '', delta: input.delta ?? 0 },
       };
+      if (input.kind === 'resource' && (input.delta ?? 0) > 0) {
+        const normalized = input.resource?.toLowerCase();
+        const materialId = normalized?.includes('wood') || normalized?.includes('木') ? Material.Wood
+          : normalized?.includes('seed') || normalized?.includes('种') ? Material.Seed
+            : normalized?.includes('stone') || normalized?.includes('石') ? Material.Stone : Material.Food;
+        addDrop(state, materialId, Math.round(input.delta ?? 1), input.cellId, atMonth, [event.id], 'injected');
+        event.result = `格 ${cellX(input.cellId)}, ${cellY(input.cellId)} 出现${materialDefinition(materialId).name}`;
+      }
       state.world.past.push(event);
       state.lastStep = [event];
       return copyState(state);
@@ -1125,7 +615,7 @@ export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
   return {
-    schemaVersion: 11,
+    schemaVersion: 12,
     exportedAt: new Date().toISOString(),
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),

@@ -333,6 +333,8 @@ export default function ThreeBodyCanvas(props: Props) {
     composer.addPass(new OutputPass());
 
     // ---- 背景层：深空底色 + 星云 + 星野 ----
+    // 幕布与星云挂在相机局部坐标（天穹行为）：相机无论转到哪一面，
+    // 它们都跟在视野最深处，正/背面观感一致
     const backdrop = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: makeBackdropTexture(),
@@ -341,9 +343,10 @@ export default function ThreeBodyCanvas(props: Props) {
       }),
     );
     backdrop.renderOrder = -10;
-    backdrop.position.set(0, 0, -600);
-    backdrop.scale.set(2400, 2400, 1);
-    scene.add(backdrop);
+    backdrop.position.set(0, 0, -1000); // 相机局部：永远在最远处
+    backdrop.scale.set(2600, 2600, 1);
+    camera.add(backdrop);
+    scene.add(camera); // 相机的子节点需要随相机一起入场景才渲染
 
     const radialTex = makeRadialTexture();
     const nebulas: THREE.Sprite[] = [];
@@ -358,15 +361,15 @@ export default function ThreeBodyCanvas(props: Props) {
           depthWrite: false,
         }),
       );
-      s.position.set(x, y, -400);
+      s.position.set(x, y, -950); // 相机局部：贴在视野边缘的远景
       s.scale.set(scale, scale, 1);
       s.renderOrder = -9;
-      scene.add(s);
+      camera.add(s);
       nebulas.push(s);
     };
     // 星云：调暗调小，只作远处若隐若现的底色，不再洗亮整屏
-    addNebula(-260, 200, 720, '#2c3f8f', 0.05);
-    addNebula(280, -230, 660, '#5e2880', 0.04);
+    addNebula(-420, 320, 950, '#2c3f8f', 0.05);
+    addNebula(460, -360, 880, '#5e2880', 0.04);
 
     const starfieldGeo = new THREE.BufferGeometry();
     {
@@ -375,14 +378,14 @@ export default function ThreeBodyCanvas(props: Props) {
       const cCool = new THREE.Color('#cdd8ff');
       const cWarm = new THREE.Color('#ffe9c9');
       for (let i = 0; i < STARFIELD_COUNT; i++) {
-        // 均匀随机方向 × 半径 380~760 的球壳
+        // 完整球壳均匀分布 × 半径 900~2000（远超最大缩放距离，永不穿出）
         const u = Math.random() * 2 - 1;
         const th = Math.random() * Math.PI * 2;
-        const r = 380 + Math.random() * 380;
+        const r = 900 + Math.random() * 1100;
         const s = Math.sqrt(1 - u * u);
         positions[i * 3] = r * s * Math.cos(th);
         positions[i * 3 + 1] = r * s * Math.sin(th);
-        positions[i * 3 + 2] = -Math.abs(r * u) - 60; // 全部压在轨道平面之后
+        positions[i * 3 + 2] = r * u;
         const base = Math.random() < 0.85 ? cCool : cWarm;
         const a = 0.15 + Math.random() * 0.6;
         colors[i * 3] = base.r * a;

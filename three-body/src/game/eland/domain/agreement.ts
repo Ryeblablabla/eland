@@ -73,8 +73,11 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       if (!waterAssistance.fulfilledByPersonIds.includes(contributorId)) waterAssistance.fulfilledByPersonIds.push(contributorId);
       if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
       if (!waterAssistance.sourceEventIds.includes(fact.id)) waterAssistance.sourceEventIds.push(fact.id);
+      const helperArrival = waterAssistance.fulfillmentEventIds
+        .flatMap((eventId) => state.world.past.filter((event) => event.id === eventId && event.kind === 'action'))
+        .find((event) => event.kind === 'action' && event.who === proposal.helperId);
       if (helper && requester
-        && helper.position.cellId === requester.position.cellId
+        && (helper.position.cellId === requester.position.cellId || helperArrival?.cellId === fact.cellId)
         && waterAssistance.fulfilledByPersonIds.includes(proposal.helperId)
         && waterAssistance.fulfilledByPersonIds.includes(proposal.requesterId)) {
         fulfill(state, waterAssistance, fact);

@@ -55,6 +55,31 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
 export function buildSocialOptions(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
+  const requestedWaterAssist = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'assist'
+    && agreement.proposal.need === 'water'
+    && agreement.proposal.requesterId === person.id);
+  if (requestedWaterAssist?.proposal.kind === 'assist') {
+    const proposal = requestedWaterAssist.proposal;
+    const helper = state.people.find((other) => other.id === proposal.helperId);
+    const helperRoute = [...state.intents].reverse().find((intent) => intent.ownerId === helper?.id
+      && intent.goal.kind === 'at-cell'
+      && (intent.sourceFactIds ?? []).some((eventId) => requestedWaterAssist.sourceEventIds.includes(eventId)));
+    if (helper && helperRoute?.goal.kind === 'at-cell' && person.position.cellId !== helperRoute.goal.cellId) {
+      const path = findPath(state.world.grid, person.position.cellId, helperRoute.goal.cellId);
+      if (path.length) options.push({
+        id: `join-water-assist:${requestedWaterAssist.id}`,
+        summary: `沿${helper.name}找到的路线去水边`,
+        reason: '对方已经接受求助并开始前往一处可达水源',
+        goal: { kind: 'at-cell', cellId: helperRoute.goal.cellId },
+        nextAction: { kind: 'move', toCellId: helperRoute.goal.cellId },
+        target: { kind: 'person', personId: helper.id },
+        estimatedDuration: path.length <= RULE_ACTION_TICKS_PER_MONTH ? 'one-month' : 'several-months',
+        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
+        risks: [], domain: 'social', sourceFactIds: [...requestedWaterAssist.sourceEventIds],
+      });
+    }
+  }
   const acceptedAssist = acceptedAssistFor(state, person.id, state.clock.elapsedMonths);
   if (acceptedAssist) {
     const requester = state.people.find((other) => other.id === acceptedAssist.proposal.requesterId);

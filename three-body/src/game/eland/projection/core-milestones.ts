@@ -61,13 +61,22 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   const famine = environment.filter((event) => event.change === 'body' && Number(event.diff.nutrition) < 10);
   add(result, '36', '遭遇饥荒', famine, '至少一人的营养储备跌入持续伤害区间。');
 
-  const verifiedTechniques = state.people.flatMap((person) => person.knowledge.filter((fact) => fact.kind === 'technique'
-    && fact.confidence >= 55
-    && fact.sourceEventIds.some((id) => state.world.past.some((event) => event.id === id && event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'combine'))
-    && fact.sourceEventIds.some((id) => state.world.past.some((event) => event.id === id && event.kind === 'action' && event.action.kind === 'attend' && event.diff.verifiedTechnique === true))));
+  const verifiedTechniques = state.people.flatMap((person) => person.knowledge.filter((fact) => {
+    if (fact.kind !== 'technique' || fact.confidence < 55) return false;
+    const evidence = fact.sourceEventIds.flatMap((id) => state.world.past.filter((event) => event.id === id));
+    const successfulTrials = evidence.filter((event) => event.kind === 'action'
+      && event.status === 'completed'
+      && event.action.kind === 'act'
+      && event.action.operation === 'combine');
+    const activeVerification = evidence.some((event) => event.kind === 'action'
+      && event.status === 'completed'
+      && event.action.kind === 'attend'
+      && event.diff.verifiedTechnique === true);
+    return successfulTrials.length >= 2 || (successfulTrials.length >= 1 && activeVerification);
+  }));
   const experimentEvidence = [...new Set(verifiedTechniques.flatMap((fact) => fact.sourceEventIds))]
     .flatMap((id) => state.world.past.filter((event) => event.id === id));
-  add(result, '59', '用实验检验猜想', experimentEvidence, '人物先尝试物质组合，再主动观察产物，把暂定经验提升为可传播技术。');
+  add(result, '59', '用实验检验猜想', experimentEvidence, '人物通过复现实验，或观察核验一次试验产物，把暂定经验提升为可传播技术。');
 
   return result;
 }

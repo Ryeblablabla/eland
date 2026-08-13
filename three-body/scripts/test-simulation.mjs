@@ -260,6 +260,17 @@ try {
   assert.equal(toolState.people[0].inventory.find((stack) => stack.materialId === 24)?.quantity, 1, '石与木应形成只属于制作者背包的石制工具');
   assert.ok(toolState.people[0].knowledge.some((fact) => fact.kind === 'technique' && fact.confidence < 55), '一次制作只能形成待核验的个人经验');
 
+  const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const experimenter = repeatedExperimentState.people[0];
+  const techniqueId = 'technique:combine:22:3:11';
+  experimenter.knowledge.push({ id: techniqueId, kind: 'technique', summary: '种子与湿土可结合为作物幼苗', confidence: 64, learnedAtMonth: 0, sourceEventIds: ['repeat-trial-1', 'repeat-trial-2'] });
+  repeatedExperimentState.world.past.push(
+    { ...actionFact('repeat-trial-1', 1, experimenter.id, { kind: 'act', operation: 'combine', targets: [] }), diff: { inputMaterialId: 22, targetMaterialId: 3, outputMaterialId: 11 } },
+    { ...actionFact('repeat-trial-2', 2, experimenter.id, { kind: 'act', operation: 'combine', targets: [] }), diff: { inputMaterialId: 22, targetMaterialId: 3, outputMaterialId: 11 } },
+  );
+  const observedExperimentState = stepSimulation(repeatedExperimentState, { decide() { return { kind: 'idle', reason: '不干扰重复实验观察' }; } });
+  assert.ok(observedExperimentState.derived.milestones.some((milestone) => milestone.id === '59'), '同一物质规律被成功复现两次，也应构成实验检验的证据链');
+
   const responseState = createInitialState(39, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const offerer = responseState.people[0];
   const responder = responseState.people[2];

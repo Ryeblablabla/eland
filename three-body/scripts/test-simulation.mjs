@@ -232,6 +232,32 @@ try {
   assert.equal(roadMilestone?.observedAtMonth, 4, '道路首次出现时间应取第四个真实压实格形成时，而不是最早一次历史移动');
   assert.deepEqual(roadMilestone?.evidenceEventIds, ['road-formation-0', 'road-formation-1', 'road-formation-2', 'road-formation-3']);
 
+  let shelterState = createInitialState(41, { endpoint: { kind: 'months', value: 10 }, chaosIntensity: 0 });
+  const builderId = shelterState.people[0].id;
+  shelterState.people[0].inventory = [{ id: 'shelter-wood', materialId: 13, quantity: 4, sourceEventIds: [] }];
+  for (let index = 0; index < 4; index += 1) {
+    const builder = shelterState.people.find((person) => person.id === builderId);
+    const buildContext = buildDecisionContexts(shelterState).find((context) => context.person.id === builderId);
+    const buildOption = buildContext?.options.find((option) => option.id.startsWith('build:'));
+    assert.ok(builder && buildOption, '持有木材时应能继续扩展身边的木板组件');
+    const intentId = `intent-test-shelter-${index}`;
+    shelterState.intents.push({
+      id: intentId, ownerId: builderId, summary: buildOption.summary, domain: 'strategic', goal: buildOption.goal,
+      nextAction: buildOption.nextAction, target: buildOption.target, status: 'active', createdAtMonth: shelterState.clock.elapsedMonths,
+      lastProgressAtMonth: shelterState.clock.elapsedMonths, progress: 0, sourceDecisionEventId: `decision-test-shelter-${index}`,
+      sourceFactIds: buildOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+    });
+    builder.activeIntentId = intentId;
+    shelterState.decisionBudget.credits = 0;
+    shelterState = await stepSimulationAsync(shelterState, {
+      async decideAll() { throw new Error('固定建造意图不应额外调用模型'); },
+      takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+    });
+  }
+  const completedShelter = shelterState.derived.structures.find((structure) => structure.complete);
+  assert.ok(completedShelter && completedShelter.occupiedCells.length >= 3, '反复 combine 木材应横向长成可观察的遮蔽结构，而不是堆成单柱');
+  assert.ok(shelterState.derived.milestones.some((milestone) => milestone.id === '20'), '真实连接的多格木板结构才能观察为住所');
+
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');

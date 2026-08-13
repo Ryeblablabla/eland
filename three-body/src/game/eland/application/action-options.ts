@@ -102,6 +102,30 @@ function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[
   });
 }
 
+function nextPlankPosition(state: SimulationState, person: PersonState): { x: number; y: number; z: number } | null {
+  const reachableCells = new Set([person.position.cellId, ...neighbors4(person.position.cellId)]);
+  const nearbyPlanks: Array<{ x: number; y: number; z: number }> = [];
+  for (const cellId of cellsInRadius(person.position.cellId, 2)) {
+    for (let z = 0; z < state.world.grid.levels; z += 1) {
+      if (voxelAt(state.world.grid, cellX(cellId), cellY(cellId), z) === Material.Plank) nearbyPlanks.push({ x: cellX(cellId), y: cellY(cellId), z });
+    }
+  }
+  for (const plank of nearbyPlanks.sort((a, b) => a.z - b.z || a.y - b.y || a.x - b.x)) {
+    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+      const x = plank.x + dx;
+      const y = plank.y + dy;
+      if (x < 0 || x >= state.world.grid.width || y < 0 || y >= state.world.grid.depth) continue;
+      const targetCell = x + y * state.world.grid.width;
+      if (!reachableCells.has(targetCell) || voxelAt(state.world.grid, x, y, plank.z) !== Material.Air) continue;
+      return { x, y, z: plank.z };
+    }
+  }
+  const targetCell = [...reachableCells].filter((cellId) => isPassable(state.world.grid, cellId)).sort((a, b) => a - b)[0];
+  if (targetCell === undefined) return null;
+  const position = { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
+  return voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Air ? position : null;
+}
+
 function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const visible = new Set(visibleCells);
@@ -249,15 +273,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const wood = person.inventory.find((stack) => stack.materialId === Material.Wood && stack.quantity > 0);
   if (wood) {
-    const targetCell = [person.position.cellId, ...neighbors4(person.position.cellId)]
-      .filter((cellId) => isPassable(state.world.grid, cellId))
-      .sort((a, b) => a - b)[0];
-    if (targetCell !== undefined) {
-      const position = { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
-      if (voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Air) options.push({
+    const position = nextPlankPosition(state, person);
+    if (position) {
+      options.push({
         id: `build:${position.x}:${position.y}:${position.z}:${wood.id}`,
         summary: '把木材连接到空间中',
-        reason: '持有木材，可以形成遮蔽或通行结构',
+        reason: state.derived.structures.some((structure) => structure.sourceEventIds.length && structure.occupiedCells.some((cell) => cellsInRadius(person.position.cellId, 2).includes(cell)))
+          ? '身边已有木板组件，可以继续连接新的物质'
+          : '持有木材，可以从身边开始连接空间组件',
         goal: { kind: 'voxel-is', position, materialId: Material.Plank },
         nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: wood.id }, { kind: 'voxel', position }] },
         target: { kind: 'voxel', position },

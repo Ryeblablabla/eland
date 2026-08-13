@@ -161,6 +161,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   }
 
   if (action.kind === 'act' && action.operation === 'reproduce') {
+    if (fact.diff.conceived !== true) return;
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
     const agreement = state.agreements.find((item) => item.status === 'active'
@@ -223,6 +224,14 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       if (first && second && first.position.cellId === second.position.cellId) agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
     }
     if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
+    if (agreement.proposal.kind === 'reproduce') {
+      agreement.status = 'expired';
+      agreement.resolvedAtMonth = atMonth;
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '双方同意的生殖尝试期结束，期间未进入妊娠');
+      agreement.sourceEventIds.push(fact.id);
+      events.push(fact);
+      continue;
+    }
     if (agreement.proposal.kind === 'companion' && agreement.coLocatedMonths >= 12) {
       agreement.status = 'fulfilled';
       agreement.resolvedAtMonth = atMonth;

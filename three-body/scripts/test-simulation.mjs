@@ -151,6 +151,22 @@ try {
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
   assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
 
+  const reproductionAgreementState = createInitialState(319, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const reproductionProposer = reproductionAgreementState.people.find((person) => person.sex === 'female') ?? reproductionAgreementState.people[0];
+  const reproductionPartner = reproductionAgreementState.people.find((person) => person.sex === 'male' && person.id !== reproductionProposer.id) ?? reproductionAgreementState.people[1];
+  reproductionProposer.sex = 'female';
+  reproductionPartner.sex = 'male';
+  const reproductionAgreementId = 'test-reproduction-window';
+  const reproductionOffer = actionFact('test-reproduction-offer', 1, reproductionProposer.id, { kind: 'communicate', content: { id: reproductionAgreementId, kind: 'offer', summary: '共同尝试生殖', proposal: { kind: 'reproduce', proposerId: reproductionProposer.id, partnerId: reproductionPartner.id, expiresAtMonth: 3 } }, audience: [reproductionPartner.id], channel: 'voice' });
+  recordAgreementAction(reproductionAgreementState, reproductionOffer);
+  const reproductionAcceptance = actionFact('test-reproduction-acceptance', 2, reproductionPartner.id, { kind: 'communicate', content: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: reproductionAgreementId }, audience: [reproductionProposer.id], channel: 'voice' });
+  recordAgreementAction(reproductionAgreementState, reproductionAcceptance);
+  const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }] }), diff: { conceived: false } };
+  recordAgreementAction(reproductionAgreementState, noConception);
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'active', '单次未受孕不得终止仍在有效期内的双方同意');
+  advanceAgreementLifecycle(reproductionAgreementState, 7);
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'expired', '多月未进入妊娠应记为生殖同意期到期，而不是任何一方违约');
+
   const witnessedViolenceState = createInitialState(310, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const attacker = witnessedViolenceState.people[0];
   const victim = witnessedViolenceState.people[1];

@@ -441,6 +441,9 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
     person.currentActionText = sourceAgreement.status === 'fulfilled' ? `约定已经履行：${intent.summary}` : `约定已经结束：${intent.summary}`;
     return null;
   }
+  const alreadyAttemptedReproductionThisMonth = sourceAgreement?.proposal.kind === 'reproduce'
+    && intent.lastReproductionAttemptAtMonth === atMonth;
+  if (alreadyAttemptedReproductionThisMonth) return null;
   if (intent.openingAction && !intent.openingActionCompleted) {
     const fact = executePrimitiveAction(state, person, intent.openingAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
     intent.actionEventIds.push(fact.id);
@@ -489,6 +492,7 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
   intent.nextAction = next;
   const fact = executeIntentAction(state, person, intent, atMonth, orderInMonth, actionTick);
   intent.actionEventIds.push(fact.id);
+  if (fact.action.kind === 'act' && fact.action.operation === 'reproduce') intent.lastReproductionAttemptAtMonth = atMonth;
   person.currentActionText = fact.result;
   if (fact.status === 'blocked' || fact.status === 'failed') {
     intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
@@ -509,9 +513,10 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
       && fact.action.kind === 'communicate'
       && fact.action.content.id === intent.goal.representationId
       && fact.status === 'completed';
+    const reproductionConceived = fact.action.kind === 'act' && fact.action.operation === 'reproduce' && fact.diff.conceived === true;
     const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
-      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
+      && (reproductionConceived || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
     const acceptedAgreementId = fact.status === 'completed'
       && fact.action.kind === 'communicate'
       && fact.action.content.kind === 'accept'

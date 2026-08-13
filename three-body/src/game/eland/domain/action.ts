@@ -81,6 +81,7 @@ export interface Intent {
   progress: number;
   sourceDecisionEventId: string;
   agreementId?: string;
+  lastReproductionAttemptAtMonth?: number;
   sourceFactIds?: string[];
   actionEventIds: string[];
   blockedReason?: string;

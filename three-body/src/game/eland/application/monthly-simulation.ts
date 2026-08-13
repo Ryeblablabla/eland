@@ -39,6 +39,7 @@ import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-fac
 import { maintainMemories, remember } from '../domain/memory';
 import { composeIntentChoice } from '../domain/intent';
 import { chooseSurvivalReflex } from '../domain/survival-reflex';
+import { chooseDependentCareReflex } from '../domain/dependent-care';
 import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
 import {
@@ -662,6 +663,13 @@ function executePrepared(
       const reflex = chooseSurvivalReflex(state, person);
       if (reflex) {
         const fact = executePrimitiveAction(state, person, reflex, atMonth, events.length, { cause: 'survival-reflex', actionTick });
+        person.currentActionText = fact.result;
+        events.push(fact);
+        continue;
+      }
+      const dependentCare = chooseDependentCareReflex(state, person);
+      if (dependentCare) {
+        const fact = executePrimitiveAction(state, person, dependentCare, atMonth, events.length, { cause: 'survival-reflex', actionTick });
         person.currentActionText = fact.result;
         events.push(fact);
         continue;

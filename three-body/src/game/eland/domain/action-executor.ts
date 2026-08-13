@@ -1,6 +1,6 @@
 import type { FactPredicate, Intent, PrimitiveAction, VoxelPosition, WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
-import { inventoryQuantity, type ItemStack, type PersonState } from './person';
+import { ageMonths, inventoryQuantity, isAlive, type ItemStack, type PersonState } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
@@ -118,7 +118,7 @@ function compactTraversedSurface(state: SimulationState, path: number[], eventId
   return changes;
 }
 
-function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string) {
+function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
   const fullPath = findPath(state.world.grid, person.position.cellId, action.toCellId);
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
@@ -129,6 +129,14 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   const spent = to === from ? 0 : movementCost(state.world.grid, from, to) / conditionWorkMultiplier(person);
   person.position.cellId = to;
   if (to !== from) person.position.lastPath.push(to);
+  const carried = to === from ? [] : state.people.filter((candidate) => isAlive(candidate)
+    && candidate.position.cellId === from
+    && candidate.geneticParents.includes(person.id)
+    && ageMonths(candidate, atMonth) < 3 * 12);
+  for (const dependent of carried) {
+    dependent.position.cellId = to;
+    dependent.position.lastPath.push(to);
+  }
   person.body.hydration = clamp(person.body.hydration - Math.max(0, segment.length - 1) * 0.25);
   person.body.nutrition = clamp(person.body.nutrition - Math.max(0, segment.length - 1) * 0.16);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
@@ -136,7 +144,7 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     status: to === action.toCellId ? 'completed' as const : 'progressed' as const,
     path: segment,
     result: to === action.toCellId ? `沿真实地表到达格 ${cellX(to)}, ${cellY(to)}` : `沿真实地表推进了 ${segment.length - 1} 格`,
-    diff: { spentWork: spent, materialChanges },
+    diff: { spentWork: spent, materialChanges, ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}) },
   };
 }
 
@@ -530,7 +538,7 @@ export function executePrimitiveAction(
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
   const outcome = action.kind === 'move'
-    ? executeMove(state, person, action, eventId)
+    ? executeMove(state, person, action, eventId, atMonth)
     : action.kind === 'transfer'
       ? executeTransfer(state, person, action, atMonth, eventId)
       : action.kind === 'act'

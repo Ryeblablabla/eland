@@ -121,6 +121,29 @@ try {
     assert.equal(parentToChild?.bond, 12, '亲生父母指向孩子的亲近应与出生事实对称');
     assert.ok(childToParent?.sourceEventIds.includes(birthEvent.id) && parentToChild?.sourceEventIds.includes(birthEvent.id));
   }
+  const caregiver = afterBirth.people.find((person) => person.id === child.geneticParents[0]);
+  const destination = [caregiver.position.cellId - afterBirth.world.grid.width, caregiver.position.cellId - 1, caregiver.position.cellId + 1, caregiver.position.cellId + afterBirth.world.grid.width]
+    .find((cell) => cell >= 0 && cell < afterBirth.world.grid.width * afterBirth.world.grid.depth && surfaceAt(afterBirth, cell) !== 0 && surfaceAt(afterBirth, cell) !== 7 && surfaceAt(afterBirth, cell) !== 13 && surfaceAt(afterBirth, cell) !== 14);
+  assert.ok(caregiver && Number.isInteger(destination), '出生地附近应有一个可携幼儿移动的地表格');
+  const carryIntentId = 'intent-test-carry-child';
+  afterBirth.intents.push({
+    id: carryIntentId, ownerId: caregiver.id, summary: '带幼儿移动', domain: 'strategic',
+    goal: { kind: 'at-cell', cellId: destination }, nextAction: { kind: 'move', toCellId: destination }, status: 'active',
+    createdAtMonth: 1, lastProgressAtMonth: 1, progress: 0, sourceDecisionEventId: 'test-carry-decision', sourceFactIds: [birthEvent.id], actionEventIds: [], replanCount: 0,
+  });
+  caregiver.activeIntentId = carryIntentId;
+  let caredChildState = stepSimulation(afterBirth, { decide() { return { kind: 'idle', reason: '不干扰携幼测试' }; } });
+  const carriedChild = caredChildState.people.find((person) => person.id === child.id);
+  const carryFact = caredChildState.world.past.find((event) => event.kind === 'action' && Array.isArray(event.diff.carriedPersonIds) && event.diff.carriedPersonIds.includes(child.id));
+  assert.ok(carryFact && carriedChild?.position.cellId === caredChildState.people.find((person) => person.id === caregiver.id)?.position.cellId, '父母移动必须真实携带三岁以下孩子并写入动作事实');
+  const activeCaregiver = caredChildState.people.find((person) => person.id === caregiver.id);
+  activeCaregiver.body = { health: 100, hydration: 100, nutrition: 100 };
+  activeCaregiver.inventory.push({ id: 'test-child-food', materialId: 21, quantity: 1, sourceEventIds: [] });
+  carriedChild.body.nutrition = 20;
+  caredChildState = stepSimulation(caredChildState, { decide() { return { kind: 'idle', reason: '不干扰喂养测试' }; } });
+  const feeding = caredChildState.world.past.find((event) => event.kind === 'action' && event.action.kind === 'transfer' && event.action.to.kind === 'person' && event.action.to.personId === child.id);
+  assert.ok(feeding && caredChildState.people.find((person) => person.id === child.id)?.body.nutrition > 20, '幼儿营养危险时，父母应转移真实食物，幼儿再通过摄入恢复');
+  assert.ok(caredChildState.derived.milestones.some((milestone) => milestone.id === '3'), '携带和真实喂养的事实链应被观察为养育幼儿');
 
   const agingState = createInitialState(313, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   const elder = agingState.people[0];

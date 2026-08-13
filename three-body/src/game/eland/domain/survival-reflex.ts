@@ -2,6 +2,7 @@ import type { PrimitiveAction } from './action';
 import { Material, materialHas } from './material';
 import type { DropState, SimulationState } from './model';
 import type { PersonState } from './person';
+import { isInfant } from './dependent-care';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
@@ -31,6 +32,7 @@ function reachableFood(state: SimulationState, person: PersonState): DropState |
 }
 
 export function chooseSurvivalReflex(state: SimulationState, person: PersonState): PrimitiveAction | null {
+  const cannotTravelAlone = isInfant(state, person, state.clock.elapsedMonths + 1);
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   const starvationMonths = Math.max(0, Math.floor(person.body.nutrition / 1.5) - 6);
 
@@ -38,7 +40,7 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
     const water = reachableWater(state, person);
     const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
     const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
-    if (water && (person.position.cellId === water.bankCell || waterTravelMonths >= dehydrationMonths || person.body.hydration < 32)) {
+    if (water && (person.position.cellId === water.bankCell || (!cannotTravelAlone && (waterTravelMonths >= dehydrationMonths || person.body.hydration < 32)))) {
       return person.position.cellId === water.bankCell
         ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
         : { kind: 'move', toCellId: water.bankCell };
@@ -49,7 +51,7 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
   }
   if (!food && person.body.nutrition < 34 && starvationMonths <= 8) {
     const drop = reachableFood(state, person);
-    if (drop) return person.position.cellId === drop.cellId
+    if (drop && (!cannotTravelAlone || person.position.cellId === drop.cellId)) return person.position.cellId === drop.cellId
       ? { kind: 'transfer', materialId: drop.materialId, quantity: 1, from: { kind: 'ground', cellId: drop.cellId }, to: { kind: 'person', personId: person.id }, dropId: drop.id }
       : { kind: 'move', toCellId: drop.cellId };
   }

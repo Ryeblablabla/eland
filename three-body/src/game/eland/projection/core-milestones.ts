@@ -24,6 +24,18 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   const births = environment.filter((event) => typeof event.diff.bornPersonId === 'string');
   add(result, '1', '诞生', births, '妊娠过程经过月度结算后产生了有父母来源的新人物。');
 
+  const dependentCare = completed.filter((event) => {
+    if (event.action.kind === 'move' && Array.isArray(event.diff.carriedPersonIds)) {
+      return event.diff.carriedPersonIds.some((id) => typeof id === 'string' && state.people.some((child) => child.id === id && child.geneticParents.includes(event.who) && event.atMonth - child.bornAtMonth < 12 * 12));
+    }
+    if (event.action.kind !== 'transfer' || event.action.to.kind !== 'person') return false;
+    const childId = event.action.to.personId;
+    const child = state.people.find((candidate) => candidate.id === childId);
+    return Boolean(child && child.geneticParents.includes(event.who) && event.atMonth - child.bornAtMonth < 12 * 12);
+  });
+  const careKinds = new Set(dependentCare.map((event) => event.action.kind));
+  add(result, '3', '养育幼儿', careKinds.has('move') && careKinds.has('transfer') ? dependentCare : [], '亲生父母既携带年幼孩子移动，也把真实物质转交给孩子满足生存需要。');
+
   const conceptions = completed.filter((event) => event.action.kind === 'act' && event.action.operation === 'reproduce' && event.diff.conceived === true);
   add(result, '2', '繁衍后代', conceptions, '双方同意后的生殖原语实际进入了妊娠过程。');
 

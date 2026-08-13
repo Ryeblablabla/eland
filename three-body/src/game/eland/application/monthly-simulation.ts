@@ -35,6 +35,7 @@ import type {
   WorldEvent,
 } from '../domain/model';
 import { buildDecisionContext, recompileNextAction } from './action-options';
+import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-facts';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -192,6 +193,10 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('reproduce:')) score += 58 + person.driveBias.affiliation * 0.35;
   if (option.id.startsWith('take-without-permission:')) score += person.body.nutrition < 12 ? 95 : 42;
   if (option.id.startsWith('exert-person:')) score += 36;
+  if (option.id.startsWith('accept-exchange:')) score += 44;
+  if (option.id.startsWith('settle-exchange:')) score += 82;
+  if (option.id.startsWith('offer-exchange:')) score += 25;
+  if (option.id.startsWith('teach:')) score += 25 + person.driveBias.affiliation * 0.25;
   if (option.id.startsWith('attend:')) score += person.driveBias.inquiryCreation * 0.32;
   if (option.id.startsWith('explore:')) score += person.driveBias.inquiryCreation * 0.18;
   return score;
@@ -222,6 +227,11 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
   if (person.body.nutrition < 35) { probability += (35 - person.body.nutrition) / 45; reasons.push('营养压力'); }
   if (person.body.health < 45) { probability += (45 - person.body.health) / 70; reasons.push('健康压力'); }
   if (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push('意图停滞'); }
+  const acceptedExchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
+  if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
+    probability += 0.72;
+    reasons.push('已接受的交换等待本人交付');
+  }
   if (!reasons.length) reasons.push('每月非零重新考虑概率');
   return { probability: clamp(probability, 0.01, 0.96), reasons };
 }
@@ -243,6 +253,7 @@ function startIntent(state: SimulationState, person: PersonState, context: Decis
     lastProgressAtMonth: atMonth,
     progress: 0,
     sourceDecisionEventId: decisionEventId,
+    sourceFactIds: [...option.sourceFactIds],
     actionEventIds: [],
   };
   state.intents.push(intent);
@@ -410,6 +421,11 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const movements = actions.filter((event) => event.action.kind === 'move' && event.pathSegment.length > 1);
   const cultivation = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'combine' && Number(event.diff.outputMaterialId) === Material.CropSprout);
   const harvests = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'separate' && Number(event.diff.sourceMaterialId) === Material.CropMature);
+  const exchangeOffers = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'offer' && event.action.content.proposal?.kind === 'exchange');
+  const exchangeAcceptances = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'accept');
+  const exchangeTransfers = transfers.filter((event) => event.action.kind === 'transfer' && event.action.authorizationRef);
+  const attended = actions.filter((event) => event.status === 'completed' && event.action.kind === 'attend');
+  const taughtTechniques = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'claim' && event.action.content.factId?.startsWith('technique:'));
   const structures = deriveStructures(state);
   const trailCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.PackedSoil);
   const cultivatedCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.CropSprout || surfaceMaterial(state.world.grid, cell) === Material.CropMature || surfaceMaterial(state.world.grid, cell) === Material.ExhaustedSoil);
@@ -420,6 +436,18 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   if (shelterEvidence.length) milestones.push({ id: '20', label: '建造住所', evidenceEventIds: shelterEvidence, note: '多个相邻木板体素形成了具有遮蔽效果的空间结构。' });
   if (cultivation.length && harvests.length) milestones.push({ id: '32', label: '种植并收获作物', evidenceEventIds: [...cultivation, ...harvests].map((fact) => fact.id), note: '种子与土壤结合，作物经自然生长后被分离收获。' });
   if (trailCells.length >= 4) milestones.push({ id: '42', label: '开辟道路', evidenceEventIds: movements.filter((fact) => fact.pathSegment.some((cell) => trailCells.includes(cell))).map((fact) => fact.id), note: '重复真实通行把连续地表物质压实为夯土。' });
+  for (const offer of exchangeOffers) {
+    if (offer.action.kind !== 'communicate' || offer.action.content.kind !== 'offer') continue;
+    const offerId = offer.action.content.id;
+    const acceptance = exchangeAcceptances.find((event) => event.action.kind === 'communicate' && event.action.content.kind === 'accept' && event.action.content.referenceId === offerId);
+    if (!acceptance) continue;
+    if (!milestones.some((milestone) => milestone.id === '48')) milestones.push({ id: '48', label: '订立交换约定', evidenceEventIds: [offer.id, acceptance.id], note: '一方提出结构化交换条款，另一方明确接受。' });
+    const deliveries = exchangeTransfers.filter((event) => event.action.kind === 'transfer' && event.action.authorizationRef === offerId);
+    const parties = new Set(deliveries.flatMap((event) => event.action.kind === 'transfer' && event.action.from.kind === 'person' ? [event.action.from.personId] : []));
+    if (parties.size >= 2 && !milestones.some((milestone) => milestone.id === '45')) milestones.push({ id: '45', label: '交换货物', evidenceEventIds: [offer.id, acceptance.id, ...deliveries.map((event) => event.id)], note: '双方分别履行真实物质转移，交换完成。' });
+  }
+  if (attended.length) milestones.push({ id: '58', label: '观察自然现象', evidenceEventIds: attended.map((event) => event.id), note: '人物投入时间持续观察物质并形成个人知识。' });
+  if (taughtTechniques.length) milestones.push({ id: '134', label: '交换技术知识', evidenceEventIds: taughtTechniques.map((event) => event.id), note: '成功操作形成个人技术知识，并由持有者向身边人传播。' });
   const practices: PracticeObservation[] = [
     transfers.length ? { key: 'transfer', label: '反复转移物质', count: transfers.length, agentIds: [...new Set(transfers.map((event) => event.who))], eventIds: transfers.map((event) => event.id), stability: clamp(transfers.length * 5) } : null,
     movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,

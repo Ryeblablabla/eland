@@ -4,7 +4,7 @@ import { inventoryQuantity, type ItemStack, type PersonState } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
-import { acceptedReproductionBetween, communicationById } from './social-facts';
+import { acceptanceOf, acceptedReproductionBetween, communicationById } from './social-facts';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -82,7 +82,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
   }
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
-  if (goal.kind === 'knowledge') return person.knowledge.some((fact) => fact.id === goal.factId);
+  if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId) ?? false;
   if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
   return Boolean(communicationById(state, goal.representationId));
 }
@@ -159,7 +159,8 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     available = sourceStack?.quantity ?? 0;
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
-  const authorized = action.from.kind === 'ground' || action.from.personId === person.id;
+  const agreementAuthorized = Boolean(action.authorizationRef && acceptanceOf(state, action.authorizationRef));
+  const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized;
   const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
     const relation = sourcePerson.relations.find((item) => item.personId === person.id);
@@ -317,6 +318,8 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   stack.quantity -= 1;
   removeEmptyStacks(person);
   setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, output);
+  const techniqueId = `technique:combine:${stack.materialId}:${current}:${output}`;
+  if (!person.knowledge.some((fact) => fact.id === techniqueId)) person.knowledge.push({ id: techniqueId, kind: 'technique', summary: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}可结合为${materialDefinition(output).name}`, confidence: 62, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
   return {
     status: 'completed' as const,
     result: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}结合为${materialDefinition(output).name}`,
@@ -411,8 +414,8 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
   if (action.content.kind === 'claim') {
     for (const listener of reached) listener.knowledge.push({
-      id: `claim:${eventId}:${listener.id}`,
-      kind: 'claim', summary: action.content.summary, confidence: 36,
+      id: action.content.factId ?? `claim:${eventId}:${listener.id}`,
+      kind: action.content.factId?.startsWith('technique:') ? 'technique' : 'claim', summary: action.content.summary, confidence: action.content.factId?.startsWith('technique:') ? 46 : 36,
       learnedAtMonth: atMonth, sourceEventIds: [eventId],
     });
   }

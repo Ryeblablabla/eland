@@ -3,7 +3,7 @@ import { Material, materialDefinition, materialHas } from '../domain/material';
 import { inventoryQuantity, isAlive, type PersonState } from '../domain/person';
 import { ageMonths } from '../domain/person';
 import type { DecisionContext, DropState, SimulationState } from '../domain/model';
-import { acceptedReproductionBetween, openReproductionOfferFor } from '../domain/social-facts';
+import { acceptedExchangeFor, acceptedReproductionBetween, exchangeTermFulfilled, openExchangeOfferFor, openReproductionOfferFor } from '../domain/social-facts';
 import {
   cellsInRadius,
   cellX,
@@ -70,6 +70,15 @@ function optionForDrop(person: PersonState, drop: DropState): ActionOption {
     estimatedDuration: person.position.cellId === drop.cellId ? 'one-month' : 'several-months',
     sourceFactIds: drop.sourceEventIds,
   };
+}
+
+function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
+  return people.flatMap((other) => {
+    if (other.position.cellId !== person.position.cellId) return [];
+    const own = person.inventory.find((stack) => stack.quantity >= 2 && !other.inventory.some((item) => item.materialId === stack.materialId));
+    const their = other.inventory.find((stack) => stack.quantity >= 2 && !person.inventory.some((item) => item.materialId === stack.materialId));
+    return own && their ? [{ person: other, own, their }] : [];
+  });
 }
 
 function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
@@ -196,6 +205,65 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: carriedFood.sourceEventIds,
   });
 
+  const incomingExchange = openExchangeOfferFor(state, person.id);
+  if (incomingExchange) {
+    const proposal = incomingExchange.content.proposal;
+    if (proposal?.kind === 'exchange' && state.people.find((other) => other.id === incomingExchange.fact.who)?.position.cellId === person.position.cellId && inventoryQuantity(person, proposal.partnerMaterialId) >= proposal.partnerQuantity) {
+      const representationId = `accept:${incomingExchange.content.id}:${person.id}`;
+      options.push({
+        id: `accept-exchange:${incomingExchange.content.id}`,
+        summary: `接受以${materialDefinition(proposal.partnerMaterialId).name}换取${materialDefinition(proposal.offererMaterialId).name}`,
+        reason: '眼前存在可履行的交换报价',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'accept', referenceId: incomingExchange.content.id }, audience: [incomingExchange.fact.who], channel: 'voice' },
+        target: { kind: 'person', personId: incomingExchange.fact.who },
+        estimatedDuration: 'one-month',
+        sourceFactIds: [incomingExchange.fact.id],
+      });
+    }
+  }
+
+  const acceptedExchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
+  if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
+    const proposal = acceptedExchange.proposal;
+    const materialId = proposal.offererId === person.id ? proposal.offererMaterialId : proposal.partnerMaterialId;
+    const quantity = proposal.offererId === person.id ? proposal.offererQuantity : proposal.partnerQuantity;
+    const receiverId = proposal.offererId === person.id ? proposal.partnerId : proposal.offererId;
+    const stack = person.inventory.find((item) => item.materialId === materialId && item.quantity >= quantity);
+    const receiver = state.people.find((other) => other.id === receiverId);
+    if (stack && receiver) options.push({
+      id: `settle-exchange:${acceptedExchange.offer.id}:${person.id}`,
+      summary: `交付交换中的${materialDefinition(materialId).name}`,
+      reason: '双方已经接受报价，本人尚未履行自己的交付',
+      goal: { kind: 'inventory-at-least', materialId, quantity: inventoryQuantity(state.people.find((other) => other.id === receiverId) ?? person, materialId) + quantity, personId: receiverId },
+      nextAction: receiver.position.cellId === person.position.cellId
+        ? { kind: 'transfer', materialId, quantity, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiverId }, stackId: stack.id, authorizationRef: acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : undefined }
+        : { kind: 'move', toCellId: receiver.position.cellId },
+      target: { kind: 'person', personId: receiverId },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [acceptedExchange.offer.id, acceptedExchange.acceptance.id],
+    });
+  }
+
+  const tradePartner = !incomingExchange && !acceptedExchange ? localPeopleWithDifferentGoods(person, visiblePeople)[0] : undefined;
+  if (tradePartner && person.driveBias.autonomy >= 42 && seededFraction(state.seed, `exchange-option:${state.clock.elapsedMonths}:${person.id}:${tradePartner.person.id}`) < 0.14) {
+    const representationId = `offer-exchange:${state.clock.elapsedMonths}:${person.id}:${tradePartner.person.id}`;
+    options.push({
+      id: representationId,
+      summary: `向${tradePartner.person.name}提出物质交换`,
+      reason: `双方分别持有${materialDefinition(tradePartner.own.materialId).name}与${materialDefinition(tradePartner.their.materialId).name}`,
+      goal: { kind: 'representation-made', representationId },
+      nextAction: {
+        kind: 'communicate',
+        content: { id: representationId, kind: 'offer', summary: `用${materialDefinition(tradePartner.own.materialId).name}换取${materialDefinition(tradePartner.their.materialId).name}`, proposal: { kind: 'exchange', offererId: person.id, partnerId: tradePartner.person.id, offererMaterialId: tradePartner.own.materialId, offererQuantity: 1, partnerMaterialId: tradePartner.their.materialId, partnerQuantity: 1, expiresAtMonth: state.clock.elapsedMonths + 12 } },
+        audience: [tradePartner.person.id], channel: 'voice',
+      },
+      target: { kind: 'person', personId: tradePartner.person.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [...tradePartner.own.sourceEventIds, ...tradePartner.their.sourceEventIds],
+    });
+  }
+
   const fiber = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
   const injured = visiblePeople
     .filter((other) => other.position.cellId === person.position.cellId && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
@@ -297,6 +365,22 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
+  const teachable = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence >= 55 && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id)));
+  const learner = teachable ? localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id)) : undefined;
+  if (teachable && learner && person.driveBias.affiliation >= 45) {
+    const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
+    options.push({
+      id: representationId,
+      summary: `向${learner.name}表达一项已知技术`,
+      reason: '自己掌握的物质操作尚未被身边人知道',
+      goal: { kind: 'knowledge', factId: teachable.id, personId: learner.id },
+      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' },
+      target: { kind: 'person', personId: learner.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: teachable.sourceEventIds,
+    });
+  }
+
   const unknown = visibleCells.find((cellId) => {
     const material = materialDefinition(surfaceMaterial(state.world.grid, cellId));
     return !person.knowledge.some((fact) => fact.id === `material:${material.id}`);
@@ -351,6 +435,23 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
+  if (intent.goal.kind === 'inventory-at-least' && intent.goal.personId && intent.target?.kind === 'person') {
+    const goal = intent.goal;
+    const receiverId = intent.target.personId;
+    const receiver = state.people.find((candidate) => candidate.id === receiverId);
+    const exchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
+    const stack = person.inventory.find((candidate) => candidate.materialId === goal.materialId && candidate.quantity > 0);
+    const offerId = exchange?.offer.action.kind === 'communicate' ? exchange.offer.action.content.id : undefined;
+    if (receiver && exchange && offerId && intent.sourceFactIds?.includes(exchange.offer.id) && stack) {
+      if (receiver.position.cellId !== person.position.cellId) return { kind: 'move', toCellId: receiver.position.cellId };
+      return {
+        kind: 'transfer', materialId: intent.goal.materialId, quantity: 1,
+        from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiver.id },
+        stackId: stack.id,
+        authorizationRef: offerId,
+      };
+    }
+  }
   if (intent.goal.kind === 'inventory-at-least') {
     const materialId = intent.goal.materialId;
     const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.materialId === materialId && drop.quantity > 0);
@@ -372,7 +473,8 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     if (water !== undefined) return { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water) }] };
   }
   if (intent.goal.kind === 'voxel-is' && intent.nextAction.kind === 'move') {
-    if (intent.goal.materialId === Material.CropSprout) {
+    const targetCell = intent.goal.position.x + intent.goal.position.y * state.world.grid.width;
+    if (intent.goal.materialId === Material.CropSprout && distance(person.position.cellId, targetCell) <= 1) {
       const seed = person.inventory.find((stack) => stack.materialId === Material.Seed && stack.quantity > 0);
       if (seed) return { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: seed.id }, { kind: 'voxel', position: intent.goal.position }] };
     }

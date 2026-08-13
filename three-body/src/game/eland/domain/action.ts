@@ -16,7 +16,7 @@ export type HolderRef =
 export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce';
 
 export type RepresentationInput =
-  | { id: string; kind: 'claim'; summary: string }
+  | { id: string; kind: 'claim'; summary: string; factId?: string }
   | { id: string; kind: 'request'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string }
@@ -24,11 +24,16 @@ export type RepresentationInput =
 
 export type SocialProposal =
   | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
-  | { kind: 'transfer'; fromPersonId: PersonId; toPersonId: PersonId; materialId: MaterialId; quantity: number; expiresAtMonth: number };
+  | {
+      kind: 'exchange'; offererId: PersonId; partnerId: PersonId;
+      offererMaterialId: MaterialId; offererQuantity: number;
+      partnerMaterialId: MaterialId; partnerQuantity: number;
+      expiresAtMonth: number;
+    };
 
 export type PrimitiveAction =
   | { kind: 'move'; toCellId: number }
-  | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string }
+  | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; toolStackId?: string }
   | { kind: 'attend'; target: WorldRef; instrumentStackId?: string }
   | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record' };
@@ -39,7 +44,7 @@ export type FactPredicate =
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
-  | { kind: 'knowledge'; factId: string }
+  | { kind: 'knowledge'; factId: string; personId?: PersonId }
   | { kind: 'condition'; personId: PersonId; condition: 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained'; present: boolean }
   | { kind: 'representation-made'; representationId: string };
 
@@ -57,6 +62,7 @@ export interface Intent {
   lastProgressAtMonth: number;
   progress: number;
   sourceDecisionEventId: string;
+  sourceFactIds?: string[];
   actionEventIds: string[];
   blockedReason?: string;
 }

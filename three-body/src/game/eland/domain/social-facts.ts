@@ -42,3 +42,36 @@ export function acceptedReproductionBetween(state: SimulationState, a: PersonId,
   }
   return null;
 }
+
+export function openExchangeOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
+  const atMonth = state.clock.elapsedMonths;
+  for (const fact of [...completedCommunicationFacts(state)].reverse()) {
+    if (fact.action.kind !== 'communicate' || fact.action.content.kind !== 'offer') continue;
+    const content = fact.action.content;
+    const proposal = content.proposal;
+    if (proposal?.kind !== 'exchange' || proposal.partnerId !== personId || proposal.expiresAtMonth < atMonth) continue;
+    if (acceptanceOf(state, content.id, personId)) continue;
+    return { fact, content };
+  }
+  return null;
+}
+
+export function acceptedExchangeFor(state: SimulationState, personId: PersonId, atMonth: number): { offer: ActionFact; acceptance: ActionFact; proposal: Extract<NonNullable<Extract<RepresentationInput, { kind: 'offer' }>['proposal']>, { kind: 'exchange' }> } | null {
+  for (const offer of [...completedCommunicationFacts(state)].reverse()) {
+    if (offer.action.kind !== 'communicate' || offer.action.content.kind !== 'offer') continue;
+    const proposal = offer.action.content.proposal;
+    if (proposal?.kind !== 'exchange' || proposal.expiresAtMonth < atMonth || (proposal.offererId !== personId && proposal.partnerId !== personId)) continue;
+    const acceptance = acceptanceOf(state, offer.action.content.id, proposal.partnerId);
+    if (acceptance) return { offer, acceptance, proposal };
+  }
+  return null;
+}
+
+export function exchangeTermFulfilled(state: SimulationState, offerId: string, fromPersonId: PersonId): boolean {
+  return state.world.past.some((event) => event.kind === 'action'
+    && event.status === 'completed'
+    && event.action.kind === 'transfer'
+    && event.action.authorizationRef === offerId
+    && event.action.from.kind === 'person'
+    && event.action.from.personId === fromPersonId);
+}

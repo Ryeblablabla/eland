@@ -258,6 +258,22 @@ function executeIngest(state: SimulationState, person: PersonState, targets: Wor
 function executeSeparate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   const targets = action.targets;
   const target = targets[0];
+  if (target?.kind === 'person') {
+    const restrained = state.people.find((candidate) => candidate.id === target.personId && candidate.position.cellId === person.position.cellId);
+    const condition = restrained?.conditions.find((item) => item.kind === 'restrained');
+    if (!restrained || !condition) return { status: 'blocked' as const, result: '近身目标身上没有可分离的拘束物质', diff: {} };
+    const selfRelease = restrained.id === person.id;
+    const chance = selfRelease ? Math.min(0.72, 0.12 + person.baselineCapacities.manipulation / 180) : 1;
+    const sample = seededFraction(state.seed, `release-restraint:${atMonth}:${person.id}:${restrained.id}:${condition.id}`);
+    if (sample >= chance) return { status: 'progressed' as const, result: `${person.name}尝试分离拘束物质，但这次没有成功`, diff: { restrainedPersonId: restrained.id, released: false, chance, sample } };
+    restrained.conditions = restrained.conditions.filter((item) => item.id !== condition.id);
+    addInventory(person, Material.Rope, 1, [eventId, ...condition.sourceEventIds], `stack-${person.id}-${Material.Rope}-${atMonth}`);
+    return {
+      status: 'completed' as const,
+      result: `${person.name}从${selfRelease ? '自己' : restrained.name}身上分离出绳`,
+      diff: { releasedPersonId: restrained.id, materialId: Material.Rope, sourceConditionId: condition.id },
+    };
+  }
   if (!target || target.kind !== 'voxel' || distanceToPosition(person, target.position) > 1) return { status: 'blocked' as const, result: '分离目标不在近身范围', diff: {} };
   const { x, y, z } = target.position;
   const materialId = voxelAt(state.world.grid, x, y, z);
@@ -339,6 +355,24 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
     const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
     const receiver = state.people.find((candidate) => candidate.id === personRef.personId && candidate.position.cellId === person.position.cellId);
     if (!stack || !receiver) return { status: 'blocked' as const, result: '照护材料或伤者不在近身范围', diff: {} };
+    if (stack.materialId === Material.Rope && receiver.id !== person.id) {
+      const woundStage = receiver.conditions.find((item) => item.kind === 'wound')?.stage ?? 0;
+      if (receiver.conditions.some((item) => item.kind === 'restrained')) return { status: 'blocked' as const, result: `${receiver.name}已经受到绳的拘束`, diff: {} };
+      if (receiver.body.health > 20 && woundStage < 3) return { status: 'blocked' as const, result: `${receiver.name}仍能抵抗，绳没有形成持续拘束`, diff: { resistedBy: receiver.id } };
+      stack.quantity -= 1;
+      removeEmptyStacks(person);
+      const condition = { id: `condition-restrained-${receiver.id}-${atMonth}`, kind: 'restrained' as const, stage: 2 as const, sinceMonth: atMonth, sourceEventIds: [eventId], otherPersonId: person.id, materialStackId: stack.id };
+      receiver.conditions.push(condition);
+      const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId && candidate.id !== person.id).map((candidate) => candidate.id);
+      for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
+        applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === receiver.id ? -20 : -8, fear: witness.id === receiver.id ? 20 : 8 });
+      }
+      return {
+        status: 'completed' as const,
+        result: `${person.name}用绳使${receiver.name}受到持续拘束`,
+        diff: { restrainedPersonId: receiver.id, conditionId: condition.id, materialId: Material.Rope, witnessedBy },
+      };
+    }
     const condition = receiver.conditions.find((item) => item.kind === 'wound' || item.kind === 'illness');
     if (stack.materialId !== Material.Fiber || !condition) return { status: 'blocked' as const, result: '当前材料不能作用于这个身体状态', diff: {} };
     stack.quantity -= 1;

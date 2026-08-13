@@ -555,6 +555,46 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
+  const ownRestraint = person.conditions.find((condition) => condition.kind === 'restrained');
+  if (ownRestraint) options.push({
+    id: `separate-restraint:${ownRestraint.id}`,
+    summary: '尝试分离自己身上的绳',
+    reason: '身体受到可触及的绳索拘束，无法正常移动',
+    goal: { kind: 'condition', personId: person.id, condition: 'restrained', present: false },
+    nextAction: { kind: 'act', operation: 'separate', targets: [{ kind: 'person', personId: person.id }] },
+    target: { kind: 'person', personId: person.id }, estimatedDuration: 'one-month', sourceFactIds: ownRestraint.sourceEventIds,
+  });
+
+  const restrainedOther = localPeople.find((other) => other.conditions.some((condition) => condition.kind === 'restrained'));
+  if (restrainedOther) {
+    const restraint = restrainedOther.conditions.find((condition) => condition.kind === 'restrained');
+    if (restraint) options.push({
+      id: `release-restraint:${restrainedOther.id}:${restraint.id}`,
+      summary: `从${restrainedOther.name}身上分离绳`,
+      reason: `${restrainedOther.name}近身且正受到绳索拘束`,
+      goal: { kind: 'condition', personId: restrainedOther.id, condition: 'restrained', present: false },
+      nextAction: { kind: 'act', operation: 'separate', targets: [{ kind: 'person', personId: restrainedOther.id }] },
+      target: { kind: 'person', personId: restrainedOther.id }, estimatedDuration: 'one-month', sourceFactIds: restraint.sourceEventIds,
+    });
+  }
+
+  const rope = person.inventory.find((stack) => stack.materialId === Material.Rope && stack.quantity > 0);
+  const restraintTarget = localPeople.find((other) => {
+    if (other.conditions.some((condition) => condition.kind === 'restrained')) return false;
+    const relation = person.relations.find((item) => item.personId === other.id);
+    const unableToResist = other.body.health <= 20 || other.conditions.some((condition) => condition.kind === 'wound' && condition.stage === 3);
+    return unableToResist && (person.body.nutrition < 18 || (relation?.fear ?? 0) > 45);
+  });
+  if (rope && restraintTarget && seededFraction(state.seed, `restraint-option:${state.clock.elapsedMonths}:${person.id}:${restraintTarget.id}`) < 0.08) options.push({
+    id: `combine-restraint:${rope.id}:${restraintTarget.id}`,
+    summary: `尝试让绳与${restraintTarget.name}的身体结合`,
+    reason: '对方严重虚弱或重伤，资源压力或恐惧使强制约束成为可选手段',
+    goal: { kind: 'condition', personId: restraintTarget.id, condition: 'restrained', present: true },
+    nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: rope.id }, { kind: 'person', personId: restraintTarget.id }] },
+    target: { kind: 'person', personId: restraintTarget.id }, estimatedDuration: 'one-month',
+    sourceFactIds: [...rope.sourceEventIds, ...(person.relations.find((item) => item.personId === restraintTarget.id)?.sourceEventIds ?? [])],
+  });
+
   const fearedOpponent = localPeople.find((other) => {
     const relation = person.relations.find((item) => item.personId === other.id);
     return relation && relation.trust < 12 && (relation.fear > 45 || person.body.nutrition < 18);

@@ -158,6 +158,22 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       sourceEventIds: [fact.id],
     });
   }
+  if (fact.action.kind === 'act' && typeof fact.diff.restrainedPersonId === 'string' && typeof fact.diff.conditionId === 'string') {
+    const restrainedId = fact.diff.restrainedPersonId;
+    const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
+    for (const observerId of new Set([restrainedId, ...observerIds])) {
+      const observer = state.people.find((person) => person.id === observerId);
+      if (!observer || observer.id === actor.id) continue;
+      const restrained = state.people.find((person) => person.id === restrainedId);
+      remember(observer, {
+        id: `memory:${fact.id}:${observer.id}`, kind: 'episode',
+        summary: observer.id === restrainedId ? `${actor.name}用绳拘束了我` : `亲眼看见${actor.name}用绳拘束${restrained?.name ?? '另一人'}`,
+        importance: observer.id === restrainedId ? 98 : 82,
+        createdAtMonth: fact.atMonth, lastRecalledAtMonth: fact.atMonth,
+        personIds: [...new Set([actor.id, restrainedId])], sourceEventIds: [fact.id],
+      });
+    }
+  }
   if (fact.action.kind !== 'communicate') return;
   const content = fact.action.content;
   const commitment = content.kind === 'request' || content.kind === 'offer' || content.kind === 'accept';

@@ -79,6 +79,43 @@ try {
   assert.ok(violenceFact, '施力伤害应留下带受害者与见证者的真实动作事实');
   for (const observerId of [victim.id, witness.id]) assert.ok(afterViolence.people.find((person) => person.id === observerId)?.memories.some((memory) => memory.sourceEventIds.includes(violenceFact.id)), '受害者与见证者都必须记得同一暴力事件，供后续模型意图使用');
 
+  let restraintState = createInitialState(314, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
+  const restrainer = restraintState.people[0];
+  const restrainedPerson = restraintState.people[1];
+  const releaser = restraintState.people[2];
+  restrainedPerson.position.cellId = restrainer.position.cellId;
+  releaser.position.cellId = restrainer.position.cellId;
+  restrainedPerson.body.health = 15;
+  restrainer.inventory = [{ id: 'test-restraint-rope', materialId: 23, quantity: 1, sourceEventIds: [] }];
+  const restraintIntentId = 'intent-test-restraint';
+  restraintState.intents.push({
+    id: restraintIntentId, ownerId: restrainer.id, summary: '用绳约束无法抵抗的人', domain: 'strategic',
+    goal: { kind: 'condition', personId: restrainedPerson.id, condition: 'restrained', present: true },
+    nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: restrainer.id, stackId: 'test-restraint-rope' }, { kind: 'person', personId: restrainedPerson.id }] },
+    target: { kind: 'person', personId: restrainedPerson.id }, status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0,
+    progress: 0, sourceDecisionEventId: 'decision-test-restraint', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+  });
+  restrainer.activeIntentId = restraintIntentId;
+  restraintState.decisionBudget.credits = 0;
+  restraintState = stepSimulation(restraintState, { decide() { return { kind: 'idle', reason: '不干扰拘束测试' }; } });
+  const restraintFact = restraintState.world.past.find((event) => event.kind === 'action' && event.diff.restrainedPersonId === restrainedPerson.id && event.diff.conditionId);
+  assert.ok(restraintFact && restraintState.people.find((person) => person.id === restrainedPerson.id)?.conditions.some((condition) => condition.kind === 'restrained'), '绳与无法抵抗者结合后应形成可追溯的拘束状态');
+  assert.equal(restraintState.people.find((person) => person.id === restrainer.id)?.inventory.some((stack) => stack.materialId === 23), false, '形成拘束必须消耗真实私人绳索');
+  for (const observerId of [restrainedPerson.id, releaser.id]) assert.ok(restraintState.people.find((person) => person.id === observerId)?.memories.some((memory) => memory.sourceEventIds.includes(restraintFact.id)), '被拘束者和见证者必须记住同一个强制约束事实');
+  const releaseIntentId = 'intent-test-release-restraint';
+  restraintState.intents.push({
+    id: releaseIntentId, ownerId: releaser.id, summary: '从近身人物身上分离绳', domain: 'strategic',
+    goal: { kind: 'condition', personId: restrainedPerson.id, condition: 'restrained', present: false },
+    nextAction: { kind: 'act', operation: 'separate', targets: [{ kind: 'person', personId: restrainedPerson.id }] },
+    target: { kind: 'person', personId: restrainedPerson.id }, status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1,
+    progress: 0, sourceDecisionEventId: 'decision-test-release-restraint', sourceFactIds: [restraintFact.id], actionEventIds: [], replanCount: 0,
+  });
+  restraintState.people.find((person) => person.id === releaser.id).activeIntentId = releaseIntentId;
+  restraintState.decisionBudget.credits = 0;
+  restraintState = stepSimulation(restraintState, { decide() { return { kind: 'idle', reason: '不干扰解除测试' }; } });
+  assert.equal(restraintState.people.find((person) => person.id === restrainedPerson.id)?.conditions.some((condition) => condition.kind === 'restrained'), false, '近身他人应能用 separate 解除绳索拘束');
+  assert.equal(restraintState.people.find((person) => person.id === releaser.id)?.inventory.find((stack) => stack.materialId === 23)?.quantity, 1, '解除拘束应把同一物质重新变为解除者的私人绳索');
+
   const waterAssistState = createInitialState(311, { endpoint: { kind: 'months', value: 24 } });
   const waterRequester = waterAssistState.people[0];
   const waterHelper = waterAssistState.people[1];

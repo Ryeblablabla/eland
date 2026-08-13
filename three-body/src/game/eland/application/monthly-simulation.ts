@@ -40,6 +40,7 @@ import { maintainMemories, remember } from '../domain/memory';
 import { composeIntentChoice } from '../domain/intent';
 import { chooseSurvivalReflex } from '../domain/survival-reflex';
 import { observeCoreMilestones } from '../projection/core-milestones';
+import { advanceAgreementLifecycle } from '../domain/agreement';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -139,13 +140,14 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
   const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
   const people = profiles.map((profile, index) => initialPerson(seed + config.civilizationNo * 997, profile, generated.spawnCells[index] ?? generated.spawnCells[0], profiles));
   return {
-    schemaVersion: 13,
+    schemaVersion: 14,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
     clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
     world: { grid: generated.world, drops: generated.drops, past: [] },
     people,
     intents: [],
+    agreements: [],
     civilization: {
       number: config.civilizationNo,
       status: 'running',
@@ -555,6 +557,7 @@ function prepareMonth(input: SimulationState) {
     person.position.tickPath = [person.position.cellId];
   }
   const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth)];
+  events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
   maintainMemories(state, atMonth);
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
@@ -699,7 +702,7 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
 }
 
 export function migrateSimulationState(input: SimulationState): SimulationState {
-  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 13) throw new Error('schemaVersion 12 及更早存档不支持继续演化；请建立新的物质体素文明');
+  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 14) throw new Error('schemaVersion 13 及更早存档不支持继续演化；请建立新的协议事实文明');
   const state = structuredClone(input);
   state.world.grid = hydrateWorld(input.world.grid);
   for (const person of state.people) {
@@ -772,7 +775,7 @@ export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
   return {
-    schemaVersion: 13,
+    schemaVersion: 14,
     exportedAt: new Date().toISOString(),
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),

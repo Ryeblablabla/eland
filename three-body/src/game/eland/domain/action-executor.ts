@@ -4,9 +4,10 @@ import { inventoryQuantity, type ItemStack, type PersonState } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
-import { acceptanceOf, acceptedReproductionBetween, communicationById } from './social-facts';
+import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
+import { agreementById, recordAgreementAction } from './agreement';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -155,7 +156,8 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     available = sourceStack?.quantity ?? 0;
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
-  const agreementAuthorized = Boolean(action.authorizationRef && acceptanceOf(state, action.authorizationRef));
+  const referencedAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
+  const agreementAuthorized = referencedAgreement?.status === 'active';
   const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized;
   const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
@@ -181,7 +183,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     const receiver = state.people.find((candidate) => candidate.id === receiverId);
     if (!receiver || receiver.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
     addInventory(receiver, action.materialId, quantity, [eventId], `stack-${receiver.id}-${action.materialId}-${atMonth}`);
-    if (receiver.id !== person.id) {
+    if (receiver.id !== person.id && !referencedAgreement) {
       const relation = receiver.relations.find((item) => item.personId === person.id);
       if (relation) {
         applyRelationEvidence(receiver, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
@@ -458,6 +460,7 @@ export function executePrimitiveAction(
     result: outcome.result,
     diff: outcome.diff,
   };
+  recordAgreementAction(state, fact);
   rememberAction(state, fact);
   return fact;
 }

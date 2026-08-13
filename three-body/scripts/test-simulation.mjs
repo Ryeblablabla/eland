@@ -7,15 +7,20 @@ import { pathToFileURL } from 'node:url';
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-monthly-test-'));
 const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
+const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/simulation.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${bundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/agreement.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${agreementBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
-  assert.equal(initial.schemaVersion, 13);
+  assert.equal(initial.schemaVersion, 14);
   assert.deepEqual(initial.clock, { unit: 'month', elapsedMonths: 0, monthsPerYear: 12 });
   assert.equal(initial.world.grid.width, 84);
   assert.equal(initial.world.grid.depth, 52);
@@ -27,6 +32,38 @@ try {
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
+
+  const agreementState = createInitialState(31, { endpoint: { kind: 'months', value: 24 } });
+  const requester = agreementState.people[0];
+  const helper = agreementState.people[1];
+  const agreementId = 'test-assist-agreement';
+  const actionFact = (id, atMonth, who, action) => ({ id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff: {} });
+  const proposal = actionFact('test-proposal', 1, requester.id, { kind: 'communicate', content: { id: agreementId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 3 } }, audience: [helper.id], channel: 'voice' });
+  recordAgreementAction(agreementState, proposal);
+  agreementState.world.past.push(proposal);
+  assert.equal(agreementState.agreements[0]?.status, 'proposed', '结构化求助应创建待回应 Agreement');
+  const acceptance = actionFact('test-acceptance', 2, helper.id, { kind: 'communicate', content: { id: 'test-acceptance-content', kind: 'accept', referenceId: agreementId }, audience: [requester.id], channel: 'voice' });
+  recordAgreementAction(agreementState, acceptance);
+  agreementState.world.past.push(acceptance);
+  assert.equal(agreementState.agreements[0]?.status, 'active', '指定回应者接受后 Agreement 才生效');
+  assert.equal(requester.relations.find((relation) => relation.personId === helper.id)?.trust, 0, '接受承诺本身不能增加信任');
+  const fulfillment = actionFact('test-fulfillment', 3, helper.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: helper.id }, to: { kind: 'person', personId: requester.id }, authorizationRef: agreementId });
+  recordAgreementAction(agreementState, fulfillment);
+  assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
+  assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
+
+  const breachState = createInitialState(32, { endpoint: { kind: 'months', value: 24 } });
+  const breachRequester = breachState.people[0];
+  const breachHelper = breachState.people[1];
+  const breachId = 'test-breach-agreement';
+  const breachProposal = actionFact('test-breach-proposal', 1, breachRequester.id, { kind: 'communicate', content: { id: breachId, kind: 'request', summary: '请帮助我', proposal: { kind: 'assist', requesterId: breachRequester.id, helperId: breachHelper.id, need: 'food', expiresAtMonth: 3 } }, audience: [breachHelper.id], channel: 'voice' });
+  recordAgreementAction(breachState, breachProposal);
+  breachState.world.past.push(breachProposal);
+  const breachAcceptance = actionFact('test-breach-acceptance', 2, breachHelper.id, { kind: 'communicate', content: { id: 'test-breach-acceptance-content', kind: 'accept', referenceId: breachId }, audience: [breachRequester.id], channel: 'voice' });
+  recordAgreementAction(breachState, breachAcceptance);
+  breachState.world.past.push(breachAcceptance);
+  advanceAgreementLifecycle(breachState, 9);
+  assert.equal(breachState.agreements[0]?.status, 'breached', '超过履行期限的有效 Agreement 应明确违约');
 
   let dialogueState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const speaker = dialogueState.people[0];
@@ -75,8 +112,8 @@ try {
   assert.ok(state.world.past.some((event) => event.kind === 'environment' && event.change === 'material'), '无人行动时世界物质也应继续变化');
 
   const legacy = structuredClone(initial);
-  legacy.schemaVersion = 12;
-  assert.throws(() => createSimulation({ state: legacy }), /不支持继续演化/, '旧属性格与 PlanMode 存档必须硬切拒绝');
+  legacy.schemaVersion = 13;
+  assert.throws(() => createSimulation({ state: legacy }), /不支持继续演化/, '没有 Agreement 聚合的旧存档必须硬切拒绝');
 
   let calls = 0;
   const batch = {
@@ -102,7 +139,7 @@ try {
       assert.equal(distance, 1, '每个空间路径步必须连接四邻格');
     }
   }
-  console.log(`simulation tests passed: schema 13, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${calls}/${Math.floor(personMonths / 12)} model contexts`);
+  console.log(`simulation tests passed: schema 14, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${calls}/${Math.floor(personMonths / 12)} model contexts`);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

@@ -20,6 +20,9 @@ export interface DecisionRequestContext {
   climate: DecisionContext['state']['civilization']['climate'];
   activeIntent?: { id: string; summary: string; progress: number; nextActionKind: string };
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
+  agreements: Array<{
+    id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number; fulfilledByPersonIds: string[];
+  }>;
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
@@ -60,6 +63,11 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     climate: state.civilization.climate,
     ...(context.activeIntent ? { activeIntent: { id: context.activeIntent.id, summary: context.activeIntent.summary, progress: context.activeIntent.progress, nextActionKind: context.activeIntent.nextAction.kind } } : {}),
     suspendedIntents: state.intents.filter((intent) => intent.ownerId === person.id && intent.status === 'suspended').map((intent) => ({ id: intent.id, summary: intent.summary, progress: intent.progress, nextActionKind: intent.nextAction.kind })),
+    agreements: state.agreements
+      .filter((agreement) => agreement.partyIds.includes(person.id) && (agreement.status === 'proposed' || agreement.status === 'active' || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
+      .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
+      .slice(0, 6)
+      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
     options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp }) => ({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp) })),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {

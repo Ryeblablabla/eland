@@ -3,6 +3,7 @@ import type { ActionOption, Intent, IntentDecision, PrimitiveAction } from './ac
 import type { MaterialId } from './material';
 import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
+import type { Agreement } from './agreement';
 
 export * from './action';
 export * from './material';
@@ -98,7 +99,15 @@ export interface EnvironmentFact extends BaseEvent {
   diff: Record<string, unknown>;
 }
 
-export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact;
+export interface AgreementFact extends BaseEvent {
+  kind: 'agreement';
+  agreementId: string;
+  change: 'expired' | 'fulfilled' | 'breached' | 'cancelled';
+  partyIds: PersonId[];
+  result: string;
+}
+
+export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact | AgreementFact;
 
 export interface PracticeObservation {
   key: string;
@@ -147,13 +156,14 @@ export interface DecisionMonthLedger {
 }
 
 export interface SimulationState {
-  schemaVersion: 13;
+  schemaVersion: 14;
   seed: number;
   branchId: string;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
   world: { grid: VoxelWorld; drops: DropState[]; past: WorldEvent[] };
   people: PersonState[];
   intents: Intent[];
+  agreements: Agreement[];
   civilization: {
     number: number;
     status: 'running' | 'ended';
@@ -186,7 +196,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 13;
+  schemaVersion: 14;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

@@ -52,6 +52,33 @@ try {
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
   assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
 
+  const witnessedViolenceState = createInitialState(310, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const attacker = witnessedViolenceState.people[0];
+  const victim = witnessedViolenceState.people[1];
+  const witness = witnessedViolenceState.people[2];
+  victim.position.cellId = attacker.position.cellId;
+  witness.position.cellId = attacker.position.cellId;
+  const violenceIntentId = 'intent-test-witnessed-violence';
+  witnessedViolenceState.intents.push({
+    id: violenceIntentId, ownerId: attacker.id, summary: '对近身人物施力', domain: 'strategic',
+    goal: { kind: 'body-at-most', personId: victim.id, field: 'health', value: victim.body.health - 3 },
+    nextAction: { kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: victim.id }] },
+    target: { kind: 'person', personId: victim.id }, status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0,
+    progress: 0, sourceDecisionEventId: 'decision-test-violence', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+  });
+  attacker.activeIntentId = violenceIntentId;
+  witnessedViolenceState.decisionBudget.credits = 0;
+  const afterViolence = await stepSimulationAsync(witnessedViolenceState, {
+    async decideAll() { throw new Error('固定暴力动作不应额外调用模型'); },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  const violenceFact = afterViolence.world.past.find((event) => event.kind === 'action'
+    && event.action.kind === 'act'
+    && event.action.operation === 'exert'
+    && event.diff.victimId === victim.id);
+  assert.ok(violenceFact, '施力伤害应留下带受害者与见证者的真实动作事实');
+  for (const observerId of [victim.id, witness.id]) assert.ok(afterViolence.people.find((person) => person.id === observerId)?.memories.some((memory) => memory.sourceEventIds.includes(violenceFact.id)), '受害者与见证者都必须记得同一暴力事件，供后续模型意图使用');
+
   const waterAssistState = createInitialState(311, { endpoint: { kind: 'months', value: 24 } });
   const waterRequester = waterAssistState.people[0];
   const waterHelper = waterAssistState.people[1];

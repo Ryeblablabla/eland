@@ -94,6 +94,70 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       ? { expiresAtMonth: fact.action.content.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
       : {}),
   });
+  if (fact.action.kind === 'act' && fact.action.operation === 'exert' && typeof fact.diff.victimId === 'string') {
+    const victimId = fact.diff.victimId;
+    const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
+    for (const observerId of new Set([victimId, ...observerIds])) {
+      const observer = state.people.find((person) => person.id === observerId);
+      if (!observer || observer.id === actor.id) continue;
+      const victim = state.people.find((person) => person.id === victimId);
+      remember(observer, {
+        id: `memory:${fact.id}:${observer.id}`,
+        kind: 'episode',
+        summary: observer.id === victimId
+          ? `${actor.name}对自己施力并造成了${Number(fact.diff.damage) || 0}点伤害`
+          : `亲眼看见${actor.name}对${victim?.name ?? '另一人'}施力并造成伤害`,
+        importance: observer.id === victimId ? 96 : 78,
+        createdAtMonth: fact.atMonth,
+        lastRecalledAtMonth: fact.atMonth,
+        personIds: [...new Set([actor.id, victimId])],
+        sourceEventIds: [fact.id],
+      });
+    }
+  }
+  const personTransfer = fact.action.kind === 'transfer' && fact.action.from.kind === 'person' ? fact.action : undefined;
+  if (personTransfer) {
+    const transfer = personTransfer;
+    const transferFrom = transfer.from;
+    const transferTo = transfer.to;
+    if (transferFrom.kind !== 'person') return;
+    const sourceOwnerId = transferFrom.personId;
+    const sourceOwner = state.people.find((person) => person.id === sourceOwnerId);
+    const receiverId = transferTo.kind === 'person' ? transferTo.personId : undefined;
+    const receiver = receiverId ? state.people.find((person) => person.id === receiverId) : undefined;
+    const unauthorized = fact.diff.authorized === false;
+    const observerIds = Array.isArray(fact.diff.witnessedBy) ? fact.diff.witnessedBy.filter((id): id is string => typeof id === 'string') : [];
+    const participantIds = unauthorized ? [sourceOwner?.id, receiver?.id, ...observerIds] : [receiver?.id];
+    for (const observerId of new Set(participantIds.filter((id): id is string => Boolean(id)))) {
+      const observer = state.people.find((person) => person.id === observerId);
+      if (!observer || observer.id === actor.id) continue;
+      remember(observer, {
+        id: `memory:${fact.id}:${observer.id}`,
+        kind: 'episode',
+        summary: unauthorized
+          ? `${actor.name}未经允许试图从${sourceOwner?.name ?? '他人'}处取得物质：${fact.result}`
+          : `${actor.name}把物质转交给自己：${fact.result}`,
+        importance: unauthorized ? (observer.id === sourceOwner?.id ? 94 : 76) : 72,
+        createdAtMonth: fact.atMonth,
+        lastRecalledAtMonth: fact.atMonth,
+        personIds: [...new Set([actor.id, ...(sourceOwner ? [sourceOwner.id] : []), ...(receiver ? [receiver.id] : [])])],
+        sourceEventIds: [fact.id],
+      });
+    }
+  }
+  if (fact.action.kind === 'act' && typeof fact.diff.caredPersonId === 'string') {
+    const cared = state.people.find((person) => person.id === fact.diff.caredPersonId);
+    if (cared && cared.id !== actor.id) remember(cared, {
+      id: `memory:${fact.id}:${cared.id}`,
+      kind: 'episode',
+      summary: `${actor.name}使用具体材料照护了自己的伤病`,
+      importance: 84,
+      createdAtMonth: fact.atMonth,
+      lastRecalledAtMonth: fact.atMonth,
+      personIds: [actor.id],
+      sourceEventIds: [fact.id],
+    });
+  }
   if (fact.action.kind !== 'communicate') return;
   const content = fact.action.content;
   const commitment = content.kind === 'request' || content.kind === 'offer' || content.kind === 'accept';

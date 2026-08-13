@@ -5,3 +5,4 @@
  * 其他层只依赖本文件，避免 HTTP、UI 或模型供应商反向渗入领域代码。
  */
 export * from './application/monthly-simulation';
+export { seededFraction } from './world/generator';

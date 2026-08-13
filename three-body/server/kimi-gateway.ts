@@ -41,6 +41,7 @@ async function requestKimiDecision(
   provider: ModelProvider,
   context: DecisionRequestContext,
   correction?: { invalidContent: string; problem: string },
+  conciseRetry = false,
 ): Promise<{ content: string; usage: TokenUsage }> {
   const config = modelConfiguration(provider);
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }];
@@ -56,6 +57,10 @@ async function requestKimiDecision(
       ].join('\n'),
     },
   );
+  if (conciseRetry) messages.push({
+    role: 'user',
+    content: '上一轮内部推理耗尽额度且没有最终 JSON。不要展开长推理；直接比较合法选项并在 300 字以内输出一个最终 JSON 对象。',
+  });
   const response = await fetch(config.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
@@ -119,8 +124,18 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
 async function decideOne(context: DecisionRequestContext, apiKey: string, provider: ModelProvider): Promise<{ decision: Decision | null; usage: TokenUsage }> {
   let correction: { invalidContent: string; problem: string } | undefined;
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const completion = await requestKimiDecision(apiKey, provider, context, correction);
+  let conciseRetry = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let completion: Awaited<ReturnType<typeof requestKimiDecision>>;
+    try {
+      completion = await requestKimiDecision(apiKey, provider, context, correction, conciseRetry);
+    } catch (error) {
+      if (!conciseRetry && error instanceof Error && error.message.includes('finish_reason=length')) {
+        conciseRetry = true;
+        continue;
+      }
+      throw error;
+    }
     usage = {
       inputTokens: usage.inputTokens + completion.usage.inputTokens,
       outputTokens: usage.outputTokens + completion.usage.outputTokens,

@@ -30,7 +30,7 @@ export function seededFraction(seed: number, key: string): number {
   value ^= value >>> 16;
   value = Math.imul(value, 0x7feb352d) >>> 0;
   value ^= value >>> 15;
-  return value / 0x100000000;
+  return (value >>> 0) / 0x100000000;
 }
 
 function smoothNoise(seed: number, x: number, y: number, scale: number): number {

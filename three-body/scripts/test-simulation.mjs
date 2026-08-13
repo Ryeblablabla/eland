@@ -12,7 +12,7 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/simulation.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${bundlePath}`,
   ], { stdio: 'pipe' });
-  const { buildDecisionContexts, createInitialState, createSimulation, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 13);
@@ -21,6 +21,7 @@ try {
   assert.equal(initial.world.grid.depth, 52);
   assert.equal(initial.world.grid.levels, 12);
   assert.equal(initial.world.grid.voxels.length, 84 * 52 * 12);
+  assert.ok(Array.from({ length: 1_000 }, (_, index) => seededFraction(31, `range:${index}`)).every((value) => value >= 0 && value < 1), '确定性随机采样必须始终位于 [0, 1)');
   assert.ok(initial.people.every((person) => Number.isInteger(person.position.cellId) && person.inventory.length > 0));
   assert.equal('agents' in initial, false, '权威状态不应保留旧 Agent 模型');
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
@@ -62,7 +63,7 @@ try {
   assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通只应形成带事件来源的熟悉度');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 180 }, chaosIntensity: 0 });
-  for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
+  for (let index = 0; index < 180 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');
   assert.ok(opportunities.length >= initial.people.length * 24, '在世人物每月应留下概率账本');
   assert.ok(opportunities.every((event) => event.probability > 0), '每个人每月关键决策概率必须非零');

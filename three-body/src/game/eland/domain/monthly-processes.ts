@@ -256,7 +256,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
-  for (const stack of person.inventory) addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [], `${person.id}-death`);
+  for (const stack of person.inventory) addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [], `${person.id}-death`, stack.recordPayloadId);
   person.inventory = [];
   const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
   if (intent) intent.status = 'failed';

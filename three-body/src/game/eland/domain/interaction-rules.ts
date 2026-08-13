@@ -12,6 +12,7 @@ export interface ExertionRule {
   inputMaterialId: MaterialId;
   targetMaterialId: MaterialId;
   outputMaterialId: MaterialId;
+  outputLocation: 'world' | 'inventory';
 }
 
 export interface ExposureRule {
@@ -46,6 +47,15 @@ const EXERTION_RULES: readonly ExertionRule[] = [
     inputMaterialId: Material.Fiber,
     targetMaterialId: Material.Air,
     outputMaterialId: Material.Fire,
+    outputLocation: 'world',
+  },
+  {
+    id: 'carve-record-tablet',
+    toolMaterialId: Material.StoneTool,
+    inputMaterialId: Material.Wood,
+    targetMaterialId: Material.Air,
+    outputMaterialId: Material.WoodTablet,
+    outputLocation: 'inventory',
   },
 ] as const;
 
@@ -94,7 +104,9 @@ export function exertionTechniqueId(rule: ExertionRule): string {
 }
 
 export function exertionTechniqueSummary(rule: ExertionRule): string {
-  return `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可使${materialDefinition(rule.targetMaterialId).name}转化为${materialDefinition(rule.outputMaterialId).name}`;
+  return rule.outputLocation === 'inventory'
+    ? `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可得到${materialDefinition(rule.outputMaterialId).name}`
+    : `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可使${materialDefinition(rule.targetMaterialId).name}转化为${materialDefinition(rule.outputMaterialId).name}`;
 }
 
 export function exposureRuleFor(inputMaterialId: MaterialId, targetMaterialId: MaterialId): ExposureRule | undefined {

@@ -97,6 +97,15 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     && Number(event.diff.outputMaterialId) === Material.Clothing);
   add(result, '19', '制作衣物', clothing, '人物把真实绳与纤维结合成私人持有的隔热衣物。');
 
+  const writtenRecords = completed.filter((event) => event.action.kind === 'communicate'
+    && event.action.channel === 'record'
+    && typeof event.diff.recordPayloadId === 'string');
+  const recordReading = completed.filter((event) => event.action.kind === 'attend'
+    && typeof event.diff.recordPayloadId === 'string'
+    && event.diff.understood === true
+    && writtenRecords.some((written) => written.who !== event.who && written.diff.recordPayloadId === event.diff.recordPayloadId));
+  add(result, '51', '创造文字', recordReading.length ? [...writtenRecords, ...recordReading] : [], '一人把有来源的知识写入实体载体，并通过对话建立共同编码；另一人取得并读懂同一载体。');
+
   const fireWarming = environment.filter((event) => event.change === 'condition'
     && event.diff.condition === 'cold'
     && event.diff.exited === true

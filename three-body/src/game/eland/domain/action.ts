@@ -40,7 +40,7 @@ export type PrimitiveAction =
   | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; toolStackId?: string }
   | { kind: 'attend'; target: WorldRef; instrumentStackId?: string }
-  | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record' };
+  | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record'; carrierStackId?: string };
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }

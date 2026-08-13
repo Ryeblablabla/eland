@@ -20,11 +20,12 @@ export interface ItemStack {
   materialId: MaterialId;
   quantity: number;
   sourceEventIds: string[];
+  recordPayloadId?: string;
 }
 
 export interface KnownFact {
   id: string;
-  kind: 'observation' | 'technique' | 'claim';
+  kind: 'observation' | 'technique' | 'claim' | 'codebook';
   summary: string;
   confidence: number;
   learnedAtMonth: number;

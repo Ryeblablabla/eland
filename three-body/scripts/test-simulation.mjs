@@ -36,6 +36,7 @@ try {
   assert.equal('agents' in initial, false, '权威状态不应保留旧 Agent 模型');
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
+  assert.deepEqual(initial.records, [], '开局不应凭空存在任何文字记录');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
   const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -196,9 +197,11 @@ try {
   assert.equal(breachState.agreements[0]?.status, 'breached', '超过履行期限的有效 Agreement 应明确违约');
 
   const birthState = createInitialState(312, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
-  const mother = birthState.people.find((person) => person.sex === 'female');
-  const father = birthState.people.find((person) => person.sex === 'male');
+  const mother = birthState.people.find((person) => person.sex === 'female') ?? birthState.people[0];
+  const father = birthState.people.find((person) => person.sex === 'male' && person.id !== mother?.id) ?? birthState.people.find((person) => person.id !== mother?.id);
   assert.ok(mother && father, '出生关系测试需要一名女性和一名男性');
+  mother.sex = 'female';
+  father.sex = 'male';
   mother.conditions.push({ id: 'test-due-pregnancy', kind: 'pregnancy', stage: 3, sinceMonth: -8, dueAtMonth: 1, otherPersonId: father.id, sourceEventIds: ['test-conception'] });
   const afterBirth = stepSimulation(birthState, { decide() { return { kind: 'idle', reason: '不干扰出生测试' }; } });
   const child = afterBirth.people.find((person) => person.generation > 0);
@@ -282,6 +285,7 @@ try {
 
   let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const harvester = harvestState.people[0];
+  harvester.bornAtMonth = -20 * 12;
   const harvestCell = harvester.position.cellId;
   const harvestX = harvestCell % harvestState.world.grid.width;
   const harvestY = Math.floor(harvestCell / harvestState.world.grid.width);
@@ -469,6 +473,64 @@ try {
   assert.ok((learnedBySpeech?.confidence ?? 100) < 55, '只听别人讲述不能直接获得可传授的可靠技术');
   assert.deepEqual(learnedBySpeech?.sourceEventIds.length, 1, '听者知识应来源于沟通事件，而不是伪装成亲历教师的实验');
 
+  let recordState = createInitialState(384, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const authorId = recordState.people[0].id;
+  const readerId = recordState.people[1].id;
+  for (const person of recordState.people.slice(0, 3)) person.bornAtMonth = -20 * 12;
+  recordState.people[1].position.cellId = recordState.people[0].position.cellId;
+  recordState.people[2].position.cellId = recordState.people[0].position.cellId;
+  recordState.people[0].inventory = [
+    { id: 'record-tool', materialId: 24, quantity: 1, sourceEventIds: [] },
+    { id: 'record-wood', materialId: 13, quantity: 1, sourceEventIds: [] },
+  ];
+  recordState.people[0].knowledge.push({ id: 'fact:record-test', kind: 'observation', summary: '北边水岸有可饮用的水', confidence: 78, learnedAtMonth: 0, sourceEventIds: ['test-independent-observation'] });
+  const runRecordOption = (state, ownerId, option, label) => {
+    const owner = state.people.find((person) => person.id === ownerId);
+    assert.ok(owner && option, label);
+    const intentId = `intent-${label}-${state.clock.elapsedMonths}`;
+    state.intents.push({
+      id: intentId, ownerId, summary: option.summary, domain: option.domain ?? 'strategic', goal: option.goal,
+      nextAction: option.nextAction, ...(option.completionAction ? { completionAction: option.completionAction } : {}),
+      ...(option.target ? { target: option.target } : {}), status: 'active', createdAtMonth: state.clock.elapsedMonths,
+      lastProgressAtMonth: state.clock.elapsedMonths, progress: 0, sourceDecisionEventId: `decision-${intentId}`,
+      sourceFactIds: option.sourceFactIds, actionEventIds: [], replanCount: 0,
+    });
+    owner.activeIntentId = intentId;
+    state.decisionBudget.credits = 0;
+    return stepSimulation(state, { decide() { return { kind: 'idle', reason: '不干扰记录链测试' }; } });
+  };
+  let recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
+  const carveOption = recordContext?.options.find((option) => option.id.startsWith('try-exert:') && option.nextAction.kind === 'act'
+    && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'record-wood'));
+  recordState = runRecordOption(recordState, authorId, carveOption, 'carve-record-tablet');
+  assert.equal(recordState.people.find((person) => person.id === authorId)?.inventory.find((stack) => stack.materialId === 27)?.quantity, 1, '石制工具对木材施力应产生私有实体记录板');
+
+  recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
+  const writeOption = recordContext?.options.find((option) => option.id.startsWith('write-record:'));
+  recordState = runRecordOption(recordState, authorId, writeOption, 'write-record');
+  const payload = recordState.records[0];
+  assert.ok(payload && recordState.people.find((person) => person.id === authorId)?.inventory.some((stack) => stack.recordPayloadId === payload.id), '刻写应把语义载荷绑定到一块可转移的实体木板');
+  const ignorant = recordState.people[2];
+  ignorant.inventory.push({ id: 'test-unknown-record-carrier', materialId: 27, quantity: 1, sourceEventIds: [payload.id], recordPayloadId: payload.id });
+  assert.equal(buildDecisionContexts(recordState).find((context) => context.person.id === ignorant.id)?.options.some((option) => option.id.startsWith('read-record:')), false, '没有共同编码的人不能天然读懂记录');
+  ignorant.inventory = ignorant.inventory.filter((stack) => stack.id !== 'test-unknown-record-carrier');
+
+  recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
+  const teachCodebookOption = recordContext?.options.find((option) => option.id.startsWith('teach:') && option.nextAction.kind === 'communicate' && option.nextAction.content.factId === payload.codebookId);
+  recordState = runRecordOption(recordState, authorId, teachCodebookOption, 'teach-record-codebook');
+  assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55), '作者必须先通过沟通与读者建立共同编码');
+
+  recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
+  const shareRecordOption = recordContext?.options.find((option) => option.id.startsWith(`share-record:${payload.id}:${readerId}`));
+  recordState = runRecordOption(recordState, authorId, shareRecordOption, 'transfer-record-carrier');
+  assert.ok(recordState.people.find((person) => person.id === readerId)?.inventory.some((stack) => stack.recordPayloadId === payload.id), '记录在转移持有者后必须保持同一语义身份');
+
+  const readerContext = buildDecisionContexts(recordState).find((context) => context.person.id === readerId);
+  const readOption = readerContext?.options.find((option) => option.id.startsWith('read-record:'));
+  recordState = runRecordOption(recordState, readerId, readOption, 'read-record');
+  assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)), '掌握编码的读者应从实体记录取得其中知识');
+  assert.ok(recordState.derived.milestones.some((milestone) => milestone.id === '51'), '刻写、教授编码、交付载体、异人读懂的完整事实链才能观察为创造文字');
+
   const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const experimenter = repeatedExperimentState.people[0];
   const techniqueId = 'technique:combine:22:3:11';
@@ -483,6 +545,7 @@ try {
   const responseState = createInitialState(39, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const offerer = responseState.people[0];
   const responder = responseState.people[2];
+  responder.bornAtMonth = -20 * 12;
   const separatedCell = responseState.people.find((person) => person.position.cellId !== offerer.position.cellId)?.position.cellId;
   assert.ok(Number.isInteger(separatedCell), '测试世界应有一个与报价者分开的可达出生格');
   responder.position.cellId = offerer.position.cellId;

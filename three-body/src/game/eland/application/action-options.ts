@@ -153,6 +153,7 @@ function nextFirePosition(state: SimulationState, person: PersonState): { x: num
 function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const visible = new Set(visibleCells);
+  const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
   const foodStack = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
   if (foodStack && person.body.nutrition < 88) options.push({
     id: `eat:${foodStack.id}`,
@@ -257,29 +258,91 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   }
 
   const stoneTool = person.inventory.find((stack) => stack.materialId === Material.StoneTool && stack.quantity > 0);
-  const tinder = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
-  const firePosition = stoneTool && tinder ? nextFirePosition(state, person) : null;
-  const fireRule = stoneTool && tinder ? exertionRuleFor(stoneTool.materialId, tinder.materialId, Material.Air) : undefined;
-  if (stoneTool && tinder && firePosition && fireRule) {
-    const techniqueId = exertionTechniqueId(fireRule);
-    const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  const exertPosition = stoneTool ? nextFirePosition(state, person) : null;
+  if (stoneTool && exertPosition) {
+    for (const input of person.inventory.filter((stack) => stack.quantity > 0 && stack.id !== stoneTool.id)) {
+      const rule = exertionRuleFor(stoneTool.materialId, input.materialId, Material.Air);
+      if (!rule) continue;
+      const techniqueId = exertionTechniqueId(rule);
+      const known = person.knowledge.find((fact) => fact.id === techniqueId);
+      options.push({
+        id: `${known ? 'repeat-exert' : 'try-exert'}:${stoneTool.id}:${input.id}:${exertPosition.x}:${exertPosition.y}:${exertPosition.z}`,
+        summary: known ? `尝试复现“${known.summary}”` : `尝试用石制工具向${materialDefinition(input.materialId).name}施力`,
+        reason: known ? '自己已有这项物质经验' : `手中的硬质工具与${materialDefinition(input.materialId).name}可以进行局部施力尝试，但结果未知`,
+        goal: known
+          ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
+          : { kind: 'knowledge', factId: `attempt:exert:${state.clock.elapsedMonths}:${person.id}:${input.id}` },
+        nextAction: {
+          kind: 'act', operation: 'exert', toolStackId: stoneTool.id,
+          targets: [
+            { kind: 'inventory-stack', personId: person.id, stackId: input.id },
+            { kind: 'voxel', position: exertPosition },
+          ],
+        },
+        target: { kind: 'voxel', position: exertPosition },
+        estimatedDuration: 'one-month',
+        sourceFactIds: [...new Set([...stoneTool.sourceEventIds, ...input.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
+      });
+    }
+  }
+
+  const readableRecord = person.inventory.find((stack) => {
+    if (!stack.recordPayloadId || stack.quantity <= 0) return false;
+    const payload = state.records.find((record) => record.id === stack.recordPayloadId);
+    return payload
+      && person.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55)
+      && !person.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id));
+  });
+  if (readableRecord) {
+    const payload = state.records.find((record) => record.id === readableRecord.recordPayloadId);
+    if (payload) options.push({
+      id: `read-record:${readableRecord.id}:${payload.id}`,
+      summary: '投入时间辨认木制记录板上的刻痕',
+      reason: '持有实体记录载体，并已从他人处学会这组刻痕的含义',
+      goal: { kind: 'knowledge', factId: payload.knowledgeId },
+      nextAction: { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: readableRecord.id } },
+      target: { kind: 'inventory-stack', personId: person.id, stackId: readableRecord.id },
+      estimatedDuration: 'one-month', sourceFactIds: [payload.id, ...readableRecord.sourceEventIds],
+    });
+  }
+
+  const blankRecord = person.inventory.find((stack) => stack.materialId === Material.WoodTablet && !stack.recordPayloadId && stack.quantity > 0);
+  const recordableKnowledge = person.knowledge
+    .filter((fact) => fact.kind !== 'codebook'
+      && fact.confidence >= 55
+      && !state.records.some((record) => record.authorId === person.id && record.knowledgeId === fact.id))
+    .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id))[0];
+  if (blankRecord && recordableKnowledge) {
+    const representationId = `write-record:${state.clock.elapsedMonths}:${person.id}:${recordableKnowledge.id}`;
     options.push({
-      id: `${known ? 'repeat-exert' : 'try-exert'}:${stoneTool.id}:${tinder.id}:${firePosition.x}:${firePosition.y}:${firePosition.z}`,
-      summary: known ? `尝试复现“${known.summary}”` : '尝试用石制工具向纤维施力',
-      reason: known ? '自己已有这项物质经验' : '手中的硬质工具与纤维可以进行局部施力尝试，但结果未知',
-      goal: known
-        ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
-        : { kind: 'knowledge', factId: `attempt:exert:${state.clock.elapsedMonths}:${person.id}` },
-      nextAction: {
-        kind: 'act', operation: 'exert', toolStackId: stoneTool.id,
-        targets: [
-          { kind: 'inventory-stack', personId: person.id, stackId: tinder.id },
-          { kind: 'voxel', position: firePosition },
-        ],
-      },
-      target: { kind: 'voxel', position: firePosition },
-      estimatedDuration: 'one-month',
-      sourceFactIds: [...new Set([...stoneTool.sourceEventIds, ...tinder.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
+      id: representationId,
+      summary: `把已核验知识刻写到木制记录板`,
+      reason: '持有空白实体载体，可以让个人知识在记忆之外持续存在',
+      goal: { kind: 'representation-made', representationId },
+      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: recordableKnowledge.summary, factId: recordableKnowledge.id }, audience: [], channel: 'record', carrierStackId: blankRecord.id },
+      target: { kind: 'inventory-stack', personId: person.id, stackId: blankRecord.id },
+      estimatedDuration: 'one-month', sourceFactIds: [...recordableKnowledge.sourceEventIds, ...blankRecord.sourceEventIds],
+      domain: 'strategic',
+    });
+  }
+
+  const shareableRecord = person.inventory.flatMap((stack) => {
+    if (!stack.recordPayloadId || stack.quantity <= 0) return [];
+    const payload = state.records.find((record) => record.id === stack.recordPayloadId);
+    const reader = payload && localPeople.find((other) => other.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55)
+      && !other.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)));
+    return payload && reader ? [{ stack, payload, reader }] : [];
+  })[0];
+  if (shareableRecord) {
+    const { stack, payload, reader } = shareableRecord;
+    options.push({
+      id: `share-record:${payload.id}:${reader.id}`,
+      summary: `把记录板交给${reader.name}阅读`,
+      reason: `${reader.name}已经学会这组刻痕的含义，但还没有读过这块实体载体`,
+      goal: { kind: 'inventory-at-least', materialId: Material.WoodTablet, quantity: inventoryQuantity(reader, Material.WoodTablet) + 1, personId: reader.id },
+      nextAction: { kind: 'transfer', materialId: Material.WoodTablet, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: reader.id }, stackId: stack.id },
+      target: { kind: 'person', personId: reader.id }, estimatedDuration: 'one-month',
+      sourceFactIds: [payload.id, ...stack.sourceEventIds], domain: 'social',
     });
   }
 
@@ -465,7 +528,6 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: [...fiber.sourceEventIds, ...injured.conditions.flatMap((condition) => condition.sourceEventIds)],
   });
 
-  const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
   const incomingOffer = openReproductionOfferFor(state, person.id);
   if (incomingOffer) {
     const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
@@ -610,15 +672,17 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
-  const teachable = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence >= 55 && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id)));
-  const learner = teachable ? localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id)) : undefined;
+  const teachable = person.knowledge.find((fact) => (fact.kind === 'technique' || fact.kind === 'codebook')
+    && fact.confidence >= 55
+    && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)));
+  const learner = teachable ? localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55)) : undefined;
   if (teachable && learner && person.driveBias.affiliation >= 45) {
     const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
     options.push({
       id: representationId,
-      summary: `向${learner.name}表达一项已知技术`,
-      reason: '自己掌握的物质操作尚未被身边人知道',
-      goal: { kind: 'knowledge', factId: teachable.id, personId: learner.id },
+      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : `向${learner.name}表达一项已知技术`,
+      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : '自己掌握的物质操作尚未被身边人知道',
+      goal: { kind: 'knowledge', factId: teachable.id, minConfidence: 55, personId: learner.id },
       nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' },
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
@@ -629,6 +693,8 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
     const source = state.world.past.find((event) => event.id === sourceId);
     if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
+    const outputStackId = typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
+    if (outputStackId && person.inventory.some((stack) => stack.id === outputStackId && stack.materialId === Number(source.diff.outputMaterialId))) return true;
     const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
     if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return false;
     const cell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
@@ -710,6 +776,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
   const followUpOptions = allOptions.filter((option) => option.nextAction.kind !== 'communicate');
   const options = allOptions
     .map((option) => option.nextAction.kind === 'communicate'
+      && option.nextAction.channel !== 'record'
       && option.nextAction.content.kind !== 'accept'
       && option.nextAction.content.kind !== 'reject'
       ? { ...option, requiresFollowUp: true }

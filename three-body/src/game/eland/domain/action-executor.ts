@@ -38,14 +38,15 @@ export function addInventory(
   quantity: number,
   sourceEventIds: string[],
   stackId = `stack-${person.id}-${materialId}`,
+  recordPayloadId?: string,
 ): ItemStack {
-  const existing = person.inventory.find((stack) => stack.materialId === materialId);
+  const existing = person.inventory.find((stack) => stack.materialId === materialId && stack.recordPayloadId === recordPayloadId);
   if (existing) {
     existing.quantity += quantity;
     existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
     return existing;
   }
-  const stack = { id: stackId, materialId, quantity, sourceEventIds: [...sourceEventIds] };
+  const stack = { id: stackId, materialId, quantity, sourceEventIds: [...sourceEventIds], ...(recordPayloadId ? { recordPayloadId } : {}) };
   person.inventory.push(stack);
   return stack;
 }
@@ -58,14 +59,15 @@ export function addDrop(
   atMonth: number,
   sourceEventIds: string[],
   idHint: string,
+  recordPayloadId?: string,
 ): DropState {
-  const existing = state.world.drops.find((drop) => drop.cellId === cell && drop.materialId === materialId && drop.quantity > 0);
+  const existing = state.world.drops.find((drop) => drop.cellId === cell && drop.materialId === materialId && drop.recordPayloadId === recordPayloadId && drop.quantity > 0);
   if (existing) {
     existing.quantity += quantity;
     existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
     return existing;
   }
-  const drop: DropState = { id: `drop-${atMonth}-${idHint}-${state.world.drops.length}`, materialId, cellId: cell, quantity, createdAtMonth: atMonth, sourceEventIds: [...sourceEventIds] };
+  const drop: DropState = { id: `drop-${atMonth}-${idHint}-${state.world.drops.length}`, materialId, cellId: cell, quantity, createdAtMonth: atMonth, sourceEventIds: [...sourceEventIds], ...(recordPayloadId ? { recordPayloadId } : {}) };
   state.world.drops.push(drop);
   return drop;
 }
@@ -202,7 +204,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     const receiverId = action.to.personId;
     const receiver = state.people.find((candidate) => candidate.id === receiverId);
     if (!receiver || receiver.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
-    addInventory(receiver, action.materialId, quantity, [eventId], `stack-${receiver.id}-${action.materialId}-${atMonth}`);
+    addInventory(receiver, action.materialId, quantity, [eventId], `stack-${receiver.id}-${action.materialId}-${atMonth}`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId);
     if (receiver.id !== person.id && !referencedAgreement) {
       const relation = receiver.relations.find((item) => item.personId === person.id);
       if (relation) {
@@ -210,13 +212,13 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       }
     }
   } else {
-    addDrop(state, action.materialId, quantity, action.to.cellId, atMonth, [eventId], `${person.id}-put`);
+    addDrop(state, action.materialId, quantity, action.to.cellId, atMonth, [eventId], `${person.id}-put`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId);
   }
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   return {
     status: 'completed' as const,
     result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
-    diff: { materialId: action.materialId, quantity, authorized, from: action.from, to: action.to, witnessedBy },
+    diff: { materialId: action.materialId, quantity, authorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
   };
 }
 
@@ -431,7 +433,10 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
     if (!rule) return { status: 'blocked' as const, result: '这些物质当前没有可发生的施力响应', diff: { toolMaterialId: tool.materialId, inputMaterialId: stack.materialId, targetMaterialId } };
     stack.quantity -= 1;
     removeEmptyStacks(person);
-    setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, rule.outputMaterialId);
+    const outputStack = rule.outputLocation === 'inventory'
+      ? addInventory(person, rule.outputMaterialId, 1, [eventId], `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`)
+      : undefined;
+    if (rule.outputLocation === 'world') setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, rule.outputMaterialId);
     const techniqueId = exertionTechniqueId(rule);
     const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
     if (knownTechnique) {
@@ -453,6 +458,8 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
         inputMaterialId: stack.materialId,
         targetMaterialId,
         outputMaterialId: rule.outputMaterialId,
+        outputLocation: rule.outputLocation,
+        ...(outputStack ? { outputStackId: outputStack.id } : {}),
         position: voxelRef.position,
         sourceEventId: eventId,
       },
@@ -550,11 +557,33 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
     const attendedStackId = action.target.stackId;
     const stack = person.inventory.find((candidate) => candidate.id === attendedStackId);
     if (!stack) return { status: 'blocked' as const, result: '观察对象已经不在背包中', diff: {} };
+    const record = stack.recordPayloadId ? state.records.find((candidate) => candidate.id === stack.recordPayloadId) : undefined;
+    if (record) {
+      const codebook = person.knowledge.find((fact) => fact.id === record.codebookId && fact.kind === 'codebook' && fact.confidence >= 55);
+      if (!codebook) return {
+        status: 'completed' as const,
+        result: '看见木制记录板上的规则刻痕，但还不知道这些符号表示什么',
+        diff: { recordPayloadId: record.id, understood: false },
+      };
+      const known = person.knowledge.find((fact) => fact.id === record.knowledgeId);
+      if (known) {
+        known.confidence = known.kind === 'technique' ? Math.min(54, known.confidence + 8) : clamp(known.confidence + 8);
+        known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId, record.id])].slice(-24);
+      } else person.knowledge.push({
+        id: record.knowledgeId,
+        kind: record.kind === 'technique' ? 'technique' : 'claim',
+        summary: record.summary,
+        confidence: record.kind === 'technique' ? 46 : 52,
+        learnedAtMonth: atMonth,
+        sourceEventIds: [record.id, eventId],
+      });
+      return { status: 'completed' as const, result: `阅读木制记录板：${record.summary}`, diff: { recordPayloadId: record.id, learnedFactId: record.knowledgeId, understood: true } };
+    }
     const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
       const source = state.world.past.find((event) => event.id === sourceId);
       return source?.kind === 'action'
         && source.action.kind === 'act'
-        && (source.action.operation === 'combine' || source.action.operation === 'expose')
+        && (source.action.operation === 'combine' || source.action.operation === 'exert' || source.action.operation === 'expose')
         && source.diff.outputStackId === stack.id
         && Number(source.diff.outputMaterialId) === stack.materialId;
     }));
@@ -597,6 +626,47 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
 }
 
 function executeCommunicate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'communicate' }>, atMonth: number, eventId: string) {
+  if (action.channel === 'record') {
+    const stack = action.carrierStackId ? person.inventory.find((candidate) => candidate.id === action.carrierStackId && candidate.quantity > 0) : undefined;
+    if (!stack || !materialHas(stack.materialId, 'recordable') || stack.recordPayloadId) return { status: 'blocked' as const, result: '没有可写且尚未承载内容的记录材料', diff: {} };
+    if (action.content.kind !== 'claim' || !action.content.factId) return { status: 'blocked' as const, result: '当前只能把有来源的知识陈述写入记录', diff: {} };
+    const knowledgeId = action.content.factId;
+    const knowledge = person.knowledge.find((fact) => fact.id === knowledgeId);
+    if (!knowledge) return { status: 'blocked' as const, result: '本人并不知道要记录的内容', diff: {} };
+    if (knowledge.kind === 'codebook') return { status: 'blocked' as const, result: '编码约定不能作为自己的记录内容再次刻写', diff: {} };
+    const priorVersion = state.records.filter((record) => record.knowledgeId === knowledge.id && record.authorId === person.id).reduce((max, record) => Math.max(max, record.version), 0);
+    const codebookId = `codebook:record:${person.id}:${knowledge.id}`;
+    const payload = {
+      id: `record:${atMonth}:${person.id}:${state.records.length}`,
+      authorId: person.id,
+      knowledgeId: knowledge.id,
+      codebookId,
+      kind: knowledge.kind,
+      summary: knowledge.summary,
+      version: priorVersion + 1,
+      createdAtMonth: atMonth,
+      sourceEventIds: [...new Set([...knowledge.sourceEventIds, eventId])],
+    };
+    state.records.push(payload);
+    const knownCodebook = person.knowledge.find((fact) => fact.id === codebookId);
+    if (knownCodebook) {
+      knownCodebook.confidence = clamp(knownCodebook.confidence + 16);
+      knownCodebook.sourceEventIds = [...new Set([...knownCodebook.sourceEventIds, eventId, payload.id])].slice(-24);
+    } else person.knowledge.push({
+      id: codebookId,
+      kind: 'codebook',
+      summary: `这组刻痕表示“${knowledge.summary}”`,
+      confidence: 100,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId, payload.id],
+    });
+    let carrier = stack;
+    if (stack.quantity > 1) {
+      stack.quantity -= 1;
+      carrier = addInventory(person, stack.materialId, 1, [eventId], `stack-${person.id}-${stack.materialId}-${atMonth}-record-${state.records.length}`, payload.id);
+    } else stack.recordPayloadId = payload.id;
+    return { status: 'completed' as const, result: `${person.name}把“${knowledge.summary}”刻写到木制记录板`, diff: { recordPayloadId: payload.id, carrierStackId: carrier.id, knowledgeId: knowledge.id, version: payload.version } };
+  }
   const reached = state.people.filter((candidate) => action.audience.includes(candidate.id) && candidate.position.cellId === person.position.cellId);
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
   const content = action.content;
@@ -607,13 +677,17 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
         const known = listener.knowledge.find((fact) => fact.id === content.factId);
         if (known) {
           const nextConfidence = known.confidence + 6;
-          known.confidence = speakerKnowledge.kind === 'technique' ? Math.min(54, nextConfidence) : clamp(nextConfidence);
+          known.confidence = speakerKnowledge.kind === 'technique'
+            ? Math.min(54, nextConfidence)
+            : speakerKnowledge.kind === 'codebook'
+              ? clamp(known.confidence + 18)
+              : clamp(nextConfidence);
           known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
         } else listener.knowledge.push({
           id: content.factId,
-          kind: speakerKnowledge.kind === 'technique' ? 'technique' : 'claim',
+          kind: speakerKnowledge.kind,
           summary: speakerKnowledge.summary,
-          confidence: speakerKnowledge.kind === 'technique' ? 46 : 36,
+          confidence: speakerKnowledge.kind === 'technique' ? 46 : speakerKnowledge.kind === 'codebook' ? 60 : 36,
           learnedAtMonth: atMonth,
           sourceEventIds: [eventId],
         });

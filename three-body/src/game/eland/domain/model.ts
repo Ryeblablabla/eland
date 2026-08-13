@@ -4,6 +4,7 @@ import type { MaterialId } from './material';
 import type { PersonId, PersonState } from './person';
 import type { VoxelWorld } from '../world/grid';
 import type { Agreement } from './agreement';
+import type { RecordPayload } from './record';
 
 export * from './action';
 export * from './material';
@@ -28,6 +29,7 @@ export interface DropState {
   quantity: number;
   createdAtMonth: number;
   sourceEventIds: string[];
+  recordPayloadId?: string;
 }
 
 export interface DecisionContext {
@@ -164,6 +166,7 @@ export interface SimulationState {
   people: PersonState[];
   intents: Intent[];
   agreements: Agreement[];
+  records: RecordPayload[];
   civilization: {
     number: number;
     status: 'running' | 'ended';

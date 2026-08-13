@@ -150,6 +150,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     people,
     intents: [],
     agreements: [],
+    records: [],
     civilization: {
       number: config.civilizationNo,
       status: 'running',
@@ -824,6 +825,7 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
 export function migrateSimulationState(input: SimulationState): SimulationState {
   if (Number((input as { schemaVersion?: number }).schemaVersion) !== 14) throw new Error('schemaVersion 13 及更早存档不支持继续演化；请建立新的协议事实文明');
   const state = structuredClone(input);
+  state.records ??= [];
   state.world.grid = hydrateWorld(input.world.grid);
   for (const person of state.people) {
     const start = person.position.previousCellId ?? person.position.cellId;

@@ -321,6 +321,32 @@ try {
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '17'), '真实产生火体素后才能观察为掌控火种');
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '59'), '重复生火也应构成实验检验的证据链');
 
+  const teachingState = createInitialState(383, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const teacher = teachingState.people[0];
+  const learner = teachingState.people[1];
+  learner.position.cellId = teacher.position.cellId;
+  const taughtTechniqueId = 'technique:combine:22:3:11';
+  const canonicalTechniqueSummary = '种子与湿土可结合为作物幼苗';
+  teacher.knowledge.push({ id: taughtTechniqueId, kind: 'technique', summary: canonicalTechniqueSummary, confidence: 80, learnedAtMonth: 0, sourceEventIds: ['teacher-trial'] });
+  const teachingIntentId = 'intent-test-canonical-teaching';
+  teachingState.intents.push({
+    id: teachingIntentId, ownerId: teacher.id, summary: '向同伴说明技术', domain: 'social',
+    goal: { kind: 'representation-made', representationId: 'test-teaching-claim' },
+    nextAction: { kind: 'communicate', content: { id: 'test-teaching-claim', kind: 'claim', factId: taughtTechniqueId, summary: '我这就过去演示一遍，你看着。' }, audience: [learner.id], channel: 'voice' },
+    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'decision-test-teaching',
+    sourceFactIds: ['teacher-trial'], actionEventIds: [], replanCount: 0,
+  });
+  teacher.activeIntentId = teachingIntentId;
+  teachingState.decisionBudget.credits = 0;
+  const taughtState = await stepSimulationAsync(teachingState, {
+    async decideAll() { throw new Error('固定技术交流不应额外调用模型'); },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  const learnedBySpeech = taughtState.people.find((person) => person.id === learner.id)?.knowledge.find((fact) => fact.id === taughtTechniqueId);
+  assert.equal(learnedBySpeech?.summary, canonicalTechniqueSummary, '自然语言说法不能覆盖结构化技术事实的规范摘要');
+  assert.ok((learnedBySpeech?.confidence ?? 100) < 55, '只听别人讲述不能直接获得可传授的可靠技术');
+  assert.deepEqual(learnedBySpeech?.sourceEventIds.length, 1, '听者知识应来源于沟通事件，而不是伪装成亲历教师的实验');
+
   const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const experimenter = repeatedExperimentState.people[0];
   const techniqueId = 'technique:combine:22:3:11';

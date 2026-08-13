@@ -539,19 +539,22 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
   const content = action.content;
   if (content.kind === 'claim' && content.factId) {
     const speakerKnowledge = person.knowledge.find((fact) => fact.id === content.factId);
-    for (const listener of reached) {
-      const known = listener.knowledge.find((fact) => fact.id === content.factId);
-      if (known) {
-        known.confidence = clamp(known.confidence + 6);
-        known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
-      } else listener.knowledge.push({
-        id: content.factId,
-        kind: content.factId.startsWith('technique:') ? 'technique' : 'claim',
-        summary: content.summary,
-        confidence: content.factId.startsWith('technique:') ? 46 : 36,
-        learnedAtMonth: atMonth,
-        sourceEventIds: [...new Set([...(speakerKnowledge?.sourceEventIds ?? []), eventId])].slice(-24),
-      });
+    if (speakerKnowledge) {
+      for (const listener of reached) {
+        const known = listener.knowledge.find((fact) => fact.id === content.factId);
+        if (known) {
+          const nextConfidence = known.confidence + 6;
+          known.confidence = speakerKnowledge.kind === 'technique' ? Math.min(54, nextConfidence) : clamp(nextConfidence);
+          known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
+        } else listener.knowledge.push({
+          id: content.factId,
+          kind: speakerKnowledge.kind === 'technique' ? 'technique' : 'claim',
+          summary: speakerKnowledge.summary,
+          confidence: speakerKnowledge.kind === 'technique' ? 46 : 36,
+          learnedAtMonth: atMonth,
+          sourceEventIds: [eventId],
+        });
+      }
     }
   }
   for (const listener of reached) {
@@ -559,7 +562,16 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     applyRelationEvidence(listener, person.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
     applyRelationEvidence(person, listener.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
   }
-  return { status: 'completed' as const, result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`, diff: { audience: reached.map((item) => item.id), content: action.content } };
+  const assertedKnowledge = content.kind === 'claim' && content.factId ? person.knowledge.find((fact) => fact.id === content.factId) : undefined;
+  return {
+    status: 'completed' as const,
+    result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`,
+    diff: {
+      audience: reached.map((item) => item.id),
+      content: action.content,
+      ...(assertedKnowledge ? { assertedFactId: assertedKnowledge.id, assertedFactSourceEventIds: assertedKnowledge.sourceEventIds } : {}),
+    },
+  };
 }
 
 export function executeIntentAction(

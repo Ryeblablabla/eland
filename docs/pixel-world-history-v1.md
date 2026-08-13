@@ -1,6 +1,6 @@
 # Eland 像素世界历史与回放 v1
 
-状态：设计冻结，尚未实现  
+状态：月度事件、帧、快照、模型账本与进程内非破坏分支已实现；持久化稀疏补丁仍待实现
 前置：[像素世界模型](./pixel-world-model-v1.md) · [月度时间模型](./monthly-time-model-v1.md) · [空间行动契约](./spatial-action-contract-v1.md)
 
 ## 1. 目标

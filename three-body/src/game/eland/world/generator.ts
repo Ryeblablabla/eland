@@ -70,11 +70,13 @@ export function generatePixelWorld(seed: number): { world: PixelWorld; resources
   }
 
   let riverX = 10 + Math.floor(seededFraction(seed, "river-start") * 5);
+  let riverAtSpawnLatitude = riverX;
   for (let y = 0; y < WORLD_HEIGHT; y += 1) {
     const turn = seededFraction(seed, `river-turn:${y}`);
     if (turn < 0.3) riverX -= 1;
     else if (turn > 0.7) riverX += 1;
     riverX = Math.max(5, Math.min(18, riverX));
+    if (y === 27) riverAtSpawnLatitude = riverX;
     for (let dx = 0; dx < 2; dx += 1) {
       const id = cellId(riverX + dx, y);
       cells.terrainKind[id] = TerrainKind.Waterbed;
@@ -151,7 +153,8 @@ export function generatePixelWorld(seed: number): { world: PixelWorld; resources
     }
   }
 
-  const centerX = 42;
+  // 人物从河岸附近开始，但没有任何“地点”概念；这只是生成器给出的可生存出生格。
+  const centerX = Math.min(WORLD_WIDTH - 3, riverAtSpawnLatitude + 4);
   const centerY = 27;
   const spawnCells: number[] = [];
   for (let radius = 0; radius < 18 && spawnCells.length < 16; radius += 1) {
@@ -163,6 +166,24 @@ export function generatePixelWorld(seed: number): { world: PixelWorld; resources
       }
     }
   }
+
+  const nearby = new Set(spawnCells.slice(0, 16));
+  const ensureStarterResource = (kind: "wood" | "berries", quantity: number): void => {
+    if (resources.some((resource) => resource.kind === kind && nearby.has(resource.cellId))) return;
+    const target = spawnCells.find((id, index) => index > 4 && !resources.some((resource) => resource.cellId === id)) ?? spawnCells[0];
+    resources.push({
+      id: `starter-${kind}-${target}`,
+      kind,
+      name: kind === "wood" ? "河岸倒木" : "河岸野果",
+      cellId: target,
+      quantity,
+      unitMass: kind === "wood" ? 1 : 0.2,
+      composition: kind === "wood" ? { wood: 1 } : { biomass: 1 },
+      traits: kind === "wood" ? ["raw", "rigid", "building", "fuel"] : ["raw", "edible", "botanical"],
+    });
+  };
+  ensureStarterResource("wood", 9);
+  ensureStarterResource("berries", 7);
 
   const world: PixelWorld = {
     version: 1,

@@ -55,8 +55,8 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
   if (route === 'model' && method === 'POST') return { status: 200, body: { model: session.setModel(body.model) } };
   if (route === 'step' && method === 'POST') return { status: 200, body: await session.step({ skySample: skySample(body.skySample), fast: body.fast === true }) };
   if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, fast: false, model: session.model(), frame: session.latest() } };
-  if (route === 'history' && method === 'GET') return { status: 200, body: { civilizationId: session.latest()?.civilizationId ?? 0, history: session.historyList() } };
-  if (route === 'frame' && method === 'GET') return { status: 200, body: session.frameAt(finite(url.searchParams.get('year'), 0)) };
-  if (route === 'seek' && method === 'POST') return { status: 200, body: session.seek(finite(body.year, 0)) };
+  if (route === 'history' && method === 'GET') return { status: 200, body: { civilizationId: session.latest()?.civilizationId ?? 0, history: session.historyList(), branches: session.branchList() } };
+  if (route === 'frame' && method === 'GET') return { status: 200, body: session.frameAt(finite(url.searchParams.get('month'), 0)) };
+  if (route === 'seek' && method === 'POST') return { status: 200, body: session.seek(finite(body.month, 0)) };
   return { status: 404, body: { error: `未知路由 ${route}` } };
 }

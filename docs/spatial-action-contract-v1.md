@@ -1,6 +1,6 @@
 # Eland 空间行动契约 v1
 
-状态：设计冻结，尚未实现  
+状态：移动、饮水、采集、恢复和建造的受限可供性已实现；其他社会行动待按网格语义迁回
 前置：[像素世界模型](./pixel-world-model-v1.md) · [月度时间模型](./monthly-time-model-v1.md)  
 后续：[历史与回放](./pixel-world-history-v1.md) · [硬切换方案](./pixel-world-migration-v1.md)
 

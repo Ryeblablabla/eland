@@ -114,7 +114,7 @@ export function createTraceLayers(): TraceLayers {
 
 function asTyped<T extends Uint8Array | Uint16Array | Int16Array>(
   value: unknown,
-  Type: { new(values: ArrayLike<number>): T },
+  Type: { new(length: number): T; new(values: ArrayLike<number>): T },
 ): T {
   if (value instanceof Type) return new Type(value);
   if (Array.isArray(value)) return new Type(value);

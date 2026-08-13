@@ -1,6 +1,6 @@
 # three-body 像素世界硬切换方案 v1
 
-状态：设计冻结，下一步按阶段实现  
+状态：阶段一、阶段二纵向切片已落地；阶段三社会能力迁回与增量历史仍待后续迭代
 依据：[像素世界模型](./pixel-world-model-v1.md) · [月度时间模型](./monthly-time-model-v1.md) · [空间行动契约](./spatial-action-contract-v1.md) · [历史与回放](./pixel-world-history-v1.md)
 
 ## 1. 决策
@@ -210,7 +210,7 @@ schemaVersion 10 存档不迁移、不续演。像素世界以 schemaVersion 11 
 - 阶段二加入 component/structure patch。
 - 阶段三加入 EmergentRegion observation delta。
 - 全链稳定后，把 ElandSession 的完整月快照改成每 240 月检查点加月度补丁。
-- `seek` 最终创建新分支，不再删除原未来。
+- `seek` 已创建新分支并保留原未来；后续把进程内分支历史持久化为检查点与月度补丁。
 
 不存在 schemaVersion 10 → 11 的空间迁移步骤。
 

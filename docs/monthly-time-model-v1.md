@@ -1,6 +1,6 @@
 # Eland 月度时间模型 v1
 
-状态：设计冻结，尚未实现  
+状态：核心纵向切片已实现（schema 11、月度时钟、概率决策、长期计划、滚动模型预算）
 范围：three-body 人间世界的时间、决策触发、长期行动和播放节奏  
 关联：[像素世界模型](./pixel-world-model-v1.md) · [空间行动契约](./spatial-action-contract-v1.md) · [历史与回放](./pixel-world-history-v1.md) · [硬切换方案](./pixel-world-migration-v1.md)
 

@@ -4,14 +4,13 @@ export interface CharacterProfile {
   id: string;
   name: string;
   color: string;
-  ageYears: number;
   description: string;
 }
 
 // ---------------------------------------------------------------------------
 // 引擎抽人池 = 59 人档案库（src/data/characters.ts）。
 // 档案描述由特质 + 外貌生成，供开局时推导马斯洛五层人格；
-// 颜色与初始年龄由档案 id 哈希确定性给出。
+// 颜色由档案 id 哈希确定性给出；权威年龄由人口领域直接以月生成。
 // ---------------------------------------------------------------------------
 
 function archiveHash(key: string): number {
@@ -30,7 +29,6 @@ function archiveToProfile(entry: ArchiveCharacter): CharacterProfile {
     id: entry.id,
     name: entry.name,
     color: `hsl(${hash % 360}, ${24 + ((hash >>> 4) % 12)}%, ${36 + ((hash >>> 9) % 12)}%)`,
-    ageYears: 10 + (hash % 21), // 先民初始年龄 10~30 岁，年轻时开局避免过早凋零
     description: `${entry.traits} ${entry.appearance}`,
   };
 }

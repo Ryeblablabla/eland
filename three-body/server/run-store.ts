@@ -14,7 +14,7 @@ export interface RunSummary {
   createdAt: string;
   updatedAt: string;
   revision: number;
-  tick: number;
+  elapsedMonths: number;
   civilizationNo: number;
   status: SimulationState["civilization"]["status"];
   livingAgents: number;
@@ -56,12 +56,12 @@ function summaryFor(
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     revision: previous ? previous.revision + 1 : 1,
-    tick: state.tick,
+    elapsedMonths: state.clock.elapsedMonths,
     civilizationNo: state.civilization.number,
     status: state.civilization.status,
     livingAgents: state.agents.filter((agent) => agent.body.state !== "dead").length,
     agentCount: state.agents.length,
-    eventCount: state.world.time.past.length,
+    eventCount: state.world.past.length,
     milestoneCount: state.derived.milestones.length,
   };
 }
@@ -147,4 +147,3 @@ export class FileRunStore {
     return { meta, state };
   }
 }
-

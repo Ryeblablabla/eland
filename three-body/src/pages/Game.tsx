@@ -38,10 +38,15 @@ function toChineseNum(n: number): string {
   return String(n);
 }
 
+function monthLabel(elapsedMonths: number): string {
+  if (elapsedMonths <= 0) return '第 1 年 · 1 月 · 月初';
+  return `第 ${Math.floor((elapsedMonths - 1) / 12) + 1} 年 · ${(elapsedMonths - 1) % 12 + 1} 月`;
+}
+
 interface ChronicleEntry {
   id: number;
   civ: number;
-  year: number;
+  month: number;
   text: string;
   tone: 'plain' | 'good' | 'bad' | 'era';
 }
@@ -50,7 +55,7 @@ let entrySeq = 0;
 
 type ViewMode = 'cosmos' | 'society';
 
-const TU_PER_YEAR = 0.8;
+const TU_PER_MONTH = 0.8 / 12;
 const SETTLEMENT_MIN_MS = 6500;
 
 // ---------------------------------------------------------------------------
@@ -60,9 +65,8 @@ const SETTLEMENT_MIN_MS = 6500;
 interface Settlement {
   fate: 'burned' | 'frozen' | 'extinct' | 'depopulated';
   civ: number;
-  years: number;
+  months: number;
   eras: number;
-  hitRate: string;
 }
 
 const COLLAPSE_TEXT = {
@@ -103,11 +107,9 @@ function SettlementOverlay({ s, entries, onContinue }: { s: Settlement; entries:
       <div className="mt-4 text-sm tracking-[0.5em] text-rose-300/80">{COLLAPSE_TEXT[s.fate]}</div>
 
       <div className="mt-8 flex items-center gap-8 text-[11px] tracking-[0.3em] text-slate-500">
-        <span>历时 <span className="text-slate-300">{s.years}</span> 年</span>
+        <span>历时 <span className="text-slate-300">{s.months}</span> 月</span>
         <span className="text-slate-700">|</span>
         <span>改元 <span className="text-slate-300">{s.eras}</span> 次</span>
-        <span className="text-slate-700">|</span>
-        <span>预言命中率 <span className="text-slate-300">{s.hitRate}</span></span>
       </div>
 
       <div className="mt-3 h-px w-72 bg-gradient-to-r from-transparent via-slate-500/40 to-transparent" />
@@ -119,7 +121,7 @@ function SettlementOverlay({ s, entries, onContinue }: { s: Settlement; entries:
                  animation: 'rise-in 0.7s ease-out',
                  color: e.tone === 'good' ? '#a7f3d0' : e.tone === 'bad' ? '#fda4af' : e.tone === 'era' ? '#fde68a' : '#7d8aa0',
                }}>
-            <span className="mr-3 text-[10px] text-slate-600">第{e.year}年</span>
+            <span className="mr-3 text-[10px] text-slate-600">{e.month === 0 ? '月初' : `第${e.month}月`}</span>
             {e.text}
           </div>
         ))}
@@ -156,7 +158,7 @@ export default function Game() {
   const [speaker, setSpeaker] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('cosmos');
   const [showHistory, setShowHistory] = useState(false);
-  const [year, setYear] = useState(0);
+  const [elapsedMonths, setElapsedMonths] = useState(0);
   const [eraKey, setEraKey] = useState<EraKey>('stable');
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [respawnToken, setRespawnToken] = useState(0);
@@ -164,8 +166,8 @@ export default function Game() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停，省 token）
   const [thinking, setThinking] = useState(false);
-  const [replayTick, setReplayTick] = useState<number | null>(null); // 回放模式
-  const [historyList, setHistoryList] = useState<{ year: number; summary: string }[]>([]);
+  const [replayMonth, setReplayMonth] = useState<number | null>(null); // 回放模式
+  const [historyList, setHistoryList] = useState<{ month: number; label: string; summary: string }[]>([]);
   const [modelProvider, setModelProvider] = useState<ModelProvider>(DEFAULT_MODEL_PROVIDER);
   const [showArchive, setShowArchive] = useState(false);
   const [roster, setRoster] = useState<string[]>([]); // 指定开局阵容（档案 id）；空 = 随机抽取
@@ -176,10 +178,10 @@ export default function Game() {
   });
   const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eraKeyRef = useRef<EraKey>('stable');
-  const yearRef = useRef(0);
+  const monthRef = useRef(0);
   const clockPaused = useRef(false);
   const settlementRef = useRef(false);
-  const civStats = useRef({ startYear: 0, eras: 0, hits: 0, total: 0 });
+  const civStats = useRef({ startMonth: 0, eras: 0 });
   const modelProviderRef = useRef<ModelProvider>(DEFAULT_MODEL_PROVIDER);
   const rosterRef = useRef<string[]>([]);
   const runIdRef = useRef(`threebody-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
@@ -207,8 +209,8 @@ export default function Game() {
     return sample;
   }, []);
 
-  const pushEntry = useCallback((civ: number, yr: number, text: string, tone: ChronicleEntry['tone'] = 'plain') => {
-    setChronicle((c) => [...c.slice(-1199), { id: entrySeq++, civ, year: yr, text, tone }]);
+  const pushEntry = useCallback((civ: number, month: number, text: string, tone: ChronicleEntry['tone'] = 'plain') => {
+    setChronicle((c) => [...c.slice(-1199), { id: entrySeq++, civ, month, text, tone }]);
   }, []);
 
   const flash = useCallback((era: EraKey) => {
@@ -219,16 +221,12 @@ export default function Game() {
 
   /** 应用后端来的一帧（新纪年） */
   const applyFrame = useCallback((frame: Frame) => {
-    yearRef.current = frame.civilizationYear;
-    setYear(frame.civilizationYear);
+    monthRef.current = frame.elapsedMonths;
+    setElapsedMonths(frame.elapsedMonths);
     setSociety(frame.society);
     setSpeaker(frame.speaker);
     for (const e of frame.entries) {
-      if (e.kind === 'prediction') {
-        civStats.current.total += 1;
-        if (e.tone === 'good') civStats.current.hits += 1;
-      }
-      pushEntry(frame.civilizationId, frame.civilizationYear, e.text, e.tone);
+      pushEntry(frame.civilizationId, frame.elapsedMonths, e.text, e.tone);
     }
 
     const populationExtinct = frame.society.agents.length > 0
@@ -241,9 +239,8 @@ export default function Game() {
       setSettlement({
         fate: 'depopulated',
         civ: frame.civilizationId,
-        years: frame.civilizationYear - cs.startYear,
+        months: frame.elapsedMonths - cs.startMonth,
         eras: cs.eras,
-        hitRate: cs.total > 0 ? `${Math.round((100 * cs.hits) / cs.total)}%` : '—',
       });
     }
   }, [pushEntry]);
@@ -255,8 +252,8 @@ export default function Game() {
     void elandClient.begin(runIdRef.current, civNo, sky, modelProviderRef.current, picked.length > 0 ? picked : undefined).then((frame) => {
       applyFrame(frame);
       setSelectedAgentId(null);
-      setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_YEAR);
-      pushEntry(civNo, frame.civilizationYear, `第 ${toChineseNum(civNo)} 号文明在自然地表上开始，${frame.society.agents.length} 位先民登场`, 'era');
+      setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
+      pushEntry(civNo, frame.elapsedMonths, `第 ${toChineseNum(civNo)} 号文明在自然地表上开始，${frame.society.agents.length} 位先民登场`, 'era');
     }).catch(() => undefined);
   }, [applyFrame, pushEntry, sampleSky]);
 
@@ -280,16 +277,16 @@ export default function Game() {
   /** 以当前阵容从第一号文明重开宇宙 */
   const restartWithRoster = useCallback(() => {
     setShowArchive(false);
-    setReplayTick(null);
+    setReplayMonth(null);
     setSettlement(null);
     settlementRef.current = false;
     clockPaused.current = false;
-    yearRef.current = 0;
-    setYear(0);
+    monthRef.current = 0;
+    setElapsedMonths(0);
     setChronicle([]);
     eraMachine.current = { era: null, candidate: null, sinceT: 0 };
     prev.current = { civ: 1 };
-    civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+    civStats.current = { startMonth: 0, eras: 0 };
     startCivilization(1);
     setUniverseToken((t) => t + 1);
   }, [startCivilization]);
@@ -312,7 +309,7 @@ export default function Game() {
       setStats(s);
       const p = prev.current;
       const em = eraMachine.current;
-      const yr = yearRef.current;
+      const month = monthRef.current;
 
       // 文明崩塌 → 停后端演化，冻结时钟，弹结算幕
       if (s.collapsed && !settlementRef.current) {
@@ -323,9 +320,8 @@ export default function Game() {
         setSettlement({
           fate: s.collapsed,
           civ: s.civilizations,
-          years: yr,
+          months: month,
           eras: cs.eras,
-          hitRate: cs.total > 0 ? `${Math.round((100 * cs.hits) / cs.total)}%` : '—',
         });
         return;
       }
@@ -333,7 +329,7 @@ export default function Game() {
       // 文明更替 → 后端启动新文明
       if (s.civilizations !== p.civ) {
         if (s.civilizations > p.civ) startCivilization(s.civilizations);
-        civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+        civStats.current = { startMonth: 0, eras: 0 };
         p.civ = s.civilizations;
       }
 
@@ -381,9 +377,9 @@ export default function Game() {
     try {
       const sky = sampleSky();
       const frame = await elandClient.step(runIdRef.current, sky);
-      if (frame && frame.civilizationId === (statsRef.current?.civilizations ?? frame.civilizationId) && frame.civilizationYear > yearRef.current) {
+      if (frame && frame.civilizationId === (statsRef.current?.civilizations ?? frame.civilizationId) && frame.elapsedMonths > monthRef.current) {
         applyFrame(frame);
-        setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_YEAR);
+        setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
       }
     } catch { /* 后端暂不可达时静默 */ } finally {
       setThinking(false);
@@ -391,10 +387,10 @@ export default function Game() {
   }, [thinking, applyFrame, sampleSky]);
 
   useEffect(() => {
-    if (!entered || !playing || replayTick !== null) return;
+    if (!entered || !playing || replayMonth !== null) return;
     const timer = setInterval(() => { void stepOnce(); }, 5000);
     return () => clearInterval(timer);
-  }, [entered, playing, replayTick, stepOnce]);
+  }, [entered, playing, replayMonth, stepOnce]);
 
   const togglePlay = useCallback(() => {
     const next = !playing;
@@ -406,34 +402,34 @@ export default function Game() {
       if (history.length === 0) return;
       setHistoryList(history);
       setPlaying(false);
-      setReplayTick(history[0].year);
+      setReplayMonth(history[0].month);
       const frame = history[0];
-      void elandClient.frameAt(runIdRef.current, frame.year).then((f) => f && setSociety(f.society));
+      void elandClient.frameAt(runIdRef.current, frame.month).then((f) => f && setSociety(f.society));
     }).catch(() => undefined);
   }, []);
 
-  const seekReplay = useCallback((tick: number) => {
-    setReplayTick(tick);
-    void elandClient.frameAt(runIdRef.current, tick).then((f) => f && setSociety(f.society));
+  const seekReplay = useCallback((month: number) => {
+    setReplayMonth(month);
+    void elandClient.frameAt(runIdRef.current, month).then((f) => f && setSociety(f.society));
   }, []);
 
   const exitReplay = useCallback(() => {
-    setReplayTick(null);
+    setReplayMonth(null);
     void elandClient.state(runIdRef.current).then(({ frame }) => {
-      if (frame) { setSociety(frame.society); yearRef.current = frame.civilizationYear; setYear(frame.civilizationYear); }
+      if (frame) { setSociety(frame.society); monthRef.current = frame.elapsedMonths; setElapsedMonths(frame.elapsedMonths); }
     }).catch(() => undefined);
   }, []);
 
-  const reEvolveFrom = useCallback((tick: number) => {
-    void elandClient.seek(runIdRef.current, tick).then((frame) => {
+  const reEvolveFrom = useCallback((month: number) => {
+    void elandClient.seek(runIdRef.current, month).then((frame) => {
       if (!frame) return;
-      // 截断本地史册中该年之后的本文明记录
-      setChronicle((c) => c.filter((e) => !(e.civ === frame.civilizationId && e.year > tick)));
-      yearRef.current = tick;
-      setYear(tick);
+      // 截断本地史册中该月之后的本文明记录
+      setChronicle((c) => c.filter((e) => !(e.civ === frame.civilizationId && e.month > month)));
+      monthRef.current = month;
+      setElapsedMonths(month);
       setSociety(frame.society);
-      setReplayTick(null);
-      pushEntry(frame.civilizationId, tick, `—— 时光回溯至第 ${tick} 年，演化从此分岔 ——`, 'era');
+      setReplayMonth(null);
+      pushEntry(frame.civilizationId, month, `—— 时光回溯至第 ${month} 月，演化从此分岔 ——`, 'era');
     }).catch(() => undefined);
   }, [pushEntry]);
 
@@ -444,12 +440,12 @@ export default function Game() {
     settlementRef.current = false;
     clockPaused.current = false;
     if (isExtinct) {
-      yearRef.current = 0;
-      setYear(0);
+      monthRef.current = 0;
+      setElapsedMonths(0);
       setChronicle([]);
       eraMachine.current = { era: null, candidate: null, sinceT: 0 };
       prev.current = { civ: 1 };
-      civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+      civStats.current = { startMonth: 0, eras: 0 };
       startCivilization(1);
       setUniverseToken((t) => t + 1);
     } else {
@@ -501,7 +497,7 @@ export default function Game() {
           presetKey="chaos"
           resetToken={universeToken}
           targetT={universeTarget}
-          skyMode={view === 'society' || replayTick !== null ? 'frozen' : 'follow'}
+          skyMode={view === 'society' || replayMonth !== null ? 'frozen' : 'follow'}
           collapseHold
           respawnToken={respawnToken}
           onStats={onStats}
@@ -551,7 +547,7 @@ export default function Game() {
         </div>
         <div className="mt-3 h-px w-40 bg-gradient-to-r from-slate-400/40 to-transparent" />
         <div className="mt-3 flex items-baseline gap-4 text-xs tracking-[0.3em] text-slate-400">
-          <span>第 {year} 年</span>
+          <span>{monthLabel(elapsedMonths)}</span>
           {thinking && <span className="animate-pulse text-slate-500">推演中…</span>}
           {!announce && <span className={era.cls}>{era.big}</span>}
           {society && (
@@ -614,7 +610,7 @@ export default function Game() {
                   e.tone === 'era' ? '#fde68a' : '#94a3b8',
               }}
             >
-              <span className="mr-3 text-[11px] text-slate-600">第{e.year}年</span>
+              <span className="mr-3 text-[11px] text-slate-600">{e.month === 0 ? '月初' : `第${e.month}月`}</span>
               {e.text}
             </div>
           ))}
@@ -633,7 +629,7 @@ export default function Game() {
             {[...chronicle].reverse().map((e) => (
               <div key={e.id} className="text-[12px] leading-relaxed tracking-wider"
                 style={{ color: e.tone === 'good' ? '#a7f3d0' : e.tone === 'bad' ? '#fda4af' : e.tone === 'era' ? '#fde68a' : '#94a3b8' }}>
-                <span className="mr-2 text-[10px] text-slate-600">文明{toChineseNum(e.civ)} · 第{e.year}年</span>
+                <span className="mr-2 text-[10px] text-slate-600">文明{toChineseNum(e.civ)} · {e.month === 0 ? '月初' : `第${e.month}月`}</span>
                 {e.text}
               </div>
             ))}
@@ -642,8 +638,11 @@ export default function Game() {
       )}
 
       {/* 底部中央：视角 / 史册 / 演化控制 */}
-      {entered && replayTick === null && (
-        <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-8 text-[11px] tracking-[0.4em] text-slate-500">
+      {entered && replayMonth === null && (
+        <div
+          className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4 whitespace-nowrap text-[11px] tracking-[0.32em] text-slate-500"
+          style={view === 'society' ? { left: '39%' } : undefined}
+        >
           <button onClick={() => setView(view === 'cosmos' ? 'society' : 'cosmos')} className="transition-colors hover:text-amber-200">
             {view === 'cosmos' ? '俯 瞰 · 人 间 ↓' : '仰 望 · 宇 宙 ↑'}
           </button>
@@ -660,7 +659,7 @@ export default function Game() {
             {playing ? '暂 停 ‖' : '演 化 ▶'}
           </button>
           <span className="text-slate-700">·</span>
-          <div className="flex items-center gap-2 tracking-[0.18em]" title="选择年度社会决策模型">
+          <div className="flex items-center gap-2 tracking-[0.18em]" title="选择关键决策模型；额度按人物月累计">
             <span className="text-slate-600">AI</span>
             {MODEL_OPTIONS.map((option) => (
               <button
@@ -688,19 +687,19 @@ export default function Game() {
       )}
 
       {/* 回放控制条（纯记录回放，零 LLM 消耗） */}
-      {replayTick !== null && (
+      {replayMonth !== null && (
         <div className="absolute bottom-5 left-1/2 z-30 flex w-[560px] -translate-x-1/2 items-center gap-4 rounded-full border border-white/10 bg-slate-950/80 px-6 py-3 backdrop-blur-md">
-          <span className="whitespace-nowrap text-[10px] tracking-[0.3em] text-amber-200/80">回放 · 第 {replayTick} 年</span>
+          <span className="whitespace-nowrap text-[10px] tracking-[0.3em] text-amber-200/80">回放 · 第 {replayMonth} 月</span>
           <input
             type="range"
-            min={historyList[0]?.year ?? 0}
-            max={historyList.at(-1)?.year ?? 0}
-            value={replayTick}
+            min={historyList[0]?.month ?? 0}
+            max={historyList.at(-1)?.month ?? 0}
+            value={replayMonth}
             onChange={(e) => seekReplay(Number(e.target.value))}
             className="h-1 flex-1 cursor-pointer appearance-none rounded bg-white/10 accent-amber-300"
           />
-          <button onClick={() => reEvolveFrom(replayTick)} className="whitespace-nowrap text-[10px] tracking-[0.2em] text-slate-400 transition-colors hover:text-amber-200">
-            从此年重新演化
+          <button onClick={() => reEvolveFrom(replayMonth)} className="whitespace-nowrap text-[10px] tracking-[0.2em] text-slate-400 transition-colors hover:text-amber-200">
+            从此月重新演化
           </button>
           <button onClick={exitReplay} className="whitespace-nowrap text-[10px] tracking-[0.2em] text-slate-500 transition-colors hover:text-slate-300">
             退出 ✕

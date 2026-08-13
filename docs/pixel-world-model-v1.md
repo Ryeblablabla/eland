@@ -1,6 +1,6 @@
 # Eland 像素世界模型 v1
 
-状态：设计冻结，尚未实现  
+状态：核心纵向切片已实现（84×52 权威网格、格上资源、逐格路径与多格住所）
 范围：three-body 人间场景的权威空间模型  
 关联：[社会演进模型](./social-evolution-model-v0.md) · [月度时间模型](./monthly-time-model-v1.md) · [空间行动契约](./spatial-action-contract-v1.md) · [历史与回放](./pixel-world-history-v1.md) · [硬切换方案](./pixel-world-migration-v1.md)
 

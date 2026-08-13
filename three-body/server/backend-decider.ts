@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { buildDecisionRequestState } from "../src/game/eland/deepseek-decider";
+import { buildDecisionRequestContext } from "../src/game/eland/deepseek-decider";
 import { DEFAULT_MODEL_PROVIDER, normalizeModelProvider, type ModelProvider } from "../src/game/llm";
 import type { BatchDecider, Decision, DecisionContext } from "../src/game/eland/simulation";
 import { handleDecide } from "./deepseek-decide";
@@ -25,22 +25,26 @@ export async function loadDeepSeekKey(): Promise<string> {
 
 export function createServerLlmDecider(apiKey: string, requestedProvider: ModelProvider = DEFAULT_MODEL_PROVIDER): BatchDecider {
   const provider = normalizeModelProvider(requestedProvider);
+  let usage = { inputTokens: 0, outputTokens: 0 };
   return {
     async decideAll(contexts: DecisionContext[]): Promise<(Decision | null)[]> {
       const result = await handleDecide({
-        contexts: contexts.map((context) => ({
-          agentId: context.agent.id,
-          state: buildDecisionRequestState(context.state),
-        })),
+        contexts: contexts.map(buildDecisionRequestContext),
         model: provider,
       }, apiKey, provider);
       if (result.status !== 200) {
         const detail = result.body as { error?: string };
         throw new Error(detail?.error ?? `DeepSeek 决策失败（${result.status}）`);
       }
-      const body = result.body as { decisions?: (Decision | null)[] };
+      const body = result.body as { decisions?: (Decision | null)[]; usage?: typeof usage };
       if (!Array.isArray(body.decisions)) throw new Error("DeepSeek 决策返回格式异常");
+      usage = body.usage ?? usage;
       return body.decisions;
+    },
+    takeUsage() {
+      const result = usage;
+      usage = { inputTokens: 0, outputTokens: 0 };
+      return result;
     },
   };
 }

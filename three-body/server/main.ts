@@ -88,7 +88,7 @@ function responseRun(run: PersistedRun, includeState = true): unknown {
 
 function positiveInteger(value: unknown, fallback: number): number {
   const number = Number(value ?? fallback);
-  if (!Number.isFinite(number) || number < 1) throw new HttpError(400, "years 必须是正整数");
+  if (!Number.isFinite(number) || number < 1) throw new HttpError(400, "months 必须是正整数");
   return Math.floor(number);
 }
 
@@ -122,7 +122,7 @@ async function createRun(bodyValue: unknown, imported: boolean): Promise<Persist
 
 async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
   const body = asObject(bodyValue);
-  const years = positiveInteger(body.years, 1);
+  const months = positiveInteger(body.months, 1);
   const mode = body.mode === "rules"
     ? "rules"
     : body.mode === "kimi" || body.model === "kimi"
@@ -137,15 +137,15 @@ async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
   return serialized(id, async () => {
     const current = await store.load(id);
     const controller = createSimulation({ state: current.state });
-    const startTick = current.state.tick;
+    const startMonth = current.state.clock.elapsedMonths;
     let state: SimulationState;
 
     if (mode !== "rules") {
       const apiKey = loadLlmKey(provider);
       if (!apiKey) throw new HttpError(503, `未配置 ${provider === "kimi" ? "KIMI_API_KEY" : "DEEPSEEK_API_KEY"}，无法使用 ${provider} 模式`);
-      state = await controller.stepAsync(createServerLlmDecider(apiKey, provider), years);
+      state = await controller.stepAsync(createServerLlmDecider(apiKey, provider), months);
     } else {
-      state = controller.step(years);
+      state = controller.step(months);
     }
 
     const saved = await store.save(id, state);
@@ -153,8 +153,8 @@ async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
       meta: saved.meta,
       mode,
       ...(mode !== "rules" ? { model: provider } : {}),
-      requestedYears: years,
-      advancedYears: state.tick - startTick,
+      requestedMonths: months,
+      advancedMonths: state.clock.elapsedMonths - startMonth,
       elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
       lastEvents: state.lastStep,
       outcome: state.civilization.outcome ?? null,

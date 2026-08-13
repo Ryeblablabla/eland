@@ -142,6 +142,24 @@ function upsertExposureCondition(
   }
 }
 
+function clearOppositeExposure(
+  state: SimulationState,
+  person: PersonState,
+  atMonth: number,
+  activeKind: 'cold' | 'heat',
+  events: EnvironmentFact[],
+): void {
+  const oppositeKind = activeKind === 'cold' ? 'heat' : 'cold';
+  const opposite = condition(state, person, oppositeKind);
+  if (!opposite) return;
+  person.conditions = person.conditions.filter((item) => item.id !== opposite.id);
+  event(state, atMonth, events, 'condition', `${person.name}的${oppositeKind === 'cold' ? '寒冷' : '炎热'}状态因相反热负荷而退出`, {
+    condition: oppositeKind,
+    exited: true,
+    counteredBy: activeKind,
+  }, person);
+}
+
 function recoverInjuries(state: SimulationState, person: PersonState, atMonth: number, sheltered: boolean, events: EnvironmentFact[]): void {
   for (const current of [...person.conditions]) {
     if (current.kind !== 'wound' && current.kind !== 'illness') continue;
@@ -288,6 +306,8 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const climate = state.civilization.climate;
     const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0) - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) : 0;
     const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0) + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) : 0;
+    if (coldLoad > 0) clearOppositeExposure(state, person, atMonth, 'cold', events);
+    else if (heatLoad > 0) clearOppositeExposure(state, person, atMonth, 'heat', events);
     upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, coldLoad <= 0 && (sheltered || fireProtected), fireProtected, events);
     upsertExposureCondition(state, person, atMonth, 'heat', heatLoad, heatLoad <= 0 && sheltered, false, events);
 

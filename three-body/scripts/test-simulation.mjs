@@ -113,6 +113,17 @@ try {
   const pressureOpportunity = afterPressure.world.past.find((event) => event.kind === 'decision-opportunity' && event.atMonth === 1 && event.who === pressured.id);
   assert.ok(pressureOpportunity?.triggered && pressureOpportunity.reasons.some((reason) => reason.includes('危险阶段')), '2–3 级暴露加重必须打断仍在推进的旧意图并触发关键重评估');
 
+  const thermalConflictState = createInitialState(318, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const thermallyExposed = thermalConflictState.people[0];
+  thermallyExposed.conditions.push({ id: 'test-prior-cold', kind: 'cold', stage: 3, sinceMonth: 0, sourceEventIds: ['test-prior-cold-source'] });
+  thermalConflictState.civilization.externalClimate = { epoch: 'stable', kind: 'heat', severity: 3 };
+  thermalConflictState.decisionBudget.credits = 0;
+  const afterThermalFlip = stepSimulation(thermalConflictState, { decide() { return { kind: 'idle', reason: '不干扰热暴露切换测试' }; } });
+  const thermallySettled = afterThermalFlip.people.find((person) => person.id === thermallyExposed.id);
+  assert.equal(thermallySettled?.conditions.some((condition) => condition.kind === 'cold'), false, '明确炎热负荷必须终止原寒冷状态，不能叠加两套相反消耗');
+  assert.ok(afterThermalFlip.world.past.some((event) => event.kind === 'environment' && event.who === thermallyExposed.id && event.diff.condition === 'cold' && event.diff.counteredBy === 'heat'), '冷热切换应留下可回放的状态退出事实');
+  assert.equal(thermallySettled?.conditions.some((condition) => condition.kind === 'cold') && thermallySettled.conditions.some((condition) => condition.kind === 'heat'), false, '同一人不得同时结算寒冷与炎热压力');
+
   const agreementState = createInitialState(31, { endpoint: { kind: 'months', value: 24 } });
   const requester = agreementState.people[0];
   const helper = agreementState.people[1];

@@ -180,47 +180,71 @@ function makeStarSurfaceTexture(coreHex: string, glowHex: string, seed: number):
   return tex;
 }
 
-/** 三体星表面：深海 / 浅海 / 低地 / 高地 / 极冠 + 横向云带 */
-function makePlanetTexture(seed: number): THREE.CanvasTexture {
+/** 三体星表面组：日间海陆（无云）+ 高光掩码（海面反光）+ 独立云层 */
+function makePlanetTextureSet(seed: number): {
+  day: THREE.CanvasTexture;
+  spec: THREE.CanvasTexture;
+  clouds: THREE.CanvasTexture;
+} {
   const W = 256, H = 128;
   const rng = mulberry32(seed);
   const grids = makeNoiseGrids([4, 8, 16, 32], rng);
   const cloudGrids = makeNoiseGrids([3, 6, 12], rng);
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const ctx = c.getContext('2d')!;
-  const img = ctx.createImageData(W, H);
+  const makeCanvas = () => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    return c;
+  };
+  const dayC = makeCanvas(), specC = makeCanvas(), cloudC = makeCanvas();
+  const dayCtx = dayC.getContext('2d')!;
+  const specCtx = specC.getContext('2d')!;
+  const cloudCtx = cloudC.getContext('2d')!;
+  const dayImg = dayCtx.createImageData(W, H);
+  const specImg = specCtx.createImageData(W, H);
+  const cloudImg = cloudCtx.createImageData(W, H);
   const deep = new THREE.Color('#0a2f3c');
   const shallow = new THREE.Color('#17606d');
   const landLow = new THREE.Color('#3d6b4c');
   const landHigh = new THREE.Color('#97875a');
   const ice = new THREE.Color('#ddf3ee');
-  const white = new THREE.Color('#ffffff');
   const tmp = new THREE.Color();
   for (let y = 0; y < H; y++) {
     const lat = Math.abs(y / H - 0.5) * 2; // 0 赤道 → 1 极
     for (let x = 0; x < W; x++) {
       const n = fbm(grids, x / W, y / H);
-      if (lat > 0.82 - n * 0.1) tmp.copy(ice);
+      const isIce = lat > 0.82 - n * 0.1;
+      const isWater = !isIce && n < 0.53;
+      if (isIce) tmp.copy(ice);
       else if (n < 0.47) tmp.copy(deep).lerp(shallow, Math.max(0, (n - 0.36) / 0.11));
       else if (n < 0.53) tmp.copy(shallow);
       else if (n < 0.62) tmp.copy(landLow).lerp(landHigh, (n - 0.53) / 0.09);
       else tmp.copy(landHigh);
-      // 云带：y 方向压缩采样形成横向条带，厚云处向白色混合
-      const cl = fbm(cloudGrids, x / W, (y / H) * 0.35);
-      if (cl > 0.58) tmp.lerp(white, Math.min((cl - 0.58) * 3.0, 0.5));
       const i = (y * W + x) * 4;
-      img.data[i] = Math.round(tmp.r * 255);
-      img.data[i + 1] = Math.round(tmp.g * 255);
-      img.data[i + 2] = Math.round(tmp.b * 255);
-      img.data[i + 3] = 255;
+      dayImg.data[i] = Math.round(tmp.r * 255);
+      dayImg.data[i + 1] = Math.round(tmp.g * 255);
+      dayImg.data[i + 2] = Math.round(tmp.b * 255);
+      dayImg.data[i + 3] = 255;
+      // 高光掩码：海面强反光，冰面弱反光，陆地几乎无
+      const sp = isWater ? 232 : isIce ? 74 : 18;
+      specImg.data[i] = specImg.data[i + 1] = specImg.data[i + 2] = sp;
+      specImg.data[i + 3] = 255;
+      // 云层：横向条带，独立成层（不烤进日间纹理）
+      const cl = fbm(cloudGrids, x / W, (y / H) * 0.35);
+      const ca = cl > 0.56 ? Math.min((cl - 0.56) * 3.4, 0.92) : 0;
+      cloudImg.data[i] = cloudImg.data[i + 1] = cloudImg.data[i + 2] = 255;
+      cloudImg.data[i + 3] = Math.round(ca * 255);
     }
   }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  dayCtx.putImageData(dayImg, 0, 0);
+  specCtx.putImageData(specImg, 0, 0);
+  cloudCtx.putImageData(cloudImg, 0, 0);
+  const toTex = (c: HTMLCanvasElement, srgb: boolean) => {
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  return { day: toTex(dayC, true), spec: toTex(specC, false), clouds: toTex(cloudC, true) };
 }
 
 interface DisposableObject {
@@ -437,26 +461,76 @@ export default function ThreeBodyCanvas(props: Props) {
       starGlows.push(glow);
     }
 
-    // ---- 行星：海陆云纹理球芯（轴倾 + 自转）+ 微光 ----
+    // ---- 行星：不发光，只反射星光（地球式：受光球芯 + 海面高光 + 独立云层 + 大气边缘光）----
+    const planetTex = makePlanetTextureSet(4242);
     const planetCore = new THREE.Mesh(
       new THREE.SphereGeometry(1, 28, 20),
-      new THREE.MeshBasicMaterial({
-        map: makePlanetTexture(4242),
-        color: new THREE.Color(1.15, 1.15, 1.15),
+      new THREE.MeshPhongMaterial({
+        map: planetTex.day,
+        specularMap: planetTex.spec, // 海面反射星光
+        specular: new THREE.Color('#7d99a6'),
+        shininess: 24,
       }),
     );
     planetCore.rotation.x = 0.15; // 轻微轴倾
     scene.add(planetCore);
-    const planetGlow = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: makeGlowTexture(PLANET_STYLE.glow),
+    // 独立云层：略大一圈、与地表差速自转
+    const planetClouds = new THREE.Mesh(
+      new THREE.SphereGeometry(1.035, 28, 20),
+      new THREE.MeshPhongMaterial({
+        map: planetTex.clouds,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+      }),
+    );
+    planetClouds.rotation.x = 0.15;
+    scene.add(planetClouds);
+    // 大气：菲涅尔 rim，只有轮廓一圈发亮（加法混合，不触发 bloom）
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(1.14, 32, 24),
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(PLANET_STYLE.glow) },
+          uPower: { value: 3.2 },
+        },
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vWorldPos;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vec4 wp = modelMatrix * vec4(position, 1.0);
+            vWorldPos = wp.xyz;
+            gl_Position = projectionMatrix * viewMatrix * wp;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uColor;
+          uniform float uPower;
+          varying vec3 vNormal;
+          varying vec3 vWorldPos;
+          void main() {
+            vec3 viewDir = normalize(cameraPosition - vWorldPos);
+            float rim = pow(1.0 - max(dot(viewDir, normalize(vNormal)), 0.0), uPower);
+            gl_FragColor = vec4(uColor * rim, rim);
+          }
+        `,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
     );
-    planetGlow.renderOrder = 2;
-    scene.add(planetGlow);
+    scene.add(atmosphere);
+
+    // ---- 恒星光照：方向实时从恒星指向行星，强度 ∝ 质量^3.5（主序星光度比）----
+    const starLights: THREE.DirectionalLight[] = [];
+    for (let i = 0; i < N_STARS; i++) {
+      const l = new THREE.DirectionalLight(STAR_STYLES[i].core, 1);
+      l.target = planetCore;
+      scene.add(l);
+      starLights.push(l);
+    }
+    scene.add(new THREE.AmbientLight('#16202e', 0.6)); // 极暗环境光：夜面不死黑
 
     // ---- 孪生系统恒星：空心小圈 ----
     const twinRings: THREE.Mesh[] = [];
@@ -714,14 +788,21 @@ export default function ThreeBodyCanvas(props: Props) {
           0.88 + 0.12 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
       }
 
-      // ---- 行星本体：海陆球芯（自转）+ 微光呼吸 ----
+      // ---- 行星本体：反射星光（自转 + 云层差速 + 大气边缘光）----
       planetCore.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0);
       planetCore.scale.setScalar(px2w(2.2));
       planetCore.rotation.y += 0.18 * frameDt;
-      planetGlow.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0.01);
-      const pg = px2w(22);
-      const pBreath = 1 + 0.04 * Math.sin(now * 0.0008 + 0.7);
-      planetGlow.scale.set(pg * pBreath, pg * pBreath, 1);
+      planetClouds.position.copy(planetCore.position);
+      planetClouds.scale.setScalar(px2w(2.2));
+      planetClouds.rotation.y += 0.23 * frameDt;
+      atmosphere.position.copy(planetCore.position);
+      atmosphere.scale.setScalar(px2w(2.2));
+      // 星光方向与亮度实时跟随：三日凌空时行星多向受光
+      const maxLum = Math.pow(Math.max(w.sys.masses[0], w.sys.masses[1], w.sys.masses[2]), 3.5);
+      for (let i = 0; i < N_STARS; i++) {
+        starLights[i].position.set(s[i * 2], s[i * 2 + 1], 0);
+        starLights[i].intensity = 2.4 * Math.pow(w.sys.masses[i], 3.5) / maxLum;
+      }
 
       composer.render();
     };

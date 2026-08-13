@@ -140,7 +140,7 @@ npm run backend:build
 
 ## 宇宙渲染（three.js）
 
-宇宙场景默认由 three.js（WebGL）渲染：恒星球芯 + 加法混合辉光、UnrealBloom 泛光、顶点色渐隐轨迹线、星野与星云背景、自适应取景相机（轻微俯视与漂移）。物理仍由 `src/lib/threebody.ts` 的 2D RK4 引擎驱动，`ThreeBodyCanvas` 的 props 契约与原 Canvas 2D 版完全一致，`skyMode: 'frozen'` 时只推进物理、跳过渲染。
+宇宙场景默认由 three.js（WebGL）渲染：恒星球芯 + 加法混合辉光、UnrealBloom 泛光（高阈值防过曝）、顶点色渐隐轨迹线、深空近黑底色与若隐若现的星云。相机为可交互 3D 视角：拖拽旋转、滚轮缩放（不平移），松手 4 秒后恢复自动取景（约 22° 俯视与缓慢漂移）。物理仍由 `src/lib/threebody.ts` 的 2D RK4 引擎驱动，`ThreeBodyCanvas` 的 props 契约与原 Canvas 2D 版完全一致，`skyMode: 'frozen'` 时只推进物理、跳过渲染。
 
 ## ELAND 播放会话限速
 

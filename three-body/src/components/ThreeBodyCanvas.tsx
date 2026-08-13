@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   DEFAULT_PRESET,
   N_BODIES,
@@ -177,11 +178,24 @@ export default function ThreeBodyCanvas(props: Props) {
       antialias: true,
       powerPreference: 'high-performance',
     });
-    renderer.setClearColor('#040610');
+    renderer.setClearColor('#02030a'); // 与 2D 版边缘底色一致，保持深空近黑
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
     camera.position.set(0, 0, 3);
+
+    // 可交互视角：拖拽旋转 / 滚轮缩放（不平移，永远围绕星系质心）
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.enablePan = false;
+    controls.rotateSpeed = 0.55;
+    controls.zoomSpeed = 0.8;
+    canvas.style.touchAction = 'none';
+    // 用户拖拽期间及松手后 4 秒内由用户接管，之后恢复自动取景
+    let manualUntil = 0;
+    controls.addEventListener('start', () => { manualUntil = Infinity; });
+    controls.addEventListener('end', () => { manualUntil = performance.now() + 4000; });
 
     // 后处理：MSAA 渲染目标 + 泛光 + 色彩输出
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
@@ -190,7 +204,8 @@ export default function ThreeBodyCanvas(props: Props) {
     });
     const composer = new EffectComposer(renderer, renderTarget);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.0, 0.55, 0.12);
+    // 泛光：阈值拉高到 0.55，只有真正高亮的星芯参与，避免辉光溢出洗亮背景
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.45, 0.55);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -226,8 +241,9 @@ export default function ThreeBodyCanvas(props: Props) {
       scene.add(s);
       nebulas.push(s);
     };
-    addNebula(-260, 200, 900, '#3850b4', 0.1);
-    addNebula(280, -230, 820, '#7832a0', 0.08);
+    // 星云：调暗调小，只作远处若隐若现的底色，不再洗亮整屏
+    addNebula(-260, 200, 720, '#2c3f8f', 0.05);
+    addNebula(280, -230, 660, '#5e2880', 0.04);
 
     const starfieldGeo = new THREE.BufferGeometry();
     {
@@ -502,16 +518,25 @@ export default function ThreeBodyCanvas(props: Props) {
       const targetR = Math.min(Math.max(maxRadiusFromCOM(w.sys) * 1.3, 1.7), 40);
       w.viewR += (targetR - w.viewR) * 0.03;
 
-      // ---- 相机：轻微俯视 + 极慢漂移，轨道平面近 XY ----
+      // ---- 相机：可交互视角 ----
+      // 手动模式（拖拽中及松手后 4 秒）：OrbitControls 全权接管；
+      // 自动模式：约 22° 俯视 + 缓慢漂移，保持 3D 纵深感
       const fit = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, W / H);
       const dist = w.viewR / fit;
-      const sway = now * 0.00005;
-      camera.position.set(
-        Math.sin(sway * 2.3) * dist * 0.025,
-        -dist * 0.22 + Math.cos(sway * 1.9) * dist * 0.018,
-        dist * 0.975,
-      );
-      camera.lookAt(0, 0, 0);
+      controls.minDistance = dist * 0.25;
+      controls.maxDistance = dist * 6;
+      if (now < manualUntil) {
+        controls.update();
+      } else {
+        const sway = now * 0.00005;
+        camera.position.set(
+          Math.sin(sway * 2.3) * dist * 0.04,
+          -dist * 0.38 + Math.cos(sway * 1.9) * dist * 0.03,
+          dist * 0.92,
+        );
+        controls.target.set(0, 0, 0);
+        controls.update();
+      }
 
       // 与原 2D 版相同的像素 ↔ 世界单位换算，保持星体在屏幕上等效大小
       const pxPerUnit = Math.min(W, H) / 2 / w.viewR;
@@ -546,7 +571,8 @@ export default function ThreeBodyCanvas(props: Props) {
         starCores[i].position.set(s[i * 2], s[i * 2 + 1], 0);
         starCores[i].scale.setScalar(px2w(2 + 1.8 * mr));
         starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0.01);
-        const glowSize = px2w(26 + 24 * mr);
+        // 辉光收敛（原 26+24·∛m 叠 bloom 会让 α A 白成一团）
+        const glowSize = px2w(16 + 13 * mr);
         starGlows[i].scale.set(glowSize, glowSize, 1);
       }
 
@@ -564,6 +590,7 @@ export default function ThreeBodyCanvas(props: Props) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      controls.dispose();
       disposeScene(scene, composer, renderer);
     };
   }, []);

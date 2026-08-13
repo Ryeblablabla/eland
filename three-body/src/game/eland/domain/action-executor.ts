@@ -8,6 +8,7 @@ import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
 import { agreementById, recordAgreementAction } from './agreement';
+import { inventoryCombinationFor, inventoryCombinationSummary, inventoryCombinationTechniqueId } from './interaction-rules';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -235,12 +236,14 @@ function executeIngest(state: SimulationState, person: PersonState, targets: Wor
   return { status: 'blocked' as const, result: '这个对象不能被摄入', diff: {} };
 }
 
-function executeSeparate(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
+function executeSeparate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+  const targets = action.targets;
   const target = targets[0];
   if (!target || target.kind !== 'voxel' || distanceToPosition(person, target.position) > 1) return { status: 'blocked' as const, result: '分离目标不在近身范围', diff: {} };
   const { x, y, z } = target.position;
   const materialId = voxelAt(state.world.grid, x, y, z);
   const output: Array<{ materialId: MaterialId; quantity: number }> = [];
+  const tool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.materialId === Material.StoneTool && stack.quantity > 0) : undefined;
   let replacement: MaterialId = Material.Air;
   if (materialId === Material.Leaves || materialId === Material.Wood) {
     setVoxel(state.world.grid, x, y, z, Material.Air);
@@ -249,7 +252,7 @@ function executeSeparate(state: SimulationState, person: PersonState, targets: W
       setVoxel(state.world.grid, x, y, below, Material.Air);
       break;
     }
-    output.push({ materialId: Material.Wood, quantity: 3 }, { materialId: Material.Fiber, quantity: 1 });
+    output.push({ materialId: Material.Wood, quantity: tool ? 5 : 3 }, { materialId: Material.Fiber, quantity: tool ? 2 : 1 });
   } else if (materialId === Material.CropMature) {
     replacement = Material.ExhaustedSoil;
     setVoxel(state.world.grid, x, y, z, replacement);
@@ -261,7 +264,7 @@ function executeSeparate(state: SimulationState, person: PersonState, targets: W
   } else if (materialId === Material.Shrub) {
     replacement = Material.Soil;
     setVoxel(state.world.grid, x, y, z, replacement);
-    output.push({ materialId: Material.Fiber, quantity: 2 });
+    output.push({ materialId: Material.Fiber, quantity: tool ? 3 : 2 });
   } else {
     return { status: 'blocked' as const, result: `${materialDefinition(materialId).name}目前无法徒手分离`, diff: { materialId } };
   }
@@ -269,14 +272,50 @@ function executeSeparate(state: SimulationState, person: PersonState, targets: W
   return {
     status: 'completed' as const,
     result: `从${materialDefinition(materialId).name}分离出${output.map((item) => `${materialDefinition(item.materialId).name} × ${item.quantity}`).join('、')}`,
-    diff: { sourceMaterialId: materialId, replacementMaterialId: replacement, outputs: output },
+    diff: { sourceMaterialId: materialId, replacementMaterialId: replacement, outputs: output, ...(tool ? { toolMaterialId: tool.materialId, toolStackId: tool.id } : {}) },
+  };
+}
+
+function executeInventoryCombine(person: PersonState, stackRefs: Extract<WorldRef, { kind: 'inventory-stack' }>[], atMonth: number, eventId: string) {
+  if (stackRefs.length < 2 || stackRefs.some((ref) => ref.personId !== person.id)) return null;
+  const requestedByStack = new Map<string, number>();
+  for (const ref of stackRefs) requestedByStack.set(ref.stackId, (requestedByStack.get(ref.stackId) ?? 0) + 1);
+  const stacks = stackRefs.map((ref) => person.inventory.find((stack) => stack.id === ref.stackId));
+  if (stacks.some((stack) => !stack)) return { status: 'blocked' as const, result: '背包中的结合材料已经不存在', diff: {} };
+  for (const [stackId, quantity] of requestedByStack) {
+    if ((person.inventory.find((stack) => stack.id === stackId)?.quantity ?? 0) < quantity) return { status: 'blocked' as const, result: '背包中的结合材料数量不足', diff: {} };
+  }
+  const materialIds = stacks.map((stack) => stack?.materialId ?? Material.Air);
+  const rule = inventoryCombinationFor(materialIds);
+  if (!rule) return { status: 'blocked' as const, result: '这些随身物质当前没有可发生的结合规则', diff: { inputMaterialIds: materialIds } };
+  for (const [stackId, quantity] of requestedByStack) {
+    const stack = person.inventory.find((candidate) => candidate.id === stackId);
+    if (stack) stack.quantity -= quantity;
+  }
+  removeEmptyStacks(person);
+  const outputStack = addInventory(person, rule.output.materialId, rule.output.quantity, [eventId], `stack-${person.id}-${rule.output.materialId}-${atMonth}`);
+  const techniqueId = inventoryCombinationTechniqueId(rule);
+  const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  if (known) {
+    known.confidence = clamp(known.confidence + 18);
+    known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
+  } else person.knowledge.push({ id: techniqueId, kind: 'technique', summary: inventoryCombinationSummary(rule), confidence: 46, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+  return {
+    status: 'completed' as const,
+    result: `${materialIds.map((id) => materialDefinition(id).name).join('与')}结合为${materialDefinition(rule.output.materialId).name}`,
+    diff: { inputMaterialIds: materialIds, outputMaterialId: rule.output.materialId, outputQuantity: rule.output.quantity, outputStackId: outputStack.id, sourceEventId: eventId },
   };
 }
 
 function executeCombine(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
-  const stackRef = targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const stackRefs = targets.filter((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const stackRef = stackRefs[0];
   const voxelRef = targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
   const personRef = targets.find((target): target is Extract<WorldRef, { kind: 'person' }> => target.kind === 'person');
+  if (!voxelRef && !personRef) {
+    const outcome = executeInventoryCombine(person, stackRefs, atMonth, eventId);
+    if (outcome) return outcome;
+  }
   if (stackRef && personRef && stackRef.personId === person.id) {
     const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
     const receiver = state.people.find((candidate) => candidate.id === personRef.personId && candidate.position.cellId === person.position.cellId);
@@ -371,7 +410,7 @@ function executeReproduce(state: SimulationState, person: PersonState, targets: 
 
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   if (action.operation === 'ingest') return executeIngest(state, person, action.targets);
-  if (action.operation === 'separate') return executeSeparate(state, person, action.targets, atMonth, eventId);
+  if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'exert') return executeExert(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
@@ -389,6 +428,26 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
   let factId = `target:${JSON.stringify(action.target)}`;
   let summary = '持续观察了一个对象';
+  if (action.target.kind === 'inventory-stack' && action.target.personId === person.id) {
+    const attendedStackId = action.target.stackId;
+    const stack = person.inventory.find((candidate) => candidate.id === attendedStackId);
+    if (!stack) return { status: 'blocked' as const, result: '观察对象已经不在背包中', diff: {} };
+    const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
+      const source = state.world.past.find((event) => event.id === sourceId);
+      return source?.kind === 'action'
+        && source.action.kind === 'act'
+        && source.action.operation === 'combine'
+        && source.diff.outputStackId === stack.id
+        && Number(source.diff.outputMaterialId) === stack.materialId;
+    }));
+    if (tentativeTechnique) {
+      tentativeTechnique.confidence = clamp(tentativeTechnique.confidence + 22);
+      tentativeTechnique.sourceEventIds = [...new Set([...tentativeTechnique.sourceEventIds, eventId])].slice(-24);
+      return { status: 'completed' as const, result: `核验了${tentativeTechnique.summary}`, diff: { factId: tentativeTechnique.id, verifiedTechnique: true } };
+    }
+    factId = `material:${stack.materialId}`;
+    summary = `观察并辨认了${materialDefinition(stack.materialId).name}`;
+  }
   if (action.target.kind === 'voxel') {
     const attendedPosition = action.target.position;
     const materialId = voxelAt(state.world.grid, attendedPosition.x, attendedPosition.y, attendedPosition.z);

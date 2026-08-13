@@ -205,6 +205,8 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('harvest:')) score += 66 - person.body.nutrition;
   if (option.id.startsWith('try-combine:')) score += person.driveBias.inquiryCreation * 0.3;
   if (option.id.startsWith('repeat-combine:')) score += 36 + person.driveBias.inquiryCreation * 0.08;
+  if (option.id.startsWith('try-inventory-combine:')) score += person.driveBias.inquiryCreation * 0.28;
+  if (option.id.startsWith('repeat-inventory-combine:')) score += 32 + person.driveBias.inquiryCreation * 0.08;
   if (option.id.startsWith('build:')) score += 22 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 28 : 0);
   if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
   if (option.id.startsWith('care:')) score += 48 + person.driveBias.affiliation * 0.4;
@@ -427,10 +429,10 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
       && fact.action.kind === 'communicate'
       && fact.action.content.id === intent.goal.representationId
       && fact.status === 'completed';
-    const probabilisticProcessCompleted = fact.status === 'completed'
+    const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
-      && fact.action.operation === 'reproduce';
-    if (representationCompleted || probabilisticProcessCompleted || goalSatisfied(state, person, intent.goal)) {
+      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine');
+    if (representationCompleted || processAttemptCompleted || goalSatisfied(state, person, intent.goal)) {
       intent.status = 'completed';
       intent.progress = 1;
       delete person.activeIntentId;

@@ -13,6 +13,7 @@ export type MaterialTag =
   | 'fuel'
   | 'building'
   | 'tool-material'
+  | 'tool'
   | 'flammable'
   | 'hot'
   | 'fertile'
@@ -55,6 +56,7 @@ export const Material = {
   Food: 21,
   Seed: 22,
   Rope: 23,
+  StoneTool: 24,
 } as const satisfies Record<string, MaterialId>;
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
@@ -82,6 +84,7 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.Food, key: 'food', name: '食物', phase: 'solid', tags: ['edible'], hardness: 1, mass: 0.2, color: [190, 76, 80], consume: { nutrition: 48, hydration: 4 } },
   { id: Material.Seed, key: 'seed', name: '种子', phase: 'solid', tags: ['seed'], hardness: 1, mass: 0.03, color: [163, 132, 68] },
   { id: Material.Rope, key: 'rope', name: '绳', phase: 'solid', tags: ['fiber', 'building', 'flammable'], hardness: 2, mass: 0.25, color: [167, 139, 91] },
+  { id: Material.StoneTool, key: 'stone_tool', name: '石制工具', phase: 'solid', tags: ['solid', 'tool'], hardness: 7, mass: 1.1, color: [122, 119, 109] },
 ];
 
 const BY_ID = new Map(MATERIAL_PALETTE.map((material) => [material.id, material]));
@@ -93,4 +96,3 @@ export function materialDefinition(id: MaterialId): MaterialDefinition {
 export function materialHas(id: MaterialId, tag: MaterialTag): boolean {
   return materialDefinition(id).tags.includes(tag);
 }
-

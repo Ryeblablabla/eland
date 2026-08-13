@@ -20,6 +20,7 @@ import {
 import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
+import { inventoryCombinationFor, inventoryCombinationTechniqueId } from '../domain/interaction-rules';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -150,7 +151,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         reason: '看见可以分离的树木物质',
         goal: { kind: 'inventory-at-least', materialId: Material.Wood, quantity: inventoryQuantity(person, Material.Wood) + 2 },
         nextAction: person.position.cellId === standCell
-          ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }] }
+          ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }], toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id }
           : { kind: 'move', toCellId: standCell },
         target: { kind: 'voxel', position },
         estimatedDuration: 'several-months',
@@ -168,6 +169,42 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       target: { kind: 'voxel', position },
       estimatedDuration: 'several-months',
       sourceFactIds: [],
+    });
+  }
+
+  const combinableMaterials = new Set<number>([Material.Fiber, Material.Wood, Material.Stone, Material.Rope]);
+  const combinableStacks = person.inventory.filter((stack) => stack.quantity > 0 && combinableMaterials.has(stack.materialId));
+  const inventoryTrials: Array<{ first: typeof combinableStacks[number]; second: typeof combinableStacks[number] }> = [];
+  for (let firstIndex = 0; firstIndex < combinableStacks.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex; secondIndex < combinableStacks.length; secondIndex += 1) {
+      const first = combinableStacks[firstIndex];
+      const second = combinableStacks[secondIndex];
+      if (first.id === second.id && first.quantity < 2) continue;
+      inventoryTrials.push({ first, second });
+    }
+  }
+  for (const { first, second } of inventoryTrials
+    .sort((a, b) => seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${a.first.materialId}:${a.second.materialId}`)
+      - seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${b.first.materialId}:${b.second.materialId}`))
+    .slice(0, 3)) {
+    const combination = inventoryCombinationFor([first.materialId, second.materialId]);
+    const techniqueId = combination ? inventoryCombinationTechniqueId(combination) : undefined;
+    const known = techniqueId ? person.knowledge.find((fact) => fact.id === techniqueId) : undefined;
+    const trialId = `${known ? 'repeat-inventory-combine' : 'try-inventory-combine'}:${first.id}:${second.id}`;
+    options.push({
+      id: trialId,
+      summary: known ? `尝试复现“${known.summary}”` : `尝试结合${materialDefinition(first.materialId).name}与${materialDefinition(second.materialId).name}`,
+      reason: known ? '自己已有这项物质经验' : '背包中的两种物质可以尝试局部结合，但结果未知',
+      goal: { kind: 'knowledge', factId: `attempt:${trialId}:${state.clock.elapsedMonths}` },
+      nextAction: {
+        kind: 'act', operation: 'combine',
+        targets: [
+          { kind: 'inventory-stack', personId: person.id, stackId: first.id },
+          { kind: 'inventory-stack', personId: person.id, stackId: second.id },
+        ],
+      },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [...new Set([...first.sourceEventIds, ...second.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
     });
   }
 
@@ -432,13 +469,19 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   if (tentativeTechnique) {
     const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id) && event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'combine');
     const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
-    if (rawPosition) options.push({
+    const outputStackId = source?.kind === 'action' && typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
+    const verificationTarget = rawPosition
+      ? { kind: 'voxel' as const, position: rawPosition }
+      : outputStackId && person.inventory.some((stack) => stack.id === outputStackId)
+        ? { kind: 'inventory-stack' as const, personId: person.id, stackId: outputStackId }
+        : undefined;
+    if (verificationTarget) options.push({
       id: `verify-technique:${tentativeTechnique.id}:${source?.id}`,
       summary: `复查${tentativeTechnique.summary}的结果`,
       reason: '一次成功结合只形成暂定经验，需要再次观察产物才能可靠传授',
       goal: { kind: 'knowledge', factId: tentativeTechnique.id, minConfidence: 55 },
-      nextAction: { kind: 'attend', target: { kind: 'voxel', position: rawPosition } },
-      target: { kind: 'voxel', position: rawPosition },
+      nextAction: { kind: 'attend', target: verificationTarget },
+      target: verificationTarget,
       estimatedDuration: 'one-month',
       sourceFactIds: [...tentativeTechnique.sourceEventIds],
     });
@@ -543,7 +586,10 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
         || (materialId === Material.Wood && (targetMaterial === Material.Wood || targetMaterial === Material.Leaves));
       if (targetStillMatches) {
         if (distance(person.position.cellId, targetCell) <= 1) {
-          return { kind: 'act', operation: 'separate', targets: [intent.target] };
+          return {
+            kind: 'act', operation: 'separate', targets: [intent.target],
+            ...(materialId === Material.Wood ? { toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id } : {}),
+          };
         }
         const destination = intent.nextAction.kind === 'move' ? intent.nextAction.toCellId : targetCell;
         return { kind: 'move', toCellId: destination };

@@ -186,7 +186,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
       inquiryCreation: 35 + Math.floor(deterministicFraction(state.seed, `${id}:inquiry`) * 50),
     },
     conditions: [], inventory: [], knowledge: [], memories: [],
-    relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: person.id === mother.id || person.id === fatherId ? 65 : 20, bond: person.id === mother.id || person.id === fatherId ? 78 : 18, fear: 0, sourceEventIds: [] })),
+    relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
   };
 }
@@ -212,7 +212,7 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
   for (const existing of state.people) {
     if (existing.id === child.id || existing.relations.some((relation) => relation.personId === child.id)) continue;
     const closeKin = child.geneticParents.includes(existing.id);
-    existing.relations.push({ personId: child.id, trust: closeKin ? 62 : 20, bond: closeKin ? 78 : 18, fear: 0, sourceEventIds: [fact.id] });
+    existing.relations.push({ personId: child.id, trust: 0, bond: closeKin ? 12 : 0, fear: 0, sourceEventIds: [fact.id] });
   }
 }
 

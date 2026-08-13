@@ -142,5 +142,7 @@ export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: Ge
   ensureDrop(Material.Food, 12);
   ensureDrop(Material.Wood, 12);
   ensureDrop(Material.Seed, 6);
+  ensureDrop(Material.Fiber, 6);
+  ensureDrop(Material.Stone, 4);
   return { world, drops, spawnCells };
 }

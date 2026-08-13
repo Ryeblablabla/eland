@@ -172,6 +172,41 @@ try {
   assert.ok(blindOptions.length > 0, '未知配方应从眼前物质生成可失败的结合尝试');
   assert.ok(blindOptions.every((option) => !option.summary.includes('作物幼苗') && !option.reason.includes('适宜')), '盲试候选不得泄露隐藏产物或适用规则');
 
+  const craftWith = async (seed, stacks, targets) => {
+    const craftState = createInitialState(seed, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+    const crafter = craftState.people[0];
+    crafter.inventory = stacks;
+    const intentId = `intent-test-craft-${seed}`;
+    craftState.intents.push({
+      id: intentId, ownerId: crafter.id, summary: '尝试结合随身物质', domain: 'strategic',
+      goal: { kind: 'knowledge', factId: `attempt:${seed}` },
+      nextAction: { kind: 'act', operation: 'combine', targets: targets(crafter) }, status: 'active',
+      createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: `decision-test-craft-${seed}`,
+      sourceFactIds: [], actionEventIds: [], replanCount: 0,
+    });
+    crafter.activeIntentId = intentId;
+    craftState.decisionBudget.credits = 0;
+    return stepSimulationAsync(craftState, {
+      async decideAll() { throw new Error('固定制作意图不应额外调用模型'); },
+      takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+    });
+  };
+  const ropeState = await craftWith(37, [{ id: 'fiber-craft', materialId: 20, quantity: 2, sourceEventIds: [] }], (crafter) => [
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'fiber-craft' },
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'fiber-craft' },
+  ]);
+  assert.equal(ropeState.people[0].inventory.find((stack) => stack.materialId === 23)?.quantity, 1, '两份私有纤维应由 combine 形成一份私有绳');
+  assert.equal(ropeState.people[0].inventory.some((stack) => stack.materialId === 20), false, '制作必须消耗真实输入物质');
+  const toolState = await craftWith(38, [
+    { id: 'stone-craft', materialId: 1, quantity: 1, sourceEventIds: [] },
+    { id: 'wood-craft', materialId: 13, quantity: 1, sourceEventIds: [] },
+  ], (crafter) => [
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'stone-craft' },
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'wood-craft' },
+  ]);
+  assert.equal(toolState.people[0].inventory.find((stack) => stack.materialId === 24)?.quantity, 1, '石与木应形成只属于制作者背包的石制工具');
+  assert.ok(toolState.people[0].knowledge.some((fact) => fact.kind === 'technique' && fact.confidence < 55), '一次制作只能形成待核验的个人经验');
+
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');

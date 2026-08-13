@@ -22,6 +22,10 @@ export interface DecisionRequestContext {
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
+    estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
+  }>;
+  followUpOptions: Array<{
+    id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target'];
   }>;
   visiblePeople: Array<{ id: string; name: string; health: number; hydration: number; nutrition: number; cellId: number; trust: number; bond: number; fear: number }>;
@@ -56,7 +60,8 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     climate: state.civilization.climate,
     ...(context.activeIntent ? { activeIntent: { id: context.activeIntent.id, summary: context.activeIntent.summary, progress: context.activeIntent.progress, nextActionKind: context.activeIntent.nextAction.kind } } : {}),
     suspendedIntents: state.intents.filter((intent) => intent.ownerId === person.id && intent.status === 'suspended').map((intent) => ({ id: intent.id, summary: intent.summary, progress: intent.progress, nextActionKind: intent.nextAction.kind })),
-    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
+    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp }) => ({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp) })),
+    followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {
       const relation = person.relations.find((item) => item.personId === other.id);
       return { id: other.id, name: other.name, ...other.body, cellId: other.position.cellId, trust: relation?.trust ?? 0, bond: relation?.bond ?? 0, fear: relation?.fear ?? 0 };

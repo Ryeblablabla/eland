@@ -17,11 +17,13 @@ const SYSTEM_PROMPT = [
   '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
   '吃、喝等生存反射和既有意图的日常执行由规则引擎负责。你只选择重要的战略或社会意图，不要输出 continue。',
   '如果行动选项只有同一请求的 accept 与 reject，你必须依据关系、记忆、风险和自身倾向选择其中一个，不能 idle。',
-  '如果选择 social 选项，必须增加 utterance，用第一人称写一句实际会说的话；这句话会进入双方记忆并影响以后意图。',
+  '如果所选选项 requiresFollowUp=true，它是一项对话决策：必须增加 utterance，用第一人称写一句实际会说的话，并同时从 followUpOptions 选择 followUpOptionId，表示说完后自己真正要执行的行动。对话与后续行动属于同一个意图。',
+  '此时 utterance 必须与 followUpOptionId 一致，清楚表达自己接下来准备做什么；不要只说空泛的关心、讨论或计划。',
+  'followUpOptionId 只能引用 followUpOptions 中的 id。不得把自然语言当成已经完成的行动，也不得选择另一个 communicate 作为后续行动。',
   '严格输出一个 JSON 对象，不输出解释。格式只能是以下之一：',
-  '{"kind":"start","optionId":"输入中的行动选项id","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
+  '{"kind":"start","optionId":"输入中的行动选项id","followUpOptionId":"requiresFollowUp=true 时必填","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
   '{"kind":"suspend|resume|abandon","intentId":"输入中的意图id","reason":"简短理由"}',
-  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
+  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","followUpOptionId":"requiresFollowUp=true 时必填","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
   '{"kind":"idle","reason":"简短理由"}',
   '只能引用输入 id，不得凭空生成物质、地点或能力。生存反射已经由引擎处理；请比较关系、记忆、承诺、风险和长期收益。',
 ].join('\n');
@@ -49,6 +51,7 @@ async function requestKimiDecision(
       content: [
         `上一个决策无效：${correction.problem}。请重新输出合法 JSON。`,
         `合法 optionId 只有：${context.options.map((option) => option.id).join('、') || '无'}`,
+        `合法 followUpOptionId 只有：${context.followUpOptions.map((option) => option.id).join('、') || '无'}`,
         ...(context.activeIntent ? [`当前 intentId 是：${context.activeIntent.id}`] : []),
       ].join('\n'),
     },
@@ -91,18 +94,21 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const kind = raw.kind;
   const reason = text(raw.reason) || '根据眼前处境重新安排';
   const optionId = text(raw.optionId, 100);
+  const followUpOptionId = text(raw.followUpOptionId, 100);
   const intentId = text(raw.intentId, 100);
   const utterance = text(raw.utterance, 180);
   const option = context.options.find((item) => item.id === optionId);
   const optionExists = Boolean(option);
-  const actualUtterance = option?.domain === 'social' ? utterance || reason : utterance;
+  const validFollowUp = context.followUpOptions.some((item) => item.id === followUpOptionId);
+  if (option?.requiresFollowUp && !validFollowUp) return null;
+  const actualUtterance = option?.requiresFollowUp ? utterance || reason : utterance;
   const activeIntentId = context.activeIntent?.id;
   const suspendedIntentIds = new Set(context.suspendedIntents.map((intent) => intent.id));
   if (kind === 'start') {
-    if (optionExists) return { kind, optionId, reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
+    if (optionExists) return { kind, optionId, ...(option?.requiresFollowUp ? { followUpOptionId } : {}), reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
     return null;
   }
-  if (kind === 'revise' && intentId === activeIntentId && optionExists) return { kind, intentId, optionId, reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
+  if (kind === 'revise' && intentId === activeIntentId && optionExists) return { kind, intentId, optionId, ...(option?.requiresFollowUp ? { followUpOptionId } : {}), reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
   if (kind === 'suspend' && intentId === activeIntentId) return { kind, intentId, reason };
   if (kind === 'resume' && suspendedIntentIds.has(intentId)) return { kind, intentId, reason };
   if (kind === 'abandon' && intentId === activeIntentId) return { kind, intentId, reason };
@@ -128,7 +134,7 @@ async function decideOne(context: DecisionRequestContext, apiKey: string, provid
     }
     const decision = normalizeDecision(context, parsed);
     if (decision) return { decision, usage };
-    correction = { invalidContent: completion.content, problem: '引用了不存在的 optionId 或 intentId' };
+    correction = { invalidContent: completion.content, problem: '引用了不存在的 optionId / intentId，或对话选项缺少合法 followUpOptionId' };
   }
   throw new Error(`Kimi 连续两次没有返回合法关键决策：${correction?.invalidContent.trim().slice(0, 240) ?? '空响应'}`);
 }
@@ -136,7 +142,7 @@ async function decideOne(context: DecisionRequestContext, apiKey: string, provid
 function isContext(value: unknown): value is DecisionRequestContext {
   if (!value || typeof value !== 'object') return false;
   const context = value as DecisionRequestContext;
-  return Boolean(context.person?.id && Array.isArray(context.options) && Array.isArray(context.visibleDrops));
+  return Boolean(context.person?.id && Array.isArray(context.options) && Array.isArray(context.followUpOptions) && Array.isArray(context.visibleDrops));
 }
 
 export async function handleDecide(payload: unknown, apiKey: string, requestedProvider: ModelProvider = DEFAULT_MODEL_PROVIDER): Promise<{ status: number; body: unknown }> {

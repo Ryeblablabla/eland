@@ -12,7 +12,7 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/simulation.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${bundlePath}`,
   ], { stdio: 'pipe' });
-  const { createInitialState, createSimulation, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { buildDecisionContexts, createInitialState, createSimulation, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 13);
@@ -25,6 +25,35 @@ try {
   assert.equal('agents' in initial, false, '权威状态不应保留旧 Agent 模型');
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
+
+  let dialogueState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const speaker = dialogueState.people[0];
+  const listener = dialogueState.people[1];
+  listener.position.cellId = speaker.position.cellId;
+  listener.position.previousCellId = speaker.position.cellId;
+  const dialogueContext = buildDecisionContexts(dialogueState).find((context) => context.person.id === speaker.id);
+  assert.ok(dialogueContext, '测试人物必须拥有决策上下文');
+  assert.ok(dialogueContext.options.some((option) => option.requiresFollowUp) && dialogueContext.followUpOptions.length, '普通对话必须同时存在合法的非沟通后续行动');
+  assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'communicate').every((option) => option.requiresFollowUp), '每项对话决策都必须绑定后续真实行动');
+  dialogueState.decisionBudget.credits = dialogueState.people.length;
+  dialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
+  dialogueState = await stepSimulationAsync(dialogueState, {
+    async decideAll(contexts) {
+      return contexts.map((context) => {
+        const talk = context.options.find((option) => option.requiresFollowUp);
+        const followUp = context.followUpOptions[0];
+        return talk && followUp
+          ? { kind: 'start', optionId: talk.id, followUpOptionId: followUp.id, utterance: `我准备${followUp.summary}`, reason: '对话后落实行动' }
+          : { kind: 'idle', reason: '保持观察' };
+      });
+    },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  const dialogueIntent = dialogueState.intents.find((intent) => intent.openingAction?.kind === 'communicate');
+  assert.ok(dialogueIntent?.openingActionCompleted, '对话应作为同一意图的开场动作完成');
+  const dialogueIntentActions = dialogueState.world.past.filter((event) => event.kind === 'action' && event.intentId === dialogueIntent?.id);
+  assert.equal(dialogueIntentActions[0]?.action.kind, 'communicate', '组合意图必须先说出模型生成的话');
+  assert.ok(dialogueIntentActions.slice(1).some((event) => event.action.kind !== 'communicate'), '说完以后必须推进同次决策选定的真实行动');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 180 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);

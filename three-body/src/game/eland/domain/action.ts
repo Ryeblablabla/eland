@@ -61,6 +61,8 @@ export interface Intent {
   summary: string;
   domain: 'strategic' | 'social';
   goal: FactPredicate;
+  openingAction?: PrimitiveAction;
+  openingActionCompleted?: boolean;
   nextAction: PrimitiveAction;
   completionAction?: PrimitiveAction;
   target?: WorldRef;
@@ -85,14 +87,15 @@ export interface ActionOption {
   target?: WorldRef;
   estimatedDuration: 'one-month' | 'several-months' | 'long' | 'unknown';
   sourceFactIds: string[];
+  requiresFollowUp?: boolean;
   domain?: 'strategic' | 'social';
   estimatedMonths?: number;
   risks?: string[];
 }
 
 export type IntentDecision =
-  | { kind: 'start'; optionId: string; reason: string; utterance?: string }
-  | { kind: 'revise'; intentId: string; optionId: string; reason: string; utterance?: string }
+  | { kind: 'start'; optionId: string; followUpOptionId?: string; reason: string; utterance?: string }
+  | { kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string; reason: string; utterance?: string }
   | { kind: 'suspend'; intentId: string; reason: string }
   | { kind: 'resume'; intentId: string; reason: string }
   | { kind: 'abandon'; intentId: string; reason: string }

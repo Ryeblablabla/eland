@@ -37,6 +37,7 @@ import type {
 import { buildDecisionContext, recompileNextAction } from './action-options';
 import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-facts';
 import { maintainMemories, remember } from '../domain/memory';
+import { composeIntentChoice } from '../domain/intent';
 import { chooseSurvivalReflex } from '../domain/survival-reflex';
 import {
   WORLD_CELL_COUNT,
@@ -188,7 +189,7 @@ function lastModelDecisionMonth(state: SimulationState, personId: PersonId): num
 }
 
 function optionScore(context: DecisionContext, optionId: string): number {
-  const option = context.options.find((candidate) => candidate.id === optionId);
+  const option = [...context.options, ...context.followUpOptions].find((candidate) => candidate.id === optionId);
   if (!option) return -999;
   const person = context.person;
   let score = seededFraction(context.state.seed, `option-score:${context.state.clock.elapsedMonths}:${person.id}:${option.id}`) * 8;
@@ -222,14 +223,17 @@ export class MockDecider implements AgentDecider {
     const active = context.activeIntent;
     const person = context.person;
     const best = [...context.options].sort((a, b) => optionScore(context, b.id) - optionScore(context, a.id) || a.id.localeCompare(b.id))[0];
+    const followUp = best?.requiresFollowUp
+      ? [...context.followUpOptions].sort((a, b) => optionScore(context, b.id) - optionScore(context, a.id) || a.id.localeCompare(b.id))[0]
+      : undefined;
     if (active) {
       const emergency = person.body.hydration < 28 || person.body.nutrition < 28;
       if (emergency && best && (best.id.startsWith('drink:') || best.id.startsWith('eat:') || best.id.includes(`:${Material.Food}`))) {
-        return { kind: 'revise', intentId: active.id, optionId: best.id, reason: '身体储备已压过原有长期意图' };
+        return { kind: 'revise', intentId: active.id, optionId: best.id, ...(followUp ? { followUpOptionId: followUp.id } : {}), reason: '身体储备已压过原有长期意图' };
       }
-      return best ? { kind: 'revise', intentId: active.id, optionId: best.id, reason: '出现了比当前意图更重要的新机会' } : { kind: 'idle', reason: '已有意图由行动引擎继续推进' };
+      return best ? { kind: 'revise', intentId: active.id, optionId: best.id, ...(followUp ? { followUpOptionId: followUp.id } : {}), reason: '出现了比当前意图更重要的新机会' } : { kind: 'idle', reason: '已有意图由行动引擎继续推进' };
     }
-    return best ? { kind: 'start', optionId: best.id, reason: best.reason } : { kind: 'idle', reason: personCanDecide(context.state, person) ? '眼前没有值得改变安排的新机会' : '当前年龄尚不能独立行动' };
+    return best ? { kind: 'start', optionId: best.id, ...(followUp ? { followUpOptionId: followUp.id } : {}), reason: best.reason } : { kind: 'idle', reason: personCanDecide(context.state, person) ? '眼前没有值得改变安排的新机会' : '当前年龄尚不能独立行动' };
   }
 }
 
@@ -238,7 +242,7 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
   const reasons: string[] = [];
   let probability = personCanDecide(state, person) ? 0.045 : 0.01;
   if (!context.activeIntent) { probability += 0.32; reasons.push('没有战略或社会意图'); }
-  if (context.options.some((option) => option.domain === 'social')) { probability += 0.32; reasons.push('出现社会互动机会'); }
+  if (!context.activeIntent && context.options.some((option) => option.domain === 'social')) { probability += 0.16; reasons.push('空闲时出现社会互动机会'); }
   if (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push('意图停滞'); }
   const acceptedExchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
   if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
@@ -249,26 +253,35 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
   return { probability: clamp(probability, 0.01, 0.82), reasons };
 }
 
-function startIntent(state: SimulationState, person: PersonState, context: DecisionContext, optionId: string, decisionEventId: string, atMonth: number): Intent | null {
-  const option = context.options.find((candidate) => candidate.id === optionId);
-  if (!option) return null;
+function startIntent(
+  state: SimulationState,
+  person: PersonState,
+  context: DecisionContext,
+  optionId: string,
+  followUpOptionId: string | undefined,
+  decisionEventId: string,
+  atMonth: number,
+): Intent | null {
+  const choice = composeIntentChoice(context.options, context.followUpOptions, optionId, followUpOptionId);
+  if (!choice) return null;
   const previous = activeIntent(state, person);
   if (previous) previous.status = 'abandoned';
   const intent: Intent = {
     id: `intent-${atMonth}-${person.id}-${state.intents.length}`,
     ownerId: person.id,
-    summary: option.summary,
-    domain: option.domain ?? 'strategic',
-    goal: structuredClone(option.goal),
-    nextAction: structuredClone(option.nextAction),
-    ...(option.completionAction ? { completionAction: structuredClone(option.completionAction) } : {}),
-    ...(option.target ? { target: structuredClone(option.target) } : {}),
+    summary: choice.summary,
+    domain: choice.domain,
+    goal: choice.goal,
+    ...(choice.openingAction ? { openingAction: choice.openingAction, openingActionCompleted: false } : {}),
+    nextAction: choice.nextAction,
+    ...(choice.completionAction ? { completionAction: choice.completionAction } : {}),
+    ...(choice.target ? { target: choice.target } : {}),
     status: 'active',
     createdAtMonth: atMonth,
     lastProgressAtMonth: atMonth,
     progress: 0,
     sourceDecisionEventId: decisionEventId,
-    sourceFactIds: [...option.sourceFactIds],
+    sourceFactIds: choice.sourceFactIds,
     actionEventIds: [],
     replanCount: 0,
   };
@@ -296,18 +309,19 @@ function applyDecision(
   let domain: Intent['domain'] | undefined;
   const current = activeIntent(state, person);
   if (decision.kind === 'start') {
-    const started = startIntent(state, person, context, decision.optionId, id, atMonth);
-    if (started && decision.utterance && started.nextAction.kind === 'communicate') {
-      started.nextAction.content.summary = decision.utterance.slice(0, 180);
+    const started = startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
+    const spokenAction = started?.openingAction ?? started?.nextAction;
+    if (started && decision.utterance && spokenAction?.kind === 'communicate') {
+      spokenAction.content.summary = decision.utterance.slice(0, 180);
     }
     intentId = started?.id;
     domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
   } else if (decision.kind === 'revise') {
-    if (current && current.id === decision.intentId) current.status = 'abandoned';
-    const started = startIntent(state, person, context, decision.optionId, id, atMonth);
-    if (started && decision.utterance && started.nextAction.kind === 'communicate') {
-      started.nextAction.content.summary = decision.utterance.slice(0, 180);
+    const started = startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
+    const spokenAction = started?.openingAction ?? started?.nextAction;
+    if (started && decision.utterance && spokenAction?.kind === 'communicate') {
+      spokenAction.content.summary = decision.utterance.slice(0, 180);
     }
     intentId = started?.id;
     domain = started?.domain;
@@ -341,6 +355,29 @@ function applyDecision(
 function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number, actionTick: number): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
+  if (intent.openingAction && !intent.openingActionCompleted) {
+    const fact = executePrimitiveAction(state, person, intent.openingAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
+    intent.actionEventIds.push(fact.id);
+    person.currentActionText = fact.result;
+    if (fact.status === 'blocked' || fact.status === 'failed') {
+      intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
+      intent.blockedReason = fact.result;
+      intent.replanCount += 1;
+      remember(person, {
+        id: `memory:intent-opening-failed:${intent.id}:${atMonth}`,
+        kind: 'failure', summary: `${intent.summary}失败：${fact.result}`, importance: 78,
+        createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
+        personIds: intent.openingAction.kind === 'communicate' ? intent.openingAction.audience : [],
+        sourceEventIds: [fact.id],
+      });
+      delete person.activeIntentId;
+    } else {
+      intent.openingActionCompleted = true;
+      intent.lastProgressAtMonth = atMonth;
+      intent.progress = 0.16;
+    }
+    return fact;
+  }
   if (goalSatisfied(state, person, intent.goal)) {
     intent.status = 'completed';
     intent.progress = 1;
@@ -520,10 +557,10 @@ function prepareMonth(input: SimulationState) {
   for (const context of contexts) {
     const { probability, reasons } = decisionProbability(state, context);
     const sample = seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${context.person.id}`);
-    const meaningful = !context.activeIntent
-      || context.options.some((option) => option.domain === 'social')
-      || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
     const requiredSocialResponse = hasRequiredSocialResponse(context);
+    const meaningful = !context.activeIntent
+      || requiredSocialResponse
+      || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
     const triggered = meaningful && (requiredSocialResponse || sample < probability);
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,

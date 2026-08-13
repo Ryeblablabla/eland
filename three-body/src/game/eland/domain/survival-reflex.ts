@@ -50,7 +50,7 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
   if (!food && person.body.nutrition < 34 && starvationMonths <= 8) {
     const drop = reachableFood(state, person);
     if (drop) return person.position.cellId === drop.cellId
-      ? { kind: 'transfer', materialId: drop.materialId, quantity: Math.min(3, drop.quantity), from: { kind: 'ground', cellId: drop.cellId }, to: { kind: 'person', personId: person.id }, dropId: drop.id }
+      ? { kind: 'transfer', materialId: drop.materialId, quantity: 1, from: { kind: 'ground', cellId: drop.cellId }, to: { kind: 'person', personId: person.id }, dropId: drop.id }
       : { kind: 'move', toCellId: drop.cellId };
   }
   return null;

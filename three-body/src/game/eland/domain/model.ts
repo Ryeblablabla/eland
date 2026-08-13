@@ -36,6 +36,7 @@ export interface DecisionContext {
   visiblePeople: PersonState[];
   visibleDrops: DropState[];
   options: ActionOption[];
+  followUpOptions: ActionOption[];
   activeIntent?: Intent;
 }
 

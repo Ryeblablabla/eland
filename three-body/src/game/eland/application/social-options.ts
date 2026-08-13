@@ -43,8 +43,9 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       && event.status === 'completed'
       && event.atMonth >= acceptedAssist.acceptance.atMonth
       && event.who === person.id
-      && ((event.action.kind === 'transfer' && event.action.to.kind === 'person' && event.action.to.personId === requester?.id)
-        || (event.action.kind === 'communicate' && event.action.audience.includes(requester?.id ?? ''))));
+      && event.action.kind === 'transfer'
+      && event.action.to.kind === 'person'
+      && event.action.to.personId === requester?.id);
     if (requester && !alreadyHelped) {
       const food = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
       if (acceptedAssist.proposal.need === 'food' && food && requester.position.cellId === person.position.cellId) options.push({

@@ -57,6 +57,7 @@ export const Material = {
   Seed: 22,
   Rope: 23,
   StoneTool: 24,
+  CookedFood: 25,
 } as const satisfies Record<string, MaterialId>;
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
@@ -85,6 +86,7 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.Seed, key: 'seed', name: '种子', phase: 'solid', tags: ['seed'], hardness: 1, mass: 0.03, color: [163, 132, 68] },
   { id: Material.Rope, key: 'rope', name: '绳', phase: 'solid', tags: ['fiber', 'building', 'flammable'], hardness: 2, mass: 0.25, color: [167, 139, 91] },
   { id: Material.StoneTool, key: 'stone_tool', name: '石制工具', phase: 'solid', tags: ['solid', 'tool'], hardness: 7, mass: 1.1, color: [122, 119, 109] },
+  { id: Material.CookedFood, key: 'cooked_food', name: '熟食', phase: 'solid', tags: ['edible'], hardness: 1, mass: 0.2, color: [174, 91, 49], consume: { nutrition: 60, hydration: 3, health: 2 } },
 ];
 
 const BY_ID = new Map(MATERIAL_PALETTE.map((material) => [material.id, material]));

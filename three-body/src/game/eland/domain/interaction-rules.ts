@@ -14,6 +14,13 @@ export interface ExertionRule {
   outputMaterialId: MaterialId;
 }
 
+export interface ExposureRule {
+  id: string;
+  inputMaterialId: MaterialId;
+  targetMaterialId: MaterialId;
+  outputMaterialId: MaterialId;
+}
+
 const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
   {
     id: 'twist-fiber',
@@ -34,6 +41,15 @@ const EXERTION_RULES: readonly ExertionRule[] = [
     inputMaterialId: Material.Fiber,
     targetMaterialId: Material.Air,
     outputMaterialId: Material.Fire,
+  },
+] as const;
+
+const EXPOSURE_RULES: readonly ExposureRule[] = [
+  {
+    id: 'cook-food',
+    inputMaterialId: Material.Food,
+    targetMaterialId: Material.Fire,
+    outputMaterialId: Material.CookedFood,
   },
 ] as const;
 
@@ -74,4 +90,16 @@ export function exertionTechniqueId(rule: ExertionRule): string {
 
 export function exertionTechniqueSummary(rule: ExertionRule): string {
   return `用${materialDefinition(rule.toolMaterialId).name}向${materialDefinition(rule.inputMaterialId).name}施力，可使${materialDefinition(rule.targetMaterialId).name}转化为${materialDefinition(rule.outputMaterialId).name}`;
+}
+
+export function exposureRuleFor(inputMaterialId: MaterialId, targetMaterialId: MaterialId): ExposureRule | undefined {
+  return EXPOSURE_RULES.find((rule) => rule.inputMaterialId === inputMaterialId && rule.targetMaterialId === targetMaterialId);
+}
+
+export function exposureTechniqueId(rule: ExposureRule): string {
+  return `technique:expose:${rule.inputMaterialId}:${rule.targetMaterialId}:${rule.outputMaterialId}`;
+}
+
+export function exposureTechniqueSummary(rule: ExposureRule): string {
+  return `让${materialDefinition(rule.inputMaterialId).name}暴露于${materialDefinition(rule.targetMaterialId).name}，可得到${materialDefinition(rule.outputMaterialId).name}`;
 }

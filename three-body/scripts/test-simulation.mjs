@@ -348,6 +348,29 @@ try {
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '17'), '真实产生火体素后才能观察为掌控火种');
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '59'), '重复生火也应构成实验检验的证据链');
 
+  const firePosition = ignitionFacts.at(-1)?.diff.position;
+  assert.ok(firePosition, '生火事实必须保存火体素位置');
+  const cook = fireState.people.find((person) => person.id === fireMakerId);
+  cook.inventory.push({ id: 'raw-food-for-cooking', materialId: 21, quantity: 1, sourceEventIds: [] });
+  const cookContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
+  const cookOption = cookContext?.options.find((option) => option.id.startsWith('try-expose:'));
+  assert.ok(cookOption, '私有食物邻近火体素时应产生 expose 物质试验机会');
+  const cookIntentId = 'intent-test-cooking';
+  fireState.intents.push({
+    id: cookIntentId, ownerId: fireMakerId, summary: cookOption.summary, domain: 'strategic', goal: cookOption.goal,
+    nextAction: cookOption.nextAction, target: cookOption.target, status: 'active', createdAtMonth: fireState.clock.elapsedMonths,
+    lastProgressAtMonth: fireState.clock.elapsedMonths, progress: 0, sourceDecisionEventId: 'decision-test-cooking',
+    sourceFactIds: cookOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+  });
+  cook.activeIntentId = cookIntentId;
+  fireState.decisionBudget.credits = 0;
+  fireState = await stepSimulationAsync(fireState, {
+    async decideAll() { throw new Error('固定烹饪试验不应额外调用模型'); },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  assert.equal(fireState.people.find((person) => person.id === fireMakerId)?.inventory.find((stack) => stack.materialId === 25)?.quantity, 1, '食物暴露于火后应转化为私人熟食');
+  assert.ok(fireState.derived.milestones.some((milestone) => milestone.id === '18'), '真实 expose 转换出熟食后才能观察为烹饪食物');
+
   const teachingState = createInitialState(383, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const teacher = teachingState.people[0];
   const learner = teachingState.people[1];

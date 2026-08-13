@@ -23,6 +23,8 @@ import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import {
   exertionRuleFor,
   exertionTechniqueId,
+  exposureRuleFor,
+  exposureTechniqueId,
   inventoryCombinationFor,
   inventoryCombinationTechniqueId,
 } from '../domain/interaction-rules';
@@ -278,6 +280,26 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       target: { kind: 'voxel', position: firePosition },
       estimatedDuration: 'one-month',
       sourceFactIds: [...new Set([...stoneTool.sourceEventIds, ...tinder.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
+    });
+  }
+
+  const rawFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity > 0);
+  const nearbyFireCell = cellsInRadius(person.position.cellId, 1).find((cellId) => surfaceMaterial(state.world.grid, cellId) === Material.Fire);
+  const cookingRule = rawFood && nearbyFireCell !== undefined ? exposureRuleFor(rawFood.materialId, Material.Fire) : undefined;
+  if (rawFood && nearbyFireCell !== undefined && cookingRule) {
+    const position = topPosition(state.world.grid, nearbyFireCell);
+    const techniqueId = exposureTechniqueId(cookingRule);
+    const known = person.knowledge.find((fact) => fact.id === techniqueId);
+    options.push({
+      id: `${known ? 'repeat-expose' : 'try-expose'}:${rawFood.id}:${nearbyFireCell}`,
+      summary: known ? `尝试复现“${known.summary}”` : '尝试让食物暴露于邻近火体素',
+      reason: known ? '自己已有这项物质经验' : '食物与持续放热的物质近在身边，可以尝试观察其变化',
+      goal: known
+        ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
+        : { kind: 'knowledge', factId: `attempt:expose:${state.clock.elapsedMonths}:${person.id}` },
+      nextAction: { kind: 'act', operation: 'expose', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: rawFood.id }, { kind: 'voxel', position }] },
+      target: { kind: 'voxel', position }, estimatedDuration: 'one-month',
+      sourceFactIds: [...new Set([...rawFood.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
     });
   }
 
@@ -566,7 +588,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
     const source = state.world.past.find((event) => event.id === sourceId);
-    if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert'].includes(source.action.operation)) return false;
+    if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
     const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
     if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return false;
     const cell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
@@ -576,7 +598,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id)
       && event.kind === 'action'
       && event.action.kind === 'act'
-      && ['combine', 'exert'].includes(event.action.operation));
+      && ['combine', 'exert', 'expose'].includes(event.action.operation));
     const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
     const outputStackId = source?.kind === 'action' && typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
     const verificationTarget = rawPosition

@@ -87,6 +87,11 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     && Number(event.diff.outputMaterialId) === Material.Fire);
   add(result, '17', '掌控火种', ignitions, '人物用已有施力原语让工具和引火物发生物质响应，产生了真实火体素。');
 
+  const cookedFood = completed.filter((event) => event.action.kind === 'act'
+    && event.action.operation === 'expose'
+    && Number(event.diff.outputMaterialId) === Material.CookedFood);
+  add(result, '18', '烹饪食物', cookedFood, '人物让可食物质暴露于真实火体素，并取得可私有持有和摄入的熟食。');
+
   const fireWarming = environment.filter((event) => event.change === 'condition'
     && event.diff.condition === 'cold'
     && event.diff.exited === true
@@ -99,7 +104,7 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     const successfulTrials = evidence.filter((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'act'
-      && (event.action.operation === 'combine' || event.action.operation === 'exert'));
+      && (event.action.operation === 'combine' || event.action.operation === 'exert' || event.action.operation === 'expose'));
     const activeVerification = evidence.some((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'attend'

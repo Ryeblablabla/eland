@@ -483,7 +483,7 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
       && fact.status === 'completed';
     const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
-      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine' || fact.action.operation === 'exert');
+      && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
     const acceptedAgreementId = fact.status === 'completed'
       && fact.action.kind === 'communicate'
       && fact.action.content.kind === 'accept'

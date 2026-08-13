@@ -12,6 +12,9 @@ import {
   exertionRuleFor,
   exertionTechniqueId,
   exertionTechniqueSummary,
+  exposureRuleFor,
+  exposureTechniqueId,
+  exposureTechniqueSummary,
   inventoryCombinationFor,
   inventoryCombinationSummary,
   inventoryCombinationTechniqueId,
@@ -463,12 +466,38 @@ function executeReproduce(state: SimulationState, person: PersonState, targets: 
   return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9 } };
 }
 
+function executeExpose(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
+  const stackRef = targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const voxelRef = targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
+  if (!stackRef || stackRef.personId !== person.id || !voxelRef || distanceToPosition(person, voxelRef.position) > 1) return { status: 'blocked' as const, result: '暴露材料或目标不在近身范围', diff: {} };
+  const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
+  if (!stack) return { status: 'blocked' as const, result: '背包中的暴露材料已经不存在', diff: {} };
+  const targetMaterialId = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
+  const rule = exposureRuleFor(stack.materialId, targetMaterialId);
+  if (!rule) return { status: 'blocked' as const, result: '这些物质当前没有可发生的暴露响应', diff: { inputMaterialId: stack.materialId, targetMaterialId } };
+  stack.quantity -= 1;
+  removeEmptyStacks(person);
+  const outputStack = addInventory(person, rule.outputMaterialId, 1, [eventId], `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`);
+  const techniqueId = exposureTechniqueId(rule);
+  const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  if (known) {
+    known.confidence = clamp(known.confidence + 18);
+    known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
+  } else person.knowledge.push({ id: techniqueId, kind: 'technique', summary: exposureTechniqueSummary(rule), confidence: 46, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+  return {
+    status: 'completed' as const,
+    result: `${materialDefinition(stack.materialId).name}暴露于${materialDefinition(targetMaterialId).name}后成为${materialDefinition(rule.outputMaterialId).name}`,
+    diff: { inputMaterialId: stack.materialId, targetMaterialId, outputMaterialId: rule.outputMaterialId, outputStackId: outputStack.id, position: voxelRef.position, sourceEventId: eventId },
+  };
+}
+
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   if (action.operation === 'ingest') return executeIngest(state, person, action.targets);
   if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'exert') return executeExert(state, person, action, atMonth, eventId);
   if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
+  if (action.operation === 'expose') return executeExpose(state, person, action.targets, atMonth, eventId);
   const fire = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Fire);
   const water = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Water);
   if (fire && water && fire.kind === 'voxel') {
@@ -491,7 +520,7 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
       const source = state.world.past.find((event) => event.id === sourceId);
       return source?.kind === 'action'
         && source.action.kind === 'act'
-        && source.action.operation === 'combine'
+        && (source.action.operation === 'combine' || source.action.operation === 'expose')
         && source.diff.outputStackId === stack.id
         && Number(source.diff.outputMaterialId) === stack.materialId;
     }));
@@ -508,7 +537,7 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
     const materialId = voxelAt(state.world.grid, attendedPosition.x, attendedPosition.y, attendedPosition.z);
     const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
       const source = state.world.past.find((event) => event.id === sourceId);
-      if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert'].includes(source.action.operation)) return false;
+      if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
       const position = source.diff.position as VoxelPosition | undefined;
       return position?.x === attendedPosition.x
         && position.y === attendedPosition.y

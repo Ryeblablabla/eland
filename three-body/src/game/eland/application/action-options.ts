@@ -26,6 +26,7 @@ import {
   inventoryCombinationFor,
   inventoryCombinationTechniqueId,
 } from '../domain/interaction-rules';
+import { compileAgreementContinuations } from './agreement-continuation';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -646,7 +647,11 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'));
   const followUpOptions = allOptions.filter((option) => option.nextAction.kind !== 'communicate');
   const options = allOptions
-    .map((option) => option.nextAction.kind === 'communicate' ? { ...option, requiresFollowUp: true } : option)
+    .map((option) => option.nextAction.kind === 'communicate'
+      && option.nextAction.content.kind !== 'accept'
+      && option.nextAction.content.kind !== 'reject'
+      ? { ...option, requiresFollowUp: true }
+      : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
   const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce):/.test(option.id));
   return {
@@ -662,6 +667,11 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
+  const agreementContinuation = [...state.agreements].reverse().flatMap((agreement) => {
+    if (agreement.status !== 'active' || !(intent.sourceFactIds ?? []).some((sourceId) => agreement.sourceEventIds.includes(sourceId))) return [];
+    return compileAgreementContinuations(state, agreement.id).filter((continuation) => continuation.personId === person.id);
+  })[0];
+  if (agreementContinuation) return agreementContinuation.nextAction;
   if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId);

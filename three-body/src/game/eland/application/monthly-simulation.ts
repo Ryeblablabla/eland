@@ -42,6 +42,7 @@ import { chooseSurvivalReflex } from '../domain/survival-reflex';
 import { chooseDependentCareReflex } from '../domain/dependent-care';
 import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
+import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -305,6 +306,44 @@ function activeIntent(state: SimulationState, person: PersonState): Intent | und
   return state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active');
 }
 
+function installAgreementContinuation(state: SimulationState, currentIntent: Intent, continuation: AgreementContinuation, atMonth: number): Intent | null {
+  const owner = state.people.find((person) => person.id === continuation.personId && isAlive(person));
+  if (!owner) return null;
+  const existing = activeIntent(state, owner);
+  const intent = existing?.id === currentIntent.id ? currentIntent : {
+    id: `intent-${atMonth}-${owner.id}-agreement-${state.intents.length}`,
+    ownerId: owner.id,
+    summary: continuation.summary,
+    domain: 'social' as const,
+    goal: structuredClone(continuation.goal),
+    nextAction: structuredClone(continuation.nextAction),
+    ...(continuation.target ? { target: structuredClone(continuation.target) } : {}),
+    status: 'active' as const,
+    createdAtMonth: atMonth,
+    lastProgressAtMonth: atMonth,
+    progress: 0.2,
+    sourceDecisionEventId: currentIntent.sourceDecisionEventId,
+    sourceFactIds: [...continuation.sourceFactIds],
+    actionEventIds: [],
+    replanCount: 0,
+  };
+  if (existing && existing.id !== currentIntent.id) existing.status = 'suspended';
+  if (intent === currentIntent) {
+    intent.summary = continuation.summary;
+    intent.goal = structuredClone(continuation.goal);
+    intent.nextAction = structuredClone(continuation.nextAction);
+    if (continuation.target) intent.target = structuredClone(continuation.target);
+    else delete intent.target;
+    delete intent.openingAction;
+    delete intent.openingActionCompleted;
+    delete intent.completionAction;
+    intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...continuation.sourceFactIds])];
+    intent.progress = 0.2;
+  } else state.intents.push(intent);
+  owner.activeIntentId = intent.id;
+  return intent;
+}
+
 function applyDecision(
   state: SimulationState,
   person: PersonState,
@@ -366,6 +405,14 @@ function applyDecision(
 function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number, actionTick: number): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
+  const sourceAgreement = [...state.agreements].reverse().find((agreement) => (intent.sourceFactIds ?? []).some((sourceId) => agreement.sourceEventIds.includes(sourceId)));
+  if (sourceAgreement && sourceAgreement.status !== 'proposed' && sourceAgreement.status !== 'active') {
+    intent.status = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 'completed' : 'failed';
+    intent.progress = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 1 : intent.progress;
+    delete person.activeIntentId;
+    person.currentActionText = sourceAgreement.status === 'fulfilled' ? `约定已经履行：${intent.summary}` : `约定已经结束：${intent.summary}`;
+    return null;
+  }
   if (intent.openingAction && !intent.openingActionCompleted) {
     const fact = executePrimitiveAction(state, person, intent.openingAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
     intent.actionEventIds.push(fact.id);
@@ -437,7 +484,16 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
     const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
       && (fact.action.operation === 'reproduce' || fact.action.operation === 'combine' || fact.action.operation === 'exert');
-    if (representationCompleted || processAttemptCompleted || goalSatisfied(state, person, intent.goal)) {
+    const acceptedAgreementId = fact.status === 'completed'
+      && fact.action.kind === 'communicate'
+      && fact.action.content.kind === 'accept'
+      ? fact.action.content.referenceId
+      : undefined;
+    const installed = acceptedAgreementId
+      ? compileAgreementContinuations(state, acceptedAgreementId).map((continuation) => installAgreementContinuation(state, intent, continuation, atMonth)).filter(Boolean)
+      : [];
+    const currentContinues = installed.some((candidate) => candidate?.id === intent.id);
+    if (!currentContinues && (representationCompleted || processAttemptCompleted || goalSatisfied(state, person, intent.goal))) {
       intent.status = 'completed';
       intent.progress = 1;
       delete person.activeIntentId;

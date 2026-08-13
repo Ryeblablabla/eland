@@ -377,6 +377,7 @@ try {
   const acceptExchange = responseContext?.options.find((option) => option.id.startsWith('accept-exchange:'));
   assert.equal(acceptExchange?.nextAction.kind, 'move', '提议后分开时，应先连续追上提议者');
   assert.equal(acceptExchange?.completionAction?.kind, 'communicate', '跨月会合后必须保留原本的接受回应');
+  assert.equal(Boolean(acceptExchange?.requiresFollowUp), false, '接受结构化协议后应由协议条款编译行动，不能让模型另选无关后续');
   responseState.decisionBudget.credits = 0;
   responseState.decisionBudget.ledgers = [];
   const requiredBatches = [];
@@ -396,7 +397,11 @@ try {
     && event.action.content.kind === 'accept'
     && event.action.content.referenceId === exchangeId);
   assert.ok(acceptanceFact, '回应者应以同一跨月意图完成移动后真正说出接受');
-  assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'active', '真正说出接受后交换协议才生效');
+  assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'fulfilled', '真正说出接受后，双方应以已有 transfer 原语继续履行交换');
+  const exchangeDeliveries = respondedState.world.past.filter((event) => event.kind === 'action'
+    && event.action.kind === 'transfer'
+    && event.action.authorizationRef === exchangeId);
+  assert.deepEqual(new Set(exchangeDeliveries.map((event) => event.who)), new Set([offerer.id, responder.id]), '结构化接受必须自动产生双方各自的真实交付，而不是模型随意搭配后续行动');
 
   const roadState = createInitialState(40, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const roadWalker = roadState.people[0];

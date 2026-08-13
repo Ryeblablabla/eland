@@ -13,6 +13,7 @@ import {
 } from '../domain/social-facts';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
+import { canAcceptAssist } from './agreement-continuation';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -157,7 +158,8 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
   if (incomingAssist) {
     const requester = state.people.find((other) => other.id === incomingAssist.fact.who);
     if (requester) {
-      options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
+      const proposal = incomingAssist.content.proposal;
+      if (proposal?.kind === 'assist' && canAcceptAssist(state, person, proposal.need)) options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
       options.push(responseOption(state, person, incomingAssist.content.id, requester, false, 'assist'));
     }
   }

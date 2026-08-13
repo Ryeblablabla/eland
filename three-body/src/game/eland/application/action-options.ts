@@ -173,23 +173,39 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const seed = person.inventory.find((stack) => stack.materialId === Material.Seed && stack.quantity > 0);
   if (seed) {
-    const soilCell = nearestCell(person.position.cellId, visibleCells.filter((cellId) => {
+    const trialSurfaces = new Set<number>([Material.Soil, Material.WetSoil, Material.RichSoil, Material.ExhaustedSoil, Material.Sand, Material.Grass]);
+    const candidateSurfaces = new Map<number, number>();
+    for (const cellId of [...visibleCells].sort((a, b) => distance(person.position.cellId, a) - distance(person.position.cellId, b) || a - b)) {
       const surface = surfaceMaterial(state.world.grid, cellId);
-      return surface === Material.WetSoil || surface === Material.RichSoil || surface === Material.ExhaustedSoil;
-    }));
-    if (soilCell !== null) {
+      if (!trialSurfaces.has(surface)) continue;
+      if (!candidateSurfaces.has(surface)) candidateSurfaces.set(surface, cellId);
+    }
+    const learnedTargetMaterials = new Set(person.knowledge
+      .filter((fact) => fact.kind === 'technique' && fact.id.startsWith(`technique:combine:${Material.Seed}:`))
+      .map((fact) => Number(fact.id.split(':')[3])));
+    const candidates = [...candidateSurfaces].sort(([materialA, cellA], [materialB, cellB]) => {
+      const learnedA = learnedTargetMaterials.has(materialA) ? 1 : 0;
+      const learnedB = learnedTargetMaterials.has(materialB) ? 1 : 0;
+      return learnedB - learnedA || distance(person.position.cellId, cellA) - distance(person.position.cellId, cellB) || materialA - materialB;
+    }).slice(0, 3);
+    for (const [targetMaterial, soilCell] of candidates) {
       const position = topPosition(state.world.grid, soilCell);
+      const technique = person.knowledge.find((fact) => fact.id === `technique:combine:${Material.Seed}:${targetMaterial}:${Material.CropSprout}`);
       options.push({
-        id: `plant:${soilCell}:${seed.id}`,
-        summary: '把种子与湿润土壤结合',
-        reason: '持有种子并看见适宜土壤',
+        id: `${technique ? 'repeat-combine' : 'try-combine'}:${Material.Seed}:${targetMaterial}:${soilCell}:${seed.id}`,
+        summary: technique
+          ? `尝试复现“${technique.summary}”`
+          : `尝试让种子接触${materialDefinition(targetMaterial).name}`,
+        reason: technique
+          ? `自己${technique.confidence >= 55 ? '已经核验' : '听说或初步见过'}这项物质经验`
+          : '持有种子，可以对一种眼前物质作局部尝试，但结果未知',
         goal: { kind: 'voxel-is', position, materialId: Material.CropSprout },
         nextAction: person.position.cellId === soilCell
           ? { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: seed.id }, { kind: 'voxel', position }] }
           : { kind: 'move', toCellId: soilCell },
         target: { kind: 'voxel', position },
         estimatedDuration: 'several-months',
-        sourceFactIds: seed.sourceEventIds,
+        sourceFactIds: [...seed.sourceEventIds, ...(technique?.sourceEventIds ?? [])],
       });
     }
   }
@@ -402,6 +418,29 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
       sourceFactIds: teachable.sourceEventIds,
+    });
+  }
+
+  const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
+    const source = state.world.past.find((event) => event.id === sourceId);
+    if (source?.kind !== 'action' || source.action.kind !== 'act' || source.action.operation !== 'combine') return false;
+    const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+    if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return false;
+    const cell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
+    return visible.has(cell) && voxelAt(state.world.grid, Number(position?.x), Number(position?.y), Number(position?.z)) === Number(source.diff.outputMaterialId);
+  }));
+  if (tentativeTechnique) {
+    const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id) && event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'combine');
+    const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
+    if (rawPosition) options.push({
+      id: `verify-technique:${tentativeTechnique.id}:${source?.id}`,
+      summary: `复查${tentativeTechnique.summary}的结果`,
+      reason: '一次成功结合只形成暂定经验，需要再次观察产物才能可靠传授',
+      goal: { kind: 'knowledge', factId: tentativeTechnique.id, minConfidence: 55 },
+      nextAction: { kind: 'attend', target: { kind: 'voxel', position: rawPosition } },
+      target: { kind: 'voxel', position: rawPosition },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [...tentativeTechnique.sourceEventIds],
     });
   }
 

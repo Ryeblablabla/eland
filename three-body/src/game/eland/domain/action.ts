@@ -48,7 +48,7 @@ export type FactPredicate =
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
-  | { kind: 'knowledge'; factId: string; personId?: PersonId }
+  | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
   | { kind: 'near-person'; personId: PersonId }
   | { kind: 'condition'; personId: PersonId; condition: 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained'; present: boolean }
   | { kind: 'representation-made'; representationId: string };

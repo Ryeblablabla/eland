@@ -142,6 +142,36 @@ try {
   assert.equal(firstHarvestAction?.action.kind, 'act', '指定采收目标必须先执行分离，不能被附近野生食物偷换');
   assert.equal(firstHarvestAction?.diff.sourceMaterialId, 12, '采收事实必须来自目标成熟作物');
 
+  const tentativeTechniqueState = createInitialState(35, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });
+  const testPosition = { x: tentativeTechniqueState.people[0].position.cellId % tentativeTechniqueState.world.grid.width, y: Math.floor(tentativeTechniqueState.people[0].position.cellId / tentativeTechniqueState.world.grid.width), z: 0 };
+  tentativeTechniqueState.world.past.push({ ...actionFact('test-combine', 0, tentativeTechniqueState.people[0].id, { kind: 'act', operation: 'combine', targets: [] }), diff: { position: testPosition, outputMaterialId: tentativeTechniqueState.world.grid.voxels[tentativeTechniqueState.people[0].position.cellId] } });
+  const tentativeContext = buildDecisionContexts(tentativeTechniqueState).find((context) => context.person.id === tentativeTechniqueState.people[0].id);
+  assert.equal(tentativeContext?.options.some((option) => option.id.startsWith('teach:')), false, '一次成功结合还不能直接传授为可靠技术');
+  const verifyOption = tentativeContext?.options.find((option) => option.id.startsWith('verify-technique:'));
+  assert.ok(verifyOption, '暂定技术应提供使用 attend 核验真实产物的机会');
+  const verifyIntentId = 'intent-test-verify-technique';
+  tentativeTechniqueState.intents.push({
+    id: verifyIntentId, ownerId: tentativeTechniqueState.people[0].id, summary: verifyOption.summary, domain: 'strategic',
+    goal: verifyOption.goal, nextAction: verifyOption.nextAction, target: verifyOption.target, status: 'active',
+    createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'test-verify-decision',
+    sourceFactIds: verifyOption.sourceFactIds, actionEventIds: [], replanCount: 0,
+  });
+  tentativeTechniqueState.people[0].activeIntentId = verifyIntentId;
+  tentativeTechniqueState.decisionBudget.credits = 0;
+  const verifiedTechniqueState = await stepSimulationAsync(tentativeTechniqueState, {
+    async decideAll() { throw new Error('固定活动意图不应额外调用模型'); },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  assert.ok((verifiedTechniqueState.people[0].knowledge.find((fact) => fact.id === 'technique:test')?.confidence ?? 0) >= 55, '主动观察真实产物后技术才能达到可传播置信度');
+  assert.ok(verifiedTechniqueState.derived.milestones.some((milestone) => milestone.id === '59'), '尝试加核验的事实链才能观察为用实验检验猜想');
+
+  const blindTrialState = createInitialState(36, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  blindTrialState.people[0].inventory.push({ id: 'test-seed-stack', materialId: 22, quantity: 1, sourceEventIds: [] });
+  const blindOptions = buildDecisionContexts(blindTrialState).find((context) => context.person.id === blindTrialState.people[0].id)?.options.filter((option) => option.id.startsWith('try-combine:')) ?? [];
+  assert.ok(blindOptions.length > 0, '未知配方应从眼前物质生成可失败的结合尝试');
+  assert.ok(blindOptions.every((option) => !option.summary.includes('作物幼苗') && !option.reason.includes('适宜')), '盲试候选不得泄露隐藏产物或适用规则');
+
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');

@@ -61,5 +61,13 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   const famine = environment.filter((event) => event.change === 'body' && Number(event.diff.nutrition) < 10);
   add(result, '36', '遭遇饥荒', famine, '至少一人的营养储备跌入持续伤害区间。');
 
+  const verifiedTechniques = state.people.flatMap((person) => person.knowledge.filter((fact) => fact.kind === 'technique'
+    && fact.confidence >= 55
+    && fact.sourceEventIds.some((id) => state.world.past.some((event) => event.id === id && event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'combine'))
+    && fact.sourceEventIds.some((id) => state.world.past.some((event) => event.id === id && event.kind === 'action' && event.action.kind === 'attend' && event.diff.verifiedTechnique === true))));
+  const experimentEvidence = [...new Set(verifiedTechniques.flatMap((fact) => fact.sourceEventIds))]
+    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+  add(result, '59', '用实验检验猜想', experimentEvidence, '人物先尝试物质组合，再主动观察产物，把暂定经验提升为可传播技术。');
+
   return result;
 }

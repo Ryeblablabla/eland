@@ -203,7 +203,8 @@ function optionScore(context: DecisionContext, optionId: string): number {
     score += materialId === Material.Food ? 72 - person.body.nutrition : materialId === Material.Seed ? 18 : materialId === Material.Wood ? 25 : 10;
   }
   if (option.id.startsWith('harvest:')) score += 66 - person.body.nutrition;
-  if (option.id.startsWith('plant:')) score += 36 + person.driveBias.inquiryCreation * 0.08;
+  if (option.id.startsWith('try-combine:')) score += person.driveBias.inquiryCreation * 0.3;
+  if (option.id.startsWith('repeat-combine:')) score += 36 + person.driveBias.inquiryCreation * 0.08;
   if (option.id.startsWith('build:')) score += 22 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 28 : 0);
   if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
   if (option.id.startsWith('care:')) score += 48 + person.driveBias.affiliation * 0.4;

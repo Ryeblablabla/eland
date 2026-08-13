@@ -85,7 +85,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
   }
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
-  if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId) ?? false;
+  if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId && fact.confidence >= (goal.minConfidence ?? 0)) ?? false;
   if (goal.kind === 'near-person') return state.people.find((candidate) => candidate.id === goal.personId)?.position.cellId === person.position.cellId;
   if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
   return Boolean(communicationById(state, goal.representationId));
@@ -307,7 +307,18 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   removeEmptyStacks(person);
   setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, output);
   const techniqueId = `technique:combine:${stack.materialId}:${current}:${output}`;
-  if (!person.knowledge.some((fact) => fact.id === techniqueId)) person.knowledge.push({ id: techniqueId, kind: 'technique', summary: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}可结合为${materialDefinition(output).name}`, confidence: 62, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
+  const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+  if (knownTechnique) {
+    knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
+    knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
+  } else person.knowledge.push({
+    id: techniqueId,
+    kind: 'technique',
+    summary: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}可结合为${materialDefinition(output).name}`,
+    confidence: 46,
+    learnedAtMonth: atMonth,
+    sourceEventIds: [eventId],
+  });
   return {
     status: 'completed' as const,
     result: `${materialDefinition(stack.materialId).name}与${materialDefinition(current).name}结合为${materialDefinition(output).name}`,
@@ -379,7 +390,22 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
   let factId = `target:${JSON.stringify(action.target)}`;
   let summary = '持续观察了一个对象';
   if (action.target.kind === 'voxel') {
-    const materialId = voxelAt(state.world.grid, action.target.position.x, action.target.position.y, action.target.position.z);
+    const attendedPosition = action.target.position;
+    const materialId = voxelAt(state.world.grid, attendedPosition.x, attendedPosition.y, attendedPosition.z);
+    const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
+      const source = state.world.past.find((event) => event.id === sourceId);
+      if (source?.kind !== 'action' || source.action.kind !== 'act' || source.action.operation !== 'combine') return false;
+      const position = source.diff.position as VoxelPosition | undefined;
+      return position?.x === attendedPosition.x
+        && position.y === attendedPosition.y
+        && position.z === attendedPosition.z
+        && Number(source.diff.outputMaterialId) === materialId;
+    }));
+    if (tentativeTechnique) {
+      tentativeTechnique.confidence = clamp(tentativeTechnique.confidence + 22);
+      tentativeTechnique.sourceEventIds = [...new Set([...tentativeTechnique.sourceEventIds, eventId])].slice(-24);
+      return { status: 'completed' as const, result: `核验了${tentativeTechnique.summary}`, diff: { factId: tentativeTechnique.id, verifiedTechnique: true } };
+    }
     factId = `material:${materialId}`;
     summary = `观察并辨认了${materialDefinition(materialId).name}`;
   }
@@ -398,6 +424,7 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
   const content = action.content;
   if (content.kind === 'claim' && content.factId) {
+    const speakerKnowledge = person.knowledge.find((fact) => fact.id === content.factId);
     for (const listener of reached) {
       const known = listener.knowledge.find((fact) => fact.id === content.factId);
       if (known) {
@@ -409,7 +436,7 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
         summary: content.summary,
         confidence: content.factId.startsWith('technique:') ? 46 : 36,
         learnedAtMonth: atMonth,
-        sourceEventIds: [eventId],
+        sourceEventIds: [...new Set([...(speakerKnowledge?.sourceEventIds ?? []), eventId])].slice(-24),
       });
     }
   }

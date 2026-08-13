@@ -38,8 +38,21 @@ async function requestKimiDecision(
   apiKey: string,
   provider: ModelProvider,
   context: DecisionRequestContext,
+  correction?: { invalidContent: string; problem: string },
 ): Promise<{ content: string; usage: TokenUsage }> {
   const config = modelConfiguration(provider);
+  const messages = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }];
+  if (correction) messages.push(
+    { role: 'assistant', content: correction.invalidContent },
+    {
+      role: 'user',
+      content: [
+        `上一个决策无效：${correction.problem}。请重新输出合法 JSON。`,
+        `合法 optionId 只有：${context.options.map((option) => option.id).join('、') || '无'}`,
+        ...(context.activeIntent ? [`当前 intentId 是：${context.activeIntent.id}`] : []),
+      ].join('\n'),
+    },
+  );
   const response = await fetch(config.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
@@ -48,7 +61,7 @@ async function requestKimiDecision(
       temperature: 1,
       max_tokens: 10_000,
       response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }],
+      messages,
     }),
     signal: AbortSignal.timeout(90_000),
   });
@@ -98,16 +111,26 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
 }
 
 async function decideOne(context: DecisionRequestContext, apiKey: string, provider: ModelProvider): Promise<{ decision: Decision | null; usage: TokenUsage }> {
-  const completion = await requestKimiDecision(apiKey, provider, context);
-  let parsed: unknown;
-  try {
-    parsed = parseJson(completion.content);
-  } catch {
-    throw new Error(`Kimi 返回的关键决策不是 JSON：${completion.content.trim().slice(0, 240)}`);
+  let correction: { invalidContent: string; problem: string } | undefined;
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const completion = await requestKimiDecision(apiKey, provider, context, correction);
+    usage = {
+      inputTokens: usage.inputTokens + completion.usage.inputTokens,
+      outputTokens: usage.outputTokens + completion.usage.outputTokens,
+    };
+    let parsed: unknown;
+    try {
+      parsed = parseJson(completion.content);
+    } catch {
+      correction = { invalidContent: completion.content, problem: '不是 JSON 对象' };
+      continue;
+    }
+    const decision = normalizeDecision(context, parsed);
+    if (decision) return { decision, usage };
+    correction = { invalidContent: completion.content, problem: '引用了不存在的 optionId 或 intentId' };
   }
-  const decision = normalizeDecision(context, parsed);
-  if (!decision) throw new Error(`Kimi 返回了不在可选行动中的决策：${completion.content.trim().slice(0, 240)}`);
-  return { decision, usage: completion.usage };
+  throw new Error(`Kimi 连续两次没有返回合法关键决策：${correction?.invalidContent.trim().slice(0, 240) ?? '空响应'}`);
 }
 
 function isContext(value: unknown): value is DecisionRequestContext {

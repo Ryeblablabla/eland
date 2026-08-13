@@ -1,4 +1,4 @@
-export type ModelProvider = 'deepseek' | 'kimi';
+export type ModelProvider = 'kimi';
 export const DEFAULT_MODEL_PROVIDER: ModelProvider = 'kimi';
 
 export const MODEL_OPTIONS: ReadonlyArray<{
@@ -8,21 +8,16 @@ export const MODEL_OPTIONS: ReadonlyArray<{
   description: string;
 }> = [
   {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    model: 'deepseek-chat',
-    description: '偏稳健的社会决策',
-  },
-  {
     id: 'kimi',
     label: 'Kimi',
-    model: 'kimi-k2-0711-preview',
+    model: 'kimi-for-coding',
     description: '更强的长上下文推理',
   },
 ];
 
 export function normalizeModelProvider(value: unknown): ModelProvider {
-  return value === 'deepseek' ? 'deepseek' : DEFAULT_MODEL_PROVIDER;
+  void value;
+  return DEFAULT_MODEL_PROVIDER;
 }
 
 export function modelLabel(provider: ModelProvider): string {

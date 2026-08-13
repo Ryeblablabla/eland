@@ -46,15 +46,14 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     const characterIds = Array.isArray(body.characterIds) ? body.characterIds.filter((id): id is string => typeof id === 'string') : undefined;
     return {
       status: 200,
-      body: elandSessions.begin(runId, Math.max(1, Math.floor(finite(body.civilizationId, 1))), skySample(body.skySample), body.model, characterIds),
+      body: elandSessions.begin(runId, Math.max(1, Math.floor(finite(body.civilizationId, 1))), skySample(body.skySample), characterIds),
     };
   }
 
   const session = elandSessions.get(runId);
   if (!session) return { status: 404, body: { error: `运行 ${runId} 不存在` } };
-  if (route === 'model' && method === 'POST') return { status: 200, body: { model: session.setModel(body.model) } };
-  if (route === 'step' && method === 'POST') return { status: 200, body: await session.step({ skySample: skySample(body.skySample), fast: body.fast === true }) };
-  if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, fast: false, model: session.model(), frame: session.latest() } };
+  if (route === 'step' && method === 'POST') return { status: 200, body: await session.step({ skySample: skySample(body.skySample) }) };
+  if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, model: session.model(), frame: session.latest() } };
   if (route === 'history' && method === 'GET') return { status: 200, body: { civilizationId: session.latest()?.civilizationId ?? 0, history: session.historyList(), branches: session.branchList() } };
   if (route === 'frame' && method === 'GET') return { status: 200, body: session.frameAt(finite(url.searchParams.get('month'), 0)) };
   if (route === 'agent-history' && method === 'GET') {

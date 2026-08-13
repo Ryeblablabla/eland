@@ -6,6 +6,7 @@ import {
   createSimulation,
   type SimulationState,
 } from "../src/game/eland/simulation";
+import type { EvolutionPath, EvolutionReport } from './evolution-artifacts';
 
 export interface RunSummary {
   schemaVersion: 1;
@@ -145,5 +146,35 @@ export class FileRunStore {
     await writeJsonAtomic(path.join(dir, "state.json"), state);
     await writeJsonAtomic(path.join(dir, "meta.json"), meta);
     return { meta, state };
+  }
+
+  async loadEvolutionPath(id: string): Promise<EvolutionPath | null> {
+    const dir = this.runDir(id);
+    try {
+      return JSON.parse(await readFile(path.join(dir, 'evolution.json'), 'utf8')) as EvolutionPath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  async saveEvolutionPath(id: string, evolution: EvolutionPath): Promise<void> {
+    await this.load(id);
+    await writeJsonAtomic(path.join(this.runDir(id), 'evolution.json'), evolution);
+  }
+
+  async loadEvolutionReport(id: string): Promise<EvolutionReport | null> {
+    const dir = this.runDir(id);
+    try {
+      return JSON.parse(await readFile(path.join(dir, 'report.json'), 'utf8')) as EvolutionReport;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  async saveEvolutionReport(id: string, report: EvolutionReport): Promise<void> {
+    await this.load(id);
+    await writeJsonAtomic(path.join(this.runDir(id), 'report.json'), report);
   }
 }

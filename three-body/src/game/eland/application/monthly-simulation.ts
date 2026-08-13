@@ -521,12 +521,12 @@ function executePrepared(
 ): SimulationState {
   const { state, events, contexts, candidates, atMonth } = prepared;
   if (state.civilization.status === 'ended') return state;
-  const fallback = new MockDecider();
   for (const candidate of candidates) {
     const person = state.people.find((item) => item.id === candidate.person.id);
     if (!person || !isAlive(person)) continue;
     const freshContext = buildDecisionContext(state, person);
-    const picked = decisions.get(person.id) ?? { decision: fallback.decide(freshContext), usedModel: false };
+    const picked = decisions.get(person.id);
+    if (!picked) continue;
     events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length));
   }
   const order = state.people
@@ -558,7 +558,7 @@ export function stepSimulation(input: SimulationState, decider: AgentDecider = n
   return executePrepared(prepared, decisions, { inputTokens: 0, outputTokens: 0 }, 0);
 }
 
-export async function stepSimulationAsync(input: SimulationState, batch: BatchDecider, fallback: AgentDecider = new MockDecider()): Promise<SimulationState> {
+export async function stepSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
   const prepared = prepareMonth(input);
   const living = prepared.contexts.length;
   const rolling = currentRollingLedgers(prepared.state);
@@ -570,10 +570,9 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   );
   const ranked = [...prepared.candidates].sort((a, b) => urgency(b) - urgency(a) || a.person.id.localeCompare(b.person.id));
   const modelContexts = ranked.slice(0, maxContexts);
-  let modelDecisions: (Decision | null)[] = [];
-  try { modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : []; } catch { modelDecisions = []; }
+  const modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
+  if (modelDecisions.length !== modelContexts.length || modelDecisions.some((decision) => !decision)) throw new Error('Kimi 未返回完整的关键决策，本月没有提交');
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
-  prepared.candidates.forEach((context) => decisions.set(context.person.id, { decision: fallback.decide(context), usedModel: false }));
   modelContexts.forEach((context, index) => {
     const decision = modelDecisions[index];
     if (decision) decisions.set(context.person.id, { decision, usedModel: true });
@@ -590,7 +589,6 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
 
 export interface SimulationController {
   getState(): SimulationState;
-  step(count?: number): SimulationState;
   stepAsync(batch: BatchDecider, count?: number): Promise<SimulationState>;
   reset(): SimulationState;
   restore(saved: SimulationState): SimulationState;
@@ -598,16 +596,12 @@ export interface SimulationController {
   injectEvent(input: EnvironmentEventInput): SimulationState;
 }
 
-export function createSimulation(options: { seed?: number; decider?: AgentDecider; config?: Partial<SimulationConfig>; state?: SimulationState } = {}): SimulationController {
+export function createSimulation(options: { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState } = {}): SimulationController {
   let state = options.state ? migrateSimulationState(options.state) : createInitialState(options.seed, options.config);
   return {
     getState: () => copyState(state),
-    step(count = 1) {
-      for (let index = 0; index < count; index += 1) state = stepSimulation(state, options.decider);
-      return copyState(state);
-    },
     async stepAsync(batch, count = 1) {
-      for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch, options.decider);
+      for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch);
       return copyState(state);
     },
     reset() {

@@ -12,7 +12,7 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/simulation.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${bundlePath}`,
   ], { stdio: 'pipe' });
-  const { createInitialState, createSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { createInitialState, createSimulation, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 12);
@@ -26,9 +26,8 @@ try {
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
 
-  const controller = createSimulation({ seed: 31, config: { endpoint: { kind: 'months', value: 180 }, chaosIntensity: 0 } });
-  let state = controller.getState();
-  for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = controller.step();
+  let state = createInitialState(31, { endpoint: { kind: 'months', value: 180 }, chaosIntensity: 0 });
+  for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');
   assert.ok(opportunities.length >= initial.people.length * 24, '在世人物每月应留下概率账本');
   assert.ok(opportunities.every((event) => event.probability > 0), '每个人每月关键决策概率必须非零');
@@ -47,7 +46,7 @@ try {
 
   let calls = 0;
   const batch = {
-    async decideAll(contexts) { calls += contexts.length; return contexts.map(() => null); },
+    async decideAll(contexts) { calls += contexts.length; return contexts.map(() => ({ kind: 'idle', reason: '测试中的合法模型决策' })); },
     takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
   };
   let budgetState = createInitialState(17, { endpoint: { kind: 'months', value: 24 } });

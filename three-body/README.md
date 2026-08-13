@@ -4,9 +4,9 @@
 
 ## 自主演化能力
 
-长期能力目标以 [`../docs/human-society-capability-map-1000.md`](../docs/human-society-capability-map-1000.md) 的 **1000 项能力地图**为准。当前重构分支的运行时观察器正式判定 **3 项**：11「采集食物」、20「建造住所」、42「开辟道路」。旧引擎曾使用 65 项口径，但对应机制和观察器没有全部迁入当前月度像素世界，不能计入当前覆盖率。支撑大部分能力自然出现的底层设计见 [`../docs/emergent-capability-substrate-v1.md`](../docs/emergent-capability-substrate-v1.md)。
+长期能力目标以 [`../docs/human-society-capability-map-1000.md`](../docs/human-society-capability-map-1000.md) 的 **1000 项能力地图**为准。当前月度物质世界的运行时观察器可判定采集、住所、种植收获、道路、交换约定、交换交付、观察自然与技术传播。支撑更多能力自然出现的底层设计见 [`../docs/emergent-capability-substrate-v1.md`](../docs/emergent-capability-substrate-v1.md)。
 
-这些节点不是 Agent 的任务清单。人物只根据身体、需求、关系、局部认知和环境可供性选择行动；里程碑在事后从世界事实、物质来源和跨月实践中派生。当前正式覆盖率为 **3 / 1000（0.3%）**；“正式覆盖”表示当前代码已有可裁决规则与闭合证据链，不表示每个文明都会经历该事件，也不表示新底层设计完成后会自动获得正式覆盖。
+这些节点不是人物的任务清单。人物只根据身体、状态、关系、私有知识、私有背包和局部环境可供性选择源自动作；里程碑在事后从世界事实、物质来源和跨月实践中派生。“正式覆盖”表示当前代码已有可裁决规则与闭合证据链，不表示每个文明都会经历该事件。
 
 能力地图编号、名称和覆盖状态只能出现在事后观察器与文档中，不进入人物提示、需要强度或候选行动评分。人物看到的是身体状态、材料性质、同地人物和自己的有来源经验；例如观察器可以把“纤维作用后出血下降”识别为第 103 项，但人物得到的只是通用的“检查身体”和“把材料用于身体”能力。若人物亲历近距离接触后发病，他只能形成带不确定性的个人关联，并通过普通移动改变接触人数；世界中不存在名为“完成隔离里程碑”的命令。
 
@@ -28,6 +28,8 @@ npm run backend
 
 - `state.json`：完整 `SimulationState`，包含人物、物质、历史事件和文明结局。
 - `meta.json`：便于列举运行的轻量摘要和持久化修订号。
+- `evolution.json`：长程演化状态、检查点、人口/阶段变化和带证据 ID 的关键转折。
+- `report.json`：由真实事件确定性生成的人口、动作、里程碑、证据 ID 与模型用量统计，不调用模型总结。
 
 可配置环境变量：
 
@@ -35,10 +37,13 @@ npm run backend
 THREEBODY_PORT=3220
 THREEBODY_HOST=127.0.0.1
 THREEBODY_DATA_DIR=/absolute/path/to/runs
-DEEPSEEK_API_KEY=...
+KIMI_API_KEY=...
+# 可选；默认值见 .env.example
+KIMI_API_URL=https://api.kimi.com/coding/v1/chat/completions
+KIMI_MODEL=kimi-for-coding
 ```
 
-也可用 `THREEBODY_ENV_FILE` 指向包含 `DEEPSEEK_API_KEY` 的 env 文件。服务默认只使用本地规则推进，不需要模型密钥。
+也可用 `THREEBODY_ENV_FILE` 指向包含 `KIMI_API_KEY` 的 env 文件。产品中的演化只允许 Kimi 关键决策；没有密钥、调用失败或返回非法决策时，该月不会提交，也不会降级为本地人物决策。
 
 ## API
 
@@ -53,34 +58,33 @@ curl -X POST http://127.0.0.1:3220/api/runs \
     "seed": 185,
     "config": {
       "civilizationNo": 1,
-      "startingPoint": "records",
       "chaosIntensity": 0,
-      "endpoint": { "kind": "ticks", "value": 99999 }
+      "endpoint": { "kind": "months", "value": 1200 }
     }
   }'
 ```
 
-`id` 可省略，由服务生成。`startingPoint` 支持 `origin`、`shelter`、`roads`、`records`、`models`。
+`id` 可省略，由服务生成。
 
-### 后台快速演化
+### 后台真实演化
 
-本地规则模式适合批量演化和调试，不调用 LLM：
-
-```bash
-curl -X POST http://127.0.0.1:3220/api/runs/agriculture-01/evolve \
-  -H 'content-type: application/json' \
-  -d '{ "years": 100, "mode": "rules" }'
-```
-
-模型模式每年轮换少量人物通过模型完成年度关键决策，其余人物使用本地规则；每名可行动人物每年只执行一次行动。未指定模型时默认使用 Kimi，也可以显式指定 DeepSeek：
+启动长程演化任务。响应为 `202 Accepted`；服务逐月推进，只在预算选中的月度关键决策点调用 Kimi。世界物理、身体消耗和既有长期行动仍由确定性规则推进，但不会替人物生成新的本地决策。
 
 ```bash
 curl -X POST http://127.0.0.1:3220/api/runs/agriculture-01/evolve \
   -H 'content-type: application/json' \
-  -d '{ "years": 3, "mode": "kimi" }'
+  -d '{ "months": 120 }'
 ```
 
-响应默认返回摘要、最后一年事件和结局；调试时传 `"includeState": true` 可同时返回完整状态。每次推进成功后自动持久化，同一个运行的并发写入会串行执行。
+任务每 12 个月保存一次完整状态与演化路径；文明提前结束时立即保存。进程或 API 中断时，`evolution.json` 会标记 `failed` 并保留最近检查点。
+
+```bash
+# 查询进度和演化路径
+curl http://127.0.0.1:3220/api/runs/agriculture-01/evolution
+
+# 完成后读取确定性事实报告
+curl http://127.0.0.1:3220/api/runs/agriculture-01/report
+```
 
 ### 查询与导出
 
@@ -121,7 +125,7 @@ curl -X PUT http://127.0.0.1:3220/api/runs/agriculture-01/state \
 ### 其他接口
 
 - `GET /health`：服务与数据目录状态。
-- `POST /api/decide`：模型决策接口，未传 `model` 时默认使用 Kimi；传入 `"model": "deepseek"` 可切换到 DeepSeek。
+- `POST /api/decide`：Kimi 月度关键决策接口。
 
 ## 前端
 
@@ -142,18 +146,6 @@ npm run backend:build
 
 宇宙场景默认由 three.js（WebGL）渲染：恒星球芯 + 加法混合辉光、UnrealBloom 泛光（高阈值防过曝）、顶点色渐隐轨迹线、深空近黑底色与若隐若现的星云。相机为可交互 3D 视角：拖拽旋转、滚轮缩放（不平移），松手 4 秒后恢复自动取景（约 22° 俯视与缓慢漂移）。物理仍由 `src/lib/threebody.ts` 的 2D RK4 引擎驱动，`ThreeBodyCanvas` 的 props 契约与原 Canvas 2D 版完全一致，`skyMode: 'frozen'` 时只推进物理、跳过渲染。
 
-## ELAND 播放会话限速
+## 回放与演化
 
-前端通过 `/api/eland/play` 播放时，默认每轮演化至少间隔 5 秒，给宇宙动画、人物地图和史册条目留出展示时间。服务端也会对 `/api/eland/step` 的普通单步请求执行同样的间隔保护。
-
-快速迭代或测试时，调用接口显式传入 `fast: true`，即可跳过播放等待；前端不会传这个参数：
-
-```bash
-# 快速单步
-curl -X POST http://127.0.0.1:3217/api/eland/step \
-  -H 'content-type: application/json' -d '{ "fast": true }'
-
-# 快速自动演化；停止时仍传 on:false
-curl -X POST http://127.0.0.1:3217/api/eland/play \
-  -H 'content-type: application/json' -d '{ "on": true, "fast": true }'
-```
+前端单步和连续播放都通过 Kimi 完成月度关键决策。回放只读取已经持久化的事实和快照，不会产生新演化，也不会调用模型。

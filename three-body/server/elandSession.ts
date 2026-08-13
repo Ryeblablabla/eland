@@ -10,7 +10,7 @@ import { calendarDate } from '../src/game/eland/domain/calendar';
 import { ERA_TO_ENV, eventToChronicle, monthSpeaker, toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
 import { createServerLlmDecider } from './backend-decider';
 import { loadLlmKey } from './env';
-import { DEFAULT_MODEL_PROVIDER, normalizeModelProvider, type ModelProvider } from '../src/game/llm';
+import type { ModelProvider } from '../src/game/llm';
 import type { GameFrame, SkySample } from '../src/game/societyContract';
 import type { AgentHistoryView } from '../src/game/societyContract';
 
@@ -59,7 +59,6 @@ export class ElandSession {
   private branches = new Map<string, BranchTimeline>();
   private activeBranchId = '';
   private forkSequence = 0;
-  private modelProvider: ModelProvider = DEFAULT_MODEL_PROVIDER;
   private skySample: SkySample;
   readonly runId: string;
 
@@ -68,8 +67,7 @@ export class ElandSession {
     this.skySample = initialSkySample;
   }
 
-  begin(civilizationId: number, skySample: SkySample, provider?: unknown, characterIds?: string[]): Frame {
-    if (provider !== undefined) this.setModel(provider);
+  begin(civilizationId: number, skySample: SkySample, characterIds?: string[]): Frame {
     this.civilizationId = civilizationId;
     this.skySample = skySample;
     this.controller = createSimulation({
@@ -96,13 +94,8 @@ export class ElandSession {
     return this.record(state, []);
   }
 
-  setModel(provider: unknown): ModelProvider {
-    this.modelProvider = normalizeModelProvider(provider);
-    return this.modelProvider;
-  }
-
   model(): ModelProvider {
-    return this.modelProvider;
+    return 'kimi';
   }
 
   private activeTimeline(): BranchTimeline {
@@ -160,17 +153,18 @@ export class ElandSession {
     return this.inheritedFrames(this.activeTimeline()).at(-1) ?? null;
   }
 
-  async step(options: { fast?: boolean; skySample: SkySample }): Promise<Frame | null> {
+  async step(options: { skySample: SkySample }): Promise<Frame | null> {
     if (!this.controller || this.stepping) return this.latest();
     this.stepping = true;
     try {
       this.skySample = options.skySample;
       const env = ERA_TO_ENV[this.skySample.fate];
-      this.controller.setExternalClimate(env.epoch, env.kind, env.severity);
-      const apiKey = loadLlmKey(this.modelProvider);
-      const state = apiKey
-        ? await this.controller.stepAsync(createServerLlmDecider(apiKey, this.modelProvider))
-        : this.controller.step();
+      const apiKey = loadLlmKey('kimi');
+      if (!apiKey) throw new Error('未配置 KIMI_API_KEY，真实演化无法开始');
+      const candidate = createSimulation({ state: this.controller.getState() });
+      candidate.setExternalClimate(env.epoch, env.kind, env.severity);
+      const state = await candidate.stepAsync(createServerLlmDecider(apiKey, 'kimi'));
+      this.controller.restore(state);
       return this.record(state, state.lastStep);
     } finally {
       this.stepping = false;
@@ -231,10 +225,10 @@ export class ElandSession {
 export class ElandSessionManager {
   private readonly sessions = new Map<string, ElandSession>();
 
-  begin(runId: string, civilizationId: number, skySample: SkySample, provider?: unknown, characterIds?: string[]): Frame {
+  begin(runId: string, civilizationId: number, skySample: SkySample, characterIds?: string[]): Frame {
     const session = new ElandSession(runId, skySample);
     this.sessions.set(runId, session);
-    return session.begin(civilizationId, skySample, provider, characterIds);
+    return session.begin(civilizationId, skySample, characterIds);
   }
 
   get(runId: string): ElandSession | null {

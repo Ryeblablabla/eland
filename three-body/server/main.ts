@@ -10,7 +10,8 @@ import {
 import { normalizeModelProvider } from "../src/game/llm";
 import { createServerLlmDecider } from "./backend-decider";
 import { loadLlmKey } from "./env";
-import { handleDecide } from "./deepseek-decide";
+import { handleDecide, modelConfiguration } from "./kimi-gateway";
+import { buildEvolutionFactsReport, checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
 import { handleElandApi } from "./eland-api";
 import {
   FileRunStore,
@@ -26,6 +27,7 @@ const MAX_BODY_BYTES = 50 * 1024 * 1024;
 
 const store = new FileRunStore(DATA_DIR);
 const runQueues = new Map<string, Promise<unknown>>();
+const evolutionJobs = new Map<string, Promise<void>>();
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -120,47 +122,84 @@ async function createRun(bodyValue: unknown, imported: boolean): Promise<Persist
   });
 }
 
+async function executeLongEvolution(id: string, months: number, initialPath: EvolutionPath): Promise<void> {
+  const apiKey = loadLlmKey('kimi');
+  if (!apiKey) throw new Error('未配置 KIMI_API_KEY，真实演化无法开始');
+  const current = await store.load(id);
+  const controller = createSimulation({ state: current.state });
+  const endMonth = current.state.clock.elapsedMonths + months;
+  let persisted = current.state;
+  let path = initialPath;
+  let inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
+  let outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
+  try {
+    for (let index = 0; index < months && persisted.civilization.status === 'running'; index += 1) {
+      const state = await controller.stepAsync(createServerLlmDecider(apiKey, 'kimi'));
+      persisted = state;
+      const ledger = state.decisionBudget.ledgers.at(-1);
+      inputTokens += ledger?.inputTokens ?? 0;
+      outputTokens += ledger?.outputTokens ?? 0;
+      const reachedEnd = index === months - 1 || state.civilization.status === 'ended';
+      const checkpointDue = (state.clock.elapsedMonths - initialPath.fromMonth) % 12 === 0;
+      if (!checkpointDue && !reachedEnd) continue;
+      persisted = (await store.save(id, persisted)).state;
+      path = evolvePath(persisted, {
+        runId: id,
+        model: modelConfiguration('kimi').model,
+        fromMonth: initialPath.fromMonth,
+        requestedEndMonth: endMonth,
+        previous: path,
+        checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }),
+        status: 'running',
+      });
+      await store.saveEvolutionPath(id, path);
+    }
+    const report = buildEvolutionFactsReport(persisted, path);
+    await store.saveEvolutionReport(id, report);
+    path = evolvePath(persisted, { runId: id, model: path.model, fromMonth: initialPath.fromMonth, requestedEndMonth: endMonth, previous: path, status: 'completed' });
+    await store.saveEvolutionPath(id, path);
+  } catch (error) {
+    persisted = (await store.save(id, persisted)).state;
+    path = evolvePath(persisted, {
+      runId: id,
+      model: path.model,
+      fromMonth: initialPath.fromMonth,
+      requestedEndMonth: endMonth,
+      previous: path,
+      checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }),
+      status: 'failed',
+      failure: error instanceof Error ? error.message : String(error),
+    });
+    await store.saveEvolutionPath(id, path);
+  }
+}
+
 async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
   const body = asObject(bodyValue);
   const months = positiveInteger(body.months, 1);
-  const mode = body.mode === "rules"
-    ? "rules"
-    : body.mode === "kimi" || body.model === "kimi"
-      ? "kimi"
-      : body.mode === "deepseek" || body.model === "deepseek"
-        ? "deepseek"
-        : "rules";
-  const provider = normalizeModelProvider(body.model ?? mode);
-  const includeState = body.includeState === true;
-  const startedAt = performance.now();
-
-  return serialized(id, async () => {
-    const current = await store.load(id);
-    const controller = createSimulation({ state: current.state });
-    const startMonth = current.state.clock.elapsedMonths;
-    let state: SimulationState;
-
-    if (mode !== "rules") {
-      const apiKey = loadLlmKey(provider);
-      if (!apiKey) throw new HttpError(503, `未配置 ${provider === "kimi" ? "KIMI_API_KEY" : "DEEPSEEK_API_KEY"}，无法使用 ${provider} 模式`);
-      state = await controller.stepAsync(createServerLlmDecider(apiKey, provider), months);
-    } else {
-      state = controller.step(months);
-    }
-
-    const saved = await store.save(id, state);
-    return {
-      meta: saved.meta,
-      mode,
-      ...(mode !== "rules" ? { model: provider } : {}),
-      requestedMonths: months,
-      advancedMonths: state.clock.elapsedMonths - startMonth,
-      elapsedMs: Math.round((performance.now() - startedAt) * 10) / 10,
-      lastEvents: state.lastStep,
-      outcome: state.civilization.outcome ?? null,
-      ...(includeState ? { state: saved.state } : {}),
-    };
+  if (!loadLlmKey('kimi')) throw new HttpError(503, '未配置 KIMI_API_KEY，真实演化无法开始');
+  if (evolutionJobs.has(id)) throw new HttpError(409, `运行 ${id} 正在演化`);
+  const current = await store.load(id);
+  if (current.state.civilization.status === 'ended') throw new HttpError(409, `运行 ${id} 已经结束`);
+  const previous = await store.loadEvolutionPath(id);
+  const requestedEndMonth = current.state.clock.elapsedMonths + months;
+  const initial = evolvePath(current.state, {
+    runId: id,
+    model: modelConfiguration('kimi').model,
+    fromMonth: current.state.clock.elapsedMonths,
+    requestedEndMonth,
+    ...(previous ? { previous } : {}),
+    checkpoint: checkpointFor(current.state, {
+      inputTokens: previous?.checkpoints.at(-1)?.inputTokens ?? 0,
+      outputTokens: previous?.checkpoints.at(-1)?.outputTokens ?? 0,
+    }),
+    status: 'running',
   });
+  await store.saveEvolutionPath(id, initial);
+  const job = serialized(id, () => executeLongEvolution(id, months, initial)).then(() => undefined);
+  evolutionJobs.set(id, job);
+  void job.finally(() => evolutionJobs.delete(id)).catch((error) => console.error(`运行 ${id} 的后台演化任务异常`, error));
+  return initial;
 }
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -231,7 +270,21 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (request.method === "POST" && parts[3] === "evolve" && parts.length === 4) {
-    sendJson(response, 200, await evolveRun(id, await readJson(request)));
+    sendJson(response, 202, await evolveRun(id, await readJson(request)));
+    return;
+  }
+
+  if (request.method === "GET" && parts[3] === "evolution" && parts.length === 4) {
+    const evolution = await store.loadEvolutionPath(id);
+    if (!evolution) throw new HttpError(404, `运行 ${id} 尚无演化路径`);
+    sendJson(response, 200, evolution);
+    return;
+  }
+
+  if (request.method === "GET" && parts[3] === "report" && parts.length === 4) {
+    const report = await store.loadEvolutionReport(id);
+    if (!report) throw new HttpError(404, `运行 ${id} 尚无演化报告`);
+    sendJson(response, 200, report);
     return;
   }
 

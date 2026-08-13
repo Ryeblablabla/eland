@@ -1,12 +1,17 @@
-import type { DecisionRequestContext } from '../src/game/eland/deepseek-decider';
+import type { DecisionRequestContext } from '../src/game/eland/kimi-decider';
 import type { Decision, TokenUsage } from '../src/game/eland/simulation';
 import { DEFAULT_MODEL_PROVIDER, normalizeModelProvider, type ModelProvider } from '../src/game/llm';
 
-const MODEL_CONFIG = {
-  deepseek: { url: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat' },
-  kimi: { url: 'https://api.kimi.com/coding/v1/chat/completions', model: 'kimi-k2-0711-preview' },
-} as const;
+const DEFAULT_MODEL_CONFIG = { url: 'https://api.kimi.com/coding/v1/chat/completions', model: 'kimi-for-coding' } as const;
 const MAX_AGENTS = 12;
+
+export function modelConfiguration(provider: ModelProvider): { url: string; model: string } {
+  void provider;
+  return {
+    url: process.env.KIMI_API_URL?.trim() || DEFAULT_MODEL_CONFIG.url,
+    model: process.env.KIMI_MODEL?.trim() || DEFAULT_MODEL_CONFIG.model,
+  };
+}
 
 const SYSTEM_PROMPT = [
   '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
@@ -25,6 +30,39 @@ function text(value: unknown, max = 120): string {
 
 function parseJson(content: string): unknown {
   return JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, ''));
+}
+
+async function requestKimiDecision(
+  apiKey: string,
+  provider: ModelProvider,
+  context: DecisionRequestContext,
+): Promise<{ content: string; usage: TokenUsage }> {
+  const config = modelConfiguration(provider);
+  const response = await fetch(config.url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 1,
+      max_tokens: 500,
+      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }],
+    }),
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!response.ok) {
+    const detail = (await response.text()).trim().slice(0, 500);
+    throw new Error(`${provider} 返回 ${response.status}${detail ? `：${detail}` : ''}`);
+  }
+  const data = await response.json() as {
+    choices?: { message?: { content?: unknown } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) throw new Error(`${provider} 没有返回文本`);
+  return {
+    content,
+    usage: { inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 },
+  };
 }
 
 function normalizeDecision(context: DecisionRequestContext, input: unknown): Decision | null {
@@ -51,33 +89,16 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
 }
 
 async function decideOne(context: DecisionRequestContext, apiKey: string, provider: ModelProvider): Promise<{ decision: Decision | null; usage: TokenUsage }> {
+  const completion = await requestKimiDecision(apiKey, provider, context);
+  let parsed: unknown;
   try {
-    const config = MODEL_CONFIG[provider];
-    const response = await fetch(config.url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0.55,
-        max_tokens: 500,
-        ...(provider === 'kimi' ? { thinking: { type: 'disabled' } } : { response_format: { type: 'json_object' } }),
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }],
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!response.ok) return { decision: null, usage: { inputTokens: 0, outputTokens: 0 } };
-    const data = await response.json() as {
-      choices?: { message?: { content?: unknown } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
-    };
-    const content = data.choices?.[0]?.message?.content;
-    return {
-      decision: typeof content === 'string' ? normalizeDecision(context, parseJson(content)) : null,
-      usage: { inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 },
-    };
+    parsed = parseJson(completion.content);
   } catch {
-    return { decision: null, usage: { inputTokens: 0, outputTokens: 0 } };
+    throw new Error(`Kimi 返回的关键决策不是 JSON：${completion.content.trim().slice(0, 240)}`);
   }
+  const decision = normalizeDecision(context, parsed);
+  if (!decision) throw new Error(`Kimi 返回了不在可选行动中的决策：${completion.content.trim().slice(0, 240)}`);
+  return { decision, usage: completion.usage };
 }
 
 function isContext(value: unknown): value is DecisionRequestContext {
@@ -88,7 +109,7 @@ function isContext(value: unknown): value is DecisionRequestContext {
 
 export async function handleDecide(payload: unknown, apiKey: string, requestedProvider: ModelProvider = DEFAULT_MODEL_PROVIDER): Promise<{ status: number; body: unknown }> {
   const provider = normalizeModelProvider(requestedProvider);
-  if (!apiKey) return { status: 500, body: { error: `服务端未配置 ${provider === 'kimi' ? 'KIMI_API_KEY' : 'DEEPSEEK_API_KEY'}` } };
+  if (!apiKey) return { status: 500, body: { error: '服务端未配置 KIMI_API_KEY' } };
   const input = payload as { contexts?: unknown[] };
   const contexts = Array.isArray(input?.contexts) ? input.contexts.filter(isContext).slice(0, MAX_AGENTS) : [];
   if (!contexts.length) return { status: 400, body: { error: '缺少合法的月度决策上下文' } };
@@ -101,5 +122,5 @@ export async function handleDecide(payload: unknown, apiKey: string, requestedPr
     outputTokens: sum.outputTokens + item.usage.outputTokens,
   }), { inputTokens: 0, outputTokens: 0 });
   const decisions = results.map((item) => item.decision);
-  return { status: 200, body: { provider, model: MODEL_CONFIG[provider].model, decided: decisions.filter(Boolean).length, total: decisions.length, decisions, usage } };
+  return { status: 200, body: { provider, model: modelConfiguration(provider).model, decided: decisions.filter(Boolean).length, total: decisions.length, decisions, usage } };
 }

@@ -5,7 +5,6 @@ import CharacterArchive from '@/components/CharacterArchive';
 import { elandClient, type Frame } from '@/game/elandClient';
 import type { AgentHistoryItem, EraKey, SocietyState } from '@/game/societyContract';
 import type { SkySample } from '@/game/societyContract';
-import { DEFAULT_MODEL_PROVIDER, MODEL_OPTIONS, type ModelProvider } from '@/game/llm';
 import { CHARACTERS } from '@/data/characters';
 import type { PlanetFate } from '@/lib/threebody';
 
@@ -168,9 +167,9 @@ export default function Game() {
   const [agentHistoryLoading, setAgentHistoryLoading] = useState(false);
   const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停，省 token）
   const [thinking, setThinking] = useState(false);
+  const [evolutionError, setEvolutionError] = useState<string | null>(null);
   const [replayMonth, setReplayMonth] = useState<number | null>(null); // 回放模式
   const [historyList, setHistoryList] = useState<{ month: number; label: string; summary: string }[]>([]);
-  const [modelProvider, setModelProvider] = useState<ModelProvider>(DEFAULT_MODEL_PROVIDER);
   const [showArchive, setShowArchive] = useState(false);
   const [roster, setRoster] = useState<string[]>([]); // 指定开局阵容（档案 id）；空 = 随机抽取
 
@@ -184,7 +183,6 @@ export default function Game() {
   const clockPaused = useRef(false);
   const settlementRef = useRef(false);
   const civStats = useRef({ startMonth: 0, eras: 0 });
-  const modelProviderRef = useRef<ModelProvider>(DEFAULT_MODEL_PROVIDER);
   const rosterRef = useRef<string[]>([]);
   const runIdRef = useRef(`threebody-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
   const statsRef = useRef<SimStats | null>(null);
@@ -251,7 +249,7 @@ export default function Game() {
   const startCivilization = useCallback((civNo: number) => {
     const picked = rosterRef.current;
     const sky = sampleSky();
-    void elandClient.begin(runIdRef.current, civNo, sky, modelProviderRef.current, picked.length > 0 ? picked : undefined).then((frame) => {
+    void elandClient.begin(runIdRef.current, civNo, sky, picked.length > 0 ? picked : undefined).then((frame) => {
       applyFrame(frame);
       setSelectedAgentId(null);
       setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
@@ -292,13 +290,6 @@ export default function Game() {
     startCivilization(1);
     setUniverseToken((t) => t + 1);
   }, [startCivilization]);
-
-  const switchModel = useCallback((provider: ModelProvider) => {
-    if (provider === modelProviderRef.current) return;
-    modelProviderRef.current = provider;
-    setModelProvider(provider);
-    void elandClient.setModel(runIdRef.current, provider).catch(() => undefined);
-  }, []);
 
   const onStats = useCallback(
     (s: SimStats) => {
@@ -376,6 +367,7 @@ export default function Game() {
   const stepOnce = useCallback(async () => {
     if (thinking || settlementRef.current) return;
     setThinking(true);
+    setEvolutionError(null);
     try {
       const sky = sampleSky();
       const frame = await elandClient.step(runIdRef.current, sky);
@@ -383,7 +375,10 @@ export default function Game() {
         applyFrame(frame);
         setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
       }
-    } catch { /* 后端暂不可达时静默 */ } finally {
+    } catch (error) {
+      setPlaying(false);
+      setEvolutionError(error instanceof Error ? error.message : 'Kimi 演化失败，已停在最近完成的月份');
+    } finally {
       setThinking(false);
     }
   }, [thinking, applyFrame, sampleSky]);
@@ -682,22 +677,7 @@ export default function Game() {
             {playing ? '暂 停 ‖' : '演 化 ▶'}
           </button>
           <span className="text-slate-700">·</span>
-          <div className="flex items-center gap-2 tracking-[0.18em]" title="选择关键决策模型；额度按人物月累计">
-            <span className="text-slate-600">AI</span>
-            {MODEL_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                onClick={() => switchModel(option.id)}
-                className={`border-b px-1 py-0.5 transition-colors ${
-                  modelProvider === option.id
-                    ? 'border-amber-200 text-amber-200'
-                    : 'border-transparent text-slate-600 hover:text-slate-300'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <div className="tracking-[0.18em] text-slate-600" title="所有关键决策均由 Kimi 作出；额度按人物月累计">KIMI · 真 实 演 化</div>
           <span className="text-slate-700">·</span>
           <button onClick={() => setShowArchive(true)} className="transition-colors hover:text-amber-200" title="浏览人物档案并指定开局阵容">
             人 物 档 案{roster.length > 0 ? ` · ${roster.length}` : ''}
@@ -706,6 +686,12 @@ export default function Game() {
           <button onClick={openReplay} className="transition-colors hover:text-amber-200">
             回 放 ↺
           </button>
+        </div>
+      )}
+
+      {entered && evolutionError && replayMonth === null && (
+        <div className="absolute bottom-16 left-1/2 z-30 -translate-x-1/2 border border-rose-300/20 bg-slate-950/90 px-4 py-2 text-[11px] tracking-wider text-rose-200/80 backdrop-blur-md">
+          演化已暂停 · {evolutionError}
         </div>
       )}
 

@@ -54,7 +54,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
   };
 }
 
-export function createDeepSeekDecider(): BatchDecider {
+export function createKimiDecider(): BatchDecider {
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
   return {
     async decideAll(contexts) {

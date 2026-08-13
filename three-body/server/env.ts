@@ -17,7 +17,8 @@ function readKeyFromEnvFile(filePath: string, names: string[]): string {
 
 /** 只在服务端读取模型密钥；密钥不会进入前端 bundle。 */
 export function loadLlmKey(provider: ModelProvider): string {
-  const names = provider === 'kimi' ? ['KIMI_API_KEY', 'MOONSHOT_API_KEY'] : ['DEEPSEEK_API_KEY'];
+  void provider;
+  const names = ['KIMI_API_KEY', 'MOONSHOT_API_KEY'];
   for (const name of names) {
     if (process.env[name]) return process.env[name] as string;
   }
@@ -30,10 +31,6 @@ export function loadLlmKey(provider: ModelProvider): string {
 
   const legacyFile = path.resolve(process.cwd(), '../demo/.env.local');
   return readKeyFromEnvFile(legacyFile, names);
-}
-
-export function loadDeepseekKey(): string {
-  return loadLlmKey('deepseek');
 }
 
 export function loadKimiKey(): string {

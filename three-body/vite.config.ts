@@ -29,7 +29,7 @@ function elandDecideApi(): Plugin {
         if (req.method !== "POST") { res.statusCode = 405; res.end(); return }
         void (async () => {
           try {
-            const { handleDecide } = await import("./server/deepseek-decide")
+            const { handleDecide } = await import("./server/kimi-gateway")
             const payload = JSON.parse(await readBody(req)) as { model?: unknown }
             const provider = normalizeModelProvider(payload.model)
             const result = await handleDecide(payload, loadLlmKey(provider), provider)

@@ -39,6 +39,20 @@ export interface DirectedRelation {
   sourceEventIds: string[];
 }
 
+export type MemoryKind = 'episode' | 'dialogue' | 'commitment' | 'failure' | 'summary';
+
+export interface MemoryRecord {
+  id: string;
+  kind: MemoryKind;
+  summary: string;
+  importance: number;
+  createdAtMonth: number;
+  lastRecalledAtMonth: number;
+  personIds: PersonId[];
+  sourceEventIds: string[];
+  expiresAtMonth?: number;
+}
+
 export interface PersonState {
   id: PersonId;
   name: string;
@@ -64,6 +78,7 @@ export interface PersonState {
   inventory: ItemStack[];
   knowledge: KnownFact[];
   relations: DirectedRelation[];
+  memories: MemoryRecord[];
   activeIntentId?: string;
   currentActionText: string;
   lastDecisionText: string;
@@ -80,4 +95,3 @@ export function ageMonths(person: PersonState, elapsedMonths: number): number {
 export function inventoryQuantity(person: PersonState, materialId: MaterialId): number {
   return person.inventory.reduce((sum, stack) => sum + (stack.materialId === materialId ? stack.quantity : 0), 0);
 }
-

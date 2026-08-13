@@ -52,6 +52,10 @@ export interface EvolutionReport {
   deaths: number;
   completedActions: number;
   kimiDecisions: number;
+  strategicIntents: number;
+  socialIntents: number;
+  survivalReflexActions: number;
+  communications: number;
   inputTokens: number;
   outputTokens: number;
   milestones: Array<{ id: string; label: string; note: string; evidenceEventIds: string[] }>;
@@ -163,6 +167,10 @@ export function buildEvolutionFactsReport(state: SimulationState, path: Evolutio
     deaths,
     completedActions: state.world.past.filter((event) => event.kind === 'action' && event.status === 'completed').length,
     kimiDecisions: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel).length,
+    strategicIntents: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && event.domain === 'strategic').length,
+    socialIntents: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && event.domain === 'social').length,
+    survivalReflexActions: state.world.past.filter((event) => event.kind === 'action' && event.cause === 'survival-reflex').length,
+    communications: state.world.past.filter((event) => event.kind === 'action' && event.action.kind === 'communicate' && event.status === 'completed').length,
     inputTokens: lastCheckpoint?.inputTokens ?? 0,
     outputTokens: lastCheckpoint?.outputTokens ?? 0,
     milestones: state.derived.milestones.map(({ id, label, note, evidenceEventIds }) => ({ id, label, note, evidenceEventIds })),

@@ -12,7 +12,10 @@ domain model and policies
 world grid primitives
 ```
 
-- `domain/model.ts`：人物、计划、物质、结构、事件与 `SimulationState` 聚合根。
+- `domain/model.ts`：人物、意图、物质、结构、事件与 `SimulationState` 聚合根。
+- `domain/survival-reflex.ts`：不消耗模型额度的吃、喝与紧急求生反射。
+- `domain/memory.ts`：固定预算的情节、对话、承诺和失败记忆，负责遗忘与摘要。
+- `application/social-options.ts`：会合、求助、结伴和对话响应候选。
 - `domain/calendar.ts`：唯一的月历换算规则。
 - `domain/decision-budget.ts`：按人物月计算的模型调用配额。
 - `domain/structure-policy.ts`：构件蓝图及客观结构效果。
@@ -22,4 +25,4 @@ world grid primitives
 - `simulation.ts`：供其他层依赖的稳定公共门面。
 - `adapter.ts`：领域状态到 UI 读取模型的单向投影。
 
-服务端模型决策器只能返回计划命令，不能直接修改聚合根。前端只能渲染读取投影，不能生成第二套地形、地点或道路。
+服务端模型决策器只能选择战略/社会意图并生成受约束的对话文本，不能直接修改聚合根。意图的原子动作由规则引擎编译和结算；前端只能渲染读取投影，不能生成第二套地形、地点或道路。

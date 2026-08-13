@@ -15,13 +15,14 @@ export function modelConfiguration(provider: ModelProvider): { url: string; mode
 
 const SYSTEM_PROMPT = [
   '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
-  '这次是一次月度关键决策；日常执行会由规则引擎在后续月份持续推进，不要把长期行动压缩成一个月。',
+  '吃、喝等生存反射和既有意图的日常执行由规则引擎负责。你只选择重要的战略或社会意图，不要输出 continue。',
+  '如果选择 social 选项，必须增加 utterance，用第一人称写一句实际会说的话；这句话会进入双方记忆并影响以后意图。',
   '严格输出一个 JSON 对象，不输出解释。格式只能是以下之一：',
-  '{"kind":"start","optionId":"输入中的行动选项id","reason":"简短理由"}',
-  '{"kind":"continue|suspend|resume|abandon","intentId":"输入中的意图id","reason":"简短理由"}',
-  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","reason":"简短理由"}',
+  '{"kind":"start","optionId":"输入中的行动选项id","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
+  '{"kind":"suspend|resume|abandon","intentId":"输入中的意图id","reason":"简短理由"}',
+  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
   '{"kind":"idle","reason":"简短理由"}',
-  '只能引用输入 id，不得凭空生成物质、地点或能力。先照顾迫切的生理和安全需要。',
+  '只能引用输入 id，不得凭空生成物质、地点或能力。生存反射已经由引擎处理；请比较关系、记忆、承诺、风险和长期收益。',
 ].join('\n');
 
 function text(value: unknown, max = 120): string {
@@ -77,15 +78,17 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const reason = text(raw.reason) || '根据眼前处境重新安排';
   const optionId = text(raw.optionId, 100);
   const intentId = text(raw.intentId, 100);
-  const optionExists = context.options.some((item) => item.id === optionId);
+  const utterance = text(raw.utterance, 180);
+  const option = context.options.find((item) => item.id === optionId);
+  const optionExists = Boolean(option);
+  const actualUtterance = option?.domain === 'social' ? utterance || reason : utterance;
   const activeIntentId = context.activeIntent?.id;
   const suspendedIntentIds = new Set(context.suspendedIntents.map((intent) => intent.id));
   if (kind === 'start') {
-    if (optionExists) return { kind, optionId, reason };
+    if (optionExists) return { kind, optionId, reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
     return null;
   }
-  if (kind === 'continue' && intentId === activeIntentId) return { kind, intentId, reason };
-  if (kind === 'revise' && intentId === activeIntentId && optionExists) return { kind, intentId, optionId, reason };
+  if (kind === 'revise' && intentId === activeIntentId && optionExists) return { kind, intentId, optionId, reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
   if (kind === 'suspend' && intentId === activeIntentId) return { kind, intentId, reason };
   if (kind === 'resume' && suspendedIntentIds.has(intentId)) return { kind, intentId, reason };
   if (kind === 'abandon' && intentId === activeIntentId) return { kind, intentId, reason };

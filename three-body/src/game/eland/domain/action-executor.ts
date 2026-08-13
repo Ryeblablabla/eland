@@ -5,6 +5,7 @@ import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { acceptanceOf, acceptedReproductionBetween, communicationById } from './social-facts';
+import { rememberAction } from './memory';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -83,6 +84,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId) ?? false;
+  if (goal.kind === 'near-person') return state.people.find((candidate) => candidate.id === goal.personId)?.position.cellId === person.position.cellId;
   if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
   return Boolean(communicationById(state, goal.representationId));
 }
@@ -419,12 +421,22 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
       learnedAtMonth: atMonth, sourceEventIds: [eventId],
     });
   }
-  if (action.content.kind === 'offer' || action.content.kind === 'accept') {
+  if (action.content.kind === 'offer' || action.content.kind === 'request' || action.content.kind === 'accept' || action.content.kind === 'reject') {
+    const actorRelationDelta = action.content.kind === 'accept' ? 3 : action.content.kind === 'reject' ? -1 : 1;
     for (const listener of reached) {
       const relation = listener.relations.find((item) => item.personId === person.id);
       if (!relation) continue;
-      relation.trust = clamp(relation.trust + 1);
+      const accepted = action.content.kind === 'accept';
+      const rejected = action.content.kind === 'reject';
+      relation.trust = clamp(relation.trust + (accepted ? 4 : rejected ? -1 : 1));
+      relation.bond = clamp(relation.bond + (accepted ? 3 : rejected ? -1 : 1));
       relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+      const actorRelation = person.relations.find((item) => item.personId === listener.id);
+      if (actorRelation) {
+        actorRelation.trust = clamp(actorRelation.trust + actorRelationDelta);
+        actorRelation.bond = clamp(actorRelation.bond + (action.content.kind === 'accept' ? 2 : 0));
+        actorRelation.sourceEventIds = [...new Set([...actorRelation.sourceEventIds, eventId])].slice(-24);
+      }
     }
   }
   return { status: 'completed' as const, result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`, diff: { audience: reached.map((item) => item.id), content: action.content } };
@@ -437,7 +449,17 @@ export function executeIntentAction(
   atMonth: number,
   orderInMonth: number,
 ): ActionFact {
-  const action = intent.nextAction;
+  return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent' });
+}
+
+export function executePrimitiveAction(
+  state: SimulationState,
+  person: PersonState,
+  action: PrimitiveAction,
+  atMonth: number,
+  orderInMonth: number,
+  meta: { intentId?: string; cause: ActionFact['cause'] },
+): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
   const outcome = action.kind === 'move'
@@ -450,14 +472,15 @@ export function executeIntentAction(
           ? executeAttend(state, person, action, atMonth, eventId)
           : executeCommunicate(state, person, action, atMonth, eventId);
   const pathSegment = 'path' in outcome ? outcome.path : [fromCellId];
-  return {
+  const fact: ActionFact = {
     id: eventId,
     kind: 'action',
     atMonth,
     orderInMonth,
     cellId: person.position.cellId,
     who: person.id,
-    intentId: intent.id,
+    ...(meta.intentId ? { intentId: meta.intentId } : {}),
+    cause: meta.cause,
     action,
     fromCellId,
     toCellId: person.position.cellId,
@@ -466,4 +489,6 @@ export function executeIntentAction(
     result: outcome.result,
     diff: outcome.diff,
   };
+  rememberAction(state, fact);
+  return fact;
 }

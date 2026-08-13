@@ -18,6 +18,7 @@ import {
   voxelAt,
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
+import { buildSocialOptions } from './social-options';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -70,6 +71,22 @@ function optionForDrop(person: PersonState, drop: DropState): ActionOption {
     estimatedDuration: person.position.cellId === drop.cellId ? 'one-month' : 'several-months',
     sourceFactIds: drop.sourceEventIds,
   };
+}
+
+function withPlanning(state: SimulationState, person: PersonState, option: ActionOption): ActionOption | null {
+  const recentlyFailed = person.memories.some((memory) => memory.kind === 'failure'
+    && state.clock.elapsedMonths - memory.createdAtMonth <= 6
+    && memory.summary.includes(option.summary));
+  if (recentlyFailed) return null;
+  const destination = option.nextAction.kind === 'move' ? option.nextAction.toCellId : person.position.cellId;
+  const path = findPath(state.world.grid, person.position.cellId, destination);
+  if (option.nextAction.kind === 'move' && !path.length) return null;
+  const monthlyRange = Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12));
+  const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / monthlyRange)) : 1;
+  const risks: string[] = [];
+  if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
+  if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
+  return { ...option, domain: option.domain ?? 'strategic', estimatedMonths, risks };
 }
 
 function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
@@ -415,7 +432,12 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       sourceFactIds: [],
     });
   }
-  return [...new Map(options.map((option) => [option.id, option])).values()];
+  options.push(...buildSocialOptions(state, person, visiblePeople));
+  return [...new Map(options.map((option) => [option.id, option])).values()]
+    .flatMap((option) => {
+      const planned = withPlanning(state, person, option);
+      return planned ? [planned] : [];
+    });
 }
 
 export function buildDecisionContext(state: SimulationState, person: PersonState): DecisionContext {
@@ -429,12 +451,19 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
     visibleCells,
     visiblePeople,
     visibleDrops,
-    options: buildOptions(state, person, visibleCells, visibleDrops, visiblePeople),
+    options: buildOptions(state, person, visibleCells, visibleDrops, visiblePeople)
+      .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:')),
     activeIntent: person.activeIntentId ? state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active') : undefined,
   };
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
+  if (intent.goal.kind === 'near-person') {
+    const targetPersonId = intent.goal.personId;
+    const target = state.people.find((candidate) => candidate.id === targetPersonId && isAlive(candidate));
+    if (!target) return null;
+    return target.position.cellId === person.position.cellId ? null : { kind: 'move', toCellId: target.position.cellId };
+  }
   if (intent.goal.kind === 'inventory-at-least' && intent.goal.personId && intent.target?.kind === 'person') {
     const goal = intent.goal;
     const receiverId = intent.target.personId;
@@ -456,6 +485,13 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     const materialId = intent.goal.materialId;
     const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.materialId === materialId && drop.quantity > 0);
     if (local) return actionForDrop(person, local);
+    const visible = new Set(visibleCellsFor(person));
+    const reachable = state.world.drops
+      .filter((drop) => visible.has(drop.cellId) && drop.materialId === materialId && drop.quantity > 0)
+      .map((drop) => ({ drop, path: findPath(state.world.grid, person.position.cellId, drop.cellId) }))
+      .filter(({ path }) => path.length > 0)
+      .sort((a, b) => a.path.length - b.path.length || a.drop.id.localeCompare(b.drop.id))[0];
+    if (reachable) return actionForDrop(person, reachable.drop);
     if (intent.nextAction.kind === 'move') {
       const toCellId = intent.nextAction.toCellId;
       const atTarget = state.world.drops.find((drop) => drop.cellId === toCellId && drop.materialId === materialId && drop.quantity > 0);
@@ -468,9 +504,12 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
       }
     }
   }
-  if (intent.goal.kind === 'body-at-least' && intent.goal.field === 'hydration' && intent.nextAction.kind === 'move') {
-    const water = neighbors4(person.position.cellId).find((cellId) => surfaceMaterial(state.world.grid, cellId) === Material.Water);
-    if (water !== undefined) return { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water) }] };
+  if (intent.goal.kind === 'body-at-least' && intent.goal.field === 'hydration') {
+    const water = nearestWaterBank(state, person, new Set(visibleCellsFor(person)));
+    if (!water) return null;
+    return person.position.cellId === water.bankCell
+      ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
+      : { kind: 'move', toCellId: water.bankCell };
   }
   if (intent.goal.kind === 'voxel-is' && intent.nextAction.kind === 'move') {
     const targetCell = intent.goal.position.x + intent.goal.position.y * state.world.grid.width;

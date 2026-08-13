@@ -36,6 +36,8 @@ import type {
 } from '../domain/model';
 import { buildDecisionContext, recompileNextAction } from './action-options';
 import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-facts';
+import { maintainMemories, remember } from '../domain/memory';
+import { executeSurvivalReflexes } from '../domain/survival-reflex';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -116,6 +118,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     conditions: [],
     inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
     knowledge: [],
+    memories: [],
     relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
       personId: other.id,
       trust: 20 + Math.floor(deterministicFraction(seed, `trust:${profile.id}:${other.id}`) * 20),
@@ -134,7 +137,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
   const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
   const people = profiles.map((profile, index) => initialPerson(seed + config.civilizationNo * 997, profile, generated.spawnCells[index] ?? generated.spawnCells[0], profiles));
   return {
-    schemaVersion: 12,
+    schemaVersion: 13,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
     clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
@@ -212,7 +215,7 @@ export class MockDecider implements AgentDecider {
       if (emergency && best && (best.id.startsWith('drink:') || best.id.startsWith('eat:') || best.id.includes(`:${Material.Food}`))) {
         return { kind: 'revise', intentId: active.id, optionId: best.id, reason: '身体储备已压过原有长期意图' };
       }
-      return { kind: 'continue', intentId: active.id, reason: '目标尚未完成，继续沿已知动作推进' };
+      return best ? { kind: 'revise', intentId: active.id, optionId: best.id, reason: '出现了比当前意图更重要的新机会' } : { kind: 'idle', reason: '已有意图由行动引擎继续推进' };
     }
     return best ? { kind: 'start', optionId: best.id, reason: best.reason } : { kind: 'idle', reason: personCanDecide(context.state, person) ? '眼前没有值得改变安排的新机会' : '当前年龄尚不能独立行动' };
   }
@@ -221,11 +224,9 @@ export class MockDecider implements AgentDecider {
 function decisionProbability(state: SimulationState, context: DecisionContext): { probability: number; reasons: string[] } {
   const person = context.person;
   const reasons: string[] = [];
-  let probability = personCanDecide(state, person) ? 0.06 : 0.015;
-  if (!context.activeIntent) { probability += 0.58; reasons.push('没有活动意图'); }
-  if (person.body.hydration < 35) { probability += (35 - person.body.hydration) / 45; reasons.push('水分压力'); }
-  if (person.body.nutrition < 35) { probability += (35 - person.body.nutrition) / 45; reasons.push('营养压力'); }
-  if (person.body.health < 45) { probability += (45 - person.body.health) / 70; reasons.push('健康压力'); }
+  let probability = personCanDecide(state, person) ? 0.045 : 0.01;
+  if (!context.activeIntent) { probability += 0.32; reasons.push('没有战略或社会意图'); }
+  if (context.options.some((option) => option.domain === 'social')) { probability += 0.32; reasons.push('出现社会互动机会'); }
   if (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2) { probability += 0.35; reasons.push('意图停滞'); }
   const acceptedExchange = acceptedExchangeFor(state, person.id, state.clock.elapsedMonths);
   if (acceptedExchange && !exchangeTermFulfilled(state, acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : '', person.id)) {
@@ -233,7 +234,7 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
     reasons.push('已接受的交换等待本人交付');
   }
   if (!reasons.length) reasons.push('每月非零重新考虑概率');
-  return { probability: clamp(probability, 0.01, 0.96), reasons };
+  return { probability: clamp(probability, 0.01, 0.82), reasons };
 }
 
 function startIntent(state: SimulationState, person: PersonState, context: DecisionContext, optionId: string, decisionEventId: string, atMonth: number): Intent | null {
@@ -245,8 +246,10 @@ function startIntent(state: SimulationState, person: PersonState, context: Decis
     id: `intent-${atMonth}-${person.id}-${state.intents.length}`,
     ownerId: person.id,
     summary: option.summary,
+    domain: option.domain ?? 'strategic',
     goal: structuredClone(option.goal),
     nextAction: structuredClone(option.nextAction),
+    ...(option.completionAction ? { completionAction: structuredClone(option.completionAction) } : {}),
     ...(option.target ? { target: structuredClone(option.target) } : {}),
     status: 'active',
     createdAtMonth: atMonth,
@@ -255,6 +258,7 @@ function startIntent(state: SimulationState, person: PersonState, context: Decis
     sourceDecisionEventId: decisionEventId,
     sourceFactIds: [...option.sourceFactIds],
     actionEventIds: [],
+    replanCount: 0,
   };
   state.intents.push(intent);
   person.activeIntentId = intent.id;
@@ -277,18 +281,24 @@ function applyDecision(
   const id = `e-${atMonth}-decision-${person.id}`;
   let intentId: string | undefined;
   let result = decision.reason;
+  let domain: Intent['domain'] | undefined;
   const current = activeIntent(state, person);
   if (decision.kind === 'start') {
     const started = startIntent(state, person, context, decision.optionId, id, atMonth);
+    if (started && decision.utterance && started.nextAction.kind === 'communicate') {
+      started.nextAction.content.summary = decision.utterance.slice(0, 180);
+    }
     intentId = started?.id;
+    domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
-  } else if (decision.kind === 'continue') {
-    intentId = current?.id;
-    result = current ? `${person.name}继续：${current.summary}` : `${person.name}没有可继续的意图`;
   } else if (decision.kind === 'revise') {
     if (current && current.id === decision.intentId) current.status = 'abandoned';
     const started = startIntent(state, person, context, decision.optionId, id, atMonth);
+    if (started && decision.utterance && started.nextAction.kind === 'communicate') {
+      started.nextAction.content.summary = decision.utterance.slice(0, 180);
+    }
     intentId = started?.id;
+    domain = started?.domain;
     result = started ? `${person.name}改为：${started.summary}` : `${person.name}未能改换目标`;
   } else if (decision.kind === 'suspend' && current?.id === decision.intentId) {
     current.status = 'suspended';
@@ -313,7 +323,7 @@ function applyDecision(
     result = `${person.name}本月保持空闲：${decision.reason}`;
   }
   person.lastDecisionText = result;
-  return { id, kind: 'decision', atMonth, orderInMonth, cellId: person.position.cellId, who: person.id, decision, ...(intentId ? { intentId } : {}), usedModel, result };
+  return { id, kind: 'decision', atMonth, orderInMonth, cellId: person.position.cellId, who: person.id, decision, ...(intentId ? { intentId } : {}), ...(domain ? { domain } : {}), usedModel, result };
 }
 
 function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number): WorldEvent | null {
@@ -330,6 +340,14 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
   if (!next) {
     intent.status = 'blocked';
     intent.blockedReason = '目标未满足，但无法编译出下一原子动作';
+    intent.replanCount += 1;
+    remember(person, {
+      id: `memory:intent-blocked:${intent.id}:${atMonth}`,
+      kind: 'failure', summary: `${intent.summary}失败：${intent.blockedReason}`, importance: 76,
+      createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
+      personIds: intent.target?.kind === 'person' ? [intent.target.personId] : [],
+      sourceEventIds: [...intent.actionEventIds],
+    });
     delete person.activeIntentId;
     return null;
   }
@@ -340,6 +358,14 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
   if (fact.status === 'blocked' || fact.status === 'failed') {
     intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
     intent.blockedReason = fact.result;
+    intent.replanCount += 1;
+    remember(person, {
+      id: `memory:intent-action-failed:${intent.id}:${atMonth}`,
+      kind: 'failure', summary: `${intent.summary}失败：${fact.result}`, importance: 78,
+      createdAtMonth: atMonth, lastRecalledAtMonth: atMonth,
+      personIds: intent.target?.kind === 'person' ? [intent.target.personId] : [],
+      sourceEventIds: [fact.id],
+    });
     delete person.activeIntentId;
   } else {
     intent.lastProgressAtMonth = atMonth;
@@ -468,15 +494,21 @@ function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
 
 function prepareMonth(input: SimulationState) {
   const state = copyState(input);
-  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], atMonth: state.clock.elapsedMonths };
+  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], occupiedPersonIds: new Set<string>(), atMonth: state.clock.elapsedMonths };
   const atMonth = state.clock.elapsedMonths + 1;
-  const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth), ...advanceBodies(state, atMonth)];
+  const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth)];
+  const reflexes = executeSurvivalReflexes(state, atMonth, events.length);
+  events.push(...reflexes.events);
+  maintainMemories(state, atMonth);
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
   for (const context of contexts) {
     const { probability, reasons } = decisionProbability(state, context);
     const sample = seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${context.person.id}`);
-    const triggered = sample < probability;
+    const meaningful = !context.activeIntent
+      || context.options.some((option) => option.domain === 'social')
+      || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
+    const triggered = meaningful && sample < probability;
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,
       kind: 'decision-opportunity', atMonth, orderInMonth: events.length,
@@ -487,7 +519,7 @@ function prepareMonth(input: SimulationState) {
     events.push(opportunity);
     if (triggered) candidates.push(context);
   }
-  return { state, events, contexts, candidates, atMonth };
+  return { state, events, contexts, candidates, occupiedPersonIds: reflexes.occupiedPersonIds, atMonth };
 }
 
 function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: number): SimulationState {
@@ -519,7 +551,7 @@ function executePrepared(
   usage: TokenUsage,
   attemptedModelContexts: number,
 ): SimulationState {
-  const { state, events, contexts, candidates, atMonth } = prepared;
+  const { state, events, contexts, candidates, occupiedPersonIds, atMonth } = prepared;
   if (state.civilization.status === 'ended') return state;
   for (const candidate of candidates) {
     const person = state.people.find((item) => item.id === candidate.person.id);
@@ -530,12 +562,13 @@ function executePrepared(
     events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length));
   }
   const order = state.people
-    .filter((person) => isAlive(person) && activeIntent(state, person))
+    .filter((person) => isAlive(person) && activeIntent(state, person) && !occupiedPersonIds.has(person.id))
     .sort((a, b) => seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${a.id}`) - seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${b.id}`) || a.id.localeCompare(b.id));
   for (const person of order) {
     const fact = executeActiveIntent(state, person, atMonth, events.length);
     if (fact) events.push(fact);
   }
+  events.push(...advanceBodies(state, atMonth));
   const modelContexts = attemptedModelContexts;
   const chargedTokens = modelContexts ? Math.max(usage.inputTokens + usage.outputTokens, modelContexts * state.decisionBudget.tokensPerContext) : 0;
   state.decisionBudget.ledgers = [...currentRollingLedgers(state), {
@@ -568,7 +601,8 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
     availableModelContexts(rolling, living),
     Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext) / prepared.state.decisionBudget.tokensPerContext),
   );
-  const ranked = [...prepared.candidates].sort((a, b) => urgency(b) - urgency(a) || a.person.id.localeCompare(b.person.id));
+  const importance = (context: DecisionContext) => context.options.some((option) => option.domain === 'social') ? 300 : !context.activeIntent ? 180 : 100;
+  const ranked = [...prepared.candidates].sort((a, b) => importance(b) - importance(a) || urgency(b) - urgency(a) || a.person.id.localeCompare(b.person.id));
   const modelContexts = ranked.slice(0, maxContexts);
   const modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
   if (modelDecisions.length !== modelContexts.length || modelDecisions.some((decision) => !decision)) throw new Error('Kimi 未返回完整的关键决策，本月没有提交');
@@ -581,7 +615,7 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
 }
 
 export function migrateSimulationState(input: SimulationState): SimulationState {
-  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 12) throw new Error('schemaVersion 11 及更早存档不支持继续演化；请建立新的物质体素文明');
+  if (Number((input as { schemaVersion?: number }).schemaVersion) !== 13) throw new Error('schemaVersion 12 及更早存档不支持继续演化；请建立新的物质体素文明');
   const state = structuredClone(input);
   state.world.grid = hydrateWorld(input.world.grid);
   return state;
@@ -647,7 +681,7 @@ export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
   return {
-    schemaVersion: 12,
+    schemaVersion: 13,
     exportedAt: new Date().toISOString(),
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),

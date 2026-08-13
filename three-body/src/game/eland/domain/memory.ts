@@ -1,0 +1,113 @@
+import type { ActionFact, SimulationState } from './model';
+import type { MemoryRecord, PersonState } from './person';
+
+const MAX_MEMORIES = 24;
+const MAX_PROJECTED_MEMORIES = 8;
+
+function clamp(value: number, min = 0, max = 100): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function remember(person: PersonState, memory: MemoryRecord): void {
+  const existing = person.memories.find((item) => item.id === memory.id);
+  if (existing) {
+    existing.summary = memory.summary;
+    existing.importance = Math.max(existing.importance, memory.importance);
+    existing.lastRecalledAtMonth = Math.max(existing.lastRecalledAtMonth, memory.lastRecalledAtMonth);
+    existing.personIds = [...new Set([...existing.personIds, ...memory.personIds])];
+    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...memory.sourceEventIds])].slice(-12);
+    return;
+  }
+  person.memories.push(memory);
+  person.memories = person.memories
+    .sort((a, b) => {
+      const aDurable = a.kind === 'commitment' ? 30 : a.kind === 'failure' ? 12 : 0;
+      const bDurable = b.kind === 'commitment' ? 30 : b.kind === 'failure' ? 12 : 0;
+      return b.importance + bDurable - (a.importance + aDurable) || b.createdAtMonth - a.createdAtMonth;
+    })
+    .slice(0, MAX_MEMORIES);
+}
+
+function score(memory: MemoryRecord, atMonth: number): number {
+  const age = Math.max(0, atMonth - memory.createdAtMonth);
+  const durable = memory.kind === 'commitment' ? 28 : memory.kind === 'failure' ? 12 : memory.kind === 'summary' ? 10 : 0;
+  const activeCommitment = memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth ? 35 : 0;
+  return memory.importance + durable + activeCommitment - Math.min(55, age * 1.4);
+}
+
+export function maintainMemories(state: SimulationState, atMonth: number): void {
+  for (const person of state.people) {
+    const retained = person.memories.filter((memory) => memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth);
+    const candidates = person.memories
+      .filter((memory) => !retained.includes(memory))
+      .map((memory) => ({ memory, score: score(memory, atMonth) }))
+      .filter(({ memory, score: value }) => value >= 12 || atMonth - memory.createdAtMonth <= 6)
+      .sort((a, b) => b.score - a.score || b.memory.createdAtMonth - a.memory.createdAtMonth);
+    const forgotten = person.memories.filter((memory) => !retained.includes(memory) && !candidates.some((item) => item.memory === memory));
+    const summaries = forgotten.filter((memory) => memory.kind !== 'summary').slice(-6);
+    const next = [...retained, ...candidates.map((item) => item.memory)]
+      .sort((a, b) => score(b, atMonth) - score(a, atMonth))
+      .slice(0, MAX_MEMORIES);
+    if (summaries.length && !next.some((memory) => memory.id === `memory-summary-${person.id}-${Math.floor(atMonth / 12)}`)) {
+      next.push({
+        id: `memory-summary-${person.id}-${Math.floor(atMonth / 12)}`,
+        kind: 'summary',
+        summary: `较早经历：${summaries.map((memory) => memory.summary).join('；').slice(0, 260)}`,
+        importance: clamp(Math.max(...summaries.map((memory) => memory.importance)) - 12),
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        personIds: [...new Set(summaries.flatMap((memory) => memory.personIds))].slice(0, 5),
+        sourceEventIds: [...new Set(summaries.flatMap((memory) => memory.sourceEventIds))].slice(-8),
+      });
+    }
+    person.memories = next
+      .sort((a, b) => score(b, atMonth) - score(a, atMonth))
+      .slice(0, MAX_MEMORIES);
+  }
+}
+
+export function projectMemories(person: PersonState, atMonth: number): Array<Pick<MemoryRecord, 'kind' | 'summary' | 'importance' | 'personIds'>> {
+  return person.memories
+    .filter((memory) => memory.kind !== 'commitment' || (memory.expiresAtMonth ?? atMonth) >= atMonth)
+    .sort((a, b) => score(b, atMonth) - score(a, atMonth) || b.createdAtMonth - a.createdAtMonth)
+    .slice(0, MAX_PROJECTED_MEMORIES)
+    .map(({ kind, summary, importance, personIds }) => ({ kind, summary, importance, personIds }));
+}
+
+export function rememberAction(state: SimulationState, fact: ActionFact): void {
+  const actor = state.people.find((person) => person.id === fact.who);
+  if (!actor) return;
+  const others = fact.action.kind === 'communicate'
+    ? state.people.filter((person) => fact.action.kind === 'communicate' && fact.action.audience.includes(person.id))
+    : [];
+  const failed = fact.status === 'blocked' || fact.status === 'failed';
+  remember(actor, {
+    id: `memory:${fact.id}:${actor.id}`,
+    kind: failed ? 'failure' : fact.action.kind === 'communicate' && ['request', 'offer', 'accept'].includes(fact.action.content.kind) ? 'commitment' : fact.action.kind === 'communicate' ? 'dialogue' : 'episode',
+    summary: fact.result,
+    importance: failed ? 72 : fact.action.kind === 'communicate' ? 64 : 38,
+    createdAtMonth: fact.atMonth,
+    lastRecalledAtMonth: fact.atMonth,
+    personIds: others.map((person) => person.id),
+    sourceEventIds: [fact.id],
+    ...(fact.action.kind === 'communicate' && (fact.action.content.kind === 'request' || fact.action.content.kind === 'offer')
+      ? { expiresAtMonth: fact.action.content.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
+      : {}),
+  });
+  if (fact.action.kind !== 'communicate') return;
+  const content = fact.action.content;
+  const commitment = content.kind === 'request' || content.kind === 'offer' || content.kind === 'accept';
+  for (const listener of others) {
+    remember(listener, {
+      id: `memory:${fact.id}:${listener.id}`,
+      kind: commitment ? 'commitment' : 'dialogue',
+      summary: fact.result,
+      importance: commitment ? 82 : 62,
+      createdAtMonth: fact.atMonth,
+      lastRecalledAtMonth: fact.atMonth,
+      personIds: [actor.id],
+      sourceEventIds: [fact.id],
+      ...(content.kind === 'request' || content.kind === 'offer' ? { expiresAtMonth: content.proposal?.expiresAtMonth ?? fact.atMonth + 6 } : {}),
+    });
+  }
+}

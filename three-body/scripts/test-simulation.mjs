@@ -15,7 +15,7 @@ try {
   const { createInitialState, createSimulation, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
-  assert.equal(initial.schemaVersion, 12);
+  assert.equal(initial.schemaVersion, 13);
   assert.deepEqual(initial.clock, { unit: 'month', elapsedMonths: 0, monthsPerYear: 12 });
   assert.equal(initial.world.grid.width, 84);
   assert.equal(initial.world.grid.depth, 52);
@@ -41,7 +41,7 @@ try {
   assert.ok(state.people.some((person) => person.generation > 0), '妊娠跨月过程应能产生后代');
 
   const legacy = structuredClone(initial);
-  legacy.schemaVersion = 11;
+  legacy.schemaVersion = 12;
   assert.throws(() => createSimulation({ state: legacy }), /不支持继续演化/, '旧属性格与 PlanMode 存档必须硬切拒绝');
 
   let calls = 0;
@@ -54,7 +54,10 @@ try {
   const personMonths = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + ledger.livingAgents, 0);
   assert.ok(calls <= Math.floor(personMonths / 12), '模型上下文不得超过每 12 人月一个的滚动额度');
 
-  console.log(`simulation tests passed: schema 12, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${calls}/${Math.floor(personMonths / 12)} model contexts`);
+  assert.ok(initial.people.every((person) => Array.isArray(person.memories)), '人物应持有固定预算记忆');
+  assert.ok(state.world.past.some((event) => event.kind === 'action' && event.cause === 'survival-reflex'), '生存维护应由规则反射产生可审计动作');
+  assert.ok(state.people.every((person) => person.memories.length <= 24), '人物记忆必须保持固定上限');
+  console.log(`simulation tests passed: schema 13, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${calls}/${Math.floor(personMonths / 12)} model contexts`);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

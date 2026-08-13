@@ -70,13 +70,15 @@ export interface DecisionFact extends BaseEvent {
   decision: Decision;
   intentId?: string;
   usedModel: boolean;
+  domain?: 'strategic' | 'social';
   result: string;
 }
 
 export interface ActionFact extends BaseEvent {
   kind: 'action';
   who: PersonId;
-  intentId: string;
+  intentId?: string;
+  cause: 'intent' | 'survival-reflex';
   action: PrimitiveAction;
   fromCellId: number;
   toCellId: number;
@@ -143,7 +145,7 @@ export interface DecisionMonthLedger {
 }
 
 export interface SimulationState {
-  schemaVersion: 12;
+  schemaVersion: 13;
   seed: number;
   branchId: string;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
@@ -182,7 +184,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 12;
+  schemaVersion: 13;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

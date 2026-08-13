@@ -19,17 +19,21 @@ export type RepresentationInput =
   | { id: string; kind: 'claim'; summary: string; factId?: string }
   | { id: string; kind: 'request'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
-  | { id: string; kind: 'accept'; referenceId: string }
-  | { id: string; kind: 'reject'; referenceId: string };
+  | { id: string; kind: 'accept'; referenceId: string; summary?: string }
+  | { id: string; kind: 'reject'; referenceId: string; summary?: string };
 
 export type SocialProposal =
   | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
+  | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
+  | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
   | {
       kind: 'exchange'; offererId: PersonId; partnerId: PersonId;
       offererMaterialId: MaterialId; offererQuantity: number;
       partnerMaterialId: MaterialId; partnerQuantity: number;
       expiresAtMonth: number;
     };
+
+export type DialogueAct = 'request-help' | 'offer-companion' | 'accept' | 'reject' | 'share-observation';
 
 export type PrimitiveAction =
   | { kind: 'move'; toCellId: number }
@@ -45,6 +49,7 @@ export type FactPredicate =
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; personId?: PersonId }
+  | { kind: 'near-person'; personId: PersonId }
   | { kind: 'condition'; personId: PersonId; condition: 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained'; present: boolean }
   | { kind: 'representation-made'; representationId: string };
 
@@ -54,8 +59,10 @@ export interface Intent {
   id: string;
   ownerId: PersonId;
   summary: string;
+  domain: 'strategic' | 'social';
   goal: FactPredicate;
   nextAction: PrimitiveAction;
+  completionAction?: PrimitiveAction;
   target?: WorldRef;
   status: IntentStatus;
   createdAtMonth: number;
@@ -65,6 +72,7 @@ export interface Intent {
   sourceFactIds?: string[];
   actionEventIds: string[];
   blockedReason?: string;
+  replanCount: number;
 }
 
 export interface ActionOption {
@@ -73,15 +81,18 @@ export interface ActionOption {
   reason: string;
   goal: FactPredicate;
   nextAction: PrimitiveAction;
+  completionAction?: PrimitiveAction;
   target?: WorldRef;
   estimatedDuration: 'one-month' | 'several-months' | 'long' | 'unknown';
   sourceFactIds: string[];
+  domain?: 'strategic' | 'social';
+  estimatedMonths?: number;
+  risks?: string[];
 }
 
 export type IntentDecision =
-  | { kind: 'start'; optionId: string; reason: string }
-  | { kind: 'continue'; intentId: string; reason: string }
-  | { kind: 'revise'; intentId: string; optionId: string; reason: string }
+  | { kind: 'start'; optionId: string; reason: string; utterance?: string }
+  | { kind: 'revise'; intentId: string; optionId: string; reason: string; utterance?: string }
   | { kind: 'suspend'; intentId: string; reason: string }
   | { kind: 'resume'; intentId: string; reason: string }
   | { kind: 'abandon'; intentId: string; reason: string }

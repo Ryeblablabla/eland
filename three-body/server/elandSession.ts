@@ -7,11 +7,12 @@ import {
   type WorldEvent,
 } from '../src/game/eland/simulation';
 import { calendarDate } from '../src/game/eland/domain/calendar';
-import { ERA_TO_ENV, eventToChronicle, monthSpeaker, toSocietyState } from '../src/game/eland/adapter';
+import { ERA_TO_ENV, eventToChronicle, monthSpeaker, toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
 import { createServerLlmDecider } from './backend-decider';
 import { loadLlmKey } from './env';
 import { DEFAULT_MODEL_PROVIDER, normalizeModelProvider, type ModelProvider } from '../src/game/llm';
 import type { GameFrame, SkySample } from '../src/game/societyContract';
+import type { AgentHistoryView } from '../src/game/societyContract';
 
 export interface FrameEntry {
   text: string;
@@ -186,6 +187,12 @@ export class ElandSession {
 
   frameAt(month: number): Frame | null {
     return this.inheritedFrames(this.activeTimeline()).find((frame) => frame.elapsedMonths === month) ?? null;
+  }
+
+  agentHistory(agentId: string, month: number, limit = 80): AgentHistoryView | null {
+    const timeline = this.activeTimeline();
+    const snapshot = this.inheritedSnapshot(timeline, month);
+    return snapshot ? toAgentHistory(snapshot, agentId, limit) : null;
   }
 
   seek(month: number): Frame | null {

@@ -1,5 +1,5 @@
 /** 演化会话后端的前端客户端（/api/eland/*） */
-import type { GameFrame, SkySample } from './societyContract';
+import type { AgentHistoryView, GameFrame, SkySample } from './societyContract';
 import { DEFAULT_MODEL_PROVIDER, type ModelProvider } from './llm';
 
 export type Frame = GameFrame;
@@ -32,5 +32,8 @@ export const elandClient = {
     branches: { id: string; parentBranchId?: string; forkAtMonth: number; headAtMonth: number; active: boolean }[];
   }>(`history?runId=${encodeURIComponent(runId)}`),
   frameAt: (runId: string, month: number) => get<Frame | null>(`frame?runId=${encodeURIComponent(runId)}&month=${month}`),
+  agentHistory: (runId: string, agentId: string, month: number, limit = 80) => get<AgentHistoryView | null>(
+    `agent-history?runId=${encodeURIComponent(runId)}&agentId=${encodeURIComponent(agentId)}&month=${month}&limit=${limit}`,
+  ),
   seek: (runId: string, month: number) => post<Frame | null>('seek', { runId, month }),
 };

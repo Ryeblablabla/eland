@@ -55,6 +55,25 @@ export interface SocietyAgent {
   body: { health: number; nutrition: number; hydration: number; fatigue: number; ageMonths: number };
 }
 
+export interface AgentHistoryItem {
+  id: string;
+  month: number;
+  orderInMonth: number;
+  cellId: number;
+  kind: 'decision' | 'action' | 'continuation' | 'life';
+  label: string;
+  summary: string;
+  planId?: string;
+  status?: string;
+  usedModel?: boolean;
+}
+
+export interface AgentHistoryView {
+  agentId: string;
+  throughMonth: number;
+  events: AgentHistoryItem[];
+}
+
 export interface MatterView {
   id: string;
   kind: string;

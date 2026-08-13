@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { EraKey, SocietyAgent, SocietyState } from '@/game/societyContract';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AgentCard from '@/components/AgentCard';
+import type { AgentHistoryItem, EraKey, SocietyAgent, SocietyState } from '@/game/societyContract';
 import { cellColor, cellCoordinates, cellLabel, interpolatePath } from '@/game/pixelworld';
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   focusAgent: SocietyAgent | null;
   selectedAgentId: string | null;
   onSelectAgent: (id: string | null) => void;
+  agentHistory: AgentHistoryItem[];
+  agentHistoryLoading: boolean;
   seed: number;
 }
 
@@ -21,30 +24,112 @@ const COMPONENT_COLOR: Record<string, string> = {
   roof: '#754d3d',
 };
 
-export default function SocietyMap({ society, era, speaker, focusAgent, selectedAgentId, onSelectAgent }: Props) {
+interface CameraState {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+interface ViewGeometry {
+  width: number;
+  height: number;
+  cellSize: number;
+  originX: number;
+  originY: number;
+}
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startPanX: number;
+  startPanY: number;
+  moved: boolean;
+}
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+const VIEW_PADDING = 24;
+
+function viewGeometry(camera: CameraState, viewportWidth: number, viewportHeight: number, worldWidth: number, worldHeight: number): ViewGeometry {
+  const width = Math.max(1, viewportWidth);
+  const height = Math.max(1, viewportHeight);
+  const fitCellSize = Math.max(1, Math.min(
+    (width - VIEW_PADDING * 2) / worldWidth,
+    (height - VIEW_PADDING * 2) / worldHeight,
+  ));
+  const cellSize = fitCellSize * camera.zoom;
+  return {
+    width,
+    height,
+    cellSize,
+    originX: (width - worldWidth * cellSize) / 2 + camera.panX,
+    originY: (height - worldHeight * cellSize) / 2 + camera.panY,
+  };
+}
+
+function clampCamera(camera: CameraState, viewportWidth: number, viewportHeight: number, worldWidth: number, worldHeight: number): CameraState {
+  const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.zoom));
+  const geometry = viewGeometry({ ...camera, zoom, panX: 0, panY: 0 }, viewportWidth, viewportHeight, worldWidth, worldHeight);
+  const maxPanX = Math.max(0, (worldWidth * geometry.cellSize - geometry.width) / 2);
+  const maxPanY = Math.max(0, (worldHeight * geometry.cellSize - geometry.height) / 2);
+  return {
+    zoom,
+    panX: Math.max(-maxPanX, Math.min(maxPanX, camera.panX)),
+    panY: Math.max(-maxPanY, Math.min(maxPanY, camera.panY)),
+  };
+}
+
+export default function SocietyMap({ society, era, speaker, focusAgent, selectedAgentId, onSelectAgent, agentHistory, agentHistoryLoading }: Props) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationStart = useRef(performance.now());
+  const cameraRef = useRef<CameraState>({ zoom: 1, panX: 0, panY: 0 });
+  const dragRef = useRef<DragState | null>(null);
+  const [camera, setCamera] = useState<CameraState>(cameraRef.current);
+  const [dragging, setDragging] = useState(false);
+  const [viewportRevision, setViewportRevision] = useState(0);
   const [selectedCell, setSelectedCell] = useState<number | null>(focusAgent?.cellId ?? null);
   const world = society.world;
 
   useEffect(() => { animationStart.current = performance.now(); }, [society]);
-  useEffect(() => { if (focusAgent) setSelectedCell(focusAgent.cellId); }, [focusAgent?.id]);
+  useEffect(() => { if (focusAgent) setSelectedCell(focusAgent.cellId); }, [focusAgent?.cellId]);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(() => {
+      const next = clampCamera(cameraRef.current, viewport.clientWidth, viewport.clientHeight, world.width, world.height);
+      cameraRef.current = next;
+      setCamera(next);
+      setViewportRevision((revision) => revision + 1);
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [world.height, world.width]);
 
   useEffect(() => {
+    const viewport = viewportRef.current;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !viewport) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    const scale = 12;
-    canvas.width = world.width * scale;
-    canvas.height = world.height * scale;
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const viewportWidth = viewport.clientWidth;
+    const viewportHeight = viewport.clientHeight;
+    canvas.width = Math.max(1, Math.round(viewportWidth * pixelRatio));
+    canvas.height = Math.max(1, Math.round(viewportHeight * pixelRatio));
     context.imageSmoothingEnabled = false;
     let frame = 0;
     let handle = 0;
     const draw = (now: number) => {
+      const geometry = viewGeometry(camera, viewportWidth, viewportHeight, world.width, world.height);
+      const scale = geometry.cellSize;
       const motion = Math.min(1, (now - animationStart.current) / 1_800);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.fillStyle = '#10151a';
-      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillRect(0, 0, viewportWidth, viewportHeight);
+      context.save();
+      context.translate(geometry.originX, geometry.originY);
       for (let cellId = 0; cellId < world.width * world.height; cellId += 1) {
         const { x, y } = cellCoordinates(cellId, world.width);
         const color = cellColor(world, cellId);
@@ -53,11 +138,11 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         const traffic = world.traces.traffic[cellId];
         if (traffic >= 3) {
           context.fillStyle = `rgba(194,166,118,${Math.min(0.62, traffic / 28)})`;
-          context.fillRect(x * scale + 3, y * scale + 5, scale - 6, scale - 7);
+          context.fillRect(x * scale + scale * 0.3, y * scale + scale * 0.42, scale * 0.4, scale * 0.25);
         }
         if (world.traces.gathering[cellId] > 0) {
           context.fillStyle = 'rgba(214,225,166,0.6)';
-          context.fillRect(x * scale + 1, y * scale + 1, 2, 2);
+          context.fillRect(x * scale + scale * 0.12, y * scale + scale * 0.12, Math.max(2, scale * 0.16), Math.max(2, scale * 0.16));
         }
       }
 
@@ -65,13 +150,13 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         if (matter.quantity <= 0) continue;
         const { x, y } = cellCoordinates(matter.cellId, world.width);
         context.fillStyle = matter.kind === 'berries' ? '#d7616c' : matter.kind === 'wood' ? '#5b3926' : matter.kind === 'stone' ? '#b5b1a7' : '#9c6948';
-        context.fillRect(x * scale + 4, y * scale + 4, 4, 4);
+        context.fillRect(x * scale + scale * 0.33, y * scale + scale * 0.33, scale * 0.34, scale * 0.34);
       }
 
       for (const component of society.components) {
         const { x, y } = cellCoordinates(component.cellId, world.width);
         context.fillStyle = COMPONENT_COLOR[component.kind] ?? '#d1a66d';
-        const inset = component.kind === 'roof' ? 1 : component.kind === 'support' ? 4 : 2;
+        const inset = scale * (component.kind === 'roof' ? 0.08 : component.kind === 'support' ? 0.33 : 0.16);
         context.fillRect(x * scale + inset, y * scale + inset, scale - inset * 2, scale - inset * 2);
       }
 
@@ -82,53 +167,143 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         const y = (point.y + 0.5) * scale;
         context.beginPath();
         context.fillStyle = agent.state === 'dead' ? '#424852' : agent.id === selectedAgentId ? '#fde68a' : agent.name === speaker ? '#fbbf24' : '#f2efe6';
-        context.arc(x, y, agent.id === selectedAgentId ? 4.2 : 3.2, 0, Math.PI * 2);
+        const radius = Math.max(3, Math.min(agent.id === selectedAgentId ? scale * 0.36 : scale * 0.27, 10));
+        context.arc(x, y, radius, 0, Math.PI * 2);
         context.fill();
         if (agent.state !== 'dead') {
           context.fillStyle = '#111827';
-          context.fillRect(x - 1, y - 1, 2, 2);
+          const eye = Math.max(2, Math.min(4, scale * 0.14));
+          context.fillRect(x - eye / 2, y - eye / 2, eye, eye);
         }
       }
 
       if (selectedCell !== null) {
         const { x, y } = cellCoordinates(selectedCell, world.width);
         context.strokeStyle = '#fde68a';
-        context.lineWidth = 1.5;
-        context.strokeRect(x * scale + 0.75, y * scale + 0.75, scale - 1.5, scale - 1.5);
+        context.lineWidth = Math.max(1.5, Math.min(3, scale * 0.08));
+        const inset = context.lineWidth / 2;
+        context.strokeRect(x * scale + inset, y * scale + inset, scale - context.lineWidth, scale - context.lineWidth);
       }
+      context.restore();
       frame += 1;
       if (motion < 1 || frame % 20 === 0) handle = requestAnimationFrame(draw);
       else handle = requestAnimationFrame(draw);
     };
     handle = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(handle);
-  }, [society, selectedAgentId, selectedCell, speaker, world]);
+  }, [camera, society, selectedAgentId, selectedCell, speaker, viewportRevision, world]);
 
   const cellMatter = useMemo(() => selectedCell === null ? [] : society.matter.filter((matter) => matter.cellId === selectedCell), [selectedCell, society.matter]);
   const cellStructures = useMemo(() => selectedCell === null ? [] : society.structures.filter((structure) => structure.occupiedCells.includes(selectedCell)), [selectedCell, society.structures]);
   const cellAgents = useMemo(() => selectedCell === null ? [] : society.agents.filter((agent) => agent.cellId === selectedCell), [selectedCell, society.agents]);
-  const activePlan = focusAgent?.activePlanId ? society.plans.find((plan) => plan.id === focusAgent.activePlanId) : undefined;
 
-  const pickCell = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((event.clientX - rect.left) / rect.width * world.width);
-    const y = Math.floor((event.clientY - rect.top) / rect.height * world.height);
+  const commitCamera = useCallback((next: CameraState) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const clamped = clampCamera(next, viewport.clientWidth, viewport.clientHeight, world.width, world.height);
+    cameraRef.current = clamped;
+    setCamera(clamped);
+  }, [world.height, world.width]);
+
+  const zoomAt = useCallback((requestedZoom: number, anchorX?: number, anchorY?: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const current = cameraRef.current;
+    const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, requestedZoom));
+    const geometry = viewGeometry(current, viewport.clientWidth, viewport.clientHeight, world.width, world.height);
+    const x = anchorX ?? geometry.width / 2;
+    const y = anchorY ?? geometry.height / 2;
+    const worldX = (x - geometry.originX) / geometry.cellSize;
+    const worldY = (y - geometry.originY) / geometry.cellSize;
+    const nextCellSize = geometry.cellSize / current.zoom * nextZoom;
+    commitCamera({
+      zoom: nextZoom,
+      panX: x - worldX * nextCellSize - (geometry.width - world.width * nextCellSize) / 2,
+      panY: y - worldY * nextCellSize - (geometry.height - world.height * nextCellSize) / 2,
+    });
+  }, [commitCamera, world.height, world.width]);
+
+  const pickCell = useCallback((clientX: number, clientY: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const geometry = viewGeometry(cameraRef.current, rect.width, rect.height, world.width, world.height);
+    const x = Math.floor((clientX - rect.left - geometry.originX) / geometry.cellSize);
+    const y = Math.floor((clientY - rect.top - geometry.originY) / geometry.cellSize);
+    if (x < 0 || x >= world.width || y < 0 || y >= world.height) return;
     const cellId = y * world.width + x;
     setSelectedCell(cellId);
     const agent = society.agents.find((item) => item.cellId === cellId);
-    if (agent) onSelectAgent(agent.id);
+    onSelectAgent(agent?.id ?? null);
+  }, [onSelectAgent, society.agents, world.height, world.width]);
+
+  const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: cameraRef.current.panX,
+      startPanY: cameraRef.current.panY,
+      moved: false,
+    };
+    setDragging(true);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.hypot(dx, dy) >= 4) drag.moved = true;
+    if (drag.moved) commitCamera({ zoom: cameraRef.current.zoom, panX: drag.startPanX + dx, panY: drag.startPanY + dy });
+  };
+
+  const finishPointer = (event: React.PointerEvent<HTMLCanvasElement>, cancelled = false) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!cancelled && !drag.moved) pickCell(event.clientX, event.clientY);
+    dragRef.current = null;
+    setDragging(false);
+  };
+
+  const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    zoomAt(cameraRef.current.zoom * factor, event.clientX - rect.left, event.clientY - rect.top);
   };
 
   return (
     <div className="absolute inset-0 z-[5] bg-[#071013]/95">
-      <div className="absolute inset-0 flex items-center justify-center p-10 pr-[340px]">
+      <div
+        ref={viewportRef}
+        className="absolute bottom-20 left-10 right-[340px] top-16 overflow-hidden border border-white/10 bg-[#10151a] shadow-[0_0_80px_rgba(4,10,12,0.9)]"
+      >
         <canvas
           ref={canvasRef}
-          onClick={pickCell}
-          className="max-h-full max-w-full cursor-crosshair border border-white/10 shadow-[0_0_80px_rgba(4,10,12,0.9)]"
-          style={{ imageRendering: 'pixelated', aspectRatio: `${world.width}/${world.height}` }}
+          aria-label="像素世界地图，可拖拽平移并滚轮缩放"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={(event) => finishPointer(event)}
+          onPointerCancel={(event) => finishPointer(event, true)}
+          onWheel={onWheel}
+          className={`absolute inset-0 h-full w-full ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={{ imageRendering: 'pixelated', touchAction: 'none' }}
         />
+
+        <div className="pointer-events-none absolute bottom-3 left-3 text-[9px] tracking-[0.2em] text-slate-300/50">
+          拖拽移动 · 滚轮缩放 · 点击选格
+        </div>
+
+        <div className="absolute right-3 top-3 flex items-center border border-white/10 bg-slate-950/75 text-[10px] text-slate-300 backdrop-blur-md">
+          <button aria-label="缩小地图" onClick={() => zoomAt(cameraRef.current.zoom / 1.5)} className="h-8 w-9 border-r border-white/10 text-base hover:bg-white/10">−</button>
+          <button aria-label="复位地图视角" onClick={() => commitCamera({ zoom: 1, panX: 0, panY: 0 })} className="h-8 min-w-16 px-3 tabular-nums hover:bg-white/10">{Math.round(camera.zoom * 100)}%</button>
+          <button aria-label="放大地图" onClick={() => zoomAt(cameraRef.current.zoom * 1.5)} className="h-8 w-9 border-l border-white/10 text-base hover:bg-white/10">＋</button>
+        </div>
       </div>
 
       <div className="absolute left-10 top-8 text-[10px] tracking-[0.45em] text-slate-300/70">
@@ -165,15 +340,19 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
           </>
         )}
 
-        {focusAgent && (
-          <div className="mt-8 border-t border-white/10 pt-5">
-            <div className="text-sm tracking-[0.25em] text-slate-100">{focusAgent.name}</div>
-            <div className="mt-2 text-xs leading-5 text-slate-400">{focusAgent.doing}</div>
-            <div className="mt-3 text-[11px] text-slate-500">水分 {Math.round(focusAgent.body.hydration)} · 营养 {Math.round(focusAgent.body.nutrition)} · 疲劳 {Math.round(focusAgent.body.fatigue)}</div>
-            {activePlan && <div className="mt-4 border border-white/10 p-3 text-[11px] leading-5 text-slate-300"><div className="text-amber-100/80">长期计划 · {activePlan.mode}</div><div>{activePlan.objective}</div><div className="text-slate-500">进度 {Math.round(activePlan.progress)}% · 始于第 {activePlan.createdAtMonth} 月</div></div>}
-          </div>
-        )}
       </aside>
+
+      {selectedAgentId && focusAgent?.id === selectedAgentId && (
+        <AgentCard
+          key={focusAgent.id}
+          agent={focusAgent}
+          plans={society.plans}
+          history={agentHistory}
+          historyLoading={agentHistoryLoading}
+          worldWidth={world.width}
+          onClose={() => onSelectAgent(null)}
+        />
+      )}
     </div>
   );
 }

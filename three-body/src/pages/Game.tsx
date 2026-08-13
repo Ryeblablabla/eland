@@ -3,7 +3,7 @@ import ThreeBodyCanvas, { type SimStats } from '@/components/ThreeBodyCanvas';
 import SocietyMap from '@/components/SocietyMap';
 import CharacterArchive from '@/components/CharacterArchive';
 import { elandClient, type Frame } from '@/game/elandClient';
-import type { EraKey, SocietyState } from '@/game/societyContract';
+import type { AgentHistoryItem, EraKey, SocietyState } from '@/game/societyContract';
 import type { SkySample } from '@/game/societyContract';
 import { DEFAULT_MODEL_PROVIDER, MODEL_OPTIONS, type ModelProvider } from '@/game/llm';
 import { CHARACTERS } from '@/data/characters';
@@ -164,6 +164,8 @@ export default function Game() {
   const [respawnToken, setRespawnToken] = useState(0);
   const [universeToken, setUniverseToken] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [agentHistory, setAgentHistory] = useState<AgentHistoryItem[]>([]);
+  const [agentHistoryLoading, setAgentHistoryLoading] = useState(false);
   const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停，省 token）
   const [thinking, setThinking] = useState(false);
   const [replayMonth, setReplayMonth] = useState<number | null>(null); // 回放模式
@@ -465,6 +467,25 @@ export default function Game() {
       ?? null;
   }, [society, speaker, selectedAgentId]);
 
+  useEffect(() => {
+    if (!selectedAgentId || !society?.agents.some((agent) => agent.id === selectedAgentId)) {
+      setAgentHistory([]);
+      setAgentHistoryLoading(false);
+      return;
+    }
+    let active = true;
+    setAgentHistoryLoading(true);
+    const viewedMonth = replayMonth ?? elapsedMonths;
+    void elandClient.agentHistory(runIdRef.current, selectedAgentId, viewedMonth).then((result) => {
+      if (active) setAgentHistory(result?.events ?? []);
+    }).catch(() => {
+      if (active) setAgentHistory([]);
+    }).finally(() => {
+      if (active) setAgentHistoryLoading(false);
+    });
+    return () => { active = false; };
+  }, [elapsedMonths, replayMonth, selectedAgentId, society]);
+
   const settlementEntries = useMemo(
     () => (settlement ? chronicle.filter((e) => e.civ === settlement.civ).slice(-24) : []),
     [settlement, chronicle],
@@ -519,6 +540,8 @@ export default function Game() {
           focusAgent={focusAgent}
           selectedAgentId={selectedAgentId}
           onSelectAgent={setSelectedAgentId}
+          agentHistory={agentHistory}
+          agentHistoryLoading={agentHistoryLoading}
           seed={(stats.civilizations * 7919) % 100000}
         />
       )}

@@ -57,6 +57,13 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
   if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, fast: false, model: session.model(), frame: session.latest() } };
   if (route === 'history' && method === 'GET') return { status: 200, body: { civilizationId: session.latest()?.civilizationId ?? 0, history: session.historyList(), branches: session.branchList() } };
   if (route === 'frame' && method === 'GET') return { status: 200, body: session.frameAt(finite(url.searchParams.get('month'), 0)) };
+  if (route === 'agent-history' && method === 'GET') {
+    const agentId = String(url.searchParams.get('agentId') ?? '').trim();
+    if (!agentId) return { status: 400, body: { error: '缺少 agentId' } };
+    const month = Math.max(0, Math.floor(finite(url.searchParams.get('month'), session.latest()?.elapsedMonths ?? 0)));
+    const limit = Math.max(1, Math.floor(finite(url.searchParams.get('limit'), 80)));
+    return { status: 200, body: session.agentHistory(agentId, month, limit) };
+  }
   if (route === 'seek' && method === 'POST') return { status: 200, body: session.seek(finite(body.month, 0)) };
   return { status: 404, body: { error: `未知路由 ${route}` } };
 }

@@ -1,5 +1,5 @@
 /** 领域状态到 UI 读取模型的纯投影。 */
-import type { EraKey, SocietyState } from '../societyContract';
+import type { AgentHistoryItem, AgentHistoryView, EraKey, SocietyState } from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
 import { calendarDate } from './domain/calendar';
 
@@ -126,6 +126,77 @@ export function toSocietyState(state: SimulationState): SocietyState {
       institutions: state.derived.institutions.map(({ key, label, note }) => ({ key, label, note })),
       milestones: state.derived.milestones.map(({ id, label, note }) => ({ id, label, note })),
     },
+  };
+}
+
+/**
+ * 人物经历读取模型。只投影与人物直接相关的事实，并限制条数，避免把完整世界历史
+ * 重复塞进每个月的 GameFrame。
+ */
+export function toAgentHistory(state: SimulationState, agentId: string, limit = 80): AgentHistoryView | null {
+  if (!state.agents.some((agent) => agent.id === agentId)) return null;
+  const events = state.world.past.flatMap((event): AgentHistoryItem[] => {
+    if (event.kind === 'decision-opportunity') {
+      if (event.who !== agentId || event.triggered) return [];
+      return [{
+        id: event.id,
+        month: event.atMonth,
+        orderInMonth: event.orderInMonth,
+        cellId: event.cellId,
+        kind: 'continuation',
+        label: '延续安排',
+        summary: event.result,
+      }];
+    }
+    if (event.kind === 'decision') {
+      if (event.who !== agentId) return [];
+      return [{
+        id: event.id,
+        month: event.atMonth,
+        orderInMonth: event.orderInMonth,
+        cellId: event.cellId,
+        kind: 'decision',
+        label: '关键决策',
+        summary: event.result,
+        ...(event.planId ? { planId: event.planId } : {}),
+        usedModel: event.usedModel,
+      }];
+    }
+    if (event.kind === 'plan-progress') {
+      if (event.who !== agentId) return [];
+      const label = event.status === 'completed' ? '完成行动'
+        : event.status === 'blocked' ? '行动受阻'
+          : event.status === 'failed' ? '行动失败' : '推进计划';
+      return [{
+        id: event.id,
+        month: event.atMonth,
+        orderInMonth: event.orderInMonth,
+        cellId: event.cellId,
+        kind: 'action',
+        label,
+        summary: event.result,
+        planId: event.planId,
+        status: event.status,
+      }];
+    }
+    if (event.kind === 'environment' && event.change === 'death' && event.diff.agentId === agentId) {
+      return [{
+        id: event.id,
+        month: event.atMonth,
+        orderInMonth: event.orderInMonth,
+        cellId: event.cellId,
+        kind: 'life',
+        label: '生命事件',
+        summary: event.result,
+        status: event.change,
+      }];
+    }
+    return [];
+  });
+  return {
+    agentId,
+    throughMonth: state.clock.elapsedMonths,
+    events: events.slice(-Math.max(1, Math.min(240, Math.floor(limit)))),
   };
 }
 

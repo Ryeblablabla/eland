@@ -38,6 +38,7 @@ try {
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
   assert.deepEqual(initial.records, [], '开局不应凭空存在任何文字记录');
   assert.deepEqual(initial.collectives, [], '开局不应凭空存在任何共同体成员身份');
+  assert.deepEqual(initial.permissions, [], '开局不应凭空存在任何物质取用许可');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
   const feasibleIntentState = createInitialState(316, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -636,6 +637,31 @@ try {
   assert.ok(collective && collective.status === 'active' && collective.memberships.filter((membership) => membership.status === 'active').length === 2, '双方接受后应形成具有持续成员身份的共同体领域事实');
   assert.equal(collectiveState.derived.institutions.length, 0, '只有成员身份还不是制度；必须等待共同规则被接受并反复执行');
   assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.id === '29'), '真实合作、提议、接受和成员身份链应观察为结成友谊与联盟');
+
+  collectiveState.people.find((person) => person.id === founder.id).inventory.push({ id: 'test-permission-food', materialId: 21, quantity: 3, sourceEventIds: ['test-private-food-source'] });
+  let permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const offerPermission = permissionContext?.options.find((option) => option.id.startsWith('offer-permission:')
+    && option.nextAction.kind === 'communicate'
+    && option.nextAction.content.proposal?.kind === 'permission'
+    && option.nextAction.content.proposal.materialId === 21);
+  collectiveState = runRecordOption(collectiveState, founder.id, offerPermission, 'offer-resource-permission');
+  const permissionResponse = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  assert.deepEqual(new Set(permissionResponse?.options.map((option) => option.id.split(':')[0])), new Set(['accept-permission', 'reject-permission']), '具体物质取用许可必须由被授权人明确接受或拒绝');
+  const acceptPermission = permissionResponse?.options.find((option) => option.id.startsWith('accept-permission:'));
+  collectiveState = runRecordOption(collectiveState, partner.id, acceptPermission, 'accept-resource-permission');
+  const permission = collectiveState.permissions[0];
+  assert.ok(permission?.status === 'active' && permission.grantorId === founder.id && permission.granteeId === partner.id && permission.materialId === 21, '接受后应形成人、物质、数量和有效期均明确的许可事实');
+  const usePermissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  const usePermission = usePermissionContext?.options.find((option) => option.id.startsWith(`use-permission:${permission.id}:`));
+  const partnerFoodBefore = collectiveState.people.find((person) => person.id === partner.id).inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0);
+  collectiveState = runRecordOption(collectiveState, partner.id, usePermission, 'use-resource-permission');
+  assert.equal(collectiveState.people.find((person) => person.id === partner.id)?.inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0), partnerFoodBefore + 1, '被授权者仍必须通过真实 transfer 取用一份物质');
+  assert.equal(collectiveState.permissions[0]?.useEventIds.length, 1, '许可的每次行使必须留下独立动作证据');
+  permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const revokePermission = permissionContext?.options.find((option) => option.id.startsWith('revoke-permission:'));
+  collectiveState = runRecordOption(collectiveState, founder.id, revokePermission, 'revoke-resource-permission');
+  assert.equal(collectiveState.permissions[0]?.status, 'revoked', '物质持有者应能通过可追溯沟通撤回未来授权');
+  assert.equal(buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id)?.options.some((option) => option.id.startsWith('use-permission:')), false, '许可撤回后不得继续生成合法取用意图');
 
   const withdrawing = collectiveState.people.find((person) => person.id === founder.id);
   const strainedRelation = withdrawing.relations.find((relation) => relation.personId === partner.id);

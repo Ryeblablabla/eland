@@ -36,7 +36,7 @@ function parties(proposal: SocialProposal): { proposerId: PersonId; responderId:
 
 function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'companion') return 24;
-  if (proposal.kind === 'collective') return 1;
+  if (proposal.kind === 'collective' || proposal.kind === 'permission') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
   return 4;

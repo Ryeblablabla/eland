@@ -2,7 +2,7 @@ import type { ActionOption } from '../domain/action';
 import type { SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 import { inventoryQuantity } from '../domain/person';
-import { Material, materialHas } from '../domain/material';
+import { Material, materialDefinition, materialHas } from '../domain/material';
 import {
   acceptedAssistFor,
   acceptedCompanionBetween,
@@ -12,11 +12,13 @@ import {
   openAssistRequestFor,
   openCollectiveOfferFor,
   openCompanionOfferFor,
+  openPermissionOfferFor,
 } from '../domain/social-facts';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
+import { activePermissionsFor } from '../domain/permission';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -35,7 +37,7 @@ function reachableWaterBank(state: SimulationState, person: PersonState): { wate
   return candidates.sort((a, b) => a.pathLength - b.pathLength || a.waterCell - b.waterCell)[0] ?? null;
 }
 
-function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective'): ActionOption {
+function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission'): ActionOption {
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
   const response = { kind: 'communicate' as const, content: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
@@ -44,7 +46,7 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const distance = Math.max(0, findPath(state.world.grid, person.position.cellId, other.position.cellId).length - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
-    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : '共同体提议'}`,
+    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : '物质取用许可'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
     nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId },
@@ -184,6 +186,15 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       options.push({ ...responseOption(state, person, incomingCollective.content.id, proposer, false, 'collective'), sourceFactIds: [incomingCollective.fact.id] });
     }
   }
+  const incomingPermission = openPermissionOfferFor(state, person.id);
+  if (incomingPermission) {
+    const grantor = state.people.find((other) => other.id === incomingPermission.fact.who);
+    const proposal = incomingPermission.content.proposal;
+    if (grantor && proposal?.kind === 'permission') {
+      options.push({ ...responseOption(state, person, incomingPermission.content.id, grantor, true, 'permission'), sourceFactIds: [incomingPermission.fact.id] });
+      options.push({ ...responseOption(state, person, incomingPermission.content.id, grantor, false, 'permission'), sourceFactIds: [incomingPermission.fact.id] });
+    }
+  }
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
@@ -215,6 +226,69 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         nextAction: { kind: 'communicate', content: { id: representationId, kind: 'withdraw', collectiveId: collective.id, summary: '我不再作为这个共同体的成员继续行动' }, audience: [localMember.id], channel: 'voice' },
         target: { kind: 'person', personId: localMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...(relationTo(person, localMember.id)?.sourceEventIds ?? [])],
+      });
+    }
+    if (localMember) {
+      const ownShareable = person.inventory.find((stack) => stack.quantity >= 2
+        && !state.permissions.some((permission) => permission.status === 'active'
+          && permission.collectiveId === collective.id
+          && permission.grantorId === person.id
+          && permission.granteeId === localMember.id
+          && permission.materialId === stack.materialId)
+        && !state.agreements.some((agreement) => agreement.status === 'proposed'
+          && agreement.proposal.kind === 'permission'
+          && agreement.proposal.grantorId === person.id
+          && agreement.proposal.granteeId === localMember.id
+          && agreement.proposal.materialId === stack.materialId));
+      if (ownShareable) {
+        const representationId = `offer-permission:${state.clock.elapsedMonths}:${collective.id}:${person.id}:${localMember.id}:${ownShareable.materialId}`;
+        options.push({
+          id: representationId,
+          summary: `允许${localMember.name}在需要时取用自己的${materialDefinition(ownShareable.materialId).name}`,
+          reason: '彼此已有持续成员身份，可以明确协商具体物质的取用边界',
+          goal: { kind: 'representation-made', representationId },
+          nextAction: {
+            kind: 'communicate',
+            content: { id: representationId, kind: 'offer', summary: `你可以在需要时每次取用我的一份${materialDefinition(ownShareable.materialId).name}`, proposal: {
+              kind: 'permission', proposerId: person.id, partnerId: localMember.id,
+              collectiveId: collective.id, grantorId: person.id, granteeId: localMember.id,
+              materialId: ownShareable.materialId, maxQuantityPerTransfer: 1,
+              validUntilMonth: state.clock.elapsedMonths + 24, expiresAtMonth: state.clock.elapsedMonths + 6,
+            } },
+            audience: [localMember.id], channel: 'voice',
+          },
+          target: { kind: 'person', personId: localMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+          risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...ownShareable.sourceEventIds],
+        });
+      }
+    }
+  }
+
+  for (const permission of activePermissionsFor(state, person.id)) {
+    const grantor = state.people.find((other) => other.id === permission.grantorId);
+    const grantee = state.people.find((other) => other.id === permission.granteeId);
+    if (person.id === permission.granteeId && grantor?.position.cellId === person.position.cellId) {
+      const stack = grantor.inventory.find((item) => item.materialId === permission.materialId && item.quantity > 0);
+      if (stack) options.push({
+        id: `use-permission:${permission.id}:${stack.id}`,
+        summary: `依据许可从${grantor.name}处取用${materialDefinition(permission.materialId).name}`,
+        reason: '授权人、被授权人、物质、单次数量与有效期都有可追溯许可',
+        goal: { kind: 'inventory-at-least', materialId: permission.materialId, quantity: inventoryQuantity(person, permission.materialId) + 1 },
+        nextAction: { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id },
+        target: { kind: 'person', personId: grantor.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
+      });
+    }
+    if (person.id === permission.grantorId && grantee?.position.cellId === person.position.cellId) {
+      const representationId = `revoke-permission:${state.clock.elapsedMonths}:${permission.id}`;
+      options.push({
+        id: representationId,
+        summary: `向${grantee.name}撤回${materialDefinition(permission.materialId).name}取用许可`,
+        reason: '持有者对未来取用授权保留明确撤回能力',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'revoke', permissionId: permission.id, summary: `我撤回你对我的${materialDefinition(permission.materialId).name}的取用许可` }, audience: [grantee.id], channel: 'voice' },
+        target: { kind: 'person', personId: grantee.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
       });
     }
   }

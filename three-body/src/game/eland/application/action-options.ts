@@ -29,6 +29,7 @@ import {
   inventoryCombinationTechniqueId,
 } from '../domain/interaction-rules';
 import { compileAgreementContinuations } from './agreement-continuation';
+import { permissionById } from '../domain/permission';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -782,7 +783,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
       ? { ...option, requiresFollowUp: true }
       : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|permission):/.test(option.id));
   return {
     state,
     person,
@@ -800,6 +801,17 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     ? compileAgreementContinuations(state, intent.agreementId).find((continuation) => continuation.personId === person.id)
     : undefined;
   if (agreementContinuation) return agreementContinuation.nextAction;
+  if (intent.nextAction.kind === 'transfer' && intent.nextAction.authorizationRef) {
+    const permission = permissionById(state, intent.nextAction.authorizationRef);
+    if (permission?.status === 'active' && permission.granteeId === person.id && state.clock.elapsedMonths <= permission.validUntilMonth) {
+      const grantor = state.people.find((candidate) => candidate.id === permission.grantorId && isAlive(candidate));
+      const stack = grantor?.inventory.find((candidate) => candidate.materialId === permission.materialId && candidate.quantity > 0);
+      if (!grantor || !stack) return null;
+      return grantor.position.cellId === person.position.cellId
+        ? { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id }
+        : { kind: 'move', toCellId: grantor.position.cellId };
+    }
+  }
   if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId);

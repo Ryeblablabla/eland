@@ -9,6 +9,7 @@ import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
 import { agreementAuthorizesTransfer, agreementById, recordAgreementAction } from './agreement';
 import { recordCollectiveAction } from './collective';
+import { permissionAuthorizesTransfer, permissionById, recordPermissionAction } from './permission';
 import {
   exertionRuleFor,
   exertionTechniqueId,
@@ -182,8 +183,10 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const quantity = Math.max(1, Math.min(action.quantity, available));
   const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
-  const referencedAgreement = agreementAuthorized ? possibleAgreement : undefined;
-  const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized;
+  const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
+  const permissionAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
+  const referencedNorm = agreementAuthorized ? possibleAgreement : permissionAuthorized ? possiblePermission : undefined;
+  const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized;
   const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
     const relation = sourcePerson.relations.find((item) => item.personId === person.id);
@@ -207,7 +210,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     const receiver = state.people.find((candidate) => candidate.id === receiverId);
     if (!receiver || receiver.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
     addInventory(receiver, action.materialId, quantity, [eventId], `stack-${receiver.id}-${action.materialId}-${atMonth}`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId);
-    if (receiver.id !== person.id && !referencedAgreement) {
+    if (receiver.id !== person.id && !referencedNorm) {
       const relation = receiver.relations.find((item) => item.personId === person.id);
       if (relation) {
         applyRelationEvidence(receiver, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
@@ -220,7 +223,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   return {
     status: 'completed' as const,
     result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
-    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
+    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, permissionAuthorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
   };
 }
 
@@ -698,7 +701,7 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
   }
   for (const listener of reached) {
     // Words create familiarity, not evidence that a person is trustworthy.
-    const familiarity = action.content.kind === 'reject' || action.content.kind === 'withdraw' ? 0 : 1;
+    const familiarity = action.content.kind === 'reject' || action.content.kind === 'withdraw' || action.content.kind === 'revoke' ? 0 : 1;
     applyRelationEvidence(listener, person.id, eventId, { bond: familiarity });
     applyRelationEvidence(person, listener.id, eventId, { bond: familiarity });
   }
@@ -765,6 +768,7 @@ export function executePrimitiveAction(
   };
   recordAgreementAction(state, fact);
   recordCollectiveAction(state, fact);
+  recordPermissionAction(state, fact);
   rememberAction(state, fact);
   return fact;
 }

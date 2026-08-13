@@ -25,6 +25,7 @@ export interface DecisionRequestContext {
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number; fulfilledByPersonIds: string[];
   }>;
   collectives: Array<{ id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number }>;
+  permissions: Array<{ id: string; grantorId: string; granteeId: string; materialId: number; validUntilMonth: number; status: string }>;
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
@@ -99,6 +100,9 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         joinedAtMonth: own.joinedAtMonth,
       }] : [];
     }),
+    permissions: state.permissions
+      .filter((permission) => permission.status === 'active' && (permission.grantorId === person.id || permission.granteeId === person.id))
+      .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
     options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp }) => ({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp) })),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {

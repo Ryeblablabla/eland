@@ -43,6 +43,7 @@ import { chooseDependentCareReflex } from '../domain/dependent-care';
 import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
 import { advanceCollectiveLifecycle } from '../domain/collective';
+import { advancePermissionLifecycle } from '../domain/permission';
 import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
 import {
   WORLD_CELL_COUNT,
@@ -153,6 +154,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     agreements: [],
     records: [],
     collectives: [],
+    permissions: [],
     civilization: {
       number: config.civilizationNo,
       status: 'running',
@@ -185,7 +187,7 @@ function urgency(context: DecisionContext): number {
 }
 
 function hasRequiredSocialResponse(context: DecisionContext): boolean {
-  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective):/.test(option.id));
+  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|permission):/.test(option.id));
 }
 
 function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
@@ -671,6 +673,7 @@ function prepareMonth(input: SimulationState) {
   }
   const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth)];
   events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
+  events.push(...advancePermissionLifecycle(state, atMonth, events.length));
   maintainMemories(state, atMonth);
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
@@ -836,6 +839,7 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   const state = structuredClone(input);
   state.records ??= [];
   state.collectives ??= [];
+  state.permissions ??= [];
   state.world.grid = hydrateWorld(input.world.grid);
   for (const person of state.people) {
     const start = person.position.previousCellId ?? person.position.cellId;

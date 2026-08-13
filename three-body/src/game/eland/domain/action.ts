@@ -21,6 +21,7 @@ export type RepresentationInput =
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string; summary?: string }
   | { id: string; kind: 'reject'; referenceId: string; summary?: string }
+  | { id: string; kind: 'revoke'; permissionId: string; summary: string }
   | { id: string; kind: 'withdraw'; collectiveId: string; summary: string };
 
 export type SocialProposal =
@@ -28,6 +29,12 @@ export type SocialProposal =
   | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
   | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
   | { kind: 'collective'; proposerId: PersonId; partnerId: PersonId; purposeSummary: string; expiresAtMonth: number }
+  | {
+      kind: 'permission'; proposerId: PersonId; partnerId: PersonId;
+      collectiveId: string; grantorId: PersonId; granteeId: PersonId;
+      materialId: MaterialId; maxQuantityPerTransfer: number;
+      validUntilMonth: number; expiresAtMonth: number;
+    }
   | {
       kind: 'exchange'; offererId: PersonId; partnerId: PersonId;
       offererMaterialId: MaterialId; offererQuantity: number;

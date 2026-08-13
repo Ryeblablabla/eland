@@ -6,6 +6,7 @@ import type { VoxelWorld } from '../world/grid';
 import type { Agreement } from './agreement';
 import type { RecordPayload } from './record';
 import type { CollectiveState } from './collective';
+import type { ResourcePermission } from './permission';
 
 export * from './action';
 export * from './material';
@@ -110,7 +111,15 @@ export interface AgreementFact extends BaseEvent {
   result: string;
 }
 
-export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact | AgreementFact;
+export interface PermissionFact extends BaseEvent {
+  kind: 'permission';
+  permissionId: string;
+  change: 'expired' | 'ended';
+  partyIds: PersonId[];
+  result: string;
+}
+
+export type WorldEvent = DecisionOpportunityFact | DecisionFact | ActionFact | EnvironmentFact | AgreementFact | PermissionFact;
 
 export interface PracticeObservation {
   key: string;
@@ -169,6 +178,7 @@ export interface SimulationState {
   agreements: Agreement[];
   records: RecordPayload[];
   collectives: CollectiveState[];
+  permissions: ResourcePermission[];
   civilization: {
     number: number;
     status: 'running' | 'ended';

@@ -1,7 +1,9 @@
 import type { ActionOption, Intent, PrimitiveAction } from '../domain/action';
 import { Material, materialDefinition, materialHas } from '../domain/material';
 import { inventoryQuantity, isAlive, type PersonState } from '../domain/person';
+import { ageMonths } from '../domain/person';
 import type { DecisionContext, DropState, SimulationState } from '../domain/model';
+import { acceptedReproductionBetween, openReproductionOfferFor } from '../domain/social-facts';
 import {
   cellsInRadius,
   cellX,
@@ -192,6 +194,107 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     },
     estimatedDuration: 'one-month',
     sourceFactIds: carriedFood.sourceEventIds,
+  });
+
+  const fiber = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
+  const injured = visiblePeople
+    .filter((other) => other.position.cellId === person.position.cellId && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
+    .sort((a, b) => a.body.health - b.body.health)[0];
+  if (fiber && injured && person.driveBias.affiliation >= 42) options.push({
+    id: `care:${fiber.id}:${injured.id}`,
+    summary: `把纤维用于${injured.name}的伤病处`,
+    reason: `${injured.name}有持续性伤病，且背包里有纤维`,
+    goal: { kind: 'condition', personId: injured.id, condition: injured.conditions.some((item) => item.kind === 'wound') ? 'wound' : 'illness', present: false },
+    nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: fiber.id }, { kind: 'person', personId: injured.id }] },
+    target: { kind: 'person', personId: injured.id },
+    estimatedDuration: 'one-month',
+    sourceFactIds: [...fiber.sourceEventIds, ...injured.conditions.flatMap((condition) => condition.sourceEventIds)],
+  });
+
+  const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
+  const incomingOffer = openReproductionOfferFor(state, person.id);
+  if (incomingOffer && localPeople.some((other) => other.id === incomingOffer.fact.who)) {
+    const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
+    options.push({
+      id: `accept-reproduce:${incomingOffer.content.id}`,
+      summary: `接受${state.people.find((other) => other.id === incomingOffer.fact.who)?.name ?? '对方'}的共同生殖提议`,
+      reason: '近身收到一项尚未过期的生殖提议',
+      goal: { kind: 'representation-made', representationId },
+      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'accept', referenceId: incomingOffer.content.id }, audience: [incomingOffer.fact.who], channel: 'voice' },
+      target: { kind: 'person', personId: incomingOffer.fact.who },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [incomingOffer.fact.id],
+    });
+  }
+
+  const reproductivePartner = localPeople.find((other) => {
+    if (other.sex === person.sex) return false;
+    const female = person.sex === 'female' ? person : other;
+    const male = person.sex === 'male' ? person : other;
+    if (ageMonths(female, state.clock.elapsedMonths) < 16 * 12 || ageMonths(female, state.clock.elapsedMonths) > 45 * 12 || ageMonths(male, state.clock.elapsedMonths) < 16 * 12) return false;
+    if (female.conditions.some((condition) => condition.kind === 'pregnancy')) return false;
+    return Math.min(person.body.health, person.body.hydration, person.body.nutrition, other.body.health, other.body.hydration, other.body.nutrition) >= 62;
+  });
+  if (reproductivePartner) {
+    const accepted = acceptedReproductionBetween(state, person.id, reproductivePartner.id, state.clock.elapsedMonths);
+    const female = person.sex === 'female' ? person : reproductivePartner;
+    if (accepted && person.id === female.id) options.push({
+      id: `reproduce:${accepted.offer.id}:${reproductivePartner.id}`,
+      summary: `与${reproductivePartner.name}共同进行生殖过程`,
+      reason: '双方已经通过沟通形成可追溯的接受事实',
+      goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
+      nextAction: { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductivePartner.id }] },
+      target: { kind: 'person', personId: reproductivePartner.id },
+      estimatedDuration: 'several-months',
+      sourceFactIds: [accepted.offer.id, accepted.acceptance.id],
+    });
+    else if (!accepted && !incomingOffer && person.driveBias.affiliation >= 58) {
+      const representationId = `offer-reproduce:${state.clock.elapsedMonths}:${person.id}:${reproductivePartner.id}`;
+      options.push({
+        id: representationId,
+        summary: `向${reproductivePartner.name}提出共同生殖`,
+        reason: '身体储备充足、彼此近身且有较强亲近偏置',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: state.clock.elapsedMonths + 4 } },
+          audience: [reproductivePartner.id], channel: 'voice',
+        },
+        target: { kind: 'person', personId: reproductivePartner.id },
+        estimatedDuration: 'one-month',
+        sourceFactIds: [],
+      });
+    }
+  }
+
+  const vulnerableCarrier = localPeople.find((other) => other.inventory.some((stack) => stack.materialId === Material.Food && stack.quantity > 0));
+  if (vulnerableCarrier && person.body.nutrition < 24 && inventoryQuantity(person, Material.Food) === 0 && person.driveBias.autonomy >= 55) {
+    const targetStack = vulnerableCarrier.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity > 0);
+    if (targetStack) options.push({
+      id: `take-without-permission:${vulnerableCarrier.id}:${targetStack.id}`,
+      summary: `尝试从${vulnerableCarrier.name}处取得食物`,
+      reason: '自身营养进入危险区，眼前他人持有食物',
+      goal: { kind: 'inventory-at-least', materialId: Material.Food, quantity: 1 },
+      nextAction: { kind: 'transfer', materialId: Material.Food, quantity: 1, from: { kind: 'person', personId: vulnerableCarrier.id }, to: { kind: 'person', personId: person.id }, stackId: targetStack.id },
+      target: { kind: 'person', personId: vulnerableCarrier.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: targetStack.sourceEventIds,
+    });
+  }
+
+  const fearedOpponent = localPeople.find((other) => {
+    const relation = person.relations.find((item) => item.personId === other.id);
+    return relation && relation.trust < 12 && (relation.fear > 45 || person.body.nutrition < 18);
+  });
+  if (fearedOpponent && seededFraction(state.seed, `violence-option:${state.clock.elapsedMonths}:${person.id}:${fearedOpponent.id}`) < 0.08) options.push({
+    id: `exert-person:${fearedOpponent.id}:${state.clock.elapsedMonths}`,
+    summary: `对${fearedOpponent.name}施力`,
+    reason: '极低信任与恐惧或资源压力使近身冲突成为可选手段',
+    goal: { kind: 'body-at-most', personId: fearedOpponent.id, field: 'health', value: Math.max(0, fearedOpponent.body.health - 4) },
+    nextAction: { kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: fearedOpponent.id }] },
+    target: { kind: 'person', personId: fearedOpponent.id },
+    estimatedDuration: 'one-month',
+    sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
   const unknown = visibleCells.find((cellId) => {

@@ -4,6 +4,7 @@ import { inventoryQuantity, type ItemStack, type PersonState } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
+import { acceptedReproductionBetween, communicationById } from './social-facts';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -74,13 +75,16 @@ function conditionWorkMultiplier(person: PersonState): number {
 
 export function goalSatisfied(state: SimulationState, person: PersonState, goal: FactPredicate): boolean {
   if (goal.kind === 'body-at-least') return person.body[goal.field] >= goal.value;
+  if (goal.kind === 'body-at-most') return (state.people.find((candidate) => candidate.id === goal.personId)?.body[goal.field] ?? Number.POSITIVE_INFINITY) <= goal.value;
   if (goal.kind === 'inventory-at-least') {
     const owner = goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person;
     return owner ? inventoryQuantity(owner, goal.materialId) >= goal.quantity : false;
   }
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
-  return person.knowledge.some((fact) => fact.id === goal.factId);
+  if (goal.kind === 'knowledge') return person.knowledge.some((fact) => fact.id === goal.factId);
+  if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
+  return Boolean(communicationById(state, goal.representationId));
 }
 
 function targetCell(state: SimulationState, target: WorldRef): number | null {
@@ -156,14 +160,30 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
   const authorized = action.from.kind === 'ground' || action.from.personId === person.id;
+  const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
-    return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, resistedBy: sourcePerson.id } };
+    const relation = sourcePerson.relations.find((item) => item.personId === person.id);
+    if (relation) {
+      relation.trust = clamp(relation.trust - 7);
+      relation.fear = clamp(relation.fear + 3);
+      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+    }
+    return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, attempted: true, resistedBy: sourcePerson.id, witnessedBy } };
   }
   const quantity = Math.max(1, Math.min(action.quantity, available));
   if (sourceDrop) sourceDrop.quantity -= quantity;
   if (sourceStack && sourcePerson) {
     sourceStack.quantity -= quantity;
     removeEmptyStacks(sourcePerson);
+  }
+  if (!authorized && sourcePerson) {
+    for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id) && candidate.id !== person.id)) {
+      const relation = witness.relations.find((item) => item.personId === person.id);
+      if (!relation) continue;
+      relation.trust = clamp(relation.trust - (witness.id === sourcePerson.id ? 12 : 5));
+      relation.fear = clamp(relation.fear + (witness.id === sourcePerson.id ? 8 : 2));
+      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+    }
   }
   if (action.to.kind === 'person') {
     const receiverId = action.to.personId;
@@ -184,8 +204,8 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   return {
     status: 'completed' as const,
-    result: `${materialDefinition(action.materialId).name} × ${quantity} 改变了持有者`,
-    diff: { materialId: action.materialId, quantity, authorized, from: action.from, to: action.to },
+    result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
+    diff: { materialId: action.materialId, quantity, authorized, from: action.from, to: action.to, witnessedBy },
   };
 }
 
@@ -262,9 +282,30 @@ function executeSeparate(state: SimulationState, person: PersonState, targets: W
   };
 }
 
-function executeCombine(state: SimulationState, person: PersonState, targets: WorldRef[], eventId: string) {
+function executeCombine(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
   const stackRef = targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
   const voxelRef = targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
+  const personRef = targets.find((target): target is Extract<WorldRef, { kind: 'person' }> => target.kind === 'person');
+  if (stackRef && personRef && stackRef.personId === person.id) {
+    const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
+    const receiver = state.people.find((candidate) => candidate.id === personRef.personId && candidate.position.cellId === person.position.cellId);
+    if (!stack || !receiver) return { status: 'blocked' as const, result: '照护材料或伤者不在近身范围', diff: {} };
+    const condition = receiver.conditions.find((item) => item.kind === 'wound' || item.kind === 'illness');
+    if (stack.materialId !== Material.Fiber || !condition) return { status: 'blocked' as const, result: '当前材料不能作用于这个身体状态', diff: {} };
+    stack.quantity -= 1;
+    removeEmptyStacks(person);
+    const priorStage = condition.stage;
+    if (condition.stage > 1) condition.stage = (condition.stage - 1) as 1 | 2;
+    else receiver.conditions = receiver.conditions.filter((item) => item.id !== condition.id);
+    receiver.body.health = clamp(receiver.body.health + 3);
+    const relation = receiver.relations.find((item) => item.personId === person.id);
+    if (relation) {
+      relation.trust = clamp(relation.trust + 7);
+      relation.bond = clamp(relation.bond + 5);
+      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+    }
+    return { status: 'completed' as const, result: `${person.name}用纤维照护${receiver.name}的${condition.kind === 'wound' ? '伤口' : '疾病'}`, diff: { caredPersonId: receiver.id, condition: condition.kind, fromStage: priorStage, toStage: receiver.conditions.find((item) => item.id === condition.id)?.stage ?? 0, health: receiver.body.health, atMonth } };
+  }
   if (!stackRef || !voxelRef || stackRef.personId !== person.id || distanceToPosition(person, voxelRef.position) > 1) return { status: 'blocked' as const, result: '结合材料或目标不在近身范围', diff: {} };
   const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
   if (!stack) return { status: 'blocked' as const, result: '背包中的材料已经不存在', diff: {} };
@@ -296,13 +337,23 @@ function executeExert(state: SimulationState, person: PersonState, targets: Worl
   } else {
     victim.conditions.push({ id: `condition-wound-${victim.id}-${atMonth}`, kind: 'wound', stage: damage >= 7 ? 2 : 1, sinceMonth: atMonth, sourceEventIds: [eventId], otherPersonId: person.id });
   }
-  return { status: 'completed' as const, result: `${person.name}对${victim.name}施力并造成伤害`, diff: { victimId: victim.id, damage, health: victim.body.health } };
+  const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId && candidate.id !== person.id).map((candidate) => candidate.id);
+  for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
+    const relation = witness.relations.find((item) => item.personId === person.id);
+    if (!relation) continue;
+    relation.trust = clamp(relation.trust - (witness.id === victim.id ? 14 : 6));
+    relation.fear = clamp(relation.fear + (witness.id === victim.id ? 12 : 5));
+    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+  }
+  return { status: 'completed' as const, result: `${person.name}对${victim.name}施力并造成伤害`, diff: { victimId: victim.id, damage, health: victim.body.health, witnessedBy } };
 }
 
 function executeReproduce(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
   const target = targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const other = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
   if (!other || other.id === person.id || other.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
+  const consent = acceptedReproductionBetween(state, person.id, other.id, atMonth);
+  if (!consent) return { status: 'blocked' as const, result: '没有双方沟通形成的接受事实，生殖过程不发生', diff: { consent: false } };
   const female = person.sex === 'female' ? person : other.sex === 'female' ? other : null;
   const male = person.sex === 'male' ? person : other.sex === 'male' ? other : null;
   const age = (candidate: PersonState) => atMonth - candidate.bornAtMonth;
@@ -315,7 +366,7 @@ function executeReproduce(state: SimulationState, person: PersonState, targets: 
   female.conditions.push({
     id: `condition-pregnancy-${female.id}-${atMonth}`,
     kind: 'pregnancy', stage: 1, sinceMonth: atMonth, dueAtMonth: atMonth + 9,
-    sourceEventIds: [eventId], otherPersonId: male.id,
+    sourceEventIds: [consent.offer.id, consent.acceptance.id, eventId], otherPersonId: male.id,
   });
   return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9 } };
 }
@@ -323,7 +374,7 @@ function executeReproduce(state: SimulationState, person: PersonState, targets: 
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   if (action.operation === 'ingest') return executeIngest(state, person, action.targets);
   if (action.operation === 'separate') return executeSeparate(state, person, action.targets, atMonth, eventId);
-  if (action.operation === 'combine') return executeCombine(state, person, action.targets, eventId);
+  if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'exert') return executeExert(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
   const fire = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Fire);
@@ -364,6 +415,14 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
       kind: 'claim', summary: action.content.summary, confidence: 36,
       learnedAtMonth: atMonth, sourceEventIds: [eventId],
     });
+  }
+  if (action.content.kind === 'offer' || action.content.kind === 'accept') {
+    for (const listener of reached) {
+      const relation = listener.relations.find((item) => item.personId === person.id);
+      if (!relation) continue;
+      relation.trust = clamp(relation.trust + 1);
+      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+    }
   }
   return { status: 'completed' as const, result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`, diff: { audience: reached.map((item) => item.id), content: action.content } };
 }

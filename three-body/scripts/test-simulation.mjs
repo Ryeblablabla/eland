@@ -36,6 +36,10 @@ try {
   assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'transfer'), '应真实发生掉落物到私有背包的转移');
   assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'ingest'), '身体储备应通过摄入动作恢复');
   assert.ok(state.world.past.some((event) => event.kind === 'environment' && event.change === 'material'), '无人行动时世界物质也应继续变化');
+  assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'communicate' && event.action.content.kind === 'offer' && event.action.content.proposal?.kind === 'reproduce'), '生殖应先产生沟通提议');
+  assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'communicate' && event.action.content.kind === 'accept'), '双方同意必须留下接受事实');
+  assert.ok(state.world.past.some((event) => event.kind === 'action' && event.action.kind === 'act' && event.action.operation === 'reproduce'), '接受之后才能执行生殖原语');
+  assert.ok(state.people.some((person) => person.generation > 0), '妊娠跨月过程应能产生后代');
 
   const legacy = structuredClone(initial);
   legacy.schemaVersion = 11;

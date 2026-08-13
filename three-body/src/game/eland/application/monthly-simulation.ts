@@ -186,6 +186,12 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('plant:')) score += 36 + person.driveBias.inquiryCreation * 0.08;
   if (option.id.startsWith('build:')) score += 22 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 28 : 0);
   if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
+  if (option.id.startsWith('care:')) score += 48 + person.driveBias.affiliation * 0.4;
+  if (option.id.startsWith('accept-reproduce:')) score += 54 + person.driveBias.affiliation * 0.35;
+  if (option.id.startsWith('offer-reproduce:')) score += 26 + person.driveBias.affiliation * 0.25;
+  if (option.id.startsWith('reproduce:')) score += 58 + person.driveBias.affiliation * 0.35;
+  if (option.id.startsWith('take-without-permission:')) score += person.body.nutrition < 12 ? 95 : 42;
+  if (option.id.startsWith('exert-person:')) score += 36;
   if (option.id.startsWith('attend:')) score += person.driveBias.inquiryCreation * 0.32;
   if (option.id.startsWith('explore:')) score += person.driveBias.inquiryCreation * 0.18;
   return score;
@@ -327,7 +333,11 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
   } else {
     intent.lastProgressAtMonth = atMonth;
     intent.progress = clamp(intent.progress + (fact.status === 'completed' ? 0.32 : 0.16), 0, 0.95);
-    if (goalSatisfied(state, person, intent.goal)) {
+    const representationCompleted = intent.goal.kind === 'representation-made'
+      && fact.action.kind === 'communicate'
+      && fact.action.content.id === intent.goal.representationId
+      && fact.status === 'completed';
+    if (representationCompleted || goalSatisfied(state, person, intent.goal)) {
       intent.status = 'completed';
       intent.progress = 1;
       delete person.activeIntentId;

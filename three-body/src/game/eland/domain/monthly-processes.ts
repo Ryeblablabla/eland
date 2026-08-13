@@ -209,6 +209,11 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
   person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
   const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}`, { bornPersonId: child.id, parents: child.geneticParents, generation: child.generation }, person);
   child.relations.forEach((relation) => { relation.sourceEventIds = [fact.id]; });
+  for (const existing of state.people) {
+    if (existing.id === child.id || existing.relations.some((relation) => relation.personId === child.id)) continue;
+    const closeKin = child.geneticParents.includes(existing.id);
+    existing.relations.push({ personId: child.id, trust: closeKin ? 62 : 20, bond: closeKin ? 78 : 18, fear: 0, sourceEventIds: [fact.id] });
+  }
 }
 
 function die(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
@@ -226,7 +231,11 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
   const events: EnvironmentFact[] = [];
   const peopleAtStart = [...state.people];
   for (const person of peopleAtStart) {
-    if (!isAlive(person)) continue;
+    if (person.diedAtMonth !== undefined) continue;
+    if (person.body.health <= 0) {
+      die(state, person, atMonth, events);
+      continue;
+    }
     const planks = nearbyPlanks(state, person);
     const sheltered = planks >= 3;
     const climate = state.civilization.climate;

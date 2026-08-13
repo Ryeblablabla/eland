@@ -16,11 +16,15 @@ export type HolderRef =
 export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce';
 
 export type RepresentationInput =
-  | { kind: 'claim'; summary: string }
-  | { kind: 'request'; summary: string }
-  | { kind: 'offer'; summary: string }
-  | { kind: 'accept'; referenceId: string }
-  | { kind: 'reject'; referenceId: string };
+  | { id: string; kind: 'claim'; summary: string }
+  | { id: string; kind: 'request'; summary: string; proposal?: SocialProposal }
+  | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
+  | { id: string; kind: 'accept'; referenceId: string }
+  | { id: string; kind: 'reject'; referenceId: string };
+
+export type SocialProposal =
+  | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
+  | { kind: 'transfer'; fromPersonId: PersonId; toPersonId: PersonId; materialId: MaterialId; quantity: number; expiresAtMonth: number };
 
 export type PrimitiveAction =
   | { kind: 'move'; toCellId: number }
@@ -31,10 +35,13 @@ export type PrimitiveAction =
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
+  | { kind: 'body-at-most'; personId: PersonId; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
-  | { kind: 'knowledge'; factId: string };
+  | { kind: 'knowledge'; factId: string }
+  | { kind: 'condition'; personId: PersonId; condition: 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained'; present: boolean }
+  | { kind: 'representation-made'; representationId: string };
 
 export type IntentStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';
 

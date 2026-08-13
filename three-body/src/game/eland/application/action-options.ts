@@ -208,10 +208,10 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         sourceFactIds: [],
       });
     }
-    if (surface === Material.CropMature) options.push({
+    if (surface === Material.CropMature || surface === Material.BerryBush) options.push({
       id: `harvest:${cellId}`,
-      summary: '分离成熟作物',
-      reason: '看见已经成熟的作物物质',
+      summary: surface === Material.CropMature ? '分离成熟作物' : '从结果灌木分离食物与种子',
+      reason: surface === Material.CropMature ? '看见已经成熟的作物物质' : '看见结出可分离食物的灌木物质',
       goal: { kind: 'inventory-at-least', materialId: Material.Food, quantity: inventoryQuantity(person, Material.Food) + 2 },
       nextAction: person.position.cellId === cellId
         ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }] }

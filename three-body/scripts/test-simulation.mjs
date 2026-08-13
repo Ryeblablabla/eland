@@ -10,6 +10,7 @@ const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const decisionBundlePath = path.join(temporaryDirectory, 'decision-context.mjs');
 const intentBundlePath = path.join(temporaryDirectory, 'intent.mjs');
+const memoryBundlePath = path.join(temporaryDirectory, 'memory.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -24,10 +25,14 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/intent.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${intentBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/memory.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${memoryBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
   const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
+  const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 14);
@@ -45,6 +50,13 @@ try {
   assert.deepEqual(initial.collectives, [], '开局不应凭空存在任何共同体成员身份');
   assert.deepEqual(initial.permissions, [], '开局不应凭空存在任何物质取用许可');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
+
+  const memoryPerson = structuredClone(initial.people[0]);
+  memoryPerson.memories = Array.from({ length: 6 }, (_, index) => ({ id: `dialogue-${index}`, kind: 'dialogue', summary: `普通对话 ${index}`, importance: 90 - index, createdAtMonth: index, lastRecalledAtMonth: index, personIds: [], sourceEventIds: [] }));
+  memoryPerson.memories.push({ id: 'physical-episode', kind: 'episode', summary: '亲手分离出食物', importance: 38, createdAtMonth: 0, lastRecalledAtMonth: 0, personIds: [], sourceEventIds: ['physical-source'] });
+  const projectedMemories = projectMemories(memoryPerson, 6);
+  assert.ok(projectedMemories.some((memory) => memory.summary === '亲手分离出食物'), '重复普通对话不得挤掉模型上下文中的真实操作经验');
+  assert.ok(projectedMemories.filter((memory) => memory.kind === 'dialogue').length <= 2, '模型上下文只保留少量最相关普通对话，避免对话自我强化');
 
   const feasibleIntentState = createInitialState(316, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const feasibleActor = feasibleIntentState.people.find((person) => person.sex === 'female') ?? feasibleIntentState.people[0];
@@ -411,6 +423,28 @@ try {
   const firstHarvestAction = harvestState.world.past.find((event) => event.kind === 'action' && event.intentId === harvestIntent?.id);
   assert.equal(firstHarvestAction?.action.kind, 'act', '指定采收目标必须先执行分离，不能被附近野生食物偷换');
   assert.equal(firstHarvestAction?.diff.sourceMaterialId, 12, '采收事实必须来自目标成熟作物');
+
+  let survivalHarvestState = createInitialState(341, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const survivalHarvester = survivalHarvestState.people[0];
+  survivalHarvester.bornAtMonth = -20 * 12;
+  survivalHarvester.inventory = [];
+  survivalHarvester.body.nutrition = 20;
+  const survivalCell = survivalHarvester.position.cellId;
+  let survivalZ = survivalHarvestState.world.grid.levels - 1;
+  while (survivalZ > 0 && survivalHarvestState.world.grid.voxels[survivalZ * survivalHarvestState.world.grid.width * survivalHarvestState.world.grid.depth + survivalCell] === 0) survivalZ -= 1;
+  survivalHarvestState.world.grid.voxels[survivalZ * survivalHarvestState.world.grid.width * survivalHarvestState.world.grid.depth + survivalCell] = 10;
+  survivalHarvestState.world.drops = survivalHarvestState.world.drops.filter((drop) => drop.materialId !== 21);
+  survivalHarvestState.decisionBudget.credits = 0;
+  survivalHarvestState = stepSimulation(survivalHarvestState, { decide() { return { kind: 'idle', reason: '紧急采食不应依赖模型' }; } });
+  const emergencyHarvest = survivalHarvestState.world.past.find((event) => event.kind === 'action'
+    && event.who === survivalHarvester.id
+    && event.cause === 'survival-reflex'
+    && event.action.kind === 'act'
+    && event.action.operation === 'separate');
+  assert.equal(emergencyHarvest?.diff.sourceMaterialId, 10, '背包无食物且营养危险时，应从眼前结果灌木执行真实分离，而不是等待模型或凭空进食');
+  const emergencyFoodActions = survivalHarvestState.world.past.filter((event) => event.kind === 'action' && event.who === survivalHarvester.id && event.cause === 'survival-reflex');
+  assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'transfer' && event.diff.materialId === 21 && event.action.to.kind === 'person' && event.action.to.personId === survivalHarvester.id), '分离出的食物必须先通过 transfer 进入本人的私有背包');
+  assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'act' && event.action.operation === 'ingest' && event.diff.materialId === 21), '进入私有背包后才可由同一人物摄入，不能直接从观察标签恢复营养');
 
   const tentativeTechniqueState = createInitialState(35, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });

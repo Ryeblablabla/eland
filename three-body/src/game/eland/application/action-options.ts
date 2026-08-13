@@ -297,6 +297,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         estimatedDuration: 'one-month',
         sourceFactIds: [incomingExchange.fact.id],
       });
+      options.push({
+        id: `reject-exchange:${incomingExchange.content.id}`,
+        summary: `拒绝这项物质交换`,
+        reason: '眼前存在一项需要明确回应的交换报价',
+        goal: { kind: 'representation-made', representationId: `reject:${incomingExchange.content.id}:${person.id}` },
+        nextAction: { kind: 'communicate', content: { id: `reject:${incomingExchange.content.id}:${person.id}`, kind: 'reject', referenceId: incomingExchange.content.id }, audience: [incomingExchange.fact.who], channel: 'voice' },
+        target: { kind: 'person', personId: incomingExchange.fact.who }, estimatedDuration: 'one-month', sourceFactIds: [incomingExchange.fact.id],
+      });
     }
   }
 
@@ -369,6 +377,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       target: { kind: 'person', personId: incomingOffer.fact.who },
       estimatedDuration: 'one-month',
       sourceFactIds: [incomingOffer.fact.id],
+    });
+    options.push({
+      id: `reject-reproduce:${incomingOffer.content.id}`,
+      summary: `拒绝共同生殖提议`,
+      reason: '近身收到一项需要明确回应的生殖提议',
+      goal: { kind: 'representation-made', representationId: `reject:${incomingOffer.content.id}:${person.id}` },
+      nextAction: { kind: 'communicate', content: { id: `reject:${incomingOffer.content.id}:${person.id}`, kind: 'reject', referenceId: incomingOffer.content.id }, audience: [incomingOffer.fact.who], channel: 'voice' },
+      target: { kind: 'person', personId: incomingOffer.fact.who }, estimatedDuration: 'one-month', sourceFactIds: [incomingOffer.fact.id],
     });
   }
 
@@ -540,7 +556,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
   const options = allOptions
     .map((option) => option.nextAction.kind === 'communicate' ? { ...option, requiresFollowUp: true } : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce):/.test(option.id));
   return {
     state,
     person,

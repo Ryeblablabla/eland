@@ -207,6 +207,31 @@ try {
   assert.equal(toolState.people[0].inventory.find((stack) => stack.materialId === 24)?.quantity, 1, '石与木应形成只属于制作者背包的石制工具');
   assert.ok(toolState.people[0].knowledge.some((fact) => fact.kind === 'technique' && fact.confidence < 55), '一次制作只能形成待核验的个人经验');
 
+  const responseState = createInitialState(39, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const offerer = responseState.people[0];
+  const responder = responseState.people[2];
+  responder.position.cellId = offerer.position.cellId;
+  offerer.inventory.push({ id: 'exchange-wood', materialId: 13, quantity: 2, sourceEventIds: [] });
+  responder.inventory.push({ id: 'exchange-food', materialId: 21, quantity: 2, sourceEventIds: [] });
+  const exchangeId = 'test-required-exchange';
+  const exchangeFact = actionFact('test-required-exchange-event', 1, offerer.id, { kind: 'communicate', content: { id: exchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: offerer.id, partnerId: responder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 8 } }, audience: [responder.id], channel: 'voice' });
+  recordAgreementAction(responseState, exchangeFact);
+  responseState.world.past.push(exchangeFact);
+  const responseContext = buildDecisionContexts(responseState).find((context) => context.person.id === responder.id);
+  assert.deepEqual(new Set(responseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-exchange', 'reject-exchange']), '收到可履行交换后只能先明确接受或拒绝');
+
+  const roadState = createInitialState(40, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const roadWalker = roadState.people[0];
+  for (let index = 0; index < 4; index += 1) roadState.world.past.push({
+    ...actionFact(`road-formation-${index}`, index + 1, roadWalker.id, { kind: 'move', toCellId: roadWalker.position.cellId }),
+    pathSegment: [roadWalker.position.cellId, roadWalker.position.cellId + 1],
+    diff: { materialChanges: [{ cellId: 100 + index, from: 2, to: 15 }] },
+  });
+  const projectedRoad = stepSimulation(roadState, { decide() { return { kind: 'idle', reason: '道路观察测试' }; } });
+  const roadMilestone = projectedRoad.derived.milestones.find((milestone) => milestone.id === '42');
+  assert.equal(roadMilestone?.observedAtMonth, 4, '道路首次出现时间应取第四个真实压实格形成时，而不是最早一次历史移动');
+  assert.deepEqual(roadMilestone?.evidenceEventIds, ['road-formation-0', 'road-formation-1', 'road-formation-2', 'road-formation-3']);
+
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);
   const opportunities = state.world.past.filter((event) => event.kind === 'decision-opportunity');

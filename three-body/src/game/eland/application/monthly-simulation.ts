@@ -180,7 +180,7 @@ function urgency(context: DecisionContext): number {
 }
 
 function hasRequiredSocialResponse(context: DecisionContext): boolean {
-  return context.options.some((option) => /^(accept|reject)-(assist|companion):/.test(option.id));
+  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce):/.test(option.id));
 }
 
 function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
@@ -503,6 +503,15 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const actions = state.world.past.filter((event) => event.kind === 'action');
   const transfers = actions.filter((event) => event.action.kind === 'transfer' && event.status === 'completed');
   const movements = actions.filter((event) => event.action.kind === 'move' && event.pathSegment.length > 1);
+  const trailFormation = movements.flatMap((event) => {
+    const changes = Array.isArray(event.diff.materialChanges) ? event.diff.materialChanges : [];
+    const cells = changes.flatMap((change) => {
+      if (!change || typeof change !== 'object') return [];
+      const item = change as { cellId?: unknown; to?: unknown };
+      return Number(item.to) === Material.PackedSoil && Number.isInteger(Number(item.cellId)) ? [Number(item.cellId)] : [];
+    });
+    return cells.length ? [{ event, cells }] : [];
+  });
   const cultivation = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'combine' && Number(event.diff.outputMaterialId) === Material.CropSprout);
   const harvests = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'separate' && Number(event.diff.sourceMaterialId) === Material.CropMature);
   const exchangeOffers = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'offer' && event.action.content.proposal?.kind === 'exchange');
@@ -519,7 +528,18 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const shelterEvidence = structures.filter((structure) => structure.complete).flatMap((structure) => structure.sourceEventIds);
   if (shelterEvidence.length) milestones.push({ id: '20', label: '建造住所', evidenceEventIds: shelterEvidence, note: '多个相邻木板体素形成了具有遮蔽效果的空间结构。' });
   if (cultivation.length && harvests.length) milestones.push({ id: '32', label: '种植并收获作物', evidenceEventIds: [...cultivation, ...harvests].map((fact) => fact.id), note: '种子与土壤结合，作物经自然生长后被分离收获。' });
-  if (trailCells.length >= 4) milestones.push({ id: '42', label: '开辟道路', evidenceEventIds: movements.filter((fact) => fact.pathSegment.some((cell) => trailCells.includes(cell))).map((fact) => fact.id), note: '重复真实通行把连续地表物质压实为夯土。' });
+  const formedTrailCells = new Set<number>();
+  let roadObservedAtMonth: number | undefined;
+  for (const formation of trailFormation) {
+    formation.cells.forEach((cell) => formedTrailCells.add(cell));
+    if (formedTrailCells.size >= 4 && roadObservedAtMonth === undefined) roadObservedAtMonth = formation.event.atMonth;
+  }
+  if (roadObservedAtMonth !== undefined) milestones.push({
+    id: '42', label: '开辟道路',
+    evidenceEventIds: trailFormation.map(({ event }) => event.id),
+    observedAtMonth: roadObservedAtMonth,
+    note: '重复真实通行先后把至少四个地表格从土压实为夯土。',
+  });
   for (const offer of exchangeOffers) {
     if (offer.action.kind !== 'communicate' || offer.action.content.kind !== 'offer') continue;
     const offerId = offer.action.content.id;
@@ -543,7 +563,7 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const regions: EmergentRegion[] = [];
   const waterCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water || surfaceMaterial(state.world.grid, cell) === Material.Ice);
   if (waterCells.length) regions.push({ id: 'natural-water', kind: 'natural', cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: '水域' });
-  if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: movements.map((event) => event.id), firstObservedMonth: movements[0]?.atMonth ?? 0, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
+  if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: trailFormation.map(({ event }) => event.id), firstObservedMonth: trailFormation[0]?.event.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
   if (cultivatedCells.length) regions.push({ id: 'cultivated', kind: 'cultivated', cells: cultivatedCells, confidence: clamp(cultivatedCells.length / 12), evidenceEventIds: [...cultivation, ...harvests].map((event) => event.id), firstObservedMonth: cultivation[0]?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '耕作区' });
   for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '木质活动区' });
   return { practices, institutions: [], milestones, regions, structures };

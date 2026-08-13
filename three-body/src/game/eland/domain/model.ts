@@ -119,7 +119,7 @@ export interface PracticeObservation {
 }
 
 export interface InstitutionObservation { key: string; label: string; evidenceEventIds: string[]; note: string }
-export interface MilestoneObservation { id: string; label: string; evidenceEventIds: string[]; note: string }
+export interface MilestoneObservation { id: string; label: string; evidenceEventIds: string[]; note: string; observedAtMonth?: number }
 
 export interface EmergentRegion {
   id: string;

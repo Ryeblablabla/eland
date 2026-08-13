@@ -79,7 +79,7 @@ function turningPoints(state: SimulationState): EvolutionTurningPoint[] {
     const evidence = milestone.evidenceEventIds.map((id) => events.get(id)).filter(Boolean) as WorldEvent[];
     return {
       id: `milestone:${milestone.id}`,
-      month: Math.min(...evidence.map((event) => event.atMonth), state.clock.elapsedMonths),
+      month: milestone.observedAtMonth ?? Math.min(...evidence.map((event) => event.atMonth), state.clock.elapsedMonths),
       kind: 'milestone',
       title: milestone.label,
       summary: milestone.note,

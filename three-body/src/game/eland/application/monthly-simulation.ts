@@ -39,6 +39,7 @@ import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-fac
 import { maintainMemories, remember } from '../domain/memory';
 import { composeIntentChoice } from '../domain/intent';
 import { chooseSurvivalReflex } from '../domain/survival-reflex';
+import { observeCoreMilestones } from '../projection/core-milestones';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -523,6 +524,9 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   }
   if (attended.length) milestones.push({ id: '58', label: '观察自然现象', evidenceEventIds: attended.map((event) => event.id), note: '人物投入时间持续观察物质并形成个人知识。' });
   if (taughtTechniques.length) milestones.push({ id: '134', label: '交换技术知识', evidenceEventIds: taughtTechniques.map((event) => event.id), note: '成功操作形成个人技术知识，并由持有者向身边人传播。' });
+  for (const milestone of observeCoreMilestones(state)) {
+    if (!milestones.some((existing) => existing.id === milestone.id)) milestones.push(milestone);
+  }
   const practices: PracticeObservation[] = [
     transfers.length ? { key: 'transfer', label: '反复转移物质', count: transfers.length, agentIds: [...new Set(transfers.map((event) => event.who))], eventIds: transfers.map((event) => event.id), stability: clamp(transfers.length * 5) } : null,
     movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,

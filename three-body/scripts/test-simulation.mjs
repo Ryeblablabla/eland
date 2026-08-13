@@ -107,6 +107,9 @@ try {
   const pressureContext = buildDecisionContexts(pressureState).find((context) => context.person.id === pressured.id);
   assert.ok(pressureContext, '危险暴露测试必须拥有决策上下文');
   const projectedPressure = buildDecisionRequestContext(pressureContext);
+  assert.equal(projectedPressure.person.ageMonths, -pressured.bornAtMonth, '模型应看到由出生月份派生的当前年龄');
+  assert.equal(projectedPressure.person.sex, pressured.sex, '模型应看到自己的生理性别事实');
+  assert.ok(projectedPressure.visiblePeople.every((other) => Number.isInteger(other.ageMonths) && other.sex && Array.isArray(other.conditions)), '可见人物应连同年龄、生理性别和当前状态进入意图判断');
   assert.deepEqual(projectedPressure.activePressures[0], { kind: 'cold', stage: 2, consequences: ['营养消耗加速', '操作与移动能力下降'] }, '模型应看到状态造成的可结算后果，而不是只看到状态名');
   assert.ok(projectedPressure.visibleDrops.every((drop) => Array.isArray(drop.properties)), '地面物质应向模型暴露材料定义中的可观察性质');
   const afterPressure = stepSimulation(pressureState, { decide() { return { kind: 'idle', reason: '已重新评估危险暴露' }; } });

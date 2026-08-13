@@ -1,5 +1,6 @@
 import { materialDefinition, type MaterialTag } from './domain/material';
 import { projectMemories } from './domain/memory';
+import { ageMonths } from './domain/person';
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simulation';
 
 export interface DecisionRequestContext {
@@ -7,6 +8,8 @@ export interface DecisionRequestContext {
     id: string;
     name: string;
     description: string;
+    ageMonths: number;
+    sex: DecisionContext['person']['sex'];
     body: DecisionContext['person']['body'];
     conditions: DecisionContext['person']['conditions'];
     capacities: DecisionContext['person']['baselineCapacities'];
@@ -34,7 +37,11 @@ export interface DecisionRequestContext {
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target'];
   }>;
-  visiblePeople: Array<{ id: string; name: string; health: number; hydration: number; nutrition: number; cellId: number; trust: number; bond: number; fear: number }>;
+  visiblePeople: Array<{
+    id: string; name: string; ageMonths: number; sex: DecisionContext['person']['sex'];
+    health: number; hydration: number; nutrition: number; conditions: DecisionContext['person']['conditions'];
+    cellId: number; trust: number; bond: number; fear: number;
+  }>;
   visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number }>;
 }
 
@@ -64,6 +71,8 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       id: person.id,
       name: person.name,
       description: person.profile.description.slice(0, 240),
+      ageMonths: ageMonths(person, state.clock.elapsedMonths),
+      sex: person.sex,
       body: person.body,
       conditions: person.conditions,
       capacities: person.baselineCapacities,
@@ -107,7 +116,18 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {
       const relation = person.relations.find((item) => item.personId === other.id);
-      return { id: other.id, name: other.name, ...other.body, cellId: other.position.cellId, trust: relation?.trust ?? 0, bond: relation?.bond ?? 0, fear: relation?.fear ?? 0 };
+      return {
+        id: other.id,
+        name: other.name,
+        ageMonths: ageMonths(other, state.clock.elapsedMonths),
+        sex: other.sex,
+        ...other.body,
+        conditions: other.conditions,
+        cellId: other.position.cellId,
+        trust: relation?.trust ?? 0,
+        bond: relation?.bond ?? 0,
+        fear: relation?.fear ?? 0,
+      };
     }),
     visibleDrops: context.visibleDrops.map((drop) => {
       const material = materialDefinition(drop.materialId);

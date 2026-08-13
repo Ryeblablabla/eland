@@ -9,6 +9,7 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-monthly-te
 const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const decisionBundlePath = path.join(temporaryDirectory, 'decision-context.mjs');
+const intentBundlePath = path.join(temporaryDirectory, 'intent.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -20,9 +21,13 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/kimi-decider.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/intent.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${intentBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
+  const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 14);
@@ -665,6 +670,13 @@ try {
   const proposalActions = collectiveState.world.past.filter((event) => event.kind === 'action' && event.intentId === collectiveIntentId);
   assert.equal(proposalActions[0]?.action.kind, 'communicate', '共同体形成链先发生真实沟通');
   assert.ok(proposalActions.slice(1).some((event) => event.action.kind !== 'communicate'), '共同体提议之后仍要执行同次决策选择的真实行动');
+
+  const ordinaryDialogueContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const ordinaryDialogue = ordinaryDialogueContext?.options.find((option) => option.id.startsWith('talk:'));
+  const strategicFollowUp = ordinaryDialogueContext?.followUpOptions.find((option) => option.domain === 'strategic');
+  assert.ok(ordinaryDialogue && strategicFollowUp, '普通对话归类测试需要一项对话与一项战略后续行动');
+  const ordinaryDialogueChoice = composeIntentChoice(ordinaryDialogueContext.options, ordinaryDialogueContext.followUpOptions, ordinaryDialogue.id, strategicFollowUp.id);
+  assert.equal(ordinaryDialogueChoice?.domain, 'strategic', '普通对话绑定战略后续行动时，应按真正目标归类而不是污染社会意图统计');
 
   const collectiveResponseContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
   assert.deepEqual(new Set(collectiveResponseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-collective', 'reject-collective']), '收到共同体提议后必须由本人明确接受或拒绝');

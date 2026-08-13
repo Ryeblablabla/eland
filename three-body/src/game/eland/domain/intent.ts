@@ -11,6 +11,14 @@ export interface IntentChoice {
   sourceFactIds: string[];
 }
 
+function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {
+  const action = selected.nextAction;
+  const plainConversation = action.kind === 'communicate'
+    && action.content.kind === 'claim'
+    && !action.content.factId;
+  return plainConversation ? followUp.domain ?? 'strategic' : 'social';
+}
+
 /**
  * A plain dialogue is an opening action, not a terminal goal. The same model
  * decision must pair it with one engine-provided, executable follow-up option.
@@ -40,7 +48,7 @@ export function composeIntentChoice(
   if (!followUp || selected.nextAction.kind !== 'communicate' || followUp.nextAction.kind === 'communicate') return null;
   return {
     summary: `${selected.summary}，随后${followUp.summary}`,
-    domain: 'social',
+    domain: compositeDomain(selected, followUp),
     goal: structuredClone(followUp.goal),
     openingAction: structuredClone(selected.nextAction),
     nextAction: structuredClone(followUp.nextAction),

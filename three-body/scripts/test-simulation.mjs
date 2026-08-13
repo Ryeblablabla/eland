@@ -52,6 +52,17 @@ try {
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
   assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
 
+  const companionState = createInitialState(33, { endpoint: { kind: 'months', value: 36 } });
+  const companionA = companionState.people[0];
+  const companionB = companionState.people[1];
+  companionB.position.cellId = companionA.position.cellId;
+  const companionId = 'test-companion-agreement';
+  recordAgreementAction(companionState, actionFact('test-companion-proposal', 1, companionA.id, { kind: 'communicate', content: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, audience: [companionB.id], channel: 'voice' }));
+  recordAgreementAction(companionState, actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'communicate', content: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, audience: [companionA.id], channel: 'voice' }));
+  for (let month = 3; month <= 27; month += 1) advanceAgreementLifecycle(companionState, month);
+  assert.equal(companionState.agreements[0]?.status, 'fulfilled', '结伴必须由足够月份的实际共处履行');
+  assert.ok((companionState.agreements[0]?.coLocatedMonths ?? 0) >= 12);
+
   const breachState = createInitialState(32, { endpoint: { kind: 'months', value: 24 } });
   const breachRequester = breachState.people[0];
   const breachHelper = breachState.people[1];
@@ -100,6 +111,36 @@ try {
   const audienceRelation = dialogueState.people.find((person) => person.id === dialogueAudienceId)?.relations.find((relation) => relation.personId === dialogueActor?.id);
   assert.equal(audienceRelation?.trust, 0, '说话本身不能成为信任证据');
   assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通只应形成带事件来源的熟悉度');
+  const dialogueListener = dialogueState.people.find((person) => person.id === dialogueAudienceId);
+  assert.ok(dialogueListener?.knowledge.every((fact) => !fact.id.startsWith('claim:')), '没有结构化事实引用的自然语言不得污染知识库');
+
+  let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const harvester = harvestState.people[0];
+  const harvestCell = harvester.position.cellId;
+  const harvestX = harvestCell % harvestState.world.grid.width;
+  const harvestY = Math.floor(harvestCell / harvestState.world.grid.width);
+  let harvestZ = harvestState.world.grid.levels - 1;
+  while (harvestZ > 0 && harvestState.world.grid.voxels[harvestZ * harvestState.world.grid.width * harvestState.world.grid.depth + harvestCell] === 0) harvestZ -= 1;
+  harvestState.world.grid.voxels[harvestZ * harvestState.world.grid.width * harvestState.world.grid.depth + harvestCell] = 12;
+  harvestState.world.drops.push({ id: 'test-competing-food', materialId: 21, cellId: harvestCell, quantity: 3, createdAtMonth: 0, sourceEventIds: [] });
+  const harvestContext = buildDecisionContexts(harvestState).find((context) => context.person.id === harvester.id);
+  assert.ok(harvestContext, '采收测试必须拥有决策上下文');
+  const harvestOption = harvestContext.options.find((option) => option.id === `harvest:${harvestCell}`);
+  assert.ok(harvestOption && harvestOption.target?.kind === 'voxel' && harvestOption.target.position.x === harvestX && harvestOption.target.position.y === harvestY, '成熟作物应产生具体体素目标的采收机会');
+  harvestState.decisionBudget.credits = harvestState.people.length;
+  harvestState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
+  harvestState = await stepSimulationAsync(harvestState, {
+    async decideAll(contexts) {
+      return contexts.map((context) => context.person.id === harvester.id
+        ? { kind: 'start', optionId: harvestOption.id, reason: '采收指定成熟作物' }
+        : { kind: 'idle', reason: '不干扰采收测试' });
+    },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  const harvestIntent = harvestState.intents.find((intent) => intent.ownerId === harvester.id && intent.target?.kind === 'voxel');
+  const firstHarvestAction = harvestState.world.past.find((event) => event.kind === 'action' && event.intentId === harvestIntent?.id);
+  assert.equal(firstHarvestAction?.action.kind, 'act', '指定采收目标必须先执行分离，不能被附近野生食物偷换');
+  assert.equal(firstHarvestAction?.diff.sourceMaterialId, 12, '采收事实必须来自目标成熟作物');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);

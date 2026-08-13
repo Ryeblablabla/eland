@@ -396,12 +396,22 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
 function executeCommunicate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'communicate' }>, atMonth: number, eventId: string) {
   const reached = state.people.filter((candidate) => action.audience.includes(candidate.id) && candidate.position.cellId === person.position.cellId);
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
-  if (action.content.kind === 'claim') {
-    for (const listener of reached) listener.knowledge.push({
-      id: action.content.factId ?? `claim:${eventId}:${listener.id}`,
-      kind: action.content.factId?.startsWith('technique:') ? 'technique' : 'claim', summary: action.content.summary, confidence: action.content.factId?.startsWith('technique:') ? 46 : 36,
-      learnedAtMonth: atMonth, sourceEventIds: [eventId],
-    });
+  const content = action.content;
+  if (content.kind === 'claim' && content.factId) {
+    for (const listener of reached) {
+      const known = listener.knowledge.find((fact) => fact.id === content.factId);
+      if (known) {
+        known.confidence = clamp(known.confidence + 6);
+        known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
+      } else listener.knowledge.push({
+        id: content.factId,
+        kind: content.factId.startsWith('technique:') ? 'technique' : 'claim',
+        summary: content.summary,
+        confidence: content.factId.startsWith('technique:') ? 46 : 36,
+        learnedAtMonth: atMonth,
+        sourceEventIds: [eventId],
+      });
+    }
   }
   for (const listener of reached) {
     // Words create familiarity, not evidence that a person is trustworthy.

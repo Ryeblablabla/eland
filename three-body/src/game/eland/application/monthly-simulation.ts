@@ -426,7 +426,10 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
       && fact.action.kind === 'communicate'
       && fact.action.content.id === intent.goal.representationId
       && fact.status === 'completed';
-    if (representationCompleted || goalSatisfied(state, person, intent.goal)) {
+    const probabilisticProcessCompleted = fact.status === 'completed'
+      && fact.action.kind === 'act'
+      && fact.action.operation === 'reproduce';
+    if (representationCompleted || probabilisticProcessCompleted || goalSatisfied(state, person, intent.goal)) {
       intent.status = 'completed';
       intent.progress = 1;
       delete person.activeIntentId;

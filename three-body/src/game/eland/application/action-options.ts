@@ -497,6 +497,19 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
   }
   if (intent.goal.kind === 'inventory-at-least') {
     const materialId = intent.goal.materialId;
+    if (intent.target?.kind === 'voxel') {
+      const targetCell = intent.target.position.x + intent.target.position.y * state.world.grid.width;
+      const targetMaterial = voxelAt(state.world.grid, intent.target.position.x, intent.target.position.y, intent.target.position.z);
+      const targetStillMatches = (materialId === Material.Food && targetMaterial === Material.CropMature)
+        || (materialId === Material.Wood && (targetMaterial === Material.Wood || targetMaterial === Material.Leaves));
+      if (targetStillMatches) {
+        if (distance(person.position.cellId, targetCell) <= 1) {
+          return { kind: 'act', operation: 'separate', targets: [intent.target] };
+        }
+        const destination = intent.nextAction.kind === 'move' ? intent.nextAction.toCellId : targetCell;
+        return { kind: 'move', toCellId: destination };
+      }
+    }
     const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.materialId === materialId && drop.quantity > 0);
     if (local) return actionForDrop(person, local);
     const visible = new Set(visibleCellsFor(person));

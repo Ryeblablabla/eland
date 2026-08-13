@@ -22,6 +22,7 @@ export interface Agreement {
   responseEventId?: string;
   fulfillmentEventIds: string[];
   fulfilledByPersonIds: PersonId[];
+  coLocatedMonths: number;
   sourceEventIds: string[];
 }
 
@@ -60,6 +61,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         proposalEventId: fact.id,
         fulfillmentEventIds: [],
         fulfilledByPersonIds: [],
+        coLocatedMonths: 0,
         sourceEventIds: [fact.id],
       });
       return;
@@ -90,7 +92,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     return;
   }
 
-  if (action.kind === 'act' && action.operation === 'reproduce' && fact.diff.conceived === true) {
+  if (action.kind === 'act' && action.operation === 'reproduce') {
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
     const agreement = state.agreements.find((item) => item.status === 'active'
@@ -146,11 +148,15 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       events.push(fact);
       continue;
     }
-    if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
     if (agreement.proposal.kind === 'companion') {
+      const [first, second] = agreement.partyIds.map((id) => state.people.find((candidate) => candidate.id === id));
+      if (first && second && first.position.cellId === second.position.cellId) agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
+    }
+    if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
+    if (agreement.proposal.kind === 'companion' && agreement.coLocatedMonths >= 12) {
       agreement.status = 'fulfilled';
       agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'fulfilled', '双方维持了约定期限内的结伴关系');
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'fulfilled', `双方在约定期内共同停留了 ${agreement.coLocatedMonths} 个月`);
       agreement.sourceEventIds.push(fact.id);
       for (const personId of agreement.partyIds) {
         const person = state.people.find((candidate) => candidate.id === personId);

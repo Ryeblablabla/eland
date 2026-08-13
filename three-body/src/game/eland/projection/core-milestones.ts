@@ -1,5 +1,4 @@
 import type { ActionFact, MilestoneObservation, SimulationState, WorldEvent } from '../domain/model';
-import { Material } from '../domain/material';
 
 function actions(state: SimulationState): ActionFact[] {
   return state.world.past.filter((event): event is ActionFact => event.kind === 'action' && event.status === 'completed');
@@ -61,23 +60,6 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
 
   const famine = environment.filter((event) => event.change === 'body' && Number(event.diff.nutrition) < 10);
   add(result, '36', '遭遇饥荒', famine, '至少一人的营养储备跌入持续伤害区间。');
-
-  const drinking = completed.filter((event) => event.action.kind === 'act'
-    && event.action.operation === 'ingest'
-    && event.action.targets.some((target) => target.kind === 'voxel')
-    && Number(event.diff.materialId) === Material.Water);
-  add(result, '122', '寻找并饮用水源', drinking, '人物移动到可达水岸，并从真实水体摄入水分。');
-
-  const experiments = completed.filter((event) => event.action.kind === 'act'
-    && event.action.operation === 'combine'
-    && typeof event.diff.outputMaterialId === 'number');
-  add(result, '59', '用实验检验物质组合', experiments, '人物执行局部物质组合并从实际结果形成 Technique。');
-
-  const violence = completed.filter((event) => event.action.kind === 'act'
-    && event.action.operation === 'exert'
-    && typeof event.diff.victimId === 'string'
-    && Number(event.diff.damage) > 0);
-  add(result, '921', '发生利益或生存冲突', violence, '人物对另一人施力造成伤害，现场见证者形成关系证据。');
 
   return result;
 }

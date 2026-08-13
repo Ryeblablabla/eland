@@ -6,6 +6,7 @@ import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial
 import { seededFraction } from '../world/generator';
 import { acceptanceOf, acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
+import { applyRelationEvidence } from './relation';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -160,9 +161,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
     const relation = sourcePerson.relations.find((item) => item.personId === person.id);
     if (relation) {
-      relation.trust = clamp(relation.trust - 7);
-      relation.fear = clamp(relation.fear + 3);
-      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+      applyRelationEvidence(sourcePerson, person.id, eventId, { trust: -7, fear: 3 });
     }
     return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, attempted: true, resistedBy: sourcePerson.id, witnessedBy } };
   }
@@ -174,11 +173,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   }
   if (!authorized && sourcePerson) {
     for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id) && candidate.id !== person.id)) {
-      const relation = witness.relations.find((item) => item.personId === person.id);
-      if (!relation) continue;
-      relation.trust = clamp(relation.trust - (witness.id === sourcePerson.id ? 12 : 5));
-      relation.fear = clamp(relation.fear + (witness.id === sourcePerson.id ? 8 : 2));
-      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+      applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === sourcePerson.id ? -12 : -5, fear: witness.id === sourcePerson.id ? 8 : 2 });
     }
   }
   if (action.to.kind === 'person') {
@@ -189,9 +184,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     if (receiver.id !== person.id) {
       const relation = receiver.relations.find((item) => item.personId === person.id);
       if (relation) {
-        relation.trust = clamp(relation.trust + (authorized ? 3 : -8));
-        relation.bond = clamp(relation.bond + (authorized ? 2 : -5));
-        relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+        applyRelationEvidence(receiver, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
       }
     }
   } else {
@@ -296,9 +289,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
     receiver.body.health = clamp(receiver.body.health + 3);
     const relation = receiver.relations.find((item) => item.personId === person.id);
     if (relation) {
-      relation.trust = clamp(relation.trust + 7);
-      relation.bond = clamp(relation.bond + 5);
-      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+      applyRelationEvidence(receiver, person.id, eventId, { trust: 7, bond: 5 });
     }
     return { status: 'completed' as const, result: `${person.name}用纤维照护${receiver.name}的${condition.kind === 'wound' ? '伤口' : '疾病'}`, diff: { caredPersonId: receiver.id, condition: condition.kind, fromStage: priorStage, toStage: receiver.conditions.find((item) => item.id === condition.id)?.stage ?? 0, health: receiver.body.health, atMonth } };
   }
@@ -337,11 +328,7 @@ function executeExert(state: SimulationState, person: PersonState, targets: Worl
   }
   const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId && candidate.id !== person.id).map((candidate) => candidate.id);
   for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
-    const relation = witness.relations.find((item) => item.personId === person.id);
-    if (!relation) continue;
-    relation.trust = clamp(relation.trust - (witness.id === victim.id ? 14 : 6));
-    relation.fear = clamp(relation.fear + (witness.id === victim.id ? 12 : 5));
-    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
+    applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === victim.id ? -14 : -6, fear: witness.id === victim.id ? 12 : 5 });
   }
   return { status: 'completed' as const, result: `${person.name}对${victim.name}施力并造成伤害`, diff: { victimId: victim.id, damage, health: victim.body.health, witnessedBy } };
 }
@@ -414,23 +401,10 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
       learnedAtMonth: atMonth, sourceEventIds: [eventId],
     });
   }
-  if (action.content.kind === 'offer' || action.content.kind === 'request' || action.content.kind === 'accept' || action.content.kind === 'reject') {
-    const actorRelationDelta = action.content.kind === 'accept' ? 3 : action.content.kind === 'reject' ? -1 : 1;
-    for (const listener of reached) {
-      const relation = listener.relations.find((item) => item.personId === person.id);
-      if (!relation) continue;
-      const accepted = action.content.kind === 'accept';
-      const rejected = action.content.kind === 'reject';
-      relation.trust = clamp(relation.trust + (accepted ? 4 : rejected ? -1 : 1));
-      relation.bond = clamp(relation.bond + (accepted ? 3 : rejected ? -1 : 1));
-      relation.sourceEventIds = [...new Set([...relation.sourceEventIds, eventId])].slice(-24);
-      const actorRelation = person.relations.find((item) => item.personId === listener.id);
-      if (actorRelation) {
-        actorRelation.trust = clamp(actorRelation.trust + actorRelationDelta);
-        actorRelation.bond = clamp(actorRelation.bond + (action.content.kind === 'accept' ? 2 : 0));
-        actorRelation.sourceEventIds = [...new Set([...actorRelation.sourceEventIds, eventId])].slice(-24);
-      }
-    }
+  for (const listener of reached) {
+    // Words create familiarity, not evidence that a person is trustworthy.
+    applyRelationEvidence(listener, person.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
+    applyRelationEvidence(person, listener.id, eventId, { bond: action.content.kind === 'reject' ? 0 : 1 });
   }
   return { status: 'completed' as const, result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`, diff: { audience: reached.map((item) => item.id), content: action.content } };
 }

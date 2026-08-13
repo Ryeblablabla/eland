@@ -123,8 +123,8 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
       });
     }
-    if ((relation?.trust ?? 0) >= 24
-      && (relation?.bond ?? 0) >= 18
+    if ((relation?.trust ?? 0) >= 6
+      && (relation?.bond ?? 0) >= 6
       && !hasOpenCompanionOfferBetween(state, person.id, other.id)
       && !acceptedCompanionBetween(state, person.id, other.id, state.clock.elapsedMonths)) {
       const representationId = `offer-companion:${state.clock.elapsedMonths}:${person.id}:${other.id}`;

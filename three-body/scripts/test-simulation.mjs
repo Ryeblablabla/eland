@@ -25,6 +25,7 @@ try {
   assert.equal('agents' in initial, false, '权威状态不应保留旧 Agent 模型');
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
+  assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
   let dialogueState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const speaker = dialogueState.people[0];
@@ -54,6 +55,11 @@ try {
   const dialogueIntentActions = dialogueState.world.past.filter((event) => event.kind === 'action' && event.intentId === dialogueIntent?.id);
   assert.equal(dialogueIntentActions[0]?.action.kind, 'communicate', '组合意图必须先说出模型生成的话');
   assert.ok(dialogueIntentActions.slice(1).some((event) => event.action.kind !== 'communicate'), '说完以后必须推进同次决策选定的真实行动');
+  const dialogueActor = dialogueState.people.find((person) => person.id === dialogueIntent?.ownerId);
+  const dialogueAudienceId = dialogueIntent?.openingAction?.kind === 'communicate' ? dialogueIntent.openingAction.audience[0] : undefined;
+  const audienceRelation = dialogueState.people.find((person) => person.id === dialogueAudienceId)?.relations.find((relation) => relation.personId === dialogueActor?.id);
+  assert.equal(audienceRelation?.trust, 0, '说话本身不能成为信任证据');
+  assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通只应形成带事件来源的熟悉度');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 180 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);

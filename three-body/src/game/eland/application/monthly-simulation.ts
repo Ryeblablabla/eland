@@ -122,8 +122,8 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     memories: [],
     relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
       personId: other.id,
-      trust: 20 + Math.floor(deterministicFraction(seed, `trust:${profile.id}:${other.id}`) * 20),
-      bond: 15 + Math.floor(deterministicFraction(seed, `bond:${profile.id}:${other.id}`) * 22),
+      trust: 0,
+      bond: 0,
       fear: 0,
       sourceEventIds: [],
     })),

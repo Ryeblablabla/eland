@@ -154,11 +154,11 @@ export function acceptedCompanionBetween(state: SimulationState, a: PersonId, b:
   for (const offer of [...completedCommunicationFacts(state)].reverse()) {
     if (offer.action.kind !== 'communicate' || offer.action.content.kind !== 'offer') continue;
     const proposal = offer.action.content.proposal;
-    if (proposal?.kind !== 'companion' || proposal.expiresAtMonth < atMonth) continue;
+    if (proposal?.kind !== 'companion') continue;
     const samePair = (proposal.proposerId === a && proposal.partnerId === b) || (proposal.proposerId === b && proposal.partnerId === a);
     if (!samePair) continue;
     const acceptance = acceptanceOf(state, offer.action.content.id, proposal.partnerId);
-    if (acceptance) return { offer, acceptance };
+    if (acceptance && acceptance.atMonth + 24 >= atMonth) return { offer, acceptance };
   }
   return null;
 }

@@ -32,6 +32,11 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     inputs: [{ materialId: Material.Stone, quantity: 1 }, { materialId: Material.Wood, quantity: 1 }],
     output: { materialId: Material.StoneTool, quantity: 1 },
   },
+  {
+    id: 'bind-clothing',
+    inputs: [{ materialId: Material.Rope, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.Clothing, quantity: 1 },
+  },
 ] as const;
 
 const EXERTION_RULES: readonly ExertionRule[] = [

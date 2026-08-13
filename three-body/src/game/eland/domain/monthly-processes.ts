@@ -3,6 +3,7 @@ import { Material, materialHas } from './material';
 import type { EnvironmentFact, SimulationState } from './model';
 import type { ConditionInstance, PersonState } from './person';
 import { isAlive } from './person';
+import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, topZ } from '../world/grid';
 import { seededFraction } from '../world/generator';
@@ -283,9 +284,10 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const sheltered = planks >= 3;
     const fires = nearbyFires(state, person);
     const fireProtected = fires > 0;
+    const clothed = inventoryQuantity(person, Material.Clothing) > 0;
     const climate = state.civilization.climate;
-    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0) - (fireProtected ? 2.2 : 0)) : 0;
-    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0) + (fireProtected ? 0.6 : 0)) : 0;
+    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0) - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) : 0;
+    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0) + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) : 0;
     upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, coldLoad <= 0 && (sheltered || fireProtected), fireProtected, events);
     upsertExposureCondition(state, person, atMonth, 'heat', heatLoad, heatLoad <= 0 && sheltered, false, events);
 

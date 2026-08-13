@@ -310,6 +310,15 @@ try {
   assert.equal(toolState.people[0].inventory.find((stack) => stack.materialId === 24)?.quantity, 1, '石与木应形成只属于制作者背包的石制工具');
   assert.ok(toolState.people[0].knowledge.some((fact) => fact.kind === 'technique' && fact.confidence < 55), '一次制作只能形成待核验的个人经验');
   assert.ok(toolState.derived.milestones.some((milestone) => milestone.id === '16'), '真实制作出石制工具后才能观察为制造工具');
+  const clothingState = await craftWith(380, [
+    { id: 'rope-clothing', materialId: 23, quantity: 1, sourceEventIds: [] },
+    { id: 'fiber-clothing', materialId: 20, quantity: 1, sourceEventIds: [] },
+  ], (crafter) => [
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'rope-clothing' },
+    { kind: 'inventory-stack', personId: crafter.id, stackId: 'fiber-clothing' },
+  ]);
+  assert.equal(clothingState.people[0].inventory.find((stack) => stack.materialId === 26)?.quantity, 1, '绳与纤维应结合为私人衣物');
+  assert.ok(clothingState.derived.milestones.some((milestone) => milestone.id === '19'), '真实制作出隔热衣物后才能观察为制作衣物');
 
   let fireState = createInitialState(382, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
   const fireMakerId = fireState.people[0].id;

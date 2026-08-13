@@ -92,6 +92,11 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     && Number(event.diff.outputMaterialId) === Material.CookedFood);
   add(result, '18', '烹饪食物', cookedFood, '人物让可食物质暴露于真实火体素，并取得可私有持有和摄入的熟食。');
 
+  const clothing = completed.filter((event) => event.action.kind === 'act'
+    && event.action.operation === 'combine'
+    && Number(event.diff.outputMaterialId) === Material.Clothing);
+  add(result, '19', '制作衣物', clothing, '人物把真实绳与纤维结合成私人持有的隔热衣物。');
+
   const fireWarming = environment.filter((event) => event.change === 'condition'
     && event.diff.condition === 'cold'
     && event.diff.exited === true

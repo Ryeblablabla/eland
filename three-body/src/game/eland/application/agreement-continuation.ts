@@ -28,9 +28,9 @@ function reachableWaterBank(state: SimulationState, person: PersonState): { wate
   return candidates.sort((a, b) => a.pathLength - b.pathLength || a.waterCell - b.waterCell)[0] ?? null;
 }
 
-export function canAcceptAssist(state: SimulationState, helper: PersonState, need: 'water' | 'food' | 'shelter' | 'company'): boolean {
-  if (need === 'water') return Boolean(reachableWaterBank(state, helper));
-  if (need === 'food') return helper.inventory.some((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
+export function canAcceptAssist(state: SimulationState, helper: PersonState, requester: PersonState, need: 'water' | 'food' | 'shelter' | 'company'): boolean {
+  if (need === 'water') return requester.body.hydration < 45 && Boolean(reachableWaterBank(state, helper));
+  if (need === 'food') return requester.body.nutrition < 45 && helper.inventory.some((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   if (need === 'company') return true;
   return false;
 }
@@ -78,12 +78,14 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
         target: { kind: 'person', personId: requester.id },
         sourceFactIds,
       }];
-      if (requester.position.cellId !== water.bankCell && findPath(state.world.grid, requester.position.cellId, water.bankCell).length) continuations.push({
+      if (findPath(state.world.grid, requester.position.cellId, water.bankCell).length) continuations.push({
         agreementId: agreement.id,
         personId: requester.id,
-        summary: `沿${helper.name}确认的路线去水边`,
-        goal: { kind: 'at-cell', cellId: water.bankCell },
-        nextAction: { kind: 'move', toCellId: water.bankCell },
+        summary: `沿${helper.name}确认的路线去水边并实际饮水`,
+        goal: { kind: 'body-at-least', field: 'hydration', value: Math.min(100, Math.max(60, requester.body.hydration + 35)) },
+        nextAction: requester.position.cellId === water.bankCell
+          ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
+          : { kind: 'move', toCellId: water.bankCell },
         target: { kind: 'person', personId: helper.id },
         sourceFactIds,
       });

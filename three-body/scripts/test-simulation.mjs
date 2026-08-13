@@ -221,6 +221,13 @@ try {
   const waterAssistId = 'test-water-assist';
   const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'communicate', content: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, audience: [waterHelper.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterProposal);
+  waterAssistState.world.past.push(waterProposal);
+  waterRequester.bornAtMonth = -20 * 12;
+  waterHelper.bornAtMonth = -20 * 12;
+  waterRequester.body.hydration = 80;
+  assert.equal(buildDecisionContexts(waterAssistState).find((context) => context.person.id === waterHelper.id)?.options.some((option) => option.id.startsWith('accept-assist:')), false, '求助者已自行解除缺水时，帮助者不得再接受一项失效需求');
+  waterRequester.body.hydration = 20;
+  assert.ok(buildDecisionContexts(waterAssistState).find((context) => context.person.id === waterHelper.id)?.options.some((option) => option.id.startsWith('accept-assist:')), '求助者仍然缺水且存在可达水源时，帮助者才能接受');
   const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'communicate', content: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, audience: [waterRequester.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterAcceptance);
   const helperArrival = { ...actionFact('test-water-helper-arrival', 3, waterHelper.id, { kind: 'move', toCellId: waterBank }), cellId: waterBank, toCellId: waterBank };

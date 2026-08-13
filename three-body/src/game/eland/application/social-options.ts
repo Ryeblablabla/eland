@@ -165,7 +165,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
     const requester = state.people.find((other) => other.id === incomingAssist.fact.who);
     if (requester) {
       const proposal = incomingAssist.content.proposal;
-      if (proposal?.kind === 'assist' && canAcceptAssist(state, person, proposal.need)) options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
+      if (proposal?.kind === 'assist' && canAcceptAssist(state, person, requester, proposal.need)) options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
       options.push(responseOption(state, person, incomingAssist.content.id, requester, false, 'assist'));
     }
   }

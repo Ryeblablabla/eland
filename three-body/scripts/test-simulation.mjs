@@ -35,6 +35,8 @@ try {
   listener.position.previousCellId = speaker.position.cellId;
   const dialogueContext = buildDecisionContexts(dialogueState).find((context) => context.person.id === speaker.id);
   assert.ok(dialogueContext, '测试人物必须拥有决策上下文');
+  const collectMaterials = dialogueContext.options.filter((option) => option.id.startsWith('collect:')).map((option) => option.goal.kind === 'inventory-at-least' ? option.goal.materialId : -1);
+  assert.equal(new Set(collectMaterials).size, collectMaterials.length, '同一物质只应暴露最近的一项取得机会');
   assert.ok(dialogueContext.options.some((option) => option.requiresFollowUp) && dialogueContext.followUpOptions.length, '普通对话必须同时存在合法的非沟通后续行动');
   assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'communicate').every((option) => option.requiresFollowUp), '每项对话决策都必须绑定后续真实行动');
   dialogueState.decisionBudget.credits = dialogueState.people.length;

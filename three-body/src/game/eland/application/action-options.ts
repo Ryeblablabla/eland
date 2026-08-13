@@ -131,7 +131,11 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  for (const drop of visibleDrops.sort((a, b) => distance(person.position.cellId, a.cellId) - distance(person.position.cellId, b.cellId)).slice(0, 8)) {
+  const nearestDropsByMaterial = new Map<number, DropState>();
+  for (const drop of [...visibleDrops].sort((a, b) => distance(person.position.cellId, a.cellId) - distance(person.position.cellId, b.cellId) || a.id.localeCompare(b.id))) {
+    if (!nearestDropsByMaterial.has(drop.materialId)) nearestDropsByMaterial.set(drop.materialId, drop);
+  }
+  for (const drop of [...nearestDropsByMaterial.values()].slice(0, 8)) {
     options.push(optionForDrop(person, drop));
   }
 

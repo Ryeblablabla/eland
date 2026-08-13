@@ -130,7 +130,9 @@ async function decideOne(context: DecisionRequestContext, apiKey: string, provid
     try {
       completion = await requestKimiDecision(apiKey, provider, context, correction, conciseRetry);
     } catch (error) {
-      if (!conciseRetry && error instanceof Error && error.message.includes('finish_reason=length')) {
+      const message = error instanceof Error ? error.message : String(error);
+      const retryable = message.includes('finish_reason=length') || message.toLowerCase().includes('timeout') || message.toLowerCase().includes('aborted');
+      if (!conciseRetry && retryable) {
         conciseRetry = true;
         continue;
       }

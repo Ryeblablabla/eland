@@ -12,6 +12,7 @@ import {
   openCompanionOfferFor,
 } from '../domain/social-facts';
 import { findPath } from '../world/grid';
+import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -86,7 +87,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       summary: `重新与同伴${other.name}会合`, reason: '双方已通过对话形成结伴承诺，但现在彼此分离',
       goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId },
       target: { kind: 'person', personId: other.id }, estimatedDuration: 'several-months',
-      estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12)))),
+      estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
       risks: [], domain: 'social', sourceFactIds: [companionship.offer.id, companionship.acceptance.id],
     });
   }
@@ -154,7 +155,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         summary: `去与${other.name}会合`, reason: '看见另一个人，接近后才能沟通、求助或共同做事',
         goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId },
         target: { kind: 'person', personId: other.id }, estimatedDuration: path.length <= 4 ? 'one-month' : 'several-months',
-        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12)))),
+        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
         risks: [], domain: 'social', sourceFactIds: relationTo(person, other.id)?.sourceEventIds ?? [],
       });
     }

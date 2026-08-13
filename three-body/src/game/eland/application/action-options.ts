@@ -19,6 +19,7 @@ import {
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
+import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -81,8 +82,7 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
   const destination = option.nextAction.kind === 'move' ? option.nextAction.toCellId : person.position.cellId;
   const path = findPath(state.world.grid, person.position.cellId, destination);
   if (option.nextAction.kind === 'move' && !path.length) return null;
-  const monthlyRange = Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12));
-  const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / monthlyRange)) : 1;
+  const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)) : 1;
   const risks: string[] = [];
   if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
   if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');

@@ -173,6 +173,12 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         context.strokeRect(x * scale + inset, y * scale + inset, scale - context.lineWidth, scale - context.lineWidth);
       }
       context.restore();
+      context.fillStyle = 'rgba(9, 14, 19, 0.74)';
+      context.fillRect(14, 14, 112, 28);
+      context.fillStyle = '#d8e0e8';
+      context.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace';
+      context.textBaseline = 'middle';
+      context.fillText(`规则刻度 ${Math.min(RULE_ACTION_TICKS_PER_MONTH, Math.max(1, Math.ceil(motion * RULE_ACTION_TICKS_PER_MONTH)))}/15`, 24, 28);
       frame += 1;
       if (motion < 1 || frame % 20 === 0) handle = requestAnimationFrame(draw);
       else handle = requestAnimationFrame(draw);

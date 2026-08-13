@@ -25,7 +25,7 @@ export function cellLabel(cellId: number, width: number): string {
 export function interpolatePath(path: number[], width: number, progress: number): { x: number; y: number } {
   if (!path.length) return { x: 0, y: 0 };
   if (path.length === 1) return cellCoordinates(path[0], width);
-  const offset = Math.max(0, Math.min(0.9999, progress)) * (path.length - 1);
+  const offset = Math.max(0, Math.min(1, progress)) * (path.length - 1);
   const index = Math.floor(offset);
   const local = offset - index;
   const a = cellCoordinates(path[index], width);

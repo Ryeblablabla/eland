@@ -2,6 +2,7 @@ import type { PrimitiveAction } from './action';
 import { Material, materialHas } from './material';
 import type { DropState, SimulationState } from './model';
 import type { PersonState } from './person';
+import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
@@ -31,15 +32,17 @@ function reachableFood(state: SimulationState, person: PersonState): DropState |
 
 export function chooseSurvivalReflex(state: SimulationState, person: PersonState): PrimitiveAction | null {
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
-  const water = reachableWater(state, person);
-  const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12)))) : Number.POSITIVE_INFINITY;
-  const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
   const starvationMonths = Math.max(0, Math.floor(person.body.nutrition / 1.5) - 6);
 
-  if (person.body.hydration < 58 && water && (person.position.cellId === water.bankCell || waterTravelMonths >= dehydrationMonths || person.body.hydration < 32)) {
-    return person.position.cellId === water.bankCell
-      ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
-      : { kind: 'move', toCellId: water.bankCell };
+  if (person.body.hydration < 58) {
+    const water = reachableWater(state, person);
+    const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
+    const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
+    if (water && (person.position.cellId === water.bankCell || waterTravelMonths >= dehydrationMonths || person.body.hydration < 32)) {
+      return person.position.cellId === water.bankCell
+        ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
+        : { kind: 'move', toCellId: water.bankCell };
+    }
   }
   if (food && person.body.nutrition < 52) {
     return { kind: 'act', operation: 'ingest', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: food.id }] };

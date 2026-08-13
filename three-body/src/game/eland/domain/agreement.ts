@@ -3,6 +3,8 @@ import type { ActionFact, AgreementFact, SimulationState } from './model';
 import type { PersonId } from './person';
 import { isAlive } from './person';
 import { applyRelationEvidence } from './relation';
+import { Material, materialHas } from './material';
+import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
@@ -46,6 +48,40 @@ export function agreementById(state: SimulationState, id: string): Agreement | u
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
   const action = fact.action;
+  const waterAssistance = state.agreements.find((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'assist'
+    && agreement.proposal.need === 'water'
+    && agreement.partyIds.includes(fact.who));
+  if (waterAssistance?.proposal.kind === 'assist') {
+    const proposal = waterAssistance.proposal;
+    const helper = state.people.find((candidate) => candidate.id === proposal.helperId && isAlive(candidate));
+    const requester = state.people.find((candidate) => candidate.id === proposal.requesterId && isAlive(candidate));
+    const helperReachedWater = fact.who === proposal.helperId && (
+      (action.kind === 'move' && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+      || (action.kind === 'communicate' && action.audience.includes(proposal.requesterId) && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+      || (action.kind === 'attend' && action.target.kind === 'voxel' && voxelAt(state.world.grid, action.target.position.x, action.target.position.y, action.target.position.z) === Material.Water)
+    );
+    const materialId = Number(fact.diff.materialId);
+    const requesterDrank = fact.who === proposal.requesterId
+      && action.kind === 'act'
+      && action.operation === 'ingest'
+      && Number.isFinite(materialId)
+      && materialHas(materialId, 'drinkable')
+      && Number(fact.diff.hydration ?? 0) > 0;
+    if (helperReachedWater || requesterDrank) {
+      const contributorId = helperReachedWater ? proposal.helperId : proposal.requesterId;
+      if (!waterAssistance.fulfilledByPersonIds.includes(contributorId)) waterAssistance.fulfilledByPersonIds.push(contributorId);
+      if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
+      if (!waterAssistance.sourceEventIds.includes(fact.id)) waterAssistance.sourceEventIds.push(fact.id);
+      if (helper && requester
+        && helper.position.cellId === requester.position.cellId
+        && waterAssistance.fulfilledByPersonIds.includes(proposal.helperId)
+        && waterAssistance.fulfilledByPersonIds.includes(proposal.requesterId)) {
+        fulfill(state, waterAssistance, fact);
+        return;
+      }
+    }
+  }
   if (action.kind === 'communicate') {
     const content = action.content;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
@@ -100,7 +136,9 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       && item.partyIds.includes(fact.who)
       && item.partyIds.includes(target.personId));
     if (agreement) fulfill(state, agreement, fact);
+    return;
   }
+
 }
 
 function fulfill(state: SimulationState, agreement: Agreement, fact: ActionFact): void {

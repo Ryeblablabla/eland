@@ -255,6 +255,10 @@ function decisionProbability(state: SimulationState, context: DecisionContext): 
     probability += 0.72;
     reasons.push('已接受的交换等待本人交付');
   }
+  if (context.options.some((option) => option.id.startsWith('fulfill-assist:') || option.id.startsWith('meet-to-assist:'))) {
+    probability += 0.72;
+    reasons.push('已接受的求助等待本人履行');
+  }
   if (!reasons.length) reasons.push('每月非零重新考虑概率');
   return { probability: clamp(probability, 0.01, 0.82), reasons };
 }

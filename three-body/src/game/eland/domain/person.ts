@@ -2,7 +2,7 @@ import type { BiologicalSex } from '../population';
 import type { MaterialId } from './material';
 
 export type PersonId = string;
-export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained';
+export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'restrained';
 
 export interface ConditionInstance {
   id: string;

@@ -1,5 +1,5 @@
 import type { MaterialId } from './material';
-import type { PersonId } from './person';
+import type { ConditionKind, PersonId } from './person';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -50,7 +50,7 @@ export type FactPredicate =
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
   | { kind: 'near-person'; personId: PersonId }
-  | { kind: 'condition'; personId: PersonId; condition: 'cold' | 'heat' | 'wound' | 'illness' | 'pregnancy' | 'restrained'; present: boolean }
+  | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean }
   | { kind: 'representation-made'; representationId: string };
 
 export type IntentStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';

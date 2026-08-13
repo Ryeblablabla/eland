@@ -159,6 +159,32 @@ function recoverInjuries(state: SimulationState, person: PersonState, atMonth: n
   }
 }
 
+function advanceAging(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
+  const age = atMonth - person.bornAtMonth;
+  const baseline = Math.max(1, person.lifespanMonths);
+  const ratio = age / baseline;
+  const current = condition(state, person, 'aging');
+  const targetStage = ratio >= 0.94 ? 3 : ratio >= 0.82 ? 2 : ratio >= 0.66 ? 1 : 0;
+  if (!current && targetStage > 0) {
+    const pressure = Math.max(0, ratio - 0.66);
+    const probability = Math.min(0.35, 0.012 + pressure * 0.22);
+    if (seededFraction(state.seed, `aging-enter:${atMonth}:${person.id}`) < probability) {
+      const created: ConditionInstance = { id: `condition-aging-${person.id}-${atMonth}`, kind: 'aging', stage: 1, sinceMonth: atMonth, sourceEventIds: [] };
+      person.conditions.push(created);
+      const fact = event(state, atMonth, events, 'condition', `${person.name}进入衰老第一阶段`, { condition: 'aging', stage: 1, ageMonths: age }, person);
+      created.sourceEventIds.push(fact.id);
+    }
+    return;
+  }
+  if (!current || targetStage <= current.stage) return;
+  const pressure = Math.max(0, ratio - (current.stage === 1 ? 0.82 : 0.94));
+  const probability = Math.min(0.45, 0.018 + pressure * 0.28);
+  if (seededFraction(state.seed, `aging-progress:${atMonth}:${person.id}:${current.stage}`) >= probability) return;
+  current.stage = (current.stage + 1) as 2 | 3;
+  const fact = event(state, atMonth, events, 'condition', `${person.name}的衰老进入第 ${current.stage} 阶段`, { condition: 'aging', stage: current.stage, ageMonths: age }, person);
+  current.sourceEventIds.push(fact.id);
+}
+
 function newborn(state: SimulationState, mother: PersonState, fatherId: string, atMonth: number): PersonState {
   const id = `born-${atMonth}-${mother.id}-${state.people.length}`;
   const father = state.people.find((person) => person.id === fatherId);
@@ -208,15 +234,20 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
   state.people.push(child);
   person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
   const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}`, { bornPersonId: child.id, parents: child.geneticParents, generation: child.generation }, person);
-  child.relations.forEach((relation) => { relation.sourceEventIds = [fact.id]; });
+  child.relations.forEach((relation) => {
+    if (!child.geneticParents.includes(relation.personId)) return;
+    relation.bond = 12;
+    relation.sourceEventIds = [fact.id];
+  });
   for (const existing of state.people) {
     if (existing.id === child.id || existing.relations.some((relation) => relation.personId === child.id)) continue;
     const closeKin = child.geneticParents.includes(existing.id);
-    existing.relations.push({ personId: child.id, trust: 0, bond: closeKin ? 12 : 0, fear: 0, sourceEventIds: [fact.id] });
+    existing.relations.push({ personId: child.id, trust: 0, bond: closeKin ? 12 : 0, fear: 0, sourceEventIds: closeKin ? [fact.id] : [] });
   }
 }
 
-function die(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
+function die(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[], cause: 'body-failure' | 'aging-terminal'): void {
+  const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
   for (const stack of person.inventory) addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [], `${person.id}-death`);
@@ -224,7 +255,14 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
   if (intent) intent.status = 'failed';
   delete person.activeIntentId;
-  event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，私有背包遗留在原地`, { personId: person.id, ageMonths: atMonth - person.bornAtMonth }, person);
+  const causalConditions = person.conditions.flatMap((current) => current.sourceEventIds);
+  event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，私有背包遗留在原地`, {
+    personId: person.id,
+    ageMonths: atMonth - person.bornAtMonth,
+    cause,
+    healthBeforeDeath,
+    sourceEventIds: [...new Set(causalConditions)].slice(-24),
+  }, person);
 }
 
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
@@ -233,7 +271,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
   for (const person of peopleAtStart) {
     if (person.diedAtMonth !== undefined) continue;
     if (person.body.health <= 0) {
-      die(state, person, atMonth, events);
+      die(state, person, atMonth, events, 'body-failure');
       continue;
     }
     const planks = nearbyPlanks(state, person);
@@ -249,6 +287,8 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const wound = condition(state, person, 'wound')?.stage ?? 0;
     const illness = condition(state, person, 'illness')?.stage ?? 0;
     const pregnancy = condition(state, person, 'pregnancy')?.stage ?? 0;
+    advanceAging(state, person, atMonth, events);
+    const aging = condition(state, person, 'aging')?.stage ?? 0;
     const hydrationCost = 1.35 * (heat ? [1, 1.3, 1.7, 2.2][heat] : 1) + illness * 0.35 + pregnancy * 0.22;
     const nutritionCost = 1.25 * (cold ? [1, 1.25, 1.5, 1.8][cold] : 1) + illness * 0.38 + pregnancy * 0.28;
     person.body.hydration = clamp(person.body.hydration - hydrationCost);
@@ -261,11 +301,19 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     if (cold >= 3) healthDelta -= 2;
     if (heat >= 3) healthDelta -= 3;
     healthDelta -= Math.max(0, wound - 1) * 1.5 + Math.max(0, illness - 1) * 1.5;
-    if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || climate.kind === 'temperate') && !wound && !illness) healthDelta += 1.4;
+    if (aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45)) healthDelta -= aging === 3 ? 1.5 : 0.5;
+    if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || climate.kind === 'temperate') && !wound && !illness) {
+      healthDelta += 1.4 * (aging === 1 ? 0.9 : aging === 2 ? 0.65 : aging === 3 ? 0.3 : 1);
+    }
     person.body.health = clamp(person.body.health + healthDelta);
     recoverInjuries(state, person, atMonth, sheltered, events);
     advancePregnancies(state, person, atMonth, events);
-    if (person.body.health <= 0 || atMonth - person.bornAtMonth >= person.lifespanMonths) die(state, person, atMonth, events);
+    const ageRatio = (atMonth - person.bornAtMonth) / Math.max(1, person.lifespanMonths);
+    const terminalRisk = aging === 3
+      ? Math.min(0.42, Math.max(0, ageRatio - 1) * 0.035 + Math.max(0, 45 - person.body.health) * 0.002 + illness * 0.012 + wound * 0.008)
+      : 0;
+    const terminal = terminalRisk > 0 && seededFraction(state.seed, `aging-terminal:${atMonth}:${person.id}`) < terminalRisk;
+    if (person.body.health <= 0 || terminal) die(state, person, atMonth, events, terminal ? 'aging-terminal' : 'body-failure');
     else if (Math.abs(healthDelta) >= 2 || person.body.hydration < 25 || person.body.nutrition < 25) {
       event(state, atMonth, events, 'body', `${person.name}的身体储备发生显著变化`, { health: person.body.health, hydration: person.body.hydration, nutrition: person.body.nutrition, healthDelta }, person);
     }

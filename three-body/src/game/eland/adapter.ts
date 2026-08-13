@@ -25,7 +25,7 @@ const NEED_LEVELS = [
 ] as const;
 
 const CONDITION_LABELS: Record<string, string> = {
-  cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', pregnancy: '妊娠', restrained: '拘束',
+  cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', aging: '衰老', pregnancy: '妊娠', restrained: '拘束',
 };
 
 function needsFor(person: PersonState): SocietyAgent['needs'] {

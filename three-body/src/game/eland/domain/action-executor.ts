@@ -71,6 +71,7 @@ function conditionWorkMultiplier(person: PersonState): number {
     if (condition.kind === 'cold') multiplier *= [1, 0.85, 0.65, 0.4][condition.stage];
     if (condition.kind === 'heat') multiplier *= [1, 0.9, 0.7, 0.45][condition.stage];
     if (condition.kind === 'wound' || condition.kind === 'illness') multiplier *= [1, 0.88, 0.68, 0.45][condition.stage];
+    if (condition.kind === 'aging') multiplier *= [1, 0.95, 0.8, 0.55][condition.stage];
     if (condition.kind === 'pregnancy') multiplier *= condition.stage >= 3 ? 0.65 : 0.88;
     if (condition.kind === 'restrained') multiplier *= 0.25;
   }

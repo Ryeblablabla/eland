@@ -52,6 +52,35 @@ try {
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
   assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
 
+  const waterAssistState = createInitialState(311, { endpoint: { kind: 'months', value: 24 } });
+  const waterRequester = waterAssistState.people[0];
+  const waterHelper = waterAssistState.people[1];
+  const surfaceAt = (state, cell) => {
+    for (let z = state.world.grid.levels - 1; z >= 0; z -= 1) {
+      const materialId = state.world.grid.voxels[z * state.world.grid.width * state.world.grid.depth + cell];
+      if (materialId !== 0) return materialId;
+    }
+    return 0;
+  };
+  const waterCell = Array.from({ length: waterAssistState.world.grid.width * waterAssistState.world.grid.depth }, (_, cell) => cell).find((cell) => surfaceAt(waterAssistState, cell) === 7);
+  const neighbors = (cell, width, depth) => [cell - width, cell - 1, cell + 1, cell + width]
+    .filter((candidate) => candidate >= 0 && candidate < width * depth && Math.abs(candidate % width - cell % width) + Math.abs(Math.floor(candidate / width) - Math.floor(cell / width)) === 1);
+  const waterBank = waterCell === undefined ? undefined : neighbors(waterCell, waterAssistState.world.grid.width, waterAssistState.world.grid.depth).find((cell) => surfaceAt(waterAssistState, cell) !== 7);
+  assert.ok(Number.isInteger(waterBank), '测试世界应存在水边格');
+  waterRequester.position.cellId = waterBank;
+  waterHelper.position.cellId = waterBank;
+  const waterAssistId = 'test-water-assist';
+  const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'communicate', content: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, audience: [waterHelper.id], channel: 'voice' }), cellId: waterBank };
+  recordAgreementAction(waterAssistState, waterProposal);
+  const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'communicate', content: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, audience: [waterRequester.id], channel: 'voice' }), cellId: waterBank };
+  recordAgreementAction(waterAssistState, waterAcceptance);
+  const helperArrival = { ...actionFact('test-water-helper-arrival', 3, waterHelper.id, { kind: 'move', toCellId: waterBank }), cellId: waterBank, toCellId: waterBank };
+  recordAgreementAction(waterAssistState, helperArrival);
+  assert.equal(waterAssistState.agreements[0]?.status, 'active', '帮助者独自到达水边还不能算完成求助');
+  const requesterDrink = { ...actionFact('test-water-requester-drink', 3, waterRequester.id, { kind: 'act', operation: 'ingest', targets: [] }), cellId: waterBank, diff: { materialId: 7, hydration: 58 } };
+  recordAgreementAction(waterAssistState, requesterDrink);
+  assert.equal(waterAssistState.agreements[0]?.status, 'fulfilled', '帮助者到场且求助者真实饮水后，水求助才履约');
+
   const companionState = createInitialState(33, { endpoint: { kind: 'months', value: 36 } });
   const companionA = companionState.people[0];
   const companionB = companionState.people[1];
@@ -75,6 +104,30 @@ try {
   breachState.world.past.push(breachAcceptance);
   advanceAgreementLifecycle(breachState, 9);
   assert.equal(breachState.agreements[0]?.status, 'breached', '超过履行期限的有效 Agreement 应明确违约');
+
+  const birthState = createInitialState(312, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  const mother = birthState.people.find((person) => person.sex === 'female');
+  const father = birthState.people.find((person) => person.sex === 'male');
+  assert.ok(mother && father, '出生关系测试需要一名女性和一名男性');
+  mother.conditions.push({ id: 'test-due-pregnancy', kind: 'pregnancy', stage: 3, sinceMonth: -8, dueAtMonth: 1, otherPersonId: father.id, sourceEventIds: ['test-conception'] });
+  const afterBirth = stepSimulation(birthState, { decide() { return { kind: 'idle', reason: '不干扰出生测试' }; } });
+  const child = afterBirth.people.find((person) => person.generation > 0);
+  const birthEvent = afterBirth.world.past.find((event) => event.kind === 'environment' && event.diff.bornPersonId === child?.id);
+  assert.ok(child && birthEvent, '到期妊娠应产生有来源的出生事实');
+  for (const parentId of child.geneticParents) {
+    const childToParent = child.relations.find((relation) => relation.personId === parentId);
+    const parentToChild = afterBirth.people.find((person) => person.id === parentId)?.relations.find((relation) => relation.personId === child.id);
+    assert.equal(childToParent?.bond, 12, '孩子指向亲生父母的亲近应来自出生事实');
+    assert.equal(parentToChild?.bond, 12, '亲生父母指向孩子的亲近应与出生事实对称');
+    assert.ok(childToParent?.sourceEventIds.includes(birthEvent.id) && parentToChild?.sourceEventIds.includes(birthEvent.id));
+  }
+
+  const agingState = createInitialState(313, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  const elder = agingState.people[0];
+  elder.bornAtMonth = -elder.lifespanMonths;
+  elder.body = { health: 100, hydration: 100, nutrition: 100 };
+  const afterBaseline = stepSimulation(agingState, { decide() { return { kind: 'idle', reason: '不干扰衰老测试' }; } });
+  assert.equal(afterBaseline.people.find((person) => person.id === elder.id)?.diedAtMonth, undefined, '达到寿命基线月份不能在身体健康时被日期直接杀死');
 
   let dialogueState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const speaker = dialogueState.people[0];

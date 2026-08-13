@@ -18,18 +18,24 @@ function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
 }
 
-function responseOption(person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion'): ActionOption {
+function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion'): ActionOption {
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
+  const response = { kind: 'communicate' as const, content: accept
+    ? { id: representationId, kind: 'accept' as const, referenceId }
+    : { id: representationId, kind: 'reject' as const, referenceId }, audience: [other.id], channel: 'voice' as const };
+  const together = person.position.cellId === other.position.cellId;
+  const distance = Math.max(0, findPath(state.world.grid, person.position.cellId, other.position.cellId).length - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
     summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : '结伴提议'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
-    nextAction: { kind: 'communicate', content: accept
-      ? { id: representationId, kind: 'accept', referenceId }
-      : { id: representationId, kind: 'reject', referenceId }, audience: [other.id], channel: 'voice' },
+    nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId },
+    ...(!together ? { completionAction: response } : {}),
     target: { kind: 'person', personId: other.id },
-    estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
+    estimatedDuration: together ? 'one-month' : 'several-months',
+    estimatedMonths: together ? 1 : Math.max(1, Math.ceil(distance / 15)),
+    risks: [], domain: 'social', sourceFactIds: [],
   };
 }
 
@@ -95,17 +101,17 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
   const incomingAssist = openAssistRequestFor(state, person.id);
   if (incomingAssist) {
     const requester = state.people.find((other) => other.id === incomingAssist.fact.who);
-    if (requester?.position.cellId === person.position.cellId) {
-      options.push(responseOption(person, incomingAssist.content.id, requester, true, 'assist'));
-      options.push(responseOption(person, incomingAssist.content.id, requester, false, 'assist'));
+    if (requester) {
+      options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
+      options.push(responseOption(state, person, incomingAssist.content.id, requester, false, 'assist'));
     }
   }
   const incomingCompanion = openCompanionOfferFor(state, person.id);
   if (incomingCompanion) {
     const proposer = state.people.find((other) => other.id === incomingCompanion.fact.who);
-    if (proposer?.position.cellId === person.position.cellId) {
-      options.push(responseOption(person, incomingCompanion.content.id, proposer, true, 'companion'));
-      options.push(responseOption(person, incomingCompanion.content.id, proposer, false, 'companion'));
+    if (proposer) {
+      options.push(responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'));
+      options.push(responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'));
     }
   }
 

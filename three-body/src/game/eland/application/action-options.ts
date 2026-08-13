@@ -308,25 +308,32 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   const incomingExchange = openExchangeOfferFor(state, person.id);
   if (incomingExchange) {
     const proposal = incomingExchange.content.proposal;
-    if (proposal?.kind === 'exchange' && state.people.find((other) => other.id === incomingExchange.fact.who)?.position.cellId === person.position.cellId && inventoryQuantity(person, proposal.partnerMaterialId) >= proposal.partnerQuantity) {
+    const offerer = state.people.find((other) => other.id === incomingExchange.fact.who);
+    if (proposal?.kind === 'exchange' && offerer) {
       const representationId = `accept:${incomingExchange.content.id}:${person.id}`;
-      options.push({
+      const together = offerer.position.cellId === person.position.cellId;
+      const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
+      if (inventoryQuantity(person, proposal.partnerMaterialId) >= proposal.partnerQuantity) options.push({
         id: `accept-exchange:${incomingExchange.content.id}`,
         summary: `接受以${materialDefinition(proposal.partnerMaterialId).name}换取${materialDefinition(proposal.offererMaterialId).name}`,
-        reason: '眼前存在可履行的交换报价',
+        reason: '存在一项自己有能力履行的交换报价',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'accept', referenceId: incomingExchange.content.id }, audience: [incomingExchange.fact.who], channel: 'voice' },
-        target: { kind: 'person', personId: incomingExchange.fact.who },
-        estimatedDuration: 'one-month',
+        nextAction: together ? acceptAction : { kind: 'move', toCellId: offerer.position.cellId },
+        ...(!together ? { completionAction: acceptAction } : {}),
+        target: { kind: 'person', personId: offerer.id },
+        estimatedDuration: together ? 'one-month' : 'several-months',
         sourceFactIds: [incomingExchange.fact.id],
       });
+      const rejectId = `reject:${incomingExchange.content.id}:${person.id}`;
+      const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
       options.push({
         id: `reject-exchange:${incomingExchange.content.id}`,
         summary: `拒绝这项物质交换`,
-        reason: '眼前存在一项需要明确回应的交换报价',
-        goal: { kind: 'representation-made', representationId: `reject:${incomingExchange.content.id}:${person.id}` },
-        nextAction: { kind: 'communicate', content: { id: `reject:${incomingExchange.content.id}:${person.id}`, kind: 'reject', referenceId: incomingExchange.content.id }, audience: [incomingExchange.fact.who], channel: 'voice' },
-        target: { kind: 'person', personId: incomingExchange.fact.who }, estimatedDuration: 'one-month', sourceFactIds: [incomingExchange.fact.id],
+        reason: '存在一项需要明确回应的交换报价',
+        goal: { kind: 'representation-made', representationId: rejectId },
+        nextAction: together ? rejectAction : { kind: 'move', toCellId: offerer.position.cellId },
+        ...(!together ? { completionAction: rejectAction } : {}),
+        target: { kind: 'person', personId: offerer.id }, estimatedDuration: together ? 'one-month' : 'several-months', sourceFactIds: [incomingExchange.fact.id],
       });
     }
   }
@@ -389,26 +396,37 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
   const incomingOffer = openReproductionOfferFor(state, person.id);
-  if (incomingOffer && localPeople.some((other) => other.id === incomingOffer.fact.who)) {
-    const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
-    options.push({
-      id: `accept-reproduce:${incomingOffer.content.id}`,
-      summary: `接受${state.people.find((other) => other.id === incomingOffer.fact.who)?.name ?? '对方'}的共同生殖提议`,
-      reason: '近身收到一项尚未过期的生殖提议',
-      goal: { kind: 'representation-made', representationId },
-      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'accept', referenceId: incomingOffer.content.id }, audience: [incomingOffer.fact.who], channel: 'voice' },
-      target: { kind: 'person', personId: incomingOffer.fact.who },
-      estimatedDuration: 'one-month',
-      sourceFactIds: [incomingOffer.fact.id],
-    });
-    options.push({
-      id: `reject-reproduce:${incomingOffer.content.id}`,
-      summary: `拒绝共同生殖提议`,
-      reason: '近身收到一项需要明确回应的生殖提议',
-      goal: { kind: 'representation-made', representationId: `reject:${incomingOffer.content.id}:${person.id}` },
-      nextAction: { kind: 'communicate', content: { id: `reject:${incomingOffer.content.id}:${person.id}`, kind: 'reject', referenceId: incomingOffer.content.id }, audience: [incomingOffer.fact.who], channel: 'voice' },
-      target: { kind: 'person', personId: incomingOffer.fact.who }, estimatedDuration: 'one-month', sourceFactIds: [incomingOffer.fact.id],
-    });
+  if (incomingOffer) {
+    const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
+    if (proposer) {
+      const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
+      const together = proposer.position.cellId === person.position.cellId;
+      const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
+      options.push({
+        id: `accept-reproduce:${incomingOffer.content.id}`,
+        summary: `接受${proposer.name}的共同生殖提议`,
+        reason: '存在一项尚未过期、需要本人明确回应的生殖提议',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId },
+        ...(!together ? { completionAction: acceptAction } : {}),
+        target: { kind: 'person', personId: proposer.id },
+        estimatedDuration: together ? 'one-month' : 'several-months',
+        sourceFactIds: [incomingOffer.fact.id],
+      });
+      const rejectId = `reject:${incomingOffer.content.id}:${person.id}`;
+      const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
+      options.push({
+        id: `reject-reproduce:${incomingOffer.content.id}`,
+        summary: '拒绝共同生殖提议',
+        reason: '存在一项需要本人明确回应的生殖提议',
+        goal: { kind: 'representation-made', representationId: rejectId },
+        nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId },
+        ...(!together ? { completionAction: rejectAction } : {}),
+        target: { kind: 'person', personId: proposer.id },
+        estimatedDuration: together ? 'one-month' : 'several-months',
+        sourceFactIds: [incomingOffer.fact.id],
+      });
+    }
   }
 
   const reproductivePartner = localPeople.find((other) => {
@@ -593,6 +611,12 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
+  if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
+    const targetPersonId = intent.target.personId;
+    const target = state.people.find((candidate) => candidate.id === targetPersonId);
+    if (!target || !isAlive(target)) return null;
+    return target.position.cellId === person.position.cellId ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId };
+  }
   if (intent.goal.kind === 'near-person') {
     const targetPersonId = intent.goal.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId && isAlive(candidate));

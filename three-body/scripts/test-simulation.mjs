@@ -210,6 +210,8 @@ try {
   const responseState = createInitialState(39, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const offerer = responseState.people[0];
   const responder = responseState.people[2];
+  const separatedCell = responseState.people.find((person) => person.position.cellId !== offerer.position.cellId)?.position.cellId;
+  assert.ok(Number.isInteger(separatedCell), '测试世界应有一个与报价者分开的可达出生格');
   responder.position.cellId = offerer.position.cellId;
   offerer.inventory.push({ id: 'exchange-wood', materialId: 13, quantity: 2, sourceEventIds: [] });
   responder.inventory.push({ id: 'exchange-food', materialId: 21, quantity: 2, sourceEventIds: [] });
@@ -217,8 +219,33 @@ try {
   const exchangeFact = actionFact('test-required-exchange-event', 1, offerer.id, { kind: 'communicate', content: { id: exchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: offerer.id, partnerId: responder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 8 } }, audience: [responder.id], channel: 'voice' });
   recordAgreementAction(responseState, exchangeFact);
   responseState.world.past.push(exchangeFact);
+  responder.position.cellId = separatedCell;
+  responder.position.previousCellId = separatedCell;
   const responseContext = buildDecisionContexts(responseState).find((context) => context.person.id === responder.id);
   assert.deepEqual(new Set(responseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-exchange', 'reject-exchange']), '收到可履行交换后只能先明确接受或拒绝');
+  const acceptExchange = responseContext?.options.find((option) => option.id.startsWith('accept-exchange:'));
+  assert.equal(acceptExchange?.nextAction.kind, 'move', '提议后分开时，应先连续追上提议者');
+  assert.equal(acceptExchange?.completionAction?.kind, 'communicate', '跨月会合后必须保留原本的接受回应');
+  responseState.decisionBudget.credits = 0;
+  responseState.decisionBudget.ledgers = [];
+  const requiredBatches = [];
+  const respondedState = await stepSimulationAsync(responseState, {
+    async decideAll(contexts) {
+      requiredBatches.push(contexts.map((context) => context.person.id));
+      return contexts.map((context) => context.person.id === responder.id
+        ? { kind: 'start', optionId: acceptExchange.id, reason: '追上报价者并明确接受' }
+        : { kind: 'idle', reason: '不干扰回应测试' });
+    },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  assert.ok(requiredBatches.flat().includes(responder.id), '明确回应不应被普通模型预算挤掉');
+  const acceptanceFact = respondedState.world.past.find((event) => event.kind === 'action'
+    && event.who === responder.id
+    && event.action.kind === 'communicate'
+    && event.action.content.kind === 'accept'
+    && event.action.content.referenceId === exchangeId);
+  assert.ok(acceptanceFact, '回应者应以同一跨月意图完成移动后真正说出接受');
+  assert.equal(respondedState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'active', '真正说出接受后交换协议才生效');
 
   const roadState = createInitialState(40, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const roadWalker = roadState.people[0];

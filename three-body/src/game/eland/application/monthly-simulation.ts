@@ -694,11 +694,16 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   const prepared = prepareMonth(input);
   const living = prepared.contexts.length;
   const rolling = currentRollingLedgers(prepared.state);
-  const maxContexts = Math.min(
+  const requiredContexts = prepared.candidates.filter(hasRequiredSocialResponse).length;
+  const ordinaryCapacity = Math.min(
     prepared.candidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / 12),
     availableModelContexts(rolling, living),
     Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext) / prepared.state.decisionBudget.tokensPerContext),
+  );
+  const maxContexts = Math.min(
+    prepared.candidates.length,
+    Math.max(requiredContexts, ordinaryCapacity),
   );
   const importance = (context: DecisionContext) => {
     let score = hasRequiredSocialResponse(context)

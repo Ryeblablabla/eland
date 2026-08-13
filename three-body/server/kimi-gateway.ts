@@ -44,7 +44,8 @@ async function requestKimiDecision(
     body: JSON.stringify({
       model: config.model,
       temperature: 1,
-      max_tokens: 500,
+      max_tokens: 10_000,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }],
     }),
     signal: AbortSignal.timeout(90_000),
@@ -54,11 +55,15 @@ async function requestKimiDecision(
     throw new Error(`${provider} 返回 ${response.status}${detail ? `：${detail}` : ''}`);
   }
   const data = await response.json() as {
-    choices?: { message?: { content?: unknown } }[];
+    choices?: { finish_reason?: unknown; message?: { content?: unknown; reasoning_content?: unknown } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
-  const content = data.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error(`${provider} 没有返回文本`);
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) {
+    const reasoningLength = typeof choice?.message?.reasoning_content === 'string' ? choice.message.reasoning_content.length : 0;
+    throw new Error(`${provider} 没有返回最终决策文本（finish_reason=${String(choice?.finish_reason ?? 'unknown')}，reasoning_length=${reasoningLength}）`);
+  }
   return {
     content,
     usage: { inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 },

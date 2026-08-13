@@ -255,7 +255,6 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       && !activeCollectivesFor(state, other.id).some((collective) => collective.status === 'active')
       && sharedFulfillment
       && (relation?.trust ?? 0) >= 6
-      && person.driveBias.affiliation >= 45
       && !hasOpenCollectiveOfferBetween(state, person.id, other.id)
       && !hasOpenCollectiveOfferBetween(state, other.id, person.id)) {
       const representationId = `offer-collective:${state.clock.elapsedMonths}:${person.id}:${other.id}`;

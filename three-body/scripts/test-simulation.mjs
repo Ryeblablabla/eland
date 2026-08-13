@@ -40,6 +40,57 @@ try {
   assert.deepEqual(initial.collectives, [], '开局不应凭空存在任何共同体成员身份');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
+  const feasibleIntentState = createInitialState(316, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const feasibleActor = feasibleIntentState.people.find((person) => person.sex === 'female') ?? feasibleIntentState.people[0];
+  const feasiblePartner = feasibleIntentState.people.find((person) => person.sex === 'male' && person.id !== feasibleActor.id)
+    ?? feasibleIntentState.people.find((person) => person.id !== feasibleActor.id);
+  assert.ok(feasibleActor && feasiblePartner, '可行意图测试需要两名人物');
+  feasibleActor.sex = 'female';
+  feasiblePartner.sex = 'male';
+  feasibleActor.bornAtMonth = -24 * 12;
+  feasiblePartner.bornAtMonth = -24 * 12;
+  feasibleActor.body = { health: 100, hydration: 100, nutrition: 100 };
+  feasiblePartner.body = { health: 100, hydration: 100, nutrition: 100 };
+  feasibleActor.conditions = [];
+  feasiblePartner.conditions = [];
+  feasiblePartner.position.cellId = feasibleActor.position.cellId;
+  feasiblePartner.position.previousCellId = feasibleActor.position.cellId;
+  feasibleActor.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
+  let feasibleContext = buildDecisionContexts(feasibleIntentState).find((context) => context.person.id === feasibleActor.id);
+  assert.ok(feasibleContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '身体与距离条件成立时，引擎不得因为亲近偏置低而隐藏生殖意图');
+  feasibleActor.inventory = [
+    { id: 'test-feasible-food', materialId: 21, quantity: 3, sourceEventIds: [] },
+    { id: 'test-feasible-fiber', materialId: 20, quantity: 1, sourceEventIds: [] },
+  ];
+  feasibleActor.knowledge.push({ id: 'technique:test-feasible', kind: 'technique', summary: '一项已核验的技术', confidence: 70, learnedAtMonth: 0, sourceEventIds: ['test-feasible-technique-source'] });
+  feasiblePartner.inventory = [{ id: 'test-feasible-water', materialId: 7, quantity: 2, sourceEventIds: [] }];
+  feasiblePartner.body.nutrition = 30;
+  feasiblePartner.conditions.push({ id: 'test-feasible-wound', kind: 'wound', stage: 1, sinceMonth: 0, sourceEventIds: ['test-feasible-wound-source'] });
+  feasibleContext = buildDecisionContexts(feasibleIntentState).find((context) => context.person.id === feasibleActor.id);
+  for (const prefix of ['share:', 'offer-exchange:', 'care:', 'teach:']) {
+    assert.ok(feasibleContext?.options.some((option) => option.id.startsWith(prefix)), `物质与关系前提成立时，${prefix} 不得被性格偏置隐藏`);
+  }
+
+  const coercionState = createInitialState(317, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const coercer = coercionState.people[0];
+  const coerced = coercionState.people[1];
+  coercer.bornAtMonth = -24 * 12;
+  coerced.bornAtMonth = -24 * 12;
+  coerced.position.cellId = coercer.position.cellId;
+  coerced.position.previousCellId = coercer.position.cellId;
+  coercer.body.nutrition = 12;
+  coercer.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
+  coercer.inventory = [{ id: 'test-feasible-rope', materialId: 23, quantity: 1, sourceEventIds: [] }];
+  coerced.body.health = 15;
+  coerced.inventory = [{ id: 'test-coerced-food', materialId: 21, quantity: 2, sourceEventIds: [] }];
+  const coerciveRelation = coercer.relations.find((relation) => relation.personId === coerced.id);
+  coerciveRelation.trust = -20;
+  coerciveRelation.fear = 60;
+  const coercionContext = buildDecisionContexts(coercionState).find((context) => context.person.id === coercer.id);
+  for (const prefix of ['take-without-permission:', 'combine-restraint:', 'exert-person:']) {
+    assert.ok(coercionContext?.options.some((option) => option.id.startsWith(prefix)), `压力与事实前提成立时，${prefix} 应交给模型取舍，不得被随机或性格门槛删除`);
+  }
+
   const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const pressured = pressureState.people[0];
   pressured.conditions.push({ id: 'test-severe-cold', kind: 'cold', stage: 2, sinceMonth: 0, sourceEventIds: ['test-cold-escalation'] });

@@ -426,7 +426,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const carriedFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity >= 2);
   const hungry = visiblePeople.filter((other) => other.body.nutrition < 45).sort((a, b) => a.body.nutrition - b.body.nutrition)[0];
-  if (carriedFood && hungry && hungry.position.cellId === person.position.cellId && person.driveBias.affiliation >= 45) options.push({
+  if (carriedFood && hungry && hungry.position.cellId === person.position.cellId) options.push({
     id: `share:${carriedFood.id}:${hungry.id}`,
     summary: `把食物交给${hungry.name}`,
     reason: `${hungry.name}营养不足且就在身边`,
@@ -495,7 +495,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   }
 
   const tradePartner = !incomingExchange && !acceptedExchange ? localPeopleWithDifferentGoods(person, visiblePeople)[0] : undefined;
-  if (tradePartner && person.driveBias.autonomy >= 42 && seededFraction(state.seed, `exchange-option:${state.clock.elapsedMonths}:${person.id}:${tradePartner.person.id}`) < 0.14) {
+  if (tradePartner) {
     const representationId = `offer-exchange:${state.clock.elapsedMonths}:${person.id}:${tradePartner.person.id}`;
     options.push({
       id: representationId,
@@ -517,7 +517,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   const injured = visiblePeople
     .filter((other) => other.position.cellId === person.position.cellId && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
     .sort((a, b) => a.body.health - b.body.health)[0];
-  if (fiber && injured && person.driveBias.affiliation >= 42) options.push({
+  if (fiber && injured) options.push({
     id: `care:${fiber.id}:${injured.id}`,
     summary: `把纤维用于${injured.name}的伤病处`,
     reason: `${injured.name}有持续性伤病，且背包里有纤维`,
@@ -583,12 +583,12 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       estimatedDuration: 'several-months',
       sourceFactIds: [accepted.offer.id, accepted.acceptance.id],
     });
-    else if (!accepted && !incomingOffer && person.driveBias.affiliation >= 58) {
+    else if (!accepted && !incomingOffer) {
       const representationId = `offer-reproduce:${state.clock.elapsedMonths}:${person.id}:${reproductivePartner.id}`;
       options.push({
         id: representationId,
         summary: `向${reproductivePartner.name}提出共同生殖`,
-        reason: '身体储备充足、彼此近身且有较强亲近偏置',
+        reason: '身体储备充足、彼此近身且符合生殖的身体条件',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
           kind: 'communicate',
@@ -603,7 +603,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   }
 
   const vulnerableCarrier = localPeople.find((other) => other.inventory.some((stack) => stack.materialId === Material.Food && stack.quantity > 0));
-  if (vulnerableCarrier && person.body.nutrition < 24 && inventoryQuantity(person, Material.Food) === 0 && person.driveBias.autonomy >= 55) {
+  if (vulnerableCarrier && person.body.nutrition < 24 && inventoryQuantity(person, Material.Food) === 0) {
     const targetStack = vulnerableCarrier.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity > 0);
     if (targetStack) options.push({
       id: `take-without-permission:${vulnerableCarrier.id}:${targetStack.id}`,
@@ -647,7 +647,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const unableToResist = other.body.health <= 20 || other.conditions.some((condition) => condition.kind === 'wound' && condition.stage === 3);
     return unableToResist && (person.body.nutrition < 18 || (relation?.fear ?? 0) > 45);
   });
-  if (rope && restraintTarget && seededFraction(state.seed, `restraint-option:${state.clock.elapsedMonths}:${person.id}:${restraintTarget.id}`) < 0.08) options.push({
+  if (rope && restraintTarget) options.push({
     id: `combine-restraint:${rope.id}:${restraintTarget.id}`,
     summary: `尝试让绳与${restraintTarget.name}的身体结合`,
     reason: '对方严重虚弱或重伤，资源压力或恐惧使强制约束成为可选手段',
@@ -661,7 +661,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const relation = person.relations.find((item) => item.personId === other.id);
     return relation && relation.trust < 12 && (relation.fear > 45 || person.body.nutrition < 18);
   });
-  if (fearedOpponent && seededFraction(state.seed, `violence-option:${state.clock.elapsedMonths}:${person.id}:${fearedOpponent.id}`) < 0.08) options.push({
+  if (fearedOpponent) options.push({
     id: `exert-person:${fearedOpponent.id}:${state.clock.elapsedMonths}`,
     summary: `对${fearedOpponent.name}施力`,
     reason: '极低信任与恐惧或资源压力使近身冲突成为可选手段',
@@ -676,7 +676,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     && fact.confidence >= 55
     && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)));
   const learner = teachable ? localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55)) : undefined;
-  if (teachable && learner && person.driveBias.affiliation >= 45) {
+  if (teachable && learner) {
     const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
     options.push({
       id: representationId,
@@ -741,7 +741,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  if (!options.length || seededFraction(state.seed, `explore-option:${state.clock.elapsedMonths}:${person.id}`) < 0.24) {
+  {
     const direction = Math.floor(seededFraction(state.seed, `explore-direction:${state.clock.elapsedMonths}:${person.id}`) * 4);
     const dx = [0, 1, 0, -1][direction];
     const dy = [-1, 0, 1, 0][direction];

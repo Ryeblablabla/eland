@@ -603,7 +603,6 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const harvests = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'separate' && Number(event.diff.sourceMaterialId) === Material.CropMature);
   const exchangeOffers = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'offer' && event.action.content.proposal?.kind === 'exchange');
   const exchangeAcceptances = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'accept');
-  const exchangeTransfers = transfers.filter((event) => event.action.kind === 'transfer' && event.action.authorizationRef);
   const attended = actions.filter((event) => event.status === 'completed' && event.action.kind === 'attend');
   const taughtTechniques = actions.filter((event) => event.status === 'completed' && event.action.kind === 'communicate' && event.action.content.kind === 'claim' && event.action.content.factId?.startsWith('technique:'));
   const structures = deriveStructures(state);
@@ -633,7 +632,8 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
     const acceptance = exchangeAcceptances.find((event) => event.action.kind === 'communicate' && event.action.content.kind === 'accept' && event.action.content.referenceId === offerId);
     if (!acceptance) continue;
     if (!milestones.some((milestone) => milestone.id === '48')) milestones.push({ id: '48', label: '订立交换约定', evidenceEventIds: [offer.id, acceptance.id], note: '一方提出结构化交换条款，另一方明确接受。' });
-    const deliveries = exchangeTransfers.filter((event) => event.action.kind === 'transfer' && event.action.authorizationRef === offerId);
+    const agreement = state.agreements.find((item) => item.id === offerId && item.proposal.kind === 'exchange');
+    const deliveries = transfers.filter((event) => agreement?.fulfillmentEventIds.includes(event.id));
     const parties = new Set(deliveries.flatMap((event) => event.action.kind === 'transfer' && event.action.from.kind === 'person' ? [event.action.from.personId] : []));
     if (parties.size >= 2 && !milestones.some((milestone) => milestone.id === '45')) milestones.push({ id: '45', label: '交换货物', evidenceEventIds: [offer.id, acceptance.id, ...deliveries.map((event) => event.id)], note: '双方分别履行真实物质转移，交换完成。' });
   }

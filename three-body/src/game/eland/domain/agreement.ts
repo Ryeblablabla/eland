@@ -1,4 +1,4 @@
-import type { SocialProposal } from './action';
+import type { PrimitiveAction, SocialProposal } from './action';
 import type { ActionFact, AgreementFact, SimulationState } from './model';
 import type { PersonId } from './person';
 import { isAlive } from './person';
@@ -44,6 +44,31 @@ function duration(proposal: SocialProposal): number {
 
 export function agreementById(state: SimulationState, id: string): Agreement | undefined {
   return state.agreements.find((agreement) => agreement.id === id);
+}
+
+/** An agreement authorizes only the concrete transfer promised by its terms. */
+export function agreementAuthorizesTransfer(
+  agreement: Agreement | undefined,
+  actorId: PersonId,
+  action: Extract<PrimitiveAction, { kind: 'transfer' }>,
+  actualQuantity = action.quantity,
+): boolean {
+  if (!agreement || agreement.status !== 'active' || action.from.kind !== 'person' || action.to.kind !== 'person') return false;
+  if (action.from.personId !== actorId || actualQuantity <= 0) return false;
+  if (agreement.proposal.kind === 'assist') return agreement.proposal.need === 'food'
+    && actorId === agreement.proposal.helperId
+    && action.to.personId === agreement.proposal.requesterId
+    && materialHas(action.materialId, 'edible');
+  if (agreement.proposal.kind !== 'exchange') return false;
+  const term = actorId === agreement.proposal.offererId
+    ? { receiverId: agreement.proposal.partnerId, materialId: agreement.proposal.offererMaterialId, quantity: agreement.proposal.offererQuantity }
+    : actorId === agreement.proposal.partnerId
+      ? { receiverId: agreement.proposal.offererId, materialId: agreement.proposal.partnerMaterialId, quantity: agreement.proposal.partnerQuantity }
+      : undefined;
+  return Boolean(term
+    && action.to.personId === term.receiverId
+    && action.materialId === term.materialId
+    && actualQuantity >= term.quantity);
 }
 
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
@@ -124,7 +149,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
 
   if (action.kind === 'transfer' && action.authorizationRef) {
     const agreement = agreementById(state, action.authorizationRef);
-    if (!agreement || agreement.status !== 'active') return;
+    if (!agreement || !agreementAuthorizesTransfer(agreement, fact.who, action, Number(fact.diff.quantity))) return;
     agreement.fulfillmentEventIds.push(fact.id);
     agreement.sourceEventIds.push(fact.id);
     if (action.from.kind === 'person' && !agreement.fulfilledByPersonIds.includes(action.from.personId)) agreement.fulfilledByPersonIds.push(action.from.personId);

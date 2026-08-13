@@ -21,7 +21,7 @@ try {
     'src/game/eland/kimi-decider.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
   ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
-  const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
+  const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
@@ -126,6 +126,11 @@ try {
   agreementState.world.past.push(acceptance);
   assert.equal(agreementState.agreements[0]?.status, 'active', '指定回应者接受后 Agreement 才生效');
   assert.equal(requester.relations.find((relation) => relation.personId === helper.id)?.trust, 0, '接受承诺本身不能增加信任');
+  const unrelatedTransfer = { kind: 'transfer', materialId: 13, quantity: 1, from: { kind: 'person', personId: requester.id }, to: { kind: 'person', personId: helper.id }, authorizationRef: agreementId };
+  assert.equal(agreementAuthorizesTransfer(agreementState.agreements[0], requester.id, unrelatedTransfer), false, '有效协议不得被当成任意物质转移的通用授权');
+  const forgedFulfillment = actionFact('test-forged-fulfillment', 2, requester.id, unrelatedTransfer);
+  recordAgreementAction(agreementState, forgedFulfillment);
+  assert.deepEqual(agreementState.agreements[0]?.fulfilledByPersonIds, [], '与条款不符的转移不能计入履约');
   const fulfillment = actionFact('test-fulfillment', 3, helper.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: helper.id }, to: { kind: 'person', personId: requester.id }, authorizationRef: agreementId });
   recordAgreementAction(agreementState, fulfillment);
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');

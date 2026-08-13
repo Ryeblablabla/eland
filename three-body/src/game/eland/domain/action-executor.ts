@@ -7,7 +7,7 @@ import { seededFraction } from '../world/generator';
 import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
-import { agreementById, recordAgreementAction } from './agreement';
+import { agreementAuthorizesTransfer, agreementById, recordAgreementAction } from './agreement';
 import { recordCollectiveAction } from './collective';
 import {
   exertionRuleFor,
@@ -179,8 +179,10 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     available = sourceStack?.quantity ?? 0;
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
-  const referencedAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
-  const agreementAuthorized = referencedAgreement?.status === 'active';
+  const quantity = Math.max(1, Math.min(action.quantity, available));
+  const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
+  const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
+  const referencedAgreement = agreementAuthorized ? possibleAgreement : undefined;
   const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized;
   const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
@@ -190,7 +192,6 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     }
     return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, attempted: true, resistedBy: sourcePerson.id, witnessedBy } };
   }
-  const quantity = Math.max(1, Math.min(action.quantity, available));
   if (sourceDrop) sourceDrop.quantity -= quantity;
   if (sourceStack && sourcePerson) {
     sourceStack.quantity -= quantity;
@@ -219,7 +220,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   return {
     status: 'completed' as const,
     result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
-    diff: { materialId: action.materialId, quantity, authorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
+    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
   };
 }
 

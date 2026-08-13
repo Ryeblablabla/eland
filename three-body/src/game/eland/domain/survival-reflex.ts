@@ -52,7 +52,7 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
     const water = reachableWater(state, person);
     const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
     const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
-    if (water && (person.position.cellId === water.bankCell || (!cannotTravelAlone && (waterTravelMonths >= dehydrationMonths || person.body.hydration < 32)))) {
+    if (water && (person.position.cellId === water.bankCell || (!cannotTravelAlone && (waterTravelMonths <= dehydrationMonths || person.body.hydration < 32)))) {
       return person.position.cellId === water.bankCell
         ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
         : { kind: 'move', toCellId: water.bankCell };

@@ -446,6 +446,27 @@ try {
   assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'transfer' && event.diff.materialId === 21 && event.action.to.kind === 'person' && event.action.to.personId === survivalHarvester.id), '分离出的食物必须先通过 transfer 进入本人的私有背包');
   assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'act' && event.action.operation === 'ingest' && event.diff.materialId === 21), '进入私有背包后才可由同一人物摄入，不能直接从观察标签恢复营养');
 
+  let hydrationReflexState = createInitialState(342, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const thirsty = hydrationReflexState.people[0];
+  thirsty.bornAtMonth = -20 * 12;
+  thirsty.body.hydration = 50;
+  thirsty.body.nutrition = 90;
+  const adjacentWaterCell = thirsty.position.cellId % hydrationReflexState.world.grid.width < hydrationReflexState.world.grid.width - 1
+    ? thirsty.position.cellId + 1
+    : thirsty.position.cellId - 1;
+  let waterZ = hydrationReflexState.world.grid.levels - 1;
+  while (waterZ > 0 && hydrationReflexState.world.grid.voxels[waterZ * hydrationReflexState.world.grid.width * hydrationReflexState.world.grid.depth + adjacentWaterCell] === 0) waterZ -= 1;
+  hydrationReflexState.world.grid.voxels[waterZ * hydrationReflexState.world.grid.width * hydrationReflexState.world.grid.depth + adjacentWaterCell] = 7;
+  hydrationReflexState.decisionBudget.credits = 0;
+  hydrationReflexState = stepSimulation(hydrationReflexState, { decide() { return { kind: 'idle', reason: '可达饮水不应依赖模型' }; } });
+  const timelyDrink = hydrationReflexState.world.past.find((event) => event.kind === 'action'
+    && event.who === thirsty.id
+    && event.cause === 'survival-reflex'
+    && event.action.kind === 'act'
+    && event.action.operation === 'ingest'
+    && event.diff.materialId === 7);
+  assert.ok(timelyDrink, '水分低于维护阈值且水源能在脱水余量内到达时，应立即饮水而不是拖到极度脱水');
+
   const tentativeTechniqueState = createInitialState(35, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });
   const testPosition = { x: tentativeTechniqueState.people[0].position.cellId % tentativeTechniqueState.world.grid.width, y: Math.floor(tentativeTechniqueState.people[0].position.cellId / tentativeTechniqueState.world.grid.width), z: 0 };

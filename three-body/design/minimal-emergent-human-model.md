@@ -113,6 +113,7 @@ interface PersonState {
   diedAtMonth?: number;
   sex: 'female' | 'male';
   parents?: [PersonId, PersonId];
+  longevityBaselineMonths: number;
 
   position: VoxelPosition;
   health: number;
@@ -130,6 +131,7 @@ interface PersonState {
 - `hydration`：水分储备；不足会持续伤害健康。
 - `nutrition`：营养储备；不足会持续伤害健康。
 - 年龄由当前月份与出生月份派生。
+- `longevityBaselineMonths` 只影响衰老进程的概率曲线，不再代表一个预先排定、到月即死的日期。
 - 存活、脱水、饥饿等即时状态由三个数值派生，不重复保存枚举。
 - 疲劳不再作为第四条永久属性；长时间活动的成本直接扣除营养和水分，休息降低下一阶段消耗并允许健康恢复。
 - 只有无法从当前事实重算、必须跨月保留进程的状态进入 `conditions`，例如伤口、疾病、妊娠和拘束。
@@ -172,6 +174,7 @@ type PersistentCondition =
   | { kind: 'heat'; stage: 1 | 2 | 3; sinceMonth: number; sourceEventIds: EventId[] }
   | { kind: 'wound'; severity: number; sinceMonth: number; sourceEventIds: EventId[] }
   | { kind: 'illness'; severity: number; sinceMonth: number; sourceEventIds: EventId[] }
+  | { kind: 'aging'; stage: 1 | 2 | 3; sinceMonth: number; sourceEventIds: EventId[] }
   | { kind: 'pregnancy'; otherParentId: PersonId; conceivedAtMonth: number; dueAtMonth: number; sourceEventIds: EventId[] }
   | { kind: 'restrained'; restraintStackId: ItemStackId; sinceMonth: number; sourceEventIds: EventId[] };
 ```
@@ -188,6 +191,7 @@ type PersistentCondition =
 | 干渴/脱水 | `hydration < 35 / < 10`，即时派生 | 饮水超过带滞回的 45 阈值 | 工作量 ×0.75/0.35；脱水每月损失健康 |
 | 受伤 | 跌落、打击、火或事故造成一次显著伤害时确定进入，强度取决于伤害 | 每月恢复概率由饱足、温暖、包扎和照护共同决定；再受伤会叠加强度 | 工作量随严重度降低；严重伤口持续损失健康并提高患病概率 |
 | 患病 | 污染饮食、感染伤口、长期暴露等风险事件；用确定性月采样决定是否进入 | 每月恢复概率由健康、饮食、温暖、休息和照护决定 | 额外消耗水分与营养；降低工作量；严重时损失健康 |
+| 衰老 1–3 | 年龄越过个体寿命基线的阶段阈值后，每月按年龄、既往伤病、长期匮乏和个体基线确定性采样；只会进入或升级 | 不退出、不降级；良好饮食、温暖、休息和照护只能延缓升级并改善当月结果 | 1 级恢复效率 ×0.9、工作量 ×0.95；2 级恢复 ×0.65、工作量 ×0.8、患病概率上升；3 级恢复 ×0.3、工作量 ×0.55，中度饥渴或伤病也会损失健康，并进入自然死亡风险结算 |
 | 妊娠 | 生殖过程成功后按生理条件产生确定性概率 | 到期分娩；健康或营养过低时存在流产概率 | 增加营养和水分消耗；后期降低工作量；到期尝试创建新人物 |
 | 拘束 | 他人使用可约束物质成功作用于身体 | 被释放、约束物被破坏，或按身体/看守情况逃脱 | 禁止远距离移动；工作产出可被控制者取得；提高反抗选择权重 |
 
@@ -199,6 +203,28 @@ enter / exit = sample < probability(current facts)
 ```
 
 同一种子和同一历史永远得到相同结果。阈值使用滞回，例如低于 35 进入饥饿、高于 45 才退出，避免人物卡每月闪烁。
+
+#### 衰老不是固定日期死亡
+
+衰老采用一个不可逆、但进度具有个体差异的过程状态。年龄是客观输入，不直接成为死亡命令：
+
+```text
+ageMonths = currentMonth - bornAtMonth
+agingPressure = f(ageMonths / longevityBaselineMonths,
+                  accumulatedWounds,
+                  illnessHistory,
+                  longTermDeprivation,
+                  currentCareAndShelter)
+stageUp = deterministicSample < agingPressure
+```
+
+- `longevityBaselineMonths` 在创生或出生时确定，只调节衰老压力，不向人物或模型暴露“准确死亡月份”；
+- 进入 1 级后只能保持或逐级加深，不能因一次进食恢复年轻；照护改变的是恢复、病痛和升级概率；
+- 自然死亡必须有可审计的身体路径：3 级衰老叠加健康衰退、严重疾病或确定性终末风险，而不是抵达某个月后健康值仍很高却突然死亡；
+- 15 个规则行动刻度保持不变。衰老只改变每个刻度的动作成本、成功率、恢复需求和可达范围；移动依然每刻度最多跨一个相邻格；
+- 模型只能看到衰老状态及其真实后果，并据此形成休息、求助、传授、照护或交接意图；模型不能决定自己是否衰老，也不能直接宣布死亡。
+
+人物卡显示“衰老 1/2/3”和开始月份，不显示精确剩余寿命。历史事件记录每次进入、升级、照护和终末结算的来源证据。
 
 所有状态只汇总到四个结算结果：
 
@@ -218,6 +244,7 @@ workMultiplier / actionRestrictions
 | 寒冷/炎热 | 寻找遮蔽、收集燃料、制作覆盖物、季节迁徙、围绕火源或水源合作与冲突 |
 | 饥饿/干渴 | 储粮、灌溉、交换、迁徙，也可能发生偷窃、抢夺和暴力 |
 | 受伤/患病 | 自我休息、照护、药物试验、对照护者产生信任、形成依赖与分工 |
+| 衰老 | 减少高成本劳动、求助与陪伴、技能传授、财物交接、代际分工、长者影响与临终照护 |
 | 妊娠与新生儿 | 食物缓冲、照护分工、亲属关系、家庭聚居和代际知识传递 |
 | 拘束 | 服从、逃跑、营救、控制劳动、反抗与群体制裁 |
 

@@ -100,6 +100,129 @@ function makeBackdropTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
+// ---------------------------------------------------------------------------
+// 程序化表面纹理：周期化值噪声 + 分形叠加（fbm），零外部资源
+// ---------------------------------------------------------------------------
+
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface NoiseGrid { g: Float64Array; w: number; h: number }
+
+function makeNoiseGrids(octaves: number[], rng: () => number): NoiseGrid[] {
+  return octaves.map((n) => {
+    const g = new Float64Array(n * n);
+    for (let i = 0; i < n * n; i++) g[i] = rng();
+    return { g, w: n, h: n };
+  });
+}
+
+/** 双线性 + smoothstep 采样；x 方向周期（球面纹理横向无缝），y 方向钳制 */
+function sampleGrid({ g, w, h }: NoiseGrid, x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const sx = xf * xf * (3 - 2 * xf), sy = yf * yf * (3 - 2 * yf);
+  const x0 = ((xi % w) + w) % w, x1 = (x0 + 1) % w;
+  const y0 = Math.min(Math.max(yi, 0), h - 1), y1 = Math.min(y0 + 1, h - 1);
+  const a = g[y0 * w + x0], b = g[y0 * w + x1];
+  const c2 = g[y1 * w + x0], d = g[y1 * w + x1];
+  const top = a + (b - a) * sx, bot = c2 + (d - c2) * sx;
+  return top + (bot - top) * sy;
+}
+
+/** 分形叠加：x,y ∈ [0,1) 归一化坐标，输出 [0,1] */
+function fbm(grids: NoiseGrid[], x: number, y: number): number {
+  let v = 0, amp = 0.5, tot = 0;
+  for (const grid of grids) {
+    v += sampleGrid(grid, x * grid.w, y * grid.h) * amp;
+    tot += amp;
+    amp *= 0.5;
+  }
+  return v / tot;
+}
+
+/** 恒星表面：等离子颗粒（暗部 = 星光色压暗，亮斑 = 星芯色） */
+function makeStarSurfaceTexture(coreHex: string, glowHex: string, seed: number): THREE.CanvasTexture {
+  const S = 256;
+  const rng = mulberry32(seed);
+  const grids = makeNoiseGrids([4, 8, 16, 32], rng);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(S, S);
+  const dark = new THREE.Color(glowHex).multiplyScalar(0.32);
+  const mid = new THREE.Color(glowHex);
+  const hot = new THREE.Color(coreHex);
+  const tmp = new THREE.Color();
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      let n = fbm(grids, x / S, y / S);
+      n = Math.min(Math.max((n - 0.32) * 2.1, 0), 1); // 对比度曲线，拉出颗粒感
+      if (n < 0.55) tmp.copy(dark).lerp(mid, n / 0.55);
+      else tmp.copy(mid).lerp(hot, (n - 0.55) / 0.45);
+      const i = (y * S + x) * 4;
+      img.data[i] = Math.round(tmp.r * 255);
+      img.data[i + 1] = Math.round(tmp.g * 255);
+      img.data[i + 2] = Math.round(tmp.b * 255);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** 三体星表面：深海 / 浅海 / 低地 / 高地 / 极冠 + 横向云带 */
+function makePlanetTexture(seed: number): THREE.CanvasTexture {
+  const W = 256, H = 128;
+  const rng = mulberry32(seed);
+  const grids = makeNoiseGrids([4, 8, 16, 32], rng);
+  const cloudGrids = makeNoiseGrids([3, 6, 12], rng);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(W, H);
+  const deep = new THREE.Color('#0a2f3c');
+  const shallow = new THREE.Color('#17606d');
+  const landLow = new THREE.Color('#3d6b4c');
+  const landHigh = new THREE.Color('#97875a');
+  const ice = new THREE.Color('#ddf3ee');
+  const white = new THREE.Color('#ffffff');
+  const tmp = new THREE.Color();
+  for (let y = 0; y < H; y++) {
+    const lat = Math.abs(y / H - 0.5) * 2; // 0 赤道 → 1 极
+    for (let x = 0; x < W; x++) {
+      const n = fbm(grids, x / W, y / H);
+      if (lat > 0.82 - n * 0.1) tmp.copy(ice);
+      else if (n < 0.47) tmp.copy(deep).lerp(shallow, Math.max(0, (n - 0.36) / 0.11));
+      else if (n < 0.53) tmp.copy(shallow);
+      else if (n < 0.62) tmp.copy(landLow).lerp(landHigh, (n - 0.53) / 0.09);
+      else tmp.copy(landHigh);
+      // 云带：y 方向压缩采样形成横向条带，厚云处向白色混合
+      const cl = fbm(cloudGrids, x / W, (y / H) * 0.35);
+      if (cl > 0.58) tmp.lerp(white, Math.min((cl - 0.58) * 3.0, 0.5));
+      const i = (y * W + x) * 4;
+      img.data[i] = Math.round(tmp.r * 255);
+      img.data[i + 1] = Math.round(tmp.g * 255);
+      img.data[i + 2] = Math.round(tmp.b * 255);
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 interface DisposableObject {
   isMesh?: boolean;
   isLine?: boolean;
@@ -283,13 +406,17 @@ export default function ThreeBodyCanvas(props: Props) {
     starfield.renderOrder = -8;
     scene.add(starfield);
 
-    // ---- 恒星：实体球芯 + 加法混合辉光 ----
+    // ---- 恒星：等离子表面球芯（缓慢自转）+ 加法混合辉光 ----
     const starCores: THREE.Mesh[] = [];
     const starGlows: THREE.Sprite[] = [];
+    const starSpins = [0.09, 0.06, -0.11]; // rad/s：三颗星转速各异，比邻星反向
     for (let i = 0; i < N_STARS; i++) {
       const core = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 24, 16),
-        new THREE.MeshBasicMaterial({ color: STAR_STYLES[i].core }),
+        new THREE.SphereGeometry(1, 32, 24),
+        new THREE.MeshBasicMaterial({
+          map: makeStarSurfaceTexture(STAR_STYLES[i].core, STAR_STYLES[i].glow, 1000 + i * 77),
+          color: new THREE.Color(1.35, 1.35, 1.35), // HDR 提亮：纹理亮斑越过 bloom 阈值
+        }),
       );
       scene.add(core);
       starCores.push(core);
@@ -307,11 +434,15 @@ export default function ThreeBodyCanvas(props: Props) {
       starGlows.push(glow);
     }
 
-    // ---- 行星：青色小球 + 微光 ----
+    // ---- 行星：海陆云纹理球芯（轴倾 + 自转）+ 微光 ----
     const planetCore = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 20, 14),
-      new THREE.MeshBasicMaterial({ color: PLANET_STYLE.core }),
+      new THREE.SphereGeometry(1, 28, 20),
+      new THREE.MeshBasicMaterial({
+        map: makePlanetTexture(4242),
+        color: new THREE.Color(1.15, 1.15, 1.15),
+      }),
     );
+    planetCore.rotation.x = 0.15; // 轻微轴倾
     scene.add(planetCore);
     const planetGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -564,24 +695,30 @@ export default function ThreeBodyCanvas(props: Props) {
         }
       }
 
-      // ---- 恒星本体：大小随质量（半径 ∝ 质量^(1/3)）----
+      // ---- 恒星本体：大小随质量（半径 ∝ 质量^(1/3)），等离子表面自转 + 光晕呼吸 ----
       const s = w.sys.state;
       for (let i = 0; i < N_STARS; i++) {
         const mr = Math.cbrt(w.sys.masses[i]);
         starCores[i].position.set(s[i * 2], s[i * 2 + 1], 0);
         starCores[i].scale.setScalar(px2w(2 + 1.8 * mr));
+        starCores[i].rotation.y += starSpins[i] * frameDt;
         starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0.01);
-        // 辉光收敛（原 26+24·∛m 叠 bloom 会让 α A 白成一团）
+        // 辉光收敛（原 26+24·∛m 叠 bloom 会让 α A 白成一团）+ 呼吸脉动（相位/频率各异）
         const glowSize = px2w(16 + 13 * mr);
-        starGlows[i].scale.set(glowSize, glowSize, 1);
+        const breath = 1 + 0.05 * Math.sin(now * 0.0011 * (1 + i * 0.34) + i * 2.1);
+        starGlows[i].scale.set(glowSize * breath, glowSize * breath, 1);
+        (starGlows[i].material as THREE.SpriteMaterial).opacity =
+          0.88 + 0.12 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
       }
 
-      // ---- 行星本体：青色小点 + 微光 ----
+      // ---- 行星本体：海陆球芯（自转）+ 微光呼吸 ----
       planetCore.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0);
       planetCore.scale.setScalar(px2w(2.2));
+      planetCore.rotation.y += 0.18 * frameDt;
       planetGlow.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0.01);
       const pg = px2w(22);
-      planetGlow.scale.set(pg, pg, 1);
+      const pBreath = 1 + 0.04 * Math.sin(now * 0.0008 + 0.7);
+      planetGlow.scale.set(pg * pBreath, pg * pBreath, 1);
 
       composer.render();
     };

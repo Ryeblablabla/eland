@@ -138,6 +138,10 @@ npm run build
 npm run backend:build
 ```
 
+## 宇宙渲染（three.js）
+
+宇宙场景默认由 three.js（WebGL）渲染：恒星球芯 + 加法混合辉光、UnrealBloom 泛光、顶点色渐隐轨迹线、星野与星云背景、自适应取景相机（轻微俯视与漂移）。物理仍由 `src/lib/threebody.ts` 的 2D RK4 引擎驱动，`ThreeBodyCanvas` 的 props 契约与原 Canvas 2D 版完全一致，`skyMode: 'frozen'` 时只推进物理、跳过渲染。
+
 ## ELAND 播放会话限速
 
 前端通过 `/api/eland/play` 播放时，默认每轮演化至少间隔 5 秒，给宇宙动画、人物地图和史册条目留出展示时间。服务端也会对 `/api/eland/step` 的普通单步请求执行同样的间隔保护。

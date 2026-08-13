@@ -1,4 +1,9 @@
 import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   DEFAULT_PRESET,
   N_BODIES,
@@ -46,9 +51,14 @@ interface Props {
 }
 
 const DT = 0.001;
-const TRAIL_CHUNKS = 26;
+const MAX_TRAIL = 4096; // 轨迹缓冲上限（UI 滑杆最大 3000）
+const STARFIELD_COUNT = 1500;
 
-function makeGlowSprite(color: string): HTMLCanvasElement {
+// ---------------------------------------------------------------------------
+// 纹理工厂（与原 2D 版同款径向渐变，但输出 WebGL 纹理）
+// ---------------------------------------------------------------------------
+
+function makeGlowTexture(color: string): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
@@ -59,13 +69,65 @@ function makeGlowSprite(color: string): HTMLCanvasElement {
   grad.addColorStop(1, color + '00');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  return c;
+  return new THREE.CanvasTexture(c);
+}
+
+/** 白色径向渐变，配合 SpriteMaterial 的 color/opacity 调色 */
+function makeRadialTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(c);
+}
+
+/** 深空底色渐变（与原 2D 背景一致：中心 #0a0e1f → 边缘 #02030a） */
+function makeBackdropTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(256, 256, 0, 256, 256, 384);
+  grad.addColorStop(0, '#0a0e1f');
+  grad.addColorStop(0.55, '#060812');
+  grad.addColorStop(1, '#02030a');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 512, 512);
+  return new THREE.CanvasTexture(c);
+}
+
+interface DisposableObject {
+  isMesh?: boolean;
+  isLine?: boolean;
+  isPoints?: boolean;
+  isSprite?: boolean;
+  geometry?: THREE.BufferGeometry;
+  material?: THREE.Material & { map?: THREE.Texture | null };
+}
+
+function disposeScene(scene: THREE.Scene, composer: EffectComposer, renderer: THREE.WebGLRenderer) {
+  scene.traverse((obj) => {
+    const d = obj as unknown as DisposableObject;
+    d.geometry?.dispose();
+    if (d.material) {
+      d.material.map?.dispose();
+      d.material.dispose();
+    }
+  });
+  composer.dispose();
+  renderer.dispose();
 }
 
 export default function ThreeBodyCanvas(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
-  propsRef.current = props;
+  // 每轮渲染后同步最新 props 给 RAF 主循环（避免渲染期写 ref）
+  useEffect(() => {
+    propsRef.current = props;
+  });
 
   const world = useRef<{
     sys: SimSystem;
@@ -81,8 +143,6 @@ export default function ThreeBodyCanvas(props: Props) {
     seenRespawnToken: number;
     fluxBase: number; // 宜居基线通量
     planetR: number;
-    sprites: HTMLCanvasElement[];
-    planetSprite: HTMLCanvasElement;
   } | null>(null);
 
   // 初始化 / 重置
@@ -106,93 +166,237 @@ export default function ThreeBodyCanvas(props: Props) {
       seenRespawnToken: props.respawnToken ?? 0,
       fluxBase: Math.pow(hostMass, 3.5) / (preset.planetR * preset.planetR),
       planetR: preset.planetR,
-      sprites: STAR_STYLES.map((s) => makeGlowSprite(s.glow)),
-      planetSprite: makeGlowSprite(PLANET_STYLE.glow),
     };
   }, [props.presetKey, props.resetToken]);
 
-  // 主循环
+  // 主循环（three.js 场景）
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const ctx = canvas.getContext('2d')!;
-    let raf = 0;
-    let W = 0, H = 0, dpr = 1;
-    let bg: HTMLCanvasElement | null = null;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
+    renderer.setClearColor('#040610');
 
-    const rebuildBg = () => {
-      bg = document.createElement('canvas');
-      bg.width = Math.max(1, W * dpr);
-      bg.height = Math.max(1, H * dpr);
-      const g = bg.getContext('2d')!;
-      g.scale(dpr, dpr);
-      const base = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.75);
-      base.addColorStop(0, '#0a0e1f');
-      base.addColorStop(0.55, '#060812');
-      base.addColorStop(1, '#02030a');
-      g.fillStyle = base;
-      g.fillRect(0, 0, W, H);
-      const nebula = (x: number, y: number, r: number, color: string) => {
-        const n = g.createRadialGradient(x, y, 0, x, y, r);
-        n.addColorStop(0, color);
-        n.addColorStop(1, 'transparent');
-        g.fillStyle = n;
-        g.fillRect(x - r, y - r, r * 2, r * 2);
-      };
-      nebula(W * 0.22, H * 0.28, Math.min(W, H) * 0.5, 'rgba(56,80,180,0.10)');
-      nebula(W * 0.8, H * 0.72, Math.min(W, H) * 0.45, 'rgba(120,50,160,0.08)');
-      for (let i = 0; i < 320; i++) {
-        const x = Math.random() * W;
-        const y = Math.random() * H;
-        const r = Math.random() * 1.1 + 0.2;
-        g.globalAlpha = 0.15 + Math.random() * 0.6;
-        g.fillStyle = Math.random() < 0.85 ? '#cdd8ff' : '#ffe9c9';
-        g.beginPath();
-        g.arc(x, y, r, 0, Math.PI * 2);
-        g.fill();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
+    camera.position.set(0, 0, 3);
+
+    // 后处理：MSAA 渲染目标 + 泛光 + 色彩输出
+    const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType,
+      samples: 4,
+    });
+    const composer = new EffectComposer(renderer, renderTarget);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.0, 0.55, 0.12);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
+    // ---- 背景层：深空底色 + 星云 + 星野 ----
+    const backdrop = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: makeBackdropTexture(),
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    backdrop.renderOrder = -10;
+    backdrop.position.set(0, 0, -600);
+    backdrop.scale.set(2400, 2400, 1);
+    scene.add(backdrop);
+
+    const radialTex = makeRadialTexture();
+    const nebulas: THREE.Sprite[] = [];
+    const addNebula = (x: number, y: number, scale: number, color: string, opacity: number) => {
+      const s = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: radialTex,
+          color,
+          opacity,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      s.position.set(x, y, -400);
+      s.scale.set(scale, scale, 1);
+      s.renderOrder = -9;
+      scene.add(s);
+      nebulas.push(s);
+    };
+    addNebula(-260, 200, 900, '#3850b4', 0.1);
+    addNebula(280, -230, 820, '#7832a0', 0.08);
+
+    const starfieldGeo = new THREE.BufferGeometry();
+    {
+      const positions = new Float32Array(STARFIELD_COUNT * 3);
+      const colors = new Float32Array(STARFIELD_COUNT * 3);
+      const cCool = new THREE.Color('#cdd8ff');
+      const cWarm = new THREE.Color('#ffe9c9');
+      for (let i = 0; i < STARFIELD_COUNT; i++) {
+        // 均匀随机方向 × 半径 380~760 的球壳
+        const u = Math.random() * 2 - 1;
+        const th = Math.random() * Math.PI * 2;
+        const r = 380 + Math.random() * 380;
+        const s = Math.sqrt(1 - u * u);
+        positions[i * 3] = r * s * Math.cos(th);
+        positions[i * 3 + 1] = r * s * Math.sin(th);
+        positions[i * 3 + 2] = -Math.abs(r * u) - 60; // 全部压在轨道平面之后
+        const base = Math.random() < 0.85 ? cCool : cWarm;
+        const a = 0.15 + Math.random() * 0.6;
+        colors[i * 3] = base.r * a;
+        colors[i * 3 + 1] = base.g * a;
+        colors[i * 3 + 2] = base.b * a;
       }
-      g.globalAlpha = 1;
+      starfieldGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      starfieldGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    }
+    const starfield = new THREE.Points(
+      starfieldGeo,
+      new THREE.PointsMaterial({
+        size: 1.5,
+        sizeAttenuation: false,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+      }),
+    );
+    starfield.renderOrder = -8;
+    scene.add(starfield);
+
+    // ---- 恒星：实体球芯 + 加法混合辉光 ----
+    const starCores: THREE.Mesh[] = [];
+    const starGlows: THREE.Sprite[] = [];
+    for (let i = 0; i < N_STARS; i++) {
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 24, 16),
+        new THREE.MeshBasicMaterial({ color: STAR_STYLES[i].core }),
+      );
+      scene.add(core);
+      starCores.push(core);
+
+      const glow = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: makeGlowTexture(STAR_STYLES[i].glow),
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      glow.renderOrder = 2;
+      scene.add(glow);
+      starGlows.push(glow);
+    }
+
+    // ---- 行星：青色小球 + 微光 ----
+    const planetCore = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 20, 14),
+      new THREE.MeshBasicMaterial({ color: PLANET_STYLE.core }),
+    );
+    scene.add(planetCore);
+    const planetGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: makeGlowTexture(PLANET_STYLE.glow),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    planetGlow.renderOrder = 2;
+    scene.add(planetGlow);
+
+    // ---- 孪生系统恒星：空心小圈 ----
+    const twinRings: THREE.Mesh[] = [];
+    for (let i = 0; i < N_STARS; i++) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.8, 1, 32),
+        new THREE.MeshBasicMaterial({
+          color: STAR_STYLES[i].glow,
+          transparent: true,
+          opacity: 0.5,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+      scene.add(ring);
+      twinRings.push(ring);
+    }
+
+    // ---- 轨迹：预分配缓冲的 Line，顶点色渐隐（加法混合下黑色即不可见）----
+    const makeTrailLine = (hex: string) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_TRAIL * 3), 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_TRAIL * 3), 3));
+      geo.setDrawRange(0, 0);
+      const line = new THREE.Line(
+        geo,
+        new THREE.LineBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      line.renderOrder = 1;
+      line.frustumCulled = false; // 缓冲恒定，包围盒无意义
+      scene.add(line);
+      return { line, color: new THREE.Color(hex) };
+    };
+    const starTrails = STAR_STYLES.map((s) => makeTrailLine(s.trail));
+    const planetTrail = makeTrailLine(PLANET_STYLE.trail);
+    const twinTrails = STAR_STYLES.map((s) => makeTrailLine(s.trail));
+    const trailLineOf = (i: number) => (i === PLANET_IDX ? planetTrail : starTrails[i]);
+
+    const writeTrail = (
+      target: { line: THREE.Line; color: THREE.Color },
+      pts: number[],
+      alphaScale: number,
+    ) => {
+      const total = pts.length / 2;
+      const n = Math.min(total, MAX_TRAIL);
+      const geo = target.line.geometry;
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      const col = geo.getAttribute('color') as THREE.BufferAttribute;
+      const pa = pos.array as Float32Array;
+      const ca = col.array as Float32Array;
+      const offset = total - n; // 只取最新 n 点
+      const { r, g, b } = target.color;
+      for (let i = 0; i < n; i++) {
+        pa[i * 3] = pts[(offset + i) * 2];
+        pa[i * 3 + 1] = pts[(offset + i) * 2 + 1];
+        pa[i * 3 + 2] = 0;
+        const a = Math.pow((i + 1) / n, 1.6) * 0.85 * alphaScale;
+        ca[i * 3] = r * a;
+        ca[i * 3 + 1] = g * a;
+        ca[i * 3 + 2] = b * a;
+      }
+      pos.needsUpdate = true;
+      col.needsUpdate = true;
+      geo.setDrawRange(0, n);
     };
 
+    let W = 0, H = 0, dpr = 1;
     const resize = () => {
       const rect = canvas.parentElement!.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       W = rect.width;
       H = rect.height;
-      canvas.width = Math.max(1, W * dpr);
-      canvas.height = Math.max(1, H * dpr);
-      canvas.style.width = `${W}px`;
-      canvas.style.height = `${H}px`;
-      rebuildBg();
+      renderer.setPixelRatio(dpr);
+      renderer.setSize(W, H, false);
+      composer.setPixelRatio(dpr);
+      composer.setSize(W, H);
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(canvas.parentElement!);
     resize();
 
-    const drawTrail = (pts: number[], color: string, alphaScale: number, width = 1.3) => {
-      const n = pts.length / 2;
-      if (n < 2) return;
-      const chunk = Math.max(2, Math.ceil(n / TRAIL_CHUNKS));
-      ctx.lineWidth = width;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      let c = 0;
-      for (let start = 0; start < n - 1; start += chunk - 1) {
-        const end = Math.min(n - 1, start + chunk - 1);
-        const a = Math.pow((c + 1) / TRAIL_CHUNKS, 1.6) * 0.85 * alphaScale;
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = a;
-        ctx.beginPath();
-        ctx.moveTo(pts[start * 2], pts[start * 2 + 1]);
-        for (let i = start + 1; i <= end; i++) {
-          ctx.lineTo(pts[i * 2], pts[i * 2 + 1]);
-        }
-        ctx.stroke();
-        c++;
-      }
-      ctx.globalAlpha = 1;
-    };
-
     let lastNow = performance.now();
+    let raf = 0;
 
     const tick = () => {
       raf = requestAnimationFrame(tick);
@@ -298,85 +502,70 @@ export default function ThreeBodyCanvas(props: Props) {
       const targetR = Math.min(Math.max(maxRadiusFromCOM(w.sys) * 1.3, 1.7), 40);
       w.viewR += (targetR - w.viewR) * 0.03;
 
-      // ---- 渲染 ----
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (bg) ctx.drawImage(bg, 0, 0, W, H);
-      else { ctx.fillStyle = '#05070f'; ctx.fillRect(0, 0, W, H); }
+      // ---- 相机：轻微俯视 + 极慢漂移，轨道平面近 XY ----
+      const fit = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, W / H);
+      const dist = w.viewR / fit;
+      const sway = now * 0.00005;
+      camera.position.set(
+        Math.sin(sway * 2.3) * dist * 0.025,
+        -dist * 0.22 + Math.cos(sway * 1.9) * dist * 0.018,
+        dist * 0.975,
+      );
+      camera.lookAt(0, 0, 0);
 
-      const scale = Math.min(W, H) / 2 / w.viewR;
-      const toScreen = (x: number, y: number): [number, number] => [
-        W / 2 + x * scale,
-        H / 2 + y * scale,
-      ];
+      // 与原 2D 版相同的像素 ↔ 世界单位换算，保持星体在屏幕上等效大小
+      const pxPerUnit = Math.min(W, H) / 2 / w.viewR;
+      const px2w = (px: number) => px / pxPerUnit;
 
-      const project = (pts: number[]) => {
-        const out = new Array<number>(pts.length);
-        for (let i = 0; i < pts.length; i += 2) {
-          out[i] = W / 2 + pts[i] * scale;
-          out[i + 1] = H / 2 + pts[i + 1] * scale;
-        }
-        return out;
-      };
-
-      // 孪生系统轨迹（暗）
+      // ---- 轨迹写缓冲 ----
+      for (let i = 0; i < N_BODIES; i++) {
+        writeTrail(trailLineOf(i), w.trails[i], i === PLANET_IDX ? 0.75 : 1);
+      }
       if (p.showTwin) {
         for (let i = 0; i < N_STARS; i++) {
-          drawTrail(project(w.twinTrails[i]), STAR_STYLES[i].trail, 0.22);
+          writeTrail(twinTrails[i], w.twinTrails[i], 0.22);
         }
-      }
-      // 行星轨迹
-      drawTrail(project(w.trails[PLANET_IDX]), PLANET_STYLE.trail, 0.75, 1);
-      // 恒星轨迹
-      for (let i = 0; i < N_STARS; i++) {
-        drawTrail(project(w.trails[i]), STAR_STYLES[i].trail, 1);
+        for (const t of twinTrails) t.line.visible = true;
+      } else {
+        for (const t of twinTrails) t.line.visible = false;
       }
 
-      // 孪生系统恒星：空心小圈
-      if (p.showTwin) {
-        for (let i = 0; i < N_STARS; i++) {
-          const [sx, sy] = toScreen(w.twin.state[i * 2], w.twin.state[i * 2 + 1]);
-          ctx.strokeStyle = STAR_STYLES[i].glow;
-          ctx.globalAlpha = 0.5;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
+      // ---- 孪生系统恒星：空心小圈 ----
+      for (let i = 0; i < N_STARS; i++) {
+        twinRings[i].visible = p.showTwin;
+        if (p.showTwin) {
+          twinRings[i].position.set(w.twin.state[i * 2], w.twin.state[i * 2 + 1], 0);
+          twinRings[i].scale.setScalar(px2w(4.5));
         }
       }
 
-      // 恒星本体：大小随质量（半径 ∝ 质量^(1/3)）
+      // ---- 恒星本体：大小随质量（半径 ∝ 质量^(1/3)）----
+      const s = w.sys.state;
       for (let i = 0; i < N_STARS; i++) {
-        const [sx, sy] = toScreen(w.sys.state[i * 2], w.sys.state[i * 2 + 1]);
         const mr = Math.cbrt(w.sys.masses[i]);
-        const glowSize = 26 + 24 * mr;
-        ctx.drawImage(w.sprites[i], sx - glowSize / 2, sy - glowSize / 2, glowSize, glowSize);
-        ctx.fillStyle = STAR_STYLES[i].core;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2 + 1.8 * mr, 0, Math.PI * 2);
-        ctx.fill();
+        starCores[i].position.set(s[i * 2], s[i * 2 + 1], 0);
+        starCores[i].scale.setScalar(px2w(2 + 1.8 * mr));
+        starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0.01);
+        const glowSize = px2w(26 + 24 * mr);
+        starGlows[i].scale.set(glowSize, glowSize, 1);
       }
 
-      // 行星本体：青色小点 + 微光
-      {
-        const [sx, sy] = toScreen(
-          w.sys.state[PLANET_IDX * 2],
-          w.sys.state[PLANET_IDX * 2 + 1],
-        );
-        ctx.drawImage(w.planetSprite, sx - 11, sy - 11, 22, 22);
-        ctx.fillStyle = PLANET_STYLE.core;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      // ---- 行星本体：青色小点 + 微光 ----
+      planetCore.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0);
+      planetCore.scale.setScalar(px2w(2.2));
+      planetGlow.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0.01);
+      const pg = px2w(22);
+      planetGlow.scale.set(pg, pg, 1);
+
+      composer.render();
     };
 
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      disposeScene(scene, composer, renderer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <canvas ref={canvasRef} className="block h-full w-full" />;

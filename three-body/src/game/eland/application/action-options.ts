@@ -86,7 +86,10 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
   const risks: string[] = [];
   if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
   if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
-  return { ...option, domain: option.domain ?? 'strategic', estimatedMonths, risks };
+  const inferredDomain = option.nextAction.kind === 'communicate' || option.target?.kind === 'person' || option.goal.kind === 'near-person'
+    ? 'social'
+    : 'strategic';
+  return { ...option, domain: option.domain ?? inferredDomain, estimatedMonths, risks };
 }
 
 function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
@@ -445,14 +448,16 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
   const visibleSet = new Set(visibleCells);
   const visibleDrops = state.world.drops.filter((drop) => drop.quantity > 0 && visibleSet.has(drop.cellId));
   const visiblePeople = state.people.filter((other) => other.id !== person.id && isAlive(other) && visibleSet.has(other.position.cellId));
+  const options = buildOptions(state, person, visibleCells, visibleDrops, visiblePeople)
+    .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion):/.test(option.id));
   return {
     state,
     person,
     visibleCells,
     visiblePeople,
     visibleDrops,
-    options: buildOptions(state, person, visibleCells, visibleDrops, visiblePeople)
-      .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:')),
+    options: requiredSocialResponses.length ? requiredSocialResponses : options,
     activeIntent: person.activeIntentId ? state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active') : undefined,
   };
 }

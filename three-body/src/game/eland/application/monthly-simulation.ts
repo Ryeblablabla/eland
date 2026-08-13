@@ -5,9 +5,9 @@ import {
   createLifespanMonths,
   deterministicFraction,
 } from '../population';
-import { MONTHS_PER_YEAR } from '../domain/calendar';
+import { MONTHS_PER_YEAR, RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { availableModelContexts, availableModelTokens, rollingDecisionUsage } from '../domain/decision-budget';
-import { executeIntentAction, goalSatisfied, addDrop } from '../domain/action-executor';
+import { executeIntentAction, executePrimitiveAction, goalSatisfied, addDrop } from '../domain/action-executor';
 import { advanceBodies, advanceWorldProcesses, resolveClimate } from '../domain/monthly-processes';
 import { Material, materialDefinition } from '../domain/material';
 import { ageMonths, isAlive, type PersonId, type PersonState } from '../domain/person';
@@ -37,7 +37,7 @@ import type {
 import { buildDecisionContext, recompileNextAction } from './action-options';
 import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-facts';
 import { maintainMemories, remember } from '../domain/memory';
-import { executeSurvivalReflexes } from '../domain/survival-reflex';
+import { chooseSurvivalReflex } from '../domain/survival-reflex';
 import {
   WORLD_CELL_COUNT,
   WORLD_LEVELS,
@@ -100,7 +100,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     sex: createBiologicalSex(seed, profile.id),
     geneticParents: [],
     generation: 0,
-    position: { cellId: spawnCell, previousCellId: spawnCell, lastPath: [spawnCell] },
+    position: { cellId: spawnCell, previousCellId: spawnCell, lastPath: [spawnCell], tickPath: [spawnCell] },
     body: { health: 92, hydration: 82, nutrition: 78 },
     baselineCapacities: {
       locomotion: capacity('locomotion', 48, 35),
@@ -173,6 +173,18 @@ export function buildDecisionContexts(state: SimulationState): DecisionContext[]
 function urgency(context: DecisionContext): number {
   const person = context.person;
   return Math.max(100 - person.body.health, 100 - person.body.hydration, 100 - person.body.nutrition);
+}
+
+function hasRequiredSocialResponse(context: DecisionContext): boolean {
+  return context.options.some((option) => /^(accept|reject)-(assist|companion):/.test(option.id));
+}
+
+function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
+  for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
+    const event = state.world.past[index];
+    if (event.kind === 'decision' && event.usedModel && event.who === personId) return event.atMonth;
+  }
+  return null;
 }
 
 function optionScore(context: DecisionContext, optionId: string): number {
@@ -326,7 +338,7 @@ function applyDecision(
   return { id, kind: 'decision', atMonth, orderInMonth, cellId: person.position.cellId, who: person.id, decision, ...(intentId ? { intentId } : {}), ...(domain ? { domain } : {}), usedModel, result };
 }
 
-function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number): WorldEvent | null {
+function executeActiveIntent(state: SimulationState, person: PersonState, atMonth: number, orderInMonth: number, actionTick: number): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
   if (goalSatisfied(state, person, intent.goal)) {
@@ -352,7 +364,7 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
     return null;
   }
   intent.nextAction = next;
-  const fact = executeIntentAction(state, person, intent, atMonth, orderInMonth);
+  const fact = executeIntentAction(state, person, intent, atMonth, orderInMonth, actionTick);
   intent.actionEventIds.push(fact.id);
   person.currentActionText = fact.result;
   if (fact.status === 'blocked' || fact.status === 'failed') {
@@ -494,11 +506,14 @@ function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
 
 function prepareMonth(input: SimulationState) {
   const state = copyState(input);
-  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], occupiedPersonIds: new Set<string>(), atMonth: state.clock.elapsedMonths };
+  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], atMonth: state.clock.elapsedMonths };
   const atMonth = state.clock.elapsedMonths + 1;
+  for (const person of state.people.filter(isAlive)) {
+    person.position.previousCellId = person.position.cellId;
+    person.position.lastPath = [person.position.cellId];
+    person.position.tickPath = [person.position.cellId];
+  }
   const events: WorldEvent[] = [...resolveClimate(state, atMonth), ...advanceWorldProcesses(state, atMonth)];
-  const reflexes = executeSurvivalReflexes(state, atMonth, events.length);
-  events.push(...reflexes.events);
   maintainMemories(state, atMonth);
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
@@ -508,18 +523,21 @@ function prepareMonth(input: SimulationState) {
     const meaningful = !context.activeIntent
       || context.options.some((option) => option.domain === 'social')
       || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
-    const triggered = meaningful && sample < probability;
+    const requiredSocialResponse = hasRequiredSocialResponse(context);
+    const triggered = meaningful && (requiredSocialResponse || sample < probability);
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,
       kind: 'decision-opportunity', atMonth, orderInMonth: events.length,
       who: context.person.id, cellId: context.person.position.cellId,
       probability, sample, triggered, reasons,
-      result: triggered ? `${context.person.name}本月重新考虑下一步` : `${context.person.name}本月延续已有意图`,
+      result: triggered
+        ? requiredSocialResponse ? `${context.person.name}本月必须回应一项社会请求` : `${context.person.name}本月重新考虑下一步`
+        : `${context.person.name}本月延续已有意图`,
     };
     events.push(opportunity);
     if (triggered) candidates.push(context);
   }
-  return { state, events, contexts, candidates, occupiedPersonIds: reflexes.occupiedPersonIds, atMonth };
+  return { state, events, contexts, candidates, atMonth };
 }
 
 function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: number): SimulationState {
@@ -551,7 +569,7 @@ function executePrepared(
   usage: TokenUsage,
   attemptedModelContexts: number,
 ): SimulationState {
-  const { state, events, contexts, candidates, occupiedPersonIds, atMonth } = prepared;
+  const { state, events, contexts, candidates, atMonth } = prepared;
   if (state.civilization.status === 'ended') return state;
   for (const candidate of candidates) {
     const person = state.people.find((item) => item.id === candidate.person.id);
@@ -561,12 +579,23 @@ function executePrepared(
     if (!picked) continue;
     events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length));
   }
-  const order = state.people
-    .filter((person) => isAlive(person) && activeIntent(state, person) && !occupiedPersonIds.has(person.id))
-    .sort((a, b) => seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${a.id}`) - seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${b.id}`) || a.id.localeCompare(b.id));
-  for (const person of order) {
-    const fact = executeActiveIntent(state, person, atMonth, events.length);
-    if (fact) events.push(fact);
+  const participants = state.people.filter(isAlive);
+  for (let actionTick = 1; actionTick <= RULE_ACTION_TICKS_PER_MONTH; actionTick += 1) {
+    const order = [...participants]
+      .filter(isAlive)
+      .sort((a, b) => seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${actionTick}:${a.id}`) - seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${actionTick}:${b.id}`) || a.id.localeCompare(b.id));
+    for (const person of order) {
+      const reflex = chooseSurvivalReflex(state, person);
+      if (reflex) {
+        const fact = executePrimitiveAction(state, person, reflex, atMonth, events.length, { cause: 'survival-reflex', actionTick });
+        person.currentActionText = fact.result;
+        events.push(fact);
+        continue;
+      }
+      const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick);
+      if (fact) events.push(fact);
+    }
+    for (const person of participants) person.position.tickPath.push(person.position.cellId);
   }
   events.push(...advanceBodies(state, atMonth));
   const modelContexts = attemptedModelContexts;
@@ -601,7 +630,21 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
     availableModelContexts(rolling, living),
     Math.floor(availableModelTokens(rolling, living, prepared.state.decisionBudget.tokensPerContext) / prepared.state.decisionBudget.tokensPerContext),
   );
-  const importance = (context: DecisionContext) => context.options.some((option) => option.domain === 'social') ? 300 : !context.activeIntent ? 180 : 100;
+  const importance = (context: DecisionContext) => {
+    let score = hasRequiredSocialResponse(context)
+      ? 2_000
+      : context.options.some((option) => option.id.startsWith('fulfill-assist:') || option.id.startsWith('meet-to-assist:') || option.id.startsWith('rejoin-companion:'))
+        ? 1_200
+        : context.options.some((option) => option.domain === 'social')
+          ? 700
+          : !context.activeIntent ? 500 : 300;
+    const lastDecisionMonth = lastModelDecisionMonth(prepared.state, context.person.id);
+    if (lastDecisionMonth !== null) {
+      const monthsSince = prepared.state.clock.elapsedMonths - lastDecisionMonth;
+      score -= Math.max(0, 12 - monthsSince) * 80;
+    }
+    return score;
+  };
   const ranked = [...prepared.candidates].sort((a, b) => importance(b) - importance(a) || urgency(b) - urgency(a) || a.person.id.localeCompare(b.person.id));
   const modelContexts = ranked.slice(0, maxContexts);
   const modelDecisions = modelContexts.length ? await batch.decideAll(modelContexts) : [];
@@ -618,6 +661,13 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   if (Number((input as { schemaVersion?: number }).schemaVersion) !== 13) throw new Error('schemaVersion 12 及更早存档不支持继续演化；请建立新的物质体素文明');
   const state = structuredClone(input);
   state.world.grid = hydrateWorld(input.world.grid);
+  for (const person of state.people) {
+    const start = person.position.previousCellId ?? person.position.cellId;
+    person.position.lastPath = person.position.lastPath?.length ? person.position.lastPath : [start, person.position.cellId];
+    person.position.tickPath = person.position.tickPath?.length
+      ? person.position.tickPath
+      : Array.from({ length: RULE_ACTION_TICKS_PER_MONTH + 1 }, (_, index) => index === RULE_ACTION_TICKS_PER_MONTH ? person.position.cellId : start);
+  }
   return state;
 }
 

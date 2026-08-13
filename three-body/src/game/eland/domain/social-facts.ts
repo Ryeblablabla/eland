@@ -90,7 +90,7 @@ export function openAssistRequestFor(state: SimulationState, personId: PersonId)
     const content = fact.action.content;
     const proposal = content.proposal;
     if (proposal?.kind !== 'assist' || proposal.helperId !== personId || proposal.expiresAtMonth < atMonth) continue;
-    if (acceptanceOf(state, content.id, personId)) continue;
+    if (acceptanceOf(state, content.id, personId) || rejectionOf(state, content.id, personId)) continue;
     return { fact, content };
   }
   return null;
@@ -103,10 +103,40 @@ export function openCompanionOfferFor(state: SimulationState, personId: PersonId
     const content = fact.action.content;
     const proposal = content.proposal;
     if (proposal?.kind !== 'companion' || proposal.partnerId !== personId || proposal.expiresAtMonth < atMonth) continue;
-    if (acceptanceOf(state, content.id, personId)) continue;
+    if (acceptanceOf(state, content.id, personId) || rejectionOf(state, content.id, personId)) continue;
     return { fact, content };
   }
   return null;
+}
+
+export function hasOpenAssistRequestBetween(state: SimulationState, requesterId: PersonId, helperId: PersonId): boolean {
+  const atMonth = state.clock.elapsedMonths;
+  return completedCommunicationFacts(state).some((fact) => {
+    if (fact.action.kind !== 'communicate' || fact.action.content.kind !== 'request') return false;
+    const content = fact.action.content;
+    const proposal = content.proposal;
+    return proposal?.kind === 'assist'
+      && proposal.requesterId === requesterId
+      && proposal.helperId === helperId
+      && proposal.expiresAtMonth >= atMonth
+      && !acceptanceOf(state, content.id, helperId)
+      && !rejectionOf(state, content.id, helperId);
+  });
+}
+
+export function hasOpenCompanionOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
+  const atMonth = state.clock.elapsedMonths;
+  return completedCommunicationFacts(state).some((fact) => {
+    if (fact.action.kind !== 'communicate' || fact.action.content.kind !== 'offer') return false;
+    const content = fact.action.content;
+    const proposal = content.proposal;
+    return proposal?.kind === 'companion'
+      && proposal.proposerId === proposerId
+      && proposal.partnerId === partnerId
+      && proposal.expiresAtMonth >= atMonth
+      && !acceptanceOf(state, content.id, partnerId)
+      && !rejectionOf(state, content.id, partnerId);
+  });
 }
 
 export function acceptedAssistFor(state: SimulationState, helperId: PersonId, atMonth: number): { request: ActionFact; acceptance: ActionFact; proposal: Extract<NonNullable<Extract<RepresentationInput, { kind: 'request' }>['proposal']>, { kind: 'assist' }> } | null {

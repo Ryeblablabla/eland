@@ -173,7 +173,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     sex: createBiologicalSex(state.seed, id),
     geneticParents: [mother.id, fatherId],
     generation: Math.max(mother.generation, father?.generation ?? 0) + 1,
-    position: { cellId: mother.position.cellId, previousCellId: mother.position.cellId, lastPath: [mother.position.cellId] },
+    position: { cellId: mother.position.cellId, previousCellId: mother.position.cellId, lastPath: [mother.position.cellId], tickPath: [mother.position.cellId] },
     body: { health: 72, hydration: 74, nutrition: 76 },
     baselineCapacities: {
       locomotion: average('locomotion'), manipulation: average('manipulation'), perception: average('perception'),

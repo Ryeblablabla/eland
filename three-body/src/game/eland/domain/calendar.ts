@@ -1,4 +1,5 @@
 export const MONTHS_PER_YEAR = 12 as const;
+export const RULE_ACTION_TICKS_PER_MONTH = 15 as const;
 
 export interface CalendarDate {
   elapsedMonths: number;

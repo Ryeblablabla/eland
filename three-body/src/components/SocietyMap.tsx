@@ -41,6 +41,8 @@ interface DragState {
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 8;
 const VIEW_PADDING = 24;
+const RULE_ACTION_TICKS_PER_MONTH = 15;
+const MONTH_PLAYBACK_MS = 3_000;
 
 function viewGeometry(camera: CameraState, viewportWidth: number, viewportHeight: number, worldWidth: number, worldHeight: number): ViewGeometry {
   const width = Math.max(1, viewportWidth);
@@ -115,7 +117,7 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
     const draw = (now: number) => {
       const geometry = viewGeometry(camera, viewportWidth, viewportHeight, world.width, world.height);
       const scale = geometry.cellSize;
-      const motion = Math.min(1, (now - animationStart.current) / 1_800);
+      const motion = Math.min(1, (now - animationStart.current) / MONTH_PLAYBACK_MS);
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.fillStyle = '#10151a';
       context.fillRect(0, 0, viewportWidth, viewportHeight);
@@ -147,7 +149,7 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
       }
 
       for (const agent of society.agents) {
-        const path = agent.lastPath.length ? agent.lastPath : [agent.cellId];
+        const path = agent.tickPath.length === RULE_ACTION_TICKS_PER_MONTH + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
         const point = interpolatePath(path, world.width, motion);
         const x = (point.x + 0.5) * scale;
         const y = (point.y + 0.5) * scale;

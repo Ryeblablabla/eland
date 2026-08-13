@@ -34,6 +34,7 @@ export interface SocietyAgent {
   cellId: number;
   previousCellId: number;
   lastPath: number[];
+  tickPath: number[];
   state: 'active' | 'dehydrated' | 'dead';
   doing: string;
   activeIntentId?: string;
@@ -52,6 +53,7 @@ export interface AgentHistoryItem {
   id: string;
   month: number;
   orderInMonth: number;
+  actionTick?: number;
   cellId: number;
   kind: 'decision' | 'action' | 'continuation' | 'life';
   label: string;

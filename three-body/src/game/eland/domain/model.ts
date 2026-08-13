@@ -76,6 +76,7 @@ export interface DecisionFact extends BaseEvent {
 
 export interface ActionFact extends BaseEvent {
   kind: 'action';
+  actionTick: number;
   who: PersonId;
   intentId?: string;
   cause: 'intent' | 'survival-reflex';

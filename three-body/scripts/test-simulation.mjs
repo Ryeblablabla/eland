@@ -57,6 +57,17 @@ try {
   assert.ok(initial.people.every((person) => Array.isArray(person.memories)), '人物应持有固定预算记忆');
   assert.ok(state.world.past.some((event) => event.kind === 'action' && event.cause === 'survival-reflex'), '生存维护应由规则反射产生可审计动作');
   assert.ok(state.people.every((person) => person.memories.length <= 24), '人物记忆必须保持固定上限');
+  const lastMonthActions = state.lastStep.filter((event) => event.kind === 'action');
+  assert.ok(lastMonthActions.every((event) => event.actionTick >= 1 && event.actionTick <= 15), '原子行动必须归属 1–15 的月内规则刻度');
+  assert.ok(state.people.filter((person) => person.bornAtMonth < state.clock.elapsedMonths).every((person) => person.position.tickPath.length === 16), '每位人物每月必须留下月初加 15 刻度的位置轨迹');
+  for (const event of state.world.past.filter((fact) => fact.kind === 'action' && fact.action.kind === 'move')) {
+    assert.ok(event.pathSegment.length <= 2, '单个行动刻度不允许跨越多个格子');
+    if (event.pathSegment.length === 2) {
+      const [from, to] = event.pathSegment;
+      const distance = Math.abs(from % 84 - to % 84) + Math.abs(Math.floor(from / 84) - Math.floor(to / 84));
+      assert.equal(distance, 1, '每个空间路径步必须连接四邻格');
+    }
+  }
   console.log(`simulation tests passed: schema 13, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${calls}/${Math.floor(personMonths / 12)} model contexts`);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

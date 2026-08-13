@@ -64,7 +64,14 @@ export interface PersonState {
   sex: BiologicalSex;
   geneticParents: PersonId[];
   generation: number;
-  position: { cellId: number; previousCellId: number; lastPath: number[] };
+  position: {
+    cellId: number;
+    previousCellId: number;
+    /** 本月实际经过的移动格；用于行动证据。 */
+    lastPath: number[];
+    /** 月初位置 + 15 个规则行动刻度的位置；用于确定性回放。 */
+    tickPath: number[];
+  };
   body: { health: number; hydration: number; nutrition: number };
   baselineCapacities: {
     locomotion: number;

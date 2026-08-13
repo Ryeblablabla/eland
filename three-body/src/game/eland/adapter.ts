@@ -50,6 +50,7 @@ function personView(state: SimulationState, person: PersonState): SocietyAgent {
     cellId: person.position.cellId,
     previousCellId: person.position.previousCellId,
     lastPath: person.position.lastPath,
+    tickPath: person.position.tickPath,
     state: !isAlive(person) ? 'dead' : person.body.hydration < 10 ? 'dehydrated' : 'active',
     doing: person.currentActionText,
     ...(person.activeIntentId ? { activeIntentId: person.activeIntentId } : {}),
@@ -126,7 +127,7 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
     if (event.kind === 'action') {
       if (event.who !== agentId) return [];
       const label = event.status === 'completed' ? '完成原子动作' : event.status === 'blocked' ? '动作受阻' : event.status === 'failed' ? '动作失败' : '推进原子动作';
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `生存反射 · ${label}` : label, summary: event.result, ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `生存反射 · ${label}` : label, summary: event.result, ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
     }
     if (event.kind === 'environment' && event.who === agentId && (event.change === 'death' || event.change === 'condition' || event.change === 'body')) {
       return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: event.result, status: event.change }];

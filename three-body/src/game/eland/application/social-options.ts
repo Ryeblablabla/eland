@@ -3,7 +3,14 @@ import type { SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 import { inventoryQuantity } from '../domain/person';
 import { materialHas } from '../domain/material';
-import { acceptedAssistFor, acceptedCompanionBetween, openAssistRequestFor, openCompanionOfferFor } from '../domain/social-facts';
+import {
+  acceptedAssistFor,
+  acceptedCompanionBetween,
+  hasOpenAssistRequestBetween,
+  hasOpenCompanionOfferBetween,
+  openAssistRequestFor,
+  openCompanionOfferFor,
+} from '../domain/social-facts';
 import { findPath } from '../world/grid';
 
 function relationTo(person: PersonState, otherId: string) {
@@ -103,7 +110,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
   for (const other of localPeople.slice(0, 3)) {
     const relation = relationTo(person, other.id);
     const need: 'water' | 'food' | null = person.body.hydration < 45 ? 'water' : person.body.nutrition < 45 ? 'food' : null;
-    if (need) {
+    if (need && !hasOpenAssistRequestBetween(state, person.id, other.id)) {
       const representationId = `request-assist:${state.clock.elapsedMonths}:${person.id}:${other.id}:${need}`;
       options.push({
         id: representationId,
@@ -114,7 +121,10 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
       });
     }
-    if ((relation?.trust ?? 0) >= 24 && (relation?.bond ?? 0) >= 18) {
+    if ((relation?.trust ?? 0) >= 24
+      && (relation?.bond ?? 0) >= 18
+      && !hasOpenCompanionOfferBetween(state, person.id, other.id)
+      && !acceptedCompanionBetween(state, person.id, other.id, state.clock.elapsedMonths)) {
       const representationId = `offer-companion:${state.clock.elapsedMonths}:${person.id}:${other.id}`;
       options.push({
         id: representationId,

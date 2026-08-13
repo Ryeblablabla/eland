@@ -118,20 +118,13 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
   const fullPath = findPath(state.world.grid, person.position.cellId, action.toCellId);
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
-  const budget = Math.max(2, Math.floor((person.baselineCapacities.locomotion / 12) * conditionWorkMultiplier(person)));
-  const segment = [fullPath[0]];
-  let spent = 0;
-  for (const next of fullPath.slice(1)) {
-    const cost = movementCost(state.world.grid, segment.at(-1) ?? person.position.cellId, next);
-    if (spent + cost > budget && segment.length > 1) break;
-    spent += cost;
-    segment.push(next);
-  }
+  // 一个规则刻度最多跨越一条相邻边。能力和身体状态改变代价，不改变空间连续性。
+  const segment = fullPath.length > 1 ? fullPath.slice(0, 2) : [fullPath[0]];
   const from = person.position.cellId;
   const to = segment.at(-1) ?? from;
-  person.position.previousCellId = from;
+  const spent = to === from ? 0 : movementCost(state.world.grid, from, to) / conditionWorkMultiplier(person);
   person.position.cellId = to;
-  person.position.lastPath = segment;
+  if (to !== from) person.position.lastPath.push(to);
   person.body.hydration = clamp(person.body.hydration - Math.max(0, segment.length - 1) * 0.25);
   person.body.nutrition = clamp(person.body.nutrition - Math.max(0, segment.length - 1) * 0.16);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
@@ -448,8 +441,9 @@ export function executeIntentAction(
   intent: Intent,
   atMonth: number,
   orderInMonth: number,
+  actionTick: number,
 ): ActionFact {
-  return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent' });
+  return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
 }
 
 export function executePrimitiveAction(
@@ -458,7 +452,7 @@ export function executePrimitiveAction(
   action: PrimitiveAction,
   atMonth: number,
   orderInMonth: number,
-  meta: { intentId?: string; cause: ActionFact['cause'] },
+  meta: { intentId?: string; cause: ActionFact['cause']; actionTick: number },
 ): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
@@ -475,6 +469,7 @@ export function executePrimitiveAction(
   const fact: ActionFact = {
     id: eventId,
     kind: 'action',
+    actionTick: meta.actionTick,
     atMonth,
     orderInMonth,
     cellId: person.position.cellId,

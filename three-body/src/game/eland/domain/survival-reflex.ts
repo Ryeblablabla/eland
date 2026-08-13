@@ -1,14 +1,8 @@
 import type { PrimitiveAction } from './action';
-import { executePrimitiveAction } from './action-executor';
 import { Material, materialHas } from './material';
-import type { ActionFact, DropState, SimulationState } from './model';
-import { isAlive, type PersonState } from './person';
+import type { DropState, SimulationState } from './model';
+import type { PersonState } from './person';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
-
-export interface SurvivalReflexResult {
-  events: ActionFact[];
-  occupiedPersonIds: Set<string>;
-}
 
 function visibleRadius(person: PersonState): number {
   return 4 + Math.floor(person.baselineCapacities.perception / 25);
@@ -35,7 +29,7 @@ function reachableFood(state: SimulationState, person: PersonState): DropState |
     .sort((a, b) => a.path.length - b.path.length || a.drop.id.localeCompare(b.drop.id))[0]?.drop ?? null;
 }
 
-function chooseReflex(state: SimulationState, person: PersonState): PrimitiveAction | null {
+export function chooseSurvivalReflex(state: SimulationState, person: PersonState): PrimitiveAction | null {
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   const water = reachableWater(state, person);
   const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / Math.max(2, Math.floor(person.baselineCapacities.locomotion / 12)))) : Number.POSITIVE_INFINITY;
@@ -57,18 +51,4 @@ function chooseReflex(state: SimulationState, person: PersonState): PrimitiveAct
       : { kind: 'move', toCellId: drop.cellId };
   }
   return null;
-}
-
-export function executeSurvivalReflexes(state: SimulationState, atMonth: number, orderOffset: number): SurvivalReflexResult {
-  const events: ActionFact[] = [];
-  const occupiedPersonIds = new Set<string>();
-  for (const person of state.people.filter(isAlive)) {
-    const action = chooseReflex(state, person);
-    if (!action) continue;
-    const fact = executePrimitiveAction(state, person, action, atMonth, orderOffset + events.length, { cause: 'survival-reflex' });
-    events.push(fact);
-    if (action.kind === 'move') occupiedPersonIds.add(person.id);
-    person.currentActionText = fact.result;
-  }
-  return { events, occupiedPersonIds };
 }

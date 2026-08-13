@@ -1,0 +1,744 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ThreeBodyCanvas, { type SimStats } from '@/components/ThreeBodyCanvas';
+import SocietyMap from '@/components/SocietyMap';
+import CharacterArchive from '@/components/CharacterArchive';
+import { elandClient, type Frame } from '@/game/elandClient';
+import type { EraKey, SocietyState } from '@/game/societyContract';
+import type { SkySample } from '@/game/societyContract';
+import { DEFAULT_MODEL_PROVIDER, MODEL_OPTIONS, type ModelProvider } from '@/game/llm';
+import { CHARACTERS } from '@/data/characters';
+import type { PlanetFate } from '@/lib/threebody';
+
+// ---------------------------------------------------------------------------
+// 纪元文案（乱纪元按真实恒星通量细分酷暑/严寒）
+// ---------------------------------------------------------------------------
+
+const ERA_TEXT: Record<EraKey, { big: string; sub: string; cls: string; glow: string }> = {
+  stable: { big: '恒纪元', sub: '三日轨度可测 · 文明复苏', cls: 'text-amber-100', glow: 'rgba(251,191,36,0.25)' },
+  chaotic: { big: '乱纪元', sub: '飞星失序 · 脱水！脱水！', cls: 'text-rose-200', glow: 'rgba(244,63,94,0.22)' },
+  'chaotic-heat': { big: '酷暑纪元', sub: '烈日炙烤 · 焦土万里', cls: 'text-orange-200', glow: 'rgba(249,115,22,0.28)' },
+  'chaotic-cold': { big: '严寒纪元', sub: '飞星远去 · 冰封千里', cls: 'text-sky-200', glow: 'rgba(56,189,248,0.25)' },
+  burned: { big: '三日凌空', sub: '烈焰焚世', cls: 'text-orange-200', glow: 'rgba(249,115,22,0.3)' },
+  frozen: { big: '长夜', sub: '飞星不动 · 万物冻结', cls: 'text-sky-200', glow: 'rgba(56,189,248,0.25)' },
+  extinct: { big: '文明终结', sub: '星系崩解 · 世界不再重启', cls: 'text-purple-200', glow: 'rgba(168,85,247,0.3)' },
+};
+
+function eraKeyOf(fate: PlanetFate, fluxRel: number): EraKey {
+  if (fate !== 'chaotic') return fate;
+  if (fluxRel > 1.8) return 'chaotic-heat';
+  if (fluxRel < 0.45) return 'chaotic-cold';
+  return 'chaotic';
+}
+
+const NUMERALS = ['零','一','二','三','四','五','六','七','八','九'];
+function toChineseNum(n: number): string {
+  if (n < 10) return NUMERALS[n];
+  if (n < 20) return '十' + (n % 10 ? NUMERALS[n % 10] : '');
+  if (n < 100) return NUMERALS[Math.floor(n / 10)] + '十' + (n % 10 ? NUMERALS[n % 10] : '');
+  return String(n);
+}
+
+interface ChronicleEntry {
+  id: number;
+  civ: number;
+  year: number;
+  text: string;
+  tone: 'plain' | 'good' | 'bad' | 'era';
+}
+
+let entrySeq = 0;
+
+type ViewMode = 'cosmos' | 'society';
+
+const TU_PER_YEAR = 0.8;
+const SETTLEMENT_MIN_MS = 6500;
+
+// ---------------------------------------------------------------------------
+// 文明结算幕
+// ---------------------------------------------------------------------------
+
+interface Settlement {
+  fate: 'burned' | 'frozen' | 'extinct' | 'depopulated';
+  civ: number;
+  years: number;
+  eras: number;
+  hitRate: string;
+}
+
+const COLLAPSE_TEXT = {
+  burned: '三日凌空 · 焚于烈焰',
+  frozen: '长夜冻结 · 文明入殓',
+  extinct: '星系崩解 · 文明终结',
+  depopulated: '全员死亡 · 文明断绝',
+} as const;
+
+function SettlementOverlay({ s, entries, onContinue }: { s: Settlement; entries: ChronicleEntry[]; onContinue: () => void }) {
+  const [shown, setShown] = useState(0);
+  const [minimumTimePassed, setMinimumTimePassed] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setShown((n) => {
+        if (n >= entries.length) { clearInterval(t); return n; }
+        return n + 1;
+      });
+    }, 620);
+    const unlock = setTimeout(() => setMinimumTimePassed(true), SETTLEMENT_MIN_MS);
+    return () => {
+      clearInterval(t);
+      clearTimeout(unlock);
+    };
+  }, [entries.length]);
+  const done = shown >= entries.length;
+  const canContinue = done && minimumTimePassed;
+  const continueWhenReady = () => {
+    if (canContinue) onContinue();
+  };
+
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#030409]/95 px-8">
+      <div className="text-[11px] tracking-[0.6em] text-slate-600">SETTLEMENT · 文明结算</div>
+      <div className="mt-6 text-6xl font-extralight tracking-[0.25em] text-slate-100">
+        第{toChineseNum(s.civ)}号文明
+      </div>
+      <div className="mt-4 text-sm tracking-[0.5em] text-rose-300/80">{COLLAPSE_TEXT[s.fate]}</div>
+
+      <div className="mt-8 flex items-center gap-8 text-[11px] tracking-[0.3em] text-slate-500">
+        <span>历时 <span className="text-slate-300">{s.years}</span> 年</span>
+        <span className="text-slate-700">|</span>
+        <span>改元 <span className="text-slate-300">{s.eras}</span> 次</span>
+        <span className="text-slate-700">|</span>
+        <span>预言命中率 <span className="text-slate-300">{s.hitRate}</span></span>
+      </div>
+
+      <div className="mt-3 h-px w-72 bg-gradient-to-r from-transparent via-slate-500/40 to-transparent" />
+
+      <div className="mt-6 flex h-[30vh] w-[560px] flex-col justify-end space-y-2 overflow-hidden">
+        {entries.slice(0, shown).map((e) => (
+          <div key={e.id} className="text-[12px] leading-relaxed tracking-wider"
+               style={{
+                 animation: 'rise-in 0.7s ease-out',
+                 color: e.tone === 'good' ? '#a7f3d0' : e.tone === 'bad' ? '#fda4af' : e.tone === 'era' ? '#fde68a' : '#7d8aa0',
+               }}>
+            <span className="mr-3 text-[10px] text-slate-600">第{e.year}年</span>
+            {e.text}
+          </div>
+        ))}
+        {entries.length === 0 && <div className="text-center text-xs text-slate-700">这个文明短到来不及留下记载</div>}
+      </div>
+
+      <button
+        onClick={continueWhenReady}
+        disabled={!canContinue}
+        aria-disabled={!canContinue}
+        className={`mt-10 border px-10 py-3 text-sm tracking-[0.6em] transition-all duration-1000 ${
+          canContinue
+            ? 'border-amber-200/60 text-amber-200 hover:bg-amber-200/10'
+            : 'cursor-not-allowed border-slate-700 text-slate-600'
+        }`}
+        style={canContinue ? { animation: 'pulse 2s ease-in-out infinite' } : undefined}
+      >
+        {canContinue ? (s.fate === 'extinct' ? '重 启 宇 宙' : '新 文 明 启 程') : '结 算 中 …'}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 主页面
+// ---------------------------------------------------------------------------
+
+export default function Game() {
+  const [entered, setEntered] = useState(false);
+  const [stats, setStats] = useState<SimStats | null>(null);
+  const [announce, setAnnounce] = useState<{ era: EraKey; key: number } | null>(null);
+  const [chronicle, setChronicle] = useState<ChronicleEntry[]>([]);
+  const [society, setSociety] = useState<SocietyState | null>(null);
+  const [speaker, setSpeaker] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>('cosmos');
+  const [showHistory, setShowHistory] = useState(false);
+  const [year, setYear] = useState(0);
+  const [eraKey, setEraKey] = useState<EraKey>('stable');
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
+  const [respawnToken, setRespawnToken] = useState(0);
+  const [universeToken, setUniverseToken] = useState(0);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停，省 token）
+  const [thinking, setThinking] = useState(false);
+  const [replayTick, setReplayTick] = useState<number | null>(null); // 回放模式
+  const [historyList, setHistoryList] = useState<{ year: number; summary: string }[]>([]);
+  const [modelProvider, setModelProvider] = useState<ModelProvider>(DEFAULT_MODEL_PROVIDER);
+  const [showArchive, setShowArchive] = useState(false);
+  const [roster, setRoster] = useState<string[]>([]); // 指定开局阵容（档案 id）；空 = 随机抽取
+
+  const prev = useRef<{ civ: number }>({ civ: 1 });
+  const eraMachine = useRef<{ era: EraKey | null; candidate: EraKey | null; sinceT: number }>({
+    era: null, candidate: null, sinceT: 0,
+  });
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eraKeyRef = useRef<EraKey>('stable');
+  const yearRef = useRef(0);
+  const clockPaused = useRef(false);
+  const settlementRef = useRef(false);
+  const civStats = useRef({ startYear: 0, eras: 0, hits: 0, total: 0 });
+  const modelProviderRef = useRef<ModelProvider>(DEFAULT_MODEL_PROVIDER);
+  const rosterRef = useRef<string[]>([]);
+  const runIdRef = useRef(`threebody-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const statsRef = useRef<SimStats | null>(null);
+  const lastSkyTimeRef = useRef(0);
+  const fluxRangeRef = useRef({ min: 1, max: 1, sum: 0, count: 0 });
+  const [universeTarget, setUniverseTarget] = useState(0);
+
+  const sampleSky = useCallback((): SkySample => {
+    const current = statsRef.current;
+    const range = fluxRangeRef.current;
+    const flux = current?.fluxRel ?? 1;
+    const toTime = current?.t ?? lastSkyTimeRef.current;
+    const sample: SkySample = {
+      fromTime: lastSkyTimeRef.current,
+      toTime,
+      fluxMean: range.count ? range.sum / range.count : flux,
+      fluxMin: range.count ? range.min : flux,
+      fluxMax: range.count ? range.max : flux,
+      nearestStarDistance: current?.planetDist ?? 1,
+      fate: current ? eraKeyOf(current.planetFate, current.fluxRel) : eraKeyRef.current,
+    };
+    lastSkyTimeRef.current = toTime;
+    fluxRangeRef.current = { min: flux, max: flux, sum: 0, count: 0 };
+    return sample;
+  }, []);
+
+  const pushEntry = useCallback((civ: number, yr: number, text: string, tone: ChronicleEntry['tone'] = 'plain') => {
+    setChronicle((c) => [...c.slice(-1199), { id: entrySeq++, civ, year: yr, text, tone }]);
+  }, []);
+
+  const flash = useCallback((era: EraKey) => {
+    if (announceTimer.current) clearTimeout(announceTimer.current);
+    setAnnounce({ era, key: Date.now() });
+    announceTimer.current = setTimeout(() => setAnnounce(null), 3400);
+  }, []);
+
+  /** 应用后端来的一帧（新纪年） */
+  const applyFrame = useCallback((frame: Frame) => {
+    yearRef.current = frame.civilizationYear;
+    setYear(frame.civilizationYear);
+    setSociety(frame.society);
+    setSpeaker(frame.speaker);
+    for (const e of frame.entries) {
+      if (e.kind === 'prediction') {
+        civStats.current.total += 1;
+        if (e.tone === 'good') civStats.current.hits += 1;
+      }
+      pushEntry(frame.civilizationId, frame.civilizationYear, e.text, e.tone);
+    }
+
+    const populationExtinct = frame.society.agents.length > 0
+      && frame.society.agents.every((agent) => agent.state === 'dead');
+    if (frame.civilizationEnd?.kind === 'destroyed' && populationExtinct && !settlementRef.current) {
+      settlementRef.current = true;
+      clockPaused.current = true;
+      setPlaying(false);
+      const cs = civStats.current;
+      setSettlement({
+        fate: 'depopulated',
+        civ: frame.civilizationId,
+        years: frame.civilizationYear - cs.startYear,
+        eras: cs.eras,
+        hitRate: cs.total > 0 ? `${Math.round((100 * cs.hits) / cs.total)}%` : '—',
+      });
+    }
+  }, [pushEntry]);
+
+  /** 启动一个 ELAND 文明（后端会话）；有选定阵容时按阵容入局 */
+  const startCivilization = useCallback((civNo: number) => {
+    const picked = rosterRef.current;
+    const sky = sampleSky();
+    void elandClient.begin(runIdRef.current, civNo, sky, modelProviderRef.current, picked.length > 0 ? picked : undefined).then((frame) => {
+      applyFrame(frame);
+      setSelectedAgentId(null);
+      setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_YEAR);
+      pushEntry(civNo, frame.civilizationYear, `第 ${toChineseNum(civNo)} 号文明在自然地表上开始，${frame.society.agents.length} 位先民登场`, 'era');
+    }).catch(() => undefined);
+  }, [applyFrame, pushEntry, sampleSky]);
+
+  const toggleRosterPick = useCallback((id: string) => {
+    setRoster((current) => {
+      const next = current.includes(id)
+        ? current.filter((x) => x !== id)
+        : current.length >= 8
+          ? current
+          : [...current, id];
+      rosterRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const clearRoster = useCallback(() => {
+    rosterRef.current = [];
+    setRoster([]);
+  }, []);
+
+  /** 以当前阵容从第一号文明重开宇宙 */
+  const restartWithRoster = useCallback(() => {
+    setShowArchive(false);
+    setReplayTick(null);
+    setSettlement(null);
+    settlementRef.current = false;
+    clockPaused.current = false;
+    yearRef.current = 0;
+    setYear(0);
+    setChronicle([]);
+    eraMachine.current = { era: null, candidate: null, sinceT: 0 };
+    prev.current = { civ: 1 };
+    civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+    startCivilization(1);
+    setUniverseToken((t) => t + 1);
+  }, [startCivilization]);
+
+  const switchModel = useCallback((provider: ModelProvider) => {
+    if (provider === modelProviderRef.current) return;
+    modelProviderRef.current = provider;
+    setModelProvider(provider);
+    void elandClient.setModel(runIdRef.current, provider).catch(() => undefined);
+  }, []);
+
+  const onStats = useCallback(
+    (s: SimStats) => {
+      statsRef.current = s;
+      const range = fluxRangeRef.current;
+      range.min = range.count ? Math.min(range.min, s.fluxRel) : s.fluxRel;
+      range.max = range.count ? Math.max(range.max, s.fluxRel) : s.fluxRel;
+      range.sum += s.fluxRel;
+      range.count += 1;
+      setStats(s);
+      const p = prev.current;
+      const em = eraMachine.current;
+      const yr = yearRef.current;
+
+      // 文明崩塌 → 停后端演化，冻结时钟，弹结算幕
+      if (s.collapsed && !settlementRef.current) {
+        settlementRef.current = true;
+        clockPaused.current = true;
+        setPlaying(false);
+        const cs = civStats.current;
+        setSettlement({
+          fate: s.collapsed,
+          civ: s.civilizations,
+          years: yr,
+          eras: cs.eras,
+          hitRate: cs.total > 0 ? `${Math.round((100 * cs.hits) / cs.total)}%` : '—',
+        });
+        return;
+      }
+
+      // 文明更替 → 后端启动新文明
+      if (s.civilizations !== p.civ) {
+        if (s.civilizations > p.civ) startCivilization(s.civilizations);
+        civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+        p.civ = s.civilizations;
+      }
+
+      // 纪元判定（带气候 + 时间迟滞）
+      const raw = eraKeyOf(s.planetFate, s.fluxRel);
+      const commit = (k: EraKey, silent: boolean) => {
+        em.era = k; em.candidate = null;
+        eraKeyRef.current = k;
+        setEraKey(k);
+        if (!silent) {
+          civStats.current.eras += 1;
+          flash(k);
+        }
+      };
+      if (raw === 'extinct') {
+        if (em.era !== 'extinct') commit('extinct', false);
+      } else if (em.era === null) {
+        commit(raw, true);
+      } else if (raw !== em.era) {
+        if (em.candidate === raw) {
+          if (s.t - em.sinceT >= 0.16) commit(raw, false);
+        } else {
+          em.candidate = raw; em.sinceT = s.t;
+        }
+      } else {
+        em.candidate = null;
+      }
+    },
+    [flash, startCivilization],
+  );
+
+  useEffect(() => {
+    if (entered) startCivilization(1);
+  }, [entered, startCivilization]);
+
+  useEffect(() => () => { if (announceTimer.current) clearTimeout(announceTimer.current); }, []);
+
+  // ------------------------------------------------------------------
+  // 演化控制（后端驱动）
+  // ------------------------------------------------------------------
+
+  const stepOnce = useCallback(async () => {
+    if (thinking || settlementRef.current) return;
+    setThinking(true);
+    try {
+      const sky = sampleSky();
+      const frame = await elandClient.step(runIdRef.current, sky);
+      if (frame && frame.civilizationId === (statsRef.current?.civilizations ?? frame.civilizationId) && frame.civilizationYear > yearRef.current) {
+        applyFrame(frame);
+        setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_YEAR);
+      }
+    } catch { /* 后端暂不可达时静默 */ } finally {
+      setThinking(false);
+    }
+  }, [thinking, applyFrame, sampleSky]);
+
+  useEffect(() => {
+    if (!entered || !playing || replayTick !== null) return;
+    const timer = setInterval(() => { void stepOnce(); }, 5000);
+    return () => clearInterval(timer);
+  }, [entered, playing, replayTick, stepOnce]);
+
+  const togglePlay = useCallback(() => {
+    const next = !playing;
+    setPlaying(next);
+  }, [playing]);
+
+  const openReplay = useCallback(() => {
+    void elandClient.history(runIdRef.current).then(({ history }) => {
+      if (history.length === 0) return;
+      setHistoryList(history);
+      setPlaying(false);
+      setReplayTick(history[0].year);
+      const frame = history[0];
+      void elandClient.frameAt(runIdRef.current, frame.year).then((f) => f && setSociety(f.society));
+    }).catch(() => undefined);
+  }, []);
+
+  const seekReplay = useCallback((tick: number) => {
+    setReplayTick(tick);
+    void elandClient.frameAt(runIdRef.current, tick).then((f) => f && setSociety(f.society));
+  }, []);
+
+  const exitReplay = useCallback(() => {
+    setReplayTick(null);
+    void elandClient.state(runIdRef.current).then(({ frame }) => {
+      if (frame) { setSociety(frame.society); yearRef.current = frame.civilizationYear; setYear(frame.civilizationYear); }
+    }).catch(() => undefined);
+  }, []);
+
+  const reEvolveFrom = useCallback((tick: number) => {
+    void elandClient.seek(runIdRef.current, tick).then((frame) => {
+      if (!frame) return;
+      // 截断本地史册中该年之后的本文明记录
+      setChronicle((c) => c.filter((e) => !(e.civ === frame.civilizationId && e.year > tick)));
+      yearRef.current = tick;
+      setYear(tick);
+      setSociety(frame.society);
+      setReplayTick(null);
+      pushEntry(frame.civilizationId, tick, `—— 时光回溯至第 ${tick} 年，演化从此分岔 ——`, 'era');
+    }).catch(() => undefined);
+  }, [pushEntry]);
+
+  const continueGame = useCallback(() => {
+    if (!settlement) return;
+    const isExtinct = settlement.fate === 'extinct';
+    setSettlement(null);
+    settlementRef.current = false;
+    clockPaused.current = false;
+    if (isExtinct) {
+      yearRef.current = 0;
+      setYear(0);
+      setChronicle([]);
+      eraMachine.current = { era: null, candidate: null, sinceT: 0 };
+      prev.current = { civ: 1 };
+      civStats.current = { startYear: 0, eras: 0, hits: 0, total: 0 };
+      startCivilization(1);
+      setUniverseToken((t) => t + 1);
+    } else {
+      setRespawnToken((t) => t + 1);
+    }
+  }, [settlement, startCivilization]);
+
+  const visibleChronicle = useMemo(() => chronicle.slice(-5), [chronicle]);
+  const era = ERA_TEXT[eraKey];
+  const archiveById = useMemo(() => new Map(CHARACTERS.map((c) => [c.id, c])), []);
+  const focusAgent = useMemo(() => {
+    if (!society) return null;
+    return society.agents.find((a) => a.id === selectedAgentId)
+      ?? society.agents.find((a) => a.name === speaker)
+      ?? society.agents.find((a) => a.state === 'active')
+      ?? society.agents[0]
+      ?? null;
+  }, [society, speaker, selectedAgentId]);
+
+  const settlementEntries = useMemo(
+    () => (settlement ? chronicle.filter((e) => e.civ === settlement.civ).slice(-24) : []),
+    [settlement, chronicle],
+  );
+
+  return (
+    <div className="relative h-screen w-screen overflow-hidden bg-[#04050c] font-serif text-slate-200">
+      <style>{`
+        @keyframes era-flash {
+          0% { opacity: 0; letter-spacing: 0.1em; transform: scale(0.96); filter: blur(6px); }
+          18% { opacity: 1; filter: blur(0); }
+          78% { opacity: 1; }
+          100% { opacity: 0; letter-spacing: 0.9em; transform: scale(1.04); filter: blur(3px); }
+        }
+        @keyframes rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        @keyframes flicker { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.72; transform: scale(0.88); } }
+        @keyframes agent-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+        @keyframes smoke { 0% { transform: translate(-50%, 0); opacity: 0.5; } 100% { transform: translate(-30%, -28px); opacity: 0; } }
+        @keyframes firefly { 0%,100% { transform: translate(0,0); opacity: 0.2; } 25% { opacity: 0.9; } 50% { transform: translate(9px,-11px); opacity: 0.3; } 75% { opacity: 0.8; } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+      `}</style>
+
+      {/* 宇宙背景 */}
+      <div className="absolute inset-0 transition-opacity duration-1000" style={{ opacity: view === 'society' ? 0.22 : 1 }}>
+        <ThreeBodyCanvas
+          running={entered && !clockPaused.current}
+          speed={3}
+          trailLength={2200}
+          showTwin={false}
+          presetKey="chaos"
+          resetToken={universeToken}
+          targetT={universeTarget}
+          skyMode={view === 'society' || replayTick !== null ? 'frozen' : 'follow'}
+          collapseHold
+          respawnToken={respawnToken}
+          onStats={onStats}
+        />
+      </div>
+
+      {/* 电影暗角 */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: 'radial-gradient(ellipse at center, transparent 42%, rgba(2,3,10,0.75) 100%)' }}
+      />
+
+      {/* 人间地图页 */}
+      {view === 'society' && society && stats && (
+        <SocietyMap
+          society={society}
+          era={eraKey}
+          speaker={speaker}
+          focusAgent={focusAgent}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={setSelectedAgentId}
+          seed={(stats.civilizations * 7919) % 100000}
+        />
+      )}
+
+      {/* 纪元巨字宣告 */}
+      {announce && (
+        <div
+          key={announce.key}
+          className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center"
+          style={{ animation: 'era-flash 3.4s ease-out forwards', background: `radial-gradient(ellipse at center, ${ERA_TEXT[announce.era].glow}, transparent 65%)` }}
+        >
+          <div className={`text-[11rem] font-extralight leading-none tracking-[0.35em] ${ERA_TEXT[announce.era].cls}`}
+               style={{ textShadow: '0 0 80px currentColor' }}>
+            {ERA_TEXT[announce.era].big}
+          </div>
+          <div className="mt-8 text-sm tracking-[0.6em] text-slate-300/80">{ERA_TEXT[announce.era].sub}</div>
+        </div>
+      )}
+
+      {/* 文明编号（左上，仅宇宙视角） */}
+      {view === 'cosmos' && (
+      <div className="pointer-events-none absolute left-10 top-10 z-10 select-none">
+        <div className="text-[11px] tracking-[0.5em] text-slate-500">THREE-BODY · 文明游戏</div>
+        <div className="mt-3 text-5xl font-extralight tracking-[0.2em] text-slate-100/90">
+          第{toChineseNum(stats?.civilizations ?? 1)}号文明
+        </div>
+        <div className="mt-3 h-px w-40 bg-gradient-to-r from-slate-400/40 to-transparent" />
+        <div className="mt-3 flex items-baseline gap-4 text-xs tracking-[0.3em] text-slate-400">
+          <span>第 {year} 年</span>
+          {thinking && <span className="animate-pulse text-slate-500">推演中…</span>}
+          {!announce && <span className={era.cls}>{era.big}</span>}
+          {society && (
+            <span className="text-slate-500">
+              在册 {society.agents.filter((a) => a.state === 'active').length}/{society.agents.length} 人
+            </span>
+          )}
+        </div>
+      </div>
+      )}
+
+      {/* 人物名册（右侧竖排，宇宙模式） */}
+      {view === 'cosmos' && !showHistory && society && (
+        <div className="absolute right-8 top-1/2 z-10 max-h-[70vh] -translate-y-1/2 overflow-hidden text-right">
+          <div className="mb-3 text-[10px] tracking-[0.4em] text-slate-600">入局者 · {society.agents.length} 人</div>
+          <div className="space-y-1.5">
+            {society.agents.map((a) => {
+              const entry = archiveById.get(a.id);
+              return (
+                <div
+                  key={a.id}
+                  className={`flex cursor-pointer items-center justify-end gap-2.5 text-xs tracking-[0.25em] transition-all duration-700 ${
+                    speaker === a.name ? 'text-amber-200' : a.state === 'dead' ? 'text-slate-700 line-through' : 'text-slate-500/60'
+                  }`}
+                  style={speaker === a.name ? { textShadow: '0 0 18px rgba(251,191,36,0.6)' } : undefined}
+                  onClick={() => setSelectedAgentId(selectedAgentId === a.id ? null : a.id)}
+                >
+                  <span>{a.name}</span>
+                  {entry?.portrait && (
+                    <img
+                      src={entry.portrait}
+                      alt={a.name}
+                      loading="lazy"
+                      className={`h-6 w-6 rounded-full border border-white/15 object-cover ${a.state === 'dead' ? 'opacity-40 grayscale' : ''}`}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 编年史 ticker */}
+      {!showHistory && (
+        <div
+          className="pointer-events-none absolute left-10 z-10 space-y-2 transition-all duration-700"
+          style={{ bottom: view === 'society' ? '1.2vh' : '9vh', width: view === 'society' ? '44vw' : '520px' }}
+        >
+          {visibleChronicle.map((e, i) => (
+            <div
+              key={e.id}
+              className="text-[13px] leading-relaxed tracking-wider"
+              style={{
+                animation: 'rise-in 0.8s ease-out',
+                opacity: 0.35 + (0.65 * (i + 1)) / visibleChronicle.length,
+                color:
+                  e.tone === 'good' ? '#a7f3d0' :
+                  e.tone === 'bad' ? '#fda4af' :
+                  e.tone === 'era' ? '#fde68a' : '#94a3b8',
+              }}
+            >
+              <span className="mr-3 text-[11px] text-slate-600">第{e.year}年</span>
+              {e.text}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 史册长卷 */}
+      {showHistory && (
+        <div className="absolute bottom-0 right-0 top-0 z-20 flex w-[420px] flex-col border-l border-white/5 bg-[#04050c]/85 backdrop-blur-md">
+          <div className="flex items-center justify-between px-6 py-5">
+            <div className="text-xs tracking-[0.5em] text-slate-400">史册 · 文明编年</div>
+            <button onClick={() => setShowHistory(false)} className="text-xs tracking-[0.3em] text-slate-500 hover:text-slate-300">合上 ✕</button>
+          </div>
+          <div className="flex-1 space-y-2.5 overflow-y-auto px-6 pb-8">
+            {chronicle.length === 0 && <div className="text-xs text-slate-600">尚无记载。世界刚刚开始。</div>}
+            {[...chronicle].reverse().map((e) => (
+              <div key={e.id} className="text-[12px] leading-relaxed tracking-wider"
+                style={{ color: e.tone === 'good' ? '#a7f3d0' : e.tone === 'bad' ? '#fda4af' : e.tone === 'era' ? '#fde68a' : '#94a3b8' }}>
+                <span className="mr-2 text-[10px] text-slate-600">文明{toChineseNum(e.civ)} · 第{e.year}年</span>
+                {e.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 底部中央：视角 / 史册 / 演化控制 */}
+      {entered && replayTick === null && (
+        <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-8 text-[11px] tracking-[0.4em] text-slate-500">
+          <button onClick={() => setView(view === 'cosmos' ? 'society' : 'cosmos')} className="transition-colors hover:text-amber-200">
+            {view === 'cosmos' ? '俯 瞰 · 人 间 ↓' : '仰 望 · 宇 宙 ↑'}
+          </button>
+          <span className="text-slate-700">·</span>
+          <button onClick={() => setShowHistory(!showHistory)} className="transition-colors hover:text-amber-200">
+            {showHistory ? '掩 卷' : '翻 开 史 册'}
+          </button>
+          <span className="text-slate-700">·</span>
+          <button onClick={stepOnce} disabled={thinking} className={`transition-colors ${thinking ? 'text-slate-700' : 'hover:text-amber-200'}`}>
+            {thinking ? '推 演 中 …' : '单 步 ⊲'}
+          </button>
+          <span className="text-slate-700">·</span>
+          <button onClick={togglePlay} className={`transition-colors ${playing ? 'text-amber-200' : 'hover:text-amber-200'}`}>
+            {playing ? '暂 停 ‖' : '演 化 ▶'}
+          </button>
+          <span className="text-slate-700">·</span>
+          <div className="flex items-center gap-2 tracking-[0.18em]" title="选择年度社会决策模型">
+            <span className="text-slate-600">AI</span>
+            {MODEL_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                onClick={() => switchModel(option.id)}
+                className={`border-b px-1 py-0.5 transition-colors ${
+                  modelProvider === option.id
+                    ? 'border-amber-200 text-amber-200'
+                    : 'border-transparent text-slate-600 hover:text-slate-300'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-slate-700">·</span>
+          <button onClick={() => setShowArchive(true)} className="transition-colors hover:text-amber-200" title="浏览人物档案并指定开局阵容">
+            人 物 档 案{roster.length > 0 ? ` · ${roster.length}` : ''}
+          </button>
+          <span className="text-slate-700">·</span>
+          <button onClick={openReplay} className="transition-colors hover:text-amber-200">
+            回 放 ↺
+          </button>
+        </div>
+      )}
+
+      {/* 回放控制条（纯记录回放，零 LLM 消耗） */}
+      {replayTick !== null && (
+        <div className="absolute bottom-5 left-1/2 z-30 flex w-[560px] -translate-x-1/2 items-center gap-4 rounded-full border border-white/10 bg-slate-950/80 px-6 py-3 backdrop-blur-md">
+          <span className="whitespace-nowrap text-[10px] tracking-[0.3em] text-amber-200/80">回放 · 第 {replayTick} 年</span>
+          <input
+            type="range"
+            min={historyList[0]?.year ?? 0}
+            max={historyList.at(-1)?.year ?? 0}
+            value={replayTick}
+            onChange={(e) => seekReplay(Number(e.target.value))}
+            className="h-1 flex-1 cursor-pointer appearance-none rounded bg-white/10 accent-amber-300"
+          />
+          <button onClick={() => reEvolveFrom(replayTick)} className="whitespace-nowrap text-[10px] tracking-[0.2em] text-slate-400 transition-colors hover:text-amber-200">
+            从此年重新演化
+          </button>
+          <button onClick={exitReplay} className="whitespace-nowrap text-[10px] tracking-[0.2em] text-slate-500 transition-colors hover:text-slate-300">
+            退出 ✕
+          </button>
+        </div>
+      )}
+
+      {/* 人物档案 · 原型库与阵容选择 */}
+      {showArchive && (
+        <CharacterArchive
+          roster={roster}
+          inGameIds={new Set(society?.agents.map((a) => a.id) ?? [])}
+          onToggle={toggleRosterPick}
+          onClear={clearRoster}
+          onRestart={restartWithRoster}
+          onClose={() => setShowArchive(false)}
+        />
+      )}
+
+      {/* 文明结算幕 */}
+      {settlement && (
+        <SettlementOverlay key={`${settlement.civ}-${settlement.fate}`} s={settlement} entries={settlementEntries} onContinue={continueGame} />
+      )}
+
+      {/* 开场黑场 */}
+      {!entered && (
+        <div
+          className="absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center bg-[#04050c]"
+          onClick={() => setEntered(true)}
+        >
+          <div className="text-[10rem] font-extralight leading-none tracking-[0.3em] text-slate-100"
+               style={{ writingMode: 'vertical-rl', textShadow: '0 0 60px rgba(148,163,184,0.4)' }}>
+            三體
+          </div>
+          <div className="mt-12 text-xs tracking-[0.8em] text-slate-500">文 明 游 戏 · 原 型</div>
+          <div className="mt-20 animate-pulse text-sm tracking-[0.5em] text-slate-400">点 击 进 入</div>
+        </div>
+      )}
+    </div>
+  );
+}

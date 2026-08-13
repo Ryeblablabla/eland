@@ -1,0 +1,16 @@
+.DS_Store
+.pnpm-store/
+
+**/node_modules/
+**/dist/
+**/dist-server/
+**/.next/
+**/.vite/
+**/.cache/
+
+**/.env
+**/.env.local
+**/.env.*.local
+
+**/*.log
+**/data/runs/

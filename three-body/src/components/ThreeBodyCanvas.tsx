@@ -454,6 +454,7 @@ export default function ThreeBodyCanvas(props: Props) {
           transparent: true,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
+          depthTest: false, // 永远叠在球芯之上：可旋转相机下不存在被球芯遮挡的"日食"
         }),
       );
       glow.renderOrder = 2;
@@ -779,7 +780,7 @@ export default function ThreeBodyCanvas(props: Props) {
         starCores[i].position.set(s[i * 2], s[i * 2 + 1], 0);
         starCores[i].scale.setScalar(px2w(2 + 1.8 * mr));
         starCores[i].rotation.y += starSpins[i] * frameDt;
-        starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0.01);
+        starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0); // 与球芯同心（depthTest 已关，无需偏移）
         // 辉光收敛（原 26+24·∛m 叠 bloom 会让 α A 白成一团）+ 呼吸脉动（相位/频率各异）
         const glowSize = px2w(16 + 13 * mr);
         const breath = 1 + 0.05 * Math.sin(now * 0.0011 * (1 + i * 0.34) + i * 2.1);

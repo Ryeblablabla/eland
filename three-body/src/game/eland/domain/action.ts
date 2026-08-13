@@ -30,6 +30,11 @@ export type SocialProposal =
   | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
   | { kind: 'collective'; proposerId: PersonId; partnerId: PersonId; purposeSummary: string; expiresAtMonth: number }
   | {
+      kind: 'membership'; proposerId: PersonId; partnerId: PersonId;
+      collectiveId: string; candidateId: PersonId; requiredApproverIds: PersonId[];
+      expiresAtMonth: number;
+    }
+  | {
       kind: 'permission'; proposerId: PersonId; partnerId: PersonId;
       collectiveId: string; grantorId: PersonId; granteeId: PersonId;
       materialId: MaterialId; maxQuantityPerTransfer: number;

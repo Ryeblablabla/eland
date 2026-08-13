@@ -25,7 +25,8 @@ export interface DecisionRequestContext {
   activeIntent?: { id: string; summary: string; progress: number; nextActionKind: string };
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
   agreements: Array<{
-    id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number; fulfilledByPersonIds: string[];
+    id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number;
+    requiredResponderIds: string[]; acceptedByPersonIds: string[]; fulfilledByPersonIds: string[];
   }>;
   collectives: Array<{ id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number }>;
   permissions: Array<{ id: string; grantorId: string; granteeId: string; materialId: number; validUntilMonth: number; status: string }>;
@@ -98,7 +99,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       .filter((agreement) => agreement.partyIds.includes(person.id) && (agreement.status === 'proposed' || agreement.status === 'active' || (agreement.resolvedAtMonth ?? -99) >= state.clock.elapsedMonths - 6))
       .sort((a, b) => (b.acceptedAtMonth ?? b.proposedAtMonth) - (a.acceptedAtMonth ?? a.proposedAtMonth))
       .slice(0, 6)
-      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
+      .map((agreement) => ({ id: agreement.id, kind: agreement.proposal.kind, status: agreement.status, partyIds: agreement.partyIds, ...(agreement.dueAtMonth !== undefined ? { dueAtMonth: agreement.dueAtMonth } : {}), requiredResponderIds: agreement.requiredResponderIds, acceptedByPersonIds: agreement.acceptedByPersonIds, fulfilledByPersonIds: agreement.fulfilledByPersonIds })),
     collectives: state.collectives.flatMap((collective) => {
       const own = collective.memberships.find((membership) => membership.personId === person.id && membership.status === 'active');
       return own ? [{

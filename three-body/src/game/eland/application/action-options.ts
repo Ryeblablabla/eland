@@ -783,7 +783,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
       ? { ...option, requiresFollowUp: true }
       : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|permission):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission):/.test(option.id));
   return {
     state,
     person,

@@ -109,6 +109,19 @@ export function openPermissionOfferFor(state: SimulationState, personId: PersonI
   return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
 }
 
+export function openMembershipOfferFor(state: SimulationState, personId: PersonId): { fact: ActionFact; content: Extract<RepresentationInput, { kind: 'offer' }> } | null {
+  const agreement = [...state.agreements].reverse().find((item) => item.status === 'proposed'
+    && item.proposal.kind === 'membership'
+    && item.requiredResponderIds.includes(personId)
+    && !item.acceptedByPersonIds.includes(personId)
+    && !item.rejectedByPersonIds.includes(personId)
+    && item.acceptByMonth >= state.clock.elapsedMonths);
+  if (!agreement) return null;
+  const facts = agreementFacts(state, agreement);
+  if (!facts || facts.proposalFact.action.kind !== 'communicate' || facts.proposalFact.action.content.kind !== 'offer') return null;
+  return { fact: facts.proposalFact, content: facts.proposalFact.action.content };
+}
+
 export function hasOpenAssistRequestBetween(state: SimulationState, requesterId: PersonId, helperId: PersonId): boolean {
   return state.agreements.some((agreement) => agreement.status === 'proposed'
     && agreement.proposal.kind === 'assist'
@@ -130,6 +143,14 @@ export function hasOpenCollectiveOfferBetween(state: SimulationState, proposerId
     && agreement.proposal.kind === 'collective'
     && agreement.proposal.proposerId === proposerId
     && agreement.proposal.partnerId === partnerId
+    && agreement.acceptByMonth >= state.clock.elapsedMonths);
+}
+
+export function hasOpenMembershipOfferFor(state: SimulationState, collectiveId: string, candidateId: PersonId): boolean {
+  return state.agreements.some((agreement) => agreement.status === 'proposed'
+    && agreement.proposal.kind === 'membership'
+    && agreement.proposal.collectiveId === collectiveId
+    && agreement.proposal.candidateId === candidateId
     && agreement.acceptByMonth >= state.clock.elapsedMonths);
 }
 

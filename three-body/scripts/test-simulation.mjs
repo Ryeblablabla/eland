@@ -700,6 +700,43 @@ try {
   assert.equal(collectiveState.permissions[0]?.status, 'revoked', '物质持有者应能通过可追溯沟通撤回未来授权');
   assert.equal(buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id)?.options.some((option) => option.id.startsWith('use-permission:')), false, '许可撤回后不得继续生成合法取用意图');
 
+  const currentFounder = collectiveState.people.find((person) => person.id === founder.id);
+  const currentPartner = collectiveState.people.find((person) => person.id === partner.id);
+  const candidate = collectiveState.people[2];
+  assert.ok(currentFounder && currentPartner && candidate, '第三人入会测试需要两名现有成员和一名候选人');
+  candidate.bornAtMonth = -20 * 12;
+  currentPartner.position.cellId = currentFounder.position.cellId;
+  currentPartner.position.previousCellId = currentFounder.position.cellId;
+  candidate.position.cellId = currentFounder.position.cellId;
+  candidate.position.previousCellId = currentFounder.position.cellId;
+  const candidateAssistId = 'test-candidate-fulfilled-assist';
+  const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: candidate.id, helperId: founder.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [founder.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, candidateRequest);
+  collectiveState.world.past.push(candidateRequest);
+  const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, audience: [candidate.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, candidateAcceptance);
+  collectiveState.world.past.push(candidateAcceptance);
+  const candidateFulfillment = actionFact('test-candidate-assist-fulfillment', collectiveState.clock.elapsedMonths, founder.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: founder.id }, to: { kind: 'person', personId: candidate.id }, authorizationRef: candidateAssistId });
+  recordAgreementAction(collectiveState, candidateFulfillment);
+  collectiveState.world.past.push(candidateFulfillment);
+  const membershipContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const offerMembership = membershipContext?.options.find((option) => option.id.startsWith('offer-membership:')
+    && option.nextAction.kind === 'communicate'
+    && option.nextAction.content.proposal?.kind === 'membership'
+    && option.nextAction.content.proposal.candidateId === candidate.id);
+  assert.ok(offerMembership, `已有共同体应能吸收有合作事实的第三人；options=${JSON.stringify(membershipContext?.options.map((option) => option.id))}`);
+  collectiveState = runRecordOption(collectiveState, founder.id, offerMembership, 'offer-third-membership');
+  const membershipAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'membership');
+  assert.deepEqual(new Set(membershipAgreement?.requiredResponderIds), new Set([partner.id, candidate.id]), '成员扩张必须同时要求所有既有成员和候选人回应');
+  const partnerMembershipResponse = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  collectiveState = runRecordOption(collectiveState, partner.id, partnerMembershipResponse?.options.find((option) => option.id.startsWith('accept-membership:')), 'member-accepts-third');
+  assert.equal(membershipAgreement?.status, 'proposed', '只有一名现有成员同意时，候选人仍不能被自动加入');
+  assert.equal(collective.memberships.some((membership) => membership.personId === candidate.id), false, '候选人亲自同意以前不能产生成员事实');
+  const candidateMembershipResponse = buildDecisionContexts(collectiveState).find((context) => context.person.id === candidate.id);
+  collectiveState = runRecordOption(collectiveState, candidate.id, candidateMembershipResponse?.options.find((option) => option.id.startsWith('accept-membership:')), 'candidate-accepts-membership');
+  assert.equal(collectiveState.agreements.find((agreement) => agreement.id === membershipAgreement?.id)?.status, 'fulfilled', '所有必需回应者同意后，成员扩张协议才算完成');
+  assert.equal(collectiveState.collectives[0]?.memberships.find((membership) => membership.personId === candidate.id)?.status, 'active', '候选人的明确接受应产生可退出、可追溯的成员身份');
+
   const withdrawing = collectiveState.people.find((person) => person.id === founder.id);
   const strainedRelation = withdrawing.relations.find((relation) => relation.personId === partner.id);
   strainedRelation.trust = -20;
@@ -709,7 +746,8 @@ try {
   collectiveState = runRecordOption(collectiveState, founder.id, withdrawal, 'withdraw-collective');
   const updatedCollective = collectiveState.collectives.find((candidate) => candidate.id === collective.id);
   assert.equal(updatedCollective?.memberships.find((membership) => membership.personId === founder.id)?.status, 'withdrawn', '退出沟通必须终止本人的持续成员身份');
-  assert.equal(updatedCollective?.status, 'dormant', '只剩一名成员时共同体应休眠，而不是继续冒充完整组织');
+  assert.equal(updatedCollective?.status, 'active', '三人共同体中一人退出后，剩余两名成员应继续维持共同体');
+  assert.equal(updatedCollective?.memberships.filter((membership) => membership.status === 'active').length, 2, '退出只终止本人的成员身份，不应抹除其他成员');
 
   const repeatedExperimentState = createInitialState(381, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const experimenter = repeatedExperimentState.people[0];

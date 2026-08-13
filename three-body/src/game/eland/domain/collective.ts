@@ -88,6 +88,33 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
       formation.fulfilledByPersonIds = [...formation.partyIds];
       return;
     }
+    const admission = proposalOf(state, content.referenceId, 'membership');
+    if (admission?.proposal.kind === 'membership') {
+      const proposal = admission.proposal;
+      const collective = state.collectives.find((candidate) => candidate.id === proposal.collectiveId);
+      const currentMemberIds = collective ? activeMemberIds(state, collective) : [];
+      const expectedApprovers = new Set([...currentMemberIds.filter((id) => id !== proposal.proposerId), proposal.candidateId]);
+      const proposedApprovers = new Set(proposal.requiredApproverIds);
+      const candidate = state.people.find((person) => person.id === proposal.candidateId && isAlive(person));
+      const valid = Boolean(collective
+        && collective.status === 'active'
+        && activeMembership(collective, proposal.proposerId)
+        && !activeMembership(collective, proposal.candidateId)
+        && candidate
+        && expectedApprovers.size === proposedApprovers.size
+        && [...expectedApprovers].every((id) => proposedApprovers.has(id))
+        && [...expectedApprovers].every((id) => admission.acceptedByPersonIds.includes(id)));
+      if (!valid || !collective) return;
+      const sourceEventIds = [...new Set([...admission.sourceEventIds, fact.id])];
+      collective.memberships.push(membership(collective.id, proposal.candidateId, fact.atMonth, sourceEventIds));
+      collective.sourceEventIds = [...new Set([...collective.sourceEventIds, ...sourceEventIds])];
+      updateStatus(state, collective);
+      admission.status = 'fulfilled';
+      admission.resolvedAtMonth = fact.atMonth;
+      admission.fulfillmentEventIds = [...new Set([...admission.fulfillmentEventIds, fact.id])];
+      admission.fulfilledByPersonIds = [...admission.partyIds];
+      return;
+    }
   }
   if (content.kind !== 'withdraw') return;
   const collective = state.collectives.find((candidate) => candidate.id === content.collectiveId);

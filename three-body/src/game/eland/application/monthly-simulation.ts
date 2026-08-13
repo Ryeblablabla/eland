@@ -187,7 +187,7 @@ function urgency(context: DecisionContext): number {
 }
 
 function hasRequiredSocialResponse(context: DecisionContext): boolean {
-  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|permission):/.test(option.id));
+  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission):/.test(option.id));
 }
 
 function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
@@ -845,6 +845,15 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   state.records ??= [];
   state.collectives ??= [];
   state.permissions ??= [];
+  for (const agreement of state.agreements) {
+    agreement.requiredResponderIds ??= [agreement.responderId];
+    agreement.acceptedByPersonIds ??= agreement.status === 'proposed'
+      ? [agreement.proposerId]
+      : agreement.status === 'rejected'
+        ? [agreement.proposerId]
+        : [...agreement.partyIds];
+    agreement.rejectedByPersonIds ??= agreement.status === 'rejected' ? [agreement.responderId] : [];
+  }
   state.world.grid = hydrateWorld(input.world.grid);
   for (const person of state.people) {
     const start = person.position.previousCellId ?? person.position.cellId;

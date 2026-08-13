@@ -14,6 +14,9 @@ export interface Agreement {
   proposerId: PersonId;
   responderId: PersonId;
   partyIds: PersonId[];
+  requiredResponderIds: PersonId[];
+  acceptedByPersonIds: PersonId[];
+  rejectedByPersonIds: PersonId[];
   status: AgreementStatus;
   proposedAtMonth: number;
   acceptByMonth: number;
@@ -28,15 +31,20 @@ export interface Agreement {
   sourceEventIds: string[];
 }
 
-function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId } {
-  if (proposal.kind === 'assist') return { proposerId: proposal.requesterId, responderId: proposal.helperId };
-  if (proposal.kind === 'exchange') return { proposerId: proposal.offererId, responderId: proposal.partnerId };
-  return { proposerId: proposal.proposerId, responderId: proposal.partnerId };
+function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId; requiredResponderIds: PersonId[] } {
+  if (proposal.kind === 'assist') return { proposerId: proposal.requesterId, responderId: proposal.helperId, requiredResponderIds: [proposal.helperId] };
+  if (proposal.kind === 'exchange') return { proposerId: proposal.offererId, responderId: proposal.partnerId, requiredResponderIds: [proposal.partnerId] };
+  if (proposal.kind === 'membership') return {
+    proposerId: proposal.proposerId,
+    responderId: proposal.partnerId,
+    requiredResponderIds: [...new Set(proposal.requiredApproverIds.filter((id) => id !== proposal.proposerId))],
+  };
+  return { proposerId: proposal.proposerId, responderId: proposal.partnerId, requiredResponderIds: [proposal.partnerId] };
 }
 
 function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'companion') return 24;
-  if (proposal.kind === 'collective' || proposal.kind === 'permission') return 1;
+  if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
   return 4;
@@ -115,6 +123,11 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     const content = action.content;
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal && !agreementById(state, content.id)) {
       const pair = parties(content.proposal);
+      const reachedAudienceIds = Array.isArray(fact.diff.audience)
+        ? fact.diff.audience.filter((id): id is PersonId => typeof id === 'string')
+        : [];
+      if (content.proposal.kind === 'membership'
+        && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
       const intentSources = fact.intentId
         ? state.intents.find((intent) => intent.id === fact.intentId)?.sourceFactIds ?? []
         : [];
@@ -122,7 +135,10 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         id: content.id,
         proposal: structuredClone(content.proposal),
         ...pair,
-        partyIds: [pair.proposerId, pair.responderId],
+        partyIds: [...new Set([pair.proposerId, ...pair.requiredResponderIds])],
+        requiredResponderIds: [...pair.requiredResponderIds],
+        acceptedByPersonIds: [pair.proposerId],
+        rejectedByPersonIds: [],
         status: 'proposed',
         proposedAtMonth: fact.atMonth,
         acceptByMonth: content.proposal.expiresAtMonth,
@@ -136,14 +152,25 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     }
     if (content.kind !== 'accept' && content.kind !== 'reject') return;
     const agreement = agreementById(state, content.referenceId);
-    if (!agreement || agreement.status !== 'proposed' || agreement.responderId !== fact.who || fact.atMonth > agreement.acceptByMonth) return;
-    agreement.status = content.kind === 'accept' ? 'active' : 'rejected';
+    if (!agreement || agreement.status !== 'proposed'
+      || !agreement.requiredResponderIds.includes(fact.who)
+      || agreement.acceptedByPersonIds.includes(fact.who)
+      || agreement.rejectedByPersonIds.includes(fact.who)
+      || fact.atMonth > agreement.acceptByMonth) return;
     agreement.responseEventId = fact.id;
-    agreement.sourceEventIds.push(fact.id);
+    agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
     if (content.kind === 'accept') {
-      agreement.acceptedAtMonth = fact.atMonth;
-      agreement.dueAtMonth = fact.atMonth + duration(agreement.proposal);
-    } else agreement.resolvedAtMonth = fact.atMonth;
+      agreement.acceptedByPersonIds.push(fact.who);
+      if (agreement.requiredResponderIds.every((id) => agreement.acceptedByPersonIds.includes(id))) {
+        agreement.status = 'active';
+        agreement.acceptedAtMonth = fact.atMonth;
+        agreement.dueAtMonth = fact.atMonth + duration(agreement.proposal);
+      }
+    } else {
+      agreement.rejectedByPersonIds.push(fact.who);
+      agreement.status = 'rejected';
+      agreement.resolvedAtMonth = fact.atMonth;
+    }
     return;
   }
 

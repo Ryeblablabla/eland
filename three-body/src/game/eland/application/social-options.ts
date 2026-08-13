@@ -9,9 +9,11 @@ import {
   hasOpenAssistRequestBetween,
   hasOpenCollectiveOfferBetween,
   hasOpenCompanionOfferBetween,
+  hasOpenMembershipOfferFor,
   openAssistRequestFor,
   openCollectiveOfferFor,
   openCompanionOfferFor,
+  openMembershipOfferFor,
   openPermissionOfferFor,
 } from '../domain/social-facts';
 import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
@@ -55,6 +57,47 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
     estimatedDuration: together ? 'one-month' : 'several-months',
     estimatedMonths: together ? 1 : Math.max(1, Math.ceil(distance / 15)),
     risks: [], domain: 'social', sourceFactIds: [],
+  };
+}
+
+function membershipResponseOption(state: SimulationState, person: PersonState, referenceId: string, accept: boolean): ActionOption | null {
+  const agreement = state.agreements.find((candidate) => candidate.id === referenceId && candidate.status === 'proposed' && candidate.proposal.kind === 'membership');
+  if (!agreement || agreement.proposal.kind !== 'membership') return null;
+  const proposal = agreement.proposal;
+  const proposer = state.people.find((candidate) => candidate.id === agreement.proposerId);
+  if (!proposer) return null;
+  const candidate = state.people.find((other) => other.id === proposal.candidateId);
+  const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
+  const joining = proposal.candidateId === person.id;
+  const summary = joining
+    ? `${accept ? '接受' : '拒绝'}加入“${state.collectives.find((collective) => collective.id === proposal.collectiveId)?.purposeSummary ?? '这个共同体'}”`
+    : `${accept ? '同意' : '反对'}${candidate?.name ?? '候选人'}加入共同体`;
+  return {
+    id: `${accept ? 'accept' : 'reject'}-membership:${referenceId}`,
+    summary,
+    reason: '共同体成员扩张需要候选人与所有现有成员分别作出有来源的回应',
+    goal: { kind: 'representation-made', representationId },
+    nextAction: person.position.cellId === proposer.position.cellId ? {
+      kind: 'communicate',
+      content: accept
+        ? { id: representationId, kind: 'accept', referenceId, summary }
+        : { id: representationId, kind: 'reject', referenceId, summary },
+      audience: [proposer.id],
+      channel: 'voice',
+    } : { kind: 'move', toCellId: proposer.position.cellId },
+    ...(person.position.cellId !== proposer.position.cellId ? {
+      completionAction: {
+        kind: 'communicate' as const,
+        content: accept
+          ? { id: representationId, kind: 'accept' as const, referenceId, summary }
+          : { id: representationId, kind: 'reject' as const, referenceId, summary },
+        audience: [proposer.id], channel: 'voice' as const,
+      },
+    } : {}),
+    target: { kind: 'person', personId: proposer.id },
+    estimatedDuration: person.position.cellId === proposer.position.cellId ? 'one-month' : 'several-months',
+    estimatedMonths: person.position.cellId === proposer.position.cellId ? 1 : 2, risks: [], domain: 'social',
+    sourceFactIds: [...agreement.sourceEventIds],
   };
 }
 
@@ -195,6 +238,13 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       options.push({ ...responseOption(state, person, incomingPermission.content.id, grantor, false, 'permission'), sourceFactIds: [incomingPermission.fact.id] });
     }
   }
+  const incomingMembership = openMembershipOfferFor(state, person.id);
+  if (incomingMembership) {
+    const accept = membershipResponseOption(state, person, incomingMembership.content.id, true);
+    const reject = membershipResponseOption(state, person, incomingMembership.content.id, false);
+    if (accept) options.push(accept);
+    if (reject) options.push(reject);
+  }
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
@@ -261,6 +311,38 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
           risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...ownShareable.sourceEventIds],
         });
       }
+    }
+    const allMembersHere = activeMemberIds(state, collective).every((id) => state.people.find((candidate) => candidate.id === id)?.position.cellId === person.position.cellId);
+    const candidate = allMembersHere ? localPeople.find((other) => {
+      if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
+      const relation = relationTo(person, other.id);
+      const fulfilledTogether = state.agreements.some((agreement) => agreement.status === 'fulfilled'
+        && agreement.partyIds.includes(person.id)
+        && agreement.partyIds.includes(other.id)
+        && (agreement.proposal.kind === 'assist' || agreement.proposal.kind === 'exchange' || agreement.proposal.kind === 'companion'));
+      return fulfilledTogether && (relation?.trust ?? 0) >= 6;
+    }) : undefined;
+    if (candidate) {
+      const requiredApproverIds = [...new Set([...activeMemberIds(state, collective).filter((id) => id !== person.id), candidate.id])];
+      const representationId = `offer-membership:${state.clock.elapsedMonths}:${collective.id}:${person.id}:${candidate.id}`;
+      options.push({
+        id: representationId,
+        summary: `邀请${candidate.name}加入已有共同体`,
+        reason: '候选人与发起者已有真实合作；候选人和每位现有成员都在场，可以分别表达同意或反对',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: { id: representationId, kind: 'offer', summary: `我提议让${candidate.name}加入我们的共同体`, proposal: {
+            kind: 'membership', proposerId: person.id, partnerId: candidate.id,
+            collectiveId: collective.id, candidateId: candidate.id, requiredApproverIds,
+            expiresAtMonth: state.clock.elapsedMonths + 6,
+          } },
+          audience: requiredApproverIds,
+          channel: 'voice',
+        },
+        target: { kind: 'person', personId: candidate.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: ['任一现有成员或候选人拒绝，提议都会终止'], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+      });
     }
   }
 

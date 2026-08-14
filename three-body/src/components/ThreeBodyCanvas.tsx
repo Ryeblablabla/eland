@@ -910,15 +910,15 @@ export default function ThreeBodyCanvas(props: Props) {
       focus.hasScreen = projVec.z < 1;
       atmosphere.scale.setScalar(px2w(2.2));
       // 星光方向与亮度实时跟随：强度 ∝ 光度/距离²（归一到宜居基线 fluxBase）。
-      // 恒纪元 ≈1.2 常亮；乱纪元远离时转暗（保底 0.05 不失读），三日凌空时
-      // 迎光面真实过曝（封顶 3.5，刻意保留"被炙烤"的泛光）；大气 rim 指向主恒星
+      // 恒纪元 ≈1.2；远离转暗（保底 0.05）；近日点增亮但封顶 1.55——
+      // 更高会让纹理值越过 1.0 被 sRGB 输出压成白球（纹理"消失"的教训）
       const px = s[PLANET_IDX * 2], py = s[PLANET_IDX * 2 + 1];
       let hostIdx = 0, hostFlux = -1;
       for (let i = 0; i < N_STARS; i++) {
         starLights[i].position.set(s[i * 2], s[i * 2 + 1], 0);
         const d2 = Math.max((s[i * 2] - px) ** 2 + (s[i * 2 + 1] - py) ** 2, 0.0036);
         const flux = Math.pow(w.sys.masses[i], 3.5) / d2 / w.fluxBase;
-        starLights[i].intensity = Math.min(Math.max(1.2 * flux, 0.05), 3.5);
+        starLights[i].intensity = Math.min(Math.max(1.2 * flux, 0.05), 1.55);
         if (flux > hostFlux) { hostFlux = flux; hostIdx = i; }
       }
       atmosphereMat.uniforms.uSunDir.value

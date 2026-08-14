@@ -23,6 +23,7 @@ import {
   inventoryCombinationTechniqueId,
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
+import { shelterGeometryAt } from './structure';
 import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
 
@@ -116,6 +117,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
     return owner ? inventoryQuantity(owner, goal.materialId) >= goal.quantity : false;
   }
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
+  if (goal.kind === 'sheltered') return Boolean(shelterGeometryAt(state.world.grid, person.position));
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId && fact.confidence >= (goal.minConfidence ?? 0)) ?? false;
   if (goal.kind === 'near-person') {

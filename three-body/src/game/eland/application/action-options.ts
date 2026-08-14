@@ -32,6 +32,7 @@ import { compileAgreementContinuations } from './agreement-continuation';
 import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
+import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
 import {
   inventoryNoResponseFactId,
@@ -153,6 +154,27 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
       estimatedDuration: atBank ? 'one-month' : 'several-months',
       sourceFactIds: water.sourceEventIds,
+    });
+  }
+
+  const thermalPressure = person.conditions
+    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+    .sort((a, b) => b.stage - a.stage)[0];
+  const hostileClimate = state.civilization.climate.kind === 'cold'
+    || state.civilization.climate.kind === 'heat'
+    || state.civilization.climate.kind === 'fire';
+  if (thermalPressure || hostileClimate) {
+    const shelter = findReachableShelter(state, person, visible);
+    if (shelter) options.push({
+      id: `shelter:${shelter.structureId}:${shelter.position.cellId}:${shelter.position.z}`,
+      summary: '进入可用住所躲避环境压力',
+      reason: thermalPressure
+        ? `${thermalPressure.kind === 'cold' ? '寒冷' : '炎热'}状态已经影响身体`
+        : `当前${state.civilization.climate.kind === 'cold' ? '寒冷' : state.civilization.climate.kind === 'heat' ? '炎热' : '烈火'}环境会持续消耗身体`,
+      goal: { kind: 'sheltered' },
+      nextAction: { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z },
+      estimatedDuration: shelter.pathLength <= 2 ? 'one-month' : 'several-months',
+      sourceFactIds: shelter.sourceEventIds,
     });
   }
 
@@ -875,5 +897,9 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
       if (seed) return { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: seed.id }, { kind: 'voxel', position: intent.goal.position }] };
     }
   }
-  return intent.nextAction.kind === 'move' && person.position.cellId === intent.nextAction.toCellId ? null : intent.nextAction;
+  return intent.nextAction.kind === 'move'
+    && person.position.cellId === intent.nextAction.toCellId
+    && (intent.nextAction.toZ === undefined || person.position.z === intent.nextAction.toZ)
+    ? null
+    : intent.nextAction;
 }

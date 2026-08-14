@@ -238,6 +238,10 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('try-inventory-combine:')) score += person.driveBias.inquiryCreation * 0.28;
   if (option.id.startsWith('repeat-inventory-combine:')) score += 32 + person.driveBias.inquiryCreation * 0.08;
   if (option.id.startsWith('build:')) score += 22 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 28 : 0);
+  if (option.id.startsWith('shelter:')) {
+    const stage = person.conditions.find((condition) => condition.kind === 'cold' || condition.kind === 'heat')?.stage ?? 0;
+    score += 34 + stage * 24;
+  }
   if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
   if (option.id.startsWith('care:')) score += 48 + person.driveBias.affiliation * 0.4;
   if (option.id.startsWith('accept-reproduce:')) score += 54 + person.driveBias.affiliation * 0.35;

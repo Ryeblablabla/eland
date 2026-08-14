@@ -1083,6 +1083,34 @@ try {
   assert.ok(completedShelter?.interiorPositions.some((position) => position.cellId === shelterState.people[0].position.cellId && position.z === shelterState.people[0].position.z), '住所必须来自人物当前可进入的双格净空与真实头顶覆盖，而不是相邻木板数量');
   assert.equal(completedShelter?.capacity, completedShelter?.interiorPositions.length, '结构容量必须等于真实可站立内部位置数');
   assert.ok(shelterState.derived.milestones.some((milestone) => milestone.id === '20'), '真实连接的多格木板结构才能观察为住所');
+  let shelterUseState = structuredClone(shelterState);
+  const shelterUser = shelterUseState.people.find((person) => person.id === builderId);
+  shelterUseState.civilization.climate = { kind: 'cold', severity: 3, sinceMonth: shelterUseState.clock.elapsedMonths };
+  shelterUseState.civilization.externalClimate = { epoch: 'stable', kind: 'cold', severity: 3 };
+  shelterUser.conditions.push({ id: 'test-shelter-cold', kind: 'cold', stage: 2, sinceMonth: shelterUseState.clock.elapsedMonths, sourceEventIds: ['test-shelter-cold-source'] });
+  shelterUser.body = { health: 80, hydration: 80, nutrition: 80 };
+  const interior = completedShelter.interiorPositions[0];
+  const outsideCandidates = [interior.cellId - 1, interior.cellId + 1, interior.cellId - shelterUseState.world.grid.width, interior.cellId + shelterUseState.world.grid.width]
+    .filter((cell) => cell >= 0 && cell < shelterUseState.world.grid.width * shelterUseState.world.grid.depth);
+  let shelterOption;
+  for (const cell of outsideCandidates) {
+    const z = surfaceStandingZ(shelterUseState, cell);
+    shelterUser.position = { ...shelterUser.position, cellId: cell, z, previousCellId: cell, previousZ: z, lastPath: [cell], tickPath: [cell] };
+    shelterOption = buildDecisionContexts(shelterUseState).find((context) => context.person.id === builderId)?.options.find((option) => option.id.startsWith('shelter:'));
+    if (shelterOption) break;
+  }
+  assert.equal(shelterOption?.goal.kind, 'sheltered', '看见或记得可达住所时，冷热压力应产生入住意图，而不是只保留住所里程碑');
+  shelterUseState.decisionBudget.credits = 0;
+  shelterUseState = stepSimulation(shelterUseState, { decide() { return { kind: 'idle', reason: '二级冷热避险不应依赖模型' }; } });
+  const shelterReflex = shelterUseState.lastStep.find((event) => event.kind === 'action'
+    && event.who === builderId
+    && event.cause === 'survival-reflex'
+    && event.action.kind === 'move'
+    && event.action.toCellId === interior.cellId
+    && event.action.toZ === interior.z);
+  const shelteredUser = shelterUseState.people.find((person) => person.id === builderId);
+  assert.ok(shelterReflex, '二级冷热状态必须用既有 move 原语进入已知住所，不消耗模型决策');
+  assert.ok(shelterUseState.derived.structures.some((structure) => structure.complete && structure.interiorPositions.some((position) => position.cellId === shelteredUser.position.cellId && position.z === shelteredUser.position.z)), '避险移动完成后，人物必须真实站在仍有效的住所内部');
   const stoneBuilder = shelterState.people.find((person) => person.id === builderId);
   stoneBuilder.inventory = [{ id: 'shelter-stone', materialId: 1, quantity: 2, sourceEventIds: ['test-collected-stone'] }];
   const stoneBuildContext = buildDecisionContexts(shelterState).find((context) => context.person.id === builderId);

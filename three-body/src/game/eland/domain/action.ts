@@ -72,6 +72,7 @@ export type FactPredicate =
   | { kind: 'body-at-most'; personId: PersonId; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
   | { kind: 'at-cell'; cellId: number }
+  | { kind: 'sheltered' }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
   | { kind: 'near-person'; personId: PersonId }

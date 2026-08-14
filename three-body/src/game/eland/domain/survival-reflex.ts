@@ -5,6 +5,7 @@ import type { PersonState } from './person';
 import { isInfant } from './dependent-care';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
 import { findReachableWater } from './water-access';
+import { findReachableShelter } from './shelter-access';
 import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
@@ -36,6 +37,14 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
   const cannotTravelAlone = isInfant(state, person, state.clock.elapsedMonths + 1);
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   const starvationMonths = Math.max(0, Math.floor(person.body.nutrition / 1.5) - 6);
+
+  const thermalPressure = person.conditions
+    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+    .sort((a, b) => b.stage - a.stage)[0];
+  if (!cannotTravelAlone && thermalPressure?.stage >= 2 && person.body.hydration >= 25 && person.body.nutrition >= 20) {
+    const shelter = findReachableShelter(state, person);
+    if (shelter) return { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
+  }
 
   if (person.body.hydration < 58) {
     const water = findReachableWater(state, person, cellsInRadius(person.position.cellId, visibleRadius(person)));

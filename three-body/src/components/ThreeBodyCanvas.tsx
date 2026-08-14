@@ -514,14 +514,15 @@ export default function ThreeBodyCanvas(props: Props) {
     }
 
     // ---- 行星：不发光，只反射星光（地球式：受光球芯 + 海面高光 + 独立云层 + 大气边缘光）----
+    // 高光参数按"近距离聚焦观看"标定：窄而弱，避免放大后的塑料感 glare
     const planetTex = makePlanetTextureSet(4242);
     const planetCore = new THREE.Mesh(
       new THREE.SphereGeometry(1, 28, 20),
       new THREE.MeshPhongMaterial({
         map: planetTex.day,
         specularMap: planetTex.spec, // 海面反射星光
-        specular: new THREE.Color('#7d99a6'),
-        shininess: 24,
+        specular: new THREE.Color('#42565f'),
+        shininess: 42,
       }),
     );
     planetCore.rotation.x = 0.15; // 轻微轴倾
@@ -532,7 +533,7 @@ export default function ThreeBodyCanvas(props: Props) {
       new THREE.MeshPhongMaterial({
         map: planetTex.clouds,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.8,
         depthWrite: false,
       }),
     );
@@ -543,7 +544,7 @@ export default function ThreeBodyCanvas(props: Props) {
     const atmosphereMat = new THREE.ShaderMaterial({
       uniforms: {
         uColor: { value: new THREE.Color(PLANET_STYLE.glow) },
-        uPower: { value: 3.2 },
+        uPower: { value: 3.8 }, // 更紧的 rim：放大时不至于糊住昼面
         uSunDir: { value: new THREE.Vector3(0, 0, 1) },
       },
       vertexShader: `
@@ -807,9 +808,10 @@ export default function ThreeBodyCanvas(props: Props) {
         // 行星聚焦：目标跟随行星（行星本身在轨道上运动）
         if (focus.justActivated) {
           focus.justActivated = false;
-          focus.planetR = Math.max(0.02, 2.2 / (Math.min(W, H) / 2 / w.viewR)); // 从等效像素半径起步
+          // 从当前等效像素半径无缝起步（不设下限，避免点击瞬间的尺寸跳变）
+          focus.planetR = 2.2 / (Math.min(W, H) / 2 / w.viewR);
         }
-        focus.planetR += (0.06 - focus.planetR) * 0.06; // 实体化到固定世界半径
+        focus.planetR += (0.06 - focus.planetR) * 0.045; // 实体化到固定世界半径（丝滑）
         if (focus.dove) focus.planetR *= 1.045; // 俯冲过场期间行星迎面放大
         controls.minDistance = focus.planetR * 2.2;
         controls.maxDistance = Math.max(dist * 6, 1);

@@ -407,8 +407,10 @@ try {
   const dialogueActor = dialogueState.people.find((person) => person.id === dialogueIntent?.ownerId);
   const dialogueAudienceId = dialogueIntent?.openingAction?.kind === 'communicate' ? dialogueIntent.openingAction.audience[0] : undefined;
   const audienceRelation = dialogueState.people.find((person) => person.id === dialogueAudienceId)?.relations.find((relation) => relation.personId === dialogueActor?.id);
-  assert.equal(audienceRelation?.trust, 0, '说话本身不能成为信任证据');
-  assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通只应形成带事件来源的熟悉度');
+  assert.equal(dialogueIntentActions[0]?.diff.declarationEventId, undefined, '说话本身不能成为履约或信任证据');
+  assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通应形成带事件来源的熟悉度');
+  const witnessedFollowUp = dialogueIntentActions.find((event, index) => index > 0 && event.status === 'completed' && Array.isArray(event.diff.declarationWitnessedBy) && event.diff.declarationWitnessedBy.includes(dialogueAudienceId));
+  if (witnessedFollowUp) assert.ok((audienceRelation?.trust ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(witnessedFollowUp.id), '听者亲眼见到同一意图的后续行动完成后，才应形成说到做到的定向信任');
   const dialogueListener = dialogueState.people.find((person) => person.id === dialogueAudienceId);
   assert.ok(dialogueListener?.knowledge.every((fact) => !fact.id.startsWith('claim:')), '没有结构化事实引用的自然语言不得污染知识库');
 
@@ -429,7 +431,7 @@ try {
   assert.ok(groundedContext && groundedTalk?.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '普通对话有可分享认识时必须绑定其事实身份与来源，不能只生成空泛话语');
   const groundedPromptOption = buildDecisionRequestContext(groundedContext).options.find((option) => option.id === groundedTalk.id);
   assert.equal(groundedPromptOption?.communicatesFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
-  const groundedFollowUp = groundedContext.followUpOptions[0];
+  const groundedFollowUp = groundedContext.followUpOptions.find((option) => option.nextAction.kind === 'attend') ?? groundedContext.followUpOptions[0];
   assert.ok(groundedFollowUp, '有来源对话仍须绑定同次决策中的真实后续行动');
   groundedDialogueState.decisionBudget.credits = groundedDialogueState.people.length;
   groundedDialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
@@ -444,6 +446,10 @@ try {
   const heardFact = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.knowledge.find((fact) => fact.id === groundedFact.id);
   assert.equal(heardFact?.summary, groundedFact.summary, '自然语言措辞不能覆盖结构化认识的规范摘要');
   assert.ok((heardFact?.confidence ?? 100) < 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '听者获得的是有沟通来源但尚未核验的主张，不是凭对话变成客观真理');
+  const groundedIntent = groundedAfterTalk.intents.find((intent) => intent.ownerId === groundedSpeaker.id && intent.openingAction?.kind === 'communicate');
+  const groundedFulfillment = groundedAfterTalk.world.past.find((event) => event.kind === 'action' && event.id === groundedIntent?.declarationFulfilledAtEventId);
+  const groundedRelation = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.relations.find((relation) => relation.personId === groundedSpeaker.id);
+  assert.ok(groundedFulfillment && (groundedRelation?.trust ?? 0) > 0 && groundedRelation?.sourceEventIds.includes(groundedFulfillment.id), '有来源对话后的真实行动被听者亲眼见证时，应闭合为可追溯的说到做到证据');
 
   let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const harvester = harvestState.people[0];

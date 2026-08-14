@@ -24,6 +24,7 @@ import {
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
 import { recordInteractionFailureKnowledge } from './interaction-knowledge';
+import { recordWitnessedDeclarationFulfillment } from './declaration';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -809,6 +810,7 @@ export function executePrimitiveAction(
   recordGovernanceAction(state, fact);
   recordPermissionAction(state, fact);
   recordInteractionFailureKnowledge(state, fact);
+  recordWitnessedDeclarationFulfillment(state, fact);
   rememberAction(state, fact);
   return fact;
 }

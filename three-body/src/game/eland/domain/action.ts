@@ -88,6 +88,7 @@ export interface Intent {
   goal: FactPredicate;
   openingAction?: PrimitiveAction;
   openingActionCompleted?: boolean;
+  declarationFulfilledAtEventId?: string;
   nextAction: PrimitiveAction;
   completionAction?: PrimitiveAction;
   target?: WorldRef;

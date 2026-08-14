@@ -21,6 +21,7 @@ import {
   inventoryCombinationSummary,
   inventoryCombinationTechniqueId,
 } from './interaction-rules';
+import { rememberMaterialPlace } from './spatial-knowledge';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -266,7 +267,7 @@ function consumeStack(person: PersonState, stack: ItemStack): { materialId: Mate
   return { materialId: definition.id, nutrition, hydration, health };
 }
 
-function executeIngest(state: SimulationState, person: PersonState, targets: WorldRef[]) {
+function executeIngest(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
   const target = targets[0];
   if (!target) return { status: 'failed' as const, result: '没有摄入对象', diff: {} };
   if (target.kind === 'inventory-stack') {
@@ -283,6 +284,7 @@ function executeIngest(state: SimulationState, person: PersonState, targets: Wor
     person.body.hydration = clamp(person.body.hydration + (consumed.hydration ?? 0));
     person.body.nutrition = clamp(person.body.nutrition + (consumed.nutrition ?? 0));
     person.body.health = clamp(person.body.health + (consumed.health ?? 0));
+    rememberMaterialPlace(person, materialId, target.position, atMonth, eventId);
     return { status: 'completed' as const, result: `从地表摄入了${materialDefinition(materialId).name}`, diff: { materialId, ...consumed } };
   }
   return { status: 'blocked' as const, result: '这个对象不能被摄入', diff: {} };
@@ -565,7 +567,7 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
 }
 
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
-  if (action.operation === 'ingest') return executeIngest(state, person, action.targets);
+  if (action.operation === 'ingest') return executeIngest(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'exert') return executeExert(state, person, action, atMonth, eventId);
@@ -630,6 +632,7 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
   if (action.target.kind === 'voxel') {
     const attendedPosition = action.target.position;
     const materialId = voxelAt(state.world.grid, attendedPosition.x, attendedPosition.y, attendedPosition.z);
+    if (materialId !== Material.Air) rememberMaterialPlace(person, materialId, attendedPosition, atMonth, eventId);
     const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
       const source = state.world.past.find((event) => event.id === sourceId);
       if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;

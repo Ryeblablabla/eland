@@ -245,7 +245,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
       recognition: 35 + Math.floor(deterministicFraction(state.seed, `${id}:recognition`) * 45),
       inquiryCreation: 35 + Math.floor(deterministicFraction(state.seed, `${id}:inquiry`) * 50),
     },
-    conditions: [], inventory: [], knowledge: [], memories: [],
+    conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
     relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
   };

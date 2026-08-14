@@ -32,6 +32,15 @@ export interface KnownFact {
   sourceEventIds: string[];
 }
 
+export interface KnownPlace {
+  id: string;
+  materialId: MaterialId;
+  position: { x: number; y: number; z: number };
+  learnedAtMonth: number;
+  lastConfirmedAtMonth: number;
+  sourceEventIds: string[];
+}
+
 export interface DirectedRelation {
   personId: PersonId;
   trust: number;
@@ -88,6 +97,8 @@ export interface PersonState {
   conditions: ConditionInstance[];
   inventory: ItemStack[];
   knowledge: KnownFact[];
+  /** 亲眼确认或亲自使用过的有限物质地点；不是全知地图。 */
+  knownPlaces: KnownPlace[];
   relations: DirectedRelation[];
   memories: MemoryRecord[];
   activeIntentId?: string;

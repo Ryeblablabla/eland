@@ -4,22 +4,11 @@ import type { DropState, SimulationState } from './model';
 import type { PersonState } from './person';
 import { isInfant } from './dependent-care';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
+import { findReachableWater } from './water-access';
 import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
   return 4 + Math.floor(person.baselineCapacities.perception / 25);
-}
-
-function reachableWater(state: SimulationState, person: PersonState): { waterCell: number; bankCell: number; pathLength: number } | null {
-  const candidates: Array<{ waterCell: number; bankCell: number; pathLength: number }> = [];
-  for (const waterCell of cellsInRadius(person.position.cellId, visibleRadius(person))) {
-    if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) continue;
-    for (const bankCell of neighbors4(waterCell).filter((cell) => isPassable(state.world.grid, cell))) {
-      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
-      if (path.length) candidates.push({ waterCell, bankCell, pathLength: path.length });
-    }
-  }
-  return candidates.sort((a, b) => a.pathLength - b.pathLength || a.waterCell - b.waterCell)[0] ?? null;
 }
 
 function reachableFood(state: SimulationState, person: PersonState): DropState | null {
@@ -49,13 +38,14 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
   const starvationMonths = Math.max(0, Math.floor(person.body.nutrition / 1.5) - 6);
 
   if (person.body.hydration < 58) {
-    const water = reachableWater(state, person);
+    const water = findReachableWater(state, person, cellsInRadius(person.position.cellId, visibleRadius(person)));
     const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
     const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
-    if (water && (person.position.cellId === water.bankCell || (!cannotTravelAlone && (waterTravelMonths <= dehydrationMonths || person.body.hydration < 32)))) {
-      return person.position.cellId === water.bankCell
-        ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
-        : { kind: 'move', toCellId: water.bankCell };
+    const atBank = water && person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z;
+    if (water && (atBank || (!cannotTravelAlone && (waterTravelMonths <= dehydrationMonths || person.body.hydration < 32)))) {
+      return atBank
+        ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
+        : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
     }
   }
   if (food && person.body.nutrition < 52) {

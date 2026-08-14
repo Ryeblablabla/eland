@@ -2,7 +2,7 @@ import type { ActionOption } from '../domain/action';
 import type { SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 import { inventoryQuantity, sameLocation } from '../domain/person';
-import { Material, materialDefinition, materialHas } from '../domain/material';
+import { materialDefinition, materialHas } from '../domain/material';
 import {
   acceptedAssistFor,
   acceptedCompanionBetween,
@@ -16,27 +16,20 @@ import {
   openMembershipOfferFor,
   openPermissionOfferFor,
 } from '../domain/social-facts';
-import { cellsInRadius, findStandingPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
+import { cellsInRadius, findStandingPath } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
 import { activePermissionsFor } from '../domain/permission';
+import { findReachableWater } from '../domain/water-access';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
 }
 
-function reachableWaterBank(state: SimulationState, person: PersonState): { waterCell: number; bankCell: number; pathLength: number } | null {
+function reachableWater(state: SimulationState, person: PersonState) {
   const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
-  const candidates = cellsInRadius(person.position.cellId, radius).flatMap((waterCell) => {
-    if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) return [];
-    return neighbors4(waterCell).flatMap((bankCell) => {
-      if (!isPassable(state.world.grid, bankCell)) return [];
-      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
-      return path.length ? [{ waterCell, bankCell, pathLength: path.length }] : [];
-    });
-  });
-  return candidates.sort((a, b) => a.pathLength - b.pathLength || a.waterCell - b.waterCell)[0] ?? null;
+  return findReachableWater(state, person, cellsInRadius(person.position.cellId, radius));
 }
 
 function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission'): ActionOption {
@@ -142,7 +135,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       && event.action.to.personId === requester?.id);
     if (requester && !alreadyHelped) {
       const food = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
-      const water = acceptedAssist.proposal.need === 'water' ? reachableWaterBank(state, person) : null;
+      const water = acceptedAssist.proposal.need === 'water' ? reachableWater(state, person) : null;
       if (acceptedAssist.proposal.need === 'food' && food && sameLocation(requester, person)) options.push({
         id: `fulfill-assist:${acceptedAssist.request.id}`,
         summary: `履行承诺，把食物交给${requester.name}`,
@@ -160,16 +153,16 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
       });
       else if (water) {
-        const alreadyAtWater = water.bankCell === person.position.cellId;
+        const alreadyAtWater = water.bankPosition.cellId === person.position.cellId && water.bankPosition.z === person.position.z;
         const representationId = `show-water:${acceptedAssist.request.id}:${person.id}`;
         options.push({
           id: `fulfill-assist:${acceptedAssist.request.id}`,
           summary: alreadyAtWater ? `向${requester.name}指出身边的水` : `带${requester.name}去附近水边`,
           reason: '已经接受寻找水的求助，附近存在可达水源',
-          goal: alreadyAtWater ? { kind: 'representation-made', representationId } : { kind: 'at-cell', cellId: water.bankCell },
+          goal: alreadyAtWater ? { kind: 'representation-made', representationId } : { kind: 'at-cell', cellId: water.bankPosition.cellId },
           nextAction: alreadyAtWater
             ? { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: '水就在我们身边，可以在这里饮用' }, audience: [requester.id], channel: 'voice' }
-            : { kind: 'move', toCellId: water.bankCell },
+            : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
           target: { kind: 'person', personId: requester.id },
           estimatedDuration: water.pathLength <= RULE_ACTION_TICKS_PER_MONTH ? 'one-month' : 'several-months',
           estimatedMonths: Math.max(1, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)),

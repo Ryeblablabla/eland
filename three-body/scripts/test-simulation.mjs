@@ -11,6 +11,7 @@ const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const decisionBundlePath = path.join(temporaryDirectory, 'decision-context.mjs');
 const intentBundlePath = path.join(temporaryDirectory, 'intent.mjs');
 const memoryBundlePath = path.join(temporaryDirectory, 'memory.mjs');
+const waterAccessBundlePath = path.join(temporaryDirectory, 'water-access.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -28,11 +29,15 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/memory.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${memoryBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/water-access.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${waterAccessBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
   const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
   const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
+  const { findReachableWater } = await import(`${pathToFileURL(waterAccessBundlePath).href}?test=${Date.now()}`);
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
     person.position.z = other.position.z;
@@ -458,7 +463,7 @@ try {
   assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'transfer' && event.diff.materialId === 21 && event.action.to.kind === 'person' && event.action.to.personId === survivalHarvester.id), '分离出的食物必须先通过 transfer 进入本人的私有背包');
   assert.ok(emergencyFoodActions.some((event) => event.action.kind === 'act' && event.action.operation === 'ingest' && event.diff.materialId === 21), '进入私有背包后才可由同一人物摄入，不能直接从观察标签恢复营养');
 
-  let hydrationReflexState = createInitialState(342, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  let hydrationReflexState = createInitialState(342, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
   const thirsty = hydrationReflexState.people[0];
   thirsty.bornAtMonth = -20 * 12;
   thirsty.body.hydration = 50;
@@ -478,6 +483,39 @@ try {
     && event.action.operation === 'ingest'
     && event.diff.materialId === 7);
   assert.ok(timelyDrink, '水分低于维护阈值且水源能在脱水余量内到达时，应立即饮水而不是拖到极度脱水');
+  const returningPerson = hydrationReflexState.people.find((person) => person.id === thirsty.id);
+  const rememberedWater = returningPerson.knownPlaces.find((place) => place.materialId === 7);
+  assert.ok(rememberedWater && rememberedWater.sourceEventIds.includes(timelyDrink.id), '亲自饮用后必须记住有行动来源的水体素位置');
+  let remotePosition = null;
+  for (let cell = 0; cell < hydrationReflexState.world.grid.width * hydrationReflexState.world.grid.depth; cell += 1) {
+    const z = surfaceStandingZ(hydrationReflexState, cell);
+    returningPerson.position.cellId = cell;
+    returningPerson.position.z = z;
+    const access = findReachableWater(hydrationReflexState, returningPerson);
+    if (access?.remembered && access.pathLength > 10) {
+      remotePosition = { cellId: cell, z, bankPosition: access.bankPosition };
+      break;
+    }
+  }
+  assert.ok(remotePosition, '测试世界中应存在离开水源视野但仍与已知岸边连通的位置');
+  returningPerson.position = { ...returningPerson.position, cellId: remotePosition.cellId, z: remotePosition.z, previousCellId: remotePosition.cellId, previousZ: remotePosition.z, lastPath: [remotePosition.cellId], tickPath: [remotePosition.cellId] };
+  returningPerson.body.hydration = 30;
+  hydrationReflexState.decisionBudget.credits = 0;
+  hydrationReflexState = stepSimulation(hydrationReflexState, { decide() { return { kind: 'idle', reason: '已知水源返程不应依赖模型' }; } });
+  const returnToKnownWater = hydrationReflexState.lastStep.find((event) => event.kind === 'action'
+    && event.who === thirsty.id
+    && event.cause === 'survival-reflex'
+    && event.action.kind === 'move'
+    && event.action.toCellId === remotePosition.bankPosition.cellId
+    && event.action.toZ === remotePosition.bankPosition.z);
+  assert.ok(returnToKnownWater, '水源离开当前视野后，危急生存反射仍应沿有限地点记忆返回，而不是原地失忆');
+  const personAfterReturn = hydrationReflexState.people.find((person) => person.id === thirsty.id);
+  for (const place of personAfterReturn.knownPlaces.filter((candidate) => candidate.materialId === 7)) {
+    const rememberedWaterIndex = place.position.z * hydrationReflexState.world.grid.width * hydrationReflexState.world.grid.depth
+      + place.position.y * hydrationReflexState.world.grid.width + place.position.x;
+    hydrationReflexState.world.grid.voxels[rememberedWaterIndex] = 0;
+  }
+  assert.equal(findReachableWater(hydrationReflexState, personAfterReturn, []), null, '记忆地点的物质消失后不得继续把旧坐标当作水源');
 
   const tentativeTechniqueState = createInitialState(35, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });

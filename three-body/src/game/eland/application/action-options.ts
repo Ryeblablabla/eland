@@ -31,6 +31,7 @@ import {
 import { compileAgreementContinuations } from './agreement-continuation';
 import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
+import { findReachableWater } from '../domain/water-access';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -42,19 +43,6 @@ export function visibleRadius(person: PersonState): number {
 
 export function visibleCellsFor(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, visibleRadius(person));
-}
-
-function nearestWaterBank(state: SimulationState, person: PersonState, visible: Set<number>): { waterCell: number; bankCell: number } | null {
-  const candidates: Array<{ waterCell: number; bankCell: number; distance: number }> = [];
-  for (const waterCell of visible) {
-    if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) continue;
-    for (const bankCell of neighbors4(waterCell)) {
-      if (!isPassable(state.world.grid, bankCell)) continue;
-      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
-      if (path.length) candidates.push({ waterCell, bankCell, distance: path.length });
-    }
-  }
-  return candidates.sort((a, b) => a.distance - b.distance || a.waterCell - b.waterCell)[0] ?? null;
 }
 
 function actionForDrop(person: PersonState, drop: DropState): PrimitiveAction {
@@ -146,19 +134,19 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: foodStack.sourceEventIds,
   });
 
-  const water = nearestWaterBank(state, person, visible);
+  const water = findReachableWater(state, person, visible);
   if (water && person.body.hydration < 90) {
-    const position = topPosition(state.world.grid, water.waterCell);
+    const atBank = person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z;
     options.push({
-      id: `drink:${water.waterCell}`,
+      id: `drink:${water.waterPosition.x}:${water.waterPosition.y}:${water.waterPosition.z}`,
       summary: '接近并饮用地表水',
-      reason: '看见邻近地表水',
+      reason: water.remembered ? '记得一处仍存在且可以走到的水源' : '看见邻近地表水',
       goal: { kind: 'body-at-least', field: 'hydration', value: Math.min(100, person.body.hydration + 45) },
-      nextAction: person.position.cellId === water.bankCell
-        ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position }] }
-        : { kind: 'move', toCellId: water.bankCell },
-      estimatedDuration: person.position.cellId === water.bankCell ? 'one-month' : 'several-months',
-      sourceFactIds: [],
+      nextAction: atBank
+        ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
+        : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
+      estimatedDuration: atBank ? 'one-month' : 'several-months',
+      sourceFactIds: water.sourceEventIds,
     });
   }
 
@@ -844,11 +832,11 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     }
   }
   if (intent.goal.kind === 'body-at-least' && intent.goal.field === 'hydration') {
-    const water = nearestWaterBank(state, person, new Set(visibleCellsFor(person)));
+    const water = findReachableWater(state, person, visibleCellsFor(person));
     if (!water) return null;
-    return person.position.cellId === water.bankCell
-      ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, water.waterCell) }] }
-      : { kind: 'move', toCellId: water.bankCell };
+    return person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z
+      ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
+      : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
   }
   if (intent.goal.kind === 'voxel-is' && intent.nextAction.kind === 'move') {
     const targetCell = intent.goal.position.x + intent.goal.position.y * state.world.grid.width;

@@ -129,6 +129,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     conditions: [],
     inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
     knowledge: [],
+    knownPlaces: [],
     memories: [],
     relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
       personId: other.id,
@@ -883,6 +884,7 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
     drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
   }
   for (const person of state.people) {
+    person.knownPlaces ??= [];
     const start = person.position.previousCellId ?? person.position.cellId;
     const migratedPosition = surfaceStandingPosition(state.world.grid, person.position.cellId);
     person.position.z = Number.isInteger(person.position.z) ? person.position.z : migratedPosition?.z ?? Math.min(state.world.grid.levels - 2, Math.max(1, topZ(state.world.grid, person.position.cellId) + 1));

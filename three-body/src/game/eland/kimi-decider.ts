@@ -18,6 +18,7 @@ export interface DecisionRequestContext {
     position: { cellId: number; z: number };
     inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
+    knownPlaces: Array<{ materialId: number; name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     memories: ReturnType<typeof projectMemories>;
   };
   clock: { elapsedMonths: number };
@@ -86,6 +87,10 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         return { stackId: stack.id, materialId: stack.materialId, name: material.name, properties: [...material.tags], quantity: stack.quantity };
       }),
       knowledge: person.knowledge.sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(({ id, summary, confidence }) => ({ id, summary, confidence })),
+      knownPlaces: [...person.knownPlaces]
+        .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
+        .slice(0, 8)
+        .map(({ materialId, position, lastConfirmedAtMonth }) => ({ materialId, name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
       memories: projectMemories(person, state.clock.elapsedMonths),
     },
     clock: { elapsedMonths: state.clock.elapsedMonths },

@@ -1,8 +1,9 @@
 import type { PrimitiveAction } from './action';
-import { Material, materialHas } from './material';
+import { materialHas } from './material';
 import type { DropState, SimulationState } from './model';
 import { ageMonths, isAlive, sameLocation, type PersonState } from './person';
-import { cellsInRadius, findStandingPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
+import { findReachableWater } from './water-access';
+import { cellsInRadius, findStandingPath } from '../world/grid';
 
 const INFANT_MONTHS = 3 * 12;
 const DEPENDENT_MONTHS = 12 * 12;
@@ -18,18 +19,6 @@ function youngDependents(state: SimulationState, caregiver: PersonState): Person
       && ageMonths(candidate, state.clock.elapsedMonths + 1) < DEPENDENT_MONTHS
       && sameLocation(candidate, caregiver))
     .sort((a, b) => Math.min(a.body.hydration, a.body.nutrition) - Math.min(b.body.hydration, b.body.nutrition) || a.id.localeCompare(b.id));
-}
-
-function nearestWaterBank(state: SimulationState, caregiver: PersonState): { bankCell: number; pathLength: number } | null {
-  const candidates = cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver)).flatMap((waterCell) => {
-    if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) return [];
-    return neighbors4(waterCell).flatMap((bankCell) => {
-      if (!isPassable(state.world.grid, bankCell)) return [];
-      const path = findStandingPath(state.world.grid, caregiver.position, { cellId: bankCell });
-      return path.length ? [{ bankCell, pathLength: path.length }] : [];
-    });
-  });
-  return candidates.sort((a, b) => a.pathLength - b.pathLength || a.bankCell - b.bankCell)[0] ?? null;
 }
 
 function nearestFood(state: SimulationState, caregiver: PersonState): DropState | null {
@@ -48,8 +37,10 @@ export function chooseDependentCareReflex(state: SimulationState, caregiver: Per
   const requiresCarrying = isInfant(state, dependent, state.clock.elapsedMonths + 1);
 
   if (requiresCarrying && dependent.body.hydration < 40) {
-    const water = nearestWaterBank(state, caregiver);
-    if (water && caregiver.position.cellId !== water.bankCell) return { kind: 'move', toCellId: water.bankCell };
+    const water = findReachableWater(state, caregiver, cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver)));
+    if (water && (caregiver.position.cellId !== water.bankPosition.cellId || caregiver.position.z !== water.bankPosition.z)) {
+      return { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+    }
   }
 
   if (dependent.body.nutrition < 40) {

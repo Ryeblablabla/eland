@@ -90,7 +90,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         const material = materialDefinition(stack.materialId);
         return { stackId: stack.id, materialId: stack.materialId, name: material.name, properties: [...material.tags], quantity: stack.quantity };
       }),
-      knowledge: person.knowledge.sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(({ id, summary, confidence }) => ({ id, summary, confidence })),
+      knowledge: [...person.knowledge].sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(({ id, summary, confidence }) => ({ id, summary, confidence })),
       knownPlaces: [...person.knownPlaces]
         .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
         .slice(0, 8)

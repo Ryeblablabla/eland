@@ -704,6 +704,35 @@ try {
     state.decisionBudget.credits = 0;
     return stepSimulation(state, { decide() { return { kind: 'idle', reason: '不干扰记录链测试' }; } });
   };
+
+  let failedExperimentState = createInitialState(391, { endpoint: { kind: 'months', value: 20 }, chaosIntensity: 0 });
+  const experimenterId = failedExperimentState.people[0].id;
+  failedExperimentState.people[0].bornAtMonth = -20 * 12;
+  failedExperimentState.people[0].inventory = [
+    { id: 'failed-trial-wood', materialId: 13, quantity: 2, sourceEventIds: [] },
+    { id: 'failed-trial-fiber', materialId: 20, quantity: 2, sourceEventIds: [] },
+  ];
+  const failedCombinationOption = () => buildDecisionContexts(failedExperimentState)
+    .find((context) => context.person.id === experimenterId)?.options
+    .find((option) => option.nextAction.kind === 'act'
+      && option.nextAction.operation === 'combine'
+      && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-wood')
+      && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-fiber'));
+  failedExperimentState = runRecordOption(failedExperimentState, experimenterId, failedCombinationOption(), 'first-failed-material-experiment');
+  const negativeFactId = 'observation:no-response:combine-inventory:13+20';
+  assert.equal(failedExperimentState.people[0].knowledge.find((fact) => fact.id === negativeFactId)?.confidence, 46, '一次真实失败只应形成暂定的负面观察');
+  failedExperimentState.clock.elapsedMonths += 7;
+  assert.ok(failedCombinationOption(), '单次失败不足以把一种材料组合认定为无响应');
+  failedExperimentState = runRecordOption(failedExperimentState, experimenterId, failedCombinationOption(), 'repeat-failed-material-experiment');
+  const negativeFact = failedExperimentState.people[0].knowledge.find((fact) => fact.id === negativeFactId);
+  assert.equal(negativeFact?.confidence, 64, '同一人物重复得到相同无响应结果后应提高负面观察置信度');
+  assert.equal(negativeFact?.sourceEventIds.length, 2, '负面知识必须保留每次实际尝试的事件来源');
+  assert.equal(failedCombinationOption(), undefined, '可靠的负面经验应阻止人物无限重复完全相同的无效组合');
+  assert.ok(buildDecisionContexts(failedExperimentState).find((context) => context.person.id === experimenterId)?.options
+    .some((option) => option.nextAction.kind === 'act'
+      && option.nextAction.operation === 'combine'
+      && option.nextAction.targets.filter((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-fiber').length === 2), '排除一个已证伪组合不能关闭仍可能成功的其他材料实验');
+
   let recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
   const carveOption = recordContext?.options.find((option) => option.id.startsWith('try-exert:') && option.nextAction.kind === 'act'
     && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'record-wood'));

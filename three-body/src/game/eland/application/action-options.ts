@@ -33,6 +33,11 @@ import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
 import { mandateById } from '../domain/governance';
+import {
+  inventoryNoResponseFactId,
+  knowsReliableNoResponse,
+  voxelNoResponseFactId,
+} from '../domain/interaction-knowledge';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -203,6 +208,8 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     }
   }
   for (const { first, second } of inventoryTrials
+    .filter(({ first, second }) => inventoryCombinationFor([first.materialId, second.materialId])
+      || !knowsReliableNoResponse(person, inventoryNoResponseFactId([first.materialId, second.materialId])))
     .sort((a, b) => seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${a.first.materialId}:${a.second.materialId}`)
       - seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${b.first.materialId}:${b.second.materialId}`))
     .slice(0, 3)) {
@@ -348,11 +355,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const learnedTargetMaterials = new Set(person.knowledge
       .filter((fact) => fact.kind === 'technique' && fact.id.startsWith(`technique:combine:${Material.Seed}:`))
       .map((fact) => Number(fact.id.split(':')[3])));
-    const candidates = [...candidateSurfaces].sort(([materialA, cellA], [materialB, cellB]) => {
-      const learnedA = learnedTargetMaterials.has(materialA) ? 1 : 0;
-      const learnedB = learnedTargetMaterials.has(materialB) ? 1 : 0;
-      return learnedB - learnedA || distance(person.position.cellId, cellA) - distance(person.position.cellId, cellB) || materialA - materialB;
-    }).slice(0, 3);
+    const candidates = [...candidateSurfaces]
+      .filter(([materialId]) => learnedTargetMaterials.has(materialId)
+        || !knowsReliableNoResponse(person, voxelNoResponseFactId('combine', Material.Seed, materialId)))
+      .sort(([materialA, cellA], [materialB, cellB]) => {
+        const learnedA = learnedTargetMaterials.has(materialA) ? 1 : 0;
+        const learnedB = learnedTargetMaterials.has(materialB) ? 1 : 0;
+        return learnedB - learnedA || distance(person.position.cellId, cellA) - distance(person.position.cellId, cellB) || materialA - materialB;
+      }).slice(0, 3);
     for (const [targetMaterial, soilCell] of candidates) {
       const position = topPosition(state.world.grid, soilCell);
       const technique = person.knowledge.find((fact) => fact.id === `technique:combine:${Material.Seed}:${targetMaterial}:${Material.CropSprout}`);
@@ -625,16 +635,20 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
-  const teachable = person.knowledge.find((fact) => (fact.kind === 'technique' || fact.kind === 'codebook')
-    && fact.confidence >= 55
-    && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)));
-  const learner = teachable ? localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55)) : undefined;
-  if (teachable && learner) {
+  const knowledgePriority = (kind: PersonState['knowledge'][number]['kind']) => kind === 'codebook' ? 3 : kind === 'technique' ? 2 : 1;
+  const teachableFacts = person.knowledge
+    .filter((fact) => fact.confidence >= 55
+      && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
+    .sort((a, b) => knowledgePriority(b.kind) - knowledgePriority(a.kind) || b.confidence - a.confidence || a.id.localeCompare(b.id))
+    .slice(0, 3);
+  for (const teachable of teachableFacts) {
+    const learner = localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55));
+    if (!learner) continue;
     const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
     options.push({
       id: representationId,
-      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : `向${learner.name}表达一项已知技术`,
-      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : '自己掌握的物质操作尚未被身边人知道',
+      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : teachable.kind === 'technique' ? `向${learner.name}表达一项已知技术` : `向${learner.name}表达一项已核验观察`,
+      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : teachable.kind === 'technique' ? '自己掌握的物质操作尚未被身边人知道' : '自己反复确认的观察尚未被身边人知道',
       goal: { kind: 'knowledge', factId: teachable.id, minConfidence: 55, personId: learner.id },
       nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' },
       target: { kind: 'person', personId: learner.id },

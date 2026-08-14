@@ -23,6 +23,7 @@ import {
   inventoryCombinationTechniqueId,
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
+import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -807,6 +808,7 @@ export function executePrimitiveAction(
   recordCollectiveAction(state, fact);
   recordGovernanceAction(state, fact);
   recordPermissionAction(state, fact);
+  recordInteractionFailureKnowledge(state, fact);
   rememberAction(state, fact);
   return fact;
 }

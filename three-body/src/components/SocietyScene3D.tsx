@@ -21,6 +21,7 @@ interface Props {
   speaker: string | null;
   selectedAgentId: string | null;
   onSelectAgent: (id: string | null) => void;
+  onZoomOutRequest?: () => void; // 滚轮持续缩小越过上限 → 请求升起返回宇宙
 }
 
 const CELL_H = 0.3; // 每层体素的视觉高度（世界单位）
@@ -147,14 +148,14 @@ function disposeFigure(f: FigureParts): void {
   });
 }
 
-export default function SocietyScene3D({ society, era, speaker, selectedAgentId, onSelectAgent }: Props) {
+export default function SocietyScene3D({ society, era, speaker, selectedAgentId, onSelectAgent, onZoomOutRequest }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const [selectedCell, setSelectedCell] = useState<number | null>(null);
-  const propsRef = useRef({ society, era, speaker, selectedAgentId, onSelectAgent });
+  const propsRef = useRef({ society, era, speaker, selectedAgentId, onSelectAgent, onZoomOutRequest });
   useEffect(() => {
-    propsRef.current = { society, era, speaker, selectedAgentId, onSelectAgent };
+    propsRef.current = { society, era, speaker, selectedAgentId, onSelectAgent, onZoomOutRequest };
   });
   const world = society.world;
 
@@ -175,21 +176,53 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
     const COUNT = world0.width * world0.height;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setClearColor('#0b1016');
+    renderer.setClearColor('#040610'); // 深空底色：星球浮在宇宙中
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog('#0b1016', 95, 230);
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 500);
-    camera.position.set(0, 46, 62);
+    scene.fog = new THREE.Fog('#040610', 150, 420);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
+    camera.position.set(0, 150, 70); // 从太空高位入场（丝滑下降）
+    const mountedAt = performance.now();
 
     const controls = new OrbitControls(camera, canvas);
+    controls.enabled = false; // 入场动画期间锁定，结束后开放
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.maxPolarAngle = Math.PI * 0.49; // 不钻到地底
     controls.minDistance = 6;
     controls.maxDistance = 170;
     controls.target.set(0, 0, 0);
-    controls.saveState();
     controlsRef.current = controls;
+
+    // ---- 星野背景（星球悬浮其中）----
+    {
+      const N = 700;
+      const pos = new Float32Array(N * 3);
+      const col3 = new Float32Array(N * 3);
+      const cCool = new THREE.Color('#cdd8ff');
+      const cWarm = new THREE.Color('#ffe9c9');
+      for (let i = 0; i < N; i++) {
+        const u = Math.random() * 2 - 1;
+        const th = Math.random() * Math.PI * 2;
+        const r = 140 + Math.random() * 150;
+        const s = Math.sqrt(1 - u * u);
+        pos[i * 3] = r * s * Math.cos(th);
+        pos[i * 3 + 1] = r * u * 0.6 - 24;
+        pos[i * 3 + 2] = r * s * Math.sin(th);
+        const base = Math.random() < 0.85 ? cCool : cWarm;
+        const a = 0.2 + Math.random() * 0.55;
+        col3[i * 3] = base.r * a;
+        col3[i * 3 + 1] = base.g * a;
+        col3[i * 3 + 2] = base.b * a;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col3, 3));
+      const stars = new THREE.Points(
+        g,
+        new THREE.PointsMaterial({ size: 1.1, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false }),
+      );
+      scene.add(stars);
+    }
 
     // ---- 光照：半球环境 + 方向光（色温随纪元）----
     const hemi = new THREE.HemisphereLight('#cdd8ff', '#1d241c', 0.55);
@@ -225,6 +258,26 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
     structMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(structMesh);
 
+    // ---- 立方体星球化 ----
+    // 边界柱的地层剖面：逐层堆叠真实物质色（columns 数据），替代单一色柱
+    const perimeter = 2 * (world0.width + world0.height);
+    const STRATA_CAP = perimeter * 12; // levels 上限 12
+    const strata = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial({ color: '#ffffff' }),
+      STRATA_CAP,
+    );
+    strata.count = 0;
+    strata.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(strata);
+    // 星球底壳：暗色岩座
+    const underside = new THREE.Mesh(
+      new THREE.BoxGeometry(world0.width, 1.4, world0.height),
+      new THREE.MeshLambertMaterial({ color: '#221d1a' }),
+    );
+    underside.position.set(0, -0.76, 0);
+    scene.add(underside);
+
     // 选中格线框
     const cellMarker = new THREE.Mesh(
       new THREE.BoxGeometry(1.04, 1, 1.04),
@@ -242,15 +295,40 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
     terrainApiRef.current = (s) => {
       const w = s.world;
       let wi = 0;
+      let sti = 0;
       for (let cellId = 0; cellId < COUNT; cellId++) {
         const { x, y } = cellCoordinates(cellId, w.width);
         const wx = x - w.width / 2 + 0.5;
         const wz = y - w.height / 2 + 0.5;
         const h = (w.elevation[cellId] + 1) * CELL_H;
-        m4.compose(v.set(wx, h / 2, wz), q.identity(), sc.set(1, h, 1));
-        land.setMatrixAt(cellId, m4);
-        const c = cellColor(w, cellId);
-        land.setColorAt(cellId, col.setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace));
+        const isBoundary = x === 0 || x === w.width - 1 || y === 0 || y === w.height - 1;
+        if (isBoundary) {
+          // 边界柱收进地层网格：逐层堆叠（columns[0] 是表面/顶层）
+          m4.compose(v.set(wx, 0, wz), q.identity(), sc.set(0.0001, 0.0001, 0.0001));
+          land.setMatrixAt(cellId, m4);
+          land.setColorAt(cellId, col.setRGB(0, 0, 0));
+          const stack = w.columns[cellId];
+          for (let k = 0; k < stack.length && sti < STRATA_CAP; k++) {
+            const yc = (stack.length - k - 0.5) * CELL_H;
+            m4.compose(v.set(wx, yc, wz), q, sc.set(1, CELL_H, 1));
+            strata.setMatrixAt(sti, m4);
+            if (k === 0) {
+              const cc = cellColor(w, cellId); // 顶层与内部格同色
+              col.setRGB(cc.r / 255, cc.g / 255, cc.b / 255, THREE.SRGBColorSpace);
+            } else {
+              const mat = w.palette[stack[k]];
+              const mc = mat?.color ?? [90, 80, 70];
+              col.setRGB(mc[0] / 255, mc[1] / 255, mc[2] / 255, THREE.SRGBColorSpace);
+            }
+            strata.setColorAt(sti, col);
+            sti++;
+          }
+        } else {
+          m4.compose(v.set(wx, h / 2, wz), q.identity(), sc.set(1, h, 1));
+          land.setMatrixAt(cellId, m4);
+          const c = cellColor(w, cellId);
+          land.setColorAt(cellId, col.setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace));
+        }
         const material = w.palette[w.surface[cellId]];
         if (material?.tags.includes('liquid')) {
           m4.compose(v.set(wx, h + 0.08, wz), q, sc.set(1, 0.16, 1));
@@ -260,10 +338,13 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
         }
       }
       water.count = wi;
+      strata.count = sti;
       land.instanceMatrix.needsUpdate = true;
       if (land.instanceColor) land.instanceColor.needsUpdate = true;
       water.instanceMatrix.needsUpdate = true;
       if (water.instanceColor) water.instanceColor.needsUpdate = true;
+      strata.instanceMatrix.needsUpdate = true;
+      if (strata.instanceColor) strata.instanceColor.needsUpdate = true;
 
       // 掉落物：柱顶小方块
       let di = 0;
@@ -389,6 +470,24 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointerup', onPointerUp);
 
+    // ---- 滚轮持续缩小越过上限 → 请求升起返回宇宙 ----
+    let zoomOutAcc = 0;
+    let zoomOutAsked = false;
+    const onWheelOut = (ev: WheelEvent) => {
+      if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
+      if (ev.deltaY > 0 && camera.position.distanceTo(controls.target) >= controls.maxDistance - 0.6) {
+        zoomOutAcc += ev.deltaY;
+        if (zoomOutAcc > 300) {
+          zoomOutAsked = true;
+          controls.maxDistance = 600; // 过场期间允许继续升高，配合幕布淡出
+          propsRef.current.onZoomOutRequest();
+        }
+      } else {
+        zoomOutAcc = 0;
+      }
+    };
+    canvas.addEventListener('wheel', onWheelOut, { passive: true });
+
     // ---- 尺寸自适应 ----
     const resize = () => {
       const wpx = mount.clientWidth;
@@ -421,6 +520,16 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
       } else {
         cellMarker.visible = false;
       }
+      // 入场：从太空高位丝滑下降（easeOutCubic），结束后开放相机控制
+      const entryT = Math.min(1, (now - mountedAt) / 1100);
+      if (entryT < 1) {
+        const e = 1 - Math.pow(1 - entryT, 3);
+        camera.position.set(0, 150 - 104 * e, 70 - 8 * e);
+        camera.lookAt(0, 0, 0);
+      } else if (!controls.enabled) {
+        controls.enabled = true;
+        controls.saveState(); // “复位视角”落到入场后的机位
+      }
       controls.update();
       renderer.render(scene, camera);
     };
@@ -431,6 +540,7 @@ export default function SocietyScene3D({ society, era, speaker, selectedAgentId,
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('wheel', onWheelOut);
       controls.dispose();
       controlsRef.current = null;
       terrainApiRef.current = null;

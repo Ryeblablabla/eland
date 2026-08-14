@@ -175,6 +175,48 @@ export default function Game() {
   const [showArchive, setShowArchive] = useState(false);
   const [roster, setRoster] = useState<string[]>([]); // 指定开局阵容（档案 id）；空 = 随机抽取
   const [mapMode, setMapMode] = useState<'2d' | '3d'>('3d'); // 演化页视图：立体沙盘（默认）/ 平面地图
+  const [cover, setCover] = useState(false);              // 宇宙 ⇄ 人间 过场幕布
+  const [planetFocused, setPlanetFocused] = useState(false); // 宇宙相机聚焦行星中
+  const [exitFocusToken, setExitFocusToken] = useState(0);   // 自增 → 宇宙相机退出聚焦
+  const transitioningRef = useRef(false);
+  const transitionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const after = useCallback((ms: number, fn: () => void) => {
+    transitionTimers.current.push(setTimeout(fn, ms));
+  }, []);
+  useEffect(() => () => {
+    for (const t of transitionTimers.current) clearTimeout(t);
+  }, []);
+
+  /** 俯冲进入人间：幕布淡入 → 切视图（沙盘自带太空入场动画）→ 幕布淡出 */
+  const diveToSociety = useCallback(() => {
+    if (transitioningRef.current) return;
+    transitioningRef.current = true;
+    setCover(true);
+    after(380, () => {
+      setView('society');
+      setMapMode('3d');
+      after(140, () => {
+        setCover(false);
+        transitioningRef.current = false;
+      });
+    });
+  }, [after]);
+
+  /** 升起返回宇宙：幕布淡入 → 切视图并退出行星聚焦 → 幕布淡出 */
+  const riseToCosmos = useCallback(() => {
+    if (transitioningRef.current) return;
+    transitioningRef.current = true;
+    setCover(true);
+    after(380, () => {
+      setView('cosmos');
+      setExitFocusToken((t) => t + 1);
+      setPlanetFocused(false);
+      after(140, () => {
+        setCover(false);
+        transitioningRef.current = false;
+      });
+    });
+  }, [after]);
 
   const prev = useRef<{ civ: number }>({ civ: 1 });
   const eraMachine = useRef<{ era: EraKey | null; candidate: EraKey | null; sinceT: number }>({
@@ -520,6 +562,10 @@ export default function Game() {
           collapseHold
           respawnToken={respawnToken}
           onStats={onStats}
+          planetFocusEnabled={entered && view === 'cosmos' && replayMonth === null}
+          onPlanetFocusChange={setPlanetFocused}
+          onPlanetDive={diveToSociety}
+          exitFocusToken={exitFocusToken}
         />
       </div>
 
@@ -538,6 +584,7 @@ export default function Game() {
             speaker={speaker}
             selectedAgentId={selectedAgentId}
             onSelectAgent={setSelectedAgentId}
+            onZoomOutRequest={riseToCosmos}
           />
         ) : (
           <SocietyMap
@@ -746,6 +793,19 @@ export default function Game() {
           </button>
         </div>
       )}
+
+      {/* 行星聚焦提示（宇宙视角） */}
+      {view === 'cosmos' && planetFocused && !cover && (
+        <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 -translate-x-1/2 animate-pulse text-[11px] tracking-[0.3em] text-teal-200/80">
+          继续滚轮放大 · 俯冲进入人间 ↓ · 双击空白处离开行星
+        </div>
+      )}
+
+      {/* 宇宙 ⇄ 人间 过场幕布 */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[60] bg-[#04050c] transition-opacity duration-300"
+        style={{ opacity: cover ? 1 : 0 }}
+      />
 
       {/* 人物档案 · 原型库与阵容选择 */}
       {showArchive && (

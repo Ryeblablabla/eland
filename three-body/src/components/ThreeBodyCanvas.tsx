@@ -51,6 +51,10 @@ interface Props {
   collapseHold?: boolean;  // 文明毁灭时冻结宇宙，等待结算
   respawnToken?: number;   // 自增 = 结算完毕，新文明启程
   onStats?: (s: SimStats) => void;
+  planetFocusEnabled?: boolean;              // 允许点击行星进入聚焦（演化页传）
+  onPlanetFocusChange?: (focused: boolean) => void;
+  onPlanetDive?: () => void;                 // 聚焦后继续滚轮放大越过阈值 → 请求俯冲进入人间
+  exitFocusToken?: number;                   // 自增 = 退出聚焦，相机回星系质心
 }
 
 const DT = 0.001;
@@ -345,6 +349,51 @@ export default function ThreeBodyCanvas(props: Props) {
     let manualUntil = 0;
     controls.addEventListener('start', () => { manualUntil = Infinity; });
     controls.addEventListener('end', () => { manualUntil = performance.now() + 4000; });
+
+    // ---- 行星聚焦（演化页启用）：点击行星 → 相机环绕行星；继续滚轮放大 → 俯冲进入人间 ----
+    const focus = {
+      active: false,      // 聚焦中
+      planetR: 0.05,      // 行星视觉半径（聚焦时从等效像素大小平滑实体化）
+      lastWheelIn: -1e9,  // 最近一次"放大"滚轮时间
+      diveHold: 0,        // 在阈值内持续停留的时长
+      dove: false,        // 已发起俯冲（本次聚焦只触发一次）
+      justActivated: false, // 本帧刚进入聚焦（行星半径从等效像素起步）
+      seenExitToken: -1,
+      screenX: 0, screenY: 0, hasScreen: false, // 行星屏幕坐标（点击命中用）
+    };
+    const planetVec = new THREE.Vector3();
+    const projVec = new THREE.Vector3();
+    const originVec = new THREE.Vector3(0, 0, 0);
+    let canvasDown: { x: number; y: number } | null = null;
+    const onFocusPointerDown = (ev: PointerEvent) => { canvasDown = { x: ev.clientX, y: ev.clientY }; };
+    const onFocusPointerUp = (ev: PointerEvent) => {
+      if (!canvasDown || Math.hypot(ev.clientX - canvasDown.x, ev.clientY - canvasDown.y) >= 5) { canvasDown = null; return; }
+      canvasDown = null;
+      const p = propsRef.current;
+      if (!p.planetFocusEnabled || focus.active || !focus.hasScreen) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = ev.clientX - rect.left;
+      const my = ev.clientY - rect.top;
+      if (Math.hypot(mx - focus.screenX, my - focus.screenY) < 30) {
+        focus.active = true;
+        focus.dove = false;
+        focus.diveHold = 0;
+        focus.justActivated = true;
+        p.onPlanetFocusChange?.(true);
+      }
+    };
+    const onFocusDblClick = () => {
+      if (focus.active) {
+        focus.active = false;
+        focus.dove = false;
+        propsRef.current.onPlanetFocusChange?.(false);
+      }
+    };
+    const onFocusWheel = (ev: WheelEvent) => { if (ev.deltaY < 0) focus.lastWheelIn = performance.now(); };
+    canvas.addEventListener('pointerdown', onFocusPointerDown);
+    canvas.addEventListener('pointerup', onFocusPointerUp);
+    canvas.addEventListener('dblclick', onFocusDblClick);
+    canvas.addEventListener('wheel', onFocusWheel, { passive: true });
 
     // 后处理：MSAA 渲染目标 + 泛光 + 色彩输出
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
@@ -737,14 +786,54 @@ export default function ThreeBodyCanvas(props: Props) {
       const targetR = Math.min(Math.max(maxRadiusFromCOM(w.sys) * 1.3, 1.7), 40);
       w.viewR += (targetR - w.viewR) * 0.03;
 
-      // ---- 相机：可交互视角 ----
+      // ---- 相机：可交互视角 + 行星聚焦 ----
+      // 聚焦中：轨道中心跟随行星，行星实体化放大，滚轮越过阈值触发俯冲；
       // 手动模式（拖拽中及松手后 4 秒）：OrbitControls 全权接管；
       // 自动模式：约 22° 俯视 + 缓慢漂移，保持 3D 纵深感
       const fit = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, W / H);
       const dist = w.viewR / fit;
-      controls.minDistance = dist * 0.25;
-      controls.maxDistance = dist * 6;
-      if (now < manualUntil) {
+
+      // 退出聚焦握手（演化页返回宇宙时自增 exitFocusToken）
+      if ((p.exitFocusToken ?? 0) !== focus.seenExitToken) {
+        focus.seenExitToken = p.exitFocusToken ?? 0;
+        if (focus.active) {
+          focus.active = false;
+          focus.dove = false;
+          p.onPlanetFocusChange?.(false);
+        }
+      }
+
+      if (focus.active) {
+        // 行星聚焦：目标跟随行星（行星本身在轨道上运动）
+        if (focus.justActivated) {
+          focus.justActivated = false;
+          focus.planetR = Math.max(0.02, 2.2 / (Math.min(W, H) / 2 / w.viewR)); // 从等效像素半径起步
+        }
+        focus.planetR += (0.06 - focus.planetR) * 0.06; // 实体化到固定世界半径
+        if (focus.dove) focus.planetR *= 1.045; // 俯冲过场期间行星迎面放大
+        controls.minDistance = focus.planetR * 2.2;
+        controls.maxDistance = Math.max(dist * 6, 1);
+      } else {
+        controls.minDistance = dist * 0.25;
+        controls.maxDistance = dist * 6;
+      }
+
+      if (focus.active) {
+        planetVec.set(w.sys.state[PLANET_IDX * 2], w.sys.state[PLANET_IDX * 2 + 1], 0);
+        controls.target.lerp(planetVec, 0.14);
+        controls.update();
+        // 俯冲检测：最近 0.6s 内有放大动作 + 距离进入阈值并停留 0.18s
+        const dCam = camera.position.distanceTo(controls.target);
+        if (!focus.dove && now - focus.lastWheelIn < 600 && dCam < focus.planetR * 2.7) {
+          focus.diveHold += frameDt;
+          if (focus.diveHold > 0.18) {
+            focus.dove = true;
+            p.onPlanetDive?.();
+          }
+        } else if (dCam >= focus.planetR * 2.7) {
+          focus.diveHold = 0;
+        }
+      } else if (now < manualUntil) {
         controls.update();
       } else {
         const sway = now * 0.00005;
@@ -753,7 +842,8 @@ export default function ThreeBodyCanvas(props: Props) {
           -dist * 0.38 + Math.cos(sway * 1.9) * dist * 0.03,
           dist * 0.92,
         );
-        controls.target.set(0, 0, 0);
+        if (controls.target.lengthSq() > 1e-8) controls.target.lerp(originVec, 0.1);
+        else controls.target.set(0, 0, 0);
         controls.update();
       }
 
@@ -800,13 +890,22 @@ export default function ThreeBodyCanvas(props: Props) {
       }
 
       // ---- 行星本体：反射星光（自转 + 云层差速 + 大气边缘光）----
+      // 聚焦时改用实体化世界半径（相机逼近时自然变大）；否则保持等效屏幕大小
+      const planetR = focus.active ? focus.planetR : px2w(2.2);
       planetCore.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0);
-      planetCore.scale.setScalar(px2w(2.2));
+      planetCore.scale.setScalar(planetR);
       planetCore.rotation.y += 0.18 * frameDt;
       planetClouds.position.copy(planetCore.position);
-      planetClouds.scale.setScalar(px2w(2.2));
+      planetClouds.scale.setScalar(planetR);
       planetClouds.rotation.y += 0.23 * frameDt;
       atmosphere.position.copy(planetCore.position);
+      atmosphere.scale.setScalar(planetR);
+
+      // 行星屏幕坐标（点击聚焦命中判定）
+      projVec.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0).project(camera);
+      focus.screenX = (projVec.x * 0.5 + 0.5) * W;
+      focus.screenY = (-projVec.y * 0.5 + 0.5) * H;
+      focus.hasScreen = projVec.z < 1;
       atmosphere.scale.setScalar(px2w(2.2));
       // 星光方向与亮度实时跟随：强度 ∝ 光度/距离²（归一到宜居基线 fluxBase）。
       // 恒纪元 ≈1.2 常亮；乱纪元远离时转暗（保底 0.05 不失读），三日凌空时
@@ -831,6 +930,10 @@ export default function ThreeBodyCanvas(props: Props) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      canvas.removeEventListener('pointerdown', onFocusPointerDown);
+      canvas.removeEventListener('pointerup', onFocusPointerUp);
+      canvas.removeEventListener('dblclick', onFocusDblClick);
+      canvas.removeEventListener('wheel', onFocusWheel);
       controls.dispose();
       disposeScene(scene, composer, renderer);
     };

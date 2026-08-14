@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ThreeBodyCanvas, { type SimStats } from '@/components/ThreeBodyCanvas';
 import SocietyMap from '@/components/SocietyMap';
+import SocietyScene3D from '@/components/SocietyScene3D';
 import SkyPiP from '@/components/SkyPiP';
 import CharacterArchive from '@/components/CharacterArchive';
 import { elandClient, type Frame } from '@/game/elandClient';
@@ -173,6 +174,7 @@ export default function Game() {
   const [historyList, setHistoryList] = useState<{ month: number; label: string; summary: string }[]>([]);
   const [showArchive, setShowArchive] = useState(false);
   const [roster, setRoster] = useState<string[]>([]); // 指定开局阵容（档案 id）；空 = 随机抽取
+  const [mapMode, setMapMode] = useState<'2d' | '3d'>('3d'); // 演化页视图：立体沙盘（默认）/ 平面地图
 
   const prev = useRef<{ civ: number }>({ civ: 1 });
   const eraMachine = useRef<{ era: EraKey | null; candidate: EraKey | null; sinceT: number }>({
@@ -527,19 +529,29 @@ export default function Game() {
         style={{ background: 'radial-gradient(ellipse at center, transparent 42%, rgba(2,3,10,0.75) 100%)' }}
       />
 
-      {/* 人间地图页 */}
+      {/* 人间地图页：立体沙盘（默认）/ 平面地图 */}
       {view === 'society' && society && stats && (
-        <SocietyMap
-          society={society}
-          era={eraKey}
-          speaker={speaker}
-          focusAgent={focusAgent}
-          selectedAgentId={selectedAgentId}
-          onSelectAgent={setSelectedAgentId}
-          agentHistory={agentHistory}
-          agentHistoryLoading={agentHistoryLoading}
-          seed={(stats.civilizations * 7919) % 100000}
-        />
+        mapMode === '3d' ? (
+          <SocietyScene3D
+            society={society}
+            era={eraKey}
+            speaker={speaker}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+          />
+        ) : (
+          <SocietyMap
+            society={society}
+            era={eraKey}
+            speaker={speaker}
+            focusAgent={focusAgent}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+            agentHistory={agentHistory}
+            agentHistoryLoading={agentHistoryLoading}
+            seed={(stats.civilizations * 7919) % 100000}
+          />
+        )
       )}
 
       {/* 天象画中画：演化页抬头见天；点击切回宇宙视角 */}
@@ -697,6 +709,14 @@ export default function Game() {
           <button onClick={openReplay} className="transition-colors hover:text-amber-200">
             回 放 ↺
           </button>
+          {view === 'society' && (
+            <>
+              <span className="text-slate-700">·</span>
+              <button onClick={() => setMapMode((m) => (m === '3d' ? '2d' : '3d'))} className="transition-colors hover:text-amber-200">
+                {mapMode === '3d' ? '平 面 图 ▦' : '立 体 沙 盘 ▧'}
+              </button>
+            </>
+          )}
         </div>
       )}
 

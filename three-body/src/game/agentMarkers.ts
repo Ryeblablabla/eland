@@ -85,8 +85,8 @@ export function layoutAgentLabels(
 // 标记绘制
 // ---------------------------------------------------------------------------
 
-/** 身体状态 → 状态环颜色（脱水是三体世界的头等状态，独立成蓝） */
-function statusColor(agent: SocietyAgent, selected: boolean, speaking: boolean): string {
+/** 身体状态 → 状态环颜色（脱水是三体世界的头等状态，独立成蓝；2D/3D 渲染共用） */
+export function statusColorOf(agent: SocietyAgent, selected: boolean, speaking: boolean): string {
   if (selected) return '#fde68a';
   if (speaking) return '#fbbf24';
   if (agent.state === 'dehydrated') return '#60a5fa';
@@ -216,7 +216,7 @@ export function drawAgentMarker(
   // ---- 状态环（健康 / 脱水 / 选中 / 说话）----
   if (!dead) {
     ctx.beginPath();
-    ctx.strokeStyle = statusColor(agent, d.selected, d.speaking);
+    ctx.strokeStyle = statusColorOf(agent, d.selected, d.speaking);
     ctx.lineWidth = Math.max(1.2, Math.min(2.4, d.scale * 0.09));
     ctx.arc(d.x, d.y, radius + ctx.lineWidth * 1.6, 0, Math.PI * 2);
     ctx.stroke();

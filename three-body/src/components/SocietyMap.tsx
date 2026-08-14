@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AgentCard from '@/components/AgentCard';
+import MapLegend from '@/components/MapLegend';
 import type { AgentHistoryItem, EraKey, SocietyAgent, SocietyState } from '@/game/societyContract';
+import { drawAgentMarker } from '@/game/agentMarkers';
+import { hillshade, hillshadeFill } from '@/game/hillshade';
 import { cellColor, cellCoordinates, cellLabel, interpolatePath } from '@/game/pixelworld';
 
 interface Props {
@@ -76,17 +79,23 @@ function clampCamera(camera: CameraState, viewportWidth: number, viewportHeight:
 export default function SocietyMap({ society, era, speaker, focusAgent, selectedAgentId, onSelectAgent, agentHistory, agentHistoryLoading }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationStart = useRef(performance.now());
+  const animationStart = useRef(0); // 挂载后由 effect 置为 performance.now()（渲染期不可调用非纯函数）
   const cameraRef = useRef<CameraState>({ zoom: 1, panX: 0, panY: 0 });
   const dragRef = useRef<DragState | null>(null);
-  const [camera, setCamera] = useState<CameraState>(cameraRef.current);
+  const [camera, setCamera] = useState<CameraState>({ zoom: 1, panX: 0, panY: 0 });
   const [dragging, setDragging] = useState(false);
   const [viewportRevision, setViewportRevision] = useState(0);
   const [selectedCell, setSelectedCell] = useState<number | null>(focusAgent?.cellId ?? null);
   const world = society.world;
 
   useEffect(() => { animationStart.current = performance.now(); }, [society]);
-  useEffect(() => { if (focusAgent) setSelectedCell(focusAgent.cellId); }, [focusAgent?.cellId]);
+  // 跟随焦点人物切换选中格：渲染期调节状态（官方模式，避免 effect 内同步 setState）
+  const focusCellId = focusAgent?.cellId ?? null;
+  const [prevFocusCellId, setPrevFocusCellId] = useState(focusCellId);
+  if (focusCellId !== prevFocusCellId) {
+    setPrevFocusCellId(focusCellId);
+    if (focusCellId !== null) setSelectedCell(focusCellId);
+  }
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -128,6 +137,12 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         const color = cellColor(world, cellId);
         context.fillStyle = `rgb(${color.r},${color.g},${color.b})`;
         context.fillRect(x * scale, y * scale, scale, scale);
+        // 地形起伏明暗（hillshade）：高度场梯度 → 向光暖亮 / 背光冷暗
+        const relief = hillshadeFill(hillshade(world.elevation, world.width, world.height, cellId));
+        if (relief) {
+          context.fillStyle = relief;
+          context.fillRect(x * scale, y * scale, scale, scale);
+        }
         const traffic = world.activity.traffic[cellId];
         if (traffic >= 3) {
           context.fillStyle = `rgba(194,166,118,${Math.min(0.62, traffic / 28)})`;
@@ -148,21 +163,23 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         context.fillRect(x * scale + scale * 0.33, y * scale + scale * 0.33, scale * 0.34, scale * 0.34);
       }
 
+      // 人物：状态环 + 朝向针 + 姓名 + 意图符号（渲染层在 game/agentMarkers.ts）
       for (const agent of society.agents) {
         const path = agent.tickPath.length === RULE_ACTION_TICKS_PER_MONTH + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
         const point = interpolatePath(path, world.width, motion);
-        const x = (point.x + 0.5) * scale;
-        const y = (point.y + 0.5) * scale;
-        context.beginPath();
-        context.fillStyle = agent.state === 'dead' ? '#424852' : agent.id === selectedAgentId ? '#fde68a' : agent.name === speaker ? '#fbbf24' : '#f2efe6';
-        const radius = Math.max(3, Math.min(agent.id === selectedAgentId ? scale * 0.36 : scale * 0.27, 10));
-        context.arc(x, y, radius, 0, Math.PI * 2);
-        context.fill();
-        if (agent.state !== 'dead') {
-          context.fillStyle = '#111827';
-          const eye = Math.max(2, Math.min(4, scale * 0.14));
-          context.fillRect(x - eye / 2, y - eye / 2, eye, eye);
-        }
+        const prevPoint = interpolatePath(path, world.width, Math.max(0, motion - 0.08));
+        drawAgentMarker(context, agent, {
+          x: (point.x + 0.5) * scale,
+          y: (point.y + 0.5) * scale,
+          dirX: point.x - prevPoint.x,
+          dirY: point.y - prevPoint.y,
+          scale,
+          selected: agent.id === selectedAgentId,
+          speaking: agent.name === speaker,
+          intentKind: agent.activeIntentId
+            ? society.intents.find((intent) => intent.id === agent.activeIntentId)?.actionKind
+            : undefined,
+        });
       }
 
       if (selectedCell !== null) {
@@ -288,6 +305,8 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
           className={`absolute inset-0 h-full w-full ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={{ imageRendering: 'pixelated', touchAction: 'none' }}
         />
+
+        <MapLegend world={world} />
 
         <div className="pointer-events-none absolute bottom-3 left-3 text-[9px] tracking-[0.2em] text-slate-300/50">
           拖拽移动 · 滚轮缩放 · 点击选格

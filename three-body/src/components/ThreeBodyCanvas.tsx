@@ -35,6 +35,8 @@ export interface SimStats {
   fluxRel: number;      // 恒星光度通量 / 宜居基线（>1.8 酷暑，<0.45 严寒）
   collapsed: 'burned' | 'frozen' | 'extinct' | null; // 文明崩塌待结算
   civilizations: number;
+  bodies: number[];     // [x0,y0, x1,y1, x2,y2, 行星x,行星y] 世界坐标快照（画中画用）
+  spread: number;       // 恒星离质心最大距离（画中画取景半径）
 }
 
 interface Props {
@@ -723,6 +725,8 @@ export default function ThreeBodyCanvas(props: Props) {
           fluxRel: stellarFlux(w.sys) / w.fluxBase,
           collapsed: w.pendingCollapse,
           civilizations: w.civilizations,
+          bodies: Array.from(w.sys.state.slice(0, 8)), // x0,y0,x1,y1,x2,y2,px,py
+          spread: maxRadiusFromCOM(w.sys),
         });
       }
 

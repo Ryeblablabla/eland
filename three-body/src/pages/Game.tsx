@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ThreeBodyCanvas, { type SimStats } from '@/components/ThreeBodyCanvas';
 import SocietyMap from '@/components/SocietyMap';
+import SkyPiP from '@/components/SkyPiP';
 import CharacterArchive from '@/components/CharacterArchive';
 import { elandClient, type Frame } from '@/game/elandClient';
 import type { AgentHistoryItem, EraKey, SocietyState } from '@/game/societyContract';
@@ -538,6 +539,16 @@ export default function Game() {
           agentHistory={agentHistory}
           agentHistoryLoading={agentHistoryLoading}
           seed={(stats.civilizations * 7919) % 100000}
+        />
+      )}
+
+      {/* 天象画中画：演化页抬头见天；点击切回宇宙视角 */}
+      {view === 'society' && stats && (
+        <SkyPiP
+          stats={stats}
+          era={eraKey}
+          onOpen={() => setView('cosmos')}
+          className="absolute bottom-24 right-[356px] z-10"
         />
       )}
 

@@ -52,6 +52,8 @@ const INITIAL_STATS: SimStats = {
   fluxRel: 1,
   collapsed: null,
   civilizations: 1,
+  bodies: [],
+  spread: 2.2,
 };
 
 export default function Home() {

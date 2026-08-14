@@ -9,7 +9,7 @@ import { MONTHS_PER_YEAR, RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar
 import { availableModelContexts, availableModelTokens, rollingDecisionUsage } from '../domain/decision-budget';
 import { executeIntentAction, executePrimitiveAction, goalSatisfied, addDrop } from '../domain/action-executor';
 import { advanceBodies, advanceWorldProcesses, resolveClimate } from '../domain/monthly-processes';
-import { Material, materialDefinition } from '../domain/material';
+import { Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
 import { ageMonths, isAlive, type PersonId, type PersonState } from '../domain/person';
 import type {
   AgentDecider,
@@ -50,7 +50,6 @@ import { shelterGeometryAt } from '../domain/structure';
 import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
 import {
   WORLD_CELL_COUNT,
-  WORLD_LEVELS,
   cellX,
   cellY,
   copyWorld,
@@ -549,14 +548,19 @@ function executeActiveIntent(state: SimulationState, person: PersonState, atMont
   return fact;
 }
 
-function structureComponents(state: SimulationState): Array<{ x: number; y: number; z: number }> {
-  const components: Array<{ x: number; y: number; z: number }> = [];
-  for (let z = 0; z < WORLD_LEVELS; z += 1) {
-    for (let cell = 0; cell < WORLD_CELL_COUNT; cell += 1) {
-      if (voxelAt(state.world.grid, cellX(cell), cellY(cell), z) === Material.Plank) components.push({ x: cellX(cell), y: cellY(cell), z });
-    }
+function structureComponents(state: SimulationState): Array<{ x: number; y: number; z: number; materialId: MaterialId; sourceEventId: string }> {
+  const byPosition = new Map<string, { x: number; y: number; z: number; materialId: MaterialId; sourceEventId: string }>();
+  for (const event of state.world.past) {
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'act' || event.action.operation !== 'combine') continue;
+    const materialId = Number(event.diff.outputMaterialId);
+    const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+    if (!materialHas(materialId, 'solid') || !materialHas(materialId, 'building')
+      || ![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) continue;
+    const component = { x: Number(position?.x), y: Number(position?.y), z: Number(position?.z), materialId, sourceEventId: event.id };
+    if (voxelAt(state.world.grid, component.x, component.y, component.z) !== materialId) continue;
+    byPosition.set(`${component.x}:${component.y}:${component.z}`, component);
   }
-  return components;
+  return [...byPosition.values()];
 }
 
 function deriveStructures(state: SimulationState): DerivedStructure[] {
@@ -581,12 +585,7 @@ function deriveStructures(state: SimulationState): DerivedStructure[] {
       }
     }
     const occupiedCells = [...new Set(group.map((position) => position.x + position.y * state.world.grid.width))];
-    const sourceEventIds = state.world.past.filter((event) => {
-      if (event.kind !== 'action' || event.action.kind !== 'act' || event.action.operation !== 'combine' || Number(event.diff.outputMaterialId) !== Material.Plank) return false;
-      const position = event.diff.position as { x?: unknown; y?: unknown } | undefined;
-      const targetCell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
-      return Number.isFinite(targetCell) && occupiedCells.includes(targetCell);
-    }).map((event) => event.id);
+    const sourceEventIds = group.map((component) => component.sourceEventId);
     const groupKeys = new Set(group.map((position) => `${position.x}:${position.y}:${position.z}`));
     const interiorPositions = occupiedCells.flatMap((cell) => standingPositions(state.world.grid, cell))
       .flatMap((position) => {
@@ -602,13 +601,15 @@ function deriveStructures(state: SimulationState): DerivedStructure[] {
     const thermalInsulation = interiorPositions.length
       ? Math.round(interiorPositions.reduce((sum, interior) => sum + interior.thermalInsulation, 0) / interiorPositions.length)
       : 0;
+    const materialIds = [...new Set(group.map((component) => component.materialId))];
+    const materialLabel = materialIds.map((materialId) => materialDefinition(materialId).name).join('、');
     structures.push({
       id: `structure-${originKey}`,
-      name: complete ? '木质遮蔽结构' : '未完成木质结构',
+      name: complete ? `${materialLabel}遮蔽结构` : `未完成${materialLabel}结构`,
       occupiedCells,
       interiorCells: [...new Set(interiorPositions.map((interior) => interior.position.cellId))],
       interiorPositions: interiorPositions.map((interior) => interior.position),
-      materialIds: [Material.Plank],
+      materialIds,
       weatherProtection,
       thermalInsulation,
       capacity: interiorPositions.length,
@@ -645,7 +646,7 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   const foodGathering = transfers.filter((fact) => fact.action.kind === 'transfer' && fact.action.materialId === Material.Food && fact.action.from.kind === 'ground');
   if (foodGathering.length) milestones.push({ id: '11', label: '采集食物', evidenceEventIds: foodGathering.map((fact) => fact.id), note: '人物从具体格子的掉落物取得可食物质。' });
   const shelterEvidence = structures.filter((structure) => structure.complete).flatMap((structure) => structure.sourceEventIds);
-  if (shelterEvidence.length) milestones.push({ id: '20', label: '建造住所', evidenceEventIds: shelterEvidence, note: '多个相邻木板体素形成了具有遮蔽效果的空间结构。' });
+  if (shelterEvidence.length) milestones.push({ id: '20', label: '建造住所', evidenceEventIds: shelterEvidence, note: '人物连接的多个固体建造物质形成了具有可进入空间与遮蔽效果的真实结构。' });
   if (cultivation.length && harvests.length) milestones.push({ id: '32', label: '种植并收获作物', evidenceEventIds: [...cultivation, ...harvests].map((fact) => fact.id), note: '种子与土壤结合，作物经自然生长后被分离收获。' });
   const formedTrailCells = new Set<number>();
   let roadObservedAtMonth: number | undefined;
@@ -693,7 +694,7 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   if (waterCells.length) regions.push({ id: 'natural-water', kind: 'natural', cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: '水域' });
   if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: trailFormation.map(({ event }) => event.id), firstObservedMonth: trailFormation[0]?.event.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
   if (cultivatedCells.length) regions.push({ id: 'cultivated', kind: 'cultivated', cells: cultivatedCells, confidence: clamp(cultivatedCells.length / 12), evidenceEventIds: [...cultivation, ...harvests].map((event) => event.id), firstObservedMonth: cultivation[0]?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '耕作区' });
-  for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '木质活动区' });
+  for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '建造活动区' });
   return { practices, institutions, milestones, regions, structures };
 }
 

@@ -1083,6 +1083,19 @@ try {
   assert.ok(completedShelter?.interiorPositions.some((position) => position.cellId === shelterState.people[0].position.cellId && position.z === shelterState.people[0].position.z), '住所必须来自人物当前可进入的双格净空与真实头顶覆盖，而不是相邻木板数量');
   assert.equal(completedShelter?.capacity, completedShelter?.interiorPositions.length, '结构容量必须等于真实可站立内部位置数');
   assert.ok(shelterState.derived.milestones.some((milestone) => milestone.id === '20'), '真实连接的多格木板结构才能观察为住所');
+  const stoneBuilder = shelterState.people.find((person) => person.id === builderId);
+  stoneBuilder.inventory = [{ id: 'shelter-stone', materialId: 1, quantity: 2, sourceEventIds: ['test-collected-stone'] }];
+  const stoneBuildContext = buildDecisionContexts(shelterState).find((context) => context.person.id === builderId);
+  const stoneBuildOption = stoneBuildContext?.options.find((option) => option.goal.kind === 'voxel-is'
+    && option.goal.materialId === 1
+    && option.nextAction.kind === 'act'
+    && option.nextAction.operation === 'combine'
+    && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'shelter-stone'));
+  assert.ok(stoneBuildOption?.goal.kind === 'voxel-is' && stoneBuildOption.goal.materialId === 1, '标记为固体建造物质的石应从同一 combine 原语产生空间连接选项');
+  shelterState = runRecordOption(shelterState, builderId, stoneBuildOption, 'connect-stone-to-space');
+  const stonePlacement = shelterState.world.past.find((event) => event.kind === 'action' && event.intentId?.includes('connect-stone-to-space'));
+  assert.equal(stonePlacement?.diff.outputMaterialId, 1, '石建造必须消耗私人背包中的真实石并在目标体素放置石物质');
+  assert.ok(shelterState.derived.structures.some((structure) => structure.materialIds.includes(1) && structure.sourceEventIds.includes(stonePlacement.id)), '结构投影必须从真实放置事件识别石或混合材料，不能只扫描木板标签');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });
   for (let index = 0; index < 72 && state.civilization.status === 'running'; index += 1) state = stepSimulation(state);

@@ -1,5 +1,5 @@
 import type { ActionOption } from '../domain/action';
-import { Material } from '../domain/material';
+import { Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
 import { isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
 import { cellId, cellX, cellY, neighbors4, voxelAt } from '../world/grid';
@@ -20,14 +20,28 @@ function occupiedByBody(state: SimulationState, position: ConnectionCandidate['p
     && (candidate.position.z === position.z || candidate.position.z + 1 === position.z));
 }
 
-function classifyConnection(state: SimulationState, person: PersonState, position: ConnectionCandidate['position']): CandidateKind | null {
+function constructedStructurePositions(state: SimulationState): Set<string> {
+  return new Set(state.world.past.flatMap((event) => {
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'act' || event.action.operation !== 'combine') return [];
+    const materialId = Number(event.diff.outputMaterialId);
+    const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+    if (!materialHas(materialId, 'solid') || !materialHas(materialId, 'building')
+      || ![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return [];
+    const x = Number(position?.x);
+    const y = Number(position?.y);
+    const z = Number(position?.z);
+    return voxelAt(state.world.grid, x, y, z) === materialId ? [`${x}:${y}:${z}`] : [];
+  }));
+}
+
+function classifyConnection(state: SimulationState, person: PersonState, position: ConnectionCandidate['position'], constructed: Set<string>): CandidateKind | null {
   if (voxelAt(state.world.grid, position.x, position.y, position.z) !== Material.Air || occupiedByBody(state, position)) return null;
   const targetCell = cellId(position.x, position.y);
   const below = voxelAt(state.world.grid, position.x, position.y, position.z - 1);
-  const horizontalPlank = neighbors4(targetCell).some((neighbor) => voxelAt(state.world.grid, cellX(neighbor), cellY(neighbor), position.z) === Material.Plank);
-  if (targetCell === person.position.cellId && position.z === person.position.z + 2 && horizontalPlank) return 'overhead';
-  if (below === Material.Plank) return 'vertical';
-  if (horizontalPlank) return 'lateral';
+  const horizontalStructure = neighbors4(targetCell).some((neighbor) => constructed.has(`${cellX(neighbor)}:${cellY(neighbor)}:${position.z}`));
+  if (targetCell === person.position.cellId && position.z === person.position.z + 2 && horizontalStructure) return 'overhead';
+  if (constructed.has(`${position.x}:${position.y}:${position.z - 1}`)) return 'vertical';
+  if (horizontalStructure) return 'lateral';
   if (below !== Material.Air && below !== Material.Water && below !== Material.Fire) return 'grounded';
   return null;
 }
@@ -35,10 +49,11 @@ function classifyConnection(state: SimulationState, person: PersonState, positio
 function connectionCandidates(state: SimulationState, person: PersonState): ConnectionCandidate[] {
   const cells = [person.position.cellId, ...neighbors4(person.position.cellId)];
   const candidates: ConnectionCandidate[] = [];
+  const constructed = constructedStructurePositions(state);
   for (const targetCell of cells) {
     for (let z = Math.max(1, person.position.z - 1); z <= Math.min(state.world.grid.levels - 1, person.position.z + 2); z += 1) {
       const position = { x: cellX(targetCell), y: cellY(targetCell), z };
-      const kind = classifyConnection(state, person, position);
+      const kind = classifyConnection(state, person, position, constructed);
       if (kind) candidates.push({ kind, position });
     }
   }
@@ -52,29 +67,37 @@ function connectionCandidates(state: SimulationState, person: PersonState): Conn
   return selected.slice(0, 5);
 }
 
-function connectionSummary(kind: CandidateKind): string {
-  if (kind === 'vertical') return '把木材连接到已有木板上方';
-  if (kind === 'lateral') return '从已有木板向侧面继续连接木材';
-  if (kind === 'overhead') return '从邻近高处木板向头顶空气延伸木材';
-  return '把木材连接到身边有支撑的空气中';
+function connectionSummary(kind: CandidateKind, inputMaterialId: MaterialId): string {
+  const material = materialDefinition(inputMaterialId).name;
+  if (kind === 'vertical') return `把${material}连接到已有结构上方`;
+  if (kind === 'lateral') return `从已有结构向侧面继续连接${material}`;
+  if (kind === 'overhead') return `从邻近高处结构向头顶空气延伸${material}`;
+  return `把${material}连接到身边有支撑的空气中`;
 }
 
 export function buildConstructionOptions(state: SimulationState, person: PersonState): ActionOption[] {
-  const wood = person.inventory.find((stack) => stack.materialId === Material.Wood && stack.quantity > 0);
-  if (!wood) return [];
-  return connectionCandidates(state, person).map(({ kind, position }) => ({
-    id: `build:${position.x}:${position.y}:${position.z}:${wood.id}`,
-    summary: connectionSummary(kind),
-    reason: kind === 'grounded'
-      ? '目标空气下方有实体支撑，且没有身体占据'
-      : '目标空气与已有木板相邻，且没有身体占据',
-    goal: { kind: 'voxel-is', position, materialId: Material.Plank },
-    nextAction: {
-      kind: 'act', operation: 'combine',
-      targets: [{ kind: 'inventory-stack', personId: person.id, stackId: wood.id }, { kind: 'voxel', position }],
-    },
-    target: { kind: 'voxel', position },
-    estimatedDuration: 'one-month',
-    sourceFactIds: wood.sourceEventIds,
-  }));
+  const materials = person.inventory
+    .filter((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'solid') && materialHas(stack.materialId, 'building'))
+    .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId)
+    .slice(0, 2);
+  if (!materials.length) return [];
+  const candidates = connectionCandidates(state, person);
+  return materials.flatMap((stack) => {
+    const outputMaterialId = stack.materialId === Material.Wood ? Material.Plank : stack.materialId;
+    return candidates.map(({ kind, position }) => ({
+      id: `build:${position.x}:${position.y}:${position.z}:${stack.id}`,
+      summary: connectionSummary(kind, stack.materialId),
+      reason: kind === 'grounded'
+        ? '这种固体物质具有建造性质，目标空气下方有实体支撑且没有身体占据'
+        : '这种固体物质具有建造性质，目标空气与人物已连接的结构相邻且没有身体占据',
+      goal: { kind: 'voxel-is' as const, position, materialId: outputMaterialId },
+      nextAction: {
+        kind: 'act' as const, operation: 'combine' as const,
+        targets: [{ kind: 'inventory-stack' as const, personId: person.id, stackId: stack.id }, { kind: 'voxel' as const, position }],
+      },
+      target: { kind: 'voxel' as const, position },
+      estimatedDuration: 'one-month' as const,
+      sourceFactIds: stack.sourceEventIds,
+    }));
+  });
 }

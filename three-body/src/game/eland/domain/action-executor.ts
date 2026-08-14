@@ -434,7 +434,9 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   const current = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
   let output: MaterialId | null = null;
   if (stack.materialId === Material.Seed && (current === Material.WetSoil || current === Material.RichSoil || current === Material.ExhaustedSoil)) output = Material.CropSprout;
-  if (stack.materialId === Material.Wood && current === Material.Air) output = Material.Plank;
+  if (current === Material.Air && materialHas(stack.materialId, 'solid') && materialHas(stack.materialId, 'building')) {
+    output = stack.materialId === Material.Wood ? Material.Plank : stack.materialId;
+  }
   if (output === null) return { status: 'blocked' as const, result: '这些物质当前没有可发生的结合规则', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
   if (materialHas(output, 'solid') && bodyOccupies(state, voxelRef.position)) return { status: 'blocked' as const, result: '目标空气体素正被身体占据，不能放入固体物质', diff: { outputMaterialId: output, position: voxelRef.position } };
   stack.quantity -= 1;

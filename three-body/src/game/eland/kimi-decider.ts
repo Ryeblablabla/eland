@@ -39,6 +39,7 @@ export interface DecisionRequestContext {
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
+    communicatesFactId?: string;
   }>;
   followUpOptions: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
@@ -126,7 +127,12 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     permissions: state.permissions
       .filter((permission) => permission.status === 'active' && (permission.grantorId === person.id || permission.granteeId === person.id))
       .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
-    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp }) => ({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp) })),
+    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction }) => ({
+      id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
+      ...(nextAction.kind === 'communicate' && nextAction.content.kind === 'claim' && nextAction.content.factId
+        ? { communicatesFactId: nextAction.content.factId }
+        : {}),
+    })),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {
       const relation = person.relations.find((item) => item.personId === other.id);

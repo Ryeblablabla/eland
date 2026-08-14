@@ -13,10 +13,10 @@ export interface IntentChoice {
 
 function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {
   const action = selected.nextAction;
-  const plainConversation = action.kind === 'communicate'
-    && action.content.kind === 'claim'
-    && !action.content.factId;
-  return plainConversation ? followUp.domain ?? 'strategic' : 'social';
+  const conversationalOpening = selected.id.startsWith('talk:')
+    && action.kind === 'communicate'
+    && action.content.kind === 'claim';
+  return conversationalOpening ? followUp.domain ?? 'strategic' : 'social';
 }
 
 /**

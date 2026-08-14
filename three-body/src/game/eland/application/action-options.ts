@@ -635,11 +635,11 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
-  const knowledgePriority = (kind: PersonState['knowledge'][number]['kind']) => kind === 'codebook' ? 3 : kind === 'technique' ? 2 : 1;
   const teachableFacts = person.knowledge
-    .filter((fact) => fact.confidence >= 55
+    .filter((fact) => (fact.kind === 'technique' || fact.kind === 'codebook')
+      && fact.confidence >= 55
       && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
-    .sort((a, b) => knowledgePriority(b.kind) - knowledgePriority(a.kind) || b.confidence - a.confidence || a.id.localeCompare(b.id))
+    .sort((a, b) => (b.kind === 'codebook' ? 1 : 0) - (a.kind === 'codebook' ? 1 : 0) || b.confidence - a.confidence || a.id.localeCompare(b.id))
     .slice(0, 3);
   for (const teachable of teachableFacts) {
     const learner = localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55));
@@ -647,8 +647,8 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
     options.push({
       id: representationId,
-      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : teachable.kind === 'technique' ? `向${learner.name}表达一项已知技术` : `向${learner.name}表达一项已核验观察`,
-      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : teachable.kind === 'technique' ? '自己掌握的物质操作尚未被身边人知道' : '自己反复确认的观察尚未被身边人知道',
+      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : `向${learner.name}表达一项已知技术`,
+      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : '自己掌握的物质操作尚未被身边人知道',
       goal: { kind: 'knowledge', factId: teachable.id, minConfidence: 55, personId: learner.id },
       nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' },
       target: { kind: 'person', personId: learner.id },

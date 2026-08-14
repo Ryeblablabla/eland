@@ -412,6 +412,39 @@ try {
   const dialogueListener = dialogueState.people.find((person) => person.id === dialogueAudienceId);
   assert.ok(dialogueListener?.knowledge.every((fact) => !fact.id.startsWith('claim:')), '没有结构化事实引用的自然语言不得污染知识库');
 
+  const groundedDialogueState = createInitialState(318, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const groundedSpeaker = groundedDialogueState.people[0];
+  const groundedListener = groundedDialogueState.people[1];
+  groundedSpeaker.bornAtMonth = -20 * 12;
+  groundedListener.bornAtMonth = -20 * 12;
+  placeWith(groundedListener, groundedSpeaker);
+  const groundedFact = { id: 'observation:test-grounded-dialogue', kind: 'observation', summary: '亲眼观察到北边湿土附近有水', confidence: 72, learnedAtMonth: 0, sourceEventIds: ['test-grounded-observation'] };
+  groundedSpeaker.knowledge = [groundedFact];
+  groundedListener.knowledge = [];
+  const groundedContext = buildDecisionContexts(groundedDialogueState).find((context) => context.person.id === groundedSpeaker.id);
+  const groundedTalk = groundedContext?.options.find((option) => option.id.startsWith('talk:')
+    && option.nextAction.kind === 'communicate'
+    && option.nextAction.content.kind === 'claim'
+    && option.nextAction.content.factId === groundedFact.id);
+  assert.ok(groundedContext && groundedTalk?.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '普通对话有可分享认识时必须绑定其事实身份与来源，不能只生成空泛话语');
+  const groundedPromptOption = buildDecisionRequestContext(groundedContext).options.find((option) => option.id === groundedTalk.id);
+  assert.equal(groundedPromptOption?.communicatesFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
+  const groundedFollowUp = groundedContext.followUpOptions[0];
+  assert.ok(groundedFollowUp, '有来源对话仍须绑定同次决策中的真实后续行动');
+  groundedDialogueState.decisionBudget.credits = groundedDialogueState.people.length;
+  groundedDialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
+  const groundedAfterTalk = await stepSimulationAsync(groundedDialogueState, {
+    async decideAll(contexts) {
+      return contexts.map((context) => context.person.id === groundedSpeaker.id
+        ? { kind: 'start', optionId: groundedTalk.id, followUpOptionId: groundedFollowUp.id, utterance: `我亲眼见过北边湿土附近有水；接下来我会${groundedFollowUp.summary}`, reason: '把真实所见与下一步行动一起告诉对方' }
+        : { kind: 'idle', reason: '不干扰有来源对话测试' });
+    },
+    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
+  });
+  const heardFact = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.knowledge.find((fact) => fact.id === groundedFact.id);
+  assert.equal(heardFact?.summary, groundedFact.summary, '自然语言措辞不能覆盖结构化认识的规范摘要');
+  assert.ok((heardFact?.confidence ?? 100) < 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '听者获得的是有沟通来源但尚未核验的主张，不是凭对话变成客观真理');
+
   let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const harvester = harvestState.people[0];
   harvester.bornAtMonth = -20 * 12;

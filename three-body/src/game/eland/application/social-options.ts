@@ -536,13 +536,32 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         risks: [], domain: 'social', sourceFactIds: [...sharedFulfillment.sourceEventIds],
       });
     }
+    const shareableObservation = [...person.knowledge]
+      .filter((fact) => (fact.kind === 'observation' || fact.kind === 'claim')
+        && fact.confidence >= 55
+        && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55))
+      .sort((a, b) => b.confidence - a.confidence || b.learnedAtMonth - a.learnedAtMonth || a.id.localeCompare(b.id))[0];
     const representationId = `talk:${state.clock.elapsedMonths}:${person.id}:${other.id}`;
     options.push({
       id: representationId,
-      summary: `与${other.name}交流眼前处境`, reason: '近身人物可以交换观察并调整彼此接下来的意图',
+      summary: shareableObservation
+        ? `向${other.name}讲述“${shareableObservation.summary}”并调整接下来的行动`
+        : `与${other.name}交流眼前处境`,
+      reason: shareableObservation
+        ? '近身人物可以把一项有来源的个人认识作为主张传给对方，同时表达自己接下来的行动'
+        : '近身人物可以表达主观处境并调整彼此接下来的意图，但不能凭话语制造客观知识',
       goal: { kind: 'representation-made', representationId },
-      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: '谈论眼前处境' }, audience: [other.id], channel: 'voice' },
-      target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
+      nextAction: {
+        kind: 'communicate',
+        content: {
+          id: representationId,
+          kind: 'claim',
+          summary: shareableObservation?.summary ?? '谈论眼前处境',
+          ...(shareableObservation ? { factId: shareableObservation.id } : {}),
+        },
+        audience: [other.id], channel: 'voice',
+      },
+      target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: shareableObservation?.sourceEventIds ?? [],
     });
   }
 

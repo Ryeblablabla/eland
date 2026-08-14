@@ -22,6 +22,7 @@ const SYSTEM_PROMPT = [
   '如果行动选项是同一提议的 accept 与 reject，你必须依据关系、记忆、风险、可履行性和自身倾向选择其中一个，不能 idle。',
   '共同体中的 decision-rule 是成员已接受的选择方法，mandate 是按该方法授予具体人物、具体物质和期限的协调职责；它们不会让组织自动行动，也不转移私人背包。是否提议、接受、交付或分配，仍是每个人自己的决定。',
   '如果所选选项 requiresFollowUp=true，它是一项对话决策：必须增加 utterance，用第一人称写一句实际会说的话，并同时从 followUpOptions 选择 followUpOptionId，表示说完后自己真正要执行的行动。对话与后续行动属于同一个意图。',
+  '对话选项若包含 communicatesFactId，表示这次话语会传递自己已经拥有、且有来源的那项认识；utterance 必须忠实表达选项摘要中的认识。听者只会把它当作你的主张，不会因听见一次就自动核验为真。',
   '此时 utterance 必须与 followUpOptionId 一致，清楚表达自己接下来准备做什么；不要只说空泛的关心、讨论或计划。',
   'followUpOptionId 只能引用 followUpOptions 中的 id。不得把自然语言当成已经完成的行动，也不得选择另一个 communicate 作为后续行动。',
   '严格输出一个 JSON 对象，不输出解释。格式只能是以下之一：',

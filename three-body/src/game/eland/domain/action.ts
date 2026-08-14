@@ -35,6 +35,17 @@ export type SocialProposal =
       expiresAtMonth: number;
     }
   | {
+      kind: 'decision-rule'; proposerId: PersonId; partnerId: PersonId;
+      collectiveId: string; requiredApproverIds: PersonId[];
+      method: 'unanimous'; scope: 'coordinate-material'; materialId: MaterialId;
+      mandateDurationMonths: number; expiresAtMonth: number;
+    }
+  | {
+      kind: 'mandate'; proposerId: PersonId; partnerId: PersonId;
+      collectiveId: string; decisionRuleId: string; holderId: PersonId;
+      requiredApproverIds: PersonId[]; expiresAtMonth: number;
+    }
+  | {
       kind: 'permission'; proposerId: PersonId; partnerId: PersonId;
       collectiveId: string; grantorId: PersonId; granteeId: PersonId;
       materialId: MaterialId; maxQuantityPerTransfer: number;

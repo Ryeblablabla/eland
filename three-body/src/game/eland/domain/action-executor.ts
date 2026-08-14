@@ -9,6 +9,7 @@ import { rememberAction } from './memory';
 import { applyRelationEvidence } from './relation';
 import { agreementAuthorizesTransfer, agreementById, recordAgreementAction } from './agreement';
 import { recordCollectiveAction } from './collective';
+import { mandateById, mandateSupportsTransfer, recordGovernanceAction } from './governance';
 import { permissionAuthorizesTransfer, permissionById, recordPermissionAction } from './permission';
 import {
   exertionRuleFor,
@@ -212,8 +213,11 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
   const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
   const permissionAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
-  const referencedNorm = agreementAuthorized ? possibleAgreement : permissionAuthorized ? possiblePermission : undefined;
-  const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized;
+  const possibleMandate = action.authorizationRef ? mandateById(state, action.authorizationRef) : undefined;
+  const mandateUse = mandateSupportsTransfer(state, possibleMandate, person.id, action, atMonth);
+  const mandateAuthorized = Boolean(mandateUse);
+  const referencedNorm = agreementAuthorized ? possibleAgreement : permissionAuthorized ? possiblePermission : mandateAuthorized ? possibleMandate : undefined;
+  const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized || mandateAuthorized;
   const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person)).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
     const relation = sourcePerson.relations.find((item) => item.personId === person.id);
@@ -250,7 +254,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   return {
     status: 'completed' as const,
     result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
-    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, permissionAuthorized, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
+    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, permissionAuthorized, mandateAuthorized, mandateUse, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
   };
 }
 
@@ -801,6 +805,7 @@ export function executePrimitiveAction(
   };
   recordAgreementAction(state, fact);
   recordCollectiveAction(state, fact);
+  recordGovernanceAction(state, fact);
   recordPermissionAction(state, fact);
   rememberAction(state, fact);
   return fact;

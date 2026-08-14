@@ -736,7 +736,7 @@ try {
   assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)), '掌握编码的读者应从实体记录取得其中知识');
   assert.ok(recordState.derived.milestones.some((milestone) => milestone.id === '51'), '刻写、教授编码、交付载体、异人读懂的完整事实链才能观察为创造文字');
 
-  let collectiveState = createInitialState(385, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  let collectiveState = createInitialState(385, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   const founder = collectiveState.people[0];
   const partner = collectiveState.people[1];
   founder.bornAtMonth = -20 * 12;
@@ -815,6 +815,54 @@ try {
   collectiveState = runRecordOption(collectiveState, founder.id, revokePermission, 'revoke-resource-permission');
   assert.equal(collectiveState.permissions[0]?.status, 'revoked', '物质持有者应能通过可追溯沟通撤回未来授权');
   assert.equal(buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id)?.options.some((option) => option.id.startsWith('use-permission:')), false, '许可撤回后不得继续生成合法取用意图');
+
+  const governingFounder = collectiveState.people.find((person) => person.id === founder.id);
+  const governingPartner = collectiveState.people.find((person) => person.id === partner.id);
+  governingFounder.body = { health: 100, hydration: 100, nutrition: 100 };
+  governingPartner.body = { health: 100, hydration: 100, nutrition: 100 };
+  placeWith(governingPartner, governingFounder);
+  let governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const offerDecisionRule = governanceContext?.options.find((option) => option.id.startsWith('offer-decision-rule:')
+    && option.nextAction.kind === 'communicate'
+    && option.nextAction.content.proposal?.kind === 'decision-rule'
+    && option.nextAction.content.proposal.materialId === 21);
+  collectiveState = runRecordOption(collectiveState, founder.id, offerDecisionRule, 'offer-unanimous-decision-rule');
+  const decisionRuleAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'decision-rule');
+  assert.equal(decisionRuleAgreement?.status, 'proposed', '发起者单方面说出选择规则不能产生共同规则');
+  assert.equal(collectiveState.collectives[0]?.decisionRules.length, 0, '没有每位成员明确同意时，共同体不得凭空获得治理规则');
+  governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  assert.deepEqual(new Set(governanceContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-decision-rule', 'reject-decision-rule']), '规则提议必须交由每名未回应成员本人接受或拒绝');
+  collectiveState = runRecordOption(collectiveState, partner.id, governanceContext?.options.find((option) => option.id.startsWith('accept-decision-rule:')), 'accept-unanimous-decision-rule');
+  const decisionRule = collectiveState.collectives[0]?.decisionRules[0];
+  assert.ok(decisionRule?.status === 'active' && decisionRule.method === 'unanimous' && decisionRule.materialId === 21, '全体同意后才应形成限定物质与授权期限的 DecisionRule');
+  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.id === '524'), '全体逐人接受的共同选择规则应观察为通过协商形成共识');
+
+  governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const offerMandate = governanceContext?.options.find((option) => option.id.startsWith('offer-mandate:')
+    && option.nextAction.kind === 'communicate'
+    && option.nextAction.content.proposal?.kind === 'mandate'
+    && option.nextAction.content.proposal.holderId === founder.id);
+  collectiveState = runRecordOption(collectiveState, founder.id, offerMandate, 'offer-material-coordinator');
+  const mandateAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'mandate');
+  assert.equal(mandateAgreement?.status, 'proposed', '自荐或提名本身不能直接获得共同体授权');
+  assert.equal(collectiveState.collectives[0]?.mandates.length, 0, '成员没有按既定规则接受前不得产生协调者');
+  governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  collectiveState = runRecordOption(collectiveState, partner.id, governanceContext?.options.find((option) => option.id.startsWith('accept-mandate:')), 'accept-material-coordinator');
+  const mandate = collectiveState.collectives[0]?.mandates[0];
+  assert.ok(mandate?.status === 'active' && mandate.holderId === founder.id && mandate.validUntilMonth > collectiveState.clock.elapsedMonths, '成员按共同规则接受后应形成有范围、有期限的 Mandate');
+
+  governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
+  const contribute = governanceContext?.options.find((option) => option.id.startsWith(`contribute-mandate:${mandate.id}:`));
+  const holderFoodBefore = collectiveState.people.find((person) => person.id === founder.id).inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0);
+  collectiveState = runRecordOption(collectiveState, partner.id, contribute, 'voluntary-mandate-contribution');
+  assert.equal(collectiveState.people.find((person) => person.id === founder.id)?.inventory.filter((stack) => stack.materialId === 21).reduce((sum, stack) => sum + stack.quantity, 0), holderFoodBefore + 1, '授权不得自动征收；成员仍须以自己的 transfer 自愿交付');
+  assert.equal(collectiveState.collectives[0]?.mandates[0]?.contributionEventIds.length, 1, '交给协调者的每份物质必须保留具体人物的行动证据');
+  governanceContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
+  const distribute = governanceContext?.options.find((option) => option.id.startsWith(`distribute-mandate:${mandate.id}:`) && option.target?.kind === 'person' && option.target.personId === partner.id);
+  collectiveState = runRecordOption(collectiveState, founder.id, distribute, 'mandate-material-distribution');
+  assert.equal(collectiveState.collectives[0]?.mandates[0]?.distributionEventIds.length, 1, '协调者也必须亲自执行分配，组织不能像超级 Agent 一样移动物质');
+  assert.ok(collectiveState.derived.institutions.some((institution) => institution.key.startsWith('collective-coordination:')), '共同规则、授权、交付和分配闭环后才能投影为制度实践');
+  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.id === '61'), '被实际行使的限期协调授权应观察为选出临时协调者');
 
   const currentFounder = collectiveState.people.find((person) => person.id === founder.id);
   const currentPartner = collectiveState.people.find((person) => person.id === partner.id);

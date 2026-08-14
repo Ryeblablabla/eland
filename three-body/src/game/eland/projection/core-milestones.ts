@@ -110,6 +110,18 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     .flatMap((id) => state.world.past.filter((event) => event.id === id));
   add(result, '29', '结成友谊与联盟', collectiveEvidence, '至少两人基于已有合作与事实信任，自愿接受持续共同体成员关系；身份可在以后退出或因死亡终止。');
 
+  const consensusRules = state.collectives.flatMap((collective) => collective.decisionRules)
+    .filter((rule) => rule.method === 'unanimous')
+    .flatMap((rule) => rule.sourceEventIds)
+    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+  add(result, '524', '通过协商形成共识', consensusRules, '共同体成员分别接受了一项全体同意规则；该规则成为可持续产生后续授权的领域事实。');
+
+  const exercisedMandates = state.collectives.flatMap((collective) => collective.mandates)
+    .filter((mandate) => mandate.contributionEventIds.length > 0 && mandate.distributionEventIds.length > 0);
+  const mandateEvidence = exercisedMandates.flatMap((mandate) => mandate.sourceEventIds)
+    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+  add(result, '61', '选出临时协调者', mandateEvidence, '成员按共同接受的规则授权一位具体成员，并由成员自愿交付、协调者再实际分配同一种物质。');
+
   const fireWarming = environment.filter((event) => event.change === 'condition'
     && event.diff.condition === 'cold'
     && event.diff.exited === true

@@ -3,6 +3,7 @@ import type { ActionFact, SimulationState } from './model';
 import type { PersonId } from './person';
 import { isAlive } from './person';
 import { agreementById, type Agreement } from './agreement';
+import type { DecisionRule, Mandate } from './governance';
 
 export type MembershipStatus = 'active' | 'withdrawn' | 'ended';
 
@@ -23,6 +24,8 @@ export interface CollectiveState {
   foundedAtMonth: number;
   formationAgreementId: string;
   memberships: MembershipFact[];
+  decisionRules: DecisionRule[];
+  mandates: Mandate[];
   sourceEventIds: string[];
 }
 
@@ -80,6 +83,8 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
         foundedAtMonth: fact.atMonth,
         formationAgreementId: formation.id,
         memberships: formation.partyIds.map((personId) => membership(id, personId, fact.atMonth, sourceEventIds)),
+        decisionRules: [],
+        mandates: [],
         sourceEventIds,
       });
       formation.status = 'fulfilled';

@@ -13,6 +13,8 @@ import {
   openAssistRequestFor,
   openCollectiveOfferFor,
   openCompanionOfferFor,
+  openDecisionRuleOfferFor,
+  openMandateOfferFor,
   openMembershipOfferFor,
   openPermissionOfferFor,
 } from '../domain/social-facts';
@@ -20,6 +22,7 @@ import { cellsInRadius, findStandingPath } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
+import { activeMandatesFor } from '../domain/governance';
 import { activePermissionsFor } from '../domain/permission';
 import { findReachableWater } from '../domain/water-access';
 
@@ -32,7 +35,7 @@ function reachableWater(state: SimulationState, person: PersonState) {
   return findReachableWater(state, person, cellsInRadius(person.position.cellId, radius));
 }
 
-function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission'): ActionOption {
+function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission' | 'decision-rule' | 'mandate'): ActionOption {
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
   const response = { kind: 'communicate' as const, content: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
@@ -41,7 +44,7 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const distance = Math.max(0, findStandingPath(state.world.grid, person.position, other.position).length - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
-    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : '物质取用许可'}`,
+    summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : kind === 'permission' ? '物质取用许可' : kind === 'decision-rule' ? '共同决策规则' : '临时协调授权提议'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
     nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
@@ -238,6 +241,22 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
     if (accept) options.push(accept);
     if (reject) options.push(reject);
   }
+  const incomingDecisionRule = openDecisionRuleOfferFor(state, person.id);
+  if (incomingDecisionRule) {
+    const proposer = state.people.find((other) => other.id === incomingDecisionRule.fact.who);
+    if (proposer) {
+      options.push(responseOption(state, person, incomingDecisionRule.content.id, proposer, true, 'decision-rule'));
+      options.push(responseOption(state, person, incomingDecisionRule.content.id, proposer, false, 'decision-rule'));
+    }
+  }
+  const incomingMandate = openMandateOfferFor(state, person.id);
+  if (incomingMandate) {
+    const proposer = state.people.find((other) => other.id === incomingMandate.fact.who);
+    if (proposer) {
+      options.push(responseOption(state, person, incomingMandate.content.id, proposer, true, 'mandate'));
+      options.push(responseOption(state, person, incomingMandate.content.id, proposer, false, 'mandate'));
+    }
+  }
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
@@ -309,6 +328,66 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       const member = state.people.find((candidate) => candidate.id === id);
       return Boolean(member && sameLocation(member, person));
     });
+    const activeMembers = activeMemberIds(state, collective)
+      .flatMap((id) => state.people.filter((candidate) => candidate.id === id));
+    const requiredMemberApprovals = activeMembers.map((member) => member.id).filter((id) => id !== person.id);
+    const pendingDecisionRule = state.agreements.some((agreement) => agreement.status === 'proposed'
+      && agreement.proposal.kind === 'decision-rule'
+      && agreement.proposal.collectiveId === collective.id);
+    if (allMembersHere && !collective.decisionRules.some((rule) => rule.status === 'active') && !pendingDecisionRule) {
+      const groupMaterials = new Map<number, number>();
+      for (const member of activeMembers) for (const stack of member.inventory) {
+        if (stack.quantity > 0) groupMaterials.set(stack.materialId, (groupMaterials.get(stack.materialId) ?? 0) + stack.quantity);
+      }
+      for (const [materialId] of [...groupMaterials].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 2)) {
+        const representationId = `offer-decision-rule:${state.clock.elapsedMonths}:${collective.id}:${person.id}:${materialId}`;
+        options.push({
+          id: representationId,
+          summary: `提议以全体同意选择${materialDefinition(materialId).name}的临时协调者`,
+          reason: '共同体已有持续成员身份，但还没有任何成员共同接受的选择规则',
+          goal: { kind: 'representation-made', representationId },
+          nextAction: {
+            kind: 'communicate',
+            content: { id: representationId, kind: 'offer', summary: `以后由谁临时协调${materialDefinition(materialId).name}，必须每位成员都明确同意`, proposal: {
+              kind: 'decision-rule', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
+              collectiveId: collective.id, requiredApproverIds: requiredMemberApprovals,
+              method: 'unanimous', scope: 'coordinate-material', materialId,
+              mandateDurationMonths: 12, expiresAtMonth: state.clock.elapsedMonths + 6,
+            } },
+            audience: requiredMemberApprovals, channel: 'voice',
+          },
+          estimatedDuration: 'one-month', estimatedMonths: 1,
+          risks: ['任何一名成员拒绝都会使规则提议终止'], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+        });
+      }
+    }
+    const rule = collective.decisionRules.find((candidate) => candidate.status === 'active');
+    const activeMandate = collective.mandates.find((candidate) => candidate.status === 'active' && candidate.decisionRuleId === rule?.id);
+    const pendingMandate = state.agreements.some((agreement) => agreement.status === 'proposed'
+      && agreement.proposal.kind === 'mandate'
+      && agreement.proposal.collectiveId === collective.id);
+    if (allMembersHere && rule && !activeMandate && !pendingMandate) {
+      for (const holder of activeMembers.slice(0, 3)) {
+        const representationId = `offer-mandate:${state.clock.elapsedMonths}:${collective.id}:${person.id}:${holder.id}:${rule.id}`;
+        options.push({
+          id: representationId,
+          summary: `提议由${holder.name}限期协调${materialDefinition(rule.materialId).name}`,
+          reason: '成员已经共同接受选择规则，现在可以分别判断由谁承担有限职责',
+          goal: { kind: 'representation-made', representationId },
+          nextAction: {
+            kind: 'communicate',
+            content: { id: representationId, kind: 'offer', summary: `我提议由${holder.name}在未来${rule.mandateDurationMonths}个月协调${materialDefinition(rule.materialId).name}`, proposal: {
+              kind: 'mandate', proposerId: person.id, partnerId: requiredMemberApprovals[0]!,
+              collectiveId: collective.id, decisionRuleId: rule.id, holderId: holder.id,
+              requiredApproverIds: requiredMemberApprovals, expiresAtMonth: state.clock.elapsedMonths + 6,
+            } },
+            audience: requiredMemberApprovals, channel: 'voice',
+          },
+          target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+          risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...rule.sourceEventIds],
+        });
+      }
+    }
     const candidate = allMembersHere ? localPeople.find((other) => {
       if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
       const relation = relationTo(person, other.id);
@@ -338,6 +417,38 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         },
         target: { kind: 'person', personId: candidate.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: ['任一现有成员或候选人拒绝，提议都会终止'], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+      });
+    }
+  }
+
+  for (const mandate of activeMandatesFor(state, person.id)) {
+    const holder = state.people.find((other) => other.id === mandate.holderId);
+    if (!holder) continue;
+    if (person.id !== holder.id && sameLocation(person, holder)) {
+      const stack = person.inventory.find((item) => item.materialId === mandate.materialId && item.quantity >= 2);
+      if (stack) options.push({
+        id: `contribute-mandate:${mandate.id}:${stack.id}`,
+        summary: `按共同授权自愿交给${holder.name}一份${materialDefinition(mandate.materialId).name}`,
+        reason: '共同体已一致授权协调者，但私人持有物仍需本人逐次选择是否交付',
+        goal: { kind: 'inventory-at-least', materialId: mandate.materialId, quantity: inventoryQuantity(holder, mandate.materialId) + 1, personId: holder.id },
+        nextAction: { kind: 'transfer', materialId: mandate.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: holder.id }, stackId: stack.id, authorizationRef: mandate.id },
+        target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...mandate.sourceEventIds],
+      });
+    }
+    if (person.id === holder.id) {
+      const recipient = localPeople
+        .filter((other) => activeCollectivesFor(state, other.id).some((collective) => collective.id === mandate.collectiveId))
+        .sort((a, b) => Math.min(a.body.hydration, a.body.nutrition) - Math.min(b.body.hydration, b.body.nutrition) || a.id.localeCompare(b.id))[0];
+      const stack = person.inventory.find((item) => item.materialId === mandate.materialId && item.quantity > 0);
+      if (recipient && stack) options.push({
+        id: `distribute-mandate:${mandate.id}:${stack.id}:${recipient.id}`,
+        summary: `以协调者身份交给${recipient.name}一份${materialDefinition(mandate.materialId).name}`,
+        reason: '本人持有共同体一致授予的有限协调职责，但每次分配仍须由本人行动',
+        goal: { kind: 'inventory-at-least', materialId: mandate.materialId, quantity: inventoryQuantity(recipient, mandate.materialId) + 1, personId: recipient.id },
+        nextAction: { kind: 'transfer', materialId: mandate.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: recipient.id }, stackId: stack.id, authorizationRef: mandate.id },
+        target: { kind: 'person', personId: recipient.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...mandate.sourceEventIds],
       });
     }
   }

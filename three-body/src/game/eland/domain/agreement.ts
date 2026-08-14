@@ -34,7 +34,7 @@ export interface Agreement {
 function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId; requiredResponderIds: PersonId[] } {
   if (proposal.kind === 'assist') return { proposerId: proposal.requesterId, responderId: proposal.helperId, requiredResponderIds: [proposal.helperId] };
   if (proposal.kind === 'exchange') return { proposerId: proposal.offererId, responderId: proposal.partnerId, requiredResponderIds: [proposal.partnerId] };
-  if (proposal.kind === 'membership') return {
+  if (proposal.kind === 'membership' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return {
     proposerId: proposal.proposerId,
     responderId: proposal.partnerId,
     requiredResponderIds: [...new Set(proposal.requiredApproverIds.filter((id) => id !== proposal.proposerId))],
@@ -44,7 +44,7 @@ function parties(proposal: SocialProposal): { proposerId: PersonId; responderId:
 
 function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'companion') return 24;
-  if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission') return 1;
+  if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
   return 4;
@@ -126,7 +126,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       const reachedAudienceIds = Array.isArray(fact.diff.audience)
         ? fact.diff.audience.filter((id): id is PersonId => typeof id === 'string')
         : [];
-      if (content.proposal.kind === 'membership'
+      if ((content.proposal.kind === 'membership' || content.proposal.kind === 'decision-rule' || content.proposal.kind === 'mandate')
         && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
       const intentSources = fact.intentId
         ? state.intents.find((intent) => intent.id === fact.intentId)?.sourceFactIds ?? []

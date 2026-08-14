@@ -30,7 +30,11 @@ export interface DecisionRequestContext {
     id: string; kind: string; status: string; partyIds: string[]; dueAtMonth?: number;
     requiredResponderIds: string[]; acceptedByPersonIds: string[]; fulfilledByPersonIds: string[];
   }>;
-  collectives: Array<{ id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number }>;
+  collectives: Array<{
+    id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number;
+    decisionRules: Array<{ id: string; method: string; scope: string; materialId: number }>;
+    mandates: Array<{ id: string; holderId: string; materialId: number; validUntilMonth: number; status: string }>;
+  }>;
   permissions: Array<{ id: string; grantorId: string; granteeId: string; materialId: number; validUntilMonth: number; status: string }>;
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
@@ -115,6 +119,8 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         status: collective.status,
         activeMemberIds: collective.memberships.filter((membership) => membership.status === 'active').map((membership) => membership.personId),
         joinedAtMonth: own.joinedAtMonth,
+        decisionRules: collective.decisionRules.filter((rule) => rule.status === 'active').map(({ id, method, scope, materialId }) => ({ id, method, scope, materialId })),
+        mandates: collective.mandates.filter((mandate) => mandate.status === 'active').map(({ id, holderId, materialId, validUntilMonth, status }) => ({ id, holderId, materialId, validUntilMonth, status })),
       }] : [];
     }),
     permissions: state.permissions

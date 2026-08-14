@@ -32,6 +32,7 @@ import { compileAgreementContinuations } from './agreement-continuation';
 import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
+import { mandateById } from '../domain/governance';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -734,7 +735,7 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
       ? { ...option, requiresFollowUp: true }
       : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):/.test(option.id));
   return {
     state,
     person,
@@ -753,6 +754,21 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     : undefined;
   if (agreementContinuation) return agreementContinuation.nextAction;
   if (intent.nextAction.kind === 'transfer' && intent.nextAction.authorizationRef) {
+    const mandate = mandateById(state, intent.nextAction.authorizationRef);
+    const mandateAction = intent.nextAction;
+    if (mandate?.status === 'active'
+      && state.clock.elapsedMonths <= mandate.validUntilMonth
+      && mandateAction.from.kind === 'person'
+      && mandateAction.from.personId === person.id
+      && mandateAction.to.kind === 'person') {
+      const receiverId = mandateAction.to.personId;
+      const receiver = state.people.find((candidate) => candidate.id === receiverId && isAlive(candidate));
+      const stack = person.inventory.find((candidate) => candidate.materialId === mandateAction.materialId && candidate.quantity > 0);
+      if (!receiver || !stack) return null;
+      return sameLocation(receiver, person)
+        ? { ...mandateAction, stackId: stack.id }
+        : { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z };
+    }
     const permission = permissionById(state, intent.nextAction.authorizationRef);
     if (permission?.status === 'active' && permission.granteeId === person.id && state.clock.elapsedMonths <= permission.validUntilMonth) {
       const grantor = state.people.find((candidate) => candidate.id === permission.grantorId && isAlive(candidate));

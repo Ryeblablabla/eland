@@ -27,6 +27,7 @@ import type {
   EpochKind,
   EvolutionReport,
   Intent,
+  InstitutionObservation,
   MilestoneObservation,
   PracticeObservation,
   SimulationConfig,
@@ -43,6 +44,7 @@ import { chooseDependentCareReflex } from '../domain/dependent-care';
 import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
 import { advanceCollectiveLifecycle } from '../domain/collective';
+import { advanceGovernanceLifecycle } from '../domain/governance';
 import { advancePermissionLifecycle } from '../domain/permission';
 import { shelterGeometryAt } from '../domain/structure';
 import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
@@ -196,7 +198,7 @@ function urgency(context: DecisionContext): number {
 }
 
 function hasRequiredSocialResponse(context: DecisionContext): boolean {
-  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission):/.test(option.id));
+  return context.options.some((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):/.test(option.id));
 }
 
 function lastModelDecisionMonth(state: SimulationState, personId: PersonId): number | null {
@@ -678,13 +680,21 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
     movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,
     cultivation.length ? { key: 'cultivation', label: '种植实践', count: cultivation.length, agentIds: [...new Set(cultivation.map((event) => event.who))], eventIds: cultivation.map((event) => event.id), stability: clamp(cultivation.length * 12) } : null,
   ].filter((item): item is PracticeObservation => Boolean(item));
+  const institutions: InstitutionObservation[] = state.collectives.flatMap((collective) => collective.mandates
+    .filter((mandate) => mandate.contributionEventIds.length > 0 && mandate.distributionEventIds.length > 0)
+    .map((mandate) => ({
+      key: `collective-coordination:${mandate.id}`,
+      label: '共同体物质协调职责',
+      evidenceEventIds: [...mandate.sourceEventIds],
+      note: '共同规则、逐人同意、限期授权、自愿交付与实际分配形成了能继续影响行动的规范实践。',
+    })));
   const regions: EmergentRegion[] = [];
   const waterCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water || surfaceMaterial(state.world.grid, cell) === Material.Ice);
   if (waterCells.length) regions.push({ id: 'natural-water', kind: 'natural', cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: '水域' });
   if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: trailFormation.map(({ event }) => event.id), firstObservedMonth: trailFormation[0]?.event.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
   if (cultivatedCells.length) regions.push({ id: 'cultivated', kind: 'cultivated', cells: cultivatedCells, confidence: clamp(cultivatedCells.length / 12), evidenceEventIds: [...cultivation, ...harvests].map((event) => event.id), firstObservedMonth: cultivation[0]?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '耕作区' });
   for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: state.world.past.find((event) => structure.sourceEventIds.includes(event.id))?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '木质活动区' });
-  return { practices, institutions: [], milestones, regions, structures };
+  return { practices, institutions, milestones, regions, structures };
 }
 
 function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
@@ -737,6 +747,7 @@ function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: numb
   state.clock.elapsedMonths = atMonth;
   state.world.past.push(...events);
   advanceCollectiveLifecycle(state, atMonth);
+  advanceGovernanceLifecycle(state, atMonth);
   state.lastStep = events;
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   state.derived = deriveObservations(state);
@@ -893,6 +904,10 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
     person.position.tickPath = person.position.tickPath?.length
       ? person.position.tickPath
       : Array.from({ length: RULE_ACTION_TICKS_PER_MONTH + 1 }, (_, index) => index === RULE_ACTION_TICKS_PER_MONTH ? person.position.cellId : start);
+  }
+  for (const collective of state.collectives) {
+    collective.decisionRules ??= [];
+    collective.mandates ??= [];
   }
   for (const event of state.world.past) {
     if (event.kind !== 'action') continue;

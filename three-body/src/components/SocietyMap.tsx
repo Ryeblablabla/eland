@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AgentCard from '@/components/AgentCard';
 import MapLegend from '@/components/MapLegend';
 import type { AgentHistoryItem, EraKey, SocietyAgent, SocietyState } from '@/game/societyContract';
-import { drawAgentMarker } from '@/game/agentMarkers';
+import { drawAgentMarker, layoutAgentLabels } from '@/game/agentMarkers';
 import { hillshade, hillshadeFill } from '@/game/hillshade';
+import { drawCellDetail } from '@/game/cellDetail';
 import { cellColor, cellCoordinates, cellLabel, interpolatePath } from '@/game/pixelworld';
 
 interface Props {
@@ -143,6 +144,8 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
           context.fillStyle = relief;
           context.fillRect(x * scale, y * scale, scale, scale);
         }
+        // 格内材质纹理（草点 / 岩屑 / 水面波纹动画）
+        drawCellDetail(context, world, cellId, x * scale, y * scale, scale, now);
         const traffic = world.activity.traffic[cellId];
         if (traffic >= 3) {
           context.fillStyle = `rgba(194,166,118,${Math.min(0.62, traffic / 28)})`;
@@ -163,22 +166,43 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         context.fillRect(x * scale + scale * 0.33, y * scale + scale * 0.33, scale * 0.34, scale * 0.34);
       }
 
-      // 人物：状态环 + 朝向针 + 姓名 + 意图符号（渲染层在 game/agentMarkers.ts）
+      // 人物：两遍绘制——先布局姓名标签（防碰撞），再画标记（渲染层在 game/agentMarkers.ts）
+      const markerFontSize = Math.max(10, Math.min(13, scale * 0.42));
+      const markerRadiusHint = Math.max(3, Math.min(scale * 0.27, 10));
+      const marks: { agent: SocietyAgent; x: number; y: number; dirX: number; dirY: number }[] = [];
       for (const agent of society.agents) {
         const path = agent.tickPath.length === RULE_ACTION_TICKS_PER_MONTH + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
         const point = interpolatePath(path, world.width, motion);
         const prevPoint = interpolatePath(path, world.width, Math.max(0, motion - 0.08));
-        drawAgentMarker(context, agent, {
+        marks.push({
+          agent,
           x: (point.x + 0.5) * scale,
           y: (point.y + 0.5) * scale,
           dirX: point.x - prevPoint.x,
           dirY: point.y - prevPoint.y,
+        });
+      }
+      const lifts = layoutAgentLabels(
+        context,
+        marks
+          .filter((m) => scale >= 10 || m.agent.id === selectedAgentId || m.agent.name === speaker)
+          .map((m) => ({ id: m.agent.id, name: m.agent.name, x: m.x, y: m.y - markerRadiusHint - 6, h: markerFontSize + 8 })),
+        `500 ${markerFontSize}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`,
+      );
+      for (const m of marks) {
+        drawAgentMarker(context, m.agent, {
+          x: m.x,
+          y: m.y,
+          dirX: m.dirX,
+          dirY: m.dirY,
           scale,
-          selected: agent.id === selectedAgentId,
-          speaking: agent.name === speaker,
-          intentKind: agent.activeIntentId
-            ? society.intents.find((intent) => intent.id === agent.activeIntentId)?.actionKind
+          selected: m.agent.id === selectedAgentId,
+          speaking: m.agent.name === speaker,
+          intentKind: m.agent.activeIntentId
+            ? society.intents.find((intent) => intent.id === m.agent.activeIntentId)?.actionKind
             : undefined,
+          labelLift: lifts.get(m.agent.id) ?? 0,
+          fontSize: markerFontSize,
         });
       }
 

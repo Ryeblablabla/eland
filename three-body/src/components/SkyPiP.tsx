@@ -114,6 +114,19 @@ export default function SkyPiP({ stats, era, onOpen, className }: Props) {
         ctx.arc(px, py, 2.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+
+        // 天体名标注
+        const STAR_TAG = ['α A', 'α B', 'Proxima'];
+        ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i < 3; i++) {
+          const [sx, sy] = toScreen(i);
+          ctx.fillStyle = 'rgba(226,232,240,0.55)';
+          ctx.fillText(STAR_TAG[i], sx + 5.5, sy);
+        }
+        ctx.fillStyle = 'rgba(217,255,242,0.5)';
+        ctx.fillText('三体星', px + 4.5, py - 5);
       }
 
       // 底部：日照通量条（0~3× 宜居基线）

@@ -1,7 +1,8 @@
 import type { IntentView, SocietyAgent } from './societyContract';
+import { CHARACTERS } from '@/data/characters';
 
 /**
- * 人物地图渲染层：把人物的姓名、移动朝向、身体状态与当前意图
+ * 人物地图渲染层：把人物的姓名、立绘、移动朝向、身体状态与当前意图
  * 外化到地表地图上。纯绘制函数，不触碰模拟状态。
  */
 
@@ -14,7 +15,75 @@ export interface AgentMarkerDraw {
   selected: boolean;
   speaking: boolean;
   intentKind?: IntentView['actionKind'];
+  labelLift?: number; // 标签防碰撞上移量（px，由 layoutAgentLabels 给出）
+  fontSize?: number;  // 标签字号（布局与绘制共用同一字号）
 }
+
+// ---------------------------------------------------------------------------
+// 立绘头像：模块级缓存，加载完成后下一帧自然生效（无需回调驱动重绘）
+// ---------------------------------------------------------------------------
+
+const PORTRAIT_URL = new Map(CHARACTERS.map((c) => [c.id, c.portrait]));
+const portraitCache = new Map<string, HTMLImageElement | null>();
+
+function portraitImage(agentId: string): HTMLImageElement | null {
+  if (portraitCache.has(agentId)) return portraitCache.get(agentId) ?? null;
+  const url = PORTRAIT_URL.get(agentId);
+  if (!url) {
+    portraitCache.set(agentId, null);
+    return null;
+  }
+  const img = new Image();
+  img.src = url;
+  portraitCache.set(agentId, img);
+  return img;
+}
+
+// ---------------------------------------------------------------------------
+// 姓名标签防碰撞布局：重叠的标签沿竖直方向弹开（配合牵引线）
+// ---------------------------------------------------------------------------
+
+export interface LabelItem {
+  id: string;
+  name: string;
+  x: number; // 标签锚点（人物头顶）
+  y: number;
+  h: number; // 标签占用高度
+}
+
+export function layoutAgentLabels(
+  ctx: CanvasRenderingContext2D,
+  items: LabelItem[],
+  font: string,
+): Map<string, number> {
+  const lifts = new Map<string, number>();
+  if (items.length === 0) return lifts;
+  ctx.save();
+  ctx.font = font;
+  const placed: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const it of sorted) {
+    const w = ctx.measureText(it.name).width + 8; // 含背板内边距
+    let lift = 0;
+    for (let guard = 0; guard < 14; guard++) {
+      const y0 = it.y - lift - it.h;
+      const y1 = it.y - lift;
+      const clash = placed.some(
+        (p) => it.x + w / 2 > p.x0 && it.x - w / 2 < p.x1 && y0 < p.y1 && y1 > p.y0,
+      );
+      if (!clash) break;
+      lift += it.h * 0.92;
+    }
+    placed.push({ x0: it.x - w / 2, x1: it.x + w / 2, y0: it.y - lift - it.h, y1: it.y - lift });
+    lifts.set(it.id, lift);
+  }
+  ctx.restore();
+  return lifts;
+}
+
+// ---------------------------------------------------------------------------
+// 标记绘制
+// ---------------------------------------------------------------------------
 
 /** 身体状态 → 状态环颜色（脱水是三体世界的头等状态，独立成蓝） */
 function statusColor(agent: SocietyAgent, selected: boolean, speaking: boolean): string {
@@ -114,7 +183,7 @@ function drawIntentGlyph(
 }
 
 /**
- * 绘制一名人物的完整标记：状态环 + 本体 + 朝向针 + 姓名标签 + 意图符号。
+ * 绘制一名人物的完整标记：立绘（或圆点）+ 状态环 + 朝向针 + 姓名标签 + 意图符号。
  * 调用方负责在每帧对每个 agent 调用；函数内部 save/restore，不污染上下文。
  */
 export function drawAgentMarker(
@@ -123,9 +192,26 @@ export function drawAgentMarker(
   d: AgentMarkerDraw,
 ): void {
   const dead = agent.state === 'dead';
-  const radius = Math.max(3, Math.min(d.selected ? d.scale * 0.36 : d.scale * 0.27, 10));
+  const baseRadius = Math.max(3, Math.min(d.selected ? d.scale * 0.36 : d.scale * 0.27, 10));
 
   ctx.save();
+
+  // ---- 本体：立绘头像（缩放足够且已加载）或圆点 ----
+  const portrait = dead ? null : portraitImage(agent.id);
+  const usePortrait = !!portrait && portrait.complete && portrait.naturalWidth > 0 && d.scale >= 13;
+  const radius = usePortrait ? Math.max(5, Math.min(d.scale * 0.42, 14)) : baseRadius;
+
+  if (usePortrait && portrait) {
+    // 3:4 史诗厚涂 → 居中方形 cover 裁切（微偏上，保住面部）
+    const side = portrait.naturalWidth;
+    const sy = Math.max(0, (portrait.naturalHeight - side) * 0.25);
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(portrait, 0, sy, side, side, d.x - radius, d.y - radius, radius * 2, radius * 2);
+    ctx.restore();
+    ctx.save();
+  }
 
   // ---- 状态环（健康 / 脱水 / 选中 / 说话）----
   if (!dead) {
@@ -136,11 +222,12 @@ export function drawAgentMarker(
     ctx.stroke();
   }
 
-  // ---- 本体 ----
-  ctx.beginPath();
-  ctx.fillStyle = dead ? '#424852' : d.selected ? '#fde68a' : d.speaking ? '#fbbf24' : '#f2efe6';
-  ctx.arc(d.x, d.y, radius, 0, Math.PI * 2);
-  ctx.fill();
+  if (!usePortrait) {
+    ctx.beginPath();
+    ctx.fillStyle = dead ? '#424852' : d.selected ? '#fde68a' : d.speaking ? '#fbbf24' : '#f2efe6';
+    ctx.arc(d.x, d.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   if (dead) {
     // 死亡：✕ 标记，无朝向与标签
@@ -175,13 +262,23 @@ export function drawAgentMarker(
   // ---- 姓名标签（缩放过小只保留选中/说话者，防拥挤）----
   const showLabel = d.scale >= 10 || d.selected || d.speaking;
   if (showLabel) {
-    const fontSize = Math.max(10, Math.min(13, d.scale * 0.42));
+    const fontSize = d.fontSize ?? Math.max(10, Math.min(13, d.scale * 0.42));
+    const lift = d.labelLift ?? 0;
     ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    const labelY = d.y - radius - 6;
+    const labelY = d.y - radius - 6 - lift;
     const textW = ctx.measureText(agent.name).width;
     const pad = 3;
+    // 防碰撞上移过：画牵引线连回人物头顶
+    if (lift > 2) {
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(226,232,240,0.4)';
+      ctx.lineWidth = 1;
+      ctx.moveTo(d.x, d.y - radius - 2);
+      ctx.lineTo(d.x, labelY + 1);
+      ctx.stroke();
+    }
     // 半透明背板保证任何地形上可读
     ctx.fillStyle = 'rgba(5,8,12,0.62)';
     ctx.fillRect(d.x - textW / 2 - pad, labelY - fontSize - pad * 1.6, textW + pad * 2, fontSize + pad * 2.4);

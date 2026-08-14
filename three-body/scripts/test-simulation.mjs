@@ -744,6 +744,31 @@ try {
     return stepSimulation(state, { decide() { return { kind: 'idle', reason: '不干扰记录链测试' }; } });
   };
 
+  let miningState = createInitialState(386, { endpoint: { kind: 'months', value: 6 }, chaosIntensity: 0 });
+  const minerId = miningState.people[0].id;
+  for (const bystander of miningState.people.slice(1)) bystander.diedAtMonth = 0;
+  const miner = miningState.people[0];
+  miner.bornAtMonth = -20 * 12;
+  miner.inventory = [];
+  const mineCell = [miner.position.cellId - miningState.world.grid.width, miner.position.cellId - 1, miner.position.cellId + 1, miner.position.cellId + miningState.world.grid.width]
+    .find((cell) => cell >= 0 && cell < miningState.world.grid.width * miningState.world.grid.depth
+      && Math.abs(cell % miningState.world.grid.width - miner.position.cellId % miningState.world.grid.width)
+        + Math.abs(Math.floor(cell / miningState.world.grid.width) - Math.floor(miner.position.cellId / miningState.world.grid.width)) === 1);
+  const mineZ = miner.position.z - 1;
+  for (let z = mineZ + 1; z < miningState.world.grid.levels; z += 1) miningState.world.grid.voxels[z * miningState.world.grid.width * miningState.world.grid.depth + mineCell] = 0;
+  miningState.world.grid.voxels[mineZ * miningState.world.grid.width * miningState.world.grid.depth + mineCell] = 1;
+  assert.equal(buildDecisionContexts(miningState).find((context) => context.person.id === minerId)?.options.some((option) => option.id.startsWith('separate-material:split-stone')), false, '没有真实工具时不能获得采石候选');
+  miner.inventory.push({ id: 'test-mining-tool', materialId: 24, quantity: 1, sourceEventIds: ['test-tool-source'] });
+  const miningOption = buildDecisionContexts(miningState).find((context) => context.person.id === minerId)?.options.find((option) => option.id.startsWith('separate-material:split-stone'));
+  assert.ok(miningOption?.target?.kind === 'voxel' && miningOption.nextAction.kind === 'act' && miningOption.nextAction.operation === 'separate', '石制工具与近身石体素应通过既有 separate 原语产生一个最近候选');
+  const minedPosition = miningOption.target.position;
+  miningState = runRecordOption(miningState, minerId, miningOption, 'mine-real-stone-voxel');
+  const minedStone = miningState.people.find((person) => person.id === minerId);
+  const minedVoxelIndex = minedPosition.z * miningState.world.grid.width * miningState.world.grid.depth + minedPosition.y * miningState.world.grid.width + minedPosition.x;
+  assert.equal(miningState.world.grid.voxels[minedVoxelIndex], 0, '采石必须改变目标体素本身，不能凭空增加背包物品');
+  assert.ok(minedStone.inventory.some((stack) => stack.materialId === 1 && stack.quantity >= 1), '分离出的石必须先成为地面掉落，再由 transfer 进入私人背包');
+  assert.ok(minedStone.knowledge.some((fact) => fact.id.startsWith('technique:separate:24:1:1') && fact.confidence === 46), '第一次真实采石应留下尚待重复核验的物质技术');
+
   let failedExperimentState = createInitialState(391, { endpoint: { kind: 'months', value: 20 }, chaosIntensity: 0 });
   const experimenterId = failedExperimentState.people[0].id;
   failedExperimentState.people[0].bornAtMonth = -20 * 12;
@@ -1111,6 +1136,14 @@ try {
   const shelteredUser = shelterUseState.people.find((person) => person.id === builderId);
   assert.ok(shelterReflex, '二级冷热状态必须用既有 move 原语进入已知住所，不消耗模型决策');
   assert.ok(shelterUseState.derived.structures.some((structure) => structure.complete && structure.interiorPositions.some((position) => position.cellId === shelteredUser.position.cellId && position.z === shelteredUser.position.z)), '避险移动完成后，人物必须真实站在仍有效的住所内部');
+  let plankRecoveryState = structuredClone(shelterState);
+  const plankRecoveryOption = buildDecisionContexts(plankRecoveryState).find((context) => context.person.id === builderId)?.options.find((option) => option.id.startsWith('separate-material:recover-plank'));
+  assert.ok(plankRecoveryOption?.target?.kind === 'voxel', '近身结构木板应产生一个可拆回的物质候选');
+  const recoveredPosition = plankRecoveryOption.target.position;
+  plankRecoveryState = runRecordOption(plankRecoveryState, builderId, plankRecoveryOption, 'recover-placed-plank');
+  const recoveredVoxelIndex = recoveredPosition.z * plankRecoveryState.world.grid.width * plankRecoveryState.world.grid.depth + recoveredPosition.y * plankRecoveryState.world.grid.width + recoveredPosition.x;
+  assert.equal(plankRecoveryState.world.grid.voxels[recoveredVoxelIndex], 0, '拆解必须移除原结构体素，使结构投影不再把旧事件当作现存物质');
+  assert.ok(plankRecoveryState.people.find((person) => person.id === builderId)?.inventory.some((stack) => stack.materialId === 19 && stack.quantity >= 1), '拆下的木板必须能回到私人背包并再次用于建造');
   const stoneBuilder = shelterState.people.find((person) => person.id === builderId);
   stoneBuilder.inventory = [{ id: 'shelter-stone', materialId: 1, quantity: 2, sourceEventIds: ['test-collected-stone'] }];
   const stoneBuildContext = buildDecisionContexts(shelterState).find((context) => context.person.id === builderId);

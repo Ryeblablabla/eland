@@ -34,6 +34,8 @@ import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
 import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
+import { buildMaterialSeparationOptions } from './separation-options';
+import { voxelSeparationRuleFor } from '../domain/separation-rules';
 import {
   inventoryNoResponseFactId,
   knowsReliableNoResponse,
@@ -185,6 +187,8 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   for (const drop of [...nearestDropsByMaterial.values()].slice(0, 8)) {
     options.push(optionForDrop(person, drop));
   }
+
+  options.push(...buildMaterialSeparationOptions(state, person, visibleCells));
 
   for (const cellId of visibleCells) {
     const surface = surfaceMaterial(state.world.grid, cellId);
@@ -849,13 +853,21 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     if (intent.target?.kind === 'voxel') {
       const targetCell = intent.target.position.x + intent.target.position.y * state.world.grid.width;
       const targetMaterial = voxelAt(state.world.grid, intent.target.position.x, intent.target.position.y, intent.target.position.z);
+      const separationRule = voxelSeparationRuleFor(targetMaterial);
       const targetStillMatches = (materialId === Material.Food && targetMaterial === Material.CropMature)
-        || (materialId === Material.Wood && (targetMaterial === Material.Wood || targetMaterial === Material.Leaves));
+        || (materialId === Material.Wood && (targetMaterial === Material.Wood || targetMaterial === Material.Leaves))
+        || Boolean(separationRule?.outputs.some((output) => output.materialId === materialId));
       if (targetStillMatches) {
         if (distance(person.position.cellId, targetCell) <= 1) {
+          const requiredTool = separationRule?.requiredToolMaterialId === undefined
+            ? undefined
+            : person.inventory.find((stack) => stack.materialId === separationRule.requiredToolMaterialId && stack.quantity > 0);
+          if (separationRule?.requiredToolMaterialId !== undefined && !requiredTool) return null;
           return {
             kind: 'act', operation: 'separate', targets: [intent.target],
-            ...(materialId === Material.Wood ? { toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id } : {}),
+            ...(materialId === Material.Wood
+              ? { toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id }
+              : requiredTool ? { toolStackId: requiredTool.id } : {}),
           };
         }
         const destination = intent.nextAction.kind === 'move' ? intent.nextAction.toCellId : targetCell;

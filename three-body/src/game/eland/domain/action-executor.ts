@@ -26,6 +26,7 @@ import { rememberMaterialPlace } from './spatial-knowledge';
 import { shelterGeometryAt } from './structure';
 import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
+import { separationTechniqueId, separationTechniqueSummary, voxelSeparationRuleFor } from './separation-rules';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -43,6 +44,13 @@ function bodyOccupies(state: SimulationState, position: VoxelPosition): boolean 
   return state.people.some((candidate) => isAlive(candidate)
     && candidate.position.cellId === targetCell
     && (candidate.position.z === position.z || candidate.position.z + 1 === position.z));
+}
+
+function bodyStandsOn(state: SimulationState, position: VoxelPosition): boolean {
+  const targetCell = cellId(position.x, position.y);
+  return state.people.some((candidate) => isAlive(candidate)
+    && candidate.position.cellId === targetCell
+    && candidate.position.z === position.z + 1);
 }
 
 function removeEmptyStacks(person: PersonState): void {
@@ -321,7 +329,8 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   const { x, y, z } = target.position;
   const materialId = voxelAt(state.world.grid, x, y, z);
   const output: Array<{ materialId: MaterialId; quantity: number }> = [];
-  const tool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.materialId === Material.StoneTool && stack.quantity > 0) : undefined;
+  const selectedTool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.quantity > 0) : undefined;
+  const tool = selectedTool?.materialId === Material.StoneTool ? selectedTool : undefined;
   let replacement: MaterialId = Material.Air;
   if (materialId === Material.Leaves || materialId === Material.Wood) {
     setVoxel(state.world.grid, x, y, z, Material.Air);
@@ -344,13 +353,36 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
     setVoxel(state.world.grid, x, y, z, replacement);
     output.push({ materialId: Material.Fiber, quantity: tool ? 3 : 2 });
   } else {
-    return { status: 'blocked' as const, result: `${materialDefinition(materialId).name}目前无法徒手分离`, diff: { materialId } };
+    const rule = voxelSeparationRuleFor(materialId);
+    if (!rule) return { status: 'blocked' as const, result: `${materialDefinition(materialId).name}目前无法徒手分离`, diff: { materialId } };
+    if (rule.requiredToolMaterialId !== undefined && selectedTool?.materialId !== rule.requiredToolMaterialId) return {
+      status: 'blocked' as const,
+      result: `分离${materialDefinition(materialId).name}需要${materialDefinition(rule.requiredToolMaterialId).name}`,
+      diff: { materialId, requiredToolMaterialId: rule.requiredToolMaterialId },
+    };
+    if (bodyStandsOn(state, target.position)) return { status: 'blocked' as const, result: '这个物质体素正支撑着身体，不能直接分离', diff: { materialId, position: target.position } };
+    replacement = rule.replacementMaterialId;
+    setVoxel(state.world.grid, x, y, z, replacement);
+    output.push(...rule.outputs);
+    const techniqueId = separationTechniqueId(rule);
+    const known = person.knowledge.find((fact) => fact.id === techniqueId);
+    if (known) {
+      known.confidence = clamp(known.confidence + 18);
+      known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
+    } else person.knowledge.push({
+      id: techniqueId,
+      kind: 'technique',
+      summary: separationTechniqueSummary(rule),
+      confidence: 46,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId],
+    });
   }
   for (const item of output) addDrop(state, item.materialId, item.quantity, person.position.cellId, atMonth, [eventId], `${person.id}-separate`, undefined, person.position.z);
   return {
     status: 'completed' as const,
     result: `从${materialDefinition(materialId).name}分离出${output.map((item) => `${materialDefinition(item.materialId).name} × ${item.quantity}`).join('、')}`,
-    diff: { sourceMaterialId: materialId, replacementMaterialId: replacement, outputs: output, ...(tool ? { toolMaterialId: tool.materialId, toolStackId: tool.id } : {}) },
+    diff: { sourceMaterialId: materialId, replacementMaterialId: replacement, outputs: output, ...(selectedTool ? { toolMaterialId: selectedTool.materialId, toolStackId: selectedTool.id } : {}) },
   };
 }
 

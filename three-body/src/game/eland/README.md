@@ -15,6 +15,7 @@ world grid primitives
 - `domain/model.ts`：人物、意图、物质、结构、事件与 `SimulationState` 聚合根。
 - `domain/survival-reflex.ts`：不消耗模型额度的吃、喝与紧急避险反射。
 - `domain/shelter-access.ts`：从可见或记得的真实结构中寻找当前仍可达的住所内部。
+- `domain/separation-rules.ts`：定义体素物质如何通过同一 `separate` 原语被采出或拆回。
 - `domain/dependent-care.ts`：幼儿不能独立完成的紧急携带与食物转移，不替代长期家庭意图。
 - `domain/memory.ts`：固定预算的情节、对话、承诺和失败记忆，负责遗忘与摘要。
 - `application/social-options.ts`：会合、求助、结伴和对话响应候选。

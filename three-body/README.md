@@ -2,9 +2,11 @@
 
 三体文明演化原型。前端仍由 Vite 提供；演化后端可以完全脱离前端运行，并把每个运行的完整状态及事件历史持久化到磁盘。
 
+人物与模型的当前权威边界见 [`../docs/rule-first-agent-architecture-v1.md`](../docs/rule-first-agent-architecture-v1.md)：后端始终使用本地规划器，每月执行 15 个规划刻度；Kimi 只承担少量异步战略、交互、创造性和叙事增强。
+
 ## 自主演化能力
 
-长期能力目标以 [`../docs/human-society-capability-map-1000.md`](../docs/human-society-capability-map-1000.md) 的 **1000 项能力地图**为准。当前月度物质世界的运行时观察器可判定采集、住所、种植收获、道路、交换约定、交换交付、观察自然与技术传播。支撑更多能力自然出现的底层设计见 [`../docs/emergent-capability-substrate-v1.md`](../docs/emergent-capability-substrate-v1.md)。
+长期能力目标以 [`../docs/human-society-capability-map-1000.md`](../docs/human-society-capability-map-1000.md) 的 **1000 项能力地图**为准。当前月度物质世界的运行时观察器（`application/monthly-simulation.ts` 与 `projection/core-milestones.ts`）正式判定 29 项：诞生、繁衍后代、养育幼儿、生病、医治伤病、照料弱者、衰老、死亡、采集食物、分享资源、制造工具、掌控火种、烹饪食物、制作衣物、建造住所、协同行动、结成友谊与联盟、种植并收获作物、遭遇饥荒、开辟道路、交换货物、订立交换约定、创造文字、观察自然现象、用实验检验猜想，以及弱形式的第 61 项（选出临时协调者）和扩展编号 134（交换技术知识）、143（取暖、降温与通风）、524（通过协商形成共识）。支撑更多能力自然出现的底层设计见 [`../docs/emergent-capability-substrate-v1.md`](../docs/emergent-capability-substrate-v1.md)。
 
 这些节点不是人物的任务清单。人物只根据身体、状态、关系、私有知识、私有背包和局部环境可供性选择源自动作；里程碑在事后从世界事实、物质来源和跨月实践中派生。“正式覆盖”表示当前代码已有可裁决规则与闭合证据链，不表示每个文明都会经历该事件。
 
@@ -43,7 +45,7 @@ KIMI_API_URL=https://api.kimi.com/coding/v1/chat/completions
 KIMI_MODEL=kimi-for-coding
 ```
 
-也可用 `THREEBODY_ENV_FILE` 指向包含 `KIMI_API_KEY` 的 env 文件。产品中的演化只允许 Kimi 关键决策；没有密钥、调用失败或返回非法决策时，该月不会提交，也不会降级为本地人物决策。
+也可用 `THREEBODY_ENV_FILE` 指向包含 `KIMI_API_KEY` 的 env 文件。密钥是可选项：没有密钥、调用失败或返回非法建议时，后端仍由本地规划器完整提交月份。模型任务不会成为人物行动或世界时钟的前置条件。
 
 ## API
 
@@ -68,7 +70,7 @@ curl -X POST http://127.0.0.1:3220/api/runs \
 
 ### 后台真实演化
 
-启动长程演化任务。响应为 `202 Accepted`；服务逐月推进，只在预算选中的月度关键决策点调用 Kimi。世界物理、身体消耗和既有长期行动仍由确定性规则推进，但不会替人物生成新的本地决策。
+启动长程演化任务。响应为 `202 Accepted`；服务逐月推进，每月完整执行 15 个本地规划刻度。世界物理、身体消耗、意图选择、动作修复和长期行动均由确定性规则完成。配置模型后，服务可以在月提交之后异步生成少量战略/叙事增强，但快速演化不等待这些任务。
 
 ```bash
 curl -X POST http://127.0.0.1:3220/api/runs/agriculture-01/evolve \
@@ -125,11 +127,11 @@ curl -X PUT http://127.0.0.1:3220/api/runs/agriculture-01/state \
 ### 其他接口
 
 - `GET /health`：服务与数据目录状态。
-- `POST /api/decide`：Kimi 月度关键决策接口。
+- `POST /api/decide`：当前前端兼容的 Kimi 交互接口；后端快速演化不调用它，后续将迁移为异步模型任务接口。
 
 ## 前端
 
-本次没有修改前端的数据流。仍可单独启动：
+前端暂时保留既有 Kimi 交互数据流，不作为后端演化权威。仍可单独启动：
 
 ```bash
 npm run dev
@@ -148,4 +150,6 @@ npm run backend:build
 
 ## 回放与演化
 
-前端单步和连续播放都通过 Kimi 完成月度关键决策。回放只读取已经持久化的事实和快照，不会产生新演化，也不会调用模型。
+当前前端单步入口暂时保留 Kimi 交互，后续再迁移到规则优先主链与异步模型任务。独立后端和长程演化已经以本地规划器为权威；回放只读取已经持久化的事实和快照，不会产生新演化，也不会调用模型。
+
+文明演化程度使用 [文明指数 v1](../docs/civilization-index-v1.md)，不再使用平均健康伪装成的“文明完整度”。恒/乱纪元、月度天气、可验证预言、脱水休眠与动物生态见 [纪元、预言与生态 v1](../docs/three-body-era-ecology-v1.md)。

@@ -151,7 +151,8 @@ function SettlementOverlay({ s, entries, onContinue }: { s: Settlement; entries:
 // ---------------------------------------------------------------------------
 
 export default function Game() {
-  const [entered, setEntered] = useState(false);
+  // ?autoenter=1：跳过开场黑场直接入局（无头浏览器截图调试 / 自动化用）
+  const [entered, setEntered] = useState(() => new URLSearchParams(window.location.search).has('autoenter'));
   const [stats, setStats] = useState<SimStats | null>(null);
   const [announce, setAnnounce] = useState<{ era: EraKey; key: number } | null>(null);
   const [chronicle, setChronicle] = useState<ChronicleEntry[]>([]);

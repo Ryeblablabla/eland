@@ -77,17 +77,24 @@ function connectionSummary(kind: CandidateKind, inputMaterialId: MaterialId): st
 
 export function buildConstructionOptions(state: SimulationState, person: PersonState): ActionOption[] {
   const materials = person.inventory
-    .filter((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'solid') && materialHas(stack.materialId, 'building'))
+    .filter((stack) => stack.quantity > 0
+      && materialHas(stack.materialId, 'solid')
+      && (materialHas(stack.materialId, 'building') || materialHas(stack.materialId, 'placeable')))
     .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId)
     .slice(0, 2);
   if (!materials.length) return [];
   const candidates = connectionCandidates(state, person);
   return materials.flatMap((stack) => {
     const outputMaterialId = stack.materialId === Material.Wood ? Material.Plank : stack.materialId;
-    return candidates.map(({ kind, position }) => ({
+    const materialCandidates = materialHas(stack.materialId, 'placeable')
+      ? candidates.filter((candidate) => candidate.kind === 'grounded')
+      : candidates;
+    return materialCandidates.map(({ kind, position }) => ({
       id: `build:${position.x}:${position.y}:${position.z}:${stack.id}`,
       summary: connectionSummary(kind, stack.materialId),
-      reason: kind === 'grounded'
+      reason: materialHas(stack.materialId, 'placeable')
+        ? '这种固体物质可以放在有实体支撑且没有身体占据的空气中'
+        : kind === 'grounded'
         ? '这种固体物质具有建造性质，目标空气下方有实体支撑且没有身体占据'
         : '这种固体物质具有建造性质，目标空气与人物已连接的结构相邻且没有身体占据',
       goal: { kind: 'voxel-is' as const, position, materialId: outputMaterialId },

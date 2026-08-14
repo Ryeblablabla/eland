@@ -36,6 +36,8 @@ import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
 import { voxelSeparationRuleFor } from '../domain/separation-rules';
+import { buildContainerOptions, findContainerAccess } from './container-options';
+import { canAccessContainer, containerById, containerQuantity } from '../domain/container';
 import {
   inventoryNoResponseFactId,
   knowsReliableNoResponse,
@@ -189,6 +191,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   }
 
   options.push(...buildMaterialSeparationOptions(state, person, visibleCells));
+  options.push(...buildContainerOptions(state, person, visibleCells));
 
   for (const cellId of visibleCells) {
     const surface = surfaceMaterial(state.world.grid, cellId);
@@ -222,7 +225,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  const combinableMaterials = new Set<number>([Material.Fiber, Material.Wood, Material.Stone, Material.Rope]);
+  const combinableMaterials = new Set<number>([Material.Fiber, Material.Wood, Material.Stone, Material.Rope, Material.Plank]);
   const combinableStacks = person.inventory.filter((stack) => stack.quantity > 0 && combinableMaterials.has(stack.materialId));
   const inventoryTrials: Array<{ first: typeof combinableStacks[number]; second: typeof combinableStacks[number] }> = [];
   for (let firstIndex = 0; firstIndex < combinableStacks.length; firstIndex += 1) {
@@ -848,8 +851,36 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
       };
     }
   }
+  if (intent.goal.kind === 'container-inventory-at-least' && intent.target?.kind === 'container') {
+    const goal = intent.goal;
+    const container = containerById(state, intent.target.containerId);
+    const stack = person.inventory.find((candidate) => candidate.materialId === goal.materialId && candidate.quantity > 0);
+    if (!container || !stack) return null;
+    if (!canAccessContainer(person, container)) {
+      const access = findContainerAccess(state, person, container);
+      return access ? { kind: 'move', toCellId: access.position.cellId, toZ: access.position.z } : null;
+    }
+    return {
+      kind: 'transfer', materialId: goal.materialId,
+      quantity: Math.min(stack.quantity, Math.max(1, goal.quantity - containerQuantity(container, goal.materialId))),
+      from: { kind: 'person', personId: person.id }, to: { kind: 'container', containerId: container.id }, stackId: stack.id,
+    };
+  }
   if (intent.goal.kind === 'inventory-at-least') {
     const materialId = intent.goal.materialId;
+    if (intent.target?.kind === 'container') {
+      const container = containerById(state, intent.target.containerId);
+      const stack = container?.inventory.find((candidate) => candidate.materialId === materialId && candidate.quantity > 0);
+      if (!container || !stack) return null;
+      if (!canAccessContainer(person, container)) {
+        const access = findContainerAccess(state, person, container);
+        return access ? { kind: 'move', toCellId: access.position.cellId, toZ: access.position.z } : null;
+      }
+      return {
+        kind: 'transfer', materialId, quantity: Math.min(stack.quantity, Math.max(1, intent.goal.quantity - inventoryQuantity(person, materialId))),
+        from: { kind: 'container', containerId: container.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id,
+      };
+    }
     if (intent.target?.kind === 'voxel') {
       const targetCell = intent.target.position.x + intent.target.position.y * state.world.grid.width;
       const targetMaterial = voxelAt(state.world.grid, intent.target.position.x, intent.target.position.y, intent.target.position.z);

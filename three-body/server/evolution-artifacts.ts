@@ -56,6 +56,10 @@ export interface EvolutionReport {
   socialIntents: number;
   survivalReflexActions: number;
   communications: number;
+  containersBuilt: number;
+  standingContainers: number;
+  containerTransfers: number;
+  storedUnits: number;
   inputTokens: number;
   outputTokens: number;
   milestones: Array<{ id: string; label: string; note: string; evidenceEventIds: string[] }>;
@@ -171,6 +175,13 @@ export function buildEvolutionFactsReport(state: SimulationState, path: Evolutio
     socialIntents: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel && event.domain === 'social').length,
     survivalReflexActions: state.world.past.filter((event) => event.kind === 'action' && event.cause === 'survival-reflex').length,
     communications: state.world.past.filter((event) => event.kind === 'action' && event.action.kind === 'communicate' && event.status === 'completed').length,
+    containersBuilt: state.world.past.filter((event) => event.kind === 'action' && event.status === 'completed' && typeof event.diff.containerId === 'string').length,
+    standingContainers: state.containers.length,
+    containerTransfers: state.world.past.filter((event) => event.kind === 'action'
+      && event.status === 'completed'
+      && event.action.kind === 'transfer'
+      && (event.action.from.kind === 'container' || event.action.to.kind === 'container')).length,
+    storedUnits: state.containers.reduce((sum, container) => sum + container.inventory.reduce((containerSum, stack) => containerSum + stack.quantity, 0), 0),
     inputTokens: lastCheckpoint?.inputTokens ?? 0,
     outputTokens: lastCheckpoint?.outputTokens ?? 0,
     milestones: state.derived.milestones.map(({ id, label, note, evidenceEventIds }) => ({ id, label, note, evidenceEventIds })),

@@ -51,6 +51,10 @@ export interface DecisionRequestContext {
     cellId: number; z: number; trust: number; bond: number; fear: number;
   }>;
   visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number; z: number }>;
+  visibleContainers: Array<{
+    id: string; position: { x: number; y: number; z: number };
+    contents: Array<{ materialId: number; name: string; quantity: number }>;
+  }>;
 }
 
 function pressureConsequences(kind: string, stage: number): string[] {
@@ -154,6 +158,14 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       const material = materialDefinition(drop.materialId);
       return { id: drop.id, materialId: drop.materialId, name: material.name, properties: [...material.tags], quantity: drop.quantity, cellId: drop.cellId, z: drop.z };
     }),
+    visibleContainers: state.containers
+      .filter((container) => context.visibleCells.includes(container.position.x + container.position.y * state.world.grid.width))
+      .slice(0, 4)
+      .map((container) => ({
+        id: container.id,
+        position: container.position,
+        contents: container.inventory.slice(0, 6).map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+      })),
   };
 }
 

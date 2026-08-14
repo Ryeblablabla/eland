@@ -5,7 +5,7 @@ import type { ConditionInstance, PersonState } from './person';
 import { isAlive } from './person';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
-import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
+import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { shelterGeometryAt } from './structure';
 
@@ -87,6 +87,19 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
     setVoxel(state.world.grid, cellX(change.cell), cellY(change.cell), topZ(state.world.grid, change.cell), change.to);
     changes.push({ cellId: change.cell, from, to: change.to, process: change.process });
   }
+  const destroyedContainers = state.containers.filter((container) => voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z) !== Material.Container);
+  for (const container of destroyedContainers) {
+    const origin = container.position.x + container.position.y * state.world.grid.width;
+    const spillPosition = [origin, ...neighbors4(origin)]
+      .flatMap((cell) => {
+        const position = surfaceStandingPosition(state.world.grid, cell);
+        return position ? [position] : [];
+      })[0];
+    if (spillPosition) for (const stack of container.inventory) {
+      addDrop(state, stack.materialId, stack.quantity, spillPosition.cellId, atMonth, [...container.sourceEventIds, ...stack.sourceEventIds], 'destroyed-container', stack.recordPayloadId, spillPosition.z);
+    }
+  }
+  if (destroyedContainers.length) state.containers = state.containers.filter((container) => !destroyedContainers.includes(container));
   if (changes.length) event(state, atMonth, events, 'material', `${changes.length} 个格子的物质因自然过程发生变化`, { changes });
 
   const occupiedFoodCells = new Set(state.world.drops.filter((drop) => drop.materialId === Material.Food && drop.quantity > 0).map((drop) => drop.cellId));

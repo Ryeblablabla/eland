@@ -24,6 +24,11 @@ export interface ExposureRule {
 
 const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
   {
+    id: 'shape-plank',
+    inputs: [{ materialId: Material.Wood, quantity: 2 }],
+    output: { materialId: Material.Plank, quantity: 2 },
+  },
+  {
     id: 'twist-fiber',
     inputs: [{ materialId: Material.Fiber, quantity: 2 }],
     output: { materialId: Material.Rope, quantity: 1 },
@@ -37,6 +42,11 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     id: 'bind-clothing',
     inputs: [{ materialId: Material.Rope, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
     output: { materialId: Material.Clothing, quantity: 1 },
+  },
+  {
+    id: 'join-plank-container',
+    inputs: [{ materialId: Material.Plank, quantity: 2 }],
+    output: { materialId: Material.Container, quantity: 1 },
   },
 ] as const;
 

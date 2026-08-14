@@ -79,6 +79,15 @@ export interface DropView {
   quantity: number;
 }
 
+export interface ContainerView {
+  id: string;
+  materialId: number;
+  name: string;
+  cellId: number;
+  z: number;
+  contents: { materialId: number; name: string; quantity: number }[];
+}
+
 export interface StructureView {
   id: string;
   name: string;
@@ -106,6 +115,7 @@ export interface SocietyState {
   world: PixelWorldView;
   agents: SocietyAgent[];
   drops: DropView[];
+  containers: ContainerView[];
   structures: StructureView[];
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];

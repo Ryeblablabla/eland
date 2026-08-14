@@ -67,6 +67,7 @@ try {
   assert.deepEqual(initial.records, [], '开局不应凭空存在任何文字记录');
   assert.deepEqual(initial.collectives, [], '开局不应凭空存在任何共同体成员身份');
   assert.deepEqual(initial.permissions, [], '开局不应凭空存在任何物质取用许可');
+  assert.deepEqual(initial.containers, [], '开局不应凭空存在任何储藏容器');
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 0 && relation.bond === 0 && relation.sourceEventIds.length === 0)), '开局关系不得包含无事件来源的信任或亲近');
 
   const memoryPerson = structuredClone(initial.people[0]);
@@ -781,6 +782,54 @@ try {
   const verifiedMiningTechnique = miningState.people.find((person) => person.id === minerId)?.knowledge.find((fact) => fact.id.startsWith('technique:separate:24:1:1'));
   assert.ok((verifiedMiningTechnique?.confidence ?? 0) >= 55, '同一分离规律被再次真实复现后才成为可靠技术');
   assert.ok(miningState.derived.milestones.some((milestone) => milestone.id === '59' && verifiedMiningTechnique.sourceEventIds.every((id) => milestone.evidenceEventIds.includes(id))), '实验观察器必须承认具有重复物质证据的 separate 技术');
+
+  let containerState = createInitialState(387, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
+  const containerMakerId = containerState.people[0].id;
+  for (const bystander of containerState.people.slice(1)) bystander.diedAtMonth = 0;
+  const containerMaker = containerState.people[0];
+  containerMaker.bornAtMonth = -20 * 12;
+  containerMaker.body = { health: 100, hydration: 100, nutrition: 100 };
+  containerMaker.inventory = [
+    { id: 'test-container-wood', materialId: 13, quantity: 2, sourceEventIds: ['test-container-wood-source'] },
+    { id: 'test-container-food', materialId: 21, quantity: 3, sourceEventIds: ['test-container-food-source'] },
+  ];
+  const shapePlanksOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.nextAction.kind === 'act'
+    && option.nextAction.operation === 'combine'
+    && option.nextAction.targets.filter((target) => target.kind === 'inventory-stack' && target.stackId === 'test-container-wood').length === 2);
+  containerState = runRecordOption(containerState, containerMakerId, shapePlanksOption, 'shape-planks-from-wood');
+  const shapedPlanks = containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 19);
+  assert.equal(shapedPlanks?.quantity, 2, '采集到的木材应能经同一 combine 原语形成可继续建造和制作的木板');
+  const craftContainerOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.nextAction.kind === 'act'
+    && option.nextAction.operation === 'combine'
+    && option.nextAction.targets.filter((target) => target.kind === 'inventory-stack' && target.stackId === shapedPlanks?.id).length === 2);
+  containerState = runRecordOption(containerState, containerMakerId, craftContainerOption, 'craft-material-container');
+  const carriedContainer = containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 28);
+  assert.ok(carriedContainer && !containerState.containers.length, '两块木板应先结合为私人背包中的容器物品，不能直接生成远程仓库');
+  const placeContainerOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.goal.kind === 'voxel-is'
+    && option.goal.materialId === 28
+    && option.nextAction.kind === 'act'
+    && option.nextAction.operation === 'combine'
+    && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === carriedContainer.id));
+  assert.ok(placeContainerOption?.goal.kind === 'voxel-is', '容器物品只能通过既有 combine 放进有支撑且未被身体占据的空气体素');
+  const containerPosition = placeContainerOption.goal.position;
+  containerState = runRecordOption(containerState, containerMakerId, placeContainerOption, 'place-material-container');
+  const placedContainer = containerState.containers[0];
+  assert.ok(placedContainer && placedContainer.position.x === containerPosition.x && placedContainer.position.y === containerPosition.y && placedContainer.position.z === containerPosition.z, '放置事件必须建立与同一容器体素绑定的内部物品堆');
+  const storeOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.id.startsWith(`store-container:${placedContainer.id}:`) && option.goal.kind === 'container-inventory-at-least' && option.goal.materialId === 21);
+  containerState = runRecordOption(containerState, containerMakerId, storeOption, 'store-food-in-container');
+  assert.equal(containerState.containers[0].inventory.find((stack) => stack.materialId === 21)?.quantity, 2, '存储必须由 person → container 的真实 transfer 改变持有者');
+  assert.equal(containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 21)?.quantity, 1, '存入容器时必须从私人背包扣除相同数量');
+  const retrieveOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.id.startsWith(`retrieve-container:${placedContainer.id}:`) && option.goal.kind === 'inventory-at-least' && option.goal.materialId === 21);
+  containerState = runRecordOption(containerState, containerMakerId, retrieveOption, 'retrieve-food-from-container');
+  assert.equal(containerState.containers[0].inventory.find((stack) => stack.materialId === 21)?.quantity, 1, '取出容器物质必须减少同一内部物品堆');
+  assert.equal(containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 21)?.quantity, 2, '取出的物质必须重新进入操作者的私人背包');
+  const dismantleContainerOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.id.startsWith('separate-material:recover-container'));
+  containerState = runRecordOption(containerState, containerMakerId, dismantleContainerOption, 'dismantle-material-container');
+  const containerVoxelIndex = containerPosition.z * containerState.world.grid.width * containerState.world.grid.depth + containerPosition.y * containerState.world.grid.width + containerPosition.x;
+  assert.equal(containerState.world.grid.voxels[containerVoxelIndex], 0, '拆解容器必须移除对应体素');
+  assert.equal(containerState.containers.length, 0, '容器体素消失后不得保留幽灵内部背包');
+  assert.ok(containerState.world.drops.some((drop) => drop.materialId === 21 && drop.quantity >= 1), '拆解有内容物的容器必须让内部物质真实掉落，不能销毁或瞬移');
+  assert.ok(containerState.people.find((person) => person.id === containerMakerId)?.inventory.some((stack) => stack.materialId === 28), '容器本体应作为分离产物经掉落和拾取回到私人背包');
 
   let failedExperimentState = createInitialState(391, { endpoint: { kind: 'months', value: 20 }, chaosIntensity: 0 });
   const experimenterId = failedExperimentState.people[0].id;

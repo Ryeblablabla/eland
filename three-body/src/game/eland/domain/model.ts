@@ -7,6 +7,7 @@ import type { Agreement } from './agreement';
 import type { RecordPayload } from './record';
 import type { CollectiveState } from './collective';
 import type { ResourcePermission } from './permission';
+import type { ContainerState } from './container';
 
 export * from './action';
 export * from './material';
@@ -184,6 +185,7 @@ export interface SimulationState {
   records: RecordPayload[];
   collectives: CollectiveState[];
   permissions: ResourcePermission[];
+  containers: ContainerState[];
   civilization: {
     number: number;
     status: 'running' | 'ended';

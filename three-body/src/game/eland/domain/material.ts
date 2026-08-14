@@ -12,6 +12,7 @@ export type MaterialTag =
   | 'fiber'
   | 'fuel'
   | 'building'
+  | 'placeable'
   | 'tool-material'
   | 'tool'
   | 'flammable'
@@ -62,6 +63,7 @@ export const Material = {
   CookedFood: 25,
   Clothing: 26,
   WoodTablet: 27,
+  Container: 28,
 } as const satisfies Record<string, MaterialId>;
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
@@ -93,6 +95,7 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.CookedFood, key: 'cooked_food', name: '熟食', phase: 'solid', tags: ['edible'], hardness: 1, mass: 0.2, color: [174, 91, 49], consume: { nutrition: 60, hydration: 3, health: 2 } },
   { id: Material.Clothing, key: 'clothing', name: '衣物', phase: 'solid', tags: ['insulating'], hardness: 1, mass: 0.6, color: [123, 91, 73] },
   { id: Material.WoodTablet, key: 'wood_tablet', name: '木制记录板', phase: 'solid', tags: ['solid', 'recordable', 'flammable'], hardness: 3, mass: 0.35, color: [137, 96, 57] },
+  { id: Material.Container, key: 'container', name: '木制容器', phase: 'solid', tags: ['solid', 'placeable', 'flammable'], hardness: 4, mass: 1.4, color: [119, 80, 45] },
 ];
 
 const BY_ID = new Map(MATERIAL_PALETTE.map((material) => [material.id, material]));

@@ -22,6 +22,12 @@ const VOXEL_SEPARATION_RULES: readonly VoxelSeparationRule[] = [
     replacementMaterialId: Material.Air,
     outputs: [{ materialId: Material.Plank, quantity: 1 }],
   },
+  {
+    id: 'recover-container',
+    inputMaterialId: Material.Container,
+    replacementMaterialId: Material.Air,
+    outputs: [{ materialId: Material.Container, quantity: 1 }],
+  },
 ] as const;
 
 export function voxelSeparationRuleFor(materialId: MaterialId): VoxelSeparationRule | undefined {

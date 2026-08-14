@@ -165,6 +165,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     records: [],
     collectives: [],
     permissions: [],
+    containers: [],
     civilization: {
       number: config.civilizationNo,
       status: 'running',
@@ -241,6 +242,11 @@ function optionScore(context: DecisionContext, optionId: string): number {
   if (option.id.startsWith('shelter:')) {
     const stage = person.conditions.find((condition) => condition.kind === 'cold' || condition.kind === 'heat')?.stage ?? 0;
     score += 34 + stage * 24;
+  }
+  if (option.id.startsWith('store-container:')) score += 18;
+  if (option.id.startsWith('retrieve-container:')) {
+    const materialId = option.goal.kind === 'inventory-at-least' ? option.goal.materialId : Material.Air;
+    score += materialHas(materialId, 'edible') ? 78 - person.body.nutrition : 16;
   }
   if (option.id.startsWith('share:')) score += person.driveBias.affiliation * 0.45;
   if (option.id.startsWith('care:')) score += 48 + person.driveBias.affiliation * 0.4;
@@ -627,6 +633,8 @@ function deriveStructures(state: SimulationState): DerivedStructure[] {
 function deriveObservations(state: SimulationState): SimulationState['derived'] {
   const actions = state.world.past.filter((event) => event.kind === 'action');
   const transfers = actions.filter((event) => event.action.kind === 'transfer' && event.status === 'completed');
+  const containerTransfers = transfers.filter((event) => event.action.kind === 'transfer'
+    && (event.action.from.kind === 'container' || event.action.to.kind === 'container'));
   const movements = actions.filter((event) => event.action.kind === 'move' && event.pathSegment.length > 1);
   const trailFormation = movements.flatMap((event) => {
     const changes = Array.isArray(event.diff.materialChanges) ? event.diff.materialChanges : [];
@@ -682,6 +690,7 @@ function deriveObservations(state: SimulationState): SimulationState['derived'] 
   }
   const practices: PracticeObservation[] = [
     transfers.length ? { key: 'transfer', label: '反复转移物质', count: transfers.length, agentIds: [...new Set(transfers.map((event) => event.who))], eventIds: transfers.map((event) => event.id), stability: clamp(transfers.length * 5) } : null,
+    containerTransfers.length ? { key: 'storage', label: '使用空间容器储藏物质', count: containerTransfers.length, agentIds: [...new Set(containerTransfers.map((event) => event.who))], eventIds: containerTransfers.map((event) => event.id), stability: clamp(containerTransfers.length * 8) } : null,
     movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,
     cultivation.length ? { key: 'cultivation', label: '种植实践', count: cultivation.length, agentIds: [...new Set(cultivation.map((event) => event.who))], eventIds: cultivation.map((event) => event.id), stability: clamp(cultivation.length * 12) } : null,
   ].filter((item): item is PracticeObservation => Boolean(item));
@@ -886,6 +895,7 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   state.records ??= [];
   state.collectives ??= [];
   state.permissions ??= [];
+  state.containers ??= [];
   for (const agreement of state.agreements) {
     agreement.requiredResponderIds ??= [agreement.responderId];
     agreement.acceptedByPersonIds ??= agreement.status === 'proposed'

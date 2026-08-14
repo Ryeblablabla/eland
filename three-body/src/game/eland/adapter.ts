@@ -2,7 +2,7 @@
 import type { AgentHistoryItem, AgentHistoryView, EraKey, SocietyAgent, SocietyState } from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
 import { calendarDate } from './domain/calendar';
-import { materialDefinition } from './domain/material';
+import { Material, materialDefinition } from './domain/material';
 import { ageMonths, isAlive, type PersonState } from './domain/person';
 import { WORLD_CELL_COUNT, columnMaterials, surfaceMaterial, topZ } from './world/grid';
 
@@ -98,6 +98,14 @@ export function toSocietyState(state: SimulationState): SocietyState {
     },
     agents: state.people.map((person) => personView(state, person)),
     drops: state.world.drops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, cellId: drop.cellId, z: drop.z, quantity: drop.quantity })),
+    containers: state.containers.map((container) => ({
+      id: container.id,
+      materialId: Material.Container,
+      name: materialDefinition(Material.Container).name,
+      cellId: container.position.x + container.position.y * grid.width,
+      z: container.position.z,
+      contents: container.inventory.map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+    })),
     structures: state.derived.structures.map((structure) => ({
       id: structure.id, name: structure.name, occupiedCells: structure.occupiedCells, interiorCells: structure.interiorCells, interiorPositions: structure.interiorPositions,
       componentCount: structure.sourceEventIds.length, complete: structure.complete,

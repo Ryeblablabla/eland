@@ -6,11 +6,13 @@ export interface VoxelPosition { x: number; y: number; z: number }
 export type WorldRef =
   | { kind: 'voxel'; position: VoxelPosition }
   | { kind: 'drop'; dropId: string }
+  | { kind: 'container'; containerId: string }
   | { kind: 'inventory-stack'; personId: PersonId; stackId: string }
   | { kind: 'person'; personId: PersonId };
 
 export type HolderRef =
   | { kind: 'ground'; cellId: number; z?: number }
+  | { kind: 'container'; containerId: string }
   | { kind: 'person'; personId: PersonId };
 
 export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce';
@@ -71,6 +73,7 @@ export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'body-at-most'; personId: PersonId; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
+  | { kind: 'container-inventory-at-least'; containerId: string; materialId: MaterialId; quantity: number }
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'sheltered' }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }

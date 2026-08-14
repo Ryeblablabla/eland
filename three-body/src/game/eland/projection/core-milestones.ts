@@ -134,7 +134,7 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     const successfulTrials = evidence.filter((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'act'
-      && (event.action.operation === 'combine' || event.action.operation === 'exert' || event.action.operation === 'expose'));
+      && (event.action.operation === 'combine' || event.action.operation === 'exert' || event.action.operation === 'expose' || event.action.operation === 'separate'));
     const activeVerification = evidence.some((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'attend'

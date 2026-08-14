@@ -768,6 +768,19 @@ try {
   assert.equal(miningState.world.grid.voxels[minedVoxelIndex], 0, '采石必须改变目标体素本身，不能凭空增加背包物品');
   assert.ok(minedStone.inventory.some((stack) => stack.materialId === 1 && stack.quantity >= 1), '分离出的石必须先成为地面掉落，再由 transfer 进入私人背包');
   assert.ok(minedStone.knowledge.some((fact) => fact.id.startsWith('technique:separate:24:1:1') && fact.confidence === 46), '第一次真实采石应留下尚待重复核验的物质技术');
+  const secondMineCell = [minedStone.position.cellId - miningState.world.grid.width, minedStone.position.cellId - 1, minedStone.position.cellId + 1, minedStone.position.cellId + miningState.world.grid.width]
+    .find((cell) => cell !== mineCell
+      && cell >= 0 && cell < miningState.world.grid.width * miningState.world.grid.depth
+      && Math.abs(cell % miningState.world.grid.width - minedStone.position.cellId % miningState.world.grid.width)
+        + Math.abs(Math.floor(cell / miningState.world.grid.width) - Math.floor(minedStone.position.cellId / miningState.world.grid.width)) === 1);
+  const secondMineZ = minedStone.position.z - 1;
+  for (let z = secondMineZ + 1; z < miningState.world.grid.levels; z += 1) miningState.world.grid.voxels[z * miningState.world.grid.width * miningState.world.grid.depth + secondMineCell] = 0;
+  miningState.world.grid.voxels[secondMineZ * miningState.world.grid.width * miningState.world.grid.depth + secondMineCell] = 1;
+  const repeatMiningOption = buildDecisionContexts(miningState).find((context) => context.person.id === minerId)?.options.find((option) => option.id.startsWith('separate-material:split-stone'));
+  miningState = runRecordOption(miningState, minerId, repeatMiningOption, 'repeat-real-stone-mining');
+  const verifiedMiningTechnique = miningState.people.find((person) => person.id === minerId)?.knowledge.find((fact) => fact.id.startsWith('technique:separate:24:1:1'));
+  assert.ok((verifiedMiningTechnique?.confidence ?? 0) >= 55, '同一分离规律被再次真实复现后才成为可靠技术');
+  assert.ok(miningState.derived.milestones.some((milestone) => milestone.id === '59' && verifiedMiningTechnique.sourceEventIds.every((id) => milestone.evidenceEventIds.includes(id))), '实验观察器必须承认具有重复物质证据的 separate 技术');
 
   let failedExperimentState = createInitialState(391, { endpoint: { kind: 'months', value: 20 }, chaosIntensity: 0 });
   const experimenterId = failedExperimentState.people[0].id;

@@ -19,7 +19,7 @@ world grid primitives
 - `application/social-options.ts`：会合、求助、结伴和对话响应候选。
 - `domain/calendar.ts`：唯一的月历换算规则。
 - `domain/decision-budget.ts`：按人物月计算的模型调用配额。
-- `domain/structure-policy.ts`：构件蓝图及客观结构效果。
+- `domain/structure.ts`：从可站立空气、头顶实体与侧向围护的真实体素拓扑计算结构效果。
 - `world/grid.ts`：84×52 网格、邻接、通行与 A*。
 - `world/generator.ts`：只负责生成初始自然事实与出生格。
 - `application/monthly-simulation.ts`：创建文明、执行一个月、恢复状态和生成报告。

@@ -33,6 +33,18 @@ try {
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
   const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
   const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
+  const placeWith = (person, other) => {
+    person.position.cellId = other.position.cellId;
+    person.position.z = other.position.z;
+    person.position.previousCellId = other.position.cellId;
+    person.position.previousZ = other.position.z;
+  };
+  const surfaceStandingZ = (state, cell) => {
+    for (let z = state.world.grid.levels - 1; z >= 0; z -= 1) {
+      if (state.world.grid.voxels[z * state.world.grid.width * state.world.grid.depth + cell] !== 0) return Math.min(state.world.grid.levels - 2, z + 1);
+    }
+    return 1;
+  };
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
   assert.equal(initial.schemaVersion, 14);
@@ -42,7 +54,8 @@ try {
   assert.equal(initial.world.grid.levels, 12);
   assert.equal(initial.world.grid.voxels.length, 84 * 52 * 12);
   assert.ok(Array.from({ length: 1_000 }, (_, index) => seededFraction(31, `range:${index}`)).every((value) => value >= 0 && value < 1), '确定性随机采样必须始终位于 [0, 1)');
-  assert.ok(initial.people.every((person) => Number.isInteger(person.position.cellId) && person.inventory.length > 0));
+  assert.ok(initial.people.every((person) => Number.isInteger(person.position.cellId) && Number.isInteger(person.position.z) && person.inventory.length > 0));
+  assert.ok(initial.world.drops.every((drop) => Number.isInteger(drop.z)), '地面物品必须属于具体高度，不能穿过楼板被拾取');
   assert.equal('agents' in initial, false, '权威状态不应保留旧 Agent 模型');
   assert.equal('plans' in initial, false, '权威状态不应保留 PlanMode');
   assert.equal('cells' in initial.world.grid, false, '格子不应保留属性包');
@@ -71,8 +84,7 @@ try {
   feasiblePartner.body = { health: 100, hydration: 100, nutrition: 100 };
   feasibleActor.conditions = [];
   feasiblePartner.conditions = [];
-  feasiblePartner.position.cellId = feasibleActor.position.cellId;
-  feasiblePartner.position.previousCellId = feasibleActor.position.cellId;
+  placeWith(feasiblePartner, feasibleActor);
   feasibleActor.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
   let feasibleContext = buildDecisionContexts(feasibleIntentState).find((context) => context.person.id === feasibleActor.id);
   assert.ok(feasibleContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '身体与距离条件成立时，引擎不得因为亲近偏置低而隐藏生殖意图');
@@ -94,8 +106,7 @@ try {
   const coerced = coercionState.people[1];
   coercer.bornAtMonth = -24 * 12;
   coerced.bornAtMonth = -24 * 12;
-  coerced.position.cellId = coercer.position.cellId;
-  coerced.position.previousCellId = coercer.position.cellId;
+  placeWith(coerced, coercer);
   coercer.body.nutrition = 12;
   coercer.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
   coercer.inventory = [{ id: 'test-feasible-rope', materialId: 23, quantity: 1, sourceEventIds: [] }];
@@ -148,7 +159,7 @@ try {
   const requester = agreementState.people[0];
   const helper = agreementState.people[1];
   const agreementId = 'test-assist-agreement';
-  const actionFact = (id, atMonth, who, action) => ({ id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff: {} });
+  const actionFact = (id, atMonth, who, action) => ({ id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, fromZ: requester.position.z, toZ: requester.position.z, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff: {} });
   const proposal = actionFact('test-proposal', 1, requester.id, { kind: 'communicate', content: { id: agreementId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 3 } }, audience: [helper.id], channel: 'voice' });
   recordAgreementAction(agreementState, proposal);
   agreementState.world.past.push(proposal);
@@ -188,8 +199,8 @@ try {
   const attacker = witnessedViolenceState.people[0];
   const victim = witnessedViolenceState.people[1];
   const witness = witnessedViolenceState.people[2];
-  victim.position.cellId = attacker.position.cellId;
-  witness.position.cellId = attacker.position.cellId;
+  placeWith(victim, attacker);
+  placeWith(witness, attacker);
   const violenceIntentId = 'intent-test-witnessed-violence';
   witnessedViolenceState.intents.push({
     id: violenceIntentId, ownerId: attacker.id, summary: '对近身人物施力', domain: 'strategic',
@@ -215,8 +226,8 @@ try {
   const restrainer = restraintState.people[0];
   const restrainedPerson = restraintState.people[1];
   const releaser = restraintState.people[2];
-  restrainedPerson.position.cellId = restrainer.position.cellId;
-  releaser.position.cellId = restrainer.position.cellId;
+  placeWith(restrainedPerson, restrainer);
+  placeWith(releaser, restrainer);
   restrainedPerson.body.health = 15;
   restrainer.inventory = [{ id: 'test-restraint-rope', materialId: 23, quantity: 1, sourceEventIds: [] }];
   const restraintIntentId = 'intent-test-restraint';
@@ -265,6 +276,8 @@ try {
   assert.ok(Number.isInteger(waterBank), '测试世界应存在水边格');
   waterRequester.position.cellId = waterBank;
   waterHelper.position.cellId = waterBank;
+  waterRequester.position.z = surfaceStandingZ(waterAssistState, waterBank);
+  waterHelper.position.z = waterRequester.position.z;
   const waterAssistId = 'test-water-assist';
   const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'communicate', content: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, audience: [waterHelper.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterProposal);
@@ -287,7 +300,7 @@ try {
   const companionState = createInitialState(33, { endpoint: { kind: 'months', value: 36 } });
   const companionA = companionState.people[0];
   const companionB = companionState.people[1];
-  companionB.position.cellId = companionA.position.cellId;
+  placeWith(companionB, companionA);
   const companionId = 'test-companion-agreement';
   recordAgreementAction(companionState, actionFact('test-companion-proposal', 1, companionA.id, { kind: 'communicate', content: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, audience: [companionB.id], channel: 'voice' }));
   recordAgreementAction(companionState, actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'communicate', content: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, audience: [companionA.id], channel: 'voice' }));
@@ -360,8 +373,7 @@ try {
   let dialogueState = createInitialState(31, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const speaker = dialogueState.people[0];
   const listener = dialogueState.people[1];
-  listener.position.cellId = speaker.position.cellId;
-  listener.position.previousCellId = speaker.position.cellId;
+  placeWith(listener, speaker);
   const dialogueContext = buildDecisionContexts(dialogueState).find((context) => context.person.id === speaker.id);
   assert.ok(dialogueContext, '测试人物必须拥有决策上下文');
   const collectMaterials = dialogueContext.options.filter((option) => option.id.startsWith('collect:')).map((option) => option.goal.kind === 'inventory-at-least' ? option.goal.materialId : -1);
@@ -605,7 +617,7 @@ try {
   const teachingState = createInitialState(383, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const teacher = teachingState.people[0];
   const learner = teachingState.people[1];
-  learner.position.cellId = teacher.position.cellId;
+  placeWith(learner, teacher);
   const taughtTechniqueId = 'technique:combine:22:3:11';
   const canonicalTechniqueSummary = '种子与湿土可结合为作物幼苗';
   teacher.knowledge.push({ id: taughtTechniqueId, kind: 'technique', summary: canonicalTechniqueSummary, confidence: 80, learnedAtMonth: 0, sourceEventIds: ['teacher-trial'] });
@@ -632,8 +644,8 @@ try {
   const authorId = recordState.people[0].id;
   const readerId = recordState.people[1].id;
   for (const person of recordState.people.slice(0, 3)) person.bornAtMonth = -20 * 12;
-  recordState.people[1].position.cellId = recordState.people[0].position.cellId;
-  recordState.people[2].position.cellId = recordState.people[0].position.cellId;
+  placeWith(recordState.people[1], recordState.people[0]);
+  placeWith(recordState.people[2], recordState.people[0]);
   recordState.people[0].inventory = [
     { id: 'record-tool', materialId: 24, quantity: 1, sourceEventIds: [] },
     { id: 'record-wood', materialId: 13, quantity: 1, sourceEventIds: [] },
@@ -691,8 +703,7 @@ try {
   const partner = collectiveState.people[1];
   founder.bornAtMonth = -20 * 12;
   partner.bornAtMonth = -20 * 12;
-  partner.position.cellId = founder.position.cellId;
-  partner.position.previousCellId = founder.position.cellId;
+  placeWith(partner, founder);
   founder.driveBias.affiliation = 90;
   const priorAssistId = 'test-prior-fulfilled-assist';
   const priorRequest = actionFact('test-prior-assist-request', 0, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
@@ -772,10 +783,8 @@ try {
   const candidate = collectiveState.people[2];
   assert.ok(currentFounder && currentPartner && candidate, '第三人入会测试需要两名现有成员和一名候选人');
   candidate.bornAtMonth = -20 * 12;
-  currentPartner.position.cellId = currentFounder.position.cellId;
-  currentPartner.position.previousCellId = currentFounder.position.cellId;
-  candidate.position.cellId = currentFounder.position.cellId;
-  candidate.position.previousCellId = currentFounder.position.cellId;
+  placeWith(currentPartner, currentFounder);
+  placeWith(candidate, currentFounder);
   const candidateAssistId = 'test-candidate-fulfilled-assist';
   const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: candidate.id, helperId: founder.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [founder.id], channel: 'voice' });
   recordAgreementAction(collectiveState, candidateRequest);
@@ -831,9 +840,10 @@ try {
   const offerer = responseState.people[0];
   const responder = responseState.people[2];
   responder.bornAtMonth = -20 * 12;
-  const separatedCell = responseState.people.find((person) => person.position.cellId !== offerer.position.cellId)?.position.cellId;
+  const separatedPosition = responseState.people.find((person) => person.position.cellId !== offerer.position.cellId)?.position;
+  const separatedCell = separatedPosition?.cellId;
   assert.ok(Number.isInteger(separatedCell), '测试世界应有一个与报价者分开的可达出生格');
-  responder.position.cellId = offerer.position.cellId;
+  placeWith(responder, offerer);
   offerer.inventory.push({ id: 'exchange-wood', materialId: 13, quantity: 2, sourceEventIds: [] });
   responder.inventory.push({ id: 'exchange-food', materialId: 21, quantity: 2, sourceEventIds: [] });
   const exchangeId = 'test-required-exchange';
@@ -841,7 +851,9 @@ try {
   recordAgreementAction(responseState, exchangeFact);
   responseState.world.past.push(exchangeFact);
   responder.position.cellId = separatedCell;
+  responder.position.z = separatedPosition.z;
   responder.position.previousCellId = separatedCell;
+  responder.position.previousZ = separatedPosition.z;
   const responseContext = buildDecisionContexts(responseState).find((context) => context.person.id === responder.id);
   assert.deepEqual(new Set(responseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-exchange', 'reject-exchange']), '收到可履行交换后只能先明确接受或拒绝');
   const acceptExchange = responseContext?.options.find((option) => option.id.startsWith('accept-exchange:'));
@@ -887,11 +899,17 @@ try {
 
   let shelterState = createInitialState(41, { endpoint: { kind: 'months', value: 10 }, chaosIntensity: 0 });
   const builderId = shelterState.people[0].id;
+  for (const bystander of shelterState.people.slice(1)) bystander.diedAtMonth = 0;
   shelterState.people[0].inventory = [{ id: 'shelter-wood', materialId: 13, quantity: 4, sourceEventIds: [] }];
   for (let index = 0; index < 4; index += 1) {
     const builder = shelterState.people.find((person) => person.id === builderId);
     const buildContext = buildDecisionContexts(shelterState).find((context) => context.person.id === builderId);
-    const buildOption = buildContext?.options.find((option) => option.id.startsWith('build:'));
+    const buildOptions = buildContext?.options.filter((option) => option.id.startsWith('build:')) ?? [];
+    const buildOption = index === 0
+      ? buildOptions[0]
+      : index < 3
+        ? buildOptions.find((option) => option.summary.includes('上方'))
+        : buildOptions.find((option) => option.summary.includes('头顶'));
     assert.ok(builder && buildOption, '持有木材时应能继续扩展身边的木板组件');
     const intentId = `intent-test-shelter-${index}`;
     shelterState.intents.push({
@@ -908,7 +926,8 @@ try {
     });
   }
   const completedShelter = shelterState.derived.structures.find((structure) => structure.complete);
-  assert.ok(completedShelter && completedShelter.occupiedCells.length >= 3, '反复 combine 木材应横向长成可观察的遮蔽结构，而不是堆成单柱');
+  assert.ok(completedShelter?.interiorPositions.some((position) => position.cellId === shelterState.people[0].position.cellId && position.z === shelterState.people[0].position.z), '住所必须来自人物当前可进入的双格净空与真实头顶覆盖，而不是相邻木板数量');
+  assert.equal(completedShelter?.capacity, completedShelter?.interiorPositions.length, '结构容量必须等于真实可站立内部位置数');
   assert.ok(shelterState.derived.milestones.some((milestone) => milestone.id === '20'), '真实连接的多格木板结构才能观察为住所');
 
   let state = createInitialState(31, { endpoint: { kind: 'months', value: 72 }, chaosIntensity: 0 });

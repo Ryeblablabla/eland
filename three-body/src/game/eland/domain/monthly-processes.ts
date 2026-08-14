@@ -5,8 +5,9 @@ import type { ConditionInstance, PersonState } from './person';
 import { isAlive } from './person';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
-import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, topZ } from '../world/grid';
+import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
+import { shelterGeometryAt } from './structure';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -96,12 +97,14 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
   return events;
 }
 
-function nearbyPlanks(state: SimulationState, person: PersonState): number {
-  return cellsInRadius(person.position.cellId, 2).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Plank).length;
-}
-
 function nearbyFires(state: SimulationState, person: PersonState): number {
-  return cellsInRadius(person.position.cellId, 2).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Fire).length;
+  let count = 0;
+  for (const cell of cellsInRadius(person.position.cellId, 2)) {
+    for (let z = Math.max(0, person.position.z - 2); z <= Math.min(state.world.grid.levels - 1, person.position.z + 2); z += 1) {
+      if (voxelAt(state.world.grid, cellX(cell), cellY(cell), z) === Material.Fire) count += 1;
+    }
+  }
+  return count;
 }
 
 function condition(state: SimulationState, person: PersonState, kind: ConditionInstance['kind']): ConditionInstance | undefined {
@@ -223,7 +226,14 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     sex: createBiologicalSex(state.seed, id),
     geneticParents: [mother.id, fatherId],
     generation: Math.max(mother.generation, father?.generation ?? 0) + 1,
-    position: { cellId: mother.position.cellId, previousCellId: mother.position.cellId, lastPath: [mother.position.cellId], tickPath: [mother.position.cellId] },
+    position: {
+      cellId: mother.position.cellId,
+      z: mother.position.z,
+      previousCellId: mother.position.cellId,
+      previousZ: mother.position.z,
+      lastPath: [mother.position.cellId],
+      tickPath: [mother.position.cellId],
+    },
     body: { health: 72, hydration: 74, nutrition: 76 },
     baselineCapacities: {
       locomotion: average('locomotion'), manipulation: average('manipulation'), perception: average('perception'),
@@ -274,7 +284,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
-  for (const stack of person.inventory) addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [], `${person.id}-death`, stack.recordPayloadId);
+  for (const stack of person.inventory) addDrop(state, stack.materialId, stack.quantity, person.position.cellId, atMonth, [], `${person.id}-death`, stack.recordPayloadId, person.position.z);
   person.inventory = [];
   const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
   if (intent) intent.status = 'failed';
@@ -298,14 +308,16 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       die(state, person, atMonth, events, 'body-failure');
       continue;
     }
-    const planks = nearbyPlanks(state, person);
-    const sheltered = planks >= 3;
+    const shelter = shelterGeometryAt(state.world.grid, person.position);
+    const sheltered = Boolean(shelter);
     const fires = nearbyFires(state, person);
     const fireProtected = fires > 0;
     const clothed = inventoryQuantity(person, Material.Clothing) > 0;
     const climate = state.civilization.climate;
-    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - (sheltered ? 1.4 : 0) - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) : 0;
-    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - (sheltered ? 0.7 : 0) + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) : 0;
+    const shelterColdRelief = (shelter?.weatherProtection ?? 0) / 72 + (shelter?.thermalInsulation ?? 0) / 180;
+    const shelterHeatRelief = (shelter?.weatherProtection ?? 0) / 145;
+    const coldLoad = climate.kind === 'cold' ? Math.max(0, climate.severity - shelterColdRelief - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) : 0;
+    const heatLoad = climate.kind === 'heat' || climate.kind === 'fire' ? Math.max(0, climate.severity - shelterHeatRelief + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) : 0;
     if (coldLoad > 0) clearOppositeExposure(state, person, atMonth, 'cold', events);
     else if (heatLoad > 0) clearOppositeExposure(state, person, atMonth, 'heat', events);
     upsertExposureCondition(state, person, atMonth, 'cold', coldLoad, coldLoad <= 0 && (sheltered || fireProtected), fireProtected, events);

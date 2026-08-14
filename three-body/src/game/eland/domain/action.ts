@@ -10,7 +10,7 @@ export type WorldRef =
   | { kind: 'person'; personId: PersonId };
 
 export type HolderRef =
-  | { kind: 'ground'; cellId: number }
+  | { kind: 'ground'; cellId: number; z?: number }
   | { kind: 'person'; personId: PersonId };
 
 export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce';
@@ -50,7 +50,7 @@ export type SocialProposal =
 export type DialogueAct = 'request-help' | 'offer-companion' | 'accept' | 'reject' | 'share-observation';
 
 export type PrimitiveAction =
-  | { kind: 'move'; toCellId: number }
+  | { kind: 'move'; toCellId: number; toZ?: number }
   | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
   | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; toolStackId?: string }
   | { kind: 'attend'; target: WorldRef; instrumentStackId?: string }

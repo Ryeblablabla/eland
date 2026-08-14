@@ -15,6 +15,7 @@ export interface DecisionRequestContext {
     capacities: DecisionContext['person']['baselineCapacities'];
     drives: DecisionContext['person']['driveBias'];
     currentChoice: string;
+    position: { cellId: number; z: number };
     inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
     memories: ReturnType<typeof projectMemories>;
@@ -41,9 +42,9 @@ export interface DecisionRequestContext {
   visiblePeople: Array<{
     id: string; name: string; ageMonths: number; sex: DecisionContext['person']['sex'];
     health: number; hydration: number; nutrition: number; conditions: DecisionContext['person']['conditions'];
-    cellId: number; trust: number; bond: number; fear: number;
+    cellId: number; z: number; trust: number; bond: number; fear: number;
   }>;
-  visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number }>;
+  visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number; z: number }>;
 }
 
 function pressureConsequences(kind: string, stage: number): string[] {
@@ -79,6 +80,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       capacities: person.baselineCapacities,
       drives: person.driveBias,
       currentChoice: person.lastDecisionText.slice(0, 140),
+      position: { cellId: person.position.cellId, z: person.position.z },
       inventory: person.inventory.map((stack) => {
         const material = materialDefinition(stack.materialId);
         return { stackId: stack.id, materialId: stack.materialId, name: material.name, properties: [...material.tags], quantity: stack.quantity };
@@ -125,6 +127,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         ...other.body,
         conditions: other.conditions,
         cellId: other.position.cellId,
+        z: other.position.z,
         trust: relation?.trust ?? 0,
         bond: relation?.bond ?? 0,
         fear: relation?.fear ?? 0,
@@ -132,7 +135,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     }),
     visibleDrops: context.visibleDrops.map((drop) => {
       const material = materialDefinition(drop.materialId);
-      return { id: drop.id, materialId: drop.materialId, name: material.name, properties: [...material.tags], quantity: drop.quantity, cellId: drop.cellId };
+      return { id: drop.id, materialId: drop.materialId, name: material.name, properties: [...material.tags], quantity: drop.quantity, cellId: drop.cellId, z: drop.z };
     }),
   };
 }

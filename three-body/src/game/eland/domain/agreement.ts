@@ -1,7 +1,7 @@
 import type { PrimitiveAction, SocialProposal } from './action';
 import type { ActionFact, AgreementFact, SimulationState } from './model';
 import type { PersonId } from './person';
-import { isAlive } from './person';
+import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
 import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
@@ -108,10 +108,10 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
       if (!waterAssistance.sourceEventIds.includes(fact.id)) waterAssistance.sourceEventIds.push(fact.id);
       const helperArrival = waterAssistance.fulfillmentEventIds
-        .flatMap((eventId) => state.world.past.filter((event) => event.id === eventId && event.kind === 'action'))
-        .find((event) => event.kind === 'action' && event.who === proposal.helperId);
+        .flatMap((eventId) => state.world.past.filter((event): event is ActionFact => event.id === eventId && event.kind === 'action'))
+        .find((event) => event.who === proposal.helperId);
       if (helper && requester
-        && (helper.position.cellId === requester.position.cellId || helperArrival?.cellId === fact.cellId)
+        && (sameLocation(helper, requester) || (helperArrival?.cellId === fact.cellId && helperArrival.toZ === requester.position.z))
         && waterAssistance.fulfilledByPersonIds.includes(proposal.helperId)
         && waterAssistance.fulfilledByPersonIds.includes(proposal.requesterId)) {
         fulfill(state, waterAssistance, fact);
@@ -248,7 +248,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
     }
     if (agreement.proposal.kind === 'companion') {
       const [first, second] = agreement.partyIds.map((id) => state.people.find((candidate) => candidate.id === id));
-      if (first && second && first.position.cellId === second.position.cellId) agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
+      if (first && second && sameLocation(first, second)) agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
     }
     if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
     if (agreement.proposal.kind === 'reproduce') {

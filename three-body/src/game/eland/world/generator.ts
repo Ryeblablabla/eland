@@ -7,7 +7,9 @@ import {
   WORLD_WIDTH,
   cellId,
   isPassable,
+  neighbors4,
   setVoxel,
+  surfaceStandingPosition,
   topZ,
   type VoxelWorld,
 } from './grid';
@@ -16,6 +18,7 @@ export interface GeneratedDrop {
   id: string;
   materialId: MaterialId;
   cellId: number;
+  z: number;
   quantity: number;
   sourceEventIds: string[];
   createdAtMonth: number;
@@ -109,16 +112,24 @@ export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: Ge
     if (forest > 0.61 && sample > 0.42 && z + 2 < WORLD_LEVELS) {
       setVoxel(world, x, y, z + 1, Material.Wood);
       setVoxel(world, x, y, z + 2, Material.Leaves);
-      if (sample > 0.86) drops.push({ id: `wood-${id}`, materialId: Material.Wood, cellId: id, quantity: 4, sourceEventIds: [], createdAtMonth: 0 });
+      if (sample > 0.86) drops.push({ id: `wood-${id}`, materialId: Material.Wood, cellId: id, z: z + 1, quantity: 4, sourceEventIds: [], createdAtMonth: 0 });
     } else if (sample > 0.86) {
       setVoxel(world, x, y, z, Material.BerryBush);
-      drops.push({ id: `food-${id}`, materialId: Material.Food, cellId: id, quantity: 4, sourceEventIds: [], createdAtMonth: 0 });
-      drops.push({ id: `seed-${id}`, materialId: Material.Seed, cellId: id, quantity: 2, sourceEventIds: [], createdAtMonth: 0 });
+      drops.push({ id: `food-${id}`, materialId: Material.Food, cellId: id, z: z + 1, quantity: 4, sourceEventIds: [], createdAtMonth: 0 });
+      drops.push({ id: `seed-${id}`, materialId: Material.Seed, cellId: id, z: z + 1, quantity: 2, sourceEventIds: [], createdAtMonth: 0 });
     } else if (sample > 0.75) {
       setVoxel(world, x, y, z, Material.Shrub);
-      drops.push({ id: `fiber-${id}`, materialId: Material.Fiber, cellId: id, quantity: 3, sourceEventIds: [], createdAtMonth: 0 });
+      drops.push({ id: `fiber-${id}`, materialId: Material.Fiber, cellId: id, z: z + 1, quantity: 3, sourceEventIds: [], createdAtMonth: 0 });
     }
-    if (seededFraction(seed, `stone:${id}`) > 0.955) drops.push({ id: `stone-${id}`, materialId: Material.Stone, cellId: id, quantity: 3, sourceEventIds: [], createdAtMonth: 0 });
+    if (seededFraction(seed, `stone:${id}`) > 0.955) drops.push({ id: `stone-${id}`, materialId: Material.Stone, cellId: id, z: z + 1, quantity: 3, sourceEventIds: [], createdAtMonth: 0 });
+  }
+  // 树干可能在掉落物生成后占据原空气体素；把自然掉落物落到最近的真实可站立位置。
+  for (const drop of drops) {
+    const landing = surfaceStandingPosition(world, drop.cellId)
+      ?? neighbors4(drop.cellId).flatMap((neighbor) => surfaceStandingPosition(world, neighbor) ?? [])[0];
+    if (!landing) continue;
+    drop.cellId = landing.cellId;
+    drop.z = landing.z;
   }
 
   const centerX = Math.min(WORLD_WIDTH - 3, riverAtSpawn + 4);
@@ -137,7 +148,7 @@ export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: Ge
   const ensureDrop = (materialId: MaterialId, quantity: number): void => {
     if (drops.some((drop) => drop.materialId === materialId && nearby.has(drop.cellId))) return;
     const target = spawnCells.find((id, index) => index > 3 && !drops.some((drop) => drop.cellId === id)) ?? spawnCells[0];
-    drops.push({ id: `starter-${materialId}-${target}`, materialId, cellId: target, quantity, sourceEventIds: [], createdAtMonth: 0 });
+    drops.push({ id: `starter-${materialId}-${target}`, materialId, cellId: target, z: topZ(world, target) + 1, quantity, sourceEventIds: [], createdAtMonth: 0 });
   };
   ensureDrop(Material.Food, 12);
   ensureDrop(Material.Wood, 12);

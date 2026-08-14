@@ -67,7 +67,10 @@ export interface PersonState {
   generation: number;
   position: {
     cellId: number;
+    /** 双脚所在的空气体素高度；cellId 仍是给地图和区域规则使用的水平投影。 */
+    z: number;
     previousCellId: number;
+    previousZ: number;
     /** 本月实际经过的移动格；用于行动证据。 */
     lastPath: number[];
     /** 月初位置 + 15 个规则行动刻度的位置；用于确定性回放。 */
@@ -102,4 +105,8 @@ export function ageMonths(person: PersonState, elapsedMonths: number): number {
 
 export function inventoryQuantity(person: PersonState, materialId: MaterialId): number {
   return person.inventory.reduce((sum, stack) => sum + (stack.materialId === materialId ? stack.quantity : 0), 0);
+}
+
+export function sameLocation(first: PersonState, second: PersonState): boolean {
+  return first.position.cellId === second.position.cellId && first.position.z === second.position.z;
 }

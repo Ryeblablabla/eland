@@ -44,6 +44,7 @@ import { observeCoreMilestones } from '../projection/core-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
 import { advanceCollectiveLifecycle } from '../domain/collective';
 import { advancePermissionLifecycle } from '../domain/permission';
+import { shelterGeometryAt } from '../domain/structure';
 import { compileAgreementContinuations, type AgreementContinuation } from './agreement-continuation';
 import {
   WORLD_CELL_COUNT,
@@ -54,6 +55,9 @@ import {
   hydrateWorld,
   isCellId,
   surfaceMaterial,
+  surfaceStandingPosition,
+  standingPositions,
+  topZ,
   voxelAt,
 } from '../world/grid';
 import { generateVoxelWorld, seededFraction } from '../world/generator';
@@ -94,7 +98,7 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
   };
 }
 
-function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, profiles: CharacterProfile[]): PersonState {
+function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, spawnZ: number, profiles: CharacterProfile[]): PersonState {
   const founderAge = createFounderAgeMonths(seed, profile.id);
   const capacity = (key: string, floor: number, span: number) => floor + Math.floor(deterministicFraction(seed, `${key}:${profile.id}`) * span);
   return {
@@ -107,7 +111,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     sex: createBiologicalSex(seed, profile.id),
     geneticParents: [],
     generation: 0,
-    position: { cellId: spawnCell, previousCellId: spawnCell, lastPath: [spawnCell], tickPath: [spawnCell] },
+    position: { cellId: spawnCell, z: spawnZ, previousCellId: spawnCell, previousZ: spawnZ, lastPath: [spawnCell], tickPath: [spawnCell] },
     body: { health: 92, hydration: 82, nutrition: 78 },
     baselineCapacities: {
       locomotion: capacity('locomotion', 48, 35),
@@ -142,7 +146,11 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
   const config = createDefaultSimulationConfig(inputConfig);
   const generated = generateVoxelWorld(seed);
   const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
-  const people = profiles.map((profile, index) => initialPerson(seed + config.civilizationNo * 997, profile, generated.spawnCells[index] ?? generated.spawnCells[0], profiles));
+  const people = profiles.map((profile, index) => {
+    const spawnCell = generated.spawnCells[index] ?? generated.spawnCells[0];
+    const spawnZ = surfaceStandingPosition(generated.world, spawnCell)?.z ?? Math.min(generated.world.levels - 2, Math.max(1, topZ(generated.world, spawnCell) + 1));
+    return initialPerson(seed + config.civilizationNo * 997, profile, spawnCell, spawnZ, profiles);
+  });
   return {
     schemaVersion: 14,
     seed,
@@ -576,16 +584,31 @@ function deriveStructures(state: SimulationState): DerivedStructure[] {
       const targetCell = Number(position?.x) + Number(position?.y) * state.world.grid.width;
       return Number.isFinite(targetCell) && occupiedCells.includes(targetCell);
     }).map((event) => event.id);
-    const complete = group.length >= 4 && occupiedCells.length >= 3;
+    const groupKeys = new Set(group.map((position) => `${position.x}:${position.y}:${position.z}`));
+    const interiorPositions = occupiedCells.flatMap((cell) => standingPositions(state.world.grid, cell))
+      .flatMap((position) => {
+        const geometry = shelterGeometryAt(state.world.grid, position);
+        if (!geometry) return [];
+        const overheadKey = `${cellX(position.cellId)}:${cellY(position.cellId)}:${position.z + 2}`;
+        return groupKeys.has(overheadKey) ? [geometry] : [];
+      });
+    const complete = interiorPositions.length > 0;
+    const weatherProtection = interiorPositions.length
+      ? Math.round(interiorPositions.reduce((sum, interior) => sum + interior.weatherProtection, 0) / interiorPositions.length)
+      : 0;
+    const thermalInsulation = interiorPositions.length
+      ? Math.round(interiorPositions.reduce((sum, interior) => sum + interior.thermalInsulation, 0) / interiorPositions.length)
+      : 0;
     structures.push({
       id: `structure-${originKey}`,
       name: complete ? '木质遮蔽结构' : '未完成木质结构',
       occupiedCells,
-      interiorCells: complete ? occupiedCells.slice(0, 1) : [],
+      interiorCells: [...new Set(interiorPositions.map((interior) => interior.position.cellId))],
+      interiorPositions: interiorPositions.map((interior) => interior.position),
       materialIds: [Material.Plank],
-      weatherProtection: clamp(group.length * 13),
-      thermalInsulation: clamp(group.length * 10),
-      capacity: Math.max(1, Math.floor(group.length / 3)),
+      weatherProtection,
+      thermalInsulation,
+      capacity: interiorPositions.length,
       complete,
       sourceEventIds,
     });
@@ -673,6 +696,7 @@ function prepareMonth(input: SimulationState) {
   const atMonth = state.clock.elapsedMonths + 1;
   for (const person of state.people.filter(isAlive)) {
     person.position.previousCellId = person.position.cellId;
+    person.position.previousZ = person.position.z;
     person.position.lastPath = [person.position.cellId];
     person.position.tickPath = [person.position.cellId];
   }
@@ -855,12 +879,27 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
     agreement.rejectedByPersonIds ??= agreement.status === 'rejected' ? [agreement.responderId] : [];
   }
   state.world.grid = hydrateWorld(input.world.grid);
+  for (const drop of state.world.drops) {
+    drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
+  }
   for (const person of state.people) {
     const start = person.position.previousCellId ?? person.position.cellId;
+    const migratedPosition = surfaceStandingPosition(state.world.grid, person.position.cellId);
+    person.position.z = Number.isInteger(person.position.z) ? person.position.z : migratedPosition?.z ?? Math.min(state.world.grid.levels - 2, Math.max(1, topZ(state.world.grid, person.position.cellId) + 1));
+    person.position.previousZ = Number.isInteger(person.position.previousZ) ? person.position.previousZ : person.position.z;
     person.position.lastPath = person.position.lastPath?.length ? person.position.lastPath : [start, person.position.cellId];
     person.position.tickPath = person.position.tickPath?.length
       ? person.position.tickPath
       : Array.from({ length: RULE_ACTION_TICKS_PER_MONTH + 1 }, (_, index) => index === RULE_ACTION_TICKS_PER_MONTH ? person.position.cellId : start);
+  }
+  for (const event of state.world.past) {
+    if (event.kind !== 'action') continue;
+    event.fromZ = Number.isInteger(event.fromZ)
+      ? event.fromZ
+      : surfaceStandingPosition(state.world.grid, event.fromCellId)?.z ?? 1;
+    event.toZ = Number.isInteger(event.toZ)
+      ? event.toZ
+      : surfaceStandingPosition(state.world.grid, event.toCellId)?.z ?? event.fromZ;
   }
   for (const intent of state.intents) {
     if (intent.agreementId) continue;
@@ -869,6 +908,7 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
       && Boolean(candidate.responseEventId && (intent.sourceFactIds ?? []).includes(candidate.responseEventId)));
     if (agreement) intent.agreementId = agreement.id;
   }
+  state.derived = deriveObservations(state);
   return state;
 }
 

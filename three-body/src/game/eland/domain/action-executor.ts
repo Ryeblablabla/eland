@@ -1,8 +1,8 @@
 import type { FactPredicate, Intent, PrimitiveAction, VoxelPosition, WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
-import { ageMonths, inventoryQuantity, isAlive, type ItemStack, type PersonState } from './person';
+import { ageMonths, inventoryQuantity, isAlive, sameLocation, type ItemStack, type PersonState } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
-import { cellId, cellX, cellY, findPath, movementCost, setVoxel, surfaceMaterial, topZ, voxelAt } from '../world/grid';
+import { cellId, cellX, cellY, findStandingPath, setVoxel, standingMovementCost, surfaceStandingPosition, voxelAt, type StandingPosition } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { acceptedReproductionBetween, communicationById } from './social-facts';
 import { rememberAction } from './memory';
@@ -27,7 +27,17 @@ function clamp(value: number, min = 0, max = 100): number {
 }
 
 function distanceToPosition(person: PersonState, position: VoxelPosition): number {
-  return Math.abs(cellX(person.position.cellId) - position.x) + Math.abs(cellY(person.position.cellId) - position.y);
+  const horizontal = Math.abs(cellX(person.position.cellId) - position.x) + Math.abs(cellY(person.position.cellId) - position.y);
+  // 双脚以上两格是身体与手臂可及范围；相邻列的头部高度体素仍可被操作。
+  const vertical = Math.max(0, Math.abs(person.position.z - position.z) - 1);
+  return Math.max(horizontal, vertical);
+}
+
+function bodyOccupies(state: SimulationState, position: VoxelPosition): boolean {
+  const targetCell = cellId(position.x, position.y);
+  return state.people.some((candidate) => isAlive(candidate)
+    && candidate.position.cellId === targetCell
+    && (candidate.position.z === position.z || candidate.position.z + 1 === position.z));
 }
 
 function removeEmptyStacks(person: PersonState): void {
@@ -62,14 +72,16 @@ export function addDrop(
   sourceEventIds: string[],
   idHint: string,
   recordPayloadId?: string,
+  z?: number,
 ): DropState {
-  const existing = state.world.drops.find((drop) => drop.cellId === cell && drop.materialId === materialId && drop.recordPayloadId === recordPayloadId && drop.quantity > 0);
+  const resolvedZ = z ?? surfaceStandingPosition(state.world.grid, cell)?.z ?? 1;
+  const existing = state.world.drops.find((drop) => drop.cellId === cell && drop.z === resolvedZ && drop.materialId === materialId && drop.recordPayloadId === recordPayloadId && drop.quantity > 0);
   if (existing) {
     existing.quantity += quantity;
     existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
     return existing;
   }
-  const drop: DropState = { id: `drop-${atMonth}-${idHint}-${state.world.drops.length}`, materialId, cellId: cell, quantity, createdAtMonth: atMonth, sourceEventIds: [...sourceEventIds], ...(recordPayloadId ? { recordPayloadId } : {}) };
+  const drop: DropState = { id: `drop-${atMonth}-${idHint}-${state.world.drops.length}`, materialId, cellId: cell, z: resolvedZ, quantity, createdAtMonth: atMonth, sourceEventIds: [...sourceEventIds], ...(recordPayloadId ? { recordPayloadId } : {}) };
   state.world.drops.push(drop);
   return drop;
 }
@@ -102,7 +114,10 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') return (goal.personId ? state.people.find((candidate) => candidate.id === goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId && fact.confidence >= (goal.minConfidence ?? 0)) ?? false;
-  if (goal.kind === 'near-person') return state.people.find((candidate) => candidate.id === goal.personId)?.position.cellId === person.position.cellId;
+  if (goal.kind === 'near-person') {
+    const other = state.people.find((candidate) => candidate.id === goal.personId);
+    return Boolean(other && sameLocation(person, other));
+  }
   if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
   return Boolean(communicationById(state, goal.representationId));
 }
@@ -114,19 +129,24 @@ function targetCell(state: SimulationState, target: WorldRef): number | null {
   return state.people.find((person) => person.id === target.personId)?.position.cellId ?? null;
 }
 
-function compactTraversedSurface(state: SimulationState, path: number[], eventId: string): Array<{ cellId: number; from: MaterialId; to: MaterialId }> {
-  const changes: Array<{ cellId: number; from: MaterialId; to: MaterialId }> = [];
+function compactTraversedSurface(state: SimulationState, path: StandingPosition[], eventId: string): Array<{ cellId: number; z: number; from: MaterialId; to: MaterialId }> {
+  const changes: Array<{ cellId: number; z: number; from: MaterialId; to: MaterialId }> = [];
   for (const traversed of path.slice(1)) {
-    const priorTraffic = state.world.past.filter((event) => event.kind === 'action' && event.pathSegment.includes(traversed)).length;
-    const from = surfaceMaterial(state.world.grid, traversed);
+    const priorTraffic = state.world.past.filter((event) => event.kind === 'action'
+      && event.pathSegment.includes(traversed.cellId)
+      && (event.fromZ === traversed.z || event.toZ === traversed.z)).length;
+    const x = cellX(traversed.cellId);
+    const y = cellY(traversed.cellId);
+    const supportZ = traversed.z - 1;
+    const from = voxelAt(state.world.grid, x, y, supportZ);
     const to = from === Material.Grass && priorTraffic >= 2
       ? Material.Soil
       : from === Material.Soil && priorTraffic >= 6
         ? Material.PackedSoil
         : from;
     if (to === from) continue;
-    setVoxel(state.world.grid, cellX(traversed), cellY(traversed), topZ(state.world.grid, traversed), to);
-    changes.push({ cellId: traversed, from, to });
+    setVoxel(state.world.grid, x, y, supportZ, to);
+    changes.push({ cellId: traversed.cellId, z: supportZ, from, to });
   }
   void eventId;
   return changes;
@@ -134,31 +154,36 @@ function compactTraversedSurface(state: SimulationState, path: number[], eventId
 
 function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
-  const fullPath = findPath(state.world.grid, person.position.cellId, action.toCellId);
+  const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
   // 一个规则刻度最多跨越一条相邻边。能力和身体状态改变代价，不改变空间连续性。
   const segment = fullPath.length > 1 ? fullPath.slice(0, 2) : [fullPath[0]];
-  const from = person.position.cellId;
+  const from = { cellId: person.position.cellId, z: person.position.z };
   const to = segment.at(-1) ?? from;
-  const spent = to === from ? 0 : movementCost(state.world.grid, from, to) / conditionWorkMultiplier(person);
-  person.position.cellId = to;
-  if (to !== from) person.position.lastPath.push(to);
-  const carried = to === from ? [] : state.people.filter((candidate) => isAlive(candidate)
-    && candidate.position.cellId === from
+  const moved = to.cellId !== from.cellId || to.z !== from.z;
+  const spent = moved ? standingMovementCost(state.world.grid, from, to) / conditionWorkMultiplier(person) : 0;
+  person.position.cellId = to.cellId;
+  person.position.z = to.z;
+  if (moved) person.position.lastPath.push(to.cellId);
+  const carried = !moved ? [] : state.people.filter((candidate) => isAlive(candidate)
+    && candidate.position.cellId === from.cellId
+    && candidate.position.z === from.z
     && candidate.geneticParents.includes(person.id)
     && ageMonths(candidate, atMonth) < 3 * 12);
   for (const dependent of carried) {
-    dependent.position.cellId = to;
-    dependent.position.lastPath.push(to);
+    dependent.position.cellId = to.cellId;
+    dependent.position.z = to.z;
+    dependent.position.lastPath.push(to.cellId);
   }
   person.body.hydration = clamp(person.body.hydration - Math.max(0, segment.length - 1) * 0.25);
   person.body.nutrition = clamp(person.body.nutrition - Math.max(0, segment.length - 1) * 0.16);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
+  const reached = to.cellId === action.toCellId && (action.toZ === undefined || to.z === action.toZ);
   return {
-    status: to === action.toCellId ? 'completed' as const : 'progressed' as const,
-    path: segment,
-    result: to === action.toCellId ? `沿真实地表到达格 ${cellX(to)}, ${cellY(to)}` : `沿真实地表推进了 ${segment.length - 1} 格`,
-    diff: { spentWork: spent, materialChanges, ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}) },
+    status: reached ? 'completed' as const : 'progressed' as const,
+    path: segment.map((position) => position.cellId),
+    result: reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${moved ? 1 : 0} 步`,
+    diff: { spentWork: spent, verticalPath: segment.map((position) => position.z), materialChanges, ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}) },
   };
 }
 
@@ -169,13 +194,14 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   let sourceStack: ItemStack | undefined;
   if (action.from.kind === 'ground') {
     const groundCellId = action.from.cellId;
-    if (groundCellId !== person.position.cellId) return { status: 'blocked' as const, result: '不在地面物品所在格', diff: {} };
     sourceDrop = state.world.drops.find((drop) => (action.dropId ? drop.id === action.dropId : drop.cellId === groundCellId && drop.materialId === action.materialId));
+    const sourceZ = action.from.z ?? sourceDrop?.z;
+    if (groundCellId !== person.position.cellId || sourceZ !== person.position.z) return { status: 'blocked' as const, result: '不在地面物品所在位置', diff: {} };
     available = sourceDrop?.quantity ?? 0;
   } else {
     const sourcePersonId = action.from.personId;
     sourcePerson = state.people.find((candidate) => candidate.id === sourcePersonId);
-    if (!sourcePerson || sourcePerson.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '物品持有者不在近身范围', diff: {} };
+    if (!sourcePerson || !sameLocation(sourcePerson, person)) return { status: 'blocked' as const, result: '物品持有者不在近身范围', diff: {} };
     sourceStack = sourcePerson.inventory.find((stack) => (action.stackId ? stack.id === action.stackId : stack.materialId === action.materialId));
     available = sourceStack?.quantity ?? 0;
   }
@@ -187,7 +213,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const permissionAuthorized = permissionAuthorizesTransfer(possiblePermission, person.id, action, atMonth, quantity);
   const referencedNorm = agreementAuthorized ? possibleAgreement : permissionAuthorized ? possiblePermission : undefined;
   const authorized = action.from.kind === 'ground' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized;
-  const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId).map((candidate) => candidate.id);
+  const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person)).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
     const relation = sourcePerson.relations.find((item) => item.personId === person.id);
     if (relation) {
@@ -208,7 +234,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   if (action.to.kind === 'person') {
     const receiverId = action.to.personId;
     const receiver = state.people.find((candidate) => candidate.id === receiverId);
-    if (!receiver || receiver.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
+    if (!receiver || !sameLocation(receiver, person)) return { status: 'blocked' as const, result: '接收者不在近身范围', diff: {} };
     addInventory(receiver, action.materialId, quantity, [eventId], `stack-${receiver.id}-${action.materialId}-${atMonth}`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId);
     if (receiver.id !== person.id && !referencedNorm) {
       const relation = receiver.relations.find((item) => item.personId === person.id);
@@ -217,7 +243,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       }
     }
   } else {
-    addDrop(state, action.materialId, quantity, action.to.cellId, atMonth, [eventId], `${person.id}-put`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId);
+    addDrop(state, action.materialId, quantity, action.to.cellId, atMonth, [eventId], `${person.id}-put`, sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId, action.to.z ?? person.position.z);
   }
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   return {
@@ -266,7 +292,7 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   const targets = action.targets;
   const target = targets[0];
   if (target?.kind === 'person') {
-    const restrained = state.people.find((candidate) => candidate.id === target.personId && candidate.position.cellId === person.position.cellId);
+    const restrained = state.people.find((candidate) => candidate.id === target.personId && sameLocation(candidate, person));
     const condition = restrained?.conditions.find((item) => item.kind === 'restrained');
     if (!restrained || !condition) return { status: 'blocked' as const, result: '近身目标身上没有可分离的拘束物质', diff: {} };
     const selfRelease = restrained.id === person.id;
@@ -310,7 +336,7 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   } else {
     return { status: 'blocked' as const, result: `${materialDefinition(materialId).name}目前无法徒手分离`, diff: { materialId } };
   }
-  for (const item of output) addDrop(state, item.materialId, item.quantity, person.position.cellId, atMonth, [eventId], `${person.id}-separate`);
+  for (const item of output) addDrop(state, item.materialId, item.quantity, person.position.cellId, atMonth, [eventId], `${person.id}-separate`, undefined, person.position.z);
   return {
     status: 'completed' as const,
     result: `从${materialDefinition(materialId).name}分离出${output.map((item) => `${materialDefinition(item.materialId).name} × ${item.quantity}`).join('、')}`,
@@ -360,7 +386,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   }
   if (stackRef && personRef && stackRef.personId === person.id) {
     const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
-    const receiver = state.people.find((candidate) => candidate.id === personRef.personId && candidate.position.cellId === person.position.cellId);
+    const receiver = state.people.find((candidate) => candidate.id === personRef.personId && sameLocation(candidate, person));
     if (!stack || !receiver) return { status: 'blocked' as const, result: '照护材料或伤者不在近身范围', diff: {} };
     if (stack.materialId === Material.Rope && receiver.id !== person.id) {
       const woundStage = receiver.conditions.find((item) => item.kind === 'wound')?.stage ?? 0;
@@ -370,7 +396,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
       removeEmptyStacks(person);
       const condition = { id: `condition-restrained-${receiver.id}-${atMonth}`, kind: 'restrained' as const, stage: 2 as const, sinceMonth: atMonth, sourceEventIds: [eventId], otherPersonId: person.id, materialStackId: stack.id };
       receiver.conditions.push(condition);
-      const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId && candidate.id !== person.id).map((candidate) => candidate.id);
+      const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person) && candidate.id !== person.id).map((candidate) => candidate.id);
       for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
         applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === receiver.id ? -20 : -8, fear: witness.id === receiver.id ? 20 : 8 });
       }
@@ -402,6 +428,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
   if (stack.materialId === Material.Seed && (current === Material.WetSoil || current === Material.RichSoil || current === Material.ExhaustedSoil)) output = Material.CropSprout;
   if (stack.materialId === Material.Wood && current === Material.Air) output = Material.Plank;
   if (output === null) return { status: 'blocked' as const, result: '这些物质当前没有可发生的结合规则', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
+  if (materialHas(output, 'solid') && bodyOccupies(state, voxelRef.position)) return { status: 'blocked' as const, result: '目标空气体素正被身体占据，不能放入固体物质', diff: { outputMaterialId: output, position: voxelRef.position } };
   stack.quantity -= 1;
   removeEmptyStacks(person);
   setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, output);
@@ -472,7 +499,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
   }
   const target = action.targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const victim = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
-  if (!victim || victim.id === person.id || victim.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '受力目标不在近身范围', diff: {} };
+  if (!victim || victim.id === person.id || !sameLocation(victim, person)) return { status: 'blocked' as const, result: '受力目标不在近身范围', diff: {} };
   const damage = Math.max(3, Math.round(person.baselineCapacities.manipulation / 12));
   victim.body.health = clamp(victim.body.health - damage);
   const wound = victim.conditions.find((condition) => condition.kind === 'wound');
@@ -482,7 +509,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
   } else {
     victim.conditions.push({ id: `condition-wound-${victim.id}-${atMonth}`, kind: 'wound', stage: damage >= 7 ? 2 : 1, sinceMonth: atMonth, sourceEventIds: [eventId], otherPersonId: person.id });
   }
-  const witnessedBy = state.people.filter((candidate) => candidate.position.cellId === person.position.cellId && candidate.id !== person.id).map((candidate) => candidate.id);
+  const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person) && candidate.id !== person.id).map((candidate) => candidate.id);
   for (const witness of state.people.filter((candidate) => witnessedBy.includes(candidate.id))) {
     applyRelationEvidence(witness, person.id, eventId, { trust: witness.id === victim.id ? -14 : -6, fear: witness.id === victim.id ? 12 : 5 });
   }
@@ -492,7 +519,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
 function executeReproduce(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
   const target = targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const other = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
-  if (!other || other.id === person.id || other.position.cellId !== person.position.cellId) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
+  if (!other || other.id === person.id || !sameLocation(other, person)) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
   const consent = acceptedReproductionBetween(state, person.id, other.id, atMonth);
   if (!consent) return { status: 'blocked' as const, result: '没有双方沟通形成的接受事实，生殖过程不发生', diff: { consent: false } };
   const female = person.sex === 'female' ? person : other.sex === 'female' ? other : null;
@@ -672,7 +699,7 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     } else stack.recordPayloadId = payload.id;
     return { status: 'completed' as const, result: `${person.name}把“${knowledge.summary}”刻写到木制记录板`, diff: { recordPayloadId: payload.id, carrierStackId: carrier.id, knowledgeId: knowledge.id, version: payload.version } };
   }
-  const reached = state.people.filter((candidate) => action.audience.includes(candidate.id) && candidate.position.cellId === person.position.cellId);
+  const reached = state.people.filter((candidate) => action.audience.includes(candidate.id) && sameLocation(candidate, person));
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
   const content = action.content;
   if (content.kind === 'claim' && content.factId) {
@@ -738,6 +765,7 @@ export function executePrimitiveAction(
 ): ActionFact {
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
+  const fromZ = person.position.z;
   const outcome = action.kind === 'move'
     ? executeMove(state, person, action, eventId, atMonth)
     : action.kind === 'transfer'
@@ -761,6 +789,8 @@ export function executePrimitiveAction(
     action,
     fromCellId,
     toCellId: person.position.cellId,
+    fromZ,
+    toZ: person.position.z,
     pathSegment,
     status: outcome.status,
     result: outcome.result,

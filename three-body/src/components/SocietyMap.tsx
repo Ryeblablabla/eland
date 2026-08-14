@@ -329,15 +329,15 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
             <div className="mt-5 space-y-2">
               {cellAgents.map((agent) => (
                 <button key={agent.id} onClick={() => onSelectAgent(agent.id)} className="block w-full border-l border-white/10 pl-3 text-left text-xs text-slate-300">
-                  {agent.name} · {agent.doing}
+                  {agent.name} · 高度 {agent.z} · {agent.doing}
                 </button>
               ))}
               {cellDrops.map((drop) => (
                 <button key={drop.id} className="block w-full border-l border-white/10 pl-3 text-left text-xs text-slate-300">
-                  地面物品 · {drop.name} × {drop.quantity}
+                  高度 {drop.z} 的物品 · {drop.name} × {drop.quantity}
                 </button>
               ))}
-              {cellStructures.map((structure) => <div key={structure.id} className="border-l border-amber-200/30 pl-3 text-xs text-amber-100/80">{structure.name} · {structure.componentCount} 次连接证据 · 防护 {Math.round(structure.effects.weatherProtection)}</div>)}
+              {cellStructures.map((structure) => <div key={structure.id} className="border-l border-amber-200/30 pl-3 text-xs text-amber-100/80">{structure.name} · 内部高度 {structure.interiorPositions.filter((position) => position.cellId === selectedCell).map((position) => position.z).join('、') || '无'} · 防护 {Math.round(structure.effects.weatherProtection)}</div>)}
               {!cellAgents.length && !cellDrops.length && !cellStructures.length && <div className="text-xs text-slate-600">这格只有物质柱，没有地面实体。</div>}
             </div>
           </>

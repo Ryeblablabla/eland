@@ -1,7 +1,7 @@
 import type { ActionOption } from '../domain/action';
 import type { SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
-import { inventoryQuantity } from '../domain/person';
+import { inventoryQuantity, sameLocation } from '../domain/person';
 import { Material, materialDefinition, materialHas } from '../domain/material';
 import {
   acceptedAssistFor,
@@ -16,7 +16,7 @@ import {
   openMembershipOfferFor,
   openPermissionOfferFor,
 } from '../domain/social-facts';
-import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
+import { cellsInRadius, findStandingPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
@@ -32,7 +32,7 @@ function reachableWaterBank(state: SimulationState, person: PersonState): { wate
     if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) return [];
     return neighbors4(waterCell).flatMap((bankCell) => {
       if (!isPassable(state.world.grid, bankCell)) return [];
-      const path = findPath(state.world.grid, person.position.cellId, bankCell);
+      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
       return path.length ? [{ waterCell, bankCell, pathLength: path.length }] : [];
     });
   });
@@ -44,14 +44,14 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const response = { kind: 'communicate' as const, content: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
     : { id: representationId, kind: 'reject' as const, referenceId }, audience: [other.id], channel: 'voice' as const };
-  const together = person.position.cellId === other.position.cellId;
-  const distance = Math.max(0, findPath(state.world.grid, person.position.cellId, other.position.cellId).length - 1);
+  const together = sameLocation(person, other);
+  const distance = Math.max(0, findStandingPath(state.world.grid, person.position, other.position).length - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
     summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : '物质取用许可'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
-    nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId },
+    nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
     ...(!together ? { completionAction: response } : {}),
     target: { kind: 'person', personId: other.id },
     estimatedDuration: together ? 'one-month' : 'several-months',
@@ -77,15 +77,15 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
     summary,
     reason: '共同体成员扩张需要候选人与所有现有成员分别作出有来源的回应',
     goal: { kind: 'representation-made', representationId },
-    nextAction: person.position.cellId === proposer.position.cellId ? {
+    nextAction: sameLocation(person, proposer) ? {
       kind: 'communicate',
       content: accept
         ? { id: representationId, kind: 'accept', referenceId, summary }
         : { id: representationId, kind: 'reject', referenceId, summary },
       audience: [proposer.id],
       channel: 'voice',
-    } : { kind: 'move', toCellId: proposer.position.cellId },
-    ...(person.position.cellId !== proposer.position.cellId ? {
+    } : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
+    ...(!sameLocation(person, proposer) ? {
       completionAction: {
         kind: 'communicate' as const,
         content: accept
@@ -95,15 +95,15 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
       },
     } : {}),
     target: { kind: 'person', personId: proposer.id },
-    estimatedDuration: person.position.cellId === proposer.position.cellId ? 'one-month' : 'several-months',
-    estimatedMonths: person.position.cellId === proposer.position.cellId ? 1 : 2, risks: [], domain: 'social',
+    estimatedDuration: sameLocation(person, proposer) ? 'one-month' : 'several-months',
+    estimatedMonths: sameLocation(person, proposer) ? 1 : 2, risks: [], domain: 'social',
     sourceFactIds: [...agreement.sourceEventIds],
   };
 }
 
 export function buildSocialOptions(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
-  const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
+  const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
   const personCollectives = activeCollectivesFor(state, person.id);
   const requestedWaterAssist = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'assist'
@@ -116,7 +116,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       && intent.goal.kind === 'at-cell'
       && (intent.sourceFactIds ?? []).some((eventId) => requestedWaterAssist.sourceEventIds.includes(eventId)));
     if (helper && helperRoute?.goal.kind === 'at-cell' && person.position.cellId !== helperRoute.goal.cellId) {
-      const path = findPath(state.world.grid, person.position.cellId, helperRoute.goal.cellId);
+      const path = findStandingPath(state.world.grid, person.position, { cellId: helperRoute.goal.cellId });
       if (path.length) options.push({
         id: `join-water-assist:${requestedWaterAssist.id}`,
         summary: `沿${helper.name}找到的路线去水边`,
@@ -143,7 +143,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
     if (requester && !alreadyHelped) {
       const food = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
       const water = acceptedAssist.proposal.need === 'water' ? reachableWaterBank(state, person) : null;
-      if (acceptedAssist.proposal.need === 'food' && food && requester.position.cellId === person.position.cellId) options.push({
+      if (acceptedAssist.proposal.need === 'food' && food && sameLocation(requester, person)) options.push({
         id: `fulfill-assist:${acceptedAssist.request.id}`,
         summary: `履行承诺，把食物交给${requester.name}`,
         reason: '自己已经在对话中接受对方的求助',
@@ -152,10 +152,10 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
       });
-      else if (requester.position.cellId !== person.position.cellId) options.push({
+      else if (!sameLocation(requester, person)) options.push({
         id: `meet-to-assist:${acceptedAssist.request.id}`,
         summary: `去与${requester.name}会合以履行帮助承诺`, reason: '已经接受求助，必须先回到对方身边',
-        goal: { kind: 'near-person', personId: requester.id }, nextAction: { kind: 'move', toCellId: requester.position.cellId },
+        goal: { kind: 'near-person', personId: requester.id }, nextAction: { kind: 'move', toCellId: requester.position.cellId, toZ: requester.position.z },
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'several-months', estimatedMonths: 2,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
       });
@@ -191,13 +191,13 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
 
   for (const other of visiblePeople) {
     const companionship = acceptedCompanionBetween(state, person.id, other.id, state.clock.elapsedMonths);
-    if (!companionship || other.position.cellId === person.position.cellId) continue;
-    const path = findPath(state.world.grid, person.position.cellId, other.position.cellId);
+    if (!companionship || sameLocation(other, person)) continue;
+    const path = findStandingPath(state.world.grid, person.position, other.position);
     if (!path.length) continue;
     options.push({
       id: `rejoin-companion:${other.id}:${companionship.offer.id}`,
       summary: `重新与同伴${other.name}会合`, reason: '双方已通过对话形成结伴承诺，但现在彼此分离',
-      goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId },
+      goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
       target: { kind: 'person', personId: other.id }, estimatedDuration: 'several-months',
       estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
       risks: [], domain: 'social', sourceFactIds: [companionship.offer.id, companionship.acceptance.id],
@@ -248,14 +248,14 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
-    const visibleMember = visiblePeople.find((other) => memberIds.has(other.id) && other.position.cellId !== person.position.cellId);
+    const visibleMember = visiblePeople.find((other) => memberIds.has(other.id) && !sameLocation(other, person));
     if (visibleMember) {
-      const path = findPath(state.world.grid, person.position.cellId, visibleMember.position.cellId);
+      const path = findStandingPath(state.world.grid, person.position, visibleMember.position);
       if (path.length) options.push({
         id: `rejoin-collective:${collective.id}:${visibleMember.id}`,
         summary: `重新与共同体成员${visibleMember.name}会合`,
         reason: `双方仍属于以“${collective.purposeSummary}”为目的的持续共同体`,
-        goal: { kind: 'near-person', personId: visibleMember.id }, nextAction: { kind: 'move', toCellId: visibleMember.position.cellId },
+        goal: { kind: 'near-person', personId: visibleMember.id }, nextAction: { kind: 'move', toCellId: visibleMember.position.cellId, toZ: visibleMember.position.z },
         target: { kind: 'person', personId: visibleMember.id }, estimatedDuration: 'several-months',
         estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
         risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
@@ -312,7 +312,10 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         });
       }
     }
-    const allMembersHere = activeMemberIds(state, collective).every((id) => state.people.find((candidate) => candidate.id === id)?.position.cellId === person.position.cellId);
+    const allMembersHere = activeMemberIds(state, collective).every((id) => {
+      const member = state.people.find((candidate) => candidate.id === id);
+      return Boolean(member && sameLocation(member, person));
+    });
     const candidate = allMembersHere ? localPeople.find((other) => {
       if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
       const relation = relationTo(person, other.id);
@@ -349,7 +352,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
   for (const permission of activePermissionsFor(state, person.id)) {
     const grantor = state.people.find((other) => other.id === permission.grantorId);
     const grantee = state.people.find((other) => other.id === permission.granteeId);
-    if (person.id === permission.granteeId && grantor?.position.cellId === person.position.cellId) {
+    if (person.id === permission.granteeId && grantor && sameLocation(grantor, person)) {
       const stack = grantor.inventory.find((item) => item.materialId === permission.materialId && item.quantity > 0);
       if (stack) options.push({
         id: `use-permission:${permission.id}:${stack.id}`,
@@ -361,7 +364,7 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
       });
     }
-    if (person.id === permission.grantorId && grantee?.position.cellId === person.position.cellId) {
+    if (person.id === permission.grantorId && grantee && sameLocation(grantee, person)) {
       const representationId = `revoke-permission:${state.clock.elapsedMonths}:${permission.id}`;
       options.push({
         id: representationId,
@@ -441,12 +444,12 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
 
   if (!localPeople.length) {
     for (const other of visiblePeople.slice(0, 2)) {
-      const path = findPath(state.world.grid, person.position.cellId, other.position.cellId);
+      const path = findStandingPath(state.world.grid, person.position, other.position);
       if (!path.length) continue;
       options.push({
         id: `meet:${other.id}`,
         summary: `去与${other.name}会合`, reason: '看见另一个人，接近后才能沟通、求助或共同做事',
-        goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId },
+        goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
         target: { kind: 'person', personId: other.id }, estimatedDuration: path.length <= 4 ? 'one-month' : 'several-months',
         estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
         risks: [], domain: 'social', sourceFactIds: relationTo(person, other.id)?.sourceEventIds ?? [],

@@ -1,8 +1,8 @@
 import type { PrimitiveAction } from './action';
 import { Material, materialHas } from './material';
 import type { DropState, SimulationState } from './model';
-import { ageMonths, isAlive, type PersonState } from './person';
-import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
+import { ageMonths, isAlive, sameLocation, type PersonState } from './person';
+import { cellsInRadius, findStandingPath, isPassable, neighbors4, surfaceMaterial } from '../world/grid';
 
 const INFANT_MONTHS = 3 * 12;
 const DEPENDENT_MONTHS = 12 * 12;
@@ -16,7 +16,7 @@ function youngDependents(state: SimulationState, caregiver: PersonState): Person
     .filter((candidate) => isAlive(candidate)
       && candidate.geneticParents.includes(caregiver.id)
       && ageMonths(candidate, state.clock.elapsedMonths + 1) < DEPENDENT_MONTHS
-      && candidate.position.cellId === caregiver.position.cellId)
+      && sameLocation(candidate, caregiver))
     .sort((a, b) => Math.min(a.body.hydration, a.body.nutrition) - Math.min(b.body.hydration, b.body.nutrition) || a.id.localeCompare(b.id));
 }
 
@@ -25,7 +25,7 @@ function nearestWaterBank(state: SimulationState, caregiver: PersonState): { ban
     if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) return [];
     return neighbors4(waterCell).flatMap((bankCell) => {
       if (!isPassable(state.world.grid, bankCell)) return [];
-      const path = findPath(state.world.grid, caregiver.position.cellId, bankCell);
+      const path = findStandingPath(state.world.grid, caregiver.position, { cellId: bankCell });
       return path.length ? [{ bankCell, pathLength: path.length }] : [];
     });
   });
@@ -36,7 +36,7 @@ function nearestFood(state: SimulationState, caregiver: PersonState): DropState 
   const visible = new Set(cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver)));
   return state.world.drops
     .filter((drop) => drop.quantity > 0 && visible.has(drop.cellId) && materialHas(drop.materialId, 'edible'))
-    .map((drop) => ({ drop, path: findPath(state.world.grid, caregiver.position.cellId, drop.cellId) }))
+    .map((drop) => ({ drop, path: findStandingPath(state.world.grid, caregiver.position, { cellId: drop.cellId, z: drop.z }) }))
     .filter(({ path }) => path.length)
     .sort((a, b) => a.path.length - b.path.length || a.drop.id.localeCompare(b.drop.id))[0]?.drop ?? null;
 }
@@ -59,9 +59,9 @@ export function chooseDependentCareReflex(state: SimulationState, caregiver: Per
       from: { kind: 'person', personId: caregiver.id }, to: { kind: 'person', personId: dependent.id }, stackId: carriedFood.id,
     };
     const food = requiresCarrying ? nearestFood(state, caregiver) : null;
-    if (food) return caregiver.position.cellId === food.cellId
-      ? { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'ground', cellId: food.cellId }, to: { kind: 'person', personId: dependent.id }, dropId: food.id }
-      : { kind: 'move', toCellId: food.cellId };
+    if (food) return caregiver.position.cellId === food.cellId && caregiver.position.z === food.z
+      ? { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'ground', cellId: food.cellId, z: food.z }, to: { kind: 'person', personId: dependent.id }, dropId: food.id }
+      : { kind: 'move', toCellId: food.cellId, toZ: food.z };
   }
 
   return null;

@@ -32,6 +32,7 @@ export interface SocietyAgent {
   name: string;
   title: string;
   cellId: number;
+  z: number;
   previousCellId: number;
   lastPath: number[];
   tickPath: number[];
@@ -74,6 +75,7 @@ export interface DropView {
   materialId: number;
   name: string;
   cellId: number;
+  z: number;
   quantity: number;
 }
 
@@ -82,6 +84,7 @@ export interface StructureView {
   name: string;
   occupiedCells: number[];
   interiorCells: number[];
+  interiorPositions: Array<{ cellId: number; z: number }>;
   componentCount: number;
   complete: boolean;
   effects: { weatherProtection: number; thermalInsulation: number; capacity: number };

@@ -2,8 +2,8 @@ import type { FactPredicate, PrimitiveAction, WorldRef } from '../domain/action'
 import { agreementById } from '../domain/agreement';
 import { Material, materialHas } from '../domain/material';
 import type { SimulationState } from '../domain/model';
-import type { PersonId, PersonState } from '../domain/person';
-import { cellsInRadius, findPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
+import { sameLocation, type PersonId, type PersonState } from '../domain/person';
+import { cellsInRadius, findStandingPath, isPassable, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 export interface AgreementContinuation {
   agreementId: string;
@@ -21,7 +21,7 @@ function reachableWaterBank(state: SimulationState, person: PersonState): { wate
     if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) return [];
     return neighbors4(waterCell).flatMap((bankCell) => {
       if (!isPassable(state.world.grid, bankCell)) return [];
-      const path = findPath(state.world.grid, person.position.cellId, bankCell);
+      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
       return path.length ? [{ waterCell, bankCell, pathLength: path.length }] : [];
     });
   });
@@ -52,9 +52,9 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
         personId: helper.id,
         summary: `履行对${requester.name}的食物帮助承诺`,
         goal: { kind: 'inventory-at-least', materialId: stack.materialId, quantity: requester.inventory.filter((item) => item.materialId === stack.materialId).reduce((sum, item) => sum + item.quantity, 0) + 1, personId: requester.id },
-        nextAction: helper.position.cellId === requester.position.cellId
+        nextAction: sameLocation(helper, requester)
           ? { kind: 'transfer', materialId: stack.materialId, quantity: 1, from: { kind: 'person', personId: helper.id }, to: { kind: 'person', personId: requester.id }, stackId: stack.id, authorizationRef: agreement.id }
-          : { kind: 'move', toCellId: requester.position.cellId },
+          : { kind: 'move', toCellId: requester.position.cellId, toZ: requester.position.z },
         target: { kind: 'person', personId: requester.id },
         sourceFactIds,
       }];
@@ -78,7 +78,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
         target: { kind: 'person', personId: requester.id },
         sourceFactIds,
       }];
-      if (findPath(state.world.grid, requester.position.cellId, water.bankCell).length) continuations.push({
+      if (findStandingPath(state.world.grid, requester.position, { cellId: water.bankCell }).length) continuations.push({
         agreementId: agreement.id,
         personId: requester.id,
         summary: `沿${helper.name}确认的路线去水边并实际饮水`,
@@ -110,9 +110,9 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
         personId,
         summary: `履行已接受的物质交换`,
         goal: { kind: 'inventory-at-least' as const, materialId, quantity: receiverQuantity + quantity, personId: receiver.id },
-        nextAction: person.position.cellId === receiver.position.cellId
+        nextAction: sameLocation(person, receiver)
           ? { kind: 'transfer' as const, materialId, quantity, from: { kind: 'person' as const, personId }, to: { kind: 'person' as const, personId: receiver.id }, stackId: stack.id, authorizationRef: agreement.id }
-          : { kind: 'move' as const, toCellId: receiver.position.cellId },
+          : { kind: 'move' as const, toCellId: receiver.position.cellId, toZ: receiver.position.z },
         target: { kind: 'person' as const, personId: receiver.id },
         sourceFactIds,
       }];
@@ -128,9 +128,9 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
       personId: responder.id,
       summary: `履行与${proposer.name}共同接受的生殖尝试`,
       goal: female ? { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true } : { kind: 'near-person', personId: proposer.id },
-      nextAction: responder.position.cellId === proposer.position.cellId
+      nextAction: sameLocation(responder, proposer)
         ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: proposer.id }] }
-        : { kind: 'move', toCellId: proposer.position.cellId },
+        : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
       target: { kind: 'person', personId: proposer.id },
       sourceFactIds,
     }];

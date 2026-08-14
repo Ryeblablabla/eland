@@ -16,6 +16,12 @@ export interface VoxelWorld {
   voxels: Uint16Array;
 }
 
+export interface StandingPosition {
+  cellId: number;
+  /** 双脚所在的空气体素。 */
+  z: number;
+}
+
 export function cellId(x: number, y: number): number {
   return y * WORLD_WIDTH + x;
 }
@@ -110,6 +116,39 @@ export function isPassable(world: VoxelWorld, id: number): boolean {
   return materialHas(surface, 'ground') || materialHas(surface, 'plant') || surface === Material.Ice || surface === Material.Plank;
 }
 
+function supportsStanding(materialId: MaterialId): boolean {
+  if (materialId === Material.Air || materialId === Material.Water || materialId === Material.Fire) return false;
+  if (materialId === Material.Wood || materialId === Material.Leaves) return false;
+  return materialHas(materialId, 'ground') || materialHas(materialId, 'plant') || materialId === Material.Ice || materialId === Material.Plank;
+}
+
+export function isStandingPosition(world: VoxelWorld, position: StandingPosition): boolean {
+  if (!isCellId(position.cellId) || position.z <= 0 || position.z + 1 >= world.levels) return false;
+  const x = cellX(position.cellId);
+  const y = cellY(position.cellId);
+  return voxelAt(world, x, y, position.z) === Material.Air
+    && voxelAt(world, x, y, position.z + 1) === Material.Air
+    && supportsStanding(voxelAt(world, x, y, position.z - 1));
+}
+
+export function standingPositions(world: VoxelWorld, id: number): StandingPosition[] {
+  if (!isCellId(id)) return [];
+  const result: StandingPosition[] = [];
+  for (let z = 1; z + 1 < world.levels; z += 1) {
+    const position = { cellId: id, z };
+    if (isStandingPosition(world, position)) result.push(position);
+  }
+  return result;
+}
+
+export function surfaceStandingPosition(world: VoxelWorld, id: number): StandingPosition | null {
+  return standingPositions(world, id).at(-1) ?? null;
+}
+
+export function sameStandingPosition(first: StandingPosition, second: StandingPosition): boolean {
+  return first.cellId === second.cellId && first.z === second.z;
+}
+
 export function movementCost(world: VoxelWorld, from: number, to: number): number {
   const climb = Math.max(0, topZ(world, to) - topZ(world, from));
   const surface = surfaceMaterial(world, to);
@@ -117,6 +156,15 @@ export function movementCost(world: VoxelWorld, from: number, to: number): numbe
   const plantPenalty = material.tags.includes('plant') && surface !== Material.Grass ? 1 : 0;
   const roadRelief = surface === Material.PackedSoil || surface === Material.Plank ? 1 : 0;
   return Math.max(1, 2 + climb + plantPenalty - roadRelief);
+}
+
+export function standingMovementCost(world: VoxelWorld, from: StandingPosition, to: StandingPosition): number {
+  const x = cellX(to.cellId);
+  const y = cellY(to.cellId);
+  const support = materialDefinition(voxelAt(world, x, y, to.z - 1));
+  const plantPenalty = support.tags.includes('plant') && support.id !== Material.Grass ? 1 : 0;
+  const roadRelief = support.id === Material.PackedSoil || support.id === Material.Plank ? 1 : 0;
+  return Math.max(1, 2 + Math.max(0, to.z - from.z) + plantPenalty - roadRelief);
 }
 
 function manhattan(a: number, b: number): number {
@@ -159,6 +207,77 @@ export function findPath(world: VoxelWorld, start: number, goal: number): number
       gScore[next] = tentative;
       fScore[next] = tentative + manhattan(next, goal);
       open.add(next);
+    }
+  }
+  return [];
+}
+
+function standingIndex(position: StandingPosition): number {
+  return position.z * WORLD_CELL_COUNT + position.cellId;
+}
+
+function positionFromStandingIndex(index: number): StandingPosition {
+  return { cellId: index % WORLD_CELL_COUNT, z: Math.floor(index / WORLD_CELL_COUNT) };
+}
+
+function standingHeuristic(position: StandingPosition, goals: StandingPosition[]): number {
+  return goals.reduce((best, goal) => Math.min(best,
+    Math.abs(cellX(position.cellId) - cellX(goal.cellId))
+      + Math.abs(cellY(position.cellId) - cellY(goal.cellId))
+      + Math.abs(position.z - goal.z)), Number.POSITIVE_INFINITY);
+}
+
+/**
+ * 在真正可容纳身体的空气体素间寻路。人物能沿水平相邻格上下一级，不能穿过屋顶或实心柱。
+ */
+export function findStandingPath(
+  world: VoxelWorld,
+  start: StandingPosition,
+  goal: { cellId: number; z?: number },
+): StandingPosition[] {
+  if (!isStandingPosition(world, start)) return [];
+  const goals = standingPositions(world, goal.cellId).filter((position) => goal.z === undefined || position.z === goal.z);
+  if (!goals.length) return [];
+  if (goals.some((candidate) => sameStandingPosition(candidate, start))) return [start];
+  const goalIndexes = new Set(goals.map(standingIndex));
+  const startIndex = standingIndex(start);
+  const open = new Set<number>([startIndex]);
+  const cameFrom = new Int32Array(WORLD_VOXEL_COUNT).fill(-1);
+  const gScore = new Float64Array(WORLD_VOXEL_COUNT).fill(Number.POSITIVE_INFINITY);
+  const fScore = new Float64Array(WORLD_VOXEL_COUNT).fill(Number.POSITIVE_INFINITY);
+  gScore[startIndex] = 0;
+  fScore[startIndex] = standingHeuristic(start, goals);
+  while (open.size) {
+    let currentIndex = -1;
+    let best = Number.POSITIVE_INFINITY;
+    for (const candidate of open) {
+      const score = fScore[candidate];
+      if (score < best || (score === best && (currentIndex < 0 || candidate < currentIndex))) {
+        currentIndex = candidate;
+        best = score;
+      }
+    }
+    if (goalIndexes.has(currentIndex)) {
+      const path = [positionFromStandingIndex(currentIndex)];
+      while (cameFrom[currentIndex] >= 0) {
+        currentIndex = cameFrom[currentIndex];
+        path.push(positionFromStandingIndex(currentIndex));
+      }
+      return path.reverse();
+    }
+    open.delete(currentIndex);
+    const current = positionFromStandingIndex(currentIndex);
+    for (const nextCell of neighbors4(current.cellId)) {
+      for (const next of standingPositions(world, nextCell)) {
+        if (Math.abs(next.z - current.z) > 1) continue;
+        const nextIndex = standingIndex(next);
+        const tentative = gScore[currentIndex] + standingMovementCost(world, current, next);
+        if (tentative >= gScore[nextIndex]) continue;
+        cameFrom[nextIndex] = currentIndex;
+        gScore[nextIndex] = tentative;
+        fScore[nextIndex] = tentative + standingHeuristic(next, goals);
+        open.add(nextIndex);
+      }
     }
   }
   return [];

@@ -1,6 +1,6 @@
 import type { ActionOption, Intent, PrimitiveAction } from '../domain/action';
 import { Material, materialDefinition, materialHas } from '../domain/material';
-import { inventoryQuantity, isAlive, type PersonState } from '../domain/person';
+import { inventoryQuantity, isAlive, sameLocation, type PersonState } from '../domain/person';
 import { ageMonths } from '../domain/person';
 import type { DecisionContext, DropState, SimulationState } from '../domain/model';
 import { acceptedExchangeFor, acceptedReproductionBetween, exchangeTermFulfilled, openExchangeOfferFor, openReproductionOfferFor } from '../domain/social-facts';
@@ -8,7 +8,7 @@ import {
   cellsInRadius,
   cellX,
   cellY,
-  findPath,
+  findStandingPath,
   isPassable,
   nearestCell,
   neighbors4,
@@ -30,6 +30,7 @@ import {
 } from '../domain/interaction-rules';
 import { compileAgreementContinuations } from './agreement-continuation';
 import { permissionById } from '../domain/permission';
+import { buildConstructionOptions } from './construction-options';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -49,7 +50,7 @@ function nearestWaterBank(state: SimulationState, person: PersonState, visible: 
     if (surfaceMaterial(state.world.grid, waterCell) !== Material.Water) continue;
     for (const bankCell of neighbors4(waterCell)) {
       if (!isPassable(state.world.grid, bankCell)) continue;
-      const path = findPath(state.world.grid, person.position.cellId, bankCell);
+      const path = findStandingPath(state.world.grid, person.position, { cellId: bankCell });
       if (path.length) candidates.push({ waterCell, bankCell, distance: path.length });
     }
   }
@@ -57,17 +58,17 @@ function nearestWaterBank(state: SimulationState, person: PersonState, visible: 
 }
 
 function actionForDrop(person: PersonState, drop: DropState): PrimitiveAction {
-  if (person.position.cellId === drop.cellId) {
+  if (person.position.cellId === drop.cellId && person.position.z === drop.z) {
     return {
       kind: 'transfer',
       materialId: drop.materialId,
       quantity: Math.min(3, drop.quantity),
-      from: { kind: 'ground', cellId: drop.cellId },
+      from: { kind: 'ground', cellId: drop.cellId, z: drop.z },
       to: { kind: 'person', personId: person.id },
       dropId: drop.id,
     };
   }
-  return { kind: 'move', toCellId: drop.cellId };
+  return { kind: 'move', toCellId: drop.cellId, toZ: drop.z };
 }
 
 function optionForDrop(person: PersonState, drop: DropState): ActionOption {
@@ -79,7 +80,7 @@ function optionForDrop(person: PersonState, drop: DropState): ActionOption {
     reason: `看见地上的${material.name}`,
     goal: { kind: 'inventory-at-least', materialId: drop.materialId, quantity: current + Math.min(3, drop.quantity) },
     nextAction: actionForDrop(person, drop),
-    estimatedDuration: person.position.cellId === drop.cellId ? 'one-month' : 'several-months',
+    estimatedDuration: person.position.cellId === drop.cellId && person.position.z === drop.z ? 'one-month' : 'several-months',
     sourceFactIds: drop.sourceEventIds,
   };
 }
@@ -90,7 +91,10 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
     && memory.summary.includes(option.summary));
   if (recentlyFailed) return null;
   const destination = option.nextAction.kind === 'move' ? option.nextAction.toCellId : person.position.cellId;
-  const path = findPath(state.world.grid, person.position.cellId, destination);
+  const path = findStandingPath(state.world.grid, person.position, {
+    cellId: destination,
+    ...(option.nextAction.kind === 'move' && option.nextAction.toZ !== undefined ? { z: option.nextAction.toZ } : {}),
+  });
   if (option.nextAction.kind === 'move' && !path.length) return null;
   const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)) : 1;
   const risks: string[] = [];
@@ -104,35 +108,11 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
 
 function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
   return people.flatMap((other) => {
-    if (other.position.cellId !== person.position.cellId) return [];
+    if (!sameLocation(other, person)) return [];
     const own = person.inventory.find((stack) => stack.quantity >= 2 && !other.inventory.some((item) => item.materialId === stack.materialId));
     const their = other.inventory.find((stack) => stack.quantity >= 2 && !person.inventory.some((item) => item.materialId === stack.materialId));
     return own && their ? [{ person: other, own, their }] : [];
   });
-}
-
-function nextPlankPosition(state: SimulationState, person: PersonState): { x: number; y: number; z: number } | null {
-  const reachableCells = new Set([person.position.cellId, ...neighbors4(person.position.cellId)]);
-  const nearbyPlanks: Array<{ x: number; y: number; z: number }> = [];
-  for (const cellId of cellsInRadius(person.position.cellId, 2)) {
-    for (let z = 0; z < state.world.grid.levels; z += 1) {
-      if (voxelAt(state.world.grid, cellX(cellId), cellY(cellId), z) === Material.Plank) nearbyPlanks.push({ x: cellX(cellId), y: cellY(cellId), z });
-    }
-  }
-  for (const plank of nearbyPlanks.sort((a, b) => a.z - b.z || a.y - b.y || a.x - b.x)) {
-    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
-      const x = plank.x + dx;
-      const y = plank.y + dy;
-      if (x < 0 || x >= state.world.grid.width || y < 0 || y >= state.world.grid.depth) continue;
-      const targetCell = x + y * state.world.grid.width;
-      if (!reachableCells.has(targetCell) || voxelAt(state.world.grid, x, y, plank.z) !== Material.Air) continue;
-      return { x, y, z: plank.z };
-    }
-  }
-  const targetCell = [...reachableCells].filter((cellId) => isPassable(state.world.grid, cellId)).sort((a, b) => a - b)[0];
-  if (targetCell === undefined) return null;
-  const position = { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
-  return voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Air ? position : null;
 }
 
 function nextFirePosition(state: SimulationState, person: PersonState): { x: number; y: number; z: number } | null {
@@ -154,7 +134,7 @@ function nextFirePosition(state: SimulationState, person: PersonState): { x: num
 function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
   const options: ActionOption[] = [];
   const visible = new Set(visibleCells);
-  const localPeople = visiblePeople.filter((other) => other.position.cellId === person.position.cellId);
+  const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
   const foodStack = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
   if (foodStack && person.body.nutrition < 88) options.push({
     id: `eat:${foodStack.id}`,
@@ -406,28 +386,11 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     }
   }
 
-  const wood = person.inventory.find((stack) => stack.materialId === Material.Wood && stack.quantity > 0);
-  if (wood) {
-    const position = nextPlankPosition(state, person);
-    if (position) {
-      options.push({
-        id: `build:${position.x}:${position.y}:${position.z}:${wood.id}`,
-        summary: '把木材连接到空间中',
-        reason: state.derived.structures.some((structure) => structure.sourceEventIds.length && structure.occupiedCells.some((cell) => cellsInRadius(person.position.cellId, 2).includes(cell)))
-          ? '身边已有木板组件，可以继续连接新的物质'
-          : '持有木材，可以从身边开始连接空间组件',
-        goal: { kind: 'voxel-is', position, materialId: Material.Plank },
-        nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: wood.id }, { kind: 'voxel', position }] },
-        target: { kind: 'voxel', position },
-        estimatedDuration: 'one-month',
-        sourceFactIds: wood.sourceEventIds,
-      });
-    }
-  }
+  options.push(...buildConstructionOptions(state, person));
 
   const carriedFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity >= 2);
   const hungry = visiblePeople.filter((other) => other.body.nutrition < 45).sort((a, b) => a.body.nutrition - b.body.nutrition)[0];
-  if (carriedFood && hungry && hungry.position.cellId === person.position.cellId) options.push({
+  if (carriedFood && hungry && sameLocation(hungry, person)) options.push({
     id: `share:${carriedFood.id}:${hungry.id}`,
     summary: `把食物交给${hungry.name}`,
     reason: `${hungry.name}营养不足且就在身边`,
@@ -446,14 +409,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const offerer = state.people.find((other) => other.id === incomingExchange.fact.who);
     if (proposal?.kind === 'exchange' && offerer) {
       const representationId = `accept:${incomingExchange.content.id}:${person.id}`;
-      const together = offerer.position.cellId === person.position.cellId;
+      const together = sameLocation(offerer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
       if (inventoryQuantity(person, proposal.partnerMaterialId) >= proposal.partnerQuantity) options.push({
         id: `accept-exchange:${incomingExchange.content.id}`,
         summary: `接受以${materialDefinition(proposal.partnerMaterialId).name}换取${materialDefinition(proposal.offererMaterialId).name}`,
         reason: '存在一项自己有能力履行的交换报价',
         goal: { kind: 'representation-made', representationId },
-        nextAction: together ? acceptAction : { kind: 'move', toCellId: offerer.position.cellId },
+        nextAction: together ? acceptAction : { kind: 'move', toCellId: offerer.position.cellId, toZ: offerer.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
         target: { kind: 'person', personId: offerer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -466,7 +429,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         summary: `拒绝这项物质交换`,
         reason: '存在一项需要明确回应的交换报价',
         goal: { kind: 'representation-made', representationId: rejectId },
-        nextAction: together ? rejectAction : { kind: 'move', toCellId: offerer.position.cellId },
+        nextAction: together ? rejectAction : { kind: 'move', toCellId: offerer.position.cellId, toZ: offerer.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
         target: { kind: 'person', personId: offerer.id }, estimatedDuration: together ? 'one-month' : 'several-months', sourceFactIds: [incomingExchange.fact.id],
       });
@@ -486,9 +449,9 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       summary: `交付交换中的${materialDefinition(materialId).name}`,
       reason: '双方已经接受报价，本人尚未履行自己的交付',
       goal: { kind: 'inventory-at-least', materialId, quantity: inventoryQuantity(state.people.find((other) => other.id === receiverId) ?? person, materialId) + quantity, personId: receiverId },
-      nextAction: receiver.position.cellId === person.position.cellId
+      nextAction: sameLocation(receiver, person)
         ? { kind: 'transfer', materialId, quantity, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiverId }, stackId: stack.id, authorizationRef: acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : undefined }
-        : { kind: 'move', toCellId: receiver.position.cellId },
+        : { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z },
       target: { kind: 'person', personId: receiverId },
       estimatedDuration: 'one-month',
       sourceFactIds: [acceptedExchange.offer.id, acceptedExchange.acceptance.id],
@@ -516,7 +479,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
 
   const fiber = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
   const injured = visiblePeople
-    .filter((other) => other.position.cellId === person.position.cellId && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
+    .filter((other) => sameLocation(other, person) && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
     .sort((a, b) => a.body.health - b.body.health)[0];
   if (fiber && injured) options.push({
     id: `care:${fiber.id}:${injured.id}`,
@@ -534,14 +497,14 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
     if (proposer) {
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
-      const together = proposer.position.cellId === person.position.cellId;
+      const together = sameLocation(proposer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
       options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
         reason: '存在一项尚未过期、需要本人明确回应的生殖提议',
         goal: { kind: 'representation-made', representationId },
-        nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId },
+        nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -554,7 +517,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         summary: '拒绝共同生殖提议',
         reason: '存在一项需要本人明确回应的生殖提议',
         goal: { kind: 'representation-made', representationId: rejectId },
-        nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId },
+        nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
@@ -807,22 +770,22 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
       const grantor = state.people.find((candidate) => candidate.id === permission.grantorId && isAlive(candidate));
       const stack = grantor?.inventory.find((candidate) => candidate.materialId === permission.materialId && candidate.quantity > 0);
       if (!grantor || !stack) return null;
-      return grantor.position.cellId === person.position.cellId
+      return sameLocation(grantor, person)
         ? { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id }
-        : { kind: 'move', toCellId: grantor.position.cellId };
+        : { kind: 'move', toCellId: grantor.position.cellId, toZ: grantor.position.z };
     }
   }
   if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId);
     if (!target || !isAlive(target)) return null;
-    return target.position.cellId === person.position.cellId ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId };
+    return sameLocation(target, person) ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'near-person') {
     const targetPersonId = intent.goal.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId && isAlive(candidate));
     if (!target) return null;
-    return target.position.cellId === person.position.cellId ? null : { kind: 'move', toCellId: target.position.cellId };
+    return sameLocation(target, person) ? null : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'inventory-at-least' && intent.goal.personId && intent.target?.kind === 'person') {
     const goal = intent.goal;
@@ -832,7 +795,7 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
     const stack = person.inventory.find((candidate) => candidate.materialId === goal.materialId && candidate.quantity > 0);
     const offerId = exchange?.offer.action.kind === 'communicate' ? exchange.offer.action.content.id : undefined;
     if (receiver && exchange && offerId && intent.sourceFactIds?.includes(exchange.offer.id) && stack) {
-      if (receiver.position.cellId !== person.position.cellId) return { kind: 'move', toCellId: receiver.position.cellId };
+      if (!sameLocation(receiver, person)) return { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z };
       return {
         kind: 'transfer', materialId: intent.goal.materialId, quantity: 1,
         from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiver.id },
@@ -859,12 +822,12 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
         return { kind: 'move', toCellId: destination };
       }
     }
-    const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.materialId === materialId && drop.quantity > 0);
+    const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.z === person.position.z && drop.materialId === materialId && drop.quantity > 0);
     if (local) return actionForDrop(person, local);
     const visible = new Set(visibleCellsFor(person));
     const reachable = state.world.drops
       .filter((drop) => visible.has(drop.cellId) && drop.materialId === materialId && drop.quantity > 0)
-      .map((drop) => ({ drop, path: findPath(state.world.grid, person.position.cellId, drop.cellId) }))
+      .map((drop) => ({ drop, path: findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: drop.z }) }))
       .filter(({ path }) => path.length > 0)
       .sort((a, b) => a.path.length - b.path.length || a.drop.id.localeCompare(b.drop.id))[0];
     if (reachable) return actionForDrop(person, reachable.drop);

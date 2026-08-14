@@ -28,6 +28,8 @@ export interface DropState {
   id: string;
   materialId: MaterialId;
   cellId: number;
+  /** 掉落物所在的可站立空气体素高度。 */
+  z: number;
   quantity: number;
   createdAtMonth: number;
   sourceEventIds: string[];
@@ -89,6 +91,8 @@ export interface ActionFact extends BaseEvent {
   action: PrimitiveAction;
   fromCellId: number;
   toCellId: number;
+  fromZ: number;
+  toZ: number;
   pathSegment: number[];
   status: 'progressed' | 'completed' | 'blocked' | 'failed';
   result: string;
@@ -149,6 +153,7 @@ export interface DerivedStructure {
   name: string;
   occupiedCells: number[];
   interiorCells: number[];
+  interiorPositions: Array<{ cellId: number; z: number }>;
   materialIds: MaterialId[];
   weatherProtection: number;
   thermalInsulation: number;

@@ -487,39 +487,45 @@ export default function ThreeBodyCanvas(props: Props) {
     );
     planetClouds.rotation.x = 0.15;
     scene.add(planetClouds);
-    // 大气：菲涅尔 rim，只有轮廓一圈发亮（加法混合，不触发 bloom）
+    // 大气：菲涅尔 rim，只有轮廓一圈发亮（加法混合，不触发 bloom）；
+    // 迎光面亮、背光面暗（uSunDir 每帧指向当前通量最强的恒星）
+    const atmosphereMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(PLANET_STYLE.glow) },
+        uPower: { value: 3.2 },
+        uSunDir: { value: new THREE.Vector3(0, 0, 1) },
+      },
+      vertexShader: `
+        varying vec3 vNormalW;
+        varying vec3 vWorldPos;
+        void main() {
+          vNormalW = normalize(mat3(modelMatrix) * normal);
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uPower;
+        uniform vec3 uSunDir;
+        varying vec3 vNormalW;
+        varying vec3 vWorldPos;
+        void main() {
+          vec3 viewDir = normalize(cameraPosition - vWorldPos);
+          float rim = pow(1.0 - max(dot(viewDir, normalize(vNormalW)), 0.0), uPower);
+          float day = max(dot(normalize(vNormalW), uSunDir), 0.0);
+          rim *= 0.25 + 0.75 * day;
+          gl_FragColor = vec4(uColor * rim, rim);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
     const atmosphere = new THREE.Mesh(
       new THREE.SphereGeometry(1.14, 32, 24),
-      new THREE.ShaderMaterial({
-        uniforms: {
-          uColor: { value: new THREE.Color(PLANET_STYLE.glow) },
-          uPower: { value: 3.2 },
-        },
-        vertexShader: `
-          varying vec3 vNormal;
-          varying vec3 vWorldPos;
-          void main() {
-            vNormal = normalize(normalMatrix * normal);
-            vec4 wp = modelMatrix * vec4(position, 1.0);
-            vWorldPos = wp.xyz;
-            gl_Position = projectionMatrix * viewMatrix * wp;
-          }
-        `,
-        fragmentShader: `
-          uniform vec3 uColor;
-          uniform float uPower;
-          varying vec3 vNormal;
-          varying vec3 vWorldPos;
-          void main() {
-            vec3 viewDir = normalize(cameraPosition - vWorldPos);
-            float rim = pow(1.0 - max(dot(viewDir, normalize(vNormal)), 0.0), uPower);
-            gl_FragColor = vec4(uColor * rim, rim);
-          }
-        `,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
+      atmosphereMat,
     );
     scene.add(atmosphere);
 
@@ -798,12 +804,21 @@ export default function ThreeBodyCanvas(props: Props) {
       planetClouds.rotation.y += 0.23 * frameDt;
       atmosphere.position.copy(planetCore.position);
       atmosphere.scale.setScalar(px2w(2.2));
-      // 星光方向与亮度实时跟随：三日凌空时行星多向受光
-      const maxLum = Math.pow(Math.max(w.sys.masses[0], w.sys.masses[1], w.sys.masses[2]), 3.5);
+      // 星光方向与亮度实时跟随：强度 ∝ 光度/距离²（归一到宜居基线 fluxBase）。
+      // 恒纪元 ≈1.2 常亮；乱纪元远离时转暗（保底 0.05 不失读），三日凌空时
+      // 迎光面真实过曝（封顶 3.5，刻意保留"被炙烤"的泛光）；大气 rim 指向主恒星
+      const px = s[PLANET_IDX * 2], py = s[PLANET_IDX * 2 + 1];
+      let hostIdx = 0, hostFlux = -1;
       for (let i = 0; i < N_STARS; i++) {
         starLights[i].position.set(s[i * 2], s[i * 2 + 1], 0);
-        starLights[i].intensity = 2.4 * Math.pow(w.sys.masses[i], 3.5) / maxLum;
+        const d2 = Math.max((s[i * 2] - px) ** 2 + (s[i * 2 + 1] - py) ** 2, 0.0036);
+        const flux = Math.pow(w.sys.masses[i], 3.5) / d2 / w.fluxBase;
+        starLights[i].intensity = Math.min(Math.max(1.2 * flux, 0.05), 3.5);
+        if (flux > hostFlux) { hostFlux = flux; hostIdx = i; }
       }
+      atmosphereMat.uniforms.uSunDir.value
+        .set(s[hostIdx * 2] - px, s[hostIdx * 2 + 1] - py, 0)
+        .normalize();
 
       composer.render();
     };

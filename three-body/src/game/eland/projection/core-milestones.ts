@@ -1,8 +1,9 @@
 import type { ActionFact, MilestoneObservation, SimulationState, WorldEvent } from '../domain/model';
 import { Material } from '../domain/material';
+import { completedActionFacts, environmentFacts, worldEventById } from '../domain/event-index';
 
 function actions(state: SimulationState): ActionFact[] {
-  return state.world.past.filter((event): event is ActionFact => event.kind === 'action' && event.status === 'completed');
+  return [...completedActionFacts(state)];
 }
 
 function add(
@@ -20,7 +21,7 @@ function add(
 export function observeCoreMilestones(state: SimulationState): MilestoneObservation[] {
   const result: MilestoneObservation[] = [];
   const completed = actions(state);
-  const environment = state.world.past.filter((event) => event.kind === 'environment');
+  const environment = [...environmentFacts(state)];
 
   const births = environment.filter((event) => typeof event.diff.bornPersonId === 'string');
   add(result, '1', '诞生', births, '妊娠过程经过月度结算后产生了有父母来源的新人物。');
@@ -66,11 +67,13 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     const intent = state.intents.find((candidate) => candidate.id === event.intentId);
     if (!intent) return false;
     const sources = new Set(intent.sourceFactIds ?? []);
-    return state.world.past.some((candidate) => candidate.kind === 'action'
-      && sources.has(candidate.id)
+    return [...sources].some((sourceId) => {
+      const candidate = worldEventById(state, sourceId);
+      return candidate?.kind === 'action'
       && candidate.action.kind === 'communicate'
       && candidate.action.content.kind === 'request'
-      && candidate.action.content.proposal?.kind === 'assist');
+      && candidate.action.content.proposal?.kind === 'assist';
+    });
   });
   add(result, '22', '协同行动', fulfilledAssistance, '求助、接受和后续物质转移共同形成了跨人物行动链。');
 
@@ -79,8 +82,8 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
 
   const tools = completed.filter((event) => event.action.kind === 'act'
     && event.action.operation === 'combine'
-    && Number(event.diff.outputMaterialId) === Material.StoneTool);
-  add(result, '16', '制造工具', tools, '人物把真实石和木材料结合为私人背包中的石制工具。');
+    && ([Material.StoneTool, Material.BoneTool, Material.Spear] as number[]).includes(Number(event.diff.outputMaterialId)));
+  add(result, '16', '制造工具', tools, '人物把真实材料结合为能改变后续操作或捕猎效果的私人工具。');
 
   const ignitions = completed.filter((event) => event.action.kind === 'act'
     && event.action.operation === 'exert'
@@ -94,8 +97,11 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
 
   const clothing = completed.filter((event) => event.action.kind === 'act'
     && event.action.operation === 'combine'
-    && Number(event.diff.outputMaterialId) === Material.Clothing);
-  add(result, '19', '制作衣物', clothing, '人物把真实绳与纤维结合成私人持有的隔热衣物。');
+    && ([Material.Clothing, Material.LeatherClothing] as number[]).includes(Number(event.diff.outputMaterialId)));
+  add(result, '19', '制作衣物', clothing, '人物把真实纤维或兽皮与连接材料结合成私人持有的隔热衣物。');
+
+  const herbalCare = completed.filter((event) => Number(event.diff.careMaterialId) === Material.HerbalMedicine);
+  add(result, '106', '使用草药与经验性药物', herbalCare, '人物先制作草药，再把它用于具体伤病并改变身体状态。');
 
   const writtenRecords = completed.filter((event) => event.action.kind === 'communicate'
     && event.action.channel === 'record'
@@ -107,19 +113,19 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
   add(result, '51', '创造文字', recordReading.length ? [...writtenRecords, ...recordReading] : [], '一人把有来源的知识写入实体载体，并通过对话建立共同编码；另一人取得并读懂同一载体。');
 
   const collectiveEvidence = state.collectives.flatMap((collective) => collective.sourceEventIds)
-    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+    .flatMap((id) => worldEventById(state, id) ?? []);
   add(result, '29', '结成友谊与联盟', collectiveEvidence, '至少两人基于已有合作与事实信任，自愿接受持续共同体成员关系；身份可在以后退出或因死亡终止。');
 
   const consensusRules = state.collectives.flatMap((collective) => collective.decisionRules)
     .filter((rule) => rule.method === 'unanimous')
     .flatMap((rule) => rule.sourceEventIds)
-    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+    .flatMap((id) => worldEventById(state, id) ?? []);
   add(result, '524', '通过协商形成共识', consensusRules, '共同体成员分别接受了一项全体同意规则；该规则成为可持续产生后续授权的领域事实。');
 
   const exercisedMandates = state.collectives.flatMap((collective) => collective.mandates)
     .filter((mandate) => mandate.contributionEventIds.length > 0 && mandate.distributionEventIds.length > 0);
   const mandateEvidence = exercisedMandates.flatMap((mandate) => mandate.sourceEventIds)
-    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+    .flatMap((id) => worldEventById(state, id) ?? []);
   add(result, '61', '选出临时协调者', mandateEvidence, '成员按共同接受的规则授权一位具体成员，并由成员自愿交付、协调者再实际分配同一种物质。');
 
   const fireWarming = environment.filter((event) => event.change === 'condition'
@@ -130,7 +136,7 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
 
   const verifiedTechniques = state.people.flatMap((person) => person.knowledge.filter((fact) => {
     if (fact.kind !== 'technique' || fact.confidence < 55) return false;
-    const evidence = fact.sourceEventIds.flatMap((id) => state.world.past.filter((event) => event.id === id));
+    const evidence = fact.sourceEventIds.flatMap((id) => worldEventById(state, id) ?? []);
     const successfulTrials = evidence.filter((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'act'
@@ -142,7 +148,7 @@ export function observeCoreMilestones(state: SimulationState): MilestoneObservat
     return successfulTrials.length >= 2 || (successfulTrials.length >= 1 && activeVerification);
   }));
   const experimentEvidence = [...new Set(verifiedTechniques.flatMap((fact) => fact.sourceEventIds))]
-    .flatMap((id) => state.world.past.filter((event) => event.id === id));
+    .flatMap((id) => worldEventById(state, id) ?? []);
   add(result, '59', '用实验检验猜想', experimentEvidence, '人物通过复现实验，或观察核验一次试验产物，把暂定经验提升为可传播技术。');
 
   return result;

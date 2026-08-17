@@ -1,8 +1,9 @@
 import type { BiologicalSex } from '../population';
+import type { NamingTradition } from '../naming';
 import type { MaterialId } from './material';
 
 export type PersonId = string;
-export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'restrained';
+export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'restrained' | 'dehydrated-hibernation';
 
 export interface ConditionInstance {
   id: string;
@@ -20,6 +21,8 @@ export interface ItemStack {
   materialId: MaterialId;
   quantity: number;
   sourceEventIds: string[];
+  /** Exact physical sources this stack descended from across transfers. */
+  sourceLineageKeys?: string[];
   recordPayloadId?: string;
 }
 
@@ -72,8 +75,13 @@ export interface PersonState {
   lifespanMonths: number;
   diedAtMonth?: number;
   sex: BiologicalSex;
+  /** 父系继承的姓氏与姓名顺序；可选以兼容旧存档。 */
+  familyName?: string;
+  namingTradition?: NamingTradition;
   geneticParents: PersonId[];
   generation: number;
+  /** Accumulated inherited susceptibility. It changes outcomes, not action legality. */
+  geneticLoad: number;
   position: {
     cellId: number;
     /** 双脚所在的空气体素高度；cellId 仍是给地图和区域规则使用的水平投影。 */
@@ -110,9 +118,16 @@ export function isAlive(person: PersonState): boolean {
   return person.diedAtMonth === undefined && person.body.health > 0;
 }
 
+export function isDehydratedHibernating(person: PersonState): boolean {
+  return person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation');
+}
+
 export function ageMonths(person: PersonState, elapsedMonths: number): number {
   return Math.max(0, elapsedMonths - person.bornAtMonth);
 }
+
+/** 能通过一次明确教导可靠掌握技术或符号的最低年龄。 */
+export const MIN_TEACHING_AGE_MONTHS = 6 * 12;
 
 export function inventoryQuantity(person: PersonState, materialId: MaterialId): number {
   return person.inventory.reduce((sum, stack) => sum + (stack.materialId === materialId ? stack.quantity : 0), 0);

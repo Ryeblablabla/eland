@@ -1,5 +1,6 @@
 import type { MaterialId } from './material';
 import type { ConditionKind, PersonId } from './person';
+import type { ProjectFunction, ProjectProposal } from './project';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -8,6 +9,7 @@ export type WorldRef =
   | { kind: 'drop'; dropId: string }
   | { kind: 'container'; containerId: string }
   | { kind: 'inventory-stack'; personId: PersonId; stackId: string }
+  | { kind: 'animal'; animalId: string }
   | { kind: 'person'; personId: PersonId };
 
 export type HolderRef =
@@ -15,11 +17,94 @@ export type HolderRef =
   | { kind: 'container'; containerId: string }
   | { kind: 'person'; personId: PersonId };
 
-export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce';
+export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
+
+export interface RelationshipCausalBasis {
+  version: 'relationship-causal-basis-v1';
+  subjectKey: string;
+  basisKey: string;
+  kind: 'companion' | 'reproduce';
+  proposerId: PersonId;
+  partnerId: PersonId;
+  relationshipKeys: string[];
+  bodyKeys: string[];
+  sourceFactIds: string[];
+}
+
+export interface TechniqueDemonstrationRequest {
+  projectId: string;
+  desiredFunction: ProjectFunction;
+  requesterId: PersonId;
+  expiresAtMonth: number;
+}
+
+export interface TechniqueDemonstrationRef {
+  requestEventId: string;
+  projectId: string;
+  learnerId: PersonId;
+  techniqueId: string;
+}
+
+/** A sourced request to bring one concrete missing material to a fixed project site. */
+export interface ProjectMaterialContributionRequest {
+  version: 'project-material-contribution-request-v1';
+  projectId: string;
+  requesterId: PersonId;
+  materialId: MaterialId;
+  quantity: number;
+  site: { cellId: number; z: number };
+  expiresAtMonth: number;
+}
+
+export interface TechniqueImitationRef {
+  projectId: string;
+  demonstrationEventId: string;
+  techniqueId: string;
+}
+
+export type GroundedConversationTopic =
+  | 'care'
+  | 'hardship'
+  | 'gratitude'
+  | 'shared-work'
+  | 'failure'
+  | 'discovery'
+  | 'family';
+
+/** A social utterance grounded in replayable life history rather than generic flavor text. */
+export interface GroundedConversationRef {
+  version: 'grounded-conversation-v1';
+  basisKey: string;
+  topic: GroundedConversationTopic;
+  turn: 'opening' | 'response';
+  speakerId: PersonId;
+  listenerId: PersonId;
+  sourceFactIds: string[];
+  referenceEventId?: string;
+  stance?: 'supportive' | 'guarded';
+}
 
 export type RepresentationInput =
-  | { id: string; kind: 'claim'; summary: string; factId?: string }
-  | { id: string; kind: 'request'; summary: string; proposal?: SocialProposal }
+  | { id: string; kind: 'claim'; summary: string; factId?: string; conversation?: GroundedConversationRef }
+  | {
+      id: string;
+      kind: 'prediction';
+      summary: string;
+      prediction: {
+        targetEpoch: 'stable' | 'chaotic';
+        predictedStartMonth: number;
+        toleranceMonths: number;
+        expiresAtMonth: number;
+      };
+    }
+  | {
+      id: string;
+      kind: 'request';
+      summary: string;
+      proposal?: SocialProposal;
+      techniqueDemonstration?: TechniqueDemonstrationRequest;
+      projectMaterialContribution?: ProjectMaterialContributionRequest;
+    }
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string; summary?: string }
   | { id: string; kind: 'reject'; referenceId: string; summary?: string }
@@ -27,9 +112,9 @@ export type RepresentationInput =
   | { id: string; kind: 'withdraw'; collectiveId: string; summary: string };
 
 export type SocialProposal =
-  | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
+  | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number; basis?: RelationshipCausalBasis }
   | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
-  | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number }
+  | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number; basis?: RelationshipCausalBasis }
   | { kind: 'collective'; proposerId: PersonId; partnerId: PersonId; purposeSummary: string; expiresAtMonth: number }
   | {
       kind: 'membership'; proposerId: PersonId; partnerId: PersonId;
@@ -65,14 +150,58 @@ export type DialogueAct = 'request-help' | 'offer-companion' | 'accept' | 'rejec
 export type PrimitiveAction =
   | { kind: 'move'; toCellId: number; toZ?: number }
   | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
-  | { kind: 'act'; operation: SourceOperation; targets: WorldRef[]; toolStackId?: string }
-  | { kind: 'attend'; target: WorldRef; instrumentStackId?: string }
+  | {
+      kind: 'act';
+      operation: SourceOperation;
+      targets: WorldRef[];
+      toolStackId?: string;
+      techniqueDemonstration?: TechniqueDemonstrationRef;
+      techniqueImitation?: TechniqueImitationRef;
+    }
+  | {
+      kind: 'attend';
+      target: WorldRef;
+      instrumentStackId?: string;
+      /** Optional source-bound verification compiled from an authoritative material response. */
+      verification?: {
+        techniqueId: string;
+        sourceEventId: string;
+        expectedMaterialId: MaterialId;
+      };
+    }
   | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record'; carrierStackId?: string };
+
+export interface RecordUseBasis {
+  version: 'record-use-basis-v1';
+  basisKey: string;
+  projectId: string;
+  projectOwnerId: PersonId;
+  readerId: PersonId;
+  recordAuthorId: PersonId;
+  demand: { kind: 'project-deficit'; projectId: string; deficitSourceIds: string[] };
+  recordId: string;
+  knowledgeId: string;
+  codebookId: string;
+  techniqueId: string;
+  ruleSignature: string;
+  projectPressure: number;
+  experimentAction: PrimitiveAction;
+  expectedOutputMaterialId?: MaterialId;
+  createdAtMonth: number;
+  projectSourceEventIds: string[];
+  recordSourceEventIds: string[];
+  codebookSourceEventIds: string[];
+  inputSourceEventIds: string[];
+  sourceFactIds: string[];
+}
+
+export type RecordUseStage = 'share' | 'read-experiment';
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'body-at-most'; personId: PersonId; field: 'health' | 'hydration' | 'nutrition'; value: number }
   | { kind: 'inventory-at-least'; materialId: MaterialId; quantity: number; personId?: PersonId }
+  | { kind: 'record-held'; recordId: string; personId?: PersonId }
   | { kind: 'container-inventory-at-least'; containerId: string; materialId: MaterialId; quantity: number }
   | { kind: 'at-cell'; cellId: number }
   | { kind: 'sheltered' }
@@ -80,9 +209,28 @@ export type FactPredicate =
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
   | { kind: 'near-person'; personId: PersonId }
   | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean }
+  | { kind: 'project-completed'; projectId: string }
+  | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
   | { kind: 'representation-made'; representationId: string };
 
 export type IntentStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';
+export type IntentInterruptionKind = 'life-review' | 'required-response' | 'fulfillment' | 'record-use';
+export type IntentReturnOutcome = 'resumed' | 'parent-completed' | 'parent-blocked' | 'parent-unavailable';
+
+export interface LifeReviewEvidence {
+  version: 'causal-edge-v1' | 'causal-edge-v2';
+  basisKey: string;
+  optionKind: 'offer-reproduce' | 'offer-companion';
+  targetPersonId: PersonId;
+  projectId: string;
+  relationSourceEventIds: string[];
+  projectSourceEventIds: string[];
+  sourceFactIds: string[];
+  femaleAgeBand?: 'under-30' | '30-34' | '35-37' | '38-40' | '41-45';
+  lifePressure: number;
+  projectPressure: number;
+  relationshipBasis?: RelationshipCausalBasis;
+}
 
 export interface Intent {
   id: string;
@@ -100,9 +248,29 @@ export interface Intent {
   createdAtMonth: number;
   lastProgressAtMonth: number;
   progress: number;
+  /** Strategic state goals remain active for this 3-12 month planning horizon. */
+  plannedDurationMonths?: number;
+  /** The state is maintained until this month, then completed or sent back for replanning. */
+  stateGoalUntilMonth?: number;
   sourceDecisionEventId: string;
+  projectId?: string;
   agreementId?: string;
+  relationshipBasis?: RelationshipCausalBasis;
+  recordUseBasis?: RecordUseBasis;
+  recordUseStage?: RecordUseStage;
+  /** Child intents return to this exact parent instead of replacing it. */
+  returnToIntentId?: string;
+  interruptionKind?: IntentInterruptionKind;
+  returnOutcome?: IntentReturnOutcome;
+  returnResolvedAtMonth?: number;
+  /** Present only while this parent is suspended by its current child. */
+  suspendedByIntentId?: string;
+  suspendedAtMonth?: number;
+  lastResumedAtMonth?: number;
+  /** Structured local evidence for an edge-triggered interruption of a project. */
+  lifeReview?: LifeReviewEvidence;
   lastReproductionAttemptAtMonth?: number;
+  lastProcessAttemptAtMonth?: number;
   sourceFactIds?: string[];
   actionEventIds: string[];
   blockedReason?: string;
@@ -123,11 +291,22 @@ export interface ActionOption {
   domain?: 'strategic' | 'social';
   estimatedMonths?: number;
   risks?: string[];
+  projectId?: string;
+  projectProposal?: ProjectProposal;
+  relationshipBasis?: RelationshipCausalBasis;
+  recordUseBasis?: RecordUseBasis;
+  recordUseStage?: RecordUseStage;
+  /** Local pressure, not civilization score. Used only to compare executable options. */
+  projectPressure?: number;
 }
 
 export type IntentDecision =
-  | { kind: 'start'; optionId: string; followUpOptionId?: string; reason: string; utterance?: string }
-  | { kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string; reason: string; utterance?: string }
+  | { kind: 'start'; optionId: string; followUpOptionId?: string; reason: string; utterance?: string; lifeReview?: LifeReviewEvidence }
+  | {
+      kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string;
+      reason: string; utterance?: string; lifeReview?: LifeReviewEvidence;
+      mode?: 'replace' | 'interrupt'; interruptionKind?: IntentInterruptionKind;
+    }
   | { kind: 'suspend'; intentId: string; reason: string }
   | { kind: 'resume'; intentId: string; reason: string }
   | { kind: 'abandon'; intentId: string; reason: string }

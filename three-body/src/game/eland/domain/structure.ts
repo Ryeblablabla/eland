@@ -19,6 +19,17 @@ export interface ShelterGeometry {
   thermalInsulation: number;
 }
 
+/**
+ * A roof and one wall provide shade; additional real side layers let the
+ * structure's insulation buffer heat instead of merely satisfying a label.
+ */
+export function shelterHeatRelief(shelter: ShelterGeometry | null | undefined): number {
+  if (!shelter) return 0;
+  const shadeRelief = shelter.weatherProtection / 145;
+  const layeredSides = Math.max(0, shelter.enclosedSides - 1);
+  return shadeRelief + layeredSides * shelter.thermalInsulation / 80;
+}
+
 function solidBuildingAt(world: VoxelWorld, cell: number, z: number): boolean {
   const materialId = voxelAt(world, cellX(cell), cellY(cell), z);
   return materialHas(materialId, 'solid') && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'));

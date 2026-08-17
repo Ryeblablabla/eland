@@ -1,6 +1,6 @@
 # ELAND 最小物质—人物—动作模型
 
-状态：本文核心模型已成为当前运行时主体（schema 14 起；当前 schema 15）。个别字段名与接口形状以 `src/game/eland/domain/` 为准；千项能力地图要求的能量/信号、多区域等扩展统一见 [《千项能力的最小涌现底座 v1》](../../docs/emergent-capability-substrate-v1.md)。人物规划频率与模型边界见[《规则优先人物架构 v1》](../../docs/rule-first-agent-architecture-v1.md)。
+状态：本文核心模型已成为当前运行时主体（schema 14 起；当前 schema 16）。个别字段名与接口形状以 `src/game/eland/domain/` 为准；千项能力地图要求的能量/信号、多区域等扩展统一见 [《千项能力的最小涌现底座 v1》](../../docs/emergent-capability-substrate-v1.md)。人物规划频率与模型边界见[《规则优先人物架构 v1》](../../docs/rule-first-agent-architecture-v1.md)。
 
 目标不是复刻 Minecraft，而是吸收它最关键的结构：世界由少量可组合的物质单元组成，人物只能移动物质、改变物质、使用物质；建筑、道路、农田和聚落都是这些动作在空间与时间中积累的结果。
 
@@ -300,7 +300,8 @@ type SourceOperation =
 | 分享 | `transfer(item, person)` |
 | 交易 | `communicate(offer/accept) → 双方条件式 transfer` |
 | 照护 | `transfer(material, person) → act(combine/ingest, person)` |
-| 教学 | `communicate(assert, technique facts) → 学习者 attend/模仿` |
+| 教学 | 可靠持有者 `communicate(teach, technique facts)` → 同地且达到学习年龄的人可靠掌握；普通陈述仍只形成不可靠线索 |
+| 生活聊天 | 有来源的身体处境/共同历史 `communicate(opening) → communicate(response)`；同一事实基础只能谈一次 |
 
 `Intent` 只保存目标条件和下一原子动作，不保存模式：
 
@@ -491,6 +492,8 @@ exhausted_soil + ash/腐败物 + water
 ### 关系
 
 关系不保存“朋友、领袖、农民”等标签，只从给予、合作、陪伴、伤害、亲属、承诺与违约等事件派生信任与亲近。角色和制度只有在重复事实开始影响后续选择时才成为有用投影。信任可以作为带来源事件的缓存供决策使用，但不是无来源的人格数值。
+
+生活聊天也遵守这一原则。开场必须绑定听者的身体状态、实际照护/转移、共同项目、失败记忆、可靠观察或共同孩子的出生事件；听者必须定向回应。照护、感谢、共同劳动和共同养育的支持性完整两轮对话，每人累计增加 4 点羁绊与 2 点信任；失败和发现话题的信任增益较低，保留回应也只产生较小增益。同一 `basisKey` 与同一开场不能重复获益；教导和其他事务表示不是亲密关系的充分证据。
 
 ## 七、DDD 边界
 

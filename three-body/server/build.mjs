@@ -1,8 +1,12 @@
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["server/main.ts"],
-  outfile: "dist-server/main.mjs",
+  entryPoints: {
+    main: "server/main.ts",
+    "eland-worker": "server/eland-worker.ts",
+  },
+  outdir: "dist-server",
+  outExtension: { ".js": ".mjs" },
   bundle: true,
   platform: "node",
   format: "esm",
@@ -10,4 +14,3 @@ await build({
   sourcemap: true,
   packages: "external",
 });
-

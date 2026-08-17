@@ -1,6 +1,7 @@
 import type { DerivedStructure, SimulationState } from './model';
 import type { PersonState } from './person';
 import { shelterGeometryAt } from './structure';
+import { worldEventById } from './event-index';
 import {
   cellId,
   cellsInRadius,
@@ -21,12 +22,24 @@ function defaultVisibleCells(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, radius);
 }
 
-function rememberedEvidence(person: PersonState, structure: DerivedStructure): string[] {
-  return person.knownPlaces.flatMap((place) => {
+function rememberedEvidence(state: SimulationState, person: PersonState, structure: DerivedStructure): string[] {
+  const placeEvidence = person.knownPlaces.flatMap((place) => {
     const placeCell = cellId(place.position.x, place.position.y);
     if (!structure.occupiedCells.includes(placeCell) || !structure.materialIds.includes(place.materialId)) return [];
     return place.sourceEventIds;
   });
+  const trustedPeople = new Set([
+    person.id,
+    ...person.geneticParents,
+    ...person.relations
+      .filter((relation) => relation.bond >= 10 || relation.trust >= 15)
+      .map((relation) => relation.personId),
+  ]);
+  const constructionEvidence = structure.sourceEventIds.filter((eventId) => {
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' && trustedPeople.has(event.who);
+  });
+  return [...new Set([...placeEvidence, ...constructionEvidence])];
 }
 
 /**
@@ -45,7 +58,7 @@ export function findReachableShelter(
     if (!structure.complete) continue;
     const seenNow = structure.occupiedCells.some((cell) => visible.has(cell))
       || structure.interiorPositions.some((position) => visible.has(position.cellId));
-    const rememberedSourceIds = rememberedEvidence(person, structure);
+    const rememberedSourceIds = rememberedEvidence(state, person, structure);
     if (!seenNow && rememberedSourceIds.length === 0) continue;
     for (const position of structure.interiorPositions) {
       if (!shelterGeometryAt(state.world.grid, position)) continue;

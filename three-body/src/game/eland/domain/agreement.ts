@@ -47,11 +47,31 @@ function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
+  if (proposal.kind === 'reproduce') return 12;
   return 4;
 }
 
 export function agreementById(state: SimulationState, id: string): Agreement | undefined {
   return state.agreements.find((agreement) => agreement.id === id);
+}
+
+/**
+ * Reproduction legality is determined by the authoritative agreement state.
+ * Communication events may still be waiting to enter world.past during the
+ * current month, so they must not be used as a second authorization gate.
+ */
+export function activeReproductionAgreementBetween(
+  state: SimulationState,
+  a: PersonId,
+  b: PersonId,
+  atMonth: number,
+): Agreement | undefined {
+  return [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'reproduce'
+    && agreement.partyIds.includes(a)
+    && agreement.partyIds.includes(b)
+    && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth
+    && (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) >= atMonth);
 }
 
 /** An agreement authorizes only the concrete transfer promised by its terms. */
@@ -131,6 +151,9 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       const intentSources = fact.intentId
         ? state.intents.find((intent) => intent.id === fact.intentId)?.sourceFactIds ?? []
         : [];
+      const relationshipBasisSources = (content.proposal.kind === 'companion' || content.proposal.kind === 'reproduce')
+        ? content.proposal.basis?.sourceFactIds ?? []
+        : [];
       state.agreements.push({
         id: content.id,
         proposal: structuredClone(content.proposal),
@@ -146,7 +169,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         fulfillmentEventIds: [],
         fulfilledByPersonIds: [],
         coLocatedMonths: 0,
-        sourceEventIds: [...new Set([...intentSources, fact.id])],
+        sourceEventIds: [...new Set([...relationshipBasisSources, ...intentSources, fact.id])],
       });
       return;
     }

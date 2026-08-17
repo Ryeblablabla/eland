@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "results": [
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/baseline-project-loop-v1-s185-y10-r1/state.json",
+      "runId": "baseline-project-loop-v1-s185-y10-r1",
+      "throughMonth": 120,
+      "moves": 405,
+      "traversedCells": 152,
+      "reversals": 65,
+      "reversalShare": 16.05,
+      "causeCounts": {
+        "intent": 301,
+        "survival-reflex": 104
+      },
+      "reversalCausePairs": {
+        "intent->intent": 23,
+        "survival-reflex->intent": 21,
+        "intent->survival-reflex": 21
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/baseline-project-loop-v1-s20260815-y10-r1/state.json",
+      "runId": "baseline-project-loop-v1-s20260815-y10-r1",
+      "throughMonth": 120,
+      "moves": 482,
+      "traversedCells": 114,
+      "reversals": 37,
+      "reversalShare": 7.68,
+      "causeCounts": {
+        "intent": 317,
+        "survival-reflex": 165
+      },
+      "reversalCausePairs": {
+        "intent->intent": 15,
+        "intent->survival-reflex": 4,
+        "survival-reflex->intent": 7,
+        "survival-reflex->survival-reflex": 11
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/baseline-project-loop-v1-s20260816-y10-r1/state.json",
+      "runId": "baseline-project-loop-v1-s20260816-y10-r1",
+      "throughMonth": 120,
+      "moves": 607,
+      "traversedCells": 205,
+      "reversals": 61,
+      "reversalShare": 10.05,
+      "causeCounts": {
+        "intent": 527,
+        "survival-reflex": 80
+      },
+      "reversalCausePairs": {
+        "intent->intent": 40,
+        "intent->survival-reflex": 9,
+        "survival-reflex->intent": 12
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-causal-loop-v7-s185-y10-r1/state.json",
+      "runId": "candidate-causal-loop-v7-s185-y10-r1",
+      "throughMonth": 120,
+      "moves": 1030,
+      "traversedCells": 409,
+      "reversals": 88,
+      "reversalShare": 8.54,
+      "causeCounts": {
+        "intent": 473,
+        "survival-reflex": 557
+      },
+      "reversalCausePairs": {
+        "intent->intent": 29,
+        "survival-reflex->survival-reflex": 44,
+        "intent->survival-reflex": 9,
+        "survival-reflex->intent": 6
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-causal-loop-v7-s20260815-y10-r1/state.json",
+      "runId": "candidate-causal-loop-v7-s20260815-y10-r1",
+      "throughMonth": 120,
+      "moves": 986,
+      "traversedCells": 225,
+      "reversals": 82,
+      "reversalShare": 8.32,
+      "causeCounts": {
+        "intent": 614,
+        "survival-reflex": 372
+      },
+      "reversalCausePairs": {
+        "intent->intent": 53,
+        "intent->survival-reflex": 9,
+        "survival-reflex->survival-reflex": 14,
+        "survival-reflex->intent": 6
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-causal-loop-v7-s20260816-y10-r1/state.json",
+      "runId": "candidate-causal-loop-v7-s20260816-y10-r1",
+      "throughMonth": 120,
+      "moves": 1016,
+      "traversedCells": 364,
+      "reversals": 79,
+      "reversalShare": 7.78,
+      "causeCounts": {
+        "intent": 689,
+        "survival-reflex": 327
+      },
+      "reversalCausePairs": {
+        "intent->intent": 39,
+        "survival-reflex->intent": 16,
+        "survival-reflex->survival-reflex": 16,
+        "intent->survival-reflex": 8
+      }
+    }
+  ]
+}

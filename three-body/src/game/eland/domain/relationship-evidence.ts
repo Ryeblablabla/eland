@@ -1,0 +1,156 @@
+import type { RelationshipCausalBasis } from './action';
+import type { SimulationState, WorldEvent } from './model';
+import { ageMonths, type PersonState } from './person';
+import { worldEventById } from './event-index';
+
+export type RelationshipProposalKind = RelationshipCausalBasis['kind'];
+
+function femaleAgeBand(person: PersonState, partner: PersonState, atMonth: number): string | null {
+  const female = person.sex === 'female' ? person : partner.sex === 'female' ? partner : undefined;
+  if (!female) return null;
+  const years = ageMonths(female, atMonth) / 12;
+  return years < 30
+    ? 'under-30'
+    : years < 35
+      ? '30-34'
+      : years < 38
+        ? '35-37'
+        : years < 41
+          ? '38-40'
+          : '41-45';
+}
+
+function qualifiesAsRelationshipEvidence(
+  event: WorldEvent | undefined,
+  proposerId: string,
+  partnerId: string,
+): boolean {
+  if (!event) return false;
+  if (event.kind === 'action') {
+    if (event.status !== 'completed') return false;
+    if (event.action.kind !== 'communicate') return true;
+    const conversation = event.action.content.kind === 'claim' ? event.action.content.conversation : undefined;
+    if (!conversation || event.diff.groundedConversationBasisKey !== conversation.basisKey) return false;
+    const participants = new Set([conversation.speakerId, conversation.listenerId]);
+    return participants.has(proposerId) && participants.has(partnerId);
+  }
+  if (event.kind === 'agreement') return event.change === 'fulfilled';
+  if (event.kind !== 'environment') return false;
+  if (event.change === 'prediction') return true;
+  const participantIds = event.change === 'founding' ? event.diff.participantIds : undefined;
+  return Array.isArray(participantIds)
+    && participantIds.includes(proposerId)
+    && participantIds.includes(partnerId);
+}
+
+function relationshipEvidenceIds(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+): string[] {
+  const relation = proposer.relations.find((candidate) => candidate.personId === partner.id);
+  return [...new Set((relation?.sourceEventIds ?? [])
+    .filter((eventId) => qualifiesAsRelationshipEvidence(worldEventById(state, eventId), proposer.id, partner.id)))].sort();
+}
+
+export function buildRelationshipCausalBasis(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  kind: RelationshipProposalKind,
+  atMonth = state.clock.elapsedMonths,
+): RelationshipCausalBasis {
+  const pair = [proposer.id, partner.id].sort();
+  const subjectKey = `relationship:${kind}:${pair[0]}:${pair[1]}`;
+  const relationshipKeys = relationshipEvidenceIds(state, proposer, partner);
+  const ageBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, atMonth) : null;
+  const bodyKeys = ageBand ? [`female-age:${ageBand}`] : [];
+  const basisKey = [
+    'relationship-causal-basis-v1',
+    `subject=${subjectKey}`,
+    `observer=${proposer.id}`,
+    `r=${relationshipKeys.join(',') || 'none'}`,
+    `b=${bodyKeys.join(',') || 'none'}`,
+  ].join('|');
+  return {
+    version: 'relationship-causal-basis-v1',
+    subjectKey,
+    basisKey,
+    kind,
+    proposerId: proposer.id,
+    partnerId: partner.id,
+    relationshipKeys,
+    bodyKeys,
+    sourceFactIds: [...relationshipKeys],
+  };
+}
+
+export function hasCultivatedReproductiveRelationship(
+  state: SimulationState,
+  person: PersonState,
+  partner: PersonState,
+  basis = buildRelationshipCausalBasis(state, person, partner, 'reproduce'),
+): boolean {
+  if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
+  const relation = person.relations.find((candidate) => candidate.personId === partner.id);
+  return Boolean(relation
+    && relation.trust >= 4
+    && relation.bond >= 4
+    && basis.relationshipKeys.length > 0);
+}
+
+export function hasNewRelationshipEvidence(
+  previous: RelationshipCausalBasis,
+  current: RelationshipCausalBasis,
+): boolean {
+  const previousKeys = new Set([...previous.relationshipKeys, ...previous.bodyKeys]);
+  return [...current.relationshipKeys, ...current.bodyKeys].some((key) => !previousKeys.has(key));
+}
+
+function legacyBasisHasNewEvidence(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  kind: RelationshipProposalKind,
+  current: RelationshipCausalBasis,
+  proposedAtMonth: number,
+  resolvedAtMonth?: number,
+): boolean {
+  const cutoff = resolvedAtMonth ?? proposedAtMonth;
+  if (current.relationshipKeys.some((eventId) => (worldEventById(state, eventId)?.atMonth ?? Number.NEGATIVE_INFINITY) > cutoff)) return true;
+  const previousAgeBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, proposedAtMonth) : null;
+  return Boolean(previousAgeBand && current.bodyKeys.some((key) => key !== `female-age:${previousAgeBand}`));
+}
+
+export function canOfferRelationshipProposal(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  basis: RelationshipCausalBasis,
+): boolean {
+  if (basis.kind === 'reproduce' && !hasCultivatedReproductiveRelationship(state, proposer, partner, basis)) return false;
+  const inFlight = state.intents.some((intent) => intent.ownerId === proposer.id
+    && (intent.status === 'active' || intent.status === 'suspended')
+    && intent.relationshipBasis?.subjectKey === basis.subjectKey
+    && intent.relationshipBasis.partnerId === partner.id);
+  if (inFlight) return false;
+  const previous = [...state.agreements].reverse().find((agreement) => agreement.proposal.kind === basis.kind
+    && agreement.proposerId === proposer.id
+    && agreement.responderId === partner.id);
+  if (!previous) return true;
+  if (previous.status === 'proposed' || previous.status === 'active') return false;
+  const previousBasis = previous.proposal.kind === 'companion' || previous.proposal.kind === 'reproduce'
+    ? previous.proposal.basis
+    : undefined;
+  return previousBasis
+    ? hasNewRelationshipEvidence(previousBasis, basis)
+    : legacyBasisHasNewEvidence(
+      state,
+      proposer,
+      partner,
+      basis.kind,
+      basis,
+      previous.proposedAtMonth,
+      previous.resolvedAtMonth,
+    );
+}

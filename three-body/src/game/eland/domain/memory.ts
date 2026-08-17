@@ -84,6 +84,9 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     ? state.people.filter((person) => fact.action.kind === 'communicate' && fact.action.audience.includes(person.id))
     : [];
   const failed = fact.status === 'blocked' || fact.status === 'failed';
+  const groundedCommunication = fact.action.kind === 'communicate'
+    && fact.action.content.kind === 'claim'
+    && Boolean(fact.action.content.conversation);
   const structuredCommunication = fact.action.kind === 'communicate'
     && (['request', 'offer', 'accept'].includes(fact.action.content.kind)
       || (fact.action.content.kind === 'claim' && Boolean(fact.action.content.factId)));
@@ -91,7 +94,7 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     id: `memory:${fact.id}:${actor.id}`,
     kind: failed ? 'failure' : fact.action.kind === 'communicate' && ['request', 'offer', 'accept'].includes(fact.action.content.kind) ? 'commitment' : fact.action.kind === 'communicate' ? 'dialogue' : 'episode',
     summary: fact.result,
-    importance: failed ? 72 : structuredCommunication ? 64 : fact.action.kind === 'communicate' ? 42 : 38,
+    importance: failed ? 72 : groundedCommunication ? 62 : structuredCommunication ? 64 : fact.action.kind === 'communicate' ? 42 : 38,
     createdAtMonth: fact.atMonth,
     lastRecalledAtMonth: fact.atMonth,
     personIds: others.map((person) => person.id),

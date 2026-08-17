@@ -1,0 +1,9 @@
+{
+  "name": "voxel-asset-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "体素风格建筑素材生成器 —— 单文件 WebGL 工具",
+  "scripts": {
+    "dev": "python3 -m http.server 7100"
+  }
+}

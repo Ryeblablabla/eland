@@ -1,0 +1,5174 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-15T02:49:04.296Z",
+  "baseline": {
+    "path": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-causal-loop-v7.json",
+    "prefix": "candidate-causal-loop-v7",
+    "generatedAt": "2026-08-15T02:31:04.092Z",
+    "runCount": 9
+  },
+  "candidate": {
+    "path": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-dependent-hibernation-v8.json",
+    "prefix": "candidate-dependent-hibernation-v8",
+    "generatedAt": "2026-08-15T02:48:51.339Z",
+    "runCount": 9
+  },
+  "pairing": {
+    "keyFields": [
+      "seed",
+      "years",
+      "repeat"
+    ],
+    "matchedPairs": 9,
+    "matchedPairsByYears": {
+      "10": 3,
+      "20": 3,
+      "30": 3
+    },
+    "unmatchedBaseline": [],
+    "unmatchedCandidate": []
+  },
+  "configuration": {
+    "matched": true,
+    "differences": []
+  },
+  "civilizationIndexComparability": {
+    "status": "asserted-same",
+    "baselineVersion": null,
+    "candidateVersion": null,
+    "engineAttributionAllowed": true,
+    "note": "The caller explicitly asserted that the exact same civilization-index formula was used."
+  },
+  "summariesByYears": [
+    {
+      "years": 10,
+      "pairCount": 3,
+      "engineMetrics": {
+        "finalPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 10,
+            "mean": 9,
+            "min": 6,
+            "max": 11
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 10,
+            "min": 8,
+            "max": 12
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "births": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 3.67,
+            "min": 1,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 3,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "deaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1,
+            "mean": 1.33,
+            "min": 1,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 1,
+            "min": 0,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "childDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1,
+            "mean": 1,
+            "min": 0,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.67,
+            "min": 0,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "childExposureDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1,
+            "mean": 1,
+            "min": 0,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.67,
+            "min": 0,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "completedActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 747,
+            "mean": 696.67,
+            "min": 593,
+            "max": 750
+          },
+          "candidate": {
+            "count": 3,
+            "median": 741,
+            "mean": 731,
+            "min": 613,
+            "max": 839
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 20,
+            "meanOfPairedDifferences": 34.33,
+            "differenceOfMedians": -6,
+            "differenceOfMeans": 34.33,
+            "min": -6,
+            "max": 89
+          }
+        },
+        "ruleDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 408,
+            "mean": 384.33,
+            "min": 326,
+            "max": 419
+          },
+          "candidate": {
+            "count": 3,
+            "median": 419,
+            "mean": 411,
+            "min": 346,
+            "max": 468
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 20,
+            "meanOfPairedDifferences": 26.67,
+            "differenceOfMedians": 11,
+            "differenceOfMeans": 26.67,
+            "min": 0,
+            "max": 60
+          }
+        },
+        "modelDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "inputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "outputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "strategicShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 65.69,
+            "mean": 70.02,
+            "min": 62.77,
+            "max": 81.6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 62.77,
+            "mean": 65.59,
+            "min": 62.61,
+            "max": 71.39
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3.08,
+            "meanOfPairedDifferences": -4.43,
+            "differenceOfMedians": -2.92,
+            "differenceOfMeans": -4.43,
+            "min": -10.21,
+            "max": 0
+          }
+        },
+        "strategicIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 266,
+            "mean": 265.67,
+            "min": 263,
+            "max": 268
+          },
+          "candidate": {
+            "count": 3,
+            "median": 263,
+            "mean": 267.67,
+            "min": 247,
+            "max": 293
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 2,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": 2,
+            "min": -19,
+            "max": 25
+          }
+        },
+        "socialIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 140,
+            "mean": 118.67,
+            "min": 60,
+            "max": 156
+          },
+          "candidate": {
+            "count": 3,
+            "median": 156,
+            "mean": 143.33,
+            "min": 99,
+            "max": 175
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 35,
+            "meanOfPairedDifferences": 24.67,
+            "differenceOfMedians": 16,
+            "differenceOfMeans": 24.67,
+            "min": 0,
+            "max": 39
+          }
+        },
+        "communications": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 80,
+            "mean": 66.33,
+            "min": 29,
+            "max": 90
+          },
+          "candidate": {
+            "count": 3,
+            "median": 80,
+            "mean": 68.33,
+            "min": 44,
+            "max": 81
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 2,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 2,
+            "min": -9,
+            "max": 15
+          }
+        },
+        "survivalReflexActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 433,
+            "mean": 473.33,
+            "min": 390,
+            "max": 597
+          },
+          "candidate": {
+            "count": 3,
+            "median": 405,
+            "mean": 399.33,
+            "min": 362,
+            "max": 431
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -28,
+            "meanOfPairedDifferences": -74,
+            "differenceOfMedians": -28,
+            "differenceOfMeans": -74,
+            "min": -166,
+            "max": -28
+          }
+        },
+        "projectsStarted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 23,
+            "mean": 20.67,
+            "min": 15,
+            "max": 24
+          },
+          "candidate": {
+            "count": 3,
+            "median": 23,
+            "mean": 23.67,
+            "min": 15,
+            "max": 33
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 3,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 3,
+            "min": -1,
+            "max": 10
+          }
+        },
+        "projectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 13.33,
+            "min": 9,
+            "max": 18
+          },
+          "candidate": {
+            "count": 3,
+            "median": 16,
+            "mean": 14,
+            "min": 9,
+            "max": 17
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 0.67,
+            "min": -2,
+            "max": 4
+          }
+        },
+        "projectsBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 7.33,
+            "min": 6,
+            "max": 10
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 9.67,
+            "min": 6,
+            "max": 16
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 2.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 2.33,
+            "min": 0,
+            "max": 6
+          }
+        },
+        "jointProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 1.67,
+            "min": 1,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 1.67,
+            "min": 1,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "productionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 11,
+            "mean": 10,
+            "min": 5,
+            "max": 14
+          },
+          "candidate": {
+            "count": 3,
+            "median": 13,
+            "mean": 10.33,
+            "min": 5,
+            "max": 13
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "constructionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.33,
+            "min": 2,
+            "max": 4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.67,
+            "min": 3,
+            "max": 4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "totalStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 7.67,
+            "min": 4,
+            "max": 10
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 8.67,
+            "min": 8,
+            "max": 10
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": 1,
+            "min": -1,
+            "max": 4
+          }
+        },
+        "completedStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.33,
+            "min": 2,
+            "max": 4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.67,
+            "min": 3,
+            "max": 4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "constructionPlacements": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 14,
+            "mean": 11.67,
+            "min": 6,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 12.67,
+            "min": 11,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": 1,
+            "min": -3,
+            "max": 6
+          }
+        },
+        "containersBuilt": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 1,
+            "min": 0,
+            "max": 3
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 3
+          }
+        },
+        "standingContainers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 1,
+            "min": 0,
+            "max": 3
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 3
+          }
+        },
+        "containerTransfers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 5.67,
+            "min": 0,
+            "max": 17
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 5.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 5.67,
+            "min": 0,
+            "max": 17
+          }
+        },
+        "storedUnits": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 5.67,
+            "min": 0,
+            "max": 17
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 5.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 5.67,
+            "min": 0,
+            "max": 17
+          }
+        },
+        "movementActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1016,
+            "mean": 1010.67,
+            "min": 986,
+            "max": 1030
+          },
+          "candidate": {
+            "count": 3,
+            "median": 989,
+            "mean": 941.33,
+            "min": 805,
+            "max": 1030
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -27,
+            "meanOfPairedDifferences": -69.33,
+            "differenceOfMedians": -27,
+            "differenceOfMeans": -69.33,
+            "min": -225,
+            "max": 44
+          }
+        },
+        "movementActionShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 64.75,
+            "mean": 63.99,
+            "min": 60.42,
+            "max": 66.8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 59.06,
+            "mean": 60.76,
+            "min": 59.03,
+            "max": 64.18
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1.39,
+            "meanOfPairedDifferences": -3.23,
+            "differenceOfMedians": -5.69,
+            "differenceOfMeans": -3.23,
+            "min": -7.74,
+            "max": -0.57
+          }
+        },
+        "spearsCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 14,
+            "mean": 10.33,
+            "min": 1,
+            "max": 16
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 9.33,
+            "min": 1,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -1,
+            "min": -2,
+            "max": 0
+          }
+        },
+        "leatherClothingCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "herbalMedicineCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "cookedFoodProduced": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 4.33,
+            "min": 3,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 3,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "recordsCreated": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 1,
+            "max": 3
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2.33,
+            "min": 1,
+            "max": 4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "functionalInstitutions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalsHunted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 2,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 2,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalAttacks": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "wildlifePopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 8,
+            "min": 4,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 8,
+            "min": 4,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "predictionAccuracy": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 29.41,
+            "mean": 32.16,
+            "min": 20,
+            "max": 47.06
+          },
+          "candidate": {
+            "count": 3,
+            "median": 29.41,
+            "mean": 33.14,
+            "min": 20,
+            "max": 50
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.98,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.98,
+            "min": 0,
+            "max": 2.94
+          }
+        },
+        "dehydrationHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 17,
+            "mean": 15,
+            "min": 11,
+            "max": 17
+          },
+          "candidate": {
+            "count": 3,
+            "median": 22,
+            "mean": 19.67,
+            "min": 15,
+            "max": 22
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 5,
+            "meanOfPairedDifferences": 4.67,
+            "differenceOfMedians": 5,
+            "differenceOfMeans": 4.67,
+            "min": 4,
+            "max": 5
+          }
+        },
+        "assistedDependentHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5.67,
+            "min": 4,
+            "max": 8
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 5,
+            "meanOfPairedDifferences": 5.67,
+            "differenceOfMedians": 5,
+            "differenceOfMeans": 5.67,
+            "min": 4,
+            "max": 8
+          }
+        },
+        "throughMonth": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 120,
+            "mean": 120,
+            "min": 120,
+            "max": 120
+          },
+          "candidate": {
+            "count": 3,
+            "median": 120,
+            "mean": 120,
+            "min": 120,
+            "max": 120
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "initialPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "correctPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.67,
+            "min": 1,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 1,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "incorrectPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 8.33,
+            "min": 4,
+            "max": 12
+          },
+          "candidate": {
+            "count": 3,
+            "median": 9,
+            "mean": 8.33,
+            "min": 4,
+            "max": 12
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "observerMetrics": {
+        "civilizationComponents.history": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 66.57,
+            "mean": 64.55,
+            "min": 59.52,
+            "max": 67.57
+          },
+          "candidate": {
+            "count": 3,
+            "median": 66.75,
+            "mean": 64.81,
+            "min": 59.52,
+            "max": 68.17
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.26,
+            "differenceOfMedians": 0.18,
+            "differenceOfMeans": 0.26,
+            "min": -0.82,
+            "max": 1.6
+          }
+        },
+        "civilizationComponents.population": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 30.03,
+            "mean": 27.27,
+            "min": 19.29,
+            "max": 32.49
+          },
+          "candidate": {
+            "count": 3,
+            "median": 30.03,
+            "mean": 29.91,
+            "min": 24.85,
+            "max": 34.86
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2.37,
+            "meanOfPairedDifferences": 2.64,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 2.64,
+            "min": 0,
+            "max": 5.56
+          }
+        },
+        "civilizationComponents.social": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 47.58,
+            "mean": 46.09,
+            "min": 42.32,
+            "max": 48.36
+          },
+          "candidate": {
+            "count": 3,
+            "median": 46.11,
+            "mean": 43.27,
+            "min": 36.79,
+            "max": 46.9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1.47,
+            "meanOfPairedDifferences": -2.82,
+            "differenceOfMedians": -1.47,
+            "differenceOfMeans": -2.82,
+            "min": -5.53,
+            "max": -1.46
+          }
+        },
+        "civilizationComponents.technology": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 62.52,
+            "mean": 64.57,
+            "min": 58.65,
+            "max": 72.55
+          },
+          "candidate": {
+            "count": 3,
+            "median": 66.3,
+            "mean": 65.58,
+            "min": 58.65,
+            "max": 71.78
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 3.78,
+            "differenceOfMeans": 1,
+            "min": -0.77,
+            "max": 3.78
+          }
+        },
+        "civilizationComponents.territory": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 29.6,
+            "mean": 29.18,
+            "min": 24.1,
+            "max": 33.85
+          },
+          "candidate": {
+            "count": 3,
+            "median": 40.97,
+            "mean": 41.67,
+            "min": 40.75,
+            "max": 43.28
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 11.37,
+            "meanOfPairedDifferences": 12.48,
+            "differenceOfMedians": 11.37,
+            "differenceOfMeans": 12.48,
+            "min": 6.9,
+            "max": 19.18
+          }
+        },
+        "civilizationIndex": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 44.44,
+            "mean": 45.41,
+            "min": 44.19,
+            "max": 47.61
+          },
+          "candidate": {
+            "count": 3,
+            "median": 48.22,
+            "mean": 48.01,
+            "min": 46.34,
+            "max": 49.47
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1.9,
+            "meanOfPairedDifferences": 2.6,
+            "differenceOfMedians": 3.78,
+            "differenceOfMeans": 2.6,
+            "min": 1.86,
+            "max": 4.03
+          }
+        }
+      },
+      "milestoneOccurrence": {
+        "1": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "2": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "3": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "9": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 2,
+          "baselineRate": 100,
+          "candidateRate": 66.67,
+          "percentagePointDifference": -33.33
+        },
+        "11": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "13": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "16": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "17": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "18": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "19": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "20": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "29": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "32": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 1,
+          "baselineRate": 33.33,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 0
+        },
+        "36": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 1,
+          "baselineRate": 33.33,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 0
+        },
+        "42": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "58": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "59": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "134": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        }
+      }
+    },
+    {
+      "years": 20,
+      "pairCount": 3,
+      "engineMetrics": {
+        "finalPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 8.33,
+            "min": 6,
+            "max": 12
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 10,
+            "min": 9,
+            "max": 11
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 3,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 1.67,
+            "min": -1,
+            "max": 3
+          }
+        },
+        "births": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 5.67,
+            "min": 5,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 6,
+            "mean": 6.33,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "deaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 4,
+            "min": 1,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -1,
+            "min": -2,
+            "max": 0
+          }
+        },
+        "childDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 3.33,
+            "min": 0,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 0,
+            "max": 4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1.33,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": -1.33,
+            "min": -3,
+            "max": 0
+          }
+        },
+        "childExposureDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3,
+            "min": 0,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 0,
+            "max": 4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -1,
+            "min": -2,
+            "max": 0
+          }
+        },
+        "completedActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1286,
+            "mean": 1373,
+            "min": 1243,
+            "max": 1590
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1509,
+            "mean": 1516.33,
+            "min": 1433,
+            "max": 1607
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 190,
+            "meanOfPairedDifferences": 143.33,
+            "differenceOfMedians": 223,
+            "differenceOfMeans": 143.33,
+            "min": 17,
+            "max": 223
+          }
+        },
+        "ruleDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 709,
+            "mean": 778.67,
+            "min": 688,
+            "max": 939
+          },
+          "candidate": {
+            "count": 3,
+            "median": 828,
+            "mean": 863.67,
+            "min": 775,
+            "max": 988
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 66,
+            "meanOfPairedDifferences": 85,
+            "differenceOfMedians": 119,
+            "differenceOfMeans": 85,
+            "min": 49,
+            "max": 140
+          }
+        },
+        "modelDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "inputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "outputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "strategicShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 67.73,
+            "mean": 65.52,
+            "min": 55.48,
+            "max": 73.34
+          },
+          "candidate": {
+            "count": 3,
+            "median": 57.73,
+            "mean": 58.77,
+            "min": 52.53,
+            "max": 66.06
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -7.28,
+            "meanOfPairedDifferences": -6.74,
+            "differenceOfMedians": -10,
+            "differenceOfMeans": -6.74,
+            "min": -10,
+            "max": -2.95
+          }
+        },
+        "strategicIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 520,
+            "mean": 502.33,
+            "min": 466,
+            "max": 521
+          },
+          "candidate": {
+            "count": 3,
+            "median": 512,
+            "mean": 503,
+            "min": 478,
+            "max": 519
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": -8,
+            "differenceOfMeans": 0.67,
+            "min": -8,
+            "max": 12
+          }
+        },
+        "socialIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 222,
+            "mean": 276.33,
+            "min": 189,
+            "max": 418
+          },
+          "candidate": {
+            "count": 3,
+            "median": 350,
+            "mean": 360.67,
+            "min": 263,
+            "max": 469
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 74,
+            "meanOfPairedDifferences": 84.33,
+            "differenceOfMedians": 128,
+            "differenceOfMeans": 84.33,
+            "min": 51,
+            "max": 128
+          }
+        },
+        "communications": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 129,
+            "mean": 139,
+            "min": 118,
+            "max": 170
+          },
+          "candidate": {
+            "count": 3,
+            "median": 167,
+            "mean": 169.67,
+            "min": 157,
+            "max": 185
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 28,
+            "meanOfPairedDifferences": 30.67,
+            "differenceOfMedians": 38,
+            "differenceOfMeans": 30.67,
+            "min": 15,
+            "max": 49
+          }
+        },
+        "survivalReflexActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 912,
+            "mean": 932.33,
+            "min": 754,
+            "max": 1131
+          },
+          "candidate": {
+            "count": 3,
+            "median": 789,
+            "mean": 863,
+            "min": 665,
+            "max": 1135
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 35,
+            "meanOfPairedDifferences": -69.33,
+            "differenceOfMedians": -123,
+            "differenceOfMeans": -69.33,
+            "min": -466,
+            "max": 223
+          }
+        },
+        "projectsStarted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 32,
+            "mean": 30.33,
+            "min": 23,
+            "max": 36
+          },
+          "candidate": {
+            "count": 3,
+            "median": 35,
+            "mean": 33.67,
+            "min": 23,
+            "max": 43
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 3.33,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 3.33,
+            "min": -1,
+            "max": 11
+          }
+        },
+        "projectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 20,
+            "mean": 19.67,
+            "min": 15,
+            "max": 24
+          },
+          "candidate": {
+            "count": 3,
+            "median": 24,
+            "mean": 20.67,
+            "min": 13,
+            "max": 25
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 4,
+            "differenceOfMeans": 1,
+            "min": -2,
+            "max": 4
+          }
+        },
+        "projectsBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 11,
+            "mean": 10,
+            "min": 7,
+            "max": 12
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 12.67,
+            "min": 9,
+            "max": 19
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 2.67,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": 2.67,
+            "min": -1,
+            "max": 7
+          }
+        },
+        "jointProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 2,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 1.67,
+            "min": 1,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "productionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 15,
+            "mean": 14,
+            "min": 9,
+            "max": 18
+          },
+          "candidate": {
+            "count": 3,
+            "median": 19,
+            "mean": 15.67,
+            "min": 8,
+            "max": 20
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 4,
+            "differenceOfMeans": 1.67,
+            "min": -1,
+            "max": 5
+          }
+        },
+        "constructionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 5.67,
+            "min": 5,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 4,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -0.67,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.67,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "totalStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 12.33,
+            "min": 10,
+            "max": 14
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 11.33,
+            "min": 8,
+            "max": 14
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -1,
+            "min": -2,
+            "max": 1
+          }
+        },
+        "completedStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 5.67,
+            "min": 5,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 6,
+            "mean": 5.33,
+            "min": 4,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "constructionPlacements": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 21,
+            "mean": 19.67,
+            "min": 15,
+            "max": 23
+          },
+          "candidate": {
+            "count": 3,
+            "median": 18,
+            "mean": 16.67,
+            "min": 12,
+            "max": 20
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": -3,
+            "min": -3,
+            "max": -3
+          }
+        },
+        "containersBuilt": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.67,
+            "min": 2,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 3.67,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "standingContainers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.67,
+            "min": 2,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 3.67,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "containerTransfers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 52,
+            "mean": 49,
+            "min": 7,
+            "max": 88
+          },
+          "candidate": {
+            "count": 3,
+            "median": 71,
+            "mean": 86.67,
+            "min": 23,
+            "max": 166
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 19,
+            "meanOfPairedDifferences": 37.67,
+            "differenceOfMedians": 19,
+            "differenceOfMeans": 37.67,
+            "min": 16,
+            "max": 78
+          }
+        },
+        "storedUnits": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 49,
+            "mean": 39.67,
+            "min": 14,
+            "max": 56
+          },
+          "candidate": {
+            "count": 3,
+            "median": 70,
+            "mean": 55.33,
+            "min": 24,
+            "max": 72
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 16,
+            "meanOfPairedDifferences": 15.67,
+            "differenceOfMedians": 21,
+            "differenceOfMeans": 15.67,
+            "min": 10,
+            "max": 21
+          }
+        },
+        "movementActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2091,
+            "mean": 2165.33,
+            "min": 1928,
+            "max": 2477
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2096,
+            "mean": 2151.67,
+            "min": 1949,
+            "max": 2410
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 168,
+            "meanOfPairedDifferences": -13.67,
+            "differenceOfMedians": 5,
+            "differenceOfMeans": -13.67,
+            "min": -528,
+            "max": 319
+          }
+        },
+        "movementActionShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 66.32,
+            "mean": 66.32,
+            "min": 64.98,
+            "max": 67.67
+          },
+          "candidate": {
+            "count": 3,
+            "median": 65.93,
+            "mean": 63.74,
+            "min": 58.49,
+            "max": 66.8
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1.74,
+            "meanOfPairedDifferences": -2.58,
+            "differenceOfMedians": -0.39,
+            "differenceOfMeans": -2.58,
+            "min": -6.49,
+            "max": 0.48
+          }
+        },
+        "spearsCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 19,
+            "mean": 17.33,
+            "min": 7,
+            "max": 26
+          },
+          "candidate": {
+            "count": 3,
+            "median": 22,
+            "mean": 18,
+            "min": 7,
+            "max": 25
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 0.67,
+            "min": -1,
+            "max": 3
+          }
+        },
+        "leatherClothingCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.33,
+            "min": 0,
+            "max": 1
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 1.33,
+            "min": 0,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "herbalMedicineCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "cookedFoodProduced": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 6,
+            "min": 4,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 7,
+            "min": 4,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "recordsCreated": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 4,
+            "min": 3,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 4.33,
+            "min": 2,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "functionalInstitutions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.33,
+            "min": 0,
+            "max": 1
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "animalsHunted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 4.67,
+            "min": 2,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 6,
+            "mean": 4.67,
+            "min": 2,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalAttacks": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "wildlifePopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 4.33,
+            "min": 0,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 4.33,
+            "min": 0,
+            "max": 13
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "predictionAccuracy": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 20.69,
+            "mean": 22.77,
+            "min": 8.33,
+            "max": 39.29
+          },
+          "candidate": {
+            "count": 3,
+            "median": 29.03,
+            "mean": 25.23,
+            "min": 16.67,
+            "max": 30
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 8.34,
+            "meanOfPairedDifferences": 2.46,
+            "differenceOfMedians": 8.34,
+            "differenceOfMeans": 2.46,
+            "min": -10.26,
+            "max": 9.31
+          }
+        },
+        "dehydrationHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 30,
+            "mean": 28,
+            "min": 24,
+            "max": 30
+          },
+          "candidate": {
+            "count": 3,
+            "median": 43,
+            "mean": 42,
+            "min": 40,
+            "max": 43
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 13,
+            "meanOfPairedDifferences": 14,
+            "differenceOfMedians": 13,
+            "differenceOfMeans": 14,
+            "min": 10,
+            "max": 19
+          }
+        },
+        "assistedDependentHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 13,
+            "min": 10,
+            "max": 19
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 10,
+            "meanOfPairedDifferences": 13,
+            "differenceOfMedians": 10,
+            "differenceOfMeans": 13,
+            "min": 10,
+            "max": 19
+          }
+        },
+        "throughMonth": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 240,
+            "mean": 240,
+            "min": 240,
+            "max": 240
+          },
+          "candidate": {
+            "count": 3,
+            "median": 240,
+            "mean": 240,
+            "min": 240,
+            "max": 240
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "initialPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "correctPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 6,
+            "min": 1,
+            "max": 11
+          },
+          "candidate": {
+            "count": 3,
+            "median": 9,
+            "mean": 6.67,
+            "min": 2,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 0.67,
+            "min": -2,
+            "max": 3
+          }
+        },
+        "incorrectPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 17,
+            "mean": 17,
+            "min": 11,
+            "max": 23
+          },
+          "candidate": {
+            "count": 3,
+            "median": 21,
+            "mean": 17.67,
+            "min": 10,
+            "max": 22
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 4,
+            "differenceOfMeans": 0.67,
+            "min": -2,
+            "max": 5
+          }
+        }
+      },
+      "observerMetrics": {
+        "civilizationComponents.history": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 70,
+            "mean": 70,
+            "min": 70,
+            "max": 70
+          },
+          "candidate": {
+            "count": 3,
+            "median": 70,
+            "mean": 70.79,
+            "min": 70,
+            "max": 72.37
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.79,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.79,
+            "min": 0,
+            "max": 2.37
+          }
+        },
+        "civilizationComponents.population": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 22.12,
+            "mean": 25.42,
+            "min": 19.29,
+            "max": 34.86
+          },
+          "candidate": {
+            "count": 3,
+            "median": 30.03,
+            "mean": 30,
+            "min": 27.49,
+            "max": 32.49
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 7.91,
+            "meanOfPairedDifferences": 4.58,
+            "differenceOfMedians": 7.91,
+            "differenceOfMeans": 4.58,
+            "min": -2.37,
+            "max": 8.2
+          }
+        },
+        "civilizationComponents.social": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 50.79,
+            "mean": 50.89,
+            "min": 45.59,
+            "max": 56.3
+          },
+          "candidate": {
+            "count": 3,
+            "median": 45.83,
+            "mean": 47.89,
+            "min": 40.11,
+            "max": 57.74
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -4.96,
+            "meanOfPairedDifferences": -3,
+            "differenceOfMedians": -4.96,
+            "differenceOfMeans": -3,
+            "min": -16.19,
+            "max": 12.15
+          }
+        },
+        "civilizationComponents.technology": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 75.34,
+            "mean": 74.12,
+            "min": 69.76,
+            "max": 77.27
+          },
+          "candidate": {
+            "count": 3,
+            "median": 72.14,
+            "mean": 73.54,
+            "min": 71.44,
+            "max": 77.03
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -0.24,
+            "meanOfPairedDifferences": -0.59,
+            "differenceOfMedians": -3.2,
+            "differenceOfMeans": -0.59,
+            "min": -3.9,
+            "max": 2.38
+          }
+        },
+        "civilizationComponents.territory": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 53.28,
+            "mean": 57.08,
+            "min": 51.28,
+            "max": 66.69
+          },
+          "candidate": {
+            "count": 3,
+            "median": 57.85,
+            "mean": 58.22,
+            "min": 57.19,
+            "max": 59.63
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 5.91,
+            "meanOfPairedDifferences": 1.14,
+            "differenceOfMedians": 4.57,
+            "differenceOfMeans": 1.14,
+            "min": -8.84,
+            "max": 6.35
+          }
+        },
+        "civilizationIndex": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 54.59,
+            "mean": 54.76,
+            "min": 51.65,
+            "max": 58.03
+          },
+          "candidate": {
+            "count": 3,
+            "median": 54.15,
+            "mean": 55.08,
+            "min": 52.33,
+            "max": 58.76
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0.73,
+            "meanOfPairedDifferences": 0.32,
+            "differenceOfMedians": -0.44,
+            "differenceOfMeans": 0.32,
+            "min": -2.26,
+            "max": 2.5
+          }
+        }
+      },
+      "milestoneOccurrence": {
+        "1": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "2": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "3": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "8": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 1,
+          "baselineRate": 33.33,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 0
+        },
+        "9": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "11": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "13": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "16": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "17": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "18": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "19": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "20": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "29": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "32": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "36": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 2,
+          "baselineRate": 33.33,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 33.33
+        },
+        "42": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "58": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "59": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "61": {
+          "baselineOccurrences": 0,
+          "candidateOccurrences": 1,
+          "baselineRate": 0,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 33.33
+        },
+        "134": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "524": {
+          "baselineOccurrences": 0,
+          "candidateOccurrences": 1,
+          "baselineRate": 0,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 33.33
+        }
+      }
+    },
+    {
+      "years": 30,
+      "pairCount": 3,
+      "engineMetrics": {
+        "finalPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 5.33,
+            "min": 5,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 11,
+            "mean": 10.33,
+            "min": 9,
+            "max": 11
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 6,
+            "meanOfPairedDifferences": 5,
+            "differenceOfMedians": 6,
+            "differenceOfMeans": 5,
+            "min": 3,
+            "max": 6
+          }
+        },
+        "births": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.33,
+            "min": 5,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 8.67,
+            "min": 7,
+            "max": 11
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 2.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 2.33,
+            "min": 1,
+            "max": 4
+          }
+        },
+        "deaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 8,
+            "mean": 7.67,
+            "min": 6,
+            "max": 9
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 3,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -2.67,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": -2.67,
+            "min": -5,
+            "max": -1
+          }
+        },
+        "childDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 5.33,
+            "min": 5,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -2.33,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -2.33,
+            "min": -4,
+            "max": -1
+          }
+        },
+        "childExposureDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 4,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -2,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -2,
+            "min": -4,
+            "max": -1
+          }
+        },
+        "completedActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1704,
+            "mean": 1972.67,
+            "min": 1677,
+            "max": 2537
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2497,
+            "mean": 2476,
+            "min": 2354,
+            "max": 2577
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 677,
+            "meanOfPairedDifferences": 503.33,
+            "differenceOfMedians": 793,
+            "differenceOfMeans": 503.33,
+            "min": 40,
+            "max": 793
+          }
+        },
+        "ruleDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 978,
+            "mean": 1190.67,
+            "min": 926,
+            "max": 1668
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1511,
+            "mean": 1467.67,
+            "min": 1379,
+            "max": 1513
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 453,
+            "meanOfPairedDifferences": 277,
+            "differenceOfMedians": 533,
+            "differenceOfMeans": 277,
+            "min": -155,
+            "max": 533
+          }
+        },
+        "modelDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "inputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "outputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "strategicShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 68.36,
+            "mean": 62.78,
+            "min": 42.99,
+            "max": 76.99
+          },
+          "candidate": {
+            "count": 3,
+            "median": 52.75,
+            "mean": 51.61,
+            "min": 48.8,
+            "max": 53.27
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -19.56,
+            "meanOfPairedDifferences": -11.17,
+            "differenceOfMedians": -15.61,
+            "differenceOfMeans": -11.17,
+            "min": -24.24,
+            "max": 10.28
+          }
+        },
+        "strategicIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 717,
+            "mean": 701,
+            "min": 633,
+            "max": 753
+          },
+          "candidate": {
+            "count": 3,
+            "median": 797,
+            "mean": 758.67,
+            "min": 673,
+            "max": 806
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 44,
+            "meanOfPairedDifferences": 57.67,
+            "differenceOfMedians": 80,
+            "differenceOfMeans": 57.67,
+            "min": 40,
+            "max": 89
+          }
+        },
+        "socialIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 293,
+            "mean": 489.67,
+            "min": 225,
+            "max": 951
+          },
+          "candidate": {
+            "count": 3,
+            "median": 707,
+            "mean": 709,
+            "min": 706,
+            "max": 714
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 413,
+            "meanOfPairedDifferences": 219.33,
+            "differenceOfMedians": 414,
+            "differenceOfMeans": 219.33,
+            "min": -244,
+            "max": 489
+          }
+        },
+        "communications": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 163,
+            "mean": 174.67,
+            "min": 149,
+            "max": 212
+          },
+          "candidate": {
+            "count": 3,
+            "median": 269,
+            "mean": 258.33,
+            "min": 214,
+            "max": 292
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 65,
+            "meanOfPairedDifferences": 83.67,
+            "differenceOfMedians": 106,
+            "differenceOfMeans": 83.67,
+            "min": 57,
+            "max": 129
+          }
+        },
+        "survivalReflexActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1154,
+            "mean": 1302.67,
+            "min": 919,
+            "max": 1835
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1472,
+            "mean": 1344.67,
+            "min": 1030,
+            "max": 1532
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 111,
+            "meanOfPairedDifferences": 42,
+            "differenceOfMedians": 318,
+            "differenceOfMeans": 42,
+            "min": -363,
+            "max": 378
+          }
+        },
+        "projectsStarted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 37,
+            "mean": 36,
+            "min": 30,
+            "max": 41
+          },
+          "candidate": {
+            "count": 3,
+            "median": 52,
+            "mean": 44.67,
+            "min": 26,
+            "max": 56
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 15,
+            "meanOfPairedDifferences": 8.67,
+            "differenceOfMedians": 15,
+            "differenceOfMeans": 8.67,
+            "min": -4,
+            "max": 15
+          }
+        },
+        "projectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 23,
+            "mean": 22.33,
+            "min": 18,
+            "max": 26
+          },
+          "candidate": {
+            "count": 3,
+            "median": 30,
+            "mean": 25,
+            "min": 14,
+            "max": 31
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 5,
+            "meanOfPairedDifferences": 2.67,
+            "differenceOfMedians": 7,
+            "differenceOfMeans": 2.67,
+            "min": -4,
+            "max": 7
+          }
+        },
+        "projectsBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 14,
+            "mean": 13.33,
+            "min": 11,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 22,
+            "mean": 19,
+            "min": 12,
+            "max": 23
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 8,
+            "meanOfPairedDifferences": 5.67,
+            "differenceOfMedians": 8,
+            "differenceOfMeans": 5.67,
+            "min": 1,
+            "max": 8
+          }
+        },
+        "jointProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2.33,
+            "min": 2,
+            "max": 3
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 1,
+            "max": 3
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "productionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 17,
+            "mean": 16,
+            "min": 11,
+            "max": 20
+          },
+          "candidate": {
+            "count": 3,
+            "median": 24,
+            "mean": 19.33,
+            "min": 9,
+            "max": 25
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 4,
+            "meanOfPairedDifferences": 3.33,
+            "differenceOfMedians": 7,
+            "differenceOfMeans": 3.33,
+            "min": -2,
+            "max": 8
+          }
+        },
+        "constructionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 6.33,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5.67,
+            "min": 5,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -0.67,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.67,
+            "min": -2,
+            "max": 1
+          }
+        },
+        "totalStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 13.67,
+            "min": 12,
+            "max": 16
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 12.67,
+            "min": 10,
+            "max": 16
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -1,
+            "min": -4,
+            "max": 3
+          }
+        },
+        "completedStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 6.33,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 6,
+            "mean": 6,
+            "min": 5,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "constructionPlacements": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 23,
+            "mean": 21.67,
+            "min": 18,
+            "max": 24
+          },
+          "candidate": {
+            "count": 3,
+            "median": 18,
+            "mean": 18.67,
+            "min": 15,
+            "max": 23
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3,
+            "differenceOfMedians": -5,
+            "differenceOfMeans": -3,
+            "min": -6,
+            "max": 0
+          }
+        },
+        "containersBuilt": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 5.33,
+            "min": 3,
+            "max": 9
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 2,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": -1,
+            "min": -4,
+            "max": 2
+          }
+        },
+        "standingContainers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 5,
+            "min": 2,
+            "max": 9
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 4.33,
+            "min": 2,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": -0.67,
+            "min": -4,
+            "max": 2
+          }
+        },
+        "containerTransfers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 112,
+            "mean": 109,
+            "min": 53,
+            "max": 162
+          },
+          "candidate": {
+            "count": 3,
+            "median": 224,
+            "mean": 210.33,
+            "min": 140,
+            "max": 267
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 105,
+            "meanOfPairedDifferences": 101.33,
+            "differenceOfMedians": 112,
+            "differenceOfMeans": 101.33,
+            "min": 87,
+            "max": 112
+          }
+        },
+        "storedUnits": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 61,
+            "mean": 57,
+            "min": 26,
+            "max": 84
+          },
+          "candidate": {
+            "count": 3,
+            "median": 85,
+            "mean": 74.67,
+            "min": 25,
+            "max": 114
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 17.67,
+            "differenceOfMedians": 24,
+            "differenceOfMeans": 17.67,
+            "min": -1,
+            "max": 53
+          }
+        },
+        "movementActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 3213,
+            "mean": 3373,
+            "min": 2912,
+            "max": 3994
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3665,
+            "mean": 3508,
+            "min": 3143,
+            "max": 3716
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 231,
+            "meanOfPairedDifferences": 135,
+            "differenceOfMedians": 452,
+            "differenceOfMeans": 135,
+            "min": -329,
+            "max": 503
+          }
+        },
+        "movementActionShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 69.64,
+            "mean": 68.39,
+            "min": 65.05,
+            "max": 70.49
+          },
+          "candidate": {
+            "count": 3,
+            "median": 63.68,
+            "mean": 63.61,
+            "min": 62.98,
+            "max": 64.18
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -5.46,
+            "meanOfPairedDifferences": -4.78,
+            "differenceOfMedians": -5.96,
+            "differenceOfMeans": -4.78,
+            "min": -6.81,
+            "max": -2.07
+          }
+        },
+        "spearsCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 20,
+            "mean": 21.33,
+            "min": 7,
+            "max": 37
+          },
+          "candidate": {
+            "count": 3,
+            "median": 23,
+            "mean": 20,
+            "min": 7,
+            "max": 30
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -1.33,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": -1.33,
+            "min": -7,
+            "max": 3
+          }
+        },
+        "leatherClothingCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1,
+            "mean": 0.67,
+            "min": 0,
+            "max": 1
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2.33,
+            "min": 2,
+            "max": 3
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 1.67,
+            "min": 1,
+            "max": 3
+          }
+        },
+        "herbalMedicineCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "cookedFoodProduced": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 6,
+            "max": 9
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 9.67,
+            "min": 5,
+            "max": 12
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 3,
+            "meanOfPairedDifferences": 2.33,
+            "differenceOfMedians": 5,
+            "differenceOfMeans": 2.33,
+            "min": -1,
+            "max": 5
+          }
+        },
+        "recordsCreated": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 4.67,
+            "min": 4,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 2,
+            "max": 8
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.33,
+            "min": -2,
+            "max": 2
+          }
+        },
+        "functionalInstitutions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.33,
+            "min": 0,
+            "max": 1
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "animalsHunted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 4.67,
+            "min": 2,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 6,
+            "mean": 4.67,
+            "min": 2,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalAttacks": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "wildlifePopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 9.33,
+            "min": 0,
+            "max": 28
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 9.33,
+            "min": 0,
+            "max": 28
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "predictionAccuracy": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 21.43,
+            "mean": 21.22,
+            "min": 11.11,
+            "max": 31.11
+          },
+          "candidate": {
+            "count": 3,
+            "median": 27.08,
+            "mean": 26.66,
+            "min": 24,
+            "max": 28.89
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 7.46,
+            "meanOfPairedDifferences": 5.44,
+            "differenceOfMedians": 5.65,
+            "differenceOfMeans": 5.44,
+            "min": -4.03,
+            "max": 12.89
+          }
+        },
+        "dehydrationHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 40,
+            "mean": 37.67,
+            "min": 32,
+            "max": 41
+          },
+          "candidate": {
+            "count": 3,
+            "median": 66,
+            "mean": 63.67,
+            "min": 57,
+            "max": 68
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 25,
+            "meanOfPairedDifferences": 26,
+            "differenceOfMedians": 26,
+            "differenceOfMeans": 26,
+            "min": 17,
+            "max": 36
+          }
+        },
+        "assistedDependentHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 16,
+            "mean": 16.33,
+            "min": 11,
+            "max": 22
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 16,
+            "meanOfPairedDifferences": 16.33,
+            "differenceOfMedians": 16,
+            "differenceOfMeans": 16.33,
+            "min": 11,
+            "max": 22
+          }
+        },
+        "throughMonth": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 360,
+            "mean": 360,
+            "min": 360,
+            "max": 360
+          },
+          "candidate": {
+            "count": 3,
+            "median": 360,
+            "mean": 360,
+            "min": 360,
+            "max": 360
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "initialPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "correctPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 8.33,
+            "min": 2,
+            "max": 14
+          },
+          "candidate": {
+            "count": 3,
+            "median": 13,
+            "mean": 10.67,
+            "min": 6,
+            "max": 13
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 4,
+            "meanOfPairedDifferences": 2.33,
+            "differenceOfMedians": 4,
+            "differenceOfMeans": 2.33,
+            "min": -1,
+            "max": 4
+          }
+        },
+        "incorrectPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 31,
+            "mean": 26.67,
+            "min": 16,
+            "max": 33
+          },
+          "candidate": {
+            "count": 3,
+            "median": 32,
+            "mean": 28.67,
+            "min": 19,
+            "max": 35
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 3,
+            "meanOfPairedDifferences": 2,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 2,
+            "min": -1,
+            "max": 4
+          }
+        }
+      },
+      "observerMetrics": {
+        "civilizationComponents.history": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 70,
+            "mean": 73.76,
+            "min": 70,
+            "max": 81.27
+          },
+          "candidate": {
+            "count": 3,
+            "median": 84.69,
+            "mean": 81.69,
+            "min": 75.41,
+            "max": 84.98
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 5.41,
+            "meanOfPairedDifferences": 7.94,
+            "differenceOfMedians": 14.69,
+            "differenceOfMeans": 7.94,
+            "min": 3.71,
+            "max": 14.69
+          }
+        },
+        "civilizationComponents.population": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 16.35,
+            "mean": 17.33,
+            "min": 16.35,
+            "max": 19.29
+          },
+          "candidate": {
+            "count": 3,
+            "median": 32.49,
+            "mean": 30.82,
+            "min": 27.49,
+            "max": 32.49
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 16.14,
+            "meanOfPairedDifferences": 13.49,
+            "differenceOfMedians": 16.14,
+            "differenceOfMeans": 13.49,
+            "min": 8.2,
+            "max": 16.14
+          }
+        },
+        "civilizationComponents.social": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 53.57,
+            "mean": 53.36,
+            "min": 49.02,
+            "max": 57.48
+          },
+          "candidate": {
+            "count": 3,
+            "median": 43.45,
+            "mean": 49.27,
+            "min": 42.47,
+            "max": 61.89
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -11.1,
+            "meanOfPairedDifferences": -4.09,
+            "differenceOfMedians": -10.12,
+            "differenceOfMeans": -4.09,
+            "min": -14.03,
+            "max": 12.87
+          }
+        },
+        "civilizationComponents.technology": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 77.28,
+            "mean": 76.9,
+            "min": 74.28,
+            "max": 79.15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 75.31,
+            "mean": 75.83,
+            "min": 74.77,
+            "max": 77.4
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1.75,
+            "meanOfPairedDifferences": -1.08,
+            "differenceOfMedians": -1.97,
+            "differenceOfMeans": -1.08,
+            "min": -1.97,
+            "max": 0.49
+          }
+        },
+        "civilizationComponents.territory": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 69.79,
+            "mean": 69.61,
+            "min": 64.63,
+            "max": 74.4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 63.2,
+            "mean": 63.46,
+            "min": 61.97,
+            "max": 65.21
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -6.59,
+            "meanOfPairedDifferences": -6.15,
+            "differenceOfMedians": -6.59,
+            "differenceOfMeans": -6.15,
+            "min": -9.19,
+            "max": -2.66
+          }
+        },
+        "civilizationIndex": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 58.32,
+            "mean": 57.33,
+            "min": 55.16,
+            "max": 58.51
+          },
+          "candidate": {
+            "count": 3,
+            "median": 56.3,
+            "mean": 58.3,
+            "min": 55.74,
+            "max": 62.86
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0.58,
+            "meanOfPairedDifferences": 0.97,
+            "differenceOfMedians": -2.02,
+            "differenceOfMeans": 0.97,
+            "min": -2.21,
+            "max": 4.54
+          }
+        }
+      },
+      "milestoneOccurrence": {
+        "1": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "2": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "3": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "8": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "9": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "11": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "13": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "16": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "17": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "18": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "19": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "20": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "29": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "32": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "36": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 2,
+          "baselineRate": 33.33,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 33.33
+        },
+        "42": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "58": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "59": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "61": {
+          "baselineOccurrences": 0,
+          "candidateOccurrences": 1,
+          "baselineRate": 0,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 33.33
+        },
+        "134": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "143": {
+          "baselineOccurrences": 0,
+          "candidateOccurrences": 1,
+          "baselineRate": 0,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 33.33
+        },
+        "524": {
+          "baselineOccurrences": 0,
+          "candidateOccurrences": 1,
+          "baselineRate": 0,
+          "candidateRate": 33.33,
+          "percentagePointDifference": 33.33
+        }
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "seed": 185,
+      "years": 10,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s185-y10-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s185-y10-r1",
+      "differences": {
+        "finalPopulation": 2,
+        "births": 2,
+        "deaths": 0,
+        "childDeaths": 0,
+        "childExposureDeaths": 0,
+        "completedActions": 20,
+        "ruleDecisions": 20,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -10.21,
+        "strategicIntents": -19,
+        "socialIntents": 39,
+        "communications": 15,
+        "survivalReflexActions": -166,
+        "projectsStarted": -1,
+        "projectsCompleted": -2,
+        "projectsBlocked": 1,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": -1,
+        "constructionProjectsCompleted": -1,
+        "totalStructures": -1,
+        "completedStructures": -1,
+        "constructionPlacements": -3,
+        "containersBuilt": 3,
+        "standingContainers": 3,
+        "containerTransfers": 17,
+        "storedUnits": 17,
+        "movementActions": -225,
+        "movementActionShare": -7.74,
+        "spearsCrafted": -2,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": -1,
+        "recordsCreated": 0,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 0,
+        "dehydrationHibernations": 4,
+        "assistedDependentHibernations": 4,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 0,
+        "incorrectPredictions": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": -0.82,
+        "civilizationComponents.population": 5.56,
+        "civilizationComponents.social": -1.46,
+        "civilizationComponents.technology": -0.77,
+        "civilizationComponents.territory": 6.9,
+        "civilizationIndex": 1.86
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "seed": 20260815,
+      "years": 10,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260815-y10-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260815-y10-r1",
+      "differences": {
+        "finalPopulation": 1,
+        "births": 0,
+        "deaths": -1,
+        "childDeaths": -1,
+        "childExposureDeaths": -1,
+        "completedActions": 89,
+        "ruleDecisions": 60,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -3.08,
+        "strategicIntents": 25,
+        "socialIntents": 35,
+        "communications": -9,
+        "survivalReflexActions": -28,
+        "projectsStarted": 10,
+        "projectsCompleted": 4,
+        "projectsBlocked": 6,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": 2,
+        "constructionProjectsCompleted": 2,
+        "totalStructures": 4,
+        "completedStructures": 2,
+        "constructionPlacements": 6,
+        "containersBuilt": 0,
+        "standingContainers": 0,
+        "containerTransfers": 0,
+        "storedUnits": 0,
+        "movementActions": 44,
+        "movementActionShare": -1.39,
+        "spearsCrafted": -1,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 1,
+        "recordsCreated": 1,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 2.94,
+        "dehydrationHibernations": 5,
+        "assistedDependentHibernations": 8,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 1,
+        "incorrectPredictions": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 1.6,
+        "civilizationComponents.population": 2.37,
+        "civilizationComponents.social": -5.53,
+        "civilizationComponents.technology": 3.78,
+        "civilizationComponents.territory": 19.18,
+        "civilizationIndex": 4.03
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": [
+          "9"
+        ]
+      }
+    },
+    {
+      "seed": 20260816,
+      "years": 10,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260816-y10-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260816-y10-r1",
+      "differences": {
+        "finalPopulation": 0,
+        "births": 0,
+        "deaths": 0,
+        "childDeaths": 0,
+        "childExposureDeaths": 0,
+        "completedActions": -6,
+        "ruleDecisions": 0,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": 0,
+        "strategicIntents": 0,
+        "socialIntents": 0,
+        "communications": 0,
+        "survivalReflexActions": -28,
+        "projectsStarted": 0,
+        "projectsCompleted": 0,
+        "projectsBlocked": 0,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": 0,
+        "constructionProjectsCompleted": 0,
+        "totalStructures": 0,
+        "completedStructures": 0,
+        "constructionPlacements": 0,
+        "containersBuilt": 0,
+        "standingContainers": 0,
+        "containerTransfers": 0,
+        "storedUnits": 0,
+        "movementActions": -27,
+        "movementActionShare": -0.57,
+        "spearsCrafted": 0,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 0,
+        "recordsCreated": 0,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 0,
+        "dehydrationHibernations": 5,
+        "assistedDependentHibernations": 5,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 0,
+        "incorrectPredictions": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 0,
+        "civilizationComponents.population": 0,
+        "civilizationComponents.social": -1.47,
+        "civilizationComponents.technology": 0,
+        "civilizationComponents.territory": 11.37,
+        "civilizationIndex": 1.9
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "seed": 185,
+      "years": 20,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s185-y20-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s185-y20-r1",
+      "differences": {
+        "finalPopulation": -1,
+        "births": -1,
+        "deaths": 0,
+        "childDeaths": 0,
+        "childExposureDeaths": 0,
+        "completedActions": 17,
+        "ruleDecisions": 49,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -2.95,
+        "strategicIntents": -2,
+        "socialIntents": 51,
+        "communications": 15,
+        "survivalReflexActions": -466,
+        "projectsStarted": -1,
+        "projectsCompleted": 1,
+        "projectsBlocked": -1,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": 1,
+        "constructionProjectsCompleted": 0,
+        "totalStructures": 1,
+        "completedStructures": 0,
+        "constructionPlacements": -3,
+        "containersBuilt": 1,
+        "standingContainers": 1,
+        "containerTransfers": 78,
+        "storedUnits": 21,
+        "movementActions": -528,
+        "movementActionShare": -6.49,
+        "spearsCrafted": 3,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 1,
+        "recordsCreated": 0,
+        "functionalInstitutions": 1,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 8.34,
+        "dehydrationHibernations": 19,
+        "assistedDependentHibernations": 19,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 1,
+        "incorrectPredictions": -1
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 0,
+        "civilizationComponents.population": -2.37,
+        "civilizationComponents.social": 12.15,
+        "civilizationComponents.technology": -0.24,
+        "civilizationComponents.territory": -8.84,
+        "civilizationIndex": 0.73
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [
+          "524",
+          "61"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "seed": 20260815,
+      "years": 20,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260815-y20-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260815-y20-r1",
+      "differences": {
+        "finalPopulation": 3,
+        "births": 1,
+        "deaths": -2,
+        "childDeaths": -3,
+        "childExposureDeaths": -2,
+        "completedActions": 223,
+        "ruleDecisions": 66,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -7.28,
+        "strategicIntents": -8,
+        "socialIntents": 74,
+        "communications": 28,
+        "survivalReflexActions": 223,
+        "projectsStarted": 11,
+        "projectsCompleted": 4,
+        "projectsBlocked": 7,
+        "jointProjectsCompleted": -1,
+        "productionProjectsCompleted": 5,
+        "constructionProjectsCompleted": -1,
+        "totalStructures": -2,
+        "completedStructures": -1,
+        "constructionPlacements": -3,
+        "containersBuilt": -1,
+        "standingContainers": -1,
+        "containerTransfers": 16,
+        "storedUnits": 10,
+        "movementActions": 319,
+        "movementActionShare": 0.48,
+        "spearsCrafted": -1,
+        "leatherClothingCrafted": 2,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 2,
+        "recordsCreated": 2,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": -10.26,
+        "dehydrationHibernations": 10,
+        "assistedDependentHibernations": 10,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": -2,
+        "incorrectPredictions": 5
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 0,
+        "civilizationComponents.population": 7.91,
+        "civilizationComponents.social": -16.19,
+        "civilizationComponents.technology": -3.9,
+        "civilizationComponents.territory": 5.91,
+        "civilizationIndex": -2.26
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [
+          "36"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "seed": 20260816,
+      "years": 20,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260816-y20-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260816-y20-r1",
+      "differences": {
+        "finalPopulation": 3,
+        "births": 2,
+        "deaths": -1,
+        "childDeaths": -1,
+        "childExposureDeaths": -1,
+        "completedActions": 190,
+        "ruleDecisions": 140,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -10,
+        "strategicIntents": 12,
+        "socialIntents": 128,
+        "communications": 49,
+        "survivalReflexActions": 35,
+        "projectsStarted": 0,
+        "projectsCompleted": -2,
+        "projectsBlocked": 2,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": -1,
+        "constructionProjectsCompleted": -1,
+        "totalStructures": -2,
+        "completedStructures": 0,
+        "constructionPlacements": -3,
+        "containersBuilt": 0,
+        "standingContainers": 0,
+        "containerTransfers": 19,
+        "storedUnits": 16,
+        "movementActions": 168,
+        "movementActionShare": -1.74,
+        "spearsCrafted": 0,
+        "leatherClothingCrafted": 1,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 0,
+        "recordsCreated": -1,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 9.31,
+        "dehydrationHibernations": 13,
+        "assistedDependentHibernations": 10,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 3,
+        "incorrectPredictions": -2
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 2.37,
+        "civilizationComponents.population": 8.2,
+        "civilizationComponents.social": -4.96,
+        "civilizationComponents.technology": 2.38,
+        "civilizationComponents.territory": 6.35,
+        "civilizationIndex": 2.5
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": []
+      }
+    },
+    {
+      "seed": 185,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s185-y30-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s185-y30-r1",
+      "differences": {
+        "finalPopulation": 6,
+        "births": 1,
+        "deaths": -5,
+        "childDeaths": -4,
+        "childExposureDeaths": -4,
+        "completedActions": 40,
+        "ruleDecisions": -155,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": 10.28,
+        "strategicIntents": 89,
+        "socialIntents": -244,
+        "communications": 57,
+        "survivalReflexActions": -363,
+        "projectsStarted": 15,
+        "projectsCompleted": 5,
+        "projectsBlocked": 8,
+        "jointProjectsCompleted": 1,
+        "productionProjectsCompleted": 4,
+        "constructionProjectsCompleted": 1,
+        "totalStructures": 3,
+        "completedStructures": 1,
+        "constructionPlacements": 0,
+        "containersBuilt": 2,
+        "standingContainers": 2,
+        "containerTransfers": 105,
+        "storedUnits": 53,
+        "movementActions": -329,
+        "movementActionShare": -2.07,
+        "spearsCrafted": 3,
+        "leatherClothingCrafted": 1,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 3,
+        "recordsCreated": 1,
+        "functionalInstitutions": 1,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 12.89,
+        "dehydrationHibernations": 36,
+        "assistedDependentHibernations": 22,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 4,
+        "incorrectPredictions": 3
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 3.71,
+        "civilizationComponents.population": 16.14,
+        "civilizationComponents.social": 12.87,
+        "civilizationComponents.technology": -1.75,
+        "civilizationComponents.territory": -9.19,
+        "civilizationIndex": 4.54
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [
+          "524",
+          "61"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "seed": 20260815,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260815-y30-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260815-y30-r1",
+      "differences": {
+        "finalPopulation": 3,
+        "births": 2,
+        "deaths": -1,
+        "childDeaths": -2,
+        "childExposureDeaths": -1,
+        "completedActions": 793,
+        "ruleDecisions": 533,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -24.24,
+        "strategicIntents": 44,
+        "socialIntents": 489,
+        "communications": 65,
+        "survivalReflexActions": 378,
+        "projectsStarted": 15,
+        "projectsCompleted": 7,
+        "projectsBlocked": 8,
+        "jointProjectsCompleted": -1,
+        "productionProjectsCompleted": 8,
+        "constructionProjectsCompleted": -1,
+        "totalStructures": -2,
+        "completedStructures": -1,
+        "constructionPlacements": -3,
+        "containersBuilt": -1,
+        "standingContainers": 0,
+        "containerTransfers": 87,
+        "storedUnits": -1,
+        "movementActions": 503,
+        "movementActionShare": -5.46,
+        "spearsCrafted": -7,
+        "leatherClothingCrafted": 3,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 5,
+        "recordsCreated": 2,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": -4.03,
+        "dehydrationHibernations": 17,
+        "assistedDependentHibernations": 11,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": -1,
+        "incorrectPredictions": 4
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 14.69,
+        "civilizationComponents.population": 8.2,
+        "civilizationComponents.social": -14.03,
+        "civilizationComponents.technology": -1.97,
+        "civilizationComponents.territory": -6.59,
+        "civilizationIndex": -2.21
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [
+          "143",
+          "36"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "seed": 20260816,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-causal-loop-v7-s20260816-y30-r1",
+      "candidateRunId": "candidate-dependent-hibernation-v8-s20260816-y30-r1",
+      "differences": {
+        "finalPopulation": 6,
+        "births": 4,
+        "deaths": -2,
+        "childDeaths": -1,
+        "childExposureDeaths": -1,
+        "completedActions": 677,
+        "ruleDecisions": 453,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -19.56,
+        "strategicIntents": 40,
+        "socialIntents": 413,
+        "communications": 129,
+        "survivalReflexActions": 111,
+        "projectsStarted": -4,
+        "projectsCompleted": -4,
+        "projectsBlocked": 1,
+        "jointProjectsCompleted": -1,
+        "productionProjectsCompleted": -2,
+        "constructionProjectsCompleted": -2,
+        "totalStructures": -4,
+        "completedStructures": -1,
+        "constructionPlacements": -6,
+        "containersBuilt": -4,
+        "standingContainers": -4,
+        "containerTransfers": 112,
+        "storedUnits": 1,
+        "movementActions": 231,
+        "movementActionShare": -6.81,
+        "spearsCrafted": 0,
+        "leatherClothingCrafted": 1,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": -1,
+        "recordsCreated": -2,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 7.46,
+        "dehydrationHibernations": 25,
+        "assistedDependentHibernations": 16,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 4,
+        "incorrectPredictions": -1
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": 5.41,
+        "civilizationComponents.population": 16.14,
+        "civilizationComponents.social": -11.1,
+        "civilizationComponents.technology": 0.49,
+        "civilizationComponents.territory": -2.66,
+        "civilizationIndex": 0.58
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": []
+      }
+    }
+  ],
+  "incomparableFields": [],
+  "warnings": []
+}

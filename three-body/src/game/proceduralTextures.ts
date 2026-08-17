@@ -61,16 +61,19 @@ export function makeStarSurfaceTexture(coreHex: string, glowHex: string, seed: n
   const mid = new THREE.Color(glowHex);
   const hot = new THREE.Color(coreHex);
   const tmp = new THREE.Color();
+  const encoded = new THREE.Color();
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       let n = fbm(grids, x / S, y / S);
       n = Math.min(Math.max((n - 0.32) * 2.1, 0), 1); // 对比度曲线，拉出颗粒感
       if (n < 0.55) tmp.copy(dark).lerp(mid, n / 0.55);
       else tmp.copy(mid).lerp(hot, (n - 0.55) / 0.45);
+      // Three.Color 内部是线性色；Canvas 像素需要先编码回 sRGB，再交给 sRGB 纹理采样。
+      encoded.copy(tmp).convertLinearToSRGB();
       const i = (y * S + x) * 4;
-      img.data[i] = Math.round(tmp.r * 255);
-      img.data[i + 1] = Math.round(tmp.g * 255);
-      img.data[i + 2] = Math.round(tmp.b * 255);
+      img.data[i] = Math.round(encoded.r * 255);
+      img.data[i + 1] = Math.round(encoded.g * 255);
+      img.data[i + 2] = Math.round(encoded.b * 255);
       img.data[i + 3] = 255;
     }
   }
@@ -110,6 +113,7 @@ export function makePlanetTextureSet(seed: number): {
   const landHigh = new THREE.Color('#a8946a');
   const ice = new THREE.Color('#ddf3ee');
   const tmp = new THREE.Color();
+  const dayEncoded = new THREE.Color();
   for (let y = 0; y < H; y++) {
     const lat = Math.abs(y / H - 0.5) * 2; // 0 赤道 → 1 极
     for (let x = 0; x < W; x++) {
@@ -121,10 +125,11 @@ export function makePlanetTextureSet(seed: number): {
       else if (n < 0.53) tmp.copy(shallow);
       else if (n < 0.62) tmp.copy(landLow).lerp(landHigh, (n - 0.53) / 0.09);
       else tmp.copy(landHigh);
+      dayEncoded.copy(tmp).convertLinearToSRGB();
       const i = (y * W + x) * 4;
-      dayImg.data[i] = Math.round(tmp.r * 255);
-      dayImg.data[i + 1] = Math.round(tmp.g * 255);
-      dayImg.data[i + 2] = Math.round(tmp.b * 255);
+      dayImg.data[i] = Math.round(dayEncoded.r * 255);
+      dayImg.data[i + 1] = Math.round(dayEncoded.g * 255);
+      dayImg.data[i + 2] = Math.round(dayEncoded.b * 255);
       dayImg.data[i + 3] = 255;
       // 高光掩码：海面反光收窄（大白斑教训：控制在柔和范围）
       const sp = isWater ? 150 : isIce ? 56 : 14;

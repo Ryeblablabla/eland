@@ -90,6 +90,7 @@ export function statusColorOf(agent: SocietyAgent, selected: boolean, speaking: 
   if (selected) return '#fde68a';
   if (speaking) return '#fbbf24';
   if (agent.state === 'dehydrated') return '#60a5fa';
+  if (agent.state === 'hibernating') return '#a78bfa';
   const health = agent.body.health;
   if (health >= 60) return '#34d399';
   if (health >= 30) return '#fbbf24';

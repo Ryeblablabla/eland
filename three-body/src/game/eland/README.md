@@ -55,14 +55,15 @@ world grid primitives
 
 ### projection/ —— 只读观察
 
-- `projection/core-milestones.ts`：纯可回放的能力里程碑观察器；事实不反向进入人物决策。
+- `projection/capability-milestones.ts`：v2 纯可回放因果观察器；含 120 个精确地图坐标和 17 个 world-specific 复杂事件，并以 strict/guarded、阶段门槛和完整 episode 隔离误报，事实不反向进入人物决策。
+- `projection/core-milestones.ts`：旧 numeric-ID 观察规则，保留作迁移参考；运行时投影已由 capability observer 接管。
 
 ### 根级
 
 - `character-profiles.ts`：人物档案池；开局按种子抽取 5–8 位或由配置指定。
 - `population.ts`：开局年龄与寿命的确定性采样。
 - `adapter.ts`：领域状态到 UI 读取模型的单向投影。
-- `kimi-decider.ts`：前端既有 Kimi 交互路径（暂留，后续迁移为异步模型任务）。
+- `kimi-decider.ts`：Kimi 决策兼容模块（代码暂留，当前前台演化不调用，后续可迁移为异步模型任务）。
 - `simulation.ts`：供其他层依赖的稳定公共门面。
 
 本地规划器是服务端人物行动权威。模型只能异步提出稳定语义的长期建议、玩家交互或创造性/叙事文本，不能选择临时 option ID 或直接修改聚合根。意图的原子动作由规则引擎编译、预演、修复和结算；前端只能渲染读取投影，不能生成第二套地形、地点或道路。

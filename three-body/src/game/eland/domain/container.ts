@@ -9,7 +9,12 @@ export interface ContainerState {
   inventory: ItemStack[];
   createdAtMonth: number;
   sourceEventIds: string[];
+  /** Physical capacity belongs to the placed object, not to a global unlock. */
+  capacity?: number;
 }
+
+export const CONTAINER_CAPACITY = 24;
+export const GRANARY_CAPACITY = 96;
 
 export function containerIdAt(position: { x: number; y: number; z: number }): string {
   return `container:${position.x}:${position.y}:${position.z}`;
@@ -17,9 +22,9 @@ export function containerIdAt(position: { x: number; y: number; z: number }): st
 
 export function containerById(state: SimulationState, id: string): ContainerState | undefined {
   const container = state.containers.find((candidate) => candidate.id === id);
-  return container && voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z) === Material.Container
-    ? container
-    : undefined;
+  if (!container) return undefined;
+  const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
+  return materialId === Material.Container || materialId === Material.Granary ? container : undefined;
 }
 
 export function containerCell(container: ContainerState): number {
@@ -39,4 +44,12 @@ export function canAccessContainer(person: PersonState, container: ContainerStat
 
 export function containerQuantity(container: ContainerState, materialId: number): number {
   return container.inventory.reduce((sum, stack) => sum + (stack.materialId === materialId ? stack.quantity : 0), 0);
+}
+
+export function containerUsedCapacity(container: ContainerState): number {
+  return container.inventory.reduce((sum, stack) => sum + stack.quantity, 0);
+}
+
+export function containerRemainingCapacity(container: ContainerState): number {
+  return Math.max(0, (container.capacity ?? CONTAINER_CAPACITY) - containerUsedCapacity(container));
 }

@@ -1,0 +1,5241 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-15T07:12:10.083Z",
+  "baseline": {
+    "path": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-bounded-search-campaign-v16-observer-v9.json",
+    "prefix": "candidate-bounded-search-campaign-v16",
+    "generatedAt": "2026-08-15T07:07:31.066Z",
+    "runCount": 3
+  },
+  "candidate": {
+    "path": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-cross-project-search-memory-v17.json",
+    "prefix": "candidate-cross-project-search-memory-v17",
+    "generatedAt": "2026-08-15T07:12:01.023Z",
+    "runCount": 3
+  },
+  "pairing": {
+    "keyFields": [
+      "seed",
+      "years",
+      "repeat"
+    ],
+    "matchedPairs": 3,
+    "matchedPairsByYears": {
+      "30": 3
+    },
+    "unmatchedBaseline": [],
+    "unmatchedCandidate": []
+  },
+  "configuration": {
+    "matched": true,
+    "differences": []
+  },
+  "civilizationIndexComparability": {
+    "status": "declared-same",
+    "baselineVersion": "causal-diversity-v3",
+    "candidateVersion": "causal-diversity-v3",
+    "engineAttributionAllowed": true,
+    "note": "Both artifacts declare the same civilization-index formula version."
+  },
+  "summariesByYears": [
+    {
+      "years": 30,
+      "pairCount": 3,
+      "engineMetrics": {
+        "finalPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 11,
+            "mean": 11.33,
+            "min": 9,
+            "max": 14
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 11.33,
+            "min": 9,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "births": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 10.67,
+            "min": 8,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 11.33,
+            "min": 9,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "reproductionOffers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 21,
+            "mean": 22.33,
+            "min": 14,
+            "max": 32
+          },
+          "candidate": {
+            "count": 3,
+            "median": 23,
+            "mean": 24.67,
+            "min": 19,
+            "max": 32
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 2.33,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 2.33,
+            "min": 0,
+            "max": 5
+          }
+        },
+        "reproductionAcceptances": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 19,
+            "mean": 19,
+            "min": 11,
+            "max": 27
+          },
+          "candidate": {
+            "count": 3,
+            "median": 21,
+            "mean": 22.33,
+            "min": 18,
+            "max": 28
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 3.33,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 3.33,
+            "min": 1,
+            "max": 7
+          }
+        },
+        "reproductionAttempts": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 126,
+            "mean": 110.67,
+            "min": 55,
+            "max": 151
+          },
+          "candidate": {
+            "count": 3,
+            "median": 129,
+            "mean": 124.33,
+            "min": 84,
+            "max": 160
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 9,
+            "meanOfPairedDifferences": 13.67,
+            "differenceOfMedians": 3,
+            "differenceOfMeans": 13.67,
+            "min": 3,
+            "max": 29
+          }
+        },
+        "reproductionConceptions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 11,
+            "min": 9,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 11.33,
+            "min": 9,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "deaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 6,
+            "min": 5,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 0.67,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "childDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 3.33,
+            "min": 2,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3.33,
+            "min": 2,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "relationshipProposalOffers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 22,
+            "mean": 23.67,
+            "min": 16,
+            "max": 33
+          },
+          "candidate": {
+            "count": 3,
+            "median": 23,
+            "mean": 25.33,
+            "min": 20,
+            "max": 33
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 1.67,
+            "min": 0,
+            "max": 4
+          }
+        },
+        "relationshipProposalUniqueBases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 22,
+            "mean": 23.67,
+            "min": 16,
+            "max": 33
+          },
+          "candidate": {
+            "count": 3,
+            "median": 23,
+            "mean": 25.33,
+            "min": 20,
+            "max": 33
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 1.67,
+            "min": 0,
+            "max": 4
+          }
+        },
+        "relationshipProposalRepeatedBases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "relationshipProposalOffersWithoutBasis": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "relationshipProposalRepeatedDirectedPairs": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6,
+            "mean": 6.33,
+            "min": 5,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "relationshipProposalMaxPerDirectedPair": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2.67,
+            "min": 2,
+            "max": 4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.67,
+            "min": 2,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 3
+          }
+        },
+        "childExposureDeaths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 3,
+            "min": 1,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 3,
+            "min": 2,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "lifeReviewDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 7,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.67,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "projectLifeReviewDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 7,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.67,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "lifeReviewPersonMonths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 7,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.67,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "lifeReviewSameMonthDuplicates": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "lifeReviewUniqueBases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 7,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.67,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "lifeReviewRepeatedBases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptedIntentChildren": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 10,
+            "min": 8,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 16,
+            "min": 8,
+            "max": 30
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": 6,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 6,
+            "min": -3,
+            "max": 22
+          }
+        },
+        "interruptLifeReviewChildren": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 7,
+            "max": 8
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.67,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0.33,
+            "min": -1,
+            "max": 2
+          }
+        },
+        "interruptRequiredResponseChildren": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1,
+            "mean": 2.67,
+            "min": 1,
+            "max": 6
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 4.33,
+            "min": 1,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 1.67,
+            "min": -3,
+            "max": 8
+          }
+        },
+        "interruptFulfillmentChildren": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 4,
+            "min": 0,
+            "max": 12
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 4,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 4,
+            "min": 0,
+            "max": 12
+          }
+        },
+        "interruptChildrenCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 10,
+            "min": 8,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 9,
+            "mean": 8.67,
+            "min": 8,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -1.33,
+            "min": -4,
+            "max": 1
+          }
+        },
+        "interruptChildrenBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptChildrenFailed": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptChildrenAbandoned": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 0.67,
+            "min": 0,
+            "max": 1
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interruptReturnsResumed": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 8,
+            "mean": 9.67,
+            "min": 8,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 8,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -1.67,
+            "min": -5,
+            "max": 1
+          }
+        },
+        "interruptReturnsParentCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 0.67,
+            "min": 0,
+            "max": 1
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interruptReturnsParentBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.33,
+            "min": 0,
+            "max": 1
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 0.67,
+            "min": 0,
+            "max": 1
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "interruptReturnsParentUnavailable": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptUnresolvedTerminalChildren": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptChildrenWithProjectId": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "orphanSuspendedProjectIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptReturnLatencyMeanMonths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0.44,
+            "mean": 0.57,
+            "min": 0.38,
+            "max": 0.88
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 1.33,
+            "min": 0.5,
+            "max": 2.5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0.12,
+            "meanOfPairedDifferences": 0.77,
+            "differenceOfMedians": 0.56,
+            "differenceOfMeans": 0.77,
+            "min": 0.06,
+            "max": 2.12
+          }
+        },
+        "interruptReturnLatencyMaxMonths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 4.33,
+            "min": 2,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 11,
+            "min": 4,
+            "max": 19
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 3,
+            "meanOfPairedDifferences": 6.67,
+            "differenceOfMedians": 6,
+            "differenceOfMeans": 6.67,
+            "min": 0,
+            "max": 17
+          }
+        },
+        "interruptResumedParentsWithSubsequentAction": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 8,
+            "mean": 9.67,
+            "min": 8,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 8,
+            "min": 7,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -1.67,
+            "min": -5,
+            "max": 1
+          }
+        },
+        "interruptResumedParentsWithoutSubsequentAction": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "interruptImmediateSameProjectReplacements": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "completedActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2668,
+            "mean": 2621.33,
+            "min": 2319,
+            "max": 2877
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2551,
+            "mean": 2524.67,
+            "min": 2165,
+            "max": 2858
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -117,
+            "meanOfPairedDifferences": -96.67,
+            "differenceOfMedians": -117,
+            "differenceOfMeans": -96.67,
+            "min": -154,
+            "max": -19
+          }
+        },
+        "actionPersonMonths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 995,
+            "mean": 985,
+            "min": 903,
+            "max": 1057
+          },
+          "candidate": {
+            "count": 3,
+            "median": 913,
+            "mean": 928.33,
+            "min": 824,
+            "max": 1048
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -79,
+            "meanOfPairedDifferences": -56.67,
+            "differenceOfMedians": -82,
+            "differenceOfMeans": -56.67,
+            "min": -82,
+            "max": -9
+          }
+        },
+        "projectActionPersonMonths": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 246,
+            "mean": 254.67,
+            "min": 246,
+            "max": 272
+          },
+          "candidate": {
+            "count": 3,
+            "median": 174,
+            "mean": 186,
+            "min": 151,
+            "max": 233
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -95,
+            "meanOfPairedDifferences": -68.67,
+            "differenceOfMedians": -72,
+            "differenceOfMeans": -68.67,
+            "min": -98,
+            "max": -13
+          }
+        },
+        "projectActionMonthShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 27.24,
+            "mean": 25.95,
+            "min": 23.27,
+            "max": 27.34
+          },
+          "candidate": {
+            "count": 3,
+            "median": 19.06,
+            "mean": 19.87,
+            "min": 18.33,
+            "max": 22.23
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -8.28,
+            "meanOfPairedDifferences": -6.08,
+            "differenceOfMedians": -8.18,
+            "differenceOfMeans": -6.08,
+            "min": -8.91,
+            "max": -1.04
+          }
+        },
+        "ruleDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 961,
+            "mean": 924.33,
+            "min": 804,
+            "max": 1008
+          },
+          "candidate": {
+            "count": 3,
+            "median": 958,
+            "mean": 992,
+            "min": 806,
+            "max": 1212
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 67.67,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": 67.67,
+            "min": -3,
+            "max": 204
+          }
+        },
+        "modelDecisions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "inputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "outputTokens": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "strategicShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 76.59,
+            "mean": 75.64,
+            "min": 68.85,
+            "max": 81.47
+          },
+          "candidate": {
+            "count": 3,
+            "median": 75.19,
+            "mean": 71.46,
+            "min": 62.38,
+            "max": 76.8
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -6.28,
+            "meanOfPairedDifferences": -4.18,
+            "differenceOfMedians": -1.4,
+            "differenceOfMeans": -4.18,
+            "min": -6.47,
+            "max": 0.21
+          }
+        },
+        "strategicIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 694,
+            "mean": 695,
+            "min": 655,
+            "max": 736
+          },
+          "candidate": {
+            "count": 3,
+            "median": 735,
+            "mean": 699,
+            "min": 606,
+            "max": 756
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": 4,
+            "differenceOfMedians": 41,
+            "differenceOfMeans": 4,
+            "min": -49,
+            "max": 62
+          }
+        },
+        "socialIntents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 225,
+            "mean": 229.33,
+            "min": 149,
+            "max": 314
+          },
+          "candidate": {
+            "count": 3,
+            "median": 222,
+            "mean": 292.67,
+            "min": 200,
+            "max": 456
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 51,
+            "meanOfPairedDifferences": 63.33,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": 63.33,
+            "min": -3,
+            "max": 142
+          }
+        },
+        "communications": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 174,
+            "mean": 161.33,
+            "min": 118,
+            "max": 192
+          },
+          "candidate": {
+            "count": 3,
+            "median": 174,
+            "mean": 176.33,
+            "min": 164,
+            "max": 191
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 15,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 15,
+            "min": -1,
+            "max": 46
+          }
+        },
+        "survivalReflexActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 1509,
+            "mean": 1768.33,
+            "min": 1505,
+            "max": 2291
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2073,
+            "mean": 1965,
+            "min": 1662,
+            "max": 2160
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 157,
+            "meanOfPairedDifferences": 196.67,
+            "differenceOfMedians": 564,
+            "differenceOfMeans": 196.67,
+            "min": -131,
+            "max": 564
+          }
+        },
+        "projectsStarted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 47,
+            "mean": 46.67,
+            "min": 46,
+            "max": 47
+          },
+          "candidate": {
+            "count": 3,
+            "median": 43,
+            "mean": 43,
+            "min": 39,
+            "max": 47
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3.67,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -3.67,
+            "min": -8,
+            "max": 0
+          }
+        },
+        "projectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 27,
+            "mean": 29,
+            "min": 26,
+            "max": 34
+          },
+          "candidate": {
+            "count": 3,
+            "median": 28,
+            "mean": 28.67,
+            "min": 24,
+            "max": 34
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": -0.33,
+            "min": -2,
+            "max": 1
+          }
+        },
+        "projectsBlocked": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 17,
+            "mean": 15.33,
+            "min": 10,
+            "max": 19
+          },
+          "candidate": {
+            "count": 3,
+            "median": 14,
+            "mean": 12.67,
+            "min": 8,
+            "max": 16
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -2.67,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": -2.67,
+            "min": -5,
+            "max": -1
+          }
+        },
+        "projectPressureBasisProjects": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 47,
+            "mean": 46.67,
+            "min": 46,
+            "max": 47
+          },
+          "candidate": {
+            "count": 3,
+            "median": 43,
+            "mean": 43,
+            "min": 39,
+            "max": 47
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3.67,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -3.67,
+            "min": -8,
+            "max": 0
+          }
+        },
+        "projectPressureBasisCoverage": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidate": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureHistoryEntries": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 188,
+            "mean": 169.33,
+            "min": 127,
+            "max": 193
+          },
+          "candidate": {
+            "count": 3,
+            "median": 171,
+            "mean": 161,
+            "min": 132,
+            "max": 180
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -13,
+            "meanOfPairedDifferences": -8.33,
+            "differenceOfMedians": -17,
+            "differenceOfMeans": -8.33,
+            "min": -17,
+            "max": 5
+          }
+        },
+        "projectsWithPressureUpdates": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 31,
+            "mean": 32.67,
+            "min": 28,
+            "max": 39
+          },
+          "candidate": {
+            "count": 3,
+            "median": 31,
+            "mean": 32.33,
+            "min": 29,
+            "max": 37
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -2,
+            "max": 1
+          }
+        },
+        "projectPressureUpdates": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 141,
+            "mean": 122.67,
+            "min": 80,
+            "max": 147
+          },
+          "candidate": {
+            "count": 3,
+            "median": 132,
+            "mean": 118,
+            "min": 85,
+            "max": 137
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -9,
+            "meanOfPairedDifferences": -4.67,
+            "differenceOfMedians": -9,
+            "differenceOfMeans": -4.67,
+            "min": -10,
+            "max": 5
+          }
+        },
+        "projectPressureIncreases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 33,
+            "mean": 31,
+            "min": 19,
+            "max": 41
+          },
+          "candidate": {
+            "count": 3,
+            "median": 29,
+            "mean": 28,
+            "min": 19,
+            "max": 36
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -4,
+            "meanOfPairedDifferences": -3,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -3,
+            "min": -5,
+            "max": 0
+          }
+        },
+        "projectPressureDecreases": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 51,
+            "mean": 57,
+            "min": 46,
+            "max": 74
+          },
+          "candidate": {
+            "count": 3,
+            "median": 50,
+            "mean": 56.33,
+            "min": 46,
+            "max": 73
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -0.67,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.67,
+            "min": -5,
+            "max": 4
+          }
+        },
+        "projectPressureUnchangedUpdates": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 32,
+            "mean": 34.67,
+            "min": 15,
+            "max": 57
+          },
+          "candidate": {
+            "count": 3,
+            "median": 28,
+            "mean": 33.67,
+            "min": 16,
+            "max": 57
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -1,
+            "min": -4,
+            "max": 1
+          }
+        },
+        "projectPressureDuplicateBasisEntries": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureUnresolvedSourceFacts": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "huntingPressureCrossOwnerSources": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "huntingPressureNonThreatAnimalSources": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureChangesWithoutEdgeChange": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureObserverMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureUpdatesThermalSafety": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 5,
+            "mean": 3.67,
+            "min": 1,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 5,
+            "mean": 5,
+            "min": 1,
+            "max": 9
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 1.33,
+            "min": 0,
+            "max": 4
+          }
+        },
+        "projectPressureUpdatesHuntingSafety": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 2,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 2,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureUpdatesCareCapability": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectPressureUpdatesFoodPreparation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 84,
+            "mean": 90,
+            "min": 60,
+            "max": 126
+          },
+          "candidate": {
+            "count": 3,
+            "median": 72,
+            "mean": 81,
+            "min": 65,
+            "max": 106
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -12,
+            "meanOfPairedDifferences": -9,
+            "differenceOfMedians": -12,
+            "differenceOfMeans": -9,
+            "min": -20,
+            "max": 5
+          }
+        },
+        "projectPressureUpdatesShelterCapacity": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 12,
+            "mean": 24.33,
+            "min": 10,
+            "max": 51
+          },
+          "candidate": {
+            "count": 3,
+            "median": 19,
+            "mean": 27.67,
+            "min": 12,
+            "max": 52
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 3.33,
+            "differenceOfMedians": 7,
+            "differenceOfMeans": 3.33,
+            "min": 0,
+            "max": 9
+          }
+        },
+        "projectPressureUpdatesKnowledgePreservation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 3,
+            "mean": 2.67,
+            "min": 1,
+            "max": 4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 2.33,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -0.33,
+            "min": -3,
+            "max": 2
+          }
+        },
+        "projectProgressEvidenceCount": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 3076,
+            "mean": 3194,
+            "min": 3075,
+            "max": 3431
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1948,
+            "mean": 2183.67,
+            "min": 1709,
+            "max": 2894
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1366,
+            "meanOfPairedDifferences": -1010.33,
+            "differenceOfMedians": -1128,
+            "differenceOfMeans": -1010.33,
+            "min": -1483,
+            "max": -182
+          }
+        },
+        "projectProgressProjects": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 47,
+            "mean": 46.67,
+            "min": 46,
+            "max": 47
+          },
+          "candidate": {
+            "count": 3,
+            "median": 43,
+            "mean": 43,
+            "min": 39,
+            "max": 47
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3.67,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -3.67,
+            "min": -8,
+            "max": 0
+          }
+        },
+        "projectLogisticsAdvanceProgress": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2834,
+            "mean": 2941.33,
+            "min": 2831,
+            "max": 3159
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1722,
+            "mean": 1955.67,
+            "min": 1508,
+            "max": 2637
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1323,
+            "meanOfPairedDifferences": -985.67,
+            "differenceOfMedians": -1112,
+            "differenceOfMeans": -985.67,
+            "min": -1437,
+            "max": -197
+          }
+        },
+        "projectMaterialContributionProgress": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 244,
+            "mean": 252.67,
+            "min": 242,
+            "max": 272
+          },
+          "candidate": {
+            "count": 3,
+            "median": 226,
+            "mean": 228,
+            "min": 201,
+            "max": 257
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -43,
+            "meanOfPairedDifferences": -24.67,
+            "differenceOfMedians": -18,
+            "differenceOfMeans": -24.67,
+            "min": -46,
+            "max": 15
+          }
+        },
+        "projectProgressDuplicateEvents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressUnresolvedEvents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressActorMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressEpisodeMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressIntentMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressNonAdvancingLogistics": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectProgressEventsAfterTermination": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectStagnationBlocksWithRecentProgress": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectTerminalMonthCoverage": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidate": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectsBlockedAfterLogisticsProgress": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 17,
+            "mean": 15,
+            "min": 10,
+            "max": 18
+          },
+          "candidate": {
+            "count": 3,
+            "median": 13,
+            "mean": 12.33,
+            "min": 8,
+            "max": 16
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -2.67,
+            "differenceOfMedians": -4,
+            "differenceOfMeans": -2.67,
+            "min": -5,
+            "max": -1
+          }
+        },
+        "projectSearchCampaigns": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 26,
+            "mean": 24.67,
+            "min": 20,
+            "max": 28
+          },
+          "candidate": {
+            "count": 3,
+            "median": 20,
+            "mean": 21.67,
+            "min": 17,
+            "max": 28
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -3,
+            "differenceOfMedians": -6,
+            "differenceOfMeans": -3,
+            "min": -6,
+            "max": 0
+          }
+        },
+        "projectsWithSearchCampaigns": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 26,
+            "mean": 23.67,
+            "min": 19,
+            "max": 26
+          },
+          "candidate": {
+            "count": 3,
+            "median": 20,
+            "mean": 21,
+            "min": 17,
+            "max": 26
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -2.67,
+            "differenceOfMedians": -6,
+            "differenceOfMeans": -2.67,
+            "min": -6,
+            "max": 0
+          }
+        },
+        "searchCampaignActive": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2,
+            "min": 1,
+            "max": 3
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1,
+            "mean": 1.33,
+            "min": 0,
+            "max": 3
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.67,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -0.67,
+            "min": -2,
+            "max": 0
+          }
+        },
+        "searchCampaignExhausted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 9.33,
+            "min": 8,
+            "max": 11
+          },
+          "candidate": {
+            "count": 3,
+            "median": 9,
+            "mean": 8,
+            "min": 4,
+            "max": 11
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -1.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -1.33,
+            "min": -5,
+            "max": 1
+          }
+        },
+        "searchCampaignSuperseded": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.67,
+            "min": 0,
+            "max": 2
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.67,
+            "min": 0,
+            "max": 2
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignClosed": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 12.67,
+            "min": 10,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 12,
+            "mean": 11.67,
+            "min": 9,
+            "max": 14
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -1,
+            "differenceOfMeans": -1,
+            "min": -4,
+            "max": 2
+          }
+        },
+        "searchCampaignAttemptedTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 421,
+            "mean": 440.33,
+            "min": 414,
+            "max": 486
+          },
+          "candidate": {
+            "count": 3,
+            "median": 243,
+            "mean": 272,
+            "min": 190,
+            "max": 383
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -231,
+            "meanOfPairedDifferences": -168.33,
+            "differenceOfMedians": -178,
+            "differenceOfMeans": -168.33,
+            "min": -243,
+            "max": -31
+          }
+        },
+        "searchCampaignMaxTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 72,
+            "mean": 72.33,
+            "min": 66,
+            "max": 79
+          },
+          "candidate": {
+            "count": 3,
+            "median": 65,
+            "mean": 66.33,
+            "min": 55,
+            "max": 79
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -7,
+            "meanOfPairedDifferences": -6,
+            "differenceOfMedians": -7,
+            "differenceOfMeans": -6,
+            "min": -11,
+            "max": 0
+          }
+        },
+        "searchCampaignEpisodeCoverage": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidate": {
+            "count": 3,
+            "median": 100,
+            "mean": 100,
+            "min": 100,
+            "max": 100
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchEpisodesMissingCampaign": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignRepeatedTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignDuplicateBasis": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignTargetOutsideArea": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignEpisodeTargetNotAttempted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignProjectMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignOwnerMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignActorMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignMaterialMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignUnresolvedSourceFacts": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "projectLogisticsEpisodes": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 568,
+            "mean": 594,
+            "min": 563,
+            "max": 651
+          },
+          "candidate": {
+            "count": 3,
+            "median": 370,
+            "mean": 404,
+            "min": 298,
+            "max": 544
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -270,
+            "meanOfPairedDifferences": -190,
+            "differenceOfMedians": -198,
+            "differenceOfMeans": -190,
+            "min": -281,
+            "max": -19
+          }
+        },
+        "projectLogisticsFulfilled": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 550,
+            "mean": 571.33,
+            "min": 539,
+            "max": 625
+          },
+          "candidate": {
+            "count": 3,
+            "median": 352,
+            "mean": 387,
+            "min": 285,
+            "max": 524
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -265,
+            "meanOfPairedDifferences": -184.33,
+            "differenceOfMedians": -198,
+            "differenceOfMeans": -184.33,
+            "min": -273,
+            "max": -15
+          }
+        },
+        "projectLogisticsExhausted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 14,
+            "mean": 14.67,
+            "min": 11,
+            "max": 19
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 10,
+            "min": 7,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -4,
+            "meanOfPairedDifferences": -4.67,
+            "differenceOfMedians": -6,
+            "differenceOfMeans": -4.67,
+            "min": -6,
+            "max": -4
+          }
+        },
+        "projectSearchEpisodes": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 421,
+            "mean": 440.33,
+            "min": 414,
+            "max": 486
+          },
+          "candidate": {
+            "count": 3,
+            "median": 243,
+            "mean": 272,
+            "min": 190,
+            "max": 383
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -231,
+            "meanOfPairedDifferences": -168.33,
+            "differenceOfMedians": -178,
+            "differenceOfMeans": -168.33,
+            "min": -243,
+            "max": -31
+          }
+        },
+        "projectDropEpisodes": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 149,
+            "mean": 153.67,
+            "min": 147,
+            "max": 165
+          },
+          "candidate": {
+            "count": 3,
+            "median": 127,
+            "mean": 132,
+            "min": 108,
+            "max": 161
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -38,
+            "meanOfPairedDifferences": -21.67,
+            "differenceOfMedians": -22,
+            "differenceOfMeans": -21.67,
+            "min": -39,
+            "max": 12
+          }
+        },
+        "projectLogisticsActionEvents": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2985,
+            "mean": 3086.67,
+            "min": 2977,
+            "max": 3298
+          },
+          "candidate": {
+            "count": 3,
+            "median": 1820,
+            "mean": 2079,
+            "min": 1625,
+            "max": 2792
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1360,
+            "meanOfPairedDifferences": -1007.67,
+            "differenceOfMedians": -1165,
+            "differenceOfMeans": -1007.67,
+            "min": -1478,
+            "max": -185
+          }
+        },
+        "jointProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 2,
+            "mean": 2.67,
+            "min": 1,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.33,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "productionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 20,
+            "mean": 19.67,
+            "min": 14,
+            "max": 25
+          },
+          "candidate": {
+            "count": 3,
+            "median": 17,
+            "mean": 18.67,
+            "min": 15,
+            "max": 24
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -3,
+            "differenceOfMeans": -1,
+            "min": -3,
+            "max": 1
+          }
+        },
+        "constructionProjectsCompleted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 9.33,
+            "min": 6,
+            "max": 13
+          },
+          "candidate": {
+            "count": 3,
+            "median": 10,
+            "mean": 10,
+            "min": 7,
+            "max": 13
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "totalStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 15,
+            "mean": 16.33,
+            "min": 13,
+            "max": 21
+          },
+          "candidate": {
+            "count": 3,
+            "median": 16,
+            "mean": 17.33,
+            "min": 15,
+            "max": 21
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 1,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 1,
+            "min": 0,
+            "max": 2
+          }
+        },
+        "completedStructures": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 7.33,
+            "min": 5,
+            "max": 10
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 8,
+            "min": 6,
+            "max": 10
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 1,
+            "meanOfPairedDifferences": 0.67,
+            "differenceOfMedians": 1,
+            "differenceOfMeans": 0.67,
+            "min": 0,
+            "max": 1
+          }
+        },
+        "constructionPlacements": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 26,
+            "mean": 27.67,
+            "min": 21,
+            "max": 36
+          },
+          "candidate": {
+            "count": 3,
+            "median": 28,
+            "mean": 29.33,
+            "min": 24,
+            "max": 36
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 1.67,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 1.67,
+            "min": 0,
+            "max": 3
+          }
+        },
+        "containersBuilt": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 9,
+            "mean": 8,
+            "min": 0,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 3,
+            "min": 0,
+            "max": 6
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -5,
+            "differenceOfMedians": -6,
+            "differenceOfMeans": -5,
+            "min": -12,
+            "max": 0
+          }
+        },
+        "standingContainers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 8,
+            "mean": 7.67,
+            "min": 0,
+            "max": 15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 3,
+            "mean": 2.67,
+            "min": 0,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -3,
+            "meanOfPairedDifferences": -5,
+            "differenceOfMedians": -5,
+            "differenceOfMeans": -5,
+            "min": -12,
+            "max": 0
+          }
+        },
+        "containerTransfers": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 96,
+            "mean": 66.67,
+            "min": 0,
+            "max": 104
+          },
+          "candidate": {
+            "count": 3,
+            "median": 103,
+            "mean": 87,
+            "min": 0,
+            "max": 158
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 7,
+            "meanOfPairedDifferences": 20.33,
+            "differenceOfMedians": 7,
+            "differenceOfMeans": 20.33,
+            "min": 0,
+            "max": 54
+          }
+        },
+        "storedUnits": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 45,
+            "mean": 45,
+            "min": 0,
+            "max": 90
+          },
+          "candidate": {
+            "count": 3,
+            "median": 64,
+            "mean": 46.33,
+            "min": 0,
+            "max": 75
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 1.33,
+            "differenceOfMedians": 19,
+            "differenceOfMeans": 1.33,
+            "min": -26,
+            "max": 30
+          }
+        },
+        "movementActions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 6323,
+            "mean": 6308.67,
+            "min": 5469,
+            "max": 7134
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4952,
+            "mean": 5586.67,
+            "min": 4949,
+            "max": 6859
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -520,
+            "meanOfPairedDifferences": -722,
+            "differenceOfMedians": -1371,
+            "differenceOfMeans": -722,
+            "min": -1371,
+            "max": -275
+          }
+        },
+        "movementActionShare": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 79.53,
+            "mean": 79.8,
+            "min": 78.8,
+            "max": 81.06
+          },
+          "candidate": {
+            "count": 3,
+            "median": 77.61,
+            "mean": 77.04,
+            "min": 73.17,
+            "max": 80.35
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1.92,
+            "meanOfPairedDifferences": -2.75,
+            "differenceOfMedians": -1.92,
+            "differenceOfMeans": -2.75,
+            "min": -5.63,
+            "max": -0.71
+          }
+        },
+        "spearsCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.33,
+            "min": 1,
+            "max": 11
+          },
+          "candidate": {
+            "count": 3,
+            "median": 11,
+            "mean": 12.67,
+            "min": 1,
+            "max": 26
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 4,
+            "meanOfPairedDifferences": 6.33,
+            "differenceOfMedians": 4,
+            "differenceOfMeans": 6.33,
+            "min": 0,
+            "max": 15
+          }
+        },
+        "leatherClothingCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0.33,
+            "min": 0,
+            "max": 1
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "herbalMedicineCrafted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "cookedFoodProduced": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 13.67,
+            "min": 9,
+            "max": 19
+          },
+          "candidate": {
+            "count": 3,
+            "median": 11,
+            "mean": 12.67,
+            "min": 10,
+            "max": 17
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -2,
+            "meanOfPairedDifferences": -1,
+            "differenceOfMedians": -2,
+            "differenceOfMeans": -1,
+            "min": -2,
+            "max": 1
+          }
+        },
+        "recordsCreated": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 4,
+            "min": 4,
+            "max": 4
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 4,
+            "min": 3,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": -1,
+            "max": 1
+          }
+        },
+        "functionalInstitutions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalsHunted": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.33,
+            "min": 1,
+            "max": 5
+          },
+          "candidate": {
+            "count": 3,
+            "median": 4,
+            "mean": 3.33,
+            "min": 1,
+            "max": 5
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "animalAttacks": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "wildlifePopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 9.33,
+            "min": 0,
+            "max": 28
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 9.33,
+            "min": 0,
+            "max": 28
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "predictionAccuracy": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 28.89,
+            "mean": 28.82,
+            "min": 25,
+            "max": 32.56
+          },
+          "candidate": {
+            "count": 3,
+            "median": 29.55,
+            "mean": 29.48,
+            "min": 26.32,
+            "max": 32.56
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0.66,
+            "meanOfPairedDifferences": 0.66,
+            "differenceOfMedians": 0.66,
+            "differenceOfMeans": 0.66,
+            "min": 0,
+            "max": 1.32
+          }
+        },
+        "dehydrationHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 48,
+            "mean": 56.33,
+            "min": 48,
+            "max": 73
+          },
+          "candidate": {
+            "count": 3,
+            "median": 53,
+            "mean": 59,
+            "min": 47,
+            "max": 77
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 4,
+            "meanOfPairedDifferences": 2.67,
+            "differenceOfMedians": 5,
+            "differenceOfMeans": 2.67,
+            "min": -1,
+            "max": 5
+          }
+        },
+        "assistedDependentHibernations": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 15,
+            "mean": 17.33,
+            "min": 11,
+            "max": 26
+          },
+          "candidate": {
+            "count": 3,
+            "median": 17,
+            "mean": 17.67,
+            "min": 7,
+            "max": 29
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 2,
+            "meanOfPairedDifferences": 0.33,
+            "differenceOfMedians": 2,
+            "differenceOfMeans": 0.33,
+            "min": -4,
+            "max": 3
+          }
+        },
+        "throughMonth": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 360,
+            "mean": 360,
+            "min": 360,
+            "max": 360
+          },
+          "candidate": {
+            "count": 3,
+            "median": 360,
+            "mean": 360,
+            "min": 360,
+            "max": 360
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "initialPopulation": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidate": {
+            "count": 3,
+            "median": 7,
+            "mean": 6.67,
+            "min": 6,
+            "max": 7
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "correctPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 13,
+            "mean": 11,
+            "min": 6,
+            "max": 14
+          },
+          "candidate": {
+            "count": 3,
+            "median": 13,
+            "mean": 10.67,
+            "min": 5,
+            "max": 14
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.33,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -0.33,
+            "min": -1,
+            "max": 0
+          }
+        },
+        "incorrectPredictions": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 29,
+            "mean": 26.33,
+            "min": 18,
+            "max": 32
+          },
+          "candidate": {
+            "count": 3,
+            "median": 29,
+            "mean": 24.67,
+            "min": 14,
+            "max": 31
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -1,
+            "meanOfPairedDifferences": -1.67,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": -1.67,
+            "min": -4,
+            "max": 0
+          }
+        },
+        "searchCampaignCrossProjectRepeatedTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 130,
+            "mean": 116.33,
+            "min": 35,
+            "max": 184
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -130,
+            "meanOfPairedDifferences": -116.33,
+            "differenceOfMedians": -130,
+            "differenceOfMeans": -116.33,
+            "min": -184,
+            "max": -35
+          }
+        },
+        "searchCampaignDuplicateInheritedTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignExhaustedOnOpen": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedActorMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedCampaigns": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 11,
+            "mean": 9.67,
+            "min": 3,
+            "max": 15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 11,
+            "meanOfPairedDifferences": 9.67,
+            "differenceOfMedians": 11,
+            "differenceOfMeans": 9.67,
+            "min": 3,
+            "max": 15
+          }
+        },
+        "searchCampaignInheritedMaterialMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedPlanMismatches": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedSameProjectSources": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedTargetMissingFromSource": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedTargetOutsideArea": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "searchCampaignInheritedTargets": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 168,
+            "mean": 148.67,
+            "min": 82,
+            "max": 196
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 168,
+            "meanOfPairedDifferences": 148.67,
+            "differenceOfMedians": 168,
+            "differenceOfMeans": 148.67,
+            "min": 82,
+            "max": 196
+          }
+        },
+        "searchCampaignsWithInheritedExperience": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 8,
+            "mean": 6.33,
+            "min": 3,
+            "max": 8
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 8,
+            "meanOfPairedDifferences": 6.33,
+            "differenceOfMedians": 8,
+            "differenceOfMeans": 6.33,
+            "min": 3,
+            "max": 8
+          }
+        },
+        "searchCampaignUnresolvedInheritedCampaigns": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidate": {
+            "count": 3,
+            "median": 0,
+            "mean": 0,
+            "min": 0,
+            "max": 0
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0,
+            "differenceOfMedians": 0,
+            "differenceOfMeans": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "observerMetrics": {
+        "civilizationComponents.history": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 86.05,
+            "mean": 85.8,
+            "min": 83.8,
+            "max": 87.55
+          },
+          "candidate": {
+            "count": 3,
+            "median": 84.38,
+            "mean": 85,
+            "min": 83.43,
+            "max": 87.19
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -0.37,
+            "meanOfPairedDifferences": -0.8,
+            "differenceOfMedians": -1.67,
+            "differenceOfMeans": -0.8,
+            "min": -1.67,
+            "max": -0.36
+          }
+        },
+        "civilizationComponents.population": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 32.49,
+            "mean": 33.11,
+            "min": 27.49,
+            "max": 39.35
+          },
+          "candidate": {
+            "count": 3,
+            "median": 30.03,
+            "mean": 33,
+            "min": 27.49,
+            "max": 41.47
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": -0.11,
+            "differenceOfMedians": -2.46,
+            "differenceOfMeans": -0.11,
+            "min": -2.46,
+            "max": 2.12
+          }
+        },
+        "civilizationComponents.social": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 41.52,
+            "mean": 44.42,
+            "min": 32.59,
+            "max": 59.15
+          },
+          "candidate": {
+            "count": 3,
+            "median": 47.69,
+            "mean": 45.34,
+            "min": 29.17,
+            "max": 59.15
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0,
+            "meanOfPairedDifferences": 0.92,
+            "differenceOfMedians": 6.17,
+            "differenceOfMeans": 0.92,
+            "min": -3.42,
+            "max": 6.17
+          }
+        },
+        "civilizationComponents.technology": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 78.1,
+            "mean": 75.78,
+            "min": 70.6,
+            "max": 78.64
+          },
+          "candidate": {
+            "count": 3,
+            "median": 75.11,
+            "mean": 74.87,
+            "min": 70.75,
+            "max": 78.75
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": 0.11,
+            "meanOfPairedDifferences": -0.91,
+            "differenceOfMedians": -2.99,
+            "differenceOfMeans": -0.91,
+            "min": -2.99,
+            "max": 0.15
+          }
+        },
+        "civilizationComponents.territory": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 58.99,
+            "mean": 60.73,
+            "min": 58.84,
+            "max": 64.37
+          },
+          "candidate": {
+            "count": 3,
+            "median": 54.98,
+            "mean": 58.29,
+            "min": 54.22,
+            "max": 65.68
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -4.01,
+            "meanOfPairedDifferences": -2.44,
+            "differenceOfMedians": -4.01,
+            "differenceOfMeans": -2.44,
+            "min": -4.62,
+            "max": 1.31
+          }
+        },
+        "civilizationIndex": {
+          "comparablePairs": 3,
+          "baseline": {
+            "count": 3,
+            "median": 56.93,
+            "mean": 57.4,
+            "min": 53.71,
+            "max": 61.56
+          },
+          "candidate": {
+            "count": 3,
+            "median": 56.27,
+            "mean": 56.81,
+            "min": 51.91,
+            "max": 62.25
+          },
+          "candidateMinusBaseline": {
+            "medianOfPairedDifferences": -0.66,
+            "meanOfPairedDifferences": -0.59,
+            "differenceOfMedians": -0.66,
+            "differenceOfMeans": -0.59,
+            "min": -1.8,
+            "max": 0.69
+          }
+        }
+      },
+      "milestoneOccurrence": {
+        "capability:1:emergence:birth:1": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:2:emergence:conception:2": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:3:practice:dependent-care:3": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:4:emergence:kinship:4": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:8:emergence:aging:8": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:9:collapse:death:9": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:11:emergence:gather-food:10": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:12:practice:hunt:11": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:13:practice:gift:12": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:14:practice:migration:13": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:15:response:disaster-response:14": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:16:emergence:tool-craft:15": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:17:emergence:fire-making:16": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:18:practice:cooking:17": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:19:practice:clothing:18": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:20:emergence:shelter:19": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:21:emergence:communication:20": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:23:practice:teaching:22": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:24:stable:shared-record:23": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:29:emergence:collective:24": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:32:practice:cultivation:25": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 2,
+          "baselineRate": 100,
+          "candidateRate": 66.67,
+          "percentagePointDifference": -33.33
+        },
+        "capability:33:stable:settlement:26": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 1,
+          "baselineRate": 66.67,
+          "candidateRate": 33.33,
+          "percentagePointDifference": -33.33
+        },
+        "capability:34:practice:storage:27": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:35:practice:water-assistance:28": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:36:harm:famine:29": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 1,
+          "baselineRate": 66.67,
+          "candidateRate": 33.33,
+          "percentagePointDifference": -33.33
+        },
+        "capability:42:stable:road:31": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:48:emergence:agreement:33": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:58:practice:observation:35": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:59:practice:experiment:36": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:121:emergence:food-identification:42": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:122:practice:water-assistance:43": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:126:practice:cooking:44": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:131:response:dependent-care:45": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:134:practice:teaching:47": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:141:practice:settlement:48": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 1,
+          "baselineRate": 66.67,
+          "candidateRate": 33.33,
+          "percentagePointDifference": -33.33
+        },
+        "capability:148:stable:fire-practice:49": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:150:stable:shared-storage:51": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:162:decline:relationship-rejection:53": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 1,
+          "baselineRate": 66.67,
+          "candidateRate": 33.33,
+          "percentagePointDifference": -33.33
+        },
+        "capability:165:emergence:kinship:54": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:168:stable:dependent-care:55": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:169:response:dependent-protection:56": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:201:practice:direct-communication:59": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:222:practice:experiment:60": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:239:stable:cross-generation-teaching:61": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:248:stable:physical-record:62": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:321:practice:tool-craft:63": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:322:practice:forest-harvest:64": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:324:practice:rope-craft:65": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:325:practice:container-practice:66": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:335:practice:craft-teaching:67": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:337:response:experiment:68": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:341:practice:cultivation:69": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 2,
+          "baselineRate": 100,
+          "candidateRate": 66.67,
+          "percentagePointDifference": -33.33
+        },
+        "capability:354:practice:forest-harvest:70": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:384:practice:project-logistics:71": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:390:practice:storage:72": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 2,
+          "baselineRate": 66.67,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 0
+        },
+        "capability:392:stable:project-logistics:73": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:400:recovery:project-recovery:74": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:401:emergence:project:75": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:405:stable:joint-project:76": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:420:response:knowledge-preservation:77": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:462:practice:gift:81": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:604:practice:conception:92": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:705:response:disaster-response:95": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:736:stable:road:96": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:802:emergence:prediction:97": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:805:stable:correct-prediction:98": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:808:stable:era-cycle:99": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:824:practice:tool-hunt:100": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:841:practice:weather:101": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:881:emergence:inquiry-project:102": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        },
+        "capability:903:harm:breach:103": {
+          "baselineOccurrences": 2,
+          "candidateOccurrences": 1,
+          "baselineRate": 66.67,
+          "candidateRate": 33.33,
+          "percentagePointDifference": -33.33
+        },
+        "capability:949:collapse:technique-loss:106": {
+          "baselineOccurrences": 1,
+          "candidateOccurrences": 2,
+          "baselineRate": 33.33,
+          "candidateRate": 66.67,
+          "percentagePointDifference": 33.33
+        },
+        "capability:956:recovery:project-recovery:107": {
+          "baselineOccurrences": 3,
+          "candidateOccurrences": 3,
+          "baselineRate": 100,
+          "candidateRate": 100,
+          "percentagePointDifference": 0
+        }
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "seed": 185,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-bounded-search-campaign-v16-s185-y30-r1",
+      "candidateRunId": "candidate-cross-project-search-memory-v17-s185-y30-r1",
+      "differences": {
+        "finalPopulation": 0,
+        "births": 2,
+        "reproductionOffers": 5,
+        "reproductionAcceptances": 7,
+        "reproductionAttempts": 29,
+        "reproductionConceptions": 1,
+        "deaths": 2,
+        "childDeaths": 1,
+        "relationshipProposalOffers": 4,
+        "relationshipProposalUniqueBases": 4,
+        "relationshipProposalRepeatedBases": 0,
+        "relationshipProposalOffersWithoutBasis": 0,
+        "relationshipProposalRepeatedDirectedPairs": 1,
+        "relationshipProposalMaxPerDirectedPair": 3,
+        "childExposureDeaths": 1,
+        "lifeReviewDecisions": 0,
+        "projectLifeReviewDecisions": 0,
+        "lifeReviewPersonMonths": 0,
+        "lifeReviewSameMonthDuplicates": 0,
+        "lifeReviewUniqueBases": 0,
+        "lifeReviewRepeatedBases": 0,
+        "interruptedIntentChildren": -3,
+        "interruptLifeReviewChildren": 0,
+        "interruptRequiredResponseChildren": -3,
+        "interruptFulfillmentChildren": 0,
+        "interruptChildrenCompleted": -4,
+        "interruptChildrenBlocked": 0,
+        "interruptChildrenFailed": 0,
+        "interruptChildrenAbandoned": 1,
+        "interruptReturnsResumed": -5,
+        "interruptReturnsParentCompleted": 1,
+        "interruptReturnsParentBlocked": 1,
+        "interruptReturnsParentUnavailable": 0,
+        "interruptUnresolvedTerminalChildren": 0,
+        "interruptChildrenWithProjectId": 0,
+        "orphanSuspendedProjectIntents": 0,
+        "interruptReturnLatencyMeanMonths": 2.12,
+        "interruptReturnLatencyMaxMonths": 17,
+        "interruptResumedParentsWithSubsequentAction": -5,
+        "interruptResumedParentsWithoutSubsequentAction": 0,
+        "interruptImmediateSameProjectReplacements": 0,
+        "completedActions": -154,
+        "actionPersonMonths": -79,
+        "projectActionPersonMonths": -95,
+        "projectActionMonthShare": -8.91,
+        "ruleDecisions": 2,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -6.28,
+        "strategicIntents": -49,
+        "socialIntents": 51,
+        "communications": 46,
+        "survivalReflexActions": 564,
+        "projectsStarted": -8,
+        "projectsCompleted": -2,
+        "projectsBlocked": -5,
+        "projectPressureBasisProjects": -8,
+        "projectPressureBasisCoverage": 0,
+        "projectPressureHistoryEntries": -17,
+        "projectsWithPressureUpdates": 0,
+        "projectPressureUpdates": -9,
+        "projectPressureIncreases": -4,
+        "projectPressureDecreases": -5,
+        "projectPressureUnchangedUpdates": 0,
+        "projectPressureDuplicateBasisEntries": 0,
+        "projectPressureUnresolvedSourceFacts": 0,
+        "huntingPressureCrossOwnerSources": 0,
+        "huntingPressureNonThreatAnimalSources": 0,
+        "projectPressureChangesWithoutEdgeChange": 0,
+        "projectPressureObserverMismatches": 0,
+        "projectPressureUpdatesThermalSafety": 0,
+        "projectPressureUpdatesHuntingSafety": 0,
+        "projectPressureUpdatesCareCapability": 0,
+        "projectPressureUpdatesFoodPreparation": -12,
+        "projectPressureUpdatesShelterCapacity": 1,
+        "projectPressureUpdatesKnowledgePreservation": 2,
+        "projectProgressEvidenceCount": -1366,
+        "projectProgressProjects": -8,
+        "projectLogisticsAdvanceProgress": -1323,
+        "projectMaterialContributionProgress": -43,
+        "projectProgressDuplicateEvents": 0,
+        "projectProgressUnresolvedEvents": 0,
+        "projectProgressActorMismatches": 0,
+        "projectProgressEpisodeMismatches": 0,
+        "projectProgressIntentMismatches": 0,
+        "projectProgressNonAdvancingLogistics": 0,
+        "projectProgressEventsAfterTermination": 0,
+        "projectStagnationBlocksWithRecentProgress": 0,
+        "projectTerminalMonthCoverage": 0,
+        "projectsBlockedAfterLogisticsProgress": -5,
+        "projectSearchCampaigns": -6,
+        "projectsWithSearchCampaigns": -6,
+        "searchCampaignActive": -2,
+        "searchCampaignExhausted": 0,
+        "searchCampaignSuperseded": 0,
+        "searchCampaignClosed": -4,
+        "searchCampaignAttemptedTargets": -243,
+        "searchCampaignMaxTargets": -7,
+        "searchCampaignEpisodeCoverage": 0,
+        "searchEpisodesMissingCampaign": 0,
+        "searchCampaignRepeatedTargets": 0,
+        "searchCampaignDuplicateBasis": 0,
+        "searchCampaignTargetOutsideArea": 0,
+        "searchCampaignEpisodeTargetNotAttempted": 0,
+        "searchCampaignProjectMismatches": 0,
+        "searchCampaignOwnerMismatches": 0,
+        "searchCampaignActorMismatches": 0,
+        "searchCampaignMaterialMismatches": 0,
+        "searchCampaignUnresolvedSourceFacts": 0,
+        "projectLogisticsEpisodes": -281,
+        "projectLogisticsFulfilled": -273,
+        "projectLogisticsExhausted": -6,
+        "projectSearchEpisodes": -243,
+        "projectDropEpisodes": -38,
+        "projectLogisticsActionEvents": -1360,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": -3,
+        "constructionProjectsCompleted": 1,
+        "totalStructures": 2,
+        "completedStructures": 1,
+        "constructionPlacements": 3,
+        "containersBuilt": -3,
+        "standingContainers": -3,
+        "containerTransfers": 54,
+        "storedUnits": 30,
+        "movementActions": -520,
+        "movementActionShare": -1.92,
+        "spearsCrafted": 4,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": -2,
+        "recordsCreated": -1,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 1.32,
+        "dehydrationHibernations": -1,
+        "assistedDependentHibernations": -4,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": -1,
+        "incorrectPredictions": -4,
+        "searchCampaignCrossProjectRepeatedTargets": -184,
+        "searchCampaignDuplicateInheritedTargets": 0,
+        "searchCampaignExhaustedOnOpen": 0,
+        "searchCampaignInheritedActorMismatches": 0,
+        "searchCampaignInheritedCampaigns": 15,
+        "searchCampaignInheritedMaterialMismatches": 0,
+        "searchCampaignInheritedPlanMismatches": 0,
+        "searchCampaignInheritedSameProjectSources": 0,
+        "searchCampaignInheritedTargetMissingFromSource": 0,
+        "searchCampaignInheritedTargetOutsideArea": 0,
+        "searchCampaignInheritedTargets": 196,
+        "searchCampaignsWithInheritedExperience": 8,
+        "searchCampaignUnresolvedInheritedCampaigns": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": -1.67,
+        "civilizationComponents.population": 0,
+        "civilizationComponents.social": -3.42,
+        "civilizationComponents.technology": 0.11,
+        "civilizationComponents.territory": -4.01,
+        "civilizationIndex": -1.8
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [
+          "capability:949:collapse:technique-loss:106"
+        ],
+        "removed": [
+          "capability:141:practice:settlement:48",
+          "capability:162:decline:relationship-rejection:53",
+          "capability:32:practice:cultivation:25",
+          "capability:33:stable:settlement:26",
+          "capability:341:practice:cultivation:69"
+        ]
+      }
+    },
+    {
+      "seed": 20260815,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-bounded-search-campaign-v16-s20260815-y30-r1",
+      "candidateRunId": "candidate-cross-project-search-memory-v17-s20260815-y30-r1",
+      "differences": {
+        "finalPopulation": -1,
+        "births": 0,
+        "reproductionOffers": 2,
+        "reproductionAcceptances": 2,
+        "reproductionAttempts": 9,
+        "reproductionConceptions": 0,
+        "deaths": 1,
+        "childDeaths": 0,
+        "relationshipProposalOffers": 1,
+        "relationshipProposalUniqueBases": 1,
+        "relationshipProposalRepeatedBases": 0,
+        "relationshipProposalOffersWithoutBasis": 0,
+        "relationshipProposalRepeatedDirectedPairs": 1,
+        "relationshipProposalMaxPerDirectedPair": 0,
+        "childExposureDeaths": 0,
+        "lifeReviewDecisions": 2,
+        "projectLifeReviewDecisions": 2,
+        "lifeReviewPersonMonths": 2,
+        "lifeReviewSameMonthDuplicates": 0,
+        "lifeReviewUniqueBases": 2,
+        "lifeReviewRepeatedBases": 0,
+        "interruptedIntentChildren": 22,
+        "interruptLifeReviewChildren": 2,
+        "interruptRequiredResponseChildren": 8,
+        "interruptFulfillmentChildren": 12,
+        "interruptChildrenCompleted": 1,
+        "interruptChildrenBlocked": 0,
+        "interruptChildrenFailed": 0,
+        "interruptChildrenAbandoned": 1,
+        "interruptReturnsResumed": 1,
+        "interruptReturnsParentCompleted": 1,
+        "interruptReturnsParentBlocked": 0,
+        "interruptReturnsParentUnavailable": 0,
+        "interruptUnresolvedTerminalChildren": 0,
+        "interruptChildrenWithProjectId": 0,
+        "orphanSuspendedProjectIntents": 0,
+        "interruptReturnLatencyMeanMonths": 0.12,
+        "interruptReturnLatencyMaxMonths": 3,
+        "interruptResumedParentsWithSubsequentAction": 1,
+        "interruptResumedParentsWithoutSubsequentAction": 0,
+        "interruptImmediateSameProjectReplacements": 0,
+        "completedActions": -117,
+        "actionPersonMonths": -82,
+        "projectActionPersonMonths": -98,
+        "projectActionMonthShare": -8.28,
+        "ruleDecisions": 204,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": -6.47,
+        "strategicIntents": 62,
+        "socialIntents": 142,
+        "communications": 0,
+        "survivalReflexActions": 157,
+        "projectsStarted": -3,
+        "projectsCompleted": 0,
+        "projectsBlocked": -2,
+        "projectPressureBasisProjects": -3,
+        "projectPressureBasisCoverage": 0,
+        "projectPressureHistoryEntries": -13,
+        "projectsWithPressureUpdates": -2,
+        "projectPressureUpdates": -10,
+        "projectPressureIncreases": -5,
+        "projectPressureDecreases": -1,
+        "projectPressureUnchangedUpdates": -4,
+        "projectPressureDuplicateBasisEntries": 0,
+        "projectPressureUnresolvedSourceFacts": 0,
+        "huntingPressureCrossOwnerSources": 0,
+        "huntingPressureNonThreatAnimalSources": 0,
+        "projectPressureChangesWithoutEdgeChange": 0,
+        "projectPressureObserverMismatches": 0,
+        "projectPressureUpdatesThermalSafety": 4,
+        "projectPressureUpdatesHuntingSafety": 0,
+        "projectPressureUpdatesCareCapability": 0,
+        "projectPressureUpdatesFoodPreparation": -20,
+        "projectPressureUpdatesShelterCapacity": 9,
+        "projectPressureUpdatesKnowledgePreservation": -3,
+        "projectProgressEvidenceCount": -1483,
+        "projectProgressProjects": -3,
+        "projectLogisticsAdvanceProgress": -1437,
+        "projectMaterialContributionProgress": -46,
+        "projectProgressDuplicateEvents": 0,
+        "projectProgressUnresolvedEvents": 0,
+        "projectProgressActorMismatches": 0,
+        "projectProgressEpisodeMismatches": 0,
+        "projectProgressIntentMismatches": 0,
+        "projectProgressNonAdvancingLogistics": 0,
+        "projectProgressEventsAfterTermination": 0,
+        "projectStagnationBlocksWithRecentProgress": 0,
+        "projectTerminalMonthCoverage": 0,
+        "projectsBlockedAfterLogisticsProgress": -2,
+        "projectSearchCampaigns": -3,
+        "projectsWithSearchCampaigns": -2,
+        "searchCampaignActive": 0,
+        "searchCampaignExhausted": -5,
+        "searchCampaignSuperseded": 0,
+        "searchCampaignClosed": 2,
+        "searchCampaignAttemptedTargets": -231,
+        "searchCampaignMaxTargets": -11,
+        "searchCampaignEpisodeCoverage": 0,
+        "searchEpisodesMissingCampaign": 0,
+        "searchCampaignRepeatedTargets": 0,
+        "searchCampaignDuplicateBasis": 0,
+        "searchCampaignTargetOutsideArea": 0,
+        "searchCampaignEpisodeTargetNotAttempted": 0,
+        "searchCampaignProjectMismatches": 0,
+        "searchCampaignOwnerMismatches": 0,
+        "searchCampaignActorMismatches": 0,
+        "searchCampaignMaterialMismatches": 0,
+        "searchCampaignUnresolvedSourceFacts": 0,
+        "projectLogisticsEpisodes": -270,
+        "projectLogisticsFulfilled": -265,
+        "projectLogisticsExhausted": -4,
+        "projectSearchEpisodes": -231,
+        "projectDropEpisodes": -39,
+        "projectLogisticsActionEvents": -1478,
+        "jointProjectsCompleted": 1,
+        "productionProjectsCompleted": -1,
+        "constructionProjectsCompleted": 1,
+        "totalStructures": 1,
+        "completedStructures": 1,
+        "constructionPlacements": 2,
+        "containersBuilt": -12,
+        "standingContainers": -12,
+        "containerTransfers": 7,
+        "storedUnits": -26,
+        "movementActions": -1371,
+        "movementActionShare": -5.63,
+        "spearsCrafted": 15,
+        "leatherClothingCrafted": -1,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": -2,
+        "recordsCreated": 1,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 0,
+        "dehydrationHibernations": 5,
+        "assistedDependentHibernations": 2,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 0,
+        "incorrectPredictions": 0,
+        "searchCampaignCrossProjectRepeatedTargets": -130,
+        "searchCampaignDuplicateInheritedTargets": 0,
+        "searchCampaignExhaustedOnOpen": 0,
+        "searchCampaignInheritedActorMismatches": 0,
+        "searchCampaignInheritedCampaigns": 3,
+        "searchCampaignInheritedMaterialMismatches": 0,
+        "searchCampaignInheritedPlanMismatches": 0,
+        "searchCampaignInheritedSameProjectSources": 0,
+        "searchCampaignInheritedTargetMissingFromSource": 0,
+        "searchCampaignInheritedTargetOutsideArea": 0,
+        "searchCampaignInheritedTargets": 82,
+        "searchCampaignsWithInheritedExperience": 3,
+        "searchCampaignUnresolvedInheritedCampaigns": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": -0.36,
+        "civilizationComponents.population": -2.46,
+        "civilizationComponents.social": 6.17,
+        "civilizationComponents.technology": -2.99,
+        "civilizationComponents.territory": -4.62,
+        "civilizationIndex": -0.66
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": [
+          "capability:903:harm:breach:103"
+        ]
+      }
+    },
+    {
+      "seed": 20260816,
+      "years": 30,
+      "repeat": 1,
+      "baselineRunId": "candidate-bounded-search-campaign-v16-s20260816-y30-r1",
+      "candidateRunId": "candidate-cross-project-search-memory-v17-s20260816-y30-r1",
+      "differences": {
+        "finalPopulation": 1,
+        "births": 0,
+        "reproductionOffers": 0,
+        "reproductionAcceptances": 1,
+        "reproductionAttempts": 3,
+        "reproductionConceptions": 0,
+        "deaths": -1,
+        "childDeaths": -1,
+        "relationshipProposalOffers": 0,
+        "relationshipProposalUniqueBases": 0,
+        "relationshipProposalRepeatedBases": 0,
+        "relationshipProposalOffersWithoutBasis": 0,
+        "relationshipProposalRepeatedDirectedPairs": -1,
+        "relationshipProposalMaxPerDirectedPair": 0,
+        "childExposureDeaths": -1,
+        "lifeReviewDecisions": -1,
+        "projectLifeReviewDecisions": -1,
+        "lifeReviewPersonMonths": -1,
+        "lifeReviewSameMonthDuplicates": 0,
+        "lifeReviewUniqueBases": -1,
+        "lifeReviewRepeatedBases": 0,
+        "interruptedIntentChildren": -1,
+        "interruptLifeReviewChildren": -1,
+        "interruptRequiredResponseChildren": 0,
+        "interruptFulfillmentChildren": 0,
+        "interruptChildrenCompleted": -1,
+        "interruptChildrenBlocked": 0,
+        "interruptChildrenFailed": 0,
+        "interruptChildrenAbandoned": 0,
+        "interruptReturnsResumed": -1,
+        "interruptReturnsParentCompleted": 0,
+        "interruptReturnsParentBlocked": 0,
+        "interruptReturnsParentUnavailable": 0,
+        "interruptUnresolvedTerminalChildren": 0,
+        "interruptChildrenWithProjectId": 0,
+        "orphanSuspendedProjectIntents": 0,
+        "interruptReturnLatencyMeanMonths": 0.06,
+        "interruptReturnLatencyMaxMonths": 0,
+        "interruptResumedParentsWithSubsequentAction": -1,
+        "interruptResumedParentsWithoutSubsequentAction": 0,
+        "interruptImmediateSameProjectReplacements": 0,
+        "completedActions": -19,
+        "actionPersonMonths": -9,
+        "projectActionPersonMonths": -13,
+        "projectActionMonthShare": -1.04,
+        "ruleDecisions": -3,
+        "modelDecisions": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "strategicShare": 0.21,
+        "strategicIntents": -1,
+        "socialIntents": -3,
+        "communications": -1,
+        "survivalReflexActions": -131,
+        "projectsStarted": 0,
+        "projectsCompleted": 1,
+        "projectsBlocked": -1,
+        "projectPressureBasisProjects": 0,
+        "projectPressureBasisCoverage": 0,
+        "projectPressureHistoryEntries": 5,
+        "projectsWithPressureUpdates": 1,
+        "projectPressureUpdates": 5,
+        "projectPressureIncreases": 0,
+        "projectPressureDecreases": 4,
+        "projectPressureUnchangedUpdates": 1,
+        "projectPressureDuplicateBasisEntries": 0,
+        "projectPressureUnresolvedSourceFacts": 0,
+        "huntingPressureCrossOwnerSources": 0,
+        "huntingPressureNonThreatAnimalSources": 0,
+        "projectPressureChangesWithoutEdgeChange": 0,
+        "projectPressureObserverMismatches": 0,
+        "projectPressureUpdatesThermalSafety": 0,
+        "projectPressureUpdatesHuntingSafety": 0,
+        "projectPressureUpdatesCareCapability": 0,
+        "projectPressureUpdatesFoodPreparation": 5,
+        "projectPressureUpdatesShelterCapacity": 0,
+        "projectPressureUpdatesKnowledgePreservation": 0,
+        "projectProgressEvidenceCount": -182,
+        "projectProgressProjects": 0,
+        "projectLogisticsAdvanceProgress": -197,
+        "projectMaterialContributionProgress": 15,
+        "projectProgressDuplicateEvents": 0,
+        "projectProgressUnresolvedEvents": 0,
+        "projectProgressActorMismatches": 0,
+        "projectProgressEpisodeMismatches": 0,
+        "projectProgressIntentMismatches": 0,
+        "projectProgressNonAdvancingLogistics": 0,
+        "projectProgressEventsAfterTermination": 0,
+        "projectStagnationBlocksWithRecentProgress": 0,
+        "projectTerminalMonthCoverage": 0,
+        "projectsBlockedAfterLogisticsProgress": -1,
+        "projectSearchCampaigns": 0,
+        "projectsWithSearchCampaigns": 0,
+        "searchCampaignActive": 0,
+        "searchCampaignExhausted": 1,
+        "searchCampaignSuperseded": 0,
+        "searchCampaignClosed": -1,
+        "searchCampaignAttemptedTargets": -31,
+        "searchCampaignMaxTargets": 0,
+        "searchCampaignEpisodeCoverage": 0,
+        "searchEpisodesMissingCampaign": 0,
+        "searchCampaignRepeatedTargets": 0,
+        "searchCampaignDuplicateBasis": 0,
+        "searchCampaignTargetOutsideArea": 0,
+        "searchCampaignEpisodeTargetNotAttempted": 0,
+        "searchCampaignProjectMismatches": 0,
+        "searchCampaignOwnerMismatches": 0,
+        "searchCampaignActorMismatches": 0,
+        "searchCampaignMaterialMismatches": 0,
+        "searchCampaignUnresolvedSourceFacts": 0,
+        "projectLogisticsEpisodes": -19,
+        "projectLogisticsFulfilled": -15,
+        "projectLogisticsExhausted": -4,
+        "projectSearchEpisodes": -31,
+        "projectDropEpisodes": 12,
+        "projectLogisticsActionEvents": -185,
+        "jointProjectsCompleted": 0,
+        "productionProjectsCompleted": 1,
+        "constructionProjectsCompleted": 0,
+        "totalStructures": 0,
+        "completedStructures": 0,
+        "constructionPlacements": 0,
+        "containersBuilt": 0,
+        "standingContainers": 0,
+        "containerTransfers": 0,
+        "storedUnits": 0,
+        "movementActions": -275,
+        "movementActionShare": -0.71,
+        "spearsCrafted": 0,
+        "leatherClothingCrafted": 0,
+        "herbalMedicineCrafted": 0,
+        "cookedFoodProduced": 1,
+        "recordsCreated": 0,
+        "functionalInstitutions": 0,
+        "animalsHunted": 0,
+        "animalAttacks": 0,
+        "wildlifePopulation": 0,
+        "predictionAccuracy": 0.66,
+        "dehydrationHibernations": 4,
+        "assistedDependentHibernations": 3,
+        "throughMonth": 0,
+        "initialPopulation": 0,
+        "correctPredictions": 0,
+        "incorrectPredictions": -1,
+        "searchCampaignCrossProjectRepeatedTargets": -35,
+        "searchCampaignDuplicateInheritedTargets": 0,
+        "searchCampaignExhaustedOnOpen": 0,
+        "searchCampaignInheritedActorMismatches": 0,
+        "searchCampaignInheritedCampaigns": 11,
+        "searchCampaignInheritedMaterialMismatches": 0,
+        "searchCampaignInheritedPlanMismatches": 0,
+        "searchCampaignInheritedSameProjectSources": 0,
+        "searchCampaignInheritedTargetMissingFromSource": 0,
+        "searchCampaignInheritedTargetOutsideArea": 0,
+        "searchCampaignInheritedTargets": 168,
+        "searchCampaignsWithInheritedExperience": 8,
+        "searchCampaignUnresolvedInheritedCampaigns": 0
+      },
+      "observerMetricDifferences": {
+        "civilizationComponents.history": -0.37,
+        "civilizationComponents.population": 2.12,
+        "civilizationComponents.social": 0,
+        "civilizationComponents.technology": 0.15,
+        "civilizationComponents.territory": 1.31,
+        "civilizationIndex": 0.69
+      },
+      "categoricalTransitions": {
+        "status": {
+          "baseline": "ended",
+          "candidate": "ended",
+          "changed": false
+        },
+        "endedEarly": {
+          "baseline": false,
+          "candidate": false,
+          "changed": false
+        },
+        "outcomeKind": {
+          "baseline": "boundary",
+          "candidate": "boundary",
+          "changed": false
+        }
+      },
+      "milestones": {
+        "added": [],
+        "removed": [
+          "capability:36:harm:famine:29"
+        ]
+      }
+    }
+  ],
+  "incomparableFields": [],
+  "warnings": [
+    "Only one horizon is represented; cross-cutting changes should normally include at least two causal horizons."
+  ]
+}

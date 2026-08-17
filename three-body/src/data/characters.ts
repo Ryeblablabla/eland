@@ -1,4 +1,4 @@
-export type CharacterCategory = '中国历史' | '世界历史' | '神话人物';
+export type CharacterCategory = '中国历史' | '世界历史' | '神话人物' | '虚构人物';
 
 export interface CharacterProfile {
   id: string;
@@ -36,6 +36,11 @@ export const CHARACTERS: CharacterProfile[] = [
   { id: 'qinshihuang', name: '秦始皇', category: '中国历史', era: '秦代', appearance: '黑色冕服，冠冕与长剑，神情威严。', traits: '雄心勃勃、果断、重视秩序。', portrait: '/portraits/qinshihuang.png' },
   { id: 'wuzetian', name: '武则天', category: '中国历史', era: '唐代', appearance: '华贵宫装，发髻高挽，眼神锐利。', traits: '强势、果断、善于权衡。', portrait: '/portraits/wuzetian.png' },
   { id: 'genghiskhan', name: '成吉思汗', category: '中国历史', era: '元代', appearance: '草原骑装、皮靴、弓箭，面容坚毅。', traits: '果敢、纪律严明、重视人才。', portrait: '/portraits/genghiskhan.png' },
+  { id: 'cai-wenji', name: '蔡文姬', category: '中国历史', era: '东汉', appearance: '深色发髻与汉代长袍，手持琵琶与竹简。', traits: '坚韧、敏感、才华横溢，珍视诗歌与音乐。', portrait: '/portraits/cai-wenji.png' },
+  { id: 'wang-zhaojun', name: '王昭君', category: '中国历史', era: '西汉', appearance: '汉代长裙与边塞披帛，手持琵琶，神情沉静。', traits: '端庄、坚毅、胸怀远见，能够承受远行与离别。', portrait: '/portraits/wang-zhaojun.png' },
+  { id: 'shangguan-waner', name: '上官婉儿', category: '中国历史', era: '唐代', appearance: '早唐宫装，手持笔与诏书，发髻端整。', traits: '敏锐、聪慧、善于表达，具有政治判断力。', portrait: '/portraits/shangguan-waner.png' },
+  { id: 'yang-guifei', name: '杨贵妃', category: '中国历史', era: '唐代', appearance: '盛唐华服，佩戴花饰，身旁有牡丹与琵琶。', traits: '温柔、优雅、感受细腻，亲近音乐与诗歌。', portrait: '/portraits/yang-guifei.png' },
+  { id: 'liu-rushi', name: '柳如是', category: '中国历史', era: '明末清初', appearance: '文人装束，手持折扇与书法笔，神情独立。', traits: '独立、聪慧、刚烈，重视文学与自我选择。', portrait: '/portraits/liu-rushi.png' },
   { id: 'socrates', name: '苏格拉底', category: '世界历史', era: '古希腊', appearance: '简朴长袍，赤脚，面容粗犷。', traits: '喜欢追问、诚实、坚持思考。', portrait: '/portraits/socrates.png' },
   { id: 'plato', name: '柏拉图', category: '世界历史', era: '古希腊', appearance: '希腊长袍，短须，神情沉思。', traits: '理想主义、重视秩序、善于思辨。', portrait: '/portraits/plato.png' },
   { id: 'aristotle', name: '亚里士多德', category: '世界历史', era: '古希腊', appearance: '长袍，短须，手持卷轴。', traits: '理性、博学、善于分类。', portrait: '/portraits/aristotle.png' },
@@ -64,6 +69,7 @@ export const CHARACTERS: CharacterProfile[] = [
   { id: 'napoleon', name: '拿破仑', category: '世界历史', era: '近代', appearance: '军装与双角帽，身材不高但气势强。', traits: '野心强、果断、善于指挥。', portrait: '/portraits/napoleon.png' },
   { id: 'lincoln', name: '亚伯拉罕·林肯', category: '世界历史', era: '近代', appearance: '高个，黑色西装，高礼帽与络腮胡。', traits: '深思、宽容、坚定。', portrait: '/portraits/lincoln.png' },
   { id: 'marx', name: '卡尔·马克思', category: '世界历史', era: '近代', appearance: '浓密胡须，深色外套，手持书稿。', traits: '批判性强、执着、关注公平。', portrait: '/portraits/marx.png' },
+  { id: 'joan-of-arc', name: '圣女贞德', category: '世界历史', era: '中世纪', appearance: '短发，身着磨损的钢甲、蓝灰色罩袍，身旁有简朴的白色旗帜。', traits: '勇敢、虔诚、坚定而谦逊，愿意承担守护共同体的责任。', portrait: '/portraits/joan-of-arc.png' },
   { id: 'pangu', name: '盘古', category: '神话人物', era: '中国神话', appearance: '巨人身躯，披兽皮或粗布，手持巨斧。', traits: '开创、坚韧、牺牲精神强。', portrait: '/portraits/pangu.png' },
   { id: 'nuwa', name: '女娲', category: '神话人物', era: '中国神话', appearance: '彩衣，带有蛇身或龙鳞意象，手持五彩石。', traits: '慈爱、智慧、守护众生。', portrait: '/portraits/nuwa.png' },
   { id: 'houyi', name: '后羿', category: '神话人物', era: '中国神话', appearance: '壮实身躯，古代猎装，背负长弓。', traits: '勇敢、果断、责任感强。', portrait: '/portraits/houyi.png' },
@@ -74,9 +80,45 @@ export const CHARACTERS: CharacterProfile[] = [
   { id: 'prometheus', name: '普罗米修斯', category: '神话人物', era: '希腊神话', appearance: '古希腊长袍，手捧燃烧的火种。', traits: '牺牲、智慧、反抗权威。', portrait: '/portraits/prometheus.png' },
   { id: 'athena', name: '雅典娜', category: '神话人物', era: '希腊神话', appearance: '战甲、长矛与盾牌，头戴羽饰头盔。', traits: '理性、冷静、善于谋略。', portrait: '/portraits/athena.png' },
   { id: 'thor', name: '托尔', category: '神话人物', era: '北欧神话', appearance: '金发、战甲，手持雷神之锤。', traits: '豪爽、勇敢、重视荣誉。', portrait: '/portraits/thor.png' },
+  { id: 'medusa', name: '美杜莎', category: '神话人物', era: '希腊神话', appearance: '蛇发、古希腊衣饰，带有青铜盾与石化目光的意象。', traits: '坚强、悲悯、拥有令人敬畏的力量。', portrait: '/portraits/medusa.png' },
+  { id: 'aphrodite', name: '阿佛洛狄忒', category: '神话人物', era: '希腊神话', appearance: '古希腊长裙与金色长发，带有鸽子与贝壳的意象。', traits: '温柔、从容、重视爱与和谐。', portrait: '/portraits/aphrodite.png' },
+  { id: 'pandora', name: '潘多拉', category: '神话人物', era: '希腊神话', appearance: '古希腊织袍，手边有一只封闭的陶制容器。', traits: '好奇、谨慎、善于面对后果。', portrait: '/portraits/pandora.png' },
+  { id: 'artemis', name: '阿尔忒弥斯', category: '神话人物', era: '希腊神话', appearance: '银蓝猎装与月牙饰物，身旁有弓与森林的意象。', traits: '独立、警觉、亲近自然。', portrait: '/portraits/artemis.png' },
+  { id: 'persephone', name: '珀耳塞福涅', category: '神话人物', era: '希腊神话', appearance: '深紫与象牙色长袍，带有石榴与白花的意象。', traits: '沉静、坚韧、兼具温柔与威严。', portrait: '/portraits/persephone.png' },
+  { id: 'freyja', name: '芙蕾雅', category: '神话人物', era: '北欧神话', appearance: '金发与北欧披风，佩戴琥珀饰物，带有猎鹰羽毛的意象。', traits: '热烈、坚强、富有魔法与生命力。', portrait: '/portraits/freyja.png' },
+  { id: 'bai-suzhen', name: '白素贞', category: '神话人物', era: '中国传说', appearance: '白衣青纹长裙，佩戴白蛇玉饰，手持草药。', traits: '慈悲、聪慧、重视承诺与救助。', portrait: '/portraits/bai-suzhen.png' },
+  { id: 'zhinu', name: '织女', category: '神话人物', era: '中国神话', appearance: '蓝银色汉风长裙，带有星辰与织线纹样，手持银梭。', traits: '温柔、专注、重视技艺与情感。', portrait: '/portraits/zhinu.png' },
+  { id: 'artoria-pendragon', name: '阿尔托莉雅·潘德拉贡', category: '虚构人物', era: '亚瑟王传说改编', appearance: '金发蓝眼，身着蓝银王者铠甲与披风，佩戴王冠般的发饰。', traits: '克制、正直、责任感强，具有守护王国的决心。', portrait: '/portraits/artoria-pendragon.png' },
+  { id: 'zhaotianli', name: '照天离', category: '虚构人物', era: '原创世界', appearance: '赤红高马尾，身着黑白红相间的凤凰战甲，带有橙金色能量纹路。', traits: '自信、果决、骄傲而坚韧。', portrait: '/portraits/zhaotianli.png' },
+  { id: 'zhentianyuan', name: '镇天渊', category: '虚构人物', era: '原创世界', appearance: '淡金长发，佩戴黑金角冠，身着黑金仪式战装，带有神秘符文。', traits: '威严、沉静、掌控力强，善于守护与统御。', portrait: '/portraits/zhentianyuan.png' },
+  { id: 'potianfeng', name: '破天锋', category: '虚构人物', era: '原创世界', appearance: '白发狐耳，身着白蓝金边长袍，掌中燃起一簇蓝色灵焰。', traits: '灵动、聪慧、亲和而勇敢。', portrait: '/portraits/potianfeng.png' },
+  { id: 'cangtianying', name: '苍天影', category: '虚构人物', era: '原创世界', appearance: '银白长发带浅青发梢，佩戴紫黑角冠，身着深紫靛蓝法袍。', traits: '神秘、冷静、优雅，拥有强烈的自我意志。', portrait: '/portraits/cangtianying.png' },
+  { id: 'usagi-tsukino', name: '月野兔', category: '虚构人物', era: '现代动漫', appearance: '金色双丸子长发，身着白蓝红配色的守护者制服，带有月亮饰物。', traits: '善良、乐观、重视伙伴与守护。', portrait: '/portraits/usagi-tsukino.png' },
+  { id: 'ai-haibara', name: '灰原哀', category: '虚构人物', era: '现代动漫', appearance: '短棕发，身着深色高领外套与简洁便装，手持资料夹。', traits: '冷静、聪慧、谨慎，内心重视信任与同伴。', portrait: '/portraits/ai-haibara.png' },
+  { id: 'ran-mouri', name: '毛利兰', category: '虚构人物', era: '现代动漫', appearance: '长棕发，身着校服风格的蓝色外套，姿态利落坚定。', traits: '温柔、勇敢、坚韧，具有保护他人的行动力。', portrait: '/portraits/ran-mouri.png' },
+  { id: 'sakura-kinomoto', name: '木之本樱', category: '虚构人物', era: '现代动漫', appearance: '棕色短发与发饰，身着带羽翼与星星元素的魔法服，手持魔法杖。', traits: '开朗、勇敢、富有同理心，善于面对未知。', portrait: '/portraits/sakura-kinomoto.png' },
+  { id: 'sakura-haruno', name: '春野樱', category: '虚构人物', era: '现代动漫', appearance: '粉色短发，身着红色战斗服与护腕，额前有象征专注的印记。', traits: '果断、勤奋、意志坚强，擅长在压力下成长。', portrait: '/portraits/sakura-haruno.png' },
+  { id: 'hinata-hyuga', name: '日向雏田', category: '虚构人物', era: '现代动漫', appearance: '深蓝长发，身着浅色忍者服与护腕，目光温和坚定。', traits: '谦逊、专一、勇于突破自我。', portrait: '/portraits/hinata-hyuga.png' },
+  { id: 'nami', name: '娜美', category: '虚构人物', era: '现代动漫', appearance: '橙色长发，身着轻便航海服，手持航海图与天候法杖。', traits: '聪明、果断、重视伙伴，拥有很强的生存判断力。', portrait: '/portraits/nami.png' },
+  { id: 'nezuko-kamado', name: '灶门祢豆子', category: '虚构人物', era: '现代动漫', appearance: '黑发渐变橙色发梢，身着和风短褂与竹筒，带有柔和的火焰意象。', traits: '温柔、坚韧、保护欲强，能够克制力量守护家人。', portrait: '/portraits/nezuko-kamado.png' },
+  { id: 'chihiro-ogino', name: '荻野千寻', category: '虚构人物', era: '现代动画', appearance: '棕色短发，身着朴素工作服，手持一盏暖光提灯。', traits: '善良、坚毅、在陌生环境中逐渐找到勇气。', portrait: '/portraits/chihiro-ogino.png' },
+  { id: 'nausicaa', name: '娜乌西卡', category: '虚构人物', era: '未来动画', appearance: '浅棕短发，身着蓝色飞行服与护具，带有风与青绿色植物的意象。', traits: '勇敢、宽容、珍视自然与和平。', portrait: '/portraits/nausicaa.png' },
+  { id: 'sophie-hatter', name: '苏菲·哈特', category: '虚构人物', era: '现代动画', appearance: '灰褐长发，身着朴素的深蓝长裙与围裙，手持帽匠工具。', traits: '踏实、温柔、富有韧性，能够在变化中认识自己。', portrait: '/portraits/sophie-hatter.png' },
+  { id: 'san', name: '桑', category: '虚构人物', era: '现代动画', appearance: '深色长发，身着白色与赤色的森林战装，佩戴兽牙与面具意象。', traits: '敏锐、勇敢、忠于自然与自己的信念。', portrait: '/portraits/san.png' },
+  { id: 'violet-evergarden', name: '薇尔莉特·伊芙加登', category: '虚构人物', era: '现代动画', appearance: '金色长发，身着蓝色制服与白色手套，带有精致的机械义手与胸针。', traits: '克制、认真、通过文字理解情感与告别。', portrait: '/portraits/violet-evergarden.png' },
+  { id: 'rei-ayanami', name: '绫波丽', category: '虚构人物', era: '现代动漫', appearance: '浅蓝短发与红色眼眸，身着白色驾驶服，周围带有冷蓝色光晕。', traits: '安静、敏感、逐渐建立自我意志。', portrait: '/portraits/rei-ayanami.png' },
+  { id: 'asuka-langley', name: '明日香·兰格雷', category: '虚构人物', era: '现代动漫', appearance: '橙红长发与红色眼眸，身着红黑驾驶服，带有锐利的科技光线。', traits: '好胜、聪明、外表强势而内心渴望被理解。', portrait: '/portraits/asuka-langley.png' },
+  { id: 'hermione-granger', name: '赫敏·格兰杰', category: '虚构人物', era: '现代小说', appearance: '棕色蓬松长发，身着深红金边学院长袍，手持魔杖与打开的书本。', traits: '聪慧、勤奋、勇于坚持正确的事。', portrait: '/portraits/hermione-granger.png' },
+  { id: 'jane-eyre', name: '简·爱', category: '虚构人物', era: '维多利亚时代小说', appearance: '深色维多利亚式长裙，手持书本与烛台，神情平静坚定。', traits: '独立、自尊、重视真诚与精神平等。', portrait: '/portraits/jane-eyre.png' },
+  { id: 'elizabeth-bennet', name: '伊丽莎白·班纳特', category: '虚构人物', era: '摄政时代小说', appearance: '绿色与象牙色摄政时代长裙，手持书本，姿态轻盈自信。', traits: '机敏、独立、善于观察并坚持自我判断。', portrait: '/portraits/elizabeth-bennet.png' },
+  { id: 'anne-shirley', name: '安妮·雪莉', category: '虚构人物', era: '现代小说', appearance: '赤红长发与发辫，身着绿色乡村裙装，手持书本，周围有野花。', traits: '想象力丰富、热情、重视友谊与成长。', portrait: '/portraits/anne-shirley.png' },
+  { id: 'heidi', name: '海蒂', category: '虚构人物', era: '现代小说', appearance: '深色双辫，身着朴素乡村裙装与红色披肩，带有高山草坡的意象。', traits: '纯真、乐观、亲近自然，能够带给他人温暖。', portrait: '/portraits/heidi.png' },
+  { id: 'dorothy-gale', name: '多萝西·盖尔', category: '虚构人物', era: '现代小说', appearance: '棕色双辫，身着蓝白格纹裙与红色鞋子，手持书本。', traits: '勇敢、善良、重视伙伴并愿意踏上旅程。', portrait: '/portraits/dorothy-gale.png' },
+  { id: 'matilda-wormwood', name: '玛蒂尔达·沃姆伍德', category: '虚构人物', era: '现代小说', appearance: '深棕短发，身着蓝色连衣裙，面前有打开的书本与暖色书页光。', traits: '聪明、好奇、独立，善于用知识解决问题。', portrait: '/portraits/matilda-wormwood.png' },
+  { id: 'alice', name: '爱丽丝', category: '虚构人物', era: '现代小说', appearance: '金色短发，身着蓝色连衣裙与白色领饰，佩戴黑色蝴蝶结，手持打开的书本与小钥匙。', traits: '好奇、机敏、想象力丰富，愿意探索未知世界。', portrait: '/portraits/alice.png' },
 ];
 
-export const CHARACTER_CATEGORIES: CharacterCategory[] = ['中国历史', '世界历史', '神话人物'];
+export const CHARACTER_CATEGORIES: CharacterCategory[] = ['中国历史', '世界历史', '神话人物', '虚构人物'];
 
 /** 归一化姓名：去掉间隔号与空白，用于跨档案匹配（达·芬奇 ≈ 达芬奇） */
 export function normalizeCharacterName(name: string): string {

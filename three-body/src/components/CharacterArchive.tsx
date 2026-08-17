@@ -3,7 +3,7 @@ import { CHARACTERS, CHARACTER_CATEGORIES, type CharacterCategory } from '@/data
 
 /**
  * 人物档案 · 文明原型库
- *  - 浏览 59 位人物档案（画像 / 时代 / 气质）
+ *  - 浏览人物档案（画像 / 时代 / 气质）
  *  - 点选组成开局阵容（最多 8 人），阵容对之后每个文明生效
  *  - 不选任何人物时，引擎按种子随机抽取 5~10 人入局
  */

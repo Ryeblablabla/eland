@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-14T20:05:06.291Z",
+  "experiment": {
+    "prefix": "candidate-cooperation-smoke-v5",
+    "baseUrl": "http://127.0.0.1:3220",
+    "seeds": [
+      20260816
+    ],
+    "years": [
+      10
+    ],
+    "repeats": 1,
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced"
+  },
+  "aggregates": [
+    {
+      "years": 10,
+      "runs": 1,
+      "completed": 1,
+      "endedEarly": 0,
+      "extinctionRate": 0,
+      "finalPopulation": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "births": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "deaths": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "civilizationIndex": {
+        "count": 1,
+        "min": 50.6,
+        "median": 50.6,
+        "mean": 50.6,
+        "max": 50.6
+      },
+      "completedActions": {
+        "count": 1,
+        "min": 3089,
+        "median": 3089,
+        "mean": 3089,
+        "max": 3089
+      },
+      "strategicShare": {
+        "count": 1,
+        "min": 8.11,
+        "median": 8.11,
+        "mean": 8.11,
+        "max": 8.11
+      },
+      "projectsCompleted": {
+        "count": 1,
+        "min": 11,
+        "median": 11,
+        "mean": 11,
+        "max": 11
+      },
+      "projectsBlocked": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "jointProjectsCompleted": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "completedStructures": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "constructionPlacements": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "movementActionShare": {
+        "count": 1,
+        "min": 36.62,
+        "median": 36.62,
+        "mean": 36.62,
+        "max": 36.62
+      },
+      "usefulProductionOccurrenceRate": 100,
+      "spearsCrafted": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "leatherClothingCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "herbalMedicineCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "cookedFoodProduced": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "recordsCreated": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "functionalInstitutions": {
+        "count": 1,
+        "min": 14,
+        "median": 14,
+        "mean": 14,
+        "max": 14
+      },
+      "predictionAccuracy": {
+        "count": 1,
+        "min": 27.78,
+        "median": 27.78,
+        "mean": 27.78,
+        "max": 27.78
+      },
+      "wildlifePopulation": {
+        "count": 1,
+        "min": 15,
+        "median": 15,
+        "mean": 15,
+        "max": 15
+      },
+      "modelDecisions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      }
+    }
+  ],
+  "runs": [
+    {
+      "runId": "candidate-cooperation-smoke-v5-s20260816-y10-r1",
+      "seed": 20260816,
+      "years": 10,
+      "months": 120,
+      "repeat": 1,
+      "status": "ended",
+      "throughMonth": 120,
+      "endedEarly": false,
+      "outcomeKind": "boundary",
+      "initialPopulation": 7,
+      "finalPopulation": 9,
+      "births": 4,
+      "deaths": 2,
+      "civilizationIndex": 50.6,
+      "civilizationComponents": {
+        "population": 27.49,
+        "territory": 18.22,
+        "technology": 58.7,
+        "social": 80.36,
+        "history": 66.92
+      },
+      "completedActions": 3089,
+      "ruleDecisions": 2798,
+      "modelDecisions": 0,
+      "strategicIntents": 227,
+      "socialIntents": 2571,
+      "strategicShare": 8.11,
+      "correctPredictions": 5,
+      "incorrectPredictions": 13,
+      "predictionAccuracy": 27.78,
+      "dehydrationHibernations": 14,
+      "wildlifePopulation": 15,
+      "animalsHunted": 1,
+      "animalAttacks": 0,
+      "projectsStarted": 12,
+      "projectsCompleted": 11,
+      "projectsBlocked": 1,
+      "jointProjectsCompleted": 3,
+      "productionProjectsCompleted": 8,
+      "constructionProjectsCompleted": 3,
+      "totalStructures": 5,
+      "completedStructures": 2,
+      "constructionPlacements": 9,
+      "movementActions": 1474,
+      "movementActionShare": 36.62,
+      "spearsCrafted": 4,
+      "leatherClothingCrafted": 0,
+      "herbalMedicineCrafted": 0,
+      "cookedFoodProduced": 3,
+      "recordsCreated": 4,
+      "functionalInstitutions": 14,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "milestoneIds": [
+        "11",
+        "20",
+        "42",
+        "58",
+        "134",
+        "1",
+        "3",
+        "2",
+        "9",
+        "13",
+        "16",
+        "17",
+        "18",
+        "29",
+        "524",
+        "61",
+        "59"
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import {
   type SimulationState,
 } from "../src/game/eland/simulation";
 import type { EvolutionPath, EvolutionReport } from './evolution-artifacts';
+import type { NarrativeEnhancementArtifact } from './narrative-enhancements';
 
 export interface RunSummary {
   schemaVersion: 1;
@@ -176,5 +177,20 @@ export class FileRunStore {
   async saveEvolutionReport(id: string, report: EvolutionReport): Promise<void> {
     await this.load(id);
     await writeJsonAtomic(path.join(this.runDir(id), 'report.json'), report);
+  }
+
+  async loadNarrativeEnhancements(id: string): Promise<NarrativeEnhancementArtifact | null> {
+    const dir = this.runDir(id);
+    try {
+      return JSON.parse(await readFile(path.join(dir, 'narrative-enhancements.json'), 'utf8')) as NarrativeEnhancementArtifact;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  async saveNarrativeEnhancements(id: string, artifact: NarrativeEnhancementArtifact): Promise<void> {
+    await this.load(id);
+    await writeJsonAtomic(path.join(this.runDir(id), 'narrative-enhancements.json'), artifact);
   }
 }

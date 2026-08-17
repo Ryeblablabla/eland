@@ -166,6 +166,18 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
         context.fillRect(x * scale + scale * 0.33, y * scale + scale * 0.33, scale * 0.34, scale * 0.34);
       }
 
+      const animalColors = { deer: '#d6a25e', rabbit: '#ddd6ce', boar: '#76513d', wolf: '#77808d' } as const;
+      for (const animal of society.animals) {
+        const { x, y } = cellCoordinates(animal.cellId, world.width);
+        context.beginPath();
+        context.fillStyle = animalColors[animal.speciesId];
+        context.arc((x + 0.5) * scale, (y + 0.5) * scale, Math.max(2, Math.min(6, scale * 0.18)), 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = 'rgba(15,23,32,0.85)';
+        context.lineWidth = 1;
+        context.stroke();
+      }
+
       // 人物：两遍绘制——先布局姓名标签（防碰撞），再画标记（渲染层在 game/agentMarkers.ts）
       const markerFontSize = Math.max(10, Math.min(13, scale * 0.42));
       const markerRadiusHint = Math.max(3, Math.min(scale * 0.27, 10));
@@ -231,6 +243,7 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
   const cellDrops = useMemo(() => selectedCell === null ? [] : society.drops.filter((drop) => drop.cellId === selectedCell), [selectedCell, society.drops]);
   const cellStructures = useMemo(() => selectedCell === null ? [] : society.structures.filter((structure) => structure.occupiedCells.includes(selectedCell)), [selectedCell, society.structures]);
   const cellAgents = useMemo(() => selectedCell === null ? [] : society.agents.filter((agent) => agent.cellId === selectedCell), [selectedCell, society.agents]);
+  const cellAnimals = useMemo(() => selectedCell === null ? [] : society.animals.filter((animal) => animal.cellId === selectedCell), [selectedCell, society.animals]);
 
   const commitCamera = useCallback((next: CameraState) => {
     const viewport = viewportRef.current;
@@ -375,13 +388,18 @@ export default function SocietyMap({ society, era, speaker, focusAgent, selected
                   {agent.name} · 高度 {agent.z} · {agent.doing}
                 </button>
               ))}
+              {cellAnimals.map((animal) => (
+                <div key={animal.id} className="border-l border-emerald-200/20 pl-3 text-xs text-emerald-100/75">
+                  {animal.name} · 高度 {animal.z} · 健康 {Math.round(animal.health)} · 饥饿 {Math.round(animal.hunger)}
+                </div>
+              ))}
               {cellDrops.map((drop) => (
                 <button key={drop.id} className="block w-full border-l border-white/10 pl-3 text-left text-xs text-slate-300">
                   高度 {drop.z} 的物品 · {drop.name} × {drop.quantity}
                 </button>
               ))}
               {cellStructures.map((structure) => <div key={structure.id} className="border-l border-amber-200/30 pl-3 text-xs text-amber-100/80">{structure.name} · 内部高度 {structure.interiorPositions.filter((position) => position.cellId === selectedCell).map((position) => position.z).join('、') || '无'} · 防护 {Math.round(structure.effects.weatherProtection)}</div>)}
-              {!cellAgents.length && !cellDrops.length && !cellStructures.length && <div className="text-xs text-slate-600">这格只有物质柱，没有地面实体。</div>}
+              {!cellAgents.length && !cellAnimals.length && !cellDrops.length && !cellStructures.length && <div className="text-xs text-slate-600">这格只有物质柱，没有地面实体。</div>}
             </div>
           </>
         )}

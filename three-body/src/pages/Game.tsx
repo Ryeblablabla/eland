@@ -4,11 +4,12 @@ import SocietyMap from '@/components/SocietyMap';
 import SocietyScene3D from '@/components/SocietyScene3D';
 import SkyPiP from '@/components/SkyPiP';
 import CharacterArchive from '@/components/CharacterArchive';
-import { elandClient, type Frame } from '@/game/elandClient';
+import { createWorldSeed, ElandSessionMissingError, elandClient, getElandRunId, type Frame } from '@/game/elandClient';
 import type { AgentHistoryItem, EraKey, SocietyState } from '@/game/societyContract';
 import type { SkySample } from '@/game/societyContract';
 import { CHARACTERS } from '@/data/characters';
 import type { PlanetFate } from '@/lib/threebody';
+import { useDocumentVisible } from '@/hooks/use-document-visible';
 
 // ---------------------------------------------------------------------------
 // 纪元文案（乱纪元按真实恒星通量细分酷暑/严寒）
@@ -151,6 +152,7 @@ function SettlementOverlay({ s, entries, onContinue }: { s: Settlement; entries:
 // ---------------------------------------------------------------------------
 
 export default function Game() {
+  const pageVisible = useDocumentVisible();
   // ?autoenter=1：跳过开场黑场直接入局（无头浏览器截图调试 / 自动化用）
   const [entered, setEntered] = useState(() => new URLSearchParams(window.location.search).has('autoenter'));
   const [stats, setStats] = useState<SimStats | null>(null);
@@ -168,7 +170,7 @@ export default function Game() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [agentHistory, setAgentHistory] = useState<AgentHistoryItem[]>([]);
   const [agentHistoryLoading, setAgentHistoryLoading] = useState(false);
-  const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停，省 token）
+  const [playing, setPlaying] = useState(false);   // 后端自动演化开关（默认暂停）
   const [thinking, setThinking] = useState(false);
   const [evolutionError, setEvolutionError] = useState<string | null>(null);
   const [replayMonth, setReplayMonth] = useState<number | null>(null); // 回放模式
@@ -230,11 +232,18 @@ export default function Game() {
   const settlementRef = useRef(false);
   const civStats = useRef({ startMonth: 0, eras: 0 });
   const rosterRef = useRef<string[]>([]);
-  const runIdRef = useRef(`threebody-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const runIdRef = useRef(getElandRunId());
+  const activeWorldSeedRef = useRef<number | null>(null);
   const statsRef = useRef<SimStats | null>(null);
   const lastSkyTimeRef = useRef(0);
   const fluxRangeRef = useRef({ min: 1, max: 1, sum: 0, count: 0 });
   const [universeTarget, setUniverseTarget] = useState(0);
+
+  useEffect(() => {
+    const endSession = () => { void elandClient.end(runIdRef.current); };
+    window.addEventListener('pagehide', endSession);
+    return () => window.removeEventListener('pagehide', endSession);
+  }, []);
 
   const sampleSky = useCallback((): SkySample => {
     const current = statsRef.current;
@@ -267,6 +276,7 @@ export default function Game() {
 
   /** 应用后端来的一帧（新纪年） */
   const applyFrame = useCallback((frame: Frame) => {
+    activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
     setElapsedMonths(frame.elapsedMonths);
     setSociety(frame.society);
@@ -292,10 +302,11 @@ export default function Game() {
   }, [pushEntry]);
 
   /** 启动一个 ELAND 文明（后端会话）；有选定阵容时按阵容入局 */
-  const startCivilization = useCallback((civNo: number) => {
+  const startCivilization = useCallback((civNo: number, worldSeed = createWorldSeed()) => {
     const picked = rosterRef.current;
     const sky = sampleSky();
-    void elandClient.begin(runIdRef.current, civNo, sky, picked.length > 0 ? picked : undefined).then((frame) => {
+    activeWorldSeedRef.current = worldSeed;
+    void elandClient.begin(runIdRef.current, civNo, sky, picked.length > 0 ? picked : undefined, worldSeed).then((frame) => {
       applyFrame(frame);
       setSelectedAgentId(null);
       setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
@@ -422,18 +433,25 @@ export default function Game() {
         setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
       }
     } catch (error) {
+      if (error instanceof ElandSessionMissingError) {
+        startCivilization(
+          statsRef.current?.civilizations ?? 1,
+          activeWorldSeedRef.current ?? createWorldSeed(),
+        );
+        return;
+      }
       setPlaying(false);
-      setEvolutionError(error instanceof Error ? error.message : 'Kimi 演化失败，已停在最近完成的月份');
+      setEvolutionError(error instanceof Error ? error.message : '本地规则演化失败，已停在最近完成的月份');
     } finally {
       setThinking(false);
     }
-  }, [thinking, applyFrame, sampleSky]);
+  }, [thinking, applyFrame, sampleSky, startCivilization]);
 
   useEffect(() => {
-    if (!entered || !playing || replayMonth !== null) return;
+    if (!entered || !playing || replayMonth !== null || !pageVisible) return;
     const timer = setInterval(() => { void stepOnce(); }, 5000);
     return () => clearInterval(timer);
-  }, [entered, playing, replayMonth, stepOnce]);
+  }, [entered, pageVisible, playing, replayMonth, stepOnce]);
 
   const togglePlay = useCallback(() => {
     const next = !playing;
@@ -583,6 +601,7 @@ export default function Game() {
             society={society}
             era={eraKey}
             speaker={speaker}
+            sky={stats}
             selectedAgentId={selectedAgentId}
             onSelectAgent={setSelectedAgentId}
             onZoomOutRequest={riseToCosmos}
@@ -748,7 +767,7 @@ export default function Game() {
             {playing ? '暂 停 ‖' : '演 化 ▶'}
           </button>
           <span className="text-slate-700">·</span>
-          <div className="tracking-[0.18em] text-slate-600" title="所有关键决策均由 Kimi 作出；额度按人物月累计">KIMI · 真 实 演 化</div>
+          <div className="tracking-[0.18em] text-slate-600" title="每月由本地规则规划器执行 15 个规划刻度">本 地 规 则 · 流 畅 演 化</div>
           <span className="text-slate-700">·</span>
           <button onClick={() => setShowArchive(true)} className="transition-colors hover:text-amber-200" title="浏览人物档案并指定开局阵容">
             人 物 档 案{roster.length > 0 ? ` · ${roster.length}` : ''}
@@ -798,7 +817,7 @@ export default function Game() {
       {/* 行星聚焦提示（宇宙视角） */}
       {view === 'cosmos' && planetFocused && !cover && (
         <div className="pointer-events-none absolute bottom-24 left-1/2 z-10 -translate-x-1/2 animate-pulse text-[11px] tracking-[0.3em] text-teal-200/80">
-          继续滚轮放大 · 俯冲进入人间 ↓ · 双击空白处离开行星
+          双击行星直接进入人间 · 继续滚轮也可俯冲 · 双击空白处离开行星
         </div>
       )}
 

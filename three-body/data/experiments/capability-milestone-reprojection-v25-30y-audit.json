@@ -1,0 +1,3400 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-15T12:12:36.216Z",
+  "observerVersion": "capability-causal-v2",
+  "catalog": {
+    "definitions": 137,
+    "strict": 68,
+    "guarded": 69,
+    "mapDefinitions": 120,
+    "worldSpecificDefinitions": 17,
+    "capabilityCoordinates": 120
+  },
+  "method": "Read-only reprojection over saved authoritative state; no simulation step and no state write-back.",
+  "runs": [
+    {
+      "runId": "v25-entity-long-s185-y30-r1",
+      "statePath": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/v25-entity-long-s185-y30-r1/state.json",
+      "seed": 185,
+      "throughMonth": 360,
+      "population": 12,
+      "milestoneDefinitionsObserved": 37,
+      "capabilityCoordinatesObserved": 29,
+      "worldSpecificMilestonesObserved": 8,
+      "civilizationIndex": {
+        "formulaVersion": "causal-diversity-v3",
+        "legacyMilestoneProjection": 55.86,
+        "capabilityMilestoneProjection": 55.84,
+        "totalDelta": -0.02,
+        "legacyHistoryScore": 80.2,
+        "capabilityHistoryScore": 80.01,
+        "historyDelta": -0.19,
+        "capabilityHistoryEvidence": {
+          "causalEpisodes": 86,
+          "turningCategories": 37,
+          "milestones": 37,
+          "milestoneCapabilities": 29,
+          "completedCausalProjects": 15,
+          "births": 15,
+          "deaths": 9,
+          "agreementOutcomes": 0,
+          "eraTransitions": 18,
+          "recordedKnowledge": 1,
+          "taughtFacts": 15,
+          "transmittedTechniques": 15,
+          "crossGenerationKnowledge": 8
+        }
+      },
+      "domains": {
+        "agriculture": 1,
+        "coordination": 1,
+        "craft": 5,
+        "food": 2,
+        "home": 2,
+        "kinship": 1,
+        "knowledge": 2,
+        "labor": 1,
+        "learning": 1,
+        "life": 5,
+        "logistics": 1,
+        "memory": 2,
+        "norms": 1,
+        "property": 1,
+        "subsistence": 3,
+        "three-body": 6,
+        "world-event": 2
+      },
+      "valences": {
+        "ambivalent": 11,
+        "constructive": 25,
+        "harmful": 1
+      },
+      "phases": {
+        "collapse": 2,
+        "decline": 2,
+        "emergence": 6,
+        "practice": 17,
+        "recovery": 1,
+        "response": 2,
+        "stable": 7
+      },
+      "harmfulOrCollapseOrRecovery": [
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 4,
+          "evidenceEventIds": [
+            "e-1-action-usagi-tsukino-59",
+            "e-2-action-usagi-tsukino-10",
+            "e-2-action-usagi-tsukino-21",
+            "e-3-action-usagi-tsukino-16",
+            "e-4-action-usagi-tsukino-17"
+          ]
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "phase": "recovery",
+          "occurrenceCount": 1,
+          "observedAtMonth": 16,
+          "evidenceEventIds": [
+            "e-15-action-socrates-9",
+            "e-15-action-socrates-14",
+            "e-15-action-socrates-16",
+            "e-15-action-socrates-20",
+            "e-15-action-socrates-24",
+            "e-15-action-leonardo-31",
+            "e-15-action-leonardo-32",
+            "e-15-action-persephone-34",
+            "e-15-action-persephone-35",
+            "e-15-action-leonardo-36",
+            "e-15-action-persephone-37",
+            "e-15-action-persephone-39",
+            "e-15-action-persephone-41",
+            "e-15-action-persephone-43",
+            "e-16-action-persephone-6",
+            "e-16-action-persephone-7",
+            "e-16-action-persephone-10",
+            "e-16-action-persephone-11",
+            "e-16-action-persephone-12",
+            "e-16-action-persephone-13",
+            "e-16-action-persephone-14",
+            "e-16-action-persephone-15",
+            "e-16-action-persephone-16",
+            "e-16-action-persephone-17"
+          ]
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "mapLabel": "死亡",
+          "catalogKind": "map",
+          "label": "死亡",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 110,
+          "evidenceEventIds": [
+            "e-110-environment-death-3"
+          ]
+        }
+      ],
+      "unresolvedEvidenceIds": [],
+      "milestones": [
+        {
+          "id": "world:weather-change:emergence:weather:v2",
+          "catalogKind": "world-specific",
+          "label": "天气或气候变化发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 1,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "环境结算生成结构化 weather/climate 事实；事实保存种类、强度或纪元序号。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:11:practice:gather-food:v2",
+          "capabilityId": 11,
+          "catalogKind": "map",
+          "mapLabel": "采集食物",
+          "label": "采集食物",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-sima-qian-56"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可食物资来自地面掉落物；completed transfer 把同一物资交给具体人物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:12:practice:hunt:v2",
+          "capabilityId": 12,
+          "catalogKind": "map",
+          "mapLabel": "捕猎动物",
+          "label": "捕猎动物",
+          "domain": "subsistence",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-marie-curie-55"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "hunt 原语指向真实动物 ID；动作完成并记录 killed=true 与动物产物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:58:practice:natural-observation:v2",
+          "capabilityId": 58,
+          "catalogKind": "map",
+          "mapLabel": "观察自然现象",
+          "label": "观察自然现象",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "leonardo"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-leonardo-11"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物完成 attend 并指向动物、体素或自然掉落物；观察事实保存人物和真实世界对象。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:241:practice:memory:v2",
+          "capabilityId": 241,
+          "catalogKind": "map",
+          "mapLabel": "记住个人经历",
+          "label": "记住个人经历",
+          "domain": "memory",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "marie-curie",
+            "sima-qian"
+          ],
+          "affectedPersonIds": [
+            "marie-curie"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-marie-curie-38"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物记忆保存具体 sourceEventIds；来源事实能解析到亲历、对话、承诺或失败事件。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "domain": "world-event",
+          "valence": "harmful",
+          "phase": "collapse",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [
+            "usagi-tsukino"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-usagi-tsukino-59",
+            "e-2-action-usagi-tsukino-10",
+            "e-2-action-usagi-tsukino-21",
+            "e-3-action-usagi-tsukino-16",
+            "e-4-action-usagi-tsukino-17"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目曾有真实触发事实和行动历史；项目转为 blocked 或物流事件 exhausted/invalidated 并保存失败来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:2:emergence:conception:v2",
+          "capabilityId": 2,
+          "catalogKind": "map",
+          "mapLabel": "繁衍后代",
+          "label": "繁衍后代",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-marie-curie-6"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "双方先形成有效的生殖同意约定；reproduce 原语完成且 conceived=true。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:16:practice:tool-craft:v2",
+          "capabilityId": 16,
+          "catalogKind": "map",
+          "mapLabel": "制造工具",
+          "label": "制造工具",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-usagi-tsukino-7"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "combine 使用真实输入材料；completed diff 产生工具类 outputMaterialId。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:48:emergence:agreement:v2",
+          "capabilityId": 48,
+          "catalogKind": "map",
+          "mapLabel": "订立契约",
+          "label": "订立契约",
+          "domain": "norms",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "marie-curie",
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-marie-curie-38",
+            "e-2-action-sima-qian-7",
+            "e-4-action-marie-curie-6"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "结构化 offer/request 指定双方与期限；所需回应者明确接受并建立 active/fulfilled 约定。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:59:practice:tested-hypothesis:v2",
+          "capabilityId": 59,
+          "catalogKind": "map",
+          "mapLabel": "用实验检验猜想",
+          "label": "用实验检验猜想",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [
+            "usagi-tsukino"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-usagi-tsukino-7",
+            "e-4-action-usagi-tsukino-14"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少一次真实物质试验；同一知识来源还包含 understood/verified 的主动核验。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:1:emergence:birth:v2",
+          "capabilityId": 1,
+          "catalogKind": "map",
+          "mapLabel": "诞生",
+          "label": "诞生",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 13,
+          "participantIds": [
+            "marie-curie",
+            "sima-qian"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-13-environment-body-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "月度身体结算生成 bornPersonId 与父母 ID；新人物的 geneticParents 与出生事实一致。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction:emergence:prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "人物提出恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 14,
+          "participantIds": [
+            "sima-qian",
+            "marie-curie",
+            "usagi-tsukino",
+            "socrates",
+            "leonardo"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-sima-qian-9",
+            "e-14-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物向真实 audience 作出带时间窗的纪元预言；EraPrediction 保存预测者、目标纪元与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:incorrect-era-prediction:decline:incorrect-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言未应验",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 14,
+          "participantIds": [
+            "sima-qian",
+            "marie-curie",
+            "usagi-tsukino",
+            "socrates",
+            "leonardo"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-sima-qian-9",
+            "e-14-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于截止月提出；结算事实记录 correct=false 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:169:response:dependent-protection:v2",
+          "capabilityId": 169,
+          "catalogKind": "map",
+          "mapLabel": "保护儿童免受伤害",
+          "label": "保护儿童免受伤害",
+          "domain": "kinship",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 14,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-14-action-marie-curie-12"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "儿童处于依赖年龄且与照护者有亲子或真实照护关系；乱纪元危险中 completed 动作明确保存 assistedDependentId 或 carriedPersonIds。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:20:emergence:shelter:v2",
+          "capabilityId": 20,
+          "catalogKind": "map",
+          "mapLabel": "建造住所",
+          "label": "建造住所",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "emergence",
+          "observedAtMonth": 15,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-15-action-persephone-29"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "多次建造动作形成有来源体素结构；结构具有内部空间、容量和防护且标记 complete。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "domain": "world-event",
+          "valence": "constructive",
+          "phase": "recovery",
+          "observedAtMonth": 16,
+          "participantIds": [
+            "socrates",
+            "leonardo",
+            "persephone"
+          ],
+          "affectedPersonIds": [
+            "socrates"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-15-action-socrates-9",
+            "e-15-action-socrates-14",
+            "e-15-action-socrates-16",
+            "e-15-action-socrates-20",
+            "e-15-action-socrates-24",
+            "e-15-action-leonardo-31",
+            "e-15-action-leonardo-32",
+            "e-15-action-persephone-34",
+            "e-15-action-persephone-35",
+            "e-15-action-leonardo-36",
+            "e-15-action-persephone-37",
+            "e-15-action-persephone-39",
+            "e-15-action-persephone-41",
+            "e-15-action-persephone-43",
+            "e-16-action-persephone-6",
+            "e-16-action-persephone-7",
+            "e-16-action-persephone-10",
+            "e-16-action-persephone-11",
+            "e-16-action-persephone-12",
+            "e-16-action-persephone-13",
+            "e-16-action-persephone-14",
+            "e-16-action-persephone-15",
+            "e-16-action-persephone-16",
+            "e-16-action-persephone-17"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一项目先出现阻塞或物流失败事实；后续真实行动使项目完成或恢复推进。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:correct-era-prediction:response:correct-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言应验",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 17,
+          "participantIds": [
+            "usagi-tsukino",
+            "marie-curie",
+            "socrates",
+            "sima-qian",
+            "leonardo"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-usagi-tsukino-19",
+            "e-17-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于目标纪元变化提出；结算事实记录 correct=true 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:324:practice:rope-craft:v2",
+          "capabilityId": 324,
+          "catalogKind": "map",
+          "mapLabel": "编织、缝合与制绳",
+          "label": "编织、缝合与制绳",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 17,
+          "participantIds": [
+            "socrates"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-17-action-socrates-25"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维等真实输入材料参与 combine；completed diff 明确产生 Rope。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:19:practice:clothing:v2",
+          "capabilityId": 19,
+          "catalogKind": "map",
+          "mapLabel": "制作衣物",
+          "label": "制作衣物",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 31,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-31-action-marie-curie-46"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维或兽皮参与 combine；completed diff 产生衣物或兽皮衣。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:17:practice:fire-making:v2",
+          "capabilityId": 17,
+          "catalogKind": "map",
+          "mapLabel": "掌控火种",
+          "label": "掌控火种",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 33,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-33-action-marie-curie-10"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "exert 使用真实工具与燃料目标；completed diff 产生 Fire 体素。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:18:practice:cooking:v2",
+          "capabilityId": 18,
+          "catalogKind": "map",
+          "mapLabel": "烹饪食物",
+          "label": "烹饪食物",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 33,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-33-action-marie-curie-13"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "生食与真实火体素参与 expose；completed diff 产生 CookedFood。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:13:practice:gift:v2",
+          "capabilityId": 13,
+          "catalogKind": "map",
+          "mapLabel": "分享资源",
+          "label": "分享资源",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "marie-curie",
+            "born-13-marie-curie-6"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-marie-curie-2"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:131:practice:infant-feeding:v2",
+          "capabilityId": 131,
+          "catalogKind": "map",
+          "mapLabel": "喂养婴幼儿",
+          "label": "喂养婴幼儿",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "marie-curie"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-marie-curie-2"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed transfer 把可食材料交给未独立儿童；行动者是儿童父母或动作保存明确照护来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:462:practice:gift:v2",
+          "capabilityId": 462,
+          "catalogKind": "map",
+          "mapLabel": "赠与财物",
+          "label": "赠与财物",
+          "domain": "property",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "marie-curie",
+            "born-13-marie-curie-6"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-marie-curie-2"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "catalogKind": "map",
+          "mapLabel": "死亡",
+          "label": "死亡",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "collapse",
+          "observedAtMonth": 110,
+          "participantIds": [
+            "born-63-leonardo-7"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-110-environment-death-3"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物身体或寿命结算达到死亡条件；死亡事实保存 personId、原因与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:32:practice:cultivation:v2",
+          "capabilityId": 32,
+          "catalogKind": "map",
+          "mapLabel": "栽培作物",
+          "label": "栽培作物",
+          "domain": "agriculture",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 121,
+          "participantIds": [
+            "persephone",
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-98-action-persephone-16",
+            "e-121-action-usagi-tsukino-41"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "种子与肥沃地表结合生成作物；自然生长后由 separate 产生真实收获。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:22:stable:joint-project:v2",
+          "capabilityId": 22,
+          "catalogKind": "map",
+          "mapLabel": "协同行动",
+          "label": "协同行动",
+          "domain": "coordination",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 144,
+          "participantIds": [
+            "socrates",
+            "leonardo",
+            "persephone",
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [
+            "socrates",
+            "persephone"
+          ],
+          "occurrenceCount": 2,
+          "evidenceEventIds": [
+            "e-15-action-socrates-9",
+            "e-15-action-socrates-14",
+            "e-15-action-socrates-16",
+            "e-15-action-socrates-20",
+            "e-15-action-socrates-24",
+            "e-15-action-leonardo-31",
+            "e-15-action-leonardo-32",
+            "e-15-action-persephone-34",
+            "e-15-action-persephone-35",
+            "e-15-action-leonardo-36",
+            "e-15-action-persephone-37",
+            "e-15-action-persephone-39",
+            "e-15-action-persephone-41",
+            "e-15-action-persephone-43",
+            "e-16-action-persephone-6",
+            "e-16-action-persephone-7",
+            "e-16-action-persephone-10",
+            "e-16-action-persephone-11",
+            "e-16-action-persephone-12",
+            "e-16-action-persephone-13",
+            "e-16-action-persephone-14",
+            "e-16-action-persephone-15",
+            "e-16-action-persephone-16",
+            "e-16-action-persephone-17",
+            "e-143-action-persephone-42",
+            "e-143-action-persephone-46",
+            "e-143-action-persephone-52",
+            "e-143-action-persephone-57",
+            "e-143-action-persephone-58",
+            "e-143-action-persephone-63",
+            "e-143-action-persephone-69",
+            "e-144-action-persephone-7",
+            "e-144-action-persephone-12",
+            "e-144-action-persephone-19",
+            "e-144-action-persephone-26",
+            "e-144-action-persephone-29",
+            "e-144-action-persephone-36",
+            "e-144-action-persephone-39",
+            "e-144-action-persephone-41",
+            "e-144-action-persephone-46",
+            "e-144-action-persephone-52",
+            "e-144-action-persephone-55",
+            "e-144-action-persephone-59",
+            "e-144-action-usagi-tsukino-61"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 2 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:405:stable:joint-project:v2",
+          "capabilityId": 405,
+          "catalogKind": "map",
+          "mapLabel": "协调团队工作流程",
+          "label": "协调团队工作流程",
+          "domain": "labor",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 144,
+          "participantIds": [
+            "socrates",
+            "leonardo",
+            "persephone",
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [
+            "socrates",
+            "persephone"
+          ],
+          "occurrenceCount": 2,
+          "evidenceEventIds": [
+            "e-15-action-socrates-9",
+            "e-15-action-socrates-14",
+            "e-15-action-socrates-16",
+            "e-15-action-socrates-20",
+            "e-15-action-socrates-24",
+            "e-15-action-leonardo-31",
+            "e-15-action-leonardo-32",
+            "e-15-action-persephone-34",
+            "e-15-action-persephone-35",
+            "e-15-action-leonardo-36",
+            "e-15-action-persephone-37",
+            "e-15-action-persephone-39",
+            "e-15-action-persephone-41",
+            "e-15-action-persephone-43",
+            "e-16-action-persephone-6",
+            "e-16-action-persephone-7",
+            "e-16-action-persephone-10",
+            "e-16-action-persephone-11",
+            "e-16-action-persephone-12",
+            "e-16-action-persephone-13",
+            "e-16-action-persephone-14",
+            "e-16-action-persephone-15",
+            "e-16-action-persephone-16",
+            "e-16-action-persephone-17",
+            "e-143-action-persephone-42",
+            "e-143-action-persephone-46",
+            "e-143-action-persephone-52",
+            "e-143-action-persephone-57",
+            "e-143-action-persephone-58",
+            "e-143-action-persephone-63",
+            "e-143-action-persephone-69",
+            "e-144-action-persephone-7",
+            "e-144-action-persephone-12",
+            "e-144-action-persephone-19",
+            "e-144-action-persephone-26",
+            "e-144-action-persephone-29",
+            "e-144-action-persephone-36",
+            "e-144-action-persephone-39",
+            "e-144-action-persephone-41",
+            "e-144-action-persephone-46",
+            "e-144-action-persephone-52",
+            "e-144-action-persephone-55",
+            "e-144-action-persephone-59",
+            "e-144-action-usagi-tsukino-61"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 2 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:325:practice:container-practice:v2",
+          "capabilityId": 325,
+          "catalogKind": "map",
+          "mapLabel": "制作陶器与容器",
+          "label": "制作陶器与容器",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 167,
+          "participantIds": [
+            "socrates"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-163-action-socrates-12",
+            "e-167-action-socrates-42"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "combine 先产生带 containerId 的实体容器；后续 transfer 对同一 containerId 完成真实存取。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:390:practice:storage:v2",
+          "capabilityId": 390,
+          "catalogKind": "map",
+          "mapLabel": "装卸、仓储与分拣货物",
+          "label": "装卸、仓储与分拣货物",
+          "domain": "logistics",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 167,
+          "participantIds": [
+            "socrates"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-167-action-socrates-42"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "实体容器有体素位置与来源；completed transfer 把物资放入或取出同一容器。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:148:stable:fire-practice:v2",
+          "capabilityId": 148,
+          "catalogKind": "map",
+          "mapLabel": "维护炉灶与火源",
+          "label": "维护炉灶与火源",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 170,
+          "participantIds": [
+            "marie-curie",
+            "persephone"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 2,
+          "evidenceEventIds": [
+            "e-33-action-marie-curie-10",
+            "e-81-action-marie-curie-38",
+            "e-80-action-persephone-5",
+            "e-170-action-persephone-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "火种在至少两个不同月份被制造或使用；相关动作共享火材料输入或输出。阶段门槛已验证，保留 2 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:222:stable:trial-learning:v2",
+          "capabilityId": 222,
+          "catalogKind": "map",
+          "mapLabel": "通过试错掌握技能",
+          "label": "通过试错掌握技能",
+          "domain": "learning",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 170,
+          "participantIds": [
+            "leonardo",
+            "marie-curie",
+            "socrates",
+            "persephone"
+          ],
+          "affectedPersonIds": [
+            "leonardo",
+            "marie-curie",
+            "socrates",
+            "persephone"
+          ],
+          "occurrenceCount": 8,
+          "evidenceEventIds": [
+            "e-15-action-leonardo-12",
+            "e-15-action-leonardo-19",
+            "e-15-action-leonardo-27",
+            "e-15-action-leonardo-36",
+            "e-30-action-leonardo-16",
+            "e-33-action-marie-curie-10",
+            "e-81-action-marie-curie-38",
+            "e-33-action-marie-curie-13",
+            "e-81-action-marie-curie-39",
+            "e-31-action-marie-curie-52",
+            "e-31-action-marie-curie-54",
+            "e-32-action-marie-curie-14",
+            "e-143-action-marie-curie-4",
+            "e-143-action-marie-curie-17",
+            "e-143-action-socrates-68",
+            "e-144-action-socrates-25",
+            "e-16-action-persephone-17",
+            "e-144-action-persephone-39",
+            "e-161-action-leonardo-4",
+            "e-162-action-leonardo-3",
+            "e-163-action-leonardo-3",
+            "e-164-action-leonardo-6",
+            "e-165-action-leonardo-3",
+            "e-166-action-leonardo-2",
+            "e-167-action-leonardo-6",
+            "e-168-action-leonardo-4",
+            "e-169-action-leonardo-2",
+            "e-170-action-leonardo-3",
+            "e-64-action-persephone-38",
+            "e-67-action-persephone-4",
+            "e-145-action-persephone-5",
+            "e-170-action-persephone-17"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少两次真实物质试验；试验来源跨越阶段门槛要求的月份。阶段门槛已验证，保留 8 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:3:stable:dependent-care:v2",
+          "capabilityId": 3,
+          "catalogKind": "map",
+          "mapLabel": "养育幼儿",
+          "label": "养育幼儿",
+          "domain": "life",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 186,
+          "participantIds": [
+            "marie-curie",
+            "leonardo",
+            "persephone",
+            "socrates",
+            "usagi-tsukino"
+          ],
+          "affectedPersonIds": [
+            "born-13-marie-curie-6",
+            "born-63-leonardo-7",
+            "born-153-persephone-9",
+            "born-143-socrates-8"
+          ],
+          "occurrenceCount": 8,
+          "evidenceEventIds": [
+            "e-18-action-marie-curie-4",
+            "e-70-action-leonardo-6",
+            "e-89-action-marie-curie-2",
+            "e-89-action-marie-curie-9",
+            "e-155-action-persephone-4",
+            "e-155-action-socrates-5",
+            "e-176-action-socrates-4",
+            "e-186-action-usagi-tsukino-1"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "照护者与未独立儿童存在亲子或真实照护关系；携带、转移物资或协助脱水产生可解析动作事实。阶段门槛已验证，保留 8 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:8:decline:aging:v2",
+          "capabilityId": 8,
+          "catalogKind": "map",
+          "mapLabel": "衰老",
+          "label": "衰老",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 341,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-341-environment-condition-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物年龄达到衰老压力区间；月度结算写入 aging 条件事实。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-cycle:stable:era-cycle:v2",
+          "catalogKind": "world-specific",
+          "label": "恒纪元与乱纪元交替发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "stable",
+          "observedAtMonth": 349,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-17-environment-climate-0",
+            "e-29-environment-climate-0",
+            "e-70-environment-climate-0",
+            "e-78-environment-climate-0",
+            "e-106-environment-climate-0",
+            "e-117-environment-climate-0",
+            "e-155-environment-climate-0",
+            "e-158-environment-climate-0",
+            "e-204-environment-climate-0",
+            "e-213-environment-climate-0",
+            "e-237-environment-climate-0",
+            "e-257-environment-climate-0",
+            "e-264-environment-climate-0",
+            "e-282-environment-climate-0",
+            "e-295-environment-climate-0",
+            "e-299-environment-climate-0",
+            "e-342-environment-climate-0",
+            "e-349-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "至少两次 eraTransition 事实可解析；恒纪元与乱纪元均在历史中真实出现。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction-practice:stable:prediction-practice:v2",
+          "catalogKind": "world-specific",
+          "label": "人物跨次检验恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 357,
+          "participantIds": [
+            "usagi-tsukino",
+            "marie-curie",
+            "socrates",
+            "sima-qian",
+            "leonardo",
+            "persephone",
+            "born-153-persephone-9",
+            "born-143-socrates-8",
+            "born-202-persephone-16",
+            "born-168-leonardo-11",
+            "born-202-socrates-15",
+            "born-226-persephone-17"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 2,
+          "evidenceEventIds": [
+            "e-1-action-usagi-tsukino-19",
+            "e-17-environment-prediction-0",
+            "e-45-action-usagi-tsukino-20",
+            "e-70-environment-prediction-1",
+            "e-80-action-usagi-tsukino-30",
+            "e-103-environment-prediction-0",
+            "e-121-action-usagi-tsukino-2",
+            "e-152-environment-prediction-0",
+            "e-159-action-usagi-tsukino-4",
+            "e-199-environment-prediction-0",
+            "e-215-action-usagi-tsukino-8",
+            "e-234-environment-prediction-0",
+            "e-284-action-usagi-tsukino-6",
+            "e-295-environment-prediction-0",
+            "e-303-action-usagi-tsukino-11",
+            "e-342-environment-prediction-0",
+            "e-1-action-sima-qian-9",
+            "e-14-environment-prediction-0",
+            "e-34-action-sima-qian-12",
+            "e-70-environment-prediction-0",
+            "e-80-action-sima-qian-49",
+            "e-106-environment-prediction-0",
+            "e-122-action-sima-qian-3",
+            "e-154-environment-prediction-0",
+            "e-160-action-sima-qian-5",
+            "e-204-environment-prediction-0",
+            "e-221-action-sima-qian-43",
+            "e-237-environment-prediction-0",
+            "e-262-action-sima-qian-29",
+            "e-264-environment-prediction-0",
+            "e-289-action-sima-qian-30",
+            "e-294-environment-prediction-0",
+            "e-309-action-sima-qian-3",
+            "e-342-environment-prediction-1",
+            "e-352-action-sima-qian-3",
+            "e-357-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一预测者至少有两次已结算预言；每次预言保存独立来源与正确/错误后果。阶段门槛已验证，保留 2 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:248:practice:physical-record:v2",
+          "capabilityId": 248,
+          "catalogKind": "map",
+          "mapLabel": "保存信件、器物与影像",
+          "label": "保存信件、器物与影像",
+          "domain": "memory",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 360,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-289-action-sima-qian-28"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed record 写入为 RecordPayload 提供真实创作来源；至少 12 个月后，当前背包、地面或容器仍存在同一 recordPayloadId 载体。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        }
+      ]
+    },
+    {
+      "runId": "v25-entity-long-s20260815-y30-r1",
+      "statePath": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/v25-entity-long-s20260815-y30-r1/state.json",
+      "seed": 20260815,
+      "throughMonth": 360,
+      "population": 6,
+      "milestoneDefinitionsObserved": 34,
+      "capabilityCoordinatesObserved": 26,
+      "worldSpecificMilestonesObserved": 8,
+      "civilizationIndex": {
+        "formulaVersion": "causal-diversity-v3",
+        "legacyMilestoneProjection": 52.21,
+        "capabilityMilestoneProjection": 52.21,
+        "totalDelta": 0,
+        "legacyHistoryScore": 70,
+        "capabilityHistoryScore": 70,
+        "historyDelta": 0,
+        "capabilityHistoryEvidence": {
+          "causalEpisodes": 69,
+          "turningCategories": 33,
+          "milestones": 34,
+          "milestoneCapabilities": 26,
+          "completedCausalProjects": 14,
+          "births": 2,
+          "deaths": 3,
+          "agreementOutcomes": 0,
+          "eraTransitions": 16,
+          "recordedKnowledge": 3,
+          "taughtFacts": 7,
+          "transmittedTechniques": 11,
+          "crossGenerationKnowledge": 0
+        }
+      },
+      "domains": {
+        "agriculture": 1,
+        "coordination": 1,
+        "craft": 4,
+        "food": 2,
+        "governance": 1,
+        "home": 2,
+        "kinship": 1,
+        "knowledge": 2,
+        "learning": 1,
+        "life": 4,
+        "memory": 2,
+        "norms": 1,
+        "property": 1,
+        "subsistence": 3,
+        "three-body": 6,
+        "world-event": 2
+      },
+      "valences": {
+        "ambivalent": 11,
+        "constructive": 22,
+        "harmful": 1
+      },
+      "phases": {
+        "collapse": 2,
+        "decline": 2,
+        "emergence": 6,
+        "practice": 15,
+        "recovery": 1,
+        "response": 2,
+        "stable": 6
+      },
+      "harmfulOrCollapseOrRecovery": [
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 4,
+          "evidenceEventIds": [
+            "e-2-action-bai-suzhen-11",
+            "e-3-action-bai-suzhen-24",
+            "e-3-action-bai-suzhen-36",
+            "e-4-action-bai-suzhen-30",
+            "e-4-action-bai-suzhen-33"
+          ]
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "phase": "recovery",
+          "occurrenceCount": 1,
+          "observedAtMonth": 45,
+          "evidenceEventIds": [
+            "e-45-action-bai-suzhen-3",
+            "e-45-action-bai-suzhen-27"
+          ]
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "mapLabel": "死亡",
+          "catalogKind": "map",
+          "label": "死亡",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 78,
+          "evidenceEventIds": [
+            "e-78-environment-death-1"
+          ]
+        }
+      ],
+      "unresolvedEvidenceIds": [],
+      "milestones": [
+        {
+          "id": "world:weather-change:emergence:weather:v2",
+          "catalogKind": "world-specific",
+          "label": "天气或气候变化发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 1,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "环境结算生成结构化 weather/climate 事实；事实保存种类、强度或纪元序号。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:11:practice:gather-food:v2",
+          "capabilityId": 11,
+          "catalogKind": "map",
+          "mapLabel": "采集食物",
+          "label": "采集食物",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "armstrong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-armstrong-58"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可食物资来自地面掉落物；completed transfer 把同一物资交给具体人物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:12:practice:hunt:v2",
+          "capabilityId": 12,
+          "catalogKind": "map",
+          "mapLabel": "捕猎动物",
+          "label": "捕猎动物",
+          "domain": "subsistence",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "armstrong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-armstrong-55"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "hunt 原语指向真实动物 ID；动作完成并记录 killed=true 与动物产物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:58:practice:natural-observation:v2",
+          "capabilityId": 58,
+          "catalogKind": "map",
+          "mapLabel": "观察自然现象",
+          "label": "观察自然现象",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-cangtianying-22"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物完成 attend 并指向动物、体素或自然掉落物；观察事实保存人物和真实世界对象。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:241:practice:memory:v2",
+          "capabilityId": 241,
+          "catalogKind": "map",
+          "mapLabel": "记住个人经历",
+          "label": "记住个人经历",
+          "domain": "memory",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "zhugeliang",
+            "armstrong"
+          ],
+          "affectedPersonIds": [
+            "zhugeliang"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-zhugeliang-61"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物记忆保存具体 sourceEventIds；来源事实能解析到亲历、对话、承诺或失败事件。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "domain": "world-event",
+          "valence": "harmful",
+          "phase": "collapse",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-2-action-bai-suzhen-11",
+            "e-3-action-bai-suzhen-24",
+            "e-3-action-bai-suzhen-36",
+            "e-4-action-bai-suzhen-30",
+            "e-4-action-bai-suzhen-33"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目曾有真实触发事实和行动历史；项目转为 blocked 或物流事件 exhausted/invalidated 并保存失败来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:16:practice:tool-craft:v2",
+          "capabilityId": 16,
+          "catalogKind": "map",
+          "mapLabel": "制造工具",
+          "label": "制造工具",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-bai-suzhen-25"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "combine 使用真实输入材料；completed diff 产生工具类 outputMaterialId。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:17:practice:fire-making:v2",
+          "capabilityId": 17,
+          "catalogKind": "map",
+          "mapLabel": "掌控火种",
+          "label": "掌控火种",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "zhugeliang"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-zhugeliang-34"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "exert 使用真实工具与燃料目标；completed diff 产生 Fire 体素。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:18:practice:cooking:v2",
+          "capabilityId": 18,
+          "catalogKind": "map",
+          "mapLabel": "烹饪食物",
+          "label": "烹饪食物",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "zhugeliang"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-zhugeliang-40"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "生食与真实火体素参与 expose；completed diff 产生 CookedFood。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:59:practice:tested-hypothesis:v2",
+          "capabilityId": 59,
+          "catalogKind": "map",
+          "mapLabel": "用实验检验猜想",
+          "label": "用实验检验猜想",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-4-action-bai-suzhen-25",
+            "e-4-action-bai-suzhen-27"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少一次真实物质试验；同一知识来源还包含 understood/verified 的主动核验。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:20:emergence:shelter:v2",
+          "capabilityId": 20,
+          "catalogKind": "map",
+          "mapLabel": "建造住所",
+          "label": "建造住所",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "emergence",
+          "observedAtMonth": 13,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-13-action-sunwukong-18"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "多次建造动作形成有来源体素结构；结构具有内部空间、容量和防护且标记 complete。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:48:emergence:agreement:v2",
+          "capabilityId": 48,
+          "catalogKind": "map",
+          "mapLabel": "订立契约",
+          "label": "订立契约",
+          "domain": "norms",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 15,
+          "participantIds": [
+            "tesla",
+            "sunwukong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-13-action-tesla-5",
+            "e-13-action-sunwukong-9",
+            "e-13-action-sunwukong-10",
+            "e-13-action-tesla-11",
+            "e-13-action-tesla-12",
+            "e-13-action-sunwukong-13",
+            "e-13-action-sunwukong-14",
+            "e-13-action-tesla-15",
+            "e-13-action-tesla-16",
+            "e-13-action-sunwukong-17",
+            "e-13-action-sunwukong-18",
+            "e-14-action-tesla-13",
+            "e-15-action-sunwukong-5"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "结构化 offer/request 指定双方与期限；所需回应者明确接受并建立 active/fulfilled 约定。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:correct-era-prediction:response:correct-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言应验",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 27,
+          "participantIds": [
+            "bai-suzhen",
+            "zhugeliang",
+            "zhaotianli",
+            "cangtianying",
+            "tesla"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-bai-suzhen-10",
+            "e-27-environment-prediction-1"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于目标纪元变化提出；结算事实记录 correct=true 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction:emergence:prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "人物提出恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 27,
+          "participantIds": [
+            "bai-suzhen",
+            "zhugeliang",
+            "zhaotianli",
+            "cangtianying",
+            "tesla"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-bai-suzhen-10",
+            "e-27-environment-prediction-1"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物向真实 audience 作出带时间窗的纪元预言；EraPrediction 保存预测者、目标纪元与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:incorrect-era-prediction:decline:incorrect-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言未应验",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 27,
+          "participantIds": [
+            "zhaotianli",
+            "zhugeliang",
+            "bai-suzhen",
+            "cangtianying",
+            "tesla"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-zhaotianli-16",
+            "e-27-environment-prediction-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于截止月提出；结算事实记录 correct=false 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "domain": "world-event",
+          "valence": "constructive",
+          "phase": "recovery",
+          "observedAtMonth": 45,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-45-action-bai-suzhen-3",
+            "e-45-action-bai-suzhen-27"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一项目先出现阻塞或物流失败事实；后续真实行动使项目完成或恢复推进。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:2:emergence:conception:v2",
+          "capabilityId": 2,
+          "catalogKind": "map",
+          "mapLabel": "繁衍后代",
+          "label": "繁衍后代",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 53,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-53-action-cangtianying-2"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "双方先形成有效的生殖同意约定；reproduce 原语完成且 conceived=true。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:1:emergence:birth:v2",
+          "capabilityId": 1,
+          "catalogKind": "map",
+          "mapLabel": "诞生",
+          "label": "诞生",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 62,
+          "participantIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "affectedPersonIds": [
+            "born-62-cangtianying-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-62-environment-body-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "月度身体结算生成 bornPersonId 与父母 ID；新人物的 geneticParents 与出生事实一致。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "catalogKind": "map",
+          "mapLabel": "死亡",
+          "label": "死亡",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "collapse",
+          "observedAtMonth": 78,
+          "participantIds": [
+            "armstrong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-78-environment-death-1"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物身体或寿命结算达到死亡条件；死亡事实保存 personId、原因与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:169:response:dependent-protection:v2",
+          "capabilityId": 169,
+          "catalogKind": "map",
+          "mapLabel": "保护儿童免受伤害",
+          "label": "保护儿童免受伤害",
+          "domain": "kinship",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 87,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [
+            "born-62-cangtianying-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-87-action-cangtianying-42"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "儿童处于依赖年龄且与照护者有亲子或真实照护关系；乱纪元危险中 completed 动作明确保存 assistedDependentId 或 carriedPersonIds。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:13:practice:gift:v2",
+          "capabilityId": 13,
+          "catalogKind": "map",
+          "mapLabel": "分享资源",
+          "label": "分享资源",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "cangtianying",
+            "born-62-cangtianying-7"
+          ],
+          "affectedPersonIds": [
+            "born-62-cangtianying-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-cangtianying-3"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:131:practice:infant-feeding:v2",
+          "capabilityId": 131,
+          "catalogKind": "map",
+          "mapLabel": "喂养婴幼儿",
+          "label": "喂养婴幼儿",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [
+            "born-62-cangtianying-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-cangtianying-3"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed transfer 把可食材料交给未独立儿童；行动者是儿童父母或动作保存明确照护来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:462:practice:gift:v2",
+          "capabilityId": 462,
+          "catalogKind": "map",
+          "mapLabel": "赠与财物",
+          "label": "赠与财物",
+          "domain": "property",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 89,
+          "participantIds": [
+            "cangtianying",
+            "born-62-cangtianying-7"
+          ],
+          "affectedPersonIds": [
+            "born-62-cangtianying-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-89-action-cangtianying-3"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:22:stable:joint-project:v2",
+          "capabilityId": 22,
+          "catalogKind": "map",
+          "mapLabel": "协同行动",
+          "label": "协同行动",
+          "domain": "coordination",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 108,
+          "participantIds": [
+            "tesla",
+            "sunwukong",
+            "zhugeliang",
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [
+            "tesla",
+            "zhugeliang"
+          ],
+          "occurrenceCount": 2,
+          "evidenceEventIds": [
+            "e-13-action-tesla-5",
+            "e-13-action-sunwukong-9",
+            "e-13-action-sunwukong-10",
+            "e-13-action-tesla-11",
+            "e-13-action-tesla-12",
+            "e-13-action-sunwukong-13",
+            "e-13-action-sunwukong-14",
+            "e-13-action-tesla-15",
+            "e-13-action-tesla-16",
+            "e-13-action-sunwukong-17",
+            "e-13-action-sunwukong-18",
+            "e-108-action-zhugeliang-3",
+            "e-108-action-bai-suzhen-5",
+            "e-108-action-bai-suzhen-6",
+            "e-108-action-zhugeliang-7",
+            "e-108-action-bai-suzhen-8"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 2 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:524:stable:decision-rule:v2",
+          "capabilityId": 524,
+          "catalogKind": "map",
+          "mapLabel": "通过协商形成共识",
+          "label": "通过协商形成共识",
+          "domain": "governance",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 112,
+          "participantIds": [
+            "zhugeliang",
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-108-action-zhugeliang-3",
+            "e-108-action-bai-suzhen-5",
+            "e-108-action-bai-suzhen-6",
+            "e-108-action-zhugeliang-7",
+            "e-108-action-bai-suzhen-8",
+            "e-108-action-zhugeliang-10",
+            "e-109-action-bai-suzhen-21",
+            "e-111-action-zhugeliang-5",
+            "e-112-action-bai-suzhen-27"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "共同体成员提出具体范围的 unanimous 规则；全体现有成员接受并生成 active DecisionRule。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:324:practice:rope-craft:v2",
+          "capabilityId": 324,
+          "catalogKind": "map",
+          "mapLabel": "编织、缝合与制绳",
+          "label": "编织、缝合与制绳",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 159,
+          "participantIds": [
+            "sunwukong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-159-action-sunwukong-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维等真实输入材料参与 combine；completed diff 明确产生 Rope。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:19:practice:clothing:v2",
+          "capabilityId": 19,
+          "catalogKind": "map",
+          "mapLabel": "制作衣物",
+          "label": "制作衣物",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 202,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-202-action-cangtianying-5"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维或兽皮参与 combine；completed diff 产生衣物或兽皮衣。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:222:stable:trial-learning:v2",
+          "capabilityId": 222,
+          "catalogKind": "map",
+          "mapLabel": "通过试错掌握技能",
+          "label": "通过试错掌握技能",
+          "domain": "learning",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 208,
+          "participantIds": [
+            "zhugeliang",
+            "cangtianying",
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "affectedPersonIds": [
+            "zhugeliang",
+            "cangtianying",
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "occurrenceCount": 8,
+          "evidenceEventIds": [
+            "e-4-action-zhugeliang-16",
+            "e-11-action-zhugeliang-8",
+            "e-12-action-zhugeliang-3",
+            "e-13-action-zhugeliang-2",
+            "e-54-action-cangtianying-5",
+            "e-55-action-cangtianying-3",
+            "e-56-action-cangtianying-2",
+            "e-4-action-zhugeliang-34",
+            "e-86-action-zhugeliang-17",
+            "e-4-action-zhugeliang-40",
+            "e-86-action-zhugeliang-20",
+            "e-108-action-zhugeliang-3",
+            "e-108-action-zhugeliang-7",
+            "e-129-action-zhugeliang-4",
+            "e-87-action-zhaotianli-38",
+            "e-87-action-zhaotianli-57",
+            "e-88-action-zhaotianli-9",
+            "e-143-action-zhaotianli-9",
+            "e-152-action-zhaotianli-21",
+            "e-190-action-cangtianying-16",
+            "e-196-action-cangtianying-26",
+            "e-87-action-sunwukong-11",
+            "e-87-action-sunwukong-40",
+            "e-87-action-sunwukong-44",
+            "e-179-action-sunwukong-25",
+            "e-206-action-sunwukong-3",
+            "e-207-action-sunwukong-2",
+            "e-208-action-sunwukong-6"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少两次真实物质试验；试验来源跨越阶段门槛要求的月份。阶段门槛已验证，保留 8 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:8:decline:aging:v2",
+          "capabilityId": 8,
+          "catalogKind": "map",
+          "mapLabel": "衰老",
+          "label": "衰老",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 239,
+          "participantIds": [
+            "cangtianying"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-239-environment-condition-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物年龄达到衰老压力区间；月度结算写入 aging 条件事实。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:32:practice:cultivation:v2",
+          "capabilityId": 32,
+          "catalogKind": "map",
+          "mapLabel": "栽培作物",
+          "label": "栽培作物",
+          "domain": "agriculture",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 294,
+          "participantIds": [
+            "tesla"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-205-action-tesla-5",
+            "e-294-action-tesla-14"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "种子与肥沃地表结合生成作物；自然生长后由 separate 产生真实收获。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:148:stable:fire-practice:v2",
+          "capabilityId": 148,
+          "catalogKind": "map",
+          "mapLabel": "维护炉灶与火源",
+          "label": "维护炉灶与火源",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 295,
+          "participantIds": [
+            "zhugeliang",
+            "cangtianying",
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 3,
+          "evidenceEventIds": [
+            "e-4-action-zhugeliang-34",
+            "e-86-action-zhugeliang-17",
+            "e-54-action-cangtianying-18",
+            "e-88-action-cangtianying-3",
+            "e-93-action-cangtianying-5",
+            "e-234-action-cangtianying-38",
+            "e-45-action-bai-suzhen-18",
+            "e-295-action-bai-suzhen-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "火种在至少两个不同月份被制造或使用；相关动作共享火材料输入或输出。阶段门槛已验证，保留 3 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction-practice:stable:prediction-practice:v2",
+          "catalogKind": "world-specific",
+          "label": "人物跨次检验恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 351,
+          "participantIds": [
+            "zhaotianli",
+            "zhugeliang",
+            "bai-suzhen",
+            "cangtianying",
+            "tesla",
+            "armstrong",
+            "sunwukong",
+            "born-62-cangtianying-7"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 4,
+          "evidenceEventIds": [
+            "e-1-action-zhaotianli-16",
+            "e-27-environment-prediction-4",
+            "e-44-action-zhaotianli-3",
+            "e-70-environment-prediction-0",
+            "e-87-action-zhaotianli-50",
+            "e-103-environment-prediction-0",
+            "e-129-action-zhaotianli-42",
+            "e-155-environment-prediction-0",
+            "e-181-action-zhaotianli-25",
+            "e-208-environment-prediction-1",
+            "e-250-action-zhaotianli-9",
+            "e-270-environment-prediction-0",
+            "e-275-action-zhaotianli-3",
+            "e-304-environment-prediction-0",
+            "e-1-action-zhugeliang-8",
+            "e-27-environment-prediction-0",
+            "e-45-action-zhugeliang-5",
+            "e-70-environment-prediction-1",
+            "e-86-action-zhugeliang-28",
+            "e-112-environment-prediction-0",
+            "e-130-action-zhugeliang-9",
+            "e-155-environment-prediction-2",
+            "e-179-action-zhugeliang-7",
+            "e-204-environment-prediction-0",
+            "e-233-action-zhugeliang-4",
+            "e-250-environment-prediction-0",
+            "e-275-action-zhugeliang-7",
+            "e-304-environment-prediction-1",
+            "e-1-action-sunwukong-20",
+            "e-27-environment-prediction-5",
+            "e-45-action-sunwukong-7",
+            "e-70-environment-prediction-2",
+            "e-87-action-sunwukong-36",
+            "e-110-environment-prediction-0",
+            "e-130-action-sunwukong-5",
+            "e-155-environment-prediction-1",
+            "e-235-action-sunwukong-15",
+            "e-250-environment-prediction-2",
+            "e-278-action-sunwukong-10",
+            "e-304-environment-prediction-4",
+            "e-323-action-sunwukong-4",
+            "e-348-environment-prediction-0",
+            "e-1-action-bai-suzhen-10",
+            "e-27-environment-prediction-1",
+            "e-46-action-bai-suzhen-9",
+            "e-69-environment-prediction-0",
+            "e-87-action-bai-suzhen-7",
+            "e-112-environment-prediction-1",
+            "e-129-action-bai-suzhen-2",
+            "e-148-environment-prediction-0",
+            "e-198-action-bai-suzhen-7",
+            "e-203-environment-prediction-0",
+            "e-234-action-bai-suzhen-8",
+            "e-250-environment-prediction-1",
+            "e-276-action-bai-suzhen-34",
+            "e-304-environment-prediction-3",
+            "e-323-action-bai-suzhen-21",
+            "e-351-environment-prediction-1"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一预测者至少有两次已结算预言；每次预言保存独立来源与正确/错误后果。阶段门槛已验证，保留 4 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-cycle:stable:era-cycle:v2",
+          "catalogKind": "world-specific",
+          "label": "恒纪元与乱纪元交替发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "stable",
+          "observedAtMonth": 355,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-27-environment-climate-0",
+            "e-43-environment-climate-0",
+            "e-70-environment-climate-0",
+            "e-85-environment-climate-0",
+            "e-112-environment-climate-0",
+            "e-128-environment-climate-0",
+            "e-155-environment-climate-0",
+            "e-178-environment-climate-0",
+            "e-208-environment-climate-0",
+            "e-232-environment-climate-0",
+            "e-250-environment-climate-0",
+            "e-274-environment-climate-0",
+            "e-304-environment-climate-0",
+            "e-320-environment-climate-0",
+            "e-351-environment-climate-0",
+            "e-355-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "至少两次 eraTransition 事实可解析；恒纪元与乱纪元均在历史中真实出现。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:248:practice:physical-record:v2",
+          "capabilityId": 248,
+          "catalogKind": "map",
+          "mapLabel": "保存信件、器物与影像",
+          "label": "保存信件、器物与影像",
+          "domain": "memory",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 360,
+          "participantIds": [
+            "sunwukong"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-179-action-sunwukong-29"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed record 写入为 RecordPayload 提供真实创作来源；至少 12 个月后，当前背包、地面或容器仍存在同一 recordPayloadId 载体。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        }
+      ]
+    },
+    {
+      "runId": "v25-entity-long-s20260816-y30-r1",
+      "statePath": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/v25-entity-long-s20260816-y30-r1/state.json",
+      "seed": 20260816,
+      "throughMonth": 360,
+      "population": 18,
+      "milestoneDefinitionsObserved": 35,
+      "capabilityCoordinatesObserved": 27,
+      "worldSpecificMilestonesObserved": 8,
+      "civilizationIndex": {
+        "formulaVersion": "causal-diversity-v3",
+        "legacyMilestoneProjection": 64.8,
+        "capabilityMilestoneProjection": 64.76,
+        "totalDelta": -0.04,
+        "legacyHistoryScore": 85.34,
+        "capabilityHistoryScore": 84.95,
+        "historyDelta": -0.39,
+        "capabilityHistoryEvidence": {
+          "causalEpisodes": 97,
+          "turningCategories": 35,
+          "milestones": 35,
+          "milestoneCapabilities": 27,
+          "completedCausalProjects": 21,
+          "births": 16,
+          "deaths": 5,
+          "agreementOutcomes": 0,
+          "eraTransitions": 20,
+          "recordedKnowledge": 4,
+          "taughtFacts": 16,
+          "transmittedTechniques": 14,
+          "crossGenerationKnowledge": 9
+        }
+      },
+      "domains": {
+        "agriculture": 1,
+        "coordination": 1,
+        "craft": 4,
+        "food": 2,
+        "home": 2,
+        "kinship": 1,
+        "knowledge": 2,
+        "labor": 1,
+        "learning": 1,
+        "life": 5,
+        "memory": 2,
+        "norms": 1,
+        "property": 1,
+        "subsistence": 3,
+        "three-body": 6,
+        "world-event": 2
+      },
+      "valences": {
+        "ambivalent": 11,
+        "constructive": 23,
+        "harmful": 1
+      },
+      "phases": {
+        "collapse": 2,
+        "decline": 2,
+        "emergence": 6,
+        "practice": 15,
+        "recovery": 1,
+        "response": 2,
+        "stable": 7
+      },
+      "harmfulOrCollapseOrRecovery": [
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 34,
+          "evidenceEventIds": [
+            "e-3-action-washington-9",
+            "e-3-action-washington-39",
+            "e-3-action-washington-62",
+            "e-19-action-washington-15",
+            "e-34-action-washington-30",
+            "e-34-action-washington-39",
+            "e-34-action-washington-43",
+            "e-34-action-washington-45"
+          ]
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "phase": "recovery",
+          "occurrenceCount": 1,
+          "observedAtMonth": 35,
+          "evidenceEventIds": [
+            "e-3-action-sima-qian-17",
+            "e-3-action-sima-qian-40",
+            "e-3-action-sima-qian-47",
+            "e-3-action-sima-qian-91",
+            "e-35-action-sima-qian-13",
+            "e-35-action-sima-qian-56"
+          ]
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "mapLabel": "死亡",
+          "catalogKind": "map",
+          "label": "死亡",
+          "phase": "collapse",
+          "occurrenceCount": 1,
+          "observedAtMonth": 117,
+          "evidenceEventIds": [
+            "e-117-environment-death-4"
+          ]
+        }
+      ],
+      "unresolvedEvidenceIds": [],
+      "milestones": [
+        {
+          "id": "world:weather-change:emergence:weather:v2",
+          "catalogKind": "world-specific",
+          "label": "天气或气候变化发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 1,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "环境结算生成结构化 weather/climate 事实；事实保存种类、强度或纪元序号。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:58:practice:natural-observation:v2",
+          "capabilityId": 58,
+          "catalogKind": "map",
+          "mapLabel": "观察自然现象",
+          "label": "观察自然现象",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 1,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-bai-suzhen-40"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物完成 attend 并指向动物、体素或自然掉落物；观察事实保存人物和真实世界对象。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:20:emergence:shelter:v2",
+          "capabilityId": 20,
+          "catalogKind": "map",
+          "mapLabel": "建造住所",
+          "label": "建造住所",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "emergence",
+          "observedAtMonth": 3,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-3-action-sima-qian-17"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "多次建造动作形成有来源体素结构；结构具有内部空间、容量和防护且标记 complete。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:241:practice:memory:v2",
+          "capabilityId": 241,
+          "catalogKind": "map",
+          "mapLabel": "记住个人经历",
+          "label": "记住个人经历",
+          "domain": "memory",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 3,
+          "participantIds": [
+            "bai-suzhen",
+            "washington"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-3-action-bai-suzhen-33"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物记忆保存具体 sourceEventIds；来源事实能解析到亲历、对话、承诺或失败事件。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:48:emergence:agreement:v2",
+          "capabilityId": 48,
+          "catalogKind": "map",
+          "mapLabel": "订立契约",
+          "label": "订立契约",
+          "domain": "norms",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 4,
+          "participantIds": [
+            "cailun",
+            "washington"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-3-action-cailun-11",
+            "e-3-action-cailun-19",
+            "e-3-action-sima-qian-25",
+            "e-3-action-washington-27",
+            "e-3-action-cailun-31",
+            "e-3-action-cailun-32",
+            "e-3-action-washington-34",
+            "e-3-action-sima-qian-36",
+            "e-3-action-washington-39",
+            "e-3-action-sima-qian-40",
+            "e-3-action-cailun-46",
+            "e-3-action-sima-qian-47",
+            "e-3-action-cailun-73",
+            "e-4-action-washington-25"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "结构化 offer/request 指定双方与期限；所需回应者明确接受并建立 active/fulfilled 约定。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:2:emergence:conception:v2",
+          "capabilityId": 2,
+          "catalogKind": "map",
+          "mapLabel": "繁衍后代",
+          "label": "繁衍后代",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 7,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-7-action-sima-qian-3"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "双方先形成有效的生殖同意约定；reproduce 原语完成且 conceived=true。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction:emergence:prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "人物提出恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 12,
+          "participantIds": [
+            "heidi",
+            "bai-suzhen",
+            "libai",
+            "cailun",
+            "wuzetian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-heidi-12",
+            "e-12-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物向真实 audience 作出带时间窗的纪元预言；EraPrediction 保存预测者、目标纪元与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:incorrect-era-prediction:decline:incorrect-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言未应验",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 12,
+          "participantIds": [
+            "heidi",
+            "bai-suzhen",
+            "libai",
+            "cailun",
+            "wuzetian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-heidi-12",
+            "e-12-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于截止月提出；结算事实记录 correct=false 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:1:emergence:birth:v2",
+          "capabilityId": 1,
+          "catalogKind": "map",
+          "mapLabel": "诞生",
+          "label": "诞生",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "emergence",
+          "observedAtMonth": 16,
+          "participantIds": [
+            "sima-qian",
+            "cailun"
+          ],
+          "affectedPersonIds": [
+            "born-16-sima-qian-7"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-16-environment-body-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "月度身体结算生成 bornPersonId 与父母 ID；新人物的 geneticParents 与出生事实一致。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:11:practice:gather-food:v2",
+          "capabilityId": 11,
+          "catalogKind": "map",
+          "mapLabel": "采集食物",
+          "label": "采集食物",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 17,
+          "participantIds": [
+            "washington"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-17-action-washington-19"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可食物资来自地面掉落物；completed transfer 把同一物资交给具体人物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:169:response:dependent-protection:v2",
+          "capabilityId": 169,
+          "catalogKind": "map",
+          "mapLabel": "保护儿童免受伤害",
+          "label": "保护儿童免受伤害",
+          "domain": "kinship",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 18,
+          "participantIds": [
+            "libai"
+          ],
+          "affectedPersonIds": [
+            "born-17-libai-8"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-18-action-libai-12"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "儿童处于依赖年龄且与照护者有亲子或真实照护关系；乱纪元危险中 completed 动作明确保存 assistedDependentId 或 carriedPersonIds。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:correct-era-prediction:response:correct-prediction:v2",
+          "catalogKind": "world-specific",
+          "label": "恒乱纪元预言应验",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "response",
+          "observedAtMonth": 19,
+          "participantIds": [
+            "cailun",
+            "bai-suzhen",
+            "libai",
+            "wuzetian",
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-1-action-cailun-18",
+            "e-19-environment-prediction-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "预言先于目标纪元变化提出；结算事实记录 correct=true 与误差月份。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-breakdown:collapse:project-breakdown:v2",
+          "catalogKind": "world-specific",
+          "label": "项目因有来源的供给失败而阻塞",
+          "domain": "world-event",
+          "valence": "harmful",
+          "phase": "collapse",
+          "observedAtMonth": 34,
+          "participantIds": [
+            "washington"
+          ],
+          "affectedPersonIds": [
+            "washington"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-3-action-washington-9",
+            "e-3-action-washington-39",
+            "e-3-action-washington-62",
+            "e-19-action-washington-15",
+            "e-34-action-washington-30",
+            "e-34-action-washington-39",
+            "e-34-action-washington-43",
+            "e-34-action-washington-45"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目曾有真实触发事实和行动历史；项目转为 blocked 或物流事件 exhausted/invalidated 并保存失败来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:project-recovery:recovery:project-recovery:v2",
+          "catalogKind": "world-specific",
+          "label": "项目在有来源失败后恢复并完成",
+          "domain": "world-event",
+          "valence": "constructive",
+          "phase": "recovery",
+          "observedAtMonth": 35,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [
+            "sima-qian"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-3-action-sima-qian-17",
+            "e-3-action-sima-qian-40",
+            "e-3-action-sima-qian-47",
+            "e-3-action-sima-qian-91",
+            "e-35-action-sima-qian-13",
+            "e-35-action-sima-qian-56"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一项目先出现阻塞或物流失败事实；后续真实行动使项目完成或恢复推进。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:16:practice:tool-craft:v2",
+          "capabilityId": 16,
+          "catalogKind": "map",
+          "mapLabel": "制造工具",
+          "label": "制造工具",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 35,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-35-action-sima-qian-45"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "combine 使用真实输入材料；completed diff 产生工具类 outputMaterialId。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:59:practice:tested-hypothesis:v2",
+          "capabilityId": 59,
+          "catalogKind": "map",
+          "mapLabel": "用实验检验猜想",
+          "label": "用实验检验猜想",
+          "domain": "knowledge",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 35,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [
+            "sima-qian"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-35-action-sima-qian-45",
+            "e-35-action-sima-qian-49"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少一次真实物质试验；同一知识来源还包含 understood/verified 的主动核验。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:324:practice:rope-craft:v2",
+          "capabilityId": 324,
+          "catalogKind": "map",
+          "mapLabel": "编织、缝合与制绳",
+          "label": "编织、缝合与制绳",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 47,
+          "participantIds": [
+            "libai"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-47-action-libai-13"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维等真实输入材料参与 combine；completed diff 明确产生 Rope。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:17:practice:fire-making:v2",
+          "capabilityId": 17,
+          "catalogKind": "map",
+          "mapLabel": "掌控火种",
+          "label": "掌控火种",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 50,
+          "participantIds": [
+            "bai-suzhen"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-50-action-bai-suzhen-36"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "exert 使用真实工具与燃料目标；completed diff 产生 Fire 体素。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:18:practice:cooking:v2",
+          "capabilityId": 18,
+          "catalogKind": "map",
+          "mapLabel": "烹饪食物",
+          "label": "烹饪食物",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 50,
+          "participantIds": [
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-50-action-sima-qian-32"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "生食与真实火体素参与 expose；completed diff 产生 CookedFood。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:13:practice:gift:v2",
+          "capabilityId": 13,
+          "catalogKind": "map",
+          "mapLabel": "分享资源",
+          "label": "分享资源",
+          "domain": "subsistence",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 61,
+          "participantIds": [
+            "washington",
+            "born-17-libai-8"
+          ],
+          "affectedPersonIds": [
+            "born-17-libai-8"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-61-action-washington-36"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:131:practice:infant-feeding:v2",
+          "capabilityId": 131,
+          "catalogKind": "map",
+          "mapLabel": "喂养婴幼儿",
+          "label": "喂养婴幼儿",
+          "domain": "food",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 61,
+          "participantIds": [
+            "washington"
+          ],
+          "affectedPersonIds": [
+            "born-17-libai-8"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-61-action-washington-36"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed transfer 把可食材料交给未独立儿童；行动者是儿童父母或动作保存明确照护来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:462:practice:gift:v2",
+          "capabilityId": 462,
+          "catalogKind": "map",
+          "mapLabel": "赠与财物",
+          "label": "赠与财物",
+          "domain": "property",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 61,
+          "participantIds": [
+            "washington",
+            "born-17-libai-8"
+          ],
+          "affectedPersonIds": [
+            "born-17-libai-8"
+          ],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-61-action-washington-36"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "物资来自赠与者自己的私人背包；completed transfer 把物资交给另一人且不引用交换、许可或授权。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:22:stable:joint-project:v2",
+          "capabilityId": 22,
+          "catalogKind": "map",
+          "mapLabel": "协同行动",
+          "label": "协同行动",
+          "domain": "coordination",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 75,
+          "participantIds": [
+            "bai-suzhen",
+            "washington",
+            "sima-qian",
+            "cailun",
+            "heidi",
+            "libai"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen",
+            "cailun",
+            "heidi",
+            "libai",
+            "washington"
+          ],
+          "occurrenceCount": 5,
+          "evidenceEventIds": [
+            "e-3-action-bai-suzhen-5",
+            "e-3-action-libai-7",
+            "e-3-action-washington-9",
+            "e-3-action-sima-qian-17",
+            "e-3-action-cailun-11",
+            "e-3-action-cailun-19",
+            "e-3-action-sima-qian-25",
+            "e-3-action-washington-27",
+            "e-3-action-cailun-31",
+            "e-3-action-cailun-32",
+            "e-3-action-washington-34",
+            "e-3-action-sima-qian-36",
+            "e-3-action-washington-39",
+            "e-3-action-sima-qian-40",
+            "e-3-action-cailun-46",
+            "e-3-action-sima-qian-47",
+            "e-3-action-heidi-13",
+            "e-3-action-heidi-20",
+            "e-3-action-heidi-23",
+            "e-3-action-heidi-38",
+            "e-3-action-heidi-42",
+            "e-3-action-bai-suzhen-45",
+            "e-3-action-heidi-50",
+            "e-3-action-bai-suzhen-51",
+            "e-3-action-heidi-52",
+            "e-3-action-washington-56",
+            "e-3-action-bai-suzhen-57",
+            "e-3-action-sima-qian-61",
+            "e-3-action-washington-62",
+            "e-3-action-libai-22",
+            "e-3-action-libai-37",
+            "e-3-action-libai-41",
+            "e-3-action-libai-48",
+            "e-3-action-libai-58",
+            "e-3-action-libai-64",
+            "e-3-action-bai-suzhen-68",
+            "e-3-action-libai-70",
+            "e-3-action-libai-72",
+            "e-3-action-sima-qian-77",
+            "e-3-action-bai-suzhen-78",
+            "e-3-action-washington-80",
+            "e-3-action-bai-suzhen-81",
+            "e-3-action-sima-qian-82",
+            "e-3-action-cailun-84",
+            "e-3-action-libai-86",
+            "e-3-action-washington-87",
+            "e-3-action-cailun-88",
+            "e-3-action-washington-90",
+            "e-3-action-sima-qian-91",
+            "e-60-environment-condition-7",
+            "e-62-environment-condition-5",
+            "e-63-environment-condition-7",
+            "e-64-environment-condition-7",
+            "e-65-environment-condition-1",
+            "e-66-environment-condition-1",
+            "e-67-environment-condition-4",
+            "e-68-environment-condition-3",
+            "e-69-environment-condition-2",
+            "e-70-environment-condition-2",
+            "e-72-action-washington-5",
+            "e-72-action-washington-6",
+            "e-75-action-washington-9",
+            "e-75-action-cailun-11",
+            "e-75-action-cailun-12"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 5 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:405:stable:joint-project:v2",
+          "capabilityId": 405,
+          "catalogKind": "map",
+          "mapLabel": "协调团队工作流程",
+          "label": "协调团队工作流程",
+          "domain": "labor",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 75,
+          "participantIds": [
+            "bai-suzhen",
+            "washington",
+            "sima-qian",
+            "cailun",
+            "heidi",
+            "libai"
+          ],
+          "affectedPersonIds": [
+            "bai-suzhen",
+            "cailun",
+            "heidi",
+            "libai",
+            "washington"
+          ],
+          "occurrenceCount": 5,
+          "evidenceEventIds": [
+            "e-3-action-bai-suzhen-5",
+            "e-3-action-libai-7",
+            "e-3-action-washington-9",
+            "e-3-action-sima-qian-17",
+            "e-3-action-cailun-11",
+            "e-3-action-cailun-19",
+            "e-3-action-sima-qian-25",
+            "e-3-action-washington-27",
+            "e-3-action-cailun-31",
+            "e-3-action-cailun-32",
+            "e-3-action-washington-34",
+            "e-3-action-sima-qian-36",
+            "e-3-action-washington-39",
+            "e-3-action-sima-qian-40",
+            "e-3-action-cailun-46",
+            "e-3-action-sima-qian-47",
+            "e-3-action-heidi-13",
+            "e-3-action-heidi-20",
+            "e-3-action-heidi-23",
+            "e-3-action-heidi-38",
+            "e-3-action-heidi-42",
+            "e-3-action-bai-suzhen-45",
+            "e-3-action-heidi-50",
+            "e-3-action-bai-suzhen-51",
+            "e-3-action-heidi-52",
+            "e-3-action-washington-56",
+            "e-3-action-bai-suzhen-57",
+            "e-3-action-sima-qian-61",
+            "e-3-action-washington-62",
+            "e-3-action-libai-22",
+            "e-3-action-libai-37",
+            "e-3-action-libai-41",
+            "e-3-action-libai-48",
+            "e-3-action-libai-58",
+            "e-3-action-libai-64",
+            "e-3-action-bai-suzhen-68",
+            "e-3-action-libai-70",
+            "e-3-action-libai-72",
+            "e-3-action-sima-qian-77",
+            "e-3-action-bai-suzhen-78",
+            "e-3-action-washington-80",
+            "e-3-action-bai-suzhen-81",
+            "e-3-action-sima-qian-82",
+            "e-3-action-cailun-84",
+            "e-3-action-libai-86",
+            "e-3-action-washington-87",
+            "e-3-action-cailun-88",
+            "e-3-action-washington-90",
+            "e-3-action-sima-qian-91",
+            "e-60-environment-condition-7",
+            "e-62-environment-condition-5",
+            "e-63-environment-condition-7",
+            "e-64-environment-condition-7",
+            "e-65-environment-condition-1",
+            "e-66-environment-condition-1",
+            "e-67-environment-condition-4",
+            "e-68-environment-condition-3",
+            "e-69-environment-condition-2",
+            "e-70-environment-condition-2",
+            "e-72-action-washington-5",
+            "e-72-action-washington-6",
+            "e-75-action-washington-9",
+            "e-75-action-cailun-11",
+            "e-75-action-cailun-12"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 5 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:32:practice:cultivation:v2",
+          "capabilityId": 32,
+          "catalogKind": "map",
+          "mapLabel": "栽培作物",
+          "label": "栽培作物",
+          "domain": "agriculture",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 79,
+          "participantIds": [
+            "cailun",
+            "sima-qian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-48-action-cailun-14",
+            "e-79-action-sima-qian-25"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "种子与肥沃地表结合生成作物；自然生长后由 separate 产生真实收获。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:3:stable:dependent-care:v2",
+          "capabilityId": 3,
+          "catalogKind": "map",
+          "mapLabel": "养育幼儿",
+          "label": "养育幼儿",
+          "domain": "life",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 83,
+          "participantIds": [
+            "cailun",
+            "libai",
+            "washington",
+            "wuzetian"
+          ],
+          "affectedPersonIds": [
+            "born-16-sima-qian-7",
+            "born-17-libai-8",
+            "born-48-libai-9",
+            "born-64-wuzetian-10",
+            "born-67-libai-11"
+          ],
+          "occurrenceCount": 8,
+          "evidenceEventIds": [
+            "e-19-action-cailun-8",
+            "e-19-action-libai-6",
+            "e-60-action-libai-5",
+            "e-61-action-washington-36",
+            "e-62-action-washington-5",
+            "e-65-action-wuzetian-6",
+            "e-68-action-libai-4",
+            "e-83-action-libai-14"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "照护者与未独立儿童存在亲子或真实照护关系；携带、转移物资或协助脱水产生可解析动作事实。阶段门槛已验证，保留 8 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:12:practice:hunt:v2",
+          "capabilityId": 12,
+          "catalogKind": "map",
+          "mapLabel": "捕猎动物",
+          "label": "捕猎动物",
+          "domain": "subsistence",
+          "valence": "ambivalent",
+          "phase": "practice",
+          "observedAtMonth": 107,
+          "participantIds": [
+            "wuzetian"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-107-action-wuzetian-17"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "hunt 原语指向真实动物 ID；动作完成并记录 killed=true 与动物产物。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:9:collapse:death:v2",
+          "capabilityId": 9,
+          "catalogKind": "map",
+          "mapLabel": "死亡",
+          "label": "死亡",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "collapse",
+          "observedAtMonth": 117,
+          "participantIds": [
+            "born-16-sima-qian-7"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-117-environment-death-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物身体或寿命结算达到死亡条件；死亡事实保存 personId、原因与来源。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:222:stable:trial-learning:v2",
+          "capabilityId": 222,
+          "catalogKind": "map",
+          "mapLabel": "通过试错掌握技能",
+          "label": "通过试错掌握技能",
+          "domain": "learning",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 153,
+          "participantIds": [
+            "washington",
+            "sima-qian",
+            "libai",
+            "wuzetian"
+          ],
+          "affectedPersonIds": [
+            "washington",
+            "sima-qian",
+            "libai",
+            "wuzetian"
+          ],
+          "occurrenceCount": 8,
+          "evidenceEventIds": [
+            "e-3-action-washington-9",
+            "e-3-action-washington-39",
+            "e-3-action-washington-62",
+            "e-35-action-sima-qian-45",
+            "e-36-action-sima-qian-22",
+            "e-36-action-sima-qian-24",
+            "e-3-action-libai-37",
+            "e-62-action-libai-9",
+            "e-63-action-libai-27",
+            "e-76-action-wuzetian-45",
+            "e-97-action-wuzetian-8",
+            "e-50-action-sima-qian-25",
+            "e-98-action-sima-qian-13",
+            "e-50-action-sima-qian-32",
+            "e-98-action-sima-qian-14",
+            "e-72-action-washington-5",
+            "e-104-action-washington-8",
+            "e-104-action-washington-52",
+            "e-123-action-libai-45",
+            "e-152-action-libai-77",
+            "e-153-action-libai-4"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "可靠技术知识引用至少两次真实物质试验；试验来源跨越阶段门槛要求的月份。阶段门槛已验证，保留 8 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:19:practice:clothing:v2",
+          "capabilityId": 19,
+          "catalogKind": "map",
+          "mapLabel": "制作衣物",
+          "label": "制作衣物",
+          "domain": "craft",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 189,
+          "participantIds": [
+            "washington"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-189-action-washington-39"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "纤维或兽皮参与 combine；completed diff 产生衣物或兽皮衣。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:148:stable:fire-practice:v2",
+          "capabilityId": 148,
+          "catalogKind": "map",
+          "mapLabel": "维护炉灶与火源",
+          "label": "维护炉灶与火源",
+          "domain": "home",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 287,
+          "participantIds": [
+            "sima-qian",
+            "bai-suzhen",
+            "wuzetian",
+            "cailun"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 4,
+          "evidenceEventIds": [
+            "e-50-action-sima-qian-25",
+            "e-98-action-sima-qian-13",
+            "e-50-action-bai-suzhen-36",
+            "e-124-action-bai-suzhen-32",
+            "e-158-action-bai-suzhen-44",
+            "e-122-action-wuzetian-69",
+            "e-165-action-wuzetian-18",
+            "e-165-action-wuzetian-32",
+            "e-166-action-wuzetian-37",
+            "e-189-action-wuzetian-63",
+            "e-190-action-wuzetian-18",
+            "e-241-action-cailun-23",
+            "e-287-action-cailun-10"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "火种在至少两个不同月份被制造或使用；相关动作共享火材料输入或输出。阶段门槛已验证，保留 4 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-prediction-practice:stable:prediction-practice:v2",
+          "catalogKind": "world-specific",
+          "label": "人物跨次检验恒乱纪元预言",
+          "domain": "three-body",
+          "valence": "constructive",
+          "phase": "stable",
+          "observedAtMonth": 333,
+          "participantIds": [
+            "cailun",
+            "bai-suzhen",
+            "libai",
+            "wuzetian",
+            "sima-qian",
+            "washington",
+            "heidi",
+            "born-64-wuzetian-10",
+            "born-67-libai-11",
+            "born-113-wuzetian-14",
+            "born-48-libai-9",
+            "born-204-sima-qian-16",
+            "born-16-sima-qian-7",
+            "born-17-libai-8",
+            "born-103-wuzetian-12",
+            "born-164-sima-qian-15"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 3,
+          "evidenceEventIds": [
+            "e-1-action-cailun-18",
+            "e-19-environment-prediction-0",
+            "e-34-action-cailun-12",
+            "e-57-environment-prediction-0",
+            "e-75-action-cailun-25",
+            "e-83-environment-prediction-1",
+            "e-95-action-cailun-21",
+            "e-107-environment-prediction-1",
+            "e-127-action-cailun-17",
+            "e-131-environment-prediction-1",
+            "e-152-action-cailun-10",
+            "e-165-environment-prediction-0",
+            "e-220-action-cailun-3",
+            "e-254-environment-prediction-0",
+            "e-285-action-cailun-12",
+            "e-315-environment-prediction-2",
+            "e-1-action-heidi-12",
+            "e-12-environment-prediction-0",
+            "e-35-action-heidi-9",
+            "e-60-environment-prediction-0",
+            "e-75-action-heidi-6",
+            "e-83-environment-prediction-0",
+            "e-91-action-heidi-4",
+            "e-109-environment-prediction-0",
+            "e-122-action-heidi-11",
+            "e-127-environment-prediction-0",
+            "e-151-action-heidi-4",
+            "e-168-environment-prediction-0",
+            "e-189-action-heidi-51",
+            "e-194-environment-prediction-0",
+            "e-220-action-heidi-10",
+            "e-254-environment-prediction-1",
+            "e-283-action-heidi-79",
+            "e-315-environment-prediction-1",
+            "e-1-action-bai-suzhen-20",
+            "e-19-environment-prediction-1",
+            "e-75-action-bai-suzhen-14",
+            "e-80-environment-prediction-0",
+            "e-92-action-bai-suzhen-41",
+            "e-107-environment-prediction-0",
+            "e-122-action-bai-suzhen-8",
+            "e-131-environment-prediction-0",
+            "e-157-action-bai-suzhen-25",
+            "e-172-environment-prediction-1",
+            "e-188-action-bai-suzhen-6",
+            "e-199-environment-prediction-0",
+            "e-244-action-bai-suzhen-14",
+            "e-251-environment-prediction-0",
+            "e-297-action-bai-suzhen-6",
+            "e-310-environment-prediction-0",
+            "e-330-action-bai-suzhen-12",
+            "e-333-environment-prediction-2"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "同一预测者至少有两次已结算预言；每次预言保存独立来源与正确/错误后果。阶段门槛已验证，保留 3 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:8:decline:aging:v2",
+          "capabilityId": 8,
+          "catalogKind": "map",
+          "mapLabel": "衰老",
+          "label": "衰老",
+          "domain": "life",
+          "valence": "ambivalent",
+          "phase": "decline",
+          "observedAtMonth": 334,
+          "participantIds": [
+            "washington"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-334-environment-condition-6"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "人物年龄达到衰老压力区间；月度结算写入 aging 条件事实。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "world:era-cycle:stable:era-cycle:v2",
+          "catalogKind": "world-specific",
+          "label": "恒纪元与乱纪元交替发生",
+          "domain": "three-body",
+          "valence": "ambivalent",
+          "phase": "stable",
+          "observedAtMonth": 357,
+          "participantIds": [],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-19-environment-climate-0",
+            "e-33-environment-climate-0",
+            "e-60-environment-climate-0",
+            "e-74-environment-climate-0",
+            "e-83-environment-climate-0",
+            "e-90-environment-climate-0",
+            "e-109-environment-climate-0",
+            "e-120-environment-climate-0",
+            "e-131-environment-climate-0",
+            "e-150-environment-climate-0",
+            "e-172-environment-climate-0",
+            "e-187-environment-climate-0",
+            "e-199-environment-climate-0",
+            "e-218-environment-climate-0",
+            "e-254-environment-climate-0",
+            "e-268-environment-climate-0",
+            "e-315-environment-climate-0",
+            "e-325-environment-climate-0",
+            "e-333-environment-climate-0",
+            "e-357-environment-climate-0"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "至少两次 eraTransition 事实可解析；恒纪元与乱纪元均在历史中真实出现。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        },
+        {
+          "id": "capability:248:practice:physical-record:v2",
+          "capabilityId": 248,
+          "catalogKind": "map",
+          "mapLabel": "保存信件、器物与影像",
+          "label": "保存信件、器物与影像",
+          "domain": "memory",
+          "valence": "constructive",
+          "phase": "practice",
+          "observedAtMonth": 360,
+          "participantIds": [
+            "cailun"
+          ],
+          "affectedPersonIds": [],
+          "occurrenceCount": 1,
+          "evidenceEventIds": [
+            "e-283-action-cailun-29"
+          ],
+          "definitionVersion": "capability-causal-v2",
+          "note": "completed record 写入为 RecordPayload 提供真实创作来源；至少 12 个月后，当前背包、地面或容器仍存在同一 recordPayloadId 载体。阶段门槛已验证，保留 1 条完整可回放因果链。"
+        }
+      ]
+    }
+  ]
+}

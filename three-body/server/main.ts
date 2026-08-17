@@ -8,11 +8,16 @@ import {
   type SimulationState,
 } from "../src/game/eland/simulation";
 import { normalizeModelProvider } from "../src/game/llm";
-import { createServerLlmDecider } from "./backend-decider";
 import { loadLlmKey } from "./env";
-import { handleDecide, modelConfiguration } from "./kimi-gateway";
+import { handleDecide } from "./kimi-gateway";
 import { buildEvolutionFactsReport, checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
-import { handleElandApi } from "./eland-api";
+import { ElandWorkerClient } from './eland-worker-client';
+import { NarrativeEnhancementService } from './narrative-enhancement-service';
+import {
+  NARRATIVE_ENHANCEMENT_KINDS,
+  narrativeEnhancementCounts,
+  type NarrativeEnhancementKind,
+} from './narrative-enhancements';
 import {
   FileRunStore,
   RunAlreadyExistsError,
@@ -24,8 +29,11 @@ const HOST = process.env.THREEBODY_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.THREEBODY_PORT ?? 3220);
 const DATA_DIR = path.resolve(process.env.THREEBODY_DATA_DIR ?? path.join(process.cwd(), "data", "runs"));
 const MAX_BODY_BYTES = 50 * 1024 * 1024;
+const RULE_PLANNER_MODEL = 'rule-planner-v1';
 
 const store = new FileRunStore(DATA_DIR);
+const narrativeEnhancements = new NarrativeEnhancementService(store);
+const elandWorker = new ElandWorkerClient();
 const runQueues = new Map<string, Promise<unknown>>();
 const evolutionJobs = new Map<string, Promise<void>>();
 
@@ -94,6 +102,21 @@ function positiveInteger(value: unknown, fallback: number): number {
   return Math.floor(number);
 }
 
+function narrativeKinds(value: unknown): NarrativeEnhancementKind[] {
+  if (value === undefined) return [...NARRATIVE_ENHANCEMENT_KINDS];
+  if (!Array.isArray(value)) throw new HttpError(400, 'kinds 必须是 dialogue、memory、history 的数组');
+  const allowed = new Set<string>(NARRATIVE_ENHANCEMENT_KINDS);
+  const kinds = [...new Set(value.filter((kind): kind is NarrativeEnhancementKind => typeof kind === 'string' && allowed.has(kind)))];
+  if (!kinds.length || kinds.length !== value.length) throw new HttpError(400, 'kinds 只能包含 dialogue、memory、history');
+  return kinds;
+}
+
+function enhancementTaskLimit(value: unknown): number {
+  const number = Number(value ?? 6);
+  if (!Number.isInteger(number) || number < 0 || number > 24) throw new HttpError(400, 'maxTasks 必须是 0-24 的整数');
+  return number;
+}
+
 async function serialized<T>(id: string, task: () => Promise<T>): Promise<T> {
   const previous = runQueues.get(id) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(task);
@@ -123,8 +146,6 @@ async function createRun(bodyValue: unknown, imported: boolean): Promise<Persist
 }
 
 async function executeLongEvolution(id: string, months: number, initialPath: EvolutionPath): Promise<void> {
-  const apiKey = loadLlmKey('kimi');
-  if (!apiKey) throw new Error('未配置 KIMI_API_KEY，真实演化无法开始');
   const current = await store.load(id);
   const controller = createSimulation({ state: current.state });
   const endMonth = current.state.clock.elapsedMonths + months;
@@ -133,19 +154,16 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
   let inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
   let outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
   try {
-    for (let index = 0; index < months && persisted.civilization.status === 'running'; index += 1) {
-      const state = await controller.stepAsync(createServerLlmDecider(apiKey, 'kimi'));
+    for (let advanced = 0; advanced < months && persisted.civilization.status === 'running';) {
+      const batchMonths = Math.min(12, months - advanced);
+      const state = controller.step(batchMonths);
       persisted = state;
-      const ledger = state.decisionBudget.ledgers.at(-1);
-      inputTokens += ledger?.inputTokens ?? 0;
-      outputTokens += ledger?.outputTokens ?? 0;
-      const reachedEnd = index === months - 1 || state.civilization.status === 'ended';
-      const checkpointDue = (state.clock.elapsedMonths - initialPath.fromMonth) % 12 === 0;
-      if (!checkpointDue && !reachedEnd) continue;
+      advanced += batchMonths;
       persisted = (await store.save(id, persisted)).state;
       path = evolvePath(persisted, {
         runId: id,
-        model: modelConfiguration('kimi').model,
+        provider: 'local',
+        model: RULE_PLANNER_MODEL,
         fromMonth: initialPath.fromMonth,
         requestedEndMonth: endMonth,
         previous: path,
@@ -156,12 +174,13 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
     }
     const report = buildEvolutionFactsReport(persisted, path);
     await store.saveEvolutionReport(id, report);
-    path = evolvePath(persisted, { runId: id, model: path.model, fromMonth: initialPath.fromMonth, requestedEndMonth: endMonth, previous: path, status: 'completed' });
+    path = evolvePath(persisted, { runId: id, provider: 'local', model: path.model, fromMonth: initialPath.fromMonth, requestedEndMonth: endMonth, previous: path, status: 'completed' });
     await store.saveEvolutionPath(id, path);
   } catch (error) {
     persisted = (await store.save(id, persisted)).state;
     path = evolvePath(persisted, {
       runId: id,
+      provider: 'local',
       model: path.model,
       fromMonth: initialPath.fromMonth,
       requestedEndMonth: endMonth,
@@ -177,7 +196,6 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
 async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
   const body = asObject(bodyValue);
   const months = positiveInteger(body.months, 1);
-  if (!loadLlmKey('kimi')) throw new HttpError(503, '未配置 KIMI_API_KEY，真实演化无法开始');
   if (evolutionJobs.has(id)) throw new HttpError(409, `运行 ${id} 正在演化`);
   const current = await store.load(id);
   if (current.state.civilization.status === 'ended') throw new HttpError(409, `运行 ${id} 已经结束`);
@@ -185,7 +203,8 @@ async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
   const requestedEndMonth = current.state.clock.elapsedMonths + months;
   const initial = evolvePath(current.state, {
     runId: id,
-    model: modelConfiguration('kimi').model,
+    provider: 'local',
+    model: RULE_PLANNER_MODEL,
     fromMonth: current.state.clock.elapsedMonths,
     requestedEndMonth,
     ...(previous ? { previous } : {}),
@@ -227,7 +246,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (url.pathname.startsWith("/api/eland/")) {
-    const result = await handleElandApi(request.method, url, request.method === "POST" ? await readJson(request) : {});
+    const result = await elandWorker.handle(request.method, url, request.method === "POST" ? await readJson(request) : {});
     sendJson(response, result.status, result.body);
     return;
   }
@@ -288,6 +307,31 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return;
   }
 
+  if (request.method === 'GET' && parts[3] === 'enhancements' && parts.length === 4) {
+    const artifact = await narrativeEnhancements.load(id);
+    if (!artifact) throw new HttpError(404, `运行 ${id} 尚无叙事增强旁车`);
+    sendJson(response, 200, {
+      artifact,
+      counts: narrativeEnhancementCounts(artifact),
+      processing: narrativeEnhancements.isProcessing(id),
+      providerConfigured: Boolean(loadLlmKey('kimi')),
+      authoritativeStateChanged: false,
+    });
+    return;
+  }
+
+  if (request.method === 'POST' && parts[3] === 'enhancements' && parts.length === 4) {
+    const body = asObject(await readJson(request));
+    const result = await narrativeEnhancements.trigger(id, {
+      kinds: narrativeKinds(body.kinds),
+      maxNewTasks: enhancementTaskLimit(body.maxTasks),
+      retryFailed: body.retryFailed === true,
+      dispatch: body.dispatch !== false,
+    });
+    sendJson(response, 202, { ...result, authoritativeStateChanged: false });
+    return;
+  }
+
   throw new HttpError(404, "接口不存在");
 }
 
@@ -309,7 +353,9 @@ server.listen(PORT, HOST, () => {
 });
 
 function shutdown(): void {
-  server.close(() => process.exit(0));
+  server.close(() => {
+    void elandWorker.close().finally(() => process.exit(0));
+  });
 }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

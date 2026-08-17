@@ -1,9 +1,15 @@
 import type { ActionOption, Intent, PrimitiveAction } from '../domain/action';
 import { Material, materialDefinition, materialHas } from '../domain/material';
 import { inventoryQuantity, isAlive, sameLocation, type PersonState } from '../domain/person';
-import { ageMonths } from '../domain/person';
+import { ageMonths, MIN_TEACHING_AGE_MONTHS } from '../domain/person';
 import type { DecisionContext, DropState, SimulationState } from '../domain/model';
-import { acceptedExchangeFor, acceptedReproductionBetween, exchangeTermFulfilled, openExchangeOfferFor, openReproductionOfferFor } from '../domain/social-facts';
+import {
+  acceptedExchangeFor,
+  acceptedReproductionBetween,
+  exchangeTermFulfilled,
+  openExchangeOfferFor,
+  openReproductionOfferFor,
+} from '../domain/social-facts';
 import {
   cellsInRadius,
   cellX,
@@ -19,23 +25,16 @@ import {
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
-import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
-import {
-  exertionRuleFor,
-  exertionTechniqueId,
-  exposureRuleFor,
-  exposureTechniqueId,
-  inventoryCombinationFor,
-  inventoryCombinationTechniqueId,
-} from '../domain/interaction-rules';
+import { PLANNING_TICKS_PER_MONTH } from '../domain/calendar';
 import { compileAgreementContinuations } from './agreement-continuation';
 import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
 import { findReachableShelter } from '../domain/shelter-access';
+import { geneticKinshipRisk, hasLearnedKinshipRisk } from '../domain/kinship';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
-import { voxelSeparationRuleFor } from '../domain/separation-rules';
+import { separationToolFits, voxelSeparationRuleFor } from '../domain/separation-rules';
 import { buildContainerOptions, findContainerAccess } from './container-options';
 import { canAccessContainer, containerById, containerQuantity } from '../domain/container';
 import {
@@ -43,9 +42,80 @@ import {
   knowsReliableNoResponse,
   voxelNoResponseFactId,
 } from '../domain/interaction-knowledge';
+import { worldEventById } from '../domain/event-index';
+import { animalSpecies, isAnimalAlive, type AnimalState } from '../domain/animal';
+import {
+  buildProjectOptions,
+  recompileProjectNextAction,
+} from './project-options';
+import {
+  buildDemandBoundRecordUseOptions,
+  recompileRecordUseNextAction,
+} from './record-use-options';
+import {
+  buildRelationshipCausalBasis,
+  canOfferRelationshipProposal,
+  hasCultivatedReproductiveRelationship,
+} from '../domain/relationship-evidence';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
+}
+
+const MAX_LOCAL_INTERACTION_OPTIONS = 3;
+
+function tangibleInventoryStacks(person: PersonState, excludedStackId?: string): PersonState['inventory'] {
+  return person.inventory
+    .filter((stack) => {
+      const material = materialDefinition(stack.materialId);
+      return stack.quantity > 0
+        && stack.id !== excludedStackId
+        && material.phase !== 'gas'
+        && material.mass > 0;
+    })
+    .sort((a, b) => a.materialId - b.materialId || a.id.localeCompare(b.id));
+}
+
+function oneStackPerMaterial(stacks: PersonState['inventory']): PersonState['inventory'] {
+  const seen = new Set<number>();
+  return stacks.filter((stack) => {
+    if (seen.has(stack.materialId)) return false;
+    seen.add(stack.materialId);
+    return true;
+  });
+}
+
+function materialPairKey(firstMaterialId: number, secondMaterialId: number): string {
+  return firstMaterialId <= secondMaterialId
+    ? `${firstMaterialId}+${secondMaterialId}`
+    : `${secondMaterialId}+${firstMaterialId}`;
+}
+
+function inventoryCombinationTechniquePrefix(firstMaterialId: number, secondMaterialId: number): string {
+  const first = Math.min(firstMaterialId, secondMaterialId);
+  const second = Math.max(firstMaterialId, secondMaterialId);
+  const inputKey = first === second ? `${first}x2` : `${first}x1+${second}x1`;
+  return `technique:combine-inventory:${inputKey}:`;
+}
+
+function knownTechniqueForPrefix(person: PersonState, prefix: string) {
+  return person.knowledge.find((fact) => fact.kind === 'technique' && fact.id.startsWith(prefix));
+}
+
+function productionToolRank(materialId: number): number {
+  if (materialId === Material.IronTool) return 5;
+  if (materialId === Material.BronzeTool) return 4;
+  if (materialId === Material.StoneHoe) return 3;
+  if (materialId === Material.StoneTool || materialId === Material.Spear) return 2;
+  if (materialId === Material.WoodTool || materialId === Material.BoneTool) return 1;
+  return 0;
+}
+
+function bestProductionTool(person: PersonState) {
+  return person.inventory
+    .filter((stack) => stack.quantity > 0 && productionToolRank(stack.materialId) > 0)
+    .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId)
+      || left.id.localeCompare(right.id))[0];
 }
 
 export function visibleRadius(person: PersonState): number {
@@ -95,7 +165,7 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
     ...(option.nextAction.kind === 'move' && option.nextAction.toZ !== undefined ? { z: option.nextAction.toZ } : {}),
   });
   if (option.nextAction.kind === 'move' && !path.length) return null;
-  const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)) : 1;
+  const estimatedMonths = option.nextAction.kind === 'move' ? Math.max(1, Math.ceil((path.length - 1) / PLANNING_TICKS_PER_MONTH)) : 1;
   const risks: string[] = [];
   if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
   if (person.body.nutrition - estimatedMonths * 1.5 < 18) risks.push('途中可能饥饿');
@@ -103,6 +173,47 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
     ? 'social'
     : 'strategic';
   return { ...option, domain: option.domain ?? inferredDomain, estimatedMonths, risks };
+}
+
+const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
+const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique):/;
+
+function socialInteractionKey(action: PrimitiveAction): string | null {
+  if (action.kind !== 'communicate') return null;
+  const content = action.content;
+  const proposalKind = (content.kind === 'request' || content.kind === 'offer') ? content.proposal?.kind : undefined;
+  const subject = proposalKind
+    ?? (content.kind === 'claim' ? content.conversation?.basisKey ?? content.factId ?? 'situation' : content.kind);
+  return `${content.kind}:${subject}:${[...action.audience].sort().join(',')}`;
+}
+
+function isOptionalSocialInitiation(option: ActionOption): boolean {
+  if (option.domain !== 'social' || option.nextAction.kind !== 'communicate') return false;
+  if (REQUIRED_SOCIAL_RESPONSE.test(option.id) || FULFILLMENT_OPTION.test(option.id)) return false;
+  return option.nextAction.content.kind === 'request'
+    || option.nextAction.content.kind === 'offer'
+    || option.nextAction.content.kind === 'claim';
+}
+
+function recentlyRepeatedSocialOption(state: SimulationState, person: PersonState, option: ActionOption): boolean {
+  if (!isOptionalSocialInitiation(option)) return false;
+  const key = socialInteractionKey(option.nextAction);
+  if (!key) return false;
+  const oldestRelevantMonth = state.clock.elapsedMonths - 2;
+  for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
+    const event = state.world.past[index];
+    if (event.atMonth < oldestRelevantMonth) break;
+    if (event.kind === 'action'
+      && event.who === person.id
+      && socialInteractionKey(event.action) === key) return true;
+  }
+  return false;
+}
+
+function decisionOptionPriority(option: ActionOption): number {
+  if (REQUIRED_SOCIAL_RESPONSE.test(option.id)) return 0;
+  if (FULFILLMENT_OPTION.test(option.id)) return 1;
+  return option.domain === 'strategic' ? 2 : 3;
 }
 
 function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
@@ -130,7 +241,14 @@ function nextFirePosition(state: SimulationState, person: PersonState): { x: num
   return { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
 }
 
-function buildOptions(state: SimulationState, person: PersonState, visibleCells: number[], visibleDrops: DropState[], visiblePeople: PersonState[]): ActionOption[] {
+function buildOptions(
+  state: SimulationState,
+  person: PersonState,
+  visibleCells: number[],
+  visibleDrops: DropState[],
+  visiblePeople: PersonState[],
+  visibleAnimals: AnimalState[],
+): ActionOption[] {
   const options: ActionOption[] = [];
   const visible = new Set(visibleCells);
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
@@ -158,6 +276,98 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z },
       estimatedDuration: atBank ? 'one-month' : 'several-months',
       sourceFactIds: water.sourceEventIds,
+    });
+  }
+
+  const localSleepers = localPeople.filter((other) => other.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+    && condition.sinceMonth < state.civilization.era.sinceMonth));
+  if (state.civilization.epoch === 'stable' && water && localSleepers.length) {
+    const sleeper = localSleepers[0];
+    options.push({
+      id: `rehydrate:${sleeper.id}:${state.clock.elapsedMonths}`,
+      summary: `使${sleeper.name}重新水化苏醒`,
+      reason: '恒纪元已经到来，附近有水源且对方仍处于脱水休眠',
+      goal: { kind: 'condition', personId: sleeper.id, condition: 'dehydrated-hibernation', present: false },
+      nextAction: { kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: sleeper.id }] },
+      target: { kind: 'person', personId: sleeper.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: sleeper.conditions.find((condition) => condition.kind === 'dehydrated-hibernation')?.sourceEventIds ?? [],
+    });
+  }
+
+  const predictionsAboutChaos = state.eraPredictions
+    .filter((prediction) => prediction.status === 'pending'
+      && prediction.targetEpoch === 'chaotic'
+      && prediction.predictedStartMonth - state.clock.elapsedMonths <= 5
+      && prediction.predictedStartMonth + prediction.toleranceMonths >= state.clock.elapsedMonths)
+    .sort((a, b) => a.predictedStartMonth - b.predictedStartMonth || a.id.localeCompare(b.id));
+  const trustedChaosPrediction = predictionsAboutChaos.find((prediction) => {
+    if (prediction.predictorId === person.id) return true;
+    if (!prediction.audienceIds.includes(person.id)) return false;
+    const resolved = state.eraPredictions.filter((candidate) => candidate.predictorId === prediction.predictorId && candidate.status !== 'pending');
+    const correct = resolved.filter((candidate) => candidate.status === 'correct').length;
+    const trust = person.relations.find((relation) => relation.personId === prediction.predictorId)?.trust ?? 0;
+    return trust >= 22 || (resolved.length >= 2 && correct / resolved.length >= 0.6 && trust >= 8);
+  });
+  const canHibernate = !person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+    || condition.kind === 'pregnancy'
+    || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2))
+    && Math.min(person.body.health, person.body.hydration, person.body.nutrition) >= 45;
+  if (canHibernate && (trustedChaosPrediction || (state.civilization.epoch === 'chaotic' && state.civilization.climate.severity >= 4))) {
+    options.push({
+      id: `dehydrate-chaos:${trustedChaosPrediction?.id ?? `observed-${state.civilization.era.sequence}`}`,
+      summary: '主动进入脱水休眠',
+      reason: trustedChaosPrediction
+        ? '一项自己相信的预言指向即将到来的乱纪元'
+        : '乱纪元已在造成强烈环境压力',
+      goal: { kind: 'condition', personId: person.id, condition: 'dehydrated-hibernation', present: true },
+      nextAction: { kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: person.id }] },
+      target: { kind: 'person', personId: person.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: trustedChaosPrediction?.sourceEventIds ?? [],
+      domain: 'strategic',
+    });
+  }
+
+  const forecastCapacity = person.baselineCapacities.cognition + person.baselineCapacities.perception;
+  const existingForecast = state.eraPredictions.some((prediction) => prediction.predictorId === person.id && prediction.status === 'pending');
+  const recentForecast = state.eraPredictions.some((prediction) => prediction.predictorId === person.id && state.clock.elapsedMonths - prediction.madeAtMonth < 6);
+  const predictionAudience = visiblePeople.slice(0, 4);
+  if (predictionAudience.length && forecastCapacity >= 118 && !existingForecast && !recentForecast) {
+    const actualStart = state.civilization.era.endsAtMonth + 1;
+    const skill = forecastCapacity / 2;
+    const uncertainty = Math.max(3, Math.round(17 - (skill - 42) * 0.22));
+    const noise = Math.round((seededFraction(state.seed, `era-forecast:${state.clock.elapsedMonths}:${person.id}:${state.civilization.era.sequence}`) * 2 - 1) * uncertainty);
+    const predictedStartMonth = Math.max(state.clock.elapsedMonths + 2, actualStart + noise);
+    const targetEpoch = state.civilization.epoch === 'stable' ? 'chaotic' as const : 'stable' as const;
+    const representationId = `predict-era:${state.clock.elapsedMonths}:${person.id}:${state.civilization.era.sequence}`;
+    options.push({
+      id: representationId,
+      summary: `预言第 ${predictedStartMonth} 月前后将进入${targetEpoch === 'chaotic' ? '乱纪元' : '恒纪元'}`,
+      reason: '对天象、气温和过去纪元节律的观察可以形成一项有误差的预测',
+      goal: { kind: 'representation-made', representationId },
+      nextAction: {
+        kind: 'communicate',
+        content: {
+          id: representationId,
+          kind: 'prediction',
+          summary: `预言第 ${predictedStartMonth} 月前后将进入${targetEpoch === 'chaotic' ? '乱纪元' : '恒纪元'}`,
+          prediction: {
+            targetEpoch,
+            predictedStartMonth,
+            toleranceMonths: 3,
+            expiresAtMonth: predictedStartMonth + 3,
+          },
+        },
+        audience: predictionAudience.map((listener) => listener.id),
+        channel: 'voice',
+      },
+      estimatedDuration: 'one-month',
+      sourceFactIds: state.world.past
+        .filter((event) => event.kind === 'environment' && (event.change === 'climate' || event.change === 'weather'))
+        .slice(-8)
+        .map((event) => event.id),
+      domain: 'strategic',
     });
   }
 
@@ -190,8 +400,46 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     options.push(optionForDrop(person, drop));
   }
 
+  const huntingTool = person.inventory.find((stack) => stack.quantity > 0 && stack.materialId === Material.Spear)
+    ?? bestProductionTool(person);
+  const nearbyAnimals = [...visibleAnimals]
+    .filter(isAnimalAlive)
+    .sort((a, b) => distance(person.position.cellId, a.position.cellId) - distance(person.position.cellId, b.position.cellId) || a.id.localeCompare(b.id));
+  for (const animal of nearbyAnimals.slice(0, 3)) {
+    const species = animalSpecies(animal.speciesId);
+    const together = person.position.cellId === animal.position.cellId && person.position.z === animal.position.z;
+    options.push({
+      id: `hunt:${animal.id}`,
+      summary: `追踪并捕猎${species.name}`,
+      reason: species.diet === 'predator'
+        ? '附近的捕食动物可能伤害人类，也可提供肉、皮与骨'
+        : person.body.nutrition < 62 ? '食物储备不高，眼前动物可以成为新的食物来源' : '动物可以提供尚未掌握的肉、皮与骨',
+      goal: { kind: 'inventory-at-least', materialId: Material.RawMeat, quantity: inventoryQuantity(person, Material.RawMeat) + 1 },
+      nextAction: together
+        ? { kind: 'act', operation: 'hunt', targets: [{ kind: 'animal', animalId: animal.id }], ...(huntingTool ? { toolStackId: huntingTool.id } : {}) }
+        : { kind: 'move', toCellId: animal.position.cellId, toZ: animal.position.z },
+      target: { kind: 'animal', animalId: animal.id },
+      estimatedDuration: together ? 'one-month' : 'several-months',
+      sourceFactIds: [],
+      risks: species.aggression > 0 ? ['动物可能反击'] : [],
+    });
+  }
+  const unknownAnimal = nearbyAnimals.find((animal) => !person.knowledge.some((fact) => fact.id === `animal:${animal.speciesId}`));
+  if (unknownAnimal) options.push({
+    id: `attend-animal:${unknownAnimal.id}`,
+    summary: `持续观察${animalSpecies(unknownAnimal.speciesId).name}`,
+    reason: '这种活体的行为还没有形成可靠认识',
+    goal: { kind: 'knowledge', factId: `animal:${unknownAnimal.speciesId}` },
+    nextAction: { kind: 'attend', target: { kind: 'animal', animalId: unknownAnimal.id } },
+    target: { kind: 'animal', animalId: unknownAnimal.id },
+    estimatedDuration: 'one-month',
+    sourceFactIds: [],
+  });
+
   options.push(...buildMaterialSeparationOptions(state, person, visibleCells));
   options.push(...buildContainerOptions(state, person, visibleCells));
+
+  const productionTool = bestProductionTool(person);
 
   for (const cellId of visibleCells) {
     const surface = surfaceMaterial(state.world.grid, cellId);
@@ -204,7 +452,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         reason: '看见可以分离的树木物质',
         goal: { kind: 'inventory-at-least', materialId: Material.Wood, quantity: inventoryQuantity(person, Material.Wood) + 2 },
         nextAction: person.position.cellId === standCell
-          ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }], toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id }
+          ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }], ...(productionTool ? { toolStackId: productionTool.id } : {}) }
           : { kind: 'move', toCellId: standCell },
         target: { kind: 'voxel', position },
         estimatedDuration: 'several-months',
@@ -217,7 +465,7 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       reason: surface === Material.CropMature ? '看见已经成熟的作物物质' : '看见结出可分离食物的灌木物质',
       goal: { kind: 'inventory-at-least', materialId: Material.Food, quantity: inventoryQuantity(person, Material.Food) + 2 },
       nextAction: person.position.cellId === cellId
-        ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }] }
+        ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }], ...(productionTool ? { toolStackId: productionTool.id } : {}) }
         : { kind: 'move', toCellId: cellId },
       target: { kind: 'voxel', position },
       estimatedDuration: 'several-months',
@@ -225,26 +473,37 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  const combinableMaterials = new Set<number>([Material.Fiber, Material.Wood, Material.Stone, Material.Rope, Material.Plank]);
-  const combinableStacks = person.inventory.filter((stack) => stack.quantity > 0 && combinableMaterials.has(stack.materialId));
-  const inventoryTrials: Array<{ first: typeof combinableStacks[number]; second: typeof combinableStacks[number] }> = [];
+  const combinableStacks = tangibleInventoryStacks(person);
+  const inventoryTrials: Array<{
+    first: typeof combinableStacks[number];
+    second: typeof combinableStacks[number];
+    materialKey: string;
+  }> = [];
+  const seenInventoryTrialKeys = new Set<string>();
   for (let firstIndex = 0; firstIndex < combinableStacks.length; firstIndex += 1) {
     for (let secondIndex = firstIndex; secondIndex < combinableStacks.length; secondIndex += 1) {
       const first = combinableStacks[firstIndex];
       const second = combinableStacks[secondIndex];
       if (first.id === second.id && first.quantity < 2) continue;
-      inventoryTrials.push({ first, second });
+      const materialKey = materialPairKey(first.materialId, second.materialId);
+      if (seenInventoryTrialKeys.has(materialKey)) continue;
+      seenInventoryTrialKeys.add(materialKey);
+      inventoryTrials.push({ first, second, materialKey });
     }
   }
-  for (const { first, second } of inventoryTrials
-    .filter(({ first, second }) => inventoryCombinationFor([first.materialId, second.materialId])
-      || !knowsReliableNoResponse(person, inventoryNoResponseFactId([first.materialId, second.materialId])))
-    .sort((a, b) => seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${a.first.materialId}:${a.second.materialId}`)
-      - seededFraction(state.seed, `inventory-trial:${state.clock.elapsedMonths}:${person.id}:${b.first.materialId}:${b.second.materialId}`))
-    .slice(0, 3)) {
-    const combination = inventoryCombinationFor([first.materialId, second.materialId]);
-    const techniqueId = combination ? inventoryCombinationTechniqueId(combination) : undefined;
-    const known = techniqueId ? person.knowledge.find((fact) => fact.id === techniqueId) : undefined;
+  for (const { first, second, known } of inventoryTrials
+    .filter(({ first, second }) => !knowsReliableNoResponse(person, inventoryNoResponseFactId([first.materialId, second.materialId])))
+    .map((trial) => ({
+      ...trial,
+      known: knownTechniqueForPrefix(person, inventoryCombinationTechniquePrefix(trial.first.materialId, trial.second.materialId)),
+      stableRank: seededFraction(state.seed, `ordinary-inventory-combine:${person.id}:${trial.materialKey}`),
+    }))
+    .sort((a, b) => (a.known ? 0 : 1) - (b.known ? 0 : 1)
+      || a.stableRank - b.stableRank
+      || a.materialKey.localeCompare(b.materialKey)
+      || a.first.id.localeCompare(b.first.id)
+      || a.second.id.localeCompare(b.second.id))
+    .slice(0, MAX_LOCAL_INTERACTION_OPTIONS)) {
     const trialId = `${known ? 'repeat-inventory-combine' : 'try-inventory-combine'}:${first.id}:${second.id}`;
     options.push({
       id: trialId,
@@ -263,20 +522,28 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  const stoneTool = person.inventory.find((stack) => stack.materialId === Material.StoneTool && stack.quantity > 0);
+  const stoneTool = tangibleInventoryStacks(person).find((stack) => stack.materialId === Material.StoneTool);
   const exertPosition = stoneTool ? nextFirePosition(state, person) : null;
   if (stoneTool && exertPosition) {
-    for (const input of person.inventory.filter((stack) => stack.quantity > 0 && stack.id !== stoneTool.id)) {
-      const rule = exertionRuleFor(stoneTool.materialId, input.materialId, Material.Air);
-      if (!rule) continue;
-      const techniqueId = exertionTechniqueId(rule);
-      const known = person.knowledge.find((fact) => fact.id === techniqueId);
+    const exertInputs = oneStackPerMaterial(tangibleInventoryStacks(person, stoneTool.id))
+      .filter((input) => !knowsReliableNoResponse(person, voxelNoResponseFactId('exert', input.materialId, Material.Air, stoneTool.materialId)))
+      .map((input) => ({
+        input,
+        known: knownTechniqueForPrefix(person, `technique:exert:${stoneTool.materialId}:${input.materialId}:${Material.Air}:`),
+        stableRank: seededFraction(state.seed, `ordinary-exert:${person.id}:${stoneTool.materialId}:${input.materialId}`),
+      }))
+      .sort((a, b) => (a.known ? 0 : 1) - (b.known ? 0 : 1)
+        || a.stableRank - b.stableRank
+        || a.input.materialId - b.input.materialId
+        || a.input.id.localeCompare(b.input.id))
+      .slice(0, MAX_LOCAL_INTERACTION_OPTIONS);
+    for (const { input, known } of exertInputs) {
       options.push({
         id: `${known ? 'repeat-exert' : 'try-exert'}:${stoneTool.id}:${input.id}:${exertPosition.x}:${exertPosition.y}:${exertPosition.z}`,
         summary: known ? `尝试复现“${known.summary}”` : `尝试用石制工具向${materialDefinition(input.materialId).name}施力`,
         reason: known ? '自己已有这项物质经验' : `手中的硬质工具与${materialDefinition(input.materialId).name}可以进行局部施力尝试，但结果未知`,
         goal: known
-          ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
+          ? { kind: 'knowledge', factId: known.id, minConfidence: Math.min(100, known.confidence + 18) }
           : { kind: 'knowledge', factId: `attempt:exert:${state.clock.elapsedMonths}:${person.id}:${input.id}` },
         nextAction: {
           kind: 'act', operation: 'exert', toolStackId: stoneTool.id,
@@ -290,26 +557,6 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
         sourceFactIds: [...new Set([...stoneTool.sourceEventIds, ...input.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
       });
     }
-  }
-
-  const readableRecord = person.inventory.find((stack) => {
-    if (!stack.recordPayloadId || stack.quantity <= 0) return false;
-    const payload = state.records.find((record) => record.id === stack.recordPayloadId);
-    return payload
-      && person.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55)
-      && !person.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id));
-  });
-  if (readableRecord) {
-    const payload = state.records.find((record) => record.id === readableRecord.recordPayloadId);
-    if (payload) options.push({
-      id: `read-record:${readableRecord.id}:${payload.id}`,
-      summary: '投入时间辨认木制记录板上的刻痕',
-      reason: '持有实体记录载体，并已从他人处学会这组刻痕的含义',
-      goal: { kind: 'knowledge', factId: payload.knowledgeId },
-      nextAction: { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: readableRecord.id } },
-      target: { kind: 'inventory-stack', personId: person.id, stackId: readableRecord.id },
-      estimatedDuration: 'one-month', sourceFactIds: [payload.id, ...readableRecord.sourceEventIds],
-    });
   }
 
   const blankRecord = person.inventory.find((stack) => stack.materialId === Material.WoodTablet && !stack.recordPayloadId && stack.quantity > 0);
@@ -332,44 +579,37 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  const shareableRecord = person.inventory.flatMap((stack) => {
-    if (!stack.recordPayloadId || stack.quantity <= 0) return [];
-    const payload = state.records.find((record) => record.id === stack.recordPayloadId);
-    const reader = payload && localPeople.find((other) => other.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55)
-      && !other.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)));
-    return payload && reader ? [{ stack, payload, reader }] : [];
-  })[0];
-  if (shareableRecord) {
-    const { stack, payload, reader } = shareableRecord;
-    options.push({
-      id: `share-record:${payload.id}:${reader.id}`,
-      summary: `把记录板交给${reader.name}阅读`,
-      reason: `${reader.name}已经学会这组刻痕的含义，但还没有读过这块实体载体`,
-      goal: { kind: 'inventory-at-least', materialId: Material.WoodTablet, quantity: inventoryQuantity(reader, Material.WoodTablet) + 1, personId: reader.id },
-      nextAction: { kind: 'transfer', materialId: Material.WoodTablet, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: reader.id }, stackId: stack.id },
-      target: { kind: 'person', personId: reader.id }, estimatedDuration: 'one-month',
-      sourceFactIds: [payload.id, ...stack.sourceEventIds], domain: 'social',
-    });
-  }
-
-  const rawFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity > 0);
-  const nearbyFireCell = cellsInRadius(person.position.cellId, 1).find((cellId) => surfaceMaterial(state.world.grid, cellId) === Material.Fire);
-  const cookingRule = rawFood && nearbyFireCell !== undefined ? exposureRuleFor(rawFood.materialId, Material.Fire) : undefined;
-  if (rawFood && nearbyFireCell !== undefined && cookingRule) {
+  const nearbyFireCell = cellsInRadius(person.position.cellId, 1)
+    .filter((cellId) => materialHas(surfaceMaterial(state.world.grid, cellId), 'hot'))
+    .sort((a, b) => distance(person.position.cellId, a) - distance(person.position.cellId, b) || a - b)[0];
+  if (nearbyFireCell !== undefined) {
     const position = topPosition(state.world.grid, nearbyFireCell);
-    const techniqueId = exposureTechniqueId(cookingRule);
-    const known = person.knowledge.find((fact) => fact.id === techniqueId);
-    options.push({
-      id: `${known ? 'repeat-expose' : 'try-expose'}:${rawFood.id}:${nearbyFireCell}`,
-      summary: known ? `尝试复现“${known.summary}”` : '尝试让食物暴露于邻近火体素',
-      reason: known ? '自己已有这项物质经验' : '食物与持续放热的物质近在身边，可以尝试观察其变化',
-      goal: known
-        ? { kind: 'knowledge', factId: techniqueId, minConfidence: Math.min(100, known.confidence + 18) }
-        : { kind: 'knowledge', factId: `attempt:expose:${state.clock.elapsedMonths}:${person.id}` },
-      nextAction: { kind: 'act', operation: 'expose', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: rawFood.id }, { kind: 'voxel', position }] },
-      target: { kind: 'voxel', position }, estimatedDuration: 'one-month',
-      sourceFactIds: [...new Set([...rawFood.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
-    });
+    const hotMaterialId = surfaceMaterial(state.world.grid, nearbyFireCell);
+    const exposureInputs = oneStackPerMaterial(tangibleInventoryStacks(person))
+      .filter((input) => !knowsReliableNoResponse(person, voxelNoResponseFactId('expose', input.materialId, hotMaterialId)))
+      .map((input) => ({
+        input,
+        known: knownTechniqueForPrefix(person, `technique:expose:${input.materialId}:${hotMaterialId}:`),
+        stableRank: seededFraction(state.seed, `ordinary-expose:${person.id}:${input.materialId}:${hotMaterialId}`),
+      }))
+      .sort((a, b) => (a.known ? 0 : 1) - (b.known ? 0 : 1)
+        || a.stableRank - b.stableRank
+        || a.input.materialId - b.input.materialId
+        || a.input.id.localeCompare(b.input.id))
+      .slice(0, MAX_LOCAL_INTERACTION_OPTIONS);
+    for (const { input, known } of exposureInputs) {
+      options.push({
+        id: `${known ? 'repeat-expose' : 'try-expose'}:${input.id}:${nearbyFireCell}`,
+        summary: known ? `尝试复现“${known.summary}”` : `尝试让${materialDefinition(input.materialId).name}暴露于邻近${materialDefinition(hotMaterialId).name}`,
+        reason: known ? '自己已有这项物质经验' : `手中的${materialDefinition(input.materialId).name}与持续放热的${materialDefinition(hotMaterialId).name}近在身边，可以尝试观察其变化`,
+        goal: known
+          ? { kind: 'knowledge', factId: known.id, minConfidence: Math.min(100, known.confidence + 18) }
+          : { kind: 'knowledge', factId: `attempt:expose:${state.clock.elapsedMonths}:${person.id}:${input.id}` },
+        nextAction: { kind: 'act', operation: 'expose', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: input.id }, { kind: 'voxel', position }] },
+        target: { kind: 'voxel', position }, estimatedDuration: 'one-month',
+        sourceFactIds: [...new Set([...input.sourceEventIds, ...(known?.sourceEventIds ?? [])])],
+      });
+    }
   }
 
   const seed = person.inventory.find((stack) => stack.materialId === Material.Seed && stack.quantity > 0);
@@ -414,7 +654,13 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     }
   }
 
-  options.push(...buildConstructionOptions(state, person));
+  // Free-form building materials are governed by causal construction projects,
+  // but an already crafted placeable utility still needs a legal placement affordance.
+  options.push(...buildConstructionOptions(state, person)
+    .filter((option) => option.goal.kind === 'voxel-is' && option.goal.materialId === Material.Container));
+  const projectOptions = buildProjectOptions(state, person, visibleCells, visibleDrops, visiblePeople);
+  options.push(...projectOptions);
+  options.push(...buildDemandBoundRecordUseOptions(state, person, visiblePeople));
 
   const carriedFood = person.inventory.find((stack) => stack.materialId === Material.Food && stack.quantity >= 2);
   const hungry = visiblePeople.filter((other) => other.body.nutrition < 45).sort((a, b) => a.body.nutrition - b.body.nutrition)[0];
@@ -505,14 +751,15 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     });
   }
 
-  const fiber = person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
+  const fiber = person.inventory.find((stack) => stack.materialId === Material.HerbalMedicine && stack.quantity > 0)
+    ?? person.inventory.find((stack) => stack.materialId === Material.Fiber && stack.quantity > 0);
   const injured = visiblePeople
     .filter((other) => sameLocation(other, person) && other.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
     .sort((a, b) => a.body.health - b.body.health)[0];
   if (fiber && injured) options.push({
     id: `care:${fiber.id}:${injured.id}`,
-    summary: `把纤维用于${injured.name}的伤病处`,
-    reason: `${injured.name}有持续性伤病，且背包里有纤维`,
+    summary: `把${materialDefinition(fiber.materialId).name}用于${injured.name}的伤病处`,
+    reason: `${injured.name}有持续性伤病，且背包里有可用的${materialDefinition(fiber.materialId).name}`,
     goal: { kind: 'condition', personId: injured.id, condition: injured.conditions.some((item) => item.kind === 'wound') ? 'wound' : 'illness', present: false },
     nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: fiber.id }, { kind: 'person', personId: injured.id }] },
     target: { kind: 'person', personId: injured.id },
@@ -524,13 +771,16 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   if (incomingOffer) {
     const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
     if (proposer) {
+      const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'reproduce');
+      const relationshipReady = hasCultivatedReproductiveRelationship(state, person, proposer, responseBasis);
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
       const together = sameLocation(proposer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
-      options.push({
+      const learnedRisk = hasLearnedKinshipRisk(person) && geneticKinshipRisk(state, person, proposer) > 0;
+      if (relationshipReady) options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
-        reason: '存在一项尚未过期、需要本人明确回应的生殖提议',
+        reason: learnedRisk ? '过去的后代体弱或疾病记忆使这项选择具有已知风险' : '彼此已有可追溯的共同经历，并建立了最低程度的信任与亲近',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
@@ -543,7 +793,11 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       options.push({
         id: `reject-reproduce:${incomingOffer.content.id}`,
         summary: '拒绝共同生殖提议',
-        reason: '存在一项需要本人明确回应的生殖提议',
+        reason: !relationshipReady
+          ? '彼此尚未通过共同经历建立足够的信任与亲近'
+          : learnedRisk
+            ? '记忆中已有近亲后代体弱或疾病的可追溯经验'
+            : '存在一项需要本人明确回应的生殖提议',
         goal: { kind: 'representation-made', representationId: rejectId },
         nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
@@ -554,23 +808,35 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     }
   }
 
-  const reproductivePartner = localPeople.find((other) => {
+  const learnedKinshipRisk = hasLearnedKinshipRisk(person);
+  const reproductiveCandidate = visiblePeople.filter((other) => {
     if (other.sex === person.sex) return false;
     const female = person.sex === 'female' ? person : other;
     const male = person.sex === 'male' ? person : other;
     if (ageMonths(female, state.clock.elapsedMonths) < 16 * 12 || ageMonths(female, state.clock.elapsedMonths) > 45 * 12 || ageMonths(male, state.clock.elapsedMonths) < 16 * 12) return false;
     if (female.conditions.some((condition) => condition.kind === 'pregnancy')) return false;
     return Math.min(person.body.health, person.body.hydration, person.body.nutrition, other.body.health, other.body.hydration, other.body.nutrition) >= 62;
-  });
-  if (reproductivePartner) {
-    const accepted = acceptedReproductionBetween(state, person.id, reproductivePartner.id, state.clock.elapsedMonths);
+  }).map((other) => ({
+    other,
+    accepted: acceptedReproductionBetween(state, person.id, other.id, state.clock.elapsedMonths),
+    basis: buildRelationshipCausalBasis(state, person, other, 'reproduce'),
+  })).filter((candidate) => candidate.accepted || canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
+    .sort((a, b) => (a.accepted ? 0 : 1) - (b.accepted ? 0 : 1)
+      || (learnedKinshipRisk ? geneticKinshipRisk(state, person, a.other) - geneticKinshipRisk(state, person, b.other) : 0)
+      || a.other.id.localeCompare(b.other.id))[0];
+  if (reproductiveCandidate) {
+    const { other: reproductivePartner, accepted, basis } = reproductiveCandidate;
     const female = person.sex === 'female' ? person : reproductivePartner;
+    const together = sameLocation(reproductivePartner, person);
     if (accepted && person.id === female.id) options.push({
       id: `reproduce:${accepted.offer.id}:${reproductivePartner.id}`,
       summary: `与${reproductivePartner.name}共同进行生殖过程`,
       reason: '双方已经通过沟通形成可追溯的接受事实',
       goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
-      nextAction: { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductivePartner.id }] },
+      nextAction: together
+        ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductivePartner.id }] }
+        : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
+      ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: reproductivePartner.id }] } } : {}),
       target: { kind: 'person', personId: reproductivePartner.id },
       estimatedDuration: 'several-months',
       sourceFactIds: [accepted.offer.id, accepted.acceptance.id],
@@ -580,16 +846,24 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
       options.push({
         id: representationId,
         summary: `向${reproductivePartner.name}提出共同生殖`,
-        reason: '身体储备充足、彼此近身且符合生殖的身体条件',
+        reason: together
+          ? '彼此已有可追溯的共同经历和最低信任、亲近，且身体条件允许生殖'
+          : '彼此已有可追溯的共同经历和最低信任、亲近，对方可见且身体条件允许生殖',
         goal: { kind: 'representation-made', representationId },
-        nextAction: {
+        nextAction: together ? {
           kind: 'communicate',
-          content: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: state.clock.elapsedMonths + 4 } },
+          content: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: state.clock.elapsedMonths + 4, basis } },
           audience: [reproductivePartner.id], channel: 'voice',
-        },
+        } : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
+        ...(!together ? { completionAction: {
+          kind: 'communicate' as const,
+          content: { id: representationId, kind: 'offer' as const, summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce' as const, proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: state.clock.elapsedMonths + 4, basis } },
+          audience: [reproductivePartner.id], channel: 'voice' as const,
+        } } : {}),
         target: { kind: 'person', personId: reproductivePartner.id },
-        estimatedDuration: 'one-month',
-        sourceFactIds: [],
+        estimatedDuration: together ? 'one-month' : 'several-months',
+        sourceFactIds: basis.sourceFactIds,
+        relationshipBasis: basis,
       });
     }
   }
@@ -665,21 +939,29 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   });
 
   const teachableFacts = person.knowledge
-    .filter((fact) => (fact.kind === 'technique' || fact.kind === 'codebook')
+    .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
       && fact.confidence >= 55
-      && localPeople.some((other) => !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
-    .sort((a, b) => (b.kind === 'codebook' ? 1 : 0) - (a.kind === 'codebook' ? 1 : 0) || b.confidence - a.confidence || a.id.localeCompare(b.id))
+      && localPeople.some((other) => ageMonths(other, state.clock.elapsedMonths) >= MIN_TEACHING_AGE_MONTHS
+        && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
+    .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id))
     .slice(0, 3);
   for (const teachable of teachableFacts) {
-    const learner = localPeople.find((other) => !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= 55));
+    const learnedThreshold = 55;
+    const learner = localPeople.find((other) => ageMonths(other, state.clock.elapsedMonths) >= MIN_TEACHING_AGE_MONTHS
+      && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
     if (!learner) continue;
     const representationId = `teach:${state.clock.elapsedMonths}:${person.id}:${teachable.id}:${learner.id}`;
+    const communicate = { kind: 'communicate' as const, content: { id: representationId, kind: 'claim' as const, summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' as const };
     options.push({
       id: representationId,
-      summary: teachable.kind === 'codebook' ? `教${learner.name}辨认一组记录刻痕` : `向${learner.name}表达一项已知技术`,
-      reason: teachable.kind === 'codebook' ? '自己建立的符号含义尚未被身边人理解' : '自己掌握的物质操作尚未被身边人知道',
-      goal: { kind: 'knowledge', factId: teachable.id, minConfidence: 55, personId: learner.id },
-      nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' },
+      summary: teachable.kind === 'codebook'
+        ? `教${learner.name}辨认一组记录刻痕`
+        : `把“${teachable.summary}”教给${learner.name}`,
+      reason: teachable.kind === 'codebook'
+        ? '自己可靠掌握这组符号，而身边达到学习年龄的人还不理解'
+        : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
+      goal: { kind: 'knowledge', factId: teachable.id, minConfidence: learnedThreshold, personId: learner.id },
+      nextAction: communicate,
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
       sourceFactIds: teachable.sourceEventIds,
@@ -687,8 +969,11 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
   }
 
   const tentativeTechnique = person.knowledge.find((fact) => fact.kind === 'technique' && fact.confidence < 55 && fact.sourceEventIds.some((sourceId) => {
-    const source = state.world.past.find((event) => event.id === sourceId);
-    if (source?.kind !== 'action' || source.action.kind !== 'act' || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
+    const source = worldEventById(state, sourceId);
+    if (source?.kind !== 'action'
+      || source.action.kind !== 'act'
+      || source.action.techniqueDemonstration
+      || !['combine', 'exert', 'expose'].includes(source.action.operation)) return false;
     const outputStackId = typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
     if (outputStackId && person.inventory.some((stack) => stack.id === outputStackId && stack.materialId === Number(source.diff.outputMaterialId))) return true;
     const position = source.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
@@ -697,9 +982,9 @@ function buildOptions(state: SimulationState, person: PersonState, visibleCells:
     return visible.has(cell) && voxelAt(state.world.grid, Number(position?.x), Number(position?.y), Number(position?.z)) === Number(source.diff.outputMaterialId);
   }));
   if (tentativeTechnique) {
-    const source = state.world.past.find((event) => tentativeTechnique.sourceEventIds.includes(event.id)
-      && event.kind === 'action'
+    const source = tentativeTechnique.sourceEventIds.map((eventId) => worldEventById(state, eventId)).find((event) => event?.kind === 'action'
       && event.action.kind === 'act'
+      && !event.action.techniqueDemonstration
       && ['combine', 'exert', 'expose'].includes(event.action.operation));
     const rawPosition = source?.kind === 'action' ? source.diff.position as { x: number; y: number; z: number } | undefined : undefined;
     const outputStackId = source?.kind === 'action' && typeof source.diff.outputStackId === 'string' ? source.diff.outputStackId : undefined;
@@ -767,24 +1052,32 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
   const visibleSet = new Set(visibleCells);
   const visibleDrops = state.world.drops.filter((drop) => drop.quantity > 0 && visibleSet.has(drop.cellId));
   const visiblePeople = state.people.filter((other) => other.id !== person.id && isAlive(other) && visibleSet.has(other.position.cellId));
-  const allOptions = buildOptions(state, person, visibleCells, visibleDrops, visiblePeople)
-    .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'));
+  const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal) && visibleSet.has(animal.position.cellId));
+  const allOptions = buildOptions(state, person, visibleCells, visibleDrops, visiblePeople, visibleAnimals)
+    .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
+    .filter((option) => !recentlyRepeatedSocialOption(state, person, option))
+    .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => option.nextAction.kind !== 'communicate');
   const options = allOptions
     .map((option) => option.nextAction.kind === 'communicate'
       && option.nextAction.channel !== 'record'
       && option.nextAction.content.kind !== 'accept'
       && option.nextAction.content.kind !== 'reject'
+      && !(option.nextAction.content.kind === 'claim'
+        && option.nextAction.content.conversation?.turn === 'response')
+      && !(option.nextAction.content.kind === 'request'
+        && option.nextAction.content.techniqueDemonstration)
       ? { ...option, requiresFollowUp: true }
       : option)
     .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
-  const requiredSocialResponses = options.filter((option) => /^(accept|reject)-(assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):/.test(option.id));
+  const requiredSocialResponses = options.filter((option) => REQUIRED_SOCIAL_RESPONSE.test(option.id));
   return {
     state,
     person,
     visibleCells,
     visiblePeople,
     visibleDrops,
+    visibleAnimals,
     options: requiredSocialResponses.length ? requiredSocialResponses : options,
     followUpOptions,
     activeIntent: person.activeIntentId ? state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active') : undefined,
@@ -792,6 +1085,13 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
 }
 
 export function recompileNextAction(state: SimulationState, person: PersonState, intent: Intent): PrimitiveAction | null {
+  if (intent.recordUseBasis) return recompileRecordUseNextAction(state, person, intent);
+  if ((intent.nextAction.kind === 'communicate'
+      && intent.nextAction.content.kind === 'request'
+      && intent.nextAction.content.techniqueDemonstration)
+    || (intent.nextAction.kind === 'act'
+      && (intent.nextAction.techniqueDemonstration || intent.nextAction.techniqueImitation))) return null;
+  if (intent.projectId) return recompileProjectNextAction(state, person, intent.projectId);
   const agreementContinuation = intent.agreementId
     ? compileAgreementContinuations(state, intent.agreementId).find((continuation) => continuation.personId === person.id)
     : undefined;
@@ -822,7 +1122,7 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
         : { kind: 'move', toCellId: grantor.position.cellId, toZ: grantor.position.z };
     }
   }
-  if (intent.goal.kind === 'representation-made' && intent.completionAction?.kind === 'communicate' && intent.target?.kind === 'person') {
+  if (intent.completionAction && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
     const target = state.people.find((candidate) => candidate.id === targetPersonId);
     if (!target || !isAlive(target)) return null;
@@ -868,6 +1168,16 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
   }
   if (intent.goal.kind === 'inventory-at-least') {
     const materialId = intent.goal.materialId;
+    if (intent.target?.kind === 'animal') {
+      const animalId = intent.target.animalId;
+      const animal = state.world.animals.find((candidate) => candidate.id === animalId && isAnimalAlive(candidate));
+      if (animal) {
+        const tool = bestProductionTool(person);
+        return person.position.cellId === animal.position.cellId && person.position.z === animal.position.z
+          ? { kind: 'act', operation: 'hunt', targets: [{ kind: 'animal', animalId }], ...(tool ? { toolStackId: tool.id } : {}) }
+          : { kind: 'move', toCellId: animal.position.cellId, toZ: animal.position.z };
+      }
+    }
     if (intent.target?.kind === 'container') {
       const container = containerById(state, intent.target.containerId);
       const stack = container?.inventory.find((candidate) => candidate.materialId === materialId && candidate.quantity > 0);
@@ -892,12 +1202,14 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
         if (distance(person.position.cellId, targetCell) <= 1) {
           const requiredTool = separationRule?.requiredToolMaterialId === undefined
             ? undefined
-            : person.inventory.find((stack) => stack.materialId === separationRule.requiredToolMaterialId && stack.quantity > 0);
+            : person.inventory
+              .filter((stack) => stack.quantity > 0 && separationToolFits(separationRule, stack.materialId))
+              .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId))[0];
           if (separationRule?.requiredToolMaterialId !== undefined && !requiredTool) return null;
           return {
             kind: 'act', operation: 'separate', targets: [intent.target],
             ...(materialId === Material.Wood
-              ? { toolStackId: person.inventory.find((stack) => stack.materialId === Material.StoneTool)?.id }
+              ? { toolStackId: bestProductionTool(person)?.id }
               : requiredTool ? { toolStackId: requiredTool.id } : {}),
           };
         }

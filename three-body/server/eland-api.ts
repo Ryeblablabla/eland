@@ -1,4 +1,5 @@
-import { elandSessions } from './elandSession';
+import { randomInt } from 'node:crypto';
+import { ElandSessionCapacityError, elandSessions } from './elandSession';
 import type { EraKey, SkySample } from '../src/game/societyContract';
 
 export interface ElandApiResponse {
@@ -40,17 +41,33 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
   const route = url.pathname.replace(/^\/api\/eland\/?|^\/+|\/+$/g, '');
   const body = asObject(bodyValue);
   const runId = String(body.runId ?? url.searchParams.get('runId') ?? '').trim();
+  const leaseId = String(body.leaseId ?? '').trim();
   if (!runId) return { status: 400, body: { error: '缺少 runId' } };
 
-  if (route === 'begin' && method === 'POST') {
-    const characterIds = Array.isArray(body.characterIds) ? body.characterIds.filter((id): id is string => typeof id === 'string') : undefined;
-    return {
-      status: 200,
-      body: elandSessions.begin(runId, Math.max(1, Math.floor(finite(body.civilizationId, 1))), skySample(body.skySample), characterIds),
-    };
+  if (route === 'end' && method === 'POST') {
+    return { status: 200, body: { ended: elandSessions.end(runId, leaseId), activeSessions: elandSessions.size() } };
   }
 
-  const session = elandSessions.get(runId);
+  if (route === 'begin' && method === 'POST') {
+    const civilizationId = Math.max(1, Math.floor(finite(body.civilizationId, 1)));
+    const worldSeed = body.worldSeed === undefined
+      ? randomInt(1, 0x1_0000_0000)
+      : Math.min(0xffff_ffff, Math.max(1, Math.floor(finite(body.worldSeed, randomInt(1, 0x1_0000_0000)))));
+    const characterIds = Array.isArray(body.characterIds) ? body.characterIds.filter((id): id is string => typeof id === 'string') : undefined;
+    try {
+      return {
+        status: 200,
+        body: elandSessions.begin(runId, civilizationId, worldSeed, skySample(body.skySample), characterIds, leaseId),
+      };
+    } catch (error) {
+      if (error instanceof ElandSessionCapacityError) {
+        return { status: 429, body: { error: error.message, maxSessions: error.maxSessions } };
+      }
+      throw error;
+    }
+  }
+
+  const session = elandSessions.get(runId, route === 'step' && method === 'POST' ? 'step' : 'read');
   if (!session) return { status: 404, body: { error: `运行 ${runId} 不存在` } };
   if (route === 'step' && method === 'POST') return { status: 200, body: await session.step({ skySample: skySample(body.skySample) }) };
   if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, model: session.model(), frame: session.latest() } };

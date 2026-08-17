@@ -1,0 +1,620 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-15T05:24:39.205Z",
+  "metricVersions": {
+    "behaviorObserver": "causal-person-month-v3",
+    "civilizationIndex": "causal-diversity-v3"
+  },
+  "experiment": {
+    "prefix": "candidate-relationship-causal-basis-v12c-check",
+    "baseUrl": "http://127.0.0.1:3220",
+    "seeds": [
+      20260815
+    ],
+    "years": [
+      30
+    ],
+    "repeats": 1,
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced"
+  },
+  "aggregates": [
+    {
+      "years": 30,
+      "runs": 1,
+      "completed": 1,
+      "endedEarly": 0,
+      "extinctionRate": 0,
+      "finalPopulation": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "births": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "reproductionOffers": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "reproductionAcceptances": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "reproductionAttempts": {
+        "count": 1,
+        "min": 55,
+        "median": 55,
+        "mean": 55,
+        "max": 55
+      },
+      "reproductionConceptions": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "relationshipProposalOffers": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "relationshipProposalUniqueBases": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "relationshipProposalRepeatedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "relationshipProposalOffersWithoutBasis": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "relationshipProposalRepeatedDirectedPairs": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "relationshipProposalMaxPerDirectedPair": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "lifeReviewDecisions": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "projectLifeReviewDecisions": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "lifeReviewPersonMonths": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "lifeReviewSameMonthDuplicates": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "lifeReviewUniqueBases": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "lifeReviewRepeatedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "deaths": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "childDeaths": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "childExposureDeaths": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "civilizationIndex": {
+        "count": 1,
+        "min": 46.52,
+        "median": 46.52,
+        "mean": 46.52,
+        "max": 46.52
+      },
+      "completedActions": {
+        "count": 1,
+        "min": 1571,
+        "median": 1571,
+        "mean": 1571,
+        "max": 1571
+      },
+      "actionPersonMonths": {
+        "count": 1,
+        "min": 602,
+        "median": 602,
+        "mean": 602,
+        "max": 602
+      },
+      "projectActionPersonMonths": {
+        "count": 1,
+        "min": 65,
+        "median": 65,
+        "mean": 65,
+        "max": 65
+      },
+      "projectActionMonthShare": {
+        "count": 1,
+        "min": 10.8,
+        "median": 10.8,
+        "mean": 10.8,
+        "max": 10.8
+      },
+      "ruleDecisions": {
+        "count": 1,
+        "min": 870,
+        "median": 870,
+        "mean": 870,
+        "max": 870
+      },
+      "strategicIntents": {
+        "count": 1,
+        "min": 522,
+        "median": 522,
+        "mean": 522,
+        "max": 522
+      },
+      "socialIntents": {
+        "count": 1,
+        "min": 348,
+        "median": 348,
+        "mean": 348,
+        "max": 348
+      },
+      "strategicShare": {
+        "count": 1,
+        "min": 60,
+        "median": 60,
+        "mean": 60,
+        "max": 60
+      },
+      "communications": {
+        "count": 1,
+        "min": 88,
+        "median": 88,
+        "mean": 88,
+        "max": 88
+      },
+      "survivalReflexActions": {
+        "count": 1,
+        "min": 1111,
+        "median": 1111,
+        "mean": 1111,
+        "max": 1111
+      },
+      "projectsStarted": {
+        "count": 1,
+        "min": 31,
+        "median": 31,
+        "mean": 31,
+        "max": 31
+      },
+      "projectsCompleted": {
+        "count": 1,
+        "min": 26,
+        "median": 26,
+        "mean": 26,
+        "max": 26
+      },
+      "projectsBlocked": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "projectLogisticsEpisodes": {
+        "count": 1,
+        "min": 130,
+        "median": 130,
+        "mean": 130,
+        "max": 130
+      },
+      "projectLogisticsFulfilled": {
+        "count": 1,
+        "min": 125,
+        "median": 125,
+        "mean": 125,
+        "max": 125
+      },
+      "projectLogisticsExhausted": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "projectSearchEpisodes": {
+        "count": 1,
+        "min": 21,
+        "median": 21,
+        "mean": 21,
+        "max": 21
+      },
+      "projectDropEpisodes": {
+        "count": 1,
+        "min": 109,
+        "median": 109,
+        "mean": 109,
+        "max": 109
+      },
+      "projectLogisticsActionEvents": {
+        "count": 1,
+        "min": 601,
+        "median": 601,
+        "mean": 601,
+        "max": 601
+      },
+      "jointProjectsCompleted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "productionProjectsCompleted": {
+        "count": 1,
+        "min": 21,
+        "median": 21,
+        "mean": 21,
+        "max": 21
+      },
+      "constructionProjectsCompleted": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "totalStructures": {
+        "count": 1,
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "completedStructures": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "constructionPlacements": {
+        "count": 1,
+        "min": 18,
+        "median": 18,
+        "mean": 18,
+        "max": 18
+      },
+      "containersBuilt": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "standingContainers": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "containerTransfers": {
+        "count": 1,
+        "min": 121,
+        "median": 121,
+        "mean": 121,
+        "max": 121
+      },
+      "storedUnits": {
+        "count": 1,
+        "min": 108,
+        "median": 108,
+        "mean": 108,
+        "max": 108
+      },
+      "movementActionShare": {
+        "count": 1,
+        "min": 64.18,
+        "median": 64.18,
+        "mean": 64.18,
+        "max": 64.18
+      },
+      "usefulProductionOccurrenceRate": 100,
+      "spearsCrafted": {
+        "count": 1,
+        "min": 28,
+        "median": 28,
+        "mean": 28,
+        "max": 28
+      },
+      "leatherClothingCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "herbalMedicineCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "cookedFoodProduced": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "recordsCreated": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "functionalInstitutions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "predictionAccuracy": {
+        "count": 1,
+        "min": 36.59,
+        "median": 36.59,
+        "mean": 36.59,
+        "max": 36.59
+      },
+      "assistedDependentHibernations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "wildlifePopulation": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "modelDecisions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      }
+    }
+  ],
+  "runs": [
+    {
+      "runId": "candidate-relationship-causal-basis-v12c-check-s20260815-y30-r1",
+      "seed": 20260815,
+      "years": 30,
+      "months": 360,
+      "repeat": 1,
+      "status": "ended",
+      "throughMonth": 360,
+      "endedEarly": false,
+      "outcomeKind": "boundary",
+      "initialPopulation": 7,
+      "finalPopulation": 5,
+      "births": 2,
+      "reproductionOffers": 8,
+      "reproductionAcceptances": 6,
+      "reproductionAttempts": 55,
+      "reproductionConceptions": 2,
+      "relationshipProposalOffers": 8,
+      "relationshipProposalUniqueBases": 8,
+      "relationshipProposalRepeatedBases": 0,
+      "relationshipProposalOffersWithoutBasis": 0,
+      "relationshipProposalRepeatedDirectedPairs": 1,
+      "relationshipProposalMaxPerDirectedPair": 2,
+      "lifeReviewDecisions": 1,
+      "projectLifeReviewDecisions": 1,
+      "lifeReviewPersonMonths": 1,
+      "lifeReviewSameMonthDuplicates": 0,
+      "lifeReviewUniqueBases": 1,
+      "lifeReviewRepeatedBases": 0,
+      "deaths": 4,
+      "childDeaths": 2,
+      "childExposureDeaths": 1,
+      "civilizationIndex": 46.52,
+      "civilizationComponents": {
+        "population": 16.35,
+        "territory": 48.73,
+        "technology": 77.67,
+        "social": 28.36,
+        "history": 70
+      },
+      "completedActions": 1571,
+      "actionPersonMonths": 602,
+      "projectActionPersonMonths": 65,
+      "projectActionMonthShare": 10.8,
+      "ruleDecisions": 870,
+      "modelDecisions": 0,
+      "strategicIntents": 522,
+      "socialIntents": 348,
+      "strategicShare": 60,
+      "communications": 88,
+      "survivalReflexActions": 1111,
+      "correctPredictions": 15,
+      "incorrectPredictions": 26,
+      "predictionAccuracy": 36.59,
+      "dehydrationHibernations": 38,
+      "assistedDependentHibernations": 0,
+      "wildlifePopulation": 0,
+      "animalsHunted": 10,
+      "animalAttacks": 0,
+      "projectsStarted": 31,
+      "projectsCompleted": 26,
+      "projectsBlocked": 5,
+      "projectLogisticsEpisodes": 130,
+      "projectLogisticsFulfilled": 125,
+      "projectLogisticsExhausted": 3,
+      "projectSearchEpisodes": 21,
+      "projectDropEpisodes": 109,
+      "projectLogisticsActionEvents": 601,
+      "jointProjectsCompleted": 0,
+      "productionProjectsCompleted": 21,
+      "constructionProjectsCompleted": 5,
+      "totalStructures": 12,
+      "completedStructures": 5,
+      "constructionPlacements": 18,
+      "containersBuilt": 7,
+      "standingContainers": 7,
+      "containerTransfers": 121,
+      "storedUnits": 108,
+      "movementActions": 2394,
+      "movementActionShare": 64.18,
+      "spearsCrafted": 28,
+      "leatherClothingCrafted": 0,
+      "herbalMedicineCrafted": 0,
+      "cookedFoodProduced": 9,
+      "recordsCreated": 6,
+      "functionalInstitutions": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "milestoneIds": [
+        "capability:11:emergence:gather-food:10",
+        "capability:12:practice:hunt:11",
+        "capability:21:emergence:communication:20",
+        "capability:58:practice:observation:35",
+        "capability:201:practice:direct-communication:59",
+        "capability:841:practice:weather:101",
+        "capability:16:emergence:tool-craft:15",
+        "capability:321:practice:tool-craft:63",
+        "capability:384:practice:project-logistics:71",
+        "capability:392:stable:project-logistics:73",
+        "capability:401:emergence:project:75",
+        "capability:15:response:disaster-response:14",
+        "capability:705:response:disaster-response:95",
+        "capability:824:practice:tool-hunt:100",
+        "capability:14:practice:migration:13",
+        "capability:17:emergence:fire-making:16",
+        "capability:59:practice:experiment:36",
+        "capability:222:practice:experiment:60",
+        "capability:337:response:experiment:68",
+        "capability:18:practice:cooking:17",
+        "capability:126:practice:cooking:44",
+        "capability:881:emergence:inquiry-project:102",
+        "capability:2:emergence:conception:2",
+        "capability:20:emergence:shelter:19",
+        "capability:48:emergence:agreement:33",
+        "capability:604:practice:conception:92",
+        "capability:35:practice:water-assistance:28",
+        "capability:122:practice:water-assistance:43",
+        "capability:1:emergence:birth:1",
+        "capability:4:emergence:kinship:4",
+        "capability:165:emergence:kinship:54",
+        "capability:169:response:dependent-protection:56",
+        "capability:121:emergence:food-identification:42",
+        "capability:36:harm:famine:29",
+        "capability:9:collapse:death:9",
+        "capability:802:emergence:prediction:97",
+        "capability:805:stable:correct-prediction:98",
+        "capability:248:stable:physical-record:62",
+        "capability:420:response:knowledge-preservation:77",
+        "capability:23:practice:teaching:22",
+        "capability:134:practice:teaching:47",
+        "capability:13:practice:gift:12",
+        "capability:462:practice:gift:81",
+        "capability:335:practice:craft-teaching:67",
+        "capability:3:practice:dependent-care:3",
+        "capability:131:response:dependent-care:45",
+        "capability:168:stable:dependent-care:55",
+        "capability:148:stable:fire-practice:49",
+        "capability:324:practice:rope-craft:65",
+        "capability:19:practice:clothing:18",
+        "capability:34:practice:storage:27",
+        "capability:325:practice:container-practice:66",
+        "capability:390:practice:storage:72",
+        "capability:400:recovery:project-recovery:74",
+        "capability:956:recovery:project-recovery:107",
+        "capability:32:practice:cultivation:25",
+        "capability:341:practice:cultivation:69",
+        "capability:8:emergence:aging:8",
+        "capability:24:stable:shared-record:23",
+        "capability:150:stable:shared-storage:51",
+        "capability:808:stable:era-cycle:99"
+      ]
+    }
+  ]
+}

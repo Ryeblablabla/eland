@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-15T02:53:11.964Z",
+  "baselineState": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/ci-territory-v2-baseline-b-s6101-y10-r1/state.json",
+  "candidateState": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/ci-territory-v2-candidate-b-s6101-y10-r1/state.json",
+  "ignoredObserverFields": [
+    "civilization.civilizationIndex",
+    "civilization.stage"
+  ],
+  "equal": true,
+  "baselineHash": "f3ac48e945a5e41b3b2dd2b830c19045dc9afe15c63154177927bbc2cfe5f39c",
+  "candidateHash": "f3ac48e945a5e41b3b2dd2b830c19045dc9afe15c63154177927bbc2cfe5f39c",
+  "counts": {
+    "events": 2352,
+    "people": 7,
+    "projects": 23,
+    "agreements": 8,
+    "records": 5
+  }
+}

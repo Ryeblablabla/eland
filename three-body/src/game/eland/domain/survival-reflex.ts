@@ -4,8 +4,9 @@ import type { DropState, SimulationState } from './model';
 import type { PersonState } from './person';
 import { isInfant } from './dependent-care';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
-import { findReachableWater } from './water-access';
+import { findReachableWater, findVisibleWaterSearchDestination } from './water-access';
 import { findReachableShelter } from './shelter-access';
+import { shelterGeometryAt } from './structure';
 import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
@@ -33,21 +34,18 @@ function reachableFoodPlant(state: SimulationState, person: PersonState): { plan
   return candidates.sort((a, b) => a.pathLength - b.pathLength || a.plantCell - b.plantCell)[0] ?? null;
 }
 
-export function chooseSurvivalReflex(state: SimulationState, person: PersonState): PrimitiveAction | null {
+export function chooseSurvivalReflex(
+  state: SimulationState,
+  person: PersonState,
+  options: { suppressThermalShelter?: boolean } = {},
+): PrimitiveAction | null {
   const cannotTravelAlone = isInfant(state, person, state.clock.elapsedMonths + 1);
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
   const starvationMonths = Math.max(0, Math.floor(person.body.nutrition / 1.5) - 6);
 
-  const thermalPressure = person.conditions
-    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
-    .sort((a, b) => b.stage - a.stage)[0];
-  if (!cannotTravelAlone && thermalPressure?.stage >= 2 && person.body.hydration >= 25 && person.body.nutrition >= 20) {
-    const shelter = findReachableShelter(state, person);
-    if (shelter) return { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
-  }
-
   if (person.body.hydration < 58) {
-    const water = findReachableWater(state, person, cellsInRadius(person.position.cellId, visibleRadius(person)));
+    const visible = cellsInRadius(person.position.cellId, visibleRadius(person));
+    const water = findReachableWater(state, person, visible);
     const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
     const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
     const atBank = water && person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z;
@@ -55,6 +53,10 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
       return atBank
         ? { kind: 'act', operation: 'ingest', targets: [{ kind: 'voxel', position: water.waterPosition }] }
         : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+    }
+    if (!water && !cannotTravelAlone) {
+      const search = findVisibleWaterSearchDestination(state, person, visible);
+      if (search) return { kind: 'move', toCellId: search.cellId, toZ: search.z };
     }
   }
   if (food && person.body.nutrition < 52) {
@@ -71,5 +73,24 @@ export function chooseSurvivalReflex(state: SimulationState, person: PersonState
       ? { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position: topPosition(state.world.grid, plant.plantCell) }] }
       : { kind: 'move', toCellId: plant.standCell };
   }
+
+  const thermalPressure = person.conditions
+    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+    .sort((a, b) => b.stage - a.stage)[0];
+  if (!options.suppressThermalShelter
+    && !cannotTravelAlone
+    && thermalPressure
+    && person.body.hydration >= 25
+    && person.body.nutrition >= 20) {
+    const shelter = findReachableShelter(state, person);
+    if (shelter) return { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
+  }
   return null;
+}
+
+/** Staying under real cover is state maintenance, not a repeated decision or synthetic action. */
+export function shouldRemainSheltered(state: SimulationState, person: PersonState): boolean {
+  if (!shelterGeometryAt(state.world.grid, person.position)) return false;
+  if (person.body.hydration < 45 || person.body.nutrition < 40) return false;
+  return person.conditions.some((condition) => (condition.kind === 'cold' || condition.kind === 'heat') && condition.stage >= 1);
 }

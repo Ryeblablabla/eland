@@ -5,6 +5,7 @@ import { materialDefinition } from '../domain/material';
 import {
   separationTechniqueId,
   separationTechniqueSummary,
+  separationToolFits,
   voxelSeparationRuleFor,
   type VoxelSeparationRule,
 } from '../domain/separation-rules';
@@ -63,7 +64,10 @@ export function buildMaterialSeparationOptions(
   for (const rule of rules.values()) {
     const tool = rule.requiredToolMaterialId === undefined
       ? undefined
-      : person.inventory.find((stack) => stack.materialId === rule.requiredToolMaterialId && stack.quantity > 0);
+      : person.inventory
+        .filter((stack) => stack.quantity > 0 && separationToolFits(rule, stack.materialId))
+        .sort((left, right) => materialDefinition(right.materialId).hardness - materialDefinition(left.materialId).hardness
+          || left.id.localeCompare(right.id))[0];
     if (rule.requiredToolMaterialId !== undefined && !tool) continue;
     const candidate = visibleCells
       .filter((cell) => surfaceMaterial(state.world.grid, cell) === rule.inputMaterialId)

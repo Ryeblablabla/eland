@@ -1,0 +1,2424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOXEL LAB · 体素世界素材生成器</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#121519;
+    font-family:"SF Mono","Cascadia Code",Consolas,Menlo,"PingFang SC",monospace; }
+  canvas { display:block; }
+  #sidebar {
+    position:fixed; top:0; left:0; bottom:0; width:196px; z-index:10;
+    background:rgba(12,15,19,.82); border-right:1px solid rgba(255,255,255,.08);
+    backdrop-filter:blur(8px); padding:18px 12px; overflow-y:auto;
+  }
+  #sidebar h1 { font-size:13px; letter-spacing:2px; color:#ffd9a0; padding:0 6px; }
+  #sidebar h1 small { display:block; color:#6b7684; font-size:10px; letter-spacing:1px; margin-top:5px; font-weight:400; }
+  .style-btn {
+    display:block; width:100%; text-align:left; margin-top:8px; padding:9px 10px;
+    background:rgba(255,255,255,.04); border:1px solid transparent; border-radius:7px;
+    color:#c7cfd8; font-size:12px; cursor:pointer; font-family:inherit;
+    transition:background .15s,border-color .15s;
+  }
+  .style-btn:hover { background:rgba(255,255,255,.09); }
+  .style-btn.active { background:rgba(255,217,160,.12); border-color:rgba(255,217,160,.45); color:#ffd9a0; }
+  .style-btn small { display:block; font-size:9px; color:#6b7684; margin-top:2px; letter-spacing:1px; }
+  .style-btn.active small { color:rgba(255,217,160,.6); }
+  .status-dot { float:right; margin-top:1px; padding:2px 5px; border-radius:999px; font-size:8px;
+    letter-spacing:.5px; font-weight:700; line-height:1.2; }
+  .status-dot.live { color:#9fe2b2; background:rgba(75,173,105,.14); border:1px solid rgba(94,204,128,.28); }
+  .status-dot.prototype { color:#a9b2be; background:rgba(138,149,163,.10); border:1px solid rgba(138,149,163,.20); }
+  .group { margin-top:14px; padding:0 6px; font-size:9px; letter-spacing:2px; color:#566070; }
+  .section-title { margin-top:18px; padding:6px; font-size:10px; letter-spacing:3px; color:#8b95a1;
+    border-top:1px solid rgba(255,255,255,.08); }
+  #toolbar {
+    position:fixed; top:16px; right:16px; z-index:10; display:flex; gap:8px; align-items:center;
+  }
+  .tool {
+    padding:8px 12px; font-size:11px; font-family:inherit; color:#d5dce4; cursor:pointer;
+    background:rgba(12,15,19,.78); border:1px solid rgba(255,255,255,.12); border-radius:7px;
+    backdrop-filter:blur(6px);
+  }
+  .tool:hover { background:rgba(255,255,255,.1); }
+  .tool.on { color:#ffd9a0; border-color:rgba(255,217,160,.45); }
+  #seedTag {
+    padding:8px 12px; font-size:11px; color:#8b95a1;
+    background:rgba(12,15,19,.78); border:1px solid rgba(255,255,255,.08); border-radius:7px;
+  }
+  #hint {
+    position:fixed; left:212px; bottom:14px; z-index:10; font-size:10px; color:#5f6974; letter-spacing:1px;
+  }
+  #stats {
+    position:fixed; right:16px; bottom:14px; z-index:10; font-size:10px; color:#5f6974; text-align:right; line-height:1.8;
+  }
+  #stats b { color:#c7cfd8; }
+  #detail {
+    position:fixed; top:62px; right:16px; width:248px; z-index:10;
+    padding:13px 14px; border-radius:9px;
+    background:rgba(12,15,19,.76); border:1px solid rgba(255,255,255,.09);
+    backdrop-filter:blur(8px); color:#8995a3; font-size:10px; line-height:1.65;
+    pointer-events:none;
+  }
+  #detail b { display:block; margin-bottom:3px; color:#e8edf2; font-size:12px; letter-spacing:1px; }
+  #detail .tags { color:#ffd9a0; letter-spacing:.08em; }
+  #detail .note { display:block; margin-top:6px; color:#73808e; }
+  #detail .status { display:inline-block; margin:2px 0 7px; padding:2px 6px; border-radius:999px;
+    font-size:9px; letter-spacing:.08em; }
+  #detail .status.live { color:#9fe2b2; background:rgba(75,173,105,.13); border:1px solid rgba(94,204,128,.25); }
+  #detail .status.prototype { color:#a9b2be; background:rgba(138,149,163,.10); border:1px solid rgba(138,149,163,.20); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="sidebar">
+  <h1>VOXEL LAB<small>世界素材生成器 · 1格=8微体素<br>绿色=已接入 · 灰色=视觉原型</small></h1>
+  <div id="styleList"></div>
+</div>
+<div id="toolbar">
+  <span id="seedTag">seed —</span>
+  <button class="tool" id="btnSeed">🎲 换一个</button>
+  <button class="tool" id="btnRotate">⟳ 旋转</button>
+  <button class="tool" id="btnPNG">导出 PNG</button>
+  <button class="tool" id="btnJSON">导出 JSON</button>
+</div>
+<div id="detail"></div>
+<div id="hint">左键旋转 · 右键平移 · 滚轮缩放 · P 人物长卷 · 9 建筑长卷 · 0 环境长卷</div>
+<div id="stats"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+/* ================= 确定性随机 ================= */
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
+  let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
+  return ((t^t>>>14)>>>0)/4294967296; }; }
+let rand = mulberry32(1);
+const _c = new THREE.Color();
+function vary(hex, h=0, s=0, l=0.06){
+  _c.setHex(hex);
+  _c.offsetHSL((rand()-0.5)*h, (rand()-0.5)*s, (rand()-0.5)*l);
+  return _c.getHex();
+}
+
+/* ================= 材质体系（无贴图，纯色实例颜色） ================= */
+const std  = o => new THREE.MeshStandardMaterial(o);
+const phys = o => new THREE.MeshPhysicalMaterial(o);
+const MATS = {
+  stone:     std({ roughness:0.90, metalness:0.02 }),
+  concrete:  std({ roughness:0.95, metalness:0.00 }),
+  plaster:   std({ roughness:0.95, metalness:0.00 }),
+  thatch:    std({ roughness:1.00, metalness:0.00 }),   // 茅草
+  wood:      std({ roughness:0.85, metalness:0.00 }),
+  woodDark:  std({ roughness:0.80, metalness:0.00 }),
+  roofTile:  std({ roughness:0.80, metalness:0.02 }),
+  accent:    std({ roughness:0.55, metalness:0.05 }),   // 漆面（红漆柱等）
+  skin:      std({ roughness:0.82, metalness:0.00 }),   // 人物皮肤（颜色由实例决定）
+  clothBand: std({ roughness:0.90, metalness:0.00 }),   // 衣料 / 脱水束带
+  panel:     std({ roughness:0.30, metalness:0.60 }),   // 太阳能板
+  metal:     std({ roughness:0.22, metalness:1.00 }),
+  darkMetal: std({ roughness:0.42, metalness:0.90 }),
+  glass:     phys({ transmission:1.00, roughness:0.06, ior:1.52, thickness:1.2, specularIntensity:1.1 }),
+  glassDark: phys({ transmission:0.92, roughness:0.10, ior:1.52, thickness:1.5 }),
+  glowWarm:  std({ color:0xffffff, emissive:0xff7a24, emissiveIntensity:1.25, roughness:0.5 }),
+  glowCyan:  std({ color:0x111111, emissive:0x6fe0ff, emissiveIntensity:3.2, roughness:0.5 }),
+  glowRed:   std({ color:0xffffff, emissive:0xe62f18, emissiveIntensity:1.4, roughness:0.5 }),
+  grass:     std({ roughness:1.00, metalness:0.00 }),
+  leaf:      std({ roughness:0.90, metalness:0.00 }),
+  water:     phys({ transmission:0.90, roughness:0.16, ior:1.33, thickness:2.0 }),
+};
+const CAST_SHADOW = new Set(['stone','concrete','plaster','thatch','wood','woodDark',
+  'roofTile','accent','skin','clothBand','panel','metal','darkMetal','grass','leaf']);
+
+/* ================= 体素构建器 ================= */
+// 与生产装饰层同构：一个地图格内有 8×8 微体素。旧单元是 2×2×2 微体素 cuboid，尺寸不变。
+const MICRO_PER_MAP_CELL = 8;
+const LEGACY_VOXEL_MICROS = 2;
+const LAB_MICRO = 0.5; // 实验室展示比例；导出坐标仍以微体素计。
+
+function createBuilder(){
+  const buckets = new Map();          // type -> [mx, myCenter, mz, sx, sy, sz, color, ...]
+  const placed = new Set();
+  const bounds = { minX:0, maxX:0, minZ:0, maxZ:0, maxY:0 };
+  let primitiveCount = 0;
+  function add(type, mx, my, mz, sx, sy, sz, color, key){
+    const k = key || `m|${mx}|${my}|${mz}|${sx}|${sy}|${sz}`;
+    if (placed.has(k)) return false;
+    placed.add(k);
+    let a = buckets.get(type);
+    if (!a){ a=[]; buckets.set(type,a); }
+    a.push(mx, my+sy/2, mz, sx, sy, sz, color);
+    primitiveCount++;
+    const cx=mx*LAB_MICRO, cz=mz*LAB_MICRO;
+    const hx=sx*LAB_MICRO/2, hz=sz*LAB_MICRO/2;
+    if (cx-hx<bounds.minX) bounds.minX=cx-hx; if (cx+hx>bounds.maxX) bounds.maxX=cx+hx;
+    if (cz-hz<bounds.minZ) bounds.minZ=cz-hz; if (cz+hz>bounds.maxZ) bounds.maxZ=cz+hz;
+    if ((my+sy)*LAB_MICRO>bounds.maxY) bounds.maxY=(my+sy)*LAB_MICRO;
+    return true;
+  }
+  /** 新精度入口：mx/mz 为水平中心，my 为底部，坐标与尺寸均以 1/8 格计。 */
+  function microCuboid(type, mx, my, mz, sx, sy, sz, color){
+    return add(type,mx,my,mz,sx,sy,sz,color);
+  }
+  /** 旧素材兼容入口：一个旧方块合并为 2×2×2 微体素 cuboid。 */
+  function vox(type, x, y, z, color){
+    return add(type, x*LEGACY_VOXEL_MICROS, y*LEGACY_VOXEL_MICROS, z*LEGACY_VOXEL_MICROS,
+      LEGACY_VOXEL_MICROS, LEGACY_VOXEL_MICROS, LEGACY_VOXEL_MICROS, color, `v|${x}|${y}|${z}`);
+  }
+  return { buckets, vox, microCuboid, bounds, count: () => primitiveCount };
+}
+/** 区间填充（inclusive），shell=true 只填外壳 */
+function box(B, type, x0,y0,z0, x1,y1,z1, colFn, shell=false){
+  for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) for(let z=z0;z<=z1;z++){
+    if (shell && !(x===x0||x===x1||y===y0||y===y1||z===z0||z===z1)) continue;
+    B.vox(type,x,y,z,colFn(x,y,z));
+  }
+}
+/** 展示台座：顶面整层 + 侧壁一圈，深灰石材 */
+function addPedestal(B, margin=2){
+  const hX = Math.ceil(Math.max(Math.abs(B.bounds.minX), Math.abs(B.bounds.maxX)) + margin);
+  const hZ = Math.ceil(Math.max(Math.abs(B.bounds.minZ), Math.abs(B.bounds.maxZ)) + margin);
+  for(let x=-hX;x<=hX;x++) for(let z=-hZ;z<=hZ;z++){
+    const border = (x===-hX||x===hX||z===-hZ||z===hZ);
+    B.vox('stone', x, 0, z, vary(border?0x6d7278:0x8b9096, 0,0.03,0.05));
+    if (border) B.vox('stone', x,-1,z, vary(0x53575c,0,0.03,0.04));
+  }
+}
+/** 草皮底座（环境素材用）：顶面草地 + 泥土描边 */
+/** 草皮底座（环境素材用）：顶面草地/雪地/焦土 + 描边 */
+const GROUND_STYLES = {
+  grass: { top:'grass',   topCol:0x69a84f, edge:'wood',    edgeCol:0x6e4f33, side:'woodDark', sideCol:0x54402a },
+  wet:   { top:'grass',   topCol:0x557a45, edge:'wood',    edgeCol:0x66513d, side:'woodDark', sideCol:0x493b31 },
+  dry:   { top:'wood',    topCol:0x96764e, edge:'wood',    edgeCol:0x76583a, side:'woodDark', sideCol:0x59402c },
+  snow:  { top:'plaster', topCol:0xeef2f6, edge:'plaster', edgeCol:0xd8dee6, side:'stone',    sideCol:0x8b9096 },
+  ash:   { top:'stone',   topCol:0x4a4845, edge:'stone',   edgeCol:0x3a3835, side:'stone',    sideCol:0x2e2c2a },
+};
+function addGround(B, margin=2, style='grass'){
+  const G = GROUND_STYLES[style];
+  const hX = Math.ceil(Math.max(Math.abs(B.bounds.minX), Math.abs(B.bounds.maxX)) + margin);
+  const hZ = Math.ceil(Math.max(Math.abs(B.bounds.minZ), Math.abs(B.bounds.maxZ)) + margin);
+  for(let x=-hX;x<=hX;x++) for(let z=-hZ;z<=hZ;z++){
+    const border = (x===-hX||x===hX||z===-hZ||z===hZ);
+    B.vox(border?G.edge:G.top, x, 0, z,
+      border ? vary(G.edgeCol,0.01,0.08,0.07) : vary(G.topCol,0.02,0.12,0.07));
+    if (border) B.vox(G.side, x,-1,z, vary(G.sideCol,0,0.06,0.05));
+  }
+}
+/** 河道辅助（桥梁素材用，先于底座铺水，草皮自动绕行） */
+function bridgeWater(B){
+  for(let z=-8;z<=8;z++) for(let x=-1;x<=2;x++)
+    B.vox('water', x,0,z, vary(0x2f6fd0,0,0.12,0.1));
+  for(let z=-8;z<=8;z++){
+    B.vox('stone',-2,0,z, vary(0x7d8288,0,0.05,0.07));
+    B.vox('stone', 3,0,z, vary(0x7d8288,0,0.05,0.07));
+  }
+}
+
+/* ================= 八种建筑生成器 ================= */
+
+/** 茅草屋：泥墙 + 木角柱 + 陡坡茅草顶 */
+function genThatched(B){
+  const x0=-3, x1=3, z0=-3, z1=2, H=3;
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && x===0 && y<=2) continue;                 // 门洞
+    if ((x===x0||x===x1) && z===-1 && y===2) continue;     // 侧窗洞
+    const corner = (x===x0||x===x1)&&(z===z0||z===z1);
+    B.vox(corner?'woodDark':'plaster', x,y,z,
+      corner ? vary(0x6b4a2e,0.01,0.1,0.08) : vary(0xb59a70,0.02,0.1,0.08));
+  }
+  box(B,'wood', 0,1,z1, 0,2,z1, ()=>vary(0x5f422a,0,0.08,0.06));   // 木门
+  B.vox('glowWarm', x0,2,-1, 0xffc37a); B.vox('glowWarm', x1,2,-1, 0xffc37a); // 暖窗
+  for(let r=0;r<5;r++){                                          // 茅草屋顶（外挑 1）
+    const xa=x0-1+r, xb=x1+1-r, za=z0-1+r, zb=z1+1-r;
+    if (xa>xb||za>zb) break;
+    box(B,'thatch', xa,H+1+r,za, xb,H+1+r,zb, ()=>vary(0xd8b968,0.02,0.15,0.12));
+  }
+  box(B,'woodDark', 0,H+5,-1, 0,H+5,0, ()=>vary(0x6b4a2e,0,0.1,0.06)); // 屋脊
+}
+
+/** 木屋：圆木墙（逐行深浅交替）+ 山墙顶 + 石烟囱炊烟 */
+function genLogCabin(B){
+  const x0=-4, x1=3, z0=-3, z1=2, H=3;
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && x===0 && y<=2) continue;                  // 门
+    if (z===z1 && (x===-2||x===2) && y===2) continue;       // 前窗
+    if (z===z0 && x===-1 && y===2) continue;                // 后窗
+    const corner = (x===x0||x===x1)&&(z===z0||z===z1);
+    const base = corner ? 0x5a3d26 : (y%2 ? 0x7a5636 : 0x6b4a2e);
+    B.vox('wood', x,y,z, vary(base,0.01,0.12,0.08));
+  }
+  box(B,'woodDark', 0,1,z1, 0,2,z1, ()=>vary(0x4e3822,0,0.08,0.06));
+  B.vox('glowWarm',-2,2,z1,0xffc37a); B.vox('glowWarm',2,2,z1,0xffc37a);
+  B.vox('glassDark',-1,2,z0,0x3a2f26);
+  box(B,'wood', -1,0,z1+1, 1,0,z1+1, ()=>vary(0x7a5636,0,0.1,0.06)); // 门廊踏板
+  // 烟囱（先建，屋顶自动让位）
+  box(B,'stone', 2,4,-1, 2,8,0, ()=>vary(0x84888d,0,0.05,0.08));
+  B.vox('plaster', 2,9,0, 0xb9bec4); B.vox('plaster', 2,10,0, 0xc9ced4); B.vox('plaster', 3,11,0, 0xd5d9de); // 炊烟
+  for(let r=0;r<4;r++){                                    // 山墙屋顶（脊沿 x 向）
+    const za=z0-1+r, zb=z1+1-r;
+    box(B,'roofTile', x0-1,H+1+r,za, x1+1,H+1+r,zb, ()=>vary(0x5a4030,0.01,0.1,0.09));
+  }
+  box(B,'woodDark', x0-1,H+4,-1, x1+1,H+4,0, ()=>vary(0x4e3822,0,0.08,0.06));
+}
+
+/** 石头屋：乱石墙 + 苔藓 + 石板瓦 */
+function genStone(B){
+  const x0=-3, x1=3, z0=-3, z1=3, H=4;
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && x===0 && y<=3) continue;                  // 高门洞
+    if ((x===x0||x===x1) && z===0 && (y===2||y===3)) continue; // 侧窄窗
+    if (z===z1 && (x===-2||x===2) && y===3) continue;       // 前小窗
+    const moss = rand()<0.08;
+    B.vox('stone', x,y,z, moss ? vary(0x6f7a5f,0.02,0.1,0.08) : vary(0x8a8d92,0,0.05,0.09));
+  }
+  box(B,'wood', 0,1,z1, 0,2,z1, ()=>vary(0x5f422a,0,0.08,0.06));
+  B.vox('glassDark', 0,3,z1, 0x2c3844);
+  B.vox('glassDark', x0,2,0, 0x2c3844); B.vox('glassDark', x0,3,0, 0x2c3844);
+  B.vox('glowWarm', x1,2,0, 0xffc37a); B.vox('glowWarm', x1,3,0, 0xffc37a);
+  B.vox('glowWarm',-2,3,z1,0xffc37a); B.vox('glassDark',2,3,z1,0x2c3844);
+  for(let r=0;r<5;r++){                                    // 石板瓦四坡顶
+    const xa=x0-1+r, xb=x1+1-r, za=z0-1+r, zb=z1+1-r;
+    if (xa>xb||za>zb) break;
+    box(B,'roofTile', xa,H+1+r,za, xb,H+1+r,zb, ()=>vary(0x4a4f58,0,0.04,0.07));
+  }
+}
+
+/** 中世纪房子：下石上木、上层挑檐（jetty）、木骨架白墙 */
+function genMedieval(B){
+  const x0=-4, x1=4, z0=-3, z1=3;
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=3;y++){   // 一层石墙
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && x===0 && y<=2) continue;
+    if (z===z1 && (x===-2||x===2) && y===2) continue;
+    B.vox('stone', x,y,z, vary(0x9a958c,0,0.05,0.07));
+  }
+  box(B,'wood', 0,1,z1, 0,2,z1, ()=>vary(0x5f422a,0,0.08,0.06));
+  B.vox('glassDark',-2,2,z1,0x33404e); B.vox('glowWarm',2,2,z1,0xffc37a);
+  const X0=-5, X1=5, Z0=-4, Z1=4;                          // 二层挑檐外扩 1
+  for(let x=X0;x<=X1;x++) for(let z=Z0;z<=Z1;z++) for(let y=4;y<=6;y++){
+    const edge = x===X0||x===X1||z===Z0||z===Z1;
+    if (!edge) continue;
+    if ((z===Z1||z===Z0) && (x===-2||x===0||x===2) && y===5) continue; // 上层窗
+    const corner=(x===X0||x===X1)&&(z===Z0||z===Z1);
+    const beam = y===4 || y===6;
+    const stud = (z===Z0||z===Z1) && ((x+X0)%2===0);
+    B.vox((corner||beam||stud)?'woodDark':'plaster', x,y,z,
+      (corner||beam||stud) ? vary(0x4a3626,0.01,0.1,0.06) : vary(0xe8e2d4,0.01,0.04,0.04));
+  }
+  B.vox('glowWarm',0,5,Z1,0xffc37a);
+  B.vox('glassDark',-2,5,Z1,0x33404e); B.vox('glassDark',2,5,Z1,0x33404e);
+  B.vox('glassDark',-2,5,Z0,0x33404e); B.vox('glassDark',0,5,Z0,0x33404e); B.vox('glassDark',2,5,Z0,0x33404e);
+  box(B,'stone', 4,7,-1, 4,11,0, ()=>vary(0x84888d,0,0.05,0.08));  // 烟囱穿顶
+  for(let r=0;r<5;r++){                                    // 陡坡屋顶
+    const za=Z0-1+r, zb=Z1+1-r;
+    box(B,'roofTile', X0-1,7+r,za, X1+1,7+r,zb, ()=>vary(0x7a4a3a,0.01,0.1,0.08));
+  }
+  box(B,'roofTile', X0-1,12,0, X1+1,12,0, ()=>vary(0x5e382c,0,0.08,0.06));
+}
+
+/** 中国王朝古代房子：台基 + 红漆柱 + 斗拱 + 翘角灰瓦顶 + 红灯笼 */
+function genChinese(B){
+  const x0=-4, x1=4, z0=-3, z1=3;
+  box(B,'stone', x0-2,1,z0-2, x1+2,1,z1+2, (x,y,z)=>{       // 台基
+    const edge = x===x0-2||x===x1+2||z===z0-2||z===z1+2;
+    return vary(edge?0x7d8288:0x9aa0a6, 0,0.03,0.05);
+  });
+  box(B,'stone', -1,1,z1+3, 1,1,z1+3, ()=>vary(0x8b9096,0,0.03,0.05)); // 台阶
+  const isCol = (x,z) => ((z===z0||z===z1) && ((x-x0)%2===0) && x!==0) || ((x===x0||x===x1) && ((z-z0)%2===0));
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=2;y<=5;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && (x===-1||x===0)) continue;                // 前门面阔
+    if (isCol(x,z)){ B.vox('accent', x,y,z, vary(0xa63a2e,0.01,0.1,0.06)); continue; } // 红漆柱
+    if ((z===z0||z===z1) && (y===3||y===4) && x%2!==0){     // 槛窗
+      B.vox('glassDark', x,y,z, vary(0x4a3a2c,0,0.08,0.06)); continue;
+    }
+    B.vox(y===2?'wood':'plaster', x,y,z,
+      y===2 ? vary(0x7a5a3a,0.01,0.1,0.06) : vary(0xefe9dc,0.005,0.03,0.03));
+  }
+  box(B,'woodDark', -1,2,z1, 0,4,z1, ()=>vary(0x6e2a20,0.01,0.08,0.06)); // 双扇大门
+  B.vox('glowWarm',-1,5,z1,0xffc37a); B.vox('glowWarm',0,5,z1,0xffc37a); // 门上亮子
+  // 檐部：额枋一圈 + 柱头斗拱外出
+  for(let x=x0-1;x<=x1+1;x++) for(let z=z0-1;z<=z1+1;z++){
+    if (!(x===x0-1||x===x1+1||z===z0-1||z===z1+1)) continue;
+    B.vox('woodDark', x,6,z, vary(0x4e3822,0,0.08,0.06));
+  }
+  // 灰瓦歇山顶（四角起翘）
+  const layers = [[6,5,7],[5,4,8],[4,3,9],[2,1,10]];        // [hx, hz, y]
+  for (const [hx,hz,y] of layers){
+    for(let x=-hx;x<=hx;x++) for(let z=-hz;z<=hz;z++){
+      const edge = x===-hx||x===hx||z===-hz||z===hz;
+      B.vox('roofTile', x,y,z, vary(edge?0x464c54:0x5a6068, 0,0.04,0.06));
+    }
+    if (hx>=5) for (const sx of [-1,1]) for (const sz of [-1,1])
+      B.vox('roofTile', sx*hx, y+1, sz*hz, vary(0x464c54,0,0.04,0.05)); // 翘角
+  }
+  box(B,'roofTile', -2,11,0, 2,11,0, ()=>vary(0x3a4048,0,0.04,0.05));   // 正脊
+  B.vox('roofTile',-2,12,0,0x33383f); B.vox('roofTile',2,12,0,0x33383f); // 脊兽
+  B.vox('glowRed',-3,6,z1+2,0xff6a55); B.vox('glowRed',3,6,z1+2,0xff6a55);   // 红灯笼
+  B.vox('glowRed',-3,6,z0-2,0xff6a55); B.vox('glowRed',3,6,z0-2,0xff6a55);
+}
+
+/** 现代房子：白色方盒 + 大面积玻璃 + 木饰面 + 车库 */
+function genModern(B){
+  const x0=-5, x1=4, z0=-4, z1=3, H=4;
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && x>=x0+1 && x<=1 && (y===2||y===3) && (x-x0-1)%3!==0) continue; // 玻璃幕墙
+    if (z===z1 && x===3 && y<=3) continue;                  // 入户门
+    if (z===z1 && x===2) { B.vox('wood', x,y,z, vary(0xa87a4a,0.01,0.1,0.06)); continue; } // 木饰面
+    if (x===x0 && z>=-2 && z<=1 && (y===2||y===3)) continue; // 侧窗带
+    if (z===z0 && x>=-2 && x<=2 && (y===2||y===3)) continue; // 后窗带
+    B.vox('concrete', x,y,z, vary(0xe8eaec,0,0.02,0.04));
+  }
+  // 玻璃与门
+  for(let x=x0+1;x<=1;x++) for(let y=2;y<=3;y++) if ((x-x0-1)%3!==0) B.vox('glass', x,y,z1, vary(0xbfe0f0,0,0.05,0.05));
+  box(B,'glassDark', 3,1,z1, 3,3,z1, ()=>vary(0x2c3844,0,0.05,0.05));
+  for(let z=-2;z<=1;z++) for(let y=2;y<=3;y++) B.vox('glassDark', x0,y,z, vary(0x3d5a78,0,0.06,0.06));
+  for(let x=-2;x<=2;x++) for(let y=2;y<=3;y++) B.vox('glassDark', x,y,z0, vary(0x3d5a78,0,0.06,0.06));
+  // 上层错动方盒
+  box(B,'concrete', x0,5,z0, 0,7,1, ()=>vary(0xe2e4e6,0,0.02,0.04), true);
+  for(let x=x0+1;x<=-1;x++) B.vox('glassDark', x,6,1, vary(0x3d5a78,0,0.06,0.06));
+  box(B,'concrete', x0,8,z0, 0,8,1, ()=>vary(0xd4d7da,0,0.02,0.03));      // 上层顶板
+  box(B,'glassDark', -3,8,-2, -2,8,-1, ()=>0x2c3844);                     // 天窗
+  // 主屋顶女儿墙（未被上层覆盖的沿街部分）
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge || (x<=0 && z<=1)) continue;
+    B.vox('concrete', x,5,z, vary(0xd4d7da,0,0.02,0.03));
+  }
+  // 车库
+  box(B,'concrete', 5,1,0, 7,2,3, ()=>vary(0xd0d3d6,0,0.02,0.04), true);
+  box(B,'concrete', 5,3,0, 7,3,3, ()=>vary(0xc4c8cb,0,0.02,0.03));
+  box(B,'darkMetal', 5,1,3, 7,2,3, ()=>vary(0x3a3f45,0,0.05,0.05));       // 车库门
+}
+
+/** 高楼大厦：玻璃幕墙塔楼 + 三段收分 + 入口雨棚 + 航空障碍灯 */
+function genSkyscraper(B){
+  // 裙楼
+  box(B,'stone', -6,1,-6, 6,2,6, (x,y,z)=>{
+    const edge = x===-6||x===6||z===-6||z===6||y===2;
+    return vary(edge?0x84898f:0x9aa0a6, 0,0.03,0.05);
+  }, true);
+  for(let x=-1;x<=0;x++) for(let y=1;y<=2;y++) B.vox('glassDark', x,y,6, 0x2c3844); // 大门
+  box(B,'glass', -2,3,6, 1,3,7, ()=>vary(0xbfe0f0,0,0.05,0.05));          // 雨棚
+  B.vox('darkMetal',-2,1,7,0x2e3236); B.vox('darkMetal',-2,2,7,0x2e3236);
+  B.vox('darkMetal', 1,1,7,0x2e3236); B.vox('darkMetal', 1,2,7,0x2e3236);
+  // 幕墙单元
+  const curtain = (x,y,z,edge)=>{
+    if (!edge) return;
+    const corner = (x===-5||x===4||x===-4||x===3||x===-3||x===2) && (z===-5||z===4||z===-4||z===3||z===-3||z===2);
+    if (corner){ B.vox('metal', x,y,z, vary(0xcfd4da,0,0.03,0.05)); return; }
+    if (y%4===2){ B.vox('metal', x,y,z, vary(0xb9c0c8,0,0.03,0.05)); return; } // 层间梁带
+    if (rand()<0.12){ B.vox('glowWarm', x,y,z, vary(0xffc37a,0,0.1,0.08)); return; }
+    B.vox('glassDark', x,y,z, vary(0x3d5a78,0.02,0.1,0.08));
+  };
+  const tower = (hx0,hx1,hz0,hz1, y0,y1)=>{
+    for(let x=hx0;x<=hx1;x++) for(let z=hz0;z<=hz1;z++) for(let y=y0;y<=y1;y++)
+      curtain(x,y,z, x===hx0||x===hx1||z===hz0||z===hz1);
+  };
+  tower(-5,4,-5,4, 3,18);      // 主塔 10×10
+  tower(-4,3,-4,3, 19,23);     // 收分二段
+  tower(-3,2,-3,2, 24,26);     // 收分三段
+  // 收分平台顶盖
+  for(let x=-5;x<=4;x++) for(let z=-5;z<=4;z++)
+    if (!(x>=-4&&x<=3&&z>=-4&&z<=3)) B.vox('concrete', x,19,z, vary(0x9ea4aa,0,0.03,0.04));
+  for(let x=-4;x<=3;x++) for(let z=-4;z<=3;z++)
+    if (!(x>=-3&&x<=2&&z>=-3&&z<=2)) B.vox('concrete', x,24,z, vary(0x9ea4aa,0,0.03,0.04));
+  // 屋顶 +  cyan 轮廓环
+  for(let x=-3;x<=2;x++) for(let z=-3;z<=2;z++){
+    const edge = x===-3||x===2||z===-3||z===2;
+    B.vox(edge?'glowCyan':'concrete', x,27,z, edge?0x8fe8ff:vary(0x9ea4aa,0,0.03,0.04));
+  }
+  box(B,'darkMetal', 0,28,0, 0,31,0, ()=>vary(0x2e3236,0,0.05,0.05));     // 天线
+  B.vox('glowRed', 0,32,0, 0xff6a55);                                     // 航空障碍灯
+}
+
+/** 未来风格房子：流线穹舱 + 青色光环带 + 太阳能板 */
+function genFuture(B){
+  box(B,'darkMetal', -4,1,-4, 4,1,4, (x,y,z)=>{                            // 底盘
+    const edge = x===-4||x===4||z===-4||z===4;
+    return vary(edge?0x2e3236:0x3a3f45, 0,0.05,0.05);
+  });
+  const inE = (x,z,rx,rz) => (x*x)/(rx*rx) + (z*z)/(rz*rz) <= 1;
+  const layers = [[4.2,2],[4.6,3],[4.6,4],[4.2,5],[3.4,6],[2.4,7]];        // [半径, y]
+  for (const [r,y] of layers){
+    for(let x=-5;x<=5;x++) for(let z=-5;z<=5;z++){
+      if (!inE(x,z,r,r)) continue;
+      const shell = !inE(x+1,z,r,r)||!inE(x-1,z,r,r)||!inE(x,z+1,r,r)||!inE(x,z-1,r,r);
+      if (!shell) continue;
+      if (y===4){ B.vox('glowCyan', x,y,z, 0x8fe8ff); continue; }          // 环舱光带
+      if (y===5 && z>0 && Math.abs(x)<=3 && (x+z)%2===0){                  // 前向玻璃带
+        B.vox('glass', x,y,z, vary(0xbfe0f0,0,0.05,0.05)); continue;
+      }
+      if (y<=3 && z>=3 && x>=0 && x<=1){                                   // 舱门（青光框）
+        B.vox(y===3?'glowCyan':'glassDark', x,y,z, y===3?0x8fe8ff:0x1f3242); continue;
+      }
+      B.vox('concrete', x,y,z, vary(0xeef0f2,0,0.02,0.03));
+    }
+  }
+  // 舱顶盖 + 停机环 + 天线
+  for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++) if (inE(x,z,2.4,2.4))
+    B.vox('concrete', x,8,z, vary(0xe4e7ea,0,0.02,0.03));
+  for(let x=-2;x<=2;x++) for(let z=-2;z<=2;z++){
+    const ring = inE(x,z,1.6,1.6) && !inE(x,z,1.0,1.0);
+    if (ring) B.vox('darkMetal', x,9,z, vary(0x3a3f45,0,0.05,0.05));
+  }
+  B.vox('metal', 0,9,0, 0xc9ccd2); B.vox('metal', 0,10,0, 0xc9ccd2);
+  B.vox('glowCyan', 0,11,0, 0x8fe8ff);
+  // 地面太阳能板阵列（后倾）
+  for(let i=0;i<3;i++) for(let x=-2;x<=1;x++)
+    B.vox('panel', x, 2+i, -6-i, vary(0x1a2a4a,0.02,0.15,0.06));
+  box(B,'darkMetal', -2,1,-6, 1,1,-6, ()=>0x2e3236);
+}
+
+/* ================= 文明时代包：Lv.1–Lv.8 标志建筑 ================= */
+
+/** Lv.1 部落营地：兽皮帐篷 + 篝火 + 图腾柱 */
+function genTribe(B){
+  for (const [tx,tz] of [[-4,-2],[3,-3],[0,3]]){          // 三顶圆锥兽皮帐
+    for(let y=1;y<=4;y++){
+      const r = 2.6 - y*0.55;
+      for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+        const d = Math.hypot(x,z);
+        if (d>r+0.35 || d<r-0.75) continue;
+        if (y<=2 && x===0 && z>=1) continue;               // 帐门
+        B.vox('thatch', tx+x, y, tz+z, vary(0x8a6a48,0.02,0.12,0.09));
+      }
+    }
+    B.vox('woodDark', tx,5,tz, vary(0x5f422a,0,0.08,0.06)); // 帐顶木杆
+  }
+  // 篝火：石圈 + 木柴 + 火焰 + 烟
+  for(let k=0;k<8;k++){
+    const a = k*Math.PI/4;
+    B.vox('stone', Math.round(Math.cos(a)*1.6), 1, Math.round(Math.sin(a)*1.6), vary(0x7d8288,0,0.05,0.07));
+  }
+  B.vox('wood', 0,1,0, 0x5f422a); B.vox('wood', 1,1,0, 0x54402a); B.vox('wood', 0,1,1, 0x5f422a);
+  B.vox('glowRed', 0,1,-1, 0xff6a55);
+  B.vox('glowWarm', 0,2,0, 0xffc37a); B.vox('glowWarm', 0,3,0, 0xff9a4a);
+  B.vox('plaster', 0,4,0, 0xb9bec4); B.vox('plaster', 1,5,0, 0xc9ced4);
+  // 图腾柱
+  const totemCol = [0xc0392b, 0xd8a03a, 0x3a7a8c, 0xc0392b, 0xd8a03a];
+  for(let y=1;y<=5;y++) B.vox('accent', 6,y,3, vary(totemCol[y-1],0.01,0.08,0.06));
+  B.vox('accent', 5,5,3, 0x3a7a8c); B.vox('accent', 7,5,3, 0x3a7a8c);   // 图腾翼
+  B.vox('woodDark', 6,6,3, 0x4e3822);                                    // 喙
+}
+
+/** Lv.2 风车磨坊：石基木身锥塔 + X 形四叶风车 */
+function genWindmill(B){
+  const layers = [[3.4,1],[3.2,2],[3.0,3],[2.8,4],[2.5,5],[2.3,6],[2.1,7]];
+  for (const [r,y] of layers){
+    for(let x=-4;x<=4;x++) for(let z=-4;z<=4;z++){
+      const d = Math.hypot(x,z);
+      if (d>r+0.3 || d<r-0.8) continue;
+      if (z>=2 && x===0 && y<=2) continue;                 // 门洞
+      if (y===5 && z>=1 && Math.abs(x)<=1){                // 中层窗
+        B.vox('glassDark', x,y,z, 0x33404e); continue;
+      }
+      B.vox(y<=4?'stone':'wood', x,y,z,
+        y<=4 ? vary(0x8f8a80,0,0.05,0.08) : vary(0x7a5636,0.01,0.12,0.08));
+    }
+  }
+  box(B,'woodDark', 0,1,3, 0,2,3, ()=>vary(0x4e3822,0,0.08,0.06));  // 木门
+  // 锥形顶盖
+  for (const [r,y] of [[2.9,8],[1.8,9],[1.0,10]]){
+    for(let x=-4;x<=4;x++) for(let z=-4;z<=4;z++)
+      if (Math.hypot(x,z)<=r) B.vox('roofTile', x,y,z, vary(0x4a4038,0.01,0.08,0.07));
+  }
+  // 风车：轮毂 + 四叶（木架 + 帆布）
+  B.vox('darkMetal', 0,7,4, 0x2e3236);
+  for(let i=1;i<=4;i++){
+    const t = i===1 ? 'woodDark' : (i===4 ? 'woodDark' : 'plaster');
+    const col = i===1||i===4 ? vary(0x5f422a,0,0.08,0.06) : vary(0xd8cfc0,0.01,0.06,0.05);
+    B.vox(t,  i,7+i,4, col); B.vox(t, -i,7+i,4, col);
+    B.vox(t,  i,7-i,4, col); B.vox(t, -i,7-i,4, col);
+    if (i>=2 && i<=3){                                      // 帆布加宽一格
+      B.vox('plaster',  i,7+i-1,4, vary(0xd8cfc0,0.01,0.06,0.05));
+      B.vox('plaster', -i,7+i-1,4, vary(0xd8cfc0,0.01,0.06,0.05));
+      B.vox('plaster',  i,7-i+1,4, vary(0xd8cfc0,0.01,0.06,0.05));
+      B.vox('plaster', -i,7-i+1,4, vary(0xd8cfc0,0.01,0.06,0.05));
+    }
+  }
+}
+
+/** Lv.3 阶梯神庙：五层台基 + 中央阶梯 + 顶部祭坛圣火 + 方尖碑 */
+function genTemple(B){
+  const tiers = [[6,1],[5,2],[4,3],[3,4],[2,5]];           // [半宽, y]
+  for (const [h,y] of tiers){
+    for(let x=-h;x<=h;x++) for(let z=-h;z<=h;z++){
+      const edge = x===-h||x===h||z===-h||z===h;
+      const moss = rand()<0.06;
+      B.vox('stone', x,y,z, moss ? vary(0x6f7a5f,0.02,0.1,0.08)
+        : vary(edge?0xb09a72:0xc9b28a, 0.01,0.08,0.08));
+    }
+  }
+  for(let s=0;s<=5;s++){                                    // 正面阶梯（嵌入坡面）
+    const z = 7-s, y = s+1;
+    for(let x=-1;x<=1;x++) B.vox('stone', x,y,z, vary(0xd8c49a,0.01,0.06,0.06));
+    B.vox('stone', -2,y,z, 0x8a7652); B.vox('stone', 2,y,z, 0x8a7652); // 扶手沿
+  }
+  // 顶部祭坛：四柱 + 顶板 + 圣火
+  for (const cx of [-1,1]) for (const cz of [-1,1])
+    box(B,'accent', cx,6,cz, cx,7,cz, ()=>vary(0xa63a2e,0.01,0.1,0.06));
+  box(B,'stone', -2,8,-2, 2,8,2, ()=>vary(0x8a7652,0.01,0.06,0.06));
+  B.vox('darkMetal', 0,9,0, 0x2e3236);                       // 火盆
+  B.vox('glowWarm', 0,10,0, 0xffc37a); B.vox('glowRed', 0,11,0, 0xff6a55);
+  // 方尖碑一对
+  for (const ox of [-4,4]){
+    box(B,'stone', ox,1,8, ox,4,8, ()=>vary(0xc9b28a,0.01,0.08,0.08));
+    B.vox('roofTile', ox,5,8, 0x8a7652);
+  }
+}
+
+/** Lv.4 城堡：雉堞城墙 + 四角塔楼 + 城门闸格 + 主堡旗帜 */
+function genCastle(B){
+  const W=7, D=5, H=4;
+  for (const [cx,cz] of [[-W,-D],[W,-D],[-W,D],[W,D]]){     // 四角塔楼
+    box(B,'stone', cx-1,1,cz-1, cx+1,6,cz+1, ()=>vary(0x8a8d92,0,0.05,0.08), true);
+    box(B,'roofTile', cx-1,7,cz-1, cx+1,7,cz+1, ()=>vary(0x4a4f58,0,0.04,0.06));
+    B.vox('roofTile', cx,8,cz, 0x3a4048);
+  }
+  for(let x=-W;x<=W;x++) for(let z=-D;z<=D;z++){            // 城墙 + 雉堞
+    const edge = x===-W||x===W||z===-D||z===D;
+    if (!edge) continue;
+    if (z===D && Math.abs(x)<=1){                           // 城门：格栅闸
+      for(let y=1;y<=3;y++) if ((x+y)%2===0) B.vox('darkMetal', x,y,z, vary(0x2e3236,0,0.05,0.05));
+      B.vox('stone', x,4,z, vary(0x8a8d92,0,0.05,0.08));
+      if (x===0) B.vox('stone', x,5,z, 0x7d8288);
+      continue;
+    }
+    for(let y=1;y<=H;y++) B.vox('stone', x,y,z, vary(0x8a8d92,0,0.05,0.08));
+    if ((x+z)%2===0) B.vox('stone', x,H+1,z, vary(0x7d8288,0,0.05,0.07));
+  }
+  // 主堡（keep）
+  box(B,'stone', -2,1,-4, 2,7,0, ()=>vary(0x8f9298,0,0.05,0.08), true);
+  box(B,'woodDark', 0,1,0, 0,2,0, ()=>vary(0x4e3822,0,0.08,0.06));
+  B.vox('glassDark', -2,5,-2, 0x2c3844); B.vox('glassDark', 2,5,-2, 0x2c3844);
+  B.vox('glowWarm', 0,6,-4, 0xffc37a);
+  for(let x=-2;x<=2;x++) for(let z=-4;z<=0;z++){            // 主堡顶雉堞
+    const edge = x===-2||x===2||z===-4||z===0;
+    if (edge && (x+z)%2===0) B.vox('stone', x,8,z, vary(0x7d8288,0,0.05,0.07));
+  }
+  box(B,'woodDark', 0,9,-2, 0,11,-2, ()=>0x4e3822);         // 旗杆
+  B.vox('accent', 1,11,-2, 0xc0392b); B.vox('accent', 2,11,-2, 0xc0392b); B.vox('accent', 1,10,-2, 0xa93226); // 旗帜
+}
+
+/** Lv.5 烟囱工厂：红砖锯齿屋顶厂房 + 双烟囱 + 铁路支线 + 水塔 */
+function genFactory(B){
+  const x0=-6, x1=5, z0=-4, z1=3, H=5;
+  // 烟囱（先建，屋顶自动让位）
+  for (const [cx,cz] of [[3,-2],[5,1]]){
+    box(B,'roofTile', cx,1,cz, cx+1,10,cz+1, ()=>vary(0x8a4432,0.01,0.1,0.07)); // 红砖烟囱
+    box(B,'roofTile', cx,11,cz, cx,13,cz, ()=>vary(0x8a4432,0.01,0.1,0.07));
+    B.vox('plaster', cx,14,cz, 0xb0b5bb); B.vox('plaster', cx+1,15,cz, 0xc2c7cd);
+    B.vox('plaster', cx,16,cz+1, 0xccd1d7); B.vox('plaster', cx+1,17,cz+1, 0xd6dbe0); // 烟柱
+  }
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
+    const edge = x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    if (z===z1 && Math.abs(x)<=1 && y<=3) continue;          // 大门洞
+    if ((z===z0||z===z1) && (x-x0)%3===1 && y>=2 && y<=4){   // 长窗
+      B.vox('glassDark', x,y,z, vary(0x4a5a68,0,0.06,0.06)); continue;
+    }
+    B.vox('roofTile', x,y,z, vary(0x9a4a38,0.01,0.1,0.07));  // 红砖墙
+  }
+  box(B,'darkMetal', -1,1,z1, 1,3,z1, ()=>vary(0x3a3f45,0,0.05,0.05)); // 大铁门
+  // 锯齿屋顶 + 竖向天窗带
+  for(let x=x0;x<=x1;x++){
+    const k = (x-x0)%3, ry = H+1+k;
+    for(let z=z0;z<=z1;z++) B.vox('roofTile', x,ry,z, vary(0x5a4a42,0.01,0.08,0.07));
+    if (k===0) for(let z=z0;z<=z1;z++) for(let y=H+1;y<=H+3;y++)
+      B.vox('glassDark', x,y,z, vary(0x4a5a68,0,0.06,0.06));
+  }
+  // 铁路支线（枕木 + 钢轨延伸至台座边缘）
+  for(let x=-9;x<=9;x++){
+    if (x%3!==0){ B.vox('wood', x,1,6, vary(0x5f422a,0,0.08,0.06)); B.vox('wood', x,1,7, vary(0x5f422a,0,0.08,0.06)); }
+  }
+  for(let x=-9;x<=9;x++){ B.vox('darkMetal', x,1,6, 0x3a3f45); B.vox('darkMetal', x,1,7, 0x3a3f45); }
+  // 水塔
+  for (const [lx,lz] of [[-4,-8],[-2,-8],[-4,-6],[-2,-6]])
+    box(B,'darkMetal', lx,1,lz, lx,4,lz, ()=>0x3a3f45);
+  for(let y=5;y<=6;y++) for(let x=-5;x<=-1;x++) for(let z=-9;z<=-5;z++){
+    const d = Math.hypot(x+3, z+7);
+    if (d>2.3||d<1.2) continue;
+    B.vox('metal', x,y,z, vary(0x6a7076,0,0.04,0.06));
+  }
+  B.vox('roofTile', -3,7,-7, 0x4a4038);
+}
+
+/** Lv.7 信号塔：红白格构塔身 + 观景碟 + 航空灯 */
+function genSignalTower(B){
+  box(B,'concrete', -2,1,-2, 2,2,2, ()=>vary(0xc8ccd0,0,0.02,0.04), true); // 基座机房
+  B.vox('glassDark', 0,1,2, 0x2c3844); B.vox('glassDark', 0,2,2, 0x2c3844);
+  for(let y=3;y<=20;y++){
+    const t = (y-3)/17;
+    const r = Math.round(2*(1-t));
+    const red = Math.floor((y-3)/4)%2===0;
+    const type = red?'accent':'concrete';
+    const col = red ? vary(0xc0392b,0.01,0.08,0.06) : vary(0xe8eaec,0,0.02,0.03);
+    if (r>=2){
+      for (const [dx,dz] of [[-2,-2],[2,-2],[-2,2],[2,2]]) B.vox(type, dx,y,dz, col);
+      if ((y-3)%4===0) for(let d=-2;d<=2;d++){
+        B.vox(type,d,y,-2,col); B.vox(type,d,y,2,col); B.vox(type,-2,y,d,col); B.vox(type,2,y,d,col);
+      }
+      B.vox(type, 0,y,(y%8<4)?-2:2, col);                    // 斜撑
+    } else if (r===1){
+      for (const [dx,dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) B.vox(type, dx,y,dz, col);
+      if ((y-3)%4===1) for(let d=-1;d<=1;d++){
+        B.vox(type,d,y,-1,col); B.vox(type,d,y,1,col); B.vox(type,-1,y,d,col); B.vox(type,1,y,d,col);
+      }
+    } else {
+      B.vox(type, 0,y,0, col);
+    }
+  }
+  // 观景碟
+  for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+    const d = Math.hypot(x,z);
+    if (d>1.4 && d<2.6) B.vox('glassDark', x,15,z, vary(0x3d5a78,0,0.06,0.06));
+    if (d>=2.2 && d<2.8) B.vox('darkMetal', x,16,z, vary(0x2e3236,0,0.05,0.05));
+  }
+  box(B,'darkMetal', 0,21,0, 0,24,0, ()=>vary(0x2e3236,0,0.05,0.05)); // 顶针
+  B.vox('glowRed', 0,25,0, 0xff6a55);                                  // 航空障碍灯
+  B.vox('darkMetal', 1,18,0, 0x2e3236); B.vox('darkMetal', 2,18,0, 0x2e3236); // 侧鞭状天线
+}
+
+/** Lv.8 轨道电梯：光环基座 + 锚定斜撑 + 直通天外的缆柱 + 爬升舱 */
+function genElevator(B){
+  for (const [r,y] of [[6,1],[5,2],[4,3]]){                  // 三层圆台基座
+    for(let x=-6;x<=6;x++) for(let z=-6;z<=6;z++){
+      const d = Math.hypot(x,z);
+      if (d>r+0.4) continue;
+      const edge = d>r-0.9;
+      if (edge && y===3){ B.vox('glowCyan', x,y,z, 0x6fe0ff); continue; }
+      B.vox(edge?'darkMetal':'concrete', x,y,z,
+        edge ? vary(0x3a3f45,0,0.05,0.05) : vary(0xc8ccd0,0,0.02,0.03));
+    }
+  }
+  for(let i=0;i<=5;i++){                                     // 四向锚定斜撑
+    const d = 8-i, y = 1+i;
+    for (const [sx,sz] of [[1,0],[-1,0],[0,1],[0,-1]])
+      B.vox('darkMetal', sx*d, y, sz*d, vary(0x3a3f45,0,0.05,0.05));
+  }
+  box(B,'darkMetal', -1,4,-1, 1,8,1, ()=>vary(0x2e3236,0,0.05,0.05)); // 塔基芯
+  for(let y=9;y<=40;y++){                                    // 缆柱
+    B.vox('darkMetal', 0,y,0, vary(0x2e3236,0,0.05,0.05));
+    if (y%6===0) B.vox('glowCyan', 1,y,0, 0x6fe0ff);         // 导航灯点
+  }
+  // 爬升舱（环抱缆柱）
+  for(let x=-1;x<=1;x++) for(let z=-1;z<=1;z++) for(let y=12;y<=14;y++){
+    if (x===0 && z===0) continue;
+    B.vox(y===13?'glowCyan':'metal', x,y,z, y===13?0x8fe8ff:vary(0xc9ccd2,0,0.04,0.08));
+  }
+}
+
+/** Lv.8 生态穹顶：玻璃半球罩 + 内部绿地/池塘/小屋/树 + 入口气闸 */
+function genDome(B){
+  for(let x=-7;x<=7;x++) for(let z=-7;z<=7;z++){             // 基座圆盘
+    const d = Math.hypot(x,z);
+    if (d>7.2) continue;
+    const edge = d>6.2;
+    B.vox(edge?'darkMetal':'concrete', x,1,z,
+      edge ? vary(0x3a3f45,0,0.05,0.05) : vary(0xb9c4c8,0,0.03,0.04));
+  }
+  for(let x=-6;x<=6;x++) for(let z=-6;z<=6;z++){             // 内部地表
+    if (Math.hypot(x,z)>5.8) continue;
+    if (x>=1&&x<=3&&z>=1&&z<=3){ B.vox('water', x,2,z, vary(0x2f6fd0,0,0.12,0.1)); continue; } // 池塘
+    B.vox('grass', x,2,z, vary(0x69a84f,0.02,0.15,0.09));
+  }
+  box(B,'wood', -4,3,-4, -2,4,-2, ()=>vary(0x7a5636,0.01,0.1,0.08), true); // 小屋
+  box(B,'roofTile', -4,5,-4, -2,5,-2, ()=>vary(0x7a4a3a,0.01,0.08,0.06));
+  B.vox('glowWarm', -3,3,-2, 0xffc37a);
+  for (const [tx,tz] of [[3,-3],[-2,3]]){                    // 小树
+    B.vox('wood', tx,3,tz, 0x6e4f33);
+    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++)
+      B.vox('leaf', tx+dx,4,tz+dz, vary(0x3f8f3a,0.03,0.15,0.1));
+    B.vox('leaf', tx,5,tz, vary(0x4f9f44,0.03,0.15,0.1));
+  }
+  // 玻璃半球壳 + 经纬骨架
+  for(let y=2;y<=9;y++) for(let x=-7;x<=7;x++) for(let z=-7;z<=7;z++){
+    const d = Math.sqrt(x*x + (y-1)*(y-1) + z*z);
+    if (Math.abs(d-6) > 0.55) continue;
+    const rib = x===0 || z===0 || Math.abs(x)===Math.abs(z);
+    if (rib) B.vox('metal', x,y,z, vary(0xc9ccd2,0,0.03,0.05));
+    else B.vox('glass', x,y,z, vary(0xcfe8f4,0,0.04,0.04));
+  }
+  // 入口气闸
+  B.vox('glassDark', -1,2,7, 0x1f3242); B.vox('glassDark', 0,2,7, 0x1f3242);
+  B.vox('glowCyan', -1,3,7, 0x8fe8ff); B.vox('glowCyan', 0,3,7, 0x8fe8ff);
+}
+
+/* ================= 环境素材包：树木 / 地表植被 / 道路 ================= */
+
+/** 云杉：致密深绿锥形层叠 */
+function genSpruce(B){
+  box(B,'wood', 0,1,0, 0,3,0, ()=>vary(0x5f422a,0,0.08,0.06));
+  for(let y=3;y<=9;y++){
+    const r = 3.2 - (y-3)*0.45;
+    for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+      if (Math.hypot(x,z) > r+0.2) continue;
+      if (rand()<0.1) continue;                            // 枝叶空隙
+      B.vox('leaf', x,y,z, vary(0x2a5a32,0.02,0.12,0.08));
+    }
+  }
+  B.vox('leaf', 0,10,0, vary(0x2a5a32,0.02,0.12,0.08));
+}
+
+/** 橡木：粗干 + 大圆冠（偶有红果） */
+function genOak(B){
+  box(B,'wood', 0,1,0, 0,4,0, ()=>vary(0x6e4f33,0.01,0.1,0.07));
+  B.vox('wood', 1,4,0, 0x6e4f33); B.vox('wood', -1,4,0, 0x65502f); // 粗枝
+  for(let y=4;y<=8;y++) for(let x=-4;x<=4;x++) for(let z=-4;z<=4;z++){
+    const d = Math.sqrt(x*x + (y-6.2)*(y-6.2)*1.6 + z*z);
+    if (d > 3.1) continue;
+    if (rand()<0.14) continue;
+    if (rand()<0.03){ B.vox('accent', x,y,z, 0xc0392b); continue; }    // 红果
+    B.vox('leaf', x,y,z, vary(0x3f8f3a,0.03,0.15,0.1));
+  }
+}
+
+/** 白桦：白斑细干 + 稀疏浅绿小冠 */
+function genBirch(B){
+  for(let y=1;y<=6;y++)
+    B.vox('plaster', 0,y,0, rand()<0.2 ? 0x2c2420 : vary(0xe8e4da,0,0.03,0.03)); // 黑色斑纹
+  for(let y=6;y<=9;y++) for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+    const d = Math.sqrt(x*x + (y-7.2)*(y-7.2)*1.4 + z*z);
+    if (d > 2.4 || rand()<0.35) continue;                  // 通透树冠
+    B.vox('leaf', x,y,z, vary(0x7fb069,0.03,0.12,0.1));
+  }
+}
+
+/** 金合欢：斜伸干 + 平顶伞盖 */
+function genAcacia(B){
+  B.vox('wood',0,1,0, 0x7a5a3a); B.vox('wood',0,2,0, 0x7a5a3a);
+  B.vox('wood',1,3,0, 0x7a5a3a); B.vox('wood',1,4,0, 0x7a5a3a);       // 斜干
+  B.vox('wood',-1,4,0, 0x6e4f33);                                      // 侧枝
+  for(let x=-4;x<=4;x++) for(let z=-4;z<=4;z++){                       // 伞盖主层
+    if (Math.hypot(x-0.5,z) > 3.6 || rand()<0.1) continue;
+    B.vox('leaf', x,5,z, vary(0x9aa83f,0.03,0.15,0.1));
+  }
+  for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){                       // 伞盖顶层（稀疏）
+    if (Math.hypot(x-0.5,z) > 2.4 || rand()<0.4) continue;
+    B.vox('leaf', x,6,z, vary(0xa8b84a,0.03,0.15,0.1));
+  }
+}
+
+/** 樱花树：粉冠 + 落英 */
+function genSakura(B){
+  box(B,'wood', 0,1,0, 0,4,0, ()=>vary(0x5f422a,0,0.08,0.06));
+  for(let y=4;y<=8;y++) for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+    const d = Math.sqrt(x*x + (y-6)*(y-6)*1.5 + z*z);
+    if (d > 2.9 || rand()<0.12) continue;
+    B.vox('leaf', x,y,z, vary(0xf0a8c0,0.02,0.12,0.1));
+  }
+  for(let i=0;i<12;i++){                                               // 落英
+    const a = rand()*Math.PI*2, r = 1.5+rand()*3;
+    B.vox('leaf', Math.round(Math.cos(a)*r), 1, Math.round(Math.sin(a)*r), vary(0xf0b8cc,0.02,0.1,0.08));
+  }
+}
+
+/** 棕榈：斜干 + 八向羽叶 + 椰子 */
+function genPalm(B){
+  for(let y=1;y<=7;y++) B.vox('wood', y>=5?1:0, y, 0, vary(0xb0925a,0.01,0.1,0.07));
+  for(let k=0;k<8;k++){                                                // 羽叶下垂弧线
+    const a = k*Math.PI/4, c = Math.cos(a), s = Math.sin(a);
+    for(let t=1;t<=3;t++)
+      B.vox('leaf', 1+Math.round(c*t), 8-(t-1), Math.round(s*t), vary(0x3f9a4a,0.03,0.12,0.09));
+  }
+  B.vox('accent', 1,7,1, 0x6e4f33); B.vox('accent', 1,7,-1, 0x65502f); // 椰子
+  B.vox('leaf', 1,8,0, vary(0x3f9a4a,0.03,0.12,0.09));
+}
+
+/** 枯树（乱纪元/冰冻地表气质）：无叶灰枝 */
+function genDeadTree(B){
+  for(let y=1;y<=5;y++) B.vox('woodDark', 0,y,0, vary(0x6a5a48,0.01,0.08,0.07));
+  B.vox('woodDark', 1,4,0, 0x6a5a48); B.vox('woodDark', 2,5,0, 0x65553f); B.vox('woodDark', 2,6,0, 0x65553f);
+  B.vox('woodDark', -1,4,0, 0x6a5a48); B.vox('woodDark', -2,5,0, 0x65553f);
+  B.vox('woodDark', 0,4,1, 0x6a5a48); B.vox('woodDark', 0,5,2, 0x65553f); B.vox('woodDark', 0,6,2, 0x5f5240);
+  B.vox('woodDark', 0,6,0, 0x65553f);
+}
+
+/** 灌木丛：几丛矮绿球 */
+function genBush(B){
+  for (const [bx,bz,r] of [[-2,0,1.6],[1,1,1.3],[0,-2,1.2]]){
+    for(let y=1;y<=2;y++) for(let x=-2;x<=2;x++) for(let z=-2;z<=2;z++){
+      if (Math.hypot(x,z) > r || rand()<0.15) continue;
+      B.vox('leaf', bx+x, y, bz+z, vary(rand()<0.5?0x3f8f3a:0x4f9f44, 0.03,0.15,0.1));
+    }
+    // 叶缘用 1/8 格小块勾轮廓，主冠仍保留原粗体素的世界尺寸。
+    for(const [dx,dy,dz] of [[-3,3,0],[3,3,0],[0,3,-3],[0,3,3],[-2,6,1],[2,6,-1]])
+      B.microCuboid('leaf',bx*2+dx,dy,bz*2+dz, 1,1,1, vary(0x4b9a43,0.03,0.15,0.1));
+  }
+}
+
+/** 花丛：草地上的彩色点缀 */
+function genFlowers(B){
+  const palette = [0xc0392b, 0xd8a03a, 0x9a6fc0, 0xe8e4da, 0xf0a8c0];
+  for(let i=0;i<16;i++){
+    const x = Math.round((rand()-0.5)*10), z = Math.round((rand()-0.5)*10);
+    const col = palette[(rand()*palette.length)|0];
+    if (rand()<0.5){ B.vox('leaf', x,1,z, 0x3f8f3a); B.vox('accent', x,2,z, vary(col,0.02,0.1,0.06)); }
+    else B.vox('accent', x,1,z, vary(col,0.02,0.1,0.06));
+  }
+}
+
+/** 麦田：金色田垄 + 围栏角柱 */
+function genWheat(B){
+  for(let x=-4;x<=4;x++) for(let z=-3;z<=3;z++){
+    if (z%2!==0 || rand()<0.08) continue;                  // 垄沟留空
+    B.vox('thatch', x,1,z, vary(0xc9a03a,0.02,0.12,0.08));
+    B.vox('thatch', x,2,z, vary(0xd8b13a,0.02,0.12,0.08));
+  }
+  for (const [fx,fz] of [[-5,-4],[5,-4],[-5,4],[5,4]])
+    box(B,'wood', fx,1,fz, fx,2,fz, ()=>vary(0x7a5636,0.01,0.1,0.07)); // 角柱
+  for(let x=-5;x<=5;x++){ B.vox('wood', x,2,-4, 0x6e4f33); B.vox('wood', x,2,4, 0x6e4f33); } // 围栏横杆
+}
+
+/** 岩石：几座苔藓乱石 */
+function genRocks(B){
+  for (const [rx,rz,r] of [[-2,0,1.8],[2,1,1.4],[0,-2,1.2]]){
+    for(let y=1;y<=3;y++) for(let x=-2;x<=2;x++) for(let z=-2;z<=2;z++){
+      if (Math.sqrt(x*x+(y-1.2)*(y-1.2)*1.8+z*z) > r) continue;
+      if (rand()<0.15){ B.vox('leaf', rx+x,y,rz+z, vary(0x6f7a5f,0.02,0.1,0.08)); continue; } // 苔藓
+      B.vox('stone', rx+x,y,rz+z, vary(0x84888d,0,0.05,0.09));
+    }
+  }
+}
+
+/** 主游戏的非权威生态点缀；丰富大色块，但不伪造可采集资源。 */
+function genGroundDetail(B, kind){
+  const y0=2, m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  if(kind==='grass'){
+    for(const [x,z,h] of [[-2,0,3],[0,-1,4],[2,1,3],[1,2,2]]) m('leaf',x,0,z,1,h,1,vary(0x618d48,0.02,0.10,0.07));
+    m('leaf',-1,0,2,1,2,1,0x789f53); return;
+  }
+  if(kind==='reeds'){
+    [[-2,-1,6],[0,1,7],[2,-2,5],[3,1,6],[-3,2,4]].forEach(([x,z,h],i)=>{
+      m('leaf',x,0,z,1,h,1,vary(0x6e934b,0.02,0.10,0.07));
+      if(i<3)m('woodDark',x,h,z,1.2,2,1.2,0x765236);
+    }); return;
+  }
+  if(kind==='mushrooms'){
+    [[-2,0,3],[1,-1,2],[2,2,3]].forEach(([x,z,h],i)=>{
+      m('plaster',x,0,z,1,h,1,0xd8c7a8); m('accent',x,h,z,2,1,2,vary(i===0?0xb76745:0x9b7650,0.01,0.08,0.06));
+    }); return;
+  }
+  if(kind==='branch'){
+    m('wood',0,0,0,7,1.2,1.4,vary(0x755036,0.01,0.08,0.06));
+    m('wood',-2,0.8,2,1.2,1.2,4,0x68472f); m('woodDark',3.5,0,0,1,1.5,1.7,0x4f3828); return;
+  }
+  if(kind==='cracks'){
+    m('woodDark',0,0,0,7,0.35,0.45,0x493727); m('woodDark',-1.5,0,-1.5,0.45,0.35,4,0x4f3a29);
+    m('woodDark',2,0,1.4,0.45,0.35,3.5,0x443326); m('woodDark',-3,0,1.2,3,0.35,0.4,0x4a3728);
+  }
+}
+
+/* ---- 道路演进（沿 x 轴铺设，地表先于草皮底座生成） ---- */
+
+/** 泥土小径：蜿蜒两宽土路 + 零星石子 */
+function genDirtPath(B){
+  for(let x=-9;x<=9;x++){
+    const z = Math.round(Math.sin(x*0.45)*1.5);
+    B.vox('wood', x,0,z,   vary(0x8a6f4d,0.01,0.1,0.08));
+    B.vox('wood', x,0,z+1, vary(0x847052,0.01,0.1,0.08));
+    if (rand()<0.08) B.vox('stone', x,1,z, vary(0x84888d,0,0.05,0.08)); // 石子
+  }
+}
+
+/** 石板路：三宽石板 + 路缘 + 苔痕 */
+function genStoneRoad(B){
+  for(let x=-9;x<=9;x++) for(let z=-1;z<=1;z++){
+    if (rand()<0.06){ B.vox('grass', x,0,z, vary(0x6f7a5f,0.02,0.1,0.08)); continue; } // 苔痕/缝隙草
+    B.vox('stone', x,0,z, vary(0x9a9da2,0,0.04,0.08));
+  }
+  for(let x=-9;x<=9;x++){
+    B.vox('stone', x,0,-2, vary(0x7d8288,0,0.05,0.07));
+    B.vox('stone', x,0, 2, vary(0x7d8288,0,0.05,0.07));
+  }
+}
+
+/** 碎石路：四宽碎石 + 大车辙 */
+function genGravelRoad(B){
+  for(let x=-9;x<=9;x++) for(let z=-1;z<=2;z++){
+    const rut = (z===0||z===2)&&rand()<0.4;                // 车辙处颜色更深
+    B.vox('stone', x,0,z, vary(rut?0x8a8578:0xa8a49a, 0,0.05,0.07));
+  }
+  for(let x=-9;x<=9;x+=2){
+    B.vox('stone', x,0,-2, vary(0x7d8288,0,0.05,0.07));
+    B.vox('stone', x,0, 3, vary(0x7d8288,0,0.05,0.07));
+  }
+}
+
+/** 公路：沥青 + 虚线 + 护栏 + 路灯 + 小汽车 */
+function genHighway(B){
+  for(let x=-9;x<=9;x++) for(let z=-2;z<=3;z++){
+    if (z===0 && ((x%8)+8)%8<4){ B.vox('accent', x,0,z, vary(0xd8b23a,0,0.05,0.05)); continue; } // 中央虚线
+    if (z===-2||z===3){ B.vox('plaster', x,0,z, vary(0xd8dce0,0,0.02,0.04)); continue; }         // 边线
+    B.vox('darkMetal', x,0,z, vary(0x34373c,0,0.03,0.04));                                          // 沥青
+  }
+  for(let x=-9;x<=9;x++){                                            // 双侧护栏
+    if (x%3===0){ B.vox('darkMetal', x,1,-3, 0x2e3236); B.vox('darkMetal', x,1,4, 0x2e3236); }
+    B.vox('metal', x,2,-3, vary(0xb9c0c8,0,0.03,0.05));
+    B.vox('metal', x,2, 4, vary(0xb9c0c8,0,0.03,0.05));
+  }
+  for (const lx of [-6,0,6]){                                        // 路灯
+    box(B,'darkMetal', lx,1,-4, lx,3,-4, ()=>0x2e3236);
+    B.vox('glowWarm', lx,4,-4, 0xffd9a0);
+  }
+  // 一辆小汽车
+  for(let x=2;x<=4;x++) for(let z=1;z<=2;z++) B.vox('accent', x,1,z, vary(0xc0392b,0.01,0.08,0.06));
+  B.vox('glassDark', 3,2,1, 0x1f3242); B.vox('glassDark', 3,2,2, 0x1f3242);
+}
+
+/** 光能大道：深色路面 + 青光导向带 + 悬浮灯柱 */
+function genNeonAvenue(B){
+  for(let x=-9;x<=9;x++) for(let z=-2;z<=3;z++){
+    if (z===0||z===1){ B.vox('glowCyan', x,0,z, 0x6fe0ff); continue; }  // 中央光带
+    if (z===-2||z===3){ B.vox('glowCyan', x,0,z, 0x3f8fa8); continue; } // 侧光带
+    B.vox('darkMetal', x,0,z, vary(0x23272e,0,0.03,0.04));
+  }
+  for(let x=-8;x<=8;x+=5){                                             // 悬浮灯柱
+    B.vox('glowCyan', x,1,-4, 0x6fe0ff); B.vox('glowCyan', x,2,-4, 0x6fe0ff);
+    B.vox('darkMetal', x,0,-4, 0x2e3236);
+    B.vox('glowCyan', x+2,1,5, 0x6fe0ff); B.vox('glowCyan', x+2,2,5, 0x6fe0ff);
+    B.vox('darkMetal', x+2,0,5, 0x2e3236);
+  }
+}
+
+/* ================= P0 生存与聚落包 ================= */
+
+/** 木桥（Lv.2）：微拱木板桥面 + 栏杆 */
+function genWoodBridge(B){
+  bridgeWater(B);
+  for(let x=-4;x<=5;x++){
+    const y = (x>=-1 && x<=2) ? 2 : 1;                     // 微拱
+    for(let z=-1;z<=1;z++) B.vox('wood', x,y,z, vary(0x8a6a48,0.01,0.1,0.08));
+    if (x%2===0){ B.vox('woodDark', x,y+1,-1, 0x5f422a); B.vox('woodDark', x,y+1,1, 0x5f422a); }
+    B.vox('wood', x,y+2,-1, vary(0x7a5636,0,0.08,0.06));   // 扶手
+    B.vox('wood', x,y+2, 1, vary(0x7a5636,0,0.08,0.06));
+  }
+  // 水中桥墩
+  box(B,'woodDark', 0,1,-1, 0,1,1, ()=>0x54402a);
+  box(B,'woodDark', 1,1,-1, 1,1,1, ()=>0x54402a);
+}
+
+/** 石拱桥（Lv.3–4）：阶梯拱面 + 拱肩填实 + 护墙 */
+function genStoneArchBridge(B){
+  bridgeWater(B);
+  const PROFILE = { '-5':1,'-4':1,'-3':2,'-2':2,'-1':3,'0':3,'1':3,'2':3,'3':2,'4':2,'5':1,'6':1 };
+  for(const [xs,y] of Object.entries(PROFILE)){
+    const x = +xs;
+    for(let z=-1;z<=1;z++) B.vox('stone', x,y,z, vary(0x9a9da2,0,0.04,0.07));
+    if (y>=2) for (const zz of [-1,1]) B.vox('stone', x,y-1,zz, vary(0x84888d,0,0.04,0.06)); // 拱肩
+    for (const zz of [-1,1]) B.vox('stone', x,y+1,zz, vary(0x7d8288,0,0.05,0.07));           // 护墙
+  }
+  box(B,'stone', -5,1,-1, -5,1,1, ()=>vary(0x84888d,0,0.04,0.06));  // 桥台
+  box(B,'stone',  6,1,-1,  6,1,1, ()=>vary(0x84888d,0,0.04,0.06));
+}
+
+/** 铁桥（Lv.5–6）：穿式桁架 + 桥面分道线 */
+function genIronBridge(B){
+  bridgeWater(B);
+  for(let x=-5;x<=6;x++){
+    for(let z=-1;z<=1;z++) B.vox('darkMetal', x,1,z, vary(0x3a3f45,0,0.05,0.05));
+    if (x%4<2) B.vox('accent', x,1,0, vary(0xd8b23a,0,0.05,0.05));    // 分道虚线
+    for (const zz of [-2,2]){                                            // 桁架
+      if (x%2===0) B.vox('metal', x,2,zz, vary(0xb9c0c8,0,0.03,0.05));
+      if (x%2===0) B.vox('metal', x,3,zz, vary(0xb9c0c8,0,0.03,0.05));
+      else B.vox('metal', x,(x%4===1?2:3),zz, vary(0xa8b0b8,0,0.03,0.05)); // 斜腹杆
+      B.vox('metal', x,4,zz, vary(0xb9c0c8,0,0.03,0.05));               // 上弦
+    }
+  }
+  for (const px of [-5,6]){                                              // 端部门架
+    box(B,'metal', px,2,-2, px,4,-2, ()=>vary(0xb9c0c8,0,0.03,0.05));
+    box(B,'metal', px,2, 2, px,4, 2, ()=>vary(0xb9c0c8,0,0.03,0.05));
+    box(B,'metal', px,4,-2, px,4, 2, ()=>vary(0xa8b0b8,0,0.03,0.05));
+  }
+}
+
+/** 鹿：Minecraft 式分件轮廓；身体仍保持原占地，细节改用 1/8 格微体素。 */
+function genDeer(B){
+  const phase = animalAnimPhase;
+  const stride = Math.sin(phase)*0.7;
+  const bodyBob = Math.abs(Math.sin(phase))*0.14;
+  const headBob = Math.sin(phase*0.5)*0.14;
+  const fur = ()=>vary(0x8a6a48,0.01,0.08,0.07);
+  B.microCuboid('wood', -1,4+bodyBob,0, 7,4,4, fur());                  // 长躯干
+  B.microCuboid('wood', 3.5,6+bodyBob,0, 2,5,3, fur());                // 抬起的颈部
+  B.microCuboid('wood', 5.5,9+bodyBob+headBob,0, 4,4,4, vary(0x847052,0.01,0.08,0.07)); // 方头
+  B.microCuboid('wood', 8,9.5+bodyBob+headBob,0, 2,2,3, vary(0x9a7852,0.01,0.07,0.06)); // 口鼻
+  B.microCuboid('woodDark', 9,10+bodyBob+headBob,0, 1,1,2, 0x3d3024);  // 鼻头
+
+  for (const [x,z,step] of [[-3,-1.4,1],[-3,1.4,-1],[1.5,-1.4,-1],[1.5,1.4,1]]){
+    const lift = Math.max(0,Math.sin(phase+(step<0?Math.PI:0)))*0.45;
+    B.microCuboid('wood', x+stride*step,2+lift,z, 1.5,3,1.5, fur());    // 交错步态小腿
+    B.microCuboid('woodDark', x+stride*step,1+lift,z, 1.5,1,1.5, 0x4a3828); // 深色蹄
+  }
+  for (const z of [-2.5,2.5]){
+    const hy = bodyBob+headBob;
+    const earTwitch = Math.sin(phase*1.7+(z<0?0:Math.PI))*0.18;
+    B.microCuboid('wood', 4.7,11.7+hy,z+earTwitch, 1.5,1.5,1.5, 0x9a7852); // 耳朵
+    B.microCuboid('darkMetal', 6.5,11.2+hy,z<0?-2.05:2.05, 1,1,0.6, 0x171411); // 双眼
+    B.microCuboid('woodDark', 4.5,13+hy,z<0?-1.5:1.5, 1,4,1, 0x54402a); // 鹿角主枝
+    B.microCuboid('woodDark', 2.8,16+hy,z<0?-1.5:1.5, 4,1,1, 0x54402a); // 向后的角梁
+    B.microCuboid('woodDark', 1.5,16+hy,z<0?-1.5:1.5, 1,2.5,1, 0x54402a);
+    B.microCuboid('woodDark', 3.5,16+hy,z<0?-1.5:1.5, 1,2,1, 0x5f472f); // 分叉角尖
+  }
+  B.microCuboid('plaster', -5,6+bodyBob,Math.sin(phase*1.3)*0.7, 2,2.5,2, 0xe8e4da); // 摇动白尾
+  B.microCuboid('plaster', -0.5,4+bodyBob,0, 4,1,3, 0xd8cfbd);        // 腹部浅毛
+}
+
+/** 羊：方正羊毛体块 + 独立脸、耳、蹄和绒毛团。 */
+function genSheep(B){
+  const phase = animalAnimPhase;
+  const bodyBob = Math.abs(Math.sin(phase))*0.1;
+  const stride = Math.sin(phase)*0.38;
+  const graze = Math.pow((Math.sin(phase*0.48)+1)/2,2);
+  const headDrop = graze*1.5;
+  const headForward = graze*0.65;
+  const wool = ()=>vary(0xe8e4da,0,0.03,0.05);
+  B.microCuboid('plaster', -1,4+bodyBob,0, 7,5,5, wool());             // 主体羊毛
+  B.microCuboid('plaster', -2.5,8.5+bodyBob,-1.2, 3,2,2.5, 0xf3eee5); // 不规则背部绒毛
+  B.microCuboid('plaster', 0.5,8.5+bodyBob,1.2, 3,2,2.5, 0xeee8de);
+  B.microCuboid('plaster', -4.8,6+bodyBob,Math.sin(phase)*0.28, 2,2.5,2, 0xeee8de); // 羊尾
+
+  for (const [x,z,step] of [[-3,-1.5,1],[-3,1.5,-1],[1.5,-1.5,-1],[1.5,1.5,1]]){
+    const lift = Math.max(0,Math.sin(phase+(step<0?Math.PI:0)))*0.28;
+    B.microCuboid('woodDark', x+stride*step,2+lift,z, 1.5,3,1.5, 0x514033); // 腿
+    B.microCuboid('darkMetal', x+stride*step,1+lift,z, 1.5,1,1.5, 0x29231f); // 蹄
+  }
+  B.microCuboid('woodDark', 4+headForward,5.5+bodyBob-headDrop,0, 3.5,4,3.5, vary(0x4a3a2c,0,0.06,0.05)); // 低头吃草
+  B.microCuboid('woodDark', 6.2+headForward,6+bodyBob-headDrop,0, 1.5,2,3, 0x5a4636); // 方吻
+  B.microCuboid('plaster', 3.5+headForward,9+bodyBob-headDrop,0, 3,2,3.2, 0xf3eee5); // 额顶羊毛
+  for (const z of [-2.3,2.3]){
+    B.microCuboid('woodDark', 3.5+headForward,8+bodyBob-headDrop,z, 1.8,1,1.8, 0x5a4636); // 横耳
+    B.microCuboid('darkMetal', 5+headForward,7.4+bodyBob-headDrop,z<0?-1.8:1.8, 0.8,0.8,0.6, 0x161413); // 双眼
+  }
+}
+
+/** 鸡：Minecraft 式小比例鸡，保留红冠、黄喙并增加翅、眼、脚趾和尾羽。 */
+function genChicken(B){
+  const phase = animalAnimPhase;
+  const stride = Math.sin(phase*1.35)*0.48;
+  const bodyBob = Math.abs(Math.sin(phase*1.35))*0.16;
+  const peck = Math.pow(Math.max(0,Math.sin(phase*0.92)),3);
+  const headX = peck*0.9, headY = -peck*1.75;
+  const wingFlap = Math.abs(Math.sin(phase*1.8))*0.7;
+  for (const [z,step] of [[-1.25,1],[1.25,-1]]){
+    const lift = Math.max(0,Math.sin(phase*1.35+(step<0?Math.PI:0)))*0.35;
+    B.microCuboid('accent', -0.5+stride*step,1.5+lift,z, 1,2.5,1, 0xd8a03a); // 细胫
+    B.microCuboid('accent', 0.2+stride*step,1+lift,z, 3,1,1, 0xe0a83a); // 向前脚趾
+    B.microCuboid('accent', -1.6+stride*step,1+lift,z, 1.5,1,1, 0xc9902e); // 后趾
+  }
+  B.microCuboid('plaster', -1,4+bodyBob,0, 5,4,4, vary(0xe8e0d0,0,0.03,0.05)); // 圆方身体
+  B.microCuboid('plaster', 1.5+headX*0.35,6+bodyBob+headY*0.35,0, 2,3,3.5, 0xefe9de); // 胸颈
+  B.microCuboid('plaster', 3+headX,8+bodyBob+headY,0, 3,3,3, 0xeee7da); // 啄食点头
+  for (const z of [-2.25,2.25]){
+    B.microCuboid('plaster', -1,5+bodyBob+wingFlap*0.35,z+(z<0?-wingFlap:wingFlap), 3.5,2.5,1, 0xd7cfbf); // 扇动双翅
+    B.microCuboid('darkMetal', 3.8+headX,9+bodyBob+headY,z<0?-1.55:1.55, 0.8,0.8,0.6, 0x171411); // 双眼
+  }
+  B.microCuboid('accent', 5+headX,8.3+bodyBob+headY,0, 2,1.5,2, 0xe0a83a); // 尖喙
+  B.microCuboid('glowRed', 4.5+headX,7+bodyBob+headY,0, 1,1.5,1.5, 0xd9483b); // 肉垂
+  for (const [x,h] of [[2.2,2],[3.2,2.5],[4.2,1.8]])
+    B.microCuboid('glowRed', x+headX,11+bodyBob+headY,0, 1,h,1.5, 0xe55243); // 三瓣鸡冠
+  B.microCuboid('plaster', -4,6+bodyBob,0, 2,3,2, 0xded6c8);         // 尾根
+  B.microCuboid('plaster', -5,7.5+bodyBob,-1-wingFlap*0.2, 1,4,1.5, 0xeee7da);
+  B.microCuboid('plaster', -5,8+bodyBob,1+wingFlap*0.2, 1,4.5,1.5, 0xf3eee5); // 翘起尾羽
+}
+
+/** 雌鹿 / 幼鹿：共用鹿体型，但不会错误长出成年雄鹿角。 */
+function genDeerFamily(B){
+  const add=(ox,s,juvenile=false)=>{
+    const p=animalAnimPhase+ox*0.12, stride=Math.sin(p)*0.5;
+    const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,z*s,sx*s,sy*s,sz*s,c);
+    const fur=vary(juvenile?0x9b7954:0x8a6a48,0.01,0.08,0.07);
+    put('wood',-1,4,0,7,4,4,fur); put('wood',3.5,6,0,2,5,3,fur);
+    put('wood',5.5,9,0,4,4,4,0x847052); put('wood',8,9.5,0,2,2,3,0x9a7852);
+    for(const [x,z,q] of [[-3,-1.4,1],[-3,1.4,-1],[1.5,-1.4,-1],[1.5,1.4,1]]){
+      put('wood',x+stride*q,2,z,1.5,3,1.5,fur); put('woodDark',x+stride*q,1,z,1.5,1,1.5,0x4a3828);
+    }
+    for(const z of [-2.5,2.5]){
+      put('wood',4.7,11.7,z,1.5,1.5,1.5,0x9a7852);
+      put('darkMetal',6.5,11.2,z<0?-2.05:2.05,1,1,0.6,0x171411);
+    }
+    put('plaster',-5,6,0,2,2.5,2,0xe8e4da); put('plaster',-0.5,4,0,4,1,3,0xd8cfbd);
+  };
+  add(-4.2,0.78,false); add(4.5,0.58,true);
+}
+
+/** 兔：短促跳跃和长耳剪影，对应生产规则中的 rabbit。 */
+function genRabbit(B, options={}){
+  const s=options.scale||1, ox=options.x||0, oz=options.z||0;
+  const p=animalAnimPhase+(options.phaseOffset||0), hop=options.activity==='dead'?0:Math.max(0,Math.sin(p))*1.1;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  const low=options.activity==='injured'?0.45:options.activity==='dead'?0.15:1;
+  put('plaster',-1,low+hop,0,5,3,4,vary(0xc9bfa8,0.01,0.06,0.05));
+  put('plaster',2.2,low+1+hop,0,3,3,3,0xbfb59e);
+  put('plaster',2.1,low+4+hop,-0.85,1,4,1,0xc9bfa8);
+  put('plaster',2.1,low+4+hop,0.85,1,4,1,0xb8ad96);
+  put('plaster',-4,low+1.2+hop,0,2,2,2,0xe8e4da);
+  put('darkMetal',3.1,low+3.1+hop,-1.55,0.7,0.7,0.5,0x171411);
+  put('darkMetal',3.1,low+3.1+hop, 1.55,0.7,0.7,0.5,0x171411);
+}
+
+/** 野猪：成年雄性才显示獠牙；奔跑时腿部错相。 */
+function genBoar(B, options={}){
+  const s=(options.juvenile?0.72:1)*(options.scale||1), ox=options.x||0, oz=options.z||0;
+  const p=animalAnimPhase+(options.phaseOffset||0), stride=options.activity==='dead'?0:Math.sin(p)*0.55;
+  const low=options.activity==='injured'?0.7:options.activity==='dead'?0.2:1.8;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  put('woodDark',-1,low,0,7,4,5,vary(0x4a3a2c,0.01,0.06,0.05));
+  put('woodDark',3.5,low+0.4,0,3.4,3.6,4.4,0x523e31);
+  put('woodDark',6,low+0.1,0,2.4,2.2,3.2,0x5b4636);
+  for(const [x,z,q] of [[-3,-1.6,1],[-3,1.6,-1],[1,-1.6,-1],[1,1.6,1]])
+    put('darkMetal',x+stride*q,0,z,1.4,low+0.2,1.4,0x302720);
+  for(let x=-3;x<=2;x+=1.25) put('darkMetal',x,low+4.1,0,0.8,1.4,1,0x312820);
+  if((options.sex||'male')==='male'&&!options.juvenile){
+    put('plaster',6.4,low-0.1,-2.1,0.9,2.2,0.9,0xd8cfc0);
+    put('plaster',6.4,low-0.1, 2.1,0.9,2.2,0.9,0xd8cfc0);
+  }
+}
+
+/** 狼：长吻、竖耳、低尾；追逐状态加大步幅。 */
+function genWolf(B, options={}){
+  const s=(options.juvenile?0.76:1)*(options.scale||1), ox=options.x||0, oz=options.z||0;
+  const p=animalAnimPhase+(options.phaseOffset||0), stride=options.activity==='dead'?0:Math.sin(p)*(options.activity==='chase'?0.9:0.48);
+  const low=options.activity==='injured'?0.7:options.activity==='dead'?0.2:2;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  put('stone',-1,low,0,7,3.8,4.2,vary(0x73777c,0,0.04,0.06));
+  put('stone',3.2,low+1,0,3.4,3.4,3.6,0x7d8288);
+  put('stone',5.6,low+0.7,0,2.5,1.8,2.5,0x686d72);
+  for(const [x,z,q] of [[-3,-1.4,1],[-3,1.4,-1],[1,-1.4,-1],[1,1.4,1]])
+    put('darkMetal',x+stride*q,0,z,1.25,low+0.4,1.25,0x41464b);
+  put('darkMetal',3.1,low+4.3,-1.2,1.2,2.5,1.1,0x4a4f58);
+  put('darkMetal',3.1,low+4.3, 1.2,1.2,2.5,1.1,0x4a4f58);
+  put('stone',-5,low+1,-Math.sin(p)*0.5,3.2,1.3,1.4,0x686d72);
+  put('darkMetal',6.9,low+1,0,0.8,0.8,1.5,0x25282b);
+}
+
+function genAnimalChase(B){
+  genWolf(B,{x:-5,activity:'chase'});
+  genRabbit(B,{x:6,activity:'flee',phaseOffset:1.2});
+}
+
+function genAnimalCondition(B){
+  genBoar(B,{x:-6,scale:0.62,activity:'injured'});
+  genWolf(B,{x:0,scale:0.62,activity:'dead'});
+  genRabbit(B,{x:6,scale:0.78,activity:'flee'});
+}
+
+/** 木料堆：三角堆叠的原木，端面更浅 */
+function genWoodPile(B){
+  const rows = [[1,[-1,0,1]],[2,[-1,0]],[3,[0]]];
+  for (const [y,zs] of rows) for (const z of zs)
+    for(let x=-2;x<=2;x++)
+      B.vox('wood', x,y,z, Math.abs(x)===2 ? vary(0xb0925a,0.01,0.08,0.06) : vary(0x8a6a48,0.01,0.1,0.07));
+}
+
+/** 石料堆：乱石金字塔 + 苔痕 */
+function genStonePile(B){
+  for(let x=-2;x<=2;x++) for(let z=-2;z<=2;z++){
+    if (Math.hypot(x,z)>2.1 || rand()<0.1) continue;
+    B.vox(rand()<0.15?'leaf':'stone', x,1,z, vary(0x84888d,0,0.05,0.09));
+  }
+  for(let x=-1;x<=1;x++) for(let z=-1;z<=1;z++){
+    if (Math.hypot(x,z)>1.3 || rand()<0.15) continue;
+    B.vox('stone', x,2,z, vary(0x7d8288,0,0.05,0.08));
+  }
+  B.vox('stone', 0,3,0, vary(0x84888d,0,0.05,0.08));
+}
+
+/** 包裹：木箱 + 麻布包（掉落物系统的具象化） */
+function genBundles(B){
+  box(B,'wood', -2,1,-1, -1,2,0, ()=>vary(0x8a6a48,0.01,0.08,0.06));    // 木箱
+  box(B,'woodDark', -2,2,-1, -1,2,0, ()=>vary(0x54402a,0,0.06,0.05));   // 箱盖沿
+  B.vox('plaster', 1,1,0, vary(0xb09a70,0.02,0.08,0.06));               // 麻布包
+  B.vox('plaster', 1,1,1, vary(0xb8a078,0.02,0.08,0.06));
+  B.vox('woodDark', 1,2,0, 0x6e4f33);                                   // 捆绳结
+  B.vox('plaster', 2,1,0, vary(0xb09a70,0.02,0.08,0.06));
+}
+
+/** 食物堆：矮木筐装红果与根茎，少量果实散落在筐边 */
+function genFoodPile(B){
+  const y0=2; // 让微体素底面贴在草皮台座上。
+  B.microCuboid('wood', 0,y0,0, 6,1,6, vary(0x8a6a48,0.01,0.10,0.07));
+  B.microCuboid('woodDark', 0,y0+1,-2.5, 6,2,1, vary(0x6e4f33,0,0.08,0.06));
+  B.microCuboid('woodDark', 0,y0+1, 2.5, 6,2,1, vary(0x6e4f33,0,0.08,0.06));
+  B.microCuboid('woodDark',-2.5,y0+1,0, 1,2,4, vary(0x6e4f33,0,0.08,0.06));
+  B.microCuboid('woodDark', 2.5,y0+1,0, 1,2,4, vary(0x6e4f33,0,0.08,0.06));
+  const produce = [
+    [-2,y0+2,0,1,1,1,0xc94f45], [0,y0+2,-2,1,2,1,0xd9783d],
+    [0,y0+2,0,1,1,1,0xb9413b], [0,y0+2,2,1,1,1,0xd7a444],
+    [2,y0+2,0,1,1,1,0xc94f45], [-1,y0+3,1,1,2,1,0xd9783d],
+    [1,y0+3,-1,1,1,1,0xb9413b],
+  ];
+  for(const [x,y,z,sx,sy,sz,c] of produce)
+    B.microCuboid('accent',x,y,z,sx,sy,sz,vary(c,0.015,0.10,0.08));
+  B.microCuboid('leaf',1,y0+4,0, 2,1,1, vary(0x4f8f3d,0.02,0.12,0.08)); // 果叶
+  B.microCuboid('accent',4,y0,2, 1,1,1, vary(0xc94f45,0.015,0.10,0.08)); // 散落果实
+}
+
+/** 种子堆：侧倒麻袋与向外铺开的金色籽粒 */
+function genSeedPile(B){
+  const y0=2;
+  B.microCuboid('plaster',-2,y0,-1, 5,2,4, vary(0xb8a078,0.02,0.08,0.07));
+  B.microCuboid('plaster',-3,y0+2,-1, 3,2,3, vary(0xc2aa80,0.02,0.08,0.07));
+  B.microCuboid('plaster', 1,y0+1,-1, 2,2,2, vary(0xb8a078,0.02,0.08,0.07));
+  B.microCuboid('woodDark',1,y0+3,-1, 1,1,2, 0x6e4f33);                 // 袋口束绳
+  const seeds = [
+    [1,y0,1], [2,y0,-2], [2,y0,0], [2,y0,2], [3,y0,-1], [3,y0,1],
+    [4,y0,-2], [4,y0,0], [4,y0,2], [5,y0,1], [1,y0+1,0], [2,y0+1,1],
+  ];
+  for(const [x,y,z] of seeds)
+    B.microCuboid('accent',x,y,z, 1,1,1, vary(0xb8953f,0.015,0.12,0.09));
+}
+
+/** 生产物料专用轮廓：不再把肉、兽皮、骨头和工具都退化成同一个箱子。 */
+function genSpecialPile(B, kind){
+  const y0=2, m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  if(kind==='meat'){
+    m('plaster',0,0,0,6,1,5,0xb99a76); m('accent',-1.5,1,0,3,2,3,vary(0x9f3f3d,0.01,0.08,0.06));
+    m('accent',1.5,1,-0.5,2.5,1.5,2.5,0x7f3132); m('plaster',2.5,2.1,-0.5,1.8,0.5,0.8,0xe2d3bd); return;
+  }
+  if(kind==='hide'){
+    m('wood',0,0,0,7,1,6,vary(0x75523a,0.01,0.08,0.06));
+    for(const [x,z] of [[-3,-2],[3,-2],[-3,2],[3,2]]) m('woodDark',x,0,z,1.5,1,1.5,0x4d3527);
+    m('plaster',0,1,0,4,0.7,3,0xb49470); return;
+  }
+  if(kind==='bone'){
+    m('plaster',0,0,0,7,1.2,1.2,0xd1c8ad); m('plaster',0,0,0,1.2,1.2,6,0xc4b99b);
+    for(const [x,z] of [[-3.5,0],[3.5,0],[0,-3],[0,3]]) m('plaster',x,0.1,z,1.8,1.8,1.8,0xd9d0b6); return;
+  }
+  if(kind==='stone-tool'||kind==='bone-tool'||kind==='spear'){
+    m('wood',0,0,-2,7,1,1,0x6f4b31); m('wood',-2.5,0,-2,1,5,1,0x62432d); m('wood',2.5,0,-2,1,5,1,0x62432d);
+    for(const x of [-2,0,2]){
+      if(kind==='spear'){
+        m('wood',x,1,0,1,8,1,vary(0x775136,0.01,0.06,0.05)); m('stone',x,9,0,2,2,1.5,0x85847d);
+      }else{
+        m('wood',x,1,0,1,5,1,0x775136);
+        m(kind==='bone-tool'?'plaster':'stone',x,6,0,3,2,2,kind==='bone-tool'?0xc9c0a5:0x7d7a72);
+      }
+    }
+    return;
+  }
+  if(kind==='fiber'||kind==='leather'){
+    const leather=kind==='leather';
+    m('plaster',-1.5,0,0,5,2,6,vary(leather?0x6f4c35:0xb09b72,0.01,0.08,0.06));
+    m('plaster',1.5,2,0,4,2,5,leather?0x5c3f2e:0x8d6f5d); m('woodDark',0,4,0,7,1,1,leather?0x3f2d24:0x80633f); return;
+  }
+  if(kind==='rope'){
+    for(let ring=0;ring<3;ring++) for(let i=0;i<8;i++){
+      const a=i/8*Math.PI*2,r=2.5-ring*0.7; m('thatch',Math.cos(a)*r,ring,Math.sin(a)*r,1.3,1,1.3,vary(0xaa8a59,0.01,0.08,0.06));
+    }
+    m('thatch',3,0,2,3,1,1,0x967747); return;
+  }
+  if(kind==='tablet'){
+    for(let i=0;i<4;i++){
+      m('wood',-1+i*0.7,i*0.8,0,5,0.7,3.5,vary(0x96683f,0.01,0.08,0.06));
+      for(const z of [-1,0,1]) m('woodDark',-1+i*0.7,i*0.8+0.7,z,3,0.25,0.3,0x4f3929);
+    }
+    return;
+  }
+  if(kind==='container'){
+    m('wood',0,0,0,7,1,7,vary(0x82552f,0.01,0.08,0.06));
+    for(const [x,z,sx,sz] of [[-3,0,1,6],[3,0,1,6],[0,-3,6,1],[0,3,6,1]]) m('wood',x,1,z,sx,4,sz,0x94643b);
+    m('woodDark',0,4.6,0,6,0.7,6,0x604029); return;
+  }
+  if(kind==='cooked'){
+    m('stone',0,0,0,7,1,6,0x77746e);
+    for(const [x,z] of [[-2,-1],[0,1],[2,-1]]) m('accent',x,1,z,2.5,1.5,2,vary(0xa65a35,0.01,0.08,0.06));
+    m('leaf',0,2.5,1,4,0.5,2,0x657e42); return;
+  }
+  if(kind==='herbs'){
+    for(const x of [-2,0,2]){ m('leaf',x,0,0,1,5,1,vary(0x58814b,0.02,0.10,0.07)); m('leaf',x-0.8,2,0,2,1,2,0x76965b); }
+    m('thatch',0,2,0,7,1,1,0xb18c59); return;
+  }
+  if(kind==='charcoal'){
+    for(let x=-2;x<=2;x++) for(let z=-2;z<=2;z++) if(rand()>0.28)
+      m('woodDark',x,0,z,1.6,1.4+rand()*1.8,1.6,vary(0x30302f,0,0.04,0.04));
+  }
+}
+
+/** 谷仓：高脚防鼠仓 + 木梯 + 茅草顶 */
+function genGranary(B){
+  for (const [sx,sz] of [[-1,-1],[1,-1],[-1,1],[1,1]])
+    box(B,'woodDark', sx,1,sz, sx,2,sz, ()=>vary(0x54402a,0,0.06,0.05)); // 高脚
+  box(B,'wood', -2,3,-1, 2,3,1, ()=>vary(0x8a6a48,0.01,0.08,0.06));      // 仓底板
+  for(let x=-2;x<=2;x++) for(let z=-1;z<=1;z++) for(let y=4;y<=5;y++){   // 仓体
+    const edge = x===-2||x===2||z===-1||z===1;
+    if (!edge) continue;
+    if (z===1 && x===0 && y===4) continue;                               // 仓门
+    B.vox('wood', x,y,z, vary(0xa8815a,0.01,0.1,0.07));
+  }
+  B.vox('woodDark', 0,4,1, 0x54402a);                                    // 仓门
+  B.vox('glowWarm', -2,4,0, 0xffc37a);                                   // 气窗
+  B.vox('wood', 0,1,2, 0x7a5636); B.vox('wood', 0,2,2, 0x7a5636); B.vox('wood', 0,3,2, 0x7a5636); // 木梯
+  for(let r=0;r<3;r++)                                                   // 茅草顶
+    box(B,'thatch', -3,6+r,-2+r, 3,6+r,2-r, ()=>vary(0xd8b968,0.02,0.12,0.1));
+}
+
+/** 水井：石圈 + 井架 + 辘轳 + 吊桶 */
+function genWell(B){
+  for(let k=0;k<8;k++){                                                  // 井圈
+    const a = k*Math.PI/4;
+    B.vox('stone', Math.round(Math.cos(a)*1.7), 1, Math.round(Math.sin(a)*1.7), vary(0x84888d,0,0.05,0.08));
+  }
+  B.vox('water', 0,1,0, 0x1c4a6e);                                       // 井水
+  box(B,'woodDark', -1,2,0, -1,3,0, ()=>0x54402a);                       // 井架柱
+  box(B,'woodDark',  1,2,0,  1,3,0, ()=>0x54402a);
+  box(B,'wood', -1,4,0, 1,4,0, ()=>vary(0x7a5636,0,0.08,0.06));          // 辘轳横杆
+  B.vox('darkMetal', 2,4,0, 0x3a3f45);                                   // 摇柄
+  B.vox('wood', 0,3,0, 0xa8905a);                                        // 绳
+  B.vox('woodDark', 0,2,0, 0x54402a);                                    // 吊桶
+  box(B,'roofTile', -2,5,-1, 2,5,1, ()=>vary(0x5a4030,0.01,0.08,0.07));  // 小披檐
+  box(B,'roofTile', -1,6,0, 1,6,0, ()=>vary(0x4e3822,0,0.08,0.06));
+}
+
+/** 栅栏：桩 + 双横杆 + 斜开栅门 */
+function genFence(B){
+  for(let x=-6;x<=6;x+=3) box(B,'woodDark', x,1,0, x,2,0, ()=>vary(0x54402a,0,0.06,0.05));
+  for(let x=-6;x<=6;x++){
+    if (x===2||x===3) continue;                                          // 门口
+    B.vox('wood', x,1,0, vary(0x8a6a48,0.01,0.1,0.07));
+    B.vox('wood', x,2,0, vary(0x8a6a48,0.01,0.1,0.07));
+  }
+  B.vox('wood', 2,1,0, 0x9a7a52); B.vox('wood', 3,2,0, 0x9a7a52);        // 斜开的栅门
+}
+
+/** 工坊：敞棚 + 锻炉火光 + 铁砧 + 工作台 */
+function genWorkshop(B){
+  for (const [px,pz] of [[-3,-2],[3,-2],[-3,2],[3,2]])
+    box(B,'woodDark', px,1,pz, px,3,pz, ()=>vary(0x54402a,0,0.06,0.05)); // 棚柱
+  box(B,'wood', -4,4,-3, 4,4,3, ()=>vary(0x6e4f33,0.01,0.08,0.06));      // 棚顶
+  box(B,'woodDark', -4,4,-3, 4,4,-3, ()=>0x4e3822);                      // 檐口
+  // 锻炉：石炉膛 + 膛内火光 + 烟囱
+  box(B,'stone', 2,1,-2, 3,2,-1, ()=>vary(0x7d8288,0,0.05,0.07));
+  B.vox('glowWarm', 2,1,-2, 0xffc37a);                                   // 膛口火光（前开）
+  B.vox('glowRed', 3,1,-2, 0xff6a55);
+  box(B,'stone', 3,3,-2, 3,5,-2, ()=>vary(0x6d7278,0,0.05,0.06));        // 烟囱
+  B.vox('plaster', 3,6,-2, 0xb9bec4); B.vox('plaster', 4,7,-2, 0xc9ced4);// 烟
+  // 铁砧（木墩 + 砧体 + 砧角）
+  B.vox('woodDark', 0,1,0, 0x54402a);
+  B.vox('darkMetal', 0,2,0, 0x3a3f45); B.vox('darkMetal', 1,2,0, 0x454a50);
+  // 工作台 + 工具
+  box(B,'wood', -3,1,0, -2,1,1, ()=>vary(0x8a6a48,0.01,0.08,0.06));
+  B.vox('metal', -3,2,0, 0xb9c0c8); B.vox('accent', -2,2,1, 0xc0392b);   // 台面工具
+}
+
+/** 议事火塘：固定火圈 + 三面木座，作为早期沟通与教学核心。 */
+function genCouncilHearth(B){
+  for(let k=0;k<8;k++){ const a=k*Math.PI/4; B.vox('stone',Math.round(Math.cos(a)*2),1,Math.round(Math.sin(a)*2),vary(0x746b5f,0,0.06,0.06)); }
+  B.vox('glowRed',0,1,0,0xe55b35); B.vox('glowWarm',0,2,0,0xffa33f);
+  for(const [x,z,sx,sz] of [[0,-4,6,1],[-4,1,1,5],[4,1,1,5]]) box(B,'wood',x-Math.floor((sx-1)/2),1,z-Math.floor((sz-1)/2),x+Math.floor(sx/2),1,z+Math.floor(sz/2),()=>vary(0x765038,0.01,0.08,0.06));
+  box(B,'woodDark',0,1,4,0,6,4,()=>0x4f3929); B.vox('accent',0,7,4,0xb99a5f);
+}
+
+/** 陶窑：黏土砖拱壳 + 炉口与排烟孔。 */
+function genKiln(B){
+  for(let y=1;y<=5;y++) for(let x=-3;x<=3;x++) for(let z=-3;z<=2;z++){
+    const shell=Math.hypot(x,z+0.5)<=3.2-y*0.16;
+    if(!shell||Math.abs(x)<2&&z===-3&&y<3) continue;
+    if(Math.hypot(x,z+0.5)>2.1-y*0.12) B.vox('brick',x,y,z,vary(0x9b513b,0.02,0.10,0.08));
+  }
+  B.vox('glowRed',0,1,-3,0xe55532); B.vox('glowWarm',0,2,-2,0xffa33f);
+  box(B,'stone',-4,1,-4,4,1,3,()=>vary(0x756e64,0,0.05,0.06));
+}
+
+/** 石磨：上下磨盘 + 木制转柄。 */
+function genHandMill(B){
+  for(let y=1;y<=2;y++) for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++) if(Math.hypot(x,z)<=3.2) B.vox('stone',x,y,z,vary(0x858078,0,0.06,0.06));
+  box(B,'woodDark',0,3,0,0,6,0,()=>0x5a402d); box(B,'wood',0,6,0,4,6,0,()=>0x7b5638);
+  B.vox('accent',0,3,-2,0xc6a15b);
+}
+
+/** 铸造场 / 铁匠铺：共用棚架，炉体与金属色按时代变化。 */
+function genMetalWorkshop(B, kind){
+  genWorkshop(B);
+  const bronze=kind==='foundry';
+  box(B,'brick',-1,1,-2,1,3,0,()=>vary(bronze?0x9b5e42:0x75463d,0.01,0.08,0.06));
+  B.vox('glowRed',0,2,-2,0xf05232); B.vox('glowWarm',0,3,-1,0xffa33f);
+  for(const x of [-2,0,2]) B.vox(bronze?'metal':'darkMetal',x,1,2,bronze?0xa36c38:0x464b50);
+}
+
+/** 材料链样品：矿石、黏土与木/石/青铜/铁工具。 */
+function genEraMaterial(B, kind){
+  const colors={clay:0xa9664e,copper:0x9b6546,tin:0x8b9298,ironore:0x665c55,woodtool:0x8a613d,stonehoe:0x77746e,bronzetool:0xaa713c,irontool:0x4d5358};
+  const tool=kind.endsWith('tool')||kind==='stonehoe';
+  if(tool){
+    box(B,'wood',0,1,0,0,7,0,()=>0x765038);
+    box(B,kind==='woodtool'?'wood':kind==='stonehoe'?'stone':kind==='bronzetool'?'metal':'darkMetal',-2,7,0,2,8,0,()=>colors[kind]);
+    return;
+  }
+  for(let i=0;i<18;i++){
+    const x=Math.round((rand()-.5)*6),z=Math.round((rand()-.5)*6),y=1+Math.floor(rand()*2);
+    B.vox(kind==='clay'?'brick':kind==='tin'?'metal':kind==='ironore'?'darkMetal':'stone',x,y,z,vary(colors[kind],0.02,0.10,0.08));
+  }
+}
+
+/** 火焰：跳动的篝火（Fire 材质的具象化） */
+function genFire(B){
+  const p = fireAnimPhase;
+  const swayA = Math.sin(p)*0.7;
+  const swayB = Math.sin(p*1.63+1.2)*0.55;
+  const stretch = 1 + Math.sin(p*2.1)*0.12 + Math.sin(p*3.7+0.8)*0.06;
+  const stones = [[-3,0],[-2,-2],[0,-3],[2,-2],[3,0],[2,2],[0,3],[-2,2]];
+  stones.forEach(([x,z],i)=>B.microCuboid('stone',x,0,z,1.6,1,1.6,
+    vary(i%2?0x56504a:0x484541,0,0.04,0.05)));
+  B.microCuboid('woodDark',0,0.7,0,6,1,1.2,0x3c2d22);
+  B.microCuboid('woodDark',0,0.8,0,1.2,1,6,0x4a3424);
+  for(const [x,z,c] of [[-1.5,-1,0xb83a24],[1.4,-0.8,0xe0522f],[-0.8,1.3,0xff6a3a],[1.2,1.2,0xc43d25]])
+    B.microCuboid('glowRed',x,1.3,z,1.2,0.8,1.2,c);
+
+  B.microCuboid('glowRed',swayB*0.18,1.4,0,3.8,2.4*stretch,3.6,0xff5b32);
+  B.microCuboid('glowWarm',-0.7+swayA*0.35,2.8,0.4,2.1,3.2*stretch,2,0xffa33f);
+  B.microCuboid('glowWarm',0.9-swayB*0.35,2.5,-0.5,1.8,2.7*(2-stretch),1.8,0xffb44f);
+  B.microCuboid('glowWarm',swayA*0.15,3.1,0,1.5,2.5*stretch,1.5,0xffd875);
+  B.microCuboid('glowRed',-1.2+swayA,4.5,-0.3,1.2,3.1*stretch,1.2,0xff6a34);
+  B.microCuboid('glowWarm',0.8+swayB,4.8,0.5,1,3.5*(2-stretch),1,0xffbd55);
+  B.microCuboid('glowWarm',swayA*0.75,5.1,-0.4,0.8,2.8*stretch,0.8,0xffe1a0);
+  for(const [i,x,z,c] of [[0,-1.8,0.8,0xff7a3f],[1,1.7,-0.9,0xffcf68],[2,0.5,1,0xff6a3a]]){
+    const rise = ((p*0.09+i*0.31)%1+1)%1;
+    const s = 0.7-rise*0.42;
+    B.microCuboid(i===1?'glowWarm':'glowRed',x+Math.sin(p*1.4+i)*0.35,6.3+rise*4,z,s,s,s,c);
+  }
+}
+
+/** 焦土残骸：碳化木桩 + 灰烬堆 + 暗红余烬（Ash 地带） */
+function genScorched(B){
+  B.vox('woodDark', 0,1,0, 0x26221f); B.vox('woodDark', 0,2,0, 0x26221f); B.vox('woodDark', 1,3,0, 0x2a2725);
+  B.vox('woodDark', -3,1,-2, 0x26221f); B.vox('woodDark', -3,2,-2, 0x2a2725);
+  B.vox('woodDark', 2,1,2, 0x26221f);
+  for(let i=0;i<10;i++){                                                 // 灰烬堆
+    const x = Math.round((rand()-0.5)*8), z = Math.round((rand()-0.5)*8);
+    B.vox('plaster', x,1,z, vary(0x5a5855,0,0.04,0.05));
+  }
+  for(let i=0;i<5;i++){                                                  // 暗红余烬
+    const x = Math.round((rand()-0.5)*6), z = Math.round((rand()-0.5)*6);
+    B.vox('glowRed', x,1,z, 0x8a2a20);
+  }
+}
+
+/** 雪堆：雪丘 + 半埋岩石 */
+function genSnowdrift(B){
+  for (const [cx,cz,r] of [[-2,0,2.2],[2,1,1.6],[1,-2,1.2]]){
+    for(let y=1;y<=3;y++) for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+      if (Math.sqrt(x*x+(y-0.8)*(y-0.8)*2+z*z) > r) continue;
+      B.vox('plaster', cx+x,y,cz+z, vary(0xeef2f6,0,0.02,0.03));
+    }
+  }
+  B.vox('stone', -4,1,2, vary(0x84888d,0,0.05,0.07));                    // 半埋岩石
+  B.vox('plaster', -4,2,2, 0xeef2f6);
+}
+
+/** 冰锥：透射冰晶尖簇 */
+function genIceSpikes(B){
+  for (const [sx,sz,h] of [[0,0,5],[-2,1,3],[2,-1,4],[1,2,2],[-1,-2,3]]){
+    for(let y=1;y<=h;y++){
+      const w = y<=2 ? 1 : 0;
+      for(let dx=0;dx<=w;dx++) for(let dz=0;dz<=w;dz++)
+        B.vox('glass', sx+dx,y,sz+dz, vary(0xbfe8f4,0,0.06,0.06));
+    }
+  }
+}
+
+/** 雪松：云杉的积雪变体（叶缘挂雪） */
+function genSnowSpruce(B){
+  box(B,'wood', 0,1,0, 0,3,0, ()=>vary(0x5f422a,0,0.08,0.06));
+  for(let y=3;y<=9;y++){
+    const r = 3.2 - (y-3)*0.45;
+    for(let x=-3;x<=3;x++) for(let z=-3;z<=3;z++){
+      const d = Math.hypot(x,z);
+      if (d > r+0.2) continue;
+      if (rand()<0.1) continue;
+      if (d > r-0.9) B.vox('plaster', x,y,z, vary(0xeef2f6,0,0.02,0.03)); // 叶缘积雪
+      else B.vox('leaf', x,y,z, vary(0x2a4a34,0.02,0.1,0.07));
+    }
+  }
+  B.vox('plaster', 0,10,0, 0xeef2f6);                                     // 顶雪
+}
+
+/** 天气展示：视觉层会动，但天气种类仍由模拟状态决定。 */
+function genWeather(B, kind){
+  const p=weatherAnimPhase;
+  if(kind==='rain'){
+    for(let i=0;i<24;i++){
+      const x=Math.round((rand()-0.5)*14), z=Math.round((rand()-0.5)*14);
+      const fall=((p*1.4+i*0.37)%8+8)%8;
+      B.microCuboid('water',x,3+fall,z,0.35,3.2,0.35,i%3?0x4f91b5:0x73b0ce);
+    }
+    for(const [x,z,r] of [[-3,-1,4],[3,2,3],[1,-4,2.5]]){
+      B.microCuboid('water',x,2.05,z,r,0.18,r,0x477f9f);
+      const pulse=1+((p*0.45+x)%1+1)%1*2;
+      const arc=Math.max(0.4,r-pulse);
+      B.microCuboid('glowCyan',x-r/2-pulse/2,2.22,z,arc,0.12,0.22,0x75b6d3);
+      B.microCuboid('glowCyan',x+r/2+pulse/2,2.22,z,arc,0.12,0.22,0x75b6d3);
+    }
+    return;
+  }
+  if(kind==='snow'){
+    for(let i=0;i<30;i++){
+      const x=Math.round((rand()-0.5)*15), z=Math.round((rand()-0.5)*15);
+      const fall=((p*0.55+i*0.47)%12+12)%12, drift=Math.sin(p+i)*0.8;
+      B.microCuboid('plaster',x+drift,3+fall,z,0.7,0.7,0.7,i%3?0xeef2f6:0xdbe6ef);
+    }
+    return;
+  }
+  if(kind==='fog'){
+    for(let i=0;i<7;i++){
+      const x=-8+i*2.6+Math.sin(p*0.35+i)*0.8, z=-4+(i%3)*4;
+      B.microCuboid('glass',x,2.3+(i%2)*0.6,z,7,0.8,2.2,i%2?0xc7d1d4:0xb8c4c8);
+    }
+    return;
+  }
+  if(kind==='storm'){
+    const sway=Math.sin(p)*1.2;
+    for(let y=1;y<=7;y++) B.vox('wood',Math.round(sway*y/14),y,0,vary(0x6e4f33,0,0.08,0.06));
+    for(let x=-4;x<=4;x++) for(let z=-3;z<=3;z++) if(Math.hypot(x,z)<3.8&&rand()>0.18)
+      B.vox('leaf',x+Math.round(sway),7+Math.round((3.8-Math.hypot(x,z))*0.45),z,vary(0x3f7f3a,0.03,0.14,0.10));
+    for(let i=0;i<16;i++) B.microCuboid('glowCyan',-7+i,4+(i%5),-4+(i%4)*2,2.2,0.28,0.28,0x6d9db6);
+    return;
+  }
+  if(kind==='drought'){
+    genGroundDetail(B,'cracks');
+    for(const [x,z,h] of [[-4,-2,3],[-1,3,4],[3,2,3],[4,-3,2]])
+      B.microCuboid('thatch',x,2,z,1,h,1,vary(0x9b8547,0.02,0.10,0.08));
+  }
+}
+
+/* ================= 人物 · 年龄 / 状态 / 动作 ================= */
+
+// 人物沿用本页 micro-cuboid-v2 体素语汇。动作页以 10fps 更新这一相位，
+// 所有颜色仍由 seed 决定，因此动画不会闪烁。
+let humanAnimPhase = 0;
+let animalAnimPhase = 0;
+let fireAnimPhase = 0;
+let weatherAnimPhase = 0;
+
+function genHuman(B, options={}){
+  const sex = options.sex || 'male';
+  const age = options.age || 'adult';
+  const action = options.action || 'idle';
+  const state = options.state || 'active';
+  const ox = options.x || 0, oz = options.z || 0;
+  const ageScale = age==='child' ? 0.78 : age==='elder' ? 0.93 : 1;
+  const s = ageScale * (options.scale || 1);
+  const base = options.base ?? 2;
+  const phase = humanAnimPhase + (options.phaseOffset || 0);
+  const clothBase = options.cloth ?? (sex==='female' ? 0x925a67 : age==='child' ? 0xb9783f : age==='elder' ? 0x66717b : 0x3f6380);
+  const cloth = vary(clothBase,0.02,0.08,0.07);
+  const clothDark = vary(sex==='female' ? 0x5c3f51 : 0x303f50,0.01,0.06,0.05);
+  const skin = vary(options.skin ?? 0xd9aa7a,0.015,0.08,0.06);
+  const hair = age==='elder' ? vary(0xb9bec4,0,0.03,0.05) : vary(options.hair ?? 0x30261f,0.01,0.08,0.05);
+  const put = (type,x,y,z,sx,sy,sz,color) => B.microCuboid(type,ox+x*s,base+y*s,oz+z*s,sx*s,sy*s,sz*s,color);
+
+  if (state==='dehydrated'){
+    // 三体式脱水不是换色：身体收束成可搬运的干燥卷，保留头发、面部与衣料识别点。
+    put('woodDark',0,0.08,0,2.25,0.30,4.5,vary(0x59483a,0.01,0.05,0.05));
+    put('thatch',0,0.35,0,2.05,0.75,4.2,vary(0x9b7657,0.01,0.08,0.07));
+    for(const z of [-1.25,0,1.25]) put('clothBand',0,0.55,z,2.18,0.25,0.34,0x6f8fa8);
+    put('skin',0,0.42,2.55,1.45,1.05,1.25,skin);
+    put('woodDark',0,1.00,2.55,1.55,0.28,1.30,hair);
+    put('woodDark',-0.34,0.74,3.18,0.18,0.18,0.12,0x241f1b);
+    put('woodDark', 0.34,0.74,3.18,0.18,0.18,0.12,0x241f1b);
+    // 蓝色状态签名，和主游戏脱水状态色保持一致。
+    put('glowCyan',0,0.02,-2.40,2.8,0.12,0.20,0x60a5fa);
+    return;
+  }
+
+  const child = age==='child', elder = age==='elder';
+  let legH = child ? 1.45 : elder ? 1.62 : 1.9;
+  const torsoH = child ? 1.72 : elder ? 2.02 : 2.18;
+  const headH = child ? 1.72 : 1.54;
+  const shoulder = child ? 1.72 : sex==='male' ? 2.30 : 2.02;
+  const breath = Math.sin(phase*0.55)*0.035;
+  const walk = action==='walk' ? Math.sin(phase)*0.48 : 0;
+  const gather = action==='gather';
+  const attack = action==='attack';
+  const carry = action==='carry';
+  const ingest = action==='ingest';
+  const craft = action==='craft';
+  const work = action==='work';
+  const tendFire = action==='tend-fire';
+  const attend = action==='attend';
+  const communicate = action==='communicate';
+  const care = action==='care';
+  const lowered = gather || care || tendFire;
+  if (lowered) legH *= care ? 0.58 : 0.68;
+  const torsoBottom = legH - (lowered ? 0.08 : 0);
+  const leanZ = elder ? 0.24 : lowered ? 0.48 : craft || work ? 0.28 : 0;
+  const stance = attack ? 0.18 : 0;
+
+  // 脚、腿：步行用前后相反的 z 偏移；攻击使用更宽的稳定站姿。
+  const footSpread = attack ? 0.76 : child ? 0.44 : 0.56;
+  put('woodDark',-footSpread,0,-0.18+walk,0.84,0.38,1.28,clothDark);
+  put('woodDark', footSpread,0,-0.18-walk,0.84,0.38,1.28,clothDark);
+  put('woodDark',-footSpread,0.28,walk,0.76,legH-0.20,0.84,clothDark);
+  put('woodDark', footSpread,0.28,-walk,0.76,legH-0.20,0.84,clothDark);
+
+  // 躯干：女性以短披衣和收束腰线区分剪影，儿童和老人保留不同身体比例。
+  put('accent',0,torsoBottom+breath,leanZ,shoulder,torsoH,1.22,cloth);
+  if (sex==='female'){
+    put('accent',0,torsoBottom-0.08,leanZ,2.34,0.72,1.34,clothDark);
+    put('accent',0,torsoBottom+torsoH-0.44,leanZ,2.30,0.28,1.30,vary(clothBase,0.01,0.05,0.10));
+  } else {
+    put('accent',0,torsoBottom+torsoH-0.38,leanZ,shoulder+0.12,0.24,1.30,vary(clothBase,0.01,0.05,0.09));
+  }
+
+  const shoulderY = torsoBottom + torsoH - 0.35 + breath;
+  const armX = shoulder/2 + 0.34;
+  if (gather){
+    const reach = 0.18 + (Math.sin(phase)*0.5+0.5)*0.34;
+    put('accent',-armX,shoulderY-0.56,leanZ+0.62+reach,0.52,0.54,1.55,cloth);
+    put('accent', armX,shoulderY-0.56,leanZ+0.62+reach,0.52,0.54,1.55,cloth);
+    put('skin',-armX,shoulderY-0.58,leanZ+1.48+reach,0.54,0.54,0.54,skin);
+    put('skin', armX,shoulderY-0.58,leanZ+1.48+reach,0.54,0.54,0.54,skin);
+  } else if (attack){
+    const thrust = (Math.sin(phase)*0.5+0.5)*0.75;
+    put('accent',-armX,shoulderY-0.28,0.58,0.55,0.56,1.52,cloth);
+    put('accent', armX,shoulderY-0.28,0.62+thrust,0.55,0.56,1.64,cloth);
+    put('skin', armX,shoulderY-0.28,1.52+thrust,0.56,0.56,0.56,skin);
+    put('woodDark',armX,shoulderY-0.28,2.72+thrust,0.24,0.24,4.20,0x6b4a2e);
+    put('stone',armX,shoulderY-0.28,4.92+thrust,0.48,0.48,0.72,0x9aa0a6);
+  } else if (carry){
+    put('accent',-armX,shoulderY-0.52,0.68,0.52,0.52,1.52,cloth);
+    put('accent', armX,shoulderY-0.52,0.68,0.52,0.52,1.52,cloth);
+    put('skin',-armX,shoulderY-0.52,1.50,0.54,0.54,0.54,skin);
+    put('skin', armX,shoulderY-0.52,1.50,0.54,0.54,0.54,skin);
+  } else if (ingest){
+    const sip = Math.sin(phase)*0.08;
+    put('accent',-armX,shoulderY-0.70,0.62,0.52,0.52,1.36,cloth);
+    put('accent', armX,shoulderY-0.70,0.62,0.52,0.52,1.36,cloth);
+    put('skin',-0.52,shoulderY-0.35,1.22+sip,0.52,0.52,0.52,skin);
+    put('skin', 0.52,shoulderY-0.35,1.22+sip,0.52,0.52,0.52,skin);
+  } else if (craft || work || tendFire){
+    const beat = Math.sin(phase)*0.28;
+    put('accent',-armX,shoulderY-0.62,leanZ+0.72,0.52,0.54,1.48,cloth);
+    put('skin',-armX,shoulderY-0.64,leanZ+1.55,0.52,0.52,0.52,skin);
+    put('accent', armX,shoulderY-0.32+beat,leanZ+0.56,0.52,1.28,0.58,cloth);
+    put('skin', armX,shoulderY-1.02+beat,leanZ+0.62,0.52,0.52,0.52,skin);
+  } else if (attend){
+    put('accent',-armX,shoulderY-0.68,0.62,0.52,0.52,1.32,cloth);
+    put('accent', armX,shoulderY-0.68,0.62,0.52,0.52,1.32,cloth);
+    put('skin',-0.54,shoulderY-0.66,1.28,0.48,0.48,0.48,skin);
+    put('skin', 0.54,shoulderY-0.66,1.28,0.48,0.48,0.48,skin);
+  } else if (communicate){
+    const wave = Math.sin(phase)*0.14;
+    put('accent',-armX,shoulderY-1.20,0,0.56,2.05,0.82,cloth);
+    put('skin',-armX,shoulderY-2.28,0,0.58,0.56,0.82,skin);
+    put('accent', armX,shoulderY-0.15,0.18,0.56,1.72,0.72,cloth);
+    put('skin', armX+wave,shoulderY+0.78,0.18,0.58,0.58,0.72,skin);
+  } else if (care){
+    put('accent',-armX,shoulderY-0.60,1.00,0.52,0.52,1.52,cloth);
+    put('accent', armX,shoulderY-0.60,1.00,0.52,0.52,1.52,cloth);
+    put('skin',-armX,shoulderY-0.62,1.86,0.52,0.52,0.52,skin);
+    put('skin', armX,shoulderY-0.62,1.86,0.52,0.52,0.52,skin);
+  } else {
+    put('accent',-armX,shoulderY-1.20,-walk*0.72,0.56,2.05,0.82,cloth);
+    put('accent', armX,shoulderY-1.20, walk*0.72,0.56,2.05,0.82,cloth);
+    put('skin',-armX,shoulderY-2.28,-walk*0.72,0.58,0.56,0.82,skin);
+    put('skin', armX,shoulderY-2.28, walk*0.72,0.58,0.56,0.82,skin);
+  }
+
+  // 头部与发型：不靠颜色 alone 区分性别；长发、短发、儿童比例、老年灰发均有独立轮廓。
+  const headY = torsoBottom + torsoH - 0.02 + breath;
+  const headZ = leanZ + (elder ? 0.30 : gather ? 0.26 : 0);
+  const headW = child ? 1.58 : 1.50;
+  put('skin',0,headY,headZ,headW,headH,1.46,skin);
+  put('woodDark',0,headY+headH-0.26,headZ-0.04,headW+0.16,0.34,1.56,hair);
+  if (sex==='female'){
+    put('woodDark',-headW/2,headY+0.35,headZ-0.18,0.34,headH*0.86,1.28,hair);
+    put('woodDark', headW/2,headY+0.35,headZ-0.18,0.34,headH*0.86,1.28,hair);
+    put('woodDark',0,headY+0.16,headZ-0.72,headW+0.02,headH*0.78,0.34,hair);
+  }
+  put('woodDark',-0.31,headY+0.62,headZ+0.76,0.17,0.17,0.12,0x231e1a);
+  put('woodDark', 0.31,headY+0.62,headZ+0.76,0.17,0.17,0.12,0x231e1a);
+
+  // 生产场景正在读取的装备与身体状态，不使用悬浮图标代替模型信息。
+  if (options.condition==='bandaged'){
+    put('plaster',0,torsoBottom+torsoH*0.55,leanZ+0.66,shoulder+0.12,0.32,0.18,0xe8e4da);
+    put('plaster',-armX,shoulderY-0.92,0.12,0.68,0.34,0.90,0xe8e4da);
+  }
+  if (options.condition==='pregnant')
+    put('accent',0,torsoBottom+0.38,leanZ+0.74,1.62,1.35,0.92,vary(clothBase,0.01,0.05,0.08));
+  if (options.condition==='cold'){
+    put('clothBand',0,shoulderY-0.18,leanZ+0.02,shoulder+0.44,0.52,1.48,0x6f8192);
+    put('clothBand',0,headY-0.12,headZ-0.64,1.72,1.12,0.30,0x596b7c);
+  }
+  if (options.condition==='heat')
+    put('clothBand',armX+0.22,shoulderY+0.72,0.12,0.22,1.35,0.22,0xc9b483);
+  if (options.condition==='illness')
+    put('leaf',0,headY+headH+0.18,headZ,0.78,0.18,0.78,0x718b69);
+
+  if (elder){
+    // 手杖强化老年剪影，也让轻微前倾看起来是支撑而非模型偏移。
+    put('woodDark',armX+0.34,0.08,0.72,0.24,shoulderY-0.12,0.24,0x6b4a2e);
+    put('woodDark',armX+0.10,shoulderY-0.02,0.72,0.72,0.24,0.24,0x6b4a2e);
+  }
+
+  if (options.withProp===false) return;
+  if (action==='gather'){
+    for(const [x,z,y] of [[-1.0,2.4,0.6],[0,2.7,0.9],[1.0,2.35,0.55],[-0.45,3.25,0.45]])
+      put('leaf',x,y,z,1.05,1.05,1.05,vary(0x4b8b45,0.03,0.12,0.09));
+    put('accent',-0.45,1.25,3.30,0.28,0.28,0.28,0xc94f45);
+    put('accent', 0.38,1.55,2.78,0.28,0.28,0.28,0xc94f45);
+  }
+  if (action==='carry'){
+    put('wood',0,shoulderY-1.00,1.95,3.15,1.35,1.42,vary(0x8a6a48,0.01,0.08,0.07));
+    put('thatch',0,shoulderY-0.32,1.95,2.75,0.42,1.12,0xd3ad55);
+  }
+  if (action==='ingest'){
+    put('wood',0,shoulderY-0.66,1.38,1.45,0.42,1.05,0x8a603d);
+    put('accent',0,shoulderY-0.42,1.38,0.72,0.26,0.62,0xb65d3d);
+  }
+  if (action==='craft'){
+    put('wood',0,0.10,2.00,3.8,0.72,2.5,0x8a603d);
+    put('stone',armX,shoulderY-1.28,0.62,0.52,1.32,0.62,0x85847d);
+  }
+  if (action==='work'){
+    put('wood',0,0.10,2.25,3.8,1.15,1.25,0x775136);
+    put('woodDark',armX,shoulderY-1.15,0.62,0.28,1.50,0.28,0x6b4a2e);
+    put('stone',armX,shoulderY-0.18,0.62,1.18,0.58,0.58,0x85847d);
+  }
+  if (action==='tend-fire'){
+    put('woodDark',0,0.12,2.45,3.5,0.52,0.68,0x4a3424);
+    put('glowRed',0,0.62,2.45,1.60,1.15,1.40,0xff5b32);
+    put('glowWarm',0.28,1.32,2.45,0.78,1.70,0.72,0xffbd55);
+  }
+  if (action==='attend'){
+    put('wood',0,shoulderY-0.62,1.46,1.72,1.12,0.22,0x96683f);
+    for(const x of [-0.48,0,0.48]) put('woodDark',x,shoulderY-0.18,1.59,0.28,0.08,0.08,0x4f3929);
+  }
+  if (action==='care'){
+    put('plaster',0,0.22,2.42,3.2,0.52,1.25,0xe8e4da);
+    put('glowCyan',0,0.54,2.42,0.34,0.12,1.38,0x60a5fa);
+  }
+}
+
+function sharedCellSlots(count){
+  if (count<=1) return [[0,0]];
+  if (count===2) return [[-1.65,0],[1.65,0]];
+  if (count===3) return [[0,-1.75],[-1.65,1.15],[1.65,1.15]];
+  if (count===4) return [[-1.55,-1.55],[1.55,-1.55],[-1.55,1.55],[1.55,1.55]];
+  const radius = count===5 ? 2.40 : 2.68;
+  return Array.from({length:count},(_,i)=>{
+    const a = -Math.PI/2 + i*Math.PI*2/count;
+    return [Math.cos(a)*radius,Math.sin(a)*radius];
+  });
+}
+
+function genSharedCell(B){
+  // 一格=8×8 微体素：人物不再共用格心，而是占用确定性环形槽位。
+  B.microCuboid('grass',0,0,0,8,2,8,vary(0x5f914b,0.02,0.10,0.07));
+  B.microCuboid('glowCyan',0,2.01,-3.92,8,0.12,0.16,0x4d8ca4);
+  B.microCuboid('glowCyan',0,2.01, 3.92,8,0.12,0.16,0x4d8ca4);
+  B.microCuboid('glowCyan',-3.92,2.01,0,0.16,0.12,8,0x4d8ca4);
+  B.microCuboid('glowCyan', 3.92,2.01,0,0.16,0.12,8,0x4d8ca4);
+  const slots = sharedCellSlots(6);
+  slots.forEach(([x,z],i)=>genHuman(B,{
+    x,z,base:2,scale:0.48,sex:i%2?'female':'male',age:i===4?'child':i===5?'elder':'adult',
+    action:i===0?'walk':i===1?'gather':i===2?'carry':'idle',phaseOffset:i*0.9,withProp:false,
+    cloth:[0x3f6380,0x925a67,0x55735d,0x986d42,0xb9783f,0x66717b][i],
+  }));
+}
+
+function genCooperativeCarry(B){
+  genHuman(B,{x:-1.55,sex:'female',action:'carry',withProp:false,phaseOffset:0});
+  genHuman(B,{x: 1.55,sex:'male',action:'carry',withProp:false,phaseOffset:Math.PI});
+  const bob = Math.sin(humanAnimPhase)*0.10;
+  B.microCuboid('wood',0,4.05+bob,1.65,4.8,1.15,1.25,vary(0x8a6a48,0.01,0.08,0.07));
+  B.microCuboid('thatch',0,4.68+bob,1.65,4.35,0.34,1.02,0xd3ad55);
+}
+
+function genCommunicationPair(B){
+  genHuman(B,{x:-2.1,sex:'female',action:'communicate',phaseOffset:0});
+  genHuman(B,{x:2.1,sex:'male',action:'attend',phaseOffset:1.1,cloth:0x55735d});
+}
+
+function genCarePair(B){
+  genHuman(B,{x:-1.7,sex:'female',action:'care',phaseOffset:0,cloth:0x55735d});
+  genHuman(B,{x:2.0,sex:'male',condition:'bandaged',phaseOffset:0.8,cloth:0x986d42});
+}
+
+function genCompanionPair(B){
+  genHuman(B,{x:-1.35,sex:'female',action:'communicate',phaseOffset:0.2,cloth:0x925a67});
+  genHuman(B,{x:1.35,sex:'male',action:'communicate',phaseOffset:Math.PI,cloth:0x3f6380});
+  B.microCuboid('glowWarm',0,8.2,0,0.55,0.55,0.55,0xf2b36f);
+}
+
+function genBodyStates(B){
+  genHuman(B,{x:-5.4,scale:0.72,sex:'female',condition:'pregnant',cloth:0x925a67});
+  genHuman(B,{x:-1.8,scale:0.72,sex:'male',condition:'bandaged',cloth:0x55735d});
+  genHuman(B,{x:1.8,scale:0.72,sex:'female',condition:'cold',cloth:0x66717b});
+  genHuman(B,{x:5.4,scale:0.72,sex:'male',condition:'illness',cloth:0x986d42});
+}
+
+/* ================= 素材注册表（建筑按文明等级 / 环境按类别分组） ================= */
+const LV_NAMES = {
+  1:'原始部落 · 木', 2:'农耕定居 · 石', 3:'古代文明 · 青铜', 4:'中世纪 · 铁',
+  5:'工业时代 · 钢', 6:'现代城市 · 水泥', 7:'信息时代 · 碳纤维', 8:'太空时代 · 纳米材料',
+};
+const CAT_NAMES = { p:'人物 · 生命与动作', b:'建筑 · 文明历程', s:'聚落 · 生存设施', n:'野外 · 植被与动物', r:'道路 · 桥梁', e:'环境 · 纪元状态' };
+const STYLES = [
+  // 人物（性别 / 年龄 / 生命状态 / 行为动作）
+  { key:'adult-man',   cat:'p', group:'性别与年龄', name:'成年男性', en:'Adult Man', gen:(B)=>genHuman(B,{sex:'male'}), tags:'男性 · 成年 · 站立', note:'短发、宽肩与分离的四肢轮廓；衣色仍可按人物 id 替换。' },
+  { key:'adult-woman', cat:'p', group:'性别与年龄', name:'成年女性', en:'Adult Woman', gen:(B)=>genHuman(B,{sex:'female'}), tags:'女性 · 成年 · 站立', note:'侧发与后发构成独立剪影，和男性共享同一骨架尺度。' },
+  { key:'child',       cat:'p', group:'性别与年龄', name:'儿童', en:'Child', gen:(B)=>genHuman(B,{sex:'female',age:'child',action:'walk'}), tags:'儿童 · 小比例 · 行走', note:'缩短腿与躯干、保留较大的头身比，不只做整体等比缩放。' },
+  { key:'elder',       cat:'p', group:'性别与年龄', name:'老年人', en:'Elder', gen:(B)=>genHuman(B,{sex:'male',age:'elder',action:'walk'}), tags:'老年 · 灰发 · 手杖', note:'前倾姿态、灰发和支撑手杖共同表达年龄，步幅更小。' },
+  { key:'dehydrated',  cat:'p', group:'生命状态', name:'脱水个体', en:'Dehydrated', gen:(B)=>genHuman(B,{sex:'female',state:'dehydrated'}), tags:'脱水 · 收束 · 可搬运', note:'脱水不是普通人物换色，而是收束成干燥卷，并沿用主游戏的蓝色状态签名。' },
+  { key:'walking',     cat:'p', group:'动作', name:'行走', en:'Walking', gen:(B)=>genHuman(B,{sex:'male',action:'walk'}), tags:'动作 · 对侧摆臂 · 步态循环', note:'手脚采用对侧相位，素材页以低频更新姿态预览循环。' },
+  { key:'gathering',   cat:'p', group:'动作', name:'采集', en:'Gathering', gen:(B)=>genHuman(B,{sex:'female',action:'gather'}), tags:'动作 · 下蹲 · 双手触物', note:'身体降低并前倾，双手伸向可见的浆果灌丛，动作与对象在同一素材中。' },
+  { key:'attacking',   cat:'p', group:'动作', name:'攻击', en:'Attacking', gen:(B)=>genHuman(B,{sex:'male',action:'attack'}), tags:'动作 · 宽站姿 · 长矛突刺', note:'稳定宽站姿配合双手前伸和武器位移，攻击方向始终可读。' },
+  { key:'ingesting',   cat:'p', group:'动作', name:'进食与饮水', en:'Eat & Drink', gen:(B)=>genHuman(B,{sex:'female',action:'ingest'}), tags:'动作 · 食物/容器 · 真实需求', note:'只有模拟中的进食或饮水行为发生时才出现手持食物与抬手动作。' },
+  { key:'crafting',    cat:'p', group:'动作', name:'制作', en:'Crafting', gen:(B)=>genHuman(B,{sex:'male',action:'craft'}), tags:'动作 · 工作台 · 石制工具', note:'用于制作工具、衣物、绳索和容器等真实项目。' },
+  { key:'working',     cat:'p', group:'动作', name:'建造与劳作', en:'Building & Work', gen:(B)=>genHuman(B,{sex:'female',action:'work'}), tags:'动作 · 锤击 · 木料', note:'建造、维护与加工共用的劳作骨架，手中工具由实际操作替换。' },
+  { key:'tend-fire',   cat:'p', group:'动作', name:'照料火堆', en:'Tend Fire', gen:(B)=>genHuman(B,{sex:'male',action:'tend-fire'}), tags:'动作 · 火堆 · 烹饪/取暖', note:'火堆必须来自世界状态；人物动作只在照料、烹饪或取暖时出现。' },
+  { key:'attending',   cat:'p', group:'动作', name:'观察与记录', en:'Observe & Record', gen:(B)=>genHuman(B,{sex:'female',action:'attend'}), tags:'动作 · 木牍 · 知识', note:'观察、记录、学习等动作使用木牍作为可读道具。' },
+  { key:'co-carry',    cat:'p', group:'交互', name:'协作搬运', en:'Cooperative Carry', gen:genCooperativeCarry, tags:'交互 · 两人 · 同一负载', note:'两人共享一个负载的高度和节拍，人物仍保持各自独立站位。' },
+  { key:'communicate', cat:'p', group:'交互', name:'交流与教授', en:'Communicate & Teach', gen:genCommunicationPair, tags:'交互 · 手势 · 倾听/木牍', note:'可用于交流、教授、交易等人与人操作；双方都有明确的姿态角色。' },
+  { key:'care',        cat:'p', group:'交互', name:'照护与包扎', en:'Care & Bandage', gen:genCarePair, tags:'交互 · 照护 · 伤员', note:'照护者与被照护者同时入镜，包扎是人物模型的一部分。' },
+  { key:'companion',   cat:'p', group:'交互', name:'伴侣与繁衍', en:'Companion & Reproduce', gen:genCompanionPair, tags:'交互 · 伴侣 · 繁衍项目', note:'以克制的双人亲密姿态表达伴侣与繁衍，不使用突兀的表情图标。' },
+  { key:'body-states', cat:'p', group:'生命状态', name:'身体与环境状态', en:'Body States', gen:genBodyStates, tags:'怀孕 · 包扎 · 寒冷 · 疾病', note:'状态直接改变轮廓、服装或姿态；炎热状态另由轻装和动作节奏表达。' },
+  { key:'shared-cell', cat:'p', group:'交互', name:'同格六人编组', en:'Six In One Cell', gen:genSharedCell, base:'none', tags:'同格 · 6 槽位 · 确定性环阵', note:'一格内不再都压在格心：1–4 人用中心/对称位，5–6 人使用确定性环形槽位；位置可由格号与人物 id 稳定排序。' },
+  // 建筑（文明历程 Lv.1–8）
+  { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe },
+  { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill },
+  { key:'thatched',   cat:'b', lv:2, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched },
+  { key:'logcabin',   cat:'b', lv:2, name:'木屋',           en:'Log Cabin',       gen:genLogCabin },
+  { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple },
+  { key:'chinese',    cat:'b', lv:3, name:'中国王朝古代房子', en:'Chinese Dynasty', gen:genChinese },
+  { key:'stone',      cat:'b', lv:3, name:'石头屋',         en:'Stone House',     gen:genStone },
+  { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle },
+  { key:'medieval',   cat:'b', lv:4, name:'中世纪房子',     en:'Medieval',        gen:genMedieval },
+  { key:'factory',    cat:'b', lv:5, name:'烟囱工厂',       en:'Factory',         gen:genFactory },
+  { key:'modern',     cat:'b', lv:6, name:'现代房子',       en:'Modern House',    gen:genModern },
+  { key:'skyscraper', cat:'b', lv:6, name:'高楼大厦',       en:'Skyscraper',      gen:genSkyscraper },
+  { key:'signal',     cat:'b', lv:7, name:'信号塔',         en:'Signal Tower',    gen:genSignalTower },
+  { key:'elevator',   cat:'b', lv:8, name:'轨道电梯',       en:'Space Elevator',  gen:genElevator },
+  { key:'future',     cat:'b', lv:8, name:'未来风格房子',   en:'Future Pod',      gen:genFuture },
+  { key:'dome',       cat:'b', lv:8, name:'生态穹顶',       en:'Eco Dome',        gen:genDome },
+  // 聚落 · 生存设施
+  { key:'councilhearth',cat:'s',group:'聚落设施', name:'议事火塘', en:'Council Hearth', gen:genCouncilHearth, tags:'原始部落 · 固定沟通与教学范围', note:'游戏已接入：附近沟通范围扩大，反复多人使用后可形成固定协调制度。' },
+  { key:'granary',    cat:'s', group:'聚落设施', name:'谷仓',   en:'Granary',       gen:genGranary, tags:'农耕定居 · 96 单位公共储量', note:'游戏已接入：由木制容器加固而来，保留原储物，容量是普通容器四倍。' },
+  { key:'well',       cat:'s', group:'聚落设施', name:'蓄水井', en:'Cistern',       gen:genWell, tags:'农耕定居 · 固定饮水点', note:'游戏已接入：由木制容器与石材改造，可进入人物真实寻水与饮用路径。' },
+  { key:'fence',      cat:'s', group:'聚落设施', name:'栅栏',   en:'Fence',         gen:genFence },
+  { key:'workshop',   cat:'s', group:'聚落设施', name:'工具棚', en:'Workshop',      gen:genWorkshop, tags:'原始部落 · 固定生产场地', note:'游戏已接入：附近制作非设施物品时额外产出一份。' },
+  { key:'kiln',       cat:'s', group:'材料设施', name:'陶窑', en:'Kiln', gen:genKiln, tags:'农耕定居 · 黏土与铜锡高温处理', note:'游戏已接入：烧砖并为铜锡矿炭料提供真实高温目标。' },
+  { key:'handmill',   cat:'s', group:'材料设施', name:'石磨', en:'Stone Mill', gen:genHandMill, tags:'农耕定居 · 作物加工', note:'游戏已接入：附近收获成熟作物时增加食物产出。' },
+  { key:'foundry',    cat:'s', group:'材料设施', name:'青铜铸造场', en:'Bronze Foundry', gen:(B)=>genMetalWorkshop(B,'foundry'), tags:'古代文明 · 铜锡与青铜批量生产', note:'游戏已接入：作为铜锡冶炼目标，并提高青铜工具制作产量。' },
+  { key:'civichall',  cat:'s', group:'时代核心', name:'城邦公共厅堂', en:'Civic Hall Core', gen:genChinese, tags:'古代文明 · 记录、度量与协调核心', note:'游戏已接入规则；只有实际沟通、记录和多人使用才进入时代观察。' },
+  { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'中世纪 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量。' },
+  { key:'keepcore',   cat:'s', group:'时代核心', name:'城堡协调核心', en:'Keep Core', gen:genCastle, tags:'中世纪 · 防护、维护与工匠协调', note:'游戏已接入规则；这是功能核心，不代表整座城堡会因时代名称自动生成。' },
+  { key:'woodpile',   cat:'s', group:'物资堆',   name:'木料堆', en:'Wood Pile',     gen:genWoodPile },
+  { key:'stonepile',  cat:'s', group:'物资堆',   name:'石料堆', en:'Stone Pile',    gen:genStonePile },
+  { key:'foodpile',   cat:'s', group:'物资堆',   name:'食物堆', en:'Food Pile',     gen:genFoodPile },
+  { key:'seedpile',   cat:'s', group:'物资堆',   name:'种子堆', en:'Seed Pile',     gen:genSeedPile },
+  { key:'bundles',    cat:'s', group:'物资堆',   name:'包裹',   en:'Bundles',       gen:genBundles },
+  { key:'meatpile',   cat:'s', group:'狩猎产物', name:'生肉',   en:'Raw Meat',      gen:(B)=>genSpecialPile(B,'meat') },
+  { key:'hidepile',   cat:'s', group:'狩猎产物', name:'兽皮',   en:'Hide',          gen:(B)=>genSpecialPile(B,'hide') },
+  { key:'bonepile',   cat:'s', group:'狩猎产物', name:'骨料',   en:'Bones',         gen:(B)=>genSpecialPile(B,'bone') },
+  { key:'stonetools', cat:'s', group:'工具与知识', name:'石制工具架', en:'Stone Tools', gen:(B)=>genSpecialPile(B,'stone-tool') },
+  { key:'bonetools',  cat:'s', group:'工具与知识', name:'骨制工具架', en:'Bone Tools', gen:(B)=>genSpecialPile(B,'bone-tool') },
+  { key:'spearrack',  cat:'s', group:'工具与知识', name:'长矛架', en:'Spear Rack',    gen:(B)=>genSpecialPile(B,'spear') },
+  { key:'tablet',     cat:'s', group:'工具与知识', name:'木牍', en:'Wood Tablet',    gen:(B)=>genSpecialPile(B,'tablet') },
+  { key:'fiber',      cat:'s', group:'加工物资', name:'纤维与衣物', en:'Fiber & Clothing', gen:(B)=>genSpecialPile(B,'fiber') },
+  { key:'leather',    cat:'s', group:'加工物资', name:'皮革衣物', en:'Leather Clothing', gen:(B)=>genSpecialPile(B,'leather') },
+  { key:'rope',       cat:'s', group:'加工物资', name:'绳索', en:'Rope',             gen:(B)=>genSpecialPile(B,'rope') },
+  { key:'container',  cat:'s', group:'加工物资', name:'容器', en:'Container',        gen:(B)=>genSpecialPile(B,'container') },
+  { key:'cookedfood', cat:'s', group:'加工物资', name:'熟食', en:'Cooked Food',       gen:(B)=>genSpecialPile(B,'cooked') },
+  { key:'herbs',      cat:'s', group:'加工物资', name:'草药', en:'Herbal Medicine',  gen:(B)=>genSpecialPile(B,'herbs') },
+  { key:'charcoal',   cat:'s', group:'加工物资', name:'木炭', en:'Charcoal',          gen:(B)=>genSpecialPile(B,'charcoal') },
+  { key:'clay',       cat:'s', group:'矿物与材料', name:'黏土', en:'Clay', gen:(B)=>genEraMaterial(B,'clay'), tags:'世界自然生成 · 烧砖/陶窑前置' },
+  { key:'copperore',  cat:'s', group:'矿物与材料', name:'铜矿石', en:'Copper Ore', gen:(B)=>genEraMaterial(B,'copper'), tags:'世界自然生成 · 青铜链前置' },
+  { key:'tinore',     cat:'s', group:'矿物与材料', name:'锡矿石', en:'Tin Ore', gen:(B)=>genEraMaterial(B,'tin'), tags:'世界自然生成 · 稀缺青铜链前置' },
+  { key:'ironore',    cat:'s', group:'矿物与材料', name:'铁矿石', en:'Iron Ore', gen:(B)=>genEraMaterial(B,'ironore'), tags:'世界自然生成 · 铁器链前置' },
+  { key:'woodtool',   cat:'s', group:'时代工具', name:'木制生产工具', en:'Wood Tool', gen:(B)=>genEraMaterial(B,'woodtool'), tags:'原始部落 · 1.25× 采集效率' },
+  { key:'stonehoe',   cat:'s', group:'时代工具', name:'石锄', en:'Stone Hoe', gen:(B)=>genEraMaterial(B,'stonehoe'), tags:'农耕定居 · 1.50× 生产效率' },
+  { key:'bronzetool', cat:'s', group:'时代工具', name:'青铜工具', en:'Bronze Tool', gen:(B)=>genEraMaterial(B,'bronzetool'), tags:'古代文明 · 2.05× 生产效率' },
+  { key:'irontool',   cat:'s', group:'时代工具', name:'铁制工具', en:'Iron Tool', gen:(B)=>genEraMaterial(B,'irontool'), tags:'中世纪 · 2.60× 生产效率' },
+  // 野外 · 植被与动物
+  { key:'deer',       cat:'n', group:'动 物', name:'成年雄鹿', en:'Adult Male Deer', gen:genDeer, tags:'雄性 · 成年 · 鹿角 · 行走' },
+  { key:'deer-family',cat:'n', group:'动 物', name:'雌鹿与幼鹿', en:'Doe & Fawn',    gen:genDeerFamily, tags:'雌性/幼年 · 无鹿角 · 年龄缩放' },
+  { key:'rabbit',     cat:'n', group:'动 物', name:'兔',       en:'Rabbit',         gen:genRabbit },
+  { key:'boar',       cat:'n', group:'动 物', name:'野猪',     en:'Boar',           gen:genBoar, tags:'成年雄性 · 獠牙 · 奔跑' },
+  { key:'wolf',       cat:'n', group:'动 物', name:'狼',       en:'Wolf',           gen:genWolf, tags:'捕食者 · 追逐 · 低尾' },
+  { key:'animal-chase',cat:'n',group:'动物状态', name:'追逐与逃跑', en:'Chase & Flee', gen:genAnimalChase, tags:'狼追逐 · 兔逃跑 · 动态步态' },
+  { key:'animal-state',cat:'n',group:'动物状态', name:'受伤与死亡', en:'Injured & Dead',gen:genAnimalCondition, tags:'受伤 · 死亡 · 逃跑' },
+  { key:'sheep',      cat:'n', group:'动 物', name:'羊',       en:'Sheep',          gen:genSheep },
+  { key:'chicken',    cat:'n', group:'动 物', name:'鸡',       en:'Chicken',        gen:genChicken },
+  { key:'spruce',     cat:'n', group:'树 木', name:'云杉',   en:'Spruce',         gen:genSpruce },
+  { key:'oak',        cat:'n', group:'树 木', name:'橡木',   en:'Oak',            gen:genOak },
+  { key:'birch',      cat:'n', group:'树 木', name:'白桦',   en:'Birch',          gen:genBirch },
+  { key:'acacia',     cat:'n', group:'树 木', name:'金合欢', en:'Acacia',         gen:genAcacia },
+  { key:'sakura',     cat:'n', group:'树 木', name:'樱花树', en:'Sakura',         gen:genSakura },
+  { key:'palm',       cat:'n', group:'树 木', name:'棕榈',   en:'Palm',           gen:genPalm },
+  { key:'deadtree',   cat:'n', group:'树 木', name:'枯树',   en:'Dead Tree',      gen:genDeadTree },
+  { key:'bush',       cat:'n', group:'地表植被', name:'灌木丛', en:'Bushes',      gen:genBush },
+  { key:'flowers',    cat:'n', group:'地表植被', name:'花丛', en:'Flowers',       gen:genFlowers },
+  { key:'wheat',      cat:'n', group:'地表植被', name:'麦田', en:'Wheat Field',   gen:genWheat },
+  { key:'rocks',      cat:'n', group:'地表植被', name:'岩石', en:'Rocks',         gen:genRocks },
+  { key:'grasstuft',  cat:'n', group:'生态点缀', name:'草簇', en:'Grass Tuft',     gen:(B)=>genGroundDetail(B,'grass') },
+  { key:'reeds',      cat:'n', group:'生态点缀', name:'芦苇', en:'Reeds',           gen:(B)=>genGroundDetail(B,'reeds') },
+  { key:'mushrooms',  cat:'n', group:'生态点缀', name:'蘑菇', en:'Mushrooms',       gen:(B)=>genGroundDetail(B,'mushrooms') },
+  { key:'branch',     cat:'n', group:'生态点缀', name:'倒木枝', en:'Fallen Branch',  gen:(B)=>genGroundDetail(B,'branch') },
+  // 道路与桥梁
+  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · PackedSoil · Trail', note:'游戏会按真实夯土地表与相邻道路方向，拼接双行踩踏痕、碎土和嵌入石子。' },
+  { key:'stoneroad',  cat:'r', group:'道路演进', lv:3, name:'石板路',   en:'Stone Road',   gen:genStoneRoad },
+  { key:'gravelroad', cat:'r', group:'道路演进', lv:5, name:'碎石路',   en:'Gravel Road',  gen:genGravelRoad },
+  { key:'highway',    cat:'r', group:'道路演进', lv:6, name:'公路',     en:'Highway',      gen:genHighway },
+  { key:'neonaute',   cat:'r', group:'道路演进', lv:8, name:'光能大道', en:'Neon Avenue',  gen:genNeonAvenue },
+  { key:'woodbridge', cat:'r', group:'桥 梁', lv:2, name:'木桥',        en:'Wood Bridge',  gen:genWoodBridge },
+  { key:'stonebridge',cat:'r', group:'桥 梁', lv:3, name:'石拱桥',      en:'Arch Bridge',  gen:genStoneArchBridge },
+  { key:'ironbridge', cat:'r', group:'桥 梁', lv:5, name:'铁桥',        en:'Iron Bridge',  gen:genIronBridge },
+  // 环境 · 纪元状态
+  { key:'fire',       cat:'e', group:'火焰与焦土', name:'火焰',   en:'Fire',        gen:genFire,    ground:'ash', tags:'1/8 格微体素 · 动态火舌 · 上浮火星', note:'火芯、外焰与火星采用错相循环，石圈和木柴保持稳定。' },
+  { key:'scorched',   cat:'e', group:'火焰与焦土', name:'焦土残骸', en:'Scorched',    gen:genScorched, ground:'ash' },
+  { key:'snowdrift',  cat:'e', group:'冰雪覆盖',  name:'雪堆',   en:'Snowdrift',    gen:genSnowdrift, ground:'snow' },
+  { key:'icespikes',  cat:'e', group:'冰雪覆盖',  name:'冰锥',   en:'Ice Spikes',   gen:genIceSpikes, ground:'snow' },
+  { key:'snowspruce', cat:'e', group:'冰雪覆盖',  name:'雪松',   en:'Snow Spruce',  gen:genSnowSpruce, ground:'snow' },
+  { key:'rain',       cat:'e', group:'动态天气', name:'降雨与水波', en:'Rain & Ripples', gen:(B)=>genWeather(B,'rain'), ground:'wet', tags:'降雨线 · 水洼 · 扩散水波', note:'雨滴和水波随天气相位更新，地面色差压低为湿润过渡。' },
+  { key:'snowfall',   cat:'e', group:'动态天气', name:'降雪', en:'Snowfall',         gen:(B)=>genWeather(B,'snow'), ground:'snow' },
+  { key:'fog',        cat:'e', group:'动态天气', name:'雾带', en:'Fog Banks',         gen:(B)=>genWeather(B,'fog'), ground:'wet' },
+  { key:'storm',      cat:'e', group:'动态天气', name:'风暴', en:'Storm Wind',        gen:(B)=>genWeather(B,'storm'), ground:'wet', tags:'树冠摆动 · 横向风线 · 动态' },
+  { key:'drought',    cat:'e', group:'动态天气', name:'干旱', en:'Drought',           gen:(B)=>genWeather(B,'drought'), ground:'dry', tags:'地裂 · 枯黄草簇 · 暖土过渡' },
+];
+
+// 这里描述的是当前生产代码的接入状态，而不是素材完成度。
+const LIVE_ASSET_KEYS = new Set([
+  'adult-man','adult-woman','child','elder','dehydrated','walking','gathering','attacking','ingesting','crafting','working','tend-fire','attending',
+  'co-carry','communicate','care','companion','body-states','shared-cell','thatched','logcabin','stone',
+  'councilhearth','granary','well','workshop','kiln','handmill','foundry','civichall','smithy','keepcore',
+  'woodpile','stonepile','foodpile','seedpile','bundles','meatpile','hidepile','bonepile','stonetools','bonetools','spearrack','tablet','fiber','leather','rope','container','cookedfood','herbs','charcoal','clay','copperore','tinore','ironore','woodtool','stonehoe','bronzetool','irontool',
+  'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath',
+  'fire','scorched','snowdrift','icespikes','snowspruce','rain','snowfall','fog','storm','drought'
+]);
+const assetStatus = (s) => LIVE_ASSET_KEYS.has(s.key) ? 'live' : 'prototype';
+
+/* ================= 渲染器 / 场景 ================= */
+const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance', preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x161a20);
+
+const camera = new THREE.PerspectiveCamera(32, innerWidth/innerHeight, 0.5, 600);
+camera.position.set(26, 24, 26);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 3, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.5;
+controls.minDistance = 5;
+controls.maxDistance = 160;
+controls.autoRotateSpeed = 1.2;
+
+// 影棚环境（柔和渐变 → PMREM 环境反射）
+{
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 128);
+  grad.addColorStop(0, '#3a4356'); grad.addColorStop(0.5, '#232a36'); grad.addColorStop(1, '#12151b');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  scene.environmentIntensity = 0.7;
+  pmrem.dispose(); tex.dispose();
+}
+
+const sun = new THREE.DirectionalLight(0xfff0dc, 2.8);
+sun.position.set(40, 62, 26);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.5;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbfd2ec, 0x4a4438, 0.5));
+const rim = new THREE.DirectionalLight(0x9fb8e8, 0.6);
+rim.position.set(-36, 24, -40);
+scene.add(rim);
+
+// 阴影承接地面（仅显示柔和投影）
+{
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.ShadowMaterial({ opacity: 0.28 }));
+  ground.rotation.x = -Math.PI/2;
+  ground.position.y = -1.499;
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+/* ================= 后处理管线 ================= */
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(renderer.getPixelRatio());
+composer.setSize(innerWidth, innerHeight);
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+gtao.updateGtaoMaterial({ radius:0.8, distanceExponent:1, thickness:1, scale:1, samples:16, distanceFallOff:1, screenSpaceRadius:false });
+gtao.blendIntensity = 1.1;
+composer.addPass(gtao);
+
+const TiltShiftShader = {
+  uniforms: {
+    tDiffuse: { value:null },
+    uRes: { value:new THREE.Vector2(1,1) },
+    uFocusY: { value:0.5 }, uBand: { value:0.13 }, uMaxBlur: { value:9.0 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uFocusY,uBand,uMaxBlur;
+    varying vec2 vUv;
+    void main(){
+      float d = abs(vUv.y - uFocusY);
+      float b = smoothstep(uBand, uBand*3.0, d);
+      vec2 r = uMaxBlur * b / uRes;
+      vec3 col = texture2D(tDiffuse, vUv).rgb;
+      col += texture2D(tDiffuse, vUv + vec2( 1.0, 0.0)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2(-1.0, 0.0)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2( 0.0, 1.0)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2( 0.0,-1.0)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2( 0.707, 0.707)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2(-0.707, 0.707)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2( 0.707,-0.707)*r).rgb;
+      col += texture2D(tDiffuse, vUv + vec2(-0.707,-0.707)*r).rgb;
+      col /= 9.0;
+      float vig = 1.0 - smoothstep(0.4, 1.0, length(vUv - vec2(0.5)));
+      col *= mix(0.82, 1.0, vig);
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
+const tiltPass = new ShaderPass(TiltShiftShader);
+composer.addPass(tiltPass);
+composer.addPass(new OutputPass());
+const fxaa = new ShaderPass(FXAAShader);
+composer.addPass(fxaa);
+
+function updatePassSizes(){
+  const pr = renderer.getPixelRatio();
+  tiltPass.uniforms.uRes.value.set(innerWidth*pr, innerHeight*pr);
+  fxaa.material.uniforms.resolution.value.set(1/(innerWidth*pr), 1/(innerHeight*pr));
+}
+updatePassSizes();
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  gtao.setSize(innerWidth, innerHeight);
+  updatePassSizes();
+});
+
+/* ================= 生成 / 合批 / 取景 ================= */
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+const dummy = new THREE.Object3D();
+const ctmp = new THREE.Color();
+let meshGroup = new THREE.Group();
+scene.add(meshGroup);
+
+let curStyle = 0, seed = (Math.random()*1e9)|0, gridMode = 'p'; // gridMode: null | 'p' | 'b' | 'n'
+let lastExport = { name:'', seed:0, count:0, buckets:new Map() };
+
+function buildMeshes(buckets){
+  scene.remove(meshGroup);
+  meshGroup.traverse(o=>{ if (o.isInstancedMesh) o.dispose(); });
+  meshGroup = new THREE.Group();
+  let total = 0;
+  for (const [type, arr] of buckets){
+    const n = arr.length/7; total += n;
+    const mesh = new THREE.InstancedMesh(boxGeo, MATS[type], n);
+    for(let i=0;i<n;i++){
+      const o=i*7;
+      dummy.position.set(arr[o]*LAB_MICRO, arr[o+1]*LAB_MICRO, arr[o+2]*LAB_MICRO);
+      dummy.scale.set(arr[o+3]*LAB_MICRO, arr[o+4]*LAB_MICRO, arr[o+5]*LAB_MICRO);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      ctmp.setHex(arr[o+6]); mesh.setColorAt(i, ctmp);
+    }
+    mesh.castShadow = CAST_SHADOW.has(type);
+    mesh.receiveShadow = true;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    meshGroup.add(mesh);
+  }
+  scene.add(meshGroup);
+  return total;
+}
+
+function mergeInto(target, src, ox, oz){
+  for (const [type, arr] of src.buckets){
+    let a = target.get(type);
+    if (!a){ a=[]; target.set(type,a); }
+    const mx=ox/LAB_MICRO, mz=oz/LAB_MICRO;
+    for(let i=0;i<arr.length;i+=7)
+      a.push(arr[i]+mx, arr[i+1], arr[i+2]+mz, arr[i+3], arr[i+4], arr[i+5], arr[i+6]);
+  }
+}
+
+function regenerate(preserveView=false){
+  const buckets = new Map();
+  let total = 0, name = '';
+    const baseOf = (s) => (B) => {                               // 建筑石台座 / 环境草皮(雪/焦土)底座
+    if (s.base === 'none') return;
+    if (s.cat === 'b') addPedestal(B);
+    else addGround(B, 2, s.ground || 'grass');
+  };
+  if (gridMode){
+    const list = STYLES.filter(s => gridMode==='b' ? s.cat==='b' : gridMode==='p' ? s.cat==='p' : s.cat!=='b' && s.cat!=='p');
+    name = gridMode==='b' ? 'civilization-lv1-8' : gridMode==='p' ? 'people-and-actions' : 'environment-pack';
+    if (gridMode==='b'){
+      const S = 26;
+      list.forEach((s, i)=>{
+        rand = mulberry32(seed + i*7919);
+        const B = createBuilder();
+        s.gen(B); baseOf(s)(B);
+        mergeInto(buckets, B, (i%4)*S - 39, Math.floor(i/4)*S - 39);   // 4×4
+        total += B.count();
+      });
+      if (!preserveView){
+        controls.target.set(0, 3, 0);
+        camera.position.set(62, 56, 62);
+        setShadowExtent(58);
+      }
+    } else if (gridMode==='p') {
+      const S = 14, COLS = 5, rows = Math.ceil(list.length / COLS);
+      list.forEach((s, i)=>{
+        rand = mulberry32(seed + i*7919);
+        const B = createBuilder();
+        s.gen(B); baseOf(s)(B);
+        mergeInto(buckets, B, (i%COLS)*S - (COLS-1)*S/2, Math.floor(i/COLS)*S - (rows-1)*S/2);
+        total += B.count();
+      });
+      if (!preserveView){
+        controls.target.set(0, 2.2, 0);
+        camera.position.set(40, 34, 48);
+        setShadowExtent(46);
+      }
+    } else {
+      const S = 24, COLS = 5, rows = Math.ceil(list.length / COLS);    // 5×6
+      list.forEach((s, i)=>{
+        rand = mulberry32(seed + i*7919);
+        const B = createBuilder();
+        s.gen(B); baseOf(s)(B);
+        mergeInto(buckets, B, (i%COLS)*S - (COLS-1)*S/2, Math.floor(i/COLS)*S - (rows-1)*S/2);
+        total += B.count();
+      });
+      if (!preserveView){
+        controls.target.set(0, 2, 0);
+        camera.position.set(58, 54, 86);
+        setShadowExtent(78);
+      }
+    }
+    controls.maxDistance = 320;
+  } else {
+    const s = STYLES[curStyle];
+    name = s.key;
+    rand = mulberry32(seed);
+    const B = createBuilder();
+    s.gen(B); baseOf(s)(B);
+    for (const [t,a] of B.buckets) buckets.set(t, a);
+    total = B.count();
+    const maxY = B.bounds.maxY;
+    const span = Math.max(B.bounds.maxX-B.bounds.minX, B.bounds.maxZ-B.bounds.minZ);
+    const d = Math.max(span, maxY) * 1.35 + 12;
+    if (!preserveView){
+      controls.target.set(0, Math.max(2, maxY*0.42), 0);
+      camera.position.set(d*0.72, d*0.62, d*0.72);
+      setShadowExtent(Math.max(14, span/2 + 6));
+    }
+    controls.maxDistance = 160;
+  }
+  const drawn = buildMeshes(buckets);
+  lastExport = { name, seed, count: total, buckets };
+  document.getElementById('seedTag').textContent = `seed ${seed}${gridMode?' · 总览':''}`;
+  document.getElementById('stats').innerHTML =
+    `<b>${total.toLocaleString()}</b> cuboids · <b>${buckets.size}</b> batches · <b>${drawn.toLocaleString()}</b> instances`;
+  updateDetail();
+}
+
+function setShadowExtent(e){
+  sun.shadow.camera.left = -e; sun.shadow.camera.right = e;
+  sun.shadow.camera.top = e; sun.shadow.camera.bottom = -e;
+  sun.shadow.camera.near = 10; sun.shadow.camera.far = 220;
+  sun.shadow.camera.updateProjectionMatrix();
+}
+
+/* ================= UI ================= */
+const listEl = document.getElementById('styleList');
+const styleBtns = [];
+let lastLv = 0, lastCat = '', lastGroup = '';
+STYLES.forEach((s, i)=>{
+  if (s.cat !== lastCat){                                    // 大类分节
+    lastCat = s.cat; lastGroup = '';
+    const t = document.createElement('div');
+    t.className = 'section-title';
+    t.textContent = CAT_NAMES[s.cat];
+    listEl.appendChild(t);
+  }
+  const gk = s.cat==='b' ? `LV.${s.lv} · ${LV_NAMES[s.lv]}` : s.group;
+  if (s.cat!=='b' ? gk!==lastGroup : (s.cat==='b' && s.lv!==lastLv)){
+    if (s.cat==='b') lastLv = s.lv; else lastGroup = gk;
+    const h = document.createElement('div');
+    h.className = 'group';
+    h.textContent = gk;
+    listEl.appendChild(h);
+  }
+  const b = document.createElement('button');
+  b.className = 'style-btn';
+  const status = assetStatus(s);
+  b.innerHTML = `${s.name}<span class="status-dot ${status}">${status==='live'?'已接入':'原型'}</span><small>${s.en.toUpperCase()}</small>`;
+  b.onclick = ()=>{ gridMode = null; curStyle = i; refreshActive(); regenerate(); };
+  listEl.appendChild(b);
+  styleBtns.push(b);
+});
+const gridBtnB = document.createElement('button');
+gridBtnB.className = 'style-btn';
+gridBtnB.innerHTML = `总览 · 文明长卷<small>BUILDINGS 4 × 4</small>`;
+gridBtnB.onclick = ()=>{ gridMode = 'b'; refreshActive(); regenerate(); };
+listEl.appendChild(gridBtnB);
+const gridBtnP = document.createElement('button');
+gridBtnP.className = 'style-btn';
+gridBtnP.innerHTML = `总览 · 人物动作<small>PEOPLE & ACTIONS · AUTO GRID</small>`;
+gridBtnP.onclick = ()=>{ gridMode = 'p'; refreshActive(); regenerate(); };
+listEl.appendChild(gridBtnP);
+const gridBtnN = document.createElement('button');
+gridBtnN.className = 'style-btn';
+gridBtnN.innerHTML = `总览 · 世界素材<small>WORLD ASSETS · AUTO GRID</small>`;
+gridBtnN.onclick = ()=>{ gridMode = 'n'; refreshActive(); regenerate(); };
+listEl.appendChild(gridBtnN);
+function refreshActive(){
+  styleBtns.forEach((el, i)=> el.classList.toggle('active', !gridMode && i===curStyle));
+  gridBtnB.classList.toggle('active', gridMode==='b');
+  gridBtnP.classList.toggle('active', gridMode==='p');
+  gridBtnN.classList.toggle('active', gridMode==='n');
+}
+function updateDetail(){
+  const el = document.getElementById('detail');
+  if (gridMode==='p'){
+    el.innerHTML = `<b>人物与动作总览</b><span class="status live">已接入主游戏</span><br><span class="tags">年龄 · 身体状态 · 生产动作 · 社会交互</span><span class="note">动作会循环播放；道具、伤势和身体状态来自实际模拟字段。</span>`;
+    return;
+  }
+  if (gridMode){
+    const list = STYLES.filter(s=>gridMode==='b'?s.cat==='b':s.cat!=='b'&&s.cat!=='p');
+    const live = list.filter(s=>assetStatus(s)==='live').length;
+    el.innerHTML = `<b>${gridMode==='b'?'文明建筑长卷':'世界素材长卷'}</b><span class="tags">${live} 项已接入 · ${list.length-live} 项视觉原型</span><span class="note">原型可继续预览和导出，但不会暗示模拟规则已经支持。</span>`;
+    return;
+  }
+  const s = STYLES[curStyle];
+  const status = assetStatus(s);
+  el.innerHTML = `<b>${s.name} · ${s.en}</b><span class="status ${status}">${status==='live'?'已接入主游戏':'视觉原型 · 规则未接入'}</span><br><span class="tags">${s.tags || CAT_NAMES[s.cat]}</span>${s.note?`<span class="note">${s.note}</span>`:''}`;
+}
+refreshActive();
+
+document.getElementById('btnSeed').onclick = ()=>{ seed = (Math.random()*1e9)|0; regenerate(); };
+const btnRotate = document.getElementById('btnRotate');
+btnRotate.onclick = ()=>{ controls.autoRotate = !controls.autoRotate; btnRotate.classList.toggle('on', controls.autoRotate); };
+document.getElementById('btnPNG').onclick = ()=>{
+  composer.render();
+  const a = document.createElement('a');
+  a.href = renderer.domElement.toDataURL('image/png');
+  a.download = `voxel-${lastExport.name}-${lastExport.seed}.png`;
+  a.click();
+};
+document.getElementById('btnJSON').onclick = ()=>{
+  const cuboids = {};
+  for (const [type, arr] of lastExport.buckets){
+    const list = [];
+    for(let i=0;i<arr.length;i+=7)
+      list.push([arr[i], arr[i+1], arr[i+2], arr[i+3], arr[i+4], arr[i+5], arr[i+6]]);
+    cuboids[type] = list;
+  }
+  const data = {
+    format: 'micro-cuboid-v2', generator: lastExport.name, seed: lastExport.seed,
+    mapCellMicroVoxels: MICRO_PER_MAP_CELL, worldUnitPerMicroVoxel: 1/MICRO_PER_MAP_CELL,
+    legacyVoxelMicroSize: LEGACY_VOXEL_MICROS,
+    note: '每个构件: [mx, my中心, mz, sx, sy, sz, 0xRRGGBB]；坐标和尺寸均以 1/8 地图格计',
+    count: lastExport.count, cuboids,
+  };
+  const blob = new Blob([JSON.stringify(data)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `voxel-${lastExport.name}-${lastExport.seed}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+addEventListener('keydown', (e)=>{
+  if (e.key >= '1' && e.key <= '8'){                    // 跳转到对应文明等级的首个建筑
+    const idx = STYLES.findIndex(s => s.cat==='b' && s.lv === +e.key);
+    if (idx >= 0){ gridMode = null; curStyle = idx; refreshActive(); regenerate(); }
+  }
+  if (e.key === '9'){ gridMode = 'b'; refreshActive(); regenerate(); }   // 建筑长卷
+  if (e.key === '0'){ gridMode = 'n'; refreshActive(); regenerate(); }   // 环境长卷
+  if (e.key.toLowerCase() === 'p'){ gridMode = 'p'; refreshActive(); regenerate(); }
+});
+
+/* ================= 主循环 ================= */
+const clock = new THREE.Clock();
+let lastHumanRefresh = 0;
+let lastAnimalRefresh = 0;
+let lastFireRefresh = 0;
+let lastWeatherRefresh = 0;
+const ANIMATED_ANIMAL_KEYS = new Set(['deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','sheep','chicken']);
+const ANIMATED_WEATHER_KEYS = new Set(['rain','snowfall','fog','storm']);
+renderer.setAnimationLoop((now)=>{
+  const showingPeople = gridMode==='p' || (!gridMode && STYLES[curStyle].cat==='p');
+  if (showingPeople && now-lastHumanRefresh > 100){
+    humanAnimPhase = now*0.006;
+    regenerate(true);
+    lastHumanRefresh = now;
+  }
+  const showingAnimal = !gridMode && ANIMATED_ANIMAL_KEYS.has(STYLES[curStyle].key);
+  if (showingAnimal && now-lastAnimalRefresh > 66){
+    animalAnimPhase = now*0.0055;
+    regenerate(true);
+    lastAnimalRefresh = now;
+  }
+  const showingFire = !gridMode && STYLES[curStyle].key==='fire';
+  if (showingFire && now-lastFireRefresh > 50){
+    fireAnimPhase = now*0.0065;
+    regenerate(true);
+    lastFireRefresh = now;
+  }
+  const showingWeather = !gridMode && ANIMATED_WEATHER_KEYS.has(STYLES[curStyle].key);
+  if (showingWeather && now-lastWeatherRefresh > 75){
+    weatherAnimPhase = now*0.0048;
+    regenerate(true);
+    lastWeatherRefresh = now;
+  }
+  MATS.glowWarm.emissiveIntensity = 1.25 + Math.sin(now*0.011)*0.2 + Math.sin(now*0.027+1.2)*0.08;
+  MATS.glowRed.emissiveIntensity = 1.4 + Math.sin(now*0.014+1)*0.22 + Math.sin(now*0.031)*0.08;
+  controls.update();
+  composer.render();
+});
+regenerate();
+</script>
+</body>
+</html>

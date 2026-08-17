@@ -8,6 +8,8 @@ import type { RecordPayload } from './record';
 import type { CollectiveState } from './collective';
 import type { ResourcePermission } from './permission';
 import type { ContainerState } from './container';
+import type { AnimalState } from './animal';
+import type { ProjectState } from './project';
 
 export * from './action';
 export * from './material';
@@ -16,6 +18,7 @@ export * from './person';
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
 export type ClimateBias = 'balanced' | 'cold' | 'hot';
+export type WeatherKind = 'clear' | 'rain' | 'storm' | 'drought' | 'snow' | 'fog';
 
 export interface SimulationConfig {
   civilizationNo: number;
@@ -34,6 +37,8 @@ export interface DropState {
   quantity: number;
   createdAtMonth: number;
   sourceEventIds: string[];
+  /** Exact physical sources this drop descended from across transfers. */
+  sourceLineageKeys?: string[];
   recordPayloadId?: string;
 }
 
@@ -43,6 +48,7 @@ export interface DecisionContext {
   visibleCells: number[];
   visiblePeople: PersonState[];
   visibleDrops: DropState[];
+  visibleAnimals: AnimalState[];
   options: ActionOption[];
   followUpOptions: ActionOption[];
   activeIntent?: Intent;
@@ -60,6 +66,10 @@ export interface BaseEvent {
   id: string;
   atMonth: number;
   orderInMonth: number;
+  /** 0 denotes a month-boundary system process; person actions use 1..15. */
+  planningTick?: number;
+  /** Stable order among facts committed in the same planning tick. */
+  orderInTick?: number;
   cellId: number;
 }
 
@@ -102,7 +112,7 @@ export interface ActionFact extends BaseEvent {
 
 export interface EnvironmentFact extends BaseEvent {
   kind: 'environment';
-  change: 'climate' | 'body' | 'condition' | 'death' | 'resource' | 'material';
+  change: 'founding' | 'climate' | 'weather' | 'prediction' | 'animal' | 'body' | 'condition' | 'death' | 'resource' | 'material';
   who?: PersonId;
   result: string;
   diff: Record<string, unknown>;
@@ -136,7 +146,31 @@ export interface PracticeObservation {
 }
 
 export interface InstitutionObservation { key: string; label: string; evidenceEventIds: string[]; note: string }
-export interface MilestoneObservation { id: string; label: string; evidenceEventIds: string[]; note: string; observedAtMonth?: number }
+export type MilestoneValence = 'constructive' | 'harmful' | 'ambivalent';
+export type MilestonePhase = 'emergence' | 'practice' | 'stable' | 'decline' | 'collapse' | 'recovery' | 'harm' | 'response';
+
+/**
+ * A replayable observer result, never an agent goal or unlock flag.
+ * Optional metadata keeps schema-16 saves and the original numeric milestones
+ * readable while the capability-map observer is introduced incrementally.
+ */
+export interface MilestoneObservation {
+  id: string;
+  label: string;
+  evidenceEventIds: string[];
+  note: string;
+  observedAtMonth?: number;
+  capabilityId?: number;
+  catalogKind?: 'map' | 'world-specific';
+  mapLabel?: string;
+  domain?: string;
+  valence?: MilestoneValence;
+  phase?: MilestonePhase;
+  participantIds?: PersonId[];
+  affectedPersonIds?: PersonId[];
+  definitionVersion?: string;
+  occurrenceCount?: number;
+}
 
 export interface EmergentRegion {
   id: string;
@@ -168,17 +202,111 @@ export interface DecisionMonthLedger {
   livingAgents: number;
   candidates: number;
   modelContexts: number;
+  ordinaryModelContexts?: number;
+  exemptModelContexts?: number;
   inputTokens: number;
   outputTokens: number;
   chargedTokens: number;
+  ordinaryChargedTokens?: number;
+}
+
+export interface EraSchedule {
+  sequence: number;
+  kind: EpochKind;
+  sinceMonth: number;
+  endsAtMonth: number;
+  dominantClimate: ClimateKind;
+}
+
+export interface EraPrediction {
+  id: string;
+  predictorId: PersonId;
+  audienceIds: PersonId[];
+  madeAtMonth: number;
+  targetEpoch: EpochKind;
+  predictedStartMonth: number;
+  toleranceMonths: number;
+  expiresAtMonth: number;
+  status: 'pending' | 'correct' | 'incorrect';
+  resolvedAtMonth?: number;
+  errorMonths?: number;
+  sourceEventIds: string[];
+}
+
+export interface CivilizationIndexComponent {
+  score: number;
+  weight: number;
+  evidence: Record<string, number>;
+}
+
+export interface CivilizationIndex {
+  /** Observer formula only; planners never read this value. */
+  formulaVersion?: string;
+  total: number;
+  calculatedAtMonth: number;
+  components: {
+    population: CivilizationIndexComponent;
+    territory: CivilizationIndexComponent;
+    technology: CivilizationIndexComponent;
+    social: CivilizationIndexComponent;
+    history: CivilizationIndexComponent;
+  };
+}
+
+export type DevelopmentEraKey = 'primitive-tribe' | 'agrarian-settlement' | 'ancient-civilization' | 'medieval';
+export type MaterialCapabilityStage = 'hypothesis' | 'sample' | 'repeatable' | 'distributed' | 'institutional';
+
+export interface MaterialCapabilityObservation {
+  key: 'processed-wood' | 'masonry-stone' | 'bronze' | 'iron';
+  stage: MaterialCapabilityStage;
+  successfulBatchEventIds: string[];
+  failedBatchEventIds: string[];
+  producerIds: PersonId[];
+  adoptedActionEventIds: string[];
+  productionSiteMaterialIds: MaterialId[];
+  supportingInstitutionKeys: string[];
+}
+
+export interface FunctionalBuildingObservation {
+  id: string;
+  kind: 'core' | 'storage' | 'water' | 'workshop' | 'kiln' | 'mill' | 'foundry' | 'smithy';
+  materialId: MaterialId;
+  cellId: number;
+  z: number;
+  installedAtMonth: number;
+  installationEventIds: string[];
+  useEventIds: string[];
+  userIds: PersonId[];
+  functionSummary: string;
+  active: boolean;
+}
+
+export interface CivilizationDevelopmentObservation {
+  observerVersion: 'material-institution-era-v1';
+  currentEra: DevelopmentEraKey;
+  historicalPeakEra: DevelopmentEraKey;
+  candidateEra: DevelopmentEraKey;
+  candidateSinceMonth: number;
+  transitionProgress: number;
+  satisfiedGateIds: string[];
+  missingGateIds: string[];
+  supportingEventIds: string[];
+  materialCapabilities: MaterialCapabilityObservation[];
 }
 
 export interface SimulationState {
-  schemaVersion: 14;
+  schemaVersion: 16;
   seed: number;
   branchId: string;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
-  world: { grid: VoxelWorld; drops: DropState[]; past: WorldEvent[] };
+  world: {
+    grid: VoxelWorld;
+    drops: DropState[];
+    animals: AnimalState[];
+    past: WorldEvent[];
+    /** Incremental traversal counts keyed by `cellId:z`. */
+    traffic?: Record<string, number>;
+  };
   people: PersonState[];
   intents: Intent[];
   agreements: Agreement[];
@@ -186,15 +314,21 @@ export interface SimulationState {
   collectives: CollectiveState[];
   permissions: ResourcePermission[];
   containers: ContainerState[];
+  eraPredictions: EraPrediction[];
+  projects: ProjectState[];
   civilization: {
     number: number;
     status: 'running' | 'ended';
     stage: string;
     epoch: EpochKind;
+    era: EraSchedule;
     climate: { kind: ClimateKind; severity: number; sinceMonth: number };
+    weather: { kind: WeatherKind; intensity: number; sinceMonth: number };
     externalClimate?: { epoch: EpochKind; kind: ClimateKind; severity: number };
     conditions: SimulationConfig;
-    integrity: number;
+    civilizationIndex: CivilizationIndex;
+    /** Pure observer state. Planners and world rules must never read it. */
+    development?: CivilizationDevelopmentObservation;
     outcome?: { kind: 'destroyed' | 'boundary' | 'milestones'; cause: string; atMonth: number; summary: string };
   };
   decisionBudget: { credits: number; tokensPerContext: number; ledgers: DecisionMonthLedger[] };
@@ -204,6 +338,7 @@ export interface SimulationState {
     milestones: MilestoneObservation[];
     regions: EmergentRegion[];
     structures: DerivedStructure[];
+    functionalBuildings?: FunctionalBuildingObservation[];
   };
   lastStep: WorldEvent[];
 }
@@ -218,7 +353,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 14;
+  schemaVersion: 16;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

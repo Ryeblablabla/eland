@@ -108,7 +108,7 @@ export default function AgentCard({ agent, intents, history, historyLoading, wor
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-base tracking-[0.22em] text-slate-100">{agent.name}</div>
-          <div className="mt-1 truncate text-[10px] tracking-[0.14em] text-slate-500">{agent.generation === 0 ? '初代' : `第 ${agent.generation} 代`} · {agent.state === 'dead' ? '已故' : agent.state === 'dehydrated' ? '脱水' : '存活'} · 格 {agent.cellId % worldWidth}, {Math.floor(agent.cellId / worldWidth)} · 高度 {agent.z}</div>
+          <div className="mt-1 truncate text-[10px] tracking-[0.14em] text-slate-500">{agent.generation === 0 ? '初代' : `第 ${agent.generation} 代`} · {agent.state === 'dead' ? '已故' : agent.state === 'hibernating' ? '脱水休眠' : agent.state === 'dehydrated' ? '严重缺水' : '存活'} · 格 {agent.cellId % worldWidth}, {Math.floor(agent.cellId / worldWidth)} · 高度 {agent.z}</div>
         </div>
         <button
           aria-label="关闭人物卡"

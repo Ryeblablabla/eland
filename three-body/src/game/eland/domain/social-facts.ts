@@ -1,14 +1,15 @@
 import type { ActionFact, SimulationState } from './model';
 import type { PersonId } from './person';
 import type { RepresentationInput } from './action';
-import type { Agreement } from './agreement';
+import { activeReproductionAgreementBetween, type Agreement } from './agreement';
+import { communicationByRepresentationId, completedCommunications, worldEventById } from './event-index';
 
 export function completedCommunicationFacts(state: SimulationState): ActionFact[] {
-  return state.world.past.filter((event): event is ActionFact => event.kind === 'action' && event.status === 'completed' && event.action.kind === 'communicate');
+  return [...completedCommunications(state)];
 }
 
 export function communicationById(state: SimulationState, representationId: string): ActionFact | undefined {
-  return completedCommunicationFacts(state).find((event) => event.action.kind === 'communicate' && event.action.content.id === representationId);
+  return communicationByRepresentationId(state, representationId);
 }
 
 export function acceptanceOf(state: SimulationState, representationId: string, byPersonId?: PersonId): ActionFact | undefined {
@@ -26,7 +27,7 @@ export function rejectionOf(state: SimulationState, representationId: string, by
 }
 
 function communicationFact(state: SimulationState, eventId: string): ActionFact | undefined {
-  const fact = state.world.past.find((event) => event.id === eventId);
+  const fact = worldEventById(state, eventId);
   return fact?.kind === 'action' && fact.action.kind === 'communicate' ? fact : undefined;
 }
 
@@ -46,10 +47,7 @@ export function openReproductionOfferFor(state: SimulationState, personId: Perso
 }
 
 export function acceptedReproductionBetween(state: SimulationState, a: PersonId, b: PersonId, atMonth: number): { offer: ActionFact; acceptance: ActionFact } | null {
-  const agreement = [...state.agreements].reverse().find((item) => item.status === 'active'
-    && item.proposal.kind === 'reproduce'
-    && item.partyIds.includes(a) && item.partyIds.includes(b)
-    && (item.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth);
+  const agreement = activeReproductionAgreementBetween(state, a, b, atMonth);
   if (!agreement) return null;
   const facts = agreementFacts(state, agreement);
   return facts?.responseFact ? { offer: facts.proposalFact, acceptance: facts.responseFact } : null;
@@ -158,6 +156,14 @@ export function hasOpenAssistRequestBetween(state: SimulationState, requesterId:
 export function hasOpenCompanionOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
   return state.agreements.some((agreement) => agreement.status === 'proposed'
     && agreement.proposal.kind === 'companion'
+    && agreement.proposal.proposerId === proposerId
+    && agreement.proposal.partnerId === partnerId
+    && agreement.acceptByMonth >= state.clock.elapsedMonths);
+}
+
+export function hasOpenReproductionOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
+  return state.agreements.some((agreement) => agreement.status === 'proposed'
+    && agreement.proposal.kind === 'reproduce'
     && agreement.proposal.proposerId === proposerId
     && agreement.proposal.partnerId === partnerId
     && agreement.acceptByMonth >= state.clock.elapsedMonths);

@@ -3,6 +3,7 @@ import { Material, materialDefinition, materialHas, type MaterialId } from '../d
 import { isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
 import { cellId, cellX, cellY, neighbors4, voxelAt } from '../world/grid';
+import { completedConstructionActions } from '../domain/event-index';
 
 type CandidateKind = 'grounded' | 'vertical' | 'lateral' | 'overhead';
 
@@ -21,8 +22,7 @@ function occupiedByBody(state: SimulationState, position: ConnectionCandidate['p
 }
 
 function constructedStructurePositions(state: SimulationState): Set<string> {
-  return new Set(state.world.past.flatMap((event) => {
-    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'act' || event.action.operation !== 'combine') return [];
+  return new Set(completedConstructionActions(state).flatMap((event) => {
     const materialId = Number(event.diff.outputMaterialId);
     const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
     if (!materialHas(materialId, 'solid') || !materialHas(materialId, 'building')

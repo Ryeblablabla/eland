@@ -17,6 +17,8 @@ const SYSTEM_PROMPT = [
   '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
   'activePressures 是当前状态正在造成的真实后果；材料 properties 是可观察或已知的同类物质性质，不代表你已经知道隐藏配方。危险状态加重时，应比较能够改变长期暴露的材料试验、建造、移动与合作机会，而不是只重复囤积已经充足的物资。',
   '吃、喝等生存反射和既有意图的日常执行由规则引擎负责。你只选择重要的战略或社会意图，不要输出 continue。',
+  '优先处理没有持续目标的人，以及停滞但尚未完成的生产状态目标。普通寒暄、重复邀请和重复提议应低于采集、制作、建造、储藏、试验与履约；近期已经发生过的同类社交不要再次发起。',
+  'activeIntent.stateGoalUntilMonth 表示该生产状态需要维持到的复核月份。目标暂时达成时规则引擎会维护它；除非出现紧急危险、履约义务或明显更高价值的机会，不要仅因本月没有新动作而改换目标。',
   '输入中的 options 都已通过引擎的身体、物质、距离、关系事实与权利前提检查；它们是当下可以尝试的可行意图，不是引擎建议。是否愿意做，应由你结合 drives、记忆、关系和风险决定。',
   'position、visiblePeople 和 visibleDrops 中的 z 是双脚或物品所在高度；同一 cellId 但 z 不同不等于近身。建造选项是不同的真实空气体素连接位置，你可以依据“落地、上方、侧面、头顶”等摘要选择空间意图，物理可行性和效果仍由引擎结算。',
   '如果行动选项是同一提议的 accept 与 reject，你必须依据关系、记忆、风险、可履行性和自身倾向选择其中一个，不能 idle。',
@@ -126,6 +128,23 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   return null;
 }
 
+function fallbackDecision(context: DecisionRequestContext): Decision {
+  const option = context.options[0];
+  const followUp = option?.requiresFollowUp ? context.followUpOptions[0] : undefined;
+  const canUseOption = Boolean(option && (!option.requiresFollowUp || followUp));
+  const requiredAction = Boolean(option && /^(accept|reject)-|^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|rejoin-companion|rejoin-collective|contribute-mandate|distribute-mandate|use-permission):/.test(option.id));
+  const optionFields = option && canUseOption ? {
+    optionId: option.id,
+    ...(option.requiresFollowUp && followUp ? { followUpOptionId: followUp.id } : {}),
+  } : null;
+  if (context.activeIntent && requiredAction && optionFields) {
+    return { kind: 'revise', intentId: context.activeIntent.id, ...optionFields, reason: '模型连续引用非法选项，改用引擎提供的必须回应或履约选项' };
+  }
+  if (context.activeIntent) return { kind: 'idle', reason: '模型连续引用非法选项，保留并继续已有意图' };
+  if (optionFields) return { kind: 'start', ...optionFields, reason: '模型连续引用非法选项，改用排序后的首个合法状态目标' };
+  return { kind: 'idle', reason: '模型连续引用非法选项，当前没有可执行的合法目标' };
+}
+
 async function decideOne(context: DecisionRequestContext, apiKey: string, provider: ModelProvider): Promise<{ decision: Decision | null; usage: TokenUsage }> {
   let correction: { invalidContent: string; problem: string } | undefined;
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
@@ -158,7 +177,7 @@ async function decideOne(context: DecisionRequestContext, apiKey: string, provid
     if (decision) return { decision, usage };
     correction = { invalidContent: completion.content, problem: '引用了不存在的 optionId / intentId，或对话选项缺少合法 followUpOptionId' };
   }
-  throw new Error(`Kimi 连续两次没有返回合法关键决策：${correction?.invalidContent.trim().slice(0, 240) ?? '空响应'}`);
+  return { decision: fallbackDecision(context), usage };
 }
 
 function isContext(value: unknown): value is DecisionRequestContext {

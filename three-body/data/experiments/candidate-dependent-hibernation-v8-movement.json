@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "results": [
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-dependent-hibernation-v8-s185-y30-r1/state.json",
+      "runId": "candidate-dependent-hibernation-v8-s185-y30-r1",
+      "throughMonth": 360,
+      "moves": 3665,
+      "traversedCells": 746,
+      "reversals": 640,
+      "reversalShare": 17.46,
+      "causeCounts": {
+        "intent": 2405,
+        "survival-reflex": 1260
+      },
+      "reversalCausePairs": {
+        "intent->intent": 189,
+        "survival-reflex->survival-reflex": 346,
+        "intent->survival-reflex": 43,
+        "survival-reflex->intent": 62
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-dependent-hibernation-v8-s20260815-y30-r1/state.json",
+      "runId": "candidate-dependent-hibernation-v8-s20260815-y30-r1",
+      "throughMonth": 360,
+      "moves": 3716,
+      "traversedCells": 695,
+      "reversals": 365,
+      "reversalShare": 9.82,
+      "causeCounts": {
+        "intent": 2386,
+        "survival-reflex": 1330
+      },
+      "reversalCausePairs": {
+        "intent->intent": 166,
+        "intent->survival-reflex": 74,
+        "survival-reflex->survival-reflex": 49,
+        "survival-reflex->intent": 76
+      }
+    },
+    {
+      "file": "/Users/wangyu.rye/Desktop/eland/three-body/data/runs/candidate-dependent-hibernation-v8-s20260816-y30-r1/state.json",
+      "runId": "candidate-dependent-hibernation-v8-s20260816-y30-r1",
+      "throughMonth": 360,
+      "moves": 3143,
+      "traversedCells": 565,
+      "reversals": 311,
+      "reversalShare": 9.9,
+      "causeCounts": {
+        "intent": 2313,
+        "survival-reflex": 830
+      },
+      "reversalCausePairs": {
+        "intent->intent": 190,
+        "survival-reflex->intent": 50,
+        "survival-reflex->survival-reflex": 43,
+        "intent->survival-reflex": 28
+      }
+    }
+  ]
+}

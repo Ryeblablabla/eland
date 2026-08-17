@@ -1,4 +1,4 @@
-import { Material, materialDefinition, type MaterialId } from './material';
+import { Material, materialDefinition, materialHas, type MaterialId } from './material';
 
 export interface VoxelSeparationRule {
   id: string;
@@ -32,6 +32,13 @@ const VOXEL_SEPARATION_RULES: readonly VoxelSeparationRule[] = [
 
 export function voxelSeparationRuleFor(materialId: MaterialId): VoxelSeparationRule | undefined {
   return VOXEL_SEPARATION_RULES.find((rule) => rule.inputMaterialId === materialId);
+}
+
+export function separationToolFits(rule: VoxelSeparationRule, materialId: MaterialId): boolean {
+  if (rule.requiredToolMaterialId === undefined) return true;
+  if (materialId === rule.requiredToolMaterialId) return true;
+  return materialHas(materialId, 'tool')
+    && materialDefinition(materialId).hardness >= materialDefinition(rule.requiredToolMaterialId).hardness;
 }
 
 export function separationTechniqueId(rule: VoxelSeparationRule): string {

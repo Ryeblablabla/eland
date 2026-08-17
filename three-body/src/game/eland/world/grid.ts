@@ -6,12 +6,14 @@ export const WORLD_LEVELS = 12;
 export const WORLD_CELL_COUNT = WORLD_WIDTH * WORLD_DEPTH;
 export const WORLD_VOXEL_COUNT = WORLD_CELL_COUNT * WORLD_LEVELS;
 
+export type WorldGeneratorVersion = 'material-world-v1' | 'material-world-v2-flat' | 'material-world-v3-biomes' | 'material-world-v4-regional-geology';
+
 export interface VoxelWorld {
   version: 2;
   width: typeof WORLD_WIDTH;
   depth: typeof WORLD_DEPTH;
   levels: typeof WORLD_LEVELS;
-  generator: { version: 'material-world-v1'; seed: number };
+  generator: { version: WorldGeneratorVersion; seed: number };
   palette: typeof MATERIAL_PALETTE;
   voxels: Uint16Array;
 }
@@ -20,6 +22,23 @@ export interface StandingPosition {
   cellId: number;
   /** 双脚所在的空气体素。 */
   z: number;
+}
+
+interface SpatialCache {
+  standingZByCell: Array<number[] | undefined>;
+  paths: Map<string, Int32Array>;
+}
+
+const spatialCaches = new WeakMap<VoxelWorld, SpatialCache>();
+const MAX_CACHED_PATHS = 1_024;
+
+function spatialCache(world: VoxelWorld): SpatialCache {
+  let cache = spatialCaches.get(world);
+  if (!cache) {
+    cache = { standingZByCell: new Array(WORLD_CELL_COUNT), paths: new Map() };
+    spatialCaches.set(world, cache);
+  }
+  return cache;
 }
 
 export function cellId(x: number, y: number): number {
@@ -49,7 +68,14 @@ export function voxelAt(world: VoxelWorld, x: number, y: number, z: number): Mat
 
 export function setVoxel(world: VoxelWorld, x: number, y: number, z: number, materialId: MaterialId): void {
   if (x < 0 || x >= world.width || y < 0 || y >= world.depth || z < 0 || z >= world.levels) return;
-  world.voxels[voxelIndex(x, y, z)] = materialId;
+  const index = voxelIndex(x, y, z);
+  if (world.voxels[index] === materialId) return;
+  world.voxels[index] = materialId;
+  const cache = spatialCaches.get(world);
+  if (cache) {
+    cache.standingZByCell[cellId(x, y)] = undefined;
+    cache.paths.clear();
+  }
 }
 
 export function topZ(world: VoxelWorld, id: number): number {
@@ -133,12 +159,16 @@ export function isStandingPosition(world: VoxelWorld, position: StandingPosition
 
 export function standingPositions(world: VoxelWorld, id: number): StandingPosition[] {
   if (!isCellId(id)) return [];
-  const result: StandingPosition[] = [];
+  const cache = spatialCache(world);
+  const cached = cache.standingZByCell[id];
+  if (cached) return cached.map((z) => ({ cellId: id, z }));
+  const standingZ: number[] = [];
   for (let z = 1; z + 1 < world.levels; z += 1) {
     const position = { cellId: id, z };
-    if (isStandingPosition(world, position)) result.push(position);
+    if (isStandingPosition(world, position)) standingZ.push(z);
   }
-  return result;
+  cache.standingZByCell[id] = standingZ;
+  return standingZ.map((z) => ({ cellId: id, z }));
 }
 
 export function surfaceStandingPosition(world: VoxelWorld, id: number): StandingPosition | null {
@@ -220,6 +250,12 @@ function positionFromStandingIndex(index: number): StandingPosition {
   return { cellId: index % WORLD_CELL_COUNT, z: Math.floor(index / WORLD_CELL_COUNT) };
 }
 
+function rememberPath(cache: SpatialCache, key: string, path: StandingPosition[]): StandingPosition[] {
+  if (cache.paths.size >= MAX_CACHED_PATHS) cache.paths.clear();
+  cache.paths.set(key, Int32Array.from(path.map(standingIndex)));
+  return path;
+}
+
 function standingHeuristic(position: StandingPosition, goals: StandingPosition[]): number {
   return goals.reduce((best, goal) => Math.min(best,
     Math.abs(cellX(position.cellId) - cellX(goal.cellId))
@@ -235,10 +271,14 @@ export function findStandingPath(
   start: StandingPosition,
   goal: { cellId: number; z?: number },
 ): StandingPosition[] {
-  if (!isStandingPosition(world, start)) return [];
+  const cache = spatialCache(world);
+  const cacheKey = `${start.cellId}:${start.z}>${goal.cellId}:${goal.z ?? '*'}`;
+  const cached = cache.paths.get(cacheKey);
+  if (cached) return Array.from(cached, positionFromStandingIndex);
+  if (!isStandingPosition(world, start)) return rememberPath(cache, cacheKey, []);
   const goals = standingPositions(world, goal.cellId).filter((position) => goal.z === undefined || position.z === goal.z);
-  if (!goals.length) return [];
-  if (goals.some((candidate) => sameStandingPosition(candidate, start))) return [start];
+  if (!goals.length) return rememberPath(cache, cacheKey, []);
+  if (goals.some((candidate) => sameStandingPosition(candidate, start))) return rememberPath(cache, cacheKey, [{ ...start }]);
   const goalIndexes = new Set(goals.map(standingIndex));
   const startIndex = standingIndex(start);
   const open = new Set<number>([startIndex]);
@@ -263,7 +303,7 @@ export function findStandingPath(
         currentIndex = cameFrom[currentIndex];
         path.push(positionFromStandingIndex(currentIndex));
       }
-      return path.reverse();
+      return rememberPath(cache, cacheKey, path.reverse());
     }
     open.delete(currentIndex);
     const current = positionFromStandingIndex(currentIndex);
@@ -280,7 +320,7 @@ export function findStandingPath(
       }
     }
   }
-  return [];
+  return rememberPath(cache, cacheKey, []);
 }
 
 export function cellsInRadius(origin: number, radius: number): number[] {
@@ -330,7 +370,10 @@ export function hydrateWorld(input: VoxelWorld): VoxelWorld {
     width: WORLD_WIDTH,
     depth: WORLD_DEPTH,
     levels: WORLD_LEVELS,
-    generator: { version: 'material-world-v1', seed: Number(input.generator?.seed ?? 0) },
+    generator: {
+      version: input.generator?.version ?? 'material-world-v1',
+      seed: Number(input.generator?.seed ?? 0),
+    },
     palette: MATERIAL_PALETTE,
     voxels,
   };

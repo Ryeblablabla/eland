@@ -52,7 +52,7 @@ interface Props {
   collapseHold?: boolean;  // 文明毁灭时冻结宇宙，等待结算
   respawnToken?: number;   // 自增 = 结算完毕，新文明启程
   onStats?: (s: SimStats) => void;
-  planetFocusEnabled?: boolean;              // 允许点击行星进入聚焦（演化页传）
+  planetFocusEnabled?: boolean;              // 允许向内滚动自动聚焦行星
   onPlanetFocusChange?: (focused: boolean) => void;
   onPlanetDive?: () => void;                 // 聚焦后继续滚轮放大越过阈值 → 请求俯冲进入人间
   exitFocusToken?: number;                   // 自增 = 退出聚焦，相机回星系质心
@@ -71,13 +71,18 @@ function makeGlowTexture(color: string): THREE.CanvasTexture {
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, color);
-  grad.addColorStop(0.18, color + 'cc');
-  grad.addColorStop(0.45, color + '44');
+  // 中心留空给实体星球表面，外侧才出现柔和日冕。
+  grad.addColorStop(0, color + '00');
+  grad.addColorStop(0.28, color + '00');
+  grad.addColorStop(0.38, color + 'aa');
+  grad.addColorStop(0.6, color + '33');
   grad.addColorStop(1, color + '00');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  // Canvas 颜色来自 CSS 色值，本身已是 sRGB；不标记会被 OutputPass 再提亮一次。
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 /** 白色径向渐变，配合 SpriteMaterial 的 color/opacity 调色 */
@@ -104,7 +109,10 @@ function makeBackdropTexture(): THREE.CanvasTexture {
   grad.addColorStop(1, '#02030a');
   g.fillStyle = grad;
   g.fillRect(0, 0, 512, 512);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  // 保住 #0a0e1f 的真实黑位，避免被当作线性色后输出成灰蓝色。
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 interface DisposableObject {
@@ -204,7 +212,7 @@ export default function ThreeBodyCanvas(props: Props) {
     controls.addEventListener('start', () => { manualUntil = Infinity; });
     controls.addEventListener('end', () => { manualUntil = performance.now() + 4000; });
 
-    // ---- 行星聚焦（演化页启用）：点击行星 → 相机环绕行星；继续滚轮放大 → 俯冲进入人间 ----
+    // ---- 行星聚焦：向内滚动 → 相机自动聚焦行星；继续放大 → 俯冲进入人间 ----
     const focus = {
       active: false,      // 聚焦中
       planetR: 0.05,      // 行星视觉半径（聚焦时从等效像素大小平滑实体化）
@@ -213,7 +221,7 @@ export default function ThreeBodyCanvas(props: Props) {
       dove: false,        // 已发起俯冲（本次聚焦只触发一次）
       justActivated: false, // 本帧刚进入聚焦（行星半径从等效像素起步）
       seenExitToken: -1,
-      screenX: 0, screenY: 0, hasScreen: false, // 行星屏幕坐标（点击命中用）
+      screenX: 0, screenY: 0, screenR: 0, hasScreen: false, // 行星屏幕圆（点击/双击命中用）
     };
     const planetVec = new THREE.Vector3();
     const projVec = new THREE.Vector3();
@@ -240,14 +248,40 @@ export default function ThreeBodyCanvas(props: Props) {
         p.onPlanetFocusChange?.(true);
       }
     };
-    const onFocusDblClick = () => {
-      if (focus.active) {
+    const onFocusDblClick = (ev: MouseEvent) => {
+      const p = propsRef.current;
+      if (!p.planetFocusEnabled || !focus.hasScreen) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = ev.clientX - rect.left;
+      const my = ev.clientY - rect.top;
+      const hitPlanet = Math.hypot(mx - focus.screenX, my - focus.screenY) <= Math.max(30, focus.screenR + 8);
+      if (hitPlanet) {
+        if (!focus.active) {
+          focus.active = true;
+          focus.justActivated = true;
+          p.onPlanetFocusChange?.(true);
+        }
+        focus.dove = true;
+        focus.diveHold = 0;
+        p.onPlanetDive?.();
+      } else if (focus.active) {
         focus.active = false;
         focus.dove = false;
-        propsRef.current.onPlanetFocusChange?.(false);
+        p.onPlanetFocusChange?.(false);
       }
     };
-    const onFocusWheel = (ev: WheelEvent) => { if (ev.deltaY < 0) focus.lastWheelIn = performance.now(); };
+    const onFocusWheel = (ev: WheelEvent) => {
+      if (ev.deltaY >= 0) return;
+      focus.lastWheelIn = performance.now();
+      const p = propsRef.current;
+      if (p.planetFocusEnabled && !focus.active) {
+        focus.active = true;
+        focus.dove = false;
+        focus.diveHold = 0;
+        focus.justActivated = true;
+        p.onPlanetFocusChange?.(true);
+      }
+    };
     canvas.addEventListener('pointerdown', onFocusPointerDown);
     canvas.addEventListener('pointerup', onFocusPointerUp);
     canvas.addEventListener('dblclick', onFocusDblClick);
@@ -260,8 +294,8 @@ export default function ThreeBodyCanvas(props: Props) {
     });
     const composer = new EffectComposer(renderer, renderTarget);
     composer.addPass(new RenderPass(scene, camera));
-    // 泛光：阈值拉高到 0.55，只有真正高亮的星芯参与，避免辉光溢出洗亮背景
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.45, 0.55);
+    // 泛光只托起表面最亮的热点，保留清晰星芯，不再用大半径柔光吞掉纹理。
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.48, 0.22, 0.72);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
@@ -301,8 +335,8 @@ export default function ThreeBodyCanvas(props: Props) {
       nebulas.push(s);
     };
     // 星云：调暗调小，只作远处若隐若现的底色，不再洗亮整屏
-    addNebula(-420, 320, 950, '#2c3f8f', 0.05);
-    addNebula(460, -360, 880, '#5e2880', 0.04);
+    addNebula(-420, 320, 950, '#2c3f8f', 0.035);
+    addNebula(460, -360, 880, '#5e2880', 0.025);
 
     const starfieldGeo = new THREE.BufferGeometry();
     {
@@ -351,9 +385,13 @@ export default function ThreeBodyCanvas(props: Props) {
         new THREE.SphereGeometry(1, 32, 24),
         new THREE.MeshBasicMaterial({
           map: makeStarSurfaceTexture(STAR_STYLES[i].core, STAR_STYLES[i].glow, 1000 + i * 77),
-          color: new THREE.Color(1.35, 1.35, 1.35), // HDR 提亮：纹理亮斑越过 bloom 阈值
+          // 保留表面明暗层次；最热纹理区域自身即可越过 bloom 阈值。
+          color: new THREE.Color(0.92, 0.92, 0.92),
+          // 与日冕进入同一透明排序队列，随后用不透明纹理覆盖日冕中心。
+          transparent: true,
         }),
       );
+      core.renderOrder = 3;
       scene.add(core);
       starCores.push(core);
 
@@ -362,8 +400,9 @@ export default function ThreeBodyCanvas(props: Props) {
           map: makeGlowTexture(STAR_STYLES[i].glow),
           transparent: true,
           blending: THREE.AdditiveBlending,
+          opacity: 0.52,
           depthWrite: false,
-          depthTest: false, // 永远叠在球芯之上：可旋转相机下不存在被球芯遮挡的"日食"
+          depthTest: false,
         }),
       );
       glow.renderOrder = 2;
@@ -381,9 +420,16 @@ export default function ThreeBodyCanvas(props: Props) {
         specularMap: planetTex.spec, // 海面反射星光
         specular: new THREE.Color('#24333b'),
         shininess: 60,
+        // 电影化夜面最低可见度：沿用昼面纹理，避免背光相位退化成纯黑圆球。
+        emissive: new THREE.Color('#ffffff'),
+        emissiveMap: planetTex.day,
+        emissiveIntensity: 0.22,
+        // 深空幕布也参与渲染排序；放入透明队列，确保地表不会被远景覆盖。
+        transparent: true,
       }),
     );
     planetCore.rotation.x = 0.15; // 轻微轴倾
+    planetCore.renderOrder = 4;
     scene.add(planetCore);
     // 独立云层：略大一圈、与地表差速自转（薄云，不遮地表）
     const planetClouds = new THREE.Mesh(
@@ -396,6 +442,7 @@ export default function ThreeBodyCanvas(props: Props) {
       }),
     );
     planetClouds.rotation.x = 0.15;
+    planetClouds.renderOrder = 5;
     scene.add(planetClouds);
     // 大气：菲涅尔 rim，只有轮廓一圈发亮（加法混合，不触发 bloom）；
     // 迎光面亮、背光面暗（uSunDir 每帧指向当前通量最强的恒星）
@@ -437,6 +484,7 @@ export default function ThreeBodyCanvas(props: Props) {
       new THREE.SphereGeometry(1.14, 32, 24),
       atmosphereMat,
     );
+    atmosphere.renderOrder = 6;
     scene.add(atmosphere);
     // 调试探针：图层隔离截图（无头调试脚本用）
     dbg.planetCore = planetCore;
@@ -451,7 +499,8 @@ export default function ThreeBodyCanvas(props: Props) {
       scene.add(l);
       starLights.push(l);
     }
-    scene.add(new THREE.AmbientLight('#16202e', 0.6)); // 极暗环境光：夜面不死黑
+    // 冷色弱补光只影响行星/云层等受光材质；恒星使用 MeshBasicMaterial，不会被一并抬亮。
+    scene.add(new THREE.AmbientLight('#b8c8d8', 0.42));
 
     // ---- 孪生系统恒星：空心小圈 ----
     const twinRings: THREE.Mesh[] = [];
@@ -544,6 +593,8 @@ export default function ThreeBodyCanvas(props: Props) {
     let raf = 0;
 
     const tick = () => {
+      raf = 0;
+      if (document.hidden) return;
       raf = requestAnimationFrame(tick);
       const w = world.current;
       if (!w) return;
@@ -745,12 +796,12 @@ export default function ThreeBodyCanvas(props: Props) {
         starCores[i].scale.setScalar(px2w(2 + 1.8 * mr));
         starCores[i].rotation.y += starSpins[i] * frameDt;
         starGlows[i].position.set(s[i * 2], s[i * 2 + 1], 0); // 与球芯同心（depthTest 已关，无需偏移）
-        // 辉光收敛（原 26+24·∛m 叠 bloom 会让 α A 白成一团）+ 呼吸脉动（相位/频率各异）
-        const glowSize = px2w(16 + 13 * mr);
+        // 小而克制的外晕衬托清晰球芯；呼吸只做轻微亮度变化。
+        const glowSize = px2w(12 + 9 * mr);
         const breath = 1 + 0.05 * Math.sin(now * 0.0011 * (1 + i * 0.34) + i * 2.1);
         starGlows[i].scale.set(glowSize * breath, glowSize * breath, 1);
         (starGlows[i].material as THREE.SpriteMaterial).opacity =
-          0.88 + 0.12 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
+          0.48 + 0.08 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
       }
 
       // ---- 行星本体：反射星光（自转 + 云层差速 + 大气边缘光）----
@@ -769,11 +820,12 @@ export default function ThreeBodyCanvas(props: Props) {
       projVec.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0).project(camera);
       focus.screenX = (projVec.x * 0.5 + 0.5) * W;
       focus.screenY = (-projVec.y * 0.5 + 0.5) * H;
+      focus.screenR = planetR * (H / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))))
+        / Math.max(0.0001, camera.position.distanceTo(planetCore.position));
       focus.hasScreen = projVec.z < 1;
       // 调试探针：无头截图/e2e 用（每帧两次数值写入，无分配）
       dbgPlanet.x = focus.screenX;
       dbgPlanet.y = focus.screenY;
-      atmosphere.scale.setScalar(px2w(2.2));
       // 星光方向与亮度实时跟随：强度 ∝ 光度/距离²（归一到宜居基线 fluxBase）。
       // 恒纪元 ≈1.2；远离转暗（保底 0.05）；近日点增亮但封顶 1.55——
       // 更高会让纹理值越过 1.0 被 sRGB 输出压成白球（纹理"消失"的教训）
@@ -793,9 +845,20 @@ export default function ThreeBodyCanvas(props: Props) {
       composer.render();
     };
 
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (raf === 0) {
+        lastNow = performance.now();
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onFocusPointerDown);
       canvas.removeEventListener('pointerup', onFocusPointerUp);

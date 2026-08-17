@@ -15,12 +15,35 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - 解释当前行为时以代码为准，并指出文档偏差；实现新需求时以用户要求和本文件为目标，完成后同步仍有价值的文档。
 - 实验报告只代表其记录的代码版本、配置与运行矩阵，不自动代表当前版本。
 
+根目录 `README.md` 只承担面向玩家的世界观与体验叙事，不放置安装、架构、接口或测试说明。工程信息集中在本文件与 `docs/`。
+
 建议优先了解：
 
 - `three-body/src/game/eland/README.md`：当前模块边界。
 - `docs/rule-first-agent-architecture-v1.md`：人物、规则与模型的设计边界。
 - `docs/evolution-iteration-loop-v1.md`：文明规则的实验方法。
-- `three-body/README.md`：当前产品形态与运行方式。
+- `docs/three-body-era-ecology-v1.md`：恒乱纪元、天气、预言、脱水休眠与生态。
+- `docs/civilization-index-v1.md`：文明指数与时代观察规则。
+
+## 工程入口与当前产品形态
+
+- `three-body/` 是主应用目录；前端入口为 `src/App.tsx`，当前产品只保留三体宇宙与人间体素世界两个全屏 3D 场景。
+- 宇宙与人间通过连续缩放进入和退出。页面打开后由本地规则自动推进文明；前端读取权威状态，不自行生成第二套演进结果。
+- `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
+- `three-body/data/runs/<run-id>/` 保存运行状态、元数据、长程演化路径与确定性事实报告。已有运行是用户数据，不覆盖、不清理。
+- `voxel-asset-lab/` 是素材实验与预览入口，默认通过 `python3 -m http.server 7100` 启动。
+
+后端常用接口：
+
+- `GET /health`：服务与数据目录状态。
+- `GET|POST /api/runs`：列出或创建文明运行。
+- `GET /api/runs/<id>`：读取摘要与完整状态。
+- `POST /api/runs/<id>/evolve`：后台推进指定月数，每 12 个月保存检查点。
+- `GET /api/runs/<id>/evolution` 与 `/report`：读取演化路径与事实报告。
+- `GET|PUT /api/runs/<id>/state`、`POST /api/runs/import`：导出、覆盖或导入可迁移状态。
+- `POST /api/runs/<id>/enhancements`：在事实提交后生成非权威叙事增强。
+
+默认数据目录可用 `THREEBODY_DATA_DIR` 覆盖，监听地址可用 `THREEBODY_HOST` 与 `THREEBODY_PORT` 覆盖。模型密钥是可选项；无密钥、网络失败或返回非法建议时，规则主链仍须完整运行。示例配置见 `three-body/.env.example`。
 
 ## 领域与架构
 

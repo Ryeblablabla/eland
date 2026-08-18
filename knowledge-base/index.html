@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VOXEL LAB · 体素世界素材生成器</title>
+<title>ELAND KNOWLEDGE BASE · 世界、规则与素材</title>
+<link rel="stylesheet" href="./rules.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; overflow:hidden; background:#121519;
@@ -78,21 +79,58 @@
 }
 </script>
 </head>
-<body>
+<body data-page="assets">
 <div id="sidebar">
-  <h1>VOXEL LAB<small>世界素材生成器 · 1格=8微体素<br>绿色=已接入 · 灰色=视觉原型</small></h1>
-  <div id="styleList"></div>
+  <h1>ELAND KB<small>世界素材 · 规则 · 文档<br>代码与事件历史是事实权威</small></h1>
+  <div class="lab-tabs" role="tablist" aria-label="ELAND 知识库页面">
+    <button class="lab-tab active" id="tabAssets" type="button" role="tab" aria-selected="true" aria-controls="assetStage">素材</button>
+    <button class="lab-tab" id="tabRecipes" type="button" role="tab" aria-selected="false" aria-controls="recipesPage" tabindex="-1">配方</button>
+    <button class="lab-tab" id="tabRules" type="button" role="tab" aria-selected="false" aria-controls="rulesPage" tabindex="-1">规则</button>
+    <button class="lab-tab" id="tabDocs" type="button" role="tab" aria-selected="false" aria-controls="docsPage" tabindex="-1">文档</button>
+  </div>
+  <label class="knowledge-search" for="knowledgeSearch">
+    <span aria-hidden="true">⌕</span>
+    <input id="knowledgeSearch" type="search" autocomplete="off" placeholder="搜索全部内容" aria-label="搜索知识库全部内容">
+    <kbd>⌘K</kbd>
+    <button id="knowledgeSearchClear" type="button" aria-label="清除搜索" hidden>×</button>
+  </label>
+  <div id="assetNav"><div id="styleList"></div></div>
+  <nav id="recipeNav" aria-label="配方类型" hidden>
+    <span class="rule-nav-kicker">RECIPE TYPES</span>
+    <button type="button" class="active" data-recipe-nav="all">全部配方<small>ALL RECIPES</small></button>
+    <button type="button" data-recipe-nav="combine">组合制作<small>COMBINE</small></button>
+    <button type="button" data-recipe-nav="exert">施力制作<small>EXERT</small></button>
+    <button type="button" data-recipe-nav="expose">暴露转化<small>EXPOSE</small></button>
+  </nav>
+  <nav id="ruleNav" aria-label="规则页章节" hidden>
+    <span class="rule-nav-kicker">RULE MAP</span>
+    <a href="#ruleOverview" class="active">总览<small>AUTHORITY</small></a>
+    <a href="#ruleTree">游戏规则树<small>RULE TREE</small></a>
+    <a href="#decisionTree">人物决策树<small>DECISION TREE</small></a>
+    <a href="#authorityBoundary">权威边界<small>BOUNDARY</small></a>
+    <a href="#ruleSources">源码索引<small>SOURCE MAP</small></a>
+  </nav>
+  <nav id="docsNav" aria-label="文档页目录" hidden>
+    <span class="rule-nav-kicker">CORE DOCUMENTS</span>
+    <div id="docsNavList"></div>
+  </nav>
 </div>
-<div id="toolbar">
-  <span id="seedTag">seed —</span>
-  <button class="tool" id="btnSeed">🎲 换一个</button>
-  <button class="tool" id="btnRotate">⟳ 旋转</button>
-  <button class="tool" id="btnPNG">导出 PNG</button>
-  <button class="tool" id="btnJSON">导出 JSON</button>
+<div id="assetStage" role="tabpanel" aria-labelledby="tabAssets">
+  <div id="toolbar">
+    <span id="seedTag">seed —</span>
+    <button class="tool" id="btnSeed">🎲 换一个</button>
+    <button class="tool" id="btnRotate">⟳ 旋转</button>
+    <button class="tool" id="btnPNG">导出 PNG</button>
+    <button class="tool" id="btnJSON">导出 JSON</button>
+  </div>
+  <div id="detail"></div>
+  <div id="hint">左键旋转 · 右键平移 · 滚轮缩放 · P 人物长卷 · 9 建筑长卷 · 0 环境长卷</div>
+  <div id="stats"></div>
 </div>
-<div id="detail"></div>
-<div id="hint">左键旋转 · 右键平移 · 滚轮缩放 · P 人物长卷 · 9 建筑长卷 · 0 环境长卷</div>
-<div id="stats"></div>
+<main id="recipesPage" role="tabpanel" aria-labelledby="tabRecipes" tabindex="0" hidden></main>
+<main id="rulesPage" role="tabpanel" aria-labelledby="tabRules" tabindex="0" hidden></main>
+<main id="docsPage" role="tabpanel" aria-labelledby="tabDocs" tabindex="0" hidden></main>
+<main id="searchPage" tabindex="0" hidden></main>
 
 <script type="module">
 import * as THREE from 'three';
@@ -103,6 +141,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { mountRulesPage } from './rules-page.js';
 
 /* ================= 确定性随机 ================= */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
@@ -126,6 +165,7 @@ const MATS = {
   thatch:    std({ roughness:1.00, metalness:0.00 }),   // 茅草
   wood:      std({ roughness:0.85, metalness:0.00 }),
   woodDark:  std({ roughness:0.80, metalness:0.00 }),
+  groundMark:std({ roughness:1.00, metalness:0.00 }),
   roofTile:  std({ roughness:0.80, metalness:0.02 }),
   accent:    std({ roughness:0.55, metalness:0.05 }),   // 漆面（红漆柱等）
   skin:      std({ roughness:0.82, metalness:0.00 }),   // 人物皮肤（颜色由实例决定）
@@ -141,6 +181,8 @@ const MATS = {
   grass:     std({ roughness:1.00, metalness:0.00 }),
   leaf:      std({ roughness:0.90, metalness:0.00 }),
   water:     phys({ transmission:0.90, roughness:0.16, ior:1.33, thickness:2.0 }),
+  flowWater: std({ roughness:0.28, metalness:0.00, transparent:true, opacity:0.38,
+                   depthWrite:false, emissive:0x123b4a, emissiveIntensity:0.08 }),
 };
 const CAST_SHADOW = new Set(['stone','concrete','plaster','thatch','wood','woodDark',
   'roofTile','accent','skin','clothBand','panel','metal','darkMetal','grass','leaf']);
@@ -935,15 +977,264 @@ function genGroundDetail(B, kind){
   }
 }
 
-/* ---- 道路演进（沿 x 轴铺设，地表先于草皮底座生成） ---- */
+/* ---- 地表八邻域过渡（生产场景同尺度） ---- */
 
-/** 泥土小径：蜿蜒两宽土路 + 零星石子 */
+const SURFACE_PREVIEW_COLORS = {
+  grass:0x4c6a3a, soil:0x694e35, wetSoil:0x60523f,
+  richSoil:0x5a4d37, exhaustedSoil:0x7a5b3b, cultivated:0x694e35, sand:0xa48e5b,
+};
+const SURFACE_CARDINAL = { north:[0,-1], east:[1,0], south:[0,1], west:[-1,0] };
+const SURFACE_DIAGONAL = {
+  'north:east':'northEast','east:north':'northEast',
+  'south:east':'southEast','east:south':'southEast',
+  'south:west':'southWest','west:south':'southWest',
+  'north:west':'northWest','west:north':'northWest',
+};
+function surfaceTransitionHash(seed,value,salt){
+  let hash=(seed^value^Math.imul(salt+1,0x01000193))>>>0;
+  hash^=hash>>>16; hash=Math.imul(hash,0x7feb352d)>>>0;
+  hash=(hash^(hash>>>15))>>>0;
+  return hash/0x100000000;
+}
+function surfaceTransitionMask(center,neighbors,seed){
+  const patches=[];
+  for(let microZ=0;microZ<8;microZ++)for(let microX=0;microX<8;microX++){
+    const candidates=[];
+    const consider=(direction,depth)=>{
+      const kind=neighbors[direction];
+      if(depth<=1&&kind!==undefined&&kind!==center)candidates.push({direction,depth,kind});
+    };
+    consider('north',microZ); consider('east',7-microX);
+    consider('south',7-microZ); consider('west',microX);
+    if(candidates.length===0)continue;
+    const nearestDepth=Math.min(...candidates.map(candidate=>candidate.depth));
+    const nearest=candidates.filter(candidate=>candidate.depth===nearestDepth);
+    const chosen=nearest.length===1
+      ? nearest[0]
+      : nearest[Math.floor(surfaceTransitionHash(seed,microZ*8+microX,1)*nearest.length)];
+    let coverage=nearestDepth===0?0.86:0.42;
+    const vertical=candidates.find(candidate=>candidate.direction==='north'||candidate.direction==='south');
+    const horizontal=candidates.find(candidate=>candidate.direction==='east'||candidate.direction==='west');
+    if(vertical&&horizontal&&vertical.kind===horizontal.kind){
+      const diagonal=neighbors[SURFACE_DIAGONAL[`${vertical.direction}:${horizontal.direction}`]];
+      if(diagonal===vertical.kind)coverage+=0.12;
+      else if(diagonal===center)coverage-=0.3;
+    }
+    if(surfaceTransitionHash(seed,microZ*8+microX,2)>coverage)continue;
+    patches.push({microX,microZ,source:chosen.direction,depth:nearestDepth});
+  }
+  return patches;
+}
+function shorelineTransitionMask(neighbors,seed){
+  const patches=[];
+  for(let microZ=0;microZ<8;microZ++)for(let microX=0;microX<8;microX++){
+    const candidates=[];
+    const consider=(direction,depth)=>{
+      if(depth<=1&&neighbors[direction]===true)candidates.push({direction,depth});
+    };
+    consider('north',microZ); consider('east',7-microX);
+    consider('south',7-microZ); consider('west',microX);
+    if(candidates.length===0)continue;
+    const nearestDepth=Math.min(...candidates.map(candidate=>candidate.depth));
+    const nearest=candidates.filter(candidate=>candidate.depth===nearestDepth);
+    const chosen=nearest.length===1
+      ? nearest[0]
+      : nearest[Math.floor(surfaceTransitionHash(seed,microZ*8+microX,3)*nearest.length)];
+    let coverage=nearestDepth===0?0.94:0.56;
+    const vertical=candidates.find(candidate=>candidate.direction==='north'||candidate.direction==='south');
+    const horizontal=candidates.find(candidate=>candidate.direction==='east'||candidate.direction==='west');
+    if(vertical&&horizontal){
+      const diagonal=neighbors[SURFACE_DIAGONAL[`${vertical.direction}:${horizontal.direction}`]];
+      if(diagonal===true)coverage+=0.06;
+      else if(diagonal===false)coverage-=0.28;
+    }
+    if(surfaceTransitionHash(seed,microZ*8+microX,4)>coverage)continue;
+    patches.push({microX,microZ,source:chosen.direction,depth:nearestDepth});
+  }
+  return patches;
+}
+function mixSurfaceColor(from,to,amount){
+  const channel=(shift)=>Math.round((((from>>shift)&255)*(1-amount))+(((to>>shift)&255)*amount));
+  return (channel(16)<<16)|(channel(8)<<8)|channel(0);
+}
+/** 草土、沙地、土壤变体与耕地：四向定边、对角修角，不跨角改变地块归属。 */
+function genSurfaceTransitions(B){
+  const layout=[
+    ['grass','grass','grass','grass','grass','grass'],
+    ['grass','soil','soil','wetSoil','sand','grass'],
+    ['grass','soil','cultivated','cultivated','sand','grass'],
+    ['grass','richSoil','cultivated','exhaustedSoil','sand','grass'],
+    ['grass','grass','grass','grass','grass','grass'],
+  ];
+  const height=layout.length,width=layout[0].length;
+  const kindAt=(x,z)=>x>=0&&z>=0&&x<width&&z<height?layout[z][x]:undefined;
+  for(let z=0;z<height;z++)for(let x=0;x<width;x++){
+    const center=kindAt(x,z),centerColor=SURFACE_PREVIEW_COLORS[center];
+    const cellX=x-(width-1)/2,cellZ=z-(height-1)/2;
+    B.microCuboid('groundMark',cellX*8,2.01,cellZ*8,8.02,0.10,8.02,centerColor);
+    const neighbors={};
+    for(const [direction,[dx,dz]] of Object.entries({
+      ...SURFACE_CARDINAL,
+      northEast:[1,-1],southEast:[1,1],southWest:[-1,1],northWest:[-1,-1],
+    })){
+      const neighbor=kindAt(x+dx,z+dz);
+      if(neighbor!==undefined)neighbors[direction]=neighbor;
+    }
+    const seed=Math.imul(x+17,73856093)^Math.imul(z+29,19349663);
+    for(const patch of surfaceTransitionMask(center,neighbors,seed)){
+      const [dx,dz]=SURFACE_CARDINAL[patch.source];
+      const neighborColor=SURFACE_PREVIEW_COLORS[kindAt(x+dx,z+dz)];
+      const amount=patch.depth===0?0.48:0.26;
+      B.microCuboid(
+        'groundMark',cellX*8+patch.microX-3.5,2.12,cellZ*8+patch.microZ-3.5,
+        1.02,0.08,1.02,mixSurfaceColor(centerColor,neighborColor,amount),
+      );
+    }
+    if(center==='cultivated'){
+      for(const [mx,mz] of [[-2.5,-2.5],[1.5,-2.5],[-2.5,1.5],[1.5,1.5]])
+        B.microCuboid('leaf',cellX*8+mx,2.22,cellZ*8+mz,0.8,2.4,0.8,0x789f53);
+    }
+  }
+}
+
+const SHORE_WET_COLORS = {
+  grass:0x3d5633, soil:0x524639, wetSoil:0x4a483f,
+  richSoil:0x474236, exhaustedSoil:0x5f4d3b, cultivated:0x534636, sand:0x7c6c4c,
+};
+/** 同高水面生成两微格湿润岸带；陆地色向湿土/湿沙收敛，不混入蓝色。 */
+function genShorelineTransitions(B){
+  const layout=[
+    ['grass','wetSoil','water','water','sand','sand','sand'],
+    ['grass','wetSoil','water','water','sand','sand','sand'],
+    ['grass','wetSoil','wetSoil','water','water','sand','sand'],
+    ['grass','soil','wetSoil','water','water','sand','sand'],
+    ['grass','soil','water','water','sand','sand','sand'],
+  ];
+  const height=layout.length,width=layout[0].length;
+  const kindAt=(x,z)=>x>=0&&z>=0&&x<width&&z<height?layout[z][x]:undefined;
+  const allDirections={
+    ...SURFACE_CARDINAL,
+    northEast:[1,-1],southEast:[1,1],southWest:[-1,1],northWest:[-1,-1],
+  };
+  for(let z=0;z<height;z++)for(let x=0;x<width;x++){
+    const center=kindAt(x,z),cellX=x-(width-1)/2,cellZ=z-(height-1)/2;
+    if(center==='water'){
+      B.microCuboid('water',cellX*8,1.72,cellZ*8,8.02,0.50,8.02,0x3f94aa);
+      B.microCuboid('flowWater',cellX*8,2.23,cellZ*8,5.6,0.03,0.7,0x68b4bd);
+      continue;
+    }
+    const centerColor=SURFACE_PREVIEW_COLORS[center];
+    B.microCuboid('groundMark',cellX*8,2.01,cellZ*8,8.02,0.10,8.02,centerColor);
+    const neighbors={};
+    for(const [direction,[dx,dz]] of Object.entries(allDirections)){
+      const neighbor=kindAt(x+dx,z+dz);
+      if(neighbor!==undefined)neighbors[direction]=neighbor==='water';
+    }
+    const seed=Math.imul(x+37,73856093)^Math.imul(z+43,19349663);
+    for(const patch of shorelineTransitionMask(neighbors,seed)){
+      const amount=patch.depth===0?0.72:0.42;
+      B.microCuboid(
+        'groundMark',cellX*8+patch.microX-3.5,2.12,cellZ*8+patch.microZ-3.5,
+        1.02,0.08,1.02,mixSurfaceColor(centerColor,SHORE_WET_COLORS[center],amount),
+      );
+    }
+  }
+}
+
+/* ---- 道路演进（地表先于草皮底座生成） ---- */
+
+const DIRT_PATH_DIR8 = [[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+function dirtHash(n,salt=0){
+  let v=(n^0x811c9dc5^Math.imul(salt+1,0x01000193))>>>0;
+  v^=v>>>16; v=Math.imul(v,0x7feb352d)>>>0; v^=v>>>15;
+  return (v>>>0)/0x100000000;
+}
+function dirtColor(hex,tone){
+  const f=0.9+tone*0.2;
+  const r=Math.min(255,((hex>>16)&255)*f), g=Math.min(255,((hex>>8)&255)*f), b=Math.min(255,(hex&255)*f);
+  return (Math.round(r)<<16)|(Math.round(g)<<8)|Math.round(b);
+}
+function dirtSegmentDistance(p,a,b){
+  const lx=b.x-a.x,lz=b.z-a.z,lengthSquared=lx*lx+lz*lz;
+  if(lengthSquared<0.000001)return Math.hypot(p.x-a.x,p.z-a.z);
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*lx+(p.z-a.z)*lz)/lengthSquared));
+  return Math.hypot(p.x-(a.x+lx*t),p.z-(a.z+lz*t));
+}
+function dirtPreviewConnections(road,x,z){
+  const result=[];
+  for(const [dx,dz] of DIRT_PATH_DIR8){
+    if(!road.has(`${x+dx}|${z+dz}`))continue;
+    if(dx!==0&&dz!==0&&(road.has(`${x+dx}|${z}`)||road.has(`${x}|${z+dz}`)))continue;
+    result.push({dx,dz});
+  }
+  return result;
+}
+/** 与生产装饰层同构：每地图格 8×8 微体素，中心线栅格化成连续泥面。 */
+function genDirtPathCell(B,cellX,cellZ,connections,seed){
+  const edge=d=>({x:d.dx*0.53,z:d.dz*0.53});
+  const lines=[];
+  let junction=false;
+  if(connections.length===0){
+    const d={dx:1,dz:0}; lines.push([{x:-0.27,z:0},{x:0.27,z:0}]);
+  }else if(connections.length===1){
+    const d=connections[0]; lines.push([{x:d.dx*-0.16,z:d.dz*-0.16},edge(d)]);
+  }else if(connections.length===2){
+    const [a,b]=connections;
+    if(a.dx===-b.dx&&a.dz===-b.dz)lines.push([edge(a),edge(b)]);
+    else{
+      const start=edge(a),end=edge(b),curve=[];
+      for(let step=0;step<=8;step++){
+        const t=step/8,u=1-t;
+        curve.push({x:u*u*start.x+t*t*end.x,z:u*u*start.z+t*t*end.z});
+      }
+      lines.push(curve);
+    }
+  }else{
+    junction=true;
+    connections.forEach(d=>lines.push([{x:0,z:0},edge(d)]));
+  }
+  const roadMicros=[];
+  for(let mz=0;mz<MICRO_PER_MAP_CELL;mz++)for(let mx=0;mx<MICRO_PER_MAP_CELL;mx++){
+    const local={x:(mx+0.5)/MICRO_PER_MAP_CELL-0.5,z:(mz+0.5)/MICRO_PER_MAP_CELL-0.5};
+    let distance=Infinity;
+    for(const line of lines)for(let i=1;i<line.length;i++)
+      distance=Math.min(distance,dirtSegmentDistance(local,line[i-1],line[i]));
+    const microId=mz*MICRO_PER_MAP_CELL+mx;
+    const edgeNoise=(dirtHash(seed^microId,121)-0.5)*0.07;
+    if(distance>0.215+edgeNoise&&(!junction||Math.hypot(local.x,local.z)>0.29+edgeNoise))continue;
+    roadMicros.push({x:cellX*8+mx-3.5,z:cellZ*8+mz-3.5});
+    const tone=0.39+dirtHash(seed^microId,122)*0.22;
+    const color=dirtHash(seed^microId,123)>0.93?dirtColor(0x705439,tone):dirtColor(0x806143,tone);
+    B.microCuboid('groundMark',cellX*8+mx-3.5,2.01,cellZ*8+mz-3.5,1.02,0.10,1.02,color);
+  }
+  const pebbleRoll=dirtHash(seed,124);
+  const pebbleCount=pebbleRoll>0.62?1+(pebbleRoll>0.9?1:0):0;
+  for(let pebble=0;pebble<pebbleCount&&roadMicros.length>0;pebble++){
+    const local=roadMicros[Math.floor(dirtHash(seed+pebble,125)*roadMicros.length)];
+    const sx=0.48+dirtHash(seed+pebble,126)*0.28;
+    const sy=0.21+dirtHash(seed+pebble,127)*0.14;
+    const sz=0.44+dirtHash(seed+pebble,128)*0.28;
+    B.microCuboid(
+      'stone',
+      local.x+(dirtHash(seed+pebble,129)-0.5)*0.2,
+      2.11,
+      local.z+(dirtHash(seed+pebble,130)-0.5)*0.2,
+      sx,sy,sz,dirtColor(0x8d8980,0.35+dirtHash(seed+pebble,131)*0.3),
+    );
+  }
+}
+
+/** 泥土小径：用生产场景同尺度的端头、弯道、丁字、十字与斜向路网做预览。 */
 function genDirtPath(B){
-  for(let x=-9;x<=9;x++){
-    const z = Math.round(Math.sin(x*0.45)*1.5);
-    B.vox('wood', x,0,z,   vary(0x8a6f4d,0.01,0.1,0.08));
-    B.vox('wood', x,0,z+1, vary(0x847052,0.01,0.1,0.08));
-    if (rand()<0.08) B.vox('stone', x,1,z, vary(0x84888d,0,0.05,0.08)); // 石子
+  const road=new Set();
+  const add=(x,z)=>road.add(`${x}|${z}`);
+  for(let x=-2;x<=2;x++)add(x,0);
+  for(let z=-2;z<=2;z++)add(0,z);
+  add(-1,1); add(-2,2);             // 丁字转斜向
+  add(3,-1); add(4,-2);             // 连续对角支路
+  for(const key of road){
+    const [x,z]=key.split('|').map(Number);
+    genDirtPathCell(B,x,z,dirtPreviewConnections(road,x,z),Math.imul(x+17,73856093)^Math.imul(z+29,19349663));
   }
 }
 
@@ -1559,7 +1850,22 @@ function genSnowSpruce(B){
   B.vox('plaster', 0,10,0, 0xeef2f6);                                     // 顶雪
 }
 
-/** 天气展示：视觉层会动，但天气种类仍由模拟状态决定。 */
+/** 环境动态展示：视觉层会动，但水体与天气事实仍由模拟状态决定。 */
+function genRiverFlow(B){
+  const p=weatherAnimPhase;
+  // 两格宽的权威水体积；上方仅叠加低对比像素色阶，不放置漂浮的高亮实体块。
+  B.microCuboid('water',0,2,0,16,2,34,0x286f91);
+  B.microCuboid('stone',-9,0,0,2,2,34,0x786f60);
+  B.microCuboid('stone',9,0,0,2,2,34,0x786f60);
+  for(let x=-7;x<=7;x++) for(let z=-16;z<=16;z++){
+    const main=0.5+0.5*Math.sin(z*0.53-p*1.45+Math.sin(x*0.6)*0.42);
+    const cross=0.5+0.5*Math.sin(z*0.95-p*2.05+x*0.27);
+    const flow=Math.max(0,Math.min(1,(main-0.38)/0.56))*(0.72+cross*0.28);
+    const r=Math.round(26+(76-26)*flow), g=Math.round(96+(151-96)*flow), b=Math.round(114+(161-114)*flow);
+    B.microCuboid('flowWater',x,4.03,z,1.02,0.12,1.02,(r<<16)|(g<<8)|b);
+  }
+}
+
 function genWeather(B, kind){
   const p=weatherAnimPhase;
   if(kind==='rain'){
@@ -1902,14 +2208,14 @@ const STYLES = [
   { key:'body-states', cat:'p', group:'生命状态', name:'身体与环境状态', en:'Body States', gen:genBodyStates, tags:'怀孕 · 包扎 · 寒冷 · 疾病', note:'状态直接改变轮廓、服装或姿态；炎热状态另由轻装和动作节奏表达。' },
   { key:'shared-cell', cat:'p', group:'交互', name:'同格六人编组', en:'Six In One Cell', gen:genSharedCell, base:'none', tags:'同格 · 6 槽位 · 确定性环阵', note:'一格内不再都压在格心：1–4 人用中心/对称位，5–6 人使用确定性环形槽位；位置可由格号与人物 id 稳定排序。' },
   // 建筑（文明历程 Lv.1–8）
-  { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe },
-  { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill },
+  { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe, tags:'原始部落 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该营地。' },
+  { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill, tags:'农耕定居 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该磨坊。' },
   { key:'thatched',   cat:'b', lv:2, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched },
   { key:'logcabin',   cat:'b', lv:2, name:'木屋',           en:'Log Cabin',       gen:genLogCabin },
-  { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple },
+  { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple, tags:'古代文明 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该神庙。' },
   { key:'chinese',    cat:'b', lv:3, name:'中国王朝古代房子', en:'Chinese Dynasty', gen:genChinese },
   { key:'stone',      cat:'b', lv:3, name:'石头屋',         en:'Stone House',     gen:genStone },
-  { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle },
+  { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle, tags:'中世纪 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该城堡。' },
   { key:'medieval',   cat:'b', lv:4, name:'中世纪房子',     en:'Medieval',        gen:genMedieval },
   { key:'factory',    cat:'b', lv:5, name:'烟囱工厂',       en:'Factory',         gen:genFactory },
   { key:'modern',     cat:'b', lv:6, name:'现代房子',       en:'Modern House',    gen:genModern },
@@ -1983,7 +2289,7 @@ const STYLES = [
   { key:'mushrooms',  cat:'n', group:'生态点缀', name:'蘑菇', en:'Mushrooms',       gen:(B)=>genGroundDetail(B,'mushrooms') },
   { key:'branch',     cat:'n', group:'生态点缀', name:'倒木枝', en:'Fallen Branch',  gen:(B)=>genGroundDetail(B,'branch') },
   // 道路与桥梁
-  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · PackedSoil · Trail', note:'游戏会按真实夯土地表与相邻道路方向，拼接双行踩踏痕、碎土和嵌入石子。' },
+  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 八向邻接 · PackedSoil / Trail', note:'生产场景读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；丁字和十字汇成不规则磨损泥地，碎土与嵌入石子只做表现，不改变通行规则。' },
   { key:'stoneroad',  cat:'r', group:'道路演进', lv:3, name:'石板路',   en:'Stone Road',   gen:genStoneRoad },
   { key:'gravelroad', cat:'r', group:'道路演进', lv:5, name:'碎石路',   en:'Gravel Road',  gen:genGravelRoad },
   { key:'highway',    cat:'r', group:'道路演进', lv:6, name:'公路',     en:'Highway',      gen:genHighway },
@@ -1992,11 +2298,14 @@ const STYLES = [
   { key:'stonebridge',cat:'r', group:'桥 梁', lv:3, name:'石拱桥',      en:'Arch Bridge',  gen:genStoneArchBridge },
   { key:'ironbridge', cat:'r', group:'桥 梁', lv:5, name:'铁桥',        en:'Iron Bridge',  gen:genIronBridge },
   // 环境 · 纪元状态
+  { key:'surface-transition',cat:'e',group:'地表过渡',name:'草土、沙地与耕地边界',en:'Surface Transitions',gen:genSurfaceTransitions,tags:'游戏已接入 · 八邻域 · 1/8 格微体素',note:'草地、普通土、湿土、沃土、贫瘠土、沙地与耕地按真实相邻格生成边界；四向邻居决定边线，对角邻居只收放拐角，不改变地块归属。道路和水体仍使用各自的表现规则。' },
+  { key:'shoreline-transition',cat:'e',group:'地表过渡',name:'沙地与湿润岸线',en:'Wet Shoreline',gen:genShorelineTransitions,tags:'游戏已接入 · 同高水岸 · 湿沙/湿土',note:'只在陆地与同高水面的真实正交邻边生成两微格湿润带；沙地变为湿沙，草土变为湿润岸土，不把蓝色水面混进陆地。对角水格只修角，高差岸壁保持硬边。' },
   { key:'fire',       cat:'e', group:'火焰与焦土', name:'火焰',   en:'Fire',        gen:genFire,    ground:'ash', tags:'1/8 格微体素 · 动态火舌 · 上浮火星', note:'火芯、外焰与火星采用错相循环，石圈和木柴保持稳定。' },
   { key:'scorched',   cat:'e', group:'火焰与焦土', name:'焦土残骸', en:'Scorched',    gen:genScorched, ground:'ash' },
   { key:'snowdrift',  cat:'e', group:'冰雪覆盖',  name:'雪堆',   en:'Snowdrift',    gen:genSnowdrift, ground:'snow' },
   { key:'icespikes',  cat:'e', group:'冰雪覆盖',  name:'冰锥',   en:'Ice Spikes',   gen:genIceSpikes, ground:'snow' },
   { key:'snowspruce', cat:'e', group:'冰雪覆盖',  name:'雪松',   en:'Snow Spruce',  gen:genSnowSpruce, ground:'snow' },
+  { key:'riverflow',  cat:'e', group:'水体演出', name:'体素水流', en:'Voxel River Flow', gen:genRiverFlow, ground:'wet', tags:'游戏已接入 · 1/8 格像素流纹 · 共享动画相位 · 邻接转向', note:'生产场景保留真实水体积；流纹贴在水面并跨格共享相位，雨天加快，不写回水量或地形。' },
   { key:'rain',       cat:'e', group:'动态天气', name:'降雨与水波', en:'Rain & Ripples', gen:(B)=>genWeather(B,'rain'), ground:'wet', tags:'降雨线 · 水洼 · 扩散水波', note:'雨滴和水波随天气相位更新，地面色差压低为湿润过渡。' },
   { key:'snowfall',   cat:'e', group:'动态天气', name:'降雪', en:'Snowfall',         gen:(B)=>genWeather(B,'snow'), ground:'snow' },
   { key:'fog',        cat:'e', group:'动态天气', name:'雾带', en:'Fog Banks',         gen:(B)=>genWeather(B,'fog'), ground:'wet' },
@@ -2011,7 +2320,7 @@ const LIVE_ASSET_KEYS = new Set([
   'councilhearth','granary','well','workshop','kiln','handmill','foundry','civichall','smithy','keepcore',
   'woodpile','stonepile','foodpile','seedpile','bundles','meatpile','hidepile','bonepile','stonetools','bonetools','spearrack','tablet','fiber','leather','rope','container','cookedfood','herbs','charcoal','clay','copperore','tinore','ironore','woodtool','stonehoe','bronzetool','irontool',
   'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath',
-  'fire','scorched','snowdrift','icespikes','snowspruce','rain','snowfall','fog','storm','drought'
+  'surface-transition','shoreline-transition','fire','scorched','snowdrift','icespikes','snowspruce','riverflow','rain','snowfall','fog','storm','drought'
 ]);
 const assetStatus = (s) => LIVE_ASSET_KEYS.has(s.key) ? 'live' : 'prototype';
 
@@ -2023,7 +2332,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-document.body.appendChild(renderer.domElement);
+document.getElementById('assetStage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x161a20);
@@ -2338,6 +2647,29 @@ function updateDetail(){
 }
 refreshActive();
 
+mountRulesPage({
+  assets: STYLES.map((style) => ({
+    key: style.key,
+    name: style.name,
+    en: style.en,
+    group: style.group || (style.lv ? `LV.${style.lv} · ${LV_NAMES[style.lv]}` : ''),
+    category: CAT_NAMES[style.cat],
+    tags: style.tags || '',
+    note: style.note || '',
+    status: assetStatus(style) === 'live' ? '已接入' : '视觉原型',
+  })),
+  selectAsset(key) {
+    const index = STYLES.findIndex((style) => style.key === key);
+    if (index < 0) return false;
+    gridMode = null;
+    curStyle = index;
+    refreshActive();
+    regenerate();
+    styleBtns[index]?.scrollIntoView({ block: 'center' });
+    return true;
+  },
+});
+
 document.getElementById('btnSeed').onclick = ()=>{ seed = (Math.random()*1e9)|0; regenerate(); };
 const btnRotate = document.getElementById('btnRotate');
 btnRotate.onclick = ()=>{ controls.autoRotate = !controls.autoRotate; btnRotate.classList.toggle('on', controls.autoRotate); };
@@ -2371,6 +2703,7 @@ document.getElementById('btnJSON').onclick = ()=>{
   URL.revokeObjectURL(a.href);
 };
 addEventListener('keydown', (e)=>{
+  if (document.body.dataset.page !== 'assets') return;
   if (e.key >= '1' && e.key <= '8'){                    // 跳转到对应文明等级的首个建筑
     const idx = STYLES.findIndex(s => s.cat==='b' && s.lv === +e.key);
     if (idx >= 0){ gridMode = null; curStyle = idx; refreshActive(); regenerate(); }
@@ -2387,8 +2720,9 @@ let lastAnimalRefresh = 0;
 let lastFireRefresh = 0;
 let lastWeatherRefresh = 0;
 const ANIMATED_ANIMAL_KEYS = new Set(['deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','sheep','chicken']);
-const ANIMATED_WEATHER_KEYS = new Set(['rain','snowfall','fog','storm']);
+const ANIMATED_WEATHER_KEYS = new Set(['riverflow','rain','snowfall','fog','storm']);
 renderer.setAnimationLoop((now)=>{
+  if (document.body.dataset.page !== 'assets') return;
   const showingPeople = gridMode==='p' || (!gridMode && STYLES[curStyle].cat==='p');
   if (showingPeople && now-lastHumanRefresh > 100){
     humanAnimPhase = now*0.006;

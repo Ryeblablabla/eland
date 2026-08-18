@@ -1,6 +1,6 @@
 # Eland 像素世界 v1（空间 · 历史 · 迁移）
 
-状态：空间权威、历史与回放原则的当前汇总文档，由旧《像素世界模型》《历史与回放》《硬切换方案》三份合并而成。当前运行时为 schema 16 的物质体素世界（84×52×12，2.5D）；schema 11 的二维属性层细节和 schema 10 → 11 的硬切换过程压缩为文末迁移档案，不得作为新实现依据。
+状态：空间权威、历史与回放原则的当前汇总文档，由旧《像素世界模型》《历史与回放》《硬切换方案》三份合并而成。当前运行时为 schema 17 的物质体素世界（84×52×12，2.5D）；schema 11 的二维属性层细节和 schema 10 → 11 的硬切换过程压缩为文末迁移档案，不得作为新实现依据。
 
 范围：three-body 人间场景的权威空间模型、历史回放设计与空间迁移档案。
 
@@ -109,6 +109,7 @@ generator.version 必须随算法变化。旧存档读取自己的已存网格�
 - 权威世界状态经 adapter 单向投影为 UI 读取模型；前端只渲染投影，不生成第二套地形、地点或道路。
 - 人物、动物、掉落物和可交互对象严格按权威 cellId / z 绘制；路径按真实 pathSegment 与派生道路格绘制。
 - 动画只改变同一事实的表现，不改变位置和数量。天气粒子、波纹和阴影可以保留，但不产生可交互事实。
+- 地表材质交界与水岸可按真实八邻域生成稳定的 1/8 格微体素过渡；对角邻居只修饰拐角，不能跨角创造连接。水面流纹方向只读取局部液体连通，火则绘制在真实承托表面。这些都属于可重建显示，不写回物质或高度。
 - 当前人间只暴露全屏 3D 体素场景（`SocietyScene3D`）；2D 像素地图（`SocietyMap`）不再从前端入口挂载。
 
 前端禁止：
@@ -139,6 +140,8 @@ FileRunStore 按运行保存：
 - `evolution.json`：长程演化状态、元数据检查点与关键转折；
 - `report.json`：由真实事件确定性生成的事实报告。
 
+实时人间会话另有开发期恢复快照，默认保存在 `three-body/.cache/eland-live-sessions/`，包含当前权威状态、活动分支时间线与最近帧，并在后端正常退出或热重启时写入。默认恢复时限为 24 小时，可由 `ELAND_LIVE_SESSION_DIR` 与 `ELAND_SESSION_RECOVERY_TTL_MS` 调整。它用于避免开发热重启丢失当前观察进度，不替代 `data/runs/` 中可迁移、可审计的长程运行产物。
+
 长程演化按 12 个月一批推进，每批保存一次完整状态并追加元数据检查点（月份、事件数、人口、阶段、里程碑 ID、token 用量）；文明提前结束时立即保存。进程或 API 中断时，演化路径标记 `failed` 并保留最近检查点；恢复以最近保存的完整状态为准。
 
 尚未实现：逐体素稀疏补丁、MonthRecord 持久化、分支历史持久化与服务端 seek/分岔 API。第 10～13 节是这些能力的设计目标，实施时不得绕过第 8 节的目标约束。
@@ -148,7 +151,7 @@ FileRunStore 按运行保存：
 ```text
 interface PixelWorldRun {
   runId: string
-  schemaVersion: 16
+  schemaVersion: 17
   generator: { version: string; seed: number }
   branches: BranchMeta[]
   checkpoints: WorldCheckpoint[]
@@ -301,8 +304,8 @@ EntityPatch 使用 create、update、delete。删除也要保留 sourceEventIds�
 
 ## 14. 旧档切断策略
 
-- 当前 schemaVersion 15；schema 14 存档可按已有迁移路径升入 15。
-- 读取 13 及更早版本时返回明确错误，不自动补造缺失的协议、体素或 planning tick 事实。
+- 当前 schemaVersion 17；当前开发版本只接受 17，不自动迁移 16 及更早存档。
+- 读取旧版本时返回明确错误，不自动补造缺失的人格证据、年龄门禁、协议、体素或 planning tick 事实。
 - 旧档只允许导出 JSON 或历史摘要，不能导入为可继续演化的像素世界。
 - 新文明使用新的 runId，避免两种时空语义混在同一时间线。
 
@@ -316,7 +319,9 @@ EntityPatch 使用 create、update、delete。删除也要保留 sourceEventIds�
 schema 10   六地点空间 + 年度时钟（已断代，不迁移）
 schema 11   84×52 二维属性层 + 月度时钟（硬切换完成）
 schema 14   物质体素取代二维属性层；Intent + PrimitiveAction 取代 PlanMode
-schema 15   当前版本：协议事实文明扩展；14 可迁入
+schema 15   协议事实文明扩展（历史版本）
+schema 16   物质体素与因果观察器的上一开发版本（已切断）
+schema 17   当前版本：年龄门禁、HEXACO 人格、单次生殖授权与模型端点审计；只接受同版本状态
 ```
 
 ### 15.2 schema 10 → 11 硬切换决策

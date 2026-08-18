@@ -11,6 +11,11 @@
 **/.env
 **/.env.local
 **/.env.*.local
+**/model-endpoints.local.json
 
 **/*.log
 **/data/runs/
+
+# Local research/render intermediates and large audio working exports.
+/tmp/
+/three-body/exports/audio-variations/

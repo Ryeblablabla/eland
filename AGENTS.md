@@ -4,7 +4,7 @@
 
 ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》中的三体游戏：文明在恒纪元与乱纪元中诞生、发展并留下结局，例如“第 141 号文明毁灭于烈焰”。文明编号、能力与毁灭原因必须来自真实模拟历史，不能为了复现一句叙事而预设结果。
 
-主要游戏位于 `three-body/`；`voxel-asset-lab/` 是实验素材与渲染示意网站。
+主要游戏位于 `three-body/`；`knowledge-base/` 是世界素材、当前规则与核心文档的知识库网站。
 
 ## 代码、文档与当前事实
 
@@ -30,8 +30,9 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `three-body/` 是主应用目录；前端入口为 `src/App.tsx`，当前产品只保留三体宇宙与人间体素世界两个全屏 3D 场景。
 - 宇宙与人间通过连续缩放进入和退出。页面打开后由本地规则自动推进文明；前端读取权威状态，不自行生成第二套演进结果。
 - `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
+- 实时文明会话会在后端热重启前保存到 `three-body/.cache/eland-live-sessions/`，默认可在 24 小时内恢复当前权威状态与分支时间线；目录和时限可用 `ELAND_LIVE_SESSION_DIR`、`ELAND_SESSION_RECOVERY_TTL_MS` 覆盖。
 - `three-body/data/runs/<run-id>/` 保存运行状态、元数据、长程演化路径与确定性事实报告。已有运行是用户数据，不覆盖、不清理。
-- `voxel-asset-lab/` 是素材实验与预览入口，默认通过 `python3 -m http.server 7100` 启动。
+- `knowledge-base/` 是素材实验、规则导览与核心文档入口，默认通过 `npm run dev` 启动。
 
 后端常用接口：
 
@@ -80,12 +81,14 @@ world primitives
 - 同一状态应能重建出语义一致的装饰；随机变化应使用稳定种子或实体 ID。
 - “好看”不能成为绕过材料来源、建造进度、人物行动或世界因果的理由。
 
-`voxel-asset-lab/` 是装饰素材的实验、浏览和渲染示意入口。所有计划加入人间体素世界的人物、行为、建筑、物件、动物、植物和自然效果，都应该能够在素材网页中补充或预览。
+`knowledge-base/` 是素材、规则与文档的统一知识入口。所有计划加入人间体素世界的人物、行为、建筑、物件、动物、植物和自然效果，都应该能够在素材页中补充或预览。
 
 - 新素材优先在素材网页中建立或验证，再接入 `three-body/src/game/voxelKits.ts`。
 - 素材网页中的“已接入”和“视觉原型”状态必须与生产代码一致。
 - 素材网页与生产装饰层保持相同的微体素尺度、朝向、材质语义和关键构型。
 - 如果只接入素材的一部分，应明确标出差异，不能让网页原型冒充已实现能力。
+- 游戏规则、月度主循环、人物规划优先级、项目链路、模型边界或观察器边界发生变化时，必须同步更新 `knowledge-base/rules-page.js` 中的规则树与决策树静态导览；导览以当前可执行代码为准，不能保留与实现冲突的旧说明。
+- Knowledge Base 导入的核心文档清单维护在 `knowledge-base/scripts/sync-docs.mjs`；修改这些源文档后运行 `npm run sync:docs`，同步提交生成的 `knowledge-base/knowledge-docs.js`，不要直接编辑生成文件。
 
 ## 前端体验
 
@@ -133,7 +136,7 @@ npm run backend:start
 npm run build
 npm run test:simulation
 
-cd ../voxel-asset-lab
+cd ../knowledge-base
 npm run dev
 ```
 

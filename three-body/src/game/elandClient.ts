@@ -11,6 +11,13 @@ export class ElandSessionMissingError extends Error {
   }
 }
 
+export class ElandBackendUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ElandBackendUnavailableError';
+  }
+}
+
 const PAGE_LEASE_ID = `lease-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 function randomRunId(): string {
@@ -40,26 +47,38 @@ export function getElandRunId(): string {
 }
 
 async function post<T>(route: string, body: unknown): Promise<T> {
-  const res = await fetch(`/api/eland/${route}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/eland/${route}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ElandBackendUnavailableError('演化后端暂时不可用');
+  }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({})) as { error?: string };
     const message = detail.error ?? `${route} 返回 ${res.status}`;
     if (res.status === 404) throw new ElandSessionMissingError(message);
+    if (res.status >= 500) throw new ElandBackendUnavailableError(message);
     throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
 
 async function get<T>(route: string): Promise<T> {
-  const res = await fetch(`/api/eland/${route}`, { cache: 'no-store' });
+  let res: Response;
+  try {
+    res = await fetch(`/api/eland/${route}`, { cache: 'no-store' });
+  } catch {
+    throw new ElandBackendUnavailableError('演化后端暂时不可用');
+  }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({})) as { error?: string };
     const message = detail.error ?? `${route} 返回 ${res.status}`;
     if (res.status === 404) throw new ElandSessionMissingError(message);
+    if (res.status >= 500) throw new ElandBackendUnavailableError(message);
     throw new Error(message);
   }
   return res.json() as Promise<T>;
@@ -97,6 +116,6 @@ export const elandClient = {
       headers: { 'content-type': 'application/json' },
       body,
       keepalive: true,
-    }).then(() => undefined);
+    }).then(() => undefined).catch(() => undefined);
   },
 };

@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from 'react';
-import { findArchiveCharacter } from '@/data/characters';
 import type { AgentHistoryItem, IntentView, SocietyAgent } from '@/game/societyContract';
 
 interface Props {
@@ -62,7 +61,6 @@ export default function AgentCard({ agent, intents, history, historyLoading, wor
   const dragRef = useRef<DragState | null>(null);
   const [tab, setTab] = useState<CardTab>('status');
   const [position, setPosition] = useState({ x: 72, y: 94 });
-  const archive = useMemo(() => findArchiveCharacter({ id: agent.id, name: agent.name }), [agent.id, agent.name]);
   const activeIntent = agent.activeIntentId ? intents.find((intent) => intent.id === agent.activeIntentId) : undefined;
   const reversedHistory = useMemo(() => [...history].reverse(), [history]);
 
@@ -101,8 +99,8 @@ export default function AgentCard({ agent, intents, history, historyLoading, wor
         }}
         onPointerCancel={() => { dragRef.current = null; }}
       >
-        {archive?.portrait ? (
-          <img src={archive.portrait} alt="" draggable={false} className="pointer-events-none h-12 w-10 border border-white/10 object-cover" />
+        {agent.portrait ? (
+          <img src={agent.portrait} alt="" draggable={false} className="pointer-events-none h-12 w-10 border border-white/10 object-cover" />
         ) : (
           <div className="flex h-12 w-10 items-center justify-center border border-white/10 text-lg text-slate-500">{agent.name.slice(0, 1)}</div>
         )}
@@ -138,7 +136,6 @@ export default function AgentCard({ agent, intents, history, historyLoading, wor
             <div>
               <div className="text-[10px] tracking-[0.32em] text-slate-500">此刻正在</div>
               <div className="mt-2 text-sm leading-6 text-slate-200">{agent.doing}</div>
-              <div className="mt-2 text-xs leading-5 text-slate-500">{agent.title}</div>
             </div>
 
             <div className="grid grid-cols-3 gap-x-4 gap-y-3 border-y border-white/10 py-4">
@@ -217,7 +214,7 @@ export default function AgentCard({ agent, intents, history, historyLoading, wor
                         <span className="text-slate-600">{monthLabel(event.month)}</span>
                       </div>
                       <div className="mt-1.5 text-xs leading-5 text-slate-300">{event.summary}</div>
-                      <div className="mt-1 text-[9px] text-slate-700">格 {event.cellId % worldWidth}, {Math.floor(event.cellId / worldWidth)}</div>
+                      {event.detail && <div className="mt-1 text-[10px] leading-4 text-slate-600">{event.detail}</div>}
                     </div>
                   ))}
                 </div>}

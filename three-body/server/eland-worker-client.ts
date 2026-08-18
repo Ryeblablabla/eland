@@ -6,6 +6,7 @@ interface WorkerResponse {
   id: number;
   result?: ElandApiResponse;
   error?: string;
+  persistedSessions?: number;
 }
 
 interface PendingRequest {
@@ -48,6 +49,22 @@ export class ElandWorkerClient {
   }
 
   async close(): Promise<void> {
+    const id = ++this.sequence;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.worker.off('message', onMessage);
+        resolve();
+      }, 4_000);
+      const onMessage = (message: WorkerResponse) => {
+        if (message.id !== id || message.persistedSessions === undefined && !message.error) return;
+        clearTimeout(timeout);
+        this.worker.off('message', onMessage);
+        if (message.error) console.warn(`实时演化会话保存失败：${message.error}`);
+        resolve();
+      };
+      this.worker.on('message', onMessage);
+      this.worker.postMessage({ id, control: 'persist' });
+    });
     await this.worker.terminate();
     this.rejectAll(new Error('文明演化 Worker 已关闭'));
   }

@@ -17,20 +17,24 @@ function stopChild(child) {
     child.kill('SIGTERM');
     setTimeout(() => {
       if (child.exitCode === null) child.kill('SIGKILL');
-    }, 2_000).unref();
+    }, 5_000).unref();
   });
 }
 
 async function restartBackend() {
   await stopChild(backend);
   if (stopping) return;
-  backend = spawn(process.execPath, ['dist-server/main.mjs'], {
+  const child = spawn(process.execPath, ['dist-server/main.mjs'], {
     cwd: root,
     env: process.env,
     stdio: 'inherit',
   });
-  backend.once('exit', (code) => {
-    if (!stopping && code && code !== 0) void shutdown(code);
+  backend = child;
+  child.once('exit', (code, signal) => {
+    if (backend === child) backend = null;
+    if (!stopping && code && code !== 0) {
+      console.error(`[dev] 后端异常退出（code=${code}${signal ? `, signal=${signal}` : ''}）；前端继续运行，修正代码并保存后会自动重启后端。`);
+    }
   });
 }
 

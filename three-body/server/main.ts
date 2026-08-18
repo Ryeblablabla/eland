@@ -7,9 +7,16 @@ import {
   type SimulationConfig,
   type SimulationState,
 } from "../src/game/eland/simulation";
-import { normalizeModelProvider } from "../src/game/llm";
-import { loadLlmKey } from "./env";
-import { handleDecide } from "./kimi-gateway";
+import { handleDecide } from "./model-decision-gateway";
+import {
+  EVOLUTION_MODES,
+  MODEL_PURPOSES,
+  modelEndpointStatus,
+  readModelSettings,
+  updateModelSettings,
+  type EvolutionMode,
+  type ModelPurpose,
+} from './model-config';
 import { buildEvolutionFactsReport, checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
 import { ElandWorkerClient } from './eland-worker-client';
 import { NarrativeEnhancementService } from './narrative-enhancement-service';
@@ -115,6 +122,25 @@ function enhancementTaskLimit(value: unknown): number {
   const number = Number(value ?? 6);
   if (!Number.isInteger(number) || number < 0 || number > 24) throw new HttpError(400, 'maxTasks 必须是 0-24 的整数');
   return number;
+}
+
+function modelRoutes(value: unknown): Record<ModelPurpose, string> {
+  const input = asObject(value);
+  return Object.fromEntries(MODEL_PURPOSES.map((purpose) => {
+    const endpointId = input[purpose];
+    if (typeof endpointId !== 'string' || !endpointId.trim()) {
+      throw new HttpError(400, `routes.${purpose} 必须是模型端点 ID`);
+    }
+    return [purpose, endpointId.trim()];
+  })) as Record<ModelPurpose, string>;
+}
+
+function modelUseMode(value: unknown, field: 'evolutionMode' | 'summaryMode'): EvolutionMode | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !EVOLUTION_MODES.includes(value as EvolutionMode)) {
+    throw new HttpError(400, `${field} 必须是 local 或 model`);
+  }
+  return value as EvolutionMode;
 }
 
 async function serialized<T>(id: string, task: () => Promise<T>): Promise<T> {
@@ -238,10 +264,32 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (request.method === "POST" && url.pathname === "/api/decide") {
-    const payload = await readJson(request) as { model?: unknown };
-    const provider = normalizeModelProvider(payload.model);
-    const result = await handleDecide(payload, loadLlmKey(provider), provider);
+    const payload = await readJson(request) as { endpoint?: unknown; model?: unknown };
+    const requestedEndpoint = typeof payload.endpoint === 'string'
+      ? payload.endpoint
+      : typeof payload.model === 'string' ? payload.model : undefined;
+    const result = await handleDecide(payload, requestedEndpoint);
     sendJson(response, result.status, result.body);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/model-settings') {
+    sendJson(response, 200, readModelSettings());
+    return;
+  }
+
+  if (request.method === 'PUT' && url.pathname === '/api/model-settings') {
+    const body = asObject(await readJson(request));
+    try {
+      sendJson(response, 200, updateModelSettings(
+        modelRoutes(body.routes),
+        modelUseMode(body.evolutionMode, 'evolutionMode'),
+        modelUseMode(body.summaryMode, 'summaryMode'),
+      ));
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(400, error instanceof Error ? error.message : String(error));
+    }
     return;
   }
 
@@ -310,11 +358,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   if (request.method === 'GET' && parts[3] === 'enhancements' && parts.length === 4) {
     const artifact = await narrativeEnhancements.load(id);
     if (!artifact) throw new HttpError(404, `运行 ${id} 尚无叙事增强旁车`);
+    const modelEndpoint = modelEndpointStatus('narrative');
     sendJson(response, 200, {
       artifact,
       counts: narrativeEnhancementCounts(artifact),
       processing: narrativeEnhancements.isProcessing(id),
-      providerConfigured: Boolean(loadLlmKey('kimi')),
+      providerConfigured: modelEndpoint.configured,
+      modelEndpoint,
       authoritativeStateChanged: false,
     });
     return;
@@ -352,10 +402,12 @@ server.listen(PORT, HOST, () => {
   console.log(`Persistent runs: ${DATA_DIR}`);
 });
 
+let shuttingDown = false;
 function shutdown(): void {
-  server.close(() => {
-    void elandWorker.close().finally(() => process.exit(0));
-  });
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close();
+  void elandWorker.close().finally(() => process.exit(0));
 }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

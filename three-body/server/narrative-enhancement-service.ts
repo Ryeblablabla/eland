@@ -1,10 +1,11 @@
 import type { SimulationState } from '../src/game/eland/simulation';
-import { loadLlmKey } from './env';
+import { ModelRequestError } from './model-client';
+import { modelEndpointStatus, resolveModelEndpoint, type ModelEndpointStatus } from './model-config';
 import type { FileRunStore } from './run-store';
 import {
   narrativeEnhancementCounts,
   queueNarrativeEnhancements,
-  requestKimiNarrativeEnhancement,
+  requestNarrativeEnhancement,
   type NarrativeEnhancementArtifact,
   type NarrativeEnhancementFailure,
   type NarrativeEnhancementKind,
@@ -23,6 +24,7 @@ export interface TriggerNarrativeEnhancementsResult {
   counts: ReturnType<typeof narrativeEnhancementCounts>;
   processing: boolean;
   providerConfigured: boolean;
+  modelEndpoint: ModelEndpointStatus;
 }
 
 function sourceStillExists(state: SimulationState, task: NarrativeEnhancementTask): boolean {
@@ -32,13 +34,21 @@ function sourceStillExists(state: SimulationState, task: NarrativeEnhancementTas
 }
 
 function providerFailure(error: unknown): NarrativeEnhancementFailure {
+  if (error instanceof ModelRequestError) {
+    return {
+      code: error.code,
+      message: error.message.slice(0, 400),
+      retriable: error.retriable,
+      failedAt: new Date().toISOString(),
+    };
+  }
   const message = error instanceof Error ? error.message : String(error);
   const normalized = `${error instanceof Error ? error.name : ''} ${message}`.toLowerCase();
   const timeout = normalized.includes('timeout') || normalized.includes('aborted');
   const invalid = error instanceof SyntaxError
     || normalized.includes('json')
     || normalized.includes('缺少 text')
-    || normalized.includes('没有返回叙事增强文本')
+    || normalized.includes('没有返回')
     || normalized.includes('无来源场景')
     || normalized.includes('改写成了年份');
   return {
@@ -85,11 +95,13 @@ export class NarrativeEnhancementService {
 
     const hasQueuedTasks = artifact.tasks.some((task) => task.status === 'queued');
     if (input.dispatch && hasQueuedTasks && !this.jobs.has(runId)) this.startJob(runId);
+    const modelEndpoint = modelEndpointStatus('narrative');
     return {
       artifact,
       counts: narrativeEnhancementCounts(artifact),
       processing: this.jobs.has(runId),
-      providerConfigured: Boolean(loadLlmKey('kimi')),
+      providerConfigured: modelEndpoint.configured,
+      modelEndpoint,
     };
   }
 
@@ -164,7 +176,6 @@ export class NarrativeEnhancementService {
   }
 
   private async processQueue(runId: string): Promise<void> {
-    const apiKey = loadLlmKey('kimi');
     for (;;) {
       const task = await this.takeNextTask(runId);
       if (!task) return;
@@ -174,10 +185,22 @@ export class NarrativeEnhancementService {
         await this.markStale(runId, task);
         continue;
       }
-      if (!apiKey) {
+      let endpoint;
+      try {
+        endpoint = resolveModelEndpoint('narrative');
+      } catch (error) {
+        await this.markFailed(runId, task, {
+          code: 'provider-error',
+          message: `${error instanceof Error ? error.message : String(error)}；权威模拟状态不受影响`,
+          retriable: true,
+          failedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      if (endpoint.auth !== 'none' && !endpoint.apiKey) {
         await this.markFailed(runId, task, {
           code: 'missing-key',
-          message: '服务端未配置 KIMI_API_KEY；权威模拟状态不受影响',
+          message: `模型端点 ${endpoint.id} 缺少 ${endpoint.apiKeyEnv ?? 'API Key'}；权威模拟状态不受影响`,
           retriable: true,
           failedAt: new Date().toISOString(),
         });
@@ -185,7 +208,7 @@ export class NarrativeEnhancementService {
       }
 
       try {
-        const generated = await requestKimiNarrativeEnhancement(apiKey, task);
+        const generated = await requestNarrativeEnhancement(endpoint, task);
         const after = await this.store.load(runId);
         if (!sourceStillExists(after.state, task)) {
           await this.markStale(runId, task);
@@ -194,7 +217,9 @@ export class NarrativeEnhancementService {
         await this.mutateTask(runId, task.id, (current, now) => {
           current.status = 'completed';
           current.completedAt = now;
-          current.provider = 'kimi';
+          current.provider = generated.endpointId;
+          current.endpointId = generated.endpointId;
+          current.protocol = generated.protocol;
           current.model = generated.model;
           current.usage = generated.usage;
           current.result = {

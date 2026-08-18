@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "evolutionMode": "local",
+  "summaryMode": "local",
+  "endpoints": {
+    "lan-qwen": {
+      "protocol": "ollama-chat",
+      "url": "http://192.168.1.7:11434/api/chat",
+      "model": "qwen3.5:4b",
+      "auth": "none",
+      "structuredOutput": "native-json",
+      "thinking": false,
+      "temperature": 0.2,
+      "timeoutMs": 60000
+    },
+    "kimi": {
+      "protocol": "openai-chat",
+      "url": "https://api.kimi.com/coding/v1/chat/completions",
+      "model": "kimi-for-coding",
+      "apiKeyEnv": "KIMI_API_KEY",
+      "temperature": 1,
+      "structuredOutput": "native-json"
+    },
+    "responses-example": {
+      "protocol": "openai-responses",
+      "url": "https://api.openai.com/v1/responses",
+      "model": "your-responses-model",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "structuredOutput": "native-json"
+    },
+    "anthropic-example": {
+      "protocol": "anthropic-messages",
+      "url": "https://api.anthropic.com/v1/messages",
+      "model": "your-anthropic-model",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "structuredOutput": "prompt"
+    }
+  },
+  "routes": {
+    "narrative": "lan-qwen",
+    "decision": "kimi",
+    "strategy": "lan-qwen"
+  },
+  "strategies": {
+    "local-review": {
+      "endpoint": "lan-qwen",
+      "systemPrompt": "只根据任务提供的可感知事实提出长期假说，不生成世界事实或直接动作。",
+      "temperature": 0.7,
+      "maxOutputTokens": 1200
+    }
+  }
+}

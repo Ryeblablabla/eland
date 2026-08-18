@@ -1,4 +1,7 @@
 /** ELAND 应用会话：编排月度用例、读取投影与可回溯快照。 */
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { deserialize, serialize } from 'node:v8';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import {
@@ -13,6 +16,9 @@ import { calendarDate } from '../src/game/eland/domain/calendar';
 import { ERA_TO_ENV, monthSpeaker, projectPlayerNarrative, toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
 import type { GameFrame, NarrativeEntryView, SkySample } from '../src/game/societyContract';
 import type { AgentHistoryView } from '../src/game/societyContract';
+import { summarizePlayerNarrativeEntries } from './narrative-enhancements';
+import { createServerLlmDecider } from './backend-decider';
+import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode, readSummaryMode } from './model-config';
 
 export type FrameEntry = NarrativeEntryView;
 
@@ -21,6 +27,7 @@ export type Frame = GameFrame;
 const MAX_HISTORY_MONTHS = 2_400;
 const SNAPSHOT_CHECKPOINT_INTERVAL = 12;
 const DEFAULT_SESSION_TTL_MS = 60 * 1_000;
+const DEFAULT_SESSION_RECOVERY_TTL_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_SESSIONS = 16;
 const DEFAULT_ACTIVE_STEP_PROTECTION_MS = 30 * 1_000;
 
@@ -56,6 +63,27 @@ interface BranchTimeline {
   history: StoredFrame[];
   frameByMonth: Map<number, StoredFrame>;
   snapshots: Map<number, StoredSnapshot>;
+}
+
+interface ElandSessionRecoverySnapshot {
+  schemaVersion: 1;
+  savedAt: number;
+  runId: string;
+  civilizationId: number;
+  latestState: SimulationState;
+  latestFrame: Frame;
+  branches: Map<string, BranchTimeline>;
+  activeBranchId: string;
+  forkSequence: number;
+  skySample: SkySample;
+}
+
+interface ManagedSessionRecoverySnapshot {
+  schemaVersion: 1;
+  touchedAt: number;
+  lastStepAt: number;
+  leaseId: string;
+  session: ElandSessionRecoverySnapshot;
 }
 
 function pack<T>(value: T): Buffer {
@@ -129,6 +157,7 @@ export class ElandSession {
   private latestState: SimulationState | null = null;
   private latestFrame: Frame | null = null;
   private stepping = false;
+  private lastNarrativeFallbackLogAt = 0;
   private branches = new Map<string, BranchTimeline>();
   private activeBranchId = '';
   private forkSequence = 0;
@@ -138,6 +167,43 @@ export class ElandSession {
   constructor(runId: string, initialSkySample: SkySample) {
     this.runId = runId;
     this.skySample = initialSkySample;
+  }
+
+  static restore(snapshot: ElandSessionRecoverySnapshot): ElandSession {
+    if (snapshot.schemaVersion !== 1 || !snapshot.latestState || !snapshot.latestFrame) {
+      throw new Error('实时演化会话快照版本不受支持');
+    }
+    const session = new ElandSession(snapshot.runId, snapshot.skySample);
+    session.civilizationId = snapshot.civilizationId;
+    session.controller = createSimulation({ state: snapshot.latestState });
+    session.latestState = session.controller.getState();
+    session.latestFrame = {
+      ...snapshot.latestFrame,
+      society: toSocietyState(session.latestState),
+    };
+    session.branches = snapshot.branches;
+    session.activeBranchId = snapshot.activeBranchId;
+    session.forkSequence = snapshot.forkSequence;
+    const timeline = session.branches.get(session.activeBranchId);
+    if (!timeline) throw new Error('实时演化会话缺少活动分支');
+    timeline.snapshots.set(session.latestFrame.elapsedMonths, checkpoint(session.latestState));
+    return session;
+  }
+
+  recoverySnapshot(savedAt = Date.now()): ElandSessionRecoverySnapshot | null {
+    if (!this.latestState || !this.latestFrame || !this.controller) return null;
+    return {
+      schemaVersion: 1,
+      savedAt,
+      runId: this.runId,
+      civilizationId: this.civilizationId,
+      latestState: this.latestState,
+      latestFrame: this.latestFrame,
+      branches: this.branches,
+      activeBranchId: this.activeBranchId,
+      forkSequence: this.forkSequence,
+      skySample: this.skySample,
+    };
   }
 
   begin(civilizationId: number, worldSeed: number, skySample: SkySample, characterIds?: string[]): Frame {
@@ -168,8 +234,10 @@ export class ElandSession {
     return this.record(state, []);
   }
 
-  model(): 'local' {
-    return 'local';
+  model(): string {
+    if (readEvolutionMode() !== 'model' || !hasExplicitModelRoute('decision')) return 'local';
+    const endpoint = modelEndpointStatus('decision');
+    return endpoint.configured && endpoint.endpointId ? endpoint.endpointId : 'local';
   }
 
   private activeTimeline(): BranchTimeline {
@@ -217,7 +285,7 @@ export class ElandSession {
     }
   }
 
-  private record(state: SimulationState, events: WorldEvent[]): Frame {
+  private record(state: SimulationState, events: WorldEvent[], entries = events.length ? entriesFor(state, events) : []): Frame {
     const date = calendarDate(state.clock.elapsedMonths);
     const frame: Frame = {
       runId: this.runId,
@@ -231,7 +299,7 @@ export class ElandSession {
       civilizationEnd: state.civilization.status === 'ended' && state.civilization.outcome
         ? { kind: state.civilization.outcome.kind, cause: state.civilization.outcome.cause, summary: state.civilization.outcome.summary }
         : null,
-      entries: events.length ? entriesFor(state, events) : [],
+      entries,
       speaker: monthSpeaker(state, events),
     };
     const timeline = this.activeTimeline();
@@ -268,19 +336,48 @@ export class ElandSession {
       // controller 是会话内唯一权威状态；直接推进可保留 WeakMap 增量索引，
       // 避免每月 getState → migrate → step → restore 的多轮全量深拷贝。
       this.controller.setExternalClimate(env.epoch, env.kind, env.severity);
-      const state = this.controller.step();
-      return this.record(state, state.lastStep);
+      const decisionEndpoint = readEvolutionMode() === 'model' && hasExplicitModelRoute('decision')
+        ? modelEndpointStatus('decision')
+        : { configured: false };
+      let state: SimulationState;
+      if (decisionEndpoint.configured && decisionEndpoint.endpointId) {
+        try {
+          state = await this.controller.stepAsyncOwned(createServerLlmDecider(decisionEndpoint.endpointId));
+        } catch (error) {
+          // stepAsync 在供应商失败时已经使用本地决定；这里兜住基础设施之外的异常，
+          // controller 尚未提交失败的异步结果，因此可安全执行同一个本地月份。
+          console.warn(`运行 ${this.runId} 的关键模型决策已回退到本地规划：${error instanceof Error ? error.message : String(error)}`);
+          state = this.controller.stepOwned();
+        }
+      } else {
+        state = this.controller.stepOwned();
+      }
+      const ruleEntries = entriesFor(state, state.lastStep);
+      let entries = ruleEntries;
+      if (readSummaryMode() === 'model') {
+        try {
+          entries = await summarizePlayerNarrativeEntries(state, ruleEntries);
+        } catch (error) {
+          // 模型只改写投影文本；端点、超时、格式或事实校验失败时保留规则文本。
+          const now = Date.now();
+          if (now - this.lastNarrativeFallbackLogAt >= 60_000) {
+            this.lastNarrativeFallbackLogAt = now;
+            console.warn(`运行 ${this.runId} 的即时叙事已回退到规则文本：${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+      return this.record(state, state.lastStep, entries);
     } finally {
       this.stepping = false;
     }
   }
 
   historyList(): { month: number; label: string; summary: string }[] {
-    return this.inheritedFrames(this.activeTimeline()).map((frame) => ({
+    return this.inheritedFrames(this.activeTimeline()).flatMap((frame) => frame.entries.map((entry) => ({
       month: frame.elapsedMonths,
       label: frame.calendar.label,
-      summary: frame.entries[0]?.text ?? '世界初始状态',
-    }));
+      summary: entry.text,
+    })));
   }
 
   frameAt(month: number): Frame | null {
@@ -357,11 +454,81 @@ export class ElandSessionManager {
   private readonly ttlMs: number;
   private readonly maxSessions: number;
   private readonly activeStepProtectionMs: number;
+  private readonly recoveryTtlMs: number;
+  private readonly recoveryDir?: string;
 
-  constructor(options: { ttlMs?: number; maxSessions?: number; activeStepProtectionMs?: number } = {}) {
+  constructor(options: { ttlMs?: number; recoveryTtlMs?: number; maxSessions?: number; activeStepProtectionMs?: number; recoveryDir?: string } = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_SESSION_TTL_MS;
+    this.recoveryTtlMs = options.recoveryTtlMs ?? DEFAULT_SESSION_RECOVERY_TTL_MS;
     this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
     this.activeStepProtectionMs = options.activeStepProtectionMs ?? DEFAULT_ACTIVE_STEP_PROTECTION_MS;
+    this.recoveryDir = options.recoveryDir ? path.resolve(options.recoveryDir) : undefined;
+    if (this.recoveryDir) {
+      mkdirSync(this.recoveryDir, { recursive: true });
+      this.restorePersisted();
+    }
+  }
+
+  private recoveryPath(runId: string): string | null {
+    if (!this.recoveryDir) return null;
+    const key = createHash('sha256').update(runId).digest('hex').slice(0, 32);
+    return path.join(this.recoveryDir, `${key}.bin`);
+  }
+
+  private removePersisted(runId: string): void {
+    const target = this.recoveryPath(runId);
+    if (!target) return;
+    try {
+      unlinkSync(target);
+    } catch {
+      // 文件不存在时无需处理。
+    }
+  }
+
+  private restorePersisted(): void {
+    if (!this.recoveryDir) return;
+    for (const name of readdirSync(this.recoveryDir).filter((candidate) => candidate.endsWith('.bin'))) {
+      const target = path.join(this.recoveryDir, name);
+      try {
+        const snapshot = unpack<ManagedSessionRecoverySnapshot>(readFileSync(target));
+        if (snapshot.schemaVersion !== 1 || Date.now() - snapshot.session.savedAt > this.recoveryTtlMs) {
+          unlinkSync(target);
+          continue;
+        }
+        const session = ElandSession.restore(snapshot.session);
+        this.sessions.set(session.runId, {
+          session,
+          touchedAt: Date.now(),
+          lastStepAt: snapshot.lastStepAt,
+          leaseId: snapshot.leaseId,
+        });
+      } catch (error) {
+        console.warn(`实时演化会话快照 ${name} 恢复失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  persistAll(now = Date.now()): number {
+    if (!this.recoveryDir) return 0;
+    this.sweep(now);
+    let persisted = 0;
+    for (const [runId, entry] of this.sessions) {
+      const session = entry.session.recoverySnapshot(now);
+      const target = this.recoveryPath(runId);
+      if (!session || !target) continue;
+      const temporary = `${target}.${process.pid}.tmp`;
+      const snapshot: ManagedSessionRecoverySnapshot = {
+        schemaVersion: 1,
+        touchedAt: now,
+        lastStepAt: entry.lastStepAt,
+        leaseId: entry.leaseId,
+        session,
+      };
+      writeFileSync(temporary, pack(snapshot));
+      renameSync(temporary, target);
+      persisted += 1;
+    }
+    return persisted;
   }
 
   sweep(now = Date.now()): number {
@@ -369,6 +536,7 @@ export class ElandSessionManager {
     for (const [runId, entry] of this.sessions) {
       if (now - entry.touchedAt <= this.ttlMs) continue;
       this.sessions.delete(runId);
+      this.removePersisted(runId);
       removed += 1;
     }
     return removed;
@@ -381,6 +549,7 @@ export class ElandSessionManager {
       .sort((a, b) => a[1].touchedAt - b[1].touchedAt)[0];
     if (!oldest) return false;
     this.sessions.delete(oldest[0]);
+    this.removePersisted(oldest[0]);
     return true;
   }
 
@@ -390,6 +559,7 @@ export class ElandSessionManager {
     if (!this.sessions.has(runId) && !this.evictLeastRecentlyUsed(now)) {
       throw new ElandSessionCapacityError(this.maxSessions);
     }
+    this.removePersisted(runId);
     const session = new ElandSession(runId, skySample);
     const frame = session.begin(civilizationId, worldSeed, skySample, characterIds);
     this.sessions.set(runId, { session, touchedAt: now, lastStepAt: 0, leaseId });
@@ -409,7 +579,9 @@ export class ElandSessionManager {
   end(runId: string, leaseId = ''): boolean {
     const entry = this.sessions.get(runId);
     if (!entry || (leaseId && entry.leaseId && entry.leaseId !== leaseId)) return false;
-    return this.sessions.delete(runId);
+    const deleted = this.sessions.delete(runId);
+    if (deleted) this.removePersisted(runId);
+    return deleted;
   }
 
   size(): number {
@@ -420,8 +592,10 @@ export class ElandSessionManager {
 
 export const elandSessions = new ElandSessionManager({
   ttlMs: Number(process.env.ELAND_SESSION_TTL_MS) || DEFAULT_SESSION_TTL_MS,
+  recoveryTtlMs: Number(process.env.ELAND_SESSION_RECOVERY_TTL_MS) || DEFAULT_SESSION_RECOVERY_TTL_MS,
   maxSessions: Number(process.env.ELAND_MAX_SESSIONS) || DEFAULT_MAX_SESSIONS,
   activeStepProtectionMs: Number(process.env.ELAND_ACTIVE_STEP_PROTECTION_MS) || DEFAULT_ACTIVE_STEP_PROTECTION_MS,
+  recoveryDir: process.env.ELAND_LIVE_SESSION_DIR ?? path.join(process.cwd(), '.cache', 'eland-live-sessions'),
 });
 
 const sessionSweepTimer = setInterval(() => { elandSessions.sweep(); }, 60_000);

@@ -11,6 +11,15 @@ import type { ActionVisualView, EraKey, IntentView, SocietyAgent, SocietyState }
 import { Material } from '@/game/eland/domain/material';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
 import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
+import {
+  shorelinePatches,
+  surfaceTransitionKind,
+  surfaceTransitionPatches,
+  type ShorelineNeighbors,
+  type SurfaceTransitionDirection,
+  type SurfaceTransitionKind,
+  type SurfaceTransitionNeighbors,
+} from '@/game/surfaceTransitions';
 import { collectDecor, featureDepth, featureUnderlayMaterialId, type DecorBucket, type DecorInstance } from '@/game/voxelKits';
 import { N_STARS, STAR_STYLES } from '@/lib/threebody';
 
@@ -37,7 +46,7 @@ class ScopedGTAOPass extends GTAOPass {
 /**
  * 立体沙盘：演化页的 2.5D/3D 视图。
  * - 地形：每格一根体素柱（InstancedMesh），高度 = world.elevation，颜色 = cellColor
- * - 水面：独立半透明体素层，缓慢闪烁
+ * - 水面：独立半透明体素层 + 1/8 格像素流纹，方向来自真实水格邻接
  * - 人物：3D 像素小人（体素拼装），步行摆动 + 头顶名牌
  * - 相机：OrbitControls 拖拽旋转 / 滚轮缩放，固定目标避免构图漂移
  * 数据全部来自权威 SocietyState，只读不改。
@@ -56,8 +65,15 @@ interface Props {
   sky?: HumanSkySnapshot;
   selectedAgentId?: string | null; // 旧页面编译兼容；沉浸式场景不启用点选 UI
   onSelectAgent?: (id: string | null) => void;
+  selectedObject?: SocietySceneSelection;
+  onSelectObject?: (selection: SocietySceneSelection) => void;
   onZoomOutRequest?: () => void; // 滚轮持续缩小越过上限 → 请求升起返回宇宙
 }
+
+export type SocietySceneSelection =
+  | { kind: 'agent'; id: string }
+  | { kind: 'structure'; id: string }
+  | null;
 
 const CELL_H = 0.3; // 每层体素的视觉高度（世界单位）
 const RULE_TICKS = 15;
@@ -83,7 +99,7 @@ function makeHumanSkyGlowTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-/** 纪元 → 渲染状态：主光仍表现天象，IBL、半球光和轮廓光保证暗部保持材质层次。 */
+/** 纪元 → 基础渲染状态；日照循环只在演示层内调制这些参数。 */
 const ERA_LIGHT: Record<EraKey, {
   sun: string; sunI: number; hemi: number; rim: number; env: number;
   exposure: number; fog: string;
@@ -96,6 +112,53 @@ const ERA_LIGHT: Record<EraKey, {
   frozen:         { sun: '#9fb8e8', sunI: 1.15, hemi: 0.78, rim: 0.58, env: 1.10, exposure: 1.08, fog: '#07101d' },
   extinct:        { sun: '#a394d8', sunI: 1.2, hemi: 0.72, rim: 0.48, env: 0.90, exposure: 1.05, fog: '#0b0918' },
 };
+
+interface DaylightKeyframe {
+  at: number;
+  position: THREE.Vector3;
+  color: THREE.Color;
+  direct: number;
+  ambient: number;
+  exposure: number;
+}
+
+const DAYLIGHT_CYCLE_SECONDS = 120;
+// 90% 的追随约需 2.7 秒；纪元、雾和日照目标统一通过这层阻尼落到画面。
+const LIGHT_DAMPING = 0.86;
+const DAYLIGHT_KEYFRAMES: readonly DaylightKeyframe[] = [
+  { at: 0.00, position: new THREE.Vector3(-62, 28, 24), color: new THREE.Color('#ffbd7d'), direct: 0.68, ambient: 0.94, exposure: 0.96 },
+  { at: 0.32, position: new THREE.Vector3(-10, 82, 28), color: new THREE.Color('#fff4dc'), direct: 1.04, ambient: 1.04, exposure: 1.02 },
+  { at: 0.62, position: new THREE.Vector3(38, 54, 34), color: new THREE.Color('#ffd19a'), direct: 0.90, ambient: 1.00, exposure: 1.00 },
+  { at: 0.82, position: new THREE.Vector3(64, 21, 18), color: new THREE.Color('#ff8758'), direct: 0.50, ambient: 0.91, exposure: 0.94 },
+  // 黄昏后从地图背面低位回到清晨，保持循环连续，同时不把演示层做成完整昼夜系统。
+  { at: 0.92, position: new THREE.Vector3(4, 15, -58), color: new THREE.Color('#9fabc9'), direct: 0.34, ambient: 0.86, exposure: 0.91 },
+  { at: 1.00, position: new THREE.Vector3(-62, 28, 24), color: new THREE.Color('#ffbd7d'), direct: 0.68, ambient: 0.94, exposure: 0.96 },
+];
+
+function isChaoticLightEra(era: EraKey): boolean {
+  return era === 'chaotic' || era === 'chaotic-heat' || era === 'chaotic-cold';
+}
+
+function sampleDaylight(
+  phase: number,
+  position: THREE.Vector3,
+  color: THREE.Color,
+): { direct: number; ambient: number; exposure: number } {
+  let rightIndex = 1;
+  while (rightIndex < DAYLIGHT_KEYFRAMES.length - 1 && phase > DAYLIGHT_KEYFRAMES[rightIndex].at) rightIndex += 1;
+  const left = DAYLIGHT_KEYFRAMES[rightIndex - 1];
+  const right = DAYLIGHT_KEYFRAMES[rightIndex];
+  const interval = Math.max(0.0001, right.at - left.at);
+  const linear = THREE.MathUtils.clamp((phase - left.at) / interval, 0, 1);
+  const eased = linear * linear * (3 - 2 * linear);
+  position.copy(left.position).lerp(right.position, eased);
+  color.copy(left.color).lerp(right.color, eased);
+  return {
+    direct: THREE.MathUtils.lerp(left.direct, right.direct, eased),
+    ambient: THREE.MathUtils.lerp(left.ambient, right.ambient, eased),
+    exposure: THREE.MathUtils.lerp(left.exposure, right.exposure, eased),
+  };
+}
 
 /** id → 稳定的衣色色相 */
 function hueOf(id: string): number {
@@ -397,6 +460,14 @@ function buildFigure(agent: SocietyAgent): FigureParts {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh) mesh.castShadow = true;
   });
+  // 视觉体素很小，增加不参与渲染的点选体积，让鼠标无需精确落在手脚上。
+  const pickMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  pickMaterial.colorWrite = false;
+  const pickProxy = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.1, 1.35), pickMaterial);
+  pickProxy.position.y = 0.72;
+  pickProxy.castShadow = false;
+  pickProxy.userData.agentId = agent.id;
+  group.add(pickProxy);
   return {
     group, upright, upperBody, dehydrated, legL, legR, armL, armR,
     spear, handTool, toolHead, heldLoad, heldLoadFill, tablet, heldFood, outerwear, bandage, belly, sprite,
@@ -414,12 +485,42 @@ function disposeFigure(f: FigureParts): void {
   });
 }
 
-export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRequest }: Props) {
+export default function SocietyScene3D({
+  society,
+  era,
+  speaker,
+  sky,
+  selectedAgentId,
+  onSelectAgent,
+  selectedObject,
+  onSelectObject,
+  onZoomOutRequest,
+}: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const propsRef = useRef({ society, era, speaker, sky, onZoomOutRequest });
+  const propsRef = useRef({
+    society,
+    era,
+    speaker,
+    sky,
+    selectedAgentId,
+    onSelectAgent,
+    selectedObject,
+    onSelectObject,
+    onZoomOutRequest,
+  });
   useEffect(() => {
-    propsRef.current = { society, era, speaker, sky, onZoomOutRequest };
+    propsRef.current = {
+      society,
+      era,
+      speaker,
+      sky,
+      selectedAgentId,
+      onSelectAgent,
+      selectedObject,
+      onSelectObject,
+      onZoomOutRequest,
+    };
   });
 
   const animStart = useRef(0); // 挂载后由 effect 置为当前时间（渲染期不调非纯函数）
@@ -430,6 +531,7 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
   const lightApiRef = useRef<((e: EraKey) => void) | null>(null);
   const decorApiRef = useRef<((s: SocietyState, e: EraKey) => void) | null>(null);
   const skyApiRef = useRef<((snapshot?: HumanSkySnapshot) => void) | null>(null);
+  const selectionApiRef = useRef<((s: SocietyState) => void) | null>(null);
 
   // ---- 主场景（挂载一次）----
   useEffect(() => {
@@ -767,12 +869,27 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
       });
     };
 
-    // ---- 光照：半球环境 + 主方向光 + 冷色轮廓光（色温随纪元）----
+    // ---- 光照：独立的人间日照循环 + 纪元调制，不从天穹恒星位置推导 ----
+    let activeLightEra = propsRef.current.era;
+    let lightingElapsedSeconds = 0;
+    const sunlightTargetPosition = new THREE.Vector3();
+    const daylightTone = new THREE.Color();
+    const sunlightTargetColor = new THREE.Color();
+    const eraSunColor = new THREE.Color();
+    const chaosTone = new THREE.Color();
+    const fogTargetColor = new THREE.Color(ERA_LIGHT[activeLightEra].fog);
+    let fogTargetNear = 175;
+    let fogTargetFar = 460;
+
     const hemi = new THREE.HemisphereLight('#d5e3f3', '#66705d', 0.92);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight('#fff1d6', 1.15);
-    // 主光从镜头侧后方横穿地图，让投影落在可见地面，而不是藏在模型背后。
-    sun.position.set(-52, 72, 34);
+    const initialDaylight = sampleDaylight(0, sunlightTargetPosition, daylightTone);
+    const initialEraLight = ERA_LIGHT[activeLightEra];
+    sunlightTargetColor.set(initialEraLight.sun).lerp(daylightTone, 0.56);
+    sun.position.copy(sunlightTargetPosition);
+    sun.color.copy(sunlightTargetColor);
+    sun.intensity = initialEraLight.sunI * initialDaylight.direct;
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const shadowExtent = Math.max(world0.width, world0.height) / 2 + 8;
@@ -789,17 +906,68 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     rim.position.set(44, 34, 50); // 镜头侧冷填光只抬暗面，不与主光争夺形体
     scene.add(rim);
     lightApiRef.current = (eraKey) => {
-      const L = ERA_LIGHT[eraKey];
-      sun.color.set(L.sun);
-      sun.intensity = L.sunI;
-      hemi.intensity = L.hemi;
-      rim.intensity = L.rim;
-      scene.environmentIntensity = L.env;
-      renderer.toneMappingExposure = L.exposure;
-      (scene.fog as THREE.Fog).color.set(L.fog);
-      renderer.setClearColor(L.fog);
+      activeLightEra = eraKey;
     };
-    lightApiRef.current(propsRef.current.era);
+
+    const updateLighting = (deltaSeconds: number) => {
+      lightingElapsedSeconds += deltaSeconds;
+      const phase = (lightingElapsedSeconds % DAYLIGHT_CYCLE_SECONDS) / DAYLIGHT_CYCLE_SECONDS;
+      const daylight = sampleDaylight(phase, sunlightTargetPosition, daylightTone);
+      const eraLight = ERA_LIGHT[activeLightEra];
+      const chaotic = isChaoticLightEra(activeLightEra);
+      let directMultiplier = daylight.direct;
+      let ambientMultiplier = daylight.ambient;
+      let exposureMultiplier = daylight.exposure;
+
+      eraSunColor.set(eraLight.sun);
+      sunlightTargetColor.copy(eraSunColor).lerp(daylightTone, chaotic ? 0.38 : 0.56);
+
+      if (chaotic) {
+        // 多个非整数周期叠加出不可预测但连续的乱纪元光变；不读取恒星位置，也不制造领域事实。
+        const chaosA = Math.sin(lightingElapsedSeconds * 0.41 + Math.sin(lightingElapsedSeconds * 0.13) * 1.8);
+        const chaosB = Math.sin(lightingElapsedSeconds * 0.73 + 1.4);
+        const thermalShift = Math.sin(lightingElapsedSeconds * 0.19 - 0.7);
+        sunlightTargetPosition.x += chaosA * 44 + chaosB * 16;
+        sunlightTargetPosition.y = THREE.MathUtils.clamp(
+          sunlightTargetPosition.y + chaosA * 18 - chaosB * 10,
+          12,
+          96,
+        );
+        sunlightTargetPosition.z += chaosB * 42 - chaosA * 12;
+        directMultiplier *= THREE.MathUtils.clamp(0.94 + chaosA * 0.46 + chaosB * 0.24, 0.34, 1.64);
+        ambientMultiplier *= THREE.MathUtils.clamp(0.88 - chaosA * 0.16 + chaosB * 0.08, 0.68, 1.12);
+        exposureMultiplier *= THREE.MathUtils.clamp(0.96 + chaosA * 0.10 + chaosB * 0.05, 0.82, 1.12);
+
+        if (activeLightEra === 'chaotic-heat') chaosTone.set('#ff8a48');
+        else if (activeLightEra === 'chaotic-cold') chaosTone.set('#91b7ff');
+        else chaosTone.set(thermalShift >= 0 ? '#ff9a56' : '#91b9ff');
+        sunlightTargetColor.lerp(chaosTone, 0.28 + Math.abs(thermalShift) * 0.30);
+      }
+
+      const blend = 1 - Math.exp(-LIGHT_DAMPING * deltaSeconds);
+      sun.position.lerp(sunlightTargetPosition, blend);
+      sun.color.lerp(sunlightTargetColor, blend);
+      sun.intensity = THREE.MathUtils.damp(sun.intensity, eraLight.sunI * directMultiplier, LIGHT_DAMPING, deltaSeconds);
+      hemi.intensity = THREE.MathUtils.damp(hemi.intensity, eraLight.hemi * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
+      rim.intensity = THREE.MathUtils.damp(rim.intensity, eraLight.rim * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
+      scene.environmentIntensity = THREE.MathUtils.damp(
+        scene.environmentIntensity,
+        eraLight.env * ambientMultiplier,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      renderer.toneMappingExposure = THREE.MathUtils.damp(
+        renderer.toneMappingExposure,
+        eraLight.exposure * exposureMultiplier,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      const fog = scene.fog as THREE.Fog;
+      fog.color.lerp(fogTargetColor, blend);
+      fog.near = THREE.MathUtils.damp(fog.near, fogTargetNear, LIGHT_DAMPING, deltaSeconds);
+      fog.far = THREE.MathUtils.damp(fog.far, fogTargetFar, LIGHT_DAMPING, deltaSeconds);
+      renderer.setClearColor(fog.color);
+    };
 
     // ---- 地形体素柱（InstancedMesh，逐实例颜色；PBR 材质）----
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -811,9 +979,9 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     land.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     land.castShadow = land.receiveShadow = true;
     scene.add(land);
-    // 地表细节仍保持 1/4 格的体素颗粒：内部低对比小簇打破纯色平板，边界色块让草/土/沙自然互相渗入。
+    // 地表内部仍用 1/4 格低对比颗粒；草土、沙地、耕地与湿润岸线改用 1/8 格八邻域过渡。
     // 单一 InstancedMesh 保留合批，不为每格创建独立纹理或材质。
-    const GROUND_DETAIL_CAP = COUNT * 5;
+    const GROUND_DETAIL_CAP = COUNT * 28;
     const groundDetailGeo = new THREE.PlaneGeometry(1, 1);
     groundDetailGeo.rotateX(-Math.PI / 2);
     const groundDetail = new THREE.InstancedMesh(
@@ -831,7 +999,8 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     groundDetail.renderOrder = 2;
     scene.add(groundDetail);
     aoExcluded.push(groundDetail);
-    // 水面：真实透射/折射（Teardown 式物理反差），上层细分网格承载连续流动波纹。
+    // 水体积仍严格来自权威液体体素；上层演出用 1/8 格量化的低对比流纹。
+    // 像素边界保留体素感，整片材质共享相位保持连续；只读水格邻接，不写回水事实。
     const waterMat = new THREE.MeshPhysicalMaterial({
       color: '#ffffff', roughness: 0.21, metalness: 0,
       transmission: 0.58, ior: 1.33, thickness: 0.45, specularIntensity: 1.15,
@@ -845,66 +1014,62 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     water.receiveShadow = false; // 树冠阴影不再把窄河压成纯黑沟槽
     scene.add(water);
     aoExcluded.push(water); // 透射水不是实体遮蔽体，避免 GTAO 给每格水面压出黑缝
-    const waterWaveUniforms = { uTime: { value: 0 }, uRain: { value: 0 } };
-    const waterWaveGeo = new THREE.PlaneGeometry(1, 1, 5, 5);
-    waterWaveGeo.rotateX(-Math.PI / 2);
-    const waterWaveMat = new THREE.ShaderMaterial({
-      uniforms: waterWaveUniforms,
-      vertexShader: `
-        uniform float uTime;
-        varying vec2 vWaterWorld;
-        varying float vWave;
+    const waterFlowUniforms = { uTime: { value: 0 }, uRain: { value: 0 } };
+    const waterFlowOffsets = new Float32Array(COUNT);
+    const waterFlowGeo = new THREE.PlaneGeometry(1.02, 1.02);
+    waterFlowGeo.rotateX(-Math.PI / 2);
+    const waterFlowOffsetAttribute = new THREE.InstancedBufferAttribute(waterFlowOffsets, 1);
+    waterFlowGeo.setAttribute('aFlowOffset', waterFlowOffsetAttribute);
+    const waterFlow = new THREE.InstancedMesh(
+      waterFlowGeo,
+      new THREE.ShaderMaterial({
+        uniforms: waterFlowUniforms,
+        vertexShader: `
+          attribute float aFlowOffset;
+          varying vec2 vFlowCoord;
+          varying float vFlowOffset;
 
-        void main() {
-          vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
-          float alongFlow = sin(worldPosition.z * 3.4 - uTime * 1.75
-            + sin(worldPosition.x * 0.85) * 0.55);
-          float crossFlow = sin(worldPosition.x * 4.1 + worldPosition.z * 1.15 - uTime * 1.05);
-          float fineFlow = sin(worldPosition.z * 7.2 + worldPosition.x * 2.0 - uTime * 2.6);
-          vWave = alongFlow * 0.55 + crossFlow * 0.3 + fineFlow * 0.15;
-          worldPosition.y += vWave * 0.012;
-          vWaterWorld = worldPosition.xz;
-          gl_Position = projectionMatrix * viewMatrix * worldPosition;
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform float uRain;
-        varying vec2 vWaterWorld;
-        varying float vWave;
+          void main() {
+            vFlowCoord = vec2(position.x, position.z + aFlowOffset);
+            vFlowOffset = aFlowOffset;
+            vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * viewMatrix * worldPosition;
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime;
+          uniform float uRain;
+          varying vec2 vFlowCoord;
+          varying float vFlowOffset;
 
-        void main() {
-          float crest = smoothstep(0.48, 0.96, vWave);
-          float longStreak = pow(max(0.0, 0.5 + 0.5 * sin(
-            vWaterWorld.y * 5.0 - uTime * 2.15 + sin(vWaterWorld.x * 1.2) * 0.8
-          )), 7.0);
-          float brokenStreak = pow(max(0.0, 0.5 + 0.5 * sin(
-            vWaterWorld.x * 6.4 + vWaterWorld.y * 1.7 - uTime * 1.35
-          )), 10.0);
-          vec2 rainTile = floor(vWaterWorld * 2.2);
-          float rainSeed = fract(sin(dot(rainTile, vec2(12.9898, 78.233))) * 43758.5453);
-          float rainPhase = fract(uTime * 0.85 + rainSeed);
-          vec2 rainLocal = fract(vWaterWorld * 2.2) - 0.5;
-          float rainRadius = length(rainLocal);
-          float rainRing = smoothstep(0.035, 0.0, abs(rainRadius - rainPhase * 0.48))
-            * smoothstep(1.0, 0.55, rainPhase) * uRain;
-          float highlight = clamp(crest * 0.55 + longStreak * 0.7 + brokenStreak * 0.35 + rainRing * 0.9, 0.0, 1.0);
-          vec3 waveColor = mix(vec3(0.16, 0.49, 0.58), vec3(0.70, 0.91, 0.94), highlight);
-          float alpha = 0.018 + crest * 0.055 + longStreak * 0.07 + brokenStreak * 0.035 + rainRing * 0.11;
-          gl_FragColor = vec4(waveColor, alpha);
-        }
-      `,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const waterWaves = new THREE.InstancedMesh(waterWaveGeo, waterWaveMat, COUNT);
-    waterWaves.count = 0;
-    waterWaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    waterWaves.castShadow = waterWaves.receiveShadow = false;
-    waterWaves.renderOrder = 3;
-    scene.add(waterWaves);
-    aoExcluded.push(waterWaves);
+          void main() {
+            // 先把取样位置锁进 1/8 格，再让色阶连续传播：轮廓是体素的，运动不再硬跳。
+            vec2 voxel = floor(vFlowCoord * 8.0) / 8.0;
+            float time = uTime * (1.0 + uRain * 0.28);
+            float mainBand = 0.5 + 0.5 * sin(
+              voxel.y * 4.2 - time * 1.45 + sin(voxel.x * 4.8 + vFlowOffset * 0.17) * 0.42
+            );
+            float crossBand = 0.5 + 0.5 * sin(
+              voxel.y * 7.6 - time * 2.05 + voxel.x * 2.1
+            );
+            float flow = smoothstep(0.38, 0.94, mainBand) * (0.72 + crossBand * 0.28);
+            vec3 flowColor = mix(vec3(0.10, 0.37, 0.45), vec3(0.34, 0.66, 0.70), flow);
+            float alpha = 0.018 + flow * (0.075 + uRain * 0.018);
+            gl_FragColor = vec4(flowColor, alpha);
+          }
+        `,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+      COUNT,
+    );
+    waterFlow.count = 0;
+    waterFlow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    waterFlow.castShadow = waterFlow.receiveShadow = false;
+    waterFlow.renderOrder = 3;
+    scene.add(waterFlow);
+    aoExcluded.push(waterFlow);
 
     // ---- 权威天气的动态投影：雨/雪/扬尘粒子与雾距离，不改写世界状态 ----
     const weatherHash = (index: number, salt: number): number => {
@@ -986,19 +1151,18 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
       rain.visible = weather.kind === 'rain' || weather.kind === 'storm';
       snow.visible = weather.kind === 'snow';
       dust.visible = weather.kind === 'drought';
-      waterWaveUniforms.uRain.value = rain.visible ? Math.min(1, 0.35 + strength * 0.09) : 0;
+      waterFlowUniforms.uRain.value = rain.visible ? Math.min(1, 0.35 + strength * 0.09) : 0;
 
-      const fog = scene.fog as THREE.Fog;
       const eraFog = ERA_LIGHT[p.era].fog;
-      fog.color.set(weather.kind === 'fog' ? '#aab5b5'
+      fogTargetColor.set(weather.kind === 'fog' ? '#aab5b5'
         : weather.kind === 'rain' || weather.kind === 'storm' ? '#34495d'
           : weather.kind === 'snow' ? '#9cabb8'
             : weather.kind === 'drought' ? '#806d50' : eraFog);
-      if (weather.kind === 'fog') { fog.near = 36; fog.far = 115 + (10 - strength) * 7; }
-      else if (weather.kind === 'storm') { fog.near = 65; fog.far = 185 + (10 - strength) * 6; }
-      else if (weather.kind === 'rain' || weather.kind === 'snow') { fog.near = 90; fog.far = 245; }
-      else if (weather.kind === 'drought') { fog.near = 115; fog.far = 330; }
-      else { fog.near = 175; fog.far = 460; }
+      if (weather.kind === 'fog') { fogTargetNear = 36; fogTargetFar = 115 + (10 - strength) * 7; }
+      else if (weather.kind === 'storm') { fogTargetNear = 65; fogTargetFar = 185 + (10 - strength) * 6; }
+      else if (weather.kind === 'rain' || weather.kind === 'snow') { fogTargetNear = 90; fogTargetFar = 245; }
+      else if (weather.kind === 'drought') { fogTargetNear = 115; fogTargetFar = 330; }
+      else { fogTargetNear = 175; fogTargetFar = 460; }
 
       if (rain.visible) {
         const speed = 10 + strength * 1.1;
@@ -1066,7 +1230,58 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     const q = new THREE.Quaternion();
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
+    const decorAxisY = new THREE.Vector3(0, 1, 0);
     const col = new THREE.Color();
+    const structureSelectionGroup = new THREE.Group();
+    structureSelectionGroup.name = 'structure-selection-proxies';
+    scene.add(structureSelectionGroup);
+
+    const clearStructureSelection = () => {
+      for (const child of [...structureSelectionGroup.children]) {
+        structureSelectionGroup.remove(child);
+        const mesh = child as THREE.Mesh;
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+      }
+    };
+
+    selectionApiRef.current = (s) => {
+      clearStructureSelection();
+      const w = s.world;
+      for (const structure of s.structures) {
+        if (structure.occupiedCells.length === 0) continue;
+        const xs = structure.occupiedCells.map((cellId) => cellId % w.width);
+        const zs = structure.occupiedCells.map((cellId) => Math.floor(cellId / w.width));
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minZ = Math.min(...zs);
+        const maxZ = Math.max(...zs);
+        const topLayer = Math.max(
+          ...structure.occupiedCells.map((cellId) => w.columns[cellId]?.length ?? (w.elevation[cellId] + 1)),
+          ...structure.interiorPositions.map((position) => position.z + 1),
+          2,
+        );
+        const height = Math.max(1.4, topLayer * CELL_H + 0.8);
+        const material = new THREE.MeshBasicMaterial({
+          transparent: true,
+          opacity: 0,
+          depthTest: false,
+          depthWrite: false,
+        });
+        material.colorWrite = false;
+        const proxy = new THREE.Mesh(
+          new THREE.BoxGeometry(maxX - minX + 1, height, maxZ - minZ + 1),
+          material,
+        );
+        proxy.position.set(
+          (minX + maxX) / 2 - w.width / 2 + 0.5,
+          height / 2,
+          (minZ + maxZ) / 2 - w.height / 2 + 0.5,
+        );
+        proxy.userData.structureId = structure.id;
+        structureSelectionGroup.add(proxy);
+      }
+    };
 
     terrainApiRef.current = (s) => {
       const w = s.world;
@@ -1078,6 +1293,20 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
         while (depth < stack.length && w.palette[stack[depth]]?.tags.includes('liquid')) depth++;
         liquidDepthByCell[cellId] = depth;
       }
+      const hasLiquid = (x: number, y: number): boolean => x >= 0 && x < w.width
+        && y >= 0 && y < w.height
+        && liquidDepthByCell[y * w.width + x] > 0;
+      const flowDirection = (x: number, y: number): readonly [number, number] => {
+        // 初始河流贯穿南北：优先沿 +Z 继续；横向短步只在河道真实转弯处出现。
+        // 对未来非河流液体，这仍只依赖局部连通拓扑，并给孤立水格稳定的南向表演。
+        if (hasLiquid(x, y + 1)) return [0, 1];
+        if (hasLiquid(x + 1, y) && hasLiquid(x + 1, y + 1)) return [1, 0];
+        if (hasLiquid(x - 1, y) && hasLiquid(x - 1, y + 1)) return [-1, 0];
+        if (hasLiquid(x, y - 1)) return [0, 1];
+        if (hasLiquid(x + 1, y) && !hasLiquid(x - 1, y)) return [1, 0];
+        if (hasLiquid(x - 1, y) && !hasLiquid(x + 1, y)) return [-1, 0];
+        return [0, 1];
+      };
       // 完整结构的装饰房会替代其权威建造体素的视觉表现。室内站立位置的 z
       // 是双脚所在空气层，因此 z * CELL_H 正好是承重地面的顶面；把整片占地
       // 截回这个高度，避免屋顶/墙体的 topZ 被 land 拉成从地底升起的实心基座。
@@ -1187,13 +1416,8 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
           const material = w.palette[stack[0]];
           // 几何厚度严格来自连续液体层；顶面 = (elevation + 1) * CELL_H，无额外凸起。
           // 略微重叠相邻水格，消除透射盒体之间的发丝缝；颜色同时编码水深和岸缘。
-          m4.compose(v.set(wx, solidH + waterH / 2, wz), q, sc.set(1.018, waterH, 1.018));
+          m4.compose(v.set(wx, solidH + waterH / 2, wz), q.identity(), sc.set(1.018, waterH, 1.018));
           water.setMatrixAt(wi, m4);
-          m4.compose(
-            v.set(wx, solidH + waterH + 0.018, wz),
-            q.identity(), sc.set(1, 1, 1),
-          );
-          waterWaves.setMatrixAt(wi, m4);
           const waterColor = material?.color ?? [28, 91, 126];
           let liquidNeighbors = 0;
           if (x > 0 && liquidDepthByCell[cellId - 1] > 0) liquidNeighbors++;
@@ -1211,20 +1435,36 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
           water.setColorAt(wi, col.setRGB(
             visibleChannel(0) / 255, visibleChannel(1) / 255, visibleChannel(2) / 255, THREE.SRGBColorSpace,
           ));
+          const [dirX, dirZ] = flowDirection(x, y);
+          const flowAngle = Math.atan2(dirX, dirZ);
+          m4.compose(
+            v.set(wx, solidH + waterH + 0.012, wz),
+            q.setFromAxisAngle(decorAxisY, flowAngle),
+            sc.set(1, 1, 1),
+          );
+          waterFlow.setMatrixAt(wi, m4);
+          // 纵向格坐标让整条河共享动画相位；少量横向偏移只避免转弯处完全镜像。
+          waterFlowOffsetAttribute.setX(wi, y + x * 0.125);
           wi++;
         }
       }
 
-      // 只在普通陆地顶面铺少量 1/4 格色片。硬轮廓不变，颜色过渡发生在格内，
-      // 因而仍是体素地表而不是被双线性过滤抹平的写实贴图。
+      // 普通陆地内部铺少量 1/4 格色片，材质边界则铺 1/8 格微体素。
+      // 硬轮廓和地块归属不变，过渡只发生在格内。
       const detailTop = new Float32Array(COUNT);
       const detailR = new Uint8Array(COUNT);
       const detailG = new Uint8Array(COUNT);
       const detailB = new Uint8Array(COUNT);
+      const transitionR = new Uint8Array(COUNT);
+      const transitionG = new Uint8Array(COUNT);
+      const transitionB = new Uint8Array(COUNT);
+      const detailKind: Array<SurfaceTransitionKind | undefined> = new Array(COUNT);
       const detailVisible = new Uint8Array(COUNT);
+      const cultivatedSoilColor = w.palette.find((material) => material.key === 'soil')?.color ?? [105, 78, 53];
       for (let cellId = 0; cellId < COUNT; cellId++) {
         if (liquidDepthByCell[cellId] > 0 || completeStructureBaseByCell.has(cellId)) continue;
-        if (w.palette[w.surface[cellId]]?.key === 'packed_soil') continue;
+        const surfaceKey = w.palette[w.surface[cellId]]?.key;
+        if (surfaceKey === 'packed_soil') continue;
         const { x, y } = cellCoordinates(cellId, w.width);
         if (x === 0 || x === w.width - 1 || y === 0 || y === w.height - 1) continue;
         const fd = featureDepth(w, cellId, structureCells);
@@ -1243,12 +1483,27 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
         detailR[cellId] = c.r;
         detailG[cellId] = c.g;
         detailB[cellId] = c.b;
+        const kind = surfaceTransitionKind(surfaceKey);
+        detailKind[cellId] = kind;
+        if (kind === 'cultivated') {
+          // 作物是替换式地表；边界用中性土色表达田畦，不凭空宣称沃土或湿土。
+          const shade = Math.max(-12, Math.min(12, (w.elevation[cellId] - fd - 5) * 2));
+          const cc = (n: number) => Math.max(0, Math.min(255, Math.round(n + shade)));
+          transitionR[cellId] = cc(cultivatedSoilColor[0]);
+          transitionG[cellId] = cc(cultivatedSoilColor[1]);
+          transitionB[cellId] = cc(cultivatedSoilColor[2]);
+        } else {
+          transitionR[cellId] = c.r;
+          transitionG[cellId] = c.g;
+          transitionB[cellId] = c.b;
+        }
         detailVisible[cellId] = 1;
       }
 
       const terrainHash = (cellId: number, salt: number): number => {
         let value = (cellId ^ Math.imul(w.generator.seed + salt, 0x45d9f3b)) >>> 0;
-        value ^= value >>> 16; value = Math.imul(value, 0x7feb352d) >>> 0; value ^= value >>> 15;
+        value ^= value >>> 16; value = Math.imul(value, 0x7feb352d) >>> 0;
+        value = (value ^ (value >>> 15)) >>> 0;
         return value / 0x100000000;
       };
       let gdi = 0;
@@ -1265,11 +1520,32 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
         ));
         gdi++;
       };
-      const mixedColor = (from: number, to: number, amount: number): [number, number, number] => [
-        THREE.MathUtils.lerp(detailR[from], detailR[to], amount),
-        THREE.MathUtils.lerp(detailG[from], detailG[to], amount),
-        THREE.MathUtils.lerp(detailB[from], detailB[to], amount),
+      const mixedTransitionColor = (from: number, to: number, amount: number): [number, number, number] => [
+        THREE.MathUtils.lerp(transitionR[from], transitionR[to], amount),
+        THREE.MathUtils.lerp(transitionG[from], transitionG[to], amount),
+        THREE.MathUtils.lerp(transitionB[from], transitionB[to], amount),
       ];
+      const wetBankTargets: Record<SurfaceTransitionKind, readonly [number, number, number]> = {
+        grass: [61, 86, 51],
+        soil: [82, 70, 57],
+        'wet-soil': [74, 72, 63],
+        'rich-soil': [71, 66, 54],
+        'exhausted-soil': [95, 77, 59],
+        cultivated: [83, 70, 54],
+        sand: [124, 108, 76],
+      };
+      const wetBankColor = (
+        cellId: number,
+        kind: SurfaceTransitionKind,
+        amount: number,
+      ): [number, number, number] => {
+        const target = wetBankTargets[kind];
+        return [
+          THREE.MathUtils.lerp(transitionR[cellId], target[0], amount),
+          THREE.MathUtils.lerp(transitionG[cellId], target[1], amount),
+          THREE.MathUtils.lerp(transitionB[cellId], target[2], amount),
+        ];
+      };
 
       // 内部纹理与材质边界分开处理：边界附近不再叠加随机色斑，避免棕绿交界变成噪点。
       const detailBoundary = new Uint8Array(COUNT);
@@ -1290,7 +1566,7 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
           const delta = Math.abs(detailR[cellId] - detailR[neighborId])
             + Math.abs(detailG[cellId] - detailG[neighborId])
             + Math.abs(detailB[cellId] - detailB[neighborId]);
-          if (delta >= 22) {
+          if (detailKind[cellId] !== detailKind[neighborId] || delta >= 22) {
             detailBoundary[cellId] = 1;
             break;
           }
@@ -1333,40 +1609,75 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
             addGroundPatch(cellId, microOffset(patchX), microOffset(patchZ), 0.245, clusterColor);
           }
         }
+      }
 
-        // 每条边只由左/上格处理一次，并向两侧各渗入一个 1/4 格色片。
-        for (const [neighborId, dx, dz] of [
-          [cellId + 1, 0.375, -0.375 + Math.floor(terrainHash(cellId, 21) * 4) * 0.25],
-          [cellId + w.width, -0.375 + Math.floor(terrainHash(cellId, 22) * 4) * 0.25, 0.375],
-        ] as const) {
-          if (neighborId >= COUNT || !detailVisible[neighborId]) continue;
-          const { x: cx, y: cy } = cellCoordinates(cellId, w.width);
-          const { x: nx, y: ny } = cellCoordinates(neighborId, w.width);
-          if (Math.abs(cx - nx) + Math.abs(cy - ny) !== 1) continue;
+      // 四向邻居决定真实地表/水岸边界；对角邻居只调节拐角，不会隔角串成新地块。
+      const transitionOffsets = {
+        north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0],
+        northEast: [1, -1], southEast: [1, 1], southWest: [-1, 1], northWest: [-1, -1],
+      } as const;
+      const cardinalOffsets: Record<SurfaceTransitionDirection, readonly [number, number]> = {
+        north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0],
+      };
+      const microOffset8 = (index: number) => -0.4375 + index * 0.125;
+      for (let cellId = 0; cellId < COUNT; cellId++) {
+        const kind = detailKind[cellId];
+        if (!detailVisible[cellId] || kind === undefined) continue;
+        const { x, y } = cellCoordinates(cellId, w.width);
+        const neighbors: SurfaceTransitionNeighbors = {};
+        const shorelineNeighbors: ShorelineNeighbors = {};
+        for (const [direction, [dx, dy]] of Object.entries(transitionOffsets) as Array<
+          [keyof SurfaceTransitionNeighbors, readonly [number, number]]
+        >) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w.width || ny >= w.height) continue;
+          const neighborId = ny * w.width + nx;
+          const sameLevelWater = liquidDepthByCell[neighborId] > 0
+            && Math.abs(detailTop[cellId] - (w.elevation[neighborId] + 1) * CELL_H) <= 0.02;
+          shorelineNeighbors[direction] = sameLevelWater;
+          const neighborKind = detailKind[neighborId];
+          if (!detailVisible[neighborId] || neighborKind === undefined) continue;
           if (Math.abs(detailTop[cellId] - detailTop[neighborId]) > 0.02) continue;
-          const delta = Math.abs(detailR[cellId] - detailR[neighborId])
-            + Math.abs(detailG[cellId] - detailG[neighborId])
-            + Math.abs(detailB[cellId] - detailB[neighborId]);
-          if (delta < 22) continue;
-          addGroundPatch(cellId, dx, dz, 0.245, mixedColor(cellId, neighborId, 0.38));
+          neighbors[direction] = neighborKind;
+        }
+        const transitionSeed = Math.floor(terrainHash(cellId, 31) * 0xffffffff) >>> 0;
+        const shore = shorelinePatches(shorelineNeighbors, transitionSeed ^ 0x51f15e5d);
+        const shoreMicroIds = new Set(shore.map((patch) => patch.microZ * 8 + patch.microX));
+        for (const patch of surfaceTransitionPatches(kind, neighbors, transitionSeed)) {
+          if (shoreMicroIds.has(patch.microZ * 8 + patch.microX)) continue;
+          const [dx, dy] = cardinalOffsets[patch.source];
+          const neighborId = (y + dy) * w.width + x + dx;
+          const amount = patch.depth === 0 ? 0.48 : 0.26;
           addGroundPatch(
-            neighborId,
-            dx === 0.375 ? -0.375 : dx,
-            dz === 0.375 ? -0.375 : dz,
-            0.245,
-            mixedColor(neighborId, cellId, 0.38),
+            cellId,
+            microOffset8(patch.microX),
+            microOffset8(patch.microZ),
+            0.126,
+            mixedTransitionColor(cellId, neighborId, amount),
+          );
+        }
+        for (const patch of shore) {
+          const amount = patch.depth === 0 ? 0.72 : 0.42;
+          addGroundPatch(
+            cellId,
+            microOffset8(patch.microX),
+            microOffset8(patch.microZ),
+            0.126,
+            wetBankColor(cellId, kind, amount),
           );
         }
       }
       groundDetail.count = gdi;
       water.count = wi;
-      waterWaves.count = wi;
+      waterFlow.count = wi;
       strata.count = sti;
       land.instanceMatrix.needsUpdate = true;
       if (land.instanceColor) land.instanceColor.needsUpdate = true;
       water.instanceMatrix.needsUpdate = true;
       if (water.instanceColor) water.instanceColor.needsUpdate = true;
-      waterWaves.instanceMatrix.needsUpdate = true;
+      waterFlow.instanceMatrix.needsUpdate = true;
+      waterFlowOffsetAttribute.needsUpdate = true;
       strata.instanceMatrix.needsUpdate = true;
       if (strata.instanceColor) strata.instanceColor.needsUpdate = true;
       groundDetail.instanceMatrix.needsUpdate = true;
@@ -1375,11 +1686,12 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
     };
 
     // ---- 装饰层：微缩体素素材（树/作物/道路贴花/物资堆/建筑印章/动物/纪元状态）----
-    // 素材来自 voxelKits.ts（与 voxel-asset-lab 生成器同源），按材质桶 InstancedMesh 合批
+    // 素材来自 voxelKits.ts（与 knowledge-base 素材页同源），按材质桶 InstancedMesh 合批
     // 颜色仍走实例色；材质桶只承载真实表面响应。Record<string> 让素材库可渐进新增语义桶。
     const DECOR_MATS: Record<string, THREE.MeshStandardMaterial> = {
       leaf: new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, envMapIntensity: 0.92 }),
       wood: new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, envMapIntensity: 0.74 }),
+      groundMark: new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.28 }),
       stone: new THREE.MeshStandardMaterial({ roughness: 0.87, metalness: 0.025, envMapIntensity: 0.86 }),
       plaster: new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.54 }),
       glowWarm: new THREE.MeshStandardMaterial({
@@ -1420,7 +1732,10 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
         const material = DECOR_MATS[bucket] ?? DECOR_MATS.plaster;
         const mesh = new THREE.InstancedMesh(boxGeo, material, list.length);
         list.forEach((inst, i) => {
-          m4.compose(v.set(inst.x, inst.y, inst.z), q.identity(), sc.set(inst.sx, inst.sy, inst.sz));
+          const rotation = inst.ry === undefined
+            ? q.identity()
+            : q.setFromAxisAngle(decorAxisY, inst.ry);
+          m4.compose(v.set(inst.x, inst.y, inst.z), rotation, sc.set(inst.sx, inst.sy, inst.sz));
           mesh.setMatrixAt(i, m4);
           col.setHex(inst.c);
           if (bucket === 'leaf' || bucket === 'wood') {
@@ -1434,7 +1749,7 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
           mesh.setColorAt(i, col);
         });
         // 叶簇保留 AO 接触层次，但不再让数百个微体素互相投出致黑阴影。
-        mesh.castShadow = bucket !== 'leaf' && bucket !== 'glowWarm' && bucket !== 'glowRed';
+        mesh.castShadow = bucket !== 'leaf' && bucket !== 'groundMark' && bucket !== 'glowWarm' && bucket !== 'glowRed';
         mesh.receiveShadow = true;
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -1809,10 +2124,12 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
             f.armR.rotation.x = -0.18;
           }
         }
-        const highlighted = agent.name === p.speaker;
-        const key = `${agent.name}|${highlighted}`;
+        const selected = p.selectedAgentId === agent.id
+          || (p.selectedObject?.kind === 'agent' && p.selectedObject.id === agent.id);
+        const highlighted = agent.name === p.speaker || selected;
+        const key = `${agent.name}|${highlighted}|${selected}`;
         if (key !== f.spriteKey) {
-          f.sprite.material.map = nameTexture(agent.name, highlighted ? '#fde68a' : '#e2e8f0');
+          f.sprite.material.map = nameTexture(agent.name, selected ? '#ffffff' : highlighted ? '#fde68a' : '#e2e8f0');
           // 常态名牌服从场景遮挡；仅当前说话者允许穿透，避免整片树林上漂满文字。
           f.sprite.material.depthTest = !highlighted;
           f.sprite.material.opacity = highlighted ? 1 : 0.9;
@@ -1827,6 +2144,51 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
         }
       }
     };
+
+    // ---- 点选人物 / 权威结构；拖拽镜头不会触发选择，点击空白收起信息 ----
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let selectionPointerDown: { x: number; y: number } | null = null;
+    const emitSelection = (selection: SocietySceneSelection) => {
+      const p = propsRef.current;
+      p.onSelectObject?.(selection);
+      p.onSelectAgent?.(selection?.kind === 'agent' ? selection.id : null);
+    };
+    const selectionFromHit = (object: THREE.Object3D): SocietySceneSelection => {
+      let current: THREE.Object3D | null = object;
+      while (current && current !== scene) {
+        if (typeof current.userData.agentId === 'string') return { kind: 'agent', id: current.userData.agentId };
+        if (typeof current.userData.structureId === 'string') return { kind: 'structure', id: current.userData.structureId };
+        current = current.parent;
+      }
+      return null;
+    };
+    const onSelectionPointerDown = (event: PointerEvent) => {
+      selectionPointerDown = { x: event.clientX, y: event.clientY };
+    };
+    const onSelectionPointerUp = (event: PointerEvent) => {
+      if (!selectionPointerDown
+        || Math.hypot(event.clientX - selectionPointerDown.x, event.clientY - selectionPointerDown.y) >= 5) {
+        selectionPointerDown = null;
+        return;
+      }
+      selectionPointerDown = null;
+      const rect = canvas.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const figureHits = raycaster.intersectObjects([...figures.values()].map((figure) => figure.group), true);
+      if (figureHits.length) {
+        emitSelection(selectionFromHit(figureHits[0].object));
+        return;
+      }
+      const structureHits = raycaster.intersectObjects(structureSelectionGroup.children, true);
+      emitSelection(structureHits.length ? selectionFromHit(structureHits[0].object) : null);
+    };
+    canvas.addEventListener('pointerdown', onSelectionPointerDown);
+    canvas.addEventListener('pointerup', onSelectionPointerUp);
 
     // ---- 滚轮 / 键盘缩放持续越过上限 → 请求升起返回宇宙 ----
     let zoomOutAcc = 0;
@@ -1968,8 +2330,9 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
       previousFrameAt = now;
       syncAgents(now);
       syncAnimatedDecor(now);
-      waterWaveUniforms.uTime.value = now * 0.001;
+      waterFlowUniforms.uTime.value = now * 0.001;
       updateWeather(now, deltaSeconds);
+      updateLighting(deltaSeconds);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
       DECOR_MATS.glowWarm.emissiveIntensity = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
@@ -2013,11 +2376,14 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
       window.removeEventListener('blur', clearPressedKeys);
       ro.disconnect();
       canvas.removeEventListener('wheel', onWheelOut);
+      canvas.removeEventListener('pointerdown', onSelectionPointerDown);
+      canvas.removeEventListener('pointerup', onSelectionPointerUp);
       controls.dispose();
       terrainApiRef.current = null;
       lightApiRef.current = null;
       decorApiRef.current = null;
       skyApiRef.current = null;
+      selectionApiRef.current = null;
       animatedDecorBatches = [];
       for (const f of figures.values()) disposeFigure(f);
       figures.clear();
@@ -2044,13 +2410,14 @@ export default function SocietyScene3D({ society, era, speaker, sky, onZoomOutRe
   useEffect(() => { lightApiRef.current?.(era); }, [era]);
   useEffect(() => { decorApiRef.current?.(society, era); }, [society, era]);
   useEffect(() => { skyApiRef.current?.(sky); }, [sky]);
+  useEffect(() => { selectionApiRef.current?.(society); }, [society]);
 
   return (
     <div ref={mountRef} className="absolute inset-0 z-[5] overflow-hidden bg-[#0b1016]">
       <canvas
         ref={canvasRef}
         tabIndex={0}
-        aria-label="人间场景：WASD 移动镜头，方向键上下缩放"
+        aria-label="人间场景：点击人物或结构查看信息，WASD 移动镜头，方向键上下缩放"
         className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
       />

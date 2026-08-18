@@ -40,6 +40,11 @@ export interface SimStats {
   spread: number;       // 恒星离质心最大距离（画中画取景半径）
 }
 
+export type CelestialSelection =
+  | { kind: 'star'; index: number }
+  | { kind: 'planet' }
+  | null;
+
 interface Props {
   running: boolean;
   speed: number;
@@ -56,6 +61,8 @@ interface Props {
   onPlanetFocusChange?: (focused: boolean) => void;
   onPlanetDive?: () => void;                 // 聚焦后继续滚轮放大越过阈值 → 请求俯冲进入人间
   exitFocusToken?: number;                   // 自增 = 退出聚焦，相机回星系质心
+  selectedCelestial?: CelestialSelection;
+  onSelectCelestial?: (selection: CelestialSelection) => void;
 }
 
 const DT = 0.001;
@@ -226,6 +233,7 @@ export default function ThreeBodyCanvas(props: Props) {
     const planetVec = new THREE.Vector3();
     const projVec = new THREE.Vector3();
     const originVec = new THREE.Vector3(0, 0, 0);
+    const bodyScreens = Array.from({ length: N_BODIES }, () => ({ x: 0, y: 0, r: 0, visible: false }));
     // 调试探针挂载点（window.__tbPlanet / __tbDebug）
     const dbgPlanet = ((window as unknown as { __tbPlanet?: { x: number; y: number } }).__tbPlanet ??=
       { x: 0, y: 0 });
@@ -236,11 +244,23 @@ export default function ThreeBodyCanvas(props: Props) {
       if (!canvasDown || Math.hypot(ev.clientX - canvasDown.x, ev.clientY - canvasDown.y) >= 5) { canvasDown = null; return; }
       canvasDown = null;
       const p = propsRef.current;
-      if (!p.planetFocusEnabled || focus.active || !focus.hasScreen) return;
       const rect = canvas.getBoundingClientRect();
       const mx = ev.clientX - rect.left;
       const my = ev.clientY - rect.top;
-      if (Math.hypot(mx - focus.screenX, my - focus.screenY) < 30) {
+      const hit = bodyScreens
+        .map((screen, index) => ({ index, screen, distance: Math.hypot(mx - screen.x, my - screen.y) }))
+        .filter(({ screen, distance }) => screen.visible && distance <= screen.r)
+        .sort((left, right) => left.distance - right.distance)[0];
+      if (!hit) {
+        p.onSelectCelestial?.(null);
+        return;
+      }
+      if (hit.index < N_STARS) {
+        p.onSelectCelestial?.({ kind: 'star', index: hit.index });
+        return;
+      }
+      p.onSelectCelestial?.({ kind: 'planet' });
+      if (p.planetFocusEnabled && !focus.active) {
         focus.active = true;
         focus.dove = false;
         focus.diveHold = 0;
@@ -256,6 +276,7 @@ export default function ThreeBodyCanvas(props: Props) {
       const my = ev.clientY - rect.top;
       const hitPlanet = Math.hypot(mx - focus.screenX, my - focus.screenY) <= Math.max(30, focus.screenR + 8);
       if (hitPlanet) {
+        p.onSelectCelestial?.({ kind: 'planet' });
         if (!focus.active) {
           focus.active = true;
           focus.justActivated = true;
@@ -800,8 +821,14 @@ export default function ThreeBodyCanvas(props: Props) {
         const glowSize = px2w(12 + 9 * mr);
         const breath = 1 + 0.05 * Math.sin(now * 0.0011 * (1 + i * 0.34) + i * 2.1);
         starGlows[i].scale.set(glowSize * breath, glowSize * breath, 1);
+        const selected = p.selectedCelestial?.kind === 'star' && p.selectedCelestial.index === i;
         (starGlows[i].material as THREE.SpriteMaterial).opacity =
-          0.48 + 0.08 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
+          0.48 + (selected ? 0.14 : 0) + 0.08 * Math.sin(now * 0.0009 * (1 + i * 0.41) + i * 1.3);
+        projVec.copy(starCores[i].position).project(camera);
+        bodyScreens[i].x = (projVec.x * 0.5 + 0.5) * W;
+        bodyScreens[i].y = (-projVec.y * 0.5 + 0.5) * H;
+        bodyScreens[i].r = 22;
+        bodyScreens[i].visible = projVec.z >= -1 && projVec.z < 1;
       }
 
       // ---- 行星本体：反射星光（自转 + 云层差速 + 大气边缘光）----
@@ -822,7 +849,11 @@ export default function ThreeBodyCanvas(props: Props) {
       focus.screenY = (-projVec.y * 0.5 + 0.5) * H;
       focus.screenR = planetR * (H / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))))
         / Math.max(0.0001, camera.position.distanceTo(planetCore.position));
-      focus.hasScreen = projVec.z < 1;
+      focus.hasScreen = projVec.z >= -1 && projVec.z < 1;
+      bodyScreens[PLANET_IDX].x = focus.screenX;
+      bodyScreens[PLANET_IDX].y = focus.screenY;
+      bodyScreens[PLANET_IDX].r = Math.max(30, focus.screenR + 8);
+      bodyScreens[PLANET_IDX].visible = focus.hasScreen;
       // 调试探针：无头截图/e2e 用（每帧两次数值写入，无分配）
       dbgPlanet.x = focus.screenX;
       dbgPlanet.y = focus.screenY;

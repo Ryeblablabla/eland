@@ -2,10 +2,9 @@ import type { ActionOption, Intent, PrimitiveAction } from '../domain/action';
 import { Material, materialDefinition, materialHas } from '../domain/material';
 import { inventoryQuantity, isAlive, sameLocation, type PersonState } from '../domain/person';
 import { ageMonths, MIN_TEACHING_AGE_MONTHS } from '../domain/person';
-import type { DecisionContext, DropState, SimulationState } from '../domain/model';
+import type { DecisionContext, DropState, EnvironmentFact, SimulationState } from '../domain/model';
 import {
   acceptedExchangeFor,
-  acceptedReproductionBetween,
   exchangeTermFulfilled,
   openExchangeOfferFor,
   openReproductionOfferFor,
@@ -57,6 +56,17 @@ import {
   canOfferRelationshipProposal,
   hasCultivatedReproductiveRelationship,
 } from '../domain/relationship-evidence';
+import { humanReproductionCapacityFactor } from '../domain/population-capacity';
+import { cloneProjectForPlanning } from '../domain/project';
+import { lifePlanningStage } from '../domain/life-stage';
+import { optionAllowedForLifeStage } from './age-planning';
+import { followUpSemanticallyMatches, isGroundedConversationOpening } from '../domain/intent-follow-up';
+import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
+import {
+  isActionableChaosPrediction,
+  MAX_ERA_PREDICTION_HORIZON_MONTHS,
+  personTrustsEraPrediction,
+} from '../domain/era-prediction';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -126,6 +136,12 @@ export function visibleCellsFor(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, visibleRadius(person));
 }
 
+export function cloneMutableProjectsForPlanning(
+  projects: SimulationState['projects'],
+): SimulationState['projects'] {
+  return projects.map((project) => project.status === 'active' ? cloneProjectForPlanning(project) : project);
+}
+
 function actionForDrop(person: PersonState, drop: DropState): PrimitiveAction {
   if (person.position.cellId === drop.cellId && person.position.z === drop.z) {
     return {
@@ -176,7 +192,7 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
 }
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique):/;
+const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique|withdraw-reproduce):/;
 
 function socialInteractionKey(action: PrimitiveAction): string | null {
   if (action.kind !== 'communicate') return null;
@@ -241,6 +257,20 @@ function nextFirePosition(state: SimulationState, person: PersonState): { x: num
   return { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
 }
 
+function reproductivePairEligible(state: SimulationState, first: PersonState, second: PersonState): boolean {
+  if (first.sex === second.sex) return false;
+  const female = first.sex === 'female' ? first : second;
+  const male = first.sex === 'male' ? first : second;
+  if (ageMonths(female, state.clock.elapsedMonths) < 16 * 12
+    || ageMonths(female, state.clock.elapsedMonths) > 45 * 12
+    || ageMonths(male, state.clock.elapsedMonths) < 16 * 12) return false;
+  if (hasReproductiveRecoveryCondition(female)) return false;
+  return Math.min(
+    first.body.health, first.body.hydration, first.body.nutrition,
+    second.body.health, second.body.hydration, second.body.nutrition,
+  ) >= 55;
+}
+
 function buildOptions(
   state: SimulationState,
   person: PersonState,
@@ -250,6 +280,20 @@ function buildOptions(
   visibleAnimals: AnimalState[],
 ): ActionOption[] {
   const options: ActionOption[] = [];
+  const planningStage = lifePlanningStage(person, state.clock.elapsedMonths);
+  if (planningStage === 'learning-child') {
+    const visibleParent = visiblePeople.find((candidate) => person.geneticParents.includes(candidate.id));
+    if (visibleParent && !sameLocation(visibleParent, person)) options.push({
+      id: `follow-parent:${visibleParent.id}`,
+      summary: `跟随${visibleParent.name}`,
+      reason: '仍处于跟随学习阶段，优先回到可见亲代身边再进行取水、采集与简单劳动',
+      goal: { kind: 'near-person', personId: visibleParent.id },
+      nextAction: { kind: 'move', toCellId: visibleParent.position.cellId, toZ: visibleParent.position.z },
+      target: { kind: 'person', personId: visibleParent.id },
+      estimatedDuration: 'several-months',
+      sourceFactIds: person.relations.find((relation) => relation.personId === visibleParent.id)?.sourceEventIds ?? [],
+    });
+  }
   const visible = new Set(visibleCells);
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
   const foodStack = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
@@ -279,36 +323,74 @@ function buildOptions(
     });
   }
 
-  const localSleepers = localPeople.filter((other) => other.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
-    && condition.sinceMonth < state.civilization.era.sinceMonth));
-  if (state.civilization.epoch === 'stable' && water && localSleepers.length) {
-    const sleeper = localSleepers[0];
-    options.push({
-      id: `rehydrate:${sleeper.id}:${state.clock.elapsedMonths}`,
-      summary: `使${sleeper.name}重新水化苏醒`,
-      reason: '恒纪元已经到来，附近有水源且对方仍处于脱水休眠',
-      goal: { kind: 'condition', personId: sleeper.id, condition: 'dehydrated-hibernation', present: false },
-      nextAction: { kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: sleeper.id }] },
-      target: { kind: 'person', personId: sleeper.id },
+  // A conscious helper acts from present local facts; an era transition is not
+  // a physical prerequisite for rehydrating someone who entered sleep early.
+  const localSleepers = localPeople.filter((other) => other.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
+  const localRehydrationMaterial = cellsInRadius(person.position.cellId, 2)
+    .map((cell) => surfaceMaterial(state.world.grid, cell))
+    .find((materialId) => materialHas(materialId, 'drinkable'));
+  if (state.civilization.epoch === 'stable' && localRehydrationMaterial !== undefined && localSleepers.length) {
+    const wake = localSleepers.flatMap((sleeper) => {
+      const hibernation = sleeper.conditions.find((condition) => condition.kind === 'dehydrated-hibernation');
+      if (!hibernation) return [];
+      const triggerPrediction = hibernation.triggerPredictionId
+        ? state.eraPredictions.find((prediction) => prediction.id === hibernation.triggerPredictionId)
+        : undefined;
+      const predictionStillPending = Boolean(triggerPrediction
+        && triggerPrediction.status === 'pending'
+        && state.clock.elapsedMonths <= triggerPrediction.expiresAtMonth);
+      const bodyEmergency = sleeper.body.health < 35
+        || sleeper.body.hydration < 28
+        || sleeper.body.nutrition < 28;
+      const helperTrustsPrediction = Boolean(triggerPrediction
+        && personTrustsEraPrediction(state, person, triggerPrediction));
+      const priorDisputedWake = (hibernation.wakeDisputeEventIds?.length ?? 0) > 0;
+      if (predictionStillPending && !bodyEmergency && (helperTrustsPrediction || priorDisputedWake)) return [];
+      const wakeBasis = bodyEmergency
+        ? 'body-emergency' as const
+        : predictionStillPending
+          ? 'disputed-pending-prediction' as const
+          : triggerPrediction?.status === 'incorrect'
+            ? 'prediction-invalidated' as const
+            : triggerPrediction?.status === 'correct'
+              ? 'post-chaos-recovery' as const
+              : 'unbound-stable-recovery' as const;
+      const reason = wakeBasis === 'body-emergency'
+        ? `${sleeper.name}的身体储备已经危及继续休眠`
+        : wakeBasis === 'disputed-pending-prediction'
+          ? `本人不相信支撑${sleeper.name}休眠的预言，决定承担提前唤醒的后果`
+          : wakeBasis === 'prediction-invalidated'
+            ? `支撑${sleeper.name}休眠的预言已经失误`
+            : wakeBasis === 'post-chaos-recovery'
+              ? '乱纪元已经过去，环境重新稳定'
+              : `环境稳定，身边的${materialDefinition(localRehydrationMaterial).name}可以使休眠者重新水化`;
+      return [{ sleeper, hibernation, triggerPrediction, wakeBasis, reason }];
+    })[0];
+    if (wake) options.push({
+      id: `rehydrate:${wake.sleeper.id}:${state.clock.elapsedMonths}`,
+      summary: `使${wake.sleeper.name}重新水化苏醒`,
+      reason: wake.reason,
+      goal: { kind: 'condition', personId: wake.sleeper.id, condition: 'dehydrated-hibernation', present: false },
+      nextAction: {
+        kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: wake.sleeper.id }],
+        ...(wake.triggerPrediction ? { hibernationPredictionId: wake.triggerPrediction.id } : {}),
+        hibernationWakeBasis: wake.wakeBasis,
+      },
+      target: { kind: 'person', personId: wake.sleeper.id },
       estimatedDuration: 'one-month',
-      sourceFactIds: sleeper.conditions.find((condition) => condition.kind === 'dehydrated-hibernation')?.sourceEventIds ?? [],
+      sourceFactIds: [...new Set([
+        ...wake.hibernation.sourceEventIds,
+        ...(wake.triggerPrediction?.sourceEventIds ?? []),
+      ])],
     });
   }
 
   const predictionsAboutChaos = state.eraPredictions
-    .filter((prediction) => prediction.status === 'pending'
-      && prediction.targetEpoch === 'chaotic'
-      && prediction.predictedStartMonth - state.clock.elapsedMonths <= 5
-      && prediction.predictedStartMonth + prediction.toleranceMonths >= state.clock.elapsedMonths)
+    .filter((prediction) => isActionableChaosPrediction(prediction, state.clock.elapsedMonths))
     .sort((a, b) => a.predictedStartMonth - b.predictedStartMonth || a.id.localeCompare(b.id));
-  const trustedChaosPrediction = predictionsAboutChaos.find((prediction) => {
-    if (prediction.predictorId === person.id) return true;
-    if (!prediction.audienceIds.includes(person.id)) return false;
-    const resolved = state.eraPredictions.filter((candidate) => candidate.predictorId === prediction.predictorId && candidate.status !== 'pending');
-    const correct = resolved.filter((candidate) => candidate.status === 'correct').length;
-    const trust = person.relations.find((relation) => relation.personId === prediction.predictorId)?.trust ?? 0;
-    return trust >= 22 || (resolved.length >= 2 && correct / resolved.length >= 0.6 && trust >= 8);
-  });
+  const trustedChaosPrediction = predictionsAboutChaos.find((prediction) => (
+    personTrustsEraPrediction(state, person, prediction)
+  ));
   const canHibernate = !person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
     || condition.kind === 'pregnancy'
     || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2))
@@ -321,7 +403,10 @@ function buildOptions(
         ? '一项自己相信的预言指向即将到来的乱纪元'
         : '乱纪元已在造成强烈环境压力',
       goal: { kind: 'condition', personId: person.id, condition: 'dehydrated-hibernation', present: true },
-      nextAction: { kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: person.id }] },
+      nextAction: {
+        kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: person.id }],
+        ...(trustedChaosPrediction ? { hibernationPredictionId: trustedChaosPrediction.id } : {}),
+      },
       target: { kind: 'person', personId: person.id },
       estimatedDuration: 'one-month',
       sourceFactIds: trustedChaosPrediction?.sourceEventIds ?? [],
@@ -334,14 +419,27 @@ function buildOptions(
   const recentForecast = state.eraPredictions.some((prediction) => prediction.predictorId === person.id && state.clock.elapsedMonths - prediction.madeAtMonth < 6);
   const predictionAudience = visiblePeople.slice(0, 4);
   if (predictionAudience.length && forecastCapacity >= 118 && !existingForecast && !recentForecast) {
-    const actualStart = state.civilization.era.endsAtMonth + 1;
     const skill = forecastCapacity / 2;
     const uncertainty = Math.max(3, Math.round(17 - (skill - 42) * 0.22));
     const noise = Math.round((seededFraction(state.seed, `era-forecast:${state.clock.elapsedMonths}:${person.id}:${state.civilization.era.sequence}`) * 2 - 1) * uncertainty);
-    const predictedStartMonth = Math.max(state.clock.elapsedMonths + 2, actualStart + noise);
+    const transitions = state.world.past
+      .filter((event): event is EnvironmentFact => event.kind === 'environment'
+        && event.change === 'climate'
+        && event.diff.eraTransition === true)
+      .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
+    const completedDurations = transitions.slice(1).flatMap((event, index) => {
+      const previous = transitions[index];
+      const previousEpoch = previous.diff.epoch;
+      return previousEpoch === state.civilization.epoch ? [event.atMonth - previous.atMonth] : [];
+    }).filter((duration) => duration >= 2);
+    const estimatedDuration = completedDurations.length
+      ? [...completedDurations].sort((left, right) => left - right)[Math.floor(completedDurations.length / 2)]
+      : 8 + Math.round(seededFraction(state.seed, `first-era-duration-belief:${person.id}:${state.civilization.epoch}`) * 12);
+    const historicalEstimate = state.civilization.era.sinceMonth + estimatedDuration + noise;
+    const predictedStartMonth = Math.max(state.clock.elapsedMonths + 2, historicalEstimate);
     const targetEpoch = state.civilization.epoch === 'stable' ? 'chaotic' as const : 'stable' as const;
     const representationId = `predict-era:${state.clock.elapsedMonths}:${person.id}:${state.civilization.era.sequence}`;
-    options.push({
+    if (predictedStartMonth <= state.clock.elapsedMonths + MAX_ERA_PREDICTION_HORIZON_MONTHS) options.push({
       id: representationId,
       summary: `预言第 ${predictedStartMonth} 月前后将进入${targetEpoch === 'chaotic' ? '乱纪元' : '恒纪元'}`,
       reason: '对天象、气温和过去纪元节律的观察可以形成一项有误差的预测',
@@ -767,6 +865,61 @@ function buildOptions(
     sourceFactIds: [...fiber.sourceEventIds, ...injured.conditions.flatMap((condition) => condition.sourceEventIds)],
   });
 
+  const activeReproductionAgreement = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'reproduce'
+    && agreement.partyIds.includes(person.id)
+    && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= state.clock.elapsedMonths
+    && (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) >= state.clock.elapsedMonths);
+  const activeReproductionPartnerId = activeReproductionAgreement?.partyIds.find((personId) => personId !== person.id);
+  const activeReproductionPartner = activeReproductionPartnerId
+    ? state.people.find((candidate) => candidate.id === activeReproductionPartnerId && isAlive(candidate))
+    : undefined;
+  if (activeReproductionAgreement?.proposal.kind === 'reproduce' && activeReproductionPartner) {
+    const together = sameLocation(activeReproductionPartner, person);
+    const relationshipReady = hasCultivatedReproductiveRelationship(state, person, activeReproductionPartner);
+    const revokeId = `revoke-reproduce:${activeReproductionAgreement.id}:${person.id}:${state.clock.elapsedMonths}`;
+    const revokeAction = {
+      kind: 'communicate' as const,
+      content: {
+        id: revokeId,
+        kind: 'revoke-agreement' as const,
+        referenceId: activeReproductionAgreement.id,
+        summary: '撤回这一次生殖尝试的同意',
+      },
+      audience: [activeReproductionPartner.id],
+      channel: 'voice' as const,
+    };
+    options.push({
+      id: `withdraw-reproduce:${activeReproductionAgreement.id}`,
+      summary: `向${activeReproductionPartner.name}撤回本次生殖同意`,
+      reason: '已经接受的单次生殖尝试在实际发生前仍可重新评估并撤回',
+      goal: { kind: 'representation-made', representationId: revokeId },
+      nextAction: together
+        ? revokeAction
+        : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
+      ...(!together ? { completionAction: revokeAction } : {}),
+      target: { kind: 'person', personId: activeReproductionPartner.id },
+      estimatedDuration: together ? 'one-month' : 'several-months',
+      sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
+    });
+    if (relationshipReady && reproductivePairEligible(state, person, activeReproductionPartner)) {
+      const female = person.sex === 'female' ? person : activeReproductionPartner;
+      options.push({
+        id: `reproduce:${activeReproductionAgreement.id}:${activeReproductionPartner.id}`,
+        summary: `与${activeReproductionPartner.name}进行已同意的一次生殖尝试`,
+        reason: '双方已形成可追溯的单次授权，且行动前仍可重新评估',
+        goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
+        nextAction: together
+          ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: activeReproductionPartner.id }] }
+          : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
+        ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: activeReproductionPartner.id }] } } : {}),
+        target: { kind: 'person', personId: activeReproductionPartner.id },
+        estimatedDuration: together ? 'one-month' : 'several-months',
+        sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
+      });
+    }
+  }
+
   const incomingOffer = openReproductionOfferFor(state, person.id);
   if (incomingOffer) {
     const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
@@ -777,7 +930,7 @@ function buildOptions(
       const together = sameLocation(proposer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
       const learnedRisk = hasLearnedKinshipRisk(person) && geneticKinshipRisk(state, person, proposer) > 0;
-      if (relationshipReady) options.push({
+      if (relationshipReady && reproductivePairEligible(state, person, proposer)) options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
         reason: learnedRisk ? '过去的后代体弱或疾病记忆使这项选择具有已知风险' : '彼此已有可追溯的共同经历，并建立了最低程度的信任与亲近',
@@ -809,39 +962,22 @@ function buildOptions(
   }
 
   const learnedKinshipRisk = hasLearnedKinshipRisk(person);
+  const livingPopulation = state.people.filter(isAlive).length;
+  const reproductionCapacity = humanReproductionCapacityFactor(livingPopulation);
   const reproductiveCandidate = visiblePeople.filter((other) => {
-    if (other.sex === person.sex) return false;
-    const female = person.sex === 'female' ? person : other;
-    const male = person.sex === 'male' ? person : other;
-    if (ageMonths(female, state.clock.elapsedMonths) < 16 * 12 || ageMonths(female, state.clock.elapsedMonths) > 45 * 12 || ageMonths(male, state.clock.elapsedMonths) < 16 * 12) return false;
-    if (female.conditions.some((condition) => condition.kind === 'pregnancy')) return false;
-    return Math.min(person.body.health, person.body.hydration, person.body.nutrition, other.body.health, other.body.hydration, other.body.nutrition) >= 62;
+    if (reproductionCapacity <= 0) return false;
+    if (activeReproductionAgreement) return false;
+    return reproductivePairEligible(state, person, other);
   }).map((other) => ({
     other,
-    accepted: acceptedReproductionBetween(state, person.id, other.id, state.clock.elapsedMonths),
     basis: buildRelationshipCausalBasis(state, person, other, 'reproduce'),
-  })).filter((candidate) => candidate.accepted || canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
-    .sort((a, b) => (a.accepted ? 0 : 1) - (b.accepted ? 0 : 1)
-      || (learnedKinshipRisk ? geneticKinshipRisk(state, person, a.other) - geneticKinshipRisk(state, person, b.other) : 0)
+  })).filter((candidate) => canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
+    .sort((a, b) => (learnedKinshipRisk ? geneticKinshipRisk(state, person, a.other) - geneticKinshipRisk(state, person, b.other) : 0)
       || a.other.id.localeCompare(b.other.id))[0];
   if (reproductiveCandidate) {
-    const { other: reproductivePartner, accepted, basis } = reproductiveCandidate;
-    const female = person.sex === 'female' ? person : reproductivePartner;
+    const { other: reproductivePartner, basis } = reproductiveCandidate;
     const together = sameLocation(reproductivePartner, person);
-    if (accepted && person.id === female.id) options.push({
-      id: `reproduce:${accepted.offer.id}:${reproductivePartner.id}`,
-      summary: `与${reproductivePartner.name}共同进行生殖过程`,
-      reason: '双方已经通过沟通形成可追溯的接受事实',
-      goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
-      nextAction: together
-        ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductivePartner.id }] }
-        : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
-      ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: reproductivePartner.id }] } } : {}),
-      target: { kind: 'person', personId: reproductivePartner.id },
-      estimatedDuration: 'several-months',
-      sourceFactIds: [accepted.offer.id, accepted.acceptance.id],
-    });
-    else if (!accepted && !incomingOffer) {
+    if (!incomingOffer) {
       const representationId = `offer-reproduce:${state.clock.elapsedMonths}:${person.id}:${reproductivePartner.id}`;
       options.push({
         id: representationId,
@@ -1022,23 +1158,6 @@ function buildOptions(
     });
   }
 
-  {
-    const direction = Math.floor(seededFraction(state.seed, `explore-direction:${state.clock.elapsedMonths}:${person.id}`) * 4);
-    const dx = [0, 1, 0, -1][direction];
-    const dy = [-1, 0, 1, 0][direction];
-    const tx = Math.max(0, Math.min(state.world.grid.width - 1, cellX(person.position.cellId) + dx * 7));
-    const ty = Math.max(0, Math.min(state.world.grid.depth - 1, cellY(person.position.cellId) + dy * 7));
-    const target = nearestCell(person.position.cellId, cellsInRadius(tx + ty * state.world.grid.width, 3).filter((id) => isPassable(state.world.grid, id)));
-    if (target !== null && target !== person.position.cellId) options.push({
-      id: `explore:${target}`,
-      summary: '走向尚未熟悉的地表',
-      reason: '探索可能发现新的物质与路径',
-      goal: { kind: 'at-cell', cellId: target },
-      nextAction: { kind: 'move', toCellId: target },
-      estimatedDuration: 'several-months',
-      sourceFactIds: [],
-    });
-  }
   options.push(...buildSocialOptions(state, person, visiblePeople));
   return [...new Map(options.map((option) => [option.id, option])).values()]
     .flatMap((option) => {
@@ -1050,26 +1169,33 @@ function buildOptions(
 export function buildDecisionContext(state: SimulationState, person: PersonState): DecisionContext {
   const visibleCells = visibleCellsFor(person);
   const visibleSet = new Set(visibleCells);
-  const visibleDrops = state.world.drops.filter((drop) => drop.quantity > 0 && visibleSet.has(drop.cellId));
-  const visiblePeople = state.people.filter((other) => other.id !== person.id && isAlive(other) && visibleSet.has(other.position.cellId));
-  const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal) && visibleSet.has(animal.position.cellId));
-  const allOptions = buildOptions(state, person, visibleCells, visibleDrops, visiblePeople, visibleAnimals)
+  const visibleRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  const visibleDrops = state.world.drops.filter((drop) => drop.quantity > 0
+    && visibleSet.has(drop.cellId)
+    && Math.abs(drop.z - person.position.z) <= visibleRadius);
+  const visiblePeople = state.people.filter((other) => other.id !== person.id
+    && isAlive(other)
+    && visibleSet.has(other.position.cellId)
+    && Math.abs(other.position.z - person.position.z) <= visibleRadius);
+  const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal)
+    && visibleSet.has(animal.position.cellId)
+    && Math.abs(animal.position.z - person.position.z) <= visibleRadius);
+  // Project options own a copy of the one project they may route; unrelated
+  // projects and all terminal evidence are read-only in this context.
+  const planningState = state;
+  const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
+  const stage = lifePlanningStage(person, state.clock.elapsedMonths);
+  const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals)
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
     .filter((option) => !recentlyRepeatedSocialOption(state, person, option))
+    .filter((option) => optionAllowedForLifeStage(stage, option))
     .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => option.nextAction.kind !== 'communicate');
   const options = allOptions
-    .map((option) => option.nextAction.kind === 'communicate'
-      && option.nextAction.channel !== 'record'
-      && option.nextAction.content.kind !== 'accept'
-      && option.nextAction.content.kind !== 'reject'
-      && !(option.nextAction.content.kind === 'claim'
-        && option.nextAction.content.conversation?.turn === 'response')
-      && !(option.nextAction.content.kind === 'request'
-        && option.nextAction.content.techniqueDemonstration)
+    .map((option) => isGroundedConversationOpening(option)
+      && followUpOptions.some((followUp) => followUpSemanticallyMatches(option, followUp))
       ? { ...option, requiresFollowUp: true }
-      : option)
-    .filter((option) => !option.requiresFollowUp || followUpOptions.length > 0);
+      : { ...option, requiresFollowUp: false });
   const requiredSocialResponses = options.filter((option) => REQUIRED_SOCIAL_RESPONSE.test(option.id));
   return {
     state,

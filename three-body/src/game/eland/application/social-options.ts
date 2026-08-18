@@ -25,8 +25,13 @@ import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
 import { activeMandatesFor } from '../domain/governance';
 import { activePermissionsFor } from '../domain/permission';
 import { findReachableWater } from '../domain/water-access';
-import { buildRelationshipCausalBasis, canOfferRelationshipProposal } from '../domain/relationship-evidence';
+import {
+  buildRelationshipCausalBasis,
+  canOfferRelationshipProposal,
+  hasCultivatedCompanionRelationship,
+} from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
+import { personalityScore } from '../domain/personality';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -264,7 +269,10 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
   if (incomingCompanion) {
     const proposer = state.people.find((other) => other.id === incomingCompanion.fact.who);
     if (proposer) {
-      options.push(responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'));
+      const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'companion');
+      if (hasCultivatedCompanionRelationship(state, person, proposer, responseBasis)) {
+        options.push(responseOption(state, person, incomingCompanion.content.id, proposer, true, 'companion'));
+      }
       options.push(responseOption(state, person, incomingCompanion.content.id, proposer, false, 'companion'));
     }
   }
@@ -440,8 +448,8 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       .flatMap((id) => state.people.filter((candidate) => candidate.id === id));
     const requiredMemberApprovals = activeMembers.map((member) => member.id).filter((id) => id !== person.id);
     const initiativeMember = [...activeMembers].sort((a, b) =>
-      (b.driveBias.recognition + b.baselineCapacities.cognition)
-        - (a.driveBias.recognition + a.baselineCapacities.cognition)
+      (b.motiveSensitivity.status + personalityScore(b, 'extraversion') * 0.35 + b.baselineCapacities.cognition)
+        - (a.motiveSensitivity.status + personalityScore(a, 'extraversion') * 0.35 + a.baselineCapacities.cognition)
       || a.id.localeCompare(b.id))[0];
     const pendingDecisionRule = state.agreements.some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'decision-rule'
@@ -506,8 +514,8 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
       && !pendingMandate
       && renewalReady) {
       const holder = [...activeMembers].sort((a, b) => inventoryQuantity(b, rule.materialId) - inventoryQuantity(a, rule.materialId)
-        || (b.driveBias.affiliation + b.baselineCapacities.communication)
-          - (a.driveBias.affiliation + a.baselineCapacities.communication)
+        || (personalityScore(b, 'agreeableness') + personalityScore(b, 'conscientiousness') + b.baselineCapacities.communication)
+          - (personalityScore(a, 'agreeableness') + personalityScore(a, 'conscientiousness') + a.baselineCapacities.communication)
         || a.id.localeCompare(b.id))[0];
       if (holder) {
         const representationId = `offer-mandate:${state.clock.elapsedMonths}:${collective.id}:${person.id}:${holder.id}:${rule.id}`;
@@ -641,16 +649,14 @@ export function buildSocialOptions(state: SimulationState, person: PersonState, 
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
       });
     }
-    if ((relation?.trust ?? 0) >= 6
-      && (relation?.bond ?? 0) >= 6
-      && !hasOpenCompanionOfferBetween(state, person.id, other.id)
+    if (!hasOpenCompanionOfferBetween(state, person.id, other.id)
       && !acceptedCompanionBetween(state, person.id, other.id, state.clock.elapsedMonths)
       && canOfferRelationshipProposal(state, person, other, companionBasis)) {
       const representationId = `offer-companion:${state.clock.elapsedMonths}:${person.id}:${other.id}`;
       options.push({
         id: representationId,
         summary: `邀请${other.name}结伴行动`,
-        reason: '彼此已经建立最低程度的信任，结伴可能降低长期风险',
+        reason: '彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险',
         goal: { kind: 'representation-made', representationId },
         nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: '希望今后一段时间结伴行动', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: state.clock.elapsedMonths + 6, basis: companionBasis } }, audience: [other.id], channel: 'voice' },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: companionBasis.sourceFactIds,

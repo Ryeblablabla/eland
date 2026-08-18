@@ -33,6 +33,8 @@ export interface PixelWorldView {
 export interface SocietyAgent {
   id: string;
   name: string;
+  /** 可重建的装饰头像；不属于权威人物状态。 */
+  portrait?: string;
   title: string;
   cellId: number;
   z: number;
@@ -51,6 +53,17 @@ export interface SocietyAgent {
   body: { health: number; nutrition: number; hydration: number; ageMonths: number };
   conditions: { id: string; kind: string; label: string; stage: number; sinceMonth: number }[];
   inventory: { id: string; materialId: number; name: string; quantity: number }[];
+  /** 该人物对其他人物的有向关系投影；数值与证据均来自权威人物状态。 */
+  relations?: {
+    personId: string;
+    name: string;
+    portrait?: string;
+    state: 'active' | 'dehydrated' | 'hibernating' | 'dead';
+    trust: number;
+    bond: number;
+    fear: number;
+    sourceEventIds: string[];
+  }[];
   /** 最近一次真实执行的原语，供场景做只读视觉投影；缺失时才回退到 active intent。 */
   visualAction?: ActionVisualView;
 }
@@ -64,6 +77,8 @@ export interface AgentHistoryItem {
   kind: 'decision' | 'action' | 'continuation' | 'life';
   label: string;
   summary: string;
+  /** 由权威事件字段投影出的地点、路径、对象等行动细节。 */
+  detail?: string;
   intentId?: string;
   status?: string;
   usedModel?: boolean;
@@ -135,7 +150,7 @@ export interface ActionVisualView {
   materialIds?: number[];
   toolMaterialId?: number;
   channel?: 'voice' | 'gesture' | 'record';
-  communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke' | 'withdraw';
+  communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
 }
 
 export interface IntentView extends ActionVisualView {
@@ -148,6 +163,21 @@ export interface IntentView extends ActionVisualView {
   lastProgressAtMonth: number;
 }
 
+/** 文明观察器给 UI 的只读快照；各分项是对总指数的实际点数贡献。 */
+export interface CivilizationIndexView {
+  formulaVersion: string;
+  total: number;
+  calculatedAtMonth: number;
+  stage: string;
+  components: {
+    population: number;
+    territory: number;
+    technology: number;
+    social: number;
+    history: number;
+  };
+}
+
 export interface SocietyState {
   world: PixelWorldView;
   agents: SocietyAgent[];
@@ -158,6 +188,7 @@ export interface SocietyState {
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];
   observations: {
+    civilizationIndex?: CivilizationIndexView;
     practices: { key: string; label: string; count: number; stability: number }[];
     institutions: { key: string; label: string; note: string }[];
     milestones: Array<{

@@ -5,7 +5,8 @@ import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, cellsInRadius, findStandingPath, setVoxel, standingMovementCost, surfaceMaterial, surfaceStandingPosition, voxelAt, type StandingPosition } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { communicationById } from './social-facts';
-import { rememberAction } from './memory';
+import { remember, rememberAction } from './memory';
+import { recordPersonalityEvidence } from './personality';
 import { applyRelationEvidence } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction } from './agreement';
 import { recordCollectiveAction } from './collective';
@@ -29,7 +30,11 @@ import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
 import { separationTechniqueId, separationTechniqueSummary, separationToolFits, voxelSeparationRuleFor } from './separation-rules';
 import { canAccessContainer, containerById, containerIdAt, containerQuantity, containerRemainingCapacity, GRANARY_CAPACITY, type ContainerState } from './container';
-import { worldEventById } from './event-index';
+import {
+  hasGroundedConversationOpeningBasis,
+  hasGroundedConversationResponse,
+  worldEventById,
+} from './event-index';
 import { animalSpecies, isAnimalAlive } from './animal';
 import {
   describeTechniqueAction,
@@ -37,6 +42,15 @@ import {
   type TechniqueActionDescriptor,
 } from './technique-demonstration';
 import type { ProjectState, ProjectTechniqueDemonstrationBasis } from './project';
+import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
+import { lifePlanningStage } from './life-stage';
+import { hasReproductiveRecoveryCondition } from './dependent-care';
+import { hasCultivatedReproductiveRelationship } from './relationship-evidence';
+import {
+  isActionableChaosPrediction,
+  MAX_ERA_PREDICTION_HORIZON_MONTHS,
+  personTrustsEraPrediction,
+} from './era-prediction';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -211,12 +225,7 @@ function validateGroundedConversation(
     if (conversation.referenceEventId || conversation.stance) {
       return { kind: 'blocked', reason: '生活对话开场不能伪装成回应' };
     }
-    const duplicate = state.world.past.some((event) => event.kind === 'action'
-      && event.status === 'completed'
-      && event.action.kind === 'communicate'
-      && event.action.content.kind === 'claim'
-      && event.action.content.conversation?.turn === 'opening'
-      && event.action.content.conversation.basisKey === conversation.basisKey);
+    const duplicate = hasGroundedConversationOpeningBasis(state, conversation.basisKey);
     if (duplicate || !groundedConversationSourceMatches(state, person, listener, action.content, conversation)) {
       return { kind: 'blocked', reason: duplicate ? '同一段生活经历已经谈过' : '生活对话没有可解析且属于双方的真实来源' };
     }
@@ -231,12 +240,7 @@ function validateGroundedConversation(
     && opening.action.content.kind === 'claim'
     ? opening.action.content.conversation
     : undefined;
-  const duplicateResponse = Boolean(referenceId && state.world.past.some((event) => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'response'
-    && event.action.content.conversation.referenceEventId === referenceId));
+  const duplicateResponse = Boolean(referenceId && hasGroundedConversationResponse(state, referenceId));
   if (!openingConversation
     || openingConversation.turn !== 'opening'
     || openingConversation.speakerId !== listener.id
@@ -382,6 +386,7 @@ function conditionWorkMultiplier(person: PersonState): number {
     if (condition.kind === 'wound' || condition.kind === 'illness') multiplier *= [1, 0.88, 0.68, 0.45][condition.stage];
     if (condition.kind === 'aging') multiplier *= [1, 0.95, 0.8, 0.55][condition.stage];
     if (condition.kind === 'pregnancy') multiplier *= condition.stage >= 3 ? 0.65 : 0.88;
+    if (condition.kind === 'postpartum-recovery') multiplier *= condition.stage >= 3 ? 0.78 : condition.stage === 2 ? 0.88 : 0.96;
     if (condition.kind === 'restrained') multiplier *= 0.25;
   }
   return Math.max(0.2, Math.min(1.5, multiplier));
@@ -454,6 +459,7 @@ function compactTraversedSurface(state: SimulationState, path: StandingPosition[
 }
 
 function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
+  if (person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return { status: 'blocked' as const, path: [person.position.cellId], result: '处于脱水休眠，无法移动', diff: {} };
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
@@ -470,7 +476,8 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     && candidate.position.cellId === from.cellId
     && candidate.position.z === from.z
     && candidate.geneticParents.includes(person.id)
-    && ageMonths(candidate, atMonth) < 12 * 12);
+    && lifePlanningStage(candidate, atMonth) === 'dependent-child'
+    && !candidate.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
   for (const dependent of carried) {
     dependent.position.cellId = to.cellId;
     dependent.position.z = to.z;
@@ -484,7 +491,12 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     status: reached ? 'completed' as const : 'progressed' as const,
     path: segment.map((position) => position.cellId),
     result: reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${moved ? 1 : 0} 步`,
-    diff: { spentWork: spent, verticalPath: segment.map((position) => position.z), materialChanges, ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}) },
+    diff: {
+      spentWork: spent,
+      verticalPath: segment.map((position) => position.z),
+      materialChanges,
+      ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}),
+    },
   };
 }
 
@@ -934,12 +946,24 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
     const targetMaterialId = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
     const rule = exertionRuleFor(tool.materialId, stack.materialId, targetMaterialId);
     if (!rule) return { status: 'blocked' as const, result: '这些物质当前没有可发生的施力响应', diff: { toolMaterialId: tool.materialId, inputMaterialId: stack.materialId, targetMaterialId } };
+    const outputPosition = rule.outputLocation === 'world' && rule.outputPlacement === 'support'
+      ? { ...voxelRef.position, z: voxelRef.position.z - 1 }
+      : voxelRef.position;
+    if (rule.outputLocation === 'world' && rule.outputPlacement === 'support'
+      && materialDefinition(voxelAt(
+        state.world.grid,
+        outputPosition.x,
+        outputPosition.y,
+        outputPosition.z,
+      )).phase !== 'solid') {
+      return { status: 'blocked' as const, result: '产物需要稳定的承托表面', diff: { outputMaterialId: rule.outputMaterialId, position: outputPosition } };
+    }
     stack.quantity -= 1;
     removeEmptyStacks(person);
     const outputStack = rule.outputLocation === 'inventory'
       ? addInventory(person, rule.outputMaterialId, 1, [eventId], `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`)
       : undefined;
-    if (rule.outputLocation === 'world') setVoxel(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z, rule.outputMaterialId);
+    if (rule.outputLocation === 'world') setVoxel(state.world.grid, outputPosition.x, outputPosition.y, outputPosition.z, rule.outputMaterialId);
     const techniqueId = exertionTechniqueId(rule);
     const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
     if (knownTechnique) {
@@ -964,7 +988,10 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
         outputMaterialId: rule.outputMaterialId,
         outputLocation: rule.outputLocation,
         ...(outputStack ? { outputStackId: outputStack.id } : {}),
-        position: voxelRef.position,
+        position: outputPosition,
+        ...(rule.outputLocation === 'world' && rule.outputPlacement === 'support'
+          ? { targetPosition: voxelRef.position }
+          : {}),
         sourceEventId: eventId,
       },
     };
@@ -994,27 +1021,51 @@ function executeReproduce(state: SimulationState, person: PersonState, targets: 
   if (!other || other.id === person.id || !sameLocation(other, person)) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
   const consent = activeReproductionAgreementBetween(state, person.id, other.id, atMonth);
   if (!consent) return { status: 'blocked' as const, result: '没有有效的双方生殖协议，生殖过程不发生', diff: { consent: false } };
+  if (!hasCultivatedReproductiveRelationship(state, person, other)) {
+    return {
+      status: 'blocked' as const,
+      result: '双方当前的信任或羁绊低于生殖准入门槛，原有同意不能直接执行',
+      diff: { consent: true, relationshipReady: false },
+    };
+  }
   const female = person.sex === 'female' ? person : other.sex === 'female' ? other : null;
   const male = person.sex === 'male' ? person : other.sex === 'male' ? other : null;
   const age = (candidate: PersonState) => atMonth - candidate.bornAtMonth;
-  if (!female || !male || age(female) < 16 * 12 || age(female) > 45 * 12 || age(male) < 16 * 12 || female.conditions.some((condition) => condition.kind === 'pregnancy')) {
+  if (!female || !male
+    || age(female) < 16 * 12
+    || age(female) > 45 * 12
+    || age(male) < 16 * 12
+    || hasReproductiveRecoveryCondition(female)
+    || Math.min(
+      female.body.health, female.body.hydration, female.body.nutrition,
+      male.body.health, male.body.hydration, male.body.nutrition,
+    ) < 55) {
     return { status: 'blocked' as const, result: '当前身体条件不能开始妊娠过程', diff: {} };
   }
-  const chance = 0.18 * Math.min(female.body.health, female.body.nutrition, female.body.hydration) / 100;
+  const livingPopulation = state.people.filter(isAlive).length;
+  const capacityFactor = humanReproductionCapacityFactor(livingPopulation);
+  const chance = 0.28 * Math.min(female.body.health, female.body.nutrition, female.body.hydration) / 100 * capacityFactor;
   const sampleKey = `reproduce:${eventId}:${atMonth}:${female.id}:${male.id}`;
   const sample = seededFraction(state.seed, sampleKey);
   const kinshipRisk = geneticKinshipRisk(state, female, male);
-  if (sample >= chance) return { status: 'completed' as const, result: '生殖过程发生，但本次没有进入妊娠', diff: { conceived: false, chance, sample, sampleKey, kinshipRisk } };
+  const capacityDiff = { livingPopulation, softCarryingCapacity: HUMAN_SOFT_CARRYING_CAPACITY, capacityFactor };
+  if (sample >= chance) return { status: 'completed' as const, result: '生殖过程发生，但本次没有进入妊娠', diff: { conceived: false, chance, sample, sampleKey, kinshipRisk, ...capacityDiff } };
   female.conditions.push({
     id: `condition-pregnancy-${female.id}-${atMonth}`,
     kind: 'pregnancy', stage: 1, sinceMonth: atMonth, dueAtMonth: atMonth + 9,
     sourceEventIds: [consent.proposalEventId, ...(consent.responseEventId ? [consent.responseEventId] : []), eventId], otherPersonId: male.id,
   });
-  return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9, chance, sample, sampleKey, kinshipRisk } };
+  return { status: 'completed' as const, result: `${female.name}进入妊娠过程`, diff: { conceived: true, femaleId: female.id, maleId: male.id, dueAtMonth: atMonth + 9, chance, sample, sampleKey, kinshipRisk, ...capacityDiff } };
 }
 
-function executeDehydrate(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
-  const target = targets.find((candidate): candidate is Extract<WorldRef, { kind: 'person' }> => candidate.kind === 'person');
+function executeDehydrate(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const target = action.targets.find((candidate): candidate is Extract<WorldRef, { kind: 'person' }> => candidate.kind === 'person');
   const sleeper = target ? state.people.find((candidate) => candidate.id === target.personId && isAlive(candidate)) : undefined;
   if (!sleeper || !sameLocation(sleeper, person)) return { status: 'blocked' as const, result: '需要近身才能进入脱水休眠', diff: {} };
   const assistedDependent = sleeper.id !== person.id;
@@ -1032,12 +1083,27 @@ function executeDehydrate(state: SimulationState, person: PersonState, targets: 
   if (Math.min(sleeper.body.health, sleeper.body.hydration, sleeper.body.nutrition) < 38) {
     return { status: 'blocked' as const, result: '当前身体储备不足以安全进入脱水休眠', diff: {} };
   }
+  const triggerPrediction = action.hibernationPredictionId
+    ? state.eraPredictions.find((prediction) => prediction.id === action.hibernationPredictionId)
+    : undefined;
+  if (action.hibernationPredictionId && (!triggerPrediction
+    || !isActionableChaosPrediction(triggerPrediction, atMonth)
+    || !personTrustsEraPrediction(state, sleeper, triggerPrediction))) {
+    return { status: 'blocked' as const, result: '支撑脱水休眠的预言已经失效或不被本人相信', diff: {} };
+  }
+  const wakeDisputeEventIds = triggerPrediction
+    ? sleeper.memories
+      .filter((memory) => memory.id.startsWith(`memory:hibernation-wake-dispute:${triggerPrediction.id}:${sleeper.id}:`))
+      .flatMap((memory) => memory.sourceEventIds)
+    : [];
   sleeper.conditions.push({
     id: `condition-dehydrated-hibernation-${sleeper.id}-${atMonth}`,
     kind: 'dehydrated-hibernation',
     stage: 1,
     sinceMonth: atMonth,
     sourceEventIds: [eventId],
+    ...(triggerPrediction ? { triggerPredictionId: triggerPrediction.id } : {}),
+    ...(wakeDisputeEventIds.length ? { wakeDisputeEventIds: [...new Set(wakeDisputeEventIds)] } : {}),
   });
   sleeper.body.hydration = clamp(sleeper.body.hydration - 8);
   return {
@@ -1048,14 +1114,21 @@ function executeDehydrate(state: SimulationState, person: PersonState, targets: 
     diff: {
       condition: 'dehydrated-hibernation', entered: true, epoch: state.civilization.epoch,
       dehydratedPersonId: sleeper.id,
+      ...(triggerPrediction ? { hibernationPredictionId: triggerPrediction.id } : {}),
+      ...(wakeDisputeEventIds.length ? { wakeDisputeEventIds: [...new Set(wakeDisputeEventIds)] } : {}),
       ...(assistedDependent ? { assistedByPersonId: person.id, assistedDependentId: sleeper.id } : {}),
     },
   };
 }
 
-function executeRehydrate(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
-  void eventId;
-  const target = targets.find((candidate): candidate is Extract<WorldRef, { kind: 'person' }> => candidate.kind === 'person');
+function executeRehydrate(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const target = action.targets.find((candidate): candidate is Extract<WorldRef, { kind: 'person' }> => candidate.kind === 'person');
   const sleeper = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
   if (!sleeper || !sameLocation(sleeper, person)) return { status: 'blocked' as const, result: '需要近身才能让脱水休眠者重新水化', diff: {} };
   const condition = sleeper.conditions.find((candidate) => candidate.kind === 'dehydrated-hibernation');
@@ -1065,9 +1138,88 @@ function executeRehydrate(state: SimulationState, person: PersonState, targets: 
     return materialHas(material, 'drinkable');
   });
   if (!waterNearby) return { status: 'blocked' as const, result: '附近没有可用水或冰，无法完成重新水化', diff: {} };
+  const triggerPrediction = condition.triggerPredictionId
+    ? state.eraPredictions.find((prediction) => prediction.id === condition.triggerPredictionId)
+    : undefined;
+  const predictionStillPending = Boolean(triggerPrediction
+    && triggerPrediction.status === 'pending'
+    && atMonth <= triggerPrediction.expiresAtMonth);
+  const bodyEmergency = sleeper.body.health < 35
+    || sleeper.body.hydration < 28
+    || sleeper.body.nutrition < 28;
+  if (state.civilization.epoch !== 'stable' && !bodyEmergency) {
+    return { status: 'blocked' as const, result: '乱纪元仍在持续，缺少足以打断休眠的新证据', diff: {} };
+  }
+  if (predictionStillPending && !bodyEmergency
+    && personTrustsEraPrediction(state, person, triggerPrediction!)) {
+    return { status: 'blocked' as const, result: '本人也认可这项临近乱纪元预言，不应提前打断休眠', diff: {} };
+  }
+  if (predictionStillPending && !bodyEmergency && (condition.wakeDisputeEventIds?.length ?? 0) > 0) {
+    return { status: 'blocked' as const, result: '这项休眠计划已被质疑并重新执行，缺少再次唤醒的新证据', diff: {} };
+  }
+  const wakeBasis = bodyEmergency
+    ? 'body-emergency' as const
+    : predictionStillPending
+      ? 'disputed-pending-prediction' as const
+      : triggerPrediction?.status === 'incorrect'
+        ? 'prediction-invalidated' as const
+        : triggerPrediction?.status === 'correct'
+          ? 'post-chaos-recovery' as const
+          : 'unbound-stable-recovery' as const;
   sleeper.conditions = sleeper.conditions.filter((candidate) => candidate.id !== condition.id);
   sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
-  return { status: 'completed' as const, result: `${person.name}使${sleeper.name}重新水化并苏醒`, diff: { rehydratedPersonId: sleeper.id, waterNearby: true, atMonth } };
+  if (person.id !== sleeper.id) {
+    if (wakeBasis === 'disputed-pending-prediction' && triggerPrediction) {
+      const memoryId = `memory:hibernation-wake-dispute:${triggerPrediction.id}:${sleeper.id}:${person.id}`;
+      remember(sleeper, {
+        id: memoryId,
+        kind: 'episode',
+        summary: `${person.name}不认可仍待验证的纪元预言，提前打断了自己的休眠计划`,
+        importance: 78,
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        personIds: [person.id, triggerPrediction.predictorId],
+        sourceEventIds: [eventId],
+        expiresAtMonth: triggerPrediction.expiresAtMonth,
+      });
+      remember(person, {
+        id: `${memoryId}:helper`,
+        kind: 'episode',
+        summary: `自己不认可仍待验证的纪元预言，提前唤醒了${sleeper.name}`,
+        importance: 70,
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        personIds: [sleeper.id, triggerPrediction.predictorId],
+        sourceEventIds: [eventId],
+        expiresAtMonth: triggerPrediction.expiresAtMonth,
+      });
+    } else {
+      applyRelationEvidence(sleeper, person.id, eventId, { trust: 4, bond: 2 });
+      applyRelationEvidence(person, sleeper.id, eventId, { trust: 2, bond: 1 });
+      remember(sleeper, {
+        id: `memory:hibernation-wake-help:${eventId}:${sleeper.id}`,
+        kind: 'episode',
+        summary: `${person.name}依据新的环境或身体事实帮助自己安全结束休眠`,
+        importance: 72,
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        personIds: [person.id],
+        sourceEventIds: [eventId],
+      });
+    }
+  }
+  return {
+    status: 'completed' as const,
+    result: `${person.name}使${sleeper.name}重新水化并苏醒`,
+    diff: {
+      rehydratedPersonId: sleeper.id,
+      waterNearby: true,
+      atMonth,
+      rehydrationBasis: wakeBasis,
+      hibernationConditionId: condition.id,
+      ...(triggerPrediction ? { hibernationPredictionId: triggerPrediction.id } : {}),
+    },
+  };
 }
 
 function executeHunt(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
@@ -1189,8 +1341,8 @@ function executeAct(state: SimulationState, person: PersonState, action: Extract
   if (action.operation === 'exert') return executeExert(state, person, action, atMonth, eventId);
   if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'expose') return executeExpose(state, person, action.targets, atMonth, eventId);
-  if (action.operation === 'dehydrate') return executeDehydrate(state, person, action.targets, atMonth, eventId);
-  if (action.operation === 'rehydrate') return executeRehydrate(state, person, action.targets, atMonth, eventId);
+  if (action.operation === 'dehydrate') return executeDehydrate(state, person, action, atMonth, eventId);
+  if (action.operation === 'rehydrate') return executeRehydrate(state, person, action, atMonth, eventId);
   if (action.operation === 'hunt') return executeHunt(state, person, action, atMonth, eventId);
   const fire = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Fire);
   const water = action.targets.find((target) => target.kind === 'voxel' && voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.Water);
@@ -1388,6 +1540,18 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     return { status: 'completed' as const, result: `${person.name}把“${knowledge.summary}”刻写到木制记录板`, diff: { recordPayloadId: payload.id, carrierStackId: carrier.id, knowledgeId: knowledge.id, version: payload.version } };
   }
   const content = action.content;
+  if (content.kind === 'prediction') {
+    const horizon = content.prediction.predictedStartMonth - atMonth;
+    if (horizon < 1
+      || horizon > MAX_ERA_PREDICTION_HORIZON_MONTHS
+      || content.prediction.expiresAtMonth !== content.prediction.predictedStartMonth + content.prediction.toleranceMonths) {
+      return {
+        status: 'blocked' as const,
+        result: '纪元预言只能指向未来六个月内的可验证时间窗',
+        diff: { predictionHorizonMonths: horizon },
+      };
+    }
+  }
   if (content.kind === 'request' && content.techniqueDemonstration) {
     const request = content.techniqueDemonstration;
     const project = state.projects.find((candidate) => candidate.id === request.projectId
@@ -1588,7 +1752,7 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     // Grounded dialogue changes relationships through its actual turn; teaching only transfers knowledge.
     const familiarity = groundedConversation.kind === 'valid'
       ? groundedConversation.bondDelta
-      : explicitTeaching || action.content.kind === 'reject' || action.content.kind === 'withdraw' || action.content.kind === 'revoke'
+      : explicitTeaching || action.content.kind === 'reject' || action.content.kind === 'withdraw' || action.content.kind === 'revoke' || action.content.kind === 'revoke-agreement'
         ? 0
         : 1;
     const trust = groundedConversation.kind === 'valid' ? groundedConversation.trustDelta : 0;
@@ -1906,5 +2070,6 @@ export function executePrimitiveAction(
   recordInteractionFailureKnowledge(state, fact);
   recordWitnessedDeclarationFulfillment(state, fact);
   rememberAction(state, fact);
+  recordPersonalityEvidence(state, fact);
   return fact;
 }

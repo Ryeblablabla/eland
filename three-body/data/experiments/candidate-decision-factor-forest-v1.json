@@ -1,0 +1,59 @@
+{
+  "experiment": "candidate-decision-factor-forest-v1",
+  "kind": "candidate-only-sanity",
+  "hypothesis": "只读候选编译、逐刻度年龄门禁、可解释因子投票和保护性子中断不会破坏三种子一年短窗的基本因果不变量。",
+  "seeds": [
+    31,
+    185,
+    20260816
+  ],
+  "months": 12,
+  "limitations": [
+    "没有同工作树旧实现的可执行基线，因此本报告不能支持效果优于旧规则的 A/B 结论。",
+    "12 个月只覆盖短期因果与运行健全性，不代表三年、十年或更长文明分布。"
+  ],
+  "runs": [
+    {
+      "seed": 31,
+      "elapsedMonths": 12,
+      "status": "ended",
+      "living": 7,
+      "deaths": 0,
+      "actions": 905,
+      "idleDecisions": 0,
+      "completedProjects": 3,
+      "blockedProjects": 0,
+      "protectiveInterruptions": 20,
+      "sourceFreeExploreIntents": 0,
+      "invalidInventoryStacks": 0
+    },
+    {
+      "seed": 185,
+      "elapsedMonths": 12,
+      "status": "ended",
+      "living": 7,
+      "deaths": 0,
+      "actions": 887,
+      "idleDecisions": 0,
+      "completedProjects": 4,
+      "blockedProjects": 0,
+      "protectiveInterruptions": 38,
+      "sourceFreeExploreIntents": 0,
+      "invalidInventoryStacks": 0
+    },
+    {
+      "seed": 20260816,
+      "elapsedMonths": 12,
+      "status": "ended",
+      "living": 7,
+      "deaths": 0,
+      "actions": 981,
+      "idleDecisions": 0,
+      "completedProjects": 4,
+      "blockedProjects": 0,
+      "protectiveInterruptions": 32,
+      "sourceFreeExploreIntents": 0,
+      "invalidInventoryStacks": 0
+    }
+  ]
+}

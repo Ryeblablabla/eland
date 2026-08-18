@@ -19,6 +19,13 @@ export type HolderRef =
 
 export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
 
+export type HibernationWakeBasis =
+  | 'prediction-invalidated'
+  | 'post-chaos-recovery'
+  | 'body-emergency'
+  | 'disputed-pending-prediction'
+  | 'unbound-stable-recovery';
+
 export interface RelationshipCausalBasis {
   version: 'relationship-causal-basis-v1';
   subjectKey: string;
@@ -108,6 +115,7 @@ export type RepresentationInput =
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string; summary?: string }
   | { id: string; kind: 'reject'; referenceId: string; summary?: string }
+  | { id: string; kind: 'revoke-agreement'; referenceId: string; summary: string }
   | { id: string; kind: 'revoke'; permissionId: string; summary: string }
   | { id: string; kind: 'withdraw'; collectiveId: string; summary: string };
 
@@ -157,6 +165,8 @@ export type PrimitiveAction =
       toolStackId?: string;
       techniqueDemonstration?: TechniqueDemonstrationRef;
       techniqueImitation?: TechniqueImitationRef;
+      hibernationPredictionId?: string;
+      hibernationWakeBasis?: HibernationWakeBasis;
     }
   | {
       kind: 'attend';
@@ -214,7 +224,13 @@ export type FactPredicate =
   | { kind: 'representation-made'; representationId: string };
 
 export type IntentStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';
-export type IntentInterruptionKind = 'life-review' | 'required-response' | 'fulfillment' | 'record-use';
+export type IntentInterruptionKind = 'life-review'
+  | 'required-response'
+  | 'fulfillment'
+  | 'record-use'
+  | 'survival-reflex'
+  | 'dependent-care'
+  | 'shelter-maintenance';
 export type IntentReturnOutcome = 'resumed' | 'parent-completed' | 'parent-blocked' | 'parent-unavailable';
 
 export interface LifeReviewEvidence {

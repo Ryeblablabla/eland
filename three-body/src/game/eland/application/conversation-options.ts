@@ -3,10 +3,16 @@ import type {
   GroundedConversationRef,
   GroundedConversationTopic,
 } from '../domain/action';
-import { worldEventById } from '../domain/event-index';
+import {
+  groundedConversationOpeningsForListener,
+  hasGroundedConversationOpeningBasis,
+  hasGroundedConversationResponse,
+  planningOverlayEvents,
+  worldEventById,
+} from '../domain/event-index';
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, sameLocation, type PersonState } from '../domain/person';
-import { findStandingPath } from '../world/grid';
+import { cellsInRadius, findStandingPath } from '../world/grid';
 
 interface ConversationCandidate {
   topic: GroundedConversationTopic;
@@ -31,26 +37,12 @@ function resolvedSourceIds(state: SimulationState, sourceIds: string[]): string[
   return [...new Set(sourceIds)].filter((sourceId) => Boolean(worldEventById(state, sourceId))).sort();
 }
 
-function completedGroundedCommunications(state: SimulationState): ActionFact[] {
-  return state.world.past.filter((event): event is ActionFact => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && Boolean(event.action.content.conversation));
-}
-
 function alreadyUsedBasis(state: SimulationState, basisKey: string): boolean {
-  return completedGroundedCommunications(state).some((event) => event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'opening'
-    && event.action.content.conversation.basisKey === basisKey);
+  return hasGroundedConversationOpeningBasis(state, basisKey);
 }
 
 function openingAlreadyAnswered(state: SimulationState, openingEventId: string): boolean {
-  return completedGroundedCommunications(state).some((event) => event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'response'
-    && event.action.content.conversation.referenceEventId === openingEventId);
+  return hasGroundedConversationResponse(state, openingEventId);
 }
 
 function basisKey(
@@ -68,7 +60,16 @@ function basisKey(
 }
 
 function latestEvent(state: SimulationState, predicate: (event: WorldEvent) => boolean): WorldEvent | undefined {
-  return [...state.world.past].reverse().find(predicate);
+  const overlay = planningOverlayEvents(state);
+  for (let offset = overlay.length - 1; offset >= 0; offset -= 1) {
+    const event = overlay[offset];
+    if (predicate(event)) return event;
+  }
+  for (let offset = state.world.past.length - 1; offset >= 0; offset -= 1) {
+    const event = state.world.past[offset];
+    if (predicate(event)) return event;
+  }
+  return undefined;
 }
 
 function conditionPhrase(person: PersonState): { summary: string; sourceFactIds: string[] } | null {
@@ -262,15 +263,24 @@ function responseSummary(topic: GroundedConversationTopic, guarded: boolean): st
   return '我也在想着孩子的事。我们一起照顾，也要在对方撑不住时搭一把手。';
 }
 
+function liveResponseOpeningIds(state: SimulationState, person: PersonState): Set<string> {
+  const liveResponseOpeningIds = new Set<string>();
+  for (const intent of state.intents) {
+    if (intent.ownerId !== person.id || (intent.status !== 'active' && intent.status !== 'suspended')) continue;
+    for (const action of [intent.nextAction, intent.completionAction]) {
+      if (action?.kind !== 'communicate'
+        || action.content.kind !== 'claim'
+        || action.content.conversation?.turn !== 'response'
+        || !action.content.conversation.referenceEventId) continue;
+      liveResponseOpeningIds.add(action.content.conversation.referenceEventId);
+    }
+  }
+  return liveResponseOpeningIds;
+}
+
 function pendingOpening(state: SimulationState, person: PersonState): ActionFact | undefined {
-  return [...completedGroundedCommunications(state)].reverse().find((event) => {
-    const hasLiveResponseIntent = state.intents.some((intent) => {
-      if (intent.ownerId !== person.id || (intent.status !== 'active' && intent.status !== 'suspended')) return false;
-      return [intent.nextAction, intent.completionAction].some((action) => action?.kind === 'communicate'
-        && action.content.kind === 'claim'
-        && action.content.conversation?.turn === 'response'
-        && action.content.conversation.referenceEventId === event.id);
-    });
+  const liveResponses = liveResponseOpeningIds(state, person);
+  return [...groundedConversationOpeningsForListener(state, person.id)].reverse().find((event) => {
     if (state.clock.elapsedMonths - event.atMonth > 6
       || event.action.kind !== 'communicate'
       || event.action.content.kind !== 'claim') return false;
@@ -278,13 +288,17 @@ function pendingOpening(state: SimulationState, person: PersonState): ActionFact
     return conversation?.turn === 'opening'
       && conversation.listenerId === person.id
       && event.action.audience.includes(person.id)
-      && !hasLiveResponseIntent
+      && !liveResponses.has(event.id)
       && !openingAlreadyAnswered(state, event.id);
   });
 }
 
-function responseOption(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption | null {
-  const opening = pendingOpening(state, person);
+function responseOptionForOpening(
+  state: SimulationState,
+  person: PersonState,
+  visiblePeople: PersonState[],
+  opening: ActionFact,
+): ActionOption | null {
   if (!opening || opening.action.kind !== 'communicate' || opening.action.content.kind !== 'claim') return null;
   const openingConversation = opening.action.content.conversation;
   if (!openingConversation) return null;
@@ -331,6 +345,21 @@ function responseOption(state: SimulationState, person: PersonState, visiblePeop
     estimatedDuration: 'several-months', estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / 15)),
     risks: [], domain: 'social', sourceFactIds: [opening.id, ...openingConversation.sourceFactIds],
   };
+}
+
+function responseOption(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption | null {
+  const opening = pendingOpening(state, person);
+  return opening ? responseOptionForOpening(state, person, visiblePeople, opening) : null;
+}
+
+export function hasGroundedConversationResponseOpportunity(state: SimulationState, person: PersonState): boolean {
+  const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  const visible = new Set(cellsInRadius(person.position.cellId, radius));
+  const visiblePeople = state.people.filter((candidate) => candidate.id !== person.id
+    && isAlive(candidate)
+    && visible.has(candidate.position.cellId)
+    && Math.abs(candidate.position.z - person.position.z) <= radius);
+  return Boolean(responseOption(state, person, visiblePeople));
 }
 
 export function buildGroundedConversationOptions(

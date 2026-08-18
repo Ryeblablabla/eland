@@ -445,10 +445,25 @@ try {
     const exertFact = executeAndRecord(fixture, exertAction, 'completed');
     assert.equal(exertFact.diff.outputMaterialId, Material.Fire);
     assert.equal(exertFact.diff.sourceEventId, exertFact.id);
+    assert.deepEqual(exertFact.diff.position, {
+      x: targetRef.position.x,
+      y: targetRef.position.y,
+      z: targetRef.position.z - 1,
+    }, 'friction ignition must place Fire on the supporting surface');
     assert.equal(
       voxelAt(fixture.state.world.grid, targetRef.position.x, targetRef.position.y, targetRef.position.z),
+      Material.Air,
+      'the selected Air voxel must remain empty so the fire cannot raise terrain',
+    );
+    assert.equal(
+      voxelAt(
+        fixture.state.world.grid,
+        exertFact.diff.position.x,
+        exertFact.diff.position.y,
+        exertFact.diff.position.z,
+      ),
       Material.Fire,
-      'only the authoritative executor may turn the selected Air voxel into real Fire',
+      'only the authoritative executor may replace the supporting surface with real Fire',
     );
 
     const fireAttempt = fixture.campaign.attempts.find((attempt) => attempt.eventId === exertFact.id);

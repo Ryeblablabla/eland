@@ -57,7 +57,7 @@ try {
   };
 
   const initial = createInitialState(31, { endpoint: { kind: 'months', value: 180 } });
-  assert.equal(initial.schemaVersion, 16);
+  assert.equal(initial.schemaVersion, 17);
   assert.deepEqual(initial.clock, { unit: 'month', elapsedMonths: 0, monthsPerYear: 12 });
   assert.equal(initial.world.grid.width, 84);
   assert.equal(initial.world.grid.depth, 52);
@@ -76,7 +76,7 @@ try {
   assert.deepEqual(initial.containers, [], '开局不应凭空存在任何储藏容器');
   const foundingFact = initial.world.past.find((event) => event.kind === 'environment' && event.change === 'founding');
   assert.deepEqual([...foundingFact.diff.participantIds].sort(), initial.people.map((person) => person.id).sort(), '开局先民的相互熟悉必须来自明确列出参与者的共同抵达事实');
-  assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 6 && relation.bond === 6 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民应有中等且可追溯的相互熟悉关系');
+  assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 55 && relation.bond === 55 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民应有中等且可追溯的相互熟悉关系');
   const cappedLongRun = createInitialState(311_000, { endpoint: { kind: 'months', value: 99_999 } });
   assert.equal(cappedLongRun.civilization.conditions.endpoint.value, 12_000, '长期演化可持续到全员死亡，但时间硬上限暂定为一千年');
 
@@ -101,7 +101,7 @@ try {
   feasibleActor.conditions = [];
   feasiblePartner.conditions = [];
   placeWith(feasiblePartner, feasibleActor);
-  feasibleActor.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
+  Object.assign(feasibleActor.personality.baseline, { emotionality: 0, extraversion: 0, agreeableness: 0, openness: 0 });
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 0, bond: 0, sourceEventIds: [] });
   let feasibleContext = buildDecisionContexts(feasibleIntentState).find((context) => context.person.id === feasibleActor.id);
   assert.ok(!feasibleContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '只有身体与距离条件、尚未培养关系时不得提出生殖');
@@ -111,8 +111,10 @@ try {
   assert.ok(cultivatedReproductionActor && cultivatedReproductionPartner, '关系培养测试需要完整人物对');
   const cultivatedRelationshipEventId = 'test-feasible-cultivated-relationship';
   const cultivatedRelationship = cultivatedReproductionActor.relations.find((relation) => relation.personId === cultivatedReproductionPartner.id);
-  assert.ok(cultivatedRelationship, '关系培养测试需要有向关系');
-  Object.assign(cultivatedRelationship, { trust: 4, bond: 4, sourceEventIds: [cultivatedRelationshipEventId] });
+  const cultivatedReciprocalRelationship = cultivatedReproductionPartner.relations.find((relation) => relation.personId === cultivatedReproductionActor.id);
+  assert.ok(cultivatedRelationship && cultivatedReciprocalRelationship, '关系培养测试需要双向关系');
+  Object.assign(cultivatedRelationship, { trust: 60, bond: 60, sourceEventIds: [cultivatedRelationshipEventId] });
+  Object.assign(cultivatedReciprocalRelationship, { trust: 60, bond: 60, sourceEventIds: [cultivatedRelationshipEventId] });
   cultivatedReproductionState.world.past.push({
     id: cultivatedRelationshipEventId, kind: 'action', actionTick: 1, atMonth: 0, orderInMonth: 0,
     cellId: cultivatedReproductionActor.position.cellId, who: cultivatedReproductionActor.id, cause: 'intent',
@@ -144,7 +146,7 @@ try {
   coerced.bornAtMonth = -24 * 12;
   placeWith(coerced, coercer);
   coercer.body.nutrition = 12;
-  coercer.driveBias = { affiliation: 0, autonomy: 0, inquiryCreation: 0 };
+  Object.assign(coercer.personality.baseline, { honestyHumility: 0, emotionality: 0, extraversion: 0, agreeableness: 0, conscientiousness: 0, openness: 0 });
   coercer.inventory = [{ id: 'test-feasible-rope', materialId: 23, quantity: 1, sourceEventIds: [] }];
   coerced.body.health = 15;
   coerced.inventory = [{ id: 'test-coerced-food', materialId: 21, quantity: 2, sourceEventIds: [] }];
@@ -223,8 +225,18 @@ try {
   socialPeer.bornAtMonth = -20 * 12;
   placeWith(socialPeer, socialActor);
   socialCooldownState.clock.elapsedMonths = 1;
+  const socialSource = {
+    id: 'test-social-cooldown-condition', kind: 'environment', change: 'condition', atMonth: 1,
+    orderInMonth: 0, cellId: socialPeer.position.cellId, who: socialPeer.id,
+    result: `${socialPeer.name}感到寒冷`, diff: { condition: 'cold', stage: 2 },
+  };
+  socialCooldownState.world.past.push(socialSource);
+  socialPeer.conditions.push({
+    id: 'test-social-cooldown-cold', kind: 'cold', stage: 2, sinceMonth: 1,
+    sourceEventIds: [socialSource.id],
+  });
   const firstSocialContext = buildDecisionContexts(socialCooldownState).find((context) => context.person.id === socialActor.id);
-  const firstTalk = firstSocialContext?.options.find((option) => option.id.startsWith('talk:')
+  const firstTalk = firstSocialContext?.options.find((option) => option.id.startsWith('conversation:')
     && option.nextAction.kind === 'communicate'
     && option.nextAction.audience.includes(socialPeer.id));
   assert.ok(firstTalk?.nextAction.kind === 'communicate', '社交冷却测试需要一项普通近身交谈');
@@ -302,9 +314,9 @@ try {
   recordAgreementAction(reproductionAgreementState, reproductionAcceptance);
   const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }] }), diff: { conceived: false } };
   recordAgreementAction(reproductionAgreementState, noConception);
-  assert.equal(reproductionAgreementState.agreements[0]?.status, 'active', '单次未受孕不得终止仍在有效期内的双方同意');
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'fulfilled', '双方同意授权的是一次生殖尝试，完成尝试后即履约，不以受孕结果判定');
   advanceAgreementLifecycle(reproductionAgreementState, (reproductionAgreementState.agreements[0]?.dueAtMonth ?? 14) + 1);
-  assert.equal(reproductionAgreementState.agreements[0]?.status, 'expired', '多月未进入妊娠应记为生殖同意期到期，而不是任何一方违约');
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'fulfilled', '已经完成的一次生殖尝试不能在原同意期限后被改写为过期');
 
   const inheritedRiskState = createInitialState(320, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
   inheritedRiskState.civilization.externalClimate = { epoch: 'stable', kind: 'temperate', severity: 0 };
@@ -351,13 +363,13 @@ try {
   const witness = witnessedViolenceState.people[2];
   placeWith(victim, attacker);
   placeWith(witness, attacker);
-  // Keep the two observers in place for this focused memory assertion. In the
-  // rule-first loop, independent adults may legitimately plan and leave before
-  // another person's turn in planning tick 1.
+  // Keep the two observers in place for this focused memory assertion. People
+  // aged one year or older may legitimately plan and leave before another
+  // person's turn in planning tick 1.
   victim.generation = 1;
   witness.generation = 1;
-  victim.bornAtMonth = -10 * 12;
-  witness.bornAtMonth = -10 * 12;
+  victim.bornAtMonth = -6;
+  witness.bornAtMonth = -6;
   const violenceIntentId = 'intent-test-witnessed-violence';
   witnessedViolenceState.intents.push({
     id: violenceIntentId, ownerId: attacker.id, summary: '对近身人物施力', domain: 'strategic',
@@ -496,8 +508,8 @@ try {
   for (const parentId of child.geneticParents) {
     const childToParent = child.relations.find((relation) => relation.personId === parentId);
     const parentToChild = afterBirth.people.find((person) => person.id === parentId)?.relations.find((relation) => relation.personId === child.id);
-    assert.equal(childToParent?.bond, 12, '孩子指向亲生父母的亲近应来自出生事实');
-    assert.equal(parentToChild?.bond, 12, '亲生父母指向孩子的亲近应与出生事实对称');
+    assert.ok((childToParent?.bond ?? 0) >= 12, '孩子指向亲生父母的亲近应至少包含出生事实提供的初值');
+    assert.ok((parentToChild?.bond ?? 0) >= 12, '亲生父母指向孩子的亲近应至少包含出生事实提供的初值');
     assert.ok(childToParent?.sourceEventIds.includes(birthEvent.id) && parentToChild?.sourceEventIds.includes(birthEvent.id));
   }
   const caregiver = afterBirth.people.find((person) => person.id === child.geneticParents[0]);
@@ -514,7 +526,7 @@ try {
   let caredChildState = stepSimulation(afterBirth, { decide() { return { kind: 'idle', reason: '不干扰携幼测试' }; } });
   const carriedChild = caredChildState.people.find((person) => person.id === child.id);
   const carryFact = caredChildState.world.past.find((event) => event.kind === 'action' && Array.isArray(event.diff.carriedPersonIds) && event.diff.carriedPersonIds.includes(child.id));
-  assert.ok(carryFact && carriedChild?.position.cellId === caredChildState.people.find((person) => person.id === caregiver.id)?.position.cellId, '父母移动必须真实携带三岁以下孩子并写入动作事实');
+  assert.ok(carryFact && carriedChild?.position.cellId === caredChildState.people.find((person) => person.id === caregiver.id)?.position.cellId, '父母移动必须真实携带未满 1 岁的清醒婴儿并写入动作事实');
   const activeCaregiver = caredChildState.people.find((person) => person.id === caregiver.id);
   activeCaregiver.body = { health: 100, hydration: 100, nutrition: 100 };
   activeCaregiver.inventory.push({ id: 'test-child-food', materialId: 21, quantity: 1, sourceEventIds: [] });
@@ -553,36 +565,9 @@ try {
   assert.ok(dialogueContext, '测试人物必须拥有决策上下文');
   const collectMaterials = dialogueContext.options.filter((option) => option.id.startsWith('collect:')).map((option) => option.goal.kind === 'inventory-at-least' ? option.goal.materialId : -1);
   assert.equal(new Set(collectMaterials).size, collectMaterials.length, '同一物质只应暴露最近的一项取得机会');
-  assert.ok(dialogueContext.options.some((option) => option.requiresFollowUp) && dialogueContext.followUpOptions.length, '普通对话必须同时存在合法的非沟通后续行动');
-  assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'communicate').every((option) => option.requiresFollowUp), '每项对话决策都必须绑定后续真实行动');
-  dialogueState.decisionBudget.credits = dialogueState.people.length;
-  dialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
-  dialogueState = await stepSimulationAsync(dialogueState, {
-    async decideAll(contexts) {
-      return contexts.map((context) => {
-        const talk = context.options.find((option) => option.requiresFollowUp);
-        const followUp = context.followUpOptions[0];
-        return talk && followUp
-          ? { kind: 'start', optionId: talk.id, followUpOptionId: followUp.id, utterance: `我准备${followUp.summary}`, reason: '对话后落实行动' }
-          : { kind: 'idle', reason: '保持观察' };
-      });
-    },
-    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
-  });
-  const dialogueIntent = dialogueState.intents.find((intent) => intent.openingAction?.kind === 'communicate');
-  assert.ok(dialogueIntent?.openingActionCompleted, '对话应作为同一意图的开场动作完成');
-  const dialogueIntentActions = dialogueState.world.past.filter((event) => event.kind === 'action' && event.intentId === dialogueIntent?.id);
-  assert.equal(dialogueIntentActions[0]?.action.kind, 'communicate', '组合意图必须先说出模型生成的话');
-  assert.ok(dialogueIntentActions.slice(1).some((event) => event.action.kind !== 'communicate'), '说完以后必须推进同次决策选定的真实行动');
-  const dialogueActor = dialogueState.people.find((person) => person.id === dialogueIntent?.ownerId);
-  const dialogueAudienceId = dialogueIntent?.openingAction?.kind === 'communicate' ? dialogueIntent.openingAction.audience[0] : undefined;
-  const audienceRelation = dialogueState.people.find((person) => person.id === dialogueAudienceId)?.relations.find((relation) => relation.personId === dialogueActor?.id);
-  assert.equal(dialogueIntentActions[0]?.diff.declarationEventId, undefined, '说话本身不能成为履约或信任证据');
-  assert.ok((audienceRelation?.bond ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(dialogueIntentActions[0].id), '沟通应形成带事件来源的熟悉度');
-  const witnessedFollowUp = dialogueIntentActions.find((event, index) => index > 0 && event.status === 'completed' && Array.isArray(event.diff.declarationWitnessedBy) && event.diff.declarationWitnessedBy.includes(dialogueAudienceId));
-  if (witnessedFollowUp) assert.ok((audienceRelation?.trust ?? 0) > 0 && audienceRelation?.sourceEventIds.includes(witnessedFollowUp.id), '听者亲眼见到同一意图的后续行动完成后，才应形成说到做到的定向信任');
-  const dialogueListener = dialogueState.people.find((person) => person.id === dialogueAudienceId);
-  assert.ok(dialogueListener?.knowledge.every((fact) => !fact.id.startsWith('claim:')), '没有结构化事实引用的自然语言不得污染知识库');
+  assert.ok(dialogueContext.options.filter((option) => option.nextAction.kind === 'communicate')
+    .every((option) => !option.requiresFollowUp || (option.nextAction.content.kind === 'claim'
+      && option.nextAction.content.conversation?.turn === 'opening')), '结构化提议、预测、教学和回应不能被强行拼接无关物理动作');
 
   const groundedDialogueState = createInitialState(318, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const groundedSpeaker = groundedDialogueState.people[0];
@@ -591,36 +576,36 @@ try {
   groundedListener.generation = 1;
   groundedListener.bornAtMonth = -10 * 12;
   placeWith(groundedListener, groundedSpeaker);
-  const groundedFact = { id: 'observation:test-grounded-dialogue', kind: 'observation', summary: '亲眼观察到北边湿土附近有水', confidence: 72, learnedAtMonth: 0, sourceEventIds: ['test-grounded-observation'] };
+  const groundedFact = { id: 'technique:test-grounded-dialogue', kind: 'technique', summary: '辨认湿土附近水源', confidence: 72, learnedAtMonth: 0, sourceEventIds: ['test-grounded-observation'] };
   groundedSpeaker.knowledge = [groundedFact];
   groundedListener.knowledge = [];
   const groundedContext = buildDecisionContexts(groundedDialogueState).find((context) => context.person.id === groundedSpeaker.id);
-  const groundedTalk = groundedContext?.options.find((option) => option.id.startsWith('talk:')
+  const groundedTalk = groundedContext?.options.find((option) => option.id.startsWith('teach:')
     && option.nextAction.kind === 'communicate'
     && option.nextAction.content.kind === 'claim'
     && option.nextAction.content.factId === groundedFact.id);
-  assert.ok(groundedContext && groundedTalk?.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '普通对话有可分享认识时必须绑定其事实身份与来源，不能只生成空泛话语');
+  assert.ok(groundedContext && groundedTalk && !groundedTalk.requiresFollowUp && groundedTalk.sourceFactIds.includes('test-grounded-observation'), '分享认识本身是完整沟通动作，并且必须绑定事实身份与来源');
   const groundedPromptOption = buildDecisionRequestContext(groundedContext).options.find((option) => option.id === groundedTalk.id);
   assert.equal(groundedPromptOption?.communicatesFactId, groundedFact.id, '模型必须看见本次对话固定绑定的事实身份');
-  const groundedFollowUp = groundedContext.followUpOptions.find((option) => option.nextAction.kind === 'attend') ?? groundedContext.followUpOptions[0];
-  assert.ok(groundedFollowUp, '有来源对话仍须绑定同次决策中的真实后续行动');
   groundedDialogueState.decisionBudget.credits = groundedDialogueState.people.length;
   groundedDialogueState.decisionBudget.ledgers = [{ atMonth: 1, livingAgents: 60, candidates: 0, modelContexts: 0, inputTokens: 0, outputTokens: 0, chargedTokens: 0 }];
   const groundedAfterTalk = await stepSimulationAsync(groundedDialogueState, {
     async decideAll(contexts) {
       return contexts.map((context) => context.person.id === groundedSpeaker.id
-        ? { kind: 'start', optionId: groundedTalk.id, followUpOptionId: groundedFollowUp.id, utterance: `我亲眼见过北边湿土附近有水；接下来我会${groundedFollowUp.summary}`, reason: '把真实所见与下一步行动一起告诉对方' }
+        ? { kind: 'start', optionId: groundedTalk.id, utterance: '我亲眼见过北边湿土附近有水', reason: '把真实所见告诉对方' }
         : { kind: 'idle', reason: '不干扰有来源对话测试' });
     },
     takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
   });
   const heardFact = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.knowledge.find((fact) => fact.id === groundedFact.id);
   assert.equal(heardFact?.summary, groundedFact.summary, '自然语言措辞不能覆盖结构化认识的规范摘要');
-  assert.ok((heardFact?.confidence ?? 100) < 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '听者获得的是有沟通来源但尚未核验的主张，不是凭对话变成客观真理');
-  const groundedIntent = groundedAfterTalk.intents.find((intent) => intent.ownerId === groundedSpeaker.id && intent.openingAction?.kind === 'communicate');
-  const groundedFulfillment = groundedAfterTalk.world.past.find((event) => event.kind === 'action' && event.id === groundedIntent?.declarationFulfilledAtEventId);
-  const groundedRelation = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.relations.find((relation) => relation.personId === groundedSpeaker.id);
-  assert.ok(groundedFulfillment && (groundedRelation?.trust ?? 0) > 0 && groundedRelation?.sourceEventIds.includes(groundedFulfillment.id), '有来源对话后的真实行动被听者亲眼见证时，应闭合为可追溯的说到做到证据');
+  assert.ok((heardFact?.confidence ?? 0) >= 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '明确教学可以传递可靠技术，但仍必须保留沟通动作来源');
+  const groundedIntent = groundedAfterTalk.intents.find((intent) => intent.ownerId === groundedSpeaker.id
+    && intent.nextAction.kind === 'communicate'
+    && intent.nextAction.content.id === groundedTalk.id);
+  assert.equal(groundedIntent?.openingAction, undefined, '事实分享不应伪装成另一个无关目标的开场动作');
+  assert.ok(groundedIntent?.actionEventIds.some((eventId) => groundedAfterTalk.world.past.some((event) => event.id === eventId
+    && event.kind === 'action' && event.action.kind === 'communicate')), '事实分享应留下自己的完整沟通动作');
 
   let harvestState = createInitialState(34, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const harvester = harvestState.people[0];
@@ -788,7 +773,11 @@ try {
     { kind: 'inventory-stack', personId: crafter.id, stackId: 'fiber-craft' },
     { kind: 'inventory-stack', personId: crafter.id, stackId: 'fiber-craft' },
   ]);
-  assert.equal(ropeState.people[0].inventory.find((stack) => stack.materialId === 23)?.quantity, 1, '两份私有纤维应由 combine 形成一份私有绳');
+  const ropeCraftFact = ropeState.world.past.find((event) => event.kind === 'action'
+    && event.action.kind === 'act'
+    && event.action.operation === 'combine'
+    && event.diff.outputMaterialId === 23);
+  assert.equal(ropeCraftFact?.diff.outputQuantity, 1, '两份私有纤维应由 combine 形成一份私有绳；绳之后可以继续被真实制作链消耗');
   assert.equal(ropeState.people[0].inventory.some((stack) => stack.materialId === 20), false, '制作必须消耗真实输入物质');
   const toolState = await craftWith(38, [
     { id: 'stone-craft', materialId: 1, quantity: 1, sourceEventIds: [] },
@@ -811,13 +800,18 @@ try {
   assert.ok(clothingState.derived.milestones.some((milestone) => milestone.capabilityId === 19), '真实制作出隔热衣物后才能观察为制作衣物');
 
   let fireState = createInitialState(382, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
-  const fireMakerId = fireState.people[0].id;
-  fireState.people[0].inventory = [
-    { id: 'fire-tool', materialId: 24, quantity: 1, sourceEventIds: [] },
+  const initialFireMaker = fireState.people[2];
+  const fireMakerId = initialFireMaker.id;
+  const fireTestPosition = structuredClone(initialFireMaker.position);
+  initialFireMaker.bornAtMonth = -20 * 12;
+  initialFireMaker.inventory = [
+    { id: 'fire-tool', materialId: 24, quantity: 2, sourceEventIds: [] },
     { id: 'fire-fiber', materialId: 20, quantity: 2, sourceEventIds: [] },
   ];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const fireMaker = fireState.people.find((person) => person.id === fireMakerId);
+    Object.assign(fireMaker.position, structuredClone(fireTestPosition));
+    fireState.agreements = [];
     const fireContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
     const fireOption = fireContext?.options.find((option) => option.id.startsWith(attempt ? 'repeat-exert:' : 'try-exert:'));
     assert.ok(fireMaker && fireOption, '工具、纤维与邻格空气应产生 exert 物质试验机会');
@@ -845,14 +839,16 @@ try {
   assert.equal(fireState.people.find((person) => person.id === fireMakerId)?.inventory.some((stack) => stack.materialId === 20), false, '每次生火都必须消耗一份私人纤维');
   assert.ok((fireTechnique?.confidence ?? 0) >= 55, '重复生火应把一次暂定经验提升为可靠技术');
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.capabilityId === 17), '真实产生火体素后才能观察为掌控火种');
-  assert.ok(fireState.derived.milestones.some((milestone) => milestone.capabilityId === 59), '重复生火也应构成实验检验的证据链');
+  assert.ok(fireState.derived.milestones.some((milestone) => milestone.capabilityId === 222), '重复生火应构成跨次试错学习的证据链');
 
   const firePosition = ignitionFacts.at(-1)?.diff.position;
   assert.ok(firePosition, '生火事实必须保存火体素位置');
   const cook = fireState.people.find((person) => person.id === fireMakerId);
   cook.inventory.push({ id: 'raw-food-for-cooking', materialId: 21, quantity: 1, sourceEventIds: [] });
   const cookContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
-  const cookOption = cookContext?.options.find((option) => option.id.startsWith('try-expose:'));
+  const cookOption = cookContext?.options.find((option) => option.id.startsWith('try-expose:')
+    && option.nextAction.kind === 'act'
+    && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'raw-food-for-cooking'));
   assert.ok(cookOption, '私有食物邻近火体素时应产生 expose 物质试验机会');
   const cookIntentId = 'intent-test-cooking';
   fireState.intents.push({
@@ -867,7 +863,12 @@ try {
     async decideAll(contexts) { return contexts.map(() => ({ kind: 'idle', reason: '开局批量不改写固定烹饪试验' })); },
     takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
   });
-  assert.equal(fireState.people.find((person) => person.id === fireMakerId)?.inventory.find((stack) => stack.materialId === 25)?.quantity, 1, '食物暴露于火后应转化为私人熟食');
+  const cookingFact = fireState.world.past.find((event) => event.kind === 'action'
+    && event.who === fireMakerId
+    && event.action.kind === 'act'
+    && event.action.operation === 'expose'
+    && event.diff.outputMaterialId === 25);
+  assert.ok(cookingFact?.diff.outputStackId, '食物暴露于火后应先转化为有来源的私人熟食，之后即使被吃掉也不应丢失制作事实');
   assert.ok(fireState.derived.milestones.some((milestone) => milestone.capabilityId === 18), '真实 expose 转换出熟食后才能观察为烹饪食物');
 
   const teachingState = createInitialState(383, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
@@ -1011,7 +1012,7 @@ try {
   miningState = runRecordOption(miningState, minerId, repeatMiningOption, 'repeat-real-stone-mining');
   const verifiedMiningTechnique = miningState.people.find((person) => person.id === minerId)?.knowledge.find((fact) => fact.id.startsWith('technique:separate:24:1:1'));
   assert.ok((verifiedMiningTechnique?.confidence ?? 0) >= 55, '同一分离规律被再次真实复现后才成为可靠技术');
-  assert.ok(miningState.derived.milestones.some((milestone) => milestone.capabilityId === 59 && verifiedMiningTechnique.sourceEventIds.every((id) => milestone.evidenceEventIds.includes(id))), '实验观察器必须承认具有重复物质证据的 separate 技术');
+  assert.ok(miningState.derived.milestones.some((milestone) => milestone.capabilityId === 222 && verifiedMiningTechnique.sourceEventIds.every((id) => milestone.evidenceEventIds.includes(id))), '试错学习观察器必须承认具有重复物质证据的 separate 技术');
 
   let containerState = createInitialState(387, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const containerMakerId = containerState.people[0].id;
@@ -1111,15 +1112,10 @@ try {
   assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.codebookId && fact.kind === 'codebook' && fact.confidence >= 55), '作者必须先通过沟通与读者建立共同编码');
 
   recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
-  const shareRecordOption = recordContext?.options.find((option) => option.id.startsWith(`share-record:${payload.id}:${readerId}`));
-  recordState = runRecordOption(recordState, authorId, shareRecordOption, 'transfer-record-carrier');
-  assert.ok(recordState.people.find((person) => person.id === readerId)?.inventory.some((stack) => stack.recordPayloadId === payload.id), '记录在转移持有者后必须保持同一语义身份');
-
-  const readerContext = buildDecisionContexts(recordState).find((context) => context.person.id === readerId);
-  const readOption = readerContext?.options.find((option) => option.id.startsWith('read-record:'));
-  recordState = runRecordOption(recordState, readerId, readOption, 'read-record');
-  assert.ok(recordState.people.find((person) => person.id === readerId)?.knowledge.some((fact) => fact.id === payload.knowledgeId && fact.sourceEventIds.includes(payload.id)), '掌握编码的读者应从实体记录取得其中知识');
-  assert.ok(recordState.derived.milestones.some((milestone) => milestone.capabilityId === 51), '刻写、教授编码、交付载体、异人读懂的完整事实链才能观察为创造文字');
+  assert.equal(recordContext?.options.some((option) => option.id.startsWith(`share-demand-record:${payload.id}:${readerId}:`)), false,
+    '只有共同编码而没有读者项目的真实技术缺口时，记录不应被无目的传递；需求绑定的交付与复现由专项回归覆盖');
+  assert.ok(recordState.people.find((person) => person.id === authorId)?.inventory.some((stack) => stack.recordPayloadId === payload.id),
+    '没有合法交付目标时，实体记录应继续留在作者背包中');
 
   let collectiveState = createInitialState(385, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   const founder = collectiveState.people[0];
@@ -1127,7 +1123,8 @@ try {
   founder.bornAtMonth = -20 * 12;
   partner.bornAtMonth = -20 * 12;
   placeWith(partner, founder);
-  founder.driveBias.affiliation = 90;
+  founder.personality.baseline.emotionality = 90;
+  founder.personality.baseline.extraversion = 90;
   const priorAssistId = 'test-prior-fulfilled-assist';
   const priorRequest = actionFact('test-prior-assist-request', 0, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorRequest);
@@ -1140,16 +1137,14 @@ try {
   collectiveState.world.past.push(priorFulfillment);
   const collectiveContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const collectiveOffer = collectiveContext?.options.find((option) => option.id.startsWith('offer-collective:'));
-  assert.ok(collectiveOffer?.requiresFollowUp, '成立共同体的提议仍是对话，必须与同次模型决策中的真实后续行动绑定');
-  const collectiveFollowUp = collectiveContext.followUpOptions.find((option) => option.nextAction.kind !== 'communicate');
-  assert.ok(collectiveFollowUp, '共同体提议测试需要一个真实后续行动');
+  assert.ok(collectiveOffer && !collectiveOffer.requiresFollowUp, '共同体提议是完整结构化行动，不能借无关后续动作取得额外目标');
   const collectiveIntentId = 'intent-test-found-collective';
   collectiveState.intents.push({
-    id: collectiveIntentId, ownerId: founder.id, summary: `${collectiveOffer.summary}，随后${collectiveFollowUp.summary}`, domain: 'social',
-    goal: collectiveFollowUp.goal, openingAction: collectiveOffer.nextAction, openingActionCompleted: false,
-    nextAction: collectiveFollowUp.nextAction, ...(collectiveFollowUp.target ? { target: collectiveFollowUp.target } : {}),
+    id: collectiveIntentId, ownerId: founder.id, summary: collectiveOffer.summary, domain: 'social',
+    goal: collectiveOffer.goal, nextAction: collectiveOffer.nextAction,
+    ...(collectiveOffer.target ? { target: collectiveOffer.target } : {}),
     status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
-    sourceDecisionEventId: 'decision-test-found-collective', sourceFactIds: [...new Set([...collectiveOffer.sourceFactIds, ...collectiveFollowUp.sourceFactIds])], actionEventIds: [], replanCount: 0,
+    sourceDecisionEventId: 'decision-test-found-collective', sourceFactIds: [...collectiveOffer.sourceFactIds], actionEventIds: [], replanCount: 0,
   });
   founder.activeIntentId = collectiveIntentId;
   collectiveState = stepSimulation(collectiveState, { decide() { return { kind: 'idle', reason: '不干扰共同体提议测试' }; } });
@@ -1158,14 +1153,13 @@ try {
   assert.ok(formationAgreement?.sourceEventIds.includes(priorFulfillment.id), '共同体提议必须保留使它成为选项的既往合作来源');
   const proposalActions = collectiveState.world.past.filter((event) => event.kind === 'action' && event.intentId === collectiveIntentId);
   assert.equal(proposalActions[0]?.action.kind, 'communicate', '共同体形成链先发生真实沟通');
-  assert.ok(proposalActions.slice(1).some((event) => event.action.kind !== 'communicate'), '共同体提议之后仍要执行同次决策选择的真实行动');
+  assert.equal(proposalActions.some((event) => event.action.kind !== 'communicate'), false, '共同体提议不能夹带语义无关的第二行动');
 
-  const ordinaryDialogueContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
-  const ordinaryDialogue = ordinaryDialogueContext?.options.find((option) => option.id.startsWith('talk:'));
-  const strategicFollowUp = ordinaryDialogueContext?.followUpOptions.find((option) => option.domain === 'strategic');
-  assert.ok(ordinaryDialogue && strategicFollowUp, '普通对话归类测试需要一项对话与一项战略后续行动');
-  const ordinaryDialogueChoice = composeIntentChoice(ordinaryDialogueContext.options, ordinaryDialogueContext.followUpOptions, ordinaryDialogue.id, strategicFollowUp.id);
-  assert.equal(ordinaryDialogueChoice?.domain, 'strategic', '普通对话绑定战略后续行动时，应按真正目标归类而不是污染社会意图统计');
+  const strategicFollowUp = collectiveContext?.followUpOptions.find((option) => option.domain === 'strategic');
+  assert.ok(strategicFollowUp, '独立结构化提议测试需要一个会被忽略的无关战略选项');
+  const collectiveChoice = composeIntentChoice(collectiveContext.options, collectiveContext.followUpOptions, collectiveOffer.id, strategicFollowUp.id);
+  assert.equal(collectiveChoice?.domain, 'social', '即使调用方传入无关 follow-up，独立提议仍必须保持自己的社会语义');
+  assert.equal(collectiveChoice?.nextAction.kind, 'communicate');
 
   const collectiveResponseContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === partner.id);
   assert.deepEqual(new Set(collectiveResponseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-collective', 'reject-collective']), '收到共同体提议后必须由本人明确接受或拒绝');
@@ -1178,7 +1172,8 @@ try {
   const collective = collectiveState.collectives[0];
   assert.ok(collective && collective.status === 'active' && collective.memberships.filter((membership) => membership.status === 'active').length === 2, '双方接受后应形成具有持续成员身份的共同体领域事实');
   assert.equal(collectiveState.derived.institutions.length, 0, '只有成员身份还不是制度；必须等待共同规则被接受并反复执行');
-  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 29), '真实合作、提议、接受和成员身份链应观察为结成友谊与联盟');
+  assert.equal(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 29), false,
+    '成立一般共同体不能替代“友谊与联盟”的具体关系语义，该地图坐标应继续 guarded');
 
   collectiveState.people.find((person) => person.id === founder.id).inventory.push({ id: 'test-permission-food', materialId: 21, quantity: 3, sourceEventIds: ['test-private-food-source'] });
   let permissionContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
@@ -1209,7 +1204,7 @@ try {
   const governingPartner = collectiveState.people.find((person) => person.id === partner.id);
   governingFounder.body = { health: 100, hydration: 100, nutrition: 100 };
   governingPartner.body = { health: 100, hydration: 100, nutrition: 55 };
-  governingFounder.driveBias.recognition = 100;
+  governingFounder.motiveSensitivity.status = 100;
   governingFounder.baselineCapacities.cognition = 100;
   governingPartner.inventory = governingPartner.inventory.filter((stack) => stack.materialId !== 21);
   const governingFood = governingFounder.inventory.find((stack) => stack.materialId === 21);
@@ -1258,7 +1253,9 @@ try {
   collectiveState = runRecordOption(collectiveState, founder.id, distribute, 'mandate-material-distribution');
   assert.equal(collectiveState.collectives[0]?.mandates[0]?.distributionEventIds.length, 1, '协调者也必须亲自执行分配，组织不能像超级 Agent 一样移动物质');
   assert.ok(collectiveState.derived.institutions.some((institution) => institution.key.startsWith('collective-coordination:')), '共同规则、授权、交付和分配闭环后才能投影为制度实践');
-  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 61), '被实际行使的限期协调授权应观察为选出临时协调者');
+  assert.ok(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 530), '被实际行使的限期协调授权应观察为记录并执行集体决定');
+  assert.equal(collectiveState.derived.milestones.some((milestone) => milestone.capabilityId === 61), false,
+    '限期授权或任命不能证明发生了“选举领袖”，该地图坐标应继续 guarded');
 
   const currentFounder = collectiveState.people.find((person) => person.id === founder.id);
   const currentPartner = collectiveState.people.find((person) => person.id === partner.id);
@@ -1316,7 +1313,7 @@ try {
     { ...actionFact('repeat-trial-2', 2, experimenter.id, { kind: 'act', operation: 'combine', targets: [] }), diff: { inputMaterialId: 22, targetMaterialId: 3, outputMaterialId: 11 } },
   );
   const observedExperimentState = stepSimulation(repeatedExperimentState, { decide() { return { kind: 'idle', reason: '不干扰重复实验观察' }; } });
-  assert.ok(observedExperimentState.derived.milestones.some((milestone) => milestone.capabilityId === 59), '同一物质规律被成功复现两次，也应构成实验检验的证据链');
+  assert.ok(observedExperimentState.derived.milestones.some((milestone) => milestone.capabilityId === 222), '同一物质规律被成功复现两次，应构成试错学习的证据链');
 
   const responseState = createInitialState(39, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const offerer = responseState.people[0];
@@ -1467,8 +1464,8 @@ try {
   assert.ok(state.world.past.some((event) => event.kind === 'environment' && event.change === 'material'), '无人行动时世界物质也应继续变化');
 
   const legacy = structuredClone(initial);
-  legacy.schemaVersion = 13;
-  assert.throws(() => createSimulation({ state: legacy }), /不支持继续演化/, '没有 Agreement 聚合的旧存档必须硬切拒绝');
+  legacy.schemaVersion = 16;
+  assert.throws(() => createSimulation({ state: legacy }), /只接受 schemaVersion 17/, '破坏性人格重构后旧存档必须硬切拒绝');
 
   let calls = 0;
   const budgetBatches = [];
@@ -1505,7 +1502,7 @@ try {
       assert.equal(distance, 1, '每个空间路径步必须连接四邻格');
     }
   }
-  console.log(`simulation tests passed: schema 16, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${ordinaryCalls}/${Math.floor(personMonths / 3)} ordinary contexts + ${exemptCalls} exempt`);
+  console.log(`simulation tests passed: schema 17, ${state.people.length} people, ${state.world.past.length} facts, ${state.derived.milestones.length} milestones, ${ordinaryCalls}/${Math.floor(personMonths / 3)} ordinary contexts + ${exemptCalls} exempt`);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

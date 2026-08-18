@@ -47,7 +47,7 @@ function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
-  if (proposal.kind === 'reproduce') return 12;
+  if (proposal.kind === 'reproduce') return 4;
   return 4;
 }
 
@@ -173,6 +173,18 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       });
       return;
     }
+    if (content.kind === 'revoke-agreement') {
+      const agreement = agreementById(state, content.referenceId);
+      if (!agreement
+        || agreement.status !== 'active'
+        || agreement.proposal.kind !== 'reproduce'
+        || !agreement.partyIds.includes(fact.who)) return;
+      agreement.status = 'cancelled';
+      agreement.resolvedAtMonth = fact.atMonth;
+      agreement.responseEventId = fact.id;
+      agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+      return;
+    }
     if (content.kind !== 'accept' && content.kind !== 'reject') return;
     const agreement = agreementById(state, content.referenceId);
     if (!agreement || agreement.status !== 'proposed'
@@ -211,13 +223,14 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   }
 
   if (action.kind === 'act' && action.operation === 'reproduce') {
-    if (fact.diff.conceived !== true) return;
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
     const agreement = state.agreements.find((item) => item.status === 'active'
       && item.proposal.kind === 'reproduce'
       && item.partyIds.includes(fact.who)
       && item.partyIds.includes(target.personId));
+    // Consent authorizes one completed attempt, not repeated attempts until
+    // conception. A later attempt therefore requires a new proposal and reply.
     if (agreement) fulfill(state, agreement, fact);
     return;
   }
@@ -277,7 +290,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
     if (agreement.proposal.kind === 'reproduce') {
       agreement.status = 'expired';
       agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '双方同意的生殖尝试期结束，期间未进入妊娠');
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '双方同意的一次生殖尝试期限结束，期间没有完成尝试');
       agreement.sourceEventIds.push(fact.id);
       events.push(fact);
       continue;

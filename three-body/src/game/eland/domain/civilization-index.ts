@@ -447,7 +447,8 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
         || event.action.content.kind === 'request'
         || event.action.content.kind === 'offer'
         || event.action.content.kind === 'accept'
-        || event.action.content.kind === 'reject';
+        || event.action.content.kind === 'reject'
+        || event.action.content.kind === 'revoke-agreement';
       if (isDirectedCoordination) audience
         .forEach((personId) => interactionDyads.add(pairKey(event.who, personId)));
     } else if (event.action.kind === 'transfer') {

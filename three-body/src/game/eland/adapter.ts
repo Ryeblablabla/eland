@@ -3,12 +3,14 @@ import type { ActionVisualView, AgentHistoryItem, AgentHistoryView, EraKey, Soci
 import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
 import { Material, materialDefinition } from './domain/material';
 import { ageMonths, isAlive, type PersonState } from './domain/person';
+import { personalityScore } from './domain/personality';
 import { WORLD_CELL_COUNT, columnMaterials, surfaceMaterial, topZ } from './world/grid';
 import { biomeAt } from './world/biome';
 import { CONTAINER_CAPACITY } from './domain/container';
 import { animalAgeMonths, animalSpecies, isAnimalAlive, type AnimalState } from './domain/animal';
 import type { PrimitiveAction, WorldRef } from './domain/action';
 import { playerTextForEvent } from './projection/player-narrative';
+import { portraitForPerson } from '../personPortraits';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 
@@ -32,15 +34,20 @@ const NEED_LEVELS = [
 
 const CONDITION_LABELS: Record<string, string> = {
   'dehydrated-hibernation': '脱水休眠',
-  cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', aging: '衰老', pregnancy: '妊娠', restrained: '拘束',
+  cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', aging: '衰老', pregnancy: '妊娠',
+  'postpartum-recovery': '产后恢复', restrained: '拘束',
 };
 
 function needsFor(person: PersonState): SocietyAgent['needs'] {
   const physiological = Math.max(100 - person.body.health, 100 - person.body.hydration, 100 - person.body.nutrition);
   const safety = Math.max(person.conditions.reduce((value, condition) => Math.max(value, condition.stage * 25), 0), 100 - person.body.health);
-  const belonging = Math.max(0, 72 - person.driveBias.affiliation - person.relations.reduce((sum, relation) => sum + relation.bond, 0) / Math.max(1, person.relations.length));
-  const esteem = Math.max(10, (person.driveBias.autonomy + person.driveBias.recognition) / 2 - 25);
-  const selfActualization = Math.max(8, person.driveBias.inquiryCreation - physiological * 0.45);
+  const socialSupport = person.relations.reduce((sum, relation) => sum + Math.max(0, relation.bond) + Math.max(0, relation.trust) * 0.35, 0)
+    / Math.max(1, person.relations.length);
+  const belonging = Math.max(0, 58 - socialSupport
+    + (personalityScore(person, 'emotionality') - 50) * 0.18
+    + (personalityScore(person, 'extraversion') - 50) * 0.12);
+  const esteem = Math.max(10, (person.motiveSensitivity.control + person.motiveSensitivity.status) / 2 - 25);
+  const selfActualization = Math.max(8, personalityScore(person, 'openness') - physiological * 0.45);
   const values = [physiological, safety, belonging, esteem, selfActualization].map((value) => Math.max(0, Math.min(100, value)));
   const dominantIndex = values.indexOf(Math.max(...values));
   return NEED_LEVELS.map(([level, label], index) => ({ level, label, intensity: values[index], dominant: index === dominantIndex }));
@@ -119,6 +126,75 @@ function recentActionFor(state: SimulationState, person: PersonState): ActionVis
   return fact?.kind === 'action' ? actionVisual(state, person, fact.action) : undefined;
 }
 
+function personStateOf(person: PersonState): SocietyAgent['state'] {
+  if (!isAlive(person)) return 'dead';
+  if (person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return 'hibernating';
+  if (person.body.hydration < 10) return 'dehydrated';
+  return 'active';
+}
+
+function historyCellLabel(state: SimulationState, cellId: number, z?: number): string {
+  const x = cellId % state.world.grid.width;
+  const y = Math.floor(cellId / state.world.grid.width);
+  return `格位 ${x}, ${y}${z === undefined ? '' : ` · 高度 ${z}`}`;
+}
+
+function historyWorldRefLabel(state: SimulationState, target: WorldRef): string {
+  if (target.kind === 'voxel') {
+    const cellId = target.position.x + target.position.y * state.world.grid.width;
+    return historyCellLabel(state, cellId, target.position.z);
+  }
+  if (target.kind === 'person') return state.people.find((person) => person.id === target.personId)?.name ?? '未知人物';
+  if (target.kind === 'animal') {
+    const animal = state.world.animals.find((item) => item.id === target.animalId);
+    return animal ? animalSpecies(animal.speciesId).name : '未知动物';
+  }
+  if (target.kind === 'drop') {
+    const drop = state.world.drops.find((item) => item.id === target.dropId);
+    return drop ? `${materialDefinition(drop.materialId).name} · ${historyCellLabel(state, drop.cellId, drop.z)}` : '已消失的地面物品';
+  }
+  if (target.kind === 'container') {
+    const container = state.containers.find((item) => item.id === target.containerId);
+    const cellId = container ? container.position.x + container.position.y * state.world.grid.width : -1;
+    return container ? `${materialDefinition(Material.Container).name} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
+  }
+  const owner = state.people.find((person) => person.id === target.personId);
+  const stack = owner?.inventory.find((item) => item.id === target.stackId);
+  return `${owner?.name ?? '未知人物'}持有的${stack ? materialDefinition(stack.materialId).name : '物品'}`;
+}
+
+function historyHolderLabel(state: SimulationState, holder: Extract<PrimitiveAction, { kind: 'transfer' }>['from']): string {
+  if (holder.kind === 'ground') return historyCellLabel(state, holder.cellId, holder.z);
+  if (holder.kind === 'person') return state.people.find((person) => person.id === holder.personId)?.name ?? '未知人物';
+  const container = state.containers.find((item) => item.id === holder.containerId);
+  const cellId = container ? container.position.x + container.position.y * state.world.grid.width : -1;
+  return container ? `${materialDefinition(Material.Container).name} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
+}
+
+function actionHistoryDetail(state: SimulationState, event: Extract<WorldEvent, { kind: 'action' }>): string {
+  const from = historyCellLabel(state, event.fromCellId, event.fromZ);
+  const to = historyCellLabel(state, event.toCellId, event.toZ);
+  if (event.action.kind === 'move') {
+    const distance = Math.max(0, event.pathSegment.length - 1);
+    return `${from} → ${to} · 路径 ${distance} 格`;
+  }
+  if (event.action.kind === 'transfer') {
+    return `${from} · ${historyHolderLabel(state, event.action.from)} → ${historyHolderLabel(state, event.action.to)}`;
+  }
+  if (event.action.kind === 'act') {
+    const action = event.action;
+    const targets = action.targets.map((target) => historyWorldRefLabel(state, target)).join('、') || '无明确对象';
+    const tool = action.toolStackId
+      ? state.people.find((person) => person.id === event.who)?.inventory.find((stack) => stack.id === action.toolStackId)
+      : undefined;
+    return `${to} · 对象 ${targets}${tool ? ` · 使用 ${materialDefinition(tool.materialId).name}` : ''}`;
+  }
+  if (event.action.kind === 'attend') return `${to} · 观察 ${historyWorldRefLabel(state, event.action.target)}`;
+  const audience = event.action.audience.map((id) => state.people.find((person) => person.id === id)?.name ?? '未知人物').join('、') || '身边的人';
+  const channel = event.action.channel === 'voice' ? '交谈' : event.action.channel === 'gesture' ? '手势' : '记录';
+  return `${to} · 通过${channel}面向 ${audience}`;
+}
+
 function personView(state: SimulationState, person: PersonState): SocietyAgent {
   const needs = needsFor(person);
   const active = state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active');
@@ -127,17 +203,14 @@ function personView(state: SimulationState, person: PersonState): SocietyAgent {
   return {
     id: person.id,
     name: person.name,
+    portrait: portraitForPerson(person),
     title: person.profile.description,
     cellId: person.position.cellId,
     z: person.position.z,
     previousCellId: person.position.previousCellId,
     lastPath: person.position.lastPath,
     tickPath: person.position.tickPath,
-    state: !isAlive(person)
-      ? 'dead'
-      : person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')
-        ? 'hibernating'
-        : person.body.hydration < 10 ? 'dehydrated' : 'active',
+    state: personStateOf(person),
     doing: person.currentActionText,
     ...(person.activeIntentId ? { activeIntentId: person.activeIntentId } : {}),
     sex: person.sex,
@@ -153,6 +226,20 @@ function personView(state: SimulationState, person: PersonState): SocietyAgent {
     body: { ...person.body, ageMonths: ageMonths(person, state.clock.elapsedMonths) },
     conditions: person.conditions.map((condition) => ({ id: condition.id, kind: condition.kind, label: CONDITION_LABELS[condition.kind] ?? condition.kind, stage: condition.stage, sinceMonth: condition.sinceMonth })),
     inventory: person.inventory.map((stack) => ({ id: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+    relations: person.relations.flatMap((relation) => {
+      const other = state.people.find((candidate) => candidate.id === relation.personId);
+      if (!other) return [];
+      return [{
+        personId: other.id,
+        name: other.name,
+        portrait: portraitForPerson(other),
+        state: personStateOf(other),
+        trust: relation.trust,
+        bond: relation.bond,
+        fear: relation.fear,
+        sourceEventIds: [...relation.sourceEventIds],
+      }];
+    }),
     ...(visualAction ? { visualAction } : {}),
   };
 }
@@ -184,6 +271,11 @@ function animalActivity(state: SimulationState, animal: AnimalState): NonNullabl
 
 export function toSocietyState(state: SimulationState): SocietyState {
   const { grid } = state.world;
+  const civilizationIndex = state.civilization.civilizationIndex;
+  const componentPoints = (key: keyof typeof civilizationIndex.components): number => {
+    const component = civilizationIndex.components[key];
+    return Math.round(component.score * component.weight * 100) / 100;
+  };
   const traffic = new Array<number>(WORLD_CELL_COUNT).fill(0);
   const transfer = new Array<number>(WORLD_CELL_COUNT).fill(0);
   const action = new Array<number>(WORLD_CELL_COUNT).fill(0);
@@ -261,6 +353,19 @@ export function toSocietyState(state: SimulationState): SocietyState {
     }),
     regions: state.derived.regions.map(({ id, kind, cells, confidence, label }) => ({ id, kind, cells, confidence, ...(label ? { label } : {}) })),
     observations: {
+      civilizationIndex: {
+        formulaVersion: civilizationIndex.formulaVersion ?? 'unknown',
+        total: civilizationIndex.total,
+        calculatedAtMonth: civilizationIndex.calculatedAtMonth,
+        stage: state.civilization.stage,
+        components: {
+          population: componentPoints('population'),
+          territory: componentPoints('territory'),
+          technology: componentPoints('technology'),
+          social: componentPoints('social'),
+          history: componentPoints('history'),
+        },
+      },
       practices: state.derived.practices.map(({ key, label, count, stability }) => ({ key, label, count, stability })),
       institutions: state.derived.institutions.map(({ key, label, note }) => ({ key, label, note })),
       milestones: state.derived.milestones.map(({
@@ -293,15 +398,15 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
     }
     if (event.kind === 'decision') {
       if (event.who !== agentId) return [];
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: '作出选择', summary: playerTextForEvent(state, event), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: '作出选择', summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
     }
     if (event.kind === 'action') {
       if (event.who !== agentId) return [];
       const label = event.status === 'completed' ? '行动完成' : event.status === 'blocked' ? '行动受阻' : event.status === 'failed' ? '行动失败' : '正在行动';
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `应对眼前危险 · ${label}` : label, summary: playerTextForEvent(state, event), ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `应对眼前危险 · ${label}` : label, summary: playerTextForEvent(state, event), detail: actionHistoryDetail(state, event), ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
     }
     if (event.kind === 'environment' && event.who === agentId && (event.change === 'death' || event.change === 'condition' || event.change === 'body')) {
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: playerTextForEvent(state, event), status: event.change }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), status: event.change }];
     }
     return [];
   });

@@ -1,6 +1,7 @@
 import { materialDefinition, type MaterialTag } from './domain/material';
 import { projectMemories } from './domain/memory';
 import { ageMonths } from './domain/person';
+import { effectivePersonality } from './domain/personality';
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simulation';
 import { CONTAINER_CAPACITY } from './domain/container';
 
@@ -14,7 +15,8 @@ export interface DecisionRequestContext {
     body: DecisionContext['person']['body'];
     conditions: DecisionContext['person']['conditions'];
     capacities: DecisionContext['person']['baselineCapacities'];
-    drives: DecisionContext['person']['driveBias'];
+    personality: ReturnType<typeof effectivePersonality>;
+    motiveSensitivity: DecisionContext['person']['motiveSensitivity'];
     currentChoice: string;
     position: { cellId: number; z: number };
     inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
@@ -45,6 +47,7 @@ export interface DecisionRequestContext {
   options: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
+    communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
     communicatesFactId?: string;
   }>;
   followUpOptions: Array<{
@@ -72,6 +75,7 @@ function pressureConsequences(kind: string, stage: number): string[] {
   if (kind === 'illness') return ['水分与营养消耗加速', '行动能力下降', ...(stage >= 2 ? ['持续损失健康'] : [])];
   if (kind === 'aging') return ['恢复与行动能力下降', ...(stage >= 2 ? ['匮乏时额外损失健康'] : [])];
   if (kind === 'pregnancy') return ['水分与营养消耗增加', ...(stage >= 2 ? ['行动能力下降'] : [])];
+  if (kind === 'postpartum-recovery') return ['水分与营养消耗增加', ...(stage >= 2 ? ['行动能力下降', '不能开始下一次妊娠'] : ['不能开始下一次妊娠'])];
   if (kind === 'restrained') return ['无法正常移动', '只能近身尝试分离拘束物质或等待他人解除'];
   if (kind === 'dehydrated-hibernation') return ['停止普通行动', '大幅降低代谢', '减少乱纪元气候伤害'];
   return [];
@@ -97,7 +101,8 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       body: person.body,
       conditions: person.conditions,
       capacities: person.baselineCapacities,
-      drives: person.driveBias,
+      personality: effectivePersonality(person),
+      motiveSensitivity: person.motiveSensitivity,
       currentChoice: person.lastDecisionText.slice(0, 140),
       position: { cellId: person.position.cellId, z: person.position.z },
       inventory: person.inventory.map((stack) => {
@@ -151,8 +156,13 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     permissions: state.permissions
       .filter((permission) => permission.status === 'active' && (permission.grantorId === person.id || permission.granteeId === person.id))
       .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
-    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction }) => ({
+    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction, completionAction }) => ({
       id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
+      ...(nextAction.kind === 'communicate'
+        ? { communicationKind: nextAction.content.kind }
+        : completionAction?.kind === 'communicate'
+          ? { communicationKind: completionAction.content.kind }
+          : {}),
       ...(nextAction.kind === 'communicate' && nextAction.content.kind === 'claim' && nextAction.content.factId
         ? { communicatesFactId: nextAction.content.factId }
         : {}),

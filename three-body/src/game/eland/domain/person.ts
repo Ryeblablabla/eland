@@ -3,7 +3,7 @@ import type { NamingTradition } from '../naming';
 import type { MaterialId } from './material';
 
 export type PersonId = string;
-export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'restrained' | 'dehydrated-hibernation';
+export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'postpartum-recovery' | 'restrained' | 'dehydrated-hibernation';
 
 export interface ConditionInstance {
   id: string;
@@ -13,7 +13,12 @@ export interface ConditionInstance {
   sourceEventIds: string[];
   otherPersonId?: PersonId;
   dueAtMonth?: number;
+  endsAtMonth?: number;
   materialStackId?: string;
+  /** Pending forecast that made anticipatory hibernation useful. */
+  triggerPredictionId?: string;
+  /** A prior disputed wake of the same sleep plan; new evidence is required before another. */
+  wakeDisputeEventIds?: string[];
 }
 
 export interface ItemStack {
@@ -66,6 +71,60 @@ export interface MemoryRecord {
   expiresAtMonth?: number;
 }
 
+export type HexacoTrait =
+  | 'honestyHumility'
+  | 'emotionality'
+  | 'extraversion'
+  | 'agreeableness'
+  | 'conscientiousness'
+  | 'openness';
+
+export interface HexacoVector {
+  honestyHumility: number;
+  emotionality: number;
+  extraversion: number;
+  agreeableness: number;
+  conscientiousness: number;
+  openness: number;
+}
+
+export interface PersonalityEvidence {
+  id: string;
+  trait: HexacoTrait;
+  direction: -1 | 1;
+  strength: number;
+  contextKey: string;
+  atMonth: number;
+  sourceEventIds: string[];
+  consolidatedInto?: string;
+}
+
+export interface PersonalityChange {
+  id: string;
+  trait: HexacoTrait;
+  delta: -1 | 1;
+  atMonth: number;
+  evidenceIds: string[];
+  sourceEventIds: string[];
+}
+
+export interface PersonalityState {
+  /** Seeded or inherited temperament. It is never rewritten by an action. */
+  baseline: HexacoVector;
+  /** Slow experience-driven offset, capped independently from the baseline. */
+  learnedDelta: HexacoVector;
+  /** Person-local interpretations of replayable action facts. */
+  evidence: PersonalityEvidence[];
+  changes: PersonalityChange[];
+}
+
+export interface MotiveSensitivity {
+  /** Sensitivity to restraint, coercion, denied permission, and lost choice. */
+  control: number;
+  /** Preference for prestige and visible responsibility; not a moral trait. */
+  status: number;
+}
+
 export interface PersonState {
   id: PersonId;
   name: string;
@@ -101,7 +160,8 @@ export interface PersonState {
     communication: number;
     cognition: number;
   };
-  driveBias: { affiliation: number; autonomy: number; recognition: number; inquiryCreation: number };
+  personality: PersonalityState;
+  motiveSensitivity: MotiveSensitivity;
   conditions: ConditionInstance[];
   inventory: ItemStack[];
   knowledge: KnownFact[];

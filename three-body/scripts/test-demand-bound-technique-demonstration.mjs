@@ -331,12 +331,23 @@ try {
     assert.ok(demonstrationFact.diff.techniqueSourceKeys.includes(
       `inventory:${fixture.demonstrator.id}:demonstrator-fiber`,
     ));
+    assert.deepEqual(demonstrationFact.diff.position, {
+      x: demonstratedPosition.x,
+      y: demonstratedPosition.y,
+      z: demonstratedPosition.z - 1,
+    }, 'friction ignition must place Fire on the supporting surface');
     assert.equal(voxelAt(
       fixture.state.world.grid,
       demonstratedPosition.x,
       demonstratedPosition.y,
       demonstratedPosition.z,
-    ), Material.Fire, 'the authoritative demonstration must create a real Fire voxel');
+    ), Material.Air, 'the authoritative demonstration must not fill the air above the surface');
+    assert.equal(voxelAt(
+      fixture.state.world.grid,
+      demonstrationFact.diff.position.x,
+      demonstrationFact.diff.position.y,
+      demonstrationFact.diff.position.z,
+    ), Material.Fire, 'the authoritative demonstration must create a real Fire voxel on the surface');
 
     const tentative = fixture.learner.knowledge.find((fact) => fact.id === ignitionTechniqueId);
     assert.ok(tentative, 'a successful witnessed demonstration should create tentative learner knowledge');

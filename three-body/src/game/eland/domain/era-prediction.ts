@@ -1,0 +1,27 @@
+import type { EraPrediction, SimulationState } from './model';
+import type { PersonState } from './person';
+
+export const MAX_ERA_PREDICTION_HORIZON_MONTHS = 6;
+
+export function personTrustsEraPrediction(
+  state: SimulationState,
+  person: PersonState,
+  prediction: EraPrediction,
+): boolean {
+  if (prediction.predictorId === person.id) return true;
+  if (!prediction.audienceIds.includes(person.id)) return false;
+  const resolved = state.eraPredictions.filter((candidate) => (
+    candidate.predictorId === prediction.predictorId
+      && candidate.status !== 'pending'
+  ));
+  const correct = resolved.filter((candidate) => candidate.status === 'correct').length;
+  const trust = person.relations.find((relation) => relation.personId === prediction.predictorId)?.trust ?? 0;
+  return trust >= 22 || (resolved.length >= 2 && correct / resolved.length >= 0.6 && trust >= 8);
+}
+
+export function isActionableChaosPrediction(prediction: EraPrediction, atMonth: number): boolean {
+  return prediction.status === 'pending'
+    && prediction.targetEpoch === 'chaotic'
+    && prediction.predictedStartMonth - atMonth <= 5
+    && prediction.predictedStartMonth + prediction.toleranceMonths >= atMonth;
+}

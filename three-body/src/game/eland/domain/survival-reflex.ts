@@ -34,6 +34,17 @@ function reachableFoodPlant(state: SimulationState, person: PersonState): { plan
   return candidates.sort((a, b) => a.pathLength - b.pathLength || a.plantCell - b.plantCell)[0] ?? null;
 }
 
+/** Comparable urgency for choosing between self-preservation and dependent care. */
+export function survivalReflexUrgency(person: PersonState): number {
+  const hydration = Math.max(0, 58 - person.body.hydration) * 2.4;
+  const nutrition = Math.max(0, 52 - person.body.nutrition) * 1.9;
+  const health = Math.max(0, 45 - person.body.health) * 2.2;
+  const thermal = person.conditions
+    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+    .reduce((maximum, condition) => Math.max(maximum, condition.stage * 34), 0);
+  return Math.max(hydration, nutrition, health, thermal);
+}
+
 export function chooseSurvivalReflex(
   state: SimulationState,
   person: PersonState,

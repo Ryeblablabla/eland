@@ -33,7 +33,8 @@ try {
   partner.sex = 'female';
   actor.body = { health: 100, hydration: 100, nutrition: 100 };
   partner.body = { health: 100, hydration: 100, nutrition: 100 };
-  actor.driveBias.affiliation = 55;
+  actor.personality.baseline.emotionality = 55;
+  actor.personality.baseline.extraversion = 55;
   const female = actor.sex === 'female' ? actor : partner;
   const male = actor.sex === 'male' ? actor : partner;
   female.bornAtMonth = state.clock.elapsedMonths - 40 * 12;
@@ -80,7 +81,7 @@ try {
     goal: { kind: 'representation-made', representationId: offerId },
     nextAction: { kind: 'communicate', content: { id: offerId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: actor.id, partnerId: partner.id, expiresAtMonth: 124, basis: relationshipBasis } }, audience: [partner.id], channel: 'voice' },
     target: { kind: 'person', personId: partner.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-    sourceFactIds: relationshipBasis.sourceFactIds, domain: 'social', requiresFollowUp: true,
+    sourceFactIds: relationshipBasis.sourceFactIds, domain: 'social', requiresFollowUp: false,
     relationshipBasis,
   };
   const context = {
@@ -98,7 +99,7 @@ try {
   assert.equal(decision.optionId, lifeOption.id);
   assert.equal(decision.mode, 'interrupt');
   assert.equal(decision.interruptionKind, 'life-review');
-  assert.equal(decision.followUpOptionId, projectOption.id, 'the persisted project should be the preferred follow-up');
+  assert.equal(decision.followUpOptionId, undefined, '结构化生活提议本身就是完整行动，不能拼接无关项目动作');
   assert.match(decision.reason, /^生活复核：/);
   assert.equal(decision.lifeReview?.version, 'causal-edge-v2');
   assert.equal(decision.lifeReview?.targetPersonId, partner.id);
@@ -233,7 +234,8 @@ try {
   recentFemale.bornAtMonth = state.clock.elapsedMonths - 25 * 12;
   const recentRelation = recentActor.relations.find((candidate) => candidate.personId === partner.id);
   Object.assign(recentRelation, { trust: 0, bond: 0 });
-  recentActor.driveBias.affiliation = 45;
+  recentActor.personality.baseline.emotionality = 45;
+  recentActor.personality.baseline.extraversion = 45;
   recentlyConnected.state.world.past = [{
     id: 'recent-positive-contact', kind: 'action', actionTick: 1, atMonth: 119, orderInMonth: 0, cellId: recentActor.position.cellId,
     who: partner.id, cause: 'intent', action: { kind: 'communicate', content: { id: 'recent-talk', kind: 'claim', summary: '近况' }, audience: [recentActor.id], channel: 'voice' },

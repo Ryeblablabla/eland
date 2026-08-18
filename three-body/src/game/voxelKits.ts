@@ -16,10 +16,10 @@ const LEGACY_VOXEL_MICROS = 2;
 const CELL_H = 0.3; // 与 SocietyScene3D 的 CELL_H 保持一致
 
 export type DecorBucket =
-  | 'leaf' | 'wood' | 'organicDark' | 'stone' | 'plaster' | 'thatch' | 'roofTile'
+  | 'leaf' | 'wood' | 'organicDark' | 'groundMark' | 'stone' | 'plaster' | 'thatch' | 'roofTile'
   | 'glowWarm' | 'glowRed' | 'accent' | 'dark';
 export const DECOR_BUCKETS: DecorBucket[] = [
-  'leaf', 'wood', 'organicDark', 'stone', 'plaster', 'thatch', 'roofTile',
+  'leaf', 'wood', 'organicDark', 'groundMark', 'stone', 'plaster', 'thatch', 'roofTile',
   'glowWarm', 'glowRed', 'accent', 'dark',
 ];
 
@@ -27,6 +27,7 @@ export interface DecorInstance {
   b: DecorBucket;
   x: number; y: number; z: number;      // 世界坐标（实例中心）
   sx: number; sy: number; sz: number;   // 实例尺寸
+  ry?: number;                          // 绕世界 Y 轴旋转（弧度）；用于斜向道路等静态构件
   c: number;                            // 0xRRGGBB
   entityId?: string;                    // 动态实体 id；静态装饰不设置
   entityX?: number; entityY?: number; entityZ?: number; // 动画原点
@@ -583,6 +584,181 @@ function placePileInSlot(
 /* 建筑印章（按 structure 占地缩放）                                     */
 /* ------------------------------------------------------------------ */
 
+export interface CivilizationStagePreview {
+  label: string;
+  instances: DecorInstance[];
+}
+
+function previewBox(
+  k: Kit,
+  bucket: DecorBucket,
+  x0: number, y0: number, z0: number,
+  x1: number, y1: number, z1: number,
+  color: number,
+  salt: number,
+  shell = false,
+): void {
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+    if (shell && !(x === x0 || x === x1 || y === y0 || y === y1 || z === z0 || z === z1)) continue;
+    k.v(bucket, x, y, z, jit(color, hash01(x * 31 + y * 17 + z * 13, salt)));
+  }
+}
+
+/** 文明阶段卡片使用的部落营地：三顶兽皮帐、篝火与图腾。 */
+function kitTribalCampPreview(k: Kit): void {
+  for (const [tentX, tentZ] of [[-4, -2], [3, -3], [0, 3]] as const) {
+    for (let y = 1; y <= 4; y++) {
+      const radius = 2.6 - y * 0.55;
+      for (let x = -3; x <= 3; x++) for (let z = -3; z <= 3; z++) {
+        const distance = Math.hypot(x, z);
+        if (distance > radius + 0.35 || distance < radius - 0.75) continue;
+        if (y <= 2 && x === 0 && z >= 1) continue;
+        k.v('thatch', tentX + x, y, tentZ + z, jit(0x8a6a48, hash01(x * 17 + y * 7 + z, 141)));
+      }
+    }
+    k.v('organicDark', tentX, 5, tentZ, 0x5f422a);
+  }
+  for (let index = 0; index < 8; index++) {
+    const angle = index * Math.PI / 4;
+    k.v('stone', Math.round(Math.cos(angle) * 1.6), 1, Math.round(Math.sin(angle) * 1.6),
+      jit(0x7d8288, hash01(index, 142)));
+  }
+  k.v('wood', 0, 1, 0, 0x5f422a);
+  k.v('wood', 1, 1, 0, 0x54402a);
+  k.v('wood', 0, 1, 1, 0x5f422a);
+  k.v('glowRed', 0, 1, -1, 0xff6a55);
+  k.v('glowWarm', 0, 2, 0, 0xffc37a);
+  k.v('glowWarm', 0, 3, 0, 0xff9a4a);
+  k.v('plaster', 0, 4, 0, 0xb9bec4);
+  k.v('plaster', 1, 5, 0, 0xc9ced4);
+  const totemColors = [0xc0392b, 0xd8a03a, 0x3a7a8c, 0xc0392b, 0xd8a03a];
+  for (let y = 1; y <= 5; y++) k.v('accent', 6, y, 3, totemColors[y - 1]);
+  k.v('accent', 5, 5, 3, 0x3a7a8c);
+  k.v('accent', 7, 5, 3, 0x3a7a8c);
+  k.v('organicDark', 6, 6, 3, 0x4e3822);
+}
+
+/** 农耕定居阶段的风车磨坊：石基、木身与四叶风车。 */
+function kitWindmillPreview(k: Kit): void {
+  const layers = [[3.4, 1], [3.2, 2], [3, 3], [2.8, 4], [2.5, 5], [2.3, 6], [2.1, 7]] as const;
+  for (const [radius, y] of layers) {
+    for (let x = -4; x <= 4; x++) for (let z = -4; z <= 4; z++) {
+      const distance = Math.hypot(x, z);
+      if (distance > radius + 0.3 || distance < radius - 0.8) continue;
+      if (z >= 2 && x === 0 && y <= 2) continue;
+      if (y === 5 && z >= 1 && Math.abs(x) <= 1) {
+        k.v('dark', x, y, z, 0x33404e);
+        continue;
+      }
+      const stone = y <= 4;
+      k.v(stone ? 'stone' : 'wood', x, y, z,
+        jit(stone ? 0x8f8a80 : 0x7a5636, hash01(x * 19 + y * 7 + z, 143)));
+    }
+  }
+  previewBox(k, 'organicDark', 0, 1, 3, 0, 2, 3, 0x4e3822, 144);
+  for (const [radius, y] of [[2.9, 8], [1.8, 9], [1, 10]] as const) {
+    for (let x = -4; x <= 4; x++) for (let z = -4; z <= 4; z++) {
+      if (Math.hypot(x, z) <= radius) k.v('roofTile', x, y, z, jit(0x4a4038, hash01(x * 11 + y + z, 145)));
+    }
+  }
+  k.v('dark', 0, 7, 4, 0x2e3236);
+  for (let index = 1; index <= 4; index++) {
+    const end = index === 1 || index === 4;
+    const bucket: DecorBucket = end ? 'organicDark' : 'plaster';
+    const color = end ? 0x5f422a : 0xd8cfc0;
+    k.v(bucket, index, 7 + index, 4, color);
+    k.v(bucket, -index, 7 + index, 4, color);
+    k.v(bucket, index, 7 - index, 4, color);
+    k.v(bucket, -index, 7 - index, 4, color);
+    if (index >= 2 && index <= 3) {
+      k.v('plaster', index, 6 + index, 4, 0xd8cfc0);
+      k.v('plaster', -index, 6 + index, 4, 0xd8cfc0);
+      k.v('plaster', index, 8 - index, 4, 0xd8cfc0);
+      k.v('plaster', -index, 8 - index, 4, 0xd8cfc0);
+    }
+  }
+}
+
+/** 古代文明阶段的阶梯神庙：台基、正面阶梯、祭坛与方尖碑。 */
+function kitTemplePreview(k: Kit): void {
+  for (const [halfWidth, y] of [[6, 1], [5, 2], [4, 3], [3, 4], [2, 5]] as const) {
+    for (let x = -halfWidth; x <= halfWidth; x++) for (let z = -halfWidth; z <= halfWidth; z++) {
+      const edge = Math.abs(x) === halfWidth || Math.abs(z) === halfWidth;
+      k.v('stone', x, y, z, jit(edge ? 0xb09a72 : 0xc9b28a, hash01(x * 23 + y * 5 + z, 146)));
+    }
+  }
+  for (let step = 0; step <= 5; step++) {
+    const z = 7 - step;
+    const y = step + 1;
+    for (let x = -1; x <= 1; x++) k.v('stone', x, y, z, 0xd8c49a);
+    k.v('stone', -2, y, z, 0x8a7652);
+    k.v('stone', 2, y, z, 0x8a7652);
+  }
+  for (const x of [-1, 1]) for (const z of [-1, 1]) previewBox(k, 'accent', x, 6, z, x, 7, z, 0xa63a2e, 147);
+  previewBox(k, 'stone', -2, 8, -2, 2, 8, 2, 0x8a7652, 148);
+  k.v('dark', 0, 9, 0, 0x2e3236);
+  k.v('glowWarm', 0, 10, 0, 0xffc37a);
+  k.v('glowRed', 0, 11, 0, 0xff6a55);
+  for (const x of [-4, 4]) {
+    previewBox(k, 'stone', x, 1, 8, x, 4, 8, 0xc9b28a, 149);
+    k.v('roofTile', x, 5, 8, 0x8a7652);
+  }
+}
+
+/** 中世纪阶段的城堡：城墙、四座角楼、城门与主堡。 */
+function kitCastlePreview(k: Kit): void {
+  const width = 7;
+  const depth = 5;
+  const wallHeight = 4;
+  for (const [centerX, centerZ] of [[-width, -depth], [width, -depth], [-width, depth], [width, depth]] as const) {
+    previewBox(k, 'stone', centerX - 1, 1, centerZ - 1, centerX + 1, 6, centerZ + 1, 0x8a8d92, 150, true);
+    previewBox(k, 'roofTile', centerX - 1, 7, centerZ - 1, centerX + 1, 7, centerZ + 1, 0x4a4f58, 151);
+    k.v('roofTile', centerX, 8, centerZ, 0x3a4048);
+  }
+  for (let x = -width; x <= width; x++) for (let z = -depth; z <= depth; z++) {
+    if (!(Math.abs(x) === width || Math.abs(z) === depth)) continue;
+    if (z === depth && Math.abs(x) <= 1) {
+      for (let y = 1; y <= 3; y++) if ((x + y) % 2 === 0) k.v('dark', x, y, z, 0x2e3236);
+      k.v('stone', x, 4, z, 0x8a8d92);
+      if (x === 0) k.v('stone', x, 5, z, 0x7d8288);
+      continue;
+    }
+    for (let y = 1; y <= wallHeight; y++) k.v('stone', x, y, z, jit(0x8a8d92, hash01(x * 29 + y + z, 152)));
+    if ((x + z) % 2 === 0) k.v('stone', x, wallHeight + 1, z, 0x7d8288);
+  }
+  previewBox(k, 'stone', -2, 1, -4, 2, 7, 0, 0x8f9298, 153, true);
+  previewBox(k, 'organicDark', 0, 1, 0, 0, 2, 0, 0x4e3822, 154);
+  k.v('dark', -2, 5, -2, 0x2c3844);
+  k.v('dark', 2, 5, -2, 0x2c3844);
+  k.v('glowWarm', 0, 6, -4, 0xffc37a);
+  for (let x = -2; x <= 2; x++) for (let z = -4; z <= 0; z++) {
+    if ((Math.abs(x) === 2 || z === -4 || z === 0) && (x + z) % 2 === 0) k.v('stone', x, 8, z, 0x7d8288);
+  }
+  previewBox(k, 'organicDark', 0, 9, -2, 0, 11, -2, 0x4e3822, 155);
+  k.v('accent', 1, 11, -2, 0xc0392b);
+  k.v('accent', 2, 11, -2, 0xc0392b);
+  k.v('accent', 1, 10, -2, 0xa93226);
+}
+
+const CIVILIZATION_STAGE_PREVIEWS: Record<string, { label: string; build: (k: Kit) => void }> = {
+  '自然群体': { label: '部落营地', build: kitTribalCampPreview },
+  '原始部落': { label: '部落营地', build: kitTribalCampPreview },
+  '农耕定居': { label: '风车磨坊', build: kitWindmillPreview },
+  '古代文明': { label: '阶梯神庙', build: kitTemplePreview },
+  '中世纪': { label: '城堡', build: kitCastlePreview },
+};
+
+/**
+ * 文明指数卡片的象征性阶段素材。它只读取观察层阶段，不代表世界中已经建成该建筑。
+ * 构型与 Knowledge Base 的文明历程素材保持相同的 1/8 格微体素尺度和材质语义。
+ */
+export function civilizationStagePreview(stage: string): CivilizationStagePreview {
+  const definition = CIVILIZATION_STAGE_PREVIEWS[stage] ?? CIVILIZATION_STAGE_PREVIEWS['原始部落'];
+  const instances: DecorInstance[] = [];
+  definition.build(new Kit(instances, 0, 0, 0, 1, 0));
+  return { label: definition.label, instances };
+}
+
 type StructureMaterialKind = 'wood' | 'stone' | 'mixed';
 
 function kitHut(k: Kit, material: StructureMaterialKind = 'mixed'): void {
@@ -824,12 +1000,12 @@ function kitWolf(k: Kit, r: number): void {
 /* ------------------------------------------------------------------ */
 
 const SURFACE_REPLACEMENT_DECOR = new Set([
-  'shrub', 'berry_bush', 'crop_sprout', 'crop_mature', 'packed_soil',
+  'shrub', 'berry_bush', 'crop_sprout', 'crop_mature', 'packed_soil', 'fire',
 ]);
 
 /**
  * 真正堆在地面上方的特征物深度：地形柱渲染时应相应缩短。
- * 灌木、作物和压实路面在领域世界里是替换同层地表，不是额外的一层，
+ * 火堆、灌木、作物和压实路面在领域世界里是替换同层地表，不是额外的一层，
  * 因此不在这里扣高；施工构件则由 constructionCells 明确裁回地面。
  */
 export function featureDepth(
@@ -859,7 +1035,6 @@ export function featureDepth(
   while (depth < stack.length - 1) {
     const key = world.palette[stack[depth]]?.key;
     if (key === 'leaves') { depth += 2; continue; }        // 树叶下必有一格木
-    if (key === 'fire') { depth += 1; continue; }
     break;
   }
   return Math.max(depth, overheadDepth, constructionDepth);
@@ -921,47 +1096,175 @@ export function featureUnderlayMaterialId(
   return inferred ?? stack[Math.min(1, stack.length - 1)];
 }
 
-function placeDirtPathCell(
+export interface DirtPathDirection {
+  dx: -1 | 0 | 1;
+  dz: -1 | 0 | 1;
+}
+
+const DIRT_PATH_DIRECTIONS: readonly DirtPathDirection[] = [
+  { dx: 0, dz: -1 },
+  { dx: 1, dz: -1 },
+  { dx: 1, dz: 0 },
+  { dx: 1, dz: 1 },
+  { dx: 0, dz: 1 },
+  { dx: -1, dz: 1 },
+  { dx: -1, dz: 0 },
+  { dx: -1, dz: -1 },
+];
+
+/**
+ * 从权威道路格推导该格的视觉连接。
+ *
+ * 对角格只有在两侧正交格都不是道路时才单独连接；阶梯状道路交给正交拐角平滑，避免同一
+ * 个弯道又画直角、又叠一条对角捷径。高度差超过一层的相邻格也不会在表现层凭空连起来。
+ */
+export function dirtPathConnections(
+  trailCells: ReadonlySet<number>,
+  width: number,
+  height: number,
+  elevation: ArrayLike<number>,
+  id: number,
+): DirtPathDirection[] {
+  if (id < 0 || id >= width * height || !trailCells.has(id)) return [];
+  const x = id % width;
+  const z = Math.floor(id / width);
+  const baseElevation = elevation[id];
+  const connected: DirtPathDirection[] = [];
+  for (const direction of DIRT_PATH_DIRECTIONS) {
+    const nx = x + direction.dx;
+    const nz = z + direction.dz;
+    if (nx < 0 || nz < 0 || nx >= width || nz >= height) continue;
+    const neighborId = nz * width + nx;
+    if (!trailCells.has(neighborId) || Math.abs(elevation[neighborId] - baseElevation) > 1) continue;
+    if (direction.dx !== 0 && direction.dz !== 0) {
+      const besideX = z * width + nx;
+      const besideZ = nz * width + x;
+      if (trailCells.has(besideX) || trailCells.has(besideZ)) continue;
+    }
+    connected.push(direction);
+  }
+  return connected;
+}
+
+interface DirtPathPoint { x: number; z: number }
+
+function distanceToDirtPathSegment(point: DirtPathPoint, from: DirtPathPoint, to: DirtPathPoint): number {
+  const lineX = to.x - from.x;
+  const lineZ = to.z - from.z;
+  const lengthSquared = lineX * lineX + lineZ * lineZ;
+  if (lengthSquared < 0.000001) return Math.hypot(point.x - from.x, point.z - from.z);
+  const t = Math.max(0, Math.min(1,
+    ((point.x - from.x) * lineX + (point.z - from.z) * lineZ) / lengthSquared,
+  ));
+  return Math.hypot(point.x - (from.x + lineX * t), point.z - (from.z + lineZ * t));
+}
+
+/**
+ * 向一个道路格追加 8×8 微体素夯土带。
+ *
+ * 素材库和生产场景都以“一地图格八微体素”为基准：方向决定格内中心线，微体素只负责
+ * 把中心线栅格化为连续泥面。这样斜路仍保留体素阶梯感，不再出现旋转薄片的接缝和板材感。
+ */
+export function appendDirtPathCell(
   out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
-  horizontal: boolean, vertical: boolean, r: number,
+  connections: readonly DirtPathDirection[], r: number,
 ): void {
-  const surfaceY = groundY + 0.006;
-  const addEarth = (x: number, z: number, sx: number, sz: number, color: number) => out.push({
-    b: 'organicDark', x: centerX + x, y: surfaceY, z: centerZ + z,
-    sx, sy: 0.012, sz, c: color,
-  });
-  const hasDirection = horizontal || vertical;
-  const alongX = hasDirection ? horizontal : r < 0.5;
-  const alongZ = hasDirection ? vertical : !alongX;
   const seed = Math.floor(r * 0x7fffffff);
-  if (alongX) {
-    for (let segment = 0; segment < 4; segment++) {
-      const x = -0.375 + segment * 0.25;
-      const jitter = hash01(seed + segment, 81) - 0.5;
-      addEarth(x, -0.14 + jitter * 0.035, 0.265, 0.135, jit(0x765a3b, hash01(seed + segment, 82)));
-      addEarth(x, 0.14 - jitter * 0.03, 0.265, 0.125, jit(0x8a6a48, hash01(seed + segment, 83)));
-      if (segment % 2 === 0) addEarth(x, jitter * 0.025, 0.24, 0.075, jit(0x7d6040, hash01(seed + segment, 84)));
+  const edge = (direction: DirtPathDirection): DirtPathPoint => ({
+    x: direction.dx * 0.53,
+    z: direction.dz * 0.53,
+  });
+  const centerLines: DirtPathPoint[][] = [];
+  let junction = false;
+
+  if (connections.length === 0) {
+    const direction = DIRT_PATH_DIRECTIONS[Math.floor(r * 4) * 2];
+    centerLines.push([
+      { x: direction.dx * -0.27, z: direction.dz * -0.27 },
+      { x: direction.dx * 0.27, z: direction.dz * 0.27 },
+    ]);
+  } else if (connections.length === 1) {
+    const direction = connections[0];
+    centerLines.push([
+      { x: direction.dx * -0.16, z: direction.dz * -0.16 },
+      edge(direction),
+    ]);
+  } else if (connections.length === 2) {
+    const [a, b] = connections;
+    const opposite = a.dx === -b.dx && a.dz === -b.dz;
+    if (opposite) {
+      centerLines.push([edge(a), edge(b)]);
+    } else {
+      const start = edge(a);
+      const end = edge(b);
+      const curve: DirtPathPoint[] = [];
+      for (let step = 0; step <= 8; step++) {
+        const t = step / 8;
+        const oneMinusT = 1 - t;
+        curve.push({
+          x: oneMinusT * oneMinusT * start.x + t * t * end.x,
+          z: oneMinusT * oneMinusT * start.z + t * t * end.z,
+        });
+      }
+      centerLines.push(curve);
     }
-  }
-  if (alongZ) {
-    for (let segment = 0; segment < 4; segment++) {
-      const z = -0.375 + segment * 0.25;
-      const jitter = hash01(seed + segment, 85) - 0.5;
-      addEarth(-0.14 + jitter * 0.035, z, 0.135, 0.265, jit(0x765a3b, hash01(seed + segment, 86)));
-      addEarth(0.14 - jitter * 0.03, z, 0.125, 0.265, jit(0x8a6a48, hash01(seed + segment, 87)));
-      if (segment % 2 === 1) addEarth(jitter * 0.025, z, 0.075, 0.24, jit(0x7d6040, hash01(seed + segment, 88)));
-    }
-  }
-  if (horizontal && vertical) {
-    for (const [x, z] of [[-0.11, -0.11], [0.11, -0.11], [-0.11, 0.11], [0.11, 0.11]] as const)
-      addEarth(x, z, 0.24, 0.24, jit(0x806143, hash01(seed + Math.round((x + z) * 100), 89)));
+  } else {
+    junction = true;
+    connections.forEach((direction) => centerLines.push([{ x: 0, z: 0 }, edge(direction)]));
   }
 
-  // 少量嵌入路面的碎石只提供轮廓，不形成新的可通行高度。
-  if (r > 0.76) out.push({
-    b: 'stone', x: centerX + (r - 0.5) * 0.55, y: groundY + 0.016, z: centerZ + (hash01(Math.floor(r * 100_000), 85) - 0.5) * 0.48,
-    sx: 0.07, sy: 0.032, sz: 0.06, c: jit(0x8d8980, r),
-  });
+  const roadMicros: DirtPathPoint[] = [];
+  for (let microZ = 0; microZ < MICRO_PER_CELL; microZ++) {
+    for (let microX = 0; microX < MICRO_PER_CELL; microX++) {
+      const local: DirtPathPoint = {
+        x: (microX + 0.5) * MICRO - 0.5,
+        z: (microZ + 0.5) * MICRO - 0.5,
+      };
+      let distance = Number.POSITIVE_INFINITY;
+      for (const line of centerLines) {
+        for (let pointIndex = 1; pointIndex < line.length; pointIndex++) {
+          distance = Math.min(distance, distanceToDirtPathSegment(local, line[pointIndex - 1], line[pointIndex]));
+        }
+      }
+      const microId = microZ * MICRO_PER_CELL + microX;
+      const edgeNoise = (hash01(seed ^ microId, 121) - 0.5) * 0.07;
+      const insideRibbon = distance <= 0.215 + edgeNoise;
+      const insideJunction = junction
+        && Math.hypot(local.x, local.z) <= 0.29 + edgeNoise;
+      if (!insideRibbon && !insideJunction) continue;
+      roadMicros.push(local);
+      const tone = 0.39 + hash01(seed ^ microId, 122) * 0.22;
+      const scuffed = hash01(seed ^ microId, 123) > 0.93;
+      out.push({
+        b: 'groundMark',
+        x: centerX + local.x,
+        y: groundY + 0.002,
+        z: centerZ + local.z,
+        sx: MICRO + 0.002,
+        sy: 0.004,
+        sz: MICRO + 0.002,
+        c: scuffed ? jit(0x705439, tone) : jit(0x806143, tone),
+      });
+    }
+  }
+
+  // 从真实生成的泥面微体素中选落点，避免碎石落在草地；只提供轮廓，不形成可通行高度。
+  const pebbleRoll = hash01(seed, 124);
+  const pebbleCount = pebbleRoll > 0.62 ? 1 + (pebbleRoll > 0.9 ? 1 : 0) : 0;
+  for (let pebble = 0; pebble < pebbleCount && roadMicros.length > 0; pebble++) {
+    const local = roadMicros[Math.floor(hash01(seed + pebble, 125) * roadMicros.length)];
+    const sx = 0.06 + hash01(seed + pebble, 126) * 0.035;
+    const sy = 0.026 + hash01(seed + pebble, 127) * 0.018;
+    const sz = 0.055 + hash01(seed + pebble, 128) * 0.035;
+    out.push({
+      b: 'stone',
+      x: centerX + local.x + (hash01(seed + pebble, 129) - 0.5) * 0.025,
+      y: groundY + 0.004 + sy * 0.5,
+      z: centerZ + local.z + (hash01(seed + pebble, 130) - 0.5) * 0.025,
+      sx, sy, sz,
+      c: jit(0x8d8980, 0.35 + hash01(seed + pebble, 131) * 0.3),
+    });
+  }
 }
 
 /** 扫描权威状态，产出全部装饰实例（每月状态刷新时调用一次） */
@@ -1073,18 +1376,17 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   const trailCells = new Set(society.regions.filter((region) => region.kind === 'trail').flatMap((region) => region.cells));
   for (let id = 0; id < COUNT; id++) if (w.palette[w.surface[id]]?.key === 'packed_soil') trailCells.add(id);
   for (const id of trailCells) {
+    if (id < 0 || id >= COUNT) continue;
     const x = id % w.width, y = Math.floor(id / w.width);
-    const horizontal = (x > 0 && trailCells.has(id - 1)) || (x + 1 < w.width && trailCells.has(id + 1));
-    const vertical = (y > 0 && trailCells.has(id - w.width)) || (y + 1 < w.height && trailCells.has(id + w.width));
+    const connections = dirtPathConnections(trailCells, w.width, w.height, w.elevation, id);
     const depth = featureDepth(w, id, constructionCells);
     const groundY = (w.elevation[id] - depth + 1) * CELL_H;
-    placeDirtPathCell(
+    appendDirtPathCell(
       out,
       x - w.width / 2 + 0.5,
       groundY,
       y - w.height / 2 + 0.5,
-      horizontal,
-      vertical,
+      connections,
       hash01(id ^ w.generator.seed, 5),
     );
   }

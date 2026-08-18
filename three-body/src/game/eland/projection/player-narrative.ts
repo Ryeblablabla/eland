@@ -33,16 +33,12 @@ function concisePlayerText(value: string, max = 96): string {
     .replaceAll('体素', '位置')
     .replaceAll('近身范围', '身边')
     .replaceAll('施力', '加工')
+    .replaceAll('是否愿意共同生育后代', '愿不愿意一起要个孩子')
     .trim();
   if (clean.length <= max) return clean;
   const head = clean.slice(0, max);
   const boundary = Math.max(head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('？'), head.lastIndexOf('；'));
   return boundary >= Math.floor(max * 0.55) ? head.slice(0, boundary + 1) : `${head}…`;
-}
-
-function stripActor(text: string, actor: string): string {
-  const clean = stripSentenceEnd(text);
-  return clean.startsWith(actor) ? clean.slice(actor.length) : clean;
 }
 
 function naturalIntent(summary: string): string {
@@ -126,6 +122,7 @@ function dialogueText(state: SimulationState, event: ActionEvent, actor: string)
   const content = event.action.content;
   if (content.kind === 'accept') return `${actor}接受了${audience}的提议`;
   if (content.kind === 'reject') return `${actor}拒绝了${audience}的提议`;
+  if (content.kind === 'revoke-agreement') return `${actor}向${audience}撤回了尚未执行的生殖同意`;
   if (content.kind === 'withdraw') return `${actor}告诉${audience}，自己将退出共同体`;
   if (content.kind === 'revoke') return `${actor}撤回了给${audience}的取用许可`;
   return `${actor}对${audience}说：${concisePlayerText(content.summary)}`;
@@ -194,7 +191,13 @@ function actText(state: SimulationState, event: ActionEvent, actor: string): str
   }
   if (operation === 'reproduce' && event.diff.conceived === false) {
     const partner = event.action.targets.find((target): target is Extract<typeof target, { kind: 'person' }> => target.kind === 'person');
-    return `${actor}${partner ? `和${personName(state, partner.personId)}` : ''}尝试孕育后代，本月没有怀孕`;
+    const partnerName = partner ? personName(state, partner.personId) : '';
+    const woman = state.people.find((person) => (
+      person.id === event.who || person.id === partner?.personId
+    ) && person.sex === 'female');
+    return partner
+      ? `${actor}和${partnerName}想要个孩子，但${woman ? woman.name : '这次'}没有怀上`
+      : `${actor}想要个孩子，但这次没有怀上`;
   }
   if (operation === 'reproduce' && event.diff.conceived === true) {
     return `${personName(state, typeof event.diff.femaleId === 'string' ? event.diff.femaleId : event.who)}怀孕了`;
@@ -281,56 +284,18 @@ function actionTone(event: ActionEvent): NarrativeEntryView['tone'] {
   return event.status === 'completed' ? 'good' : 'plain';
 }
 
-function representativeAction(actions: ActionEvent[]): ActionEvent | null {
-  return [...actions].sort((first, second) => actionImportance(second) - actionImportance(first) || second.orderInMonth - first.orderInMonth)[0] ?? null;
-}
-
-function groupedIntentCandidate(state: SimulationState, events: Array<ActionEvent | DecisionEvent>): NarrativeCandidate {
-  const actions = events.filter((event): event is ActionEvent => event.kind === 'action');
-  const decisions = events.filter((event): event is DecisionEvent => event.kind === 'decision');
-  const decision = decisions.at(-1);
-  const action = representativeAction(actions);
-  const actorId = action?.who ?? decision?.who;
-  const actor = personName(state, actorId);
-  let text = action ? actionText(state, action) : decision ? decisionText(state, decision) : `${actor}继续原来的安排`;
-  if (action && decision && action.action.kind === 'move' && action.status !== 'blocked' && action.status !== 'failed') {
-    text = decisionText(state, decision);
-  } else if (action && decision && action.action.kind !== 'communicate' && action.status !== 'blocked' && action.status !== 'failed') {
-    const reason = naturalReason(actor, decision.decision.reason);
-    if (reason) {
-      const walked = actions.some((candidate) => candidate.action.kind === 'move');
-      text = `${reason}，${walked && action.action.kind === 'transfer' ? '走过去' : ''}${stripActor(text, actor)}`;
-    }
-  } else if (action && !decision && action.action.kind === 'move') {
-    const goal = intentSummary(state, action);
-    if (goal) text = `${actor}为了${naturalIntent(goal)}，${stripActor(text, actor)}`;
-  }
-  const sorted = [...events].sort((first, second) => first.orderInMonth - second.orderInMonth);
-  return {
-    id: `narrative:${sorted.map((event) => event.id).join('+')}`,
-    month: sorted[0]?.atMonth ?? state.clock.elapsedMonths,
-    text: finishSentence(text),
-    detail: sorted.map((event) => event.result).join('；'),
-    tone: action ? actionTone(action) : 'plain',
-    kind: action ? 'action' : 'decision',
-    importance: Math.max(action ? actionImportance(action) : 0, decision ? 62 : 0),
-    sourceEventIds: sorted.map((event) => event.id),
-    actorIds: actorId ? [actorId] : [],
-    ...(sorted[0]?.intentId ? { intentId: sorted[0].intentId } : {}),
-    orderInMonth: sorted[0]?.orderInMonth ?? 0,
-  };
-}
-
 function environmentCandidate(state: SimulationState, event: EnvironmentEvent): NarrativeCandidate | null {
   const born = typeof event.diff.bornPersonId === 'string';
   const era = event.diff.eraTransition === true;
-  const severeCondition = event.change === 'condition' && /加重|中止|进入第|受伤|患病/u.test(event.result);
-  if (event.change !== 'death' && !born && !era && event.change !== 'prediction' && !severeCondition) return null;
+  const severeCondition = event.change === 'condition' && /加重|中止|受伤|患病/u.test(event.result);
+  if (event.change !== 'death' && !born && !era && !severeCondition) return null;
   const actorIds = event.who ? [event.who] : typeof event.diff.bornPersonId === 'string' ? [event.diff.bornPersonId] : [];
   const text = event.change === 'death'
     ? `${personName(state, event.who)}去世了，随身物品留在原地`
     : era
-      ? `${event.diff.epoch === 'chaotic' ? '乱纪元' : '恒纪元'}开始，地表变得${event.diff.kind === 'cold' ? '寒冷' : event.diff.kind === 'heat' ? '炎热' : event.diff.kind === 'fire' ? '灼热' : '温和'}`
+      ? event.diff.epoch === 'chaotic'
+        ? `恒纪元结束，乱纪元开始，地表转为${event.diff.kind === 'cold' ? '寒冷' : event.diff.kind === 'heat' ? '炎热' : '灼热'}`
+        : '乱纪元结束，恒纪元开始，地表恢复温和'
       : event.result.replaceAll('的身体储备发生显著变化', '的身体状况明显变化');
   return {
     id: `narrative:${event.id}`,
@@ -339,7 +304,7 @@ function environmentCandidate(state: SimulationState, event: EnvironmentEvent): 
     detail: event.result,
     tone: event.change === 'death' || severeCondition || event.diff.correct === false ? 'bad' : era ? 'era' : 'good',
     kind: 'epoch',
-    importance: event.change === 'death' ? 124 : born ? 116 : era ? 110 : severeCondition ? 96 : 90,
+    importance: era ? 132 : event.change === 'death' ? 124 : born ? 116 : severeCondition ? 96 : 90,
     sourceEventIds: [event.id],
     actorIds,
     orderInMonth: event.orderInMonth,
@@ -380,6 +345,48 @@ function standaloneCandidate(state: SimulationState, event: ActionEvent | Decisi
   };
 }
 
+function isMajorHistoricalAction(state: SimulationState, event: ActionEvent): boolean {
+  if (event.status !== 'completed') return false;
+  if (typeof event.diff.victimId === 'string'
+    || typeof event.diff.restrainedPersonId === 'string'
+    || typeof event.diff.releasedPersonId === 'string') return true;
+  if (event.diff.verifiedTechnique === true) return true;
+  if (event.action.kind !== 'act') return false;
+  if (event.action.operation === 'reproduce') return event.diff.conceived === true;
+  if (event.action.operation === 'dehydrate') return event.diff.entered === true;
+  if (event.action.operation === 'rehydrate') return typeof event.diff.rehydratedPersonId === 'string';
+  const person = state.people.find((candidate) => candidate.id === event.who);
+  return Boolean(person?.knowledge.some((knowledge) => (
+    knowledge.kind === 'technique'
+      && knowledge.learnedAtMonth === event.atMonth
+      && knowledge.sourceEventIds.includes(event.id)
+  )));
+}
+
+function completedProjectCandidates(state: SimulationState, events: WorldEvent[]): NarrativeCandidate[] {
+  const eventMap = new Map(events.map((event) => [event.id, event]));
+  return state.projects.flatMap((project): NarrativeCandidate[] => {
+    if (project.status !== 'completed' || project.completedAtMonth !== state.clock.elapsedMonths) return [];
+    const sourceEventIds = project.completionEventIds.filter((eventId) => eventMap.has(eventId));
+    if (!sourceEventIds.length) return [];
+    const sourceEvents = sourceEventIds.map((eventId) => eventMap.get(eventId)!);
+    const participantIds = [...new Set([project.ownerId, ...project.contributorIds])];
+    const names = participantIds.map((personId) => personName(state, personId)).join('、');
+    return [{
+      id: `narrative:project:${project.id}:${project.completedAtMonth}`,
+      month: project.completedAtMonth,
+      text: finishSentence(`${names || personName(state, project.ownerId)}完成了“${naturalIntent(project.summary)}”`),
+      detail: sourceEvents.map((event) => event.result).join('；'),
+      tone: 'good',
+      kind: 'action',
+      importance: 112,
+      sourceEventIds,
+      actorIds: participantIds,
+      orderInMonth: Math.min(...sourceEvents.map((event) => event.orderInMonth)),
+    }];
+  });
+}
+
 export function playerTextForEvent(state: SimulationState, event: WorldEvent): string {
   if (event.kind === 'action' || event.kind === 'decision') return standaloneCandidate(state, event).text;
   if (event.kind === 'environment') return environmentCandidate(state, event)?.text ?? finishSentence(event.result);
@@ -388,19 +395,10 @@ export function playerTextForEvent(state: SimulationState, event: WorldEvent): s
 }
 
 export function projectPlayerNarrative(state: SimulationState, events: WorldEvent[], limit = 4): NarrativeEntryView[] {
-  const groups = new Map<string, Array<ActionEvent | DecisionEvent>>();
   const candidates: NarrativeCandidate[] = [];
   for (const event of events) {
-    if ((event.kind === 'action' || event.kind === 'decision') && event.intentId) {
-      const key = `intent:${event.intentId}`;
-      groups.set(key, [...(groups.get(key) ?? []), event]);
-      continue;
-    }
     if (event.kind === 'action') {
-      if (event.action.kind === 'move' && event.status === 'progressed') continue;
-      candidates.push(standaloneCandidate(state, event));
-    } else if (event.kind === 'decision') {
-      if (event.decision.kind !== 'idle') candidates.push(standaloneCandidate(state, event));
+      if (isMajorHistoricalAction(state, event)) candidates.push(standaloneCandidate(state, event));
     } else if (event.kind === 'environment') {
       const candidate = environmentCandidate(state, event);
       if (candidate) candidates.push(candidate);
@@ -409,26 +407,8 @@ export function projectPlayerNarrative(state: SimulationState, events: WorldEven
       if (candidate) candidates.push(candidate);
     }
   }
-  for (const grouped of groups.values()) candidates.push(groupedIntentCandidate(state, grouped));
-
-  if (!candidates.length) {
-    const fallbackAction = [...events].reverse().find((event): event is ActionEvent => event.kind === 'action');
-    if (fallbackAction) candidates.push(standaloneCandidate(state, fallbackAction));
-  }
-  if (!candidates.length) {
-    const month = events[0]?.atMonth ?? state.clock.elapsedMonths;
-    return [{
-      id: `narrative:${state.branchId}:${month}:quiet`,
-      month,
-      text: '这个月没有发生值得记下的变化。',
-      detail: '本月没有可投影的重要事件',
-      tone: 'plain',
-      kind: 'epoch',
-      importance: 1,
-      sourceEventIds: [],
-      actorIds: [],
-    }];
-  }
+  candidates.push(...completedProjectCandidates(state, events));
+  if (!candidates.length) return [];
   return candidates
     .sort((first, second) => second.importance - first.importance || first.orderInMonth - second.orderInMonth)
     .slice(0, Math.max(1, limit))

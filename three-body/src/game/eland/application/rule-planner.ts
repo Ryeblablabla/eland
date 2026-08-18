@@ -1,13 +1,15 @@
 import { goalSatisfied } from '../domain/action-executor';
 import type { ActionOption, FactPredicate, LifeReviewEvidence } from '../domain/action';
-import { Material, materialHas } from '../domain/material';
 import type { AgentDecider, Decision, DecisionContext } from '../domain/model';
 import { ageMonths } from '../domain/person';
-import { seededFraction } from '../world/generator';
-import { geneticKinshipRisk, hasLearnedKinshipRisk } from '../domain/kinship';
+import { followUpSemanticallyMatches } from '../domain/intent-follow-up';
+import { rankByDecisionFactorForest } from './decision-factor-forest';
+import { reproductiveResponsibility } from '../domain/dependent-care';
+import { personalityScore } from '../domain/personality';
+import { planningOverlayEvents } from '../domain/event-index';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce):/;
+const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
 
 export interface PlanningMoment {
   atMonth: number;
@@ -87,141 +89,44 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
   pressure: number;
   reasons: string[];
   relationSourceEventIds: string[];
+  responsibilitySourceEventIds: string[];
   femaleAgeBand?: LifeReviewEvidence['femaleAgeBand'];
 } {
   const targetId = option.target?.kind === 'person' ? option.target.personId : undefined;
   const relation = targetId ? context.person.relations.find((candidate) => candidate.personId === targetId) : undefined;
   const relationPressure = Math.min(30, Math.max(0, relation?.trust ?? 0) * 0.9 + Math.max(0, relation?.bond ?? 0) * 1.1);
-  const affiliationPressure = Math.min(10, Math.max(0, context.person.driveBias.affiliation - 45) * 0.2);
+  const socialAttachment = (personalityScore(context.person, 'emotionality') + personalityScore(context.person, 'extraversion')) / 2;
+  const affiliationPressure = Math.min(10, Math.max(0, socialAttachment - 45) * 0.2);
   const window = reproductiveWindow(context, option);
+  const responsibility = option.id.startsWith('offer-reproduce:')
+    ? reproductiveResponsibility(context.state, context.person)
+    : undefined;
   const base = option.id.startsWith('offer-reproduce:') ? 36 : 30;
   const reasons: string[] = [];
   if (relationPressure > 0) reasons.push('已有关系证据');
   if (window.pressure > 0) reasons.push('女性生育年龄窗口正在收窄');
   if (affiliationPressure > 0) reasons.push('本人有较强归属倾向');
+  if (responsibility?.pressure) reasons.push(...responsibility.reasons);
   return {
-    pressure: Math.min(140, base + relationPressure + affiliationPressure + window.pressure),
+    pressure: Math.min(140, Math.max(0,
+      base + relationPressure + affiliationPressure + window.pressure - (responsibility?.pressure ?? 0) * 2,
+    )),
     reasons,
     relationSourceEventIds: [...new Set(option.relationshipBasis?.relationshipKeys ?? relation?.sourceEventIds ?? [])].sort(),
+    responsibilitySourceEventIds: responsibility?.sourceFactIds ?? [],
     ...(window.band ? { femaleAgeBand: window.band } : {}),
   };
 }
 
-function optionScore(context: DecisionContext, option: ActionOption, moment: PlanningMoment): number {
-  const person = context.person;
-  let score = seededFraction(
-    context.state.seed,
-    `rule-option:${context.state.branchId}:${moment.atMonth}:${moment.planningTick}:${person.id}:${option.id}`,
-  ) * 8;
-
-  if (isRequiredSocialOption(option)) score += 1_000;
-  else if (isFulfillmentOption(option)) score += 850;
-  else if (isProductionOption(option)) score += 64;
-  else if (option.domain === 'strategic') score += 28;
-  else score -= 42;
-
-  if (option.projectId) score += 72 + (option.projectPressure ?? 0) * 0.9;
-  if (option.projectProposal) score += 18;
-
-  if (option.id.startsWith('drink:')) score += 140 - person.body.hydration;
-  if (option.id.startsWith('eat:')) score += 135 - person.body.nutrition;
-  if (option.id.startsWith('collect:')) {
-    const materialId = option.goal.kind === 'inventory-at-least' ? option.goal.materialId : Material.Air;
-    score += materialId === Material.Food
-      ? 88 - person.body.nutrition
-      : materialId === Material.Wood
-        ? 34
-        : materialId === Material.Seed
-          ? 25
-          : 14;
-  }
-  if (option.id.startsWith('harvest:')) score += 82 - person.body.nutrition;
-  if (option.id.startsWith('hunt:')) {
-    const predator = option.reason.includes('捕食动物');
-    score += (predator ? 72 : 46) + Math.max(0, 68 - person.body.nutrition);
-  }
-  if (option.id.startsWith('attend-animal:')) score += 26 + person.driveBias.inquiryCreation * 0.25;
-  if (option.id.startsWith('try-combine:')) score += person.driveBias.inquiryCreation * 0.3;
-  if (option.id.startsWith('repeat-combine:')) score += 42 + person.driveBias.inquiryCreation * 0.08;
-  if (option.id.startsWith('try-inventory-combine:')) score += person.driveBias.inquiryCreation * 0.28;
-  if (option.id.startsWith('repeat-inventory-combine:')) score += 38 + person.driveBias.inquiryCreation * 0.08;
-  if (option.id.startsWith('build:')) score += 34 + (context.state.civilization.climate.kind === 'cold' || context.state.civilization.climate.kind === 'heat' ? 30 : 0);
-  if (option.id.startsWith('shelter:')) {
-    const stage = person.conditions.find((condition) => condition.kind === 'cold' || condition.kind === 'heat')?.stage ?? 0;
-    score += 48 + stage * 28;
-  }
-  if (option.id.startsWith('store-container:')) score += 26;
-  if (option.id.startsWith('retrieve-container:')) {
-    const materialId = option.goal.kind === 'inventory-at-least' ? option.goal.materialId : Material.Air;
-    score += materialHas(materialId, 'edible') ? 90 - person.body.nutrition : 22;
-  }
-  if (option.id.startsWith('care:')) score += 68 + person.driveBias.affiliation * 0.35;
-  if (option.id.startsWith('predict-era:')) score += 104 + person.baselineCapacities.cognition * 0.28 + person.driveBias.inquiryCreation * 0.16;
-  if (option.id.startsWith('dehydrate-chaos:')) score += context.state.civilization.epoch === 'chaotic' ? 260 : 128;
-  if (option.id.startsWith('rehydrate:')) score += 210 + person.driveBias.affiliation * 0.25;
-  if (option.id.startsWith('offer-reproduce:')) score += 112 + person.driveBias.affiliation * 0.38;
-  if (option.id.startsWith('accept-reproduce:')) score += 140 + person.driveBias.affiliation * 0.3;
-  if (option.id.startsWith('reproduce:')) score += 180 + person.driveBias.affiliation * 0.3;
-  const reproductionOption = option.id.startsWith('offer-reproduce:')
-    || option.id.startsWith('accept-reproduce:')
-    || option.id.startsWith('reject-reproduce:')
-    || option.id.startsWith('reproduce:');
-  const targetPersonId = option.target?.kind === 'person' ? option.target.personId : undefined;
-  if (reproductionOption && targetPersonId && hasLearnedKinshipRisk(person)) {
-    const other = context.state.people.find((candidate) => candidate.id === targetPersonId);
-    const risk = other ? geneticKinshipRisk(context.state, person, other) : 0;
-    score += option.id.startsWith('reject-reproduce:') ? risk * 260 : -risk * 320;
-  }
-  if (option.id.startsWith('settle-exchange:')) score += 100;
-  if (option.id.startsWith('accept-exchange:')) score += 55;
-  if (option.id.startsWith('offer-collective:')) score += 250;
-  if (option.id.startsWith('rejoin-project-site:')) score += 160;
-  if (option.id.startsWith('offer-decision-rule:')) score += 238;
-  if (option.id.startsWith('offer-mandate:')) score += 242;
-  if (option.id.startsWith('accept-collective:') && option.target?.kind === 'person') {
-    const proposerId = option.target.personId;
-    const relation = person.relations.find((candidate) => candidate.personId === proposerId);
-    score += (relation?.trust ?? 0) * 4 + (relation?.bond ?? 0) * 2;
-  }
-  if (option.id.startsWith('reject-collective:') && option.target?.kind === 'person') {
-    const proposerId = option.target.personId;
-    const relation = person.relations.find((candidate) => candidate.personId === proposerId);
-    score += Math.max(0, 8 - (relation?.trust ?? 0)) * 4;
-  }
-  if (option.id.startsWith('rejoin-collective:')) score += 44;
-  if (option.id.startsWith('withdraw-collective:')) score += 72;
-  if (option.id.startsWith('take-without-permission:')) score += person.body.nutrition < 12 ? 110 : 28;
-  if (option.id.startsWith('exert-person:')) score += person.body.nutrition < 18 ? 26 : -12;
-  if (option.id.startsWith('teach:')) {
-    const learnerId = option.target?.kind === 'person' ? option.target.personId : undefined;
-    const learner = learnerId ? context.state.people.find((candidate) => candidate.id === learnerId) : undefined;
-    const teachesCodebook = option.summary.includes('记录刻痕');
-    score += (teachesCodebook ? 190 : learner && learner.generation > person.generation ? 175 : 150)
-      + person.driveBias.affiliation * 0.18;
-  }
-  if (option.id.startsWith('conversation:')) {
-    score += 126 + person.driveBias.affiliation * 0.22;
-  }
-  if (option.recordUseBasis) {
-    score += (option.recordUseStage === 'read-experiment' ? 250 : 190)
-      + option.recordUseBasis.projectPressure * 0.7;
-  }
-  if (option.id.startsWith('attend:')) score += 18 + person.driveBias.inquiryCreation * 0.28;
-  if (option.id.startsWith('explore:')) score += 12 + person.driveBias.inquiryCreation * 0.16;
-
-  score -= (option.estimatedMonths ?? 1) * 1.5;
-  score -= (option.risks?.length ?? 0) * 16;
-  return score;
-}
-
 function rankOptions(context: DecisionContext, options: ActionOption[], moment: PlanningMoment): ActionOption[] {
-  return [...options].sort((a, b) => optionScore(context, b, moment) - optionScore(context, a, moment) || a.id.localeCompare(b.id));
+  return rankByDecisionFactorForest(context, options, moment).map((evaluation) => evaluation.option);
 }
 
 function chooseOption(context: DecisionContext, moment: PlanningMoment): { option?: ActionOption; followUp?: ActionOption } {
-  const option = rankOptions(context, context.options, moment)[0];
+  const ranked = rankByDecisionFactorForest(context, context.options, moment);
+  const option = ranked[0]?.causalScore > 0 ? ranked[0].option : undefined;
   const followUp = option?.requiresFollowUp
-    ? rankOptions(context, context.followUpOptions, moment)[0]
+    ? rankOptions(context, context.followUpOptions.filter((candidate) => followUpSemanticallyMatches(option, candidate)), moment)[0]
     : undefined;
   return { option, followUp };
 }
@@ -249,6 +154,13 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
   const active = context.activeIntent;
   if (!active?.projectId || urgentReplan(context)) return null;
   const reviewMonth = context.state.clock.elapsedMonths + 1;
+  for (const event of planningOverlayEvents(context.state)) {
+    if (event.atMonth === reviewMonth
+      && event.kind === 'decision'
+      && event.who === context.person.id
+      && (event.decision.kind === 'start' || event.decision.kind === 'revise')
+      && event.decision.lifeReview) return null;
+  }
   for (let index = context.state.world.past.length - 1; index >= 0; index -= 1) {
     const event = context.state.world.past[index];
     if (event.atMonth < reviewMonth) break;
@@ -280,6 +192,7 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
       const sourceFactIds = [...new Set([
         ...option.sourceFactIds,
         ...scored.relationSourceEventIds,
+        ...scored.responsibilitySourceEventIds,
         ...projectSourceEventIds,
       ])];
       const evidence: LifeReviewEvidence = {
@@ -343,9 +256,10 @@ export class RulePlanner implements AgentDecider {
 
     const lifeReview = active ? groundedLifeReviewOpportunity(context) : null;
     if (active && lifeReview) {
-      const matchingProjectFollowUps = context.followUpOptions.filter((option) => option.projectId === active.projectId);
+      const matchingProjectFollowUps = context.followUpOptions.filter((option) => option.projectId === active.projectId
+        && followUpSemanticallyMatches(lifeReview.option, option));
       const followUp = lifeReview.option.requiresFollowUp
-        ? rankOptions(context, matchingProjectFollowUps.length ? matchingProjectFollowUps : context.followUpOptions, moment)[0]
+        ? rankOptions(context, matchingProjectFollowUps, moment)[0]
         : undefined;
       return {
         kind: 'revise',

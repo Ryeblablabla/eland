@@ -30,7 +30,9 @@ interface SpatialCache {
 }
 
 const spatialCaches = new WeakMap<VoxelWorld, SpatialCache>();
-const MAX_CACHED_PATHS = 1_024;
+// A 50-person planning month can compile several thousand distinct routes.
+// Keep the month-local cache from clearing itself midway through compilation.
+const MAX_CACHED_PATHS = 8_192;
 
 function spatialCache(world: VoxelWorld): SpatialCache {
   let cache = spatialCaches.get(world);

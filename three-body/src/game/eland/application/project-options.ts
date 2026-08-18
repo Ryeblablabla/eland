@@ -22,6 +22,7 @@ import {
   type PersonState,
 } from '../domain/person';
 import {
+  cloneProjectForPlanning,
   instantiateProject,
   type ProjectHypothesisCandidate,
   type ProjectHypothesisQuestionKind,
@@ -41,7 +42,7 @@ import {
   type ProjectState,
 } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
-import { worldEventById } from '../domain/event-index';
+import { matureCropHarvestActions, worldEventById } from '../domain/event-index';
 import { applyRelationEvidence } from '../domain/relation';
 import { remember } from '../domain/memory';
 import {
@@ -212,11 +213,18 @@ function placedFunctionMaterialIds(project: ProjectState): MaterialId[] {
   return completedFunctionMaterialIds(project).filter((materialId) => materialHas(materialId, 'facility'));
 }
 
+function projectActionFacts(state: SimulationState, project: ProjectState): ActionFact[] {
+  return project.actionEventIds.flatMap((eventId) => {
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' ? [event] : [];
+  });
+}
+
 function placedFunctionEvidence(state: SimulationState, project: ProjectState): ActionFact[] {
   const desired = new Set(placedFunctionMaterialIds(project));
   if (!desired.size) return [];
-  return state.world.past.filter((event): event is ActionFact => {
-    if (event.kind !== 'action' || event.status !== 'completed' || !project.actionEventIds.includes(event.id)) return false;
+  return projectActionFacts(state, project).filter((event) => {
+    if (event.status !== 'completed') return false;
     const outputMaterialId = Number(event.diff.outputMaterialId);
     const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
     if (!desired.has(outputMaterialId)
@@ -248,17 +256,12 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
     ]);
     const cultivated = Array.from({ length: state.world.grid.width * state.world.grid.depth }, (_, cellId) => cellId)
       .filter((cellId) => cultivatedMaterials.has(surfaceMaterial(state.world.grid, cellId))).length;
-    const plantedByProject = state.world.past.some((event) => event.kind === 'action'
+    const plantedByProject = projectActionFacts(state, project).some((event) => event.kind === 'action'
       && event.status === 'completed'
-      && project.actionEventIds.includes(event.id)
       && event.action.kind === 'act'
       && event.action.operation === 'combine'
       && Number(event.diff.outputMaterialId) === Material.CropSprout);
-    const harvests = state.world.past.filter((event) => event.kind === 'action'
-      && event.status === 'completed'
-      && event.action.kind === 'act'
-      && event.action.operation === 'separate'
-      && Number(event.diff.sourceMaterialId) === Material.CropMature).length;
+    const harvests = matureCropHarvestActions(state).length;
     return plantedByProject && cultivated >= 6 && harvests >= 2;
   }
   if (project.desiredFunction === 'reserve-storage') {
@@ -270,9 +273,7 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
       const storedFood = container?.inventory.reduce((sum, stack) => (
         materialHas(stack.materialId, 'edible') ? sum + stack.quantity : sum
       ), 0) ?? 0;
-      const transfers = state.world.past.filter((candidate): candidate is ActionFact => candidate.kind === 'action'
-        && candidate.status === 'completed'
-        && project.actionEventIds.includes(candidate.id)
+      const transfers = projectActionFacts(state, project).filter((candidate) => candidate.status === 'completed'
         && candidate.action.kind === 'transfer'
         && candidate.action.to.kind === 'container'
         && candidate.action.to.containerId === container?.id).length;
@@ -293,20 +294,15 @@ function completionEvidence(state: SimulationState, project: ProjectState): stri
       .flatMap((record) => record.sourceEventIds))];
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    return state.world.past.filter((event) => event.kind === 'action'
-      && event.status === 'completed'
-      && (project.actionEventIds.includes(event.id)
-        || (event.action.kind === 'act'
-          && event.action.operation === 'separate'
-          && Number(event.diff.sourceMaterialId) === Material.CropMature)))
-      .map((event) => event.id);
+    return [...new Set([
+      ...projectActionFacts(state, project).filter((event) => event.status === 'completed').map((event) => event.id),
+      ...matureCropHarvestActions(state).map((event) => event.id),
+    ])];
   }
   if (placedFunctionMaterialIds(project).length) return [...new Set([
     ...placedFunctionEvidence(state, project).map((event) => event.id),
     ...(project.desiredFunction === 'reserve-storage'
-      ? state.world.past.filter((event): event is ActionFact => event.kind === 'action'
-        && event.status === 'completed'
-        && project.actionEventIds.includes(event.id)
+      ? projectActionFacts(state, project).filter((event) => event.status === 'completed'
         && event.action.kind === 'transfer'
         && event.action.to.kind === 'container').map((event) => event.id)
       : []),
@@ -407,7 +403,15 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     completeProject(state, project, atMonth, completionEvidence(state, project));
     return;
   }
-  if (atMonth > project.reviewAtMonth && atMonth - project.lastProgressAtMonth >= 4) {
+  const ownerProjectIntent = [...state.intents].reverse().find((intent) => intent.ownerId === project.ownerId
+    && intent.projectId === project.id
+    && (intent.status === 'active' || intent.status === 'suspended'));
+  const progressAnchor = Math.max(
+    project.lastProgressAtMonth,
+    ownerProjectIntent?.lastResumedAtMonth ?? 0,
+    ownerProjectIntent?.suspendedAtMonth ?? 0,
+  );
+  if (atMonth > project.reviewAtMonth && atMonth - progressAnchor >= 4) {
     freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
     project.status = 'blocked';
     project.blockedAtMonth = atMonth;
@@ -3117,11 +3121,7 @@ function settledCultivationStep(
   ]);
   const cultivatedCells = Array.from({ length: state.world.grid.width * state.world.grid.depth }, (_, cellId) => cellId)
     .filter((cellId) => cultivatedMaterials.has(surfaceMaterial(state.world.grid, cellId)));
-  const harvests = state.world.past.filter((event): event is ActionFact => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'act'
-    && event.action.operation === 'separate'
-    && Number(event.diff.sourceMaterialId) === Material.CropMature);
+  const harvests = matureCropHarvestActions(state);
   const visible = new Set(visibleCellsFor(person));
   const matureCell = cultivatedCells
     .filter((cellId) => visible.has(cellId) && surfaceMaterial(state.world.grid, cellId) === Material.CropMature)
@@ -3758,12 +3758,15 @@ function deriveProjectProposals(
     site?: ProjectState['site'],
   ) => {
     if (!ready) return;
-    if (need === 'alloy-capability' && state.projects.some((project) => project.status === 'completed'
-      && project.desiredFunction === desiredFunction)) return;
+    const completedOutputStillObserved = completedFunctionMaterialIds({ desiredFunction })
+      .some((materialId) => hasObserved(materialId));
+    if (need === 'alloy-capability'
+      && completedOutputStillObserved
+      && state.projects.some((project) => project.status === 'completed'
+        && project.desiredFunction === desiredFunction)) return;
     if (state.projects.some((project) => project.status === 'active'
-      && project.desiredFunction === desiredFunction
-      && (!site || (project.site?.cellId === site.cellId && project.site.z === site.z)))) return;
-    const subject = { need, beneficiaryIds: [person.id], createdAtMonth: proposalMonth };
+      && project.desiredFunction === desiredFunction)) return;
+    const subject = { need, desiredFunction, beneficiaryIds: [person.id], createdAtMonth: proposalMonth };
     const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
     if (basis.pressure < 42) return;
     proposals.push(proposal(state, person, need, {
@@ -3930,6 +3933,20 @@ function requestedMaterialProjects(state: SimulationState, person: PersonState):
       && contributedQuantityForRequest(state, project, request) < request.requestedQuantity));
 }
 
+function previewProjectState(
+  state: SimulationState,
+  project: ProjectState,
+): { state: SimulationState; project: ProjectState } {
+  const previewProject = cloneProjectForPlanning(project);
+  return {
+    state: {
+      ...state,
+      projects: state.projects.map((candidate) => candidate.id === project.id ? previewProject : candidate),
+    },
+    project: previewProject,
+  };
+}
+
 export function buildProjectOptions(
   state: SimulationState,
   person: PersonState,
@@ -3939,9 +3956,10 @@ export function buildProjectOptions(
 ): ActionOption[] {
   const options: ActionOption[] = [];
   for (const project of requestedMaterialProjects(state, person).slice(0, 1)) {
-    const step = projectContributionStep(state, person, project);
+    const preview = previewProjectState(state, project);
+    const step = projectContributionStep(preview.state, person, preview.project);
     if (step) options.push({
-      ...projectOption(project, step),
+      ...projectOption(preview.project, step),
       reason: `${step.reason}；这项贡献来自本人实际收到的项目材料请求`,
       projectPressure: Math.max(64, project.pressure),
     });
@@ -3949,8 +3967,9 @@ export function buildProjectOptions(
   const own = state.projects.filter((project) => project.ownerId === person.id && project.status === 'active');
   for (const project of own) {
     if (projectFunctionSatisfied(state, project)) continue;
-    const step = compileProjectStep(state, person, visibleDrops, project);
-    if (step) options.push(projectOption(project, step));
+    const preview = previewProjectState(state, project);
+    const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
+    if (step) options.push(projectOption(preview.project, step));
   }
   if (options.length || own.length) return options;
 
@@ -3966,9 +3985,10 @@ export function buildProjectOptions(
   }
 
   for (const project of adoptableConstructionProjects(state, person, new Set(visibleCells)).slice(0, 1)) {
-    const step = compileProjectStep(state, person, visibleDrops, project);
+    const preview = previewProjectState(state, project);
+    const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
     if (step) options.push({
-      ...projectOption(project, step),
+      ...projectOption(preview.project, step),
       reason: `看见${state.people.find((candidate) => candidate.id === project.ownerId)?.name ?? '他人'}在同一地点留下可继续的未完成遮蔽结构；自己的环境压力使贡献材料具有直接用途`,
       projectPressure: Math.max(35, project.pressure - 8),
     });

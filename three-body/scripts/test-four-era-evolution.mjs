@@ -300,6 +300,52 @@ try {
   assert.equal(development.currentEra, 'primitive-tribe', '人口和指数本身不能跳过材料、建筑与制度门槛');
   assert.ok(development.missingGateIds.includes('material:masonry-stone:distributed'));
 
+  const replenishment = createInitialState(817, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  const metalworker = replenishment.people[0];
+  replenishment.people = [metalworker];
+  const kilnPosition = neighbors4(metalworker.position.cellId).map((cellId) => ({
+    cellId, x: cellX(cellId), y: cellY(cellId), z: metalworker.position.z,
+  })).find((position) => voxelAt(replenishment.world.grid, position.x, position.y, position.z) === Material.Air
+    && voxelAt(replenishment.world.grid, position.x, position.y, position.z - 1) !== Material.Air);
+  assert.ok(kilnPosition, '补产测试需要人物眼前存在可工作的固定窑炉位置');
+  setVoxel(replenishment.world.grid, kilnPosition.x, kilnPosition.y, kilnPosition.z, Material.Kiln);
+  const completedCharge = ensureProject(replenishment, {
+    id: 'historical-copper-charge', kind: 'production', need: 'alloy-capability', desiredFunction: 'copper-charge',
+    summary: '历史上完成过一批铜矿炭料', ownerId: metalworker.id, beneficiaryIds: [metalworker.id],
+    triggerFactIds: [], pressure: 64, createdAtMonth: 1, reviewAtMonth: 36,
+    site: { cellId: kilnPosition.cellId, z: kilnPosition.z },
+  });
+  completedCharge.status = 'completed';
+  completedCharge.completedAtMonth = 1;
+  metalworker.knownPlaces.push({
+    id: 'remembered-copper-source', materialId: Material.CopperOre,
+    position: { x: cellX(metalworker.position.cellId), y: cellY(metalworker.position.cellId), z: metalworker.position.z },
+    learnedAtMonth: 1, lastConfirmedAtMonth: 1, sourceEventIds: ['observed-copper-ore'],
+  });
+  metalworker.inventory = [
+    { id: 'replenish-copper-ore', materialId: Material.CopperOre, quantity: 1, sourceEventIds: ['observed-copper-ore'] },
+    { id: 'replenish-charcoal', materialId: Material.Charcoal, quantity: 1, sourceEventIds: ['made-charcoal'] },
+    { id: 'remaining-copper-charge', materialId: Material.CopperCharge, quantity: 1, sourceEventIds: ['historical-charge'] },
+  ];
+  const visibleReplenishmentCells = [metalworker.position.cellId, kilnPosition.cellId];
+  const stockedOptions = buildProjectOptions(replenishment, metalworker, visibleReplenishmentCells, [], []);
+  assert.ok(!stockedOptions.some((option) => option.projectProposal?.desiredFunction === 'copper-charge'),
+    '上一批铜料仍在眼前时，不应只因历史上完成过冶炼就重复开同一补产项目');
+  metalworker.inventory = metalworker.inventory.filter((stack) => stack.materialId !== Material.CopperCharge);
+  const sharedInFlightCharge = ensureProject(replenishment, {
+    id: 'shared-in-flight-copper-charge', kind: 'production', need: 'alloy-capability', desiredFunction: 'copper-charge',
+    summary: '另一处固定工地正在补产铜料', ownerId: 'remote-metalworker', beneficiaryIds: [metalworker.id],
+    triggerFactIds: [], pressure: 64, createdAtMonth: 2, reviewAtMonth: 37,
+    site: { cellId: metalworker.position.cellId, z: metalworker.position.z },
+  });
+  const inFlightOptions = buildProjectOptions(replenishment, metalworker, visibleReplenishmentCells, [], []);
+  assert.ok(!inFlightOptions.some((option) => option.projectProposal?.desiredFunction === 'copper-charge'),
+    '已有同功能补产项目在制时，小人口共同体不应在另一座窑炉并发复制供应链');
+  sharedInFlightCharge.status = 'blocked';
+  const replenishmentOptions = buildProjectOptions(replenishment, metalworker, visibleReplenishmentCells, [], []);
+  assert.ok(replenishmentOptions.some((option) => option.projectProposal?.desiredFunction === 'copper-charge'),
+    '上一批铜料被下游消耗后，只要原料和固定工地仍可观察，就应允许创建新的补产项目');
+
   process.stdout.write('four-era evolution tests passed\n');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

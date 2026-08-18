@@ -2,6 +2,16 @@ import type { RelationshipCausalBasis } from './action';
 import type { SimulationState, WorldEvent } from './model';
 import { ageMonths, type PersonState } from './person';
 import { worldEventById } from './event-index';
+import {
+  REPRODUCTION_REOFFER_MONTHS_AFTER_CONCEPTION,
+  REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION,
+} from './population-capacity';
+import { reproductiveResponsibility } from './dependent-care';
+import {
+  COMPANION_RELATION_THRESHOLD,
+  REPRODUCTION_RELATION_THRESHOLD,
+  relationshipPairKey,
+} from './relation';
 
 export type RelationshipProposalKind = RelationshipCausalBasis['kind'];
 
@@ -37,7 +47,12 @@ function qualifiesAsRelationshipEvidence(
   if (event.kind === 'agreement') return event.change === 'fulfilled';
   if (event.kind !== 'environment') return false;
   if (event.change === 'prediction') return true;
-  const participantIds = event.change === 'founding' ? event.diff.participantIds : undefined;
+  const participantIds = event.change === 'founding' || event.change === 'relationship'
+    ? event.diff.participantIds
+    : undefined;
+  if (event.change === 'relationship'
+    && Array.isArray(event.diff.excludedPairKeys)
+    && event.diff.excludedPairKeys.includes(relationshipPairKey(proposerId, partnerId))) return false;
   return Array.isArray(participantIds)
     && participantIds.includes(proposerId)
     && participantIds.includes(partnerId);
@@ -64,7 +79,13 @@ export function buildRelationshipCausalBasis(
   const subjectKey = `relationship:${kind}:${pair[0]}:${pair[1]}`;
   const relationshipKeys = relationshipEvidenceIds(state, proposer, partner);
   const ageBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, atMonth) : null;
-  const bodyKeys = ageBand ? [`female-age:${ageBand}`] : [];
+  const responsibility = kind === 'reproduce'
+    ? reproductiveResponsibility(state, proposer, atMonth)
+    : undefined;
+  const bodyKeys = [
+    ...(ageBand ? [`female-age:${ageBand}`] : []),
+    ...(responsibility?.basisKeys ?? []),
+  ];
   const basisKey = [
     'relationship-causal-basis-v1',
     `subject=${subjectKey}`,
@@ -81,7 +102,7 @@ export function buildRelationshipCausalBasis(
     partnerId: partner.id,
     relationshipKeys,
     bodyKeys,
-    sourceFactIds: [...relationshipKeys],
+    sourceFactIds: [...new Set([...relationshipKeys, ...(responsibility?.sourceFactIds ?? [])])],
   };
 }
 
@@ -93,9 +114,28 @@ export function hasCultivatedReproductiveRelationship(
 ): boolean {
   if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
   const relation = person.relations.find((candidate) => candidate.personId === partner.id);
+  const reciprocalRelation = partner.relations.find((candidate) => candidate.personId === person.id);
   return Boolean(relation
-    && relation.trust >= 4
-    && relation.bond >= 4
+    && reciprocalRelation
+    && relation.trust >= REPRODUCTION_RELATION_THRESHOLD
+    && relation.bond >= REPRODUCTION_RELATION_THRESHOLD
+    && reciprocalRelation.trust >= REPRODUCTION_RELATION_THRESHOLD
+    && reciprocalRelation.bond >= REPRODUCTION_RELATION_THRESHOLD
+    && basis.relationshipKeys.length > 0
+    && relationshipEvidenceIds(state, partner, person).length > 0);
+}
+
+export function hasCultivatedCompanionRelationship(
+  state: SimulationState,
+  person: PersonState,
+  partner: PersonState,
+  basis = buildRelationshipCausalBasis(state, person, partner, 'companion'),
+): boolean {
+  if (basis.kind !== 'companion' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
+  const relation = person.relations.find((candidate) => candidate.personId === partner.id);
+  return Boolean(relation
+    && relation.trust >= COMPANION_RELATION_THRESHOLD
+    && relation.bond >= COMPANION_RELATION_THRESHOLD
     && basis.relationshipKeys.length > 0);
 }
 
@@ -128,6 +168,7 @@ export function canOfferRelationshipProposal(
   partner: PersonState,
   basis: RelationshipCausalBasis,
 ): boolean {
+  if (basis.kind === 'companion' && !hasCultivatedCompanionRelationship(state, proposer, partner, basis)) return false;
   if (basis.kind === 'reproduce' && !hasCultivatedReproductiveRelationship(state, proposer, partner, basis)) return false;
   const inFlight = state.intents.some((intent) => intent.ownerId === proposer.id
     && (intent.status === 'active' || intent.status === 'suspended')
@@ -139,6 +180,22 @@ export function canOfferRelationshipProposal(
     && agreement.responderId === partner.id);
   if (!previous) return true;
   if (previous.status === 'proposed' || previous.status === 'active') return false;
+  if (basis.kind === 'reproduce' && typeof previous.resolvedAtMonth === 'number') {
+    if (previous.status === 'fulfilled') {
+      const conceived = previous.fulfillmentEventIds.some((eventId) => {
+        const event = worldEventById(state, eventId);
+        return event?.kind === 'action'
+          && event.action.kind === 'act'
+          && event.action.operation === 'reproduce'
+          && event.diff.conceived === true;
+      });
+      const cooldown = conceived
+        ? REPRODUCTION_REOFFER_MONTHS_AFTER_CONCEPTION
+        : REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION;
+      return state.clock.elapsedMonths - previous.resolvedAtMonth >= cooldown;
+    }
+    if (previous.status === 'expired') return state.clock.elapsedMonths - previous.resolvedAtMonth >= REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION;
+  }
   const previousBasis = previous.proposal.kind === 'companion' || previous.proposal.kind === 'reproduce'
     ? previous.proposal.basis
     : undefined;

@@ -1,5 +1,4 @@
 import type { IntentView, SocietyAgent } from './societyContract';
-import { CHARACTERS } from '@/data/characters';
 
 /**
  * 人物地图渲染层：把人物的姓名、立绘、移动朝向、身体状态与当前意图
@@ -23,19 +22,16 @@ export interface AgentMarkerDraw {
 // 立绘头像：模块级缓存，加载完成后下一帧自然生效（无需回调驱动重绘）
 // ---------------------------------------------------------------------------
 
-const PORTRAIT_URL = new Map(CHARACTERS.map((c) => [c.id, c.portrait]));
 const portraitCache = new Map<string, HTMLImageElement | null>();
 
-function portraitImage(agentId: string): HTMLImageElement | null {
-  if (portraitCache.has(agentId)) return portraitCache.get(agentId) ?? null;
-  const url = PORTRAIT_URL.get(agentId);
+function portraitImage(url: string | undefined): HTMLImageElement | null {
   if (!url) {
-    portraitCache.set(agentId, null);
     return null;
   }
+  if (portraitCache.has(url)) return portraitCache.get(url) ?? null;
   const img = new Image();
   img.src = url;
-  portraitCache.set(agentId, img);
+  portraitCache.set(url, img);
   return img;
 }
 
@@ -198,7 +194,7 @@ export function drawAgentMarker(
   ctx.save();
 
   // ---- 本体：立绘头像（缩放足够且已加载）或圆点 ----
-  const portrait = dead ? null : portraitImage(agent.id);
+  const portrait = dead ? null : portraitImage(agent.portrait);
   const usePortrait = !!portrait && portrait.complete && portrait.naturalWidth > 0 && d.scale >= 13;
   const radius = usePortrait ? Math.max(5, Math.min(d.scale * 0.42, 14)) : baseRadius;
 

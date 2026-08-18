@@ -1,5 +1,6 @@
 import type { ActionOption, FactPredicate, Intent, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
 import type { ProjectProposal } from './project';
+import { followUpSemanticallyMatches } from './intent-follow-up';
 
 export interface IntentChoice {
   summary: string;
@@ -61,7 +62,7 @@ export function composeIntentChoice(
   }
 
   const followUp = followUpOptions.find((option) => option.id === followUpOptionId);
-  if (!followUp || selected.nextAction.kind !== 'communicate' || followUp.nextAction.kind === 'communicate') return null;
+  if (!followUp || !followUpSemanticallyMatches(selected, followUp)) return null;
   return {
     summary: `${selected.summary}，随后${followUp.summary}`,
     domain: compositeDomain(selected, followUp),

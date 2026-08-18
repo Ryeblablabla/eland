@@ -5,7 +5,7 @@ export interface MonthlyDecisionUsage {
   chargedTokens: number;
   /** Ordinary contexts consume the rolling person-month budget. Older saves charge every context. */
   ordinaryModelContexts?: number;
-  /** Bootstrap, emergency, required-response, and fulfillment contexts are audited but not budgeted. */
+  /** Contexts explicitly exempted by the caller are audited but not budgeted. */
   exemptModelContexts?: number;
   /** Token charge attributable to ordinary contexts only. */
   ordinaryChargedTokens?: number;

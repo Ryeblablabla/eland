@@ -465,6 +465,34 @@ export interface ProjectState extends ProjectProposal {
   activeLogisticsEpisodeId?: string;
 }
 
+export function cloneProjectForPlanning(project: ProjectState): ProjectState {
+  // Planning may append to these evidence collections, but archived entries
+  // are immutable protocol facts. Copy their shells without recursively
+  // cloning megabytes of historical bases and event identifiers.
+  const pressureHistory = project.pressureHistory ? [...project.pressureHistory] : undefined;
+  const progressEvidence = project.progressEvidence ? [...project.progressEvidence] : undefined;
+  const clone = structuredClone({
+    ...project,
+    pressureHistory: undefined,
+    progressEvidence: undefined,
+    triggerFactIds: [],
+    beneficiaryIds: [],
+    contributorIds: [],
+    actionEventIds: [],
+    failureEventIds: [],
+    completionEventIds: [],
+  } as ProjectState);
+  clone.triggerFactIds = [...project.triggerFactIds];
+  clone.beneficiaryIds = [...project.beneficiaryIds];
+  clone.contributorIds = [...project.contributorIds];
+  clone.actionEventIds = [...project.actionEventIds];
+  clone.failureEventIds = [...project.failureEventIds];
+  clone.completionEventIds = [...project.completionEventIds];
+  if (pressureHistory) clone.pressureHistory = pressureHistory;
+  if (progressEvidence) clone.progressEvidence = progressEvidence;
+  return clone;
+}
+
 export function instantiateProject(proposal: ProjectProposal): ProjectState {
   const {
     initialLogisticsEpisode,

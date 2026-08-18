@@ -13,12 +13,13 @@ try {
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { refreshProjectPressure } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
     export { buildProjectPressureBasis } from ${JSON.stringify(path.resolve('src/game/eland/application/project-pressure.ts'))};
+    export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
     '--sourcefile=project-pressure-test-entry.ts', `--outfile=${bundlePath}`,
   ], { input: testEntry, stdio: ['pipe', 'pipe', 'pipe'] });
-  const { buildProjectPressureBasis, createInitialState, refreshProjectPressure } = await import(
+  const { buildProjectPressureBasis, createInitialState, Material, refreshProjectPressure } = await import(
     `${pathToFileURL(bundlePath).href}?test=${Date.now()}`
   );
 
@@ -136,6 +137,21 @@ try {
     assert.equal(basis.observerId, owner.id);
     assert.equal(basis.need, need);
   }
+
+  owner.inventory = [
+    { id: 'test-bronze', materialId: Material.Bronze, quantity: 1, sourceEventIds: ['test-bronze-produced'] },
+    { id: 'test-tool-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['test-tool-wood-gathered'] },
+  ];
+  const alloyingPressure = buildProjectPressureBasis(state, owner, {
+    need: 'alloy-capability', desiredFunction: 'bronze-alloying', beneficiaryIds: [owner.id], createdAtMonth: 15,
+  }, 15, visible);
+  const toolingPressure = buildProjectPressureBasis(state, owner, {
+    need: 'alloy-capability', desiredFunction: 'bronze-tooling', beneficiaryIds: [owner.id], createdAtMonth: 15,
+  }, 15, visible);
+  assert.ok(alloyingPressure.pressure < 42, '已有青铜应降低继续试铸青铜的压力');
+  assert.ok(toolingPressure.pressure >= 42, '已有青铜应成为制作生产工具的正向依据');
+  assert.ok(toolingPressure.reasonKeys.includes('bronze-ready-for-tooling'));
+  assert.notEqual(toolingPressure.basisKey, alloyingPressure.basisKey, '同一需求下的不同功能项目必须保留不同压力依据');
 
   process.stdout.write('project pressure tests passed\n');
 } finally {

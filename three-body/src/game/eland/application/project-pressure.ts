@@ -5,14 +5,16 @@ import type { PersonState } from '../domain/person';
 import { ageMonths, inventoryQuantity, isAlive } from '../domain/person';
 import type { ProjectPressureBasis, ProjectProposal } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
+import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
 import { cellsInRadius, surfaceMaterial } from '../world/grid';
+import { personalityScore } from '../domain/personality';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
 export type ProjectPressureSubject = Pick<
   ProjectProposal,
   'need' | 'beneficiaryIds' | 'createdAtMonth' | 'targetKnowledgeId' | 'shelterRequirement' | 'pressureBasis'
->;
+> & { desiredFunction?: ProjectProposal['desiredFunction'] };
 
 export interface ProjectPressureView {
   visibleCells?: number[];
@@ -82,20 +84,26 @@ function rememberedSourceIds(person: PersonState): Set<string> {
   ]);
 }
 
-function eventById(state: SimulationState): Map<string, WorldEvent> {
-  return new Map(state.world.past.map((event) => [event.id, event]));
-}
-
 function priorPersistentEdges(subject: ProjectPressureSubject, prefix: string): string[] {
   return subject.pressureBasis?.edgeKeys.filter((key) => key.startsWith(prefix)) ?? [];
 }
 
 function priorPersistentSources(state: SimulationState, subject: ProjectPressureSubject, predicate: (event: WorldEvent) => boolean): string[] {
-  const events = eventById(state);
   return subject.pressureBasis?.sourceFactIds.filter((id) => {
-    const event = events.get(id);
+    const event = worldEventById(state, id);
     return Boolean(event && predicate(event));
   }) ?? [];
+}
+
+function retainedEvents(
+  state: SimulationState,
+  owner: PersonState,
+  subject: ProjectPressureSubject,
+): WorldEvent[] {
+  return worldEventsByIdsInHistoryOrder(state, [
+    ...rememberedSourceIds(owner),
+    ...(subject.pressureBasis?.sourceFactIds ?? []),
+  ]);
 }
 
 function thermalBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number) {
@@ -119,14 +127,10 @@ function thermalBasis(state: SimulationState, owner: PersonState, subject: Proje
 }
 
 function huntingBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number, view: Required<ProjectPressureView>) {
-  const remembered = rememberedSourceIds(owner);
-  const previousSources = new Set(subject.pressureBasis?.sourceFactIds ?? []);
   const failureEdges = new Map<string, string>();
   const attackEdges = new Map<string, string>();
-  for (const event of state.world.past) {
+  for (const event of retainedEvents(state, owner, subject)) {
     if (event.atMonth > atMonth) continue;
-    const retained = remembered.has(event.id) || previousSources.has(event.id);
-    if (!retained) continue;
     if (event.kind === 'action'
       && event.who === owner.id
       && event.action.kind === 'act'
@@ -187,7 +191,8 @@ function careBasis(owner: PersonState, subject: ProjectPressureSubject, atMonth:
   const maxStage = conditions.length ? Math.max(...conditions.map(({ condition }) => condition.stage)) : 0;
   const anyVisible = observed.length > 0;
   const pressure = maxStage > 0
-    ? 42 + maxStage * 18 + owner.driveBias.affiliation * 0.12
+    ? 42 + maxStage * 18
+      + (personalityScore(owner, 'emotionality') + personalityScore(owner, 'agreeableness')) * 0.06
     : anyVisible ? 18 : subject.pressureBasis?.pressure ?? 32;
   return makeBasis(subject, owner, atMonth, pressure, [
     ...subject.beneficiaryIds.map((id) => `state:beneficiary-visible:${id}:${visibleById.has(id) ? 'yes' : 'no'}`),
@@ -297,11 +302,9 @@ function knowledgeBasis(state: SimulationState, owner: PersonState, subject: Pro
   const target = subject.targetKnowledgeId
     ? owner.knowledge.find((fact) => fact.id === subject.targetKnowledgeId)
     : undefined;
-  const remembered = rememberedSourceIds(owner);
-  const previousSources = new Set(subject.pressureBasis?.sourceFactIds ?? []);
   const disruptions = new Map<string, string>();
-  for (const event of state.world.past) {
-    if (event.atMonth > atMonth || (!remembered.has(event.id) && !previousSources.has(event.id))) continue;
+  for (const event of retainedEvents(state, owner, subject)) {
+    if (event.atMonth > atMonth) continue;
     if (event.kind === 'action'
       && event.who === owner.id
       && event.status === 'completed'
@@ -352,6 +355,7 @@ function developmentBasis(
   const foodPerPerson = visibleFood / visiblePopulation;
   const hungryPeople = visiblePeople.filter((person) => person.body.nutrition < 45).length;
   const dehydratedPeople = visiblePeople.filter((person) => person.body.hydration < 45).length;
+  const dependentPeople = visiblePeople.filter((person) => ageMonths(person, atMonth) < 16 * 12).length;
   const visibleMaterials = new Set<MaterialId>([
     ...view.visibleDrops.map((drop) => drop.materialId),
     ...visiblePeople.flatMap((person) => person.inventory.filter((stack) => stack.quantity > 0).map((stack) => stack.materialId)),
@@ -362,18 +366,19 @@ function developmentBasis(
   const productionTool = hasAny(Material.WoodTool, Material.StoneHoe, Material.BronzeTool, Material.IronTool);
   const pressureFacilities = [...visibleMaterials].filter((materialId) => materialHas(materialId, 'facility'));
   const remembered = rememberedSourceIds(owner);
-  const sourceFactIds = state.world.past
+  const sourceFactIds = worldEventsByIdsInHistoryOrder(state, remembered)
     .filter((event) => event.atMonth <= atMonth
-      && remembered.has(event.id)
       && (event.kind === 'environment'
         || (event.kind === 'action' && event.status === 'completed')))
     .slice(-24)
     .map((event) => event.id);
   const commonEdges = [
+    `project:function:${subject.desiredFunction ?? 'unspecified'}`,
     `state:visible-population:${visiblePopulation}`,
     `state:visible-food-per-person:${Math.round(foodPerPerson * 10) / 10}`,
     `state:hungry-people:${hungryPeople}`,
     `state:dehydrated-people:${dehydratedPeople}`,
+    `state:dependent-people:${dependentPeople}`,
     `state:weather:${state.civilization.weather.kind}:${state.civilization.weather.intensity}`,
     `state:climate:${state.civilization.climate.kind}:${state.civilization.climate.severity}`,
     `state:visible-facilities:${pressureFacilities.sort((a, b) => a - b).join('.') || 'none'}`,
@@ -383,12 +388,13 @@ function developmentBasis(
     const crowding = Math.max(0, visiblePopulation - 3);
     const shortage = Math.max(0, 2.5 - foodPerPerson);
     return makeBasis(subject, owner, atMonth,
-      24 + crowding * 7 + shortage * 10 + hungryPeople * 9 - (productionTool ? 28 : 0),
+      24 + crowding * 7 + shortage * 10 + hungryPeople * 9 + dependentPeople * 4 - (productionTool ? 28 : 0),
       [...commonEdges, `state:production-tool:${productionTool ? 'present' : 'absent'}`],
       [
         ...(crowding >= 2 ? ['visible-population-growth'] : []),
         ...(shortage > 0 ? ['visible-food-pressure'] : []),
         ...(hungryPeople ? ['visible-hunger'] : []),
+        ...(dependentPeople ? ['visible-dependent-load'] : []),
         ...(productionTool ? ['production-tool-present'] : ['production-tool-absent']),
       ], sourceFactIds);
   }
@@ -396,10 +402,11 @@ function developmentBasis(
     const hasGranary = hasAny(Material.Granary);
     const weatherRisk = state.civilization.weather.kind === 'storm' || state.civilization.climate.severity >= 3;
     return makeBasis(subject, owner, atMonth,
-      24 + Math.max(0, visiblePopulation - 4) * 6 + Math.max(0, 4 - foodPerPerson) * 7 + (weatherRisk ? 18 : 0) - (hasGranary ? 35 : 0),
+      24 + Math.max(0, visiblePopulation - 4) * 6 + Math.max(0, 4 - foodPerPerson) * 7 + dependentPeople * 3 + (weatherRisk ? 18 : 0) - (hasGranary ? 35 : 0),
       [...commonEdges, `state:granary:${hasGranary ? 'present' : 'absent'}`],
       [
         ...(foodPerPerson < 4 ? ['thin-visible-reserve'] : []),
+        ...(dependentPeople ? ['visible-dependent-load'] : []),
         ...(weatherRisk ? ['external-environment-risk'] : []),
         ...(hasGranary ? ['granary-present'] : ['granary-absent']),
       ], sourceFactIds);
@@ -440,7 +447,28 @@ function developmentBasis(
   if (subject.need === 'alloy-capability') {
     const copperEvidence = hasAny(Material.CopperOre, Material.CopperCharge, Material.Copper);
     const tinEvidence = hasAny(Material.TinOre, Material.TinCharge, Material.Tin);
-    const bronzeEvidence = hasAny(Material.Bronze, Material.BronzeTool);
+    const bronzeMaterial = hasAny(Material.Bronze);
+    const bronzeTool = hasAny(Material.BronzeTool);
+    const bronzeEvidence = bronzeMaterial || bronzeTool;
+    if (subject.desiredFunction === 'bronze-tooling') {
+      return makeBasis(subject, owner, atMonth,
+        20 + (bronzeMaterial ? 28 : 0) + Math.max(0, visiblePopulation - 4) * 4 - (bronzeTool ? 36 : 0),
+        [...commonEdges, `state:bronze-material:${bronzeMaterial}`, `state:bronze-tool:${bronzeTool}`],
+        [
+          ...(bronzeMaterial ? ['bronze-ready-for-tooling'] : ['bronze-material-missing']),
+          ...(bronzeTool ? ['bronze-tool-present'] : ['bronze-tool-absent']),
+        ], sourceFactIds);
+    }
+    if (subject.desiredFunction === 'bronze-workshop') {
+      const foundry = hasAny(Material.Foundry);
+      return makeBasis(subject, owner, atMonth,
+        20 + (bronzeMaterial ? 28 : 0) + Math.max(0, visiblePopulation - 5) * 3 - (foundry ? 36 : 0),
+        [...commonEdges, `state:bronze-material:${bronzeMaterial}`, `state:foundry:${foundry}`],
+        [
+          ...(bronzeMaterial ? ['bronze-ready-for-workshop'] : ['bronze-material-missing']),
+          ...(foundry ? ['foundry-present'] : ['foundry-absent']),
+        ], sourceFactIds);
+    }
     return makeBasis(subject, owner, atMonth,
       20 + (copperEvidence ? 24 : 0) + (tinEvidence ? 24 : 0) + Math.max(0, visiblePopulation - 6) * 3 - (bronzeEvidence ? 26 : 0),
       [...commonEdges, `state:copper-evidence:${copperEvidence}`, `state:tin-evidence:${tinEvidence}`, `state:bronze-evidence:${bronzeEvidence}`],

@@ -15,13 +15,15 @@ import { executeIntentAction, executePrimitiveAction, goalSatisfied, addDrop } f
 import {
   advanceBodies,
   advanceEraPredictions,
+  advanceSharedRelationshipExperience,
   advanceWorldProcesses,
   initialEraSchedule,
   resolveClimate,
   resolveWeather,
 } from '../domain/monthly-processes';
 import { Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
-import { ageMonths, isAlive, isDehydratedHibernating, type PersonId, type PersonState } from '../domain/person';
+import { isAlive, isDehydratedHibernating, sameLocation, type PersonId, type PersonState } from '../domain/person';
+import { consolidatePersonality, createMotiveSensitivity, createPersonality } from '../domain/personality';
 import type {
   AgentDecider,
   ActionFact,
@@ -46,12 +48,12 @@ import type {
   TokenUsage,
   WorldEvent,
 } from '../domain/model';
-import { buildDecisionContext, recompileNextAction } from './action-options';
+import { buildDecisionContext, cloneMutableProjectsForPlanning, recompileNextAction } from './action-options';
 import { acceptedExchangeFor, exchangeTermFulfilled } from '../domain/social-facts';
 import { maintainMemories, remember } from '../domain/memory';
 import { composeIntentChoice } from '../domain/intent';
-import { chooseSurvivalReflex, shouldRemainSheltered } from '../domain/survival-reflex';
-import { chooseDependentCareReflex, shouldRemainShelteredForDependent } from '../domain/dependent-care';
+import { chooseSurvivalReflex, shouldRemainSheltered, survivalReflexUrgency } from '../domain/survival-reflex';
+import { chooseDependentCareReflex, dependentCareUrgency, shouldRemainShelteredForDependent } from '../domain/dependent-care';
 import { observeCapabilityMilestones } from '../projection/capability-milestones';
 import { advanceAgreementLifecycle } from '../domain/agreement';
 import { advanceCollectiveLifecycle } from '../domain/collective';
@@ -64,10 +66,15 @@ import {
   groundedLifeReviewOpportunity,
   hasFulfillmentOpportunity,
   hasRequiredSocialResponse,
+  isFulfillmentOption,
   isMaintainableStateGoal,
   isProductionOption,
+  isRequiredSocialOption,
   RulePlanner,
 } from './rule-planner';
+import { optionAllowedForLifeStage } from './age-planning';
+import { lifePlanningStage } from '../domain/life-stage';
+import { FOUNDER_INITIAL_RELATION } from '../domain/relation';
 import {
   WORLD_CELL_COUNT,
   cellX,
@@ -82,8 +89,15 @@ import {
 } from '../world/grid';
 import { generateVoxelWorld, seededFraction } from '../world/generator';
 import { inferNamingIdentity } from '../naming';
-import { actionFacts, completedConstructionActions, worldEventById } from '../domain/event-index';
+import {
+  actionFacts,
+  completedConstructionActions,
+  primeEventIndex,
+  registerPlanningEventOverlay,
+  worldEventById,
+} from '../domain/event-index';
 import { createInitialAnimals } from '../domain/animal';
+import { hasGroundedConversationResponseOpportunity } from './conversation-options';
 import {
   calculateCivilizationIndex,
   emptyCivilizationIndex,
@@ -164,8 +178,6 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
 }
 
 const FOUNDER_COHORT_EVENT_ID = 'e-0-environment-founding-0';
-const FOUNDER_INITIAL_TRUST = 6;
-const FOUNDER_INITIAL_BOND = 6;
 
 function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, spawnZ: number, profiles: CharacterProfile[]): PersonState {
   const founderAge = createFounderAgeMonths(seed, profile.id);
@@ -192,12 +204,8 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
       communication: capacity('communication', 42, 40),
       cognition: capacity('cognition', 42, 40),
     },
-    driveBias: {
-      affiliation: capacity('affiliation', 35, 55),
-      autonomy: capacity('autonomy', 35, 55),
-      recognition: capacity('recognition', 35, 55),
-      inquiryCreation: capacity('inquiry', 35, 55),
-    },
+    personality: createPersonality(seed, profile.id),
+    motiveSensitivity: createMotiveSensitivity(seed, profile.id),
     conditions: [],
     inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
     knowledge: [],
@@ -205,8 +213,8 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     memories: [],
     relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
       personId: other.id,
-      trust: FOUNDER_INITIAL_TRUST,
-      bond: FOUNDER_INITIAL_BOND,
+      trust: FOUNDER_INITIAL_RELATION,
+      bond: FOUNDER_INITIAL_RELATION,
       fear: 0,
       sourceEventIds: [FOUNDER_COHORT_EVENT_ID],
     })),
@@ -235,7 +243,7 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     diff: { participantIds: people.map((person) => person.id) },
   };
   const state: SimulationState = {
-    schemaVersion: 16,
+    schemaVersion: 17,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
     clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
@@ -276,15 +284,27 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
 
 function personCanDecide(state: SimulationState, person: PersonState): boolean {
   const founderBootstrap = state.clock.elapsedMonths === 0 && person.generation === 0;
-  return (founderBootstrap || ageMonths(person, state.clock.elapsedMonths) >= 12 * 12)
+  return (founderBootstrap || lifePlanningStage(person, state.clock.elapsedMonths) !== 'dependent-child')
     && isAlive(person)
     && !isDehydratedHibernating(person);
+}
+
+function hasCoLocatedLivingParent(state: SimulationState, person: PersonState): boolean {
+  return state.people.some((candidate) => person.geneticParents.includes(candidate.id)
+    && isAlive(candidate)
+    && sameLocation(candidate, person));
 }
 
 export function buildDecisionContexts(state: SimulationState): DecisionContext[] {
   return state.people.filter(isAlive).map((person) => {
     const context = buildDecisionContext(state, person);
-    return personCanDecide(state, person) ? context : { ...context, options: [] };
+    if (!personCanDecide(state, person)) return { ...context, options: [], followUpOptions: [] };
+    const stage = lifePlanningStage(person, state.clock.elapsedMonths);
+    return {
+      ...context,
+      options: context.options.filter((option) => optionAllowedForLifeStage(stage, option)),
+      followUpOptions: context.followUpOptions.filter((option) => optionAllowedForLifeStage(stage, option)),
+    };
   });
 }
 
@@ -617,7 +637,8 @@ function applyDecision(
   if (decision.kind === 'start') {
     const started = startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
     attachLifeReview(started);
-    const spokenAction = started?.openingAction ?? started?.nextAction;
+    const spokenAction = [started?.openingAction, started?.nextAction, started?.completionAction]
+      .find((action) => action?.kind === 'communicate');
     if (started && decision.utterance && spokenAction?.kind === 'communicate') {
       spokenAction.content.summary = decision.utterance.slice(0, 180);
     }
@@ -629,7 +650,8 @@ function applyDecision(
       ? startInterruptIntent(state, person, context, decision.optionId, id, atMonth, decision.interruptionKind)
       : startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
     attachLifeReview(started);
-    const spokenAction = started?.openingAction ?? started?.nextAction;
+    const spokenAction = [started?.openingAction, started?.nextAction, started?.completionAction]
+      .find((action) => action?.kind === 'communicate');
     if (started && decision.utterance && spokenAction?.kind === 'communicate') {
       spokenAction.content.summary = decision.utterance.slice(0, 180);
     }
@@ -863,10 +885,10 @@ function executeActiveIntent(
       && fact.action.kind === 'communicate'
       && fact.action.content.id === intent.goal.representationId
       && fact.status === 'completed';
-    const reproductionConceived = fact.action.kind === 'act' && fact.action.operation === 'reproduce' && fact.diff.conceived === true;
+    const reproductionAttempted = fact.action.kind === 'act' && fact.action.operation === 'reproduce';
     const processAttemptCompleted = fact.status === 'completed'
       && fact.action.kind === 'act'
-      && (reproductionConceived || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
+      && (reproductionAttempted || fact.action.operation === 'combine' || fact.action.operation === 'exert' || fact.action.operation === 'expose');
     if (processAttemptCompleted) intent.lastProcessAttemptAtMonth = atMonth;
     const acceptedAgreementId = fact.status === 'completed'
       && fact.action.kind === 'communicate'
@@ -894,6 +916,139 @@ function executeActiveIntent(
     }
   }
   return fact;
+}
+
+function protectiveGoal(person: PersonState, action: ActionOption['nextAction']): ActionOption['goal'] {
+  if (action.kind === 'move') return { kind: 'at-cell', cellId: action.toCellId };
+  if (action.kind === 'act' && (action.operation === 'dehydrate' || action.operation === 'rehydrate')) {
+    const target = action.targets.find((candidate) => candidate.kind === 'person');
+    if (target?.kind === 'person') return {
+      kind: 'condition',
+      personId: target.personId,
+      condition: 'dehydrated-hibernation',
+      present: action.operation === 'dehydrate',
+    };
+  }
+  if (action.kind === 'act' && action.operation === 'ingest') {
+    const hydration = action.targets.some((target) => target.kind === 'voxel');
+    return {
+      kind: 'body-at-least',
+      field: hydration ? 'hydration' : 'nutrition',
+      value: Math.min(100, (hydration ? person.body.hydration : person.body.nutrition) + 1),
+    };
+  }
+  if (action.kind === 'transfer' && action.to.kind === 'person') return { kind: 'near-person', personId: action.to.personId };
+  return { kind: 'at-cell', cellId: person.position.cellId };
+}
+
+function executeProtectiveInterruption(
+  state: SimulationState,
+  person: PersonState,
+  action: ActionOption['nextAction'],
+  kind: 'survival-reflex' | 'dependent-care',
+  atMonth: number,
+  actionTick: number,
+  events: WorldEvent[],
+): ActionFact {
+  const parent = activeIntent(state, person);
+  const mayInterrupt = Boolean(parent && (parent.projectId || parent.returnToIntentId));
+  let child: Intent | undefined;
+  if (parent && mayInterrupt) {
+    const option: ActionOption = {
+      id: `${kind}:${atMonth}:${actionTick}:${person.id}`,
+      summary: kind === 'dependent-care' ? '先处理身边未成年人的紧急照护' : '先处理本人迫近的生存危险',
+      reason: kind === 'dependent-care' ? '未成年人的风险高于本人当前风险' : '本人当前生存风险最高',
+      goal: protectiveGoal(person, action),
+      nextAction: structuredClone(action),
+      estimatedDuration: 'one-month',
+      sourceFactIds: person.conditions.flatMap((condition) => condition.sourceEventIds),
+      domain: 'strategic',
+    };
+    const context: DecisionContext = {
+      state,
+      person,
+      visibleCells: [],
+      visiblePeople: [],
+      visibleDrops: [],
+      visibleAnimals: [],
+      options: [option],
+      followUpOptions: [],
+      activeIntent: parent,
+    };
+    const decision: Decision = {
+      kind: 'revise',
+      intentId: parent.id,
+      optionId: option.id,
+      mode: 'interrupt',
+      interruptionKind: kind,
+      reason: option.reason,
+    };
+    const decisionFact = applyDecision(state, person, context, decision, false, atMonth, events.length, actionTick);
+    events.push(decisionFact);
+    child = activeIntent(state, person);
+  }
+  const fact = executePrimitiveAction(state, person, action, atMonth, events.length, {
+    ...(child ? { intentId: child.id } : {}),
+    cause: 'survival-reflex',
+    actionTick,
+  });
+  if (child && child.interruptionKind === kind) {
+    child.actionEventIds.push(fact.id);
+    child.status = fact.status === 'failed' ? 'failed' : fact.status === 'blocked' ? 'blocked' : 'completed';
+    child.progress = child.status === 'completed' ? 1 : child.progress;
+    if (child.status !== 'completed') child.blockedReason = fact.result;
+    delete person.activeIntentId;
+  }
+  events.push(fact);
+  if (child) resolveInterruptedIntentReturn(state, person, atMonth);
+  return fact;
+}
+
+function recordShelterMaintenanceInterruption(
+  state: SimulationState,
+  person: PersonState,
+  atMonth: number,
+  actionTick: number,
+  events: WorldEvent[],
+): void {
+  const parent = activeIntent(state, person);
+  if (!parent || (!parent.projectId && !parent.returnToIntentId)) return;
+  const option: ActionOption = {
+    id: `shelter-maintenance:${atMonth}:${actionTick}:${person.id}`,
+    summary: '留在真实住所内维持避护',
+    reason: '当前冷热压力仍要求维持避护状态',
+    goal: { kind: 'sheltered' },
+    nextAction: { kind: 'move', toCellId: person.position.cellId, toZ: person.position.z },
+    estimatedDuration: 'one-month',
+    sourceFactIds: person.conditions.flatMap((condition) => condition.sourceEventIds),
+    domain: 'strategic',
+  };
+  const context: DecisionContext = {
+    state,
+    person,
+    visibleCells: [],
+    visiblePeople: [],
+    visibleDrops: [],
+    visibleAnimals: [],
+    options: [option],
+    followUpOptions: [],
+    activeIntent: parent,
+  };
+  const decisionFact = applyDecision(state, person, context, {
+    kind: 'revise',
+    intentId: parent.id,
+    optionId: option.id,
+    mode: 'interrupt',
+    interruptionKind: 'shelter-maintenance',
+    reason: option.reason,
+  }, false, atMonth, events.length, actionTick);
+  events.push(decisionFact);
+  const child = activeIntent(state, person);
+  if (!child || child.interruptionKind !== 'shelter-maintenance') return;
+  child.status = 'completed';
+  child.progress = 1;
+  delete person.activeIntentId;
+  resolveInterruptedIntentReturn(state, person, atMonth);
 }
 
 function structureComponents(state: SimulationState): Array<{ x: number; y: number; z: number; materialId: MaterialId; sourceEventId: string }> {
@@ -1142,6 +1297,57 @@ function observedCapabilityCount(state: SimulationState): number {
   ))).size;
 }
 
+/**
+ * 只从末月已经提交的身体、状态和气候事实归纳文明毁灭原因。
+ * 这是结局投影，不参与人物选择，也不改变任何生存结算。
+ */
+function destructionOutcome(
+  state: SimulationState,
+  atMonth: number,
+  events: WorldEvent[],
+): { cause: string; summary: string } {
+  const terminalPeople = state.people.filter((person) => person.diedAtMonth === atMonth);
+  const observedPeople = terminalPeople.length ? terminalPeople : state.people;
+  const conditionStage = (person: PersonState, kind: string) =>
+    person.conditions.find((condition) => condition.kind === kind)?.stage ?? 0;
+  const count = (predicate: (person: PersonState) => boolean) => observedPeople.filter(predicate).length;
+  const deathFacts = events.filter((event): event is EnvironmentFact =>
+    event.kind === 'environment' && event.change === 'death');
+  const agingTerminalDeaths = deathFacts.filter((event) => event.diff.cause === 'aging-terminal').length;
+
+  const candidates = [
+    {
+      cause: '烈焰',
+      score: state.civilization.climate.kind === 'fire'
+        ? count((person) => conditionStage(person, 'heat') >= 2) * 4
+        : 0,
+    },
+    {
+      cause: '酷暑',
+      score: state.civilization.climate.kind === 'heat'
+        ? count((person) => conditionStage(person, 'heat') >= 3) * 3
+        : 0,
+    },
+    {
+      cause: '严寒',
+      score: state.civilization.climate.kind === 'cold'
+        ? count((person) => conditionStage(person, 'cold') >= 3) * 3
+        : 0,
+    },
+    { cause: '缺水', score: count((person) => person.body.hydration < 10) * 2 },
+    { cause: '饥荒', score: count((person) => person.body.nutrition < 10) * 2 },
+    { cause: '疾病', score: count((person) => conditionStage(person, 'illness') >= 2) * 2 },
+    { cause: '伤病', score: count((person) => conditionStage(person, 'wound') >= 2) * 2 },
+    { cause: '衰老', score: agingTerminalDeaths * 2 },
+  ].sort((left, right) => right.score - left.score);
+  const cause = candidates[0]?.score > 0 ? candidates[0].cause : '身体衰竭';
+  const lastLives = Math.max(1, terminalPeople.length);
+  return {
+    cause,
+    summary: `文明最后的 ${lastLives} 个生命在第 ${atMonth} 月因${cause}终止，没有留下生还者。`,
+  };
+}
+
 function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: number, projectionCadence: 'monthly' | 'annual'): SimulationState {
   const orderByTick = new Map<number, number>();
   events.forEach((event, index) => {
@@ -1154,6 +1360,7 @@ function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: numb
   });
   state.clock.elapsedMonths = atMonth;
   state.world.past.push(...events);
+  consolidatePersonality(state, atMonth);
   advanceProjects(state, atMonth);
   advanceCollectiveLifecycle(state, atMonth);
   advanceGovernanceLifecycle(state, atMonth);
@@ -1174,8 +1381,9 @@ function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: numb
     updateDevelopmentObservation(state);
   }
   if (!living.length) {
+    const ending = destructionOutcome(state, atMonth, events);
     state.civilization.status = 'ended';
-    state.civilization.outcome = { kind: 'destroyed', cause: '全员死亡', atMonth, summary: '文明没有留下仍在世的人。' };
+    state.civilization.outcome = { kind: 'destroyed', ...ending, atMonth };
   } else if (state.civilization.conditions.endpoint.kind === 'months' && atMonth >= state.civilization.conditions.endpoint.value) {
     state.civilization.status = 'ended';
     state.civilization.outcome = { kind: 'boundary', cause: '达到模拟月数', atMonth, summary: `文明演化至第 ${atMonth} 月。` };
@@ -1211,6 +1419,9 @@ function hasPendingAgreementWork(state: SimulationState, person: PersonState, ac
     }
     const hasContinuation = compileAgreementContinuations(state, agreement.id)
       .some((continuation) => continuation.personId === person.id);
+    if (agreement.status === 'active'
+      && agreement.proposal.kind === 'reproduce'
+      && agreement.partyIds.includes(person.id)) return true;
     return agreement.status === 'active'
       && agreement.partyIds.includes(person.id)
       && !agreement.fulfilledByPersonIds.includes(person.id)
@@ -1255,7 +1466,7 @@ export function previewGroundedLifeReviewOpportunity(
 ) {
   const previewState: SimulationState = {
     ...state,
-    projects: structuredClone(state.projects),
+    projects: cloneMutableProjectsForPlanning(state.projects),
   };
   const previewPerson = previewState.people.find((candidate) => candidate.id === person.id);
   if (!previewPerson) return null;
@@ -1265,7 +1476,7 @@ export function previewGroundedLifeReviewOpportunity(
 function previewDemandBoundRecordUseOpportunity(state: SimulationState, person: PersonState): boolean {
   const previewState: SimulationState = {
     ...state,
-    projects: structuredClone(state.projects),
+    projects: cloneMutableProjectsForPlanning(state.projects),
   };
   const previewPerson = previewState.people.find((candidate) => candidate.id === person.id);
   return Boolean(previewPerson && buildDecisionContext(previewState, previewPerson).options.some((option) => option.recordUseBasis));
@@ -1278,12 +1489,18 @@ function planLocallyForTick(
   planningTick: number,
   events: WorldEvent[],
   planner: AgentDecider,
+  reviewedPeople: Set<PersonId>,
 ): void {
   if (!personCanDecide(state, person)) return;
   const fullReview = needsFullPlanningReview(state, person, atMonth, planningTick);
   const current = activeIntent(state, person);
   const checkLifeOpportunity = planningTick === 1 && Boolean(current?.projectId);
-  const checkRecordUseOpportunity = Boolean(current?.projectId) && !current?.recordUseBasis;
+  const holdsRecordCarrier = person.inventory.some((stack) => stack.quantity > 0
+    && stack.materialId === Material.WoodTablet
+    && typeof stack.recordPayloadId === 'string');
+  const checkRecordUseOpportunity = Boolean(current?.projectId)
+    && !current?.recordUseBasis
+    && holdsRecordCarrier;
   const lifeReviewEvents = events.filter((event): event is DecisionFact => event.kind === 'decision'
     && event.atMonth === atMonth
     && event.who === person.id
@@ -1293,38 +1510,45 @@ function planLocallyForTick(
     && project.techniqueDemonstrationRequests?.some((request) => request.teacherIds.includes(person.id)
       && request.expiresAtMonth >= atMonth
       && !project.techniqueDemonstrations?.some((basis) => basis.requestEventId === request.requestEventId)));
-  const currentMonthGroundedDialogue = events.filter((event): event is ActionFact => event.kind === 'action'
+  const currentMonthGroundedOpenings = events.filter((event): event is ActionFact => event.kind === 'action'
     && event.status === 'completed'
     && event.action.kind === 'communicate'
     && event.action.content.kind === 'claim'
-    && Boolean(event.action.content.conversation));
-  const planningState = lifeReviewEvents.length
-    || currentMonthGroundedDialogue.length
-    ? { ...state, world: { ...state.world, past: [...state.world.past, ...lifeReviewEvents, ...currentMonthGroundedDialogue] } }
-    : state;
+    && event.action.content.conversation?.turn === 'opening'
+    && event.action.content.conversation.listenerId === person.id);
+  const planningEvidence = [...lifeReviewEvents, ...currentMonthGroundedOpenings];
+  const planningState = planningEvidence.length ? { ...state } : state;
+  if (planningState !== state) registerPlanningEventOverlay(planningState, planningEvidence);
   const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
-  const checkGroundedConversationResponse = buildDecisionContext(planningState, planningPerson).options
-    .some((option) => option.id.startsWith('respond-conversation:'));
+  const hasCurrentMonthOpening = currentMonthGroundedOpenings.length > 0;
+  let compiledContext: DecisionContext | undefined;
+  const contextForPlanning = (): DecisionContext => compiledContext ??= buildDecisionContext(planningState, planningPerson);
+  const checkGroundedConversationResponse = hasCurrentMonthOpening
+    ? contextForPlanning().options.some((option) => option.id.startsWith('respond-conversation:'))
+    : hasGroundedConversationResponseOpportunity(state, person);
+  const alreadyReviewed = reviewedPeople.has(person.id);
+  if (alreadyReviewed && !checkTechniqueRequest && !checkGroundedConversationResponse) return;
   if (!fullReview && !checkLifeOpportunity && !checkRecordUseOpportunity && !checkTechniqueRequest && !checkGroundedConversationResponse) return;
   if (!fullReview) {
-    const hasLifeOpportunity = checkLifeOpportunity
+    const hasLifeOpportunity = !alreadyReviewed && checkLifeOpportunity
       && !lifeReviewEvents.length
       && Boolean(previewGroundedLifeReviewOpportunity(state, person));
     const hasRecordUseOpportunity = checkRecordUseOpportunity
       && previewDemandBoundRecordUseOpportunity(state, person);
     const hasTechniqueDemonstration = checkTechniqueRequest
-      && buildDecisionContext(planningState, planningPerson).options
+      && contextForPlanning().options
         .some((option) => option.id.startsWith('demonstrate-technique:'));
     if (!hasLifeOpportunity && !hasRecordUseOpportunity && !hasTechniqueDemonstration && !checkGroundedConversationResponse) return;
   }
   // Current-month requests are persisted on their project immediately; the
   // event itself joins world.past at month end. Life-review evidence remains
   // person-local while the addressed teacher can respond on the next tick.
-  const context = buildDecisionContext(planningState, planningPerson);
+  const context = contextForPlanning();
   const timedPlanner = planner as AgentDecider & { decideAt?: RulePlanner['decideAt'] };
   const decision = timedPlanner.decideAt
     ? timedPlanner.decideAt(context, { atMonth, planningTick })
     : planner.decide(context);
+  reviewedPeople.add(person.id);
   // Stable plans and genuinely empty affordance sets do not produce repetitive
   // "continue living" facts. The active intent is simply executed below.
   if (decision.kind === 'idle') return;
@@ -1341,6 +1565,7 @@ function executePrepared(
 ): SimulationState {
   const { state, events, candidates, livingAgents, atMonth } = prepared;
   if (state.civilization.status === 'ended') return state;
+  const reviewedPeople = new Set<PersonId>();
   const plannedAtTickOne = new Set<PersonId>();
   for (const candidate of candidates) {
     const person = state.people.find((item) => item.id === candidate.person.id);
@@ -1350,6 +1575,7 @@ function executePrepared(
     if (!picked || picked.decision.kind === 'idle') continue;
     events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length, 1));
     plannedAtTickOne.add(person.id);
+    reviewedPeople.add(person.id);
   }
   const participants = state.people.filter(isAlive);
   for (let actionTick = 1; actionTick <= PLANNING_TICKS_PER_MONTH; actionTick += 1) {
@@ -1363,27 +1589,43 @@ function executePrepared(
       }
       const causalShelterWork = hasCausalShelterAdaptationNeed(state, person);
       const reflex = chooseSurvivalReflex(state, person, { suppressThermalShelter: causalShelterWork });
-      if (reflex) {
-        const fact = executePrimitiveAction(state, person, reflex, atMonth, events.length, { cause: 'survival-reflex', actionTick });
+      const dependentChild = lifePlanningStage(person, state.clock.elapsedMonths) === 'dependent-child';
+      const awaitingCaregiver = dependentChild && hasCoLocatedLivingParent(state, person);
+      const dependentCare = dependentChild
+        ? null
+        : chooseDependentCareReflex(state, person, { suppressThermalShelter: causalShelterWork });
+      const careIsMoreUrgent = Boolean(dependentCare)
+        && (!reflex || dependentCareUrgency(state, person) > survivalReflexUrgency(person));
+      if (careIsMoreUrgent && dependentCare) {
+        const fact = executeProtectiveInterruption(state, person, dependentCare, 'dependent-care', atMonth, actionTick, events);
         person.currentActionText = fact.result;
-        events.push(fact);
         continue;
       }
-      const dependentCare = chooseDependentCareReflex(state, person, { suppressThermalShelter: causalShelterWork });
-      if (dependentCare) {
-        const fact = executePrimitiveAction(state, person, dependentCare, atMonth, events.length, { cause: 'survival-reflex', actionTick });
+      if (reflex && !(dependentChild && reflex.kind === 'move')) {
+        const fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
         person.currentActionText = fact.result;
-        events.push(fact);
+        continue;
+      }
+      if (dependentChild) {
+        person.currentActionText = awaitingCaregiver
+          ? '留在亲代身边，随照料者取水、觅食或进入住所'
+          : '停留原地等待亲代照料，不能独自远行';
+        continue;
+      }
+      if (dependentCare) {
+        const fact = executeProtectiveInterruption(state, person, dependentCare, 'dependent-care', atMonth, actionTick, events);
+        person.currentActionText = fact.result;
         continue;
       }
       const maintainingShelter = shouldRemainSheltered(state, person)
         || shouldRemainShelteredForDependent(state, person);
       if (maintainingShelter && !causalShelterWork) {
+        recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events);
         person.currentActionText = '留在住所内维持避护状态';
         continue;
       }
       if (actionTick !== 1 || !plannedAtTickOne.has(person.id)) {
-        planLocallyForTick(state, person, atMonth, actionTick, events, tickPlanner);
+        planLocallyForTick(state, person, atMonth, actionTick, events, tickPlanner, reviewedPeople);
       }
       const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
       if (fact) events.push(fact);
@@ -1392,6 +1634,7 @@ function executePrepared(
     for (const person of participants) person.position.tickPath.push(person.position.cellId);
   }
   events.push(...advanceBodies(state, atMonth));
+  events.push(...advanceSharedRelationshipExperience(state, events, atMonth));
   const modelContexts = attempted.total;
   const actualTokens = usage.inputTokens + usage.outputTokens;
   const chargedTokens = modelContexts ? Math.max(usage.inputTokens + usage.outputTokens, modelContexts * state.decisionBudget.tokensPerContext) : 0;
@@ -1428,6 +1671,71 @@ export function stepSimulation(input: SimulationState, decider: AgentDecider = a
   return executePrepared(prepared, decisions, { inputTokens: 0, outputTokens: 0 }, { total: 0, ordinary: 0, exempt: 0 }, decider);
 }
 
+/**
+ * 模型只能在本地已编译的候选中选择。这里再次使用完整领域上下文校验，
+ * 因而协议层只检查 ID 仍不足以让建议进入权威意图。
+ */
+function validateModelDecision(
+  context: DecisionContext,
+  proposed: Decision,
+  localDecision: Decision,
+): Decision | null {
+  const required = context.options.filter(isRequiredSocialOption);
+  const fulfillment = context.options.filter(isFulfillmentOption);
+  if (proposed.kind === 'idle') {
+    return required.length || fulfillment.length ? null : proposed;
+  }
+  if (proposed.kind !== 'start' && proposed.kind !== 'revise') return null;
+  const selected = context.options.find((option) => option.id === proposed.optionId);
+  if (!selected) return null;
+  if (required.length && !required.some((option) => option.id === selected.id)) return null;
+  if (!required.length && fulfillment.length && !fulfillment.some((option) => option.id === selected.id)) return null;
+  if (!composeIntentChoice(context.options, context.followUpOptions, selected.id, proposed.followUpOptionId)) return null;
+
+  const communication = selected.nextAction.kind === 'communicate'
+    ? selected.nextAction
+    : selected.completionAction?.kind === 'communicate'
+      ? selected.completionAction
+      : null;
+  const proposedUtterance = proposed.utterance?.trim();
+  const contradictoryStructuredReply = Boolean(proposedUtterance && communication) && (
+    communication?.content.kind === 'accept'
+      ? /拒绝|不同意|不愿意|不接受|[?？]/u.test(proposedUtterance ?? '')
+      : communication?.content.kind === 'reject'
+        ? /同意|接受|愿意|成交/u.test(proposedUtterance ?? '')
+        : false
+  );
+
+  const shared = {
+    optionId: selected.id,
+    ...(proposed.followUpOptionId ? { followUpOptionId: proposed.followUpOptionId } : {}),
+    reason: proposed.reason,
+    ...(proposedUtterance && !contradictoryStructuredReply ? { utterance: proposedUtterance } : {}),
+  };
+  const active = context.activeIntent;
+  if (!active) return { kind: 'start', ...shared };
+  if (proposed.kind === 'revise' && proposed.intentId !== active.id) return null;
+
+  const localForSameOption = localDecision.kind === 'revise' && localDecision.optionId === selected.id
+    ? localDecision
+    : null;
+  const interruptionKind = required.length
+    ? 'required-response' as const
+    : fulfillment.length
+      ? 'fulfillment' as const
+      : selected.recordUseBasis
+        ? 'record-use' as const
+        : localForSameOption?.interruptionKind;
+  const canInterrupt = Boolean(active.projectId || active.returnToIntentId);
+  return {
+    kind: 'revise',
+    intentId: active.id,
+    ...shared,
+    ...(canInterrupt && interruptionKind ? { mode: 'interrupt' as const, interruptionKind } : {}),
+    ...(localForSameOption?.lifeReview ? { lifeReview: structuredClone(localForSameOption.lifeReview) } : {}),
+  };
+}
+
 function stepOwnedSimulation(input: SimulationState): SimulationState {
   const prepared = prepareMonth(input, false, false);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
@@ -1451,8 +1759,11 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   const prepared = prepareMonth(input);
   const living = prepared.contexts.length;
   const rolling = currentRollingLedgers(prepared.state);
-  const exemptContexts = prepared.candidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) !== null);
-  const ordinaryCandidates = prepared.candidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) === null);
+  const eligibleCandidates = batch.shouldDecide
+    ? prepared.candidates.filter((context) => batch.shouldDecide?.(context, prepared.atMonth))
+    : prepared.candidates;
+  const exemptContexts = eligibleCandidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) !== null);
+  const ordinaryCandidates = eligibleCandidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) === null);
   const ordinaryCapacity = Math.min(
     ordinaryCandidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / ORDINARY_DECISION_PERSON_MONTHS),
@@ -1503,22 +1814,32 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
     modelDecisions = [];
   }
   modelContexts.forEach((context, index) => {
-    const decision = modelDecisions[index];
+    const proposed = modelDecisions[index];
+    const localDecision = decisions.get(context.person.id)?.decision;
+    const decision = proposed && localDecision ? validateModelDecision(context, proposed, localDecision) : null;
     if (decision) decisions.set(context.person.id, { decision, usedModel: true });
   });
-  return executePrepared(
+  const metadata = batch.takeMetadata?.() ?? null;
+  const result = executePrepared(
     prepared,
     decisions,
     batch.takeUsage?.() ?? { inputTokens: 0, outputTokens: 0 },
     { total: modelContexts.length, ordinary: ordinaryContexts.length, exempt: exemptContexts.length },
   );
+  const ledger = result.decisionBudget.ledgers.at(-1);
+  if (metadata && ledger?.modelContexts) {
+    ledger.modelEndpointId = metadata.endpointId;
+    ledger.modelProtocol = metadata.protocol;
+    ledger.modelName = metadata.model;
+  }
+  return result;
 }
 
-export function migrateSimulationState(input: SimulationState): SimulationState {
+export function restoreSimulationState(input: SimulationState): SimulationState {
   const version = Number((input as { schemaVersion?: number }).schemaVersion);
-  if (version !== 14 && version !== 15 && version !== 16) throw new Error('schemaVersion 13 及更早存档不支持继续演化；请建立新的协议事实文明');
+  if (version !== 17) throw new Error('当前开发版本只接受 schemaVersion 17；请新建文明运行');
   const state = structuredClone(input);
-  state.schemaVersion = 16;
+  state.schemaVersion = 17;
   if (state.civilization.conditions.endpoint.kind === 'months') {
     state.civilization.conditions.endpoint.value = Math.min(
       MAX_SIMULATION_MONTHS,
@@ -1598,13 +1919,17 @@ export function migrateSimulationState(input: SimulationState): SimulationState 
   }
   state.derived = deriveObservations(state);
   updateDevelopmentObservation(state);
+  primeEventIndex(state);
   return state;
 }
 
 export interface SimulationController {
   getState(): SimulationState;
   step(count?: number): SimulationState;
+  /** Trusted session path: advances and returns the owned state without a second full-history clone. */
+  stepOwned(count?: number): SimulationState;
   stepAsync(batch: BatchDecider, count?: number): Promise<SimulationState>;
+  stepAsyncOwned(batch: BatchDecider, count?: number): Promise<SimulationState>;
   reset(): SimulationState;
   restore(saved: SimulationState): void;
   setExternalClimate(epoch: EpochKind, kind: ClimateKind, severity: number): void;
@@ -1612,23 +1937,31 @@ export interface SimulationController {
 }
 
 export function createSimulation(options: { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState } = {}): SimulationController {
-  let state = options.state ? migrateSimulationState(options.state) : createInitialState(options.seed, options.config);
+  let state = options.state ? restoreSimulationState(options.state) : createInitialState(options.seed, options.config);
   return {
     getState: () => copyState(state),
     step(count = 1) {
       for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(state);
       return copyState(state);
     },
+    stepOwned(count = 1) {
+      for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(state);
+      return state;
+    },
     async stepAsync(batch, count = 1) {
       for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch);
       return copyState(state);
+    },
+    async stepAsyncOwned(batch, count = 1) {
+      for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch);
+      return state;
     },
     reset() {
       state = createInitialState(options.seed ?? state.seed, state.civilization.conditions);
       return copyState(state);
     },
     restore(saved) {
-      state = migrateSimulationState(saved);
+      state = restoreSimulationState(saved);
     },
     setExternalClimate(epoch, kind, severity) {
       state.civilization.externalClimate = { epoch, kind, severity: clamp(severity, 1, 10) };
@@ -1664,7 +1997,7 @@ export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
   return {
-    schemaVersion: 16,
+    schemaVersion: 17,
     exportedAt: new Date().toISOString(),
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),

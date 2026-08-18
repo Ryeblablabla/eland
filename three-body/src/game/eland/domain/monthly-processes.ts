@@ -1,8 +1,9 @@
 import { createBiologicalSex, createLifespanMonths, deterministicFraction } from '../population';
 import { Material, materialHas } from './material';
-import type { EnvironmentFact, EraSchedule, SimulationState, WeatherKind } from './model';
+import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, WeatherKind, WorldEvent } from './model';
 import type { ConditionInstance, PersonState } from './person';
 import { ageMonths, isAlive, sameLocation } from './person';
+import { createMotiveSensitivity, createPersonality } from './personality';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
@@ -10,7 +11,7 @@ import { seededFraction } from '../world/generator';
 import { shelterGeometryAt, shelterHeatRelief } from './structure';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
 import { remember } from './memory';
-import { applyRelationEvidence } from './relation';
+import { applyRelationEvidence, relationshipPairKey } from './relation';
 import { createNewbornName } from '../naming';
 import {
   animalAgeMonths,
@@ -18,10 +19,15 @@ import {
   isAnimalAlive,
   type AnimalState,
 } from './animal';
+import { humanResourceCompetitionMultiplier } from './population-capacity';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
 }
+
+const HIBERNATION_HYDRATION_COST = 0.35;
+const HIBERNATION_NUTRITION_COST = 0.3;
+const HIBERNATION_HEALTH_COST = 0.25;
 
 function event(state: SimulationState, atMonth: number, events: EnvironmentFact[], change: EnvironmentFact['change'], result: string, diff: Record<string, unknown>, person?: PersonState): EnvironmentFact {
   void state;
@@ -104,7 +110,7 @@ export function resolveClimate(state: SimulationState, atMonth: number): Environ
     `${eraTransition ? `${epoch === 'stable' ? '恒纪元' : '乱纪元'}开始；` : ''}本月地表处于${kind === 'temperate' ? '温和' : kind === 'cold' ? '寒冷' : kind === 'heat' ? '炎热' : '烈火'}环境`,
     {
       epoch, kind, severity, eraSequence: scheduled.sequence,
-      eraSinceMonth: scheduled.sinceMonth, eraEndsAtMonth: scheduled.endsAtMonth,
+      eraSinceMonth: scheduled.sinceMonth,
       ...(eraTransition ? { eraTransition: true } : {}),
     },
   );
@@ -176,6 +182,42 @@ export function advanceEraPredictions(state: SimulationState, atMonth: number, e
         sourceEventIds: [fact.id],
       });
     }
+    const disputedWakes = state.world.past.filter((candidate): candidate is ActionFact => (
+      candidate.kind === 'action'
+        && candidate.status === 'completed'
+        && candidate.action.kind === 'act'
+        && candidate.action.operation === 'rehydrate'
+        && candidate.diff.rehydrationBasis === 'disputed-pending-prediction'
+        && candidate.diff.hibernationPredictionId === prediction.id
+        && typeof candidate.diff.rehydratedPersonId === 'string'
+    ));
+    const chaosArrived = eraTransition
+      && prediction.targetEpoch === 'chaotic'
+      && state.civilization.epoch === 'chaotic';
+    for (const wake of disputedWakes) {
+      const sleeper = state.people.find((person) => person.id === wake.diff.rehydratedPersonId);
+      const helper = state.people.find((person) => person.id === wake.who);
+      if (!sleeper || !helper || sleeper.id === helper.id) continue;
+      applyRelationEvidence(sleeper, helper.id, fact.id, chaosArrived
+        ? { trust: -8, bond: -2 }
+        : { trust: 5, bond: 2 });
+      applyRelationEvidence(helper, sleeper.id, fact.id, chaosArrived
+        ? { trust: 2, bond: -1 }
+        : { trust: 1, bond: 1 });
+      remember(sleeper, {
+        id: `memory:hibernation-wake-outcome:${prediction.id}:${wake.id}:${sleeper.id}`,
+        kind: chaosArrived ? 'failure' : 'episode',
+        summary: chaosArrived
+          ? `${helper.name}提前唤醒自己后乱纪元仍然到来，这次干预打断了合理的休眠计划`
+          : `${helper.name}提前唤醒自己后预言窗口平稳过去，这次有争议的判断最终避免了无效休眠`,
+        importance: chaosArrived ? 90 : 76,
+        createdAtMonth: atMonth,
+        lastRecalledAtMonth: atMonth,
+        personIds: [helper.id, prediction.predictorId],
+        sourceEventIds: [wake.id, fact.id],
+      });
+    }
+    if (disputedWakes.length) fact.diff.disputedWakeOutcomes = disputedWakes.length;
   }
   return events;
 }
@@ -657,12 +699,12 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
       locomotion: inheritedCapacity('locomotion'), manipulation: inheritedCapacity('manipulation'), perception: inheritedCapacity('perception'),
       communication: inheritedCapacity('communication'), cognition: inheritedCapacity('cognition'),
     },
-    driveBias: {
-      affiliation: 50 + Math.floor(deterministicFraction(state.seed, `${id}:affiliation`) * 35),
-      autonomy: 35 + Math.floor(deterministicFraction(state.seed, `${id}:autonomy`) * 45),
-      recognition: 35 + Math.floor(deterministicFraction(state.seed, `${id}:recognition`) * 45),
-      inquiryCreation: 35 + Math.floor(deterministicFraction(state.seed, `${id}:inquiry`) * 50),
-    },
+    personality: createPersonality(
+      state.seed,
+      id,
+      [mother.personality, ...(father ? [father.personality] : [])],
+    ),
+    motiveSensitivity: createMotiveSensitivity(state.seed, id),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
     relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
@@ -687,7 +729,10 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
   const parentalKinshipRisk = father ? geneticKinshipRisk(state, person, father) : 0;
   state.people.push(child);
   person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
-  const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}`, {
+  const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
+  const recoveryMonths = minimumReserve >= 70 ? 9 : minimumReserve >= 50 ? 12 : 15;
+  const recoveryUntilMonth = atMonth + recoveryMonths;
+  const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}，进入产后恢复期`, {
     bornPersonId: child.id,
     bornPersonName: child.name,
     sex: child.sex,
@@ -699,7 +744,18 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
     geneticLoad: child.geneticLoad,
     inheritedHealth: child.body.health,
     inheritedCapacities: child.baselineCapacities,
+    postpartumRecoveryMonths: recoveryMonths,
+    postpartumRecoveryUntilMonth: recoveryUntilMonth,
   }, person);
+  person.conditions.push({
+    id: `condition-postpartum-recovery-${person.id}-${atMonth}`,
+    kind: 'postpartum-recovery',
+    stage: 3,
+    sinceMonth: atMonth,
+    endsAtMonth: recoveryUntilMonth,
+    sourceEventIds: [fact.id],
+    otherPersonId: child.id,
+  });
   if (child.geneticLoad >= 0.3) {
     for (const parent of state.people.filter((candidate) => child.geneticParents.includes(candidate.id) && sameLocation(candidate, child))) {
       learnFromInheritedOutcome(parent, child, atMonth, fact.id, 'birth');
@@ -715,6 +771,22 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
     const closeKin = child.geneticParents.includes(existing.id);
     existing.relations.push({ personId: child.id, trust: 0, bond: closeKin ? 12 : 0, fear: 0, sourceEventIds: closeKin ? [fact.id] : [] });
   }
+}
+
+function advancePostpartumRecovery(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
+  const recovery = condition(state, person, 'postpartum-recovery');
+  if (!recovery) return;
+  const endsAtMonth = recovery.endsAtMonth ?? recovery.sinceMonth + 12;
+  if (atMonth >= endsAtMonth) {
+    person.conditions = person.conditions.filter((item) => item.id !== recovery.id);
+    event(state, atMonth, events, 'condition', `${person.name}结束了产后恢复期`, {
+      postpartumRecoveryEnded: true,
+      postpartumConditionId: recovery.id,
+    }, person);
+    return;
+  }
+  const progress = (atMonth - recovery.sinceMonth) / Math.max(1, endsAtMonth - recovery.sinceMonth);
+  recovery.stage = progress < 1 / 3 ? 3 : progress < 2 / 3 ? 2 : 1;
 }
 
 function die(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[], cause: 'body-failure' | 'aging-terminal'): void {
@@ -752,6 +824,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
   const peopleAtStart = [...state.people];
+  const resourceCompetition = humanResourceCompetitionMultiplier(peopleAtStart.filter(isAlive).length);
   for (const person of peopleAtStart) {
     if (person.diedAtMonth !== undefined) continue;
     if (person.body.health <= 0) {
@@ -811,18 +884,21 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const wound = condition(state, person, 'wound')?.stage ?? 0;
     const illness = condition(state, person, 'illness')?.stage ?? 0;
     const pregnancy = condition(state, person, 'pregnancy')?.stage ?? 0;
+    advancePostpartumRecovery(state, person, atMonth, events);
+    const postpartum = condition(state, person, 'postpartum-recovery')?.stage ?? 0;
     advanceAging(state, person, atMonth, events);
     const aging = condition(state, person, 'aging')?.stage ?? 0;
-    const hydrationCost = hibernating
-      ? 0.12
-      : 1.35 * (heat ? [1, 1.3, 1.7, 2.2][heat] : 1) + illness * 0.35 + pregnancy * 0.22 + (weather.kind === 'drought' ? weather.intensity * 0.18 : 0);
-    const nutritionCost = hibernating
-      ? 0.1
-      : 1.25 * (cold ? [1, 1.25, 1.5, 1.8][cold] : 1) + illness * 0.38 + pregnancy * 0.28;
+    const hydrationCost = (hibernating
+      ? HIBERNATION_HYDRATION_COST
+      : 1.35 * (heat ? [1, 1.3, 1.7, 2.2][heat] : 1) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12 + (weather.kind === 'drought' ? weather.intensity * 0.18 : 0)) * resourceCompetition;
+    const nutritionCost = (hibernating
+      ? HIBERNATION_NUTRITION_COST
+      : 1.25 * (cold ? [1, 1.25, 1.5, 1.8][cold] : 1) + illness * 0.38 + pregnancy * 0.28 + postpartum * 0.18) * resourceCompetition;
     person.body.hydration = clamp(person.body.hydration - hydrationCost);
     person.body.nutrition = clamp(person.body.nutrition - nutritionCost);
     let healthDelta = 0;
     if (hibernating) {
+      healthDelta -= HIBERNATION_HEALTH_COST;
       if (state.civilization.epoch === 'chaotic' && climate.severity >= 8) healthDelta -= 0.15;
     } else {
       if (person.body.hydration < 10) healthDelta -= 7;
@@ -838,6 +914,28 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       }
     }
     person.body.health = clamp(person.body.health + healthDelta);
+    if (hibernating && hibernationCondition) {
+      const hibernationMonths = Math.max(1, atMonth - hibernationCondition.sinceMonth + 1);
+      const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
+      const nextStage = hibernationMonths >= 18 || minimumReserve < 30
+        ? 3
+        : hibernationMonths >= 6 || minimumReserve < 45
+          ? 2
+          : 1;
+      if (nextStage > hibernationCondition.stage) {
+        hibernationCondition.stage = nextStage;
+        const deterioration = event(state, atMonth, events, 'condition', `${person.name}的长期脱水休眠开始明显消耗身体机能`, {
+          condition: 'dehydrated-hibernation',
+          hibernationConditionId: hibernationCondition.id,
+          hibernationMonths,
+          stage: nextStage,
+          health: person.body.health,
+          hydration: person.body.hydration,
+          nutrition: person.body.nutrition,
+        }, person);
+        hibernationCondition.sourceEventIds = [...new Set([...hibernationCondition.sourceEventIds, deterioration.id])].slice(-24);
+      }
+    }
     if (!hibernating) recoverInjuries(state, person, atMonth, sheltered || fireProtected, events);
     advancePregnancies(state, person, atMonth, events);
     const ageRatio = (atMonth - person.bornAtMonth) / Math.max(1, person.lifespanMonths);
@@ -851,4 +949,113 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     }
   }
   return events;
+}
+
+function adverseRelationshipPair(event: WorldEvent): string | undefined {
+  if (event.kind !== 'action') return undefined;
+  if (event.action.kind === 'act'
+    && event.action.operation === 'exert'
+    && event.status === 'completed'
+    && typeof event.diff.victimId === 'string') {
+    return relationshipPairKey(event.who, event.diff.victimId);
+  }
+  if (event.action.kind === 'act'
+    && event.action.operation === 'combine'
+    && event.status === 'completed'
+    && typeof event.diff.restrainedPersonId === 'string'
+    && typeof event.diff.conditionId === 'string') {
+    return relationshipPairKey(event.who, event.diff.restrainedPersonId);
+  }
+  if (event.action.kind === 'transfer'
+    && event.diff.authorized === false
+    && event.action.from.kind === 'person') {
+    return relationshipPairKey(event.who, event.action.from.personId);
+  }
+  return undefined;
+}
+
+/** Five co-located action ticks form one replayable unit of shared experience. */
+export function advanceSharedRelationshipExperience(
+  state: SimulationState,
+  currentMonthEvents: readonly WorldEvent[],
+  atMonth: number,
+): EnvironmentFact[] {
+  const adversePairs = new Set(currentMonthEvents.flatMap((fact) => {
+    const pair = adverseRelationshipPair(fact);
+    return pair ? [pair] : [];
+  }));
+  const peopleById = new Map(state.people.filter(isAlive).map((person) => [person.id, person]));
+  const actionsByTickAndPlace = new Map<string, ActionFact[]>();
+  for (const fact of currentMonthEvents) {
+    if (fact.kind !== 'action'
+      || (fact.status !== 'completed' && fact.status !== 'progressed')
+      || fact.action.kind === 'communicate'
+      || !peopleById.has(fact.who)) continue;
+    const key = `${fact.actionTick}:${fact.toCellId}:${fact.toZ}`;
+    const actions = actionsByTickAndPlace.get(key) ?? [];
+    actions.push(fact);
+    actionsByTickAndPlace.set(key, actions);
+  }
+  const pairActivity = new Map<string, {
+    first: PersonState;
+    second: PersonState;
+    ticks: Set<number>;
+    sourceEventIds: Set<string>;
+    cellId: number;
+  }>();
+  for (const actions of actionsByTickAndPlace.values()) {
+    const actorActions = [...new Map(actions.map((fact) => [fact.who, fact])).values()]
+      .sort((left, right) => left.who.localeCompare(right.who));
+    for (let left = 0; left < actorActions.length; left += 1) {
+      for (let right = left + 1; right < actorActions.length; right += 1) {
+        const leftAction = actorActions[left];
+        const rightAction = actorActions[right];
+        const first = peopleById.get(leftAction.who);
+        const second = peopleById.get(rightAction.who);
+        if (!first || !second) continue;
+        const pairKey = relationshipPairKey(first.id, second.id);
+        const activity = pairActivity.get(pairKey) ?? {
+          first,
+          second,
+          ticks: new Set<number>(),
+          sourceEventIds: new Set<string>(),
+          cellId: leftAction.toCellId,
+        };
+        activity.ticks.add(leftAction.actionTick);
+        activity.sourceEventIds.add(leftAction.id);
+        activity.sourceEventIds.add(rightAction.id);
+        pairActivity.set(pairKey, activity);
+      }
+    }
+  }
+  const facts: EnvironmentFact[] = [];
+  for (const [pairKey, activity] of [...pairActivity.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    if (adversePairs.has(pairKey)) continue;
+    const qualifyingTicks = [...activity.ticks].sort((left, right) => left - right);
+    const relationshipDelta = Math.floor(qualifyingTicks.length / 5);
+    if (relationshipDelta <= 0) continue;
+    const participants = [activity.first, activity.second].sort((left, right) => left.id.localeCompare(right.id));
+    const fact: EnvironmentFact = {
+      id: `e-${atMonth}-environment-relationship-${facts.length}`,
+      kind: 'environment',
+      atMonth,
+      orderInMonth: facts.length,
+      cellId: activity.cellId,
+      change: 'relationship',
+      result: `${participants.map((person) => person.name).join('、')}本月共同活动 ${qualifyingTicks.length} 个规划刻度，形成可追溯的共同经历`,
+      diff: {
+        process: 'shared-action-ticks',
+        participantIds: participants.map((person) => person.id),
+        qualifyingTicks,
+        sharedActionTicks: qualifyingTicks.length,
+        sourceEventIds: [...activity.sourceEventIds].sort(),
+        trustDelta: relationshipDelta,
+        bondDelta: relationshipDelta,
+      },
+    };
+    applyRelationEvidence(activity.first, activity.second.id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
+    applyRelationEvidence(activity.second, activity.first.id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
+    facts.push(fact);
+  }
+  return facts;
 }

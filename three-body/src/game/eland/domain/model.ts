@@ -57,9 +57,17 @@ export interface DecisionContext {
 export type Decision = IntentDecision;
 export interface TokenUsage { inputTokens: number; outputTokens: number }
 export interface AgentDecider { decide(context: DecisionContext): Decision }
+export interface ModelInvocationMetadata {
+  endpointId: string;
+  protocol: string;
+  model: string;
+}
 export interface BatchDecider {
   decideAll(contexts: DecisionContext[]): Promise<(Decision | null)[]>;
+  /** Optional infrastructure policy. Omitted by deterministic tests and legacy callers. */
+  shouldDecide?(context: DecisionContext, atMonth: number): boolean;
   takeUsage?(): TokenUsage;
+  takeMetadata?(): ModelInvocationMetadata | null;
 }
 
 export interface BaseEvent {
@@ -112,7 +120,7 @@ export interface ActionFact extends BaseEvent {
 
 export interface EnvironmentFact extends BaseEvent {
   kind: 'environment';
-  change: 'founding' | 'climate' | 'weather' | 'prediction' | 'animal' | 'body' | 'condition' | 'death' | 'resource' | 'material';
+  change: 'founding' | 'climate' | 'weather' | 'prediction' | 'relationship' | 'animal' | 'body' | 'condition' | 'death' | 'resource' | 'material';
   who?: PersonId;
   result: string;
   diff: Record<string, unknown>;
@@ -151,7 +159,7 @@ export type MilestonePhase = 'emergence' | 'practice' | 'stable' | 'decline' | '
 
 /**
  * A replayable observer result, never an agent goal or unlock flag.
- * Optional metadata keeps schema-16 saves and the original numeric milestones
+ * Optional metadata keeps the original numeric milestones
  * readable while the capability-map observer is introduced incrementally.
  */
 export interface MilestoneObservation {
@@ -208,6 +216,9 @@ export interface DecisionMonthLedger {
   outputTokens: number;
   chargedTokens: number;
   ordinaryChargedTokens?: number;
+  modelEndpointId?: string;
+  modelProtocol?: string;
+  modelName?: string;
 }
 
 export interface EraSchedule {
@@ -295,7 +306,7 @@ export interface CivilizationDevelopmentObservation {
 }
 
 export interface SimulationState {
-  schemaVersion: 16;
+  schemaVersion: 17;
   seed: number;
   branchId: string;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
@@ -353,7 +364,7 @@ export interface EnvironmentEventInput {
 }
 
 export interface EvolutionReport {
-  schemaVersion: 16;
+  schemaVersion: 17;
   exportedAt: string;
   civilization: SimulationState['civilization'];
   finalState: SimulationState;

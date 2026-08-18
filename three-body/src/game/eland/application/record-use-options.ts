@@ -159,8 +159,8 @@ function previewProjectAction(
 ): PrimitiveAction | null {
   const previewState: SimulationState = {
     ...state,
-    people: structuredClone(state.people),
-    projects: structuredClone(state.projects),
+    people: state.people.map((person) => person.id === reader.id ? structuredClone(person) : person),
+    projects: state.projects.map((project) => project.status === 'active' ? structuredClone(project) : project),
   };
   const previewReader = previewState.people.find((candidate) => candidate.id === reader.id);
   if (previewReader && reliableTechniqueId) {

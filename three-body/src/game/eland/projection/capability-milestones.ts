@@ -332,18 +332,17 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
     case 'conception':
       return actionEvents((event) => event.action.kind === 'act' && event.action.operation === 'reproduce' && event.diff.conceived === true);
     case 'dependent-care': {
-      const events = completed.filter((event) => {
-        const caredId = typeof event.diff.assistedDependentId === 'string' ? event.diff.assistedDependentId
-          : event.action.kind === 'transfer' && event.action.to.kind === 'person' ? event.action.to.personId
-            : null;
-        const child = caredId ? index.peopleById.get(caredId) : undefined;
-        return Boolean(child && event.atMonth - child.bornAtMonth < 12 * 12
-          && (child.geneticParents.includes(event.who) || typeof event.diff.assistedDependentId === 'string'));
-      });
-      return events.flatMap((event) => {
-        const affected = typeof event.diff.assistedDependentId === 'string' ? event.diff.assistedDependentId
-          : event.action.kind === 'transfer' && event.action.to.kind === 'person' ? event.action.to.personId : event.who;
-        return episode([event], [event.who], [affected]) ?? [];
+      return completed.flatMap((event) => {
+        const caredIds = unique([
+          ...(typeof event.diff.assistedDependentId === 'string' ? [event.diff.assistedDependentId] : []),
+          ...(event.action.kind === 'transfer' && event.action.to.kind === 'person' ? [event.action.to.personId] : []),
+          ...strings(event.diff.carriedPersonIds),
+        ]).filter((caredId) => {
+          const child = index.peopleById.get(caredId);
+          return Boolean(child && event.atMonth - child.bornAtMonth < 12 * 12
+            && (child.geneticParents.includes(event.who) || event.diff.assistedDependentId === caredId));
+        });
+        return caredIds.flatMap((caredId) => episode([event], [event.who], [caredId]) ?? []);
       });
     }
     case 'dependent-protection':

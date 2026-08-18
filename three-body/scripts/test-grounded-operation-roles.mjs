@@ -643,19 +643,30 @@ try {
     const exertFact = executeAndRecord(fixture, exertAction, 'completed');
     assert.equal(exertFact.diff.outputMaterialId, Material.Fire);
     assertAttemptPreservesRoleBasis(fixture.campaign, fiberCandidate, exertFact);
+    assert.deepEqual(exertFact.diff.position, {
+      x: exertTarget.position.x,
+      y: exertTarget.position.y,
+      z: exertTarget.position.z - 1,
+    }, 'friction ignition must replace the supporting surface instead of adding a voxel above it');
     assert.equal(voxelAt(
       fixture.state.world.grid,
       exertTarget.position.x,
       exertTarget.position.y,
       exertTarget.position.z,
-    ), Material.Fire, 'only the authoritative executor may create the real heat source');
+    ), Material.Air, 'friction ignition must leave the selected air voxel empty');
+    assert.equal(voxelAt(
+      fixture.state.world.grid,
+      exertFact.diff.position.x,
+      exertFact.diff.position.y,
+      exertFact.diff.position.z,
+    ), Material.Fire, 'only the authoritative executor may create the real heat source on its support');
     const verifyFireFact = verifyLatestResponse(fixture, exertFact.id);
 
     const exposeRequest = requestFor(
       'expose-local',
       'transform-subject-with-observed-heat',
       Material.Fire,
-      exertTarget.position,
+      exertFact.diff.position,
       [exertFact.id, verifyFireFact.id],
     );
     api.refreshCampaign(fixture.state, fixture.actor, fixture.project, exposeRequest);

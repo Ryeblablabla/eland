@@ -19,6 +19,10 @@ try {
       recordProjectAction,
     } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-executor.ts'))};
+    export {
+      chooseFailedShelterHibernationReflex,
+      chooseSurvivalReflex,
+    } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/survival-reflex.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export { shelterGeometryAt, shelterHeatRelief } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/structure.ts'))};
     export { worldEventById } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/event-index.ts'))};
@@ -44,6 +48,8 @@ try {
     cellX,
     cellY,
     cellsInRadius,
+    chooseFailedShelterHibernationReflex,
+    chooseSurvivalReflex,
     createInitialState,
     createSimulation,
     ensureProject,
@@ -142,6 +148,28 @@ try {
       sinceMonth: 11,
       sourceEventIds: source ? [eventId] : [],
     });
+  }
+
+  function maximizeShelter(state, center, site) {
+    for (const wallCell of neighbors4(center).slice(1, 3)) {
+      setVoxel(state.world.grid, cellX(wallCell), cellY(wallCell), site.z, Material.Stone);
+    }
+    const shelter = shelterGeometryAt(state.world.grid, site);
+    assert.ok(shelter, '最大化夹具必须仍保留一个可通行入口');
+    assert.equal(shelter.enclosedSides, 3);
+    assert.equal(shelter.openSides, 1);
+    return shelter;
+  }
+
+  function makeFailedShelterEmergency(state, actor) {
+    state.civilization.era = {
+      sequence: 1, kind: 'chaotic', sinceMonth: 12, endsAtMonth: 100, dominantClimate: 'heat',
+    };
+    state.civilization.epoch = 'chaotic';
+    state.civilization.climate = { kind: 'heat', severity: 5, sinceMonth: 12 };
+    state.civilization.externalClimate = { epoch: 'chaotic', kind: 'heat', severity: 5 };
+    actor.body = { health: 86, hydration: 74, nutrition: 71 };
+    addHeatExposure(state, actor, 'test-maxed-shelter-heat-event', { stage: 2 });
   }
 
   function optionsFor(state, actor, visiblePeople = []) {
@@ -398,6 +426,103 @@ try {
 
     assert.equal(adaptationOptions(state, actor, [unrelatedMinor]).length, 0,
       '即使可见、未成年且来源完整，非遗传他人的暴露也不得触发该人物的适应项目');
+  }
+
+  {
+    const { state, actor, center, site } = createFixture(9510);
+    maximizeShelter(state, center, site);
+    makeFailedShelterEmergency(state, actor);
+    const positionBefore = structuredClone(actor.position);
+    const hydrationBefore = actor.body.hydration;
+    const reflex = chooseFailedShelterHibernationReflex(state, actor);
+    assert.deepEqual(reflex, {
+      kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: actor.id }],
+      hibernationEvidenceEventIds: ['test-maxed-shelter-heat-event'],
+    }, '三面住所内有同址来源的二级暴露时应只编译本人脱水动作');
+    const fact = executePrimitiveAction(state, actor, reflex, 13, 0, {
+      cause: 'survival-reflex', actionTick: 1,
+    });
+    assert.equal(fact.status, 'completed');
+    assert.equal(fact.action.kind, 'act');
+    assert.equal(fact.action.operation, 'dehydrate');
+    assert.equal(fact.diff.dehydratedPersonId, actor.id);
+    assert.deepEqual(fact.diff.hibernationEvidenceEventIds, ['test-maxed-shelter-heat-event']);
+    assert.deepEqual(actor.position, positionBefore, '窄反射不得通过移动逃离失效住所');
+    assert.equal(actor.body.hydration, hydrationBefore - 8, '脱水仍须经过 executor 扣减真实水分');
+    const hibernation = actor.conditions.find((condition) => condition.kind === 'dehydrated-hibernation');
+    assert.ok(hibernation);
+    assert.ok(hibernation.sourceEventIds.includes('test-maxed-shelter-heat-event'));
+    assert.ok(hibernation.sourceEventIds.includes(fact.id), '休眠 condition 必须同时连接暴露事实和动作事实');
+  }
+
+  {
+    const { state, actor, center, site } = createFixture(9511);
+    maximizeShelter(state, center, site);
+    makeFailedShelterEmergency(state, actor);
+    actor.inventory.push(itemStack('test-pre-hibernation-food', Material.Food, 1));
+    actor.body.nutrition = 50;
+    const preparation = chooseSurvivalReflex(state, actor);
+    assert.equal(preparation?.kind, 'act');
+    assert.equal(preparation?.operation, 'ingest', '住所内有随身食物时应先原地进食再休眠');
+    actor.body.nutrition = 70;
+    const preparedReflex = chooseSurvivalReflex(state, actor);
+    assert.equal(preparedReflex?.kind, 'act');
+    assert.equal(preparedReflex?.operation, 'dehydrate');
+  }
+
+  for (const [label, mutate] of [
+    ['只有两面墙', (state, actor, center, site) => {
+      setVoxel(state.world.grid, cellX(neighbors4(center)[2]), cellY(neighbors4(center)[2]), site.z, Material.Air);
+    }],
+    ['一级暴露', (_state, actor) => { actor.conditions.find((condition) => condition.kind === 'heat').stage = 1; }],
+    ['无来源暴露', (_state, actor) => { actor.conditions.find((condition) => condition.kind === 'heat').sourceEventIds = []; }],
+    ['来源地点不符', (state) => { state.world.past[0].cellId += 1; }],
+    ['恒纪元', (state) => { state.civilization.epoch = 'stable'; state.civilization.externalClimate.epoch = 'stable'; }],
+    ['气候强度不足', (state) => { state.civilization.climate.severity = 3; state.civilization.externalClimate.severity = 3; }],
+    ['身体储备不足', (_state, actor) => { actor.body.health = 44; }],
+    ['妊娠禁忌', (_state, actor) => { actor.conditions.push({ id: 'test-pregnancy', kind: 'pregnancy', stage: 1, sinceMonth: 12, sourceEventIds: [] }); }],
+    ['重病禁忌', (_state, actor) => { actor.conditions.push({ id: 'test-illness', kind: 'illness', stage: 2, sinceMonth: 12, sourceEventIds: [] }); }],
+    ['完全依赖年龄', (state, actor) => { actor.bornAtMonth = state.clock.elapsedMonths - 6; }],
+  ]) {
+    const { state, actor, center, site } = createFixture(9600 + label.length);
+    maximizeShelter(state, center, site);
+    makeFailedShelterEmergency(state, actor);
+    mutate(state, actor, center, site);
+    assert.equal(chooseFailedShelterHibernationReflex(state, actor), null, `${label}不得触发失效住所脱水反射`);
+  }
+
+  {
+    const { state, actor, center, site } = createFixture(9512);
+    maximizeShelter(state, center, site);
+    makeFailedShelterEmergency(state, actor);
+    const healthBefore = actor.body.health;
+    const evolved = createSimulation({ state }).step(1);
+    const sleeper = evolved.people.find((person) => person.id === actor.id);
+    assert.ok(sleeper?.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
+    assert.equal(evolved.clock.elapsedMonths, 13);
+    assert.equal(evolved.civilization.status, 'running', `窄反射后仍有休眠活人时文明必须继续：${JSON.stringify(evolved.civilization.outcome)}`);
+    assert.ok(sleeper.body.health < healthBefore, '进入休眠的同月仍须结算真实低代谢健康成本');
+    assert.ok(evolved.world.past.some((event) => event.kind === 'action'
+      && event.who === actor.id
+      && event.action.kind === 'act'
+      && event.action.operation === 'dehydrate'
+      && event.cause === 'survival-reflex'
+      && event.diff.hibernationEvidenceEventIds?.includes('test-maxed-shelter-heat-event')),
+    '后端月循环必须留下有暴露来源的窄反射动作事实');
+
+    delete evolved.civilization.externalClimate;
+    evolved.civilization.era.endsAtMonth = evolved.clock.elapsedMonths;
+    let recovered = createSimulation({ state: evolved }).step(1);
+    if (recovered.people.find((person) => person.id === actor.id)?.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) {
+      recovered = createSimulation({ state: recovered }).step(1);
+    }
+    const awake = recovered.people.find((person) => person.id === actor.id);
+    assert.ok(awake && !awake.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'),
+      '下一恒纪元应沿 v23 的既有环境恢复链苏醒');
+    assert.ok(recovered.world.past.some((event) => event.kind === 'environment'
+      && event.who === actor.id
+      && event.diff.condition === 'dehydrated-hibernation'
+      && event.diff.exited === true));
   }
 
   process.stdout.write('causal shelter adaptation tests passed\n');

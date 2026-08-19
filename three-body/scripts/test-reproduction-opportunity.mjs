@@ -26,7 +26,7 @@ try {
   }
 
   const { buildDecisionContexts, createInitialState, seededFraction, stepSimulation } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
-  const { recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
+  const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { executePrimitiveAction } = await import(`${pathToFileURL(executorBundlePath).href}?test=${Date.now()}`);
   const { evaluateDecisionOption } = await import(`${pathToFileURL(decisionFactorBundlePath).href}?test=${Date.now()}`);
   const { advanceSharedRelationshipExperience } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
@@ -135,7 +135,7 @@ try {
     audience: [female.id], channel: 'voice',
   }));
 
-  const reproduceAction = { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }] };
+  const reproduceAction = { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }], authorizationRef: agreementId };
   const conflictState = structuredClone(state);
   conflictState.clock.elapsedMonths = 2;
   const conflictFemale = conflictState.people.find((person) => person.id === female.id);
@@ -189,19 +189,63 @@ try {
   assert.notEqual(attemptA.diff.sampleKey, attemptB.diff.sampleKey, '同月两次真实动作必须拥有不同采样键');
   assert.equal(attemptA.diff.sample, seededFraction(state.seed, attemptA.diff.sampleKey), '样本必须可由事件键确定性重放');
   assert.equal(attemptB.diff.sample, seededFraction(state.seed, attemptB.diff.sampleKey));
-  assert.equal(attemptStateA.agreements[0].status, 'fulfilled', '一次已完成尝试必须消耗该次授权，无论是否受孕');
+  assert.equal(attemptA.diff.conceived, false, '该固定样本用于检查未受孕后的窗口延续');
+  assert.equal(attemptStateA.agreements[0].status, 'active', '未受孕只记录一次尝试，不应提前结算整个有界窗口');
+  assert.deepEqual(attemptStateA.agreements[0].reproductionAttemptEventIds, [attemptA.id]);
+  assert.equal(attemptStateA.agreements[0].lastReproductionAttemptAtMonth, 2);
   const repeatedAttempt = executePrimitiveAction(attemptStateA, attemptStateA.people.find((person) => person.id === female.id), reproduceAction, 2, 2, { cause: 'intent', actionTick: 3 });
-  assert.equal(repeatedAttempt.status, 'blocked', '同一授权不得支持第二次生殖尝试');
-  assert.equal(repeatedAttempt.diff.consent, false);
+  assert.equal(repeatedAttempt.status, 'blocked', '同一窗口在同一自然月不得支持第二次概率抽样');
+  assert.equal(repeatedAttempt.diff.attemptedThisMonth, true);
+  const reciprocalAgreementId = 'test-reciprocal-reproduction-window';
+  recordAgreementAction(attemptStateA, actionFact('test-reciprocal-reproduction-offer', 2, male.id, {
+    kind: 'communicate',
+    content: { id: reciprocalAgreementId, kind: 'offer', summary: '反向提出共同尝试', proposal: { kind: 'reproduce', proposerId: male.id, partnerId: female.id, expiresAtMonth: 4 } },
+    audience: [female.id], channel: 'voice',
+  }));
+  recordAgreementAction(attemptStateA, actionFact('test-reciprocal-reproduction-acceptance', 2, female.id, {
+    kind: 'communicate',
+    content: { id: 'test-reciprocal-reproduction-acceptance-content', kind: 'accept', referenceId: reciprocalAgreementId },
+    audience: [male.id], channel: 'voice',
+  }));
+  const reciprocalAttempt = executePrimitiveAction(attemptStateA, attemptStateA.people.find((person) => person.id === male.id), {
+    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: female.id }], authorizationRef: reciprocalAgreementId,
+  }, 2, 3, { cause: 'intent', actionTick: 4 });
+  assert.equal(reciprocalAttempt.status, 'blocked', '互为提议者的重叠窗口也不能让同一对人物在同月重复抽样');
+  assert.equal(reciprocalAttempt.diff.attemptedThisMonth, true);
+  assert.deepEqual(attemptStateA.agreements.find((agreement) => agreement.id === reciprocalAgreementId).reproductionAttemptEventIds, undefined,
+    '失败的第二次动作不得被错误记到另一个协议实体');
+  attemptStateA.clock.elapsedMonths = 3;
+  const nextMonthContext = buildDecisionContexts(attemptStateA).find((candidate) => candidate.person.id === female.id);
+  assert.ok(nextMonthContext?.options.some((option) => option.id.startsWith('reproduce:')), '未受孕后的下一自然月应允许双方重新评估并继续同一窗口');
 
-  state.agreements[0].status = 'fulfilled';
-  state.agreements[0].resolvedAtMonth = 2;
-  state.clock.elapsedMonths = 7;
+  const boundedWindowState = structuredClone(state);
+  const boundedAgreement = boundedWindowState.agreements[0];
+  for (const month of [1, 2, 3, 4]) recordAgreementAction(boundedWindowState, {
+    ...actionFact(`test-window-no-conception-${month}`, month, female.id, reproduceAction),
+    diff: { conceived: false },
+  });
+  assert.equal(boundedAgreement.status, 'active', '四个自然月内的未受孕尝试都只形成窗口进展');
+  assert.equal(boundedAgreement.reproductionAttemptEventIds.length, 4);
+  advanceAgreementLifecycle(boundedWindowState, 5);
+  assert.equal(boundedAgreement.status, 'expired', '四个月窗口没有受孕时应明确过期');
+
+  const conceptionState = structuredClone(state);
+  const conceptionFact = {
+    ...actionFact('test-window-conception', 2, female.id, reproduceAction),
+    diff: { conceived: true },
+  };
+  recordAgreementAction(conceptionState, conceptionFact);
+  assert.equal(conceptionState.agreements[0].status, 'fulfilled', '窗口内真实受孕应立即履行并结束协议');
+  assert.deepEqual(conceptionState.agreements[0].fulfillmentEventIds, [conceptionFact.id]);
+
+  state.agreements[0].status = 'expired';
+  state.agreements[0].resolvedAtMonth = 5;
+  state.clock.elapsedMonths = 10;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '未受孕的单次尝试后也必须经过冷却期才能再次提议');
-  state.clock.elapsedMonths = 8;
+  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '未受孕窗口到期后仍必须经过冷却期才能再次提议');
+  state.clock.elapsedMonths = 11;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '未受孕的单次尝试在六个月后可重新评估，不必等待偶然的新共同事件');
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '未受孕窗口到期六个月后可重新评估，不必等待偶然的新共同事件');
 
   const responsibilityState = structuredClone(state);
   responsibilityState.clock.elapsedMonths = 2;
@@ -225,7 +269,7 @@ try {
   const responsibilityContext = buildDecisionContexts(responsibilityState).find((candidate) => candidate.person.id === female.id);
   const proceed = responsibilityContext?.options.find((option) => option.id.startsWith('reproduce:'));
   const withdraw = responsibilityContext?.options.find((option) => option.id.startsWith('withdraw-reproduce:'));
-  assert.ok(proceed && withdraw, '有效单次授权必须同时提供继续与撤回两个合法选项');
+  assert.ok(proceed && withdraw, '有效尝试窗口必须同时提供继续与撤回两个合法选项');
   const moment = { atMonth: 2, planningTick: 1 };
   assert.ok(
     evaluateDecisionOption(responsibilityContext, withdraw, moment).causalScore
@@ -241,7 +285,7 @@ try {
     { cause: 'intent', actionTick: 4 },
   );
   assert.equal(revoked.status, 'completed');
-  assert.equal(responsibilityState.agreements[0].status, 'cancelled', '任一参与者的撤回应结束尚未执行的单次授权');
+  assert.equal(responsibilityState.agreements[0].status, 'cancelled', '任一参与者的撤回应结束尚未完成的尝试窗口');
 
   const capacityState = structuredClone(state);
   capacityState.clock.elapsedMonths = 2;

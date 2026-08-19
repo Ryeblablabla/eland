@@ -1,6 +1,16 @@
 /** 演化会话后端的前端客户端（/api/eland/*） */
-import type { AgentHistoryView, GameFrame, SkySample } from './societyContract';
+import type {
+  AgentConversationTurn,
+  AgentConversationView,
+  AgentHistoryView,
+  CosmosSnapshot,
+  ElandSaveSummary,
+  GameFrame,
+  NarrativeEntryView,
+  SkySample,
+} from './societyContract';
 import type { ModelProvider } from './llm';
+import { applyStepPayload, type ElandStepPayload } from './eland/society-patch';
 
 export type Frame = GameFrame;
 
@@ -19,6 +29,13 @@ export class ElandBackendUnavailableError extends Error {
 }
 
 const PAGE_LEASE_ID = `lease-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+let civilizationCreationSequence = 0;
+const latestFrames = new Map<string, Frame | null>();
+
+export function createCivilizationCreationId(): string {
+  civilizationCreationSequence += 1;
+  return `${PAGE_LEASE_ID}:civilization:${Date.now().toString(36)}:${civilizationCreationSequence.toString(36)}`;
+}
 
 function randomRunId(): string {
   return `threebody-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -85,17 +102,55 @@ async function get<T>(route: string): Promise<T> {
 }
 
 export const elandClient = {
-  begin: (runId: string, civilizationId: number, skySample: SkySample, characterIds?: string[], worldSeed = createWorldSeed()) =>
-    post<Frame>('begin', {
+  begin: async (
+    runId: string,
+    creationId: string,
+    skySample: SkySample,
+    characterIds?: string[],
+    worldSeed = createWorldSeed(),
+    cosmosSnapshot?: CosmosSnapshot,
+  ) => {
+    const frame = await post<Frame>('begin', {
       runId,
       leaseId: PAGE_LEASE_ID,
-      civilizationId,
+      creationId,
       worldSeed,
       skySample,
+      ...(cosmosSnapshot ? { cosmosSnapshot } : {}),
       ...(characterIds && characterIds.length > 0 ? { characterIds } : {}),
-    }),
-  step: (runId: string, skySample: SkySample) => post<Frame | null>('step', { runId, skySample }),
-  state: (runId: string) => get<{ playing: boolean; model: 'local' | ModelProvider; frame: Frame | null }>(`state?runId=${encodeURIComponent(runId)}`),
+    });
+    latestFrames.set(runId, frame);
+    return frame;
+  },
+  step: async (runId: string, skySample: SkySample, cosmosSnapshot?: CosmosSnapshot) => {
+    const payload = await post<ElandStepPayload>('step', {
+      runId,
+      skySample,
+      ...(cosmosSnapshot ? { cosmosSnapshot } : {}),
+    });
+    let frame = applyStepPayload(latestFrames.get(runId) ?? null, payload);
+    if (payload.kind === 'patch' && !frame) {
+      const refreshed = await get<{
+        playing: boolean;
+        model: 'local' | ModelProvider;
+        frame: Frame | null;
+        history: NarrativeEntryView[];
+      }>(`state?runId=${encodeURIComponent(runId)}`);
+      frame = refreshed.frame;
+    }
+    latestFrames.set(runId, frame);
+    return frame;
+  },
+  state: async (runId: string) => {
+    const result = await get<{
+      playing: boolean;
+      model: 'local' | ModelProvider;
+      frame: Frame | null;
+      history: NarrativeEntryView[];
+    }>(`state?runId=${encodeURIComponent(runId)}`);
+    latestFrames.set(runId, result.frame);
+    return result;
+  },
   history: (runId: string) => get<{
     civilizationId: number;
     history: { month: number; label: string; summary: string }[];
@@ -105,8 +160,51 @@ export const elandClient = {
   agentHistory: (runId: string, agentId: string, month: number, limit = 80) => get<AgentHistoryView | null>(
     `agent-history?runId=${encodeURIComponent(runId)}&agentId=${encodeURIComponent(agentId)}&month=${month}&limit=${limit}`,
   ),
-  seek: (runId: string, month: number) => post<Frame | null>('seek', { runId, month }),
+  agentConversation: (runId: string, agentId: string) => get<AgentConversationView>(
+    `agent-conversation?runId=${encodeURIComponent(runId)}&agentId=${encodeURIComponent(agentId)}`,
+  ),
+  sendAgentConversation: (input: {
+    runId: string;
+    agentId: string;
+    message: string;
+    requestKind: 'conversation' | 'suggestion';
+    clientMessageId: string;
+    observedBranchId: string;
+  }) => post<{ conversation: AgentConversationView; turn: AgentConversationTurn }>('agent-conversation', input),
+  seek: async (runId: string, month: number) => {
+    const frame = await post<Frame | null>('seek', { runId, month });
+    latestFrames.set(runId, frame);
+    return frame;
+  },
+  saves: (runId: string) => get<{ saves: ElandSaveSummary[] }>(`saves?runId=${encodeURIComponent(runId)}`),
+  save: (runId: string, label?: string) => post<{ save: ElandSaveSummary }>('save', {
+    runId,
+    leaseId: PAGE_LEASE_ID,
+    ...(label?.trim() ? { label: label.trim() } : {}),
+  }),
+  loadSave: async (runId: string, saveId: string) => {
+    const loaded = await post<{
+      save: ElandSaveSummary;
+      frame: Frame;
+      history: NarrativeEntryView[];
+    }>('load', { runId, leaseId: PAGE_LEASE_ID, saveId });
+    latestFrames.set(runId, loaded.frame);
+    return loaded;
+  },
+  checkpoint: (runId: string) => {
+    const body = JSON.stringify({ runId, leaseId: PAGE_LEASE_ID });
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon?.('/api/eland/checkpoint', body)) {
+      return Promise.resolve();
+    }
+    return fetch('/api/eland/checkpoint', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      keepalive: true,
+    }).then(() => undefined).catch(() => undefined);
+  },
   end: (runId: string) => {
+    latestFrames.delete(runId);
     const body = JSON.stringify({ runId, leaseId: PAGE_LEASE_ID });
     if (typeof navigator !== 'undefined' && navigator.sendBeacon?.('/api/eland/end', body)) {
       return Promise.resolve();

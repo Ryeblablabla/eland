@@ -26,19 +26,20 @@ import {
   type NarrativeEnhancementKind,
 } from './narrative-enhancements';
 import {
-  FileRunStore,
   RunAlreadyExistsError,
   RunNotFoundError,
   type PersistedRun,
-} from "./run-store";
+} from "./run-persistence";
+import { SqliteRunStore } from './sqlite-run-store';
+import { logPerf, perfElapsed, perfNow } from './perf';
 
 const HOST = process.env.THREEBODY_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.THREEBODY_PORT ?? 3220);
-const DATA_DIR = path.resolve(process.env.THREEBODY_DATA_DIR ?? path.join(process.cwd(), "data", "runs"));
+const DATA_DIR = path.resolve(process.env.THREEBODY_DATA_DIR ?? path.join(process.cwd(), "data"));
 const MAX_BODY_BYTES = 50 * 1024 * 1024;
 const RULE_PLANNER_MODEL = 'rule-planner-v1';
 
-const store = new FileRunStore(DATA_DIR);
+const store = new SqliteRunStore(DATA_DIR);
 const narrativeEnhancements = new NarrativeEnhancementService(store);
 const elandWorker = new ElandWorkerClient();
 const runQueues = new Map<string, Promise<unknown>>();
@@ -62,6 +63,13 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.end(`${JSON.stringify(value)}\n`);
+}
+
+function sendEncodedJson(response: ServerResponse, status: number, body: ArrayBuffer): void {
+  setCommonHeaders(response);
+  response.statusCode = status;
+  response.setHeader("content-type", "application/json; charset=utf-8");
+  response.end(Buffer.from(body));
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -182,9 +190,13 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
   try {
     for (let advanced = 0; advanced < months && persisted.civilization.status === 'running';) {
       const batchMonths = Math.min(12, months - advanced);
+      const batchStartedAt = perfNow();
+      const simulationStartedAt = perfNow();
       const state = controller.step(batchMonths);
+      const simulationMs = perfElapsed(simulationStartedAt);
       persisted = state;
       advanced += batchMonths;
+      const persistenceStartedAt = perfNow();
       persisted = (await store.save(id, persisted)).state;
       path = evolvePath(persisted, {
         runId: id,
@@ -197,6 +209,16 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
         status: 'running',
       });
       await store.saveEvolutionPath(id, path);
+      logPerf('long-evolution-batch', {
+        runId: id,
+        throughMonth: persisted.clock.elapsedMonths,
+        batchMonths,
+        people: persisted.people.length,
+        totalEvents: persisted.world.past.length,
+        simulationMs,
+        persistenceMs: perfElapsed(persistenceStartedAt),
+        totalMs: perfElapsed(batchStartedAt),
+      });
     }
     const report = buildEvolutionFactsReport(persisted, path);
     await store.saveEvolutionReport(id, report);
@@ -259,7 +281,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (request.method === "GET" && url.pathname === "/health") {
-    sendJson(response, 200, { ok: true, service: "threebody-evolution", dataDirectory: store.dataDirectory() });
+    sendJson(response, 200, {
+      ok: true,
+      service: "threebody-evolution",
+      storage: "sqlite",
+      dataDirectory: store.dataDirectory(),
+      databaseFile: store.filePath(),
+    });
     return;
   }
 
@@ -295,7 +323,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (url.pathname.startsWith("/api/eland/")) {
     const result = await elandWorker.handle(request.method, url, request.method === "POST" ? await readJson(request) : {});
-    sendJson(response, result.status, result.body);
+    sendEncodedJson(response, result.status, result.body);
     return;
   }
 
@@ -399,7 +427,7 @@ const server = createServer((request, response) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`ThreeBody evolution backend: http://${HOST}:${PORT}`);
-  console.log(`Persistent runs: ${DATA_DIR}`);
+  console.log(`Persistent database: ${store.filePath()}`);
 });
 
 let shuttingDown = false;
@@ -407,7 +435,10 @@ function shutdown(): void {
   if (shuttingDown) return;
   shuttingDown = true;
   server.close();
-  void elandWorker.close().finally(() => process.exit(0));
+  void elandWorker.close().finally(() => {
+    store.close();
+    process.exit(0);
+  });
 }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

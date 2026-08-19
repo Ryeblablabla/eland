@@ -406,7 +406,7 @@ function observerBehaviorMetrics(state: SimulationState): {
 
     const action = objectRecord(event.action);
     if (!action) continue;
-    if (action.kind === 'act' && action.operation === 'reproduce') {
+    if (event.status === 'completed' && action.kind === 'act' && action.operation === 'reproduce') {
       reproductionAttempts += 1;
       if (objectRecord(event.diff)?.conceived === true) reproductionConceptions += 1;
       continue;

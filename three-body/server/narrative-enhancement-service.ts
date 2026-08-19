@@ -1,7 +1,7 @@
 import type { SimulationState } from '../src/game/eland/simulation';
 import { ModelRequestError } from './model-client';
 import { modelEndpointStatus, resolveModelEndpoint, type ModelEndpointStatus } from './model-config';
-import type { FileRunStore } from './run-store';
+import type { RunStore } from './run-persistence';
 import {
   narrativeEnhancementCounts,
   queueNarrativeEnhancements,
@@ -63,7 +63,7 @@ export class NarrativeEnhancementService {
   private readonly mutationQueues = new Map<string, Promise<unknown>>();
   private readonly jobs = new Map<string, Promise<void>>();
 
-  constructor(private readonly store: FileRunStore) {}
+  constructor(private readonly store: RunStore) {}
 
   isProcessing(runId: string): boolean {
     return this.jobs.has(runId);

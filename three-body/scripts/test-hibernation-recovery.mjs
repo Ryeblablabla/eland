@@ -196,6 +196,81 @@ try {
     '没有有效预言阻止时，帮助结束休眠应形成双方关系证据',
   );
 
+  const partialHibernationState = createInitialState(343, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
+  partialHibernationState.civilization.externalClimate = { epoch: 'chaotic', kind: 'heat', severity: 5 };
+  partialHibernationState.people.slice(0, -1).forEach((person) => person.conditions.push({
+    id: `test-partial-hibernation-${person.id}`,
+    kind: 'dehydrated-hibernation',
+    stage: 1,
+    sinceMonth: 0,
+    sourceEventIds: ['test-partial-hibernation'],
+  }));
+  const afterPartialHibernation = stepSimulation(partialHibernationState, {
+    decide() { return { kind: 'idle', reason: '验证仍有清醒者时文明继续' }; },
+  });
+  assert.equal(afterPartialHibernation.civilization.status, 'running', '仍有清醒者时不得结束文明');
+  assert.ok(afterPartialHibernation.people.some((person) => person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'))
+    && afterPartialHibernation.people.some((person) => !person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')),
+  '部分休眠夹具在结算后必须仍同时包含休眠者和清醒者');
+
+  const fullHibernationState = createInitialState(344, { endpoint: { kind: 'months', value: 6 }, chaosIntensity: 0 });
+  fullHibernationState.civilization.era = {
+    sequence: 1, kind: 'chaotic', sinceMonth: 0, endsAtMonth: 1, dominantClimate: 'heat',
+  };
+  fullHibernationState.civilization.epoch = 'chaotic';
+  fullHibernationState.civilization.climate = { kind: 'heat', severity: 5, sinceMonth: 0 };
+  delete fullHibernationState.civilization.externalClimate;
+  fullHibernationState.people.forEach((person) => person.conditions.push({
+    id: `test-full-hibernation-${person.id}`,
+    kind: 'dehydrated-hibernation',
+    stage: 1,
+    sinceMonth: 0,
+    sourceEventIds: ['test-full-hibernation'],
+  }));
+  const fullHibernationBodies = fullHibernationState.people.map((person) => structuredClone(person.body));
+  const afterFullHibernation = stepSimulation(fullHibernationState, {
+    decide() { return { kind: 'idle', reason: '验证全员休眠时继续推进乱纪元' }; },
+  });
+  assert.equal(afterFullHibernation.civilization.status, 'running', '全员脱水休眠应保持为可继续演化的休眠态');
+  assert.equal(afterFullHibernation.clock.elapsedMonths, 1, '全员休眠时月份仍须推进');
+  assert.ok(afterFullHibernation.people.every((person, index) => person.body.health < fullHibernationBodies[index].health
+    && person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')),
+  '全员休眠期间仍须结算真实低代谢身体损耗');
+
+  let afterStableRecovery = stepSimulation(afterFullHibernation, {
+    decide() { return { kind: 'idle', reason: '等待新恒纪元提供苏醒条件' }; },
+  });
+  if (afterStableRecovery.people.some((person) => person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'))) {
+    afterStableRecovery = stepSimulation(afterStableRecovery, {
+      decide() { return { kind: 'idle', reason: '等待恒纪元环境恢复可利用水分' }; },
+    });
+  }
+  assert.equal(afterStableRecovery.civilization.status, 'running', '跨纪元苏醒后文明应继续运行');
+  assert.ok(afterStableRecovery.people.every((person) => !person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')),
+    '新恒纪元应通过既有身体规则使全体休眠者恢复水分苏醒');
+  assert.ok(afterStableRecovery.world.past.some((event) => event.kind === 'environment'
+    && event.diff.condition === 'dehydrated-hibernation'
+    && event.diff.exited === true),
+  '跨纪元苏醒必须留下环境恢复事实');
+
+  const doomedHibernationState = structuredClone(fullHibernationState);
+  doomedHibernationState.civilization.status = 'running';
+  delete doomedHibernationState.civilization.outcome;
+  doomedHibernationState.people.forEach((person) => { person.body.health = 0; });
+  const afterDormantDeaths = stepSimulation(doomedHibernationState, {
+    decide() { return { kind: 'idle', reason: '验证休眠不阻止真实死亡终局' }; },
+  });
+  assert.equal(afterDormantDeaths.civilization.status, 'ended', '全体休眠者身体耗尽时仍应结束文明');
+  assert.equal(afterDormantDeaths.civilization.outcome?.kind, 'destroyed');
+
+  const boundaryHibernationState = structuredClone(fullHibernationState);
+  boundaryHibernationState.civilization.conditions.endpoint = { kind: 'months', value: 1 };
+  const afterDormantBoundary = stepSimulation(boundaryHibernationState, {
+    decide() { return { kind: 'idle', reason: '验证休眠不绕过实验边界' }; },
+  });
+  assert.equal(afterDormantBoundary.civilization.status, 'ended', '全员休眠仍须遵守月份边界');
+  assert.equal(afterDormantBoundary.civilization.outcome?.kind, 'boundary');
+
   console.log('hibernation recovery regression passed');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

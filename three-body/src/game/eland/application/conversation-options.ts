@@ -127,7 +127,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
   const otherCondition = conditionPhrase(other);
   if (otherCondition) candidates.push({
     topic: 'care',
-    summary: `你看起来${otherCondition.summary}。先别逞强，我们得想办法让你缓过来。`,
+    summary: `向${other.name}表达对其${otherCondition.summary}的关心，并邀请对方共同寻找缓解办法`,
     reason: `${other.name}眼下有真实的身体不适，关心可以从正在发生的处境开始`,
     sourceFactIds: resolvedSourceIds(state, otherCondition.sourceFactIds),
     priority: 90,
@@ -136,7 +136,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
   const ownCondition = conditionPhrase(person);
   if (ownCondition) candidates.push({
     topic: 'hardship',
-    summary: `这阵子我${ownCondition.summary}。我不想只闷在心里，也想听听你怎么想。`,
+    summary: `向${other.name}说明自己${ownCondition.summary}，并邀请对方回应当前困境`,
     reason: '本人正在承受有事件来源的身体压力，可以向身边人坦白自己的感受',
     sourceFactIds: resolvedSourceIds(state, ownCondition.sourceFactIds),
     priority: 68,
@@ -145,7 +145,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
   const gratitude = gratitudeEvent(state, person, other);
   if (gratitude) candidates.push({
     topic: 'gratitude',
-    summary: `上次我最需要帮助的时候，你没有丢下我。这件事我一直记着。`,
+    summary: `感谢${other.name}此前在本人需要帮助时给予物质、照护或履约支持`,
     reason: '对方曾真实给予物质、照护或完成双方约定，感谢有共同经历可追溯',
     sourceFactIds: [gratitude.id],
     priority: 86,
@@ -160,8 +160,8 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     candidates.push({
       topic: 'shared-work',
       summary: project.status === 'completed'
-        ? `我们真的一起把“${project.summary}”做成了。回头看，那些辛苦没有白费。`
-        : `我们已经为“${project.summary}”忙了这么久。等做完，日子应该会好过一点。`,
+        ? `与${other.name}回顾双方已经完成“${project.summary}”的共同劳动`
+        : `与${other.name}谈论双方正在推进“${project.summary}”的共同劳动`,
       reason: '双方都在同一项目留下了实际行动，可以谈共同劳动而不是抽象寒暄',
       sourceFactIds,
       priority: 82,
@@ -176,7 +176,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
       .sort((left, right) => right.createdAtMonth - left.createdAtMonth)[0];
   if (failure) candidates.push({
     topic: 'failure',
-    summary: `“${failure.summary}”这件事还是没成。我可能漏掉了什么，你愿意听我再说说吗？`,
+    summary: `向${other.name}说明本人记得的失败“${failure.summary}”，并邀请对方一起复盘`,
     reason: '本人记得一次真实失败，可以向身边人表达挫折并寻求理解',
     sourceFactIds: resolvedSourceIds(state, failure.sourceEventIds),
     priority: 62,
@@ -189,7 +189,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     .sort((left, right) => right.learnedAtMonth - left.learnedAtMonth || right.confidence - left.confidence)[0];
   if (discovery) candidates.push({
     topic: 'discovery',
-    summary: `我最近发现“${discovery.summary}”。这也许能帮到我们，你觉得呢？`,
+    summary: `向${other.name}分享本人可靠掌握、对方尚未可靠掌握的发现“${discovery.summary}”`,
     reason: '本人有一项可靠且对方尚未可靠掌握的观察，可以把发现变成有回应的交谈',
     sourceFactIds: resolvedSourceIds(state, discovery.sourceEventIds),
     factId: discovery.id,
@@ -201,7 +201,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     const childName = typeof birth.diff.bornPersonName === 'string' ? birth.diff.bornPersonName : '孩子';
     candidates.push({
       topic: 'family',
-      summary: `${childName}又长大了一些。我们都得留心照顾，也别忘了彼此已经很累了。`,
+      summary: `与${other.name}谈论共同养育${childName}的照护责任和双方疲惫`,
       reason: '双方共同养育一个真实出生并仍然活着的孩子，可以谈眼前的家庭生活',
       sourceFactIds: [birth.id],
       priority: 84,
@@ -252,15 +252,15 @@ function openingOption(state: SimulationState, person: PersonState, other: Perso
   };
 }
 
-function responseSummary(topic: GroundedConversationTopic, guarded: boolean): string {
-  if (guarded) return '我听见了，但我现在还有些害怕。让我慢一点，再想想该怎么回应你。';
-  if (topic === 'care') return '我听见了。谢谢你注意到我不舒服，有你一起想办法，我没那么慌了。';
-  if (topic === 'hardship') return '你不用一个人扛着。我愿意听，也会和你一起想接下来怎么办。';
-  if (topic === 'gratitude') return '我也记得。那不是你欠我的；换成我遇到难处，我相信你也会留下来。';
-  if (topic === 'shared-work') return '我也常想起那段日子。一起做的时候很累，但知道身边有人就不一样。';
-  if (topic === 'failure') return '没成不等于白做。你慢慢说，我们一起看看究竟漏掉了哪一步。';
-  if (topic === 'discovery') return '我想听得更仔细些。它是怎么发生的，又能在哪件事上帮到我们？';
-  return '我也在想着孩子的事。我们一起照顾，也要在对方撑不住时搭一把手。';
+function responseMeaning(topic: GroundedConversationTopic, guarded: boolean): string {
+  if (guarded) return '已听见开场，但因当前恐惧和低信任保持戒备并暂缓深入回应';
+  if (topic === 'care') return '接受对方的关心，并愿意共同寻找缓解身体不适的办法';
+  if (topic === 'hardship') return '愿意倾听对方当前的困境，并共同考虑下一步';
+  if (topic === 'gratitude') return '回应对方的感谢，并确认此前的帮助不构成债务';
+  if (topic === 'shared-work') return '回应双方共同劳动的经历，并确认协作带来的陪伴感';
+  if (topic === 'failure') return '接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节';
+  if (topic === 'discovery') return '愿意继续了解对方的新发现及其可能用途';
+  return '回应共同养育话题，并愿意在照护孩子和彼此疲惫时互相支持';
 }
 
 function liveResponseOpeningIds(state: SimulationState, person: PersonState): Set<string> {
@@ -306,7 +306,7 @@ function responseOptionForOpening(
   if (!speaker || (!sameLocation(person, speaker) && !visiblePeople.some((candidate) => candidate.id === speaker.id))) return null;
   const relation = person.relations.find((candidate) => candidate.personId === speaker.id);
   const guarded = (relation?.fear ?? 0) >= 35 && (relation?.trust ?? 0) < 8;
-  const summary = responseSummary(openingConversation.topic, guarded);
+  const summary = responseMeaning(openingConversation.topic, guarded);
   const conversation: GroundedConversationRef = {
     ...openingConversation,
     turn: 'response',

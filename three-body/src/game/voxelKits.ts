@@ -1146,6 +1146,42 @@ export function dirtPathConnections(
   return connected;
 }
 
+/**
+ * 找出一个夯土格可以安全填满的内侧角。
+ *
+ * 只有同一高度的 2×2 权威 PackedSoil 格才会合并共享角：这会消除四段窄路围出的规则草洞，
+ * 但不会跨进仍然属于草地、农田或庭院的真实中心格，也不会把坡面抹成悬空土块。
+ */
+export function dirtPathFilledCorners(
+  packedSoilCells: ReadonlySet<number>,
+  width: number,
+  height: number,
+  elevation: ArrayLike<number>,
+  id: number,
+): DirtPathDirection[] {
+  if (id < 0 || id >= width * height || !packedSoilCells.has(id)) return [];
+  const x = id % width;
+  const z = Math.floor(id / width);
+  const baseElevation = elevation[id];
+  const filled: DirtPathDirection[] = [];
+
+  for (const direction of DIRT_PATH_DIRECTIONS) {
+    if (direction.dx === 0 || direction.dz === 0) continue;
+    const nx = x + direction.dx;
+    const nz = z + direction.dz;
+    if (nx < 0 || nz < 0 || nx >= width || nz >= height) continue;
+    const besideX = z * width + nx;
+    const besideZ = nz * width + x;
+    const diagonal = nz * width + nx;
+    const block = [id, besideX, besideZ, diagonal];
+    if (block.every((cellId) => packedSoilCells.has(cellId) && elevation[cellId] === baseElevation)) {
+      filled.push(direction);
+    }
+  }
+
+  return filled;
+}
+
 interface DirtPathPoint { x: number; z: number }
 
 function distanceToDirtPathSegment(point: DirtPathPoint, from: DirtPathPoint, to: DirtPathPoint): number {
@@ -1168,6 +1204,7 @@ function distanceToDirtPathSegment(point: DirtPathPoint, from: DirtPathPoint, to
 export function appendDirtPathCell(
   out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
   connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[] = [],
 ): void {
   const seed = Math.floor(r * 0x7fffffff);
   const edge = (direction: DirtPathDirection): DirtPathPoint => ({
@@ -1231,7 +1268,10 @@ export function appendDirtPathCell(
       const insideRibbon = distance <= 0.215 + edgeNoise;
       const insideJunction = junction
         && Math.hypot(local.x, local.z) <= 0.29 + edgeNoise;
-      if (!insideRibbon && !insideJunction) continue;
+      const insideFilledCorner = filledCorners.some((corner) =>
+        corner.dx !== 0 && corner.dz !== 0
+        && local.x * corner.dx > 0.25 && local.z * corner.dz > 0.25);
+      if (!insideRibbon && !insideJunction && !insideFilledCorner) continue;
       roadMicros.push(local);
       const tone = 0.39 + hash01(seed ^ microId, 122) * 0.22;
       const scuffed = hash01(seed ^ microId, 123) > 0.93;
@@ -1373,12 +1413,17 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   }
 
   // 泥土小径直接绑定权威 PackedSoil 地表；trail 区域仅用于兼容旧投影和历史存档。
+  const packedSoilCells = new Set<number>();
+  for (let id = 0; id < COUNT; id++) if (w.palette[w.surface[id]]?.key === 'packed_soil') packedSoilCells.add(id);
+  const mergeablePackedSoilCells = new Set(Array.from(packedSoilCells)
+    .filter((id) => !constructionCells.has(id)));
   const trailCells = new Set(society.regions.filter((region) => region.kind === 'trail').flatMap((region) => region.cells));
-  for (let id = 0; id < COUNT; id++) if (w.palette[w.surface[id]]?.key === 'packed_soil') trailCells.add(id);
+  packedSoilCells.forEach((id) => trailCells.add(id));
   for (const id of trailCells) {
     if (id < 0 || id >= COUNT) continue;
     const x = id % w.width, y = Math.floor(id / w.width);
     const connections = dirtPathConnections(trailCells, w.width, w.height, w.elevation, id);
+    const filledCorners = dirtPathFilledCorners(mergeablePackedSoilCells, w.width, w.height, w.elevation, id);
     const depth = featureDepth(w, id, constructionCells);
     const groundY = (w.elevation[id] - depth + 1) * CELL_H;
     appendDirtPathCell(
@@ -1388,6 +1433,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
       y - w.height / 2 + 0.5,
       connections,
       hash01(id ^ w.generator.seed, 5),
+      filledCorners,
     );
   }
 

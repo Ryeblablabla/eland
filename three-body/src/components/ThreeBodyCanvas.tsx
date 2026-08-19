@@ -26,8 +26,10 @@ import {
   type PlanetFate,
   type SimSystem,
 } from '@/lib/threebody';
+import type { CosmosSnapshot } from '@/game/societyContract';
 
 export interface SimStats {
+  resetToken: number;
   t: number;
   energy: number;
   separation: number | null;
@@ -38,6 +40,7 @@ export interface SimStats {
   civilizations: number;
   bodies: number[];     // [x0,y0, x1,y1, x2,y2, 行星x,行星y] 世界坐标快照（画中画用）
   spread: number;       // 恒星离质心最大距离（画中画取景半径）
+  cosmosSnapshot: CosmosSnapshot;
 }
 
 export type CelestialSelection =
@@ -52,6 +55,9 @@ interface Props {
   showTwin: boolean;
   presetKey: string;
   resetToken: number;
+  /** 后端分配的权威文明编号；宇宙层只负责检测下一次重生。 */
+  civilizationId?: number;
+  restoreSnapshot?: CosmosSnapshot | null;
   targetT?: number; // 权威目标时刻（人间纪年换算）；设置后宇宙向该时刻平滑快进
   skyMode?: 'follow' | 'frozen'; // frozen：完全冻结（人间视角懒加载）
   collapseHold?: boolean;  // 文明毁灭时冻结宇宙，等待结算
@@ -68,6 +74,21 @@ interface Props {
 const DT = 0.001;
 const MAX_TRAIL = 4096; // 轨迹缓冲上限（UI 滑杆最大 3000）
 const STARFIELD_COUNT = 1500;
+
+function freshUniverseRandomState(): number {
+  const value = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(value);
+  return value[0] || 0x6d2b79f5;
+}
+
+function nextUniverseRandom(state: { randomState: number }): number {
+  let value = state.randomState >>> 0;
+  value ^= value << 13;
+  value ^= value >>> 17;
+  value ^= value << 5;
+  state.randomState = value >>> 0 || 0x6d2b79f5;
+  return state.randomState / 0x1_0000_0000;
+}
 
 // ---------------------------------------------------------------------------
 // 纹理工厂（与原 2D 版同款径向渐变，但输出 WebGL 纹理）
@@ -164,6 +185,8 @@ export default function ThreeBodyCanvas(props: Props) {
     extinct: boolean; // 星系崩解，文明终结（不再复活）
     pendingCollapse: 'burned' | 'frozen' | 'extinct' | null; // 崩塌待结算（宇宙冻结中）
     seenRespawnToken: number;
+    randomState: number;
+    respawnSequence: number;
     fluxBase: number; // 宜居基线通量
     planetR: number;
   } | null>(null);
@@ -171,7 +194,25 @@ export default function ThreeBodyCanvas(props: Props) {
   // 初始化 / 重置
   useEffect(() => {
     const preset = PRESETS.find((p) => p.key === props.presetKey) ?? DEFAULT_PRESET;
-    const sys = createSystem(preset);
+    const restored = propsRef.current.restoreSnapshot;
+    const canRestore = restored
+      && restored.schemaVersion === 1
+      && restored.presetKey === preset.key
+      && restored.state.length === 16
+      && restored.masses.length === 4
+      && Number.isInteger(restored.randomState)
+      && Number.isInteger(restored.respawnSequence);
+    const snapshot = canRestore ? restored : null;
+    const random = { randomState: snapshot?.randomState ?? freshUniverseRandomState() };
+    const requestedCivilizationId = propsRef.current.civilizationId;
+    const authoritativeCivilizationId = typeof requestedCivilizationId === 'number'
+      && Number.isInteger(requestedCivilizationId)
+      && requestedCivilizationId > 0
+      ? requestedCivilizationId
+      : 1;
+    const sys = snapshot
+      ? { state: Float64Array.from(snapshot.state), masses: Float64Array.from(snapshot.masses) }
+      : createSystem(preset, () => nextUniverseRandom(random));
     const twin = makeTwin(sys);
     // 宜居基线：行星在初始轨道半径上接收宿主恒星（最大质量）的通量
     const hostMass = Math.max(...preset.masses);
@@ -180,17 +221,30 @@ export default function ThreeBodyCanvas(props: Props) {
       twin,
       trails: Array.from({ length: N_BODIES }, () => []),
       twinTrails: Array.from({ length: N_BODIES }, () => []),
-      t: 0,
-      viewR: 2.2,
+      t: snapshot?.t ?? 0,
+      viewR: snapshot?.viewR ?? 2.2,
       frame: 0,
-      civilizations: 1, // 第 1 号文明启程
-      extinct: false,
-      pendingCollapse: null,
+      civilizations: snapshot?.civilizations ?? authoritativeCivilizationId,
+      extinct: snapshot?.extinct ?? false,
+      pendingCollapse: snapshot?.pendingCollapse ?? null,
       seenRespawnToken: props.respawnToken ?? 0,
-      fluxBase: Math.pow(hostMass, 3.5) / (preset.planetR * preset.planetR),
-      planetR: preset.planetR,
+      randomState: random.randomState,
+      respawnSequence: snapshot?.respawnSequence ?? 0,
+      fluxBase: snapshot?.fluxBase ?? Math.pow(hostMass, 3.5) / (preset.planetR * preset.planetR),
+      planetR: snapshot?.planetR ?? preset.planetR,
     };
   }, [props.presetKey, props.resetToken]);
+
+  // 编号由后端的持久化序列分配。Canvas 中的自增只发出“文明更替”信号，
+  // 收到新权威帧后必须回写实际编号（其他标签页可能已占用中间号码）。
+  useEffect(() => {
+    const civilizationId = props.civilizationId;
+    if (!world.current
+      || typeof civilizationId !== 'number'
+      || !Number.isInteger(civilizationId)
+      || civilizationId < 1) return;
+    world.current.civilizations = civilizationId;
+  }, [props.civilizationId]);
 
   // 主循环（three.js 场景）
   useEffect(() => {
@@ -634,8 +688,9 @@ export default function ThreeBodyCanvas(props: Props) {
         w.seenRespawnToken = p.respawnToken ?? 0;
         if (w.pendingCollapse === 'extinct') return;
         if (w.pendingCollapse) {
-          placePlanet(w.sys, w.planetR);
-          placePlanet(w.twin, w.planetR);
+          placePlanet(w.sys, w.planetR, () => nextUniverseRandom(w));
+          placePlanet(w.twin, w.planetR, () => nextUniverseRandom(w));
+          w.respawnSequence += 1;
           w.trails[PLANET_IDX].length = 0;
           w.twinTrails[PLANET_IDX].length = 0;
         }
@@ -671,8 +726,9 @@ export default function ThreeBodyCanvas(props: Props) {
             } else if (p.collapseHold) {
               w.pendingCollapse = fate;
             } else {
-              placePlanet(w.sys, w.planetR);
-              placePlanet(w.twin, w.planetR);
+              placePlanet(w.sys, w.planetR, () => nextUniverseRandom(w));
+              placePlanet(w.twin, w.planetR, () => nextUniverseRandom(w));
+              w.respawnSequence += 1;
               w.civilizations++;
               w.trails[PLANET_IDX].length = 0;
               w.twinTrails[PLANET_IDX].length = 0;
@@ -701,6 +757,7 @@ export default function ThreeBodyCanvas(props: Props) {
       if (p.onStats && w.frame % 12 === 0) {
         const ps = planetStatus(w.sys);
         p.onStats({
+          resetToken: p.resetToken,
           t: w.t,
           energy: totalEnergy(w.sys),
           separation: p.showTwin ? maxSeparation(w.sys, w.twin) : null,
@@ -711,6 +768,21 @@ export default function ThreeBodyCanvas(props: Props) {
           civilizations: w.civilizations,
           bodies: Array.from(w.sys.state.slice(0, 8)), // x0,y0,x1,y1,x2,y2,px,py
           spread: maxRadiusFromCOM(w.sys),
+          cosmosSnapshot: {
+            schemaVersion: 1,
+            presetKey: p.presetKey,
+            state: Array.from(w.sys.state),
+            masses: Array.from(w.sys.masses),
+            randomState: w.randomState,
+            respawnSequence: w.respawnSequence,
+            t: w.t,
+            viewR: w.viewR,
+            civilizations: w.civilizations,
+            extinct: w.extinct,
+            pendingCollapse: w.pendingCollapse,
+            fluxBase: w.fluxBase,
+            planetR: w.planetR,
+          },
         });
       }
 

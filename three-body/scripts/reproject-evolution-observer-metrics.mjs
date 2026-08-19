@@ -3,6 +3,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
+import { openSqliteRunReader } from './sqlite-run-reader.mjs';
+
 const [matrixArgument, outputArgument] = process.argv.slice(2);
 if (!matrixArgument || !outputArgument) {
   throw new Error('usage: reproject-evolution-observer-metrics MATRIX_JSON OUTPUT_JSON');
@@ -1177,7 +1179,7 @@ function observe(state) {
       actionPersonMonths.add(key);
       if (projectIntentIds.has(event.intentId)) projectActionPersonMonths.add(key);
     }
-    if (event.action?.kind === 'act' && event.action.operation === 'reproduce') {
+    if (event.status === 'completed' && event.action?.kind === 'act' && event.action.operation === 'reproduce') {
       reproductionAttempts += 1;
       if (event.diff?.conceived === true) reproductionConceptions += 1;
       continue;
@@ -1241,10 +1243,14 @@ const matrixPath = resolve(matrixArgument);
 const outputPath = resolve(outputArgument);
 const matrix = JSON.parse(await readFile(matrixPath, 'utf8'));
 const runs = [];
-for (const run of matrix.runs ?? []) {
-  const statePath = resolve('data/runs', run.runId, 'state.json');
-  const state = JSON.parse(await readFile(statePath, 'utf8'));
-  runs.push({ ...run, ...observe(state) });
+const sqliteReader = await openSqliteRunReader();
+try {
+  for (const run of matrix.runs ?? []) {
+    const { state } = await sqliteReader.store.load(run.runId);
+    runs.push({ ...run, ...observe(state) });
+  }
+} finally {
+  await sqliteReader.close();
 }
 const metricNames = [
   'actionPersonMonths', 'projectActionPersonMonths', 'projectActionMonthShare',
@@ -1289,7 +1295,7 @@ const result = {
   metricVersions: { ...(matrix.metricVersions ?? {}), behaviorObserver: 'causal-person-month-v13' },
   observerReprojection: {
     sourceMatrix: matrixPath,
-    method: 'Read saved project requirement/outcome, event, intent, and person facts only; do not use civilization indices, advance the simulation, or rewrite state.',
+    method: 'Read project requirement/outcome, event, intent, and person facts from the canonical SQLite state only; do not use civilization indices, advance the simulation, or rewrite state.',
   },
   aggregates,
   runs,

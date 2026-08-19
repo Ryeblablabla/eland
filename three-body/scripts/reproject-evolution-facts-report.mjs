@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { openSqliteRunReader, PROJECT_DIRECTORY } from './sqlite-run-reader.mjs';
+
 const [matrixArgument, outputArgument] = process.argv.slice(2);
 if (!matrixArgument || !outputArgument) {
   throw new Error('usage: reproject-evolution-facts-report MATRIX_JSON OUTPUT_JSON');
@@ -31,10 +33,11 @@ function numericSummary(values) {
 
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'eland-evolution-report-reprojection-'));
 const bundlePath = path.join(temporaryDirectory, 'evolution-report.mjs');
+const sqliteReader = await openSqliteRunReader();
 
 try {
-  const entry = `export { buildEvolutionFactsReport } from ${JSON.stringify(path.resolve('server/evolution-artifacts.ts'))};`;
-  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+  const entry = `export { buildEvolutionFactsReport } from ${JSON.stringify(path.join(PROJECT_DIRECTORY, 'server', 'evolution-artifacts.ts'))};`;
+  execFileSync(path.join(PROJECT_DIRECTORY, 'node_modules', '.bin', 'esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
     '--sourcefile=evolution-report-reprojection.ts', `--outfile=${bundlePath}`,
   ], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -45,9 +48,11 @@ try {
   const matrix = JSON.parse(await readFile(matrixPath, 'utf8'));
   const runs = [];
   for (const run of matrix.runs ?? []) {
-    const runDirectory = path.resolve('data/runs', run.runId);
-    const state = JSON.parse(await readFile(path.join(runDirectory, 'state.json'), 'utf8'));
-    const evolution = JSON.parse(await readFile(path.join(runDirectory, 'evolution.json'), 'utf8'));
+    const [{ state }, evolution] = await Promise.all([
+      sqliteReader.store.load(run.runId),
+      sqliteReader.store.loadEvolutionPath(run.runId),
+    ]);
+    if (!evolution) throw new Error(`SQLite 运行 ${run.runId} 缺少 evolution-path artifact`);
     const report = buildEvolutionFactsReport(state, evolution);
     runs.push({
       ...run,
@@ -86,7 +91,7 @@ try {
     generatedAt: new Date().toISOString(),
     observerReprojection: {
       sourceMatrix: matrixPath,
-      method: 'Rebuild the deterministic evolution facts report from saved state and evolution artifacts without advancing the simulation.',
+      method: 'Rebuild the deterministic evolution facts report from canonical SQLite state and evolution artifacts without advancing the simulation.',
     },
     aggregates,
     runs,
@@ -94,5 +99,9 @@ try {
   await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
   process.stdout.write(`reprojected ${runs.length} evolution reports to ${outputPath}\n`);
 } finally {
-  await rm(temporaryDirectory, { recursive: true, force: true });
+  try {
+    await sqliteReader.close();
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 }

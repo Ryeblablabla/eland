@@ -90,6 +90,74 @@ export interface AgentHistoryView {
   events: AgentHistoryItem[];
 }
 
+export type AgentConversationStance = 'answer' | 'consider' | 'accept' | 'decline';
+export type AgentConversationRequestKind = 'conversation' | 'suggestion';
+export type AgentConversationInfluenceStatus =
+  | 'none'
+  | 'queued'
+  | 'deferred'
+  | 'applied'
+  | 'completed'
+  | 'blocked'
+  | 'stale'
+  | 'pending'
+  | 'considered'
+  | 'failed';
+
+export interface AgentConversationTurn {
+  id: string;
+  clientMessageId: string;
+  agentId: string;
+  branchId: string;
+  requestedAtMonth: number;
+  completedAtMonth: number;
+  userMessage: string;
+  agentReply: string;
+  requestKind: AgentConversationRequestKind;
+  stance: AgentConversationStance;
+  /** 人物愿意在未来合法决策中重新考虑的稳定方向；不是已完成行动。 */
+  guidance?: string;
+  reason?: string;
+  grounding?: 'supported' | 'unknown' | 'opinion';
+  evidenceIds?: string[];
+  /** 人物在同一次对话中选定的合法方向；尚不等于行动已经发生。 */
+  choice?: {
+    optionId: string;
+    followUpOptionId?: string;
+    summary: string;
+    choiceKey: string;
+    reason: string;
+  };
+  influenceStatus: AgentConversationInfluenceStatus;
+  influenceOutcome?: {
+    atMonth: number;
+    summary: string;
+    detail?: string;
+    decisionEventId?: string;
+    intentId?: string;
+    actionEventIds?: string[];
+  };
+  model: {
+    endpointId: string;
+    protocol: 'openai-chat' | 'openai-responses' | 'anthropic-messages' | 'ollama-chat';
+    model: string;
+  };
+  usage: { inputTokens: number; outputTokens: number };
+}
+
+export interface AgentConversationView {
+  agentId: string;
+  branchId: string;
+  throughMonth: number;
+  model: {
+    configured: boolean;
+    endpointId?: string;
+    model?: string;
+    issue?: string;
+  };
+  turns: AgentConversationTurn[];
+}
+
 export interface DropView {
   id: string;
   materialId: number;
@@ -221,6 +289,24 @@ export interface SkySample {
   fate: EraKey;
 }
 
+/** 可恢复的三体宇宙物理快照；轨迹属于装饰层，不进入存档。 */
+export interface CosmosSnapshot {
+  schemaVersion: 1;
+  presetKey: string;
+  state: number[];
+  masses: number[];
+  /** 宇宙专用可序列化随机状态；保证读档后的下一次行星重生仍走同一路径。 */
+  randomState: number;
+  respawnSequence: number;
+  t: number;
+  viewR: number;
+  civilizations: number;
+  extinct: boolean;
+  pendingCollapse: 'burned' | 'frozen' | 'extinct' | null;
+  fluxBase: number;
+  planetR: number;
+}
+
 export interface GameFrame {
   runId: string;
   branchId: string;
@@ -229,10 +315,70 @@ export interface GameFrame {
   calendar: { year: number; month: number; label: string };
   universeTime: number;
   skySample: SkySample;
+  cosmosSnapshot?: CosmosSnapshot;
   society: SocietyState;
   civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones'; cause: string; summary: string } | null;
   entries: NarrativeEntryView[];
+  /**
+   * 已发生沟通的表层台词。它绑定权威 ActionFact，但只用于表现，
+   * 不参与知识、关系、记忆或后续规划；可选以兼容旧实时快照。
+   */
+  speechLines?: SpeechLineView[];
   speaker: string | null;
+}
+
+export type SpeechCommunicationKind = 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
+
+/**
+ * 规则动作授权给表达模型的话语行为。这里保存结构化语义，不保存可直接
+ * 显示的规则台词；details 只包含 RepresentationInput 中除 id / summary 外
+ * 的领域字段。
+ */
+export interface SpeechActView {
+  version: 'speech-act-v1';
+  kind: SpeechCommunicationKind;
+  subject?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface SpeechLineView {
+  id: string;
+  authority: 'projection-only';
+  sourceEventId: string;
+  sourceFactIds: string[];
+  month: number;
+  planningTick: number;
+  speakerId: string;
+  speakerName: string;
+  audienceIds: string[];
+  audienceNames: string[];
+  channel: 'voice';
+  communicationKind: SpeechCommunicationKind;
+  speechAct: SpeechActView;
+  text: string;
+  /** 可见台词只允许来自模型；旧快照中的 rule 来源由渲染层忽略。 */
+  source: 'decision-model' | 'speech-model';
+  endpointId?: string;
+  model?: string;
+}
+
+/** 玩家手动存档的轻量索引；权威会话快照只保存在后端。 */
+export interface ElandSaveSummary {
+  schemaVersion: 1;
+  stateSchemaVersion: 17;
+  id: string;
+  label: string;
+  createdAt: string;
+  updatedAt: string;
+  sourceRunId: string;
+  civilizationId: number;
+  branchId: string;
+  elapsedMonths: number;
+  calendarLabel: string;
+  worldSeed: number;
+  livingPeople: number;
+  stage: string;
+  ended: boolean;
 }
 
 export interface NarrativeEntryView {

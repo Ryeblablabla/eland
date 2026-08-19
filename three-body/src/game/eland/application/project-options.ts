@@ -42,7 +42,7 @@ import {
   type ProjectState,
 } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
-import { matureCropHarvestActions, worldEventById } from '../domain/event-index';
+import { worldEventById } from '../domain/event-index';
 import { applyRelationEvidence } from '../domain/relation';
 import { remember } from '../domain/memory';
 import {
@@ -59,6 +59,7 @@ import {
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { buildProjectPressureBasis, projectPressureReasonPresent, type ProjectPressureView } from './project-pressure';
+import { buildLocalMaterialEvidence } from './local-material-evidence';
 import {
   closeProjectHypothesisCampaign,
   nextProjectHypothesisCandidate,
@@ -220,6 +221,34 @@ function projectActionFacts(state: SimulationState, project: ProjectState): Acti
   });
 }
 
+const cultivationSurfaceMaterials = new Set<MaterialId>([
+  Material.CropSprout,
+  Material.CropMature,
+  Material.ExhaustedSoil,
+]);
+
+const plantableCultivationMaterials = new Set<MaterialId>([
+  Material.WetSoil,
+  Material.RichSoil,
+  Material.ExhaustedSoil,
+]);
+
+const harvestableSeedSourceMaterials = new Set<MaterialId>([
+  Material.BerryBush,
+  Material.CropMature,
+]);
+
+function projectCultivationCells(project: Pick<ProjectState, 'site'>): number[] {
+  return project.site ? cellsInRadius(project.site.cellId, 2) : [];
+}
+
+function projectCultivationHarvests(state: SimulationState, project: ProjectState): ActionFact[] {
+  return projectActionFacts(state, project).filter((event) => event.status === 'completed'
+    && event.action.kind === 'act'
+    && event.action.operation === 'separate'
+    && Number(event.diff.sourceMaterialId) === Material.CropMature);
+}
+
 function placedFunctionEvidence(state: SimulationState, project: ProjectState): ActionFact[] {
   const desired = new Set(placedFunctionMaterialIds(project));
   if (!desired.size) return [];
@@ -249,20 +278,19 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
       && record.knowledgeId === project.targetKnowledgeId));
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    const cultivatedMaterials = new Set<MaterialId>([
-      Material.CropSprout,
-      Material.CropMature,
-      Material.ExhaustedSoil,
-    ]);
-    const cultivated = Array.from({ length: state.world.grid.width * state.world.grid.depth }, (_, cellId) => cellId)
-      .filter((cellId) => cultivatedMaterials.has(surfaceMaterial(state.world.grid, cellId))).length;
-    const plantedByProject = projectActionFacts(state, project).some((event) => event.kind === 'action'
-      && event.status === 'completed'
-      && event.action.kind === 'act'
-      && event.action.operation === 'combine'
-      && Number(event.diff.outputMaterialId) === Material.CropSprout);
-    const harvests = matureCropHarvestActions(state).length;
-    return plantedByProject && cultivated >= 6 && harvests >= 2;
+    const plantedCells = projectActionFacts(state, project).flatMap((event) => {
+      if (event.kind !== 'action'
+        || event.status !== 'completed'
+        || event.action.kind !== 'act'
+        || event.action.operation !== 'combine'
+        || Number(event.diff.outputMaterialId) !== Material.CropSprout) return [];
+      const position = event.diff.position as { x?: unknown; y?: unknown } | undefined;
+      if (![position?.x, position?.y].every((value) => Number.isInteger(Number(value)))) return [];
+      return [Number(position?.x) + Number(position?.y) * state.world.grid.width];
+    });
+    const plantedByProject = new Set(plantedCells).size >= 6;
+    const harvests = projectCultivationHarvests(state, project).length;
+    return plantedByProject && harvests >= 2;
   }
   if (project.desiredFunction === 'reserve-storage') {
     return placedFunctionEvidence(state, project).some((event) => {
@@ -294,10 +322,9 @@ function completionEvidence(state: SimulationState, project: ProjectState): stri
       .flatMap((record) => record.sourceEventIds))];
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    return [...new Set([
-      ...projectActionFacts(state, project).filter((event) => event.status === 'completed').map((event) => event.id),
-      ...matureCropHarvestActions(state).map((event) => event.id),
-    ])];
+    return [...new Set(projectActionFacts(state, project)
+      .filter((event) => event.status === 'completed')
+      .map((event) => event.id))];
   }
   if (placedFunctionMaterialIds(project).length) return [...new Set([
     ...placedFunctionEvidence(state, project).map((event) => event.id),
@@ -3114,15 +3141,23 @@ function settledCultivationStep(
   project: ProjectState,
 ): ProjectStep | null {
   if (project.desiredFunction !== 'settled-cultivation') return null;
-  const cultivatedMaterials = new Set<MaterialId>([
-    Material.CropSprout,
-    Material.CropMature,
-    Material.ExhaustedSoil,
-  ]);
-  const cultivatedCells = Array.from({ length: state.world.grid.width * state.world.grid.depth }, (_, cellId) => cellId)
-    .filter((cellId) => cultivatedMaterials.has(surfaceMaterial(state.world.grid, cellId)));
-  const harvests = matureCropHarvestActions(state);
   const visible = new Set(visibleCellsFor(person));
+  if (!project.site) {
+    const anchor = [...visible]
+      .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId))
+        || plantableCultivationMaterials.has(surfaceMaterial(state.world.grid, cellId)))
+      .map((cellId) => ({
+        cellId,
+        position: topPosition(state.world.grid, cellId),
+        path: findStandingPath(state.world.grid, person.position, { cellId }),
+      }))
+      .filter((candidate) => candidate.path.length > 0)
+      .sort((left, right) => left.path.length - right.path.length || left.cellId - right.cellId)[0];
+    if (anchor) project.site = { cellId: anchor.cellId, z: anchor.position.z };
+  }
+  const cultivatedCells = projectCultivationCells(project)
+    .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId)));
+  const harvests = projectCultivationHarvests(state, project);
   const matureCell = cultivatedCells
     .filter((cellId) => visible.has(cellId) && surfaceMaterial(state.world.grid, cellId) === Material.CropMature)
     .map((cellId) => ({
@@ -3158,9 +3193,9 @@ function settledCultivationStep(
   if (cultivatedCells.length >= 6) return null;
   const seed = person.inventory.find((stack) => stack.materialId === Material.Seed && stack.quantity > 0);
   if (!seed) return null;
-  const plantable = new Set<MaterialId>([Material.WetSoil, Material.RichSoil, Material.ExhaustedSoil]);
-  const target = visibleCellsFor(person)
-    .filter((cellId) => plantable.has(surfaceMaterial(state.world.grid, cellId)))
+  const target = projectCultivationCells(project)
+    .filter((cellId) => visible.has(cellId)
+      && plantableCultivationMaterials.has(surfaceMaterial(state.world.grid, cellId)))
     .map((cellId) => ({
       cellId,
       position: topPosition(state.world.grid, cellId),
@@ -3174,7 +3209,7 @@ function settledCultivationStep(
   return {
     key: `settled-cultivation-plant-${target.cellId}-${seed.id}`,
     summary: closeEnough ? '把留存种子播入适合耕作的湿润土壤' : '带着种子前往适合耕作的湿润土壤',
-    reason: '人口和食物压力促使人物把偶然采集转变成固定地点上的可重复生产',
+    reason: '本人感知到食物压力，并把偶然采集转变成固定地点上的可重复生产',
     action: closeEnough
       ? {
         kind: 'act', operation: 'combine',
@@ -3250,6 +3285,10 @@ function compileProjectWorkStep(
     const known = compileKnownOutput(state, person, visibleDrops, output, project.summary);
     if (known) return known;
   }
+  // Cultivation already has a complete physical loop. When the anchored field
+  // is waiting for moisture or growth, there is no unknown recipe to guess.
+  // Returning null lets the outer compiler source a missing seed, or wait.
+  if (project.desiredFunction === 'settled-cultivation') return null;
   const pendingSubassembly = [
     'efficient-production', 'community-coordination', 'reserve-storage',
     'reliable-water', 'crop-processing', 'high-heat-processing',
@@ -3735,20 +3774,19 @@ function deriveProjectProposals(
     targetKnowledgeId: durableKnowledge.id,
   }, pressureView, knowledgeBasis));
 
-  const observedMaterials = new Set<MaterialId>([
-    ...person.inventory.filter((stack) => stack.quantity > 0).map((stack) => stack.materialId),
-    ...visiblePeople.flatMap((candidate) => candidate.inventory
-      .filter((stack) => stack.quantity > 0)
-      .map((stack) => stack.materialId)),
-    ...visibleDrops.map((drop) => drop.materialId),
-    ...visibleCells.map((cellId) => surfaceMaterial(state.world.grid, cellId)),
-    ...person.knownPlaces.map((place) => place.materialId),
-  ]);
-  const hasObserved = (...materialIds: MaterialId[]) => materialIds.some((materialId) => observedMaterials.has(materialId));
+  const materialEvidence = buildLocalMaterialEvidence(state, person, { visibleCells, visibleDrops, visiblePeople });
+  const hasObserved = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
+    materialEvidence.observedMaterialIds.has(materialId)
+  ));
   const hasOwn = (...materialIds: MaterialId[]) => materialIds.some((materialId) => inventoryQuantity(person, materialId) > 0);
   const ownsAll = (...materialIds: MaterialId[]) => materialIds.every((materialId) => inventoryQuantity(person, materialId) > 0);
-  const hasFacility = (...materialIds: MaterialId[]) => materialIds.some((materialId) => observedMaterials.has(materialId));
-  const visiblePopulation = visiblePeople.filter(isAlive).length + 1;
+  const hasObservedFacility = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
+    materialHas(materialId, 'facility') && materialEvidence.observedMaterialIds.has(materialId)
+  ));
+  const hasFacility = (...materialIds: MaterialId[]) => hasObservedFacility(...materialIds);
+  const completedJointProjects = state.projects.filter((project) => project.status === 'completed'
+    && project.contributorIds.includes(person.id)
+    && project.contributorIds.some((personId) => personId !== person.id));
   const pushDevelopmentProposal = (
     need: ProjectNeed,
     desiredFunction: ProjectFunction,
@@ -3764,8 +3802,20 @@ function deriveProjectProposals(
       && completedOutputStillObserved
       && state.projects.some((project) => project.status === 'completed'
         && project.desiredFunction === desiredFunction)) return;
-    if (state.projects.some((project) => project.status === 'active'
-      && project.desiredFunction === desiredFunction)) return;
+    const visiblePendingFacility = kind === 'construction'
+      && completedFunctionMaterialIds({ desiredFunction })
+        .filter((materialId) => materialHas(materialId, 'facility'))
+        .some((materialId) => visiblePeople.some((candidate) => inventoryQuantity(candidate, materialId) > 0));
+    if (visiblePendingFacility) return;
+    const duplicateActiveProject = state.projects.some((project) => {
+      if (project.status !== 'active' || project.desiredFunction !== desiredFunction) return false;
+      if (desiredFunction !== 'settled-cultivation') return true;
+      if (!site || !project.site) return false;
+      const distance = Math.abs(cellX(site.cellId) - cellX(project.site.cellId))
+        + Math.abs(cellY(site.cellId) - cellY(project.site.cellId));
+      return distance <= 4;
+    });
+    if (duplicateActiveProject) return;
     const subject = { need, desiredFunction, beneficiaryIds: [person.id], createdAtMonth: proposalMonth };
     const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
     if (basis.pressure < 42) return;
@@ -3780,12 +3830,47 @@ function deriveProjectProposals(
     }, pressureView, basis));
   };
 
+  // Pressure below still distinguishes personal access from observation. At
+  // proposal time, however, an eye-visible tool is enough to avoid opening a
+  // second identical project in the same locality; once people separate, the
+  // observer can still start a personal tool project without a population gate.
   const hasProductionTool = hasObserved(Material.WoodTool, Material.StoneHoe, Material.BronzeTool, Material.IronTool);
+  const cultivationSite = visibleCells
+    .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId))
+      || plantableCultivationMaterials.has(surfaceMaterial(state.world.grid, cellId)))
+    .map((cellId) => ({
+      cellId,
+      position: topPosition(state.world.grid, cellId),
+      path: findStandingPath(state.world.grid, person.position, { cellId }),
+      established: cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId)),
+    }))
+    .filter((candidate) => candidate.path.length > 0)
+    .sort((left, right) => Number(right.established) - Number(left.established)
+      || left.path.length - right.path.length
+      || left.cellId - right.cellId)[0];
+  const hasAccessibleSeedSource = hasOwn(Material.Seed)
+    || visibleDrops.some((drop) => drop.materialId === Material.Seed && drop.quantity > 0)
+    || visibleCells.some((cellId) => harvestableSeedSourceMaterials
+      .has(surfaceMaterial(state.world.grid, cellId)))
+    || person.knownPlaces.some((place) => harvestableSeedSourceMaterials.has(place.materialId)
+      && voxelAt(state.world.grid, place.position.x, place.position.y, place.position.z) === place.materialId);
+  const accessibleStorableUnits = [
+    ...person.inventory.filter((stack) => stack.quantity > 0
+      && (materialHas(stack.materialId, 'edible') || materialHas(stack.materialId, 'seed'))),
+    ...visibleDrops.filter((drop) => drop.quantity > 0
+      && (materialHas(drop.materialId, 'edible') || materialHas(drop.materialId, 'seed'))),
+  ].reduce((sum, stack) => sum + stack.quantity, 0);
+  const reserveWeatherRisk = state.civilization.weather.kind === 'storm'
+    || state.civilization.climate.severity >= 3;
+  const cultivationCellCount = cultivationSite
+    ? projectCultivationCells({ site: { cellId: cultivationSite.cellId, z: cultivationSite.position.z } })
+      .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId))).length
+    : 0;
   pushDevelopmentProposal(
     'production-efficiency',
     'efficient-production',
-    '用专门工具缓解人口增长造成的食物与采集压力',
-    visiblePopulation >= 4 && !hasProductionTool
+    '用专门工具缓解本人反复感知到的食物与采集压力',
+    !hasProductionTool
       && hasObserved(Material.Leaves, Material.Shrub, Material.Wood, Material.Fiber, Material.Rope, Material.Plank),
   );
   pushDevelopmentProposal(
@@ -3799,16 +3884,16 @@ function deriveProjectProposals(
   pushDevelopmentProposal(
     'reserve-security',
     'reserve-storage',
-    '建立公共谷仓，应对人口增长与坏天气造成的储备波动',
-    visiblePopulation >= 5 && !hasFacility(Material.Granary)
+    '建立公共谷仓，保存眼前余粮并应对坏天气造成的储备波动',
+    (accessibleStorableUnits >= 2 || reserveWeatherRisk) && !hasFacility(Material.Granary)
       && hasObserved(Material.Leaves, Material.Wood, Material.Plank, Material.Container),
     'construction',
   );
   pushDevelopmentProposal(
     'water-security',
     'reliable-water',
-    '修建蓄水设施，降低干热天气和人口聚集带来的缺水风险',
-    visiblePopulation >= 5 && !hasFacility(Material.Cistern)
+    '修建蓄水设施，降低本人感知到的干热与缺水风险',
+    !hasFacility(Material.Cistern)
       && hasObserved(Material.Stone)
       && hasObserved(Material.Leaves, Material.Wood, Material.Plank, Material.Container),
     'construction',
@@ -3816,10 +3901,12 @@ function deriveProjectProposals(
   pushDevelopmentProposal(
     'production-efficiency',
     'settled-cultivation',
-    '建立固定耕地，以播种、成熟、收获和留种循环缓解人口增长带来的食物压力',
-    visiblePopulation >= 4
-      && hasObserved(Material.BerryBush, Material.Seed, Material.CropMature)
-      && (state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0) < 6,
+    '建立固定耕地，以播种、成熟、收获和留种循环缓解本人感知到的食物压力',
+    Boolean(cultivationSite)
+      && hasAccessibleSeedSource
+      && cultivationCellCount < 6,
+    'production',
+    cultivationSite ? { cellId: cultivationSite.cellId, z: cultivationSite.position.z } : undefined,
   );
   pushDevelopmentProposal(
     'production-efficiency',
@@ -3832,8 +3919,9 @@ function deriveProjectProposals(
   pushDevelopmentProposal(
     'coordination-capacity',
     'community-coordination',
-    '建立议事火塘，让共同项目、分配与记忆有固定场所',
-    visiblePopulation >= 5 && !hasFacility(Material.CouncilHearth, Material.CivicHall, Material.KeepCore)
+    '把已经发生的共同项目、分配与记忆安置到固定议事场所',
+    completedJointProjects.length > 0
+      && !hasFacility(Material.CouncilHearth, Material.CivicHall, Material.KeepCore)
       && hasObserved(Material.Leaves, Material.Shrub, Material.Wood, Material.Fiber, Material.Plank, Material.Rope),
     'construction',
   );
@@ -3843,14 +3931,14 @@ function deriveProjectProposals(
     'high-heat-processing',
     '用黏土和石料建立窑炉，获得比露天火堆更稳定的高温',
     hasObserved(Material.Clay) && hasObserved(Material.Stone)
-      && !hasFacility(Material.Kiln, Material.Foundry, Material.Smithy),
+      && !hasObservedFacility(Material.Kiln, Material.Foundry, Material.Smithy),
     'construction',
   );
   pushDevelopmentProposal(
     'high-heat-capability',
     'brick-firing',
     '在固定窑炉中反复烧制砖料，为更复杂建筑准备耐火材料',
-    hasOwn(Material.Clay) && hasFacility(Material.Kiln, Material.Foundry),
+    hasOwn(Material.Clay) && hasObservedFacility(Material.Kiln, Material.Foundry),
   );
   const metallurgySite = knownFacilitySite(state, person);
   pushDevelopmentProposal('alloy-capability', 'copper-charge', '在固定窑炉汇合铜矿与木炭，配成可冶炼的铜料',
@@ -3869,7 +3957,7 @@ function deriveProjectProposals(
     'alloy-capability',
     'bronze-workshop',
     '建立铸造场，把偶然的青铜样品变成可分工复现的生产能力',
-    Boolean(metallurgySite && hasObserved(Material.Bronze) && hasObserved(Material.Stone) && !hasFacility(Material.Foundry)),
+    Boolean(metallurgySite && hasObserved(Material.Bronze) && hasObserved(Material.Stone) && !hasObservedFacility(Material.Foundry)),
     'construction',
     metallurgySite,
   );
@@ -3887,13 +3975,13 @@ function deriveProjectProposals(
     'iron-workshop',
     '建立铁匠铺，以青铜经验和耐火砖跨过铁器高温门槛',
     hasObserved(Material.Bronze, Material.BronzeTool) && ownsAll(Material.Bronze, Material.FiredBrick)
-      && !hasFacility(Material.Smithy),
+      && !hasObservedFacility(Material.Smithy),
     'construction',
   );
   pushDevelopmentProposal('iron-capability', 'iron-charge', '把铁矿与木炭配成可还原的铁料',
-    ownsAll(Material.IronOre, Material.Charcoal) && hasFacility(Material.Smithy));
+    ownsAll(Material.IronOre, Material.Charcoal) && hasObservedFacility(Material.Smithy));
   pushDevelopmentProposal('iron-capability', 'iron-reduction', '在铁匠铺中把铁料还原成海绵铁',
-    hasOwn(Material.IronCharge) && hasFacility(Material.Smithy));
+    hasOwn(Material.IronCharge) && hasObservedFacility(Material.Smithy));
   pushDevelopmentProposal('iron-capability', 'iron-working', '反复加热和锤炼海绵铁，得到可用铁料',
     ownsAll(Material.IronBloom, Material.Charcoal));
   pushDevelopmentProposal('iron-capability', 'iron-tooling', '锻造铁制生产工具，缓解更大人口的持续资源压力',

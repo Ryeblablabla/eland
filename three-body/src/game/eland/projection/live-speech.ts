@@ -1,0 +1,119 @@
+import type { SpeechActView, SpeechLineView } from '../../societyContract';
+import type { SimulationState, WorldEvent } from '../simulation';
+import { speechActFromRepresentation } from './speech-act';
+
+type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
+type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
+
+export interface SpeechLineDraft extends Omit<SpeechLineView, 'speechAct' | 'text' | 'source' | 'endpointId' | 'model'> {
+  speechAct: SpeechActView;
+  modelText?: string;
+}
+
+function cleanModelText(value: string, max = 120): string {
+  return value
+    .trim()
+    .replace(/^(["'“”]+)|(["'“”]+)$/gu, '')
+    .replace(/\s+/gu, ' ')
+    .slice(0, max)
+    .trim();
+}
+
+function modelDecisionFor(
+  event: ActionEvent,
+  decisions: DecisionEvent[],
+  usedDecisionIds: Set<string>,
+  sourceDecisionEventId?: string,
+): DecisionEvent | undefined {
+  if (!event.intentId || !sourceDecisionEventId) return undefined;
+  return [...decisions].reverse().find((decision) => (
+    !usedDecisionIds.has(decision.id)
+      && decision.id === sourceDecisionEventId
+      && decision.intentId === event.intentId
+      && decision.orderInMonth <= event.orderInMonth
+      && decision.usedModel
+      && (decision.decision.kind === 'start' || decision.decision.kind === 'revise')
+      && Boolean(decision.decision.utterance?.trim())
+  ));
+}
+
+function referencedFactSources(state: SimulationState, event: ActionEvent): string[] {
+  if (event.action.kind !== 'communicate') return [];
+  const content = event.action.content;
+  if (content.kind !== 'accept' && content.kind !== 'reject' && content.kind !== 'revoke-agreement') return [];
+  const referenceId = content.referenceId;
+  const referencedAction = [...state.world.past].reverse().find((candidate): candidate is ActionEvent => (
+    candidate.kind === 'action'
+      && candidate.id !== event.id
+      && candidate.action.kind === 'communicate'
+      && candidate.action.content.id === referenceId
+  ));
+  if (referencedAction) return [referencedAction.id];
+  return state.agreements.find((agreement) => agreement.id === referenceId)?.sourceEventIds ?? [];
+}
+
+/**
+ * Project each completed spoken communication into a model-expression draft.
+ * The draft has no rule-authored display text and never mutates the ActionFact.
+ */
+export function projectLiveSpeechDrafts(
+  state: SimulationState,
+  events: WorldEvent[],
+): SpeechLineDraft[] {
+  const decisions = events.filter((event): event is DecisionEvent => event.kind === 'decision');
+  const usedDecisionIds = new Set<string>();
+  return events.flatMap((event): SpeechLineDraft[] => {
+    if (event.kind !== 'action'
+      || event.status !== 'completed'
+      || event.action.kind !== 'communicate'
+      || event.action.channel !== 'voice'
+      || event.action.audience.length === 0) return [];
+
+    const speaker = state.people.find((person) => person.id === event.who);
+    if (!speaker) return [];
+    const audience = event.action.audience.flatMap((personId) => {
+      const person = state.people.find((candidate) => candidate.id === personId);
+      return person ? [{ id: person.id, name: person.name }] : [];
+    });
+    if (!audience.length) return [];
+
+    const intent = event.intentId
+      ? state.intents.find((candidate) => candidate.id === event.intentId)
+      : undefined;
+    const decision = modelDecisionFor(event, decisions, usedDecisionIds, intent?.sourceDecisionEventId);
+    if (decision) usedDecisionIds.add(decision.id);
+    const decisionText = decision
+      && (decision.decision.kind === 'start' || decision.decision.kind === 'revise')
+      ? decision.decision.utterance
+      : undefined;
+    const conversationSources = event.action.content.kind === 'claim'
+      ? event.action.content.conversation?.sourceFactIds ?? []
+      : [];
+    const communicatedFactId = event.action.content.kind === 'claim' ? event.action.content.factId : undefined;
+    const communicatedFactSources = communicatedFactId
+      ? speaker.knowledge.find((fact) => fact.id === communicatedFactId)?.sourceEventIds ?? []
+      : [];
+
+    return [{
+      id: `speech:${state.branchId}:${event.id}`,
+      authority: 'projection-only',
+      sourceEventId: event.id,
+      sourceFactIds: [...new Set([
+        ...referencedFactSources(state, event),
+        ...communicatedFactSources,
+        ...conversationSources,
+        ...(intent?.sourceFactIds ?? []),
+      ])],
+      month: event.atMonth,
+      planningTick: event.planningTick ?? event.actionTick,
+      speakerId: speaker.id,
+      speakerName: speaker.name,
+      audienceIds: audience.map((person) => person.id),
+      audienceNames: audience.map((person) => person.name),
+      channel: 'voice',
+      communicationKind: event.action.content.kind,
+      speechAct: speechActFromRepresentation(event.action.content),
+      ...(decisionText && cleanModelText(decisionText) ? { modelText: cleanModelText(decisionText) } : {}),
+    }];
+  });
+}

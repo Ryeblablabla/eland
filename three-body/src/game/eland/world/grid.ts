@@ -29,10 +29,41 @@ interface SpatialCache {
   paths: Map<string, Int32Array>;
 }
 
+interface VoxelWorldRevisionState {
+  revision: number;
+  cellRevisions: Float64Array;
+}
+
 const spatialCaches = new WeakMap<VoxelWorld, SpatialCache>();
+const voxelWorldRevisions = new WeakMap<VoxelWorld, VoxelWorldRevisionState>();
 // A 50-person planning month can compile several thousand distinct routes.
 // Keep the month-local cache from clearing itself midway through compilation.
 const MAX_CACHED_PATHS = 8_192;
+
+interface StandingPathScratch {
+  generation: number;
+  touchedAt: Uint32Array;
+  cameFrom: Int32Array;
+  gScore: Float64Array;
+  fScore: Float64Array;
+  heap: Int32Array;
+  heapPosition: Int32Array;
+  heapSize: number;
+}
+
+// Path searches are synchronous, so one module-local workspace can be reused safely.
+// Generation stamps make an untouched score behave like Infinity without clearing all
+// 52,416 entries before every route compilation.
+const standingPathScratch: StandingPathScratch = {
+  generation: 0,
+  touchedAt: new Uint32Array(WORLD_VOXEL_COUNT),
+  cameFrom: new Int32Array(WORLD_VOXEL_COUNT),
+  gScore: new Float64Array(WORLD_VOXEL_COUNT),
+  fScore: new Float64Array(WORLD_VOXEL_COUNT),
+  heap: new Int32Array(WORLD_VOXEL_COUNT),
+  heapPosition: new Int32Array(WORLD_VOXEL_COUNT),
+  heapSize: 0,
+};
 
 function spatialCache(world: VoxelWorld): SpatialCache {
   let cache = spatialCaches.get(world);
@@ -73,11 +104,38 @@ export function setVoxel(world: VoxelWorld, x: number, y: number, z: number, mat
   const index = voxelIndex(x, y, z);
   if (world.voxels[index] === materialId) return;
   world.voxels[index] = materialId;
+  let revisionState = voxelWorldRevisions.get(world);
+  if (!revisionState) {
+    revisionState = { revision: 0, cellRevisions: new Float64Array(WORLD_CELL_COUNT) };
+    voxelWorldRevisions.set(world, revisionState);
+  }
+  revisionState.revision += 1;
+  revisionState.cellRevisions[cellId(x, y)] = revisionState.revision;
   const cache = spatialCaches.get(world);
   if (cache) {
     cache.standingZByCell[cellId(x, y)] = undefined;
     cache.paths.clear();
   }
+}
+
+export function voxelWorldRevision(world: VoxelWorld): number {
+  return voxelWorldRevisions.get(world)?.revision ?? 0;
+}
+
+export function voxelWorldChangedCellsSince(world: VoxelWorld, revision: number): number[] {
+  if (!Number.isFinite(revision) || revision <= 0) {
+    return Array.from({ length: WORLD_CELL_COUNT }, (_, id) => id);
+  }
+  const revisionState = voxelWorldRevisions.get(world);
+  // A hydrated/copied world starts a new identity at revision zero. A positive
+  // revision from another identity cannot safely be compared with it.
+  if (!revisionState) return Array.from({ length: WORLD_CELL_COUNT }, (_, id) => id);
+  if (revision >= revisionState.revision) return [];
+  const changed: number[] = [];
+  for (let id = 0; id < WORLD_CELL_COUNT; id += 1) {
+    if (revisionState.cellRevisions[id] > revision) changed.push(id);
+  }
+  return changed;
 }
 
 export function topZ(world: VoxelWorld, id: number): number {
@@ -265,6 +323,88 @@ function standingHeuristic(position: StandingPosition, goals: StandingPosition[]
       + Math.abs(position.z - goal.z)), Number.POSITIVE_INFINITY);
 }
 
+function beginStandingPathSearch(): StandingPathScratch {
+  const nextGeneration = (standingPathScratch.generation + 1) >>> 0;
+  if (nextGeneration === 0) {
+    standingPathScratch.touchedAt.fill(0);
+    standingPathScratch.generation = 1;
+  } else {
+    standingPathScratch.generation = nextGeneration;
+  }
+  standingPathScratch.heapSize = 0;
+  return standingPathScratch;
+}
+
+function touchStandingPathIndex(scratch: StandingPathScratch, index: number): void {
+  if (scratch.touchedAt[index] === scratch.generation) return;
+  scratch.touchedAt[index] = scratch.generation;
+  scratch.cameFrom[index] = -1;
+  scratch.gScore[index] = Number.POSITIVE_INFINITY;
+  scratch.fScore[index] = Number.POSITIVE_INFINITY;
+  scratch.heapPosition[index] = -1;
+}
+
+function standingHeapPrecedes(scratch: StandingPathScratch, firstIndex: number, secondIndex: number): boolean {
+  const firstScore = scratch.fScore[firstIndex];
+  const secondScore = scratch.fScore[secondIndex];
+  return firstScore < secondScore || (firstScore === secondScore && firstIndex < secondIndex);
+}
+
+function swapStandingHeapEntries(scratch: StandingPathScratch, firstPosition: number, secondPosition: number): void {
+  const firstIndex = scratch.heap[firstPosition];
+  const secondIndex = scratch.heap[secondPosition];
+  scratch.heap[firstPosition] = secondIndex;
+  scratch.heap[secondPosition] = firstIndex;
+  scratch.heapPosition[firstIndex] = secondPosition;
+  scratch.heapPosition[secondIndex] = firstPosition;
+}
+
+function bubbleStandingHeapUp(scratch: StandingPathScratch, initialPosition: number): void {
+  let position = initialPosition;
+  while (position > 0) {
+    const parent = Math.floor((position - 1) / 2);
+    if (!standingHeapPrecedes(scratch, scratch.heap[position], scratch.heap[parent])) return;
+    swapStandingHeapEntries(scratch, position, parent);
+    position = parent;
+  }
+}
+
+function pushOrDecreaseStandingHeap(scratch: StandingPathScratch, index: number): void {
+  const existingPosition = scratch.heapPosition[index];
+  if (existingPosition >= 0) {
+    bubbleStandingHeapUp(scratch, existingPosition);
+    return;
+  }
+  const position = scratch.heapSize;
+  scratch.heapSize += 1;
+  scratch.heap[position] = index;
+  scratch.heapPosition[index] = position;
+  bubbleStandingHeapUp(scratch, position);
+}
+
+function popStandingHeap(scratch: StandingPathScratch): number {
+  const result = scratch.heap[0];
+  scratch.heapSize -= 1;
+  scratch.heapPosition[result] = -1;
+  if (scratch.heapSize === 0) return result;
+  const replacement = scratch.heap[scratch.heapSize];
+  scratch.heap[0] = replacement;
+  scratch.heapPosition[replacement] = 0;
+  let position = 0;
+  while (true) {
+    const left = position * 2 + 1;
+    if (left >= scratch.heapSize) break;
+    const right = left + 1;
+    let best = left;
+    if (right < scratch.heapSize
+      && standingHeapPrecedes(scratch, scratch.heap[right], scratch.heap[left])) best = right;
+    if (!standingHeapPrecedes(scratch, scratch.heap[best], scratch.heap[position])) break;
+    swapStandingHeapEntries(scratch, position, best);
+    position = best;
+  }
+  return result;
+}
+
 /**
  * 在真正可容纳身体的空气体素间寻路。人物能沿水平相邻格上下一级，不能穿过屋顶或实心柱。
  */
@@ -283,42 +423,33 @@ export function findStandingPath(
   if (goals.some((candidate) => sameStandingPosition(candidate, start))) return rememberPath(cache, cacheKey, [{ ...start }]);
   const goalIndexes = new Set(goals.map(standingIndex));
   const startIndex = standingIndex(start);
-  const open = new Set<number>([startIndex]);
-  const cameFrom = new Int32Array(WORLD_VOXEL_COUNT).fill(-1);
-  const gScore = new Float64Array(WORLD_VOXEL_COUNT).fill(Number.POSITIVE_INFINITY);
-  const fScore = new Float64Array(WORLD_VOXEL_COUNT).fill(Number.POSITIVE_INFINITY);
-  gScore[startIndex] = 0;
-  fScore[startIndex] = standingHeuristic(start, goals);
-  while (open.size) {
-    let currentIndex = -1;
-    let best = Number.POSITIVE_INFINITY;
-    for (const candidate of open) {
-      const score = fScore[candidate];
-      if (score < best || (score === best && (currentIndex < 0 || candidate < currentIndex))) {
-        currentIndex = candidate;
-        best = score;
-      }
-    }
+  const scratch = beginStandingPathSearch();
+  touchStandingPathIndex(scratch, startIndex);
+  scratch.gScore[startIndex] = 0;
+  scratch.fScore[startIndex] = standingHeuristic(start, goals);
+  pushOrDecreaseStandingHeap(scratch, startIndex);
+  while (scratch.heapSize > 0) {
+    let currentIndex = popStandingHeap(scratch);
     if (goalIndexes.has(currentIndex)) {
       const path = [positionFromStandingIndex(currentIndex)];
-      while (cameFrom[currentIndex] >= 0) {
-        currentIndex = cameFrom[currentIndex];
+      while (scratch.cameFrom[currentIndex] >= 0) {
+        currentIndex = scratch.cameFrom[currentIndex];
         path.push(positionFromStandingIndex(currentIndex));
       }
       return rememberPath(cache, cacheKey, path.reverse());
     }
-    open.delete(currentIndex);
     const current = positionFromStandingIndex(currentIndex);
     for (const nextCell of neighbors4(current.cellId)) {
       for (const next of standingPositions(world, nextCell)) {
         if (Math.abs(next.z - current.z) > 1) continue;
         const nextIndex = standingIndex(next);
-        const tentative = gScore[currentIndex] + standingMovementCost(world, current, next);
-        if (tentative >= gScore[nextIndex]) continue;
-        cameFrom[nextIndex] = currentIndex;
-        gScore[nextIndex] = tentative;
-        fScore[nextIndex] = tentative + standingHeuristic(next, goals);
-        open.add(nextIndex);
+        touchStandingPathIndex(scratch, nextIndex);
+        const tentative = scratch.gScore[currentIndex] + standingMovementCost(world, current, next);
+        if (tentative >= scratch.gScore[nextIndex]) continue;
+        scratch.cameFrom[nextIndex] = currentIndex;
+        scratch.gScore[nextIndex] = tentative;
+        scratch.fScore[nextIndex] = tentative + standingHeuristic(next, goals);
+        pushOrDecreaseStandingHeap(scratch, nextIndex);
       }
     }
   }

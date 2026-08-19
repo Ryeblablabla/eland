@@ -11,11 +11,13 @@ const bundlePath = path.join(temporaryDirectory, 'decision-factor-forest.mjs');
 try {
   const entry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
-    export { buildDecisionContext } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
+    export { buildDecisionContext, recompileNextAction } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
     export { evaluateDecisionOption } from ${JSON.stringify(path.resolve('src/game/eland/application/decision-factor-forest.ts'))};
     export { RulePlanner } from ${JSON.stringify(path.resolve('src/game/eland/application/rule-planner.ts'))};
     export { composeIntentChoice } from ${JSON.stringify(path.resolve('src/game/eland/domain/intent.ts'))};
     export { optionAllowedForLifeStage } from ${JSON.stringify(path.resolve('src/game/eland/application/age-planning.ts'))};
+    export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
+    export { cellX, cellY, neighbors4, setVoxel, voxelAt } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -26,8 +28,15 @@ try {
     composeIntentChoice,
     createInitialState,
     evaluateDecisionOption,
+    Material,
+    cellX,
+    cellY,
+    neighbors4,
     optionAllowedForLifeStage,
+    recompileNextAction,
     RulePlanner,
+    setVoxel,
+    voxelAt,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(260616014, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
@@ -56,6 +65,48 @@ try {
   assert.deepEqual(first, second, '同种子、同事实、同刻度的因子投票必须完全确定');
   assert.ok(first.votes.some((item) => item.tree === 'need' && item.score > 0));
   assert.ok(first.causalScore > evaluateDecisionOption(context, noMotive, moment).causalScore, '真实身体缺口必须高于无来源空动作');
+
+  const reserveState = createInitialState(814, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  const reserveKeeper = reserveState.people[0];
+  reserveKeeper.bornAtMonth = -20 * 12;
+  reserveKeeper.body.nutrition = 80;
+  reserveKeeper.inventory = [{ id: 'surplus-food', materialId: Material.Food, quantity: 2, sourceEventIds: ['gathered-surplus'] }];
+  reserveState.world.drops = [];
+  const granaryPosition = neighbors4(reserveKeeper.position.cellId).map((cellId) => ({
+    cellId,
+    x: cellX(cellId),
+    y: cellY(cellId),
+    z: reserveKeeper.position.z,
+  })).find((position) => voxelAt(reserveState.world.grid, position.x, position.y, position.z) === Material.Air
+    && voxelAt(reserveState.world.grid, position.x, position.y, position.z - 1) !== Material.Air);
+  assert.ok(granaryPosition, '测试人物附近必须存在可放置谷仓的位置');
+  setVoxel(reserveState.world.grid, granaryPosition.x, granaryPosition.y, granaryPosition.z, Material.Granary);
+  const granary = {
+    id: `test-granary:${granaryPosition.x}:${granaryPosition.y}:${granaryPosition.z}`,
+    position: { x: granaryPosition.x, y: granaryPosition.y, z: granaryPosition.z },
+    inventory: [], createdAtMonth: 0, sourceEventIds: ['built-granary'], capacity: 96,
+  };
+  reserveState.containers = [granary];
+  const reserveContext = buildDecisionContext(reserveState, reserveKeeper);
+  const reserveDeposit = reserveContext.options.find((option) => option.id.startsWith(`store-container:${granary.id}:`));
+  assert.ok(reserveDeposit, '身体安全且持有两份食物的人应能形成眼前谷仓的余粮候选');
+  const recompiledDeposit = recompileNextAction(reserveState, reserveKeeper, {
+    id: 'ordinary-store-intent', ownerId: reserveKeeper.id, summary: '存入余粮', domain: 'strategic',
+    goal: { kind: 'container-inventory-at-least', containerId: granary.id, materialId: Material.Food, quantity: 20 },
+    nextAction: reserveDeposit.nextAction, target: { kind: 'container', containerId: granary.id },
+    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
+    sourceFactIds: ['gathered-surplus'], actionEventIds: [], replanCount: 0,
+  });
+  assert.equal(recompiledDeposit?.kind, 'transfer');
+  assert.equal(recompiledDeposit?.kind === 'transfer' ? recompiledDeposit.quantity : 0, 1, '普通存粮意图重编译后仍必须保留一份私粮');
+  reserveKeeper.inventory[0].quantity = 1;
+  assert.equal(recompileNextAction(reserveState, reserveKeeper, {
+    id: 'unsafe-store-intent', ownerId: reserveKeeper.id, summary: '存入最后一份', domain: 'strategic',
+    goal: { kind: 'container-inventory-at-least', containerId: granary.id, materialId: Material.Food, quantity: 20 },
+    nextAction: reserveDeposit.nextAction, target: { kind: 'container', containerId: granary.id },
+    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
+    sourceFactIds: ['gathered-surplus'], actionEventIds: [], replanCount: 0,
+  }), null, '普通存粮意图不得在抵达后拿走最后一份私粮');
 
   const emptyContext = { ...context, options: [noMotive], followUpOptions: [] };
   const decision = new RulePlanner().decideAt(emptyContext, moment);

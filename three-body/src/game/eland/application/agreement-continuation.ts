@@ -1,5 +1,5 @@
 import type { FactPredicate, PrimitiveAction, WorldRef } from '../domain/action';
-import { agreementById } from '../domain/agreement';
+import { agreementById, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
 import { materialHas } from '../domain/material';
 import type { SimulationState } from '../domain/model';
 import { sameLocation, type PersonId, type PersonState } from '../domain/person';
@@ -115,6 +115,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
     const responder = state.people.find((person) => person.id === agreement.responderId);
     const proposer = state.people.find((person) => person.id === agreement.proposerId);
     if (!responder || !proposer) return [];
+    if (reproductionAttemptedBetweenInMonth(state, responder.id, proposer.id, state.clock.elapsedMonths)) return [];
     const female = responder.sex === 'female' ? responder : proposer.sex === 'female' ? proposer : undefined;
     return [{
       agreementId: agreement.id,
@@ -122,7 +123,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
       summary: `履行与${proposer.name}共同接受的生殖尝试`,
       goal: female ? { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true } : { kind: 'near-person', personId: proposer.id },
       nextAction: sameLocation(responder, proposer)
-        ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: proposer.id }] }
+        ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: proposer.id }], authorizationRef: agreement.id }
         : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
       target: { kind: 'person', personId: proposer.id },
       sourceFactIds,

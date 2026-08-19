@@ -39,6 +39,7 @@
   "routes": {
     "narrative": "lan-qwen",
     "decision": "kimi",
+    "interaction": "kimi",
     "strategy": "lan-qwen"
   },
   "strategies": {

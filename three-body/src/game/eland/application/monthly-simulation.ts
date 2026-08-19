@@ -72,7 +72,10 @@ import {
   isRequiredSocialOption,
   RulePlanner,
 } from './rule-planner';
-import { optionAllowedForLifeStage } from './age-planning';
+import {
+  optionAllowedForLifeStage,
+  ordinaryLearningChildActionAllowed,
+} from './age-planning';
 import { lifePlanningStage } from '../domain/life-stage';
 import { FOUNDER_INITIAL_RELATION } from '../domain/relation';
 import {
@@ -295,17 +298,19 @@ function hasCoLocatedLivingParent(state: SimulationState, person: PersonState): 
     && sameLocation(candidate, person));
 }
 
+export function buildDecisionContextForPerson(state: SimulationState, person: PersonState): DecisionContext {
+  const context = buildDecisionContext(state, person);
+  if (!personCanDecide(state, person)) return { ...context, options: [], followUpOptions: [] };
+  const stage = lifePlanningStage(person, state.clock.elapsedMonths);
+  return {
+    ...context,
+    options: context.options.filter((option) => optionAllowedForLifeStage(stage, option)),
+    followUpOptions: context.followUpOptions.filter((option) => optionAllowedForLifeStage(stage, option)),
+  };
+}
+
 export function buildDecisionContexts(state: SimulationState): DecisionContext[] {
-  return state.people.filter(isAlive).map((person) => {
-    const context = buildDecisionContext(state, person);
-    if (!personCanDecide(state, person)) return { ...context, options: [], followUpOptions: [] };
-    const stage = lifePlanningStage(person, state.clock.elapsedMonths);
-    return {
-      ...context,
-      options: context.options.filter((option) => optionAllowedForLifeStage(stage, option)),
-      followUpOptions: context.followUpOptions.filter((option) => optionAllowedForLifeStage(stage, option)),
-    };
-  });
+  return state.people.filter(isAlive).map((person) => buildDecisionContextForPerson(state, person));
 }
 
 function urgency(context: DecisionContext): number {
@@ -637,11 +642,6 @@ function applyDecision(
   if (decision.kind === 'start') {
     const started = startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
     attachLifeReview(started);
-    const spokenAction = [started?.openingAction, started?.nextAction, started?.completionAction]
-      .find((action) => action?.kind === 'communicate');
-    if (started && decision.utterance && spokenAction?.kind === 'communicate') {
-      spokenAction.content.summary = decision.utterance.slice(0, 180);
-    }
     intentId = started?.id;
     domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
@@ -650,11 +650,6 @@ function applyDecision(
       ? startInterruptIntent(state, person, context, decision.optionId, id, atMonth, decision.interruptionKind)
       : startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
     attachLifeReview(started);
-    const spokenAction = [started?.openingAction, started?.nextAction, started?.completionAction]
-      .find((action) => action?.kind === 'communicate');
-    if (started && decision.utterance && spokenAction?.kind === 'communicate') {
-      spokenAction.content.summary = decision.utterance.slice(0, 180);
-    }
     intentId = started?.id;
     domain = started?.domain;
     result = started
@@ -740,6 +735,14 @@ function executeActiveIntent(
     intent.progress = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 1 : intent.progress;
     delete person.activeIntentId;
     person.currentActionText = sourceAgreement.status === 'fulfilled' ? `约定已经履行：${intent.summary}` : `约定已经结束：${intent.summary}`;
+    return null;
+  }
+  if (lifePlanningStage(person, atMonth) === 'learning-child'
+    && !ordinaryLearningChildActionAllowed(state, person, intent.nextAction)) {
+    intent.status = 'abandoned';
+    intent.blockedReason = '普通任务的下一步已经越出当前可见亲代的本地照护半径';
+    delete person.activeIntentId;
+    person.currentActionText = '停止继续远离当前可见的亲代照护范围';
     return null;
   }
   const alreadyAttemptedReproductionThisMonth = intent.lastReproductionAttemptAtMonth === atMonth;
@@ -1230,9 +1233,23 @@ function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
   return rollingDecisionUsage(state.decisionBudget.ledgers, state.clock.elapsedMonths);
 }
 
-function prepareMonth(input: SimulationState, cloneInput = true, collectEnhancementCandidates = true) {
+function prepareMonth(
+  input: SimulationState,
+  cloneInput = true,
+  collectEnhancementCandidates = true,
+  forceReview?: BatchDecider['forceReview'],
+) {
   const state = cloneInput ? copyState(input) : input;
-  if (state.civilization.status === 'ended') return { state, events: [] as WorldEvent[], contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], livingAgents: state.people.filter(isAlive).length, atMonth: state.clock.elapsedMonths };
+  const naturallyTriggeredPeople = new Set<PersonId>();
+  if (state.civilization.status === 'ended') return {
+    state,
+    events: [] as WorldEvent[],
+    contexts: [] as DecisionContext[],
+    candidates: [] as DecisionContext[],
+    naturallyTriggeredPeople,
+    livingAgents: state.people.filter(isAlive).length,
+    atMonth: state.clock.elapsedMonths,
+  };
   const atMonth = state.clock.elapsedMonths + 1;
   for (const person of state.people.filter(isAlive)) {
     person.position.previousCellId = person.position.cellId;
@@ -1253,7 +1270,15 @@ function prepareMonth(input: SimulationState, cloneInput = true, collectEnhancem
   maintainMemories(state, atMonth);
   const livingAgents = state.people.filter(isAlive).length;
   if (!collectEnhancementCandidates) {
-    return { state, events, contexts: [] as DecisionContext[], candidates: [] as DecisionContext[], livingAgents, atMonth };
+    return {
+      state,
+      events,
+      contexts: [] as DecisionContext[],
+      candidates: [] as DecisionContext[],
+      naturallyTriggeredPeople,
+      livingAgents,
+      atMonth,
+    };
   }
   const contexts = buildDecisionContexts(state);
   const candidates: DecisionContext[] = [];
@@ -1261,24 +1286,29 @@ function prepareMonth(input: SimulationState, cloneInput = true, collectEnhancem
     const { probability, reasons } = decisionProbability(state, context);
     const sample = seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${context.person.id}`);
     const exemption = decisionBudgetExemption(context, atMonth);
+    const interactionReview = Boolean(forceReview?.(context, atMonth));
     const reviewDue = stateGoalReviewDue(context, atMonth);
     if (exemption === 'bootstrap') reasons.push('开局批量初始决策');
     else if (exemption === 'emergency') reasons.push('紧急状态需要立即重评');
     else if (exemption === 'required-response') reasons.push('必须回应一项社会请求');
     else if (exemption === 'fulfillment') reasons.push('已有承诺或职责等待履行');
+    if (interactionReview) reasons.push('本人准备落实对话中已经定下的下一步');
     if (reviewDue) reasons.push('持续状态目标到达复核月份');
-    const meaningful = !context.activeIntent
+    const naturallyMeaningful = !context.activeIntent
       || exemption !== null
       || reviewDue
       || (context.activeIntent && state.clock.elapsedMonths - context.activeIntent.lastProgressAtMonth >= 2);
-    const triggered = meaningful && (exemption !== null || reviewDue || sample < probability);
+    const naturallyTriggered = naturallyMeaningful && (exemption !== null || reviewDue || sample < probability);
+    const triggered = interactionReview || naturallyTriggered;
     const opportunity: DecisionOpportunityFact = {
       id: `e-${atMonth}-opportunity-${context.person.id}`,
       kind: 'decision-opportunity', atMonth, orderInMonth: events.length, planningTick: 0, orderInTick: events.length,
       who: context.person.id, cellId: context.person.position.cellId,
       probability, sample, triggered, reasons,
       result: triggered
-        ? exemption === 'bootstrap'
+        ? interactionReview
+          ? `${context.person.name}本月准备落实对话中定下的下一步`
+          : exemption === 'bootstrap'
           ? `${context.person.name}获得开局初始决策`
           : exemption === 'required-response'
             ? `${context.person.name}本月必须回应一项社会请求`
@@ -1286,9 +1316,12 @@ function prepareMonth(input: SimulationState, cloneInput = true, collectEnhancem
         : `${context.person.name}本月延续已有意图`,
     };
     events.push(opportunity);
-    if (triggered) candidates.push(context);
+    if (triggered) {
+      candidates.push(context);
+      if (naturallyTriggered) naturallyTriggeredPeople.add(context.person.id);
+    }
   }
-  return { state, events, contexts, candidates, livingAgents, atMonth };
+  return { state, events, contexts, candidates, naturallyTriggeredPeople, livingAgents, atMonth };
 }
 
 function observedCapabilityCount(state: SimulationState): number {
@@ -1367,13 +1400,15 @@ function finishMonth(state: SimulationState, events: WorldEvent[], atMonth: numb
   state.lastStep = events;
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   const living = state.people.filter(isAlive);
+  const allLivingHibernating = living.length > 0 && living.every(isDehydratedHibernating);
   const endpointReached = state.civilization.conditions.endpoint.kind === 'months'
     && atMonth >= state.civilization.conditions.endpoint.value;
   const fullProjection = projectionCadence === 'monthly'
     || state.civilization.conditions.endpoint.kind === 'milestones'
     || atMonth % MONTHS_PER_YEAR === 0
     || endpointReached
-    || living.length === 0;
+    || living.length === 0
+    || allLivingHibernating;
   state.derived = fullProjection
     ? deriveObservations(state)
     : { ...state.derived, structures: deriveStructures(state) };
@@ -1419,9 +1454,6 @@ function hasPendingAgreementWork(state: SimulationState, person: PersonState, ac
     }
     const hasContinuation = compileAgreementContinuations(state, agreement.id)
       .some((continuation) => continuation.personId === person.id);
-    if (agreement.status === 'active'
-      && agreement.proposal.kind === 'reproduce'
-      && agreement.partyIds.includes(person.id)) return true;
     return agreement.status === 'active'
       && agreement.partyIds.includes(person.id)
       && !agreement.fulfilledByPersonIds.includes(person.id)
@@ -1711,6 +1743,7 @@ function validateModelDecision(
     ...(proposed.followUpOptionId ? { followUpOptionId: proposed.followUpOptionId } : {}),
     reason: proposed.reason,
     ...(proposedUtterance && !contradictoryStructuredReply ? { utterance: proposedUtterance } : {}),
+    ...(proposed.sourceInteractionId ? { sourceInteractionId: proposed.sourceInteractionId } : {}),
   };
   const active = context.activeIntent;
   if (!active) return { kind: 'start', ...shared };
@@ -1756,14 +1789,16 @@ function stepOwnedSimulation(input: SimulationState): SimulationState {
 }
 
 export async function stepSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
-  const prepared = prepareMonth(input);
+  const prepared = prepareMonth(input, true, true, batch.forceReview);
   const living = prepared.contexts.length;
   const rolling = currentRollingLedgers(prepared.state);
   const eligibleCandidates = batch.shouldDecide
     ? prepared.candidates.filter((context) => batch.shouldDecide?.(context, prepared.atMonth))
     : prepared.candidates;
-  const exemptContexts = eligibleCandidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) !== null);
-  const ordinaryCandidates = eligibleCandidates.filter((context) => decisionBudgetExemption(context, prepared.atMonth) === null);
+  const isExempt = (context: DecisionContext) => decisionBudgetExemption(context, prepared.atMonth) !== null
+    || Boolean(batch.isBudgetExempt?.(context, prepared.atMonth));
+  const exemptContexts = eligibleCandidates.filter(isExempt);
+  const ordinaryCandidates = eligibleCandidates.filter((context) => !isExempt(context));
   const ordinaryCapacity = Math.min(
     ordinaryCandidates.length,
     Math.floor(prepared.state.decisionBudget.credits + living / ORDINARY_DECISION_PERSON_MONTHS),
@@ -1772,7 +1807,10 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   );
   const importance = (context: DecisionContext) => {
     const exemption = decisionBudgetExemption(context, prepared.atMonth);
-    let score = exemption === 'bootstrap'
+    const interactionReview = Boolean(batch.forceReview?.(context, prepared.atMonth));
+    let score = interactionReview
+      ? 2_800
+      : exemption === 'bootstrap'
       ? 3_000
       : exemption === 'emergency'
         ? 2_900
@@ -1800,8 +1838,11 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
   const modelContexts = rank([...exemptContexts, ...ordinaryContexts]);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
   for (const context of prepared.candidates) {
+    const naturalFallback = prepared.naturallyTriggeredPeople.has(context.person.id);
     decisions.set(context.person.id, {
-      decision: authoritativeRulePlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 }),
+      decision: naturalFallback
+        ? authoritativeRulePlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+        : { kind: 'idle', reason: '对话中定下的下一步没有通过当前本地条件复核' },
       usedModel: false,
     });
   }

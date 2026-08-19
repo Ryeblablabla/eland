@@ -1,8 +1,17 @@
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from './model';
 import { Material } from './material';
+import { WORLD_CELL_COUNT } from '../world/grid';
+
+export interface ActionActivityIndex {
+  traffic: number[];
+  transfer: number[];
+  action: number[];
+  attention: number[];
+}
 
 interface CachedEventIndex {
   indexedLength: number;
+  lastIndexedEvent?: WorldEvent;
   byId: Map<string, WorldEvent>;
   ordinalById: Map<string, number>;
   actions: ActionFact[];
@@ -16,6 +25,7 @@ interface CachedEventIndex {
   matureCropHarvests: ActionFact[];
   communicationByRepresentationId: Map<string, ActionFact>;
   completedConstructionActions: ActionFact[];
+  activity: ActionActivityIndex;
 }
 
 const indexes = new WeakMap<SimulationState['world']['past'], CachedEventIndex>();
@@ -104,22 +114,56 @@ function emptyIndex(): CachedEventIndex {
     matureCropHarvests: [],
     communicationByRepresentationId: new Map(),
     completedConstructionActions: [],
+    activity: {
+      traffic: new Array<number>(WORLD_CELL_COUNT).fill(0),
+      transfer: new Array<number>(WORLD_CELL_COUNT).fill(0),
+      action: new Array<number>(WORLD_CELL_COUNT).fill(0),
+      attention: new Array<number>(WORLD_CELL_COUNT).fill(0),
+    },
   };
+}
+
+function copyActivity(activity: ActionActivityIndex): ActionActivityIndex {
+  return {
+    traffic: [...activity.traffic],
+    transfer: [...activity.transfer],
+    action: [...activity.action],
+    attention: [...activity.attention],
+  };
+}
+
+function appendActivity(activity: ActionActivityIndex, event: ActionFact): void {
+  if (event.action.kind === 'move') {
+    event.pathSegment.forEach((cell) => { activity.traffic[cell] += 1; });
+  } else if (event.action.kind === 'transfer') activity.transfer[event.cellId] += 1;
+  else if (event.action.kind === 'attend') activity.attention[event.cellId] += 1;
+  else activity.action[event.cellId] += 1;
 }
 
 function indexFor(state: SimulationState): CachedEventIndex {
   const history = state.world.past;
   let index = indexes.get(history);
-  if (!index || index.indexedLength > state.world.past.length) {
+  if (!index
+    || index.indexedLength > history.length
+    || (index.indexedLength > 0 && history[index.indexedLength - 1] !== index.lastIndexedEvent)) {
     index = emptyIndex();
     indexes.set(history, index);
   }
+  let activityCopied = false;
   for (let offset = index.indexedLength; offset < history.length; offset += 1) {
     const event = history[offset];
     index.byId.set(event.id, event);
     index.ordinalById.set(event.id, offset);
     if (event.kind === 'environment') index.environmentEvents.push(event);
     if (event.kind !== 'action') continue;
+    if (!activityCopied) {
+      // The previous arrays may already belong to an emitted UI frame. Copy
+      // once before consuming the newly appended action facts so later months
+      // cannot mutate an older projection.
+      index.activity = copyActivity(index.activity);
+      activityCopied = true;
+    }
+    appendActivity(index.activity, event);
     index.actions.push(event);
     if (event.status !== 'completed') continue;
     index.completedActions.push(event);
@@ -147,11 +191,21 @@ function indexFor(state: SimulationState): CachedEventIndex {
       && event.diff.position) index.completedConstructionActions.push(event);
   }
   index.indexedLength = history.length;
+  index.lastIndexedEvent = history.at(-1);
   return index;
 }
 
 export function primeEventIndex(state: SimulationState): void {
   indexFor(state);
+}
+
+/**
+ * Append-only activity projection shared with the UI adapter. The returned
+ * arrays are persistent snapshots: the index copies them before applying the
+ * next batch of action facts.
+ */
+export function actionActivityIndex(state: SimulationState): ActionActivityIndex {
+  return indexFor(state).activity;
 }
 
 export function worldEventById(state: SimulationState, eventId: string): WorldEvent | undefined {

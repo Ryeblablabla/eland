@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
   Baby,
@@ -19,6 +19,7 @@ import {
 import type { SimStats } from '@/components/ThreeBodyCanvas';
 import type { AgentHistoryView, SocietyAgent, SocietyState, StructureView } from '@/game/societyContract';
 import { STAR_STYLES } from '@/lib/threebody';
+import PersonConversation from './PersonConversation';
 import './ObservationUI.css';
 
 export type FocusTarget =
@@ -26,6 +27,8 @@ export type FocusTarget =
   | { kind: 'structure'; id: string }
   | { kind: 'celestial'; body: 'star'; index: number }
   | { kind: 'celestial'; body: 'planet' };
+
+export type AgentSubtab = 'overview' | 'conversation' | 'inventory' | 'history';
 
 export interface ObservationEvent {
   id: string;
@@ -50,14 +53,15 @@ interface FocusInspectorProps {
   society: SocietyState | null;
   stats: SimStats | null;
   history: ObservationEvent[];
+  runId: string;
+  observedBranchId: string;
+  observedMonth: number;
   agentHistory: AgentHistoryView | null;
-  agentHistoryOpen: boolean;
-  agentInventoryOpen: boolean;
+  agentSubtab: AgentSubtab;
   agentHistoryLoading: boolean;
   agentHistoryError: string;
   onClose: () => void;
-  onToggleAgentHistory: () => void;
-  onToggleAgentInventory: () => void;
+  onAgentSubtabChange: (subtab: AgentSubtab) => void;
 }
 
 interface CivilizationEndingProps {
@@ -68,6 +72,18 @@ interface CivilizationEndingProps {
 
 const FOCUS_EXIT_MS = 135;
 const END_EXIT_MS = 240;
+
+const AGENT_SUBTABS: Array<{ key: AgentSubtab; label: string; shortcut?: string }> = [
+  { key: 'overview', label: '概况' },
+  { key: 'conversation', label: '对话', shortcut: 'C' },
+  { key: 'inventory', label: '背包', shortcut: 'B' },
+  { key: 'history', label: '行动', shortcut: 'H' },
+];
+
+function conciseEndingSummary(ending: CivilizationEndingView): string {
+  const terminalLives = ending.summary.match(/^文明最后的\s*(\d+)\s*个生命在第\s*\d+\s*月因.+终止，没有留下生还者。$/u)?.[1];
+  return terminalLives ? `最后 ${terminalLives} 人死亡，无人生还。` : ending.summary;
+}
 
 const FATE_LABELS: Record<SimStats['planetFate'], string> = {
   stable: '恒纪元',
@@ -386,16 +402,18 @@ export function FocusInspector({
   society,
   stats,
   history,
+  runId,
+  observedBranchId,
+  observedMonth,
   agentHistory,
-  agentHistoryOpen,
-  agentInventoryOpen,
+  agentSubtab,
   agentHistoryLoading,
   agentHistoryError,
   onClose,
-  onToggleAgentHistory,
-  onToggleAgentInventory,
+  onAgentSubtabChange,
 }: FocusInspectorProps) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personTabsId = useId().replace(/:/g, '');
   const [renderedTarget, setRenderedTarget] = useState<FocusTarget | null>(target);
   const [closing, setClosing] = useState(false);
 
@@ -478,10 +496,27 @@ export function FocusInspector({
   const celestialPosition = stats && celestialOffset >= 0
     ? { x: stats.bodies[celestialOffset], y: stats.bodies[celestialOffset + 1] }
     : null;
+  const onPersonTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const currentIndex = tabs.findIndex((tab) => tab === document.activeElement);
+    if (currentIndex < 0) return;
+    event.preventDefault();
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+    const next = tabs[nextIndex];
+    const nextSubtab = next?.dataset.agentSubtab as AgentSubtab | undefined;
+    if (!next || !nextSubtab) return;
+    onAgentSubtabChange(nextSubtab);
+    next.focus();
+  };
   return (
     <aside
       aria-label={`${name}聚焦信息`}
-      className={`focus-inspector${agentHistoryOpen ? ' focus-inspector--history' : ''}${agentInventoryOpen ? ' focus-inspector--inventory' : ''}${closing ? ' focus-inspector--closing' : ''}`}
+      className={`focus-inspector${agent ? ` focus-inspector--person focus-inspector--person-${agentSubtab}` : ''}${closing ? ' focus-inspector--closing' : ''}`}
       key={targetKey(renderedTarget)}
     >
       <div className="focus-inspector__scroll">
@@ -506,16 +541,65 @@ export function FocusInspector({
           </>
         )}
 
-        {agentInventoryOpen && agent ? (
-          <PersonInventory agent={agent} />
-        ) : agentHistoryOpen && agent ? (
-          <PersonActionHistory
-            agent={agent}
-            error={agentHistoryError}
-            history={agentHistory}
-            loading={agentHistoryLoading}
-          />
-        ) : (
+        {agent && (
+          <div
+            aria-label={`${agent.name}人物信息`}
+            className="person-tabs"
+            onKeyDown={onPersonTabsKeyDown}
+            role="tablist"
+          >
+            {AGENT_SUBTABS.map((tab) => {
+              const selected = agentSubtab === tab.key;
+              return (
+                <button
+                  aria-controls={`${personTabsId}-${tab.key}-panel`}
+                  aria-selected={selected}
+                  className={selected ? 'is-selected' : ''}
+                  data-agent-subtab={tab.key}
+                  id={`${personTabsId}-${tab.key}-tab`}
+                  key={tab.key}
+                  onClick={() => onAgentSubtabChange(tab.key)}
+                  role="tab"
+                  tabIndex={selected ? 0 : -1}
+                  type="button"
+                >
+                  <span>{tab.label}</span>
+                  {tab.shortcut && <kbd>{tab.shortcut}</kbd>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          aria-labelledby={agent ? `${personTabsId}-${agentSubtab}-tab` : undefined}
+          className={agent ? `person-tabpanel person-tabpanel--${agentSubtab}` : undefined}
+          id={agent ? `${personTabsId}-${agentSubtab}-panel` : undefined}
+          role={agent ? 'tabpanel' : undefined}
+          tabIndex={agent ? 0 : undefined}
+        >
+          {agentSubtab === 'inventory' && agent ? (
+            <PersonInventory agent={agent} />
+          ) : agentSubtab === 'conversation' && agent ? (
+            <PersonConversation
+              agent={agent}
+              key={JSON.stringify([runId, observedBranchId, agent.id])}
+              observedBranchId={observedBranchId}
+              observedMonth={observedMonth}
+              onShowHistory={() => {
+                onAgentSubtabChange('history');
+                requestAnimationFrame(() => document.getElementById(`${personTabsId}-history-tab`)?.focus());
+              }}
+              runId={runId}
+            />
+          ) : agentSubtab === 'history' && agent ? (
+            <PersonActionHistory
+              agent={agent}
+              error={agentHistoryError}
+              history={agentHistory}
+              loading={agentHistoryLoading}
+            />
+          ) : (
           <>
             {agent ? (
               <>
@@ -620,20 +704,11 @@ export function FocusInspector({
             </section>
           </div>
           </>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="focus-inspector__actions">
-        {agent && (
-          <>
-            <button className="observation-button observation-button--secondary" onClick={onToggleAgentInventory} type="button">
-              {agentInventoryOpen ? '返回人物 · B' : '背包 · B'}
-            </button>
-            <button className="observation-button observation-button--secondary" onClick={onToggleAgentHistory} type="button">
-              {agentHistoryOpen ? '返回人物 · H' : '行动历史 · H'}
-            </button>
-          </>
-        )}
         <button className="observation-button observation-button--outline" onClick={onClose} type="button">
           收起 · Esc
         </button>
@@ -672,7 +747,7 @@ export function CivilizationEnding({ ending, onContinue, onOpenHistory }: Civili
         <p className="civilization-ending__eyebrow">第 {ending.civilizationId} 号文明</p>
         <h1 id="civilization-ending-title">毁灭于{ending.cause}</h1>
         <p className="civilization-ending__duration">延续 {durationLabel(ending.elapsedMonths)}</p>
-        <p className="civilization-ending__summary">{ending.summary}</p>
+        <p className="civilization-ending__summary">{conciseEndingSummary(ending)}</p>
         <div className="civilization-ending__actions">
           <button
             className="observation-button observation-button--large observation-button--secondary"

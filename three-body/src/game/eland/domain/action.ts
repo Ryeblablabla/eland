@@ -156,16 +156,26 @@ export type SocialProposal =
 export type DialogueAct = 'request-help' | 'offer-companion' | 'accept' | 'reject' | 'share-observation';
 
 export type PrimitiveAction =
-  | { kind: 'move'; toCellId: number; toZ?: number }
+  | {
+      kind: 'move';
+      toCellId: number;
+      toZ?: number;
+      /** Visible biological caregiver chosen as the causal target of a child's crisis rendezvous. */
+      caregiverRef?: PersonId;
+    }
   | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
   | {
       kind: 'act';
       operation: SourceOperation;
       targets: WorldRef[];
+      /** Required by actions whose legality comes from one concrete agreement. */
+      authorizationRef?: string;
       toolStackId?: string;
       techniqueDemonstration?: TechniqueDemonstrationRef;
       techniqueImitation?: TechniqueImitationRef;
       hibernationPredictionId?: string;
+      /** Local exposure facts that made a failed shelter hibernation response actionable. */
+      hibernationEvidenceEventIds?: string[];
       hibernationWakeBasis?: HibernationWakeBasis;
     }
   | {
@@ -317,11 +327,18 @@ export interface ActionOption {
 }
 
 export type IntentDecision =
-  | { kind: 'start'; optionId: string; followUpOptionId?: string; reason: string; utterance?: string; lifeReview?: LifeReviewEvidence }
+  | {
+      kind: 'start'; optionId: string; followUpOptionId?: string; reason: string;
+      utterance?: string; lifeReview?: LifeReviewEvidence;
+      /** Server-owned link to a player conversation that requested this model review. */
+      sourceInteractionId?: string;
+    }
   | {
       kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string;
       reason: string; utterance?: string; lifeReview?: LifeReviewEvidence;
       mode?: 'replace' | 'interrupt'; interruptionKind?: IntentInterruptionKind;
+      /** Server-owned link to a player conversation that requested this model review. */
+      sourceInteractionId?: string;
     }
   | { kind: 'suspend'; intentId: string; reason: string }
   | { kind: 'resume'; intentId: string; reason: string }

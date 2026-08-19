@@ -153,6 +153,14 @@ export function hasOpenAssistRequestBetween(state: SimulationState, requesterId:
     && agreement.acceptByMonth >= state.clock.elapsedMonths);
 }
 
+export function hasOpenExchangeOfferBetween(state: SimulationState, offererId: PersonId, partnerId: PersonId): boolean {
+  return state.agreements.some((agreement) => agreement.status === 'proposed'
+    && agreement.proposal.kind === 'exchange'
+    && agreement.proposal.offererId === offererId
+    && agreement.proposal.partnerId === partnerId
+    && agreement.acceptByMonth >= state.clock.elapsedMonths);
+}
+
 export function hasOpenCompanionOfferBetween(state: SimulationState, proposerId: PersonId, partnerId: PersonId): boolean {
   return state.agreements.some((agreement) => agreement.status === 'proposed'
     && agreement.proposal.kind === 'companion'

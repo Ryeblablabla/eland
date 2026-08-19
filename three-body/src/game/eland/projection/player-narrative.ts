@@ -10,6 +10,17 @@ type AgreementEvent = Extract<WorldEvent, { kind: 'agreement' }>;
 
 interface NarrativeCandidate extends NarrativeEntryView {
   orderInMonth: number;
+  dedupeKey?: string;
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+function briefNameList(names: string[]): string {
+  if (names.length <= 2) return names.join('和');
+  if (names.length === 3) return `${names[0]}、${names[1]}和${names[2]}`;
+  return `${names[0]}等${names.length}人`;
 }
 
 function personName(state: SimulationState, personId: string | undefined): string {
@@ -116,6 +127,27 @@ function materialAmounts(items: unknown): string {
   }).join('和');
 }
 
+function placedStructureText(event: ActionEvent, actor: string, outputId: number): string | null {
+  const position = event.diff.position;
+  if (!position || typeof position !== 'object') return null;
+  const definition = materialDefinition(outputId);
+  if (!definition.tags.some((tag) => tag === 'building' || tag === 'placeable' || tag === 'facility')) return null;
+  const inputId = Number(event.diff.inputMaterialId);
+  const targetId = Number(event.diff.targetMaterialId);
+  if (targetId === Material.Air) {
+    if (Number.isInteger(inputId) && inputId !== outputId) {
+      return `${actor}把${materialName(inputId)}加工成${materialName(outputId)}，用于搭建`;
+    }
+    return definition.tags.includes('placeable') || definition.tags.includes('facility')
+      ? `${actor}安放了${materialName(outputId)}`
+      : `${actor}把${materialName(outputId)}放在了搭建处`;
+  }
+  if (Number.isInteger(inputId) && Number.isInteger(targetId)) {
+    return `${actor}用${materialName(inputId)}把${materialName(targetId)}改造成了${materialName(outputId)}`;
+  }
+  return `${actor}安放了${materialName(outputId)}`;
+}
+
 function dialogueText(state: SimulationState, event: ActionEvent, actor: string): string {
   if (event.action.kind !== 'communicate') return event.result;
   const audience = event.action.audience.map((id) => personName(state, id)).join('、') || '身边的人';
@@ -149,7 +181,37 @@ function transferText(state: SimulationState, event: ActionEvent, actor: string)
   return `${actor}把${amount}从${holderName(state, action.from)}移到了${holderName(state, action.to)}`;
 }
 
-function attendText(event: ActionEvent, actor: string): string {
+function verifiedAirCombination(state: SimulationState, event: ActionEvent): { inputId: number; outputId: number } | null {
+  if (event.action.kind !== 'attend' || event.diff.verifiedTechnique !== true) return null;
+  const verifiedSourceEventId = typeof event.diff.verifiedSourceEventId === 'string'
+    ? event.diff.verifiedSourceEventId
+    : undefined;
+  const source = verifiedSourceEventId
+    ? state.world.past.find((candidate) => candidate.id === verifiedSourceEventId)
+    : undefined;
+  if (source?.kind === 'action'
+    && source.action.kind === 'act'
+    && source.action.operation === 'combine'
+    && Number(source.diff.targetMaterialId) === Material.Air) {
+    const inputId = Number(source.diff.inputMaterialId);
+    const outputId = Number(source.diff.outputMaterialId);
+    if (Number.isInteger(inputId) && Number.isInteger(outputId)) return { inputId, outputId };
+  }
+  const techniqueId = event.action.verification?.techniqueId
+    ?? (typeof event.diff.factId === 'string' ? event.diff.factId : '');
+  const match = techniqueId.match(/^technique:combine:(\d+):(\d+):(\d+)$/u);
+  if (!match) return null;
+  const [, inputId, targetId, outputId] = match.map(Number);
+  return targetId === Material.Air ? { inputId, outputId } : null;
+}
+
+function attendText(state: SimulationState, event: ActionEvent, actor: string): string {
+  const airCombination = verifiedAirCombination(state, event);
+  if (airCombination) {
+    return airCombination.inputId === airCombination.outputId
+      ? `${actor}确认${materialName(airCombination.outputId)}可以直接安放`
+      : `${actor}确认搭建时可以把${materialName(airCombination.inputId)}加工成${materialName(airCombination.outputId)}`;
+  }
   const recognized = event.result.match(/^观察并辨认了(.+)$/u);
   if (recognized) return `${actor}仔细观察后，认出了${recognized[1]}`;
   const verified = event.result.match(/^核验了(.+)$/u);
@@ -169,6 +231,8 @@ function actText(state: SimulationState, event: ActionEvent, actor: string): str
   if (operation === 'combine') {
     const outputId = Number(event.diff.outputMaterialId);
     if (Number.isInteger(outputId)) {
+      const placement = placedStructureText(event, actor, outputId);
+      if (placement) return placement;
       const inputIds = Array.isArray(event.diff.inputMaterialIds)
         ? event.diff.inputMaterialIds.map(Number)
         : [Number(event.diff.inputMaterialId), Number(event.diff.targetMaterialId)].filter((id) => Number.isInteger(id) && id !== Material.Air);
@@ -240,7 +304,7 @@ function actionText(state: SimulationState, event: ActionEvent): string {
   }
   if (event.action.kind === 'move') return event.status === 'completed' ? `${actor}抵达了目的地` : `${actor}正在赶往目的地`;
   if (event.action.kind === 'transfer') return transferText(state, event, actor);
-  if (event.action.kind === 'attend') return attendText(event, actor);
+  if (event.action.kind === 'attend') return attendText(state, event, actor);
   if (event.action.kind === 'communicate') return dialogueText(state, event, actor);
   return actText(state, event, actor);
 }
@@ -284,13 +348,50 @@ function actionTone(event: ActionEvent): NarrativeEntryView['tone'] {
   return event.status === 'completed' ? 'good' : 'plain';
 }
 
+function eventPrecedes(first: WorldEvent, second: WorldEvent): boolean {
+  return first.atMonth < second.atMonth
+    || (first.atMonth === second.atMonth && first.orderInMonth < second.orderInMonth);
+}
+
+function repeatsConditionStage(state: SimulationState, event: EnvironmentEvent): boolean {
+  if (event.change !== 'condition') return false;
+  const condition = event.diff.condition;
+  const stage = Number(event.diff.stage);
+  if ((condition !== 'cold' && condition !== 'heat' && condition !== 'illness') || !Number.isInteger(stage)) return false;
+  const fromStage = Number(event.diff.fromStage);
+  if (Number.isInteger(fromStage)) return fromStage === stage;
+  // 旧疾病事件没有 fromStage，且中间可能经由治疗动作恢复或清除；
+  // 只看环境事件会把真实复发误当成重复。
+  if (condition === 'illness') return false;
+  if (!/加重|恶化|持续/u.test(event.result)) return false;
+  const previous = [...state.world.past].reverse().find((candidate): candidate is EnvironmentEvent => (
+    candidate.kind === 'environment'
+      && candidate.change === 'condition'
+      && candidate.id !== event.id
+      && candidate.who === event.who
+      && candidate.diff.condition === condition
+      && eventPrecedes(candidate, event)
+  ));
+  if (!previous || previous.diff.exited === true) return false;
+  return Number(previous.diff.stage) === stage;
+}
+
 function environmentCandidate(state: SimulationState, event: EnvironmentEvent): NarrativeCandidate | null {
+  const founding = event.change === 'founding';
   const born = typeof event.diff.bornPersonId === 'string';
   const era = event.diff.eraTransition === true;
   const severeCondition = event.change === 'condition' && /加重|中止|受伤|患病/u.test(event.result);
-  if (event.change !== 'death' && !born && !era && !severeCondition) return null;
-  const actorIds = event.who ? [event.who] : typeof event.diff.bornPersonId === 'string' ? [event.diff.bornPersonId] : [];
-  const text = event.change === 'death'
+  if (event.change !== 'death' && !founding && !born && !era && !severeCondition) return null;
+  if (severeCondition && repeatsConditionStage(state, event)) return null;
+  const foundingParticipantIds = Array.isArray(event.diff.participantIds)
+    ? event.diff.participantIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const actorIds = founding
+    ? foundingParticipantIds
+    : event.who ? [event.who] : typeof event.diff.bornPersonId === 'string' ? [event.diff.bornPersonId] : [];
+  const text = founding
+    ? `第 ${state.civilization.number} 号文明在自然地表上开始，${foundingParticipantIds.length} 位先民共同抵达`
+    : event.change === 'death'
     ? `${personName(state, event.who)}去世了，随身物品留在原地`
     : era
       ? event.diff.epoch === 'chaotic'
@@ -302,29 +403,67 @@ function environmentCandidate(state: SimulationState, event: EnvironmentEvent): 
     month: event.atMonth,
     text: finishSentence(text),
     detail: event.result,
-    tone: event.change === 'death' || severeCondition || event.diff.correct === false ? 'bad' : era ? 'era' : 'good',
+    tone: event.change === 'death' || severeCondition || event.diff.correct === false ? 'bad' : founding || era ? 'era' : 'good',
     kind: 'epoch',
-    importance: era ? 132 : event.change === 'death' ? 124 : born ? 116 : severeCondition ? 96 : 90,
+    importance: founding ? 140 : era ? 132 : event.change === 'death' ? 124 : born ? 116 : severeCondition ? 96 : 90,
     sourceEventIds: [event.id],
     actorIds,
     orderInMonth: event.orderInMonth,
   };
 }
 
+function agreementLabel(state: SimulationState, event: AgreementEvent): string {
+  const agreement = state.agreements.find((candidate) => candidate.id === event.agreementId);
+  const proposal = agreement?.proposal;
+  if (!proposal) return '约定';
+  if (proposal.kind === 'reproduce') return '共同生育的约定';
+  if (proposal.kind === 'companion') return '结伴生活的约定';
+  if (proposal.kind === 'collective') return '组建共同体的约定';
+  if (proposal.kind === 'membership') return '加入共同体的约定';
+  if (proposal.kind === 'decision-rule') return '共同决策的约定';
+  if (proposal.kind === 'mandate') return '物资协调的委托';
+  if (proposal.kind === 'permission') return `取用${materialName(proposal.materialId)}的许可`;
+  if (proposal.kind === 'assist') {
+    const need = proposal.need === 'water' ? '饮水' : proposal.need === 'food' ? '食物' : proposal.need === 'shelter' ? '庇护' : '陪伴';
+    return `${need}互助的约定`;
+  }
+  return `${proposal.offererQuantity}份${materialName(proposal.offererMaterialId)}换${proposal.partnerQuantity}份${materialName(proposal.partnerMaterialId)}的约定`;
+}
+
+function agreementSemanticKey(state: SimulationState, event: AgreementEvent): string {
+  const agreement = state.agreements.find((candidate) => candidate.id === event.agreementId);
+  if (!agreement) return `agreement:${event.agreementId}`;
+  const proposal = agreement.proposal;
+  const parties = unique(event.partyIds).sort().join(',');
+  const agreementWindow = `${agreement.proposedAtMonth}:${agreement.acceptedAtMonth ?? ''}:${agreement.dueAtMonth ?? ''}`;
+  if (proposal.kind === 'reproduce') return `${proposal.kind}:${parties}:${agreementWindow}`;
+  if (proposal.kind === 'companion') return `${proposal.kind}:${parties}:${agreementWindow}:${agreement.coLocatedMonths}`;
+  // 只有共同生育和结伴是真正对称的关系事实。交换、援助、入会、
+  // 委托与许可即使条款相似，也可能是同月各自履行的不同协议。
+  return `${proposal.kind}:${event.agreementId}`;
+}
+
 function agreementCandidate(state: SimulationState, event: AgreementEvent): NarrativeCandidate | null {
   if (event.change !== 'fulfilled' && event.change !== 'breached') return null;
-  const names = event.partyIds.map((id) => personName(state, id)).join('和');
+  const agreement = state.agreements.find((candidate) => candidate.id === event.agreementId);
+  const symmetric = agreement?.proposal.kind === 'companion' || agreement?.proposal.kind === 'reproduce';
+  const personOrder = new Map(state.people.map((person, index) => [person.id, index]));
+  const partyIds = unique(event.partyIds).sort((first, second) => (
+    symmetric ? (personOrder.get(first) ?? Number.MAX_SAFE_INTEGER) - (personOrder.get(second) ?? Number.MAX_SAFE_INTEGER) : 0
+  ));
+  const names = briefNameList(partyIds.map((id) => personName(state, id)));
   return {
     id: `narrative:${event.id}`,
     month: event.atMonth,
-    text: finishSentence(`${names}${event.change === 'fulfilled' ? '履行了约定' : '没有履行约定'}`),
+    text: finishSentence(`${names}${event.change === 'fulfilled' ? '履行了' : '未能履行'}${agreementLabel(state, event)}`),
     detail: event.result,
     tone: event.change === 'fulfilled' ? 'good' : 'bad',
     kind: 'epoch',
     importance: event.change === 'fulfilled' ? 94 : 106,
     sourceEventIds: [event.id],
-    actorIds: [...event.partyIds],
+    actorIds: partyIds,
     orderInMonth: event.orderInMonth,
+    dedupeKey: `agreement:${event.atMonth}:${event.change}:${agreementSemanticKey(state, event)}`,
   };
 }
 
@@ -387,6 +526,31 @@ function completedProjectCandidates(state: SimulationState, events: WorldEvent[]
   });
 }
 
+function mergeCandidate(primary: NarrativeCandidate, duplicate: NarrativeCandidate): NarrativeCandidate {
+  const preferred = duplicate.importance > primary.importance
+    || (duplicate.importance === primary.importance && duplicate.orderInMonth < primary.orderInMonth)
+    ? duplicate
+    : primary;
+  return {
+    ...preferred,
+    detail: unique([primary.detail, duplicate.detail].filter(Boolean)).join('；'),
+    importance: Math.max(primary.importance, duplicate.importance),
+    sourceEventIds: unique([...primary.sourceEventIds, ...duplicate.sourceEventIds]),
+    actorIds: unique([...primary.actorIds, ...duplicate.actorIds]),
+    orderInMonth: Math.min(primary.orderInMonth, duplicate.orderInMonth),
+  };
+}
+
+function mergeCandidatesBy(candidates: NarrativeCandidate[], keyFor: (candidate: NarrativeCandidate) => string): NarrativeCandidate[] {
+  const merged = new Map<string, NarrativeCandidate>();
+  for (const candidate of candidates) {
+    const key = keyFor(candidate);
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergeCandidate(existing, candidate) : candidate);
+  }
+  return [...merged.values()];
+}
+
 export function playerTextForEvent(state: SimulationState, event: WorldEvent): string {
   if (event.kind === 'action' || event.kind === 'decision') return standaloneCandidate(state, event).text;
   if (event.kind === 'environment') return environmentCandidate(state, event)?.text ?? finishSentence(event.result);
@@ -395,10 +559,12 @@ export function playerTextForEvent(state: SimulationState, event: WorldEvent): s
 }
 
 export function projectPlayerNarrative(state: SimulationState, events: WorldEvent[], limit = 4): NarrativeEntryView[] {
+  const projectCandidates = completedProjectCandidates(state, events);
+  const projectSourceEventIds = new Set(projectCandidates.flatMap((candidate) => candidate.sourceEventIds));
   const candidates: NarrativeCandidate[] = [];
   for (const event of events) {
     if (event.kind === 'action') {
-      if (isMajorHistoricalAction(state, event)) candidates.push(standaloneCandidate(state, event));
+      if (!projectSourceEventIds.has(event.id) && isMajorHistoricalAction(state, event)) candidates.push(standaloneCandidate(state, event));
     } else if (event.kind === 'environment') {
       const candidate = environmentCandidate(state, event);
       if (candidate) candidates.push(candidate);
@@ -407,11 +573,13 @@ export function projectPlayerNarrative(state: SimulationState, events: WorldEven
       if (candidate) candidates.push(candidate);
     }
   }
-  candidates.push(...completedProjectCandidates(state, events));
+  candidates.push(...projectCandidates);
   if (!candidates.length) return [];
-  return candidates
+  const semanticCandidates = mergeCandidatesBy(candidates, (candidate) => candidate.dedupeKey ?? candidate.id);
+  const distinctCandidates = mergeCandidatesBy(semanticCandidates, (candidate) => candidate.dedupeKey ?? `${candidate.month}:${candidate.text}`);
+  return distinctCandidates
     .sort((first, second) => second.importance - first.importance || first.orderInMonth - second.orderInMonth)
     .slice(0, Math.max(1, limit))
     .sort((first, second) => first.orderInMonth - second.orderInMonth)
-    .map(({ orderInMonth: _orderInMonth, ...entry }) => entry);
+    .map(({ orderInMonth: _orderInMonth, dedupeKey: _dedupeKey, ...entry }) => entry);
 }

@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   CIVILIZATION_INDEX_FORMULA_VERSION,
@@ -8,9 +9,10 @@ import {
 } from '../src/game/eland/domain/civilization-index';
 import type {
   CivilizationIndex,
-  SimulationState,
 } from '../src/game/eland/domain/model';
-import { hydrateWorld } from '../src/game/eland/world/grid';
+import { SqliteRunStore } from '../server/sqlite-run-store';
+
+const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 interface MatrixRun {
   runId: string;
@@ -70,22 +72,27 @@ async function main(): Promise<void> {
   const candidatePrefix = `${baselinePrefix.replace(/baseline[^-]*/i, 'candidate')}-projected`;
   const projectedRuns: MatrixRun[] = [];
 
-  for (const run of baseline.runs) {
-    const statePath = resolve('data/runs', run.runId, 'state.json');
-    const rawState = JSON.parse(await readFile(statePath, 'utf8')) as SimulationState;
-    const state = structuredClone(rawState);
-    state.world.grid = hydrateWorld(rawState.world.grid);
-    const index = calculateCivilizationIndex(state);
-    projectedRuns.push({
-      ...run,
-      runId: run.runId.replace(baselinePrefix, candidatePrefix),
-      civilizationIndex: index.total,
-      civilizationComponents: componentScores(index),
-      civilizationStage: civilizationStageFor(index),
-      civilizationEvidence: Object.fromEntries(Object.entries(index.components)
-        .map(([key, component]) => [key, component.evidence])),
-      sourceRunId: run.runId,
-    });
+  const store = new SqliteRunStore(
+    resolve(process.env.THREEBODY_DATA_DIR ?? resolve(PROJECT_DIRECTORY, 'data')),
+    { readOnly: true },
+  );
+  try {
+    for (const run of baseline.runs) {
+      const { state } = await store.load(run.runId);
+      const index = calculateCivilizationIndex(state);
+      projectedRuns.push({
+        ...run,
+        runId: run.runId.replace(baselinePrefix, candidatePrefix),
+        civilizationIndex: index.total,
+        civilizationComponents: componentScores(index),
+        civilizationStage: civilizationStageFor(index),
+        civilizationEvidence: Object.fromEntries(Object.entries(index.components)
+          .map(([key, component]) => [key, component.evidence])),
+        sourceRunId: run.runId,
+      });
+    }
+  } finally {
+    store.close();
   }
 
   const aggregates = baseline.aggregates.map((aggregate) => {
@@ -117,7 +124,7 @@ async function main(): Promise<void> {
     reprojectionProvenance: {
       sourceMatrix: baselinePath,
       sourcePrefix: baselinePrefix,
-      method: 'Load each freshly rerun endpoint state, hydrate only its saved voxel grid, and recalculate the observer-only civilization index without advancing time or re-deriving observations.',
+      method: 'Load each endpoint state by run id from the canonical SQLite run store and recalculate the observer-only civilization index without advancing time.',
       behaviorEquivalenceCheck: 'A paired seed=6101, years=10 rerun matched authoritative and derived state histories exactly.',
     },
     aggregates,

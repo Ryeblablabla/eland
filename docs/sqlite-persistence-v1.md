@@ -1,0 +1,75 @@
+# SQLite 持久化
+
+状态：当前实现。自 2026-08-20 起，`three-body/data/eland.sqlite3` 是 ELAND 后端唯一持久化事实源；`THREEBODY_DATA_DIR` 只改变数据库父目录，文件名固定为 `eland.sqlite3`。
+
+## 边界
+
+长程运行、检查点、报告与叙事旁车、玩家手动存档、实时会话、文明编号高水位都写入同一数据库。运行时不扫描旧 JSON 运行目录、不读取独立存档或会话文件，也没有文件或混合存储回退。HTTP JSON 是传输协议，`three-body/data/experiments/` 中的矩阵 JSON 是离线交换与分析产物；两者都不是持久化事实源。
+
+SQLite 使用 `user_version=2`、WAL、`foreign_keys=ON`、`synchronous=NORMAL`、5 秒 busy timeout 和 STRICT 表。
+
+## 表与引用
+
+| 表 | 内容 |
+| --- | --- |
+| `chunks` | SHA-256 内容寻址的 codec、原始长度和 BLOB；供其他表共享 |
+| `runs` | 每个长程运行的当前状态 hash、摘要和 revision |
+| `run_checkpoints` | 按 run、revision 和月份保存的状态 hash |
+| `artifacts` | `evolution-path`、`evolution-report`、`narrative-enhancements` |
+| `manual_saves` | 不可变玩家档案元数据及会话根 hash |
+| `live_sessions` | 可恢复实时会话、租约、最近活动时间及会话根 hash |
+| `campaign_state` | `civilization-high-water-mark`，只增不减 |
+
+run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携带领域含义，只有引用它的行决定用途。
+
+## 编码与事务
+
+长程状态和 artifact 使用 `v8-br-v1`：先 V8 serialize，再以 Brotli 压缩；hash 基于压缩前的序列化字节，读取时校验解压长度和 SHA-256。
+
+手动存档与实时会话使用 `ELANDV2` 分块语义：
+
+- `eland-session-manifest-v2` 指向 shell 和有序时间线块；
+- `eland-session-shell-v2` 保存一次 V8 serialize + Brotli 的会话 shell；
+- `eland-session-timeline-chunk-v1` 原样保存已经压缩的月度 checkpoint / delta，避免嵌套压缩。
+
+会话块的 hash 同时包含 codec 和内容，防止相同字节在不同语义下错误复用。编码、压缩和 hash 计算在事务外完成；写入时以短 `BEGIN IMMEDIATE` 事务提交缺失块和引用行，失败则回滚。命中既有 hash 时仍比较 codec、长度和字节，不能只相信 hash。
+
+## 自动回收
+
+内容块按引用可达性自动回收，不依赖定期全库清扫：
+
+- artifact upsert 在同一事务内更新引用，并删除已不再被 `runs`、`run_checkpoints` 或 `artifacts` 引用的旧 `v8-br-v1` 块；
+- 会话存储初始化以及 manual save、live session upsert / delete 后，从 `manual_saves` 与 `live_sessions` 的根 manifest 计算可达集，只回收 `eland-session-manifest-v2`、`eland-session-shell-v2`、`eland-session-timeline-chunk-v1` 三类不可达块；
+- 同一块仍被其他 run、存档或会话引用时必须保留；两类回收器不会跨 codec 家族误删对方的数据。
+
+删除块后形成的 freelist 页面由 SQLite 后续写入复用，数据库文件不会因此立即缩小。正常运行不要求 `VACUUM`；若未来确需离线压缩，应作为有备份、停服的独立维护操作处理。
+
+## 备份与恢复
+
+运行中的 WAL 数据库不能只复制主文件，否则可能漏掉尚在 `-wal` 中的提交。在线备份必须使用 SQLite backup API；离线备份应先正常停止后端，确认所有连接关闭，再复制数据库。备份文件应另存到不被服务直接打开的位置，并在登记时记录时间、文件大小和应用版本。
+
+恢复步骤：
+
+1. 停止后端，先把当前数据库及同名 `-wal`、`-shm` 一并移动到临时恢复目录，不直接删除。
+2. 将已验证的数据库备份放到 `<THREEBODY_DATA_DIR>/eland.sqlite3`；不要把归档 JSON 目录接回运行时。
+3. 启动前检查 `PRAGMA user_version`、`PRAGMA integrity_check` 和 `PRAGMA foreign_key_check`；版本受支持、完整性为 `ok` 且外键结果为空后再启动服务。
+4. 读取 runs、玩家档案和实时会话摘要做最小抽查；确认后再按保留策略处理临时恢复目录。
+
+## 2026-08-20 切换审计
+
+一次性迁移完成后的审计快照如下。数量会随正常使用增长，不是固定产品上限。
+
+| 项目 | 迁移结果 |
+| --- | ---: |
+| runs | 780 |
+| run checkpoints | 780 |
+| artifacts | 1542（evolution path 779、evolution report 761、narrative enhancements 2） |
+| manual saves | 4 |
+| live sessions | 6 |
+| civilization high-water | 3 |
+| 数据库大小 | 855,842,816 bytes |
+| `integrity_check` | `ok` |
+| 外键违规 | 0 |
+| `orphanChunks`（不可达内容块） | 0 |
+
+迁移前文件位于本机 `three-body/data/archive/pre-sqlite-cutover-20260820/`，并由 gitignore 排除。它只是切换时的本机恢复点，不是第二事实源，运行时不会扫描或读取；不得以它为由恢复文件存储代码。历史实验报告中的 `three-body/data/runs/`、`state.json` 等路径仍表示当时真实产物，不代表当前协议。

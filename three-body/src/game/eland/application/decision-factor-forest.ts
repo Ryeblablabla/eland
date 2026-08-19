@@ -8,9 +8,10 @@ import { seededFraction } from '../world/generator';
 import { reproductiveResponsibility } from '../domain/dependent-care';
 import { personalityBias, personalityEvidenceSourceIds } from '../domain/personality';
 import { REPRODUCTION_RELATION_THRESHOLD } from '../domain/relation';
+import { assessSocialRepetition } from '../domain/social-repetition';
 
 export interface DecisionFactorVote {
-  tree: 'need' | 'care' | 'commitment' | 'learning' | 'relationship' | 'consent' | 'feasibility' | 'harm';
+  tree: 'need' | 'care' | 'commitment' | 'learning' | 'relationship' | 'social-repetition' | 'consent' | 'feasibility' | 'harm';
   score: number;
   reasons: string[];
   sourceFactIds: string[];
@@ -189,6 +190,11 @@ function relationshipVote(context: DecisionContext, option: ActionOption): Decis
   );
 }
 
+function socialRepetitionVote(context: DecisionContext, option: ActionOption): DecisionFactorVote {
+  const assessment = assessSocialRepetition(context.state, context.person, option);
+  return vote('social-repetition', assessment.score, assessment.reasons, assessment.sourceFactIds);
+}
+
 function consentVote(context: DecisionContext, option: ActionOption): DecisionFactorVote {
   const action = option.nextAction.kind === 'communicate'
     ? option.nextAction
@@ -311,6 +317,7 @@ export function evaluateDecisionOption(
     commitmentVote(context, option),
     learningVote(context, option),
     relationshipVote(context, option),
+    socialRepetitionVote(context, option),
     consentVote(context, option),
     feasibilityVote(option),
     harmVote(context, option),

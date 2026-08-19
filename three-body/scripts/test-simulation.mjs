@@ -87,6 +87,30 @@ try {
   assert.ok(projectedMemories.some((memory) => memory.summary === '亲手分离出食物'), '重复普通对话不得挤掉模型上下文中的真实操作经验');
   assert.ok(projectedMemories.filter((memory) => memory.kind === 'dialogue').length <= 2, '模型上下文只保留少量最相关普通对话，避免对话自我强化');
 
+  const kinshipState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+  const [kinshipMother, kinshipFather, kinshipSpeaker, kinshipSister, kinshipChild] = kinshipState.people;
+  assert.ok(kinshipMother && kinshipFather && kinshipSpeaker && kinshipSister && kinshipChild, '亲属上下文测试需要至少五名人物');
+  kinshipMother.sex = 'female';
+  kinshipFather.sex = 'male';
+  kinshipSister.sex = 'female';
+  kinshipChild.sex = 'male';
+  kinshipSpeaker.geneticParents = [kinshipMother.id, kinshipFather.id];
+  kinshipSister.geneticParents = [kinshipMother.id, kinshipFather.id];
+  kinshipChild.geneticParents = [kinshipSpeaker.id, kinshipSister.id];
+  const kinshipContext = buildDecisionContexts(kinshipState).find((context) => context.person.id === kinshipSpeaker.id);
+  assert.ok(kinshipContext, '应能为有亲属关系的人物建立决策上下文');
+  const projectedKinship = buildDecisionRequestContext(kinshipContext).person.kinship;
+  assert.deepEqual(projectedKinship.parents.map(({ id, relation }) => ({ id, relation })), [
+    { id: kinshipMother.id, relation: 'mother' },
+    { id: kinshipFather.id, relation: 'father' },
+  ], '模型上下文必须明确投影双亲身份，不能让模型从描述或记忆猜测');
+  assert.deepEqual(projectedKinship.siblings.map(({ id, relation, fullSibling }) => ({ id, relation, fullSibling })), [
+    { id: kinshipSister.id, relation: 'sister', fullSibling: true },
+  ], '拥有相同双亲的人物必须投影为同父同母的姐妹');
+  assert.deepEqual(projectedKinship.children.map(({ id, relation }) => ({ id, relation })), [
+    { id: kinshipChild.id, relation: 'son' },
+  ], '子女身份必须独立于可衰减的事件记忆稳定投影');
+
   const feasibleIntentState = createInitialState(316, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const feasibleActor = feasibleIntentState.people.find((person) => person.sex === 'female') ?? feasibleIntentState.people[0];
   const feasiblePartner = feasibleIntentState.people.find((person) => person.sex === 'male' && person.id !== feasibleActor.id)
@@ -218,34 +242,37 @@ try {
   assert.equal(agreementState.agreements[0]?.status, 'fulfilled', '真实物质转移应履行求助 Agreement');
   assert.ok((requester.relations.find((relation) => relation.personId === helper.id)?.trust ?? 0) > 0, '履约事实应成为信任来源');
 
-  const socialCooldownState = createInitialState(320, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
-  const socialActor = socialCooldownState.people[0];
-  const socialPeer = socialCooldownState.people[1];
+  const socialBasisState = createInitialState(320, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
+  const socialActor = socialBasisState.people[0];
+  const socialPeer = socialBasisState.people[1];
   socialActor.bornAtMonth = -20 * 12;
   socialPeer.bornAtMonth = -20 * 12;
   placeWith(socialPeer, socialActor);
-  socialCooldownState.clock.elapsedMonths = 1;
+  socialBasisState.clock.elapsedMonths = 1;
   const socialSource = {
     id: 'test-social-cooldown-condition', kind: 'environment', change: 'condition', atMonth: 1,
     orderInMonth: 0, cellId: socialPeer.position.cellId, who: socialPeer.id,
     result: `${socialPeer.name}感到寒冷`, diff: { condition: 'cold', stage: 2 },
   };
-  socialCooldownState.world.past.push(socialSource);
+  socialBasisState.world.past.push(socialSource);
   socialPeer.conditions.push({
     id: 'test-social-cooldown-cold', kind: 'cold', stage: 2, sinceMonth: 1,
     sourceEventIds: [socialSource.id],
   });
-  const firstSocialContext = buildDecisionContexts(socialCooldownState).find((context) => context.person.id === socialActor.id);
+  const firstSocialContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
   const firstTalk = firstSocialContext?.options.find((option) => option.id.startsWith('conversation:')
     && option.nextAction.kind === 'communicate'
     && option.nextAction.audience.includes(socialPeer.id));
   assert.ok(firstTalk?.nextAction.kind === 'communicate', '社交冷却测试需要一项普通近身交谈');
-  socialCooldownState.world.past.push(actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction));
-  const cooledSocialContext = buildDecisionContexts(socialCooldownState).find((context) => context.person.id === socialActor.id);
-  assert.equal(cooledSocialContext?.options.some((option) => option.nextAction.kind === 'communicate'
-    && option.nextAction.content.kind === firstTalk.nextAction.content.kind
-    && option.nextAction.audience.includes(socialPeer.id)), false, '三个月内不得向同一对象重复同类普通社交');
-  assert.ok(cooledSocialContext?.options.some((option) => option.domain === 'strategic'), '社交冷却后仍应保留生产和探索候选');
+  socialBasisState.world.past.push(actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction));
+  const repeatedBasisContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
+  const firstBasisKey = firstTalk.nextAction.content.kind === 'claim'
+    ? firstTalk.nextAction.content.conversation?.basisKey
+    : undefined;
+  assert.equal(repeatedBasisContext?.options.some((option) => option.nextAction.kind === 'communicate'
+    && option.nextAction.content.kind === 'claim'
+    && option.nextAction.content.conversation?.basisKey === firstBasisKey), false, '同一段生活经历没有新事实时不得伪装成新的对话开场');
+  assert.ok(repeatedBasisContext?.options.some((option) => option.domain === 'strategic'), '证据绑定的对话结束后仍应保留生产和探索候选');
 
   const emergencyBudgetState = createInitialState(321, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
   const endangered = emergencyBudgetState.people[0];
@@ -312,11 +339,12 @@ try {
   recordAgreementAction(reproductionAgreementState, reproductionOffer);
   const reproductionAcceptance = actionFact('test-reproduction-acceptance', 2, reproductionPartner.id, { kind: 'communicate', content: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: reproductionAgreementId }, audience: [reproductionProposer.id], channel: 'voice' });
   recordAgreementAction(reproductionAgreementState, reproductionAcceptance);
-  const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }] }), diff: { conceived: false } };
+  const noConception = { ...actionFact('test-reproduction-no-conception', 2, reproductionPartner.id, { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: reproductionProposer.id }], authorizationRef: reproductionAgreementId }), diff: { conceived: false } };
   recordAgreementAction(reproductionAgreementState, noConception);
-  assert.equal(reproductionAgreementState.agreements[0]?.status, 'fulfilled', '双方同意授权的是一次生殖尝试，完成尝试后即履约，不以受孕结果判定');
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'active', '未受孕的完成动作只记录窗口进展，不应提前履约');
+  assert.deepEqual(reproductionAgreementState.agreements[0]?.reproductionAttemptEventIds, [noConception.id]);
   advanceAgreementLifecycle(reproductionAgreementState, (reproductionAgreementState.agreements[0]?.dueAtMonth ?? 14) + 1);
-  assert.equal(reproductionAgreementState.agreements[0]?.status, 'fulfilled', '已经完成的一次生殖尝试不能在原同意期限后被改写为过期');
+  assert.equal(reproductionAgreementState.agreements[0]?.status, 'expired', '尝试窗口到期仍未受孕时应结算为过期而非已履约');
 
   const inheritedRiskState = createInitialState(320, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
   inheritedRiskState.civilization.externalClimate = { epoch: 'stable', kind: 'temperate', severity: 0 };
@@ -600,6 +628,17 @@ try {
   const heardFact = groundedAfterTalk.people.find((person) => person.id === groundedListener.id)?.knowledge.find((fact) => fact.id === groundedFact.id);
   assert.equal(heardFact?.summary, groundedFact.summary, '自然语言措辞不能覆盖结构化认识的规范摘要');
   assert.ok((heardFact?.confidence ?? 0) >= 55 && heardFact?.sourceEventIds.some((id) => id.includes('action')), '明确教学可以传递可靠技术，但仍必须保留沟通动作来源');
+  const groundedAction = groundedAfterTalk.world.past.find((event) => event.kind === 'action'
+    && event.who === groundedSpeaker.id
+    && event.action.kind === 'communicate'
+    && event.action.content.kind === 'claim'
+    && event.action.content.factId === groundedFact.id);
+  assert.equal(groundedAction?.action.kind === 'communicate' ? groundedAction.action.content.summary : undefined,
+    groundedTalk.nextAction.kind === 'communicate' ? groundedTalk.nextAction.content.summary : undefined,
+    '模型台词必须与权威沟通摘要分离，不能写回 ActionFact 或后续记忆');
+  assert.notEqual(groundedAction?.action.kind === 'communicate' ? groundedAction.action.content.summary : undefined,
+    '我亲眼见过北边湿土附近有水',
+    '模型表层措辞不能取代规则决定的沟通事实');
   const groundedIntent = groundedAfterTalk.intents.find((intent) => intent.ownerId === groundedSpeaker.id
     && intent.nextAction.kind === 'communicate'
     && intent.nextAction.content.id === groundedTalk.id);
@@ -844,6 +883,7 @@ try {
   const firePosition = ignitionFacts.at(-1)?.diff.position;
   assert.ok(firePosition, '生火事实必须保存火体素位置');
   const cook = fireState.people.find((person) => person.id === fireMakerId);
+  Object.assign(cook.position, structuredClone(fireTestPosition));
   cook.inventory.push({ id: 'raw-food-for-cooking', materialId: 21, quantity: 1, sourceEventIds: [] });
   const cookContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
   const cookOption = cookContext?.options.find((option) => option.id.startsWith('try-expose:')

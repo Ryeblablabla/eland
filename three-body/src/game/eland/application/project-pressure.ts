@@ -6,8 +6,9 @@ import { ageMonths, inventoryQuantity, isAlive } from '../domain/person';
 import type { ProjectPressureBasis, ProjectProposal } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
 import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
-import { cellsInRadius, surfaceMaterial } from '../world/grid';
+import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
+import { buildLocalMaterialEvidence } from './local-material-evidence';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
@@ -343,8 +344,14 @@ function developmentBasis(
   atMonth: number,
   view: Required<ProjectPressureView>,
 ) {
-  const visiblePeople = view.visiblePeople.filter(isAlive);
-  const visiblePopulation = Math.max(1, visiblePeople.length);
+  // The caller passes other visible people; the observer is still part of the
+  // local resource and body pressure. Omitting the owner made development
+  // pressure appear only after somebody else entered view.
+  const visiblePeople = [
+    owner,
+    ...view.visiblePeople.filter((person) => person.id !== owner.id && isAlive(person)),
+  ];
+  const visiblePopulation = visiblePeople.length;
   const foodIds = new Set<MaterialId>([Material.Food, Material.CookedFood, Material.RawMeat]);
   const visibleFood = view.visibleDrops
     .filter((drop) => foodIds.has(drop.materialId))
@@ -356,15 +363,28 @@ function developmentBasis(
   const hungryPeople = visiblePeople.filter((person) => person.body.nutrition < 45).length;
   const dehydratedPeople = visiblePeople.filter((person) => person.body.hydration < 45).length;
   const dependentPeople = visiblePeople.filter((person) => ageMonths(person, atMonth) < 16 * 12).length;
-  const visibleMaterials = new Set<MaterialId>([
-    ...view.visibleDrops.map((drop) => drop.materialId),
-    ...visiblePeople.flatMap((person) => person.inventory.filter((stack) => stack.quantity > 0).map((stack) => stack.materialId)),
-    ...view.visibleCells.map((cellId) => surfaceMaterial(state.world.grid, cellId)),
-    ...owner.knownPlaces.map((place) => place.materialId),
-  ]);
-  const hasAny = (...materialIds: MaterialId[]) => materialIds.some((materialId) => visibleMaterials.has(materialId));
-  const productionTool = hasAny(Material.WoodTool, Material.StoneHoe, Material.BronzeTool, Material.IronTool);
-  const pressureFacilities = [...visibleMaterials].filter((materialId) => materialHas(materialId, 'facility'));
+  const materialEvidence = buildLocalMaterialEvidence(state, owner, {
+    visibleCells: view.visibleCells,
+    visibleDrops: view.visibleDrops,
+    visiblePeople,
+  });
+  const hasObserved = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
+    materialEvidence.observedMaterialIds.has(materialId)
+  ));
+  const hasAccessiblePortable = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
+    materialEvidence.accessiblePortableMaterialIds.has(materialId)
+  ));
+  const hasPlacedFacility = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
+    materialEvidence.placedFacilityMaterialIds.has(materialId)
+  ));
+  const productionTool = hasAccessiblePortable(Material.WoodTool, Material.StoneHoe, Material.BronzeTool, Material.IronTool);
+  const pressureFacilities = [...materialEvidence.placedFacilityMaterialIds];
+  const completedJointProjects = state.projects.filter((project) => project.status === 'completed'
+    && project.contributorIds.includes(owner.id)
+    && project.contributorIds.some((personId) => personId !== owner.id));
+  const jointPartnerIds = new Set(completedJointProjects.flatMap((project) => (
+    project.contributorIds.filter((personId) => personId !== owner.id)
+  )));
   const remembered = rememberedSourceIds(owner);
   const sourceFactIds = worldEventsByIdsInHistoryOrder(state, remembered)
     .filter((event) => event.atMonth <= atMonth
@@ -387,32 +407,39 @@ function developmentBasis(
   if (subject.need === 'production-efficiency') {
     const crowding = Math.max(0, visiblePopulation - 3);
     const shortage = Math.max(0, 2.5 - foodPerPerson);
+    const productionToolAddressesFunction = productionTool
+      && subject.desiredFunction === 'efficient-production';
     return makeBasis(subject, owner, atMonth,
-      24 + crowding * 7 + shortage * 10 + hungryPeople * 9 + dependentPeople * 4 - (productionTool ? 28 : 0),
+      24 + crowding * 7 + shortage * 10 + hungryPeople * 9 + dependentPeople * 4
+        - (productionToolAddressesFunction ? 28 : 0),
       [...commonEdges, `state:production-tool:${productionTool ? 'present' : 'absent'}`],
       [
         ...(crowding >= 2 ? ['visible-population-growth'] : []),
         ...(shortage > 0 ? ['visible-food-pressure'] : []),
         ...(hungryPeople ? ['visible-hunger'] : []),
         ...(dependentPeople ? ['visible-dependent-load'] : []),
-        ...(productionTool ? ['production-tool-present'] : ['production-tool-absent']),
+        ...(productionTool
+          ? [productionToolAddressesFunction ? 'production-tool-present' : 'production-tool-not-sufficient-for-function']
+          : ['production-tool-absent']),
       ], sourceFactIds);
   }
   if (subject.need === 'reserve-security') {
-    const hasGranary = hasAny(Material.Granary);
+    const hasGranary = hasPlacedFacility(Material.Granary);
     const weatherRisk = state.civilization.weather.kind === 'storm' || state.civilization.climate.severity >= 3;
+    const visibleReserveSurplus = Math.max(0, visibleFood - visiblePopulation * 2);
     return makeBasis(subject, owner, atMonth,
-      24 + Math.max(0, visiblePopulation - 4) * 6 + Math.max(0, 4 - foodPerPerson) * 7 + dependentPeople * 3 + (weatherRisk ? 18 : 0) - (hasGranary ? 35 : 0),
-      [...commonEdges, `state:granary:${hasGranary ? 'present' : 'absent'}`],
+      18 + Math.min(30, visibleReserveSurplus * 6) + Math.max(0, visiblePopulation - 4) * 4
+        + dependentPeople * 3 + (weatherRisk ? 18 : 0) - (hasGranary ? 35 : 0),
+      [...commonEdges, `state:visible-reserve-surplus:${visibleReserveSurplus}`, `state:granary:${hasGranary ? 'present' : 'absent'}`],
       [
-        ...(foodPerPerson < 4 ? ['thin-visible-reserve'] : []),
+        ...(visibleReserveSurplus > 0 ? ['visible-storable-surplus'] : []),
         ...(dependentPeople ? ['visible-dependent-load'] : []),
         ...(weatherRisk ? ['external-environment-risk'] : []),
         ...(hasGranary ? ['granary-present'] : ['granary-absent']),
       ], sourceFactIds);
   }
   if (subject.need === 'water-security') {
-    const hasCistern = hasAny(Material.Cistern);
+    const hasCistern = hasPlacedFacility(Material.Cistern);
     const heatRisk = state.civilization.climate.kind === 'heat' || state.civilization.climate.kind === 'fire';
     return makeBasis(subject, owner, atMonth,
       18 + dehydratedPeople * 18 + (heatRisk ? 26 : 0) + Math.max(0, visiblePopulation - 5) * 4 - (hasCistern ? 40 : 0),
@@ -424,18 +451,30 @@ function developmentBasis(
       ], sourceFactIds);
   }
   if (subject.need === 'coordination-capacity') {
-    const hasCore = hasAny(Material.CouncilHearth, Material.CivicHall, Material.KeepCore);
+    const hasCore = hasPlacedFacility(Material.CouncilHearth, Material.CivicHall, Material.KeepCore);
+    const jointProjectPressure = Math.min(2, completedJointProjects.length) * 12;
+    const jointPartnerPressure = Math.min(2, jointPartnerIds.size) * 4;
     return makeBasis(subject, owner, atMonth,
-      18 + Math.max(0, visiblePopulation - 3) * 8 + state.projects.filter((project) => project.status === 'completed').length * 2 - (hasCore ? 32 : 0),
-      [...commonEdges, `state:coordination-core:${hasCore ? 'present' : 'absent'}`],
+      18 + Math.max(0, visiblePopulation - 3) * 8 + jointProjectPressure + jointPartnerPressure - (hasCore ? 32 : 0),
+      [
+        ...commonEdges,
+        `state:completed-joint-projects:${completedJointProjects.length}`,
+        `state:joint-project-partners:${jointPartnerIds.size}`,
+        `state:coordination-core:${hasCore ? 'present' : 'absent'}`,
+      ],
       [
         ...(visiblePopulation >= 5 ? ['visible-coordination-load'] : []),
+        ...(completedJointProjects.length ? ['joint-project-experience'] : []),
+        ...(completedJointProjects.length >= 2 ? ['repeated-joint-projects'] : []),
         ...(hasCore ? ['coordination-core-present'] : ['coordination-core-absent']),
       ], sourceFactIds);
   }
   if (subject.need === 'high-heat-capability') {
-    const hasFeedstock = hasAny(Material.Clay, Material.CopperOre, Material.TinOre, Material.IronOre);
-    const hasKiln = hasAny(Material.Kiln, Material.Foundry, Material.Smithy);
+    const hasFeedstock = hasObserved(Material.Clay, Material.CopperOre, Material.TinOre, Material.IronOre);
+    // Metalworking sites are a separate network/logistics problem: a witnessed
+    // fixed high-heat capability prevents rebuilding the whole chain here,
+    // while actual production still requires a real reachable site.
+    const hasKiln = hasObserved(Material.Kiln, Material.Foundry, Material.Smithy);
     return makeBasis(subject, owner, atMonth,
       22 + (hasFeedstock ? 40 : 0) + Math.max(0, visiblePopulation - 5) * 4 - (hasKiln ? 28 : 0),
       [...commonEdges, `state:heat-feedstock:${hasFeedstock ? 'present' : 'absent'}`, `state:high-heat-site:${hasKiln ? 'present' : 'absent'}`],
@@ -445,10 +484,10 @@ function developmentBasis(
       ], sourceFactIds);
   }
   if (subject.need === 'alloy-capability') {
-    const copperEvidence = hasAny(Material.CopperOre, Material.CopperCharge, Material.Copper);
-    const tinEvidence = hasAny(Material.TinOre, Material.TinCharge, Material.Tin);
-    const bronzeMaterial = hasAny(Material.Bronze);
-    const bronzeTool = hasAny(Material.BronzeTool);
+    const copperEvidence = hasObserved(Material.CopperOre, Material.CopperCharge, Material.Copper);
+    const tinEvidence = hasObserved(Material.TinOre, Material.TinCharge, Material.Tin);
+    const bronzeMaterial = hasObserved(Material.Bronze);
+    const bronzeTool = hasAccessiblePortable(Material.BronzeTool);
     const bronzeEvidence = bronzeMaterial || bronzeTool;
     if (subject.desiredFunction === 'bronze-tooling') {
       return makeBasis(subject, owner, atMonth,
@@ -460,7 +499,7 @@ function developmentBasis(
         ], sourceFactIds);
     }
     if (subject.desiredFunction === 'bronze-workshop') {
-      const foundry = hasAny(Material.Foundry);
+      const foundry = hasObserved(Material.Foundry);
       return makeBasis(subject, owner, atMonth,
         20 + (bronzeMaterial ? 28 : 0) + Math.max(0, visiblePopulation - 5) * 3 - (foundry ? 36 : 0),
         [...commonEdges, `state:bronze-material:${bronzeMaterial}`, `state:foundry:${foundry}`],
@@ -478,8 +517,8 @@ function developmentBasis(
         ...(bronzeEvidence ? ['bronze-produced'] : ['bronze-not-yet-produced']),
       ], sourceFactIds);
   }
-  const ironEvidence = hasAny(Material.IronOre, Material.IronCharge, Material.IronBloom, Material.Iron, Material.IronTool);
-  const smithy = hasAny(Material.Smithy);
+  const ironEvidence = hasObserved(Material.IronOre, Material.IronCharge, Material.IronBloom, Material.Iron, Material.IronTool);
+  const smithy = hasObserved(Material.Smithy);
   return makeBasis(subject, owner, atMonth,
     18 + (ironEvidence ? 44 : 0) + Math.max(0, visiblePopulation - 7) * 4 - (smithy ? 18 : 0),
     [...commonEdges, `state:iron-evidence:${ironEvidence}`, `state:smithy:${smithy ? 'present' : 'absent'}`],

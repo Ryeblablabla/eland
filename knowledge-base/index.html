@@ -1169,8 +1169,22 @@ function dirtPreviewConnections(road,x,z){
   }
   return result;
 }
+/** KB 预览没有高程：四格均为真实夯土时，按同高 2×2 推导可填内角。 */
+function dirtPreviewFilledCorners(road,x,z){
+  if(!road.has(`${x}|${z}`))return [];
+  const result=[];
+  for(const [dx,dz] of DIRT_PATH_DIR8){
+    if(dx===0||dz===0)continue;
+    if(
+      road.has(`${x+dx}|${z}`)
+      &&road.has(`${x}|${z+dz}`)
+      &&road.has(`${x+dx}|${z+dz}`)
+    )result.push({dx,dz});
+  }
+  return result;
+}
 /** 与生产装饰层同构：每地图格 8×8 微体素，中心线栅格化成连续泥面。 */
-function genDirtPathCell(B,cellX,cellZ,connections,seed){
+function genDirtPathCell(B,cellX,cellZ,connections,filledCorners,seed){
   const edge=d=>({x:d.dx*0.53,z:d.dz*0.53});
   const lines=[];
   let junction=false;
@@ -1201,7 +1215,11 @@ function genDirtPathCell(B,cellX,cellZ,connections,seed){
       distance=Math.min(distance,dirtSegmentDistance(local,line[i-1],line[i]));
     const microId=mz*MICRO_PER_MAP_CELL+mx;
     const edgeNoise=(dirtHash(seed^microId,121)-0.5)*0.07;
-    if(distance>0.215+edgeNoise&&(!junction||Math.hypot(local.x,local.z)>0.29+edgeNoise))continue;
+    const insideRibbon=distance<=0.215+edgeNoise;
+    const insideJunction=junction&&Math.hypot(local.x,local.z)<=0.29+edgeNoise;
+    const insideFilledCorner=filledCorners.some(({dx,dz})=>
+      dx!==0&&dz!==0&&local.x*dx>0.25&&local.z*dz>0.25);
+    if(!insideRibbon&&!insideJunction&&!insideFilledCorner)continue;
     roadMicros.push({x:cellX*8+mx-3.5,z:cellZ*8+mz-3.5});
     const tone=0.39+dirtHash(seed^microId,122)*0.22;
     const color=dirtHash(seed^microId,123)>0.93?dirtColor(0x705439,tone):dirtColor(0x806143,tone);
@@ -1232,9 +1250,13 @@ function genDirtPath(B){
   for(let z=-2;z<=2;z++)add(0,z);
   add(-1,1); add(-2,2);             // 丁字转斜向
   add(3,-1); add(4,-2);             // 连续对角支路
+  add(2,2); add(3,2); add(2,3); add(3,3); // 独立 2×2 夯土块，共享角合成中心泥面
   for(const key of road){
     const [x,z]=key.split('|').map(Number);
-    genDirtPathCell(B,x,z,dirtPreviewConnections(road,x,z),Math.imul(x+17,73856093)^Math.imul(z+29,19349663));
+    genDirtPathCell(
+      B,x,z,dirtPreviewConnections(road,x,z),dirtPreviewFilledCorners(road,x,z),
+      Math.imul(x+17,73856093)^Math.imul(z+29,19349663),
+    );
   }
 }
 
@@ -2289,7 +2311,7 @@ const STYLES = [
   { key:'mushrooms',  cat:'n', group:'生态点缀', name:'蘑菇', en:'Mushrooms',       gen:(B)=>genGroundDetail(B,'mushrooms') },
   { key:'branch',     cat:'n', group:'生态点缀', name:'倒木枝', en:'Fallen Branch',  gen:(B)=>genGroundDetail(B,'branch') },
   // 道路与桥梁
-  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 八向邻接 · PackedSoil / Trail', note:'生产场景读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；丁字和十字汇成不规则磨损泥地，碎土与嵌入石子只做表现，不改变通行规则。' },
+  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 八向邻接 · PackedSoil / Trail', note:'生产场景读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；只有同高的真实夯土 2×2 会合并共享缝，四格内角组成连续中心泥面，不会填入被道路围住但实际仍属草地、农田或庭院的地块。碎土与嵌入石子只做表现，不改变通行规则。' },
   { key:'stoneroad',  cat:'r', group:'道路演进', lv:3, name:'石板路',   en:'Stone Road',   gen:genStoneRoad },
   { key:'gravelroad', cat:'r', group:'道路演进', lv:5, name:'碎石路',   en:'Gravel Road',  gen:genGravelRoad },
   { key:'highway',    cat:'r', group:'道路演进', lv:6, name:'公路',     en:'Highway',      gen:genHighway },

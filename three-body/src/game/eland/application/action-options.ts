@@ -6,6 +6,7 @@ import type { DecisionContext, DropState, EnvironmentFact, SimulationState } fro
 import {
   acceptedExchangeFor,
   exchangeTermFulfilled,
+  hasOpenExchangeOfferBetween,
   openExchangeOfferFor,
   openReproductionOfferFor,
 } from '../domain/social-facts';
@@ -59,9 +60,10 @@ import {
 import { humanReproductionCapacityFactor } from '../domain/population-capacity';
 import { cloneProjectForPlanning } from '../domain/project';
 import { lifePlanningStage } from '../domain/life-stage';
-import { optionAllowedForLifeStage } from './age-planning';
+import { optionAllowedForLearningChildCareRadius, optionAllowedForLifeStage } from './age-planning';
 import { followUpSemanticallyMatches, isGroundedConversationOpening } from '../domain/intent-follow-up';
 import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
+import { reproductionAttemptedBetweenInMonth } from '../domain/agreement';
 import {
   isActionableChaosPrediction,
   MAX_ERA_PREDICTION_HORIZON_MONTHS,
@@ -193,38 +195,6 @@ function withPlanning(state: SimulationState, person: PersonState, option: Actio
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
 const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique|withdraw-reproduce):/;
-
-function socialInteractionKey(action: PrimitiveAction): string | null {
-  if (action.kind !== 'communicate') return null;
-  const content = action.content;
-  const proposalKind = (content.kind === 'request' || content.kind === 'offer') ? content.proposal?.kind : undefined;
-  const subject = proposalKind
-    ?? (content.kind === 'claim' ? content.conversation?.basisKey ?? content.factId ?? 'situation' : content.kind);
-  return `${content.kind}:${subject}:${[...action.audience].sort().join(',')}`;
-}
-
-function isOptionalSocialInitiation(option: ActionOption): boolean {
-  if (option.domain !== 'social' || option.nextAction.kind !== 'communicate') return false;
-  if (REQUIRED_SOCIAL_RESPONSE.test(option.id) || FULFILLMENT_OPTION.test(option.id)) return false;
-  return option.nextAction.content.kind === 'request'
-    || option.nextAction.content.kind === 'offer'
-    || option.nextAction.content.kind === 'claim';
-}
-
-function recentlyRepeatedSocialOption(state: SimulationState, person: PersonState, option: ActionOption): boolean {
-  if (!isOptionalSocialInitiation(option)) return false;
-  const key = socialInteractionKey(option.nextAction);
-  if (!key) return false;
-  const oldestRelevantMonth = state.clock.elapsedMonths - 2;
-  for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
-    const event = state.world.past[index];
-    if (event.atMonth < oldestRelevantMonth) break;
-    if (event.kind === 'action'
-      && event.who === person.id
-      && socialInteractionKey(event.action) === key) return true;
-  }
-  return false;
-}
 
 function decisionOptionPriority(option: ActionOption): number {
   if (REQUIRED_SOCIAL_RESPONSE.test(option.id)) return 0;
@@ -688,9 +658,11 @@ function buildOptions(
       .map((input) => ({
         input,
         known: knownTechniqueForPrefix(person, `technique:expose:${input.materialId}:${hotMaterialId}:`),
+        edible: materialHas(input.materialId, 'edible'),
         stableRank: seededFraction(state.seed, `ordinary-expose:${person.id}:${input.materialId}:${hotMaterialId}`),
       }))
       .sort((a, b) => (a.known ? 0 : 1) - (b.known ? 0 : 1)
+        || (a.edible ? 0 : 1) - (b.edible ? 0 : 1)
         || a.stableRank - b.stableRank
         || a.input.materialId - b.input.materialId
         || a.input.id.localeCompare(b.input.id))
@@ -830,7 +802,10 @@ function buildOptions(
     });
   }
 
-  const tradePartner = !incomingExchange && !acceptedExchange ? localPeopleWithDifferentGoods(person, visiblePeople)[0] : undefined;
+  const tradePartner = !incomingExchange && !acceptedExchange
+    ? localPeopleWithDifferentGoods(person, visiblePeople)
+      .find((candidate) => !hasOpenExchangeOfferBetween(state, person.id, candidate.person.id))
+    : undefined;
   if (tradePartner) {
     const representationId = `offer-exchange:${state.clock.elapsedMonths}:${person.id}:${tradePartner.person.id}`;
     options.push({
@@ -902,7 +877,9 @@ function buildOptions(
       estimatedDuration: together ? 'one-month' : 'several-months',
       sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
     });
-    if (relationshipReady && reproductivePairEligible(state, person, activeReproductionPartner)) {
+    if (!reproductionAttemptedBetweenInMonth(state, person.id, activeReproductionPartner.id, state.clock.elapsedMonths)
+      && relationshipReady
+      && reproductivePairEligible(state, person, activeReproductionPartner)) {
       const female = person.sex === 'female' ? person : activeReproductionPartner;
       options.push({
         id: `reproduce:${activeReproductionAgreement.id}:${activeReproductionPartner.id}`,
@@ -910,9 +887,9 @@ function buildOptions(
         reason: '双方已形成可追溯的单次授权，且行动前仍可重新评估',
         goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
         nextAction: together
-          ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: activeReproductionPartner.id }] }
+          ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id }
           : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
-        ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: activeReproductionPartner.id }] } } : {}),
+        ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id } } : {}),
         target: { kind: 'person', personId: activeReproductionPartner.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
         sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
@@ -1187,8 +1164,8 @@ export function buildDecisionContext(state: SimulationState, person: PersonState
   const stage = lifePlanningStage(person, state.clock.elapsedMonths);
   const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals)
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
-    .filter((option) => !recentlyRepeatedSocialOption(state, person, option))
     .filter((option) => optionAllowedForLifeStage(stage, option))
+    .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
     .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
   const followUpOptions = allOptions.filter((option) => option.nextAction.kind !== 'communicate');
   const options = allOptions
@@ -1286,9 +1263,19 @@ export function recompileNextAction(state: SimulationState, person: PersonState,
       const access = findContainerAccess(state, person, container);
       return access ? { kind: 'move', toCellId: access.position.cellId, toZ: access.position.z } : null;
     }
+    const ordinaryGranaryFoodReserve = !intent.projectId
+      && materialHas(goal.materialId, 'edible')
+      && voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z) === Material.Granary
+      ? 1
+      : 0;
+    const quantity = Math.min(
+      Math.max(0, stack.quantity - ordinaryGranaryFoodReserve),
+      Math.max(1, goal.quantity - containerQuantity(container, goal.materialId)),
+    );
+    if (quantity <= 0) return null;
     return {
       kind: 'transfer', materialId: goal.materialId,
-      quantity: Math.min(stack.quantity, Math.max(1, goal.quantity - containerQuantity(container, goal.materialId))),
+      quantity,
       from: { kind: 'person', personId: person.id }, to: { kind: 'container', containerId: container.id }, stackId: stack.id,
     };
   }

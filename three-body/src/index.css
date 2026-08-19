@@ -4,6 +4,9 @@
 
 @layer base {
   :root {
+    --font-ui: "IBM Plex Sans Variable", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+    --font-display: "Noto Serif SC Variable", "Source Han Serif SC", "Songti SC", STSong, serif;
+    --font-data: "IBM Plex Sans Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -71,5 +74,216 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-ui);
+    font-optical-sizing: auto;
+  }
+}
+
+@layer components {
+  .era-announcement__title {
+    position: relative;
+    display: inline-block;
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 560;
+    letter-spacing: 0.075em;
+  }
+
+  .era-announcement__subtitle {
+    font-family: var(--font-ui);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.28em;
+  }
+
+  .era-announcement__title--chaotic {
+    isolation: isolate;
+    animation: era-chaos-body 3.4s steps(1, end) both;
+    will-change: transform, filter, letter-spacing;
+  }
+
+  .era-announcement__title--chaotic::before,
+  .era-announcement__title--chaotic::after {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    content: attr(data-text);
+    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    mix-blend-mode: screen;
+  }
+
+  .era-announcement__title--chaotic::before {
+    text-shadow: -0.055em 0 rgba(125, 211, 252, 0.82), 0 0 28px currentColor;
+    animation: era-chaos-slice-cold 3.4s steps(1, end) both;
+  }
+
+  .era-announcement__title--chaotic::after {
+    text-shadow: 0.055em 0 rgba(251, 113, 133, 0.78), 0 0 28px currentColor;
+    animation: era-chaos-slice-hot 3.4s steps(1, end) both;
+  }
+
+  .era-announcement__subtitle--chaotic {
+    animation: era-chaos-subtitle 3.4s steps(1, end) both;
+    will-change: transform, opacity, letter-spacing;
+  }
+}
+
+@keyframes era-chaos-body {
+  0%, 8%, 18%, 31%, 42%, 78%, 87%, 100% {
+    transform: translate(0, 0) skewX(0deg);
+    letter-spacing: 0.075em;
+    filter: blur(0);
+  }
+  9% {
+    transform: translate(-0.035em, 0.018em) skewX(-2.5deg);
+    letter-spacing: 0.015em;
+    filter: blur(0.8px);
+  }
+  11% {
+    transform: translate(0.045em, -0.012em) skewX(1.8deg);
+    letter-spacing: 0.17em;
+  }
+  14% {
+    transform: translate(-0.018em, 0) skewX(-1deg);
+    letter-spacing: 0.04em;
+  }
+  25% {
+    transform: translate(0.025em, -0.016em) skewX(2deg);
+    letter-spacing: 0.13em;
+  }
+  27% {
+    transform: translate(-0.045em, 0.012em) skewX(-2deg);
+    letter-spacing: 0.025em;
+  }
+  36% {
+    transform: translate(0.018em, 0) skewX(0.8deg);
+    letter-spacing: 0.105em;
+  }
+  82% {
+    transform: translate(-0.025em, 0.008em) skewX(-1.5deg);
+    letter-spacing: 0.12em;
+  }
+  84% {
+    transform: translate(0.035em, -0.008em) skewX(1deg);
+    letter-spacing: 0.045em;
+  }
+}
+
+@keyframes era-chaos-slice-cold {
+  0%, 8%, 12%, 24%, 28%, 35%, 79%, 85%, 100% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  9% {
+    opacity: 0.78;
+    clip-path: inset(10% 0 62% 0);
+    transform: translate(-0.09em, -0.015em);
+  }
+  10% {
+    opacity: 0.46;
+    clip-path: inset(54% 0 18% 0);
+    transform: translate(0.07em, 0.012em);
+  }
+  25% {
+    opacity: 0.62;
+    clip-path: inset(30% 0 42% 0);
+    transform: translate(0.1em, 0);
+  }
+  27% {
+    opacity: 0.38;
+    clip-path: inset(68% 0 8% 0);
+    transform: translate(-0.065em, 0.01em);
+  }
+  36% {
+    opacity: 0.28;
+    clip-path: inset(18% 0 60% 0);
+    transform: translate(-0.04em, 0);
+  }
+  82% {
+    opacity: 0.5;
+    clip-path: inset(43% 0 30% 0);
+    transform: translate(-0.075em, 0.008em);
+  }
+  84% {
+    opacity: 0.24;
+    clip-path: inset(12% 0 70% 0);
+    transform: translate(0.04em, 0);
+  }
+}
+
+@keyframes era-chaos-slice-hot {
+  0%, 10%, 15%, 25%, 30%, 37%, 80%, 86%, 100% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  11% {
+    opacity: 0.62;
+    clip-path: inset(58% 0 14% 0);
+    transform: translate(0.085em, 0.012em);
+  }
+  13% {
+    opacity: 0.36;
+    clip-path: inset(22% 0 50% 0);
+    transform: translate(-0.055em, -0.008em);
+  }
+  26% {
+    opacity: 0.72;
+    clip-path: inset(8% 0 66% 0);
+    transform: translate(-0.095em, -0.012em);
+  }
+  28% {
+    opacity: 0.32;
+    clip-path: inset(46% 0 27% 0);
+    transform: translate(0.06em, 0.008em);
+  }
+  35% {
+    opacity: 0.24;
+    clip-path: inset(72% 0 6% 0);
+    transform: translate(0.04em, 0);
+  }
+  83% {
+    opacity: 0.56;
+    clip-path: inset(24% 0 48% 0);
+    transform: translate(0.08em, -0.008em);
+  }
+  85% {
+    opacity: 0.22;
+    clip-path: inset(64% 0 12% 0);
+    transform: translate(-0.04em, 0);
+  }
+}
+
+@keyframes era-chaos-subtitle {
+  0%, 10%, 18%, 31%, 42%, 78%, 87%, 100% {
+    opacity: 1;
+    transform: translateX(0);
+    letter-spacing: 0.28em;
+  }
+  11%, 26%, 83% {
+    opacity: 0.35;
+    transform: translateX(-0.45em);
+    letter-spacing: 0.38em;
+  }
+  13%, 28%, 85% {
+    opacity: 0.72;
+    transform: translateX(0.3em);
+    letter-spacing: 0.18em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .era-announcement__title--chaotic,
+  .era-announcement__subtitle--chaotic {
+    animation: none;
+  }
+
+  .era-announcement__title--chaotic::before,
+  .era-announcement__title--chaotic::after {
+    content: none;
+    animation: none;
   }
 }

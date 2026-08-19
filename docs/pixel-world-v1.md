@@ -133,20 +133,19 @@ generator.version 必须随算法变化。旧存档读取自己的已存网格�
 
 ## 9. 当前持久化实现
 
-FileRunStore 按运行保存：
+`three-body/data/eland.sqlite3` 是运行时唯一事实源，使用 SQLite WAL。`THREEBODY_DATA_DIR` 只改变数据库父目录；完整 codec、事务、备份恢复与切换审计见[SQLite 持久化](./sqlite-persistence-v1.md)。物理表按职责分开：
 
-- `state.json`：最新完整 `SimulationState`；
-- `meta.json`：轻量摘要与持久化修订号；
-- `evolution.json`：长程演化状态、元数据检查点与关键转折；
-- `report.json`：由真实事件确定性生成的事实报告。
+- `runs`、`run_checkpoints`：长程运行的最新状态、摘要、revision 与检查点；
+- `artifacts`：演化路径、事实报告与非权威叙事旁车；
+- `manual_saves`、`live_sessions`：玩家不可变存档与热重启恢复会话；
+- `campaign_state`：全局文明编号高水位；
+- `chunks`：上述记录共享的内容寻址压缩块。
 
-实时人间会话另有开发期恢复快照，默认保存在 `three-body/.cache/eland-live-sessions/`，包含当前权威状态、活动分支时间线与最近帧，并在后端正常退出或热重启时写入。默认恢复时限为 24 小时，可由 `ELAND_LIVE_SESSION_DIR` 与 `ELAND_SESSION_RECOVERY_TTL_MS` 调整。它用于避免开发热重启丢失当前观察进度，不替代 `data/runs/` 中可迁移、可审计的长程运行产物。
+长程状态和 artifact 使用 V8 serialize + Brotli 内容块；同一 hash 只保存一次。实时与手动会话使用 `ELANDV2`，把一次压缩的 shell 与已压缩的月度 checkpoint / delta 分块引用，避免嵌套重复压缩。元数据和内容块引用在短事务中提交，不存在文件或混合存储回退。
 
-长程演化按 12 个月一批推进，每批保存一次完整状态并追加元数据检查点（月份、事件数、人口、阶段、里程碑 ID、token 用量）；文明提前结束时立即保存。进程或 API 中断时，演化路径标记 `failed` 并保留最近检查点；恢复以最近保存的完整状态为准。
+长程演化按 12 个月一批推进，每批保存完整状态并追加元数据检查点（月份、事件数、人口、阶段、里程碑 ID、token 用量）；文明提前结束时立即保存。进程或 API 中断时，演化路径标记 `failed` 并保留最近检查点；恢复以最近提交状态为准。实时会话则保存活动分支时间线与最近帧，支持权威快照重放、seek 和从过去月份分岔。
 
-尚未实现：逐体素稀疏补丁、MonthRecord 持久化、分支历史持久化与服务端 seek/分岔 API。第 10～13 节是这些能力的设计目标，实施时不得绕过第 8 节的目标约束。
-
-## 10. 历史设计：运行记录与检查点
+## 10. 逻辑记录与检查点
 
 ```text
 interface PixelWorldRun {
@@ -189,18 +188,7 @@ interface WorldCheckpoint {
 - generator.version 和初始密集层随 month 0 保存。
 - 存档总是读取已保存网格，不依赖当前生成器重建。
 
-体素密集层（Uint16Array）在 JSON 存储中使用明确编码：
-
-```text
-interface EncodedDenseLayer {
-  type: "u16"
-  encoding: "rle"
-  length: 52416
-  data: number[]
-}
-```
-
-v1 先用 RLE JSON；若实测数据更大，再换二进制容器，逻辑契约不变。
+体素密集层保持 `Uint16Array`，随权威状态进入 V8 serialize + Brotli 内容块，不展开成 JSON 数组。块 hash 只负责去重和完整引用，不参与领域规则或确定性随机输入。
 
 ## 11. 历史设计：月度记录与世界补丁
 
@@ -306,7 +294,7 @@ EntityPatch 使用 create、update、delete。删除也要保留 sourceEventIds�
 
 - 当前 schemaVersion 17；当前开发版本只接受 17，不自动迁移 16 及更早存档。
 - 读取旧版本时返回明确错误，不自动补造缺失的人格证据、年龄门禁、协议、体素或 planning tick 事实。
-- 旧档只允许导出 JSON 或历史摘要，不能导入为可继续演化的像素世界。
+- 旧档只允许读取历史摘要，不能导入为可继续演化的像素世界。
 - 新文明使用新的 runId，避免两种时空语义混在同一时间线。
 
 这是有意的模型断代：不推测从未发生过的月份、路径、位置或行动进度。
@@ -321,7 +309,7 @@ schema 11   84×52 二维属性层 + 月度时钟（硬切换完成）
 schema 14   物质体素取代二维属性层；Intent + PrimitiveAction 取代 PlanMode
 schema 15   协议事实文明扩展（历史版本）
 schema 16   物质体素与因果观察器的上一开发版本（已切断）
-schema 17   当前版本：年龄门禁、HEXACO 人格、单次生殖授权与模型端点审计；只接受同版本状态
+schema 17   当前版本：年龄门禁、HEXACO 人格、四个月有界生殖授权与模型端点审计；只接受同版本状态
 ```
 
 ### 15.2 schema 10 → 11 硬切换决策

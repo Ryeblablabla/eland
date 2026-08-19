@@ -90,10 +90,14 @@ try {
   actor.body.nutrition = 80;
   actor.inventory = [{ id: 'single-food', materialId: Material.Food, quantity: 1, sourceEventIds: ['single-food'] }];
   const granaryCellId = supportedNeighbor.x + supportedNeighbor.y * state.world.grid.width;
+  const unsafeStoreFood = buildContainerOptions(state, actor, [granaryCellId])
+    .find((option) => option.id.startsWith('store-container:'));
+  assert.equal(unsafeStoreFood, undefined, '公共谷仓不得拿走人物最后一份随身食物');
+  actor.inventory = [{ id: 'surplus-food', materialId: Material.Food, quantity: 2, sourceEventIds: ['surplus-food'] }];
   const storeFood = buildContainerOptions(state, actor, [granaryCellId])
     .find((option) => option.id.startsWith('store-container:'));
-  assert.equal(storeFood?.nextAction.kind, 'transfer', '谷仓必须允许把单份盈余食物存入公共储备');
-  assert.equal(storeFood?.nextAction.kind === 'transfer' ? storeFood.nextAction.quantity : 0, 1);
+  assert.equal(storeFood?.nextAction.kind, 'transfer', '谷仓应允许人物把真实余粮存入公共储备');
+  assert.equal(storeFood?.nextAction.kind === 'transfer' ? storeFood.nextAction.quantity : 0, 1, '存入后必须保留一份私人食物');
 
   setVoxel(state.world.grid, supportedNeighbor.x, supportedNeighbor.y, supportedNeighbor.z, Material.Workshop);
   actor.inventory = [{ id: 'wood-stack', materialId: Material.Wood, quantity: 2, sourceEventIds: ['wood'] }];

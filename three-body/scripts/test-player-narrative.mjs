@@ -22,6 +22,8 @@ try {
   const state = {
     branchId: 'main',
     clock: { elapsedMonths: 51 },
+    world: { past: [] },
+    civilization: { number: 141 },
     people: [
       { id: 'galileo', name: '伽利略', sex: 'male', knowledge: [] },
       { id: 'freyja', name: '芙蕾雅', sex: 'female', knowledge: [] },
@@ -32,6 +34,7 @@ try {
       { id: 'collect-wood', summary: '取得木材' },
     ],
     projects: [],
+    agreements: [],
   };
   const events = [
     {
@@ -132,6 +135,180 @@ try {
   } finally {
     globalThis.fetch = originalFetch;
   }
+
+  const founding = projectPlayerNarrative(state, [{
+    id: 'e-0-environment-founding-0', kind: 'environment', change: 'founding', atMonth: 0, orderInMonth: 0, cellId: 4,
+    result: '开局先民共同抵达，并已形成基本的相互熟悉', diff: { participantIds: ['galileo', 'freyja', 'artemis'] },
+  }], 4);
+  assert.equal(founding[0].text, '第 141 号文明在自然地表上开始，3 位先民共同抵达。');
+  assert.deepEqual(founding[0].actorIds, ['galileo', 'freyja', 'artemis']);
+
+  const previousHeat = {
+    id: 'heat-50', kind: 'environment', change: 'condition', atMonth: 50, orderInMonth: 9, cellId: 4,
+    who: 'galileo', result: '伽利略的炎热加重', diff: { condition: 'heat', stage: 3 },
+  };
+  const repeatedHeat = {
+    id: 'heat-51', kind: 'environment', change: 'condition', atMonth: 51, orderInMonth: 9, cellId: 4,
+    who: 'galileo', result: '伽利略的炎热加重', diff: { condition: 'heat', stage: 3 },
+  };
+  assert.deepEqual(
+    projectPlayerNarrative({ ...state, world: { past: [previousHeat, repeatedHeat] } }, [repeatedHeat], 4),
+    [],
+    '旧存档中同人同种状态的同阶段“加重”不应重复记史',
+  );
+  const unchangedIllness = {
+    id: 'illness-51', kind: 'environment', change: 'condition', atMonth: 51, orderInMonth: 10, cellId: 4,
+    who: 'galileo', result: '伽利略的疾病加重', diff: { condition: 'illness', fromStage: 2, stage: 2 },
+  };
+  assert.deepEqual(projectPlayerNarrative(state, [unchangedIllness], 4), [], 'fromStage 与 stage 相同时没有真正的病情升级');
+  const previousIllness = {
+    ...unchangedIllness, id: 'illness-40', atMonth: 40, diff: { condition: 'illness', stage: 2 },
+  };
+  const legacyIllness = {
+    ...unchangedIllness, id: 'illness-51-legacy', diff: { condition: 'illness', stage: 2 },
+  };
+  assert.equal(
+    projectPlayerNarrative({ ...state, world: { past: [previousIllness, legacyIllness] } }, [legacyIllness], 4).length,
+    1,
+    '旧存档的疾病事件可能经过治疗后复发，不得只按上一条环境事件去重',
+  );
+  const worsenedHeat = { ...repeatedHeat, id: 'heat-upgraded-51', diff: { condition: 'heat', fromStage: 2, stage: 3 } };
+  assert.equal(projectPlayerNarrative(state, [worsenedHeat], 4)[0].text, '伽利略的炎热加重。', '真正跨阶段的加重必须保留');
+
+  const placedGranary = {
+    id: 'place-granary', kind: 'action', atMonth: 51, orderInMonth: 11, actionTick: 4, cellId: 4,
+    who: 'galileo', cause: 'intent', action: { kind: 'act', operation: 'combine', targets: [] },
+    fromCellId: 4, toCellId: 4, fromZ: 1, toZ: 1, pathSegment: [], status: 'completed',
+    result: '公共谷仓与空气结合为公共谷仓',
+    diff: { inputMaterialId: 56, targetMaterialId: 0, outputMaterialId: 56, position: { x: 1, y: 1, z: 1 }, verifiedTechnique: true },
+  };
+  assert.equal(playerTextForEvent(state, placedGranary), '伽利略安放了公共谷仓。');
+  const placedStone = {
+    ...placedGranary, id: 'place-stone', result: '石与空气结合为石',
+    diff: { inputMaterialId: 1, targetMaterialId: 0, outputMaterialId: 1, position: { x: 2, y: 1, z: 1 }, verifiedTechnique: true },
+  };
+  assert.equal(playerTextForEvent(state, placedStone), '伽利略把石头放在了搭建处。');
+  const verifiedGranaryPlacement = {
+    id: 'verify-granary-placement', kind: 'action', atMonth: 51, orderInMonth: 12, actionTick: 5, cellId: 4,
+    who: 'galileo', cause: 'intent',
+    action: {
+      kind: 'attend', target: { kind: 'voxel', position: { x: 1, y: 1, z: 1 } },
+      verification: { techniqueId: 'technique:combine:56:0:56', sourceEventId: 'place-granary', expectedMaterialId: 56 },
+    },
+    fromCellId: 4, toCellId: 4, fromZ: 1, toZ: 1, pathSegment: [], status: 'completed',
+    result: '核验了公共谷仓与空气可结合为公共谷仓',
+    diff: { factId: 'technique:combine:56:0:56', verifiedTechnique: true, verifiedSourceEventId: 'place-granary', verifiedMaterialId: 56 },
+  };
+  assert.equal(
+    playerTextForEvent({ ...state, world: { past: [placedGranary, verifiedGranaryPlacement] } }, verifiedGranaryPlacement),
+    '伽利略确认公共谷仓可以直接安放。',
+  );
+  const woodToPlank = {
+    ...placedGranary,
+    id: 'wood-to-plank',
+    result: '木材与空气结合为木板',
+    diff: { inputMaterialId: 13, targetMaterialId: 0, outputMaterialId: 19, position: { x: 3, y: 1, z: 1 }, verifiedTechnique: true },
+  };
+  assert.equal(playerTextForEvent(state, woodToPlank), '伽利略把木材加工成木板，用于搭建。');
+  const verifiedWoodToPlank = {
+    ...verifiedGranaryPlacement,
+    id: 'verify-wood-to-plank',
+    action: {
+      kind: 'attend', target: { kind: 'voxel', position: { x: 3, y: 1, z: 1 } },
+      verification: { techniqueId: 'technique:combine:13:0:19', sourceEventId: 'wood-to-plank', expectedMaterialId: 19 },
+    },
+    result: '核验了木材与空气可结合为木板',
+    diff: { factId: 'technique:combine:13:0:19', verifiedTechnique: true, verifiedSourceEventId: 'wood-to-plank', verifiedMaterialId: 19 },
+  };
+  assert.equal(
+    playerTextForEvent({ ...state, world: { past: [woodToPlank, verifiedWoodToPlank] } }, verifiedWoodToPlank),
+    '伽利略确认搭建时可以把木材加工成木板。',
+  );
+
+  const projectState = {
+    ...state,
+    projects: [{
+      id: 'project-granary', status: 'completed', completedAtMonth: 51, completionEventIds: ['place-granary'],
+      ownerId: 'galileo', contributorIds: ['freyja'], summary: '建立公共谷仓',
+    }],
+  };
+  const projectEntries = projectPlayerNarrative(projectState, [placedGranary], 4);
+  assert.equal(projectEntries.length, 1, '同源的项目完成与原子行动只保留项目句');
+  assert.equal(projectEntries[0].text, '伽利略、芙蕾雅完成了“建立公共谷仓”。');
+  assert.deepEqual(projectEntries[0].sourceEventIds, ['place-granary']);
+
+  const companionState = {
+    ...state,
+    agreements: [{
+      id: 'companion-a', proposal: { kind: 'companion', proposerId: 'galileo', partnerId: 'freyja', expiresAtMonth: 70 },
+      proposedAtMonth: 10, acceptedAtMonth: 11, dueAtMonth: 35, coLocatedMonths: 12,
+    }, {
+      id: 'companion-b', proposal: { kind: 'companion', proposerId: 'freyja', partnerId: 'galileo', expiresAtMonth: 70 },
+      proposedAtMonth: 10, acceptedAtMonth: 11, dueAtMonth: 35, coLocatedMonths: 12,
+    }],
+  };
+  const companionEvents = [{
+    id: 'companion-fulfilled-a', kind: 'agreement', agreementId: 'companion-a', change: 'fulfilled',
+    atMonth: 51, orderInMonth: 12, cellId: 0, partyIds: ['galileo', 'freyja'], result: '双方在约定期内共同停留了 12 个月',
+  }, {
+    id: 'companion-fulfilled-b', kind: 'agreement', agreementId: 'companion-b', change: 'fulfilled',
+    atMonth: 51, orderInMonth: 13, cellId: 0, partyIds: ['freyja', 'galileo'], result: '双方在约定期内共同停留了 12 个月',
+  }];
+  const originalCompanionEvents = structuredClone(companionEvents);
+  const companionEntries = projectPlayerNarrative(companionState, companionEvents, 4);
+  assert.equal(companionEntries.length, 1, '同月同参与者的镜像结伴约定应合并');
+  assert.equal(companionEntries[0].text, '伽利略和芙蕾雅履行了结伴生活的约定。');
+  assert.deepEqual(companionEntries[0].sourceEventIds, ['companion-fulfilled-a', 'companion-fulfilled-b']);
+  assert.deepEqual(companionEvents, originalCompanionEvents, '约定归并不得改写事件');
+  const separateCompanionState = {
+    ...companionState,
+    agreements: companionState.agreements.map((agreement, index) => index === 0 ? agreement : {
+      ...agreement, proposedAtMonth: 22, acceptedAtMonth: 23, dueAtMonth: 47,
+    }),
+  };
+  assert.equal(
+    projectPlayerNarrative(separateCompanionState, companionEvents, 4).length,
+    2,
+    '同一对人物在不同约定周期形成的结伴事实不得误并',
+  );
+
+  const exchangeState = {
+    ...state,
+    agreements: [{
+      id: 'exchange-a', proposal: {
+        kind: 'exchange', offererId: 'galileo', partnerId: 'freyja',
+        offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 20, partnerQuantity: 1,
+      },
+    }, {
+      id: 'exchange-b', proposal: {
+        kind: 'exchange', offererId: 'freyja', partnerId: 'galileo',
+        offererMaterialId: 20, offererQuantity: 1, partnerMaterialId: 13, partnerQuantity: 1,
+      },
+    }],
+  };
+  const exchangeEvents = [{
+    id: 'exchange-fulfilled-a', kind: 'agreement', agreementId: 'exchange-a', change: 'fulfilled',
+    atMonth: 51, orderInMonth: 16, cellId: 0, partyIds: ['galileo', 'freyja'], result: '双方已完成交换',
+  }, {
+    id: 'exchange-fulfilled-b', kind: 'agreement', agreementId: 'exchange-b', change: 'fulfilled',
+    atMonth: 51, orderInMonth: 17, cellId: 0, partyIds: ['freyja', 'galileo'], result: '双方已完成交换',
+  }];
+  assert.equal(
+    projectPlayerNarrative(exchangeState, exchangeEvents, 4).length,
+    2,
+    '同月反向交换是两份独立协议，不得像结伴关系一样归并',
+  );
+
+  const duplicateBirths = [{
+    id: 'birth-copy-a', kind: 'environment', change: 'body', atMonth: 51, orderInMonth: 14, cellId: 4,
+    who: 'freyja', result: '芙蕾雅生下了艾拉', diff: { bornPersonId: 'aila', bornPersonName: '艾拉' },
+  }, {
+    id: 'birth-copy-b', kind: 'environment', change: 'body', atMonth: 51, orderInMonth: 15, cellId: 4,
+    who: 'freyja', result: '芙蕾雅生下了艾拉', diff: { bornPersonId: 'aila', bornPersonName: '艾拉' },
+  }];
+  const duplicateBirthEntries = projectPlayerNarrative(state, duplicateBirths, 4);
+  assert.equal(duplicateBirthEntries.length, 1, '同月完全相同文案只保留一条');
+  assert.deepEqual(duplicateBirthEntries[0].sourceEventIds, ['birth-copy-a', 'birth-copy-b'], '合并后仍保留全部来源事件');
   console.log('player narrative projection ok');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

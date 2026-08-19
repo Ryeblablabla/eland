@@ -10,14 +10,14 @@ const bundlePath = path.join(temporaryDirectory, 'dirt-path.mjs');
 
 try {
   const entry = `
-    export { appendDirtPathCell, dirtPathConnections } from ${JSON.stringify(path.resolve('src/game/voxelKits.ts'))};
+    export { appendDirtPathCell, dirtPathConnections, dirtPathFilledCorners } from ${JSON.stringify(path.resolve('src/game/voxelKits.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
     '--sourcefile=dirt-path-test-entry.ts', `--outfile=${bundlePath}`,
   ], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
 
-  const { appendDirtPathCell, dirtPathConnections } = await import(
+  const { appendDirtPathCell, dirtPathConnections, dirtPathFilledCorners } = await import(
     `${pathToFileURL(bundlePath).href}?test=${Date.now()}`
   );
   const width = 5;
@@ -25,6 +25,9 @@ try {
   const center = 2 * width + 2;
   const elevation = new Array(width * height).fill(0);
   const directionKeys = (cells, customElevation = elevation) => dirtPathConnections(
+    new Set(cells), width, height, customElevation, center,
+  ).map(({ dx, dz }) => `${dx},${dz}`);
+  const filledCornerKeys = (cells, customElevation = elevation) => dirtPathFilledCorners(
     new Set(cells), width, height, customElevation, center,
   ).map(({ dx, dz }) => `${dx},${dz}`);
 
@@ -62,6 +65,25 @@ try {
     directionKeys([center, center + 1], steppedElevation),
     [],
     '高度差超过一层的道路格不应在表现层相连',
+  );
+
+  const southEastBlock = [center, center + 1, center + width, center + width + 1];
+  assert.deepEqual(
+    filledCornerKeys(southEastBlock),
+    ['1,1'],
+    '同高的 2×2 权威夯土块应填满共享内角',
+  );
+  assert.deepEqual(
+    filledCornerKeys(southEastBlock.slice(0, 3)),
+    [],
+    '缺少任一真实夯土格时不得把被道路围住的草地误填成土',
+  );
+  const unevenBlockElevation = [...elevation];
+  unevenBlockElevation[center + width + 1] = 1;
+  assert.deepEqual(
+    filledCornerKeys(southEastBlock, unevenBlockElevation),
+    [],
+    '2×2 夯土块高度不一致时不得生成悬空的中心补片',
   );
 
   const straightDecor = [];
@@ -106,6 +128,18 @@ try {
       && cornerSurface.some((instance) => instance.x > 0.4)
       && cornerSurface.some((instance) => Math.abs(instance.x) < 0.2 && Math.abs(instance.z) < 0.2),
     '拐角应在微体素网格中连续连接两个入口和中心转弯区',
+  );
+
+  const mergedCornerDecor = [];
+  appendDirtPathCell(mergedCornerDecor, 0, 0, 0, [
+    { dx: 1, dz: 0 },
+    { dx: 0, dz: 1 },
+  ], 0.37, [{ dx: 1, dz: 1 }]);
+  const mergedCornerSurface = mergedCornerDecor.filter((instance) => instance.b === 'groundMark');
+  assert.equal(
+    mergedCornerSurface.filter((instance) => instance.x > 0.25 && instance.z > 0.25).length,
+    4,
+    '闭合 2×2 夯土块的每个内角都应补齐 2×2 微体素，合成连续土块',
   );
 
   let pebbleDecor = [];

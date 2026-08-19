@@ -23,13 +23,21 @@ function visibleRadius(person: PersonState): number {
   return 4 + Math.floor(person.baselineCapacities.perception / 25);
 }
 
-function youngDependents(state: SimulationState, caregiver: PersonState): PersonState[] {
+function dependentChildren(state: SimulationState, caregiver: PersonState): PersonState[] {
   return state.people
     .filter((candidate) => isAlive(candidate)
       && candidate.geneticParents.includes(caregiver.id)
-      && ageMonths(candidate, state.clock.elapsedMonths + 1) < DEPENDENT_MONTHS
-      && sameLocation(candidate, caregiver))
+      && ageMonths(candidate, state.clock.elapsedMonths + 1) < DEPENDENT_MONTHS)
     .sort((a, b) => Math.min(a.body.hydration, a.body.nutrition) - Math.min(b.body.hydration, b.body.nutrition) || a.id.localeCompare(b.id));
+}
+
+function visibleYoungDependents(state: SimulationState, caregiver: PersonState): PersonState[] {
+  const visible = new Set(cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver)));
+  return dependentChildren(state, caregiver).filter((candidate) => visible.has(candidate.position.cellId));
+}
+
+function coLocatedYoungDependents(state: SimulationState, caregiver: PersonState): PersonState[] {
+  return dependentChildren(state, caregiver).filter((candidate) => sameLocation(candidate, caregiver));
 }
 
 /**
@@ -100,7 +108,7 @@ function nearestFood(state: SimulationState, caregiver: PersonState): DropState 
 
 /** Comparable urgency for choosing a child's crisis over a milder self reflex. */
 export function dependentCareUrgency(state: SimulationState, caregiver: PersonState): number {
-  return youngDependents(state, caregiver)
+  return visibleYoungDependents(state, caregiver)
     .filter((dependent) => !dependent.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'))
     .reduce((maximum, dependent) => {
       const hydration = Math.max(0, 48 - dependent.body.hydration) * 3;
@@ -119,20 +127,44 @@ export function chooseDependentCareReflex(
   caregiver: PersonState,
   options: { suppressThermalShelter?: boolean } = {},
 ): PrimitiveAction | null {
-  const dependent = youngDependents(state, caregiver)
+  const dependent = visibleYoungDependents(state, caregiver)
     .find((candidate) => !candidate.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
   if (!dependent) return null;
 
+  const together = sameLocation(dependent, caregiver);
+  const infant = isInfant(state, dependent, state.clock.elapsedMonths + 1);
+  const thermalPressure = dependent.conditions
+    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
+    .sort((a, b) => b.stage - a.stage)[0];
+  const sharedClimateEmergency = state.civilization.epoch === 'chaotic'
+    && state.civilization.climate.severity >= 4;
   const dehydrationContraindicated = dependent.conditions.some((condition) => condition.kind === 'pregnancy'
     || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2));
-  if (state.civilization.epoch === 'chaotic'
-    && state.civilization.climate.severity >= 4
+  const hibernationReady = sharedClimateEmergency
     && !dehydrationContraindicated
-    && Math.min(dependent.body.health, dependent.body.hydration, dependent.body.nutrition) >= 45) {
+    && Math.min(dependent.body.health, dependent.body.hydration, dependent.body.nutrition) >= 45;
+  const carriedFood = caregiver.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
+  const canProvideCarriedFood = dependent.body.nutrition < 40 && Boolean(carriedFood);
+  const canCarryInfantToHelp = infant && (dependent.body.hydration < 40
+    || dependent.body.nutrition < 40
+    || Boolean(thermalPressure));
+  if (!together && (hibernationReady || canProvideCarriedFood || canCarryInfantToHelp)) {
+    const path = findStandingPath(state.world.grid, caregiver.position, {
+      cellId: dependent.position.cellId,
+      z: dependent.position.z,
+    });
+    if (path.length > 0) return {
+      kind: 'move',
+      toCellId: dependent.position.cellId,
+      toZ: dependent.position.z,
+    };
+  }
+
+  if (hibernationReady) {
     return { kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: dependent.id }] };
   }
 
-  if (dependent.body.hydration < 40) {
+  if (infant && dependent.body.hydration < 40) {
     const visible = cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver));
     const water = findReachableWater(state, caregiver, visible);
     if (water && (caregiver.position.cellId !== water.bankPosition.cellId || caregiver.position.z !== water.bankPosition.z)) {
@@ -145,21 +177,17 @@ export function chooseDependentCareReflex(
   }
 
   if (dependent.body.nutrition < 40) {
-    const carriedFood = caregiver.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
     if (carriedFood) return {
       kind: 'transfer', materialId: carriedFood.materialId, quantity: 1,
       from: { kind: 'person', personId: caregiver.id }, to: { kind: 'person', personId: dependent.id }, stackId: carriedFood.id,
     };
-    const food = nearestFood(state, caregiver);
+    const food = infant ? nearestFood(state, caregiver) : null;
     if (food) return caregiver.position.cellId === food.cellId && caregiver.position.z === food.z
       ? { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'ground', cellId: food.cellId, z: food.z }, to: { kind: 'person', personId: dependent.id }, dropId: food.id }
       : { kind: 'move', toCellId: food.cellId, toZ: food.z };
   }
 
-  const thermalPressure = dependent.conditions
-    .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
-    .sort((a, b) => b.stage - a.stage)[0];
-  if (thermalPressure && !options.suppressThermalShelter) {
+  if (infant && thermalPressure && !options.suppressThermalShelter) {
     const shelter = findReachableShelter(state, caregiver) ?? findReachableShelter(state, dependent);
     if (shelter) return { kind: 'move', toCellId: shelter.position.cellId, toZ: shelter.position.z };
   }
@@ -170,7 +198,7 @@ export function chooseDependentCareReflex(
 export function shouldRemainShelteredForDependent(state: SimulationState, caregiver: PersonState): boolean {
   if (!shelterGeometryAt(state.world.grid, caregiver.position)) return false;
   if (caregiver.body.hydration < 45 || caregiver.body.nutrition < 40) return false;
-  return youngDependents(state, caregiver).some((dependent) => dependent.conditions.some((condition) => (
+  return coLocatedYoungDependents(state, caregiver).some((dependent) => dependent.conditions.some((condition) => (
     condition.kind === 'cold' || condition.kind === 'heat'
   ) && condition.stage >= 1));
 }

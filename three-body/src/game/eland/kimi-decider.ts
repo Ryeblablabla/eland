@@ -4,6 +4,10 @@ import { ageMonths } from './domain/person';
 import { effectivePersonality } from './domain/personality';
 import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simulation';
 import { CONTAINER_CAPACITY } from './domain/container';
+import { assessSocialRepetition } from './domain/social-repetition';
+import { buildPersonSoul } from './domain/person-soul';
+import { speechActFromRepresentation } from './projection/speech-act';
+import type { SpeechActView } from '../societyContract';
 
 export interface DecisionRequestContext {
   person: {
@@ -17,12 +21,22 @@ export interface DecisionRequestContext {
     capacities: DecisionContext['person']['baselineCapacities'];
     personality: ReturnType<typeof effectivePersonality>;
     motiveSensitivity: DecisionContext['person']['motiveSensitivity'];
+    soul: ReturnType<typeof buildPersonSoul>;
     currentChoice: string;
+    currentAction: string;
     position: { cellId: number; z: number };
     inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
     knownPlaces: Array<{ materialId: number; name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     memories: ReturnType<typeof projectMemories>;
+    kinship: {
+      parents: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'mother' | 'father' }>;
+      children: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'daughter' | 'son' }>;
+      siblings: Array<{
+        id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'sister' | 'brother';
+        fullSibling: boolean; sharedParentIds: string[];
+      }>;
+    };
   };
   clock: { elapsedMonths: number };
   climate: DecisionContext['state']['civilization']['climate'];
@@ -32,6 +46,17 @@ export interface DecisionRequestContext {
   activeIntent?: {
     id: string; summary: string; domain: 'strategic' | 'social'; progress: number; nextActionKind: string;
     stateGoalUntilMonth?: number;
+  };
+  activeProject?: {
+    id: string;
+    summary: string;
+    need: string;
+    desiredFunction: string;
+    status: string;
+    lastProgressAtMonth: number;
+    missingMaterials: Array<{ materialId: number; name: string }>;
+    reservations: Array<{ personId: string; materialId: number; name: string; quantity: number }>;
+    contributorIds: string[];
   };
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
   agreements: Array<{
@@ -48,7 +73,16 @@ export interface DecisionRequestContext {
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
     estimatedMonths?: number; risks?: string[]; target?: DecisionContext['options'][number]['target']; requiresFollowUp: boolean;
     communicationKind?: 'claim' | 'prediction' | 'request' | 'offer' | 'accept' | 'reject' | 'revoke-agreement' | 'revoke' | 'withdraw';
+    speechAct?: SpeechActView;
     communicatesFactId?: string;
+    socialRepetition?: {
+      score: number;
+      rememberedBefore: boolean;
+      hasNewEvidence: boolean;
+      reasons: string[];
+      outcome?: string;
+      previousCommunicationEventId?: string;
+    };
   }>;
   followUpOptions: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
@@ -81,6 +115,47 @@ function pressureConsequences(kind: string, stage: number): string[] {
   return [];
 }
 
+function immediateKinship(state: DecisionContext['state'], person: DecisionContext['person']): DecisionRequestContext['person']['kinship'] {
+  const byId = new Map(state.people.map((candidate) => [candidate.id, candidate]));
+  const parents = person.geneticParents.flatMap((parentId) => {
+    const parent = byId.get(parentId);
+    return parent ? [{
+      id: parent.id,
+      name: parent.name,
+      sex: parent.sex,
+      relation: parent.sex === 'female' ? 'mother' as const : 'father' as const,
+    }] : [];
+  });
+  const children = state.people
+    .filter((candidate) => candidate.id !== person.id && candidate.geneticParents.includes(person.id))
+    .sort((left, right) => left.bornAtMonth - right.bornAtMonth || left.id.localeCompare(right.id))
+    .map((child) => ({
+      id: child.id,
+      name: child.name,
+      sex: child.sex,
+      relation: child.sex === 'female' ? 'daughter' as const : 'son' as const,
+    }));
+  const ownParentIds = new Set(person.geneticParents);
+  const siblings = ownParentIds.size === 0 ? [] : state.people
+    .filter((candidate) => candidate.id !== person.id)
+    .flatMap((candidate) => {
+      const sharedParentIds = candidate.geneticParents.filter((parentId) => ownParentIds.has(parentId));
+      if (!sharedParentIds.length) return [];
+      const fullSibling = candidate.geneticParents.length === ownParentIds.size
+        && candidate.geneticParents.every((parentId) => ownParentIds.has(parentId));
+      return [{
+        id: candidate.id,
+        name: candidate.name,
+        sex: candidate.sex,
+        relation: candidate.sex === 'female' ? 'sister' as const : 'brother' as const,
+        fullSibling,
+        sharedParentIds,
+      }];
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return { parents, children, siblings };
+}
+
 export interface DecideApiResponse {
   model: string;
   decided: number;
@@ -91,6 +166,9 @@ export interface DecideApiResponse {
 
 export function buildDecisionRequestContext(context: DecisionContext): DecisionRequestContext {
   const { person, state } = context;
+  const activeProject = context.activeIntent?.projectId
+    ? state.projects.find((project) => project.id === context.activeIntent?.projectId)
+    : undefined;
   return {
     person: {
       id: person.id,
@@ -103,7 +181,9 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       capacities: person.baselineCapacities,
       personality: effectivePersonality(person),
       motiveSensitivity: person.motiveSensitivity,
+      soul: buildPersonSoul(person),
       currentChoice: person.lastDecisionText.slice(0, 140),
+      currentAction: person.currentActionText.slice(0, 180),
       position: { cellId: person.position.cellId, z: person.position.z },
       inventory: person.inventory.map((stack) => {
         const material = materialDefinition(stack.materialId);
@@ -115,6 +195,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         .slice(0, 8)
         .map(({ materialId, position, lastConfirmedAtMonth }) => ({ materialId, name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
       memories: projectMemories(person, state.clock.elapsedMonths),
+      kinship: immediateKinship(state, person),
     },
     clock: { elapsedMonths: state.clock.elapsedMonths },
     climate: state.civilization.climate,
@@ -132,6 +213,25 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       progress: context.activeIntent.progress,
       nextActionKind: context.activeIntent.nextAction.kind,
       ...(context.activeIntent.stateGoalUntilMonth !== undefined ? { stateGoalUntilMonth: context.activeIntent.stateGoalUntilMonth } : {}),
+    } } : {}),
+    ...(activeProject ? { activeProject: {
+      id: activeProject.id,
+      summary: activeProject.summary,
+      need: activeProject.need,
+      desiredFunction: activeProject.desiredFunction,
+      status: activeProject.status,
+      lastProgressAtMonth: activeProject.lastProgressAtMonth,
+      missingMaterials: activeProject.missingMaterialIds.map((materialId) => ({
+        materialId,
+        name: materialDefinition(materialId).name,
+      })),
+      reservations: activeProject.reservations.map((reservation) => ({
+        personId: reservation.personId,
+        materialId: reservation.materialId,
+        name: materialDefinition(reservation.materialId).name,
+        quantity: reservation.quantity,
+      })),
+      contributorIds: [...activeProject.contributorIds],
     } } : {}),
     suspendedIntents: state.intents
       .filter((intent) => intent.ownerId === person.id && intent.status === 'suspended' && !intent.suspendedByIntentId)
@@ -156,17 +256,37 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     permissions: state.permissions
       .filter((permission) => permission.status === 'active' && (permission.grantorId === person.id || permission.granteeId === person.id))
       .map(({ id, grantorId, granteeId, materialId, validUntilMonth, status }) => ({ id, grantorId, granteeId, materialId, validUntilMonth, status })),
-    options: context.options.map(({ id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction, completionAction }) => ({
-      id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
-      ...(nextAction.kind === 'communicate'
-        ? { communicationKind: nextAction.content.kind }
-        : completionAction?.kind === 'communicate'
-          ? { communicationKind: completionAction.content.kind }
+    options: context.options.map((option) => {
+      const { id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp, nextAction, completionAction } = option;
+      const repetition = assessSocialRepetition(state, person, option);
+      return {
+        id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
+        ...(nextAction.kind === 'communicate'
+          ? {
+              communicationKind: nextAction.content.kind,
+              speechAct: speechActFromRepresentation(nextAction.content),
+            }
+          : completionAction?.kind === 'communicate'
+            ? {
+                communicationKind: completionAction.content.kind,
+                speechAct: speechActFromRepresentation(completionAction.content),
+              }
+            : {}),
+        ...(nextAction.kind === 'communicate' && nextAction.content.kind === 'claim' && nextAction.content.factId
+          ? { communicatesFactId: nextAction.content.factId }
           : {}),
-      ...(nextAction.kind === 'communicate' && nextAction.content.kind === 'claim' && nextAction.content.factId
-        ? { communicatesFactId: nextAction.content.factId }
-        : {}),
-    })),
+        ...(repetition.subjectKey ? { socialRepetition: {
+          score: repetition.score,
+          rememberedBefore: Boolean(repetition.previousCommunicationEventId),
+          hasNewEvidence: Boolean(repetition.previousCommunicationEventId && repetition.newEvidenceEventIds.length),
+          reasons: repetition.reasons.slice(0, 3),
+          ...(repetition.outcome ? { outcome: repetition.outcome } : {}),
+          ...(repetition.previousCommunicationEventId
+            ? { previousCommunicationEventId: repetition.previousCommunicationEventId }
+            : {}),
+        } } : {}),
+      };
+    }),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {
       const relation = person.relations.find((item) => item.personId === other.id);

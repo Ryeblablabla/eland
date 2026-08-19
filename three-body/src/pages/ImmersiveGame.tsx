@@ -6,14 +6,17 @@ import ImmersiveInterface, {
   type ImmersiveOverlayMode,
   type ModelSettingsStatus,
   type NewWorldStatus,
+  type SaveManagerStatus,
 } from '@/components/ImmersiveInterface';
 import {
   CivilizationEnding,
   FocusInspector,
+  type AgentSubtab,
   type CivilizationEndingView,
   type FocusTarget,
 } from '@/components/ObservationUI';
 import {
+  createCivilizationCreationId,
   createWorldSeed,
   ElandBackendUnavailableError,
   ElandSessionMissingError,
@@ -27,7 +30,16 @@ import {
   type ModelPurpose,
   type ModelSettingsSnapshot,
 } from '@/game/modelSettings';
-import type { AgentHistoryView, EraKey, SocietyState, SkySample } from '@/game/societyContract';
+import type {
+  AgentHistoryView,
+  CosmosSnapshot,
+  ElandSaveSummary,
+  EraKey,
+  NarrativeEntryView,
+  SocietyState,
+  SkySample,
+  SpeechLineView,
+} from '@/game/societyContract';
 import type { PlanetFate } from '@/lib/threebody';
 import { useDocumentVisible } from '@/hooks/use-document-visible';
 
@@ -35,6 +47,8 @@ type ViewMode = 'cosmos' | 'society';
 
 interface EvolutionEntry {
   id: string;
+  civilizationId: number;
+  branchId: string;
   month: number;
   text: string;
   tone: 'plain' | 'good' | 'bad' | 'era';
@@ -46,7 +60,7 @@ interface EvolutionEntry {
 
 const TU_PER_MONTH = 0.8 / 12;
 const AUTO_STEP_MS = 4_000;
-const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = { decision: '', narrative: '', strategy: '' };
+const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = { decision: '', interaction: '', narrative: '', strategy: '' };
 
 const ERA_TEXT: Record<EraKey, { big: string; sub: string; cls: string; glow: string }> = {
   stable: { big: '恒纪元', sub: '三日轨度可测 · 文明复苏', cls: 'text-amber-100', glow: 'rgba(251,191,36,0.25)' },
@@ -57,6 +71,14 @@ const ERA_TEXT: Record<EraKey, { big: string; sub: string; cls: string; glow: st
   frozen: { big: '长夜', sub: '飞星不动 · 万物冻结', cls: 'text-sky-200', glow: 'rgba(56,189,248,0.25)' },
   extinct: { big: '文明终结', sub: '星系崩解 · 世界不再重启', cls: 'text-purple-200', glow: 'rgba(168,85,247,0.3)' },
 };
+
+function isChaoticAnnouncement(era: EraKey): boolean {
+  return era === 'chaotic'
+    || era === 'chaotic-heat'
+    || era === 'chaotic-cold'
+    || era === 'burned'
+    || era === 'frozen';
+}
 
 function eraKeyOf(fate: PlanetFate, fluxRel: number): EraKey {
   if (fate !== 'chaotic') return fate;
@@ -74,13 +96,16 @@ export default function ImmersiveGame() {
   const pageVisible = useDocumentVisible();
   const [society, setSociety] = useState<SocietyState | null>(null);
   const [speaker, setSpeaker] = useState<string | null>(null);
+  const [speechLines, setSpeechLines] = useState<SpeechLineView[]>([]);
   const [view, setView] = useState<ViewMode>('cosmos');
   const [eraKey, setEraKey] = useState<EraKey>('stable');
   const [announce, setAnnounce] = useState<{ era: EraKey; key: number } | null>(null);
   const [history, setHistory] = useState<EvolutionEntry[]>([]);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
   const [cover, setCover] = useState(false);
   const [universeTarget, setUniverseTarget] = useState(0);
   const [universeResetToken, setUniverseResetToken] = useState(0);
+  const [restoreSnapshot, setRestoreSnapshot] = useState<CosmosSnapshot | null>(null);
   const [respawnToken, setRespawnToken] = useState(0);
   const [exitFocusToken, setExitFocusToken] = useState(0);
   const [overlayMode, setOverlayMode] = useState<ImmersiveOverlayMode>(null);
@@ -92,9 +117,11 @@ export default function ImmersiveGame() {
   const [modelRouteDraft, setModelRouteDraft] = useState<Record<ModelPurpose, string>>(EMPTY_MODEL_ROUTES);
   const [newWorldSeed, setNewWorldSeed] = useState(createWorldSeed);
   const [newWorldStatus, setNewWorldStatus] = useState<NewWorldStatus>('idle');
+  const [saves, setSaves] = useState<ElandSaveSummary[]>([]);
+  const [saveManagerStatus, setSaveManagerStatus] = useState<SaveManagerStatus>('idle');
+  const [saveManagerMessage, setSaveManagerMessage] = useState('');
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
-  const [focusHistoryOpen, setFocusHistoryOpen] = useState(false);
-  const [focusInventoryOpen, setFocusInventoryOpen] = useState(false);
+  const [focusAgentSubtab, setFocusAgentSubtab] = useState<AgentSubtab>('overview');
   const [focusAgentHistory, setFocusAgentHistory] = useState<AgentHistoryView | null>(null);
   const [focusAgentHistoryLoading, setFocusAgentHistoryLoading] = useState(false);
   const [focusAgentHistoryError, setFocusAgentHistoryError] = useState('');
@@ -102,17 +129,22 @@ export default function ImmersiveGame() {
 
   const runIdRef = useRef(getElandRunId());
   const startedRef = useRef(false);
+  const resumeCheckCompleteRef = useRef(false);
   const sessionReadyRef = useRef(false);
   const sessionStartingRef = useRef(false);
   const hasFrameRef = useRef(false);
   const steppingRef = useRef(false);
   const sessionGenerationRef = useRef(0);
   const historySequenceRef = useRef(0);
-  const activeCivilizationRef = useRef(1);
+  const activeCivilizationRef = useRef(0);
+  const activeBranchRef = useRef('');
   const activeWorldSeedRef = useRef<number | null>(null);
+  const pendingCreationRef = useRef<{ id: string; worldSeed: number } | null>(null);
   const monthRef = useRef(0);
   const statsRef = useRef<SimStats | null>(null);
   const previousCivilizationRef = useRef(1);
+  const canvasCivilizationSyncRef = useRef(false);
+  const expectedUniverseResetTokenRef = useRef(0);
   const eraKeyRef = useRef<EraKey>('stable');
   const eraInitializedRef = useRef(false);
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,13 +158,19 @@ export default function ImmersiveGame() {
   const uiPaused = overlayMode !== null || civilizationEnding !== null;
 
   useEffect(() => {
-    const endSession = () => { void elandClient.end(runIdRef.current); };
-    window.addEventListener('pagehide', endSession);
-    return () => window.removeEventListener('pagehide', endSession);
+    const checkpointSession = () => { void elandClient.checkpoint(runIdRef.current); };
+    window.addEventListener('pagehide', checkpointSession);
+    return () => window.removeEventListener('pagehide', checkpointSession);
   }, []);
 
   const after = useCallback((delay: number, action: () => void) => {
     transitionTimersRef.current.push(setTimeout(action, delay));
+  }, []);
+
+  const requestUniverseReset = useCallback(() => {
+    const next = expectedUniverseResetTokenRef.current + 1;
+    expectedUniverseResetTokenRef.current = next;
+    setUniverseResetToken(next);
   }, []);
 
   useEffect(() => () => {
@@ -158,10 +196,13 @@ export default function ImmersiveGame() {
   ) => {
     const id = `${runIdRef.current}:history:${historySequenceRef.current}`;
     historySequenceRef.current += 1;
+    setHistoryTotalCount((count) => count + 1);
     setHistory((current) => {
       const events = current.filter((entry) => !entry.status);
       return [...events.slice(-239), {
         id,
+        civilizationId: activeCivilizationRef.current,
+        branchId: activeBranchRef.current,
         month,
         text,
         tone,
@@ -175,11 +216,29 @@ export default function ImmersiveGame() {
   const showRuntimeStatus = useCallback((text: string) => {
     setHistory((current) => [...current.filter((entry) => !entry.status).slice(-239), {
       id: `${runIdRef.current}:runtime-status`,
+      civilizationId: activeCivilizationRef.current,
+      branchId: activeBranchRef.current,
       month: monthRef.current,
       text,
       tone: 'plain',
       status: true,
     }]);
+  }, []);
+
+  const replaceHistory = useCallback((frame: Frame, entries: NarrativeEntryView[]) => {
+    historySequenceRef.current = entries.length;
+    setHistoryTotalCount(entries.length);
+    setHistory(entries.slice(-240).map((entry) => ({
+      id: entry.id,
+      civilizationId: frame.civilizationId,
+      branchId: frame.branchId,
+      month: entry.month,
+      text: entry.text,
+      tone: entry.tone,
+      detail: entry.detail,
+      actorIds: entry.actorIds,
+      sourceEventIds: entry.sourceEventIds,
+    })));
   }, []);
 
   const sampleSky = useCallback((): SkySample => {
@@ -203,11 +262,17 @@ export default function ImmersiveGame() {
 
   const applyFrame = useCallback((frame: Frame) => {
     hasFrameRef.current = true;
+    if (activeCivilizationRef.current !== frame.civilizationId) {
+      canvasCivilizationSyncRef.current = true;
+    }
+    previousCivilizationRef.current = frame.civilizationId;
     activeCivilizationRef.current = frame.civilizationId;
+    activeBranchRef.current = frame.branchId;
     activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
     setSociety(frame.society);
     setSpeaker(frame.speaker);
+    setSpeechLines(frame.speechLines ?? []);
     for (const entry of frame.entries) {
       pushHistory(entry.month, entry.text, entry.tone, entry.detail, {
         actorIds: entry.actorIds,
@@ -215,48 +280,54 @@ export default function ImmersiveGame() {
       });
     }
 
+    if (frame.civilizationEnd) sessionReadyRef.current = false;
     if (frame.civilizationEnd?.kind === 'destroyed' && !replacementRequestedRef.current) {
       replacementRequestedRef.current = true;
-      sessionReadyRef.current = false;
       setFocusTarget(null);
-      setFocusHistoryOpen(false);
-      setFocusInventoryOpen(false);
+      setFocusAgentSubtab('overview');
       setCivilizationEnding({
         civilizationId: frame.civilizationId,
         elapsedMonths: frame.elapsedMonths,
         cause: frame.civilizationEnd.cause,
         summary: frame.civilizationEnd.summary,
       });
-      pushHistory(
-        frame.elapsedMonths,
-        `第 ${frame.civilizationId} 号文明毁灭于${frame.civilizationEnd.cause}`,
-        'bad',
-        frame.civilizationEnd.summary,
-      );
     }
   }, [pushHistory]);
 
   const startCivilization = useCallback(async (
-    civilizationId: number,
     worldSeed = createWorldSeed(),
     resetHistory = false,
   ): Promise<boolean> => {
+    const pendingCreation = pendingCreationRef.current?.worldSeed === worldSeed
+      ? pendingCreationRef.current
+      : { id: createCivilizationCreationId(), worldSeed };
+    pendingCreationRef.current = pendingCreation;
     const generation = ++sessionGenerationRef.current;
     sessionStartingRef.current = true;
     sessionReadyRef.current = false;
-    activeCivilizationRef.current = civilizationId;
     activeWorldSeedRef.current = worldSeed;
-    if (resetHistory) setHistory([]);
+    if (resetHistory) {
+      historySequenceRef.current = 0;
+      setHistoryTotalCount(0);
+      setHistory([]);
+    }
     showRuntimeStatus(monthRef.current > 0 ? '演化后端正在恢复连接' : '本地演化正在开始');
     const sky = sampleSky();
     try {
-      const frame = await elandClient.begin(runIdRef.current, civilizationId, sky, undefined, worldSeed);
-      if (generation !== sessionGenerationRef.current || frame.civilizationId !== civilizationId) return false;
+      const frame = await elandClient.begin(
+        runIdRef.current,
+        pendingCreation.id,
+        sky,
+        undefined,
+        worldSeed,
+        statsRef.current?.cosmosSnapshot,
+      );
+      if (generation !== sessionGenerationRef.current) return false;
+      if (pendingCreationRef.current?.id === pendingCreation.id) pendingCreationRef.current = null;
       applyFrame(frame);
       replacementRequestedRef.current = false;
       sessionReadyRef.current = true;
       setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
-      pushHistory(frame.elapsedMonths, `第 ${civilizationId} 号文明在自然地表上开始，${frame.society.agents.length} 位先民登场`, 'era');
       return true;
     } catch (error) {
       if (generation !== sessionGenerationRef.current) return false;
@@ -267,27 +338,96 @@ export default function ImmersiveGame() {
     } finally {
       if (generation === sessionGenerationRef.current) sessionStartingRef.current = false;
     }
-  }, [applyFrame, pushHistory, sampleSky, showRuntimeStatus]);
+  }, [applyFrame, sampleSky, showRuntimeStatus]);
+
+  const restoreLoadedSession = useCallback((frame: Frame, entries: NarrativeEntryView[]) => {
+    pendingCreationRef.current = null;
+    sessionGenerationRef.current += 1;
+    sessionStartingRef.current = false;
+    steppingRef.current = false;
+    sessionReadyRef.current = true;
+    hasFrameRef.current = true;
+    replacementRequestedRef.current = false;
+    collapseHandledRef.current = Boolean(frame.cosmosSnapshot?.pendingCollapse);
+    canvasCivilizationSyncRef.current = true;
+    previousCivilizationRef.current = frame.civilizationId;
+    activeCivilizationRef.current = frame.civilizationId;
+    activeBranchRef.current = frame.branchId;
+    activeWorldSeedRef.current = frame.society.world.generator.seed;
+    monthRef.current = frame.elapsedMonths;
+    lastSkyTimeRef.current = frame.skySample.toTime;
+    fluxRangeRef.current = {
+      min: frame.skySample.fluxMean,
+      max: frame.skySample.fluxMean,
+      sum: 0,
+      count: 0,
+    };
+    statsRef.current = null;
+    transitionRef.current = false;
+    setCover(false);
+    setView('cosmos');
+    setFocusTarget(null);
+    setFocusAgentSubtab('overview');
+    setCivilizationEnding(null);
+    setRestoreSnapshot(frame.cosmosSnapshot ?? null);
+    setUniverseTarget(frame.cosmosSnapshot?.t ?? frame.universeTime);
+    requestUniverseReset();
+    setExitFocusToken((token) => token + 1);
+    eraKeyRef.current = frame.skySample.fate;
+    eraInitializedRef.current = true;
+    setEraKey(frame.skySample.fate);
+    applyFrame(frame);
+    replaceHistory(frame, entries);
+  }, [applyFrame, replaceHistory, requestUniverseReset]);
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    void startCivilization(1);
-  }, [startCivilization]);
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    showRuntimeStatus('正在读取本地文明进度');
+    const resume = () => {
+      if (cancelled || resumeCheckCompleteRef.current) return;
+      void elandClient.state(runIdRef.current).then(({ frame, history: savedHistory }) => {
+        if (cancelled || resumeCheckCompleteRef.current) return;
+        resumeCheckCompleteRef.current = true;
+        if (frame) restoreLoadedSession(frame, savedHistory);
+        else void startCivilization();
+      }).catch((error) => {
+        if (cancelled || resumeCheckCompleteRef.current) return;
+        if (error instanceof ElandSessionMissingError) {
+          resumeCheckCompleteRef.current = true;
+          void startCivilization();
+          return;
+        }
+        showRuntimeStatus('后端正在更新，会自动重连原文明');
+        retryTimer = setTimeout(resume, 2_000);
+      });
+    };
+    resume();
+    return () => {
+      cancelled = true;
+      startedRef.current = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [restoreLoadedSession, showRuntimeStatus, startCivilization]);
 
   const stepOnce = useCallback(async () => {
     if (steppingRef.current || sessionStartingRef.current) return;
     if (!sessionReadyRef.current) {
-      if (!hasFrameRef.current) {
-        await startCivilization(activeCivilizationRef.current, activeWorldSeedRef.current ?? createWorldSeed());
+      const pendingCreation = pendingCreationRef.current;
+      if (resumeCheckCompleteRef.current && (!hasFrameRef.current || pendingCreation)) {
+        await startCivilization(pendingCreation?.worldSeed ?? activeWorldSeedRef.current ?? createWorldSeed());
       }
       return;
     }
     const generation = sessionGenerationRef.current;
     steppingRef.current = true;
     try {
+      const cosmos = statsRef.current?.cosmosSnapshot;
+      if (!cosmos) return;
       const sky = sampleSky();
-      const frame = await elandClient.step(runIdRef.current, sky);
+      const frame = await elandClient.step(runIdRef.current, sky, cosmos);
       if (generation === sessionGenerationRef.current
         && frame
         && frame.civilizationId === activeCivilizationRef.current
@@ -323,6 +463,18 @@ export default function ImmersiveGame() {
   }, [pageVisible, stepOnce, uiPaused]);
 
   const onStats = useCallback((stats: SimStats) => {
+    // “重新开始”会先重置 ThreeBodyCanvas，再创建新的权威会话。重置提交前，
+    // 旧宇宙仍可能回传一帧；不能让那一帧按旧文明编号再启动一次 begin，
+    // 否则 sessionGeneration 会前移，让已经成功的新世界请求被误判为失败。
+    if (newWorldLaunchingRef.current) return;
+    if (stats.resetToken !== expectedUniverseResetTokenRef.current) return;
+    if (canvasCivilizationSyncRef.current) {
+      if (stats.civilizations === activeCivilizationRef.current) {
+        canvasCivilizationSyncRef.current = false;
+      } else {
+        return;
+      }
+    }
     statsRef.current = stats;
     const range = fluxRangeRef.current;
     range.min = range.count ? Math.min(range.min, stats.fluxRel) : stats.fluxRel;
@@ -340,6 +492,7 @@ export default function ImmersiveGame() {
 
     if (stats.collapsed) {
       if (collapseHandledRef.current) return;
+      if (sessionStartingRef.current) return;
       collapseHandledRef.current = true;
       // 宇宙冻结在真实灾变状态，先把末月天象交给后端结算；
       // 只有用户在终局页选择下一文明后才执行 respawn 握手。
@@ -351,7 +504,7 @@ export default function ImmersiveGame() {
     if (stats.civilizations !== previousCivilizationRef.current) {
       previousCivilizationRef.current = stats.civilizations;
       replacementRequestedRef.current = false;
-      void startCivilization(stats.civilizations);
+      void startCivilization(createWorldSeed(), true);
     }
   }, [flashEra, startCivilization, stepOnce]);
 
@@ -359,8 +512,7 @@ export default function ImmersiveGame() {
     if (!society || transitionRef.current) return;
     transitionRef.current = true;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setCover(true);
     after(320, () => {
       setView('society');
@@ -375,8 +527,7 @@ export default function ImmersiveGame() {
     if (transitionRef.current) return;
     transitionRef.current = true;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setCover(true);
     after(320, () => {
       setView('cosmos');
@@ -396,16 +547,14 @@ export default function ImmersiveGame() {
   const openMenu = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setOverlayMode('menu');
   }, []);
 
   const openNewWorld = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setNewWorldSeed(createWorldSeed());
     setNewWorldStatus('idle');
     setOverlayMode('new-world');
@@ -414,16 +563,63 @@ export default function ImmersiveGame() {
   const openHistory = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setOverlayMode('history');
   }, []);
+
+  const openSaves = useCallback(() => {
+    if (newWorldLaunchingRef.current) return;
+    setFocusTarget(null);
+    setFocusAgentSubtab('overview');
+    setOverlayMode('saves');
+    setSaveManagerStatus('loading');
+    setSaveManagerMessage('');
+    void elandClient.saves(runIdRef.current).then(({ saves: loadedSaves }) => {
+      setSaves(loadedSaves);
+      setSaveManagerStatus('idle');
+    }).catch((error) => {
+      setSaveManagerStatus('error');
+      setSaveManagerMessage(error instanceof Error ? error.message : '文明档案读取失败');
+    });
+  }, []);
+
+  const createSave = useCallback(async (label: string) => {
+    if (saveManagerStatus === 'saving' || saveManagerStatus === 'loading-save') return;
+    setSaveManagerStatus('saving');
+    setSaveManagerMessage('');
+    try {
+      const { save } = await elandClient.save(runIdRef.current, label);
+      setSaves((current) => [save, ...current.filter((item) => item.id !== save.id)]);
+      setSaveManagerStatus('saved');
+      setSaveManagerMessage(`已保存「${save.label}」`);
+    } catch (error) {
+      setSaveManagerStatus('error');
+      setSaveManagerMessage(error instanceof Error ? error.message : '当前文明保存失败');
+    }
+  }, [saveManagerStatus]);
+
+  const loadSave = useCallback(async (saveId: string) => {
+    if (saveManagerStatus === 'saving' || saveManagerStatus === 'loading-save') return;
+    const target = saves.find((save) => save.id === saveId);
+    if (!window.confirm(`读取「${target?.label ?? '这份存档'}」？当前未保存的进度会被替换。`)) return;
+    setSaveManagerStatus('loading-save');
+    setSaveManagerMessage('');
+    try {
+      const loaded = await elandClient.loadSave(runIdRef.current, saveId);
+      restoreLoadedSession(loaded.frame, loaded.history);
+      setSaveManagerStatus('idle');
+      setSaveManagerMessage('');
+      setOverlayMode(null);
+    } catch (error) {
+      setSaveManagerStatus('error');
+      setSaveManagerMessage(error instanceof Error ? error.message : '文明档案读取失败');
+    }
+  }, [restoreLoadedSession, saveManagerStatus, saves]);
 
   const openModelSettings = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setOverlayMode('model-settings');
     setModelSettingsStatus('loading');
     setModelSettingsMessage('');
@@ -443,8 +639,7 @@ export default function ImmersiveGame() {
   const openShortcuts = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setOverlayMode('shortcuts');
   }, []);
 
@@ -477,7 +672,7 @@ export default function ImmersiveGame() {
       setModelSummaryModeDraft(settings.summaryMode);
       setModelRouteDraft(settings.routes);
       setModelSettingsStatus('saved');
-      setModelSettingsMessage(`已保存：${settings.evolutionMode === 'model' ? '模型演进' : '本地演进'}，${settings.summaryMode === 'model' ? '模型总结' : '本地总结'}；从下一个月起生效。`);
+      setModelSettingsMessage(`已保存：${settings.evolutionMode === 'model' ? '模型演进' : '本地演进'}，${settings.summaryMode === 'model' ? '模型总结' : '本地总结'}；人物对话路由从下一条消息生效，其余从下个月生效。`);
     } catch (error) {
       setModelSettingsStatus('error');
       setModelSettingsMessage(error instanceof Error ? error.message : '模型路由保存失败');
@@ -498,14 +693,15 @@ export default function ImmersiveGame() {
     steppingRef.current = false;
     replacementRequestedRef.current = false;
     collapseHandledRef.current = false;
-    previousCivilizationRef.current = 1;
+    previousCivilizationRef.current = activeCivilizationRef.current;
     eraKeyRef.current = 'stable';
     eraInitializedRef.current = false;
-    activeCivilizationRef.current = 1;
+    activeBranchRef.current = '';
     activeWorldSeedRef.current = newWorldSeed;
     hasFrameRef.current = false;
     monthRef.current = 0;
     statsRef.current = null;
+    resumeCheckCompleteRef.current = true;
     lastSkyTimeRef.current = 0;
     fluxRangeRef.current = { min: 1, max: 1, sum: 0, count: 0 };
     transitionRef.current = false;
@@ -518,16 +714,17 @@ export default function ImmersiveGame() {
     setView('cosmos');
     setSociety(null);
     setSpeaker(null);
+    setSpeechLines([]);
     setEraKey('stable');
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setCivilizationEnding(null);
     setUniverseTarget(0);
-    setUniverseResetToken((token) => token + 1);
+    setRestoreSnapshot(null);
+    requestUniverseReset();
     setExitFocusToken((token) => token + 1);
 
-    const started = await startCivilization(1, newWorldSeed, true);
+    const started = await startCivilization(newWorldSeed, true);
     newWorldLaunchingRef.current = false;
     if (started) {
       setNewWorldStatus('idle');
@@ -535,17 +732,15 @@ export default function ImmersiveGame() {
     } else {
       setNewWorldStatus('error');
     }
-  }, [newWorldSeed, startCivilization]);
+  }, [newWorldSeed, requestUniverseReset, startCivilization]);
 
   const selectSocietyObject = useCallback((selection: SocietySceneSelection) => {
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setFocusTarget(selection ? { kind: selection.kind, id: selection.id } : null);
   }, []);
 
   const selectCelestial = useCallback((selection: CelestialSelection) => {
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     if (!selection) {
       setFocusTarget(null);
     } else if (selection.kind === 'planet') {
@@ -557,25 +752,32 @@ export default function ImmersiveGame() {
 
   const closeFocus = useCallback(() => {
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setFocusAgentHistoryLoading(false);
   }, []);
 
+  const changeFocusAgentSubtab = useCallback((subtab: AgentSubtab) => {
+    if (focusTarget?.kind !== 'agent') return;
+    setFocusAgentSubtab(subtab);
+  }, [focusTarget]);
+
+  const openFocusAgentConversation = useCallback(() => {
+    if (focusTarget?.kind !== 'agent') return;
+    setFocusAgentSubtab('conversation');
+  }, [focusTarget]);
+
   const toggleFocusAgentHistory = useCallback(() => {
     if (focusTarget?.kind !== 'agent') return;
-    setFocusInventoryOpen(false);
-    setFocusHistoryOpen((current) => !current);
+    setFocusAgentSubtab((current) => current === 'history' ? 'overview' : 'history');
   }, [focusTarget]);
 
   const toggleFocusAgentInventory = useCallback(() => {
     if (focusTarget?.kind !== 'agent') return;
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen((current) => !current);
+    setFocusAgentSubtab((current) => current === 'inventory' ? 'overview' : 'inventory');
   }, [focusTarget]);
 
   useEffect(() => {
-    if (!focusHistoryOpen || focusTarget?.kind !== 'agent') return;
+    if (focusAgentSubtab !== 'history' || focusTarget?.kind !== 'agent') return;
     let cancelled = false;
     const agentId = focusTarget.id;
     setFocusAgentHistory((current) => current?.agentId === agentId ? current : null);
@@ -591,21 +793,20 @@ export default function ImmersiveGame() {
       setFocusAgentHistoryError(error instanceof Error ? error.message : '个人行动历史读取失败');
     });
     return () => { cancelled = true; };
-  }, [focusHistoryOpen, focusTarget, society]);
+  }, [focusAgentSubtab, focusTarget, society]);
 
   const observeNextCivilization = useCallback(() => {
     const systemExtinct = statsRef.current?.collapsed === 'extinct';
     setCivilizationEnding(null);
     setOverlayMode(null);
     setFocusTarget(null);
-    setFocusHistoryOpen(false);
-    setFocusInventoryOpen(false);
+    setFocusAgentSubtab('overview');
     setAnnounce(null);
     setView('cosmos');
     setExitFocusToken((token) => token + 1);
     if (systemExtinct) {
       const nextSeed = createWorldSeed();
-      previousCivilizationRef.current = 1;
+      previousCivilizationRef.current = activeCivilizationRef.current;
       collapseHandledRef.current = false;
       replacementRequestedRef.current = false;
       hasFrameRef.current = false;
@@ -614,15 +815,17 @@ export default function ImmersiveGame() {
       lastSkyTimeRef.current = 0;
       fluxRangeRef.current = { min: 1, max: 1, sum: 0, count: 0 };
       setUniverseTarget(0);
-      setUniverseResetToken((token) => token + 1);
-      void startCivilization(1, nextSeed);
+      requestUniverseReset();
+      setRestoreSnapshot(null);
+      void startCivilization(nextSeed, true);
       return;
     }
     setRespawnToken((token) => token + 1);
-  }, [startCivilization]);
+  }, [requestUniverseReset, startCivilization]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return;
       const target = event.target;
       const isEditing = target instanceof HTMLElement
         && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
@@ -677,6 +880,11 @@ export default function ImmersiveGame() {
         toggleFocusAgentInventory();
         return;
       }
+      if (event.key.toLowerCase() === 'c' && focusTarget?.kind === 'agent' && !overlayMode) {
+        event.preventDefault();
+        openFocusAgentConversation();
+        return;
+      }
       if (event.key.toLowerCase() === 'm') {
         event.preventDefault();
         if (overlayMode === 'model-settings') closeOverlay();
@@ -697,6 +905,7 @@ export default function ImmersiveGame() {
     closeOverlay,
     focusTarget,
     openHistory,
+    openFocusAgentConversation,
     openMenu,
     openModelSettings,
     openNewWorld,
@@ -716,12 +925,16 @@ export default function ImmersiveGame() {
     if (history.length) return history.slice(-5);
     const status: EvolutionEntry = society ? {
       id: 'runtime-active-status',
+      civilizationId: activeCivilizationRef.current,
+      branchId: activeBranchRef.current,
       month: 0,
       text: `本地演化进行中，当前 ${society.agents.length} 位先民`,
       tone: 'era',
       status: true,
     } : {
       id: 'runtime-starting-status',
+      civilizationId: activeCivilizationRef.current,
+      branchId: activeBranchRef.current,
       month: 0,
       text: '本地演化正在开始',
       tone: 'plain',
@@ -753,6 +966,8 @@ export default function ImmersiveGame() {
           showTwin={false}
           presetKey="chaos"
           resetToken={universeResetToken}
+          civilizationId={activeCivilizationRef.current > 0 ? activeCivilizationRef.current : undefined}
+          restoreSnapshot={restoreSnapshot}
           targetT={universeTarget}
           skyMode={view === 'society' ? 'frozen' : 'follow'}
           collapseHold
@@ -775,6 +990,7 @@ export default function ImmersiveGame() {
           society={society}
           era={eraKey}
           speaker={speaker}
+          speechLines={speechLines}
           sky={statsRef.current ?? undefined}
           selectedObject={focusTarget?.kind === 'agent' || focusTarget?.kind === 'structure'
             ? { kind: focusTarget.kind, id: focusTarget.id }
@@ -799,12 +1015,13 @@ export default function ImmersiveGame() {
           }}
         >
           <div
-            className={`text-[clamp(4rem,12vw,11rem)] font-extralight leading-none tracking-[0.35em] ${ERA_TEXT[announce.era].cls}`}
+            className={`era-announcement__title text-[clamp(4rem,12vw,11rem)] leading-none ${ERA_TEXT[announce.era].cls} ${isChaoticAnnouncement(announce.era) ? 'era-announcement__title--chaotic' : ''}`}
+            data-text={ERA_TEXT[announce.era].big}
             style={{ textShadow: '0 0 80px currentColor' }}
           >
             {ERA_TEXT[announce.era].big}
           </div>
-          <div className="mt-8 text-sm tracking-[0.6em] text-slate-300/80">
+          <div className={`era-announcement__subtitle mt-8 text-sm text-slate-300/80 ${isChaoticAnnouncement(announce.era) ? 'era-announcement__subtitle--chaotic' : ''}`}>
             {ERA_TEXT[announce.era].sub}
           </div>
         </div>
@@ -844,14 +1061,15 @@ export default function ImmersiveGame() {
         society={society}
         stats={statsRef.current}
         history={history}
+        runId={runIdRef.current}
+        observedBranchId={activeBranchRef.current}
+        observedMonth={monthRef.current}
         agentHistory={focusAgentHistory}
-        agentHistoryOpen={focusHistoryOpen}
-        agentInventoryOpen={focusInventoryOpen}
+        agentSubtab={focusAgentSubtab}
         agentHistoryLoading={focusAgentHistoryLoading}
         agentHistoryError={focusAgentHistoryError}
         onClose={closeFocus}
-        onToggleAgentHistory={toggleFocusAgentHistory}
-        onToggleAgentInventory={toggleFocusAgentInventory}
+        onAgentSubtabChange={changeFocusAgentSubtab}
       />
 
       <div
@@ -865,6 +1083,7 @@ export default function ImmersiveGame() {
         civilizationIndex={society?.observations.civilizationIndex ?? null}
         currentMonth={monthRef.current}
         history={history}
+        historyTotalCount={historyTotalCount}
         modelEvolutionModeDraft={modelEvolutionModeDraft}
         modelRouteDraft={modelRouteDraft}
         modelSummaryModeDraft={modelSummaryModeDraft}
@@ -873,10 +1092,16 @@ export default function ImmersiveGame() {
         modelSettingsStatus={modelSettingsStatus}
         newWorldSeed={newWorldSeed}
         newWorldStatus={newWorldStatus}
+        saves={saves}
+        saveStatus={saveManagerStatus}
+        saveMessage={saveManagerMessage}
         onClose={closeOverlay}
+        onCreateSave={(label) => { void createSave(label); }}
+        onLoadSave={(saveId) => { void loadSave(saveId); }}
         onOpenHistory={openHistory}
         onOpenModelSettings={openModelSettings}
         onOpenNewWorld={openNewWorld}
+        onOpenSaves={openSaves}
         onOpenShortcuts={openShortcuts}
         onEvolutionModeChange={changeEvolutionMode}
         onModelRouteChange={changeModelRoute}

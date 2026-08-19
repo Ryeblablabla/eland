@@ -4,7 +4,14 @@ import SocietyMap from '@/components/SocietyMap';
 import SocietyScene3D from '@/components/SocietyScene3D';
 import SkyPiP from '@/components/SkyPiP';
 import CharacterArchive from '@/components/CharacterArchive';
-import { createWorldSeed, ElandSessionMissingError, elandClient, getElandRunId, type Frame } from '@/game/elandClient';
+import {
+  createCivilizationCreationId,
+  createWorldSeed,
+  ElandSessionMissingError,
+  elandClient,
+  getElandRunId,
+  type Frame,
+} from '@/game/elandClient';
 import type { AgentHistoryItem, EraKey, SocietyState } from '@/game/societyContract';
 import type { SkySample } from '@/game/societyContract';
 import { CHARACTERS } from '@/data/characters';
@@ -233,16 +240,20 @@ export default function Game() {
   const civStats = useRef({ startMonth: 0, eras: 0 });
   const rosterRef = useRef<string[]>([]);
   const runIdRef = useRef(getElandRunId());
+  const activeCivilizationRef = useRef(1);
   const activeWorldSeedRef = useRef<number | null>(null);
+  const pendingCreationRef = useRef<{ id: string; worldSeed: number } | null>(null);
+  const civilizationRequestGenerationRef = useRef(0);
+  const canvasCivilizationSyncRef = useRef(false);
   const statsRef = useRef<SimStats | null>(null);
   const lastSkyTimeRef = useRef(0);
   const fluxRangeRef = useRef({ min: 1, max: 1, sum: 0, count: 0 });
   const [universeTarget, setUniverseTarget] = useState(0);
 
   useEffect(() => {
-    const endSession = () => { void elandClient.end(runIdRef.current); };
-    window.addEventListener('pagehide', endSession);
-    return () => window.removeEventListener('pagehide', endSession);
+    const checkpointSession = () => { void elandClient.checkpoint(runIdRef.current); };
+    window.addEventListener('pagehide', checkpointSession);
+    return () => window.removeEventListener('pagehide', checkpointSession);
   }, []);
 
   const sampleSky = useCallback((): SkySample => {
@@ -276,6 +287,11 @@ export default function Game() {
 
   /** 应用后端来的一帧（新纪年） */
   const applyFrame = useCallback((frame: Frame) => {
+    if (activeCivilizationRef.current !== frame.civilizationId) {
+      canvasCivilizationSyncRef.current = true;
+    }
+    activeCivilizationRef.current = frame.civilizationId;
+    prev.current.civ = frame.civilizationId;
     activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
     setElapsedMonths(frame.elapsedMonths);
@@ -302,17 +318,29 @@ export default function Game() {
   }, [pushEntry]);
 
   /** 启动一个 ELAND 文明（后端会话）；有选定阵容时按阵容入局 */
-  const startCivilization = useCallback((civNo: number, worldSeed = createWorldSeed()) => {
+  const startCivilization = useCallback((worldSeed = createWorldSeed()) => {
+    const pendingCreation = pendingCreationRef.current?.worldSeed === worldSeed
+      ? pendingCreationRef.current
+      : { id: createCivilizationCreationId(), worldSeed };
+    pendingCreationRef.current = pendingCreation;
+    const generation = ++civilizationRequestGenerationRef.current;
     const picked = rosterRef.current;
     const sky = sampleSky();
     activeWorldSeedRef.current = worldSeed;
-    void elandClient.begin(runIdRef.current, civNo, sky, picked.length > 0 ? picked : undefined, worldSeed).then((frame) => {
+    void elandClient.begin(
+      runIdRef.current,
+      pendingCreation.id,
+      sky,
+      picked.length > 0 ? picked : undefined,
+      worldSeed,
+    ).then((frame) => {
+      if (generation !== civilizationRequestGenerationRef.current) return;
+      if (pendingCreationRef.current?.id === pendingCreation.id) pendingCreationRef.current = null;
       applyFrame(frame);
       setSelectedAgentId(null);
       setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
-      pushEntry(civNo, frame.elapsedMonths, `第 ${toChineseNum(civNo)} 号文明在自然地表上开始，${frame.society.agents.length} 位先民登场`, 'era');
     }).catch(() => undefined);
-  }, [applyFrame, pushEntry, sampleSky]);
+  }, [applyFrame, sampleSky]);
 
   const toggleRosterPick = useCallback((id: string) => {
     setRoster((current) => {
@@ -331,7 +359,7 @@ export default function Game() {
     setRoster([]);
   }, []);
 
-  /** 以当前阵容从第一号文明重开宇宙 */
+  /** 以当前阵容建立下一个文明并重开宇宙。 */
   const restartWithRoster = useCallback(() => {
     setShowArchive(false);
     setReplayMonth(null);
@@ -342,15 +370,22 @@ export default function Game() {
     setElapsedMonths(0);
     setChronicle([]);
     eraMachine.current = { era: null, candidate: null, sinceT: 0 };
-    prev.current = { civ: 1 };
+    prev.current = { civ: activeCivilizationRef.current };
     civStats.current = { startMonth: 0, eras: 0 };
-    startCivilization(1);
+    startCivilization();
     setUniverseToken((t) => t + 1);
   }, [startCivilization]);
 
   const onStats = useCallback(
     (s: SimStats) => {
       statsRef.current = s;
+      if (canvasCivilizationSyncRef.current) {
+        if (s.civilizations === activeCivilizationRef.current) {
+          canvasCivilizationSyncRef.current = false;
+        } else {
+          return;
+        }
+      }
       const range = fluxRangeRef.current;
       range.min = range.count ? Math.min(range.min, s.fluxRel) : s.fluxRel;
       range.max = range.count ? Math.max(range.max, s.fluxRel) : s.fluxRel;
@@ -378,7 +413,7 @@ export default function Game() {
 
       // 文明更替 → 后端启动新文明
       if (s.civilizations !== p.civ) {
-        if (s.civilizations > p.civ) startCivilization(s.civilizations);
+        if (s.civilizations > p.civ) startCivilization();
         civStats.current = { startMonth: 0, eras: 0 };
         p.civ = s.civilizations;
       }
@@ -412,7 +447,7 @@ export default function Game() {
   );
 
   useEffect(() => {
-    if (entered) startCivilization(1);
+    if (entered) startCivilization();
   }, [entered, startCivilization]);
 
   useEffect(() => () => { if (announceTimer.current) clearTimeout(announceTimer.current); }, []);
@@ -428,16 +463,13 @@ export default function Game() {
     try {
       const sky = sampleSky();
       const frame = await elandClient.step(runIdRef.current, sky);
-      if (frame && frame.civilizationId === (statsRef.current?.civilizations ?? frame.civilizationId) && frame.elapsedMonths > monthRef.current) {
+      if (frame && frame.civilizationId === activeCivilizationRef.current && frame.elapsedMonths > monthRef.current) {
         applyFrame(frame);
         setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
       }
     } catch (error) {
       if (error instanceof ElandSessionMissingError) {
-        startCivilization(
-          statsRef.current?.civilizations ?? 1,
-          activeWorldSeedRef.current ?? createWorldSeed(),
-        );
+        startCivilization(activeWorldSeedRef.current ?? createWorldSeed());
         return;
       }
       setPlaying(false);
@@ -505,9 +537,9 @@ export default function Game() {
       setElapsedMonths(0);
       setChronicle([]);
       eraMachine.current = { era: null, candidate: null, sinceT: 0 };
-      prev.current = { civ: 1 };
+      prev.current = { civ: activeCivilizationRef.current };
       civStats.current = { startMonth: 0, eras: 0 };
-      startCivilization(1);
+      startCivilization();
       setUniverseToken((t) => t + 1);
     } else {
       setRespawnToken((t) => t + 1);
@@ -576,6 +608,7 @@ export default function Game() {
           showTwin={false}
           presetKey="chaos"
           resetToken={universeToken}
+          civilizationId={activeCivilizationRef.current}
           targetT={universeTarget}
           skyMode={view === 'society' || replayMonth !== null ? 'frozen' : 'follow'}
           collapseHold

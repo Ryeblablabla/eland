@@ -129,6 +129,8 @@ try {
   female.body.health = female.body.nutrition = female.body.hydration = 100;
   male.body.health = male.body.nutrition = male.body.hydration = 100;
   female.conditions = female.conditions.filter((condition) => condition.kind !== 'pregnancy');
+  Object.assign(female.relations.find((relation) => relation.personId === male.id), { trust: 60, bond: 60 });
+  Object.assign(male.relations.find((relation) => relation.personId === female.id), { trust: 60, bond: 60 });
 
   const offerId = 'same-month-reproduction-offer';
   const offer = executePrimitiveAction(consentState, male, {
@@ -153,7 +155,7 @@ try {
     'the same-month communication facts should still be pending archival in this regression fixture');
 
   const reproduction = executePrimitiveAction(consentState, female, {
-    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }],
+    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }], authorizationRef: offerId,
   }, 12, 2, { cause: 'intent', actionTick: 2 });
   assert.equal(reproduction.status, 'completed', 'an active same-month agreement must authorize reproduction immediately');
   assert.notEqual(reproduction.diff.consent, false);

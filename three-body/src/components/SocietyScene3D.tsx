@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -7,7 +7,14 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import type { ActionVisualView, EraKey, IntentView, SocietyAgent, SocietyState } from '@/game/societyContract';
+import type {
+  ActionVisualView,
+  EraKey,
+  IntentView,
+  SocietyAgent,
+  SocietyState,
+  SpeechLineView,
+} from '@/game/societyContract';
 import { Material } from '@/game/eland/domain/material';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
 import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
@@ -62,6 +69,7 @@ interface Props {
   society: SocietyState;
   era: EraKey;
   speaker: string | null;
+  speechLines?: readonly SpeechLineView[];
   sky?: HumanSkySnapshot;
   selectedAgentId?: string | null; // 旧页面编译兼容；沉浸式场景不启用点选 UI
   onSelectAgent?: (id: string | null) => void;
@@ -82,6 +90,14 @@ const NAME_TAG_TARGET_GLYPH_PX = 10.5;
 const NAME_TAG_MIN_WORLD_H = 0.55;
 const NAME_TAG_MAX_WORLD_H = 3;
 const FIGURE_SCALE = 0.5; // 比当前版本放大一倍；仍保留半格尺度以容纳同格编组
+const MAX_VISIBLE_SPEAKERS = 3;
+const SPEECH_FONT_PX = 32;
+const SPEECH_TARGET_FONT_PX = 11.5;
+const SPEECH_MAX_LINE_WIDTH_PX = 400;
+const SPEECH_MAX_LINES = 3;
+const SPEECH_COLLISION_GAP_PX = 8;
+
+type SpeechBubblePlacement = 'body-left' | 'center' | 'body-right';
 
 function makeHumanSkyGlowTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
@@ -194,6 +210,121 @@ function nameTexture(text: string, color: string): THREE.CanvasTexture {
   return tex;
 }
 
+interface SpeechBubbleTexture {
+  texture: THREE.CanvasTexture;
+  aspect: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  anchorX: number;
+}
+
+/** 每位人物只保留本帧最后一句，再取最近三位说话者，避免场景被气泡铺满。 */
+function latestSpeechBySpeaker(lines: readonly SpeechLineView[]): SpeechLineView[] {
+  const result: SpeechLineView[] = [];
+  const speakers = new Set<string>();
+  for (let index = lines.length - 1; index >= 0 && result.length < MAX_VISIBLE_SPEAKERS; index -= 1) {
+    const line = lines[index];
+    const source = (line as SpeechLineView & { source?: string }).source;
+    if (source !== 'decision-model' && source !== 'speech-model') continue;
+    if (!line.text.trim() || speakers.has(line.speakerId)) continue;
+    speakers.add(line.speakerId);
+    result.push(line);
+  }
+  return result.reverse();
+}
+
+function speechLinesForCanvas(
+  context: CanvasRenderingContext2D,
+  text: string,
+): string[] {
+  const glyphs = Array.from(text.trim().replace(/\s+/gu, ' '));
+  const lines: string[] = [];
+  let current = '';
+  let truncated = false;
+  for (const glyph of glyphs) {
+    const candidate = `${current}${glyph}`;
+    if (!current || context.measureText(candidate).width <= SPEECH_MAX_LINE_WIDTH_PX) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = glyph;
+    if (lines.length >= SPEECH_MAX_LINES) {
+      truncated = true;
+      break;
+    }
+  }
+  if (!truncated && current && lines.length < SPEECH_MAX_LINES) lines.push(current);
+  if (truncated && lines.length) {
+    let last = lines[lines.length - 1];
+    while (last && context.measureText(`${last}…`).width > SPEECH_MAX_LINE_WIDTH_PX) {
+      last = Array.from(last).slice(0, -1).join('');
+    }
+    lines[lines.length - 1] = `${last}…`;
+  }
+  return lines.length ? lines : ['……'];
+}
+
+function speechBubbleAnchorX(width: number, placement: SpeechBubblePlacement): number {
+  if (placement === 'center') return 0.5;
+  const edgeInset = Math.max(18, Math.min(28, width * 0.1));
+  return placement === 'body-left' ? 1 - edgeInset / width : edgeInset / width;
+}
+
+function speechBubbleTexture(text: string, placement: SpeechBubblePlacement): SpeechBubbleTexture {
+  const measureCanvas = document.createElement('canvas');
+  const measure = measureCanvas.getContext('2d')!;
+  measure.font = `400 ${SPEECH_FONT_PX}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`;
+  const lines = speechLinesForCanvas(measure, text);
+  const paddingX = 22;
+  const paddingTop = 17;
+  const paddingBottom = 15;
+  const lineHeight = 39;
+  const tailHeight = 12;
+  const contentWidth = Math.max(...lines.map((line) => measure.measureText(line).width));
+  const width = Math.ceil(Math.max(164, Math.min(SPEECH_MAX_LINE_WIDTH_PX, contentWidth) + paddingX * 2));
+  const bodyHeight = paddingTop + paddingBottom + lines.length * lineHeight;
+  const height = bodyHeight + tailHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d')!;
+  const radius = 16;
+  const anchorX = speechBubbleAnchorX(width, placement);
+  const tailX = anchorX * width;
+  context.beginPath();
+  context.moveTo(radius, 1);
+  context.lineTo(width - radius, 1);
+  context.quadraticCurveTo(width - 1, 1, width - 1, radius);
+  context.lineTo(width - 1, bodyHeight - radius);
+  context.quadraticCurveTo(width - 1, bodyHeight - 1, width - radius, bodyHeight - 1);
+  context.lineTo(tailX + 9, bodyHeight - 1);
+  context.lineTo(tailX, height - 2);
+  context.lineTo(tailX - 9, bodyHeight - 1);
+  context.lineTo(radius, bodyHeight - 1);
+  context.quadraticCurveTo(1, bodyHeight - 1, 1, bodyHeight - radius);
+  context.lineTo(1, radius);
+  context.quadraticCurveTo(1, 1, radius, 1);
+  context.closePath();
+  context.fillStyle = 'rgba(9, 15, 23, 0.72)';
+  context.fill();
+  context.strokeStyle = 'rgba(226, 232, 240, 0.22)';
+  context.lineWidth = 1.25;
+  context.stroke();
+  context.font = `400 ${SPEECH_FONT_PX}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`;
+  context.fillStyle = 'rgba(241, 245, 249, 0.88)';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  lines.forEach((line, index) => {
+    context.fillText(line, width / 2, paddingTop + lineHeight * (index + 0.5));
+  });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return { texture, aspect: width / height, pixelWidth: width, pixelHeight: height, anchorX };
+}
+
 // ---------------------------------------------------------------------------
 // 3D 像素小人
 // ---------------------------------------------------------------------------
@@ -223,7 +354,31 @@ interface FigureParts {
   belly: THREE.Mesh;
   sprite: THREE.Sprite;
   spriteKey: string;
+  speechBubble: THREE.Sprite;
+  speechKey: string;
+  speechTexture: THREE.CanvasTexture | null;
+  speechAspect: number;
+  speechPixelWidth: number;
+  speechPixelHeight: number;
+  speechPlacement: SpeechBubblePlacement;
   visualKey: string;
+}
+
+function setSpeechBubbleTexture(
+  figure: FigureParts,
+  text: string,
+  placement: SpeechBubblePlacement,
+): void {
+  figure.speechTexture?.dispose();
+  const bubble = speechBubbleTexture(text, placement);
+  figure.speechTexture = bubble.texture;
+  figure.speechAspect = bubble.aspect;
+  figure.speechPixelWidth = bubble.pixelWidth;
+  figure.speechPixelHeight = bubble.pixelHeight;
+  figure.speechPlacement = placement;
+  figure.speechBubble.center.x = bubble.anchorX;
+  figure.speechBubble.material.map = bubble.texture;
+  figure.speechBubble.material.needsUpdate = true;
 }
 
 function figureAgeOf(agent: SocietyAgent): FigureAge {
@@ -454,7 +609,19 @@ function buildFigure(agent: SocietyAgent): FigureParts {
   sprite.position.y = 1.18;
   sprite.renderOrder = 5;
 
-  group.add(upright, dehydrated, sprite);
+  const speechBubble = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      transparent: true,
+      opacity: 0.9,
+      alphaTest: 0.02,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  speechBubble.visible = false;
+  speechBubble.renderOrder = 30;
+
+  group.add(upright, dehydrated, sprite, speechBubble);
   // 身体部件投阴影；名牌不参与阴影与 AO。
   group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -471,12 +638,16 @@ function buildFigure(agent: SocietyAgent): FigureParts {
   return {
     group, upright, upperBody, dehydrated, legL, legR, armL, armR,
     spear, handTool, toolHead, heldLoad, heldLoadFill, tablet, heldFood, outerwear, bandage, belly, sprite,
-    spriteKey: '', visualKey: figureVisualKey(agent),
+    spriteKey: '', speechBubble, speechKey: '', speechTexture: null, speechAspect: 1,
+    speechPixelWidth: 1, speechPixelHeight: 1, speechPlacement: 'center',
+    visualKey: figureVisualKey(agent),
   };
 }
 
 /** 卸载一个人物（名牌贴图在模块缓存中共享，不随个体销毁） */
 function disposeFigure(f: FigureParts): void {
+  f.speechTexture?.dispose();
+  f.speechTexture = null;
   f.group.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.geometry) mesh.geometry.dispose();
@@ -489,6 +660,7 @@ export default function SocietyScene3D({
   society,
   era,
   speaker,
+  speechLines,
   sky,
   selectedAgentId,
   onSelectAgent,
@@ -498,10 +670,19 @@ export default function SocietyScene3D({
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const visibleSpeechLines = useMemo(
+    () => latestSpeechBySpeaker(speechLines ?? []),
+    [speechLines],
+  );
+  const speechBySpeaker = useMemo(
+    () => new Map(visibleSpeechLines.map((line) => [line.speakerId, line])),
+    [visibleSpeechLines],
+  );
   const propsRef = useRef({
     society,
     era,
     speaker,
+    speechBySpeaker,
     sky,
     selectedAgentId,
     onSelectAgent,
@@ -514,6 +695,7 @@ export default function SocietyScene3D({
       society,
       era,
       speaker,
+      speechBySpeaker,
       sky,
       selectedAgentId,
       onSelectAgent,
@@ -1906,14 +2088,17 @@ export default function SocietyScene3D({
     const figures = new Map<string, FigureParts>();
     const removeFigure = (figure: FigureParts) => {
       scene.remove(figure.group);
-      const excludedIndex = aoExcluded.indexOf(figure.sprite);
-      if (excludedIndex >= 0) aoExcluded.splice(excludedIndex, 1);
+      for (const excluded of [figure.sprite, figure.speechBubble]) {
+        const excludedIndex = aoExcluded.indexOf(excluded);
+        if (excludedIndex >= 0) aoExcluded.splice(excludedIndex, 1);
+      }
       disposeFigure(figure);
     };
     const syncAgents = (now: number) => {
       const p = propsRef.current;
       const w = p.society.world;
       const agents = p.society.agents;
+      const speechBySpeaker = p.speechBySpeaker;
       const motion = Math.min(1, (now - animStart.current) / MONTH_PLAYBACK_MS);
       const activeIntentByOwner = new Map(p.society.intents
         .filter((intent) => intent.status === 'active')
@@ -1943,7 +2128,7 @@ export default function SocietyScene3D({
           f = buildFigure(agent);
           scene.add(f.group);
           figures.set(agent.id, f);
-          aoExcluded.push(f.sprite); // 名牌不参与 AO
+          aoExcluded.push(f.sprite, f.speechBubble); // 名牌和台词气泡都不参与 AO
         }
         const path = agent.tickPath.length === RULE_TICKS + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
         const point = interpolatePath(path, w.width, motion);
@@ -1991,6 +2176,34 @@ export default function SocietyScene3D({
         f.sprite.scale.set(labelHeight * 4, labelHeight, 1);
         // 随缩放同步抬高中心，保证真正有字的区域始终落在头顶，而非覆盖人物。
         f.sprite.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.25;
+
+        const speechLine = speechBySpeaker.get(agent.id);
+        const speechKey = speechLine ? `${speechLine.id}|${speechLine.text}` : '';
+        if (speechKey !== f.speechKey) {
+          if (speechLine) {
+            setSpeechBubbleTexture(f, speechLine.text, 'center');
+            f.speechBubble.center.y = 0;
+          } else {
+            f.speechTexture?.dispose();
+            f.speechTexture = null;
+            f.speechBubble.material.map = null;
+            f.speechBubble.material.needsUpdate = true;
+            f.speechBubble.center.set(0.5, 0);
+            f.speechPlacement = 'center';
+          }
+          f.speechBubble.visible = Boolean(speechLine);
+          f.speechKey = speechKey;
+        }
+        if (speechLine) {
+          const bubbleWorldHeight = THREE.MathUtils.clamp(
+            SPEECH_TARGET_FONT_PX * (f.speechPixelHeight / SPEECH_FONT_PX) * worldUnitsPerPixel,
+            0.35,
+            11,
+          );
+          const bubbleLocalHeight = bubbleWorldHeight / FIGURE_SCALE;
+          f.speechBubble.scale.set(bubbleLocalHeight * f.speechAspect, bubbleLocalHeight, 1);
+          f.speechBubble.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.84;
+        }
 
         // 每帧先回到站立基准，再叠加权威状态对应的动作姿态。
         f.upperBody.position.y = 0.3;
@@ -2143,6 +2356,123 @@ export default function SocietyScene3D({
           figures.delete(id);
         }
       }
+    };
+
+    interface SpeechLayoutRect {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    }
+    interface SpeechLayoutItem {
+      figure: FigureParts;
+      text: string;
+      anchorX: number;
+      anchorY: number;
+      width: number;
+      height: number;
+    }
+    interface SpeechLayoutCandidate {
+      placement: SpeechBubblePlacement;
+      lane: number;
+      lift: number;
+      rect: SpeechLayoutRect;
+      cost: number;
+    }
+    const speechAnchorWorld = new THREE.Vector3();
+    const speechAnchorView = new THREE.Vector3();
+    const speechProjected = new THREE.Vector3();
+    const speechWorldScale = new THREE.Vector3();
+    const overlapArea = (left: SpeechLayoutRect, right: SpeechLayoutRect): number => Math.max(
+      0,
+      Math.min(left.right, right.right) - Math.max(left.left, right.left),
+    ) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+    const layoutSpeechBubbles = () => {
+      const viewportWidth = mount.clientWidth;
+      const viewportHeight = mount.clientHeight;
+      if (viewportWidth <= 0 || viewportHeight <= 0) return;
+      camera.updateMatrixWorld();
+      const items: SpeechLayoutItem[] = [];
+      for (const line of propsRef.current.speechBySpeaker.values()) {
+        const figure = figures.get(line.speakerId);
+        if (!figure?.speechBubble.visible) continue;
+        figure.group.updateWorldMatrix(true, false);
+        figure.speechBubble.getWorldPosition(speechAnchorWorld);
+        speechProjected.copy(speechAnchorWorld).project(camera);
+        if (speechProjected.z < -1 || speechProjected.z > 1) continue;
+        speechAnchorView.copy(speechAnchorWorld).applyMatrix4(camera.matrixWorldInverse);
+        const depth = Math.max(0.01, -speechAnchorView.z);
+        const worldUnitsPerPixel = 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5))
+          / viewportHeight;
+        figure.speechBubble.getWorldScale(speechWorldScale);
+        items.push({
+          figure,
+          text: line.text,
+          anchorX: (speechProjected.x + 1) * 0.5 * viewportWidth,
+          anchorY: (1 - speechProjected.y) * 0.5 * viewportHeight,
+          width: speechWorldScale.x / worldUnitsPerPixel,
+          height: speechWorldScale.y / worldUnitsPerPixel,
+        });
+      }
+      if (!items.length) return;
+
+      const laneStep = Math.max(...items.map((item) => item.height)) + SPEECH_COLLISION_GAP_PX;
+      const meanAnchorX = items.reduce((sum, item) => sum + item.anchorX, 0) / items.length;
+      const candidates = items.map((item): SpeechLayoutCandidate[] => {
+        const outwardFirst: SpeechBubblePlacement = item.anchorX <= meanAnchorX ? 'body-left' : 'body-right';
+        const placements: SpeechBubblePlacement[] = ['center', outwardFirst,
+          outwardFirst === 'body-left' ? 'body-right' : 'body-left'];
+        return Array.from({ length: items.length }, (_, lane) => placements.map((placement) => {
+          const anchorRatio = speechBubbleAnchorX(item.figure.speechPixelWidth, placement);
+          const lift = lane * laneStep;
+          const left = item.anchorX - anchorRatio * item.width;
+          const bottom = item.anchorY - lift;
+          const rect = { left, right: left + item.width, top: bottom - item.height, bottom };
+          const overflow = Math.max(0, 10 - rect.left)
+            + Math.max(0, rect.right - viewportWidth + 10)
+            + Math.max(0, 10 - rect.top)
+            + Math.max(0, rect.bottom - viewportHeight + 10);
+          const pointsAway = placement === outwardFirst;
+          return {
+            placement,
+            lane,
+            lift,
+            rect,
+            cost: lane * 140 + (placement === 'center' ? 0 : pointsAway ? 14 : 42) + overflow * 1_000,
+          };
+        })).flat();
+      });
+
+      let bestCost = Number.POSITIVE_INFINITY;
+      let best: SpeechLayoutCandidate[] = [];
+      const chosen: SpeechLayoutCandidate[] = [];
+      const search = (index: number, cost: number) => {
+        if (cost >= bestCost) return;
+        if (index >= candidates.length) {
+          bestCost = cost;
+          best = [...chosen];
+          return;
+        }
+        for (const candidate of candidates[index]) {
+          const collisionCost = chosen.reduce(
+            (sum, placed) => sum + overlapArea(candidate.rect, placed.rect) * 10_000,
+            0,
+          );
+          chosen.push(candidate);
+          search(index + 1, cost + candidate.cost + collisionCost);
+          chosen.pop();
+        }
+      };
+      search(0, 0);
+
+      items.forEach((item, index) => {
+        const placement = best[index] ?? candidates[index][0];
+        if (placement.placement !== item.figure.speechPlacement) {
+          setSpeechBubbleTexture(item.figure, item.text, placement.placement);
+        }
+        const anchorRatio = speechBubbleAnchorX(item.figure.speechPixelWidth, placement.placement);
+        item.figure.speechBubble.center.set(anchorRatio, -placement.lift / Math.max(1, item.height));
+      });
     };
 
     // ---- 点选人物 / 权威结构；拖拽镜头不会触发选择，点击空白收起信息 ----
@@ -2351,6 +2681,7 @@ export default function SocietyScene3D({
       }
       updateKeyboardCamera(deltaSeconds);
       controls.update();
+      layoutSpeechBubbles();
       // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
       if (skyStars) skyStars.position.copy(camera.position);
       updateHumanSky(deltaSeconds);
@@ -2421,6 +2752,15 @@ export default function SocietyScene3D({
         className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
       />
+      <div className="sr-only" aria-atomic="true" aria-live="polite" aria-relevant="additions text">
+        {visibleSpeechLines.map((line) => (
+          <span className="block" key={line.id}>
+            {line.speakerName}
+            {line.audienceNames.length ? `对${line.audienceNames.join('、')}` : ''}
+            说：{line.text}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

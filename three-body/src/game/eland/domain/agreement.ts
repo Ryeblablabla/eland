@@ -5,6 +5,7 @@ import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
 import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
+import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
@@ -27,6 +28,10 @@ export interface Agreement {
   responseEventId?: string;
   fulfillmentEventIds: string[];
   fulfilledByPersonIds: PersonId[];
+  /** Completed reproduce actions made under this bounded consent window. */
+  reproductionAttemptEventIds?: string[];
+  /** Enforces at most one reproductive probability sample per calendar month. */
+  lastReproductionAttemptAtMonth?: number;
   coLocatedMonths: number;
   sourceEventIds: string[];
 }
@@ -47,8 +52,25 @@ function duration(proposal: SocialProposal): number {
   if (proposal.kind === 'collective' || proposal.kind === 'membership' || proposal.kind === 'permission' || proposal.kind === 'decision-rule' || proposal.kind === 'mandate') return 1;
   if (proposal.kind === 'exchange') return 12;
   if (proposal.kind === 'assist') return 6;
-  if (proposal.kind === 'reproduce') return 4;
+  if (proposal.kind === 'reproduce') return REPRODUCTION_CONSENT_WINDOW_MONTHS - 1;
   return 4;
+}
+
+export function reproductionAttemptedInMonth(agreement: Agreement, atMonth: number): boolean {
+  return agreement.proposal.kind === 'reproduce'
+    && agreement.lastReproductionAttemptAtMonth === atMonth;
+}
+
+export function reproductionAttemptedBetweenInMonth(
+  state: SimulationState,
+  a: PersonId,
+  b: PersonId,
+  atMonth: number,
+): boolean {
+  return state.agreements.some((agreement) => agreement.proposal.kind === 'reproduce'
+    && agreement.partyIds.includes(a)
+    && agreement.partyIds.includes(b)
+    && reproductionAttemptedInMonth(agreement, atMonth));
 }
 
 export function agreementById(state: SimulationState, id: string): Agreement | undefined {
@@ -65,8 +87,10 @@ export function activeReproductionAgreementBetween(
   a: PersonId,
   b: PersonId,
   atMonth: number,
+  agreementId?: string,
 ): Agreement | undefined {
   return [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+    && (!agreementId || agreement.id === agreementId)
     && agreement.proposal.kind === 'reproduce'
     && agreement.partyIds.includes(a)
     && agreement.partyIds.includes(b)
@@ -225,13 +249,25 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   if (action.kind === 'act' && action.operation === 'reproduce') {
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
-    const agreement = state.agreements.find((item) => item.status === 'active'
+    const agreement = action.authorizationRef
+      ? state.agreements.find((item) => item.id === action.authorizationRef
+      && item.status === 'active'
       && item.proposal.kind === 'reproduce'
       && item.partyIds.includes(fact.who)
-      && item.partyIds.includes(target.personId));
-    // Consent authorizes one completed attempt, not repeated attempts until
-    // conception. A later attempt therefore requires a new proposal and reply.
-    if (agreement) fulfill(state, agreement, fact);
+      && item.partyIds.includes(target.personId))
+      : undefined;
+    if (agreement) {
+      agreement.reproductionAttemptEventIds = [...new Set([
+        ...(agreement.reproductionAttemptEventIds ?? []),
+        fact.id,
+      ])];
+      agreement.lastReproductionAttemptAtMonth = fact.atMonth;
+      agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+      // The agreement is a bounded, revocable attempt window. A completed but
+      // unsuccessful action records progress without claiming that the shared
+      // reproductive outcome was fulfilled.
+      if (fact.diff.conceived === true) fulfill(state, agreement, fact);
+    }
     return;
   }
 
@@ -290,7 +326,8 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
     if (agreement.proposal.kind === 'reproduce') {
       agreement.status = 'expired';
       agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '双方同意的一次生殖尝试期限结束，期间没有完成尝试');
+      const attempts = agreement.reproductionAttemptEventIds?.length ?? 0;
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', `双方同意的生殖尝试窗口结束，${attempts > 0 ? `期间完成了 ${attempts} 次尝试但没有受孕` : '期间没有完成尝试'}`);
       agreement.sourceEventIds.push(fact.id);
       events.push(fact);
       continue;

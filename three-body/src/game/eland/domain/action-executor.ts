@@ -8,7 +8,7 @@ import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
 import { recordPersonalityEvidence } from './personality';
 import { applyRelationEvidence } from './relation';
-import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction } from './agreement';
+import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
 import { mandateById, mandateSupportsTransfer, recordGovernanceAction } from './governance';
 import { permissionAuthorizesTransfer, permissionById, recordPermissionAction } from './permission';
@@ -43,8 +43,8 @@ import {
 } from './technique-demonstration';
 import type { ProjectState, ProjectTechniqueDemonstrationBasis } from './project';
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
-import { lifePlanningStage } from './life-stage';
 import { hasReproductiveRecoveryCondition } from './dependent-care';
+import { lifePlanningStage } from './life-stage';
 import { hasCultivatedReproductiveRelationship } from './relationship-evidence';
 import {
   isActionableChaosPrediction,
@@ -1015,12 +1015,21 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
   return { status: 'completed' as const, result: `${person.name}对${victim.name}施力并造成伤害`, diff: { victimId: victim.id, damage, health: victim.body.health, witnessedBy } };
 }
 
-function executeReproduce(state: SimulationState, person: PersonState, targets: WorldRef[], atMonth: number, eventId: string) {
-  const target = targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
+function executeReproduce(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+  const target = action.targets.find((item): item is Extract<WorldRef, { kind: 'person' }> => item.kind === 'person');
   const other = target ? state.people.find((candidate) => candidate.id === target.personId) : undefined;
   if (!other || other.id === person.id || !sameLocation(other, person)) return { status: 'blocked' as const, result: '另一参与者不在近身范围', diff: {} };
-  const consent = activeReproductionAgreementBetween(state, person.id, other.id, atMonth);
+  const consent = action.authorizationRef
+    ? activeReproductionAgreementBetween(state, person.id, other.id, atMonth, action.authorizationRef)
+    : undefined;
   if (!consent) return { status: 'blocked' as const, result: '没有有效的双方生殖协议，生殖过程不发生', diff: { consent: false } };
+  if (reproductionAttemptedBetweenInMonth(state, person.id, other.id, atMonth)) {
+    return {
+      status: 'blocked' as const,
+      result: '本月已经在这项双方同意的窗口内完成过一次生殖尝试',
+      diff: { consent: true, attemptedThisMonth: true, agreementId: consent.id },
+    };
+  }
   if (!hasCultivatedReproductiveRelationship(state, person, other)) {
     return {
       status: 'blocked' as const,
@@ -1096,12 +1105,20 @@ function executeDehydrate(
       .filter((memory) => memory.id.startsWith(`memory:hibernation-wake-dispute:${triggerPrediction.id}:${sleeper.id}:`))
       .flatMap((memory) => memory.sourceEventIds)
     : [];
+  const hibernationEvidenceEventIds = (action.hibernationEvidenceEventIds ?? []).filter((sourceEventId) => {
+    const source = worldEventById(state, sourceEventId);
+    return source?.kind === 'environment'
+      && source.change === 'condition'
+      && source.who === sleeper.id
+      && source.cellId === sleeper.position.cellId
+      && (source.diff.condition === 'cold' || source.diff.condition === 'heat');
+  });
   sleeper.conditions.push({
     id: `condition-dehydrated-hibernation-${sleeper.id}-${atMonth}`,
     kind: 'dehydrated-hibernation',
     stage: 1,
     sinceMonth: atMonth,
-    sourceEventIds: [eventId],
+    sourceEventIds: [...new Set([...hibernationEvidenceEventIds, eventId])],
     ...(triggerPrediction ? { triggerPredictionId: triggerPrediction.id } : {}),
     ...(wakeDisputeEventIds.length ? { wakeDisputeEventIds: [...new Set(wakeDisputeEventIds)] } : {}),
   });
@@ -1114,6 +1131,7 @@ function executeDehydrate(
     diff: {
       condition: 'dehydrated-hibernation', entered: true, epoch: state.civilization.epoch,
       dehydratedPersonId: sleeper.id,
+      ...(hibernationEvidenceEventIds.length ? { hibernationEvidenceEventIds } : {}),
       ...(triggerPrediction ? { hibernationPredictionId: triggerPrediction.id } : {}),
       ...(wakeDisputeEventIds.length ? { wakeDisputeEventIds: [...new Set(wakeDisputeEventIds)] } : {}),
       ...(assistedDependent ? { assistedByPersonId: person.id, assistedDependentId: sleeper.id } : {}),
@@ -1339,7 +1357,7 @@ function executeAct(state: SimulationState, person: PersonState, action: Extract
   if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'exert') return executeExert(state, person, action, atMonth, eventId);
-  if (action.operation === 'reproduce') return executeReproduce(state, person, action.targets, atMonth, eventId);
+  if (action.operation === 'reproduce') return executeReproduce(state, person, action, atMonth, eventId);
   if (action.operation === 'expose') return executeExpose(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'dehydrate') return executeDehydrate(state, person, action, atMonth, eventId);
   if (action.operation === 'rehydrate') return executeRehydrate(state, person, action, atMonth, eventId);

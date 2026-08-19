@@ -21,3 +21,10 @@ export function humanResourceCompetitionMultiplier(livingPopulation: number): nu
 
 export const REPRODUCTION_REOFFER_MONTHS_AFTER_CONCEPTION = 12;
 export const REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION = 6;
+
+/**
+ * One explicit mutual agreement may cover one attempt in each of four
+ * consecutive calendar months. Either party can still revoke it before any
+ * later attempt, and conception ends the window immediately.
+ */
+export const REPRODUCTION_CONSENT_WINDOW_MONTHS = 4;

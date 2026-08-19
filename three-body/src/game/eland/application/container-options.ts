@@ -75,14 +75,15 @@ export function buildContainerOptions(state: SimulationState, person: PersonStat
   const remainingCapacity = containerRemainingCapacity(access.container);
   const deposits = person.inventory
     .filter((stack) => remainingCapacity > 0
-      && stack.quantity >= (isGranary ? 1 : 2)
+      && stack.quantity >= (isGranary && !materialHas(stack.materialId, 'edible') ? 1 : 2)
       && stack.materialId !== Material.Container
       && (!isGranary || materialHas(stack.materialId, 'edible') || materialHas(stack.materialId, 'seed'))
       && (!materialHas(stack.materialId, 'edible') || person.body.nutrition >= 58))
     .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId)
     .slice(0, 2);
   for (const stack of deposits) {
-    const quantity = Math.min(3, isGranary ? stack.quantity : stack.quantity - 1, remainingCapacity);
+    const privateReserve = materialHas(stack.materialId, 'edible') ? 1 : isGranary ? 0 : 1;
+    const quantity = Math.min(3, stack.quantity - privateReserve, remainingCapacity);
     const current = containerQuantity(access.container, stack.materialId);
     const transfer: PrimitiveAction = {
       kind: 'transfer', materialId: stack.materialId, quantity,
@@ -92,7 +93,9 @@ export function buildContainerOptions(state: SimulationState, person: PersonStat
       id: `store-container:${access.container.id}:${stack.id}`,
       summary: `把${materialDefinition(stack.materialId).name}存入${storageName}`,
       reason: isGranary
-        ? `自己当前身体储备尚可，把${stack.quantity}份食物或种子收入公共谷仓以缓冲人口与天气压力`
+        ? materialHas(stack.materialId, 'edible')
+          ? `自己当前身体储备尚可，保留一份随身食物后，把余粮收入公共谷仓以缓冲人口与天气压力`
+          : `把留存种子收入公共谷仓以缓冲未来生产风险`
         : `自己携带${stack.quantity}份，可留下1份并把剩余物质移入真实容器`,
       goal: { kind: 'container-inventory-at-least', containerId: access.container.id, materialId: stack.materialId, quantity: current + quantity },
       nextAction: transferOrMove(person, access, transfer),

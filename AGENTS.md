@@ -22,6 +22,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `three-body/src/game/eland/README.md`：当前模块边界。
 - `docs/rule-first-agent-architecture-v1.md`：人物、规则与模型的设计边界。
 - `docs/evolution-iteration-loop-v1.md`：文明规则的实验方法。
+- `docs/sqlite-persistence-v1.md`：当前唯一持久化事实源、表与 codec、备份恢复和切换审计。
 - `docs/three-body-era-ecology-v1.md`：恒乱纪元、天气、预言、脱水休眠与生态。
 - `docs/civilization-index-v1.md`：文明指数与时代观察规则。
 
@@ -30,8 +31,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `three-body/` 是主应用目录；前端入口为 `src/App.tsx`，当前产品只保留三体宇宙与人间体素世界两个全屏 3D 场景。
 - 宇宙与人间通过连续缩放进入和退出。页面打开后由本地规则自动推进文明；前端读取权威状态，不自行生成第二套演进结果。
 - `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
-- 实时文明会话会在后端热重启前保存到 `three-body/.cache/eland-live-sessions/`，默认可在 24 小时内恢复当前权威状态与分支时间线；目录和时限可用 `ELAND_LIVE_SESSION_DIR`、`ELAND_SESSION_RECOVERY_TTL_MS` 覆盖。
-- `three-body/data/runs/<run-id>/` 保存运行状态、元数据、长程演化路径与确定性事实报告。已有运行是用户数据，不覆盖、不清理。
+- `three-body/data/eland.sqlite3` 是后端唯一持久化事实源。长程运行、检查点、报告旁车、玩家手动存档、实时会话、文明编号高水位和内容块都在同一 SQLite WAL 数据库中；实时会话默认可在 24 小时内恢复当前权威状态与分支时间线。
 - `knowledge-base/` 是素材实验、规则导览与核心文档入口，默认通过 `npm run dev` 启动。
 
 后端常用接口：
@@ -44,7 +44,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `GET|PUT /api/runs/<id>/state`、`POST /api/runs/import`：导出、覆盖或导入可迁移状态。
 - `POST /api/runs/<id>/enhancements`：在事实提交后生成非权威叙事增强。
 
-默认数据目录可用 `THREEBODY_DATA_DIR` 覆盖，监听地址可用 `THREEBODY_HOST` 与 `THREEBODY_PORT` 覆盖。模型密钥是可选项；无密钥、网络失败或返回非法建议时，规则主链仍须完整运行。示例配置见 `three-body/.env.example`。
+数据库父目录可用 `THREEBODY_DATA_DIR` 覆盖，数据库文件名固定为 `eland.sqlite3`。监听地址可用 `THREEBODY_HOST` 与 `THREEBODY_PORT` 覆盖。模型密钥是可选项；无密钥、网络失败或返回非法建议时，规则主链仍须完整运行。示例配置见 `three-body/.env.example`。
 
 ## 领域与架构
 
@@ -122,7 +122,7 @@ pressure → perception → memory → need → project → plan
 
 - 回答、解释、审查或诊断任务默认不修改文件；修改、修复或实现任务完成范围内改动。
 - 工作区可能已有用户修改和运行产物；保留无关改动，不回退、不覆盖。
-- 不覆盖或删除 `three-body/data/runs/` 中已有实验；基线与候选使用唯一运行前缀。
+- 不覆盖或删除 SQLite 中已有实验运行；基线与候选使用唯一运行前缀。实验矩阵 JSON 只是离线交换产物，不是运行时事实源。
 - 优先运行与改动直接相关的最小验证，不为局部修改运行无关的完整 CI、全量 lint、安全扫描或超长模拟。
 - 文档、注释或纯素材目录修改通常不需要构建；代码改动按风险选择定向测试或构建。
 

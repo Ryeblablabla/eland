@@ -66,6 +66,10 @@ export interface BatchDecider {
   decideAll(contexts: DecisionContext[]): Promise<(Decision | null)[]>;
   /** Optional infrastructure policy. Omitted by deterministic tests and legacy callers. */
   shouldDecide?(context: DecisionContext, atMonth: number): boolean;
+  /** A player-initiated choice may request one fresh local revalidation at the next month boundary. */
+  forceReview?(context: DecisionContext, atMonth: number): boolean;
+  /** Player-interaction choices use their own ledger rather than ordinary person-month credits. */
+  isBudgetExempt?(context: DecisionContext, atMonth: number): boolean;
   takeUsage?(): TokenUsage;
   takeMetadata?(): ModelInvocationMetadata | null;
 }

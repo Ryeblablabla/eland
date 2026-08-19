@@ -76,12 +76,12 @@ Ollama endpoint 可用 `thinking` 控制思考输出。叙事和结构化决策�
 
 ## 玩家主动人物对话
 
-人物页“对话”子 tab 通过 `/api/eland/agent-conversation` 读取当前分支线程并发送消息。服务端只接收 `runId / agentId / message / requestKind / clientMessageId / observedBranchId`，再从权威会话构造该人物带来源的局部语义上下文；前端投影不能作为模型事实来源。`requestKind=conversation` 是普通交谈，`suggestion` 是玩家显式要求人物把这句话作为行动建议理解。
+人物页“对话”子 tab 通过 `/api/eland/agent-conversation` 读取当前分支线程并发送消息。服务端从权威会话构造该人物带来源的局部语义上下文；前端投影不能作为模型事实来源。界面不区分聊天与建议，当前客户端统一发送 `requestKind=conversation`（字段仅为兼容旧记录保留），由同一轮模型按话语语义判断是否形成 choice。
 
 - 每条回复和 `answer / consider / accept / decline` 判断都调用 `interaction` 模型；缺端点、缺密钥、超时或非法 JSON 时返回可见错误，绝不生成本地伪回复；
 - 旧配置没有 `routes.interaction` 时回退到已显式配置的 `routes.decision`，设置页下次保存会写出四种用途路由；
 - 人物对话统一使用 `MODEL_INTERACTION_MAX_OUTPUT_TOKENS=8000` 的默认输出上限，等待上限由 `MODEL_INTERACTION_TIMEOUT_MS` 控制；客户端不能提交任意 token 上限，模型按问题需要简洁作答；
-- 普通对话只读取带 `sourceId` 的本人身体、当前动作、人格、只读 Soul、背包、知识与记忆、当前意图 / 项目摘要、可见人物和物资；事实性回答必须回传实际 `evidenceIds`，未知概念直接承认不知道。只有 `suggestion` 请求才额外包含当下合法 choice ID；Soul 与自主决策 utterance、speech-only 台词共用，并可影响态度和 choice，但不读取文明指数、隐藏配方或全局地图，不能提供新事实、创造候选或直接改变世界；
+- 每轮都读取带 `sourceId` 的本人身体、当前动作、人格、只读 Soul、背包、知识与记忆、当前意图 / 项目摘要、可见人物和物资，并获得经紧急生存、必须回应与履约门禁筛选的合法 choice。事实性回答必须回传实际 `evidenceIds`，未知概念保持不知道；纯问题不得生成 choice，只有人物确实定下下一步时才返回 `accept + choice`；
 - `accept` 必须在同一次回复里返回一个当前合法 `choice`；`consider` 没有 choice 时只表示听见，不产生行动输入。服务端当场校验 option、follow-up、必须回应与履约，并保存排除临时月份 / 表达 ID 的稳定语义 key；
 - 下一次人物可行动时不再调用模型重新解释 guidance，只在最新候选中按原 ID 或稳定 key 做本地唯一重配。命中才提交带 `sourceInteractionId` 的 DecisionFact；必须先回应 / 履约时标为 `deferred` 并保留选择，候选消失或匹配歧义时标为 `blocked` 并保存原因；
 - 对话、choice、结果、endpoint / model 和 token 用量随分支、热恢复与手动存档保存；新分支只继承分叉前历史，未落实 choice 不跨分支执行。

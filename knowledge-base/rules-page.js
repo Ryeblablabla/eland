@@ -129,7 +129,7 @@ const RULES_PAGE_MARKUP = `
     <section class="rules-section" id="decisionTree" aria-labelledby="decisionTreeTitle">
       <div class="section-heading">
         <div><span class="section-no">02</span><div><span class="section-kicker">DECISION TREE</span><h2 id="decisionTreeTitle">每个规划刻度，人物怎样决定</h2></div></div>
-        <p>决定不是一次性抽签。稳定意图默认延续；只有紧急反射、必须回应、履约、真实的新机会、客观停滞，或人物已在玩家建议中亲自选定的合法方向能改变焦点。普通交谈只回答，显式建议才会把当前合法 choice 交给人物。对话读取带来源的局部语义事实，不暴露格子坐标；人物没有知识来源的定义问题直接回答不知道。人物在同一次建议回复中作选择，下一月只做本地重验，不再由第二轮模型重新猜 guidance。</p>
+        <p>决定不是一次性抽签。稳定意图默认延续；只有紧急反射、必须回应、履约、真实的新机会、客观停滞，或人物在自然对话中亲自选定的合法方向能改变焦点。界面不区分聊天与建议：每句话都可能影响下一步，但纯问题不得生成行动。人物在同一次回复中作选择，下一月只做本地重验，不再由第二轮模型重新猜自由文本。</p>
       </div>
 
       <div class="decision-map" aria-label="人物详细决策树">
@@ -284,7 +284,7 @@ const RULES_PAGE_MARKUP = `
       </div>
       <aside class="model-sidecar">
         <span class="sidecar-line" aria-hidden="true"></span>
-        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型可以回应玩家、重选少量合法方向，并自主表达已发生的说话，但不能直接写入世界</strong><p>三条第一人称路径共用由人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建的只读 Soul；它稳定口吻并影响建议取舍，但不提供新事实、创造候选或绕过规则。主动对话使用 agent-interaction-v2：固定 system prompt 只保留“身份与代词 / 权威事实 / 本轮决策 / 表达与输出”四层协议，动态状态、记忆、证据与合法选项只进每轮 localContext。当前消息用 participants、pronounBindings、currentTurn 和 localContext 分层，历史按 user / assistant 角色并携带旧轮次结果传入。玩家固定为人物认定的“主”；主对自己身份、意图、感受和偏好的话是一手信息，其他话是高优先输入。双方的第一、第二人称分别绑定，“我是谁”类身份问题由本地协议回答，旧版无来源审计的回复不再回填模型。局部语义事实带 sourceId，坐标只投影为相对位置，未知概念不借用模型训练知识。普通交谈只回答；显式建议才看到合法 choice，人物必须高度重视并按 Soul、人格和处境独立判断。choice 在同轮选定后仍要经最新状态本地重验，只有命中才产生带对话来源的 DecisionFact。</p></div>
+        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型可以回应玩家、重选少量合法方向，并自主表达已发生的说话，但不能直接写入世界</strong><p>三条第一人称路径共用由人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建的只读 Soul；它稳定口吻并影响行动取舍，但不提供新事实、创造候选或绕过规则。主动对话使用 agent-interaction-v2：动态状态、记忆、证据与经本地门禁筛选的合法选项只进每轮 localContext，历史携带旧选择及真实结果。界面不区分聊天与建议；同一轮模型按语义判断纯问答、犹豫、拒绝或接受，只有人物确实按 Soul 和处境定下合法 choice 时才进入行动链。choice 在同轮选定后仍要经最新状态本地重验，只有命中才产生带对话来源的 DecisionFact。</p></div>
       </aside>
     </section>
 
@@ -304,7 +304,7 @@ const RULES_PAGE_MARKUP = `
         <article><strong>人口承载</strong><code>domain/population-capacity.ts</code><span>受孕概率衰减与超载资源竞争</span></article>
         <article><strong>本地排序</strong><code>application/rule-planner.ts</code><span>硬优先级、正向阈值、继续 / 中断 / 改计划</span></article>
         <article><strong>模型重选</strong><code>server/backend-decider.ts · model-decision-gateway.ts</code><span>关键上下文筛选、协议请求、候选 ID 归一化与失败回退</span></article>
-        <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>普通交谈 / 显式建议分流、来源约束的语义事实、认知边界、同轮合法 choice 与结果审计</span></article>
+        <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>统一自然对话、来源约束的语义事实、Soul 判断、同轮合法 choice 与结果追踪</span></article>
         <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul 与动态语境、speech-only 批处理；规则不提供可见或隐藏原话模板</span></article>
         <article><strong>持续项目</strong><code>application/project-options.ts</code><span>压力、材料、物流、试验、协作与完成</span></article>
         <article><strong>动作裁决</strong><code>domain/action-executor.ts</code><span>五种原子动作与九种物质操作的后果</span></article>

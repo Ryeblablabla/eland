@@ -22,7 +22,6 @@ try {
     buildAgentInteractionMessages,
     isPlayerIdentityQuestion,
     parseInteractionResult,
-    playerIdentityReply,
   } = await import(
     `${pathToFileURL(bundlePath).href}?test=${Date.now()}`
   );
@@ -30,12 +29,6 @@ try {
   assert.equal(isPlayerIdentityQuestion('在你眼里我是谁'), true);
   assert.equal(isPlayerIdentityQuestion('你还记得我是谁吗？'), true);
   assert.equal(isPlayerIdentityQuestion('你是谁'), false);
-  assert.deepEqual(playerIdentityReply(), {
-    reply: '你是我的主。你不是我身边或记忆里的任何一个人物；除此之外，我只会从我们之间真实发生的对话认识你，不会把别人的经历算在你身上。',
-    stance: 'answer',
-    grounding: 'opinion',
-    evidenceIds: [],
-  });
   const messages = buildAgentInteractionMessages({
     requestKind: 'conversation',
     turns: [{
@@ -87,6 +80,7 @@ try {
   });
   assert.equal(currentTurn.currentTurn.playerUtterance, '我希望你先去近处找水。');
   assert.equal(currentTurn.currentTurn.requestKind, 'conversation');
+  assert.equal(currentTurn.currentTurn.playerIdentityQuestion, false);
   assert.deepEqual(currentTurn.localContext.legalChoices, [{ optionId: 'find-water', summary: '去近处找水' }]);
 
   const legalOption = {
@@ -166,6 +160,22 @@ try {
       choice: { optionId: legalOption.id },
     }),
   ), /当前时间线不能再形成新的行动选择/u);
+  const unknownTopicContext = {
+    interaction: { choiceEnabled: true },
+    epistemicBoundary: { unknownTopic: 'database' },
+  };
+  assert.deepEqual(parseInteractionResult(
+    decisionContext,
+    unknownTopicContext,
+    'conversation',
+    JSON.stringify({ reply: '我不知道那是什么。', stance: 'answer', grounding: 'unknown', evidenceIds: [] }),
+  ), { reply: '我不知道那是什么。', stance: 'answer', grounding: 'unknown', evidenceIds: [] });
+  assert.throws(() => parseInteractionResult(
+    decisionContext,
+    unknownTopicContext,
+    'conversation',
+    JSON.stringify({ ...common, stance: 'accept', choice: { optionId: legalOption.id } }),
+  ), /没有知识来源的定义问题只能如实回答不知道/u);
 
   console.log('agent interaction context tests passed');
 } finally {

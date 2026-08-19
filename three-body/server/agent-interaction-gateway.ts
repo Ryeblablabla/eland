@@ -458,6 +458,11 @@ export function parseInteractionResult(
   const guidance = boundedText(raw.guidance, MAX_GUIDANCE_CHARS);
   const reason = boundedText(raw.reason, MAX_REASON_CHARS);
   const hasChoice = raw.choice !== undefined;
+  const unknownTopic = (localContext.epistemicBoundary as { unknownTopic?: unknown } | undefined)?.unknownTopic;
+  if (typeof unknownTopic === 'string'
+    && (raw.stance !== 'answer' || raw.grounding !== 'unknown' || guidance || hasChoice)) {
+    throw new Error('没有知识来源的定义问题只能如实回答不知道，不能形成行动选择');
+  }
   const choiceEnabled = (localContext.interaction as { choiceEnabled?: unknown } | undefined)?.choiceEnabled !== false;
   if (hasChoice && !choiceEnabled) throw new Error('当前时间线不能再形成新的行动选择');
   if (raw.stance !== 'accept' && (guidance || hasChoice)) {

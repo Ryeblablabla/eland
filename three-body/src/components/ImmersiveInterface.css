@@ -620,7 +620,8 @@
 .civilization-index__hero {
   position: relative;
   width: 100%;
-  height: clamp(220px, 34vh, 320px);
+  height: auto;
+  aspect-ratio: 34 / 25;
   overflow: hidden;
   border: 0.5px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
@@ -634,16 +635,18 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: linear-gradient(90deg, rgba(7, 10, 12, 0.52) 0%, rgba(7, 10, 12, 0.1) 38%, transparent 62%);
+  background:
+    linear-gradient(180deg, rgba(7, 10, 12, 0.58) 0%, rgba(7, 10, 12, 0.05) 48%, rgba(7, 10, 12, 0.26) 100%);
   content: '';
   pointer-events: none;
 }
 
 .civilization-index__building {
   position: absolute;
-  inset: -4% -4% -6% 20%;
-  opacity: 0.92;
-  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.32));
+  inset: 2% -14% 12% 34%;
+  z-index: 0;
+  opacity: 0.16;
+  filter: saturate(0.7) drop-shadow(0 18px 22px rgba(0, 0, 0, 0.2));
   pointer-events: none;
 }
 
@@ -655,12 +658,11 @@
 
 .civilization-index__total {
   position: absolute;
-  top: 50%;
-  left: 24px;
-  z-index: 2;
+  top: 18px;
+  left: 20px;
+  z-index: 3;
   display: grid;
-  max-width: 60%;
-  transform: translateY(-50%);
+  max-width: calc(100% - 40px);
 }
 
 .civilization-index__total > span {
@@ -673,7 +675,7 @@
 
 .civilization-index__total strong {
   color: var(--ui-label-primary);
-  font-size: clamp(42px, 5vw, 64px);
+  font-size: clamp(36px, 4.5vw, 52px);
   font-weight: 520;
   line-height: 1.05;
   letter-spacing: -0.045em;
@@ -682,10 +684,112 @@
 }
 
 .civilization-index__total small {
-  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
   color: var(--ui-label-tertiary);
   font-size: 12px;
   line-height: 18px;
+}
+
+.civilization-index__total small em {
+  padding-left: 8px;
+  border-left: 0.5px solid rgba(255, 255, 255, 0.16);
+  color: rgba(117, 216, 201, 0.8);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.civilization-index__total small em.is-down {
+  color: rgba(240, 140, 160, 0.82);
+}
+
+.civilization-index__timeline {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+}
+
+.civilization-index__timeline:focus-visible {
+  outline: 1px solid rgba(117, 216, 201, 0.56);
+  outline-offset: -3px;
+  border-radius: 16px;
+}
+
+.civilization-index__grid line {
+  stroke: rgba(255, 255, 255, 0.09);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.civilization-index__grid text,
+.civilization-index__x-axis text,
+.civilization-index__waiting {
+  fill: rgba(255, 255, 255, 0.34);
+  font-family: var(--font-ui);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.civilization-index__grid text {
+  text-anchor: end;
+}
+
+.civilization-index__area {
+  fill: url('#civilization-index-area');
+}
+
+.civilization-index__line {
+  fill: none;
+  stroke: #75d8c9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.civilization-index__latest,
+.civilization-index__hover > circle {
+  fill: #d8fff9;
+  stroke: rgba(117, 216, 201, 0.54);
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.civilization-index__hover > line {
+  stroke: rgba(216, 255, 249, 0.28);
+  stroke-dasharray: 2 3;
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+
+.civilization-index__hover rect {
+  fill: rgba(8, 14, 14, 0.94);
+  stroke: rgba(117, 216, 201, 0.22);
+  stroke-width: 0.5;
+}
+
+.civilization-index__hover text {
+  fill: rgba(255, 255, 255, 0.54);
+  font-family: var(--font-ui);
+  font-size: 7.5px;
+}
+
+.civilization-index__hover .civilization-index__hover-value {
+  fill: rgba(216, 255, 249, 0.92);
+  font-size: 9px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+
+.civilization-index__waiting {
+  text-anchor: middle;
 }
 
 .civilization-index__legend {
@@ -1436,16 +1540,17 @@
 
   .history-view {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 20px;
     height: calc(100vh - 48px);
   }
 
   .civilization-index {
     grid-row: 1;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
-    gap: 12px 20px;
+    align-content: start;
+    gap: 12px;
     padding: 0 0 16px;
     border-bottom: 0.5px solid rgba(255, 255, 255, 0.12);
     border-left: 0;
@@ -1456,32 +1561,35 @@
   }
 
   .civilization-index__body {
-    display: contents;
+    display: grid;
+    grid-column: 1;
+    gap: 12px;
   }
 
   .civilization-index__hero {
-    width: 132px;
-    height: 132px;
+    width: min(100%, 340px);
+    height: auto;
     align-self: center;
     border-radius: 14px;
   }
 
   .civilization-index__building {
-    inset: 2% -8% -8% 8%;
-    opacity: 0.76;
+    inset: 2% -14% 12% 34%;
+    opacity: 0.13;
   }
 
   .civilization-index__hero::before {
-    background: linear-gradient(90deg, rgba(7, 10, 12, 0.58), rgba(7, 10, 12, 0.08));
+    background: linear-gradient(180deg, rgba(7, 10, 12, 0.58), rgba(7, 10, 12, 0.08) 55%, rgba(7, 10, 12, 0.24));
   }
 
   .civilization-index__total {
-    left: 12px;
-    max-width: 78%;
+    top: 14px;
+    left: 16px;
+    max-width: calc(100% - 32px);
   }
 
   .civilization-index__total strong {
-    font-size: 25px;
+    font-size: 36px;
   }
 
   .civilization-index__total small {
@@ -1491,18 +1599,34 @@
   }
 
   .civilization-index__legend {
-    align-self: center;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-self: stretch;
     gap: 6px;
   }
 
   .civilization-index__legend > div {
-    grid-template-columns: 80px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 2px;
+  }
+
+  .civilization-index__legend dt {
+    align-items: flex-start;
+    font-size: 10px;
+    line-height: 14px;
   }
 
   .civilization-index__legend dd {
-    grid-template-columns: minmax(0, 1fr) 42px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .civilization-index__legend dd > span {
+    display: none;
+  }
+
+  .civilization-index__legend dd strong {
+    font-size: 11px;
+    text-align: left;
   }
 
   .civilization-index__note {

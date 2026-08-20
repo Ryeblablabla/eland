@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { deserialize } from "node:v8";
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "threebody-sqlite-run-store-test-"));
 const storeBundlePath = path.join(temporaryDirectory, "sqlite-run-store.mjs");
@@ -119,19 +120,22 @@ try {
   const chunkCount = () => Number(
     store.database.prepare("SELECT COUNT(*) AS count FROM chunks").get().count,
   );
-  assert.equal(chunkCount(), 5);
+  const runStateChunkCount = Number(store.database.prepare(`
+    SELECT COUNT(*) AS count FROM chunks WHERE codec LIKE 'eland-run-%'
+  `).get().count);
+  assert.equal(chunkCount(), runStateChunkCount + 3);
   const firstEvolutionReplacement = {
     ...evolution,
     updatedAt: "2026-08-20T00:00:02.000Z",
     turningPoints: [{ month: 12, summary: "replacement" }],
   };
   await store.saveEvolutionPath("sqlite-roundtrip", firstEvolutionReplacement);
-  assert.equal(chunkCount(), 5, "覆盖 artifact 应以新 chunk 替换孤立旧 chunk");
+  assert.equal(chunkCount(), runStateChunkCount + 3, "覆盖 artifact 应以新 chunk 替换孤立旧 chunk");
 
   const sharedArtifact = { marker: "shared-artifact" };
   await store.saveEvolutionPath("sqlite-roundtrip", sharedArtifact);
   await store.saveEvolutionReport("sqlite-roundtrip", sharedArtifact);
-  assert.equal(chunkCount(), 4, "两个 artifact 应共享同一个内容块");
+  assert.equal(chunkCount(), runStateChunkCount + 2, "两个 artifact 应共享同一个内容块");
   const sharedHash = String(store.database.prepare(`
     SELECT chunk_hash FROM artifacts
     WHERE run_id = ? AND kind = 'evolution-report'
@@ -139,7 +143,7 @@ try {
 
   const finalEvolution = { ...evolution, updatedAt: "2026-08-20T00:00:03.000Z" };
   await store.saveEvolutionPath("sqlite-roundtrip", finalEvolution);
-  assert.equal(chunkCount(), 5);
+  assert.equal(chunkCount(), runStateChunkCount + 3);
   assert.equal(
     Number(store.database.prepare("SELECT COUNT(*) AS count FROM chunks WHERE hash = ?").get(sharedHash).count),
     1,
@@ -147,7 +151,7 @@ try {
   );
   const finalReport = { ...report, title: "final facts" };
   await store.saveEvolutionReport("sqlite-roundtrip", finalReport);
-  assert.equal(chunkCount(), 5);
+  assert.equal(chunkCount(), runStateChunkCount + 3);
   assert.equal(
     Number(store.database.prepare("SELECT COUNT(*) AS count FROM chunks WHERE hash = ?").get(sharedHash).count),
     0,
@@ -158,9 +162,9 @@ try {
     SELECT state_hash FROM runs WHERE id = ?
   `).get("sqlite-roundtrip").state_hash);
   await store.saveEvolutionPath("sqlite-roundtrip", saved.state);
-  assert.equal(chunkCount(), 4, "artifact 可复用运行状态 chunk");
+  assert.equal(chunkCount(), runStateChunkCount + 3, "artifact 替换不应改变可达块总量");
   await store.saveEvolutionPath("sqlite-roundtrip", finalEvolution);
-  assert.equal(chunkCount(), 5);
+  assert.equal(chunkCount(), runStateChunkCount + 3);
   assert.equal(
     Number(store.database.prepare("SELECT COUNT(*) AS count FROM chunks WHERE hash = ?")
       .get(currentStateHashForSharing).count),
@@ -184,7 +188,7 @@ try {
   const currentRawSize = Number(currentStateChunk.raw_size);
   integrityDatabase.prepare("UPDATE chunks SET raw_size = ? WHERE hash = ?")
     .run(currentRawSize + 1, currentStateHash);
-  await assert.rejects(store.load("sqlite-roundtrip"), /解压后的长度与记录不一致/);
+  await assert.rejects(store.load("sqlite-roundtrip"), /运行状态根 .*长度与记录不一致/);
   integrityDatabase.prepare("UPDATE chunks SET raw_size = ? WHERE hash = ?")
     .run(currentRawSize, currentStateHash);
 
@@ -199,14 +203,18 @@ try {
     .run(currentStateHash, "sqlite-roundtrip");
   integrityDatabase.prepare("DELETE FROM chunks WHERE hash = ?").run(fakeHash);
 
+  const currentRoot = deserialize(currentStateChunk.data);
+  const currentShellHash = String(currentRoot.shellHash);
+  const currentShellCodec = String(integrityDatabase.prepare("SELECT codec FROM chunks WHERE hash = ?")
+    .get(currentShellHash).codec);
   integrityDatabase.prepare("UPDATE chunks SET codec = ? WHERE hash = ?")
-    .run("collision-codec", currentStateHash);
+    .run("collision-codec", currentShellHash);
   await assert.rejects(
     store.save("sqlite-roundtrip", saved.state),
     /命中已有哈希，但编码、长度或内容不一致/,
   );
   integrityDatabase.prepare("UPDATE chunks SET codec = ? WHERE hash = ?")
-    .run(currentStateChunk.codec, currentStateHash);
+    .run(currentShellCodec, currentShellHash);
   integrityDatabase.close();
 
   store.close();
@@ -254,7 +262,7 @@ try {
     chunks: Number(inspection.prepare("SELECT COUNT(*) AS count FROM chunks").get().count),
     artifacts: Number(inspection.prepare("SELECT COUNT(*) AS count FROM artifacts").get().count),
   };
-  assert.deepEqual(counts, { chunks: 5, artifacts: 3 });
+  assert.deepEqual(counts, { chunks: runStateChunkCount + 3, artifacts: 3 });
   inspection.close();
 
   console.log("sqlite run store persistence tests passed");

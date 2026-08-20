@@ -53,9 +53,9 @@ function blockedChoiceDetail(failure: PlayerInteractionChoiceFailure, summary: s
 }
 
 /**
- * The interaction model has already made the person's choice. The month step
- * only revalidates that exact choice against fresh local facts; it never asks a
- * second model to reinterpret free-form guidance.
+ * The hidden interaction-intent pass has extracted the person's choice from
+ * their reply. The month step only revalidates that exact choice against fresh
+ * local facts; it never asks another model to decide again.
  */
 export function decisionFromPlayerInteraction(
   context: DecisionContext,

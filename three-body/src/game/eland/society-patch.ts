@@ -25,6 +25,7 @@ export type ElandStepPayload =
   | { kind: 'full'; frame: GameFrame | null }
   | {
       kind: 'patch';
+      baseAuthorityRevision: string;
       baseElapsedMonths: number;
       frame: Omit<GameFrame, 'society'>;
       society: SocietyPatch;
@@ -142,18 +143,27 @@ export function applySocietyPatch(previous: SocietyState, patch: SocietyPatch): 
 export function createStepPayload(previous: GameFrame | null, current: GameFrame | null): ElandStepPayload {
   if (!previous || !current
     || previous.runId !== current.runId
+    || previous.authorityRevision !== current.authorityRevision
     || previous.branchId !== current.branchId
     || previous.elapsedMonths >= current.elapsedMonths) return { kind: 'full', frame: current };
   const society = createSocietyPatch(previous.society, current.society);
   if (!society) return { kind: 'full', frame: current };
   const { society: _society, ...frame } = current;
-  return { kind: 'patch', baseElapsedMonths: previous.elapsedMonths, frame, society };
+  return {
+    kind: 'patch',
+    baseAuthorityRevision: previous.authorityRevision,
+    baseElapsedMonths: previous.elapsedMonths,
+    frame,
+    society,
+  };
 }
 
 export function applyStepPayload(previous: GameFrame | null, payload: ElandStepPayload): GameFrame | null {
   if (payload.kind === 'full') return payload.frame;
   if (!previous
     || previous.runId !== payload.frame.runId
+    || previous.authorityRevision !== payload.baseAuthorityRevision
+    || payload.frame.authorityRevision !== payload.baseAuthorityRevision
     || previous.branchId !== payload.frame.branchId
     || previous.elapsedMonths !== payload.baseElapsedMonths) return null;
   return { ...payload.frame, society: applySocietyPatch(previous.society, payload.society) };

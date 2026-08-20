@@ -9,6 +9,7 @@ import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-
 import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
 import { buildLocalMaterialEvidence } from './local-material-evidence';
+import { mechanicalPowerPressureEvidence } from './mechanical-power-options';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
@@ -404,6 +405,24 @@ function developmentBasis(
     `state:visible-facilities:${pressureFacilities.sort((a, b) => a - b).join('.') || 'none'}`,
   ];
 
+  if (subject.need === 'mechanical-power-capability') {
+    const evidence = mechanicalPowerPressureEvidence(state, owner);
+    const millLaborFactIds = evidence.millLaborFactIds.slice(-3);
+    const observationFactIds = evidence.observationFactIds.slice(-3);
+    return makeBasis(subject, owner, atMonth,
+      12 + (millLaborFactIds.length ? 34 : 0) + (observationFactIds.length ? 42 : 0),
+      [
+        `state:own-mill-labor:${millLaborFactIds.join('.') || 'none'}`,
+        `state:personal-water-current-observation:${observationFactIds.join('.') || 'none'}`,
+        `project:function:${subject.desiredFunction ?? 'unspecified'}`,
+      ],
+      [
+        ...(millLaborFactIds.length ? ['own-mill-labor'] : ['own-mill-labor-missing']),
+        ...(observationFactIds.length ? ['personal-water-current-observation'] : ['personal-water-current-observation-missing']),
+      ],
+      [...millLaborFactIds, ...observationFactIds]);
+  }
+
   if (subject.need === 'production-efficiency') {
     const crowding = Math.max(0, visiblePopulation - 3);
     const shortage = Math.max(0, 2.5 - foodPerPerson);
@@ -471,10 +490,7 @@ function developmentBasis(
   }
   if (subject.need === 'high-heat-capability') {
     const hasFeedstock = hasObserved(Material.Clay, Material.CopperOre, Material.TinOre, Material.IronOre);
-    // Metalworking sites are a separate network/logistics problem: a witnessed
-    // fixed high-heat capability prevents rebuilding the whole chain here,
-    // while actual production still requires a real reachable site.
-    const hasKiln = hasObserved(Material.Kiln, Material.Foundry, Material.Smithy);
+    const hasKiln = hasPlacedFacility(Material.Kiln, Material.Foundry, Material.Smithy);
     return makeBasis(subject, owner, atMonth,
       22 + (hasFeedstock ? 40 : 0) + Math.max(0, visiblePopulation - 5) * 4 - (hasKiln ? 28 : 0),
       [...commonEdges, `state:heat-feedstock:${hasFeedstock ? 'present' : 'absent'}`, `state:high-heat-site:${hasKiln ? 'present' : 'absent'}`],
@@ -499,7 +515,7 @@ function developmentBasis(
         ], sourceFactIds);
     }
     if (subject.desiredFunction === 'bronze-workshop') {
-      const foundry = hasObserved(Material.Foundry);
+      const foundry = hasPlacedFacility(Material.Foundry);
       return makeBasis(subject, owner, atMonth,
         20 + (bronzeMaterial ? 28 : 0) + Math.max(0, visiblePopulation - 5) * 3 - (foundry ? 36 : 0),
         [...commonEdges, `state:bronze-material:${bronzeMaterial}`, `state:foundry:${foundry}`],
@@ -518,7 +534,7 @@ function developmentBasis(
       ], sourceFactIds);
   }
   const ironEvidence = hasObserved(Material.IronOre, Material.IronCharge, Material.IronBloom, Material.Iron, Material.IronTool);
-  const smithy = hasObserved(Material.Smithy);
+  const smithy = hasPlacedFacility(Material.Smithy);
   return makeBasis(subject, owner, atMonth,
     18 + (ironEvidence ? 44 : 0) + Math.max(0, visiblePopulation - 7) * 4 - (smithy ? 18 : 0),
     [...commonEdges, `state:iron-evidence:${ironEvidence}`, `state:smithy:${smithy ? 'present' : 'absent'}`],

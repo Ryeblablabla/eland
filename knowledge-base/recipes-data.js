@@ -1168,6 +1168,61 @@ export const RECIPE_KNOWLEDGE = {
         91,
         92
       ]
+    },
+    {
+      "id": 64,
+      "key": "water_wheel",
+      "name": "水轮",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "building",
+        "placeable"
+      ],
+      "hardness": 5,
+      "mass": 2.2,
+      "color": [
+        126,
+        87,
+        48
+      ]
+    },
+    {
+      "id": 65,
+      "key": "drive_shaft",
+      "name": "青铜传动轴",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "building",
+        "placeable",
+        "metal"
+      ],
+      "hardness": 8,
+      "mass": 1.8,
+      "color": [
+        161,
+        111,
+        50
+      ]
+    },
+    {
+      "id": 66,
+      "key": "broken_drive_shaft",
+      "name": "断裂的传动轴",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "placeable",
+        "metal"
+      ],
+      "hardness": 5,
+      "mass": 1.7,
+      "color": [
+        104,
+        78,
+        50
+      ]
     }
   ],
   "recipes": [
@@ -2721,6 +2776,121 @@ export const RECIPE_KNOWLEDGE = {
       }
     },
     {
+      "id": "assemble-water-wheel",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 64,
+        "key": "water_wheel",
+        "name": "水轮",
+        "quantity": 1,
+        "color": [
+          126,
+          87,
+          48
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable"
+        ]
+      }
+    },
+    {
+      "id": "cast-drive-shaft",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 48,
+          "key": "bronze",
+          "name": "青铜",
+          "quantity": 1,
+          "color": [
+            176,
+            121,
+            54
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 65,
+        "key": "drive_shaft",
+        "name": "青铜传动轴",
+        "quantity": 1,
+        "color": [
+          161,
+          111,
+          50
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable",
+          "metal"
+        ]
+      }
+    },
+    {
       "id": "friction-ignition",
       "type": "exert",
       "inputs": [
@@ -3553,9 +3723,9 @@ export const RECIPE_KNOWLEDGE = {
     }
   ],
   "counts": {
-    "materials": 64,
-    "recipes": 42,
-    "combine": 28,
+    "materials": 67,
+    "recipes": 44,
+    "combine": 30,
     "exert": 2,
     "expose": 12
   }

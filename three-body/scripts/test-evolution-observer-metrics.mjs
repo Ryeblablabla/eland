@@ -103,7 +103,8 @@ try {
   assert.equal(report.projectActionMonthShare, 66.67);
   assert.equal(report.reproductionOffers, 1, 'only completed reproduction offer facts count');
   assert.equal(report.reproductionAcceptances, 1, 'acceptance must reference a completed reproduction offer fact');
-  assert.equal(report.reproductionAttempts, 3, 'every submitted reproduce primitive is an attempt, including blocked facts');
+  assert.equal(report.reproductionAttempts, 2,
+    'only completed reproduce primitives count as attempts; legality-blocked facts occur before probability sampling');
   assert.equal(report.reproductionConceptions, 1, 'conception requires diff.conceived === true');
 
   const stateWithoutIntents = structuredClone(state);

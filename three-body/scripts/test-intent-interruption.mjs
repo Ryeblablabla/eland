@@ -10,18 +10,23 @@ const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 
 try {
   const testEntry = `
-    export { createInitialState, resolveInterruptedIntentReturn, RulePlanner, startInterruptIntent } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
+    export { buildDecisionContextForPerson, createInitialState, installAgreementContinuation, resolveInterruptedIntentReturn, RulePlanner, startInterruptIntent, stepSimulation } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
+    export { compileAgreementContinuations } from ${JSON.stringify(path.resolve('src/game/eland/application/agreement-continuation.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts', '--sourcefile=intent-interruption-test-entry.ts', `--outfile=${bundlePath}`,
   ], { input: testEntry, stdio: ['pipe', 'pipe', 'pipe'] });
   const {
+    compileAgreementContinuations,
+    buildDecisionContextForPerson,
     createInitialState,
     executePrimitiveAction,
+    installAgreementContinuation,
     resolveInterruptedIntentReturn,
     RulePlanner,
     startInterruptIntent,
+    stepSimulation,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(713, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
@@ -102,6 +107,132 @@ try {
   }, { atMonth: 14, planningTick: 2 });
   assert.equal(postReturnDecision.kind, 'idle', 'suspension time must not make a just-restored parent look stalled');
 
+  const agreementState = createInitialState(717, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  agreementState.clock.elapsedMonths = 12;
+  const offerer = agreementState.people[0];
+  const responder = agreementState.people[1];
+  responder.position = structuredClone(offerer.position);
+  offerer.body.health = offerer.body.nutrition = offerer.body.hydration = 100;
+  responder.body.health = responder.body.nutrition = responder.body.hydration = 100;
+  offerer.inventory = [{ id: 'agreement-parent-wood', materialId: 13, quantity: 2, sourceEventIds: ['wood-source'] }];
+  responder.inventory = [{ id: 'agreement-responder-food', materialId: 21, quantity: 2, sourceEventIds: ['food-source'] }];
+  const agreementProject = {
+    id: 'project-agreement-parent', kind: 'production', need: 'food-preparation', desiredFunction: 'prepared-food',
+    summary: '继续处理既有生产项目', ownerId: offerer.id, beneficiaryIds: [offerer.id], triggerFactIds: ['agreement-project-need'],
+    pressure: 61, createdAtMonth: 4, reviewAtMonth: 24, status: 'active', lastProgressAtMonth: 11,
+    missingMaterialIds: [], reservations: [], contributorIds: [offerer.id], actionEventIds: ['agreement-project-action-before'],
+    failureEventIds: [], completionEventIds: [], logisticsEpisodes: [],
+  };
+  const agreementParent = {
+    id: 'agreement-project-parent-intent', ownerId: offerer.id, summary: agreementProject.summary, domain: 'strategic',
+    goal: { kind: 'project-completed', projectId: agreementProject.id },
+    nextAction: { kind: 'attend', target: { kind: 'person', personId: offerer.id } },
+    status: 'active', createdAtMonth: 4, lastProgressAtMonth: 11, progress: 0.58,
+    sourceDecisionEventId: 'agreement-project-decision', projectId: agreementProject.id,
+    sourceFactIds: ['agreement-project-need'], actionEventIds: ['agreement-project-action-before'], replanCount: 0,
+  };
+  const exchangeId = 'agreement-interruption-exchange';
+  const acceptanceIntent = {
+    id: 'exchange-acceptance-intent', ownerId: responder.id, summary: '接受眼前的交换提议', domain: 'social',
+    goal: { kind: 'representation-made', representationId: 'exchange-acceptance' },
+    nextAction: {
+      kind: 'communicate', content: { id: 'exchange-acceptance', kind: 'accept', referenceId: exchangeId },
+      audience: [offerer.id], channel: 'voice',
+    },
+    status: 'active', createdAtMonth: 12, lastProgressAtMonth: 12, progress: 0,
+    sourceDecisionEventId: 'exchange-acceptance-decision', sourceFactIds: ['exchange-offer'], actionEventIds: [], replanCount: 0,
+  };
+  agreementState.projects = [agreementProject];
+  agreementState.intents = [agreementParent, acceptanceIntent];
+  offerer.activeIntentId = agreementParent.id;
+  responder.activeIntentId = acceptanceIntent.id;
+
+  const exchangeOffer = executePrimitiveAction(agreementState, offerer, {
+    kind: 'communicate',
+    content: {
+      id: exchangeId, kind: 'offer', summary: '用木材交换食物',
+      proposal: {
+        kind: 'exchange', offererId: offerer.id, partnerId: responder.id,
+        offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 18,
+      },
+    },
+    audience: [responder.id], channel: 'voice',
+  }, 12, 0, { cause: 'intent', actionTick: 0 });
+  const exchangeAcceptance = executePrimitiveAction(agreementState, responder, acceptanceIntent.nextAction, 12, 1, {
+    intentId: acceptanceIntent.id, cause: 'intent', actionTick: 1,
+  });
+  assert.equal(exchangeOffer.status, 'completed');
+  assert.equal(exchangeAcceptance.status, 'completed');
+  assert.equal(agreementState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'active');
+
+  const agreementContinuations = compileAgreementContinuations(agreementState, exchangeId);
+  const installedContinuations = agreementContinuations.map((continuation) => (
+    installAgreementContinuation(agreementState, acceptanceIntent, continuation, 12)
+  )).filter(Boolean);
+  const offererContinuation = installedContinuations.find((intent) => intent.ownerId === offerer.id);
+  const responderContinuation = installedContinuations.find((intent) => intent.ownerId === responder.id);
+  assert.ok(offererContinuation && responderContinuation, 'accepted exchange must compile a concrete continuation for both parties');
+  assert.equal(agreementParent.status, 'suspended');
+  assert.equal(agreementParent.suspendedByIntentId, offererContinuation.id,
+    'the other party project must point to the fulfillment child that suspended it');
+  assert.equal(offererContinuation.returnToIntentId, agreementParent.id,
+    'the other party fulfillment child must return to the exact project intent it interrupted');
+  assert.equal(offererContinuation.interruptionKind, 'fulfillment');
+  assert.equal(offererContinuation.projectId, undefined, 'agreement delivery must not be attributed to the suspended project');
+  assert.equal(offerer.activeIntentId, offererContinuation.id);
+  const agreementParentProgress = agreementParent.progress;
+  const agreementParentActions = [...agreementParent.actionEventIds];
+  const agreementProjectActions = [...agreementProject.actionEventIds];
+
+  const offererDelivery = executePrimitiveAction(agreementState, offerer, offererContinuation.nextAction, 12, 2, {
+    intentId: offererContinuation.id, cause: 'intent', actionTick: 2,
+  });
+  const responderDelivery = executePrimitiveAction(agreementState, responder, responderContinuation.nextAction, 12, 3, {
+    intentId: responderContinuation.id, cause: 'intent', actionTick: 3,
+  });
+  assert.equal(offererDelivery.status, 'completed');
+  assert.equal(responderDelivery.status, 'completed');
+  assert.equal(agreementState.agreements.find((agreement) => agreement.id === exchangeId)?.status, 'fulfilled',
+    'both concrete transfers must fulfill the accepted exchange');
+  offererContinuation.actionEventIds.push(offererDelivery.id);
+  offererContinuation.status = 'completed';
+  offererContinuation.progress = 1;
+  delete offerer.activeIntentId;
+  resolveInterruptedIntentReturn(agreementState, offerer, 13);
+  assert.equal(offererContinuation.returnOutcome, 'resumed');
+  assert.equal(agreementParent.status, 'active');
+  assert.equal(offerer.activeIntentId, agreementParent.id, 'fulfillment must restore the same project parent id');
+  assert.equal(agreementParent.progress, agreementParentProgress, 'fulfillment must not reset parent project progress');
+  assert.deepEqual(agreementParent.actionEventIds, agreementParentActions, 'fulfillment must preserve the parent action history');
+  assert.deepEqual(agreementProject.actionEventIds, agreementProjectActions, 'fulfillment must not pollute the project action history');
+  assert.equal(agreementState.intents.some((intent) => intent.status === 'suspended' && intent.projectId && !intent.suspendedByIntentId), false,
+    'agreement fulfillment must not leave an orphan suspended project intent');
+
+  const failedContinuation = installAgreementContinuation(agreementState, acceptanceIntent, {
+    agreementId: 'missing-agreement', personId: offerer.id, summary: '尝试履行已经失效的交换',
+    goal: { kind: 'inventory-at-least', materialId: 13, quantity: 99, personId: responder.id },
+    nextAction: {
+      kind: 'transfer', materialId: 13, quantity: 1,
+      from: { kind: 'person', personId: offerer.id }, to: { kind: 'person', personId: responder.id },
+      stackId: 'missing-agreement-stack', authorizationRef: 'missing-agreement',
+    },
+    target: { kind: 'person', personId: responder.id }, sourceFactIds: ['expired-exchange'],
+  }, 14);
+  assert.ok(failedContinuation);
+  const failedDelivery = executePrimitiveAction(agreementState, offerer, failedContinuation.nextAction, 14, 0, {
+    intentId: failedContinuation.id, cause: 'intent', actionTick: 0,
+  });
+  assert.ok(failedDelivery.status === 'blocked' || failedDelivery.status === 'failed');
+  failedContinuation.status = failedDelivery.status;
+  failedContinuation.blockedReason = failedDelivery.result;
+  delete offerer.activeIntentId;
+  resolveInterruptedIntentReturn(agreementState, offerer, 14);
+  assert.equal(failedContinuation.returnOutcome, 'resumed', 'a failed fulfillment must still resolve its return edge');
+  assert.equal(offerer.activeIntentId, agreementParent.id, 'a failed fulfillment must restore the same project parent');
+  assert.equal(agreementParent.progress, agreementParentProgress);
+  assert.deepEqual(agreementParent.actionEventIds, agreementParentActions);
+  assert.equal(agreementState.intents.some((intent) => intent.status === 'suspended' && intent.projectId && !intent.suspendedByIntentId), false);
+
   parent.status = 'suspended';
   parent.suspendedByIntentId = 'terminal-child';
   parent.suspendedAtMonth = 15;
@@ -154,6 +285,8 @@ try {
   assert.equal(consentState.world.past.some((event) => event.id === offer.id || event.id === acceptance.id), false,
     'the same-month communication facts should still be pending archival in this regression fixture');
 
+  const jointAttemptState = structuredClone(consentState);
+
   const reproduction = executePrimitiveAction(consentState, female, {
     kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }], authorizationRef: offerId,
   }, 12, 2, { cause: 'intent', actionTick: 2 });
@@ -164,6 +297,54 @@ try {
     assert.ok(pregnancy?.sourceEventIds.includes(offer.id));
     assert.ok(pregnancy?.sourceEventIds.includes(acceptance.id));
     assert.ok(pregnancy?.sourceEventIds.includes(reproduction.id));
+  }
+
+  const jointFemale = jointAttemptState.people.find((candidate) => candidate.id === female.id);
+  const jointMale = jointAttemptState.people.find((candidate) => candidate.id === male.id);
+  assert.ok(jointFemale && jointMale);
+  const reproductionIntent = (owner, partner, suffix) => ({
+    id: `joint-reproduction-${suffix}`,
+    ownerId: owner.id,
+    summary: `履行与${partner.name}共同接受的生殖尝试`,
+    domain: 'social',
+    goal: { kind: 'condition', personId: jointFemale.id, condition: 'pregnancy', present: true },
+    nextAction: {
+      kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: partner.id }], authorizationRef: offerId,
+    },
+    target: { kind: 'person', personId: partner.id },
+    status: 'active',
+    createdAtMonth: 12,
+    lastProgressAtMonth: 12,
+    progress: 0.2,
+    sourceDecisionEventId: `joint-reproduction-decision-${suffix}`,
+    agreementId: offerId,
+    sourceFactIds: [...jointAttemptState.agreements[0].sourceEventIds],
+    actionEventIds: [],
+    replanCount: 0,
+  });
+  const femaleIntent = reproductionIntent(jointFemale, jointMale, 'female');
+  const maleIntent = reproductionIntent(jointMale, jointFemale, 'male');
+  jointAttemptState.intents = [femaleIntent, maleIntent];
+  jointFemale.activeIntentId = femaleIntent.id;
+  jointMale.activeIntentId = maleIntent.id;
+  const afterJointAttempt = stepSimulation(jointAttemptState);
+  const jointAttemptFacts = afterJointAttempt.world.past.filter((event) => event.kind === 'action'
+    && event.atMonth === 13
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce');
+  assert.equal(jointAttemptFacts.length, 1,
+    'two mirrored intents in the same consent window must create only one reproduction ActionFact per month');
+  assert.equal(afterJointAttempt.intents.filter((intent) => intent.id === femaleIntent.id || intent.id === maleIntent.id)
+    .every((intent) => intent.status === 'completed' || intent.status === 'abandoned'), true,
+  'the mirror intent should end with the joint process (or fulfilled agreement) instead of emitting a blocked action');
+  const afterJointFemale = afterJointAttempt.people.find((candidate) => candidate.id === jointFemale.id);
+  if (afterJointFemale && !afterJointFemale.conditions.some((condition) => condition.kind === 'pregnancy')) {
+    const nextMonthHasAttempt = afterJointAttempt.people.some((candidate) => (
+      candidate.id === jointFemale.id || candidate.id === jointMale.id
+    ) && buildDecisionContextForPerson(afterJointAttempt, candidate, 14).options.some((candidate) => (
+      candidate.nextAction.kind === 'act' && candidate.nextAction.operation === 'reproduce'
+    )));
+    assert.equal(nextMonthHasAttempt, true, 'an unconceived active consent window may expose one fresh attempt next month');
   }
 
   process.stdout.write('intent interruption tests passed\n');

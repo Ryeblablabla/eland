@@ -7,6 +7,7 @@ import { rankByDecisionFactorForest } from './decision-factor-forest';
 import { reproductiveResponsibility } from '../domain/dependent-care';
 import { personalityScore } from '../domain/personality';
 import { planningOverlayEvents } from '../domain/event-index';
+import { isObservedEmergencyHibernationOption } from './action-options';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
 const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
@@ -237,6 +238,25 @@ export class RulePlanner implements AgentDecider {
 
   decideAt(context: DecisionContext, moment: PlanningMoment): Decision {
     const active = context.activeIntent;
+    const observedEmergencyHibernation = context.options.find((option) => (
+      isObservedEmergencyHibernationOption(context.state, context.person, option)
+    ));
+    if (observedEmergencyHibernation) {
+      return active
+        ? {
+            kind: 'revise',
+            intentId: active.id,
+            optionId: observedEmergencyHibernation.id,
+            mode: 'interrupt',
+            interruptionKind: 'survival-reflex',
+            reason: '本人已经感受到乱纪元的严重冷热伤害，先脱水休眠，恢复后再返回未完成的回应或项目',
+          }
+        : {
+            kind: 'start',
+            optionId: observedEmergencyHibernation.id,
+            reason: observedEmergencyHibernation.reason,
+          };
+    }
     const required = context.options.filter(isRequiredSocialOption);
     const fulfillment = context.options.filter(isFulfillmentOption);
     const forcedOptions = required.length ? required : fulfillment;
@@ -285,6 +305,17 @@ export class RulePlanner implements AgentDecider {
         : { kind: 'idle', reason: context.options.length ? '当前合法目标都没有正向价值' : '当前没有可执行目标' };
     }
 
+    if (option?.nextAction.kind === 'act' && option.nextAction.operation === 'dehydrate') {
+      return {
+        kind: 'revise',
+        intentId: active.id,
+        optionId: option.id,
+        mode: 'interrupt',
+        interruptionKind: 'survival-reflex',
+        reason: '乱纪元的直接生存风险要求暂时进入脱水休眠，恢复后返回原有安排',
+      };
+    }
+
     if (option?.recordUseBasis
       && !active.recordUseBasis
       && (active.projectId || active.returnToIntentId)) {
@@ -294,9 +325,11 @@ export class RulePlanner implements AgentDecider {
         optionId: option.id,
         mode: 'interrupt',
         interruptionKind: 'record-use',
-        reason: option.recordUseStage === 'read-experiment'
-          ? '实体记录与当前项目的真实技术缺口完全匹配，先读懂并用手头材料复现，再返回原项目'
-          : '这块实体记录正好能解除身边项目的真实技术缺口，短暂交付后继续原安排',
+        reason: option.recordUseStage === 'acquire'
+          ? '可见公共记录与当前项目的真实技术缺口完全匹配，先亲自取得、读懂并核验，再返回原项目'
+          : option.recordUseStage === 'read' || option.recordUseStage === 'experiment' || option.recordUseStage === 'read-experiment'
+            ? '本人持有的实体记录与当前项目的真实技术缺口完全匹配，先读懂并用手头材料复现，再返回原项目'
+            : '这项旧版记录交付与身边项目的真实技术缺口匹配，短暂完成后继续原安排',
       };
     }
 

@@ -23,13 +23,26 @@ export interface PersistedRun {
   state: SimulationState;
 }
 
+export interface SaveRunOptions {
+  /** Append is the normal evolution path; replace is required for imported or rewritten history. */
+  historyMode?: 'append' | 'replace';
+  /** Both CAS fields must be supplied together when the caller has an explicit read basis. */
+  expectedRevision?: number;
+  expectedStateHash?: string;
+}
+
 export interface RunStore {
   dataDirectory(): string;
   filePath(): string;
   list(): Promise<RunSummary[]>;
   load(id: string): Promise<PersistedRun>;
   create(input: { id?: string; label?: string; state: SimulationState }): Promise<PersistedRun>;
-  save(id: string, state: SimulationState, label?: string): Promise<PersistedRun>;
+  save(
+    id: string,
+    state: SimulationState,
+    label?: string,
+    options?: SaveRunOptions,
+  ): Promise<PersistedRun>;
   loadEvolutionPath(id: string): Promise<EvolutionPath | null>;
   saveEvolutionPath(id: string, evolution: EvolutionPath): Promise<void>;
   loadEvolutionReport(id: string): Promise<EvolutionReport | null>;
@@ -41,3 +54,4 @@ export interface RunStore {
 
 export class RunNotFoundError extends Error {}
 export class RunAlreadyExistsError extends Error {}
+export class RunWriteConflictError extends Error {}

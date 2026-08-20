@@ -47,7 +47,7 @@ export interface AgentInteractionResult {
   reason?: string;
   grounding: AgentInteractionGrounding;
   evidenceIds: string[];
-  /** The person's choice in this same conversation turn; not a completed action. */
+  /** A choice extracted from this turn's reply and locally validated; not a completed action. */
   choice?: {
     optionId: string;
     followUpOptionId?: string;
@@ -72,8 +72,36 @@ const MAX_EVIDENCE_IDS = 16;
 
 const STANCES = new Set<AgentInteractionStance>(['answer', 'consider', 'accept', 'decline']);
 const GROUNDINGS = new Set<AgentInteractionGrounding>(['supported', 'unknown', 'opinion']);
-const RESULT_KEYS = new Set(['reply', 'stance', 'guidance', 'reason', 'choice', 'grounding', 'evidenceIds']);
+const INTENT_RESULT_KEYS = new Set(['stance', 'guidance', 'reason', 'choice']);
 const CHOICE_KEYS = new Set(['optionId', 'followUpOptionId']);
+
+const CONVERSATION_ONLY_REQUEST = /^(?:(?:只|先|现在|认真|简单|如实|直接)\s*)*(?:回答|告诉|说说|讲讲|解释|描述|说明|聊聊|谈谈|想想|回忆|评价|判断|猜猜)/u;
+const QUESTION_TERM = /(?:吗|嘛|么|呢|什么|啥|谁|哪|哪里|哪儿|怎么|怎样|为何|为什么|几|多少|何时|什么时候)/u;
+const DIRECT_WORLD_ACTION = /^(?:(?:你|我们)\s*)?(?:(?:一起|先|现在|接下来|马上|赶紧|快点|继续|别|不要)\s*)*(?:去|来|找|寻找|拿|取|捡|拾|采|收集|吃|喝|做|制作|造|建|修|烧|点燃|种|砍|挖|搬|放|给|帮助|帮|照顾|休息|睡|脱水|苏醒|加入|接受|拒绝|交换|结伴|生育|教|学习|记录|观察|探索|处理|使用|储存|工作|完成|开始|尝试|离开|回来|跟随|带|穿)(?!什么|啥|哪|哪里|哪儿|怎么|怎样|为何|为什么|过|了|着|得)/u;
+const ACTION_PROPOSAL_FRAME = /^(?:我(?:希望|想要|建议|请求|拜托|劝|要求)(?:让|请)?你|我想(?:让|请)你|我(?:觉得|认为)你(?:应该|最好|需要|得)|(?:请|拜托|麻烦|劳烦)(?:你)?|你(?:应该|最好|必须|需要|得)|(?:要不|不如|何不)(?:你)?|(?:你)?(?:要不要|愿不愿意|是否愿意|能不能|可不可以)|让我们|我们一起)\s*(.*)$/u;
+const ENGLISH_ACTION_PROPOSAL = /\b(?:please\s+(?!answer|tell|explain|describe|say|talk)|i\s+(?:want|would\s+like|suggest|ask|need)\s+you\s+to|you\s+(?:should|must|need\s+to|had\s+better)|why\s+don['’]?t\s+you|let['’]?s|(?:could|would|will)\s+you\s+(?!answer|tell|explain|describe|say|talk))\b/iu;
+const ENGLISH_CONVERSATION_ONLY_REQUEST = /\b(?:answer|tell\s+me|explain|describe|say|talk\s+(?:to\s+me|about))\b/iu;
+
+/**
+ * Player speech may only create a durable choice when it contains an explicit
+ * request or proposal to act. This intentionally fails closed: questions,
+ * greetings and requests for an answer stay inside the player -> person
+ * conversation even when the person has an unrelated world proposal pending.
+ */
+export function isExplicitPlayerActionProposal(message: string): boolean {
+  const segments = message.trim().split(/[，,。；;！？!?\n]+/u).map((segment) => segment.trim()).filter(Boolean);
+  return segments.some((segment) => {
+    if (DIRECT_WORLD_ACTION.test(segment) && !QUESTION_TERM.test(segment)) return true;
+    const framed = segment.match(ACTION_PROPOSAL_FRAME);
+    if (framed) {
+      const proposed = (framed[1] ?? '').trim();
+      return Boolean(proposed)
+        && !CONVERSATION_ONLY_REQUEST.test(proposed)
+        && !QUESTION_TERM.test(proposed);
+    }
+    return ENGLISH_ACTION_PROPOSAL.test(segment) && !ENGLISH_CONVERSATION_ONLY_REQUEST.test(segment);
+  });
+}
 
 export function isPlayerIdentityQuestion(message: string): boolean {
   const normalized = message.trim().replace(/\s+/gu, '');
@@ -95,16 +123,27 @@ export const AGENT_INTERACTION_SYSTEM_PROMPT = [
   '历史轮次只证明当时说过什么、作了什么选择及后来结果，不能覆盖当前 localContext；冲突时依当前事实自然纠正。',
   '事实有依据时 grounding=supported 并列出实际 sourceId；主观态度用 opinion；无来源事实用 unknown 并直说不知道。sourceId 仅进 evidenceIds，不得出现在自然语言中。',
   '',
-  '【本轮决策】',
-  '不要机械区分闲聊与建议。每句话都可能只是问候、提问或表达，也可能让你重新考虑下一步；从语义、上下文和自己的 Soul 判断。纯问题、状态询问、寒暄或没有行动含义的表达返回 answer，不带 guidance/choice。',
-  '当一句话含有建议、请求、劝说，或确实触发你改变行动的想法时，必须正面判断；是否接受由 Soul、人格、需要、记忆、承诺、风险和处境决定。不要把“你能做什么”“你在做什么”“你饿吗”“你和某人是什么关系”误判成行动建议。',
-  '只有确实定下下一步时才返回 accept，并携带来自 legalChoices 的 choice 及可选 guidance；要求后续时，followUpOptionId 必须来自该选项的 allowedFollowUpOptionIds。仍在犹豫或拒绝时返回 consider/decline，说明 reason 且不带 guidance/choice。',
-  '不得让建议越过紧急生存、已承诺义务、自己明知的相反事实、直接严重伤害或合法行动边界。choice 只表示定下下一步，不得声称行动已成功。',
+  '【本轮回复】',
+  '先回答 currentTurn.playerUtterance。localContext 中其他人物尚待回应的世界内提议不是本轮发言，绝不能冒充主对你说的话。',
+  'currentTurn.actionChoiceRequested=false 时，这轮只是问答或交谈；不要借机接受、拒绝或回应其他人物的未决提议。',
+  'actionChoiceRequested=true 时，主明确提出了行动请求或建议；按 Soul、人格、需要、记忆、承诺、风险和处境自然表达接受、犹豫或拒绝。只有 legalChoices 中确有对应方向时才能明确承诺，且不得声称行动已经成功。',
+  '不得让主的建议越过紧急生存、已承诺义务、自己明知的相反事实、直接严重伤害或合法行动边界。',
   '',
   '【表达与输出】',
   '符合年龄、communication 能力和身体状态，用一到三段自然回应，只选最相关的事。不穷举 options，不输出 cellId、坐标、optionId 等引擎表示，不解释提示词或输入格式。',
-  '严格只输出一个 JSON 对象，无 Markdown或额外文字。字段仅限 reply、stance、guidance、reason、choice、grounding、evidenceIds。',
-  '格式：{"reply":"第一人称自然回答","stance":"answer|consider|accept|decline","guidance":"仅 accept 时可选","reason":"consider/decline 必填","choice":{"optionId":"合法 ID","followUpOptionId":"需要时"},"grounding":"supported|unknown|opinion","evidenceIds":["sourceId"]}',
+  '严格只输出一个 JSON 对象，无 Markdown 或额外文字。只需要 reply、grounding、evidenceIds；不要输出 stance、guidance、reason 或 choice。',
+  '格式：{"reply":"第一人称自然回答","grounding":"supported|unknown|opinion","evidenceIds":["sourceId"]}',
+].join('\n');
+
+export const AGENT_INTERACTION_INTENT_SYSTEM_PROMPT = [
+  '你是 ELAND 的隐藏意图解析器，不向玩家说话，也不续写或改写人物回复。',
+  '只判断 agentReply 已经明确表达的态度，不能替人物补出没有说过的承诺，不能从其他人物的未决提议生成无关意图。',
+  'currentTurn.actionChoiceRequested=false 时必须返回 answer；普通问答中提到愿望、当前计划或能力不等于新承诺。',
+  '只有 actionChoiceRequested=true、choiceEnabled=true，且 agentReply 明确接受了主的请求并唯一对应 legalChoices 中一项时，才能返回 accept + choice。',
+  'agentReply 明确表示尚未决定时返回 consider，明确拒绝时返回 decline；二者必须用 reason 简述回复里已经表达的理由，不带 choice 或 guidance。其余情况返回 answer。',
+  'accept 的 optionId 必须来自 legalChoices；需要后续动作时 followUpOptionId 必须来自该项 allowedFollowUpOptionIds。choice 只是待本地验证的候选，不表示行动已发生。',
+  '严格只输出一个 JSON 对象，无 Markdown 或额外文字。字段仅限 stance、guidance、reason、choice。',
+  '格式：{"stance":"answer|consider|accept|decline","guidance":"仅 accept 时可选","reason":"consider/decline 必填","choice":{"optionId":"合法 ID","followUpOptionId":"需要时"}}',
 ].join('\n');
 
 function boundedText(value: unknown, maximum: number): string {
@@ -201,9 +240,12 @@ function visibleTerrainFacts(context: DecisionContext): Array<{ sourceId: string
 export function buildAgentInteractionContext(
   context: DecisionContext,
   requestKind: AgentInteractionRequestKind,
+  playerMessage: string,
 ): Record<string, unknown> {
   const { person, state } = context;
-  const choiceEnabled = state.civilization.status !== 'ended'
+  const actionChoiceRequested = isExplicitPlayerActionProposal(playerMessage);
+  const choiceEnabled = actionChoiceRequested
+    && state.civilization.status !== 'ended'
     && !isPlayerInteractionEmergencyContext(context);
   const projected = buildDecisionRequestContext(context);
   const visible = new Set(context.visibleCells);
@@ -238,20 +280,27 @@ export function buildAgentInteractionContext(
       status: structure.complete ? '已经完工' : '尚未完工',
       usable: structure.complete,
     }));
-  const possibleNow = projected.options.slice(0, 16).map((option, index) => source(`current-affordance:${index + 1}`, {
-    summary: sanitizeEngineText(option.summary),
-    reason: sanitizeEngineText(option.reason),
-    note: '这是当前条件下的合法方向，不等于已经掌握的永久技能，也不代表已经决定执行',
-  }));
+  const worldResponseOptionIds = new Set(context.options.filter(isRequiredSocialOption).map((option) => option.id));
+  const possibleNow = projected.options
+    .filter((option) => !worldResponseOptionIds.has(option.id))
+    .slice(0, 16)
+    .map((option, index) => source(`current-affordance:${index + 1}`, {
+      summary: sanitizeEngineText(option.summary),
+      reason: sanitizeEngineText(option.reason),
+      note: '这是当前条件下的合法方向，不等于已经掌握的永久技能，也不代表已经决定执行',
+    }));
   const localContext: Record<string, unknown> = {
     interaction: {
       requestKind,
+      actionChoiceRequested,
       choiceEnabled,
       rule: state.civilization.status === 'ended'
-        ? '这条文明时间线已经结束；可以继续交谈和表达态度，但不能形成新的行动 choice'
+        ? '这条文明时间线已经结束；可以继续交谈和表达态度，但不要承诺新的行动'
+        : !actionChoiceRequested
+          ? '本轮玩家没有明确提出行动；只回答 playerUtterance，不得借机回应其他人物的未决提议'
         : choiceEnabled
-          ? '所有对话都可能影响下一步，但只有人物确实因这句话定下合法方向时才生成 choice；普通问答不得生成 choice'
-          : '你正处在身体危险中；先让本地生存反应处理危险，可以交谈和表达态度，但不能生成新的行动 choice',
+          ? '玩家明确提出了行动；按人物真实判断在自然回复中清楚表达接受、犹豫或拒绝，只有 legalChoices 中确有对应方向时才能承诺'
+          : '你正处在身体危险中；先让本地生存反应处理危险，可以交谈和表达态度，但不要承诺新的行动',
     },
     person: {
       name: person.name,
@@ -344,7 +393,7 @@ export function buildAgentInteractionContext(
     },
     capabilities: {
       possibleNow,
-      rule: 'possibleNow 只证明此刻存在合法做法；回答“会不会”时必须说明当前条件，不能夸大成永久技能',
+      rule: 'possibleNow 只证明此刻存在合法做法；不含必须另行回应的世界内提议。回答“会不会”时必须说明当前条件，不能夸大成永久技能',
     },
   };
   {
@@ -426,20 +475,13 @@ function parseJsonObject(content: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function parseInteractionResult(
-  context: DecisionContext,
+export function parseInteractionReply(
   localContext: Record<string, unknown>,
-  _requestKind: AgentInteractionRequestKind,
   content: string,
-): Pick<AgentInteractionResult, 'reply' | 'stance' | 'guidance' | 'reason' | 'choice' | 'grounding' | 'evidenceIds'> {
+): Pick<AgentInteractionResult, 'reply' | 'grounding' | 'evidenceIds'> {
   const raw = parseJsonObject(content);
-  const unknownKey = Object.keys(raw).find((key) => !RESULT_KEYS.has(key));
-  if (unknownKey) throw new Error(`结果包含未知字段 ${unknownKey}`);
   const reply = boundedText(raw.reply, MAX_REPLY_CHARS);
   if (!reply) throw new Error('结果缺少非空 reply');
-  if (typeof raw.stance !== 'string' || !STANCES.has(raw.stance as AgentInteractionStance)) {
-    throw new Error('stance 必须是 answer、consider、accept 或 decline');
-  }
   if (typeof raw.grounding !== 'string' || !GROUNDINGS.has(raw.grounding as AgentInteractionGrounding)) {
     throw new Error('grounding 必须是 supported、unknown 或 opinion');
   }
@@ -453,17 +495,39 @@ export function parseInteractionResult(
   if (evidenceIds.some((id) => !allowedEvidenceIds.has(id))) throw new Error('evidenceIds 引用了输入中不存在的 sourceId');
   if (raw.grounding === 'supported' && !evidenceIds.length) throw new Error('supported 回答必须列出实际 evidenceIds');
   if (raw.grounding !== 'supported' && evidenceIds.length) throw new Error('只有 supported 回答可以携带 evidenceIds');
+  const unknownTopic = (localContext.epistemicBoundary as { unknownTopic?: unknown } | undefined)?.unknownTopic;
+  if (typeof unknownTopic === 'string' && raw.grounding !== 'unknown') {
+    throw new Error('没有知识来源的定义问题只能如实回答不知道');
+  }
+  return {
+    reply,
+    grounding: raw.grounding as AgentInteractionGrounding,
+    evidenceIds,
+  };
+}
+
+export function parseInteractionIntent(
+  context: DecisionContext,
+  localContext: Record<string, unknown>,
+  content: string,
+): Pick<AgentInteractionResult, 'stance' | 'guidance' | 'reason' | 'choice'> {
+  const raw = parseJsonObject(content);
+  const unknownKey = Object.keys(raw).find((key) => !INTENT_RESULT_KEYS.has(key));
+  if (unknownKey) throw new Error(`意图结果包含未知字段 ${unknownKey}`);
+  if (typeof raw.stance !== 'string' || !STANCES.has(raw.stance as AgentInteractionStance)) {
+    throw new Error('stance 必须是 answer、consider、accept 或 decline');
+  }
   if (raw.guidance !== undefined && typeof raw.guidance !== 'string') throw new Error('guidance 必须是字符串或省略');
   if (raw.reason !== undefined && typeof raw.reason !== 'string') throw new Error('reason 必须是字符串或省略');
   const guidance = boundedText(raw.guidance, MAX_GUIDANCE_CHARS);
   const reason = boundedText(raw.reason, MAX_REASON_CHARS);
   const hasChoice = raw.choice !== undefined;
-  const unknownTopic = (localContext.epistemicBoundary as { unknownTopic?: unknown } | undefined)?.unknownTopic;
-  if (typeof unknownTopic === 'string'
-    && (raw.stance !== 'answer' || raw.grounding !== 'unknown' || guidance || hasChoice)) {
-    throw new Error('没有知识来源的定义问题只能如实回答不知道，不能形成行动选择');
+  const actionChoiceRequested = (localContext.interaction as { actionChoiceRequested?: unknown } | undefined)
+    ?.actionChoiceRequested === true;
+  if (!actionChoiceRequested && (raw.stance !== 'answer' || guidance || reason || hasChoice)) {
+    throw new Error('本轮玩家没有明确提出行动，不能形成新的对话意图');
   }
-  const choiceEnabled = (localContext.interaction as { choiceEnabled?: unknown } | undefined)?.choiceEnabled !== false;
+  const choiceEnabled = (localContext.interaction as { choiceEnabled?: unknown } | undefined)?.choiceEnabled === true;
   if (hasChoice && !choiceEnabled) throw new Error('当前时间线不能再形成新的行动选择');
   if (raw.stance !== 'accept' && (guidance || hasChoice)) {
     throw new Error('只有 accept 可以携带 guidance 和 choice');
@@ -499,13 +563,10 @@ export function parseInteractionResult(
     };
   }
   return {
-    reply,
     stance: raw.stance as AgentInteractionStance,
     ...(guidance ? { guidance } : {}),
     ...(reason ? { reason } : {}),
     ...(choice ? { choice } : {}),
-    grounding: raw.grounding as AgentInteractionGrounding,
-    evidenceIds,
   };
 }
 
@@ -544,7 +605,7 @@ export function buildAgentInteractionMessages(
     {
       role: 'user',
       content: JSON.stringify({
-        protocol: 'eland-agent-interaction-v2',
+        protocol: 'eland-agent-interaction-reply-v1',
         participants: {
           player: { role: 'master', addressAs: '主' },
           person: { role: 'simulated-person', name: personName },
@@ -557,8 +618,11 @@ export function buildAgentInteractionMessages(
           requestKind: input.requestKind,
           speaker: 'master',
           addressee: 'person',
+          replyTo: 'currentTurn.playerUtterance',
           playerUtterance: userMessage,
           playerIdentityQuestion: isPlayerIdentityQuestion(userMessage),
+          actionChoiceRequested: (localContext.interaction as { actionChoiceRequested?: unknown } | undefined)
+            ?.actionChoiceRequested === true,
         },
         localContext,
       }),
@@ -566,17 +630,44 @@ export function buildAgentInteractionMessages(
   ];
 }
 
+export function buildAgentInteractionIntentMessages(
+  userMessage: string,
+  agentReply: string,
+  localContext: Record<string, unknown>,
+): ModelMessage[] {
+  const interaction = localContext.interaction as {
+    actionChoiceRequested?: unknown;
+    choiceEnabled?: unknown;
+  } | undefined;
+  return [
+    { role: 'system', content: AGENT_INTERACTION_INTENT_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        protocol: 'eland-agent-interaction-intent-v1',
+        currentTurn: {
+          playerUtterance: userMessage,
+          agentReply,
+          actionChoiceRequested: interaction?.actionChoiceRequested === true,
+          choiceEnabled: interaction?.choiceEnabled === true,
+        },
+        legalChoices: Array.isArray(localContext.legalChoices) ? localContext.legalChoices : [],
+        legalFollowUps: Array.isArray(localContext.legalFollowUps) ? localContext.legalFollowUps : [],
+      }),
+    },
+  ];
+}
+
 /**
- * Requests a first-person reply from the actual simulated person. This method
- * never commits guidance as a world fact. A high-confidence definition request
- * for a topic absent from the person's sources is answered by the local
- * epistemic boundary instead of allowing pretrained model knowledge to leak in.
+ * Requests a first-person reply first, then privately extracts any explicit
+ * commitment from that exact reply. A failed intent pass never discards the
+ * visible reply; any extracted choice is still revalidated by local rules.
  */
 export async function requestAgentInteraction(input: AgentInteractionRequest): Promise<AgentInteractionResult> {
   const message = requiredInputText(input.message, MAX_USER_MESSAGE_CHARS, '玩家消息');
   const maxOutputTokens = interactionMaxOutputTokens();
   const endpoint = resolveModelEndpoint('interaction', input.endpointId);
-  const localContext = buildAgentInteractionContext(input.context, input.requestKind);
+  const localContext = buildAgentInteractionContext(input.context, input.requestKind, message);
   const askedTopic = unsupportedDefinitionTopic(message, localContext);
   if (askedTopic) {
     localContext.epistemicBoundary = {
@@ -586,6 +677,8 @@ export async function requestAgentInteraction(input: AgentInteractionRequest): P
   }
   let messages = buildAgentInteractionMessages(input, message, localContext);
   let usage = { inputTokens: 0, outputTokens: 0 };
+  let replyResult: Pick<AgentInteractionResult, 'reply' | 'grounding' | 'evidenceIds'> | undefined;
+  let replyModel: Pick<AgentInteractionResult, 'endpointId' | 'protocol' | 'model'> | undefined;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await requestModelText(endpoint, {
@@ -600,18 +693,18 @@ export async function requestAgentInteraction(input: AgentInteractionRequest): P
       outputTokens: usage.outputTokens + response.usage.outputTokens,
     };
     try {
-      return {
-        ...parseInteractionResult(input.context, localContext, input.requestKind, response.text),
+      replyResult = parseInteractionReply(localContext, response.text);
+      replyModel = {
         endpointId: response.endpointId,
         protocol: response.protocol,
         model: response.model,
-        usage,
       };
+      break;
     } catch (error) {
       if (attempt === 1) {
         throw new ModelRequestError(
           'invalid-response',
-          `模型端点 ${endpoint.id} 的人物对话结果无效：${error instanceof Error ? error.message : String(error)}`,
+          `模型端点 ${endpoint.id} 的人物回复无效：${error instanceof Error ? error.message : String(error)}`,
         );
       }
       messages = [
@@ -625,5 +718,40 @@ export async function requestAgentInteraction(input: AgentInteractionRequest): P
     }
   }
 
-  throw new ModelRequestError('invalid-response', `模型端点 ${endpoint.id} 没有返回合法的人物对话结果`);
+  if (!replyResult || !replyModel) {
+    throw new ModelRequestError('invalid-response', `模型端点 ${endpoint.id} 没有返回合法的人物回复`);
+  }
+
+  let intentResult: Pick<AgentInteractionResult, 'stance' | 'guidance' | 'reason' | 'choice'> = {
+    stance: 'answer',
+  };
+  const actionChoiceRequested = (localContext.interaction as { actionChoiceRequested?: unknown } | undefined)
+    ?.actionChoiceRequested === true;
+  if (actionChoiceRequested) {
+    try {
+      const intentResponse = await requestModelText(endpoint, {
+        messages: buildAgentInteractionIntentMessages(message, replyResult.reply, localContext),
+        maxOutputTokens: Math.min(maxOutputTokens, 1_000),
+        temperature: 0,
+        jsonObject: true,
+        timeoutMs: interactionTimeout(endpoint),
+      });
+      usage = {
+        inputTokens: usage.inputTokens + intentResponse.usage.inputTokens,
+        outputTokens: usage.outputTokens + intentResponse.usage.outputTokens,
+      };
+      intentResult = parseInteractionIntent(input.context, localContext, intentResponse.text);
+    } catch (error) {
+      console.warn(
+        `模型端点 ${endpoint.id} 的隐藏人物意图未能解析；保留角色回复且不形成行动：${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return {
+    ...replyResult,
+    ...intentResult,
+    ...replyModel,
+    usage,
+  };
 }

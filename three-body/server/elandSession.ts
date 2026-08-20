@@ -1,5 +1,5 @@
 /** ELAND 应用会话：编排月度用例、读取投影与可回溯快照。 */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { deserialize, serialize } from 'node:v8';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
@@ -22,7 +22,14 @@ import {
   validatePlayerInteractionChoice,
   type PlayerInteractionChoiceFailure,
 } from '../src/game/eland/application/player-interaction-choice';
-import type { CosmosSnapshot, GameFrame, NarrativeEntryView, SkySample, SpeechLineView } from '../src/game/societyContract';
+import type {
+  CivilizationIndexHistoryPoint,
+  CosmosSnapshot,
+  GameFrame,
+  NarrativeEntryView,
+  SkySample,
+  SpeechLineView,
+} from '../src/game/societyContract';
 import type { AgentHistoryView } from '../src/game/societyContract';
 import type { ElandSaveSummary } from '../src/game/societyContract';
 import { summarizePlayerNarrativeEntries } from './narrative-enhancements';
@@ -53,10 +60,53 @@ const DEFAULT_SESSION_TTL_MS = 60 * 1_000;
 const DEFAULT_SESSION_RECOVERY_TTL_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_SESSIONS = 16;
 const DEFAULT_ACTIVE_STEP_PROTECTION_MS = 30 * 1_000;
+const MAX_COMPLETED_STEP_RECEIPTS = 64;
+
+export interface ElandStepOptions {
+  skySample: SkySample;
+  cosmosSnapshot?: CosmosSnapshot;
+  /** Stable identity reused while the caller is uncertain whether this month committed. */
+  stepId?: string;
+  /** Opaque server authority instance observed with the rest of the expected identity. */
+  expectedAuthorityRevision?: string;
+  /** Civilization observed together with expectedBranchId and expectedElapsedMonths. */
+  expectedCivilizationId?: number;
+  /** Branch observed together with expectedCivilizationId and expectedElapsedMonths. */
+  expectedBranchId?: string;
+  /** Last authoritative month observed by the caller before requesting one new month. */
+  expectedElapsedMonths?: number;
+}
+
+interface InFlightStep {
+  baseAuthorityRevision: string;
+  baseCivilizationId: number;
+  baseBranchId: string;
+  baseElapsedMonths: number;
+  requests: Map<string, string>;
+  promise: Promise<Frame | null>;
+}
+
+function stepRequestFingerprint(options: ElandStepOptions): string {
+  return createHash('sha256').update(JSON.stringify({
+    expectedAuthorityRevision: options.expectedAuthorityRevision,
+    expectedCivilizationId: options.expectedCivilizationId,
+    expectedBranchId: options.expectedBranchId,
+    expectedElapsedMonths: options.expectedElapsedMonths,
+    skySample: options.skySample,
+    cosmosSnapshot: options.cosmosSnapshot,
+  })).digest('hex');
+}
+
+function createAuthorityRevision(): string {
+  return `authority-${randomUUID()}`;
+}
 
 type SnapshotState = Omit<SimulationState, 'world'>;
 type SnapshotWorld = Omit<SimulationState['world'], 'grid' | 'past'>;
-type StoredFrame = Omit<Frame, 'society'>;
+type StoredFrame = Omit<Frame, 'society'> & {
+  /** Small observer-only projection retained beside the replay frame. */
+  civilizationIndex?: CivilizationIndexHistoryPoint;
+};
 
 interface SimulationCheckpoint {
   kind: 'checkpoint';
@@ -125,7 +175,7 @@ export interface AgentConversationTurn {
   reason?: string;
   grounding?: 'supported' | 'unknown' | 'opinion';
   evidenceIds?: string[];
-  /** The legal direction chosen in the same model turn; it is not yet an action fact. */
+  /** The legal direction extracted from this reply; it is not yet an action fact. */
   choice?: {
     optionId: string;
     followUpOptionId?: string;
@@ -451,6 +501,8 @@ export class ElandSession {
   private latestFrame: Frame | null = null;
   private stepping = false;
   private stepWaiters: Array<() => void> = [];
+  private inFlightStep: InFlightStep | null = null;
+  private readonly completedStepReceipts = new Map<string, string>();
   private interactionRequestCount = 0;
   private readonly agentConversationTails = new Map<string, Promise<void>>();
   private readonly pendingAgentConversations = new Map<string, PendingAgentConversation>();
@@ -461,6 +513,7 @@ export class ElandSession {
   private branches = new Map<string, BranchTimeline>();
   private activeBranchId = '';
   private forkSequence = 0;
+  private authorityRevision = createAuthorityRevision();
   private skySample: SkySample;
   private cosmosSnapshot?: CosmosSnapshot;
   readonly runId: string;
@@ -468,6 +521,12 @@ export class ElandSession {
   constructor(runId: string, initialSkySample: SkySample) {
     this.runId = runId;
     this.skySample = initialSkySample;
+  }
+
+  private rotateAuthorityRevision(): string {
+    this.authorityRevision = createAuthorityRevision();
+    this.completedStepReceipts.clear();
+    return this.authorityRevision;
   }
 
   static restore(snapshot: ElandSessionRecoverySnapshot, runId = snapshot.runId): ElandSession {
@@ -506,10 +565,15 @@ export class ElandSession {
     session.latestFrame = {
       ...snapshot.latestFrame,
       runId,
+      authorityRevision: session.authorityRevision,
       ...(cosmosSnapshot ? { cosmosSnapshot } : {}),
     };
     session.branches = new Map([...snapshot.branches.entries()].map(([branchId, timeline]) => {
-      const history = timeline.history.map((frame) => ({ ...frame, runId }));
+      const history = timeline.history.map((frame) => ({
+        ...frame,
+        runId,
+        authorityRevision: session.authorityRevision,
+      }));
       return [branchId, {
         ...timeline,
         history,
@@ -549,6 +613,7 @@ export class ElandSession {
   }
 
   begin(civilizationId: number, worldSeed: number, skySample: SkySample, characterIds?: string[], cosmosSnapshot?: CosmosSnapshot): Frame {
+    this.rotateAuthorityRevision();
     this.civilizationId = civilizationId;
     this.skySample = skySample;
     this.cosmosSnapshot = cosmosSnapshot
@@ -716,6 +781,7 @@ export class ElandSession {
     const projectionMs = perfElapsed(projectionStartedAt);
     const frame: Frame = {
       runId: this.runId,
+      authorityRevision: this.authorityRevision,
       branchId: state.branchId,
       civilizationId: this.civilizationId,
       elapsedMonths: state.clock.elapsedMonths,
@@ -732,7 +798,19 @@ export class ElandSession {
       speaker: speechLines.at(-1)?.speakerName ?? monthSpeaker(state, events),
     };
     const timeline = this.activeTimeline();
-    const { society: _society, ...storedFrame } = frame;
+    const { society: _society, ...storedFrameBase } = frame;
+    const observedIndex = society.observations.civilizationIndex;
+    const storedFrame: StoredFrame = {
+      ...storedFrameBase,
+      ...(observedIndex ? {
+        civilizationIndex: {
+          formulaVersion: observedIndex.formulaVersion,
+          total: observedIndex.total,
+          calculatedAtMonth: observedIndex.calculatedAtMonth,
+          stage: observedIndex.stage,
+        },
+      } : {}),
+    };
     timeline.history.push(storedFrame);
     timeline.frameByMonth.set(frame.elapsedMonths, storedFrame);
     const shouldCheckpoint = this.latestState === null
@@ -831,9 +909,136 @@ export class ElandSession {
     }
   }
 
-  async step(options: { skySample: SkySample; cosmosSnapshot?: CosmosSnapshot }): Promise<Frame | null> {
-    if (!this.controller || this.stepping) return this.latest();
-    if (this.latestState?.civilization.status === 'ended') return this.latest();
+  private rememberCompletedStep(stepId: string | undefined, fingerprint: string | undefined): void {
+    if (!stepId || !fingerprint) return;
+    this.completedStepReceipts.delete(stepId);
+    this.completedStepReceipts.set(stepId, fingerprint);
+    while (this.completedStepReceipts.size > MAX_COMPLETED_STEP_RECEIPTS) {
+      const oldest = this.completedStepReceipts.keys().next().value;
+      if (typeof oldest !== 'string') break;
+      this.completedStepReceipts.delete(oldest);
+    }
+  }
+
+  /**
+   * Advances at most one month for a caller-observed authority head.
+   *
+   * A transport timeout cannot cancel the server computation. Reusing stepId
+   * returns the current authoritative head, while a different request with the
+   * same expected month joins the already-running computation. A stale expected
+   * month is an acknowledgement/read, never permission to advance again.
+   */
+  async step(options: ElandStepOptions): Promise<Frame | null> {
+    const stepId = options.stepId?.trim() || undefined;
+    if (stepId && stepId.length > 160) throw new ElandStepConflictError('stepId 过长');
+    if (options.expectedAuthorityRevision !== undefined
+      && (!options.expectedAuthorityRevision.trim()
+        || options.expectedAuthorityRevision !== options.expectedAuthorityRevision.trim()
+        || options.expectedAuthorityRevision.length > 160)) {
+      throw new ElandStepConflictError('expectedAuthorityRevision 无效');
+    }
+    if (options.expectedElapsedMonths !== undefined
+      && (!Number.isInteger(options.expectedElapsedMonths) || options.expectedElapsedMonths < 0)) {
+      throw new ElandStepConflictError('expectedElapsedMonths 必须是非负整数');
+    }
+    if (options.expectedCivilizationId !== undefined
+      && (!Number.isInteger(options.expectedCivilizationId) || options.expectedCivilizationId < 1)) {
+      throw new ElandStepConflictError('expectedCivilizationId 必须是正整数');
+    }
+    if (options.expectedBranchId !== undefined
+      && (!options.expectedBranchId.trim()
+        || options.expectedBranchId !== options.expectedBranchId.trim()
+        || options.expectedBranchId.length > 320)) {
+      throw new ElandStepConflictError('expectedBranchId 无效');
+    }
+    if (stepId && (options.expectedAuthorityRevision === undefined
+      || options.expectedCivilizationId === undefined
+      || options.expectedBranchId === undefined
+      || options.expectedElapsedMonths === undefined)) {
+      throw new ElandStepConflictError('带 stepId 的请求必须提供完整权威身份');
+    }
+    const fingerprint = stepId ? stepRequestFingerprint(options) : undefined;
+    const completedFingerprint = stepId ? this.completedStepReceipts.get(stepId) : undefined;
+    if (completedFingerprint) {
+      if (completedFingerprint !== fingerprint) {
+        throw new ElandStepConflictError('stepId 已用于不同的月份或天象');
+      }
+      return this.latest();
+    }
+
+    const active = this.inFlightStep;
+    if (active) {
+      if (stepId) {
+        const activeFingerprint = active.requests.get(stepId);
+        if (activeFingerprint && activeFingerprint !== fingerprint) {
+          throw new ElandStepConflictError('stepId 正在用于不同的月份或天象');
+        }
+      }
+      const matchesActiveAuthority = (options.expectedAuthorityRevision === undefined
+          || options.expectedAuthorityRevision === active.baseAuthorityRevision)
+        && (options.expectedCivilizationId === undefined
+          || options.expectedCivilizationId === active.baseCivilizationId)
+        && (options.expectedBranchId === undefined
+          || options.expectedBranchId === active.baseBranchId)
+        && (options.expectedElapsedMonths === undefined
+          || options.expectedElapsedMonths === active.baseElapsedMonths);
+      if (matchesActiveAuthority) {
+        if (stepId && fingerprint) active.requests.set(stepId, fingerprint);
+        const frame = await active.promise;
+        this.rememberCompletedStep(stepId, fingerprint);
+        return frame;
+      }
+      // A request based on a different head is not the same authority step.
+      // Re-evaluate it only after the current atomic month has settled.
+      await active.promise;
+      return this.step(options);
+    }
+
+    const current = this.latest();
+    if (!this.controller) return current;
+    const matchesCurrentAuthority = (options.expectedAuthorityRevision === undefined
+        || options.expectedAuthorityRevision === current?.authorityRevision)
+      && (options.expectedCivilizationId === undefined
+        || options.expectedCivilizationId === current?.civilizationId)
+      && (options.expectedBranchId === undefined
+        || options.expectedBranchId === current?.branchId)
+      && (options.expectedElapsedMonths === undefined
+        || options.expectedElapsedMonths === current?.elapsedMonths);
+    if (!matchesCurrentAuthority) {
+      this.rememberCompletedStep(stepId, fingerprint);
+      return current;
+    }
+    if (this.latestState?.civilization.status === 'ended') {
+      this.rememberCompletedStep(stepId, fingerprint);
+      return current;
+    }
+
+    const requests = new Map<string, string>();
+    if (stepId && fingerprint) requests.set(stepId, fingerprint);
+    const promise = this.advanceStep(options);
+    const inFlight: InFlightStep = {
+      baseAuthorityRevision: current?.authorityRevision ?? this.authorityRevision,
+      baseCivilizationId: current?.civilizationId ?? this.civilizationId,
+      baseBranchId: current?.branchId ?? this.activeBranchId,
+      baseElapsedMonths: current?.elapsedMonths ?? 0,
+      requests,
+      promise,
+    };
+    this.inFlightStep = inFlight;
+    try {
+      const frame = await promise;
+      for (const [requestId, requestFingerprint] of inFlight.requests) {
+        this.rememberCompletedStep(requestId, requestFingerprint);
+      }
+      return frame;
+    } finally {
+      if (this.inFlightStep === inFlight) this.inFlightStep = null;
+    }
+  }
+
+  private async advanceStep(options: ElandStepOptions): Promise<Frame | null> {
+    const controller = this.controller;
+    if (!controller) return this.latest();
     this.stepping = true;
     const stepStartedAt = perfNow();
     try {
@@ -842,7 +1047,7 @@ export class ElandSession {
       const env = ERA_TO_ENV[nextSkySample.fate];
       // controller 是会话内唯一权威状态；直接推进可保留 WeakMap 增量索引，
       // 避免每月 getState → migrate → step → restore 的多轮全量深拷贝。
-      this.controller.setExternalClimate(env.epoch, env.kind, env.severity);
+      controller.setExternalClimate(env.epoch, env.kind, env.severity);
       const decisionEndpoint = readEvolutionMode() === 'model' && hasExplicitModelRoute('decision')
         ? modelEndpointStatus('decision')
         : { configured: false };
@@ -857,17 +1062,17 @@ export class ElandSession {
           pendingOnly: !decisionEndpoint.configured,
         });
         try {
-          state = await this.controller.stepAsyncOwned(decider);
+          state = await controller.stepAsyncOwned(decider);
           interactionAttempts = decider.takeInteractionAttempts();
         } catch (error) {
           interactionAttempts = decider.takeInteractionAttempts();
           // stepAsync 在供应商失败时已经使用本地决定；这里兜住基础设施之外的异常，
           // controller 尚未提交失败的异步结果，因此可安全执行同一个本地月份。
           console.warn(`运行 ${this.runId} 的关键模型决策已回退到本地规划：${error instanceof Error ? error.message : String(error)}`);
-          state = this.controller.stepOwned();
+          state = controller.stepOwned();
         }
       } else {
-        state = this.controller.stepOwned();
+        state = controller.stepOwned();
       }
       const simulationMs = perfElapsed(simulationStartedAt);
       const presentationStartedAt = perfNow();
@@ -960,6 +1165,22 @@ export class ElandSession {
       !entries.some((entry) => entry.sourceEventIds.some((eventId) => founding.sourceEventIds.includes(eventId)))
     )) ? [...foundingEntries, ...entries] : entries;
     return withCivilizationEntries(this.latestState, this.latestState.lastStep, withFounding);
+  }
+
+  civilizationIndexHistory(): CivilizationIndexHistoryPoint[] {
+    const points = this.inheritedFrames(this.activeTimeline())
+      .map((frame) => frame.civilizationIndex)
+      .filter((point): point is CivilizationIndexHistoryPoint => Boolean(point));
+    const current = this.latestFrame?.society.observations.civilizationIndex;
+    if (current && points.at(-1)?.calculatedAtMonth !== current.calculatedAtMonth) {
+      points.push({
+        formulaVersion: current.formulaVersion,
+        total: current.total,
+        calculatedAtMonth: current.calculatedAtMonth,
+        stage: current.stage,
+      });
+    }
+    return points;
   }
 
   frameAt(month: number): Frame | null {
@@ -1268,7 +1489,12 @@ export class ElandSession {
     this.controller.restore(branchState);
     this.latestState = branchState;
     this.activeBranchId = branchId;
-    const branchFrame: Frame = { ...frame, branchId };
+    this.rotateAuthorityRevision();
+    const branchFrame: Frame = {
+      ...frame,
+      authorityRevision: this.authorityRevision,
+      branchId,
+    };
     this.skySample = branchFrame.skySample;
     this.cosmosSnapshot = branchFrame.cosmosSnapshot;
     const { society: _society, ...storedBranchFrame } = branchFrame;
@@ -1309,6 +1535,13 @@ export class ElandSessionBusyError extends Error {
   constructor(readonly runId: string, operation: string) {
     super(`运行 ${runId} 正在完成模型对话或权威月份，暂时不能${operation}`);
     this.name = 'ElandSessionBusyError';
+  }
+}
+
+export class ElandStepConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ElandStepConflictError';
   }
 }
 

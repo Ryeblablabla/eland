@@ -213,7 +213,13 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     .sort((left, right) => right.priority - left.priority || left.topic.localeCompare(right.topic));
 }
 
-function openingOption(state: SimulationState, person: PersonState, other: PersonState, candidate: ConversationCandidate): ActionOption | null {
+function openingOption(
+  state: SimulationState,
+  person: PersonState,
+  other: PersonState,
+  candidate: ConversationCandidate,
+  atMonth: number,
+): ActionOption | null {
   const conversationBasisKey = basisKey(person, other, candidate);
   if (alreadyUsedBasis(state, conversationBasisKey)) return null;
   const conversation: GroundedConversationRef = {
@@ -225,7 +231,7 @@ function openingOption(state: SimulationState, person: PersonState, other: Perso
     listenerId: other.id,
     sourceFactIds: [...candidate.sourceFactIds],
   };
-  const representationId = `conversation:${candidate.topic}:${state.clock.elapsedMonths}:${person.id}:${other.id}`;
+  const representationId = `conversation:${candidate.topic}:${atMonth}:${person.id}:${other.id}`;
   return {
     id: representationId,
     summary: `与${other.name}谈${TOPIC_LABEL[candidate.topic]}：${candidate.summary}`,
@@ -278,10 +284,10 @@ function liveResponseOpeningIds(state: SimulationState, person: PersonState): Se
   return liveResponseOpeningIds;
 }
 
-function pendingOpening(state: SimulationState, person: PersonState): ActionFact | undefined {
+function pendingOpening(state: SimulationState, person: PersonState, atMonth: number): ActionFact | undefined {
   const liveResponses = liveResponseOpeningIds(state, person);
   return [...groundedConversationOpeningsForListener(state, person.id)].reverse().find((event) => {
-    if (state.clock.elapsedMonths - event.atMonth > 6
+    if (atMonth - event.atMonth > 6
       || event.action.kind !== 'communicate'
       || event.action.content.kind !== 'claim') return false;
     const conversation = event.action.content.conversation;
@@ -347,34 +353,44 @@ function responseOptionForOpening(
   };
 }
 
-function responseOption(state: SimulationState, person: PersonState, visiblePeople: PersonState[]): ActionOption | null {
-  const opening = pendingOpening(state, person);
+function responseOption(
+  state: SimulationState,
+  person: PersonState,
+  visiblePeople: PersonState[],
+  atMonth: number,
+): ActionOption | null {
+  const opening = pendingOpening(state, person, atMonth);
   return opening ? responseOptionForOpening(state, person, visiblePeople, opening) : null;
 }
 
-export function hasGroundedConversationResponseOpportunity(state: SimulationState, person: PersonState): boolean {
+export function hasGroundedConversationResponseOpportunity(
+  state: SimulationState,
+  person: PersonState,
+  atMonth = state.clock.elapsedMonths,
+): boolean {
   const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
   const visible = new Set(cellsInRadius(person.position.cellId, radius));
   const visiblePeople = state.people.filter((candidate) => candidate.id !== person.id
     && isAlive(candidate)
     && visible.has(candidate.position.cellId)
     && Math.abs(candidate.position.z - person.position.z) <= radius);
-  return Boolean(responseOption(state, person, visiblePeople));
+  return Boolean(responseOption(state, person, visiblePeople, atMonth));
 }
 
 export function buildGroundedConversationOptions(
   state: SimulationState,
   person: PersonState,
   visiblePeople: PersonState[],
+  atMonth = state.clock.elapsedMonths,
 ): ActionOption[] {
-  const requiredResponse = responseOption(state, person, visiblePeople);
+  const requiredResponse = responseOption(state, person, visiblePeople, atMonth);
   if (requiredResponse) return [requiredResponse];
   return visiblePeople
     .filter((other) => sameLocation(person, other)
-      && ageMonths(other, state.clock.elapsedMonths) >= 12 * 12
+      && ageMonths(other, atMonth) >= 12 * 12
       && !isDehydratedHibernating(other))
     .slice(0, 3)
     .flatMap((other) => openingCandidates(state, person, other)
-      .map((candidate) => openingOption(state, person, other, candidate))
+      .map((candidate) => openingOption(state, person, other, candidate, atMonth))
       .filter((option): option is ActionOption => Boolean(option)));
 }

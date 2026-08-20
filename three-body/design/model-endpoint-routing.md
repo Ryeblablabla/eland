@@ -76,13 +76,13 @@ Ollama endpoint 可用 `thinking` 控制思考输出。叙事和结构化决策�
 
 ## 玩家主动人物对话
 
-人物页“对话”子 tab 通过 `/api/eland/agent-conversation` 读取当前分支线程并发送消息。服务端从权威会话构造该人物带来源的局部语义上下文；前端投影不能作为模型事实来源。界面不区分聊天与建议，当前客户端统一发送 `requestKind=conversation`（字段仅为兼容旧记录保留），由同一轮模型按话语语义判断是否形成 choice。
+人物页“对话”子 tab 通过 `/api/eland/agent-conversation` 读取当前分支线程并发送消息。服务端从权威会话构造该人物带来源的局部语义上下文；前端投影不能作为模型事实来源。界面不区分聊天与建议，当前客户端统一发送 `requestKind=conversation`（字段仅为兼容旧记录保留）。服务端先保守识别玩家是否明确提出行动，再把角色回复与隐藏意图解析拆成两个模型请求。
 
-- 每条回复和 `answer / consider / accept / decline` 判断都调用 `interaction` 模型；缺端点、缺密钥、超时或非法 JSON 时返回可见错误，绝不生成本地伪回复；
+- 第一阶段 `agent-interaction-reply-v1` 只生成 `reply + grounding + evidenceIds`。缺端点、缺密钥、超时或回复 / 事实依据非法时返回可见错误，绝不生成本地伪回复；模型误带的旧版 stance / choice 字段被忽略，不再拖垮合法回复；
 - 旧配置没有 `routes.interaction` 时回退到已显式配置的 `routes.decision`，设置页下次保存会写出四种用途路由；
-- 人物对话统一使用 `MODEL_INTERACTION_MAX_OUTPUT_TOKENS=8000` 的默认输出上限，等待上限由 `MODEL_INTERACTION_TIMEOUT_MS` 控制；客户端不能提交任意 token 上限，模型按问题需要简洁作答；
-- 每轮都读取带 `sourceId` 的本人身体、当前动作、人格、只读 Soul、背包、知识与记忆、当前意图 / 项目摘要、可见人物和物资，并获得经紧急生存、必须回应与履约门禁筛选的合法 choice。事实性回答必须回传实际 `evidenceIds`，未知概念保持不知道；纯问题不得生成 choice，只有人物确实定下下一步时才返回 `accept + choice`；
-- `accept` 必须在同一次回复里返回一个当前合法 `choice`；`consider` 没有 choice 时只表示听见，不产生行动输入。服务端当场校验 option、follow-up、必须回应与履约，并保存排除临时月份 / 表达 ID 的稳定语义 key；
+- 回复阶段使用 `MODEL_INTERACTION_MAX_OUTPUT_TOKENS=8000` 的默认上限；只有明确行动请求才追加 `agent-interaction-intent-v1`，其输出上限固定夹到 1000 token。等待上限都由 `MODEL_INTERACTION_TIMEOUT_MS` 控制，客户端不能提交任意 token 上限；
+- 每轮回复都读取带 `sourceId` 的本人身体、当前动作、人格、只读 Soul、背包、知识与记忆、当前意图 / 项目摘要、可见人物和物资。事实性回答必须回传实际 `evidenceIds`，未知概念保持不知道；纯问题不暴露其他人物的 required choice，也不调用隐藏意图解析；
+- 隐藏意图阶段只读取本轮玩家原话、已经生成的角色回复与当时合法候选，不得改写回复或补造未表达的承诺。只有回复明确接受玩家行动请求并唯一匹配一个合法 choice 才返回 `accept + choice`；解析超时、非法或无唯一匹配时静默保留回复且不形成行动。服务端仍当场校验 option、follow-up、必须回应与履约，并保存排除临时月份 / 表达 ID 的稳定语义 key；
 - 下一次人物可行动时不再调用模型重新解释 guidance，只在最新候选中按原 ID 或稳定 key 做本地唯一重配。命中才提交带 `sourceInteractionId` 的 DecisionFact；必须先回应 / 履约时标为 `deferred` 并保留选择，候选消失或匹配歧义时标为 `blocked` 并保存原因；
 - 对话、choice、结果、endpoint / model 和 token 用量随分支、热恢复与手动存档保存；新分支只继承分叉前历史，未落实 choice 不跨分支执行。
 

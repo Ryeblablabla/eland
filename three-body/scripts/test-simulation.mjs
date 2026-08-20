@@ -36,7 +36,7 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/application/construction-options.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${constructionBundlePath}`,
   ], { stdio: 'pipe' });
-  const { buildDecisionContexts, createInitialState, createSimulation, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { buildDecisionContexts, createInitialState, createSimulation, executeActiveIntent, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
   const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
@@ -568,7 +568,21 @@ try {
   placeWith(hibernationChild, hibernationCaregiver);
   hibernationCaregiver.body = { health: 100, hydration: 100, nutrition: 100 };
   hibernationChild.body = { health: 100, hydration: 100, nutrition: 100 };
-  hibernationChild.conditions = [];
+  const childHeatExposureId = 'test-dependent-child-heat-exposure';
+  hibernationChild.conditions = [{
+    id: 'test-dependent-child-heat-condition', kind: 'heat', stage: 3,
+    sinceMonth: caredChildState.clock.elapsedMonths, sourceEventIds: [childHeatExposureId],
+  }];
+  caredChildState.world.past.push({
+    id: childHeatExposureId, kind: 'environment', change: 'condition',
+    atMonth: caredChildState.clock.elapsedMonths, orderInMonth: caredChildState.world.past.length,
+    cellId: hibernationChild.position.cellId, who: hibernationChild.id,
+    result: '孩子在严重高温中受到暴露', diff: { condition: 'heat', stage: 3 },
+  });
+  caredChildState.civilization.epoch = 'chaotic';
+  caredChildState.civilization.climate = {
+    kind: 'heat', severity: 5, sinceMonth: caredChildState.clock.elapsedMonths,
+  };
   caredChildState.civilization.externalClimate = { epoch: 'chaotic', kind: 'heat', severity: 5 };
   caredChildState = stepSimulation(caredChildState, { decide() { return { kind: 'idle', reason: '不干扰乱纪元照护测试' }; } });
   const assistedHibernation = caredChildState.world.past.find((event) => event.kind === 'action'
@@ -607,7 +621,8 @@ try {
   const groundedFact = { id: 'technique:test-grounded-dialogue', kind: 'technique', summary: '辨认湿土附近水源', confidence: 72, learnedAtMonth: 0, sourceEventIds: ['test-grounded-observation'] };
   groundedSpeaker.knowledge = [groundedFact];
   groundedListener.knowledge = [];
-  const groundedContext = buildDecisionContexts(groundedDialogueState).find((context) => context.person.id === groundedSpeaker.id);
+  const groundedContext = buildDecisionContexts(groundedDialogueState, groundedDialogueState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === groundedSpeaker.id);
   const groundedTalk = groundedContext?.options.find((option) => option.id.startsWith('teach:')
     && option.nextAction.kind === 'communicate'
     && option.nextAction.content.kind === 'claim'
@@ -656,7 +671,8 @@ try {
   while (harvestZ > 0 && harvestState.world.grid.voxels[harvestZ * harvestState.world.grid.width * harvestState.world.grid.depth + harvestCell] === 0) harvestZ -= 1;
   harvestState.world.grid.voxels[harvestZ * harvestState.world.grid.width * harvestState.world.grid.depth + harvestCell] = 12;
   harvestState.world.drops.push({ id: 'test-competing-food', materialId: 21, cellId: harvestCell, quantity: 3, createdAtMonth: 0, sourceEventIds: [] });
-  const harvestContext = buildDecisionContexts(harvestState).find((context) => context.person.id === harvester.id);
+  const harvestContext = buildDecisionContexts(harvestState, harvestState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === harvester.id);
   assert.ok(harvestContext, '采收测试必须拥有决策上下文');
   const harvestOption = harvestContext.options.find((option) => option.id === `harvest:${harvestCell}`);
   assert.ok(harvestOption && harvestOption.target?.kind === 'voxel' && harvestOption.target.position.x === harvestX && harvestOption.target.position.y === harvestY, '成熟作物应产生具体体素目标的采收机会');
@@ -763,7 +779,8 @@ try {
   tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });
   const testPosition = { x: tentativeTechniqueState.people[0].position.cellId % tentativeTechniqueState.world.grid.width, y: Math.floor(tentativeTechniqueState.people[0].position.cellId / tentativeTechniqueState.world.grid.width), z: 0 };
   tentativeTechniqueState.world.past.push({ ...actionFact('test-combine', 0, tentativeTechniqueState.people[0].id, { kind: 'act', operation: 'combine', targets: [] }), diff: { position: testPosition, outputMaterialId: tentativeTechniqueState.world.grid.voxels[tentativeTechniqueState.people[0].position.cellId] } });
-  const tentativeContext = buildDecisionContexts(tentativeTechniqueState).find((context) => context.person.id === tentativeTechniqueState.people[0].id);
+  const tentativeContext = buildDecisionContexts(tentativeTechniqueState, tentativeTechniqueState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === tentativeTechniqueState.people[0].id);
   assert.equal(tentativeContext?.options.some((option) => option.id.startsWith('teach:')), false, '一次成功结合还不能直接传授为可靠技术');
   const verifyOption = tentativeContext?.options.find((option) => option.id.startsWith('verify-technique:'));
   assert.ok(verifyOption, '暂定技术应提供使用 attend 核验真实产物的机会');
@@ -851,7 +868,8 @@ try {
     const fireMaker = fireState.people.find((person) => person.id === fireMakerId);
     Object.assign(fireMaker.position, structuredClone(fireTestPosition));
     fireState.agreements = [];
-    const fireContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
+    const fireContext = buildDecisionContexts(fireState, fireState.clock.elapsedMonths + 1)
+      .find((context) => context.person.id === fireMakerId);
     const fireOption = fireContext?.options.find((option) => option.id.startsWith(attempt ? 'repeat-exert:' : 'try-exert:'));
     assert.ok(fireMaker && fireOption, '工具、纤维与邻格空气应产生 exert 物质试验机会');
     if (!attempt) assert.ok(!fireOption.summary.includes('火') && !fireOption.reason.includes('火'), '未知施力试验不得向模型泄露火产物');
@@ -885,7 +903,8 @@ try {
   const cook = fireState.people.find((person) => person.id === fireMakerId);
   Object.assign(cook.position, structuredClone(fireTestPosition));
   cook.inventory.push({ id: 'raw-food-for-cooking', materialId: 21, quantity: 1, sourceEventIds: [] });
-  const cookContext = buildDecisionContexts(fireState).find((context) => context.person.id === fireMakerId);
+  const cookContext = buildDecisionContexts(fireState, fireState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === fireMakerId);
   const cookOption = cookContext?.options.find((option) => option.id.startsWith('try-expose:')
     && option.nextAction.kind === 'act'
     && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'raw-food-for-cooking'));
@@ -927,12 +946,9 @@ try {
     sourceFactIds: ['teacher-trial'], actionEventIds: [], replanCount: 0,
   });
   teacher.activeIntentId = teachingIntentId;
-  teachingState.decisionBudget.credits = 0;
-  const taughtState = await stepSimulationAsync(teachingState, {
-    async decideAll(contexts) { return contexts.map(() => ({ kind: 'idle', reason: '开局批量不改写固定技术交流' })); },
-    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
-  });
-  const learnedBySpeech = taughtState.people.find((person) => person.id === learner.id)?.knowledge.find((fact) => fact.id === taughtTechniqueId);
+  const speechFact = executeActiveIntent(teachingState, teacher, 1, 1, 1, []);
+  assert.equal(speechFact?.status, 'completed', '固定技术交流应通过真实 intent 执行');
+  const learnedBySpeech = learner.knowledge.find((fact) => fact.id === taughtTechniqueId);
   assert.equal(learnedBySpeech?.summary, canonicalTechniqueSummary, '自然语言说法不能覆盖结构化技术事实的规范摘要');
   assert.ok((learnedBySpeech?.confidence ?? 100) < 55, '只听别人讲述不能直接获得可传授的可靠技术');
   assert.deepEqual(learnedBySpeech?.sourceEventIds.length, 1, '听者知识应来源于沟通事件，而不是伪装成亲历教师的实验');
@@ -944,7 +960,8 @@ try {
   directLearner.bornAtMonth = -12 * 12;
   placeWith(directLearner, directTeacher);
   directTeacher.knowledge.push({ id: taughtTechniqueId, kind: 'technique', summary: canonicalTechniqueSummary, confidence: 80, learnedAtMonth: 0, sourceEventIds: ['direct-teacher-trial'] });
-  const directContext = buildDecisionContexts(directTeachingState).find((context) => context.person.id === directTeacher.id);
+  const directContext = buildDecisionContexts(directTeachingState, directTeachingState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === directTeacher.id);
   const directTeachOption = directContext?.options.find((option) => option.id.startsWith('teach:')
     && option.target?.kind === 'person'
     && option.target.personId === directLearner.id
@@ -964,16 +981,8 @@ try {
     actionEventIds: [], replanCount: 0,
   });
   directTeacher.activeIntentId = directTeachingIntentId;
-  directTeachingState.decisionBudget.credits = 0;
-  directTeachingState = await stepSimulationAsync(directTeachingState, {
-    async decideAll(contexts) { return contexts.map(() => ({ kind: 'idle', reason: '不改写固定教导意图' })); },
-    takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
-  });
-  const reliablyTaught = directTeachingState.people.find((person) => person.id === directLearner.id)?.knowledge.find((fact) => fact.id === taughtTechniqueId);
-  const directTeachingEvent = directTeachingState.world.past.find((event) => event.kind === 'action'
-    && event.who === directTeacher.id
-    && event.action.kind === 'communicate'
-    && event.action.content.id.startsWith('teach:'));
+  const directTeachingEvent = executeActiveIntent(directTeachingState, directTeacher, 1, 1, 1, []);
+  const reliablyTaught = directLearner.knowledge.find((fact) => fact.id === taughtTechniqueId);
   assert.equal(reliablyTaught?.confidence, 60, '一次明确教导应让学习者可靠掌握同一技术');
   assert.ok(directTeachingEvent && reliablyTaught?.sourceEventIds.includes(directTeachingEvent.id), '教导所得知识必须引用真实教导事件');
 
@@ -1090,10 +1099,30 @@ try {
   containerState = runRecordOption(containerState, containerMakerId, storeOption, 'store-food-in-container');
   assert.equal(containerState.containers[0].inventory.find((stack) => stack.materialId === 21)?.quantity, 2, '存储必须由 person → container 的真实 transfer 改变持有者');
   assert.equal(containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 21)?.quantity, 1, '存入容器时必须从私人背包扣除相同数量');
-  const retrieveOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.id.startsWith(`retrieve-container:${placedContainer.id}:`) && option.goal.kind === 'inventory-at-least' && option.goal.materialId === 21);
-  containerState = runRecordOption(containerState, containerMakerId, retrieveOption, 'retrieve-food-from-container');
-  assert.equal(containerState.containers[0].inventory.find((stack) => stack.materialId === 21)?.quantity, 1, '取出容器物质必须减少同一内部物品堆');
-  assert.equal(containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 21)?.quantity, 2, '取出的物质必须重新进入操作者的私人背包');
+  assert.equal(buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.some((option) => (
+    option.id.startsWith(`retrieve-container:${placedContainer.id}:`)
+      && option.goal.kind === 'inventory-at-least'
+      && option.goal.materialId === 21
+  )), false, '普通决策不得为了 inventory+1 自造食物取出需求；急性饥饿只能走生存反射');
+  containerState.people.find((person) => person.id === containerMakerId)?.inventory.push({
+    id: 'test-container-stone', materialId: 24, quantity: 2, sourceEventIds: ['test-container-stone-source'],
+  });
+  const storeStoneOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => (
+    option.id.startsWith(`store-container:${placedContainer.id}:`)
+      && option.goal.kind === 'container-inventory-at-least'
+      && option.goal.materialId === 24
+  ));
+  containerState = runRecordOption(containerState, containerMakerId, storeStoneOption, 'store-stone-in-container');
+  const retrieveOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => (
+    option.id.startsWith(`retrieve-container:${placedContainer.id}:`)
+      && option.goal.kind === 'inventory-at-least'
+      && option.goal.materialId === 24
+  ));
+  containerState = runRecordOption(containerState, containerMakerId, retrieveOption, 'retrieve-stone-from-container');
+  assert.equal(containerState.containers[0].inventory.find((stack) => stack.materialId === 24), undefined,
+    '普通非食物取出仍必须减少同一内部物品堆');
+  assert.equal(containerState.people.find((person) => person.id === containerMakerId)?.inventory.find((stack) => stack.materialId === 24)?.quantity, 2,
+    '取出的非食物物质必须重新进入操作者的私人背包');
   const dismantleContainerOption = buildDecisionContexts(containerState).find((context) => context.person.id === containerMakerId)?.options.find((option) => option.id.startsWith('separate-material:recover-container'));
   containerState = runRecordOption(containerState, containerMakerId, dismantleContainerOption, 'dismantle-material-container');
   const containerVoxelIndex = containerPosition.z * containerState.world.grid.width * containerState.world.grid.depth + containerPosition.y * containerState.world.grid.width + containerPosition.x;
@@ -1373,7 +1402,8 @@ try {
   responder.position.z = separatedPosition.z;
   responder.position.previousCellId = separatedCell;
   responder.position.previousZ = separatedPosition.z;
-  const responseContext = buildDecisionContexts(responseState).find((context) => context.person.id === responder.id);
+  const responseContext = buildDecisionContexts(responseState, responseState.clock.elapsedMonths + 1)
+    .find((context) => context.person.id === responder.id);
   assert.deepEqual(new Set(responseContext?.options.map((option) => option.id.split(':')[0])), new Set(['accept-exchange', 'reject-exchange']), '收到可履行交换后只能先明确接受或拒绝');
   const acceptExchange = responseContext?.options.find((option) => option.id.startsWith('accept-exchange:'));
   assert.equal(acceptExchange?.nextAction.kind, 'move', '提议后分开时，应先连续追上提议者');

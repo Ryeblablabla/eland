@@ -290,6 +290,7 @@ export interface EvolutionReport {
   cookedFoodProduced: number;
   recordsCreated: number;
   recordUseShares: number;
+  recordUseAcquisitions: number;
   recordUseReads: number;
   recordUseExperiments: number;
   recordUseExperimentSuccesses: number;
@@ -300,6 +301,8 @@ export interface EvolutionReport {
   recordUseUnresolvedProjects: number;
   recordUseReaderMismatches: number;
   recordUseTechniqueMismatches: number;
+  recordUseAcquisitionSourceMismatches: number;
+  recordUseReadsWithoutAcquisition: number;
   recordUseExperimentsWithoutRead: number;
   recordUseProjectMismatches: number;
   recordUseUnresolvedActionEvents: number;
@@ -438,6 +441,7 @@ function observerBehaviorMetrics(state: SimulationState): {
 
 function recordUseMetrics(state: SimulationState): {
   recordUseShares: number;
+  recordUseAcquisitions: number;
   recordUseReads: number;
   recordUseExperiments: number;
   recordUseExperimentSuccesses: number;
@@ -448,6 +452,8 @@ function recordUseMetrics(state: SimulationState): {
   recordUseUnresolvedProjects: number;
   recordUseReaderMismatches: number;
   recordUseTechniqueMismatches: number;
+  recordUseAcquisitionSourceMismatches: number;
+  recordUseReadsWithoutAcquisition: number;
   recordUseExperimentsWithoutRead: number;
   recordUseProjectMismatches: number;
   recordUseUnresolvedActionEvents: number;
@@ -459,7 +465,7 @@ function recordUseMetrics(state: SimulationState): {
   recordUseExperimentOutputMismatches: number;
   recordUseExperimentConfidenceMismatches: number;
 } {
-  type RecordUseStage = 'share' | 'read' | 'experiment';
+  type RecordUseStage = 'share' | 'acquire' | 'read' | 'experiment';
   const rawState = state as unknown as {
     intents?: unknown;
     people?: unknown;
@@ -476,7 +482,7 @@ function recordUseMetrics(state: SimulationState): {
     typeof value === 'string' && value.length > 0 ? value : null
   );
   const stageValue = (value: unknown): RecordUseStage | null => (
-    value === 'share' || value === 'read' || value === 'experiment' ? value : null
+    value === 'share' || value === 'acquire' || value === 'read' || value === 'experiment' ? value : null
   );
   const intents = records(rawState.intents);
   const people = records(rawState.people);
@@ -516,6 +522,7 @@ function recordUseMetrics(state: SimulationState): {
   const projectMismatches = new Set<string>();
   const readerMismatches = new Set<string>();
   const techniqueMismatches = new Set<string>();
+  const acquisitionSourceMismatches = new Set<string>();
   const authorMismatches = new Set<string>();
   const payloadMismatches = new Set<string>();
   const codebookMismatches = new Set<string>();
@@ -551,7 +558,8 @@ function recordUseMetrics(state: SimulationState): {
 
   const recordUseDiffFields = [
     'recordUseBasisKey', 'recordUseStage', 'recordUseProjectId', 'recordUseRecordId',
-    'recordUseKnowledgeId', 'recordUseReaderId',
+    'recordUseKnowledgeId', 'recordUseReaderId', 'recordUseCarrierSourceKind',
+    'recordUseCarrierSourceId', 'recordUseAcquisitionRequired',
   ];
   const actions = events.flatMap((event, eventIndex) => {
     if (event.kind !== 'action') return [];
@@ -560,9 +568,12 @@ function recordUseMetrics(state: SimulationState): {
     const intent = intentId ? intentById.get(intentId) : undefined;
     const basis = objectRecord(intent?.recordUseBasis);
     const stage = stageValue(diff.recordUseStage);
-    const hasRecordUseMarker = recordUseDiffFields.some((field) => field in diff)
-      || basis !== null
-      || stringValue(intent?.recordUseStage) !== null;
+    const action = objectRecord(event.action);
+    const legacyIntentStage = stringValue(intent?.recordUseStage);
+    const legacyActionMatches = stringValue(basis?.version) === 'record-use-basis-v1'
+      && ((legacyIntentStage === 'share' && action?.kind === 'transfer')
+        || (legacyIntentStage === 'read-experiment' && (action?.kind === 'attend' || action?.kind === 'act')));
+    const hasRecordUseMarker = recordUseDiffFields.some((field) => field in diff) || legacyActionMatches;
     if (!hasRecordUseMarker) return [];
     const id = stringValue(event.id) ?? `#${eventIndex}`;
     const basisKey = stringValue(diff.recordUseBasisKey);
@@ -582,7 +593,7 @@ function recordUseMetrics(state: SimulationState): {
     if ((basis && readerId !== basisReaderId)
       || !readerId
       || !personIds.has(readerId)
-      || ((stage === 'read' || stage === 'experiment') && event.who !== readerId)) {
+      || ((stage === 'acquire' || stage === 'read' || stage === 'experiment') && event.who !== readerId)) {
       readerMismatches.add(id);
     }
     const recordId = stringValue(diff.recordUseRecordId);
@@ -606,6 +617,36 @@ function recordUseMetrics(state: SimulationState): {
         && knowledge?.kind === 'codebook'
         && Number(knowledge?.confidence) >= 55;
     })) codebookMismatches.add(id);
+    const basisVersion = stringValue(basis?.version);
+    const carrierSource = objectRecord(basis?.carrierSource);
+    const acquisitionRequired = basis?.acquisitionRequired === true;
+    if (stage === 'acquire') {
+      const action = objectRecord(event.action);
+      const from = objectRecord(action?.from);
+      const to = objectRecord(action?.to);
+      const expectedDropId = stringValue(carrierSource?.dropId);
+      const expectedCellId = Number(carrierSource?.cellId);
+      const expectedZ = Number(carrierSource?.z);
+      if (basisVersion !== 'record-use-basis-v2'
+        || !acquisitionRequired
+        || carrierSource?.kind !== 'ground'
+        || action?.kind !== 'transfer'
+        || from?.kind !== 'ground'
+        || to?.kind !== 'person'
+        || stringValue(action?.dropId) !== expectedDropId
+        || Number(from?.cellId) !== expectedCellId
+        || Number(from?.z) !== expectedZ
+        || stringValue(to?.personId) !== readerId
+        || stringValue(diff.recordUseCarrierSourceKind) !== 'ground'
+        || stringValue(diff.recordUseCarrierSourceId) !== expectedDropId
+        || Number(diff.recordUseCarrierSourceCellId) !== expectedCellId
+        || Number(diff.recordUseCarrierSourceZ) !== expectedZ
+        || diff.recordUseAcquisitionRequired !== true
+        || stringValue(diff.recordPayloadId) !== recordId
+        || event.status !== 'completed') {
+        acquisitionSourceMismatches.add(id);
+      }
+    }
     if (stage === 'read' && event.status === 'completed') {
       if (diff.understood !== true) readUnderstandingViolations.add(id);
       if (Number(diff.recordUseKnowledgeConfidenceAfter) > 54) readReliabilityViolations.add(id);
@@ -629,6 +670,7 @@ function recordUseMetrics(state: SimulationState): {
       basisKey,
       projectId,
       completed: event.status === 'completed',
+      acquisitionRequired,
       eventIndex,
     }];
   });
@@ -642,19 +684,51 @@ function recordUseMetrics(state: SimulationState): {
     || numberValue(left.event.actionTick, 0) - numberValue(right.event.actionTick, 0)
     || left.eventIndex - right.eventIndex
   ));
+  const completedAcquisitionBasisKeys = new Set<string>();
   const completedReadBasisKeys = new Set<string>();
   const readsBeforeExperiment = new Set<string>();
+  let recordUseReadsWithoutAcquisition = 0;
   let recordUseExperimentsWithoutRead = 0;
+  const passesCommonGuards = (action: typeof orderedActions[number]): boolean => Boolean(
+    action.basisKey
+    && action.projectId
+    && projectById.has(action.projectId)
+    && !projectMismatches.has(action.id)
+    && !readerMismatches.has(action.id)
+    && !techniqueMismatches.has(action.id)
+    && !authorMismatches.has(action.id)
+    && !payloadMismatches.has(action.id)
+    && !codebookMismatches.has(action.id),
+  );
   for (const action of orderedActions) {
+    if (action.stage === 'acquire'
+      && action.completed
+      && action.basisKey
+      && passesCommonGuards(action)
+      && !acquisitionSourceMismatches.has(action.id)) {
+      completedAcquisitionBasisKeys.add(action.basisKey);
+    }
+    if (action.stage === 'read'
+      && action.completed
+      && action.basisKey
+      && passesCommonGuards(action)
+      && !readUnderstandingViolations.has(action.id)
+      && !readReliabilityViolations.has(action.id)) {
+      if (action.acquisitionRequired && !completedAcquisitionBasisKeys.has(action.basisKey)) {
+        recordUseReadsWithoutAcquisition += 1;
+      } else {
+        completedReadBasisKeys.add(action.basisKey);
+      }
+    }
     if (action.stage === 'experiment') {
       if (!action.basisKey || !completedReadBasisKeys.has(action.basisKey)) {
         recordUseExperimentsWithoutRead += 1;
-      } else {
+      } else if (action.completed
+        && passesCommonGuards(action)
+        && !experimentOutputMismatches.has(action.id)
+        && !experimentConfidenceMismatches.has(action.id)) {
         readsBeforeExperiment.add(action.id);
       }
-    }
-    if (action.stage === 'read' && action.completed && action.basisKey) {
-      completedReadBasisKeys.add(action.basisKey);
     }
   }
 
@@ -690,6 +764,7 @@ function recordUseMetrics(state: SimulationState): {
 
   return {
     recordUseShares: actions.filter((action) => action.stage === 'share').length,
+    recordUseAcquisitions: actions.filter((action) => action.stage === 'acquire').length,
     recordUseReads: actions.filter((action) => action.stage === 'read').length,
     recordUseExperiments: actions.filter((action) => action.stage === 'experiment').length,
     recordUseExperimentSuccesses: actions.filter((action) => action.stage === 'experiment' && action.completed).length,
@@ -700,6 +775,8 @@ function recordUseMetrics(state: SimulationState): {
     recordUseUnresolvedProjects: unresolvedProjects.size,
     recordUseReaderMismatches: readerMismatches.size,
     recordUseTechniqueMismatches: techniqueMismatches.size,
+    recordUseAcquisitionSourceMismatches: acquisitionSourceMismatches.size,
+    recordUseReadsWithoutAcquisition,
     recordUseExperimentsWithoutRead,
     recordUseProjectMismatches: projectMismatches.size,
     recordUseUnresolvedActionEvents: unresolvedActionEvents.size,
@@ -3406,31 +3483,60 @@ function personIdsFrom(event: WorldEvent | undefined): string[] {
   return [];
 }
 
-function turningPoints(state: SimulationState): EvolutionTurningPoint[] {
-  const events = eventById(state);
-  const points: EvolutionTurningPoint[] = state.derived.milestones.map((milestone) => {
-    const evidence = milestone.evidenceEventIds.map((id) => events.get(id)).filter(Boolean) as WorldEvent[];
-    return {
+function latestCheckpointEventCount(previous: EvolutionPath | undefined, currentEventCount: number): number {
+  const eventCount = previous?.checkpoints.at(-1)?.eventCount;
+  if (typeof eventCount !== 'number' || !Number.isInteger(eventCount)) return 0;
+  return eventCount >= 0 && eventCount <= currentEventCount ? eventCount : 0;
+}
+
+function turningPoints(state: SimulationState, previous?: EvolutionPath): EvolutionTurningPoint[] {
+  const points: EvolutionTurningPoint[] = [...(previous?.turningPoints ?? [])];
+  const existingIds = new Set(points.map((point) => point.id));
+  const newMilestones = state.derived.milestones.filter((milestone) => !existingIds.has(`milestone:${milestone.id}`));
+  const events = state.world.past;
+  const fromEventIndex = latestCheckpointEventCount(previous, events.length);
+  const newMilestoneEvidenceIds = new Set(newMilestones.flatMap((milestone) => milestone.evidenceEventIds));
+  const newMilestoneEvidence = new Map<string, WorldEvent>();
+  for (let index = fromEventIndex; index < events.length; index += 1) {
+    const event = events[index];
+    if (newMilestoneEvidenceIds.has(event.id)) newMilestoneEvidence.set(event.id, event);
+    if (event.kind !== 'environment') continue;
+    const bornPersonId = typeof event.diff.bornPersonId === 'string' ? event.diff.bornPersonId : undefined;
+    const birthId = `birth:${event.id}`;
+    if (bornPersonId && !existingIds.has(birthId)) {
+      points.push({
+        id: birthId, month: event.atMonth, kind: 'birth', title: '新生命诞生', summary: event.result,
+        evidenceEventIds: [event.id], personIds: [bornPersonId, ...personIdsFrom(event)],
+      });
+      existingIds.add(birthId);
+    }
+    const deathId = `death:${event.id}`;
+    if (event.change === 'death' && !existingIds.has(deathId)) {
+      points.push({
+        id: deathId, month: event.atMonth, kind: 'death', title: '生命终止', summary: event.result,
+        evidenceEventIds: [event.id], personIds: personIdsFrom(event),
+      });
+      existingIds.add(deathId);
+    }
+  }
+  for (const milestone of newMilestones) {
+    const evidence = milestone.evidenceEventIds.map((id) => newMilestoneEvidence.get(id)).filter(Boolean) as WorldEvent[];
+    const evidenceMonth = evidence.length ? Math.min(...evidence.map((event) => event.atMonth)) : undefined;
+    const point: EvolutionTurningPoint = {
       id: `milestone:${milestone.id}`,
-      month: milestone.observedAtMonth ?? Math.min(...evidence.map((event) => event.atMonth), state.clock.elapsedMonths),
+      month: milestone.observedAtMonth ?? evidenceMonth ?? state.clock.elapsedMonths,
       kind: 'milestone',
       title: milestone.label,
       summary: milestone.note,
       evidenceEventIds: milestone.evidenceEventIds,
-      personIds: [...new Set(evidence.flatMap(personIdsFrom))],
+      personIds: [...new Set([
+        ...(milestone.participantIds ?? []),
+        ...(milestone.affectedPersonIds ?? []),
+        ...evidence.flatMap(personIdsFrom),
+      ])],
     };
-  });
-  for (const event of state.world.past) {
-    if (event.kind !== 'environment') continue;
-    const bornPersonId = typeof event.diff.bornPersonId === 'string' ? event.diff.bornPersonId : undefined;
-    if (bornPersonId) points.push({
-      id: `birth:${event.id}`, month: event.atMonth, kind: 'birth', title: '新生命诞生', summary: event.result,
-      evidenceEventIds: [event.id], personIds: [bornPersonId, ...personIdsFrom(event)],
-    });
-    if (event.change === 'death') points.push({
-      id: `death:${event.id}`, month: event.atMonth, kind: 'death', title: '生命终止', summary: event.result,
-      evidenceEventIds: [event.id], personIds: personIdsFrom(event),
-    });
+    points.push(point);
+    existingIds.add(point.id);
   }
   return points.sort((a, b) => a.month - b.month || a.id.localeCompare(b.id));
 }
@@ -3438,18 +3544,37 @@ function turningPoints(state: SimulationState): EvolutionTurningPoint[] {
 export function checkpointFor(
   state: SimulationState,
   usage: { inputTokens: number; outputTokens: number },
+  previous?: EvolutionCheckpoint,
 ): EvolutionCheckpoint {
   const through = state.clock.elapsedMonths;
+  const eventCount = state.world.past.length;
+  const canIncrement = previous !== undefined
+    && Number.isInteger(previous.eventCount)
+    && previous.eventCount >= 0
+    && previous.eventCount <= eventCount
+    && Number.isInteger(previous.ruleDecisions)
+    && previous.ruleDecisions >= 0
+    && Number.isInteger(previous.modelDecisions)
+    && previous.modelDecisions >= 0;
+  const fromEventIndex = canIncrement ? previous.eventCount : 0;
+  let ruleDecisions = canIncrement ? previous.ruleDecisions : 0;
+  let modelDecisions = canIncrement ? previous.modelDecisions : 0;
+  for (let index = fromEventIndex; index < eventCount; index += 1) {
+    const event = state.world.past[index];
+    if (event.kind !== 'decision') continue;
+    if (event.usedModel) modelDecisions += 1;
+    else ruleDecisions += 1;
+  }
   return {
     month: through,
-    eventCount: state.world.past.length,
+    eventCount,
     livingPeople: state.people.filter((person) => person.bornAtMonth <= through && (person.diedAtMonth === undefined || person.diedAtMonth > through)).length,
     totalPeople: state.people.length,
     stage: state.civilization.stage,
     civilizationIndex: structuredClone(state.civilization.civilizationIndex),
     milestoneIds: state.derived.milestones.map((milestone) => milestone.id),
-    ruleDecisions: state.world.past.filter((event) => event.kind === 'decision' && !event.usedModel).length,
-    modelDecisions: state.world.past.filter((event) => event.kind === 'decision' && event.usedModel).length,
+    ruleDecisions,
+    modelDecisions,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
   };
@@ -3479,7 +3604,7 @@ export function evolvePath(
     requestedEndMonth: input.requestedEndMonth,
     reachedMonth: state.clock.elapsedMonths,
     checkpoints,
-    turningPoints: turningPoints(state),
+    turningPoints: turningPoints(state, input.previous),
     ...(input.failure ? { failure: input.failure } : {}),
   };
 }

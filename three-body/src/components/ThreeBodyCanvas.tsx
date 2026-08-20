@@ -27,6 +27,7 @@ import {
   type SimSystem,
 } from '@/lib/threebody';
 import type { CosmosSnapshot } from '@/game/societyContract';
+import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
 
 export interface SimStats {
   resetToken: number;
@@ -65,7 +66,7 @@ interface Props {
   onStats?: (s: SimStats) => void;
   planetFocusEnabled?: boolean;              // 允许向内滚动自动聚焦行星
   onPlanetFocusChange?: (focused: boolean) => void;
-  onPlanetDive?: () => void;                 // 聚焦后继续滚轮放大越过阈值 → 请求俯冲进入人间
+  onPlanetDive?: () => void;                 // 聚焦后继续滚轮或双指放大越过阈值 → 请求俯冲进入人间
   exitFocusToken?: number;                   // 自增 = 退出聚焦，相机回星系质心
   selectedCelestial?: CelestialSelection;
   onSelectCelestial?: (selection: CelestialSelection) => void;
@@ -292,9 +293,14 @@ export default function ThreeBodyCanvas(props: Props) {
     const dbgPlanet = ((window as unknown as { __tbPlanet?: { x: number; y: number } }).__tbPlanet ??=
       { x: 0, y: 0 });
     const dbg = ((window as unknown as { __tbDebug?: Record<string, unknown> }).__tbDebug ??= {});
+    const divePinch = new PinchTransitionGesture('zoom-in');
     let canvasDown: { x: number; y: number } | null = null;
     const onFocusPointerDown = (ev: PointerEvent) => { canvasDown = { x: ev.clientX, y: ev.clientY }; };
     const onFocusPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch' && divePinch.consumeTapSuppression(ev.pointerId)) {
+        canvasDown = null;
+        return;
+      }
       if (!canvasDown || Math.hypot(ev.clientX - canvasDown.x, ev.clientY - canvasDown.y) >= 5) { canvasDown = null; return; }
       canvasDown = null;
       const p = propsRef.current;
@@ -357,6 +363,43 @@ export default function ThreeBodyCanvas(props: Props) {
         p.onPlanetFocusChange?.(true);
       }
     };
+    const onDivePinchPointerDown = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      divePinch.pointerDown(ev.pointerId, ev.clientX, ev.clientY);
+    };
+    const onDivePinchPointerMove = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      const update = divePinch.pointerMove(ev.pointerId, ev.clientX, ev.clientY);
+      const p = propsRef.current;
+      if (!p.planetFocusEnabled || update.progress <= 0) return;
+
+      focus.lastWheelIn = performance.now();
+      if (!focus.active) {
+        focus.active = true;
+        focus.dove = false;
+        focus.diveHold = 0;
+        focus.justActivated = true;
+        p.onPlanetFocusChange?.(true);
+      }
+      if (update.triggered && !focus.dove) {
+        focus.dove = true;
+        focus.diveHold = 0;
+        p.onPlanetDive?.();
+      }
+    };
+    const onDivePinchPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch') divePinch.pointerUp(ev.pointerId);
+    };
+    const onDivePinchPointerCancel = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      divePinch.pointerCancel(ev.pointerId);
+      divePinch.consumeTapSuppression(ev.pointerId);
+      canvasDown = null;
+    };
+    canvas.addEventListener('pointerdown', onDivePinchPointerDown);
+    canvas.addEventListener('pointermove', onDivePinchPointerMove);
+    canvas.addEventListener('pointerup', onDivePinchPointerUp);
+    canvas.addEventListener('pointercancel', onDivePinchPointerCancel);
     canvas.addEventListener('pointerdown', onFocusPointerDown);
     canvas.addEventListener('pointerup', onFocusPointerUp);
     canvas.addEventListener('dblclick', onFocusDblClick);
@@ -963,6 +1006,10 @@ export default function ThreeBodyCanvas(props: Props) {
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       ro.disconnect();
+      canvas.removeEventListener('pointerdown', onDivePinchPointerDown);
+      canvas.removeEventListener('pointermove', onDivePinchPointerMove);
+      canvas.removeEventListener('pointerup', onDivePinchPointerUp);
+      canvas.removeEventListener('pointercancel', onDivePinchPointerCancel);
       canvas.removeEventListener('pointerdown', onFocusPointerDown);
       canvas.removeEventListener('pointerup', onFocusPointerUp);
       canvas.removeEventListener('dblclick', onFocusDblClick);

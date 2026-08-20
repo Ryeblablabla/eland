@@ -11,12 +11,21 @@ const bundlePath = path.join(temporaryDirectory, 'causal-development.mjs');
 
 try {
   const entry = `
-    export { createInitialState } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/monthly-simulation.ts'))};
+    export {
+      bindIntentProjectTarget,
+      createInitialState,
+      executeActiveIntent,
+      shouldWaitForSameMonthSharedProject,
+      startIntent,
+    } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/monthly-simulation.ts'))};
     export {
       buildProjectOptions,
+      ensureProject,
       projectFunctionSatisfied,
+      recordProjectAction,
       recompileProjectNextAction,
     } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
+    export { executePrimitiveAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-executor.ts'))};
     export { buildProjectPressureBasis } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-pressure.ts'))};
     export { buildLocalMaterialEvidence } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/local-material-evidence.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project.ts'))};
@@ -36,6 +45,7 @@ try {
 
   const {
     Material,
+    bindIntentProjectTarget,
     buildProjectOptions,
     buildLocalMaterialEvidence,
     buildProjectPressureBasis,
@@ -44,10 +54,16 @@ try {
     cellY,
     cellsInRadius,
     createInitialState,
+    ensureProject,
+    executeActiveIntent,
+    executePrimitiveAction,
     instantiateProject,
     projectFunctionSatisfied,
+    recordProjectAction,
     recompileProjectNextAction,
     setVoxel,
+    shouldWaitForSameMonthSharedProject,
+    startIntent,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   function createFixture(seed) {
@@ -269,6 +285,517 @@ try {
     const soloOptions = buildProjectOptions(state, actor, visibleCells, [], []);
     assert.ok(soloOptions.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
       '本人有压力和材料时，制作工具不能要求旁边先出现更多人');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9620);
+    actor.inventory.push(
+      { id: 'accessible-tool-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['source:accessible-tool-wood'] },
+      { id: 'accessible-tool-rope', materialId: Material.Rope, quantity: 1, sourceEventIds: ['source:accessible-tool-rope'] },
+    );
+    const other = structuredClone(actor);
+    other.id = 'observed-tool-holder';
+    other.geneticParents = [];
+    other.body.nutrition = 100;
+    other.inventory = [{
+      id: 'observed-other-tool', materialId: Material.WoodTool, quantity: 1, sourceEventIds: ['source:observed-other-tool'],
+    }];
+    state.people = [actor, other];
+    const visibleCells = cellsInRadius(center, 8);
+    const withObservedOtherTool = buildProjectOptions(state, actor, visibleCells, [], [other]);
+    assert.ok(withObservedOtherTool.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '看见别人背包里的生产工具不得冒充本人当前可用能力');
+
+    actor.inventory.push({
+      id: 'accessible-own-tool', materialId: Material.WoodTool, quantity: 1, sourceEventIds: ['source:accessible-own-tool'],
+    });
+    const withOwnTool = buildProjectOptions(state, actor, visibleCells, [], [other]);
+    assert.ok(!withOwnTool.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '本人真正持有生产工具时必须抑制重复工具项目');
+
+    actor.inventory = actor.inventory.filter((stack) => stack.id !== 'accessible-own-tool');
+    const visibleToolDrop = {
+      id: 'accessible-visible-tool-drop', materialId: Material.WoodTool, quantity: 1,
+      cellId: center, z: actor.position.z, createdAtMonth: 0,
+      sourceEventIds: ['source:accessible-visible-tool-drop'],
+    };
+    state.world.drops = [visibleToolDrop];
+    const withVisibleToolDrop = buildProjectOptions(state, actor, visibleCells, [visibleToolDrop], []);
+    assert.ok(!withVisibleToolDrop.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '本人可合法拾取的可见地面工具应视为当前可用能力');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9621);
+    actor.inventory.push(
+      { id: 'granary-surplus-food', materialId: Material.Food, quantity: 10, sourceEventIds: ['source:granary-surplus-food'] },
+      { id: 'granary-building-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['source:granary-building-wood'] },
+    );
+    const other = structuredClone(actor);
+    other.id = 'carried-granary-holder';
+    other.geneticParents = [];
+    other.body.nutrition = 100;
+    other.inventory = [{
+      id: 'carried-granary-component', materialId: Material.Granary, quantity: 1,
+      sourceEventIds: ['source:carried-granary-component'],
+    }];
+    state.people = [actor, other];
+    const visibleCells = cellsInRadius(center, 8);
+    const withCarriedGranary = buildProjectOptions(state, actor, visibleCells, [], [other]);
+    assert.ok(withCarriedGranary.some((option) => option.projectProposal?.desiredFunction === 'reserve-storage'),
+      '别人背包里未落地的谷仓构件不得抑制当地储备项目');
+
+    const facilityCell = cellId(cellX(center) + 1, cellY(center));
+    setVoxel(state.world.grid, cellX(facilityCell), cellY(facilityCell), actor.position.z, Material.Granary);
+    const withPlacedGranary = buildProjectOptions(state, actor, visibleCells, [], [other]);
+    assert.ok(!withPlacedGranary.some((option) => option.projectProposal?.desiredFunction === 'reserve-storage'),
+      '世界中真正落地的谷仓才应抑制重复储备项目');
+
+    setVoxel(state.world.grid, cellX(facilityCell), cellY(facilityCell), actor.position.z, Material.Air);
+    actor.knownPlaces.push({
+      id: 'stale-remembered-granary',
+      materialId: Material.Granary,
+      position: { x: cellX(facilityCell), y: cellY(facilityCell), z: actor.position.z },
+      learnedAtMonth: 0,
+      lastConfirmedAtMonth: 0,
+      sourceEventIds: ['source:stale-remembered-granary'],
+    });
+    const withStaleGranaryMemory = buildProjectOptions(state, actor, visibleCells, [], [other]);
+    assert.ok(withStaleGranaryMemory.some((option) => option.projectProposal?.desiredFunction === 'reserve-storage'),
+      '已与当前世界体素不符的过期地点记忆不得冒充落地谷仓');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9622);
+    actor.inventory = [{
+      id: 'kiln-pressure-clay', materialId: Material.Clay, quantity: 1, sourceEventIds: ['source:kiln-pressure-clay'],
+    }];
+    const other = structuredClone(actor);
+    other.id = 'carried-kiln-holder';
+    other.geneticParents = [];
+    other.inventory = [{
+      id: 'carried-kiln-component', materialId: Material.Kiln, quantity: 1, sourceEventIds: ['source:carried-kiln-component'],
+    }];
+    state.people = [actor, other];
+    const visibleCells = cellsInRadius(center, 8);
+    const view = { visibleCells, visibleDrops: [], visiblePeople: [other] };
+    const carried = buildProjectPressureBasis(state, actor, {
+      need: 'high-heat-capability', desiredFunction: 'high-heat-processing', beneficiaryIds: [actor.id], createdAtMonth: 1,
+    }, 1, view);
+    assert.ok(carried.pressure >= 42, '别人携带窑炉构件时本人的高温能力压力仍应成立');
+    assert.ok(carried.reasonKeys.includes('high-heat-site-absent'),
+      '携带中的设施构件必须记为高温工作地缺失');
+
+    const kilnCell = cellId(cellX(center) + 1, cellY(center));
+    setVoxel(state.world.grid, cellX(kilnCell), cellY(kilnCell), actor.position.z, Material.Kiln);
+    const placed = buildProjectPressureBasis(state, actor, {
+      need: 'high-heat-capability', desiredFunction: 'high-heat-processing', beneficiaryIds: [actor.id], createdAtMonth: 1,
+    }, 1, view);
+    assert.ok(placed.pressure < carried.pressure, '只有真正落地的窑炉才应降低高温能力压力');
+    assert.ok(placed.reasonKeys.includes('high-heat-site-present'),
+      '落地窑炉必须留下可回放的工作地存在证据');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9610);
+    actor.inventory.push(
+      { id: 'local-tool-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['source:local-tool-wood'] },
+      { id: 'local-tool-rope', materialId: Material.Rope, quantity: 1, sourceEventIds: ['source:local-tool-rope'] },
+    );
+    const visibleCells = cellsInRadius(center, 8);
+    const withoutRemote = buildProjectOptions(state, actor, visibleCells, [], []);
+    assert.ok(withoutRemote.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '远方对照夹具必须先能形成真实的本地工具项目');
+    const remoteSite = cellId(70, 40);
+    state.projects = [instantiateProject({
+      id: 'unrelated-remote-tool-project',
+      kind: 'production',
+      need: 'production-efficiency',
+      desiredFunction: 'efficient-production',
+      summary: '远方陌生人的工具项目',
+      ownerId: 'unrelated-remote-owner',
+      beneficiaryIds: ['unrelated-remote-owner'],
+      triggerFactIds: ['remote-tool-pressure'],
+      pressure: 80,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+      site: { cellId: remoteSite, z: 1 },
+    })];
+    const withRemote = buildProjectOptions(state, actor, visibleCells, [], []);
+    assert.deepEqual(withRemote, withoutRemote,
+      '视野外且无人员、受益者、贡献或请求关联的同功能项目不得改变本地 options');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9611);
+    actor.inventory = [{ id: 'local-building-stone', materialId: Material.Stone, quantity: 2, sourceEventIds: ['source:local-building-stone'] }];
+    const visibleProgress = instantiateProject({
+      id: 'visible-progress-shelter',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '眼前已有进展的遮蔽结构',
+      ownerId: 'visible-builder',
+      beneficiaryIds: ['visible-builder'],
+      triggerFactIds: ['visible-progress-fact'],
+      pressure: 80,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+      site: { cellId: center, z: actor.position.z },
+    });
+    visibleProgress.actionEventIds = ['visible-progress-fact'];
+    state.projects = [visibleProgress];
+    const options = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    assert.equal(options[0]?.projectId, visibleProgress.id,
+      '陌生人的 construction 只有在 site 可见且已有真实 action 时才应优先接续');
+    assert.equal(options[0]?.projectProposal, undefined,
+      '本地可见且已有进展的同功能 construction 不得再复制新项目');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9612);
+    actor.inventory = [{ id: 'known-project-stone', materialId: Material.Stone, quantity: 1, sourceEventIds: ['source:known-project-stone'] }];
+    const remoteSite = cellId(70, 40);
+    const knownProject = instantiateProject({
+      id: 'known-beneficiary-shelter',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '本人已是受益者的远处遮蔽项目',
+      ownerId: 'known-builder',
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['known-project-benefit'],
+      pressure: 70,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+      site: { cellId: remoteSite, z: actor.position.z },
+    });
+    state.projects = [knownProject];
+    const options = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    assert.equal(options[0]?.projectId, knownProject.id,
+      '本人作为 beneficiary 已知的 construction 不要求 site 可见或先有进展，应优先现有项目');
+    assert.equal(options[0]?.nextAction.kind, 'move', '远处已知项目应产生返回固定 site 的合法接续行动');
+    assert.equal(options[0]?.projectProposal, undefined, '接续已知项目时不得创建新的 project proposal');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9613);
+    actor.inventory = [
+      { id: 'kiln-clay', materialId: Material.Clay, quantity: 1, sourceEventIds: ['source:kiln-clay'] },
+      { id: 'kiln-stone', materialId: Material.Stone, quantity: 1, sourceEventIds: ['source:kiln-stone'] },
+    ];
+    const options = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    const kiln = options.find((option) => option.projectProposal?.desiredFunction === 'high-heat-processing');
+    assert.ok(kiln, '固定 construction site 夹具必须形成高温设施项目');
+    assert.deepEqual(kiln.projectProposal.site, { cellId: actor.position.cellId, z: actor.position.z },
+      '未显式给 site 的 construction 必须在提案时冻结到提案者当前位置');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9614);
+    const roofZ = actor.position.z + 2;
+    setVoxel(state.world.grid, cellX(center), cellY(center), roofZ, Material.Stone);
+    const wallCell = cellId(cellX(center) + 1, cellY(center));
+    setVoxel(state.world.grid, cellX(wallCell), cellY(wallCell), actor.position.z, Material.Stone);
+    const exposureEvent = {
+      id: 'same-site-adaptation-heat-source',
+      kind: 'environment',
+      atMonth: 0,
+      orderInMonth: 0,
+      cellId: center,
+      change: 'condition',
+      who: actor.id,
+      result: `${actor.name}在当前住所内受到炎热伤害`,
+      diff: { condition: 'heat', stage: 2 },
+    };
+    const progressEvent = actionFact(
+      { ...actor, id: 'existing-shelter-builder' },
+      'same-site-existing-shelter-progress',
+      'combine',
+      { outputMaterialId: Material.Stone, position: { x: cellX(wallCell), y: cellY(wallCell), z: actor.position.z } },
+      wallCell,
+    );
+    state.world.past.push(exposureEvent, progressEvent);
+    actor.conditions = [{
+      id: 'same-site-adaptation-heat',
+      kind: 'heat',
+      stage: 2,
+      sinceMonth: 0,
+      sourceEventIds: [exposureEvent.id],
+    }];
+    actor.inventory = [{
+      id: 'same-site-adaptation-stone',
+      materialId: Material.Stone,
+      quantity: 2,
+      sourceEventIds: ['source:same-site-adaptation-stone'],
+    }];
+    const withoutExisting = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    assert.ok(withoutExisting.some((option) => option.projectProposal?.shelterRequirement),
+      '同址去重夹具必须先由真实 environment condition source 形成 shelter adaptation');
+    const existing = instantiateProject({
+      id: 'same-site-existing-weather-shelter',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '当前住所已有进展的遮蔽项目',
+      ownerId: 'existing-shelter-builder',
+      beneficiaryIds: ['existing-shelter-beneficiary'],
+      triggerFactIds: [progressEvent.id],
+      pressure: 80,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+      site: { cellId: center, z: actor.position.z },
+    });
+    existing.actionEventIds = [progressEvent.id];
+    state.projects = [existing];
+
+    const options = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    assert.equal(options[0]?.projectId, existing.id,
+      '真实住所暴露触发适应需求时，同址 active 遮蔽项目必须先被接续');
+    assert.equal(options[0]?.projectProposal, undefined,
+      '同址 active 遮蔽项目存在时不得另建 shelter adaptation proposal');
+
+    actor.inventory = [];
+    const withoutLegalStep = buildProjectOptions(state, actor, cellsInRadius(center, 8), [], []);
+    assert.ok(!withoutLegalStep.some((option) => option.projectProposal?.desiredFunction === 'weather-shelter'),
+      '局部重叠项目暂时没有合法步骤时，也不得另建重复 shelter adaptation');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9615);
+    const neighbor = structuredClone(actor);
+    neighbor.id = 'same-site-second-owner';
+    neighbor.inventory = [{
+      id: 'same-site-second-owner-stone',
+      materialId: Material.Stone,
+      quantity: 2,
+      sourceEventIds: ['source:same-site-second-owner-stone'],
+    }];
+    state.people = [actor, neighbor];
+    const visibleCells = cellsInRadius(center, 8);
+    const firstProposal = {
+      id: 'same-site-first-proposal',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '同一决策刻度先提交的住所项目',
+      ownerId: actor.id,
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['same-site-first-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: center, z: actor.position.z },
+    };
+    const secondProposal = {
+      id: 'same-site-second-proposal',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '同一决策刻度后提交的住所项目',
+      ownerId: neighbor.id,
+      beneficiaryIds: [neighbor.id],
+      triggerFactIds: ['same-site-second-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: center, z: neighbor.position.z },
+    };
+    const first = ensureProject(state, firstProposal, { person: actor, visibleCells, atMonth: 1 });
+    const second = ensureProject(state, secondProposal, { person: neighbor, visibleCells, atMonth: 1 });
+    assert.equal(second.id, first.id,
+      '同一决策刻度预先形成的同址同功能 proposal 必须在提交边界链接先提交项目');
+    assert.equal(state.projects.length, 1,
+      '同址同功能 proposal 顺序提交后只能保留一个权威 project');
+    assert.deepEqual(first.beneficiaryIds, [actor.id, neighbor.id],
+      '提交边界合并必须保留两个已被各自 proposal 选择的受益者');
+    assert.deepEqual(first.triggerFactIds, ['same-site-first-pressure', 'same-site-second-pressure'],
+      '提交边界合并必须保留第二个 proposal 的真实触发事实');
+    assert.equal(first.ownerId, actor.id, '合并不能转移既有项目 owner');
+    assert.equal(first.pressure, 80, '合并不能用第二个 proposal 覆盖既有项目 pressure');
+    assert.deepEqual(first.site, { cellId: center, z: actor.position.z },
+      '合并不能用第二个 proposal 改写既有项目 site');
+    assert.ok(!first.contributorIds.includes(neighbor.id),
+      '只形成 proposal 不能预登记第二人为 contributor');
+    const mergedStep = recompileProjectNextAction(state, neighbor, first.id);
+    assert.ok(mergedStep,
+      '第二个提案者成为显式 beneficiary 后，必须能针对 existing project 重编译合法步骤');
+    const mergedFact = executePrimitiveAction(state, neighbor, mergedStep, 1, 1, {
+      cause: 'intent',
+      actionTick: 1,
+    });
+    assert.equal(mergedFact.status, 'completed', mergedFact.result);
+    state.world.past.push(mergedFact);
+    recordProjectAction(state, first.id, mergedFact);
+    assert.ok(first.contributorIds.includes(neighbor.id),
+      '第二人只有提交真实完成行动后才能成为 contributor');
+    const coalescedIntentTarget = bindIntentProjectTarget({
+      kind: 'project-completed',
+      projectId: 'same-site-second-proposal',
+    }, second);
+    assert.equal(coalescedIntentTarget.projectId, first.id,
+      '合并后的 intent.projectId 必须指向提交边界返回的 existing project');
+    assert.equal(coalescedIntentTarget.goal.kind === 'project-completed'
+      ? coalescedIntentTarget.goal.projectId
+      : undefined, first.id,
+      '合并后的 project-completed goal 必须与 intent.projectId 一起重绑定 existing project');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9616);
+    const remoteOwner = structuredClone(actor);
+    remoteOwner.id = 'remote-second-owner';
+    const remoteSite = cellId(70, 40);
+    remoteOwner.position = {
+      cellId: remoteSite,
+      z: 1,
+      previousCellId: remoteSite,
+      previousZ: 1,
+      lastPath: [],
+      tickPath: [remoteSite],
+    };
+    state.people = [actor, remoteOwner];
+    const first = ensureProject(state, {
+      id: 'local-first-proposal',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '本地住所项目',
+      ownerId: actor.id,
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['local-first-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: center, z: actor.position.z },
+    }, { person: actor, visibleCells: cellsInRadius(center, 8), atMonth: 1 });
+    const remote = ensureProject(state, {
+      id: 'remote-second-proposal',
+      kind: 'construction',
+      need: 'shelter-capacity',
+      desiredFunction: 'weather-shelter',
+      summary: '远方无关联住所项目',
+      ownerId: remoteOwner.id,
+      beneficiaryIds: [remoteOwner.id],
+      triggerFactIds: ['remote-second-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: remoteSite, z: remoteOwner.position.z },
+    }, { person: remoteOwner, visibleCells: cellsInRadius(remoteSite, 8), atMonth: 1 });
+    assert.notEqual(remote.id, first.id,
+      '视野外且无受益、贡献或请求关联的远方同功能 proposal 不得在提交边界合并');
+    assert.equal(state.projects.length, 2,
+      '远方无关联 proposal 必须保留独立 project');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9617);
+    const participant = structuredClone(actor);
+    participant.id = 'same-month-shared-project-participant';
+    state.people = [actor, participant];
+    const project = instantiateProject({
+      id: 'same-month-existing-project',
+      kind: 'production',
+      need: 'alloy-capability',
+      desiredFunction: 'copper-smelting',
+      summary: '等待 owner 当月既有步骤的共享项目',
+      ownerId: actor.id,
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['same-month-existing-project-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: center, z: actor.position.z },
+    });
+    state.projects = [project];
+    const proposal = {
+      id: 'same-month-coalesced-proposal',
+      kind: 'production',
+      need: 'alloy-capability',
+      desiredFunction: 'copper-smelting',
+      summary: '同月形成但应合并的冶炼项目',
+      ownerId: participant.id,
+      beneficiaryIds: [participant.id],
+      triggerFactIds: ['same-month-coalesced-pressure'],
+      pressure: 80,
+      createdAtMonth: 1,
+      reviewAtMonth: 24,
+      site: { cellId: center, z: participant.position.z },
+    };
+    const staleTarget = cellId(cellX(center) - 4, cellY(center));
+    const staleNextAction = { kind: 'move', toCellId: staleTarget, toZ: participant.position.z };
+    const optionId = 'project:same-month-coalesced-proposal:stale-next-action';
+    const intent = startIntent(state, participant, {
+      state,
+      person: participant,
+      visibleCells: cellsInRadius(center, 8),
+      visiblePeople: [actor],
+      visibleDrops: [],
+      visibleAnimals: [],
+      options: [{
+        id: optionId,
+        summary: '提交同址冶炼项目并沿旧路线行动',
+        reason: '提交前规划快照仍指向自己的 proposal',
+        goal: { kind: 'project-completed', projectId: proposal.id },
+        nextAction: staleNextAction,
+        estimatedDuration: 'several-months',
+        sourceFactIds: [...proposal.triggerFactIds],
+        domain: 'strategic',
+        projectProposal: proposal,
+      }],
+      followUpOptions: [],
+    }, optionId, undefined, 'same-month-coalesced-decision', 1);
+    assert.ok(intent, '提交边界等待回归必须创建 linked intent');
+    assert.equal(state.projects.length, 1, '同址同功能 proposal 必须链接 existing project');
+    assert.equal(intent.projectId, project.id, 'coalesced intent 必须重绑定 existing project');
+    assert.equal(intent.goal.kind === 'project-completed' ? intent.goal.projectId : undefined, project.id,
+      'coalesced intent goal 必须与 existing project 保持一致');
+    assert.equal(intent.openingAction, undefined,
+      'coalesced proposal 的旧 nextAction 不得变成 opening action');
+    assert.deepEqual(intent.actionEventIds, [], '提交合并本身不得伪造项目 action');
+    assert.ok(project.beneficiaryIds.includes(participant.id),
+      'coalesced proposal 的 beneficiary 必须继续并入 existing project');
+    assert.ok(project.triggerFactIds.includes('same-month-coalesced-pressure'),
+      'coalesced proposal 的 trigger fact 必须继续并入 existing project');
+    const positionBeforeWait = structuredClone(participant.position);
+
+    assert.equal(shouldWaitForSameMonthSharedProject(intent, project, participant.id, 1), true,
+      '非 owner 的共享项目 intent 在创建月且项目仍 active 时应等待本月既有步骤');
+    assert.equal(shouldWaitForSameMonthSharedProject(intent, project, actor.id, 1), false,
+      'project owner 无步骤时不得套用共享项目等待语义');
+    assert.equal(shouldWaitForSameMonthSharedProject(intent, project, participant.id, 2), false,
+      '共享项目等待只允许发生在 intent 创建月');
+
+    const waitResult = executeActiveIntent(state, participant, 1, 1, 1, []);
+    assert.equal(waitResult, null, '同月共享项目暂无步骤时不应伪造 action fact');
+    assert.equal(intent.status, 'active', '同月等待不得把共享项目 intent 标记 blocked');
+    assert.equal(participant.activeIntentId, intent.id, '同月等待必须保留 active intent 供后续 tick 重编译');
+    assert.equal(intent.replanCount, 0, '同月等待不是失败重规划');
+    assert.deepEqual(participant.position, positionBeforeWait,
+      '同月等待不得执行 coalesced proposal 的旧 nextAction 或改变人物位置');
+    assert.deepEqual(intent.actionEventIds, [],
+      '同月等待 existing project 时不得把旧 proposal 路线记成项目行动');
+    assert.match(participant.currentActionText, /等待项目本月已有步骤/,
+      '同月等待必须留下明确且非终态的当前动作说明');
+
+    const nextMonthState = structuredClone(state);
+    const nextMonthParticipant = nextMonthState.people.find((person) => person.id === participant.id);
+    const nextMonthIntent = nextMonthState.intents.find((candidate) => candidate.id === intent.id);
+    assert.ok(nextMonthParticipant && nextMonthIntent, '次月阻塞回归必须保留共享项目参与者和 intent');
+    executeActiveIntent(nextMonthState, nextMonthParticipant, 2, 1, 1, []);
+    assert.equal(nextMonthIntent.status, 'blocked',
+      '创建月结束后仍无合法 step 必须回到原有 blocked 语义');
+    assert.equal(nextMonthParticipant.activeIntentId, undefined,
+      '次月确认无步骤后必须释放 active intent');
+
+    project.status = 'completed';
+    project.completedAtMonth = 1;
+    executeActiveIntent(state, participant, 1, 2, 2, []);
+    assert.equal(intent.status, 'completed',
+      '等待期间 linked project 随后完成时，project-completed goal 必须完成 intent');
+    assert.equal(participant.activeIntentId, undefined,
+      'linked project 完成后必须释放等待中的 active intent');
   }
 
   {

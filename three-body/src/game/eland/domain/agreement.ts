@@ -1,5 +1,5 @@
 import type { PrimitiveAction, SocialProposal } from './action';
-import type { ActionFact, AgreementFact, SimulationState } from './model';
+import type { ActionFact, AgreementFact, SimulationState, WorldEvent } from './model';
 import type { PersonId } from './person';
 import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
@@ -8,6 +8,21 @@ import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
+
+export interface ResponseDeadlineSuspensionFact {
+  kind: 'pause' | 'resume';
+  responderId: PersonId;
+  hibernationConditionId: string;
+  atMonth: number;
+  /**
+   * The first month whose response clock is frozen.  This can predate the
+   * observation fact when an older save is restored with an episode already
+   * in progress.
+   */
+  effectiveFromMonth?: number;
+  eventId: string;
+  sourceEventIds: string[];
+}
 
 export interface Agreement {
   id: string;
@@ -34,6 +49,40 @@ export interface Agreement {
   lastReproductionAttemptAtMonth?: number;
   coLocatedMonths: number;
   sourceEventIds: string[];
+  /** Append-only clock facts; the proposal's original acceptByMonth is immutable. */
+  responseDeadlineSuspensions?: ResponseDeadlineSuspensionFact[];
+}
+
+function responseDeadlineSuspensionState(
+  agreement: Agreement,
+  responderId: PersonId,
+): { extensionMonths: number; openConditionIds: Set<string> } {
+  const pausedAtByCondition = new Map<string, number>();
+  let extensionMonths = 0;
+  for (const fact of agreement.responseDeadlineSuspensions ?? []) {
+    if (fact.responderId !== responderId) continue;
+    if (fact.kind === 'pause') {
+      if (!pausedAtByCondition.has(fact.hibernationConditionId)) {
+        pausedAtByCondition.set(
+          fact.hibernationConditionId,
+          fact.effectiveFromMonth ?? fact.atMonth,
+        );
+      }
+      continue;
+    }
+    const pausedAtMonth = pausedAtByCondition.get(fact.hibernationConditionId);
+    if (pausedAtMonth === undefined) continue;
+    extensionMonths += Math.max(0, fact.atMonth - pausedAtMonth);
+    pausedAtByCondition.delete(fact.hibernationConditionId);
+  }
+  return { extensionMonths, openConditionIds: new Set(pausedAtByCondition.keys()) };
+}
+
+export function agreementResponseDeadline(agreement: Agreement, responderId: PersonId): number {
+  const suspension = responseDeadlineSuspensionState(agreement, responderId);
+  return suspension.openConditionIds.size > 0
+    ? Number.POSITIVE_INFINITY
+    : agreement.acceptByMonth + suspension.extensionMonths;
 }
 
 function parties(proposal: SocialProposal): { proposerId: PersonId; responderId: PersonId; requiredResponderIds: PersonId[] } {
@@ -215,7 +264,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       || !agreement.requiredResponderIds.includes(fact.who)
       || agreement.acceptedByPersonIds.includes(fact.who)
       || agreement.rejectedByPersonIds.includes(fact.who)
-      || fact.atMonth > agreement.acceptByMonth) return;
+      || fact.atMonth > agreementResponseDeadline(agreement, fact.who)) return;
     agreement.responseEventId = fact.id;
     agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
     if (content.kind === 'accept') {
@@ -294,18 +343,120 @@ function agreementFact(agreement: Agreement, atMonth: number, orderInMonth: numb
   };
 }
 
+function appendResponseDeadlineSuspensionFact(
+  agreement: Agreement,
+  responderId: PersonId,
+  hibernationConditionId: string,
+  kind: ResponseDeadlineSuspensionFact['kind'],
+  atMonth: number,
+  orderInMonth: number,
+  cellId: number,
+  sourceEventIds: string[],
+  effectiveFromMonth?: number,
+): AgreementFact {
+  const change = kind === 'pause' ? 'response-deadline-paused' : 'response-deadline-resumed';
+  const eventId = `e-${atMonth}-agreement-${change}-${agreement.id}-${responderId}-${hibernationConditionId}`;
+  agreement.responseDeadlineSuspensions ??= [];
+  agreement.responseDeadlineSuspensions.push({
+    kind,
+    responderId,
+    hibernationConditionId,
+    atMonth,
+    effectiveFromMonth,
+    eventId,
+    sourceEventIds: [...new Set(sourceEventIds)],
+  });
+  agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, eventId])];
+  return {
+    id: eventId,
+    kind: 'agreement',
+    atMonth,
+    orderInMonth,
+    cellId,
+    agreementId: agreement.id,
+    change,
+    partyIds: [...agreement.partyIds],
+    responderId,
+    hibernationConditionId,
+    effectiveFromMonth,
+    sourceEventIds: [...new Set(sourceEventIds)],
+    result: kind === 'pause'
+      ? '一名必要响应者因脱水休眠暂停了自己的回应期限'
+      : '一名必要响应者结束脱水休眠，自己的回应期限从冻结处继续',
+  };
+}
+
+/**
+ * Reconcile per-responder protocol clocks with authoritative hibernation
+ * episodes. Calling this at both month boundaries and month end captures
+ * legacy/open episodes as well as entries created during a planning tick.
+ */
+export function synchronizeAgreementResponseDeadlineSuspensions(
+  state: SimulationState,
+  atMonth: number,
+  orderOffset = 0,
+  sourceEvents: readonly WorldEvent[] = [],
+): AgreementFact[] {
+  const events: AgreementFact[] = [];
+  for (const agreement of state.agreements) {
+    for (const responderId of agreement.requiredResponderIds) {
+      const responder = state.people.find((person) => person.id === responderId);
+      if (!responder || !isAlive(responder)) continue;
+      const activeEpisodes = responder.conditions.filter((condition) => condition.kind === 'dehydrated-hibernation');
+      const activeEpisodeIds = new Set(activeEpisodes.map((condition) => condition.id));
+      const suspension = responseDeadlineSuspensionState(agreement, responderId);
+      for (const openConditionId of suspension.openConditionIds) {
+        if (activeEpisodeIds.has(openConditionId)) continue;
+        const exitSourceEventIds = sourceEvents.flatMap((event) => event.kind === 'environment'
+          && event.who === responderId
+          && event.diff.hibernationConditionId === openConditionId
+          && event.diff.exited === true
+          ? [event.id]
+          : []);
+        const pauseSources = [...(agreement.responseDeadlineSuspensions ?? [])]
+          .reverse()
+          .find((fact) => fact.kind === 'pause'
+            && fact.responderId === responderId
+            && fact.hibernationConditionId === openConditionId)
+          ?.sourceEventIds ?? [];
+        events.push(appendResponseDeadlineSuspensionFact(
+          agreement,
+          responderId,
+          openConditionId,
+          'resume',
+          atMonth,
+          orderOffset + events.length,
+          responder.position.cellId,
+          exitSourceEventIds.length ? exitSourceEventIds : pauseSources,
+        ));
+      }
+      const unresolved = agreement.status === 'proposed'
+        && !agreement.acceptedByPersonIds.includes(responderId)
+        && !agreement.rejectedByPersonIds.includes(responderId);
+      if (!unresolved) continue;
+      for (const episode of activeEpisodes) {
+        if (suspension.openConditionIds.has(episode.id)) continue;
+        events.push(appendResponseDeadlineSuspensionFact(
+          agreement,
+          responderId,
+          episode.id,
+          'pause',
+          atMonth,
+          orderOffset + events.length,
+          responder.position.cellId,
+          episode.sourceEventIds,
+          Math.max(agreement.proposedAtMonth, episode.sinceMonth),
+        ));
+      }
+    }
+  }
+  return events;
+}
+
 export function advanceAgreementLifecycle(state: SimulationState, atMonth: number, orderOffset = 0): AgreementFact[] {
   const events: AgreementFact[] = [];
   for (const agreement of state.agreements) {
-    if (agreement.status === 'proposed' && atMonth > agreement.acceptByMonth) {
-      agreement.status = 'expired';
-      agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '一项未被回应的提议已经过期');
-      agreement.sourceEventIds.push(fact.id);
-      events.push(fact);
-      continue;
-    }
-    if (agreement.status !== 'active') continue;
+    if (agreement.status !== 'proposed' && agreement.status !== 'active') continue;
     const livingParties = agreement.partyIds.every((id) => {
       const person = state.people.find((candidate) => candidate.id === id);
       return person ? isAlive(person) : false;
@@ -314,6 +465,22 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       agreement.status = 'cancelled';
       agreement.resolvedAtMonth = atMonth;
       const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'cancelled', '一项约定因参与者死亡而失去可履行性');
+      agreement.sourceEventIds.push(fact.id);
+      events.push(fact);
+      continue;
+    }
+    if (agreement.status === 'proposed') {
+      const unresolvedResponderIds = agreement.requiredResponderIds.filter((responderId) => (
+        !agreement.acceptedByPersonIds.includes(responderId)
+        && !agreement.rejectedByPersonIds.includes(responderId)
+      ));
+      const expiredResponderId = unresolvedResponderIds.find((responderId) => (
+        atMonth > agreementResponseDeadline(agreement, responderId)
+      ));
+      if (expiredResponderId === undefined) continue;
+      agreement.status = 'expired';
+      agreement.resolvedAtMonth = atMonth;
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '一项未被回应的提议已经过期');
       agreement.sourceEventIds.push(fact.id);
       events.push(fact);
       continue;

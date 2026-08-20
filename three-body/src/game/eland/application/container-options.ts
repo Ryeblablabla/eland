@@ -1,5 +1,5 @@
 import type { ActionOption, PrimitiveAction } from '../domain/action';
-import { canAccessContainer, canAccessContainerFrom, containerCell, containerQuantity, containerRemainingCapacity, type ContainerState } from '../domain/container';
+import { canAccessContainer, canAccessContainerFrom, containerById, containerCell, containerQuantity, containerRemainingCapacity, type ContainerState } from '../domain/container';
 import { Material, materialDefinition, materialHas } from '../domain/material';
 import { inventoryQuantity, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
@@ -28,19 +28,21 @@ export function findContainerAccess(
   container: ContainerState,
   visibleCells?: Set<number>,
 ): ContainerAccess | null {
-  const cell = containerCell(container);
+  const physicalContainer = containerById(state, container.id);
+  if (!physicalContainer) return null;
+  const cell = containerCell(physicalContainer);
   const seenNow = visibleCells?.has(cell) ?? false;
-  const rememberedSourceIds = knownEvidence(person, container);
+  const rememberedSourceIds = knownEvidence(person, physicalContainer);
   if (visibleCells && !seenNow && rememberedSourceIds.length === 0) return null;
   const candidates = [cell, ...neighbors4(cell)]
     .flatMap((candidateCell) => standingPositions(state.world.grid, candidateCell))
-    .filter((position) => canAccessContainerFrom(position, container))
+    .filter((position) => canAccessContainerFrom(position, physicalContainer))
     .map((position) => ({ position, path: findStandingPath(state.world.grid, person.position, position) }))
     .filter(({ path }) => path.length > 0)
     .sort((a, b) => a.path.length - b.path.length || a.position.cellId - b.position.cellId || a.position.z - b.position.z);
   const best = candidates[0];
   return best ? {
-    container,
+    container: physicalContainer,
     position: best.position,
     pathLength: best.path.length,
     remembered: !seenNow,
@@ -54,16 +56,11 @@ function transferOrMove(person: PersonState, access: ContainerAccess, action: Pr
     : { kind: 'move', toCellId: access.position.cellId, toZ: access.position.z };
 }
 
-/** 容器只提供 transfer 候选，不推断所有者，也不把“仓储”增加为新动作。 */
-export function buildContainerOptions(state: SimulationState, person: PersonState, visibleCells: number[]): ActionOption[] {
-  const visible = new Set(visibleCells);
-  const access = state.containers
-    .flatMap((container) => {
-      const candidate = findContainerAccess(state, person, container, visible);
-      return candidate ? [candidate] : [];
-    })
-    .sort((a, b) => a.pathLength - b.pathLength || a.container.id.localeCompare(b.container.id))[0];
-  if (!access) return [];
+function buildContainerOptionsForAccess(
+  state: SimulationState,
+  person: PersonState,
+  access: ContainerAccess,
+): ActionOption[] {
   const options: ActionOption[] = [];
   const storageMaterialId = state.world.grid.voxels[
     access.container.position.z * state.world.grid.width * state.world.grid.depth
@@ -105,7 +102,7 @@ export function buildContainerOptions(state: SimulationState, person: PersonStat
     });
   }
   for (const stack of [...access.container.inventory]
-    .filter((item) => item.quantity > 0)
+    .filter((item) => item.quantity > 0 && !materialHas(item.materialId, 'edible'))
     .sort((a, b) => Number(materialHas(b.materialId, 'edible')) - Number(materialHas(a.materialId, 'edible')) || b.quantity - a.quantity || a.materialId - b.materialId)
     .slice(0, 2)) {
     const transfer: PrimitiveAction = {
@@ -124,4 +121,23 @@ export function buildContainerOptions(state: SimulationState, person: PersonStat
     });
   }
   return options;
+}
+
+/** 容器只提供 transfer 候选，不推断所有者，也不把“仓储”增加为新动作。 */
+export function buildContainerOptions(state: SimulationState, person: PersonState, visibleCells: number[]): ActionOption[] {
+  const visible = new Set(visibleCells);
+  const verticalRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  const accesses = state.containers
+    .flatMap((container) => {
+      if (!visible.has(containerCell(container))
+        || Math.abs(container.position.z - person.position.z) > verticalRadius) return [];
+      const candidate = findContainerAccess(state, person, container, visible);
+      return candidate ? [candidate] : [];
+    })
+    .sort((a, b) => a.pathLength - b.pathLength || a.container.id.localeCompare(b.container.id));
+  for (const access of accesses) {
+    const options = buildContainerOptionsForAccess(state, person, access);
+    if (options.length) return options;
+  }
+  return [];
 }

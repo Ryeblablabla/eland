@@ -19,6 +19,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 
 建议优先了解：
 
+- `docs/README.md`：当前规范、扩展设计与历史实验的分类索引。
 - `three-body/src/game/eland/README.md`：当前模块边界。
 - `docs/rule-first-agent-architecture-v1.md`：人物、规则与模型的设计边界。
 - `docs/evolution-iteration-loop-v1.md`：文明规则的实验方法。
@@ -30,7 +31,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 
 - `three-body/` 是主应用目录；前端入口为 `src/App.tsx`，当前产品只保留三体宇宙与人间体素世界两个全屏 3D 场景。
 - 宇宙与人间通过连续缩放进入和退出。页面打开后由本地规则自动推进文明；前端读取权威状态，不自行生成第二套演进结果。
-- `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
+- `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`；Vite 前端默认监听 `http://127.0.0.1:3217` 并代理 `/api`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
 - `three-body/data/eland.sqlite3` 是后端唯一持久化事实源。长程运行、检查点、报告旁车、玩家手动存档、实时会话、文明编号高水位和内容块都在同一 SQLite WAL 数据库中；实时会话默认可在 24 小时内恢复当前权威状态与分支时间线。
 - `knowledge-base/` 是素材实验、规则导览与核心文档入口，默认通过 `npm run dev` 启动。
 
@@ -48,16 +49,18 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 
 ## 领域与架构
 
-具有业务含义的实现尽量采用 DDD，并保持依赖方向：
+具有业务含义的实现尽量采用 DDD。当前 `domain/` 与 `world/` 共同构成模拟内核：领域动作读取体素网格，世界生成和网格又复用领域物质语义，因此两者不是严格无环的上下层。
 
 ```text
 UI / HTTP / optional model infrastructure
               ↓
 adapter / application use cases
               ↓
-domain model and policies
+domain model and policies ↔ world primitives
               ↓
-world primitives
+authoritative state and replayable events
+              ↓
+projection / report / UI read models
 ```
 
 - `domain/` 保存实体、值对象、聚合状态、领域规则和客观后果。

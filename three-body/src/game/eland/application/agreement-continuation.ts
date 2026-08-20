@@ -28,9 +28,16 @@ export function canAcceptAssist(state: SimulationState, helper: PersonState, req
   return false;
 }
 
-export function compileAgreementContinuations(state: SimulationState, agreementId: string): AgreementContinuation[] {
+export function compileAgreementContinuations(
+  state: SimulationState,
+  agreementId: string,
+  atMonth = state.clock.elapsedMonths,
+): AgreementContinuation[] {
   const agreement = agreementById(state, agreementId);
-  if (!agreement || agreement.status !== 'active') return [];
+  if (!agreement
+    || agreement.status !== 'active'
+    || (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) > atMonth
+    || (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) < atMonth) return [];
   const sourceFactIds = [...agreement.sourceEventIds];
   if (agreement.proposal.kind === 'assist') {
     const proposal = agreement.proposal;
@@ -115,7 +122,7 @@ export function compileAgreementContinuations(state: SimulationState, agreementI
     const responder = state.people.find((person) => person.id === agreement.responderId);
     const proposer = state.people.find((person) => person.id === agreement.proposerId);
     if (!responder || !proposer) return [];
-    if (reproductionAttemptedBetweenInMonth(state, responder.id, proposer.id, state.clock.elapsedMonths)) return [];
+    if (reproductionAttemptedBetweenInMonth(state, responder.id, proposer.id, atMonth)) return [];
     const female = responder.sex === 'female' ? responder : proposer.sex === 'female' ? proposer : undefined;
     return [{
       agreementId: agreement.id,

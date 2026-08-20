@@ -2,7 +2,7 @@
 import type { ActionVisualView, AgentHistoryItem, AgentHistoryView, EraKey, SocietyAgent, SocietyState } from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
 import { Material, materialDefinition } from './domain/material';
-import { ageMonths, isAlive, type PersonState } from './domain/person';
+import { ageMonths, isAlive, isDormantDehydratedHibernating, type PersonState } from './domain/person';
 import { personalityScore } from './domain/personality';
 import { CONTAINER_CAPACITY } from './domain/container';
 import { animalAgeMonths, animalSpecies, isAnimalAlive, type AnimalState } from './domain/animal';
@@ -11,6 +11,7 @@ import { actionActivityIndex } from './domain/event-index';
 import { playerTextForEvent } from './projection/player-narrative';
 import { projectSocietyWorld } from './projection/society-world-cache';
 import { portraitForPerson } from '../personPortraits';
+import { voxelAt } from './world/grid';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 
@@ -138,13 +139,69 @@ function targetIdentity(target: WorldRef | undefined): Pick<ActionVisualView, 't
   };
 }
 
-function actionVisual(state: SimulationState, lookup: StateLookup, person: PersonState, action: PrimitiveAction): ActionVisualView {
-  if (action.kind === 'move') return { actionKind: 'move' };
+function worldRefLocation(state: SimulationState, lookup: StateLookup, target: WorldRef | undefined): Pick<ActionVisualView, 'targetCellId' | 'targetZ'> {
+  if (!target) return {};
+  if (target.kind === 'voxel') return {
+    targetCellId: target.position.x + target.position.y * state.world.grid.width,
+    targetZ: target.position.z,
+  };
+  if (target.kind === 'drop') {
+    const drop = lookup.dropsById.get(target.dropId);
+    return drop ? { targetCellId: drop.cellId, targetZ: drop.z } : {};
+  }
+  if (target.kind === 'container') {
+    const container = lookup.containersById.get(target.containerId);
+    return container ? {
+      targetCellId: container.position.x + container.position.y * state.world.grid.width,
+      targetZ: container.position.z,
+    } : {};
+  }
+  if (target.kind === 'animal') {
+    const animal = lookup.animalsById.get(target.animalId);
+    return animal ? { targetCellId: animal.position.cellId, targetZ: animal.position.z } : {};
+  }
+  const targetPersonId = target.kind === 'person' ? target.personId : target.personId;
+  const targetPerson = lookup.peopleById.get(targetPersonId);
+  return targetPerson ? { targetCellId: targetPerson.position.cellId, targetZ: targetPerson.position.z } : {};
+}
+
+function transferTargetLocation(
+  state: SimulationState,
+  lookup: StateLookup,
+  target: Extract<PrimitiveAction, { kind: 'transfer' }>['to'],
+): Pick<ActionVisualView, 'targetCellId' | 'targetZ'> {
+  if (target.kind === 'ground') return { targetCellId: target.cellId, ...(target.z !== undefined ? { targetZ: target.z } : {}) };
+  if (target.kind === 'container') return worldRefLocation(state, lookup, { kind: 'container', containerId: target.containerId });
+  return worldRefLocation(state, lookup, { kind: 'person', personId: target.personId });
+}
+
+function actionVisual(
+  state: SimulationState,
+  lookup: StateLookup,
+  person: PersonState,
+  action: PrimitiveAction,
+  fact?: ActionEvent,
+): ActionVisualView {
+  const facilityMaterialId = fact && typeof fact.diff.facilityMaterialId === 'number'
+    ? fact.diff.facilityMaterialId
+    : undefined;
+  const factLocation: Pick<ActionVisualView, 'sourceEventId' | 'sourceCellId' | 'sourceZ' | 'targetCellId' | 'targetZ' | 'facilityMaterialId'> = fact ? {
+    sourceEventId: fact.id,
+    sourceCellId: fact.fromCellId,
+    sourceZ: fact.fromZ,
+    targetCellId: fact.toCellId,
+    targetZ: fact.toZ,
+    ...(facilityMaterialId !== undefined ? { facilityMaterialId } : {}),
+  } : {};
+  if (action.kind === 'move') return { actionKind: 'move', ...factLocation };
   if (action.kind === 'transfer') {
     const target = action.to.kind === 'person'
       ? { kind: 'person' as const, personId: action.to.personId }
       : undefined;
-    return { actionKind: 'transfer', materialId: action.materialId, ...targetIdentity(target) };
+    return {
+      actionKind: 'transfer', materialId: action.materialId,
+      ...factLocation, ...targetIdentity(target), ...transferTargetLocation(state, lookup, action.to),
+    };
   }
   if (action.kind === 'act') {
     const materialIds = action.targets
@@ -155,7 +212,7 @@ function actionVisual(state: SimulationState, lookup: StateLookup, person: Perso
       : undefined;
     return {
       actionKind: 'act', operation: action.operation,
-      ...targetIdentity(action.targets[0]),
+      ...factLocation, ...targetIdentity(action.targets[0]), ...worldRefLocation(state, lookup, action.targets[0]),
       ...(materialIds[0] !== undefined ? { materialId: materialIds[0] } : {}),
       ...(materialIds.length ? { materialIds } : {}),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
@@ -167,7 +224,7 @@ function actionVisual(state: SimulationState, lookup: StateLookup, person: Perso
       : undefined;
     const materialId = materialForTarget(state, lookup, action.target);
     return {
-      actionKind: 'attend', ...targetIdentity(action.target),
+      actionKind: 'attend', ...factLocation, ...targetIdentity(action.target), ...worldRefLocation(state, lookup, action.target),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
       ...(materialId !== undefined ? { materialId } : {}),
     };
@@ -177,19 +234,24 @@ function actionVisual(state: SimulationState, lookup: StateLookup, person: Perso
     : undefined;
   return {
     actionKind: 'communicate', channel: action.channel, communicationKind: action.content.kind,
-    ...(action.audience[0] ? { targetKind: 'person', targetPersonId: action.audience[0] } : {}),
+    ...factLocation,
+    ...(action.audience[0] ? {
+      targetKind: 'person' as const,
+      targetPersonId: action.audience[0],
+      ...worldRefLocation(state, lookup, { kind: 'person', personId: action.audience[0] }),
+    } : {}),
     ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
   };
 }
 
 function recentActionFor(state: SimulationState, lookup: SocietyProjectionLookup, person: PersonState): ActionVisualView | undefined {
   const fact = lookup.recentActionByPersonId.get(person.id);
-  return fact ? actionVisual(state, lookup, person, fact.action) : undefined;
+  return fact ? actionVisual(state, lookup, person, fact.action, fact) : undefined;
 }
 
 function personStateOf(person: PersonState): SocietyAgent['state'] {
   if (!isAlive(person)) return 'dead';
-  if (person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return 'hibernating';
+  if (isDormantDehydratedHibernating(person)) return 'hibernating';
   if (person.body.hydration < 10) return 'dehydrated';
   return 'active';
 }
@@ -359,16 +421,19 @@ export function toSocietyState(state: SimulationState): SocietyState {
       activity: animalActivity(state, lookup, animal),
     }; }),
     drops: state.world.drops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, cellId: drop.cellId, z: drop.z, quantity: drop.quantity })),
-    containers: state.containers.map((container) => ({
-      id: container.id,
-      materialId: Material.Container,
-      name: materialDefinition(Material.Container).name,
-      cellId: container.position.x + container.position.y * grid.width,
-      z: container.position.z,
-      capacity: CONTAINER_CAPACITY,
-      usedCapacity: container.inventory.reduce((sum, stack) => sum + stack.quantity, 0),
-      contents: container.inventory.map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
-    })),
+    containers: state.containers.map((container) => {
+      const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
+      return {
+        id: container.id,
+        materialId,
+        name: materialDefinition(materialId).name,
+        cellId: container.position.x + container.position.y * grid.width,
+        z: container.position.z,
+        capacity: container.capacity ?? CONTAINER_CAPACITY,
+        usedCapacity: container.inventory.reduce((sum, stack) => sum + stack.quantity, 0),
+        contents: container.inventory.map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+      };
+    }),
     structures: state.derived.structures.map((structure) => ({
       id: structure.id,
       name: structure.name,

@@ -34,6 +34,7 @@ try {
   };
   const previous = {
     runId: 'patch-run',
+    authorityRevision: 'authority-patch-a',
     branchId: 'main',
     civilizationId: 3,
     elapsedMonths: 4,
@@ -59,12 +60,18 @@ try {
 
   const payload = createStepPayload(previous, current);
   assert.equal(payload.kind, 'patch');
+  assert.equal(payload.baseAuthorityRevision, previous.authorityRevision);
   assert.equal(payload.society.world.cells.length, 1);
   assert.deepEqual(applyStepPayload(previous, payload), current);
   assert.deepEqual(previous.society.world.surface, [1, 2], '应用 patch 不得改写上一帧');
 
   const wrongBase = { ...previous, elapsedMonths: 3 };
   assert.equal(applyStepPayload(wrongBase, payload), null, '基线月份不匹配时必须请求完整 state');
+  const wrongAuthority = { ...previous, authorityRevision: 'authority-patch-b' };
+  assert.equal(applyStepPayload(wrongAuthority, payload), null, '权威修订不匹配时必须请求完整 state');
+
+  const replacedAuthority = { ...current, authorityRevision: 'authority-patch-b' };
+  assert.equal(createStepPayload(previous, replacedAuthority).kind, 'full', '跨 authority revision 不得生成增量 patch');
 
   const incompatible = structuredClone(current);
   incompatible.society.world.generator.seed = 8;

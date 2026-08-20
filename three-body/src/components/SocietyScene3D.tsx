@@ -16,6 +16,7 @@ import type {
   SpeechLineView,
 } from '@/game/societyContract';
 import { Material } from '@/game/eland/domain/material';
+import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
 import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
 import {
@@ -75,7 +76,7 @@ interface Props {
   onSelectAgent?: (id: string | null) => void;
   selectedObject?: SocietySceneSelection;
   onSelectObject?: (selection: SocietySceneSelection) => void;
-  onZoomOutRequest?: () => void; // 滚轮持续缩小越过上限 → 请求升起返回宇宙
+  onZoomOutRequest?: () => void; // 滚轮、键盘或双指持续缩小越过阈值 → 请求升起返回宇宙
 }
 
 export type SocietySceneSelection =
@@ -2478,6 +2479,7 @@ export default function SocietyScene3D({
     // ---- 点选人物 / 权威结构；拖拽镜头不会触发选择，点击空白收起信息 ----
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const risePinch = new PinchTransitionGesture('zoom-out');
     let selectionPointerDown: { x: number; y: number } | null = null;
     const emitSelection = (selection: SocietySceneSelection) => {
       const p = propsRef.current;
@@ -2497,6 +2499,10 @@ export default function SocietyScene3D({
       selectionPointerDown = { x: event.clientX, y: event.clientY };
     };
     const onSelectionPointerUp = (event: PointerEvent) => {
+      if (event.pointerType === 'touch' && risePinch.consumeTapSuppression(event.pointerId)) {
+        selectionPointerDown = null;
+        return;
+      }
       if (!selectionPointerDown
         || Math.hypot(event.clientX - selectionPointerDown.x, event.clientY - selectionPointerDown.y) >= 5) {
         selectionPointerDown = null;
@@ -2517,26 +2523,50 @@ export default function SocietyScene3D({
       const structureHits = raycaster.intersectObjects(structureSelectionGroup.children, true);
       emitSelection(structureHits.length ? selectionFromHit(structureHits[0].object) : null);
     };
-    canvas.addEventListener('pointerdown', onSelectionPointerDown);
-    canvas.addEventListener('pointerup', onSelectionPointerUp);
 
-    // ---- 滚轮 / 键盘缩放持续越过上限 → 请求升起返回宇宙 ----
+    // ---- 滚轮 / 键盘 / 双指缩放持续越过阈值 → 请求升起返回宇宙 ----
     let zoomOutAcc = 0;
     let zoomOutAsked = false;
+    const requestZoomOut = () => {
+      if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
+      zoomOutAsked = true;
+      controls.maxDistance = Math.max(600, controls.maxDistance * 1.8); // 过场期间允许继续升高
+      propsRef.current.onZoomOutRequest();
+    };
     const accumulateZoomOut = (deltaY: number) => {
       if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
       if (deltaY > 0 && camera.position.distanceTo(controls.target) >= controls.maxDistance - 0.6) {
         zoomOutAcc += deltaY;
-        if (zoomOutAcc > 300) {
-          zoomOutAsked = true;
-          controls.maxDistance = Math.max(600, controls.maxDistance * 1.8); // 过场期间允许继续升高
-          propsRef.current.onZoomOutRequest();
-        }
+        if (zoomOutAcc > 300) requestZoomOut();
       } else {
         zoomOutAcc = 0;
       }
     };
     const onWheelOut = (ev: WheelEvent) => { accumulateZoomOut(ev.deltaY); };
+    const onRisePinchPointerDown = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      risePinch.pointerDown(ev.pointerId, ev.clientX, ev.clientY);
+    };
+    const onRisePinchPointerMove = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      const update = risePinch.pointerMove(ev.pointerId, ev.clientX, ev.clientY);
+      if (update.triggered) requestZoomOut();
+    };
+    const onRisePinchPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch') risePinch.pointerUp(ev.pointerId);
+    };
+    const onRisePinchPointerCancel = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      risePinch.pointerCancel(ev.pointerId);
+      risePinch.consumeTapSuppression(ev.pointerId);
+      selectionPointerDown = null;
+    };
+    canvas.addEventListener('pointerdown', onRisePinchPointerDown);
+    canvas.addEventListener('pointermove', onRisePinchPointerMove);
+    canvas.addEventListener('pointerup', onRisePinchPointerUp);
+    canvas.addEventListener('pointercancel', onRisePinchPointerCancel);
+    canvas.addEventListener('pointerdown', onSelectionPointerDown);
+    canvas.addEventListener('pointerup', onSelectionPointerUp);
     canvas.addEventListener('wheel', onWheelOut, { passive: true });
 
     // ---- 键盘镜头：WASD 沿当前视角平移，↑↓ 复用滚轮的距离语义 ----
@@ -2707,6 +2737,10 @@ export default function SocietyScene3D({
       window.removeEventListener('blur', clearPressedKeys);
       ro.disconnect();
       canvas.removeEventListener('wheel', onWheelOut);
+      canvas.removeEventListener('pointerdown', onRisePinchPointerDown);
+      canvas.removeEventListener('pointermove', onRisePinchPointerMove);
+      canvas.removeEventListener('pointerup', onRisePinchPointerUp);
+      canvas.removeEventListener('pointercancel', onRisePinchPointerCancel);
       canvas.removeEventListener('pointerdown', onSelectionPointerDown);
       canvas.removeEventListener('pointerup', onSelectionPointerUp);
       controls.dispose();
@@ -2748,7 +2782,7 @@ export default function SocietyScene3D({
       <canvas
         ref={canvasRef}
         tabIndex={0}
-        aria-label="人间场景：点击人物或结构查看信息，WASD 移动镜头，方向键上下缩放"
+        aria-label="人间场景：点击人物或结构查看信息，WASD 移动镜头，方向键或双指上下缩放"
         className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
       />

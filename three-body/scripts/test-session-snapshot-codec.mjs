@@ -34,11 +34,11 @@ try {
       sample: new Uint16Array([3, 5, 8]),
       buffer: Buffer.from([11, 13, 17]),
     },
-    latestFrame: { branchId: 'main', elapsedMonths: 1 },
+    latestFrame: { authorityRevision: 'authority-codec', branchId: 'main', elapsedMonths: 1 },
     branches: new Map([
       ['main', {
         id: 'main',
-        frameByMonth: new Map([[1, { elapsedMonths: 1 }]]),
+        frameByMonth: new Map([[1, { authorityRevision: 'authority-codec', elapsedMonths: 1 }]]),
         snapshots: new Map([
           [0, { kind: 'checkpoint', data: checkpointData }],
           [1, { kind: 'delta', data: deltaData }],

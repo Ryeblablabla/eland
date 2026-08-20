@@ -2,7 +2,8 @@ import type {
   ActionOption,
   Intent,
   PrimitiveAction,
-  RecordUseBasis,
+  RecordCarrierSource,
+  RecordUseBasisV2,
   VoxelPosition,
   WorldRef,
 } from '../domain/action';
@@ -15,8 +16,8 @@ import {
   inventoryCombinationTechniqueId,
 } from '../domain/interaction-rules';
 import { Material, materialHas, type MaterialId } from '../domain/material';
-import type { SimulationState } from '../domain/model';
-import { isAlive, sameLocation, type PersonState } from '../domain/person';
+import type { DropState, SimulationState } from '../domain/model';
+import { isAlive, type PersonState } from '../domain/person';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { recompileProjectNextAction } from './project-options';
 
@@ -198,7 +199,9 @@ function buildBasis(
   record: SimulationState['records'][number],
   action: ResolvedTechniqueAction,
   project: SimulationState['projects'][number],
-): RecordUseBasis {
+  carrierSource: RecordCarrierSource,
+  carrierSourceEventIds: string[],
+): RecordUseBasisV2 {
   const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
     && fact.kind === 'codebook'
     && fact.confidence >= 55);
@@ -217,10 +220,11 @@ function buildBasis(
     ...recordSourceEventIds,
     ...codebookSourceEventIds,
     ...inputSourceEventIds,
+    ...carrierSourceEventIds,
   ]);
   return {
-    version: 'record-use-basis-v1',
-    basisKey: `record-use:${reader.id}:${project.id}:${record.id}:${action.techniqueId}`,
+    version: 'record-use-basis-v2',
+    basisKey: `record-use:${reader.id}:${project.id}:${record.id}:${action.techniqueId}:${carrierSource.kind}:${carrierSource.kind === 'inventory' ? carrierSource.stackId : carrierSource.dropId}:${carrierSource.kind === 'ground' ? `${carrierSource.cellId}:${carrierSource.z}` : reader.id}:${carrierSource.kind === 'ground'}`,
     projectId: project.id,
     projectOwnerId: project.ownerId,
     readerId: reader.id,
@@ -240,101 +244,124 @@ function buildBasis(
     codebookSourceEventIds,
     inputSourceEventIds,
     sourceFactIds,
+    carrierSource: structuredClone(carrierSource),
+    acquisitionRequired: carrierSource.kind === 'ground',
   };
 }
 
 export function buildDemandBoundRecordUseOptions(
   state: SimulationState,
-  actor: PersonState,
-  visiblePeople: PersonState[],
+  reader: PersonState,
+  visibleDrops: DropState[],
 ): ActionOption[] {
-  const carriers = actor.inventory.filter((stack) => stack.quantity > 0
-    && stack.materialId === Material.WoodTablet
-    && typeof stack.recordPayloadId === 'string');
-  if (!carriers.length) return [];
-  const readers = [actor, ...visiblePeople]
-    .filter((candidate, index, all) => isAlive(candidate)
-      && all.findIndex((other) => other.id === candidate.id) === index);
+  if (!isAlive(reader)) return [];
+  const anchored = activeOwnedProject(state, reader);
+  if (!anchored) return [];
+  const sources = [
+    ...reader.inventory
+      .filter((stack) => stack.quantity > 0
+        && stack.materialId === Material.WoodTablet
+        && typeof stack.recordPayloadId === 'string')
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((stack) => ({
+        recordPayloadId: stack.recordPayloadId!,
+        carrierSource: { kind: 'inventory', personId: reader.id, stackId: stack.id } as const,
+        sourceEventIds: stack.sourceEventIds,
+      })),
+    ...visibleDrops
+      .filter((drop) => drop.quantity > 0
+        && drop.materialId === Material.WoodTablet
+        && typeof drop.recordPayloadId === 'string')
+      .sort((left, right) => (
+        distanceToPosition(reader, { x: cellX(left.cellId), y: cellY(left.cellId), z: left.z })
+        - distanceToPosition(reader, { x: cellX(right.cellId), y: cellY(right.cellId), z: right.z })
+        || left.id.localeCompare(right.id)
+      ))
+      .map((drop) => ({
+        recordPayloadId: drop.recordPayloadId!,
+        carrierSource: { kind: 'ground', dropId: drop.id, cellId: drop.cellId, z: drop.z } as const,
+        sourceEventIds: drop.sourceEventIds,
+      })),
+  ];
+  if (!sources.length) return [];
   const options: ActionOption[] = [];
+  const consideredRecordIds = new Set<string>();
 
-  for (const carrier of carriers) {
-    const record = state.records.find((candidate) => candidate.id === carrier.recordPayloadId && candidate.kind === 'technique');
+  for (const source of sources) {
+    if (consideredRecordIds.has(source.recordPayloadId)) continue;
+    consideredRecordIds.add(source.recordPayloadId);
+    const record = state.records.find((candidate) => candidate.id === source.recordPayloadId && candidate.kind === 'technique');
     if (!record) continue;
-    for (const reader of readers) {
-      if (reader.id === record.authorId) continue;
-      const anchored = activeOwnedProject(state, reader);
-      if (!anchored) continue;
-      const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
-        && fact.kind === 'codebook'
-        && fact.confidence >= 55);
-      if (!codebook) continue;
-      const technique = reader.knowledge.find((fact) => fact.id === record.knowledgeId && fact.kind === 'technique');
-      if ((technique?.confidence ?? 0) >= 55) continue;
-      const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));
-      const projectAction = previewProjectAction(
-        state,
-        reader,
-        anchored.project.id,
-        record.knowledgeId,
-        [record.id, ...record.sourceEventIds],
-      );
-      const resolved = projectAction ? resolveTechniqueAction(state, reader, projectAction) : null;
-      if (!resolved || resolved.techniqueId !== record.knowledgeId) continue;
-      const basis = buildBasis(state, reader, record, resolved, anchored.project);
-      const sourceFactIds = unique([
-        record.id,
-        ...basis.projectSourceEventIds,
-        ...basis.recordSourceEventIds,
-        ...basis.codebookSourceEventIds,
-        ...basis.inputSourceEventIds,
-        ...carrier.sourceEventIds,
-      ]);
-
-      if (reader.id === actor.id) {
-        options.push({
-          id: `use-demand-record:${record.id}:${anchored.project.id}`,
-          summary: alreadyRead
-            ? `按已读记录复现“${record.summary}”`
-            : `阅读记录并亲自复现“${record.summary}”`,
-          reason: alreadyRead
-            ? `这项暂定知识仍低于可靠阈值，且手头材料正好能推进“${anchored.project.summary}”`
-            : `实体记录精确对应“${anchored.project.summary}”当前下一步，且真实核验材料已经在手`,
-          goal: { kind: 'knowledge', factId: record.knowledgeId, minConfidence: 55 },
-          nextAction: alreadyRead
-            ? structuredClone(resolved.action)
-            : { kind: 'attend', target: { kind: 'inventory-stack', personId: reader.id, stackId: carrier.id } },
-          target: { kind: 'inventory-stack', personId: reader.id, stackId: carrier.id },
-          estimatedDuration: 'one-month',
-          sourceFactIds,
-          domain: 'strategic',
-          recordUseBasis: basis,
-          recordUseStage: 'read-experiment',
-        });
-      } else if (!alreadyRead
-        && sameLocation(actor, reader)
-        && !reader.inventory.some((stack) => stack.quantity > 0 && stack.recordPayloadId === record.id)) {
-        options.push({
-          id: `share-demand-record:${record.id}:${reader.id}:${anchored.project.id}`,
-          summary: `把能解除项目技术缺口的记录板交给${reader.name}`,
-          reason: `${reader.name}正在推进“${anchored.project.summary}”，这块实体记录与其下一项真实材料操作完全匹配`,
-          goal: { kind: 'record-held', recordId: record.id, personId: reader.id },
-          nextAction: {
-            kind: 'transfer',
-            materialId: Material.WoodTablet,
-            quantity: 1,
-            from: { kind: 'person', personId: actor.id },
-            to: { kind: 'person', personId: reader.id },
-            stackId: carrier.id,
-          },
-          target: { kind: 'person', personId: reader.id },
-          estimatedDuration: 'one-month',
-          sourceFactIds,
-          domain: 'social',
-          recordUseBasis: basis,
-          recordUseStage: 'share',
-        });
-      }
-    }
+    if (reader.id === record.authorId) continue;
+    const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
+      && fact.kind === 'codebook'
+      && fact.confidence >= 55);
+    if (!codebook) continue;
+    const technique = reader.knowledge.find((fact) => fact.id === record.knowledgeId && fact.kind === 'technique');
+    if ((technique?.confidence ?? 0) >= 55) continue;
+    const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));
+    const projectAction = previewProjectAction(
+      state,
+      reader,
+      anchored.project.id,
+      record.knowledgeId,
+      [record.id, ...record.sourceEventIds],
+    );
+    const resolved = projectAction ? resolveTechniqueAction(state, reader, projectAction) : null;
+    if (!resolved || resolved.techniqueId !== record.knowledgeId) continue;
+    const basis = buildBasis(
+      state,
+      reader,
+      record,
+      resolved,
+      anchored.project,
+      source.carrierSource,
+      source.sourceEventIds,
+    );
+    const atGroundSource = source.carrierSource.kind === 'ground'
+      && reader.position.cellId === source.carrierSource.cellId
+      && reader.position.z === source.carrierSource.z;
+    const nextAction: PrimitiveAction = source.carrierSource.kind === 'inventory'
+      ? alreadyRead
+        ? structuredClone(resolved.action)
+        : { kind: 'attend', target: { kind: 'inventory-stack', personId: reader.id, stackId: source.carrierSource.stackId } }
+      : atGroundSource
+        ? {
+          kind: 'transfer',
+          materialId: Material.WoodTablet,
+          quantity: 1,
+          from: { kind: 'ground', cellId: source.carrierSource.cellId, z: source.carrierSource.z },
+          to: { kind: 'person', personId: reader.id },
+          dropId: source.carrierSource.dropId,
+        }
+        : { kind: 'move', toCellId: source.carrierSource.cellId, toZ: source.carrierSource.z };
+    options.push({
+      id: `use-demand-record:${record.id}:${anchored.project.id}:${source.carrierSource.kind === 'inventory' ? source.carrierSource.stackId : source.carrierSource.dropId}`,
+      summary: source.carrierSource.kind === 'ground'
+        ? `取得公共记录并亲自复现“${record.summary}”`
+        : alreadyRead
+          ? `按已读记录复现“${record.summary}”`
+          : `阅读记录并亲自复现“${record.summary}”`,
+      reason: source.carrierSource.kind === 'ground'
+        ? `可见公共记录精确对应“${anchored.project.summary}”当前下一步，且本人已有解码知识和真实核验材料`
+        : alreadyRead
+          ? `这项暂定知识仍低于可靠阈值，且手头材料正好能推进“${anchored.project.summary}”`
+          : `本人持有的实体记录精确对应“${anchored.project.summary}”当前下一步，且真实核验材料已经在手`,
+      goal: { kind: 'knowledge', factId: record.knowledgeId, minConfidence: 55 },
+      nextAction,
+      target: source.carrierSource.kind === 'inventory'
+        ? { kind: 'inventory-stack', personId: reader.id, stackId: source.carrierSource.stackId }
+        : { kind: 'drop', dropId: source.carrierSource.dropId },
+      estimatedDuration: 'several-months',
+      sourceFactIds: [...basis.sourceFactIds],
+      domain: 'strategic',
+      recordUseBasis: basis,
+      recordUseStage: source.carrierSource.kind === 'ground'
+        ? 'acquire'
+        : alreadyRead
+          ? 'experiment'
+          : 'read',
+    });
   }
 
   return [...new Map(options.map((option) => [option.id, option])).values()];
@@ -346,7 +373,19 @@ export function recompileRecordUseNextAction(
   intent: Intent,
 ): PrimitiveAction | null {
   const basis = intent.recordUseBasis;
-  if (!basis || intent.recordUseStage !== 'read-experiment' || basis.readerId !== person.id) return null;
+  if (!basis) return null;
+  if (basis.version === 'record-use-basis-v1' && intent.recordUseStage === 'share') {
+    const shareAction = intent.nextAction;
+    if (shareAction.kind !== 'transfer'
+      || shareAction.from.kind !== 'person'
+      || shareAction.from.personId !== person.id) return null;
+    const carrier = person.inventory.find((stack) => stack.id === shareAction.stackId
+      && stack.quantity > 0
+      && stack.recordPayloadId === basis.recordId);
+    return carrier ? structuredClone(shareAction) : null;
+  }
+  if (basis.readerId !== person.id) return null;
+  if (basis.version === 'record-use-basis-v1' && intent.recordUseStage !== 'read-experiment') return null;
   const project = state.projects.find((candidate) => candidate.id === basis.projectId
     && candidate.ownerId === person.id
     && candidate.status === 'active');
@@ -355,11 +394,10 @@ export function recompileRecordUseNextAction(
     && candidate.knowledgeId === basis.knowledgeId
     && candidate.codebookId === basis.codebookId
     && candidate.authorId !== person.id);
-  const carrier = person.inventory.find((stack) => stack.quantity > 0 && stack.recordPayloadId === basis.recordId);
   const codebook = person.knowledge.find((fact) => fact.id === basis.codebookId
     && fact.kind === 'codebook'
     && fact.confidence >= 55);
-  if (!project || !record || !carrier || !codebook) return null;
+  if (!project || !record || !codebook) return null;
 
   const knowledge = person.knowledge.find((fact) => fact.id === basis.knowledgeId && fact.kind === 'technique');
   if ((knowledge?.confidence ?? 0) >= 55) return null;
@@ -375,6 +413,45 @@ export function recompileRecordUseNextAction(
     || resolved.techniqueId !== basis.techniqueId
     || resolved.techniqueId !== record.knowledgeId
     || resolved.expectedOutputMaterialId !== basis.expectedOutputMaterialId) return null;
+
+  let carrier: PersonState['inventory'][number] | undefined;
+  if (basis.version === 'record-use-basis-v1') {
+    carrier = person.inventory.find((stack) => stack.quantity > 0 && stack.recordPayloadId === basis.recordId);
+  } else if (basis.carrierSource.kind === 'inventory') {
+    const sourceStackId = basis.carrierSource.stackId;
+    carrier = person.inventory.find((stack) => stack.id === sourceStackId
+      && stack.quantity > 0
+      && stack.recordPayloadId === basis.recordId);
+  } else {
+    const sourceDropId = basis.carrierSource.dropId;
+    carrier = person.inventory.find((stack) => stack.quantity > 0
+      && stack.recordPayloadId === basis.recordId
+      && stack.sourceLineageKeys?.includes(`drop:${sourceDropId}`));
+  }
+
+  if (!carrier && basis.version === 'record-use-basis-v2') {
+    if (!basis.acquisitionRequired || basis.carrierSource.kind !== 'ground') return null;
+    const groundSource = basis.carrierSource;
+    const source = state.world.drops.find((drop) => drop.id === groundSource.dropId
+      && drop.quantity > 0
+      && drop.materialId === Material.WoodTablet
+      && drop.recordPayloadId === basis.recordId
+      && drop.cellId === groundSource.cellId
+      && drop.z === groundSource.z);
+    if (!source) return null;
+    if (person.position.cellId !== source.cellId || person.position.z !== source.z) {
+      return { kind: 'move', toCellId: source.cellId, toZ: source.z };
+    }
+    return {
+      kind: 'transfer',
+      materialId: Material.WoodTablet,
+      quantity: 1,
+      from: { kind: 'ground', cellId: source.cellId, z: source.z },
+      to: { kind: 'person', personId: person.id },
+      dropId: source.id,
+    };
+  }
+  if (!carrier) return null;
 
   if (!knowledge?.sourceEventIds.includes(record.id)) {
     return { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id } };

@@ -27,7 +27,7 @@ try {
     'src/game/eland/simulation.ts', '--bundle', '--platform=node', '--format=esm',
     `--outfile=${simulationBundlePath}`,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
-  const { createInitialState, stepSimulation } = await import(
+  const { createInitialState, seededFraction, stepSimulation } = await import(
     `${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`
   );
 
@@ -66,15 +66,174 @@ try {
 
   const monthlyState = createInitialState(20260815, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const youngFounderIds = new Set(monthlyState.people.map((person) => person.id));
+  const reviewedFounderIds = new Set();
   for (const founder of monthlyState.people) founder.bornAtMonth = -10 * 12;
   stepSimulation(monthlyState, {
     decide(context) {
       if (youngFounderIds.has(context.person.id)) {
+        reviewedFounderIds.add(context.person.id);
         assert.equal(context.options.some((candidate) => candidate.projectId), false, '真实月度入口不能让 1–11 岁先民绕过项目权限');
       }
       return { kind: 'idle', reason: '只检查年龄候选过滤' };
     },
   });
+  assert.deepEqual(reviewedFounderIds, youngFounderIds, '创世 bootstrap 必须且仍会在实际提交的第 1 月让全部先民获得一次决策');
+
+  const forceNaturalDecisionSample = (state, person, atMonth, label) => {
+    for (let index = 0; index < 10_000; index += 1) {
+      state.branchId = `${label}-${index}`;
+      if (seededFraction(state.seed, `decision:${state.branchId}:${atMonth}:${person.id}`) < 0.04) return;
+    }
+    assert.fail(`无法为${label}构造确定性的月度决策样本`);
+  };
+  const prepareBoundaryPeople = (state, actor, other) => {
+    state.civilization.conditions.endpoint = { kind: 'months', value: 1_000 };
+    state.people = [actor, other];
+    for (const person of state.people) {
+      person.body = { health: 100, hydration: 100, nutrition: 100 };
+      person.conditions = [];
+      delete person.activeIntentId;
+    }
+    other.position = structuredClone(actor.position);
+  };
+
+  const oneYearState = createInitialState(7101, { endpoint: { kind: 'months', value: 1_000 }, chaosIntensity: 0 });
+  oneYearState.clock.elapsedMonths = 11;
+  const oneYearChild = oneYearState.people[0];
+  const oneYearParent = oneYearState.people[1];
+  prepareBoundaryPeople(oneYearState, oneYearChild, oneYearParent);
+  oneYearChild.generation = 1;
+  oneYearChild.geneticParents = [oneYearParent.id];
+  oneYearChild.bornAtMonth = 0;
+  oneYearChild.knowledge = [];
+  oneYearParent.bornAtMonth = -24 * 12;
+  forceNaturalDecisionSample(oneYearState, oneYearChild, 12, 'age-one-boundary');
+  let oneYearContextSeen = false;
+  const afterOneYearBoundary = stepSimulation(oneYearState, {
+    decide(context) {
+      if (context.person.id !== oneYearChild.id) return { kind: 'idle', reason: '不干扰一岁边界测试' };
+      oneYearContextSeen = true;
+      assert.ok(context.options.length > 0, '满 1 岁的提交月必须向 decider 暴露学习儿童候选');
+      assert.ok(context.options.every((candidate) => optionAllowedForLifeStage('learning-child', candidate)),
+        '满 1 岁提交月的候选必须全部服从 learning-child 权限');
+      const observeOption = context.options.find((candidate) => candidate.id.startsWith('attend:'));
+      assert.ok(observeOption, '满 1 岁的儿童应能选择一个眼前观察行动');
+      return { kind: 'start', optionId: observeOption.id, reason: '验证一岁边界的同月自主行动' };
+    },
+  });
+  assert.equal(oneYearContextSeen, true);
+  assert.ok(afterOneYearBoundary.lastStep.some((event) => event.kind === 'action'
+    && event.who === oneYearChild.id
+    && event.atMonth === 12
+    && event.action.kind === 'attend'
+    && event.status === 'completed'),
+  'decider 在第 12 月看到的 learning-child 行动必须由同样按第 12 月判断的执行刻度真正执行');
+
+  const twelveYearState = createInitialState(7112, { endpoint: { kind: 'months', value: 1_000 }, chaosIntensity: 0 });
+  twelveYearState.clock.elapsedMonths = 12 * 12 - 1;
+  const twelveYearTeacher = twelveYearState.people[0];
+  const twelveYearLearner = twelveYearState.people[1];
+  prepareBoundaryPeople(twelveYearState, twelveYearTeacher, twelveYearLearner);
+  twelveYearTeacher.generation = 1;
+  twelveYearTeacher.bornAtMonth = 0;
+  twelveYearLearner.bornAtMonth = -24 * 12;
+  const boundaryTechniqueId = 'technique:age-boundary-teaching';
+  twelveYearTeacher.knowledge = [{
+    id: boundaryTechniqueId, kind: 'technique', summary: '年龄边界教学技术', confidence: 72,
+    learnedAtMonth: 100, sourceEventIds: ['age-boundary-technique-source'],
+  }];
+  twelveYearLearner.knowledge = twelveYearLearner.knowledge.filter((fact) => fact.id !== boundaryTechniqueId);
+  forceNaturalDecisionSample(twelveYearState, twelveYearTeacher, 12 * 12, 'age-twelve-boundary');
+  let twelveYearContextSeen = false;
+  const afterTwelveYearBoundary = stepSimulation(twelveYearState, {
+    decide(context) {
+      if (context.person.id !== twelveYearTeacher.id) return { kind: 'idle', reason: '不干扰十二岁边界测试' };
+      twelveYearContextSeen = true;
+      assert.ok(context.options.every((candidate) => optionAllowedForLifeStage('adolescent-worker', candidate)),
+        '满 12 岁提交月的候选必须全部服从 adolescent-worker 权限');
+      const teachOption = context.options.find((candidate) => candidate.id.startsWith(`teach:${12 * 12}:`)
+        && candidate.nextAction.kind === 'communicate'
+        && candidate.nextAction.content.kind === 'claim'
+        && candidate.nextAction.content.factId === boundaryTechniqueId);
+      assert.ok(teachOption, '满 12 岁的提交月必须立即出现此前 learning-child 阶段不允许的教学候选');
+      return { kind: 'start', optionId: teachOption.id, reason: '验证十二岁边界的同月教学行动' };
+    },
+  });
+  assert.equal(twelveYearContextSeen, true);
+  const teachingAction = afterTwelveYearBoundary.lastStep.find((event) => event.kind === 'action'
+    && event.who === twelveYearTeacher.id
+    && event.atMonth === 12 * 12
+    && event.action.kind === 'communicate'
+    && event.diff.teachingFactId === boundaryTechniqueId);
+  assert.equal(teachingAction?.status, 'completed',
+    'decider 在满 12 岁提交月看到的教学候选必须在同月被执行器接受');
+  assert.ok(afterTwelveYearBoundary.people.find((person) => person.id === twelveYearLearner.id)?.knowledge
+    .some((fact) => fact.id === boundaryTechniqueId && fact.confidence >= 60),
+  '真实教学动作必须把可靠技术传给受教者');
+
+  const sixteenYearState = createInitialState(7116, { endpoint: { kind: 'months', value: 1_000 }, chaosIntensity: 0 });
+  sixteenYearState.clock.elapsedMonths = 16 * 12 - 1;
+  const sixteenYearFemale = sixteenYearState.people.find((person) => person.sex === 'female') ?? sixteenYearState.people[0];
+  const sixteenYearMale = sixteenYearState.people.find((person) => person.sex === 'male' && person.id !== sixteenYearFemale.id)
+    ?? sixteenYearState.people.find((person) => person.id !== sixteenYearFemale.id);
+  assert.ok(sixteenYearMale, '十六岁边界测试需要两名人物');
+  sixteenYearFemale.sex = 'female';
+  sixteenYearMale.sex = 'male';
+  prepareBoundaryPeople(sixteenYearState, sixteenYearFemale, sixteenYearMale);
+  sixteenYearFemale.generation = 1;
+  sixteenYearMale.generation = 1;
+  sixteenYearFemale.bornAtMonth = 0;
+  sixteenYearMale.bornAtMonth = 0;
+  const sharedExperience = executePrimitiveAction(
+    sixteenYearState, sixteenYearFemale,
+    { kind: 'attend', target: { kind: 'person', personId: sixteenYearMale.id } },
+    16 * 12 - 2, 0, { cause: 'intent', actionTick: 1 },
+  );
+  assert.equal(sharedExperience.status, 'completed');
+  sixteenYearState.world.past.push(sharedExperience);
+  Object.assign(sixteenYearFemale.relations.find((relation) => relation.personId === sixteenYearMale.id), {
+    trust: 65, bond: 65, sourceEventIds: [sharedExperience.id],
+  });
+  Object.assign(sixteenYearMale.relations.find((relation) => relation.personId === sixteenYearFemale.id), {
+    trust: 65, bond: 65, sourceEventIds: [sharedExperience.id],
+  });
+  const boundaryReproductionOfferId = 'age-sixteen-reproduction-offer';
+  const boundaryReproductionOffer = executePrimitiveAction(sixteenYearState, sixteenYearMale, {
+    kind: 'communicate',
+    content: {
+      id: boundaryReproductionOfferId, kind: 'offer', summary: '是否愿意共同生育后代',
+      proposal: {
+        kind: 'reproduce', proposerId: sixteenYearMale.id, partnerId: sixteenYearFemale.id,
+        expiresAtMonth: 16 * 12 + 4,
+      },
+    },
+    audience: [sixteenYearFemale.id], channel: 'voice',
+  }, 16 * 12 - 1, 1, { cause: 'intent', actionTick: 1 });
+  assert.equal(boundaryReproductionOffer.status, 'completed');
+  sixteenYearState.world.past.push(boundaryReproductionOffer);
+  assert.equal(sixteenYearState.agreements.find((agreement) => agreement.id === boundaryReproductionOfferId)?.status, 'proposed');
+  let sixteenYearContextSeen = false;
+  const afterSixteenYearBoundary = stepSimulation(sixteenYearState, {
+    decide(context) {
+      if (context.person.id !== sixteenYearFemale.id) return { kind: 'idle', reason: '不干扰十六岁边界测试' };
+      sixteenYearContextSeen = true;
+      assert.ok(context.options.every((candidate) => optionAllowedForLifeStage('adult', candidate)),
+        '满 16 岁提交月的候选必须服从 adult 权限');
+      const acceptance = context.options.find((candidate) => candidate.id.startsWith(`accept-reproduce:${boundaryReproductionOfferId}`));
+      assert.ok(acceptance, '双方在提交月满 16 岁时，decider 必须立即看到可执行的生殖接受候选');
+      return { kind: 'start', optionId: acceptance.id, reason: '验证十六岁边界的同月协议接受与执行' };
+    },
+  });
+  assert.equal(sixteenYearContextSeen, true);
+  const sixteenYearReproductionAttempts = afterSixteenYearBoundary.lastStep.filter((event) => event.kind === 'action'
+    && event.who === sixteenYearFemale.id
+    && event.atMonth === 16 * 12
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce');
+  assert.equal(sixteenYearReproductionAttempts.length, 1,
+    '一个真实 stepSimulation 的 15 个规划刻度内，同一生殖 pair 最多只能抽样一次');
+  assert.equal(sixteenYearReproductionAttempts[0]?.status, 'completed',
+    'decider 在满 16 岁提交月看到的生殖候选必须由同样按该月判龄的执行器完成');
 
   const movementState = createInitialState(20260816, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const parent = movementState.people[0];

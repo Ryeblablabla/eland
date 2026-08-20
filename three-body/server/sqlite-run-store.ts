@@ -19,22 +19,40 @@ import type { NarrativeEnhancementArtifact } from "./narrative-enhancements";
 import {
   RunAlreadyExistsError,
   RunNotFoundError,
+  RunWriteConflictError,
   type PersistedRun,
   type RunStore,
   type RunSummary,
+  type SaveRunOptions,
 } from "./run-persistence";
+import {
+  decodeSegmentedRunState,
+  encodeSegmentedRunState,
+  markReachableRunStateChunks,
+  parseRunStateRoot,
+  RUN_STATE_CODECS,
+  RUN_STATE_ROOT_CODEC,
+  type EncodedRunState,
+  type RunStateReachabilityMemo,
+  type RunStateRootMetadata,
+} from "./run-state-codec";
 
 export {
   RunAlreadyExistsError,
   RunNotFoundError,
+  RunWriteConflictError,
   type PersistedRun,
   type RunStore,
   type RunSummary,
+  type SaveRunOptions,
 } from "./run-persistence";
 
 export const ELAND_DATABASE_FILENAME = "eland.sqlite3";
 export const ELAND_DATABASE_SCHEMA_VERSION = 2;
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
+/** Batch pruning keeps a 128-checkpoint recovery floor without running global GC every year. */
+export const RUN_CHECKPOINT_RETENTION = 128;
+export const RUN_CHECKPOINT_PRUNE_THRESHOLD = RUN_CHECKPOINT_RETENTION * 2;
 
 const RUN_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const V8_BROTLI_CODEC = "v8-br-v1";
@@ -47,9 +65,9 @@ const decompress = promisify(brotliDecompress);
 
 interface EncodedChunk {
   hash: string;
-  codec: typeof V8_BROTLI_CODEC;
+  codec: string;
   rawSize: number;
-  data: Buffer;
+  data: Uint8Array;
 }
 
 interface RunRow {
@@ -324,7 +342,7 @@ export class SqliteRunStore implements RunStore {
       SET state_hash = ?, schema_version = ?, label = ?, created_at = ?, updated_at = ?,
           revision = ?, elapsed_months = ?, civilization_no = ?, status = ?,
           living_agents = ?, agent_count = ?, event_count = ?, milestone_count = ?
-      WHERE id = ?
+      WHERE id = ? AND revision = ? AND state_hash = ?
     `);
     this.insertCheckpoint = this.database.prepare(`
       INSERT INTO run_checkpoints(run_id, revision, month, state_hash, created_at)
@@ -413,6 +431,111 @@ export class SqliteRunStore implements RunStore {
     return row;
   }
 
+  private async decodeRunState(hash: string): Promise<{
+    state: SimulationState;
+    metadata?: RunStateRootMetadata;
+  }> {
+    const root = this.chunkRow(hash);
+    if (root.codec === V8_BROTLI_CODEC) {
+      return { state: await decodeValue<SimulationState>(root) };
+    }
+    if (root.codec === RUN_STATE_ROOT_CODEC) {
+      const decoded = await decodeSegmentedRunState(root, (chunkHash) => this.chunkRow(chunkHash));
+      return { state: decoded.state, metadata: decoded.metadata };
+    }
+    throw new Error(`不支持的运行状态根编码：${root.codec}`);
+  }
+
+  private runStateRootMetadata(hash: string): RunStateRootMetadata | null {
+    const root = this.chunkRow(hash);
+    if (root.codec === V8_BROTLI_CODEC) return null;
+    if (root.codec === RUN_STATE_ROOT_CODEC) return parseRunStateRoot(root);
+    throw new Error(`不支持的运行状态根编码：${root.codec}`);
+  }
+
+  private storeRunState(snapshot: EncodedRunState): void {
+    for (const part of snapshot.parts) this.storeChunk(part);
+    this.storeChunk(snapshot.root);
+  }
+
+  private pruneRunCheckpoints(id: string): boolean {
+    const checkpointCount = this.database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM run_checkpoints AS checkpoint
+      JOIN chunks AS state_root ON state_root.hash = checkpoint.state_hash
+      WHERE checkpoint.run_id = ?
+        AND state_root.codec = ?
+    `).get(id, RUN_STATE_ROOT_CODEC);
+    if (Number(checkpointCount?.count ?? 0) <= RUN_CHECKPOINT_PRUNE_THRESHOLD) return false;
+
+    const result = this.database.prepare(`
+      DELETE FROM run_checkpoints
+      WHERE run_id = ?
+        AND state_hash IN (
+          SELECT hash FROM chunks WHERE codec = ?
+        )
+        AND revision NOT IN (
+          SELECT checkpoint.revision
+          FROM run_checkpoints AS checkpoint
+          JOIN chunks AS state_root ON state_root.hash = checkpoint.state_hash
+          WHERE checkpoint.run_id = ?
+            AND state_root.codec = ?
+          ORDER BY checkpoint.revision DESC
+          LIMIT ?
+        )
+    `).run(
+      id,
+      RUN_STATE_ROOT_CODEC,
+      id,
+      RUN_STATE_ROOT_CODEC,
+      RUN_CHECKPOINT_RETENTION,
+    );
+    return Number(result.changes) > 0;
+  }
+
+  private collectUnreferencedRunStateChunks(): void {
+    const codecSet = new Set<string>(RUN_STATE_CODECS);
+    const memo: RunStateReachabilityMemo = {
+      chunks: new Set<string>(),
+      historyNodes: new Set<string>(),
+    };
+    const stateRoots = this.database.prepare(`
+      SELECT state_hash AS hash FROM runs
+      UNION
+      SELECT state_hash AS hash FROM run_checkpoints
+    `).all();
+    for (const row of stateRoots) {
+      const hash = String(row.hash);
+      const chunk = this.chunkRow(hash);
+      if (chunk.codec === RUN_STATE_ROOT_CODEC) {
+        markReachableRunStateChunks(chunk, (childHash) => this.chunkRow(childHash), memo);
+      } else if (chunk.codec !== V8_BROTLI_CODEC) {
+        throw new Error(`运行状态根 ${hash} 使用了不支持的编码 ${chunk.codec}`);
+      }
+    }
+
+    for (const row of this.database.prepare(`SELECT chunk_hash AS hash FROM artifacts`).all()) {
+      const hash = String(row.hash);
+      const chunk = this.chunkRow(hash);
+      if (chunk.codec === RUN_STATE_ROOT_CODEC) {
+        markReachableRunStateChunks(chunk, (childHash) => this.chunkRow(childHash), memo);
+      } else if (codecSet.has(chunk.codec)) {
+        // Artifacts normally use v8-br-v1, but any direct reference is still a root of reachability.
+        memo.chunks.add(hash);
+      }
+    }
+
+    const deleteChunk = this.database.prepare(`
+      DELETE FROM chunks WHERE hash = ? AND codec IN (?, ?, ?, ?)
+    `);
+    for (const row of this.database.prepare(`
+      SELECT hash FROM chunks WHERE codec IN (?, ?, ?, ?)
+    `).all(...RUN_STATE_CODECS)) {
+      const hash = String(row.hash);
+      if (!memo.chunks.has(hash)) deleteChunk.run(hash, ...RUN_STATE_CODECS);
+    }
+  }
+
   async list(): Promise<RunSummary[]> {
     return this.database.prepare(`
       SELECT id, state_hash, schema_version, label, created_at, updated_at,
@@ -427,8 +550,10 @@ export class SqliteRunStore implements RunStore {
     const normalizedId = normalizeId(id);
     const row = this.runRow(normalizedId);
     if (!row) throw new RunNotFoundError(`运行 ${normalizedId} 不存在`);
-    const storedState = await decodeValue<SimulationState>(this.chunkRow(row.stateHash));
-    return { meta: row.meta, state: migrated(storedState) };
+    const stored = await this.decodeRunState(row.stateHash);
+    // Segmented roots are written only from current-schema authoritative state.
+    // Legacy monoliths still pass through the migration/normalization layer once.
+    return { meta: row.meta, state: stored.metadata ? stored.state : migrated(stored.state) };
   }
 
   async create(input: { id?: string; label?: string; state: SimulationState }): Promise<PersistedRun> {
@@ -436,31 +561,80 @@ export class SqliteRunStore implements RunStore {
     if (this.runRow(id)) throw new RunAlreadyExistsError(`运行 ${id} 已存在`);
 
     const state = migrated(input.state);
-    const [stateChunk] = await Promise.all([encodeValue(state)]);
+    const snapshot = await encodeSegmentedRunState(state);
     const meta = summaryFor(id, state, undefined, input.label);
 
     this.transaction(() => {
       if (this.runRow(id)) throw new RunAlreadyExistsError(`运行 ${id} 已存在`);
-      this.storeChunk(stateChunk);
-      this.insertRun.run(id, stateChunk.hash, ...runColumnValues(meta));
-      this.insertCheckpoint.run(id, meta.revision, meta.elapsedMonths, stateChunk.hash, meta.updatedAt);
+      this.storeRunState(snapshot);
+      this.insertRun.run(id, snapshot.root.hash, ...runColumnValues(meta));
+      this.insertCheckpoint.run(id, meta.revision, meta.elapsedMonths, snapshot.root.hash, meta.updatedAt);
     });
     return { meta, state };
   }
 
-  async save(id: string, stateInput: SimulationState, label?: string): Promise<PersistedRun> {
+  async save(
+    id: string,
+    stateInput: SimulationState,
+    label?: string,
+    options: SaveRunOptions = {},
+  ): Promise<PersistedRun> {
     const normalizedId = normalizeId(id);
-    this.assertRunExists(normalizedId);
-    const state = migrated(stateInput);
-    const stateChunk = await encodeValue(state);
+    const encodedAgainst = this.assertRunExists(normalizedId);
+    const hasExpectedRevision = options.expectedRevision !== undefined;
+    const hasExpectedStateHash = options.expectedStateHash !== undefined;
+    if (hasExpectedRevision !== hasExpectedStateHash) {
+      throw new Error("expectedRevision 与 expectedStateHash 必须同时提供");
+    }
+    if (hasExpectedRevision
+      && (options.expectedRevision !== encodedAgainst.meta.revision
+        || options.expectedStateHash !== encodedAgainst.stateHash)) {
+      throw new RunWriteConflictError(
+        `运行 ${normalizedId} 写入基线已过期：期望 revision ${options.expectedRevision} / ${options.expectedStateHash}，`
+        + `当前为 revision ${encodedAgainst.meta.revision} / ${encodedAgainst.stateHash}`,
+      );
+    }
+    if (Number((stateInput as { schemaVersion?: number }).schemaVersion) !== 17) {
+      throw new Error("保存的运行状态必须是 schemaVersion 17");
+    }
+    // Long evolution already supplies an authoritative current-schema snapshot;
+    // cloning/migrating it here would copy the entire event history every year.
+    const state = stateInput;
+    const previousMetadata = this.runStateRootMetadata(encodedAgainst.stateHash);
+    const snapshot = await encodeSegmentedRunState(
+      state,
+      previousMetadata && options.historyMode !== "replace"
+        ? { mode: "append", previous: previousMetadata }
+        : { mode: "replace" },
+    );
+    const next = summaryFor(encodedAgainst.id, state, encodedAgainst.meta, label);
 
     const meta = this.transaction(() => {
-      const current = this.assertRunExists(normalizedId);
-      const previous = current.meta;
-      const next = summaryFor(current.id, state, previous, label);
-      this.storeChunk(stateChunk);
-      this.updateRun.run(stateChunk.hash, ...runColumnValues(next), current.id);
-      this.insertCheckpoint.run(current.id, next.revision, next.elapsedMonths, stateChunk.hash, next.updatedAt);
+      this.storeRunState(snapshot);
+      const update = this.updateRun.run(
+        snapshot.root.hash,
+        ...runColumnValues(next),
+        encodedAgainst.id,
+        encodedAgainst.meta.revision,
+        encodedAgainst.stateHash,
+      );
+      if (Number(update.changes) !== 1) {
+        const current = this.runRow(normalizedId);
+        throw new RunWriteConflictError(
+          `运行 ${normalizedId} 在编码期间已更新：期望 revision ${encodedAgainst.meta.revision}`
+          + ` / ${encodedAgainst.stateHash}，当前为 ${current
+            ? `revision ${current.meta.revision} / ${current.stateHash}`
+            : "不存在"}`,
+        );
+      }
+      this.insertCheckpoint.run(
+        encodedAgainst.id,
+        next.revision,
+        next.elapsedMonths,
+        snapshot.root.hash,
+        next.updatedAt,
+      );
+      if (this.pruneRunCheckpoints(encodedAgainst.id)) this.collectUnreferencedRunStateChunks();
       return next;
     });
     return { meta, state };

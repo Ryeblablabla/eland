@@ -106,6 +106,9 @@ export const Material = {
   Foundry: 61,
   Smithy: 62,
   KeepCore: 63,
+  WaterWheel: 64,
+  DriveShaft: 65,
+  BrokenDriveShaft: 66,
 } as const satisfies Record<string, MaterialId>;
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
@@ -173,6 +176,9 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.Foundry, key: 'foundry', name: '青铜铸造作坊', phase: 'solid', tags: ['solid', 'building', 'placeable', 'facility', 'workstation', 'hot'], hardness: 8, mass: 3.8, color: [154, 91, 45] },
   { id: Material.Smithy, key: 'smithy', name: '铁匠铺锻炉', phase: 'solid', tags: ['solid', 'building', 'placeable', 'facility', 'workstation', 'hot'], hardness: 9, mass: 4, color: [88, 78, 72] },
   { id: Material.KeepCore, key: 'keep_core', name: '城堡议事核心', phase: 'solid', tags: ['solid', 'building', 'placeable', 'facility', 'meeting-place', 'insulating'], hardness: 9, mass: 4.2, color: [89, 91, 92] },
+  { id: Material.WaterWheel, key: 'water_wheel', name: '水轮', phase: 'solid', tags: ['solid', 'building', 'placeable'], hardness: 5, mass: 2.2, color: [126, 87, 48] },
+  { id: Material.DriveShaft, key: 'drive_shaft', name: '青铜传动轴', phase: 'solid', tags: ['solid', 'building', 'placeable', 'metal'], hardness: 8, mass: 1.8, color: [161, 111, 50] },
+  { id: Material.BrokenDriveShaft, key: 'broken_drive_shaft', name: '断裂的传动轴', phase: 'solid', tags: ['solid', 'placeable', 'metal'], hardness: 5, mass: 1.7, color: [104, 78, 50] },
 ];
 
 const BY_ID = new Map(MATERIAL_PALETTE.map((material) => [material.id, material]));

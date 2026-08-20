@@ -4,6 +4,14 @@ import type { MaterialId } from './material';
 
 export type PersonId = string;
 export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'postpartum-recovery' | 'restrained' | 'dehydrated-hibernation';
+export type HibernationPhase = 'dormant' | 'recovering';
+
+/** A recovered body must be able to enter a new ordinary episode if needed. */
+export const HIBERNATION_RECOVERY_SAFE_RESERVE = 45;
+/** Executor legality for entering an already-needed hibernation episode. */
+export const HIBERNATION_ENTRY_LEGAL_RESERVE = 38;
+/** Anticipatory sleep needs more margin because the predicted crisis has not arrived. */
+export const HIBERNATION_PREDICTIVE_ENTRY_RESERVE = 45;
 
 export interface ConditionInstance {
   id: string;
@@ -19,6 +27,14 @@ export interface ConditionInstance {
   triggerPredictionId?: string;
   /** A prior disputed wake of the same sleep plan; new evidence is required before another. */
   wakeDisputeEventIds?: string[];
+  /** Missing on legacy saves means dormant. Only dehydrated-hibernation uses this field. */
+  hibernationPhase?: HibernationPhase;
+  /** Start of the current stable-era recovery attempt, not the original episode. */
+  recoveryStartedAtMonth?: number;
+  /** Physical ingest / rehydrate facts produced during the current recovery attempt. */
+  recoverySourceEventIds?: string[];
+  /** At most one caregiver-assisted recovery drink may be applied in a month. */
+  lastRecoveryAssistedAtMonth?: number;
 }
 
 export interface ItemStack {
@@ -180,6 +196,43 @@ export function isAlive(person: PersonState): boolean {
 
 export function isDehydratedHibernating(person: PersonState): boolean {
   return person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation');
+}
+
+export function hasHibernationEntryContraindication(person: PersonState): boolean {
+  return person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+    || condition.kind === 'pregnancy'
+    || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2));
+}
+
+export function hasHibernationEntryBodyReserve(
+  person: PersonState,
+  minimumReserve = HIBERNATION_ENTRY_LEGAL_RESERVE,
+): boolean {
+  return Math.min(person.body.health, person.body.hydration, person.body.nutrition) >= minimumReserve;
+}
+
+export function canEnterDehydratedHibernation(
+  person: PersonState,
+  minimumReserve = HIBERNATION_ENTRY_LEGAL_RESERVE,
+): boolean {
+  return !hasHibernationEntryContraindication(person)
+    && hasHibernationEntryBodyReserve(person, minimumReserve);
+}
+
+export function hibernationPhase(condition: ConditionInstance): HibernationPhase {
+  return condition.kind === 'dehydrated-hibernation' && condition.hibernationPhase === 'recovering'
+    ? 'recovering'
+    : 'dormant';
+}
+
+export function isDormantDehydratedHibernating(person: PersonState): boolean {
+  return person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+    && hibernationPhase(condition) === 'dormant');
+}
+
+export function isRecoveringFromDehydratedHibernation(person: PersonState): boolean {
+  return person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+    && hibernationPhase(condition) === 'recovering');
 }
 
 export function ageMonths(person: PersonState, elapsedMonths: number): number {

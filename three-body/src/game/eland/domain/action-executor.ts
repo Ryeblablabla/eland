@@ -1,6 +1,22 @@
-import type { FactPredicate, GroundedConversationRef, Intent, PrimitiveAction, VoxelPosition, WorldRef } from './action';
+import { waterCurrentObservationFactId, type FactPredicate, type GroundedConversationRef, type Intent, type PrimitiveAction, type VoxelPosition, type WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
-import { ageMonths, inventoryQuantity, isAlive, MIN_TEACHING_AGE_MONTHS, sameLocation, type ItemStack, type PersonState } from './person';
+import {
+  ageMonths,
+  hasHibernationEntryBodyReserve,
+  hasHibernationEntryContraindication,
+  HIBERNATION_ENTRY_LEGAL_RESERVE,
+  HIBERNATION_PREDICTIVE_ENTRY_RESERVE,
+  HIBERNATION_RECOVERY_SAFE_RESERVE,
+  hibernationPhase,
+  inventoryQuantity,
+  isAlive,
+  isDormantDehydratedHibernating,
+  isRecoveringFromDehydratedHibernation,
+  MIN_TEACHING_AGE_MONTHS,
+  sameLocation,
+  type ItemStack,
+  type PersonState,
+} from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
 import { cellId, cellX, cellY, cellsInRadius, findStandingPath, setVoxel, standingMovementCost, surfaceMaterial, surfaceStandingPosition, voxelAt, type StandingPosition } from '../world/grid';
 import { seededFraction } from '../world/generator';
@@ -42,6 +58,7 @@ import {
   type TechniqueActionDescriptor,
 } from './technique-demonstration';
 import type { ProjectState, ProjectTechniqueDemonstrationBasis } from './project';
+import { inspectProjectMaterialContributionRequest } from './project-material-request';
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
 import { hasReproductiveRecoveryCondition } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
@@ -51,6 +68,26 @@ import {
   MAX_ERA_PREDICTION_HORIZON_MONTHS,
   personTrustsEraPrediction,
 } from './era-prediction';
+import { observedHibernationEntryEvidence } from './hibernation-entry';
+import {
+  MECHANICAL_POWER_ACTION_BASIS_VERSION,
+  MECHANICAL_POWER_PLAN_VERSION,
+  MECHANICAL_POWER_WORLD_VERSION,
+  ensureMechanicalPowerNetwork,
+  mechanicalPowerNetworkId,
+  mechanicalPowerPlanKey,
+  plannedMechanicalPowerComponents,
+  recordMechanicalPowerFault,
+  recordMechanicalPowerInstallation,
+  recordMechanicalPowerOperation,
+  recordMechanicalPowerRepair,
+  validateMechanicalPowerTopology,
+  waterCurrentAvailabilityFor,
+  type MechanicalPowerActionBasis,
+  type MechanicalPowerNetworkState,
+  type MechanicalPowerProjectPlan,
+  type MechanicalPowerWorldState,
+} from './mechanical-power';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -415,7 +452,12 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
     const other = state.people.find((candidate) => candidate.id === goal.personId);
     return Boolean(other && sameLocation(person, other));
   }
-  if (goal.kind === 'condition') return state.people.find((candidate) => candidate.id === goal.personId)?.conditions.some((condition) => condition.kind === goal.condition) === goal.present;
+  if (goal.kind === 'condition') {
+    const matchingCondition = state.people.find((candidate) => candidate.id === goal.personId)
+      ?.conditions.find((condition) => condition.kind === goal.condition);
+    if (!goal.present) return matchingCondition === undefined;
+    return Boolean(matchingCondition && (!goal.phase || hibernationPhase(matchingCondition) === goal.phase));
+  }
   if (goal.kind === 'project-completed') return state.projects.some((project) => project.id === goal.projectId && project.status === 'completed');
   if (goal.kind === 'technique-demonstrated') return state.projects.some((project) => project.id === goal.projectId
     && project.techniqueDemonstrations?.some((basis) => basis.requestEventId === goal.requestEventId));
@@ -459,7 +501,7 @@ function compactTraversedSurface(state: SimulationState, path: StandingPosition[
 }
 
 function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
-  if (person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return { status: 'blocked' as const, path: [person.position.cellId], result: '处于脱水休眠，无法移动', diff: {} };
+  if (isDormantDehydratedHibernating(person)) return { status: 'blocked' as const, path: [person.position.cellId], result: '处于低代谢休眠，无法移动', diff: {} };
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
@@ -477,7 +519,7 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
     && candidate.position.z === from.z
     && candidate.geneticParents.includes(person.id)
     && lifePlanningStage(candidate, atMonth) === 'dependent-child'
-    && !candidate.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
+    && !isDormantDehydratedHibernating(candidate));
   for (const dependent of carried) {
     dependent.position.cellId = to.cellId;
     dependent.position.z = to.z;
@@ -534,6 +576,11 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   } else if (action.to.kind === 'container') {
     destinationContainer = containerById(state, action.to.containerId);
     if (!destinationContainer || !canAccessContainer(person, destinationContainer)) return { status: 'blocked' as const, result: '目标容器不在近身操作范围', diff: {} };
+  } else {
+    const destinationZ = action.to.z ?? person.position.z;
+    if (action.to.cellId !== person.position.cellId || destinationZ !== person.position.z) {
+      return { status: 'blocked' as const, result: '只能把物品放到本人当前所在的地面位置', diff: {} };
+    }
   }
   const containerCapacity = destinationContainer ? containerRemainingCapacity(destinationContainer) : Number.POSITIVE_INFINITY;
   if (containerCapacity <= 0) return { status: 'blocked' as const, result: '目标容器已经没有可用容量', diff: { containerId: destinationContainer?.id } };
@@ -637,7 +684,21 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   return {
     status: 'completed' as const,
     result: `${materialDefinition(action.materialId).name} × ${quantity} ${authorized ? '改变了持有者' : '被未经授权地取走'}`,
-    diff: { materialId: action.materialId, quantity, authorized, agreementAuthorized, permissionAuthorized, mandateAuthorized, mandateUse, from: action.from, to: action.to, witnessedBy, ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}) },
+    diff: {
+      materialId: action.materialId,
+      quantity,
+      authorized,
+      agreementAuthorized,
+      permissionAuthorized,
+      mandateAuthorized,
+      mandateUse,
+      from: action.from,
+      to: action.to,
+      witnessedBy,
+      sourceEventIds: sourceEventIds.slice(-24),
+      sourceLineageKeys: sourceLineageKeys.slice(-32),
+      ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}),
+    },
   };
 }
 
@@ -661,8 +722,15 @@ function executeIngest(state: SimulationState, person: PersonState, targets: Wor
     if (target.personId !== person.id) return { status: 'blocked' as const, result: '不能直接摄入他人背包物品', diff: {} };
     const stack = person.inventory.find((candidate) => candidate.id === target.stackId && candidate.quantity > 0);
     if (!stack || (!materialHas(stack.materialId, 'edible') && !materialHas(stack.materialId, 'drinkable'))) return { status: 'blocked' as const, result: '目标当前不可摄入', diff: {} };
+    const consumedStackId = stack.id;
+    const consumedSourceEventIds = [...stack.sourceEventIds].slice(-24);
+    const consumedSourceLineageKeys = [...(stack.sourceLineageKeys ?? [])].slice(-32);
     const consumed = consumeStack(person, stack);
-    return { status: 'completed' as const, result: `摄入了${materialDefinition(consumed.materialId).name}`, diff: consumed };
+    return {
+      status: 'completed' as const,
+      result: `摄入了${materialDefinition(consumed.materialId).name}`,
+      diff: { ...consumed, consumedStackId, consumedSourceEventIds, consumedSourceLineageKeys },
+    };
   }
   if (target.kind === 'voxel') {
     const materialId = voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z);
@@ -807,9 +875,22 @@ function executeInventoryCombine(state: SimulationState, person: PersonState, st
     : rule.output.materialId === Material.BronzeTool
       ? [Material.Foundry, Material.Workshop]
       : [Material.Workshop]);
-  const facilityBonus = facilityMaterialId && !materialHas(rule.output.materialId, 'facility') ? 1 : 0;
+  const exactMechanicalComponent = rule.output.materialId === Material.WaterWheel
+    || rule.output.materialId === Material.DriveShaft
+    || rule.output.materialId === Material.Mill;
+  const facilityBonus = facilityMaterialId
+    && !materialHas(rule.output.materialId, 'facility')
+    && !exactMechanicalComponent ? 1 : 0;
   const outputQuantity = rule.output.quantity + facilityBonus;
-  const outputStack = addInventory(person, rule.output.materialId, outputQuantity, [eventId], `stack-${person.id}-${rule.output.materialId}-${atMonth}`);
+  const outputStack = exactMechanicalComponent
+    ? {
+      id: `stack-${person.id}-${rule.output.materialId}-${eventId}`,
+      materialId: rule.output.materialId,
+      quantity: outputQuantity,
+      sourceEventIds: [eventId],
+    }
+    : addInventory(person, rule.output.materialId, outputQuantity, [eventId], `stack-${person.id}-${rule.output.materialId}-${atMonth}`);
+  if (exactMechanicalComponent) person.inventory.push(outputStack);
   const techniqueId = inventoryCombinationTechniqueId(rule);
   const known = person.knowledge.find((fact) => fact.id === techniqueId);
   if (known) {
@@ -1086,10 +1167,13 @@ function executeDehydrate(
     result: `${sleeper.name}已处于脱水休眠`,
     diff: { alreadyHibernating: true, dehydratedPersonId: sleeper.id },
   };
-  if (sleeper.conditions.some((condition) => condition.kind === 'pregnancy' || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2))) {
+  if (hasHibernationEntryContraindication(sleeper)) {
     return { status: 'blocked' as const, result: '妊娠、重伤或重病让脱水休眠过程过于危险', diff: {} };
   }
-  if (Math.min(sleeper.body.health, sleeper.body.hydration, sleeper.body.nutrition) < 38) {
+  const requiredEntryReserve = action.hibernationPredictionId
+    ? HIBERNATION_PREDICTIVE_ENTRY_RESERVE
+    : HIBERNATION_ENTRY_LEGAL_RESERVE;
+  if (!hasHibernationEntryBodyReserve(sleeper, requiredEntryReserve)) {
     return { status: 'blocked' as const, result: '当前身体储备不足以安全进入脱水休眠', diff: {} };
   }
   const triggerPrediction = action.hibernationPredictionId
@@ -1105,19 +1189,24 @@ function executeDehydrate(
       .filter((memory) => memory.id.startsWith(`memory:hibernation-wake-dispute:${triggerPrediction.id}:${sleeper.id}:`))
       .flatMap((memory) => memory.sourceEventIds)
     : [];
-  const hibernationEvidenceEventIds = (action.hibernationEvidenceEventIds ?? []).filter((sourceEventId) => {
-    const source = worldEventById(state, sourceEventId);
-    return source?.kind === 'environment'
-      && source.change === 'condition'
-      && source.who === sleeper.id
-      && source.cellId === sleeper.position.cellId
-      && (source.diff.condition === 'cold' || source.diff.condition === 'heat');
-  });
+  const providedHibernationEvidenceIds = new Set(action.hibernationEvidenceEventIds ?? []);
+  const hibernationEvidenceEventIds = triggerPrediction
+    ? []
+    : observedHibernationEntryEvidence(state, sleeper)
+      .filter((sourceEventId) => providedHibernationEvidenceIds.has(sourceEventId));
+  if (!triggerPrediction && hibernationEvidenceEventIds.length === 0) {
+    return {
+      status: 'blocked' as const,
+      result: '已发生的乱纪元脱水休眠需要本人当前严重冷热暴露的可解析事实',
+      diff: {},
+    };
+  }
   sleeper.conditions.push({
     id: `condition-dehydrated-hibernation-${sleeper.id}-${atMonth}`,
     kind: 'dehydrated-hibernation',
     stage: 1,
     sinceMonth: atMonth,
+    hibernationPhase: 'dormant',
     sourceEventIds: [...new Set([...hibernationEvidenceEventIds, eventId])],
     ...(triggerPrediction ? { triggerPredictionId: triggerPrediction.id } : {}),
     ...(wakeDisputeEventIds.length ? { wakeDisputeEventIds: [...new Set(wakeDisputeEventIds)] } : {}),
@@ -1151,11 +1240,52 @@ function executeRehydrate(
   if (!sleeper || !sameLocation(sleeper, person)) return { status: 'blocked' as const, result: '需要近身才能让脱水休眠者重新水化', diff: {} };
   const condition = sleeper.conditions.find((candidate) => candidate.kind === 'dehydrated-hibernation');
   if (!condition) return { status: 'blocked' as const, result: '对方没有处于脱水休眠', diff: {} };
+  const phase = hibernationPhase(condition);
+  const assistedDependentRecovery = phase === 'recovering'
+    && isAlive(sleeper)
+    && state.civilization.epoch === 'stable'
+    && sleeper.geneticParents.includes(person.id)
+    && lifePlanningStage(sleeper, atMonth) === 'dependent-child'
+    && sleeper.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE
+    && condition.lastRecoveryAssistedAtMonth !== atMonth;
+  if (phase !== 'dormant' && !assistedDependentRecovery) return {
+    status: 'blocked' as const,
+    result: phase === 'recovering'
+      ? '对方的恢复阶段不允许本次重新水化'
+      : '对方已经转入恢复阶段，不能重复重新水化',
+    diff: {
+      hibernationConditionId: condition.id,
+      hibernationPhase: phase,
+      duplicateRehydrationBlocked: true,
+    },
+  };
   const waterNearby = cellsInRadius(person.position.cellId, 2).some((cell) => {
     const material = surfaceMaterial(state.world.grid, cell);
     return materialHas(material, 'drinkable');
   });
   if (!waterNearby) return { status: 'blocked' as const, result: '附近没有可用水或冰，无法完成重新水化', diff: {} };
+  if (assistedDependentRecovery) {
+    condition.lastRecoveryAssistedAtMonth = atMonth;
+    condition.recoverySourceEventIds = [...new Set([...(condition.recoverySourceEventIds ?? []), eventId])].slice(-24);
+    sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
+    return {
+      status: 'completed' as const,
+      result: `${person.name}用附近的真实水源继续帮助${sleeper.name}恢复`,
+      diff: {
+        rehydratedPersonId: sleeper.id,
+        assistedDependentId: sleeper.id,
+        assistedByPersonId: person.id,
+        waterNearby: true,
+        atMonth,
+        hibernationRecoverySource: true,
+        hibernationConditionId: condition.id,
+        hibernationPhase: 'recovering',
+        exited: false,
+        recoverySourceEventIds: [...condition.recoverySourceEventIds],
+        lastRecoveryAssistedAtMonth: atMonth,
+      },
+    };
+  }
   const triggerPrediction = condition.triggerPredictionId
     ? state.eraPredictions.find((prediction) => prediction.id === condition.triggerPredictionId)
     : undefined;
@@ -1184,7 +1314,9 @@ function executeRehydrate(
         : triggerPrediction?.status === 'correct'
           ? 'post-chaos-recovery' as const
           : 'unbound-stable-recovery' as const;
-  sleeper.conditions = sleeper.conditions.filter((candidate) => candidate.id !== condition.id);
+  condition.hibernationPhase = 'recovering';
+  condition.recoveryStartedAtMonth ??= atMonth;
+  condition.recoverySourceEventIds = [...new Set([...(condition.recoverySourceEventIds ?? []), eventId])].slice(-24);
   sleeper.body.hydration = clamp(sleeper.body.hydration + 18);
   if (person.id !== sleeper.id) {
     if (wakeBasis === 'disputed-pending-prediction' && triggerPrediction) {
@@ -1228,13 +1360,16 @@ function executeRehydrate(
   }
   return {
     status: 'completed' as const,
-    result: `${person.name}使${sleeper.name}重新水化并苏醒`,
+    result: `${person.name}用真实水源使${sleeper.name}转入受限恢复`,
     diff: {
       rehydratedPersonId: sleeper.id,
       waterNearby: true,
       atMonth,
       rehydrationBasis: wakeBasis,
       hibernationConditionId: condition.id,
+      hibernationPhase: 'recovering',
+      exited: false,
+      recoverySourceEventIds: [...condition.recoverySourceEventIds],
       ...(triggerPrediction ? { hibernationPredictionId: triggerPrediction.id } : {}),
     },
   };
@@ -1352,7 +1487,475 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
   };
 }
 
+interface MechanicalActionContext {
+  project: ProjectState;
+  plan: MechanicalPowerProjectPlan;
+  mechanicalPower: MechanicalPowerWorldState;
+  network?: MechanicalPowerNetworkState;
+  observationEvent: ActionFact;
+  supportingSegmentIds: string[];
+}
+
+function samePosition(left: VoxelPosition, right: VoxelPosition): boolean {
+  return left.x === right.x && left.y === right.y && left.z === right.z;
+}
+
+function actionHappenedAfter(candidate: ActionFact, basis: ActionFact): boolean {
+  return candidate.atMonth > basis.atMonth
+    || (candidate.atMonth === basis.atMonth && candidate.orderInMonth > basis.orderInMonth)
+    || (candidate.atMonth === basis.atMonth
+      && candidate.orderInMonth === basis.orderInMonth
+      && candidate.id.localeCompare(basis.id) > 0);
+}
+
+function personalWaterCurrentObservationEvent(
+  state: SimulationState,
+  person: PersonState,
+  segmentId: string,
+  allowedEventIds?: ReadonlySet<string>,
+): ActionFact | null {
+  const known = person.knowledge.find((fact) => fact.id === waterCurrentObservationFactId(segmentId)
+    && fact.kind === 'observation'
+    && fact.confidence >= 55);
+  if (!known) return null;
+  return known.sourceEventIds.flatMap((eventId) => {
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' ? [event] : [];
+  }).filter((event) => event.status === 'completed'
+    && (!allowedEventIds || allowedEventIds.has(event.id))
+    && event.who === person.id
+    && event.action.kind === 'attend'
+    && event.action.waterCurrentSegmentId === segmentId
+    && event.diff.mechanicalPowerObservation === true
+    && event.diff.waterCurrentSegmentId === segmentId)
+    .sort((left, right) => left.atMonth - right.atMonth
+      || left.orderInMonth - right.orderInMonth
+      || left.id.localeCompare(right.id))
+    .at(-1) ?? null;
+}
+
+function mechanicalActionContext(
+  state: SimulationState,
+  person: PersonState,
+  basis: MechanicalPowerActionBasis,
+  requireFlow: boolean,
+): MechanicalActionContext | { blocked: string } {
+  if (basis.version !== MECHANICAL_POWER_ACTION_BASIS_VERSION || basis.mode === 'observe-source') {
+    return { blocked: '机械动作依据版本或模式无效' };
+  }
+  const project = state.projects.find((candidate) => candidate.id === basis.projectId
+    && candidate.status === 'active'
+    && candidate.ownerId === person.id
+    && candidate.desiredFunction === 'water-powered-crop-processing');
+  const plan = project?.mechanicalPowerPlan;
+  if (!project || !plan
+    || plan.version !== MECHANICAL_POWER_PLAN_VERSION
+    || plan.projectId !== project.id
+    || project.mechanicalPowerPlanKey !== mechanicalPowerPlanKey(plan)
+    || project.mechanicalPowerNetworkId !== mechanicalPowerNetworkId(plan)
+    || basis.planKey !== project.mechanicalPowerPlanKey
+    || basis.networkId !== project.mechanicalPowerNetworkId
+    || basis.sourceSegmentId !== plan.sourceSegmentId
+    || !sameIds(basis.sourceKeys, plan.sourceKeys)) {
+    return { blocked: '机械动作与本人冻结的项目计划不一致' };
+  }
+  const mechanicalPower = state.world.mechanicalPower;
+  const source = mechanicalPower?.version === MECHANICAL_POWER_WORLD_VERSION
+    ? mechanicalPower.sources.find((candidate) => candidate.id === plan.sourceSegmentId)
+    : undefined;
+  if (!mechanicalPower || !source || !sameIds(source.sourceKeys, plan.sourceKeys)) {
+    return { blocked: '冻结计划的水流来源已经不匹配' };
+  }
+  const observationEvent = personalWaterCurrentObservationEvent(
+    state, person, source.id, new Set(project.triggerFactIds),
+  );
+  if (!observationEvent) {
+    return { blocked: '机械动作缺少项目发起者本人对该水流的可靠观察' };
+  }
+  const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id);
+  if (requireFlow && !availability.available) return { blocked: '冻结计划所绑定的水流当前已经失效' };
+  const network = mechanicalPower.networks.find((candidate) => candidate.id === basis.networkId);
+  if (network && (network.planKey !== basis.planKey
+    || network.installationProjectId !== project.id
+    || network.sourceSegmentId !== source.id)) {
+    return { blocked: '机械网络身份与冻结计划冲突' };
+  }
+  return {
+    project,
+    plan,
+    mechanicalPower,
+    ...(network ? { network } : {}),
+    observationEvent,
+    supportingSegmentIds: availability.supportingSegmentIds,
+  };
+}
+
+function projectActionFactsForMechanical(state: SimulationState, project: ProjectState): ActionFact[] {
+  return project.actionEventIds.flatMap((eventId) => {
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' ? [event] : [];
+  });
+}
+
+function verifiedComponentEvidence(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+  stackId: string,
+  materialId: MaterialId,
+  after?: ActionFact,
+): { manufacture: ActionFact; verification: ActionFact; stack: ItemStack } | null {
+  const stack = person.inventory.find((candidate) => candidate.id === stackId
+    && candidate.materialId === materialId
+    && candidate.quantity > 0
+    && !candidate.recordPayloadId);
+  if (!stack) return null;
+  const actions = projectActionFactsForMechanical(state, project);
+  for (const manufacture of actions.filter((event) => event.status === 'completed'
+    && event.who === person.id
+    && event.action.kind === 'act'
+    && event.action.operation === 'combine'
+    && Number(event.diff.outputMaterialId) === materialId
+    && event.diff.outputStackId === stack.id
+    && stack.sourceEventIds.includes(event.id)
+    && (!after || actionHappenedAfter(event, after))).reverse()) {
+    const verification = actions.find((event) => event.status === 'completed'
+      && event.who === person.id
+      && event.action.kind === 'attend'
+      && event.diff.verifiedSourceEventId === manufacture.id
+      && event.diff.verifiedStackId === stack.id
+      && Number(event.diff.verifiedMaterialId) === materialId
+      && actionHappenedAfter(event, manufacture));
+    if (verification) return { manufacture, verification, stack };
+  }
+  return null;
+}
+
+function mechanicalInstall(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  basis: Extract<MechanicalPowerActionBasis, { mode: 'install' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const context = mechanicalActionContext(state, person, basis, true);
+  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
+  const planned = plannedMechanicalPowerComponents(context.plan).find((component) => component.role === basis.componentRole
+    && component.materialId === basis.componentMaterialId
+    && samePosition(component.position, basis.componentPosition));
+  const voxelRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
+  const stackRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const interactionRange = basis.componentRole === 'converter' ? 2 : 1;
+  if (!planned || !voxelRef || !samePosition(voxelRef.position, basis.componentPosition)
+    || !stackRef || stackRef.personId !== person.id
+    || distanceToPosition(person, basis.componentPosition) > interactionRange) {
+    return { status: 'blocked' as const, result: '机械构件、材料或冻结安装位置不在近身范围', diff: {} };
+  }
+  if (context.network?.components.some((component) => component.role === planned.role
+    && samePosition(component.position, planned.position))) {
+    return { status: 'blocked' as const, result: '这个冻结位置已经登记过机械构件', diff: {} };
+  }
+  if (voxelAt(state.world.grid, planned.position.x, planned.position.y, planned.position.z) !== Material.Air
+    || bodyOccupies(state, planned.position)) {
+    return { status: 'blocked' as const, result: '冻结安装位置不再是可用空气体素', diff: {} };
+  }
+  const evidence = verifiedComponentEvidence(
+    state, person, context.project, stackRef.stackId, planned.materialId,
+  );
+  if (!evidence) return { status: 'blocked' as const, result: '构件不是本项目中由本人真实制造并源绑定核验的成品', diff: {} };
+  const supportMaterialId = voxelAt(
+    state.world.grid, planned.position.x, planned.position.y, planned.position.z - 1,
+  );
+  const wheelAboveBoundCurrent = planned.role === 'converter'
+    && supportMaterialId === Material.Water
+    && context.plan.wheelPosition.z === planned.position.z
+    && context.mechanicalPower.sources.find((source) => source.id === context.plan.sourceSegmentId)
+      ?.requiredWaterVoxels.some((position) => position.x === planned.position.x
+        && position.y === planned.position.y
+        && position.z + 1 === planned.position.z);
+  if (!wheelAboveBoundCurrent && materialDefinition(supportMaterialId).phase !== 'solid') {
+    return { status: 'blocked' as const, result: '机械构件位置缺少实体承托', diff: {} };
+  }
+  const installationSourceEventIds = [
+    evidence.manufacture.id,
+    evidence.verification.id,
+    context.observationEvent.id,
+  ];
+  const network = ensureMechanicalPowerNetwork(context.mechanicalPower, context.plan);
+  evidence.stack.quantity -= 1;
+  removeEmptyStacks(person);
+  setVoxel(state.world.grid, planned.position.x, planned.position.y, planned.position.z, planned.materialId);
+  recordMechanicalPowerInstallation(network, {
+    role: planned.role,
+    materialId: planned.materialId,
+    position: { ...planned.position },
+    projectId: context.project.id,
+    installedAtMonth: atMonth,
+    installationEventId: eventId,
+    sourceEventIds: installationSourceEventIds,
+  });
+  return {
+    status: 'completed' as const,
+    result: `在冻结位置安装了${materialDefinition(planned.materialId).name}`,
+    diff: {
+      mechanicalPowerInstallation: true,
+      mode: 'install',
+      projectId: context.project.id,
+      planKey: basis.planKey,
+      networkId: network.id,
+      sourceSegmentId: basis.sourceSegmentId,
+      componentRole: planned.role,
+      componentMaterialId: planned.materialId,
+      componentPosition: { ...planned.position },
+      installationSourceEventIds,
+      mechanicalPowerBasis: structuredClone(basis),
+    },
+  };
+}
+
+function exactNetworkComponentsInstalled(
+  network: MechanicalPowerNetworkState,
+  plan: MechanicalPowerProjectPlan,
+): boolean {
+  const planned = plannedMechanicalPowerComponents(plan);
+  return planned.every((candidate) => network.components.some((component) => component.role === candidate.role
+    && component.materialId === candidate.materialId
+    && component.projectId === plan.projectId
+    && samePosition(component.position, candidate.position)));
+}
+
+function mechanicalOperate(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  basis: Extract<MechanicalPowerActionBasis, { mode: 'operate' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const context = mechanicalActionContext(state, person, basis, true);
+  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
+  const network = context.network;
+  const inputRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const loadRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
+  const input = inputRef?.personId === person.id
+    ? person.inventory.find((stack) => stack.id === inputRef.stackId
+      && stack.materialId === Material.Seed
+      && stack.quantity > 0
+      && !stack.recordPayloadId)
+    : undefined;
+  if (basis.inputMaterialId !== Material.Seed || basis.outputMaterialId !== Material.Food
+    || !loadRef || !samePosition(loadRef.position, context.plan.loadPosition)
+    || distanceToPosition(person, context.plan.loadPosition) > 1
+    || !input) {
+    return { status: 'blocked' as const, result: '动力磨坊缺少精确负载位置或真实种子输入', diff: {} };
+  }
+  if (!network || !exactNetworkComponentsInstalled(network, context.plan)) {
+    return { status: 'blocked' as const, result: '机械网络尚未完整安装', diff: {} };
+  }
+  if (network.fault) return { status: 'blocked' as const, result: '机械网络仍有未修复故障', diff: {} };
+  const topology = validateMechanicalPowerTopology(state.world.grid, context.mechanicalPower, context.plan);
+  if (!topology.valid) return {
+    status: 'blocked' as const,
+    result: `机械拓扑实时复核失败：${topology.reason ?? 'unknown'}`,
+    diff: { topologyReason: topology.reason },
+  };
+  if (network.faultEventIds.length === 0 && network.operationEventIds.length === 0) {
+    const brokenPosition = context.plan.shaftPositions[0];
+    if (!brokenPosition || voxelAt(
+      state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z,
+    ) !== Material.DriveShaft) return { status: 'blocked' as const, result: '试运转故障目标传动轴不存在', diff: {} };
+    setVoxel(state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z, Material.BrokenDriveShaft);
+    recordMechanicalPowerFault(network, {
+      kind: 'commissioning-misalignment',
+      componentRole: 'connector',
+      componentPosition: { ...brokenPosition },
+      atMonth,
+      faultEventId: eventId,
+      sourceEventIds: [...network.installationEventIds, context.observationEvent.id],
+    });
+    return {
+      status: 'progressed' as const,
+      result: '首次试运转暴露出传动轴校准故障，种子尚未投入',
+      diff: {
+        mechanicalPowerFault: true,
+        mode: 'operate',
+        projectId: context.project.id,
+        planKey: basis.planKey,
+        networkId: network.id,
+        sourceSegmentId: basis.sourceSegmentId,
+        faultKind: 'commissioning-misalignment',
+        faultEventId: eventId,
+        componentRole: 'connector',
+        componentPosition: { ...brokenPosition },
+        inputPreserved: true,
+        inputMaterialId: input.materialId,
+        inputStackId: input.id,
+        inputQuantityBefore: input.quantity,
+        inputQuantityAfter: input.quantity,
+        mechanicalPowerBasis: structuredClone(basis),
+      },
+    };
+  }
+  if (!network.repairEventIds.length) {
+    return { status: 'blocked' as const, result: '机械网络没有可回放的修复事实', diff: {} };
+  }
+  const inputStackId = input.id;
+  const inputSourceEventIds = [...input.sourceEventIds];
+  const inputSourceLineageKeys = [...(input.sourceLineageKeys ?? [])];
+  input.quantity -= 1;
+  removeEmptyStacks(person);
+  const outputQuantity = 3;
+  const output = addInventory(
+    person,
+    Material.Food,
+    outputQuantity,
+    [eventId, ...network.repairEventIds, ...inputSourceEventIds],
+    `stack-${person.id}-${Material.Food}-${eventId}`,
+    undefined,
+    [`mechanical-network:${network.id}`, `input-stack:${inputStackId}`, ...inputSourceLineageKeys],
+  );
+  recordMechanicalPowerOperation(network, eventId);
+  return {
+    status: 'completed' as const,
+    result: `流水驱动磨坊把种子处理为食物 × ${outputQuantity}`,
+    diff: {
+      mechanicalPowerOperation: true,
+      mode: 'operate',
+      projectId: context.project.id,
+      planKey: basis.planKey,
+      networkId: network.id,
+      sourceSegmentId: basis.sourceSegmentId,
+      inputMaterialId: Material.Seed,
+      inputStackId,
+      inputSourceEventIds,
+      inputSourceLineageKeys,
+      outputMaterialId: Material.Food,
+      outputStackId: output.id,
+      outputQuantity,
+      repairEventIds: [...network.repairEventIds],
+      supportingSegmentIds: [...context.supportingSegmentIds],
+      mechanicalPowerBasis: structuredClone(basis),
+    },
+  };
+}
+
+function repairTopologyMatchesFault(
+  state: SimulationState,
+  plan: MechanicalPowerProjectPlan,
+  network: MechanicalPowerNetworkState,
+): boolean {
+  if (!network.fault || !exactNetworkComponentsInstalled(network, plan)) return false;
+  if (voxelAt(state.world.grid, plan.wheelPosition.x, plan.wheelPosition.y, plan.wheelPosition.z) !== Material.WaterWheel
+    || voxelAt(state.world.grid, plan.loadPosition.x, plan.loadPosition.y, plan.loadPosition.z) !== Material.Mill) return false;
+  return plan.shaftPositions.every((position) => samePosition(position, network.fault!.componentPosition)
+    ? voxelAt(state.world.grid, position.x, position.y, position.z) === Material.BrokenDriveShaft
+    : voxelAt(state.world.grid, position.x, position.y, position.z) === Material.DriveShaft);
+}
+
+function mechanicalRepair(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  basis: Extract<MechanicalPowerActionBasis, { mode: 'repair' }>,
+  eventId: string,
+) {
+  const context = mechanicalActionContext(state, person, basis, false);
+  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
+  const network = context.network;
+  const fault = network?.fault;
+  const faultEvent = fault ? worldEventById(state, fault.faultEventId) : undefined;
+  const replacementRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
+  const faultRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
+  const tool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId
+    && stack.materialId === Material.BronzeTool
+    && stack.quantity > 0
+    && !stack.recordPayloadId) : undefined;
+  if (!network || !fault || fault.faultEventId !== basis.faultEventId
+    || faultEvent?.kind !== 'action'
+    || basis.replacementMaterialId !== Material.DriveShaft
+    || basis.toolMaterialId !== Material.BronzeTool
+    || !faultRef || !samePosition(faultRef.position, fault.componentPosition)
+    || distanceToPosition(person, fault.componentPosition) > 1
+    || !replacementRef || replacementRef.personId !== person.id
+    || !tool
+    || voxelAt(state.world.grid, fault.componentPosition.x, fault.componentPosition.y, fault.componentPosition.z) !== Material.BrokenDriveShaft
+    || !repairTopologyMatchesFault(state, context.plan, network)) {
+    return { status: 'blocked' as const, result: '修复所需的故障、替换件、工具或精确位置不再一致', diff: {} };
+  }
+  const evidence = verifiedComponentEvidence(
+    state,
+    person,
+    context.project,
+    replacementRef.stackId,
+    Material.DriveShaft,
+    faultEvent,
+  );
+  if (!evidence) return { status: 'blocked' as const, result: '替换传动轴不是故障之后由本人制造并核验的构件', diff: {} };
+  const repairSourceEventIds = [fault.faultEventId, evidence.manufacture.id, evidence.verification.id, ...tool.sourceEventIds];
+  evidence.stack.quantity -= 1;
+  removeEmptyStacks(person);
+  setVoxel(
+    state.world.grid,
+    fault.componentPosition.x,
+    fault.componentPosition.y,
+    fault.componentPosition.z,
+    Material.DriveShaft,
+  );
+  recordMechanicalPowerRepair(network, eventId, repairSourceEventIds);
+  return {
+    status: 'completed' as const,
+    result: '用新传动轴和青铜工具修复了机械网络',
+    diff: {
+      mechanicalPowerRepair: true,
+      mode: 'repair',
+      projectId: context.project.id,
+      planKey: basis.planKey,
+      networkId: network.id,
+      sourceSegmentId: basis.sourceSegmentId,
+      faultEventId: basis.faultEventId,
+      replacementMaterialId: Material.DriveShaft,
+      replacementStackId: replacementRef.stackId,
+      toolMaterialId: Material.BronzeTool,
+      toolStackId: tool.id,
+      repairSourceEventIds,
+      repairEventIds: [...network.repairEventIds],
+      mechanicalPowerBasis: structuredClone(basis),
+    },
+  };
+}
+
+function executeMechanicalPowerAction(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  atMonth: number,
+  eventId: string,
+) {
+  const basis = action.mechanicalPowerBasis;
+  if (!basis || action.operation !== 'exert') {
+    return { status: 'blocked' as const, result: '机械动力只能通过带版本依据的通用施力动作执行', diff: {} };
+  }
+  if (basis.mode === 'install') return mechanicalInstall(state, person, action, basis, atMonth, eventId);
+  if (basis.mode === 'operate') return mechanicalOperate(state, person, action, basis, atMonth, eventId);
+  if (basis.mode === 'repair') return mechanicalRepair(state, person, action, basis, eventId);
+  return { status: 'blocked' as const, result: '观察水流必须使用指向当前水体的观察动作', diff: {} };
+}
+
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+  if (action.mechanicalPowerBasis) return executeMechanicalPowerAction(state, person, action, atMonth, eventId);
+  if (action.operation === 'combine' || action.operation === 'exert' || action.operation === 'expose') {
+    const protectedCarrier = action.targets.flatMap((target) => {
+      if (target.kind !== 'inventory-stack' || target.personId !== person.id) return [];
+      const stack = person.inventory.find((candidate) => candidate.id === target.stackId && candidate.quantity > 0);
+      return stack?.recordPayloadId ? [stack] : [];
+    })[0];
+    if (protectedCarrier?.recordPayloadId) return {
+      status: 'blocked' as const,
+      result: '已经承载记录的物质不能作为普通加工输入；需要另行定义明确的擦除或回收动作',
+      diff: { stackId: protectedCarrier.id, recordPayloadId: protectedCarrier.recordPayloadId },
+    };
+  }
   if (action.operation === 'ingest') return executeIngest(state, person, action.targets, atMonth, eventId);
   if (action.operation === 'separate') return executeSeparate(state, person, action, atMonth, eventId);
   if (action.operation === 'combine') return executeCombine(state, person, action.targets, atMonth, eventId);
@@ -1374,6 +1977,52 @@ function executeAct(state: SimulationState, person: PersonState, action: Extract
 function executeAttend(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'attend' }>, atMonth: number, eventId: string) {
   const cell = targetCell(state, action.target);
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
+  if (action.waterCurrentSegmentId) {
+    const mechanicalPower = state.world.mechanicalPower;
+    const segment = mechanicalPower?.version === MECHANICAL_POWER_WORLD_VERSION
+      ? mechanicalPower.sources.find((candidate) => candidate.id === action.waterCurrentSegmentId)
+      : undefined;
+    const position = action.target.kind === 'voxel' ? action.target.position : undefined;
+    if (!segment || !position || !segment.requiredWaterVoxels.some((candidate) => samePosition(candidate, position))) {
+      return { status: 'blocked' as const, result: '观察目标不是所指水流边的实体水体', diff: {} };
+    }
+    const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+    if (Math.abs(position.z - person.position.z) > perceptionRadius) {
+      return { status: 'blocked' as const, result: '所指水流在垂直方向超出本人感知范围', diff: {} };
+    }
+    const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, segment.id);
+    if (!availability.available
+      || voxelAt(state.world.grid, position.x, position.y, position.z) !== Material.Water) {
+      return { status: 'blocked' as const, result: '所指水流当前没有可感知的有效流动', diff: {} };
+    }
+    const factId = waterCurrentObservationFactId(segment.id);
+    const summary = '观察到这段流水当前能持续向下游传递动力';
+    const existing = person.knowledge.find((fact) => fact.id === factId && fact.kind === 'observation');
+    if (existing) {
+      existing.confidence = clamp(Math.max(existing.confidence, 58) + 12);
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, eventId])].slice(-24);
+    } else person.knowledge.push({
+      id: factId,
+      kind: 'observation',
+      summary,
+      confidence: 68,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId],
+    });
+    return {
+      status: 'completed' as const,
+      result: summary,
+      diff: {
+        factId,
+        mechanicalPowerObservation: true,
+        waterCurrentSegmentId: segment.id,
+        availableCapacity: availability.availableCapacity,
+        supportingSegmentIds: [...availability.supportingSegmentIds],
+        sourceKeys: [...segment.sourceKeys],
+        observedPosition: { ...position },
+      },
+    };
+  }
   let factId = `target:${JSON.stringify(action.target)}`;
   let summary = '持续观察了一个对象';
   if (action.target.kind === 'animal') {
@@ -1554,7 +2203,10 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     if (stack.quantity > 1) {
       stack.quantity -= 1;
       carrier = addInventory(person, stack.materialId, 1, [eventId], `stack-${person.id}-${stack.materialId}-${atMonth}-record-${state.records.length}`, payload.id);
-    } else stack.recordPayloadId = payload.id;
+    } else {
+      stack.recordPayloadId = payload.id;
+      stack.sourceEventIds = [...new Set([...stack.sourceEventIds, eventId])].slice(-24);
+    }
     return { status: 'completed' as const, result: `${person.name}把“${knowledge.summary}”刻写到木制记录板`, diff: { recordPayloadId: payload.id, carrierStackId: carrier.id, knowledgeId: knowledge.id, version: payload.version } };
   }
   const content = action.content;
@@ -1596,10 +2248,21 @@ function executeCommunicate(state: SimulationState, person: PersonState, action:
     const request = content.projectMaterialContribution;
     const project = state.projects.find((candidate) => candidate.id === request.projectId
       && candidate.status === 'active'
-      && candidate.ownerId === person.id);
+      && candidate.ownerId === person.id
+      && candidate.need === 'alloy-capability'
+      && Boolean(candidate.site));
     const demand = project?.materialDemands?.find((candidate) => candidate.materialId === request.materialId
       && candidate.outstandingQuantity > 0);
-    const repeated = project?.materialContributionRequests?.some((basis) => basis.materialId === request.materialId);
+    const repeated = Boolean(project && demand && project.materialContributionRequests?.some((basis) => (
+      basis.materialId === request.materialId
+        && inspectProjectMaterialContributionRequest(
+          state,
+          project,
+          basis,
+          atMonth,
+          demand,
+        ).status === 'open'
+    )));
     if (!project
       || !demand
       || request.version !== 'project-material-contribution-request-v1'
@@ -2034,6 +2697,31 @@ export function executeIntentAction(
   return executePrimitiveAction(state, person, intent.nextAction, atMonth, orderInMonth, { intentId: intent.id, cause: 'intent', actionTick });
 }
 
+function hibernationRecoveryActionAllowed(
+  state: SimulationState,
+  person: PersonState,
+  action: PrimitiveAction,
+  atMonth: number,
+): boolean {
+  if (lifePlanningStage(person, atMonth) === 'dependent-child') {
+    return action.kind === 'act'
+      && action.operation === 'ingest'
+      && action.targets.some((target) => target.kind === 'inventory-stack' && target.personId === person.id);
+  }
+  if (action.kind === 'move') return true;
+  if (action.kind === 'transfer') {
+    return action.to.kind === 'person'
+      && action.to.personId === person.id
+      && (materialHas(action.materialId, 'edible') || materialHas(action.materialId, 'drinkable'));
+  }
+  if (action.kind !== 'act') return false;
+  if (action.operation === 'ingest') return true;
+  if (action.operation !== 'separate') return false;
+  return action.targets.some((target) => target.kind === 'voxel'
+    && (voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.BerryBush
+      || voxelAt(state.world.grid, target.position.x, target.position.y, target.position.z) === Material.CropMature));
+}
+
 export function executePrimitiveAction(
   state: SimulationState,
   person: PersonState,
@@ -2045,10 +2733,14 @@ export function executePrimitiveAction(
   const eventId = `e-${atMonth}-action-${person.id}-${orderInMonth}`;
   const fromCellId = person.position.cellId;
   const fromZ = person.position.z;
+  const blockedByHibernationRecovery = isRecoveringFromDehydratedHibernation(person)
+    && !hibernationRecoveryActionAllowed(state, person, action, atMonth);
   const techniqueLearning = action.kind === 'act'
     ? validateTechniqueLearningAction(state, person, action, atMonth)
     : { kind: 'none' as const };
-  const outcome = techniqueLearning.kind === 'blocked'
+  const outcome = blockedByHibernationRecovery
+    ? { status: 'blocked' as const, result: '休眠恢复完成前只能取水、取食或进行必要移动', diff: { hibernationRecoveryRestricted: true } }
+    : techniqueLearning.kind === 'blocked'
     ? { status: 'blocked' as const, result: techniqueLearning.reason, diff: {} }
     : action.kind === 'move'
       ? executeMove(state, person, action, eventId, atMonth)
@@ -2059,6 +2751,21 @@ export function executePrimitiveAction(
           : action.kind === 'attend'
             ? executeAttend(state, person, action, atMonth, eventId)
             : executeCommunicate(state, person, action, atMonth, eventId);
+  if (outcome.status === 'completed'
+    && action.kind === 'act'
+    && action.operation === 'ingest'
+    && isRecoveringFromDehydratedHibernation(person)) {
+    const episode = person.conditions.find((condition) => condition.kind === 'dehydrated-hibernation'
+      && hibernationPhase(condition) === 'recovering');
+    if (episode) {
+      episode.recoverySourceEventIds = [...new Set([...(episode.recoverySourceEventIds ?? []), eventId])].slice(-24);
+      Object.assign(outcome.diff, {
+        hibernationRecoverySource: true,
+        hibernationConditionId: episode.id,
+        hibernationPhase: 'recovering',
+      });
+    }
+  }
   applyTechniqueLearning(techniqueLearning, outcome, eventId, atMonth);
   const pathSegment = 'path' in outcome ? outcome.path : [fromCellId];
   const fact: ActionFact = {

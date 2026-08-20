@@ -7,7 +7,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { EvolutionMode, ModelPurpose, ModelSettingsSnapshot } from '@/game/modelSettings';
-import type { CivilizationIndexView, ElandSaveSummary } from '@/game/societyContract';
+import type {
+  CivilizationIndexHistoryPoint,
+  CivilizationIndexView,
+  ElandSaveSummary,
+} from '@/game/societyContract';
 import { STAR_STYLES } from '@/lib/threebody';
 import { civilizationStagePreview } from '@/game/voxelKits';
 import { CivilizationStageBuilding } from './CivilizationStageBuilding';
@@ -38,6 +42,7 @@ interface Props {
   mode: ImmersiveOverlayMode;
   civilizationId: number;
   civilizationIndex: CivilizationIndexView | null;
+  civilizationIndexHistory: CivilizationIndexHistoryPoint[];
   currentMonth: number;
   history: ImmersiveHistoryEntry[];
   historyTotalCount: number;
@@ -213,7 +218,41 @@ function indexPointLabel(value: number): string {
   return value.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
 }
 
-function CivilizationIndexChart({ index }: { index: CivilizationIndexView | null }) {
+function niceChartCeiling(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 10;
+  const rough = value * 1.12;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / magnitude;
+  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return step * magnitude;
+}
+
+function CivilizationIndexChart({
+  index,
+  history,
+}: {
+  index: CivilizationIndexView | null;
+  history: CivilizationIndexHistoryPoint[];
+}) {
+  const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
+  const points = useMemo(() => {
+    if (!index) return [];
+    const byMonth = new Map<number, CivilizationIndexHistoryPoint>();
+    for (const point of history) {
+      if (point.formulaVersion !== index.formulaVersion
+        || !Number.isFinite(point.total)
+        || !Number.isInteger(point.calculatedAtMonth)) continue;
+      byMonth.set(point.calculatedAtMonth, point);
+    }
+    byMonth.set(index.calculatedAtMonth, {
+      formulaVersion: index.formulaVersion,
+      total: index.total,
+      calculatedAtMonth: index.calculatedAtMonth,
+      stage: index.stage,
+    });
+    return [...byMonth.values()].sort((left, right) => left.calculatedAtMonth - right.calculatedAtMonth);
+  }, [history, index]);
+
   if (!index) {
     return (
       <aside className="civilization-index civilization-index--empty" aria-label="文明指数尚不可用">
@@ -228,6 +267,62 @@ function CivilizationIndexChart({ index }: { index: CivilizationIndexView | null
   }));
   const componentTotal = items.reduce((sum, item) => sum + item.points, 0);
   const stagePreview = civilizationStagePreview(index.stage);
+  const chart = {
+    left: 18,
+    right: 322,
+    top: 92,
+    bottom: 220,
+  };
+  const firstMonth = points[0]?.calculatedAtMonth ?? index.calculatedAtMonth;
+  const lastMonth = points.at(-1)?.calculatedAtMonth ?? index.calculatedAtMonth;
+  const monthSpan = Math.max(1, lastMonth - firstMonth);
+  const yMax = niceChartCeiling(Math.max(index.total, ...points.map((point) => point.total)));
+  const chartPoints = points.map((point) => ({
+    ...point,
+    x: firstMonth === lastMonth
+      ? (chart.left + chart.right) / 2
+      : chart.left + (point.calculatedAtMonth - firstMonth) / monthSpan * (chart.right - chart.left),
+    y: chart.bottom - Math.max(0, point.total) / yMax * (chart.bottom - chart.top),
+  }));
+  const linePath = chartPoints.map((point, position) => (
+    `${position === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`
+  )).join(' ');
+  const areaPath = chartPoints.length > 1
+    ? `${linePath} L${chartPoints.at(-1)!.x.toFixed(2)},${chart.bottom} L${chartPoints[0].x.toFixed(2)},${chart.bottom} Z`
+    : '';
+  const hoveredPoint = hoveredMonth === null
+    ? null
+    : chartPoints.find((point) => point.calculatedAtMonth === hoveredMonth) ?? null;
+  const latestPoint = chartPoints.at(-1) ?? null;
+  let yearAgoPoint: (typeof chartPoints)[number] | null = null;
+  for (let position = chartPoints.length - 1; position >= 0; position -= 1) {
+    if (chartPoints[position].calculatedAtMonth <= index.calculatedAtMonth - 12) {
+      yearAgoPoint = chartPoints[position];
+      break;
+    }
+  }
+  const yearChange = yearAgoPoint ? index.total - yearAgoPoint.total : null;
+
+  const selectNearestPoint = (svgX: number) => {
+    if (!chartPoints.length) return;
+    const targetMonth = firstMonth + Math.max(0, Math.min(1,
+      (svgX - chart.left) / (chart.right - chart.left))) * monthSpan;
+    let nearest = chartPoints[0];
+    for (const point of chartPoints) {
+      if (Math.abs(point.calculatedAtMonth - targetMonth)
+        < Math.abs(nearest.calculatedAtMonth - targetMonth)) nearest = point;
+    }
+    setHoveredMonth(nearest.calculatedAtMonth);
+  };
+
+  const moveSelection = (direction: -1 | 1) => {
+    if (!chartPoints.length) return;
+    const currentPosition = hoveredMonth === null
+      ? chartPoints.length - 1
+      : Math.max(0, chartPoints.findIndex((point) => point.calculatedAtMonth === hoveredMonth));
+    const nextPosition = Math.max(0, Math.min(chartPoints.length - 1, currentPosition + direction));
+    setHoveredMonth(chartPoints[nextPosition].calculatedAtMonth);
+  };
 
   return (
     <aside className="civilization-index" aria-label={`文明指数 ${indexPointLabel(index.total)}，阶段 ${index.stage}`}>
@@ -248,8 +343,74 @@ function CivilizationIndexChart({ index }: { index: CivilizationIndexView | null
           <div className="civilization-index__total">
             <span>CI</span>
             <strong>{indexPointLabel(index.total)}</strong>
-            <small>{stagePreview.label}</small>
+            <small>
+              {stagePreview.label}
+              {yearChange !== null && (
+                <em className={yearChange >= 0 ? 'is-up' : 'is-down'}>
+                  近一年 {yearChange >= 0 ? '+' : ''}{indexPointLabel(yearChange)}
+                </em>
+              )}
+            </small>
           </div>
+          <svg
+            aria-label={`文明指数从${monthLabel(firstMonth)}到${monthLabel(lastMonth)}的逐月折线图，当前 ${indexPointLabel(index.total)}`}
+            className="civilization-index__timeline"
+            onBlur={() => setHoveredMonth(null)}
+            onFocus={() => setHoveredMonth(latestPoint?.calculatedAtMonth ?? null)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                event.preventDefault();
+                moveSelection(event.key === 'ArrowLeft' ? -1 : 1);
+              }
+            }}
+            onPointerLeave={() => setHoveredMonth(null)}
+            onPointerMove={(event) => {
+              const bounds = event.currentTarget.getBoundingClientRect();
+              selectNearestPoint((event.clientX - bounds.left) / bounds.width * 340);
+            }}
+            role="img"
+            tabIndex={0}
+            viewBox="0 0 340 250"
+          >
+            <defs>
+              <linearGradient id="civilization-index-area" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stopColor="#75d8c9" stopOpacity="0.24" />
+                <stop offset="1" stopColor="#75d8c9" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {[1, 0.5, 0].map((ratio) => {
+              const y = chart.bottom - ratio * (chart.bottom - chart.top);
+              return (
+                <g className="civilization-index__grid" key={ratio}>
+                  <line x1={chart.left} x2={chart.right} y1={y} y2={y} />
+                  <text x={chart.right} y={y - 4}>{indexPointLabel(yMax * ratio)}</text>
+                </g>
+              );
+            })}
+            {areaPath && <path className="civilization-index__area" d={areaPath} />}
+            {linePath && <path className="civilization-index__line" d={linePath} />}
+            {latestPoint && (
+              <circle className="civilization-index__latest" cx={latestPoint.x} cy={latestPoint.y} r="3.5" />
+            )}
+            {hoveredPoint && (
+              <g className="civilization-index__hover">
+                <line x1={hoveredPoint.x} x2={hoveredPoint.x} y1={chart.top} y2={chart.bottom} />
+                <circle cx={hoveredPoint.x} cy={hoveredPoint.y} r="4" />
+                <g transform={`translate(${Math.max(6, Math.min(236, hoveredPoint.x - 49))} ${Math.max(96, hoveredPoint.y - 42)})`}>
+                  <rect height="34" rx="6" width="98" />
+                  <text x="8" y="14">{monthLabel(hoveredPoint.calculatedAtMonth)}</text>
+                  <text className="civilization-index__hover-value" x="8" y="27">CI {indexPointLabel(hoveredPoint.total)}</text>
+                </g>
+              </g>
+            )}
+            {chartPoints.length < 2 && (
+              <text className="civilization-index__waiting" x="170" y="158">继续演化后形成趋势</text>
+            )}
+            <g className="civilization-index__x-axis">
+              <text x={chart.left} y="239">{monthLabel(firstMonth)}</text>
+              {firstMonth !== lastMonth && <text textAnchor="end" x={chart.right} y="239">{monthLabel(lastMonth)}</text>}
+            </g>
+          </svg>
         </div>
         <dl className="civilization-index__legend">
           {items.map((item) => {
@@ -267,7 +428,7 @@ function CivilizationIndexChart({ index }: { index: CivilizationIndexView | null
         </dl>
       </div>
       <p className="civilization-index__note" title={`公式 ${index.formulaVersion}`}>
-        计算至 {monthLabel(index.calculatedAtMonth)} · 开放累计，不封顶 100
+        {points.length} 个已提交月份 · 计算至 {monthLabel(index.calculatedAtMonth)} · 开放累计，不封顶 100
       </p>
     </aside>
   );
@@ -353,6 +514,7 @@ export default function ImmersiveInterface({
   mode,
   civilizationId,
   civilizationIndex,
+  civilizationIndexHistory,
   currentMonth,
   history,
   historyTotalCount,
@@ -655,7 +817,7 @@ export default function ImmersiveInterface({
             </div>
             <button className="immersive-text-action" data-autofocus onClick={onClose} type="button">合上 · Esc</button>
           </div>
-          <CivilizationIndexChart index={civilizationIndex} />
+          <CivilizationIndexChart history={civilizationIndexHistory} index={civilizationIndex} />
         </section>
       )}
 

@@ -2,7 +2,13 @@ import { createBiologicalSex, createLifespanMonths, deterministicFraction } from
 import { Material, materialHas } from './material';
 import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, WeatherKind, WorldEvent } from './model';
 import type { ConditionInstance, PersonState } from './person';
-import { ageMonths, isAlive, sameLocation } from './person';
+import {
+  HIBERNATION_RECOVERY_SAFE_RESERVE,
+  ageMonths,
+  hibernationPhase,
+  isAlive,
+  sameLocation,
+} from './person';
 import { createMotiveSensitivity, createPersonality } from './personality';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
@@ -808,8 +814,48 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
     );
   }
   person.inventory = [];
+  const dyingDuringHibernation = person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation');
+  const hibernationFailedIntentIds: string[] = [];
   const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
-  if (intent) intent.status = 'failed';
+  const justRestoredAncestorIds = new Set<string>();
+  let returnToIntentId = intent?.lastHibernationResumedAtMonth === atMonth ? intent.returnToIntentId : undefined;
+  while (returnToIntentId && !justRestoredAncestorIds.has(returnToIntentId)) {
+    const ancestor = state.intents.find((candidate) => candidate.id === returnToIntentId
+      && candidate.ownerId === person.id
+      && candidate.status === 'suspended'
+      && candidate.lastHibernationResumedAtMonth === atMonth);
+    if (!ancestor) break;
+    justRestoredAncestorIds.add(ancestor.id);
+    returnToIntentId = ancestor.returnToIntentId;
+  }
+  const dyingImmediatelyAfterHibernationRestore = justRestoredAncestorIds.size > 0;
+  if (intent) {
+    intent.status = 'failed';
+    intent.blockedReason = '人物已经死亡，无法继续原意图';
+    if (dyingDuringHibernation || dyingImmediatelyAfterHibernationRestore) {
+      if (intent.returnToIntentId) {
+        intent.returnOutcome = 'parent-unavailable';
+        intent.returnResolvedAtMonth = atMonth;
+      }
+      hibernationFailedIntentIds.push(intent.id);
+    }
+  }
+  for (const suspended of state.intents.filter((candidate) => candidate.ownerId === person.id
+    && candidate.status === 'suspended'
+    && (dyingDuringHibernation
+      || candidate.suspendedForHibernationConditionId
+      || justRestoredAncestorIds.has(candidate.id)))) {
+    suspended.status = 'failed';
+    suspended.blockedReason = '人物在休眠 episode 完成恢复前已经死亡';
+    if (suspended.returnToIntentId) {
+      suspended.returnOutcome = 'parent-unavailable';
+      suspended.returnResolvedAtMonth = atMonth;
+    }
+    delete suspended.suspendedForHibernationConditionId;
+    delete suspended.suspendedAtMonth;
+    delete suspended.suspendedByIntentId;
+    hibernationFailedIntentIds.push(suspended.id);
+  }
   delete person.activeIntentId;
   const causalConditions = person.conditions.flatMap((current) => current.sourceEventIds);
   event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，私有背包遗留在原地`, {
@@ -818,7 +864,240 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
     cause,
     healthBeforeDeath,
     sourceEventIds: [...new Set(causalConditions)].slice(-24),
+    ...(hibernationFailedIntentIds.length
+      ? { hibernationFailedIntentIds: [...new Set(hibernationFailedIntentIds)] }
+      : {}),
   }, person);
+}
+
+function maintainHibernationIntentSuspension(
+  state: SimulationState,
+  person: PersonState,
+  hibernationConditionId: string,
+  atMonth: number,
+): { intentId?: string; intentChainIds: string[]; newlySuspended: boolean } {
+  const alreadySuspended = state.intents.filter((intent) => intent.ownerId === person.id
+    && intent.status === 'suspended'
+    && intent.suspendedForHibernationConditionId === hibernationConditionId);
+  if (alreadySuspended.length) {
+    const leaf = alreadySuspended.find((intent) => !intent.suspendedByIntentId)
+      ?? alreadySuspended[alreadySuspended.length - 1];
+    if (leaf) leaf.suspendedAtMonth = atMonth;
+    return {
+      intentId: leaf?.id,
+      intentChainIds: alreadySuspended.map((intent) => intent.id),
+      newlySuspended: false,
+    };
+  }
+  const active = state.intents.find((intent) => intent.id === person.activeIntentId
+    && intent.ownerId === person.id
+    && intent.status === 'active');
+  if (!active) return { intentChainIds: [], newlySuspended: false };
+  active.status = 'suspended';
+  const chain = [];
+  let current: typeof active | undefined = active;
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    current.suspendedForHibernationConditionId = hibernationConditionId;
+    if (current.id === active.id) current.suspendedAtMonth = atMonth;
+    chain.push(current);
+    current = current.returnToIntentId
+      ? state.intents.find((intent) => intent.id === current?.returnToIntentId
+        && intent.ownerId === person.id
+        && intent.status === 'suspended')
+      : undefined;
+  }
+  delete person.activeIntentId;
+  return { intentId: active.id, intentChainIds: chain.map((intent) => intent.id), newlySuspended: true };
+}
+
+function restoreHibernationSuspendedIntent(
+  state: SimulationState,
+  person: PersonState,
+  hibernationConditionId: string,
+  atMonth: number,
+): { intentId?: string; status?: string } {
+  const suspendedChain = state.intents.filter((candidate) => candidate.ownerId === person.id
+    && candidate.status === 'suspended'
+    && candidate.suspendedForHibernationConditionId === hibernationConditionId);
+  const intent = suspendedChain.find((candidate) => !candidate.suspendedByIntentId)
+    ?? suspendedChain[suspendedChain.length - 1];
+  if (!intent) return {};
+  for (const suspended of suspendedChain) {
+    delete suspended.suspendedForHibernationConditionId;
+    suspended.lastResumedAtMonth = atMonth;
+    suspended.lastHibernationResumedAtMonth = atMonth;
+    if (suspended.id === intent.id) delete suspended.suspendedAtMonth;
+  }
+  const project = intent.projectId
+    ? state.projects.find((candidate) => candidate.id === intent.projectId)
+    : undefined;
+  if (!isAlive(person)) {
+    intent.status = 'failed';
+    intent.blockedReason = '人物在休眠恢复完成前已经死亡';
+  } else if (project?.status === 'completed') {
+    intent.status = 'completed';
+    intent.progress = 1;
+  } else if (project?.status === 'blocked') {
+    intent.status = 'blocked';
+    intent.blockedReason = project.blockedReason ?? '休眠期间项目已经阻塞';
+  } else if (project?.status === 'abandoned') {
+    intent.status = 'abandoned';
+    intent.blockedReason = project.blockedReason ?? '休眠期间项目已经放弃';
+  } else if (intent.projectId && !project) {
+    intent.status = 'abandoned';
+    intent.blockedReason = '休眠期间项目已经不存在';
+  } else {
+    intent.status = 'active';
+    intent.lastResumedAtMonth = atMonth;
+    person.activeIntentId = intent.id;
+  }
+  return { intentId: intent.id, status: intent.status };
+}
+
+/**
+ * Advance the phase of an existing hibernation episode before anyone acts.
+ * Legacy episodes have no phase field and therefore enter here as dormant.
+ * Physical recovery remains action-owned; this transition never adds reserves.
+ */
+export function advanceHibernationRecoveryPhases(
+  state: SimulationState,
+  atMonth: number,
+): EnvironmentFact[] {
+  const events: EnvironmentFact[] = [];
+  for (const person of state.people.filter(isAlive)) {
+    const episode = person.conditions.find((current) => current.kind === 'dehydrated-hibernation');
+    if (!episode) continue;
+    const suspension = maintainHibernationIntentSuspension(state, person, episode.id, atMonth);
+    const phase = hibernationPhase(episode);
+    let result: string | undefined;
+    let diff: Record<string, unknown> | undefined;
+    if (state.civilization.epoch === 'chaotic' && phase === 'recovering') {
+      const completedRecoverySourceEventIds = [...new Set(episode.recoverySourceEventIds ?? [])];
+      episode.hibernationPhase = 'dormant';
+      delete episode.recoveryStartedAtMonth;
+      delete episode.recoverySourceEventIds;
+      result = `${person.name}在新乱纪元中沿用原有脱水休眠 episode，再次转入低代谢休眠`;
+      diff = {
+        condition: 'dehydrated-hibernation',
+        hibernationConditionId: episode.id,
+        phaseFrom: 'recovering',
+        phaseTo: 'dormant',
+        continuedEpisode: true,
+        originalSinceMonth: episode.sinceMonth,
+        stage: episode.stage,
+        recoverySourceEventIds: completedRecoverySourceEventIds,
+        entryHydrationCost: 0,
+        ...(suspension.intentId ? { suspendedIntentId: suspension.intentId } : {}),
+        ...(suspension.intentChainIds.length > 1 ? { suspendedIntentChainIds: suspension.intentChainIds } : {}),
+      };
+    } else if (state.civilization.epoch === 'stable'
+      && phase === 'dormant'
+      && episode.sinceMonth < state.civilization.era.sinceMonth) {
+      episode.hibernationPhase = 'recovering';
+      episode.recoveryStartedAtMonth = atMonth;
+      episode.recoverySourceEventIds = [];
+      result = `${person.name}在恒纪元中从低代谢休眠转入受限恢复`;
+      diff = {
+        condition: 'dehydrated-hibernation',
+        hibernationConditionId: episode.id,
+        phaseFrom: 'dormant',
+        phaseTo: 'recovering',
+        originalSinceMonth: episode.sinceMonth,
+        stage: episode.stage,
+        reserveIncrease: 0,
+        ...(suspension.intentId ? { suspendedIntentId: suspension.intentId } : {}),
+        ...(suspension.intentChainIds.length > 1 ? { suspendedIntentChainIds: suspension.intentChainIds } : {}),
+      };
+    } else if (state.civilization.epoch === 'stable' && phase === 'recovering') {
+      const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
+      const recoverySourceEventIds = [...new Set(episode.recoverySourceEventIds ?? [])];
+      if (minimumReserve >= HIBERNATION_RECOVERY_SAFE_RESERVE && recoverySourceEventIds.length > 0) {
+        person.conditions = person.conditions.filter((current) => current.id !== episode.id);
+        const restoration = restoreHibernationSuspendedIntent(state, person, episode.id, atMonth);
+        result = `${person.name}依靠真实补水与进食恢复到安全储备，结束脱水休眠 episode`;
+        diff = {
+          condition: 'dehydrated-hibernation',
+          hibernationConditionId: episode.id,
+          exited: true,
+          phaseFrom: 'recovering',
+          minimumReserve,
+          safeReserve: HIBERNATION_RECOVERY_SAFE_RESERVE,
+          recoveryStartedAtMonth: episode.recoveryStartedAtMonth,
+          recoverySourceEventIds,
+          ...(restoration.intentId ? {
+            restoredIntentId: restoration.intentId,
+            restoredIntentStatus: restoration.status,
+          } : {}),
+        };
+      }
+    }
+    if (!result && suspension.newlySuspended && suspension.intentId) {
+      result = `${person.name}在脱水休眠 episode 中暂停当前意图，等待同一 episode 完成恢复`;
+      diff = {
+        condition: 'dehydrated-hibernation',
+        hibernationConditionId: episode.id,
+        hibernationPhase: phase,
+        hibernationIntentSuspended: true,
+        suspendedIntentId: suspension.intentId,
+        ...(suspension.intentChainIds.length > 1 ? { suspendedIntentChainIds: suspension.intentChainIds } : {}),
+      };
+    }
+    if (!result || !diff) continue;
+    const fact: EnvironmentFact = {
+      id: `e-${atMonth}-environment-hibernation-phase-${person.id}-${events.length}`,
+      kind: 'environment',
+      atMonth,
+      orderInMonth: events.length,
+      cellId: person.position.cellId,
+      change: 'condition',
+      who: person.id,
+      result,
+      diff,
+    };
+    events.push(fact);
+  }
+  return events;
+}
+
+/**
+ * Capture hibernation entered during one of this month's planning ticks. This
+ * runs after body/death settlement so a person who died this month cannot
+ * leave a newly suspended orphan intent behind.
+ */
+export function synchronizeHibernationIntentSuspensions(
+  state: SimulationState,
+  atMonth: number,
+): EnvironmentFact[] {
+  const events: EnvironmentFact[] = [];
+  for (const person of state.people.filter(isAlive)) {
+    const episode = person.conditions.find((condition) => condition.kind === 'dehydrated-hibernation');
+    if (!episode) continue;
+    const suspension = maintainHibernationIntentSuspension(state, person, episode.id, atMonth);
+    if (!suspension.newlySuspended || !suspension.intentId) continue;
+    events.push({
+      id: `e-${atMonth}-environment-hibernation-suspension-${person.id}`,
+      kind: 'environment',
+      atMonth,
+      orderInMonth: events.length,
+      cellId: person.position.cellId,
+      change: 'condition',
+      who: person.id,
+      result: `${person.name}在本月进入脱水休眠后暂停当前意图`,
+      diff: {
+        condition: 'dehydrated-hibernation',
+        hibernationConditionId: episode.id,
+        hibernationPhase: hibernationPhase(episode),
+        hibernationIntentSuspended: true,
+        suspendedIntentId: suspension.intentId,
+        ...(suspension.intentChainIds.length > 1
+          ? { suspendedIntentChainIds: suspension.intentChainIds }
+          : {}),
+      },
+    });
+  }
+  return events;
 }
 
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
@@ -833,28 +1112,8 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     }
     advanceInheritedSusceptibility(state, person, atMonth, events);
     const hibernationCondition = person.conditions.find((current) => current.kind === 'dehydrated-hibernation');
-    let hibernating = Boolean(hibernationCondition);
-    const enteredBeforeCurrentEra = Boolean(hibernationCondition
-      && hibernationCondition.sinceMonth < state.civilization.era.sinceMonth);
-    if (hibernating && state.civilization.epoch === 'stable' && enteredBeforeCurrentEra) {
-      const waterNearby = cellsInRadius(person.position.cellId, 2).some((cell) => {
-        const surface = surfaceMaterial(state.world.grid, cell);
-        return surface === Material.Water || surface === Material.Ice;
-      });
-      const helperNearby = state.people.some((candidate) => candidate.id !== person.id
-        && isAlive(candidate)
-        && !candidate.conditions.some((current) => current.kind === 'dehydrated-hibernation')
-        && sameLocation(candidate, person));
-      const ambientRecovery = atMonth > state.civilization.era.sinceMonth;
-      if (waterNearby || helperNearby || ambientRecovery) {
-        person.conditions = person.conditions.filter((current) => current.kind !== 'dehydrated-hibernation');
-        person.body.hydration = clamp(person.body.hydration + 12);
-        hibernating = false;
-        event(state, atMonth, events, 'condition', `${person.name}在新恒纪元恢复可利用水分后重新水化苏醒`, {
-          condition: 'dehydrated-hibernation', exited: true, waterNearby, helperNearby, ambientRecovery,
-        }, person);
-      }
-    }
+    const hibernating = Boolean(hibernationCondition && hibernationPhase(hibernationCondition) === 'dormant');
+    const hibernationBodyBefore = hibernationCondition ? { ...person.body } : undefined;
     const shelter = shelterGeometryAt(state.world.grid, person.position);
     const sheltered = Boolean(shelter);
     const fires = nearbyFires(state, person);
@@ -914,7 +1173,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       }
     }
     person.body.health = clamp(person.body.health + healthDelta);
-    if (hibernating && hibernationCondition) {
+    if (hibernationCondition) {
       const hibernationMonths = Math.max(1, atMonth - hibernationCondition.sinceMonth + 1);
       const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
       const nextStage = hibernationMonths >= 18 || minimumReserve < 30
@@ -935,6 +1194,24 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         }, person);
         hibernationCondition.sourceEventIds = [...new Set([...hibernationCondition.sourceEventIds, deterioration.id])].slice(-24);
       }
+      const suspendedIntents = state.intents.filter((intent) => intent.ownerId === person.id
+        && intent.status === 'suspended'
+        && intent.suspendedForHibernationConditionId === hibernationCondition.id);
+      const suspendedIntent = suspendedIntents.find((intent) => !intent.suspendedByIntentId)
+        ?? suspendedIntents[suspendedIntents.length - 1];
+      event(state, atMonth, events, 'body', `${person.name}结算了脱水休眠 episode 的本月身体代价`, {
+        hibernationMonthlySettlement: true,
+        hibernationConditionId: hibernationCondition.id,
+        hibernationPhase: hibernationPhase(hibernationCondition),
+        monthlyCostApplied: true,
+        metabolicProfile: hibernating ? 'dormant' : 'awake-recovery',
+        hydrationCost,
+        nutritionCost,
+        healthDelta,
+        bodyBefore: hibernationBodyBefore,
+        bodyAfter: { ...person.body },
+        ...(suspendedIntent ? { suspendedIntentId: suspendedIntent.id } : {}),
+      }, person);
     }
     if (!hibernating) recoverInjuries(state, person, atMonth, sheltered || fireProtected, events);
     advancePregnancies(state, person, atMonth, events);

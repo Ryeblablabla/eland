@@ -1,11 +1,24 @@
 import type { PrimitiveAction } from './action';
 import { materialHas } from './material';
 import type { DropState, SimulationState } from './model';
-import { ageMonths, isAlive, sameLocation, type PersonState } from './person';
+import {
+  ageMonths,
+  canEnterDehydratedHibernation,
+  HIBERNATION_ENTRY_LEGAL_RESERVE,
+  HIBERNATION_RECOVERY_SAFE_RESERVE,
+  hibernationPhase,
+  isAlive,
+  isDormantDehydratedHibernating,
+  sameLocation,
+  type PersonState,
+} from './person';
 import { findReachableWater, findVisibleWaterSearchDestination } from './water-access';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
+import { lifePlanningStage } from './life-stage';
 import { cellsInRadius, findStandingPath } from '../world/grid';
+import { observedHibernationEntryEvidence } from './hibernation-entry';
+import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
 
 const INFANT_MONTHS = 3 * 12;
 const DEPENDENT_MONTHS = 12 * 12;
@@ -109,7 +122,7 @@ function nearestFood(state: SimulationState, caregiver: PersonState): DropState 
 /** Comparable urgency for choosing a child's crisis over a milder self reflex. */
 export function dependentCareUrgency(state: SimulationState, caregiver: PersonState): number {
   return visibleYoungDependents(state, caregiver)
-    .filter((dependent) => !dependent.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'))
+    .filter((dependent) => !isDormantDehydratedHibernating(dependent))
     .reduce((maximum, dependent) => {
       const hydration = Math.max(0, 48 - dependent.body.hydration) * 3;
       const nutrition = Math.max(0, 46 - dependent.body.nutrition) * 2.4;
@@ -128,27 +141,37 @@ export function chooseDependentCareReflex(
   options: { suppressThermalShelter?: boolean } = {},
 ): PrimitiveAction | null {
   const dependent = visibleYoungDependents(state, caregiver)
-    .find((candidate) => !candidate.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'));
+    .find((candidate) => !isDormantDehydratedHibernating(candidate));
   if (!dependent) return null;
 
+  const atMonth = state.clock.elapsedMonths + 1;
   const together = sameLocation(dependent, caregiver);
   const infant = isInfant(state, dependent, state.clock.elapsedMonths + 1);
+  const dependentChild = lifePlanningStage(dependent, atMonth) === 'dependent-child';
+  const recoveryEpisode = dependent.conditions.find((condition) => condition.kind === 'dehydrated-hibernation'
+    && hibernationPhase(condition) === 'recovering');
+  const needsRecoveryWater = state.civilization.epoch === 'stable'
+    && dependentChild
+    && dependent.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE
+    && recoveryEpisode?.lastRecoveryAssistedAtMonth !== atMonth;
   const thermalPressure = dependent.conditions
     .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
     .sort((a, b) => b.stage - a.stage)[0];
-  const sharedClimateEmergency = state.civilization.epoch === 'chaotic'
-    && state.civilization.climate.severity >= 4;
-  const dehydrationContraindicated = dependent.conditions.some((condition) => condition.kind === 'pregnancy'
-    || ((condition.kind === 'wound' || condition.kind === 'illness') && condition.stage >= 2));
-  const hibernationReady = sharedClimateEmergency
-    && !dehydrationContraindicated
-    && Math.min(dependent.body.health, dependent.body.hydration, dependent.body.nutrition) >= 45;
+  const hibernationEvidenceEventIds = observedHibernationEntryEvidence(state, dependent);
+  const hibernationReady = hibernationEvidenceEventIds.length > 0
+    && canEnterDehydratedHibernation(dependent, HIBERNATION_ENTRY_LEGAL_RESERVE);
   const carriedFood = caregiver.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
-  const canProvideCarriedFood = dependent.body.nutrition < 40 && Boolean(carriedFood);
+  const dependentCarriedFood = dependent.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
+  const lacksRecoverySource = (recoveryEpisode?.recoverySourceEventIds?.length ?? 0) === 0;
+  const childNeedsFood = !dependentCarriedFood
+    && (dependent.body.nutrition < 40
+      || Boolean(recoveryEpisode
+        && (dependent.body.nutrition < HIBERNATION_RECOVERY_SAFE_RESERVE || lacksRecoverySource)));
+  const canProvideCarriedFood = childNeedsFood && Boolean(carriedFood);
   const canCarryInfantToHelp = infant && (dependent.body.hydration < 40
     || dependent.body.nutrition < 40
     || Boolean(thermalPressure));
-  if (!together && (hibernationReady || canProvideCarriedFood || canCarryInfantToHelp)) {
+  if (!together && (hibernationReady || canProvideCarriedFood || canCarryInfantToHelp || needsRecoveryWater)) {
     const path = findStandingPath(state.world.grid, caregiver.position, {
       cellId: dependent.position.cellId,
       z: dependent.position.z,
@@ -161,7 +184,22 @@ export function chooseDependentCareReflex(
   }
 
   if (hibernationReady) {
-    return { kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: dependent.id }] };
+    return {
+      kind: 'act', operation: 'dehydrate', targets: [{ kind: 'person', personId: dependent.id }],
+      hibernationEvidenceEventIds,
+    };
+  }
+
+  if (needsRecoveryWater && together) {
+    const visible = cellsInRadius(caregiver.position.cellId, visibleRadius(caregiver));
+    const water = findReachableWater(state, caregiver, visible);
+    if (water) {
+      const atBank = caregiver.position.cellId === water.bankPosition.cellId
+        && caregiver.position.z === water.bankPosition.z;
+      return atBank
+        ? { kind: 'act', operation: 'rehydrate', targets: [{ kind: 'person', personId: dependent.id }] }
+        : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
+    }
   }
 
   if (infant && dependent.body.hydration < 40) {
@@ -176,7 +214,7 @@ export function chooseDependentCareReflex(
     }
   }
 
-  if (dependent.body.nutrition < 40) {
+  if (childNeedsFood) {
     if (carriedFood) return {
       kind: 'transfer', materialId: carriedFood.materialId, quantity: 1,
       from: { kind: 'person', personId: caregiver.id }, to: { kind: 'person', personId: dependent.id }, stackId: carriedFood.id,
@@ -185,6 +223,12 @@ export function chooseDependentCareReflex(
     if (food) return caregiver.position.cellId === food.cellId && caregiver.position.z === food.z
       ? { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'ground', cellId: food.cellId, z: food.z }, to: { kind: 'person', personId: dependent.id }, dropId: food.id }
       : { kind: 'move', toCellId: food.cellId, toZ: food.z };
+    const stored = findCurrentVisibleStoredMaterialAccess(
+      state,
+      caregiver,
+      (stack) => materialHas(stack.materialId, 'edible'),
+    );
+    if (stored) return retrieveStoredMaterialOrMove(caregiver, stored);
   }
 
   if (infant && thermalPressure && !options.suppressThermalShelter) {

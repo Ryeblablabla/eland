@@ -1,5 +1,9 @@
 # ELAND
 
+<p align="center">
+  <img src="docs/assets/eland-logo-v1.png" alt="ELAND 游戏 Logo：三颗太阳环绕体素文明" width="960">
+</p>
+
 > 三颗太阳支配着一颗行星。文明只在它们允许的时间里生长。
 
 ![三颗太阳之下，文明在冰霜与烈焰之间生长](docs/assets/eland-readme-hero.png)

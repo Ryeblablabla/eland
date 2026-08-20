@@ -164,6 +164,16 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.FiredBrick, quantity: 1 }],
     output: { materialId: Material.KeepCore, quantity: 1 },
   },
+  {
+    id: 'assemble-water-wheel',
+    inputs: [{ materialId: Material.Plank, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.WaterWheel, quantity: 1 },
+  },
+  {
+    id: 'cast-drive-shaft',
+    inputs: [{ materialId: Material.Bronze, quantity: 1 }, { materialId: Material.Plank, quantity: 1 }],
+    output: { materialId: Material.DriveShaft, quantity: 1 },
+  },
 ] as const;
 
 export function inventoryCombinationRules(): readonly InventoryCombinationRule[] {

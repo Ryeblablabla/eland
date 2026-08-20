@@ -10,10 +10,12 @@ import type { ResourcePermission } from './permission';
 import type { ContainerState } from './container';
 import type { AnimalState } from './animal';
 import type { ProjectState } from './project';
+import type { MechanicalPowerWorldState } from './mechanical-power';
 
 export * from './action';
 export * from './material';
 export * from './person';
+export * from './mechanical-power';
 
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
@@ -133,8 +135,12 @@ export interface EnvironmentFact extends BaseEvent {
 export interface AgreementFact extends BaseEvent {
   kind: 'agreement';
   agreementId: string;
-  change: 'expired' | 'fulfilled' | 'breached' | 'cancelled';
+  change: 'expired' | 'fulfilled' | 'breached' | 'cancelled' | 'response-deadline-paused' | 'response-deadline-resumed';
   partyIds: PersonId[];
+  responderId?: PersonId;
+  hibernationConditionId?: string;
+  effectiveFromMonth?: number;
+  sourceEventIds?: string[];
   result: string;
 }
 
@@ -321,6 +327,8 @@ export interface SimulationState {
     past: WorldEvent[];
     /** Incremental traversal counts keyed by `cellId:z`. */
     traffic?: Record<string, number>;
+    /** Optional on schema v17 for compatibility; new and restored states initialize v1 explicitly. */
+    mechanicalPower?: MechanicalPowerWorldState;
   };
   people: PersonState[];
   intents: Intent[];

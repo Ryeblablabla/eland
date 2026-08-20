@@ -1,5 +1,10 @@
 import { MATERIAL_PALETTE, Material, type MaterialId } from '../domain/material';
 import {
+  emptyMechanicalPowerWorldState,
+  type MechanicalPowerWorldState,
+  type WaterCurrentSegment,
+} from '../domain/mechanical-power';
+import {
   WORLD_CELL_COUNT,
   WORLD_DEPTH,
   WORLD_LEVELS,
@@ -61,14 +66,75 @@ function fillColumn(world: VoxelWorld, x: number, y: number, height: number, sur
 
 const INITIAL_TERRAIN_HEIGHT = 5;
 const SPAWN_CLEARING_RADIUS = 6;
+export const CURRENT_WORLD_GENERATOR_VERSION = 'material-world-v4-regional-geology' as const;
 
-export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: GeneratedDrop[]; spawnCells: number[] } {
+export interface RiverCourseRow {
+  y: number;
+  waterX: [number, number];
+}
+
+/** The authoritative river geometry used by both voxels and directed flow facts. */
+export function riverCourse(seed: number): RiverCourseRow[] {
+  const rows: RiverCourseRow[] = [];
+  let riverX = 10 + Math.floor(seededFraction(seed, 'river-start') * 5);
+  for (let y = 0; y < WORLD_DEPTH; y += 1) {
+    const turn = seededFraction(seed, `river-turn:${y}`);
+    if (turn < 0.3) riverX -= 1;
+    else if (turn > 0.7) riverX += 1;
+    riverX = Math.max(5, Math.min(18, riverX));
+    rows.push({ y, waterX: [riverX, riverX + 1] });
+  }
+  return rows;
+}
+
+function waterCurrentSegmentId(seed: number, upstreamY: number, lane: number): string {
+  return `water-current:${CURRENT_WORLD_GENERATOR_VERSION}:${seed}:${upstreamY}:${lane}`;
+}
+
+export function waterCurrentSegmentsForSeed(seed: number): WaterCurrentSegment[] {
+  const rows = riverCourse(seed);
+  const waterZ = INITIAL_TERRAIN_HEIGHT - 1;
+  return rows.slice(0, -1).flatMap((row, rowIndex) => [0, 1].map((lane) => {
+    const downstream = rows[rowIndex + 1];
+    const from = { x: row.waterX[lane], y: row.y, z: waterZ };
+    const to = { x: downstream.waterX[lane], y: downstream.y, z: waterZ };
+    return {
+      id: waterCurrentSegmentId(seed, row.y, lane),
+      kind: 'water-current-segment' as const,
+      from,
+      to,
+      direction: { dx: to.x - from.x, dy: to.y - from.y, dz: to.z - from.z },
+      capacity: 1,
+      upstreamSegmentIds: rowIndex === 0
+        ? []
+        : [waterCurrentSegmentId(seed, rows[rowIndex - 1].y, lane)],
+      requiredWaterVoxels: [from, to],
+      sourceKeys: [
+        `generator:${CURRENT_WORLD_GENERATOR_VERSION}:${seed}`,
+        `river-course:${seed}`,
+        `river-lane:${seed}:${lane}`,
+        `river-edge:${seed}:${row.y}:${downstream.y}:${lane}`,
+      ],
+    } satisfies WaterCurrentSegment;
+  }));
+}
+
+export function mechanicalPowerWorldForSeed(seed: number): MechanicalPowerWorldState {
+  return emptyMechanicalPowerWorldState(waterCurrentSegmentsForSeed(seed));
+}
+
+export function generateVoxelWorld(seed: number): {
+  world: VoxelWorld;
+  drops: GeneratedDrop[];
+  spawnCells: number[];
+  mechanicalPower: MechanicalPowerWorldState;
+} {
   const world: VoxelWorld = {
     version: 2,
     width: WORLD_WIDTH,
     depth: WORLD_DEPTH,
     levels: WORLD_LEVELS,
-    generator: { version: 'material-world-v4-regional-geology', seed },
+    generator: { version: CURRENT_WORLD_GENERATOR_VERSION, seed },
     palette: MATERIAL_PALETTE,
     voxels: new Uint16Array(WORLD_VOXEL_COUNT),
   };
@@ -93,24 +159,19 @@ export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: Ge
     }
   }
 
-  let riverX = 10 + Math.floor(seededFraction(seed, 'river-start') * 5);
-  let riverAtSpawn = riverX;
-  for (let y = 0; y < WORLD_DEPTH; y += 1) {
-    const turn = seededFraction(seed, `river-turn:${y}`);
-    if (turn < 0.3) riverX -= 1;
-    else if (turn > 0.7) riverX += 1;
-    riverX = Math.max(5, Math.min(18, riverX));
-    if (y === 27) riverAtSpawn = riverX;
-    for (let dx = 0; dx < 2; dx += 1) {
-      const x = riverX + dx;
+  const course = riverCourse(seed);
+  let riverAtSpawn = course[0]?.waterX[0] ?? 10;
+  for (const row of course) {
+    if (row.y === 27) riverAtSpawn = row.waterX[0];
+    for (const x of row.waterX) {
       // 河床下切一层，但水面与初始陆地齐平，避免整条河凸成蓝色墙带。
-      setVoxel(world, x, y, INITIAL_TERRAIN_HEIGHT - 2, Material.Sand);
-      setVoxel(world, x, y, INITIAL_TERRAIN_HEIGHT - 1, Material.Water);
+      setVoxel(world, x, row.y, INITIAL_TERRAIN_HEIGHT - 2, Material.Sand);
+      setVoxel(world, x, row.y, INITIAL_TERRAIN_HEIGHT - 1, Material.Water);
     }
-    for (const bankX of [riverX - 1, riverX + 2]) {
+    for (const bankX of [row.waterX[0] - 1, row.waterX[1] + 1]) {
       if (bankX < 0 || bankX >= WORLD_WIDTH) continue;
-      const id = cellId(bankX, y);
-      setVoxel(world, bankX, y, topZ(world, id), Material.WetSoil);
+      const id = cellId(bankX, row.y);
+      setVoxel(world, bankX, row.y, topZ(world, id), Material.WetSoil);
     }
   }
 
@@ -240,5 +301,10 @@ export function generateVoxelWorld(seed: number): { world: VoxelWorld; drops: Ge
   };
   ensureDrop(Material.Wood, 12);
   ensureDrop(Material.Stone, 4);
-  return { world, drops, spawnCells };
+  return {
+    world,
+    drops,
+    spawnCells,
+    mechanicalPower: mechanicalPowerWorldForSeed(seed),
+  };
 }

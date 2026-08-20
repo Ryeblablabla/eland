@@ -136,6 +136,61 @@ try {
   }));
 
   const reproduceAction = { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }], authorizationRef: agreementId };
+  const fullTickAttemptState = structuredClone(state);
+  fullTickAttemptState.clock.elapsedMonths = 1;
+  fullTickAttemptState.world.past = fullTickAttemptState.world.past.filter((event) => event.atMonth <= 1);
+  fullTickAttemptState.intents = [];
+  for (const [index, actorId] of [female.id, male.id].entries()) {
+    const actor = fullTickAttemptState.people.find((person) => person.id === actorId);
+    const partnerId = actorId === female.id ? male.id : female.id;
+    const intentId = `test-pair-reproduction-intent:${index}`;
+    fullTickAttemptState.intents.push({
+      id: intentId, ownerId: actorId, summary: '在同一协议窗口内进行一次生殖尝试', domain: 'social',
+      goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
+      nextAction: { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: partnerId }], authorizationRef: agreementId },
+      target: { kind: 'person', personId: partnerId }, status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1,
+      progress: 0, sourceDecisionEventId: `test-pair-reproduction-decision:${index}`, agreementId,
+      sourceFactIds: [...fullTickAttemptState.agreements[0].sourceEventIds], actionEventIds: [], replanCount: 0,
+    });
+    actor.activeIntentId = intentId;
+  }
+  const idlePlanner = { decide: () => ({ kind: 'idle', reason: '保留双方已经编译的生殖意图' }) };
+  const afterFullTickAttempt = stepSimulation(fullTickAttemptState, idlePlanner);
+  const firstMonthPairActions = afterFullTickAttempt.lastStep.filter((event) => event.kind === 'action'
+    && event.atMonth === 2
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce');
+  assert.equal(firstMonthPairActions.length, 1,
+    '一个真实 stepSimulation 的 15 个规划刻度内，同一人物对只能产生一条 reproduce ActionFact，不能再产生 attemptedThisMonth blocked 动作');
+  assert.equal(firstMonthPairActions[0]?.status, 'completed');
+  assert.equal(firstMonthPairActions[0]?.diff.conceived, false, '固定夹具必须保留未受孕窗口以验证次月重试');
+  const mirrorIntent = afterFullTickAttempt.intents.find((intent) => intent.id.startsWith('test-pair-reproduction-intent:')
+    && intent.actionEventIds.length === 0);
+  assert.equal(mirrorIntent?.status, 'completed',
+    '另一方已编译的同月镜像意图应无动作完成本月评估，而不是因为 pair 已尝试被永久 blocked');
+  assert.equal(mirrorIntent?.blockedReason, undefined);
+  const retryMonthContext = buildDecisionContexts(afterFullTickAttempt, 3)
+    .find((candidate) => candidate.options.some((option) => option.id.startsWith('reproduce:')));
+  const nextMonthOption = retryMonthContext?.options.find((option) => option.id.startsWith('reproduce:'));
+  assert.ok(retryMonthContext && nextMonthOption, '未受孕后的下一自然月必须重新暴露合法的生殖尝试候选');
+  const nextMonthIntentId = 'test-next-month-pair-reproduction-intent';
+  afterFullTickAttempt.intents.push({
+    id: nextMonthIntentId, ownerId: retryMonthContext.person.id, summary: nextMonthOption.summary,
+    domain: nextMonthOption.domain ?? 'social', goal: structuredClone(nextMonthOption.goal),
+    nextAction: structuredClone(nextMonthOption.nextAction), target: structuredClone(nextMonthOption.target),
+    status: 'active', createdAtMonth: 2, lastProgressAtMonth: 2, progress: 0,
+    sourceDecisionEventId: 'test-next-month-pair-reproduction-decision', agreementId,
+    sourceFactIds: [...nextMonthOption.sourceFactIds], actionEventIds: [], replanCount: 0,
+  });
+  retryMonthContext.person.activeIntentId = nextMonthIntentId;
+  const afterNextMonthAttempt = stepSimulation(afterFullTickAttempt, idlePlanner);
+  const nextMonthPairActions = afterNextMonthAttempt.lastStep.filter((event) => event.kind === 'action'
+    && event.atMonth === 3
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce');
+  assert.equal(nextMonthPairActions.length, 1, '未受孕后的下一自然月必须能在同一有效窗口内重新进行一次合法尝试');
+  assert.equal(nextMonthPairActions[0]?.status, 'completed');
+
   const conflictState = structuredClone(state);
   conflictState.clock.elapsedMonths = 2;
   const conflictFemale = conflictState.people.find((person) => person.id === female.id);

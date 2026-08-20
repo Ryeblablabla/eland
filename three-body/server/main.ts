@@ -18,6 +18,14 @@ import {
   type ModelPurpose,
 } from './model-config';
 import { buildEvolutionFactsReport, checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
+import {
+  assertEvolutionIdentity,
+  evolutionExpectedBasisKey,
+  EvolutionIdentityConflictError,
+  EvolutionRequestValidationError,
+  parseEvolutionRunRequest,
+  type EvolutionRunRequest,
+} from './evolution-request';
 import { ElandWorkerClient } from './eland-worker-client';
 import { NarrativeEnhancementService } from './narrative-enhancement-service';
 import {
@@ -28,6 +36,7 @@ import {
 import {
   RunAlreadyExistsError,
   RunNotFoundError,
+  RunWriteConflictError,
   type PersistedRun,
 } from "./run-persistence";
 import { SqliteRunStore } from './sqlite-run-store';
@@ -43,7 +52,14 @@ const store = new SqliteRunStore(DATA_DIR);
 const narrativeEnhancements = new NarrativeEnhancementService(store);
 const elandWorker = new ElandWorkerClient();
 const runQueues = new Map<string, Promise<unknown>>();
-const evolutionJobs = new Map<string, Promise<void>>();
+interface EvolutionJob {
+  token: symbol;
+  requestedEndMonth?: number;
+  ensureBasisKey?: string;
+  ready: Promise<EvolutionPath>;
+  promise?: Promise<void>;
+}
+const evolutionJobs = new Map<string, EvolutionJob>();
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -111,12 +127,6 @@ function responseRun(run: PersistedRun, includeState = true): unknown {
   return includeState ? run : { meta: run.meta };
 }
 
-function positiveInteger(value: unknown, fallback: number): number {
-  const number = Number(value ?? fallback);
-  if (!Number.isFinite(number) || number < 1) throw new HttpError(400, "months 必须是正整数");
-  return Math.floor(number);
-}
-
 function narrativeKinds(value: unknown): NarrativeEnhancementKind[] {
   if (value === undefined) return [...NARRATIVE_ENHANCEMENT_KINDS];
   if (!Array.isArray(value)) throw new HttpError(400, 'kinds 必须是 dialogue、memory、history 的数组');
@@ -179,33 +189,68 @@ async function createRun(bodyValue: unknown, imported: boolean): Promise<Persist
   });
 }
 
-async function executeLongEvolution(id: string, months: number, initialPath: EvolutionPath): Promise<void> {
+async function completeEvolution(
+  id: string,
+  state: SimulationState,
+  previous: EvolutionPath,
+  requestedEndMonth: number,
+): Promise<EvolutionPath> {
+  const running = evolvePath(state, {
+    runId: id,
+    provider: 'local',
+    model: previous.model,
+    fromMonth: previous.fromMonth,
+    requestedEndMonth,
+    previous,
+    checkpoint: checkpointFor(state, {
+      inputTokens: previous.checkpoints.at(-1)?.inputTokens ?? 0,
+      outputTokens: previous.checkpoints.at(-1)?.outputTokens ?? 0,
+    }, previous.checkpoints.at(-1)),
+    status: 'running',
+  });
+  const report = buildEvolutionFactsReport(state, running);
+  await store.saveEvolutionReport(id, report);
+  const completed = evolvePath(state, {
+    runId: id,
+    provider: 'local',
+    model: running.model,
+    fromMonth: running.fromMonth,
+    requestedEndMonth,
+    previous: running,
+    status: 'completed',
+  });
+  await store.saveEvolutionPath(id, completed);
+  return completed;
+}
+
+async function executeLongEvolution(id: string, requestedEndMonth: number, initialPath: EvolutionPath): Promise<void> {
   const current = await store.load(id);
   const controller = createSimulation({ state: current.state });
-  const endMonth = current.state.clock.elapsedMonths + months;
   let persisted = current.state;
   let path = initialPath;
-  let inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
-  let outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
+  const inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
+  const outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
   try {
-    for (let advanced = 0; advanced < months && persisted.civilization.status === 'running';) {
-      const batchMonths = Math.min(12, months - advanced);
+    while (persisted.clock.elapsedMonths < requestedEndMonth && persisted.civilization.status === 'running') {
+      const batchMonths = Math.min(12, requestedEndMonth - persisted.clock.elapsedMonths);
       const batchStartedAt = perfNow();
       const simulationStartedAt = perfNow();
       const state = controller.step(batchMonths);
       const simulationMs = perfElapsed(simulationStartedAt);
+      if (state.clock.elapsedMonths <= persisted.clock.elapsedMonths && state.civilization.status === 'running') {
+        throw new Error(`演化未向前推进：仍在第 ${state.clock.elapsedMonths} 月`);
+      }
       persisted = state;
-      advanced += batchMonths;
       const persistenceStartedAt = perfNow();
-      persisted = (await store.save(id, persisted)).state;
+      persisted = (await store.save(id, persisted, undefined, { historyMode: 'append' })).state;
       path = evolvePath(persisted, {
         runId: id,
         provider: 'local',
         model: RULE_PLANNER_MODEL,
         fromMonth: initialPath.fromMonth,
-        requestedEndMonth: endMonth,
+        requestedEndMonth,
         previous: path,
-        checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }),
+        checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }, path.checkpoints.at(-1)),
         status: 'running',
       });
       await store.saveEvolutionPath(id, path);
@@ -220,20 +265,17 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
         totalMs: perfElapsed(batchStartedAt),
       });
     }
-    const report = buildEvolutionFactsReport(persisted, path);
-    await store.saveEvolutionReport(id, report);
-    path = evolvePath(persisted, { runId: id, provider: 'local', model: path.model, fromMonth: initialPath.fromMonth, requestedEndMonth: endMonth, previous: path, status: 'completed' });
-    await store.saveEvolutionPath(id, path);
+    await completeEvolution(id, persisted, path, requestedEndMonth);
   } catch (error) {
-    persisted = (await store.save(id, persisted)).state;
+    persisted = (await store.save(id, persisted, undefined, { historyMode: 'append' })).state;
     path = evolvePath(persisted, {
       runId: id,
       provider: 'local',
       model: path.model,
       fromMonth: initialPath.fromMonth,
-      requestedEndMonth: endMonth,
+      requestedEndMonth,
       previous: path,
-      checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }),
+      checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }, path.checkpoints.at(-1)),
       status: 'failed',
       failure: error instanceof Error ? error.message : String(error),
     });
@@ -241,32 +283,114 @@ async function executeLongEvolution(id: string, months: number, initialPath: Evo
   }
 }
 
-async function evolveRun(id: string, bodyValue: unknown): Promise<unknown> {
-  const body = asObject(bodyValue);
-  const months = positiveInteger(body.months, 1);
-  if (evolutionJobs.has(id)) throw new HttpError(409, `运行 ${id} 正在演化`);
-  const current = await store.load(id);
-  if (current.state.civilization.status === 'ended') throw new HttpError(409, `运行 ${id} 已经结束`);
-  const previous = await store.loadEvolutionPath(id);
-  const requestedEndMonth = current.state.clock.elapsedMonths + months;
-  const initial = evolvePath(current.state, {
-    runId: id,
-    provider: 'local',
-    model: RULE_PLANNER_MODEL,
-    fromMonth: current.state.clock.elapsedMonths,
-    requestedEndMonth,
-    ...(previous ? { previous } : {}),
-    checkpoint: checkpointFor(current.state, {
-      inputTokens: previous?.checkpoints.at(-1)?.inputTokens ?? 0,
-      outputTokens: previous?.checkpoints.at(-1)?.outputTokens ?? 0,
-    }),
-    status: 'running',
+function releaseEvolutionJob(id: string, job: EvolutionJob): void {
+  if (evolutionJobs.get(id)?.token === job.token) evolutionJobs.delete(id);
+}
+
+function observeEvolutionJob(id: string, job: EvolutionJob, promise: Promise<void>): void {
+  void promise.then(
+    () => releaseEvolutionJob(id, job),
+    (error) => {
+      releaseEvolutionJob(id, job);
+      console.error(`运行 ${id} 的后台演化任务异常`, error);
+    },
+  );
+}
+
+async function initializeEvolutionJob(
+  id: string,
+  request: EvolutionRunRequest,
+  job: EvolutionJob,
+): Promise<EvolutionPath> {
+  return serialized(id, async () => {
+    const current = await store.load(id);
+    const previous = await store.loadEvolutionPath(id);
+    const requestedEndMonth = request.kind === 'ensure-through'
+      ? request.requestedEndMonth
+      : current.state.clock.elapsedMonths + request.months;
+    job.requestedEndMonth = requestedEndMonth;
+    if (request.kind === 'ensure-through') assertEvolutionIdentity(current, previous, request);
+    else if (current.state.civilization.status === 'ended') throw new HttpError(409, `运行 ${id} 已经结束`);
+
+    if (request.kind === 'ensure-through' && previous?.status === 'failed') {
+      releaseEvolutionJob(id, job);
+      return previous;
+    }
+
+    if (request.kind === 'ensure-through'
+      && previous?.status === 'completed'
+      && (current.state.civilization.status === 'ended' || current.state.clock.elapsedMonths >= requestedEndMonth)) {
+      releaseEvolutionJob(id, job);
+      return previous;
+    }
+
+    const fromMonth = previous?.fromMonth
+      ?? (request.kind === 'ensure-through' ? request.expected.fromMonth : current.state.clock.elapsedMonths);
+    const initial = evolvePath(current.state, {
+      runId: id,
+      provider: 'local',
+      model: previous?.model ?? RULE_PLANNER_MODEL,
+      fromMonth,
+      requestedEndMonth,
+      ...(previous ? { previous } : {}),
+      checkpoint: checkpointFor(current.state, {
+        inputTokens: previous?.checkpoints.at(-1)?.inputTokens ?? 0,
+        outputTokens: previous?.checkpoints.at(-1)?.outputTokens ?? 0,
+      }, previous?.checkpoints.at(-1)),
+      status: 'running',
+    });
+    await store.saveEvolutionPath(id, initial);
+
+    if (current.state.civilization.status === 'ended' || current.state.clock.elapsedMonths >= requestedEndMonth) {
+      const completed = await completeEvolution(id, current.state, initial, requestedEndMonth);
+      releaseEvolutionJob(id, job);
+      return completed;
+    }
+
+    const promise = serialized(id, () => executeLongEvolution(id, requestedEndMonth, initial)).then(() => undefined);
+    job.promise = promise;
+    observeEvolutionJob(id, job, promise);
+    return initial;
   });
-  await store.saveEvolutionPath(id, initial);
-  const job = serialized(id, () => executeLongEvolution(id, months, initial)).then(() => undefined);
+}
+
+async function acknowledgeActiveEvolution(
+  id: string,
+  request: EvolutionRunRequest,
+  active: EvolutionJob,
+): Promise<EvolutionPath> {
+  if (request.kind === 'legacy') throw new HttpError(409, `运行 ${id} 正在演化`);
+  if (active.requestedEndMonth !== request.requestedEndMonth) {
+    throw new HttpError(409, `运行 ${id} 正在演化到第 ${active.requestedEndMonth ?? '?'} 月`);
+  }
+  if (active.ensureBasisKey !== evolutionExpectedBasisKey(request.expected)) {
+    throw new HttpError(409, `运行 ${id} 正在使用不同的身份基线`);
+  }
+  const ready = await active.ready;
+  const path = await store.loadEvolutionPath(id);
+  return path ?? ready;
+}
+
+async function evolveRun(id: string, bodyValue: unknown): Promise<EvolutionPath> {
+  const request = parseEvolutionRunRequest(bodyValue);
+  const active = evolutionJobs.get(id);
+  if (active) return acknowledgeActiveEvolution(id, request, active);
+
+  const job = {
+    token: Symbol(id),
+    ...(request.kind === 'ensure-through' ? {
+      requestedEndMonth: request.requestedEndMonth,
+      ensureBasisKey: evolutionExpectedBasisKey(request.expected),
+    } : {}),
+  } as EvolutionJob;
   evolutionJobs.set(id, job);
-  void job.finally(() => evolutionJobs.delete(id)).catch((error) => console.error(`运行 ${id} 的后台演化任务异常`, error));
-  return initial;
+  job.ready = Promise.resolve().then(() => initializeEvolutionJob(id, request, job));
+  try {
+    return await job.ready;
+  } catch (error) {
+    releaseEvolutionJob(id, job);
+    throw error;
+  }
 }
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -359,7 +483,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (request.method === "PUT" && parts[3] === "state" && parts.length === 4) {
     const importedState = stateFrom(await readJson(request));
-    const saved = await serialized(id, () => store.save(id, importedState));
+    const saved = await serialized(id, () => store.save(id, importedState, undefined, { historyMode: 'replace' }));
     sendJson(response, 200, saved);
     return;
   }
@@ -416,8 +540,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 const server = createServer((request, response) => {
   route(request, response).catch((error: unknown) => {
     if (error instanceof HttpError) sendJson(response, error.status, { error: error.message });
+    else if (error instanceof EvolutionRequestValidationError) sendJson(response, 400, { error: error.message });
+    else if (error instanceof EvolutionIdentityConflictError) sendJson(response, 409, { error: error.message });
     else if (error instanceof RunNotFoundError) sendJson(response, 404, { error: error.message });
     else if (error instanceof RunAlreadyExistsError) sendJson(response, 409, { error: error.message });
+    else if (error instanceof RunWriteConflictError) sendJson(response, 409, { error: error.message });
     else {
       console.error(error);
       sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });

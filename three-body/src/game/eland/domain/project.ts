@@ -1,4 +1,5 @@
 import type { MaterialId } from './material';
+import type { MechanicalPowerProjectPlan } from './mechanical-power';
 import type { PersonId } from './person';
 
 export type ProjectKind = 'production' | 'construction' | 'inquiry';
@@ -16,7 +17,8 @@ export type ProjectNeed =
   | 'coordination-capacity'
   | 'high-heat-capability'
   | 'alloy-capability'
-  | 'iron-capability';
+  | 'iron-capability'
+  | 'mechanical-power-capability';
 
 export type ProjectFunction =
   | 'insulation'
@@ -47,7 +49,8 @@ export type ProjectFunction =
   | 'iron-reduction'
   | 'iron-working'
   | 'iron-tooling'
-  | 'fortified-coordination';
+  | 'fortified-coordination'
+  | 'water-powered-crop-processing';
 
 /**
  * A person's positive, locally observable reasons for reopening a functional
@@ -157,6 +160,11 @@ export interface ProjectProposal {
   initialMaterialDemands?: ProjectMaterialDemand[];
   /** Preserve the first locally grounded, fallible material hypothesis campaign. */
   initialHypothesisCampaign?: ProjectHypothesisCampaign;
+  /** Exact locally observed source and component sites, frozen when proposed. */
+  mechanicalPowerPlan?: MechanicalPowerProjectPlan;
+  /** Frozen derived identities let persisted projects reject a geometrically different action basis. */
+  mechanicalPowerPlanKey?: string;
+  mechanicalPowerNetworkId?: string;
 }
 
 export interface ProjectReservation {

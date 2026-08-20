@@ -3,6 +3,7 @@ import {
   AgentConversationConflictError,
   ElandSessionBusyError,
   ElandSessionCapacityError,
+  ElandStepConflictError,
   elandSessions,
 } from './elandSession';
 import { ElandSaveNotFoundError } from './sqlite-eland-store';
@@ -132,7 +133,12 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
       const loaded = elandSessions.loadSave(runId, saveId, leaseId);
       return {
         status: 200,
-        body: { save: loaded.meta, frame: loaded.frame, history: loaded.session.chronicle() },
+        body: {
+          save: loaded.meta,
+          frame: loaded.frame,
+          history: loaded.session.chronicle(),
+          civilizationIndexHistory: loaded.session.civilizationIndexHistory(),
+        },
       };
     } catch (error) {
       if (error instanceof ElandSaveNotFoundError) return { status: 404, body: { error: error.message } };
@@ -155,14 +161,79 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
   if (route === 'step' && method === 'POST') {
     const sky = skySample(body.skySample);
     const cosmos = cosmosSnapshot(body.cosmosSnapshot);
+    const stepId = typeof body.stepId === 'string' ? body.stepId.trim() : undefined;
+    const expectedAuthorityRevision = typeof body.expectedAuthorityRevision === 'string'
+      ? body.expectedAuthorityRevision.trim()
+      : undefined;
+    const expectedCivilizationId = body.expectedCivilizationId;
+    const expectedBranchId = typeof body.expectedBranchId === 'string' ? body.expectedBranchId.trim() : undefined;
+    const expectedElapsedMonths = body.expectedElapsedMonths;
+    if (body.stepId !== undefined
+      && (typeof body.stepId !== 'string' || !stepId || stepId.length > 160)) {
+      return { status: 400, body: { error: 'stepId 无效' } };
+    }
+    if (body.expectedAuthorityRevision !== undefined
+      && (typeof body.expectedAuthorityRevision !== 'string'
+        || !expectedAuthorityRevision
+        || expectedAuthorityRevision.length > 160)) {
+      return { status: 400, body: { error: 'expectedAuthorityRevision 无效' } };
+    }
+    if (expectedElapsedMonths !== undefined
+      && (typeof expectedElapsedMonths !== 'number'
+        || !Number.isInteger(expectedElapsedMonths)
+        || expectedElapsedMonths < 0)) {
+      return { status: 400, body: { error: 'expectedElapsedMonths 必须是非负整数' } };
+    }
+    if (expectedCivilizationId !== undefined
+      && (typeof expectedCivilizationId !== 'number'
+        || !Number.isInteger(expectedCivilizationId)
+        || expectedCivilizationId < 1)) {
+      return { status: 400, body: { error: 'expectedCivilizationId 必须是正整数' } };
+    }
+    if (body.expectedBranchId !== undefined
+      && (typeof body.expectedBranchId !== 'string'
+        || !expectedBranchId
+        || expectedBranchId.length > 320)) {
+      return { status: 400, body: { error: 'expectedBranchId 无效' } };
+    }
+    if (stepId && (expectedAuthorityRevision === undefined
+      || expectedCivilizationId === undefined
+      || expectedBranchId === undefined
+      || expectedElapsedMonths === undefined)) {
+      return { status: 400, body: { error: '带 stepId 的请求必须提供完整权威身份' } };
+    }
     if (body.cosmosSnapshot !== undefined && !cosmos) return { status: 400, body: { error: '宇宙快照无效' } };
     if (cosmos && cosmos.t !== sky.toTime) return { status: 400, body: { error: '宇宙快照与天象时刻不一致' } };
     const previous = session.latest();
-    const frame = await session.step({ skySample: sky, cosmosSnapshot: cosmos });
-    return { status: 200, body: createStepPayload(previous, frame) };
+    try {
+      const frame = await session.step({
+        skySample: sky,
+        cosmosSnapshot: cosmos,
+        ...(stepId ? { stepId } : {}),
+        ...(expectedAuthorityRevision ? { expectedAuthorityRevision } : {}),
+        ...(expectedCivilizationId !== undefined ? { expectedCivilizationId } : {}),
+        ...(expectedBranchId ? { expectedBranchId } : {}),
+        ...(expectedElapsedMonths !== undefined ? { expectedElapsedMonths } : {}),
+      });
+      return { status: 200, body: createStepPayload(previous, frame) };
+    } catch (error) {
+      if (error instanceof ElandStepConflictError) return { status: 409, body: { error: error.message } };
+      throw error;
+    }
   }
   if (route === 'checkpoint' && method === 'POST') return { status: 200, body: { persisted: elandSessions.persist(runId) } };
-  if (route === 'state' && method === 'GET') return { status: 200, body: { playing: false, model: session.model(), frame: session.latest(), history: session.chronicle() } };
+  if (route === 'state' && method === 'GET') {
+    return {
+      status: 200,
+      body: {
+        playing: false,
+        model: session.model(),
+        frame: session.latest(),
+        history: session.chronicle(),
+        civilizationIndexHistory: session.civilizationIndexHistory(),
+      },
+    };
+  }
   if (route === 'history' && method === 'GET') return { status: 200, body: { civilizationId: session.latest()?.civilizationId ?? 0, history: session.historyList(), branches: session.branchList() } };
   if (route === 'frame' && method === 'GET') return { status: 200, body: session.frameAt(finite(url.searchParams.get('month'), 0)) };
   if (route === 'agent-history' && method === 'GET') {

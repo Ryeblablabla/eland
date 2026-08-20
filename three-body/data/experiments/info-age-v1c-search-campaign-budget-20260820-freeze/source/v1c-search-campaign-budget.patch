@@ -1,0 +1,118 @@
+--- v1b/project-options.ts
++++ v1c/project-options.ts
+@@ -611,6 +611,13 @@
+     if (!project.failureEventIds.includes(fact.id)) project.failureEventIds.push(fact.id);
+   }
+   if (episode?.actorId === fact.who && episode.status === 'active') {
++    const campaignBudgetReached = episode.kind === 'search' && searchCampaignBudgetReached(
++      state,
++      project,
++      episode.searchCampaignId,
++      fact.atMonth,
++      fact,
++    );
+     if (episode.kind === 'drop'
+       && episode.sourceRef.kind === 'drop'
+       && fact.status === 'completed'
+@@ -652,7 +659,8 @@
+       const reached = fact.toCellId === episode.target.cellId && fact.toZ === episode.target.z;
+       if (reached && fact.status === 'completed') {
+         endLogisticsEpisode(project, episode, fact.atMonth, 'fulfilled', 'search-target-reached');
+-      } else if (episode.actionEventIds.length >= (episode.actionBudget ?? 1)) {
++      } else if (campaignBudgetReached
++        || searchEpisodeCommittedActionIds(state, episode, fact).length >= (episode.actionBudget ?? 1)) {
+         endLogisticsEpisode(project, episode, fact.atMonth, 'exhausted', 'search-budget-exhausted');
+       }
+     }
+@@ -898,6 +906,8 @@
+   pathLength: number;
+   campaignId: string;
+ }
++
++const PROJECT_SEARCH_CAMPAIGN_ACTION_BUDGET = 16;
+ 
+ function searchCampaignBasisKey(project: ProjectState, person: PersonState, materialIds: MaterialId[]): string {
+   return [
+@@ -912,6 +922,57 @@
+ function projectSearchCampaigns(project: ProjectState): ProjectSearchCampaign[] {
+   project.searchCampaigns ??= [];
+   return project.searchCampaigns;
++}
++
++function searchEpisodeCommittedActionIds(
++  state: SimulationState,
++  episode: ProjectLogisticsEpisode,
++  pendingFact?: ActionFact,
++): string[] {
++  if (episode.kind !== 'search') return [];
++  return episode.actionEventIds.filter((eventId) => {
++    const event = pendingFact?.id === eventId ? pendingFact : worldEventById(state, eventId);
++    // Persisted episodes are authoritative even when an older event window is unavailable.
++    if (!event) return true;
++    return event.kind === 'action'
++      && event.cause === 'intent'
++      && event.action.kind === 'move'
++      && event.action.toCellId === episode.target.cellId
++      && event.action.toZ === episode.target.z;
++  });
++}
++
++function searchCampaignCommittedActionCount(
++  state: SimulationState,
++  project: ProjectState,
++  campaignId: string,
++  pendingFact?: ActionFact,
++): number {
++  const eventIds = new Set((project.logisticsEpisodes ?? [])
++    .filter((episode) => episode.kind === 'search' && episode.searchCampaignId === campaignId)
++    .flatMap((episode) => searchEpisodeCommittedActionIds(state, episode, pendingFact)));
++  return eventIds.size;
++}
++
++function exhaustSearchCampaign(project: ProjectState, campaignId: string, atMonth: number): void {
++  const campaign = project.searchCampaigns?.find((candidate) => candidate.id === campaignId);
++  if (!campaign || (campaign.status !== 'active' && campaign.status !== 'exhausted')) return;
++  campaign.status = 'exhausted';
++  campaign.closedAt ??= atMonth;
++}
++
++function searchCampaignBudgetReached(
++  state: SimulationState,
++  project: ProjectState,
++  campaignId: string | undefined,
++  atMonth: number,
++  pendingFact?: ActionFact,
++): boolean {
++  if (!campaignId
++    || searchCampaignCommittedActionCount(state, project, campaignId, pendingFact)
++      < PROJECT_SEARCH_CAMPAIGN_ACTION_BUDGET) return false;
++  exhaustSearchCampaign(project, campaignId, atMonth);
++  return true;
+ }
+ 
+ function targetKey(target: StandingPosition): string {
+@@ -1020,6 +1081,7 @@
+ ): ProjectSearchDestination | null {
+   const atMonth = state.clock.elapsedMonths + 1;
+   const campaign = searchCampaignFor(state, person, project, materialIds, atMonth);
++  if (searchCampaignBudgetReached(state, project, campaign.id, atMonth)) return null;
+   if (campaign.status === 'exhausted') return null;
+   const visible = new Set(campaign.cellIds);
+   const attempted = new Set([
+@@ -1360,11 +1422,15 @@
+ ): ProjectStep | null {
+   if (episode.kind !== 'search') return null;
+   const atMonth = state.clock.elapsedMonths + 1;
++  if (searchCampaignBudgetReached(state, project, episode.searchCampaignId, atMonth)) {
++    endLogisticsEpisode(project, episode, atMonth, 'exhausted', 'search-budget-exhausted');
++    return null;
++  }
+   if (person.position.cellId === episode.target.cellId && person.position.z === episode.target.z) {
+     endLogisticsEpisode(project, episode, atMonth, 'fulfilled', 'search-target-reached');
+     return null;
+   }
+-  if (episode.actionEventIds.length >= (episode.actionBudget ?? 1)) {
++  if (searchEpisodeCommittedActionIds(state, episode).length >= (episode.actionBudget ?? 1)) {
+     endLogisticsEpisode(project, episode, atMonth, 'exhausted', 'search-budget-exhausted');
+     return null;
+   }

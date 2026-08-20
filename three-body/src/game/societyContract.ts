@@ -120,7 +120,7 @@ export interface AgentConversationTurn {
   reason?: string;
   grounding?: 'supported' | 'unknown' | 'opinion';
   evidenceIds?: string[];
-  /** 人物在同一次对话中选定的合法方向；尚不等于行动已经发生。 */
+  /** 从人物本轮回复中提取并通过校验的合法方向；尚不等于行动已经发生。 */
   choice?: {
     optionId: string;
     followUpOptionId?: string;
@@ -210,6 +210,14 @@ export interface StructureView {
 
 export interface ActionVisualView {
   actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
+  /** 仅真实 ActionFact 投影携带；意图预览没有来源事件，装饰层不得把它当成已发生动作。 */
+  sourceEventId?: string;
+  sourceCellId?: number;
+  sourceZ?: number;
+  targetCellId?: number;
+  targetZ?: number;
+  /** 领域后果明确记录的设施材质；位置仍由真实动作落点与附近同材质设施共同解析。 */
+  facilityMaterialId?: number;
   operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
   targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'person';
   targetPersonId?: string;
@@ -244,6 +252,14 @@ export interface CivilizationIndexView {
     social: number;
     history: number;
   };
+}
+
+/** 已提交月份的只读文明指数投影，用于展示当前分支的时间趋势。 */
+export interface CivilizationIndexHistoryPoint {
+  formulaVersion: string;
+  total: number;
+  calculatedAtMonth: number;
+  stage: string;
 }
 
 export interface SocietyState {
@@ -309,6 +325,8 @@ export interface CosmosSnapshot {
 
 export interface GameFrame {
   runId: string;
+  /** Opaque lifetime of the server-side authority instance; not a domain fact. */
+  authorityRevision: string;
   branchId: string;
   civilizationId: number;
   elapsedMonths: number;

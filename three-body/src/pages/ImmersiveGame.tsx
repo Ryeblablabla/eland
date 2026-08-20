@@ -25,6 +25,10 @@ import {
   type Frame,
 } from '@/game/elandClient';
 import {
+  TransactionalSkySampler,
+  type PreparedSkySample,
+} from '@/game/eland/transactional-sky-sampler';
+import {
   modelSettingsClient,
   type EvolutionMode,
   type ModelPurpose,
@@ -32,12 +36,12 @@ import {
 } from '@/game/modelSettings';
 import type {
   AgentHistoryView,
+  CivilizationIndexHistoryPoint,
   CosmosSnapshot,
   ElandSaveSummary,
   EraKey,
   NarrativeEntryView,
   SocietyState,
-  SkySample,
   SpeechLineView,
 } from '@/game/societyContract';
 import type { PlanetFate } from '@/lib/threebody';
@@ -102,6 +106,7 @@ export default function ImmersiveGame() {
   const [announce, setAnnounce] = useState<{ era: EraKey; key: number } | null>(null);
   const [history, setHistory] = useState<EvolutionEntry[]>([]);
   const [historyTotalCount, setHistoryTotalCount] = useState(0);
+  const [civilizationIndexHistory, setCivilizationIndexHistory] = useState<CivilizationIndexHistoryPoint[]>([]);
   const [cover, setCover] = useState(false);
   const [universeTarget, setUniverseTarget] = useState(0);
   const [universeResetToken, setUniverseResetToken] = useState(0);
@@ -148,8 +153,8 @@ export default function ImmersiveGame() {
   const eraKeyRef = useRef<EraKey>('stable');
   const eraInitializedRef = useRef(false);
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSkyTimeRef = useRef(0);
-  const fluxRangeRef = useRef({ min: 1, max: 1, sum: 0, count: 0 });
+  const skySamplerRef = useRef(new TransactionalSkySampler());
+  const pendingStepSkyRef = useRef<PreparedSkySample | null>(null);
   const collapseHandledRef = useRef(false);
   const replacementRequestedRef = useRef(false);
   const transitionRef = useRef(false);
@@ -241,28 +246,11 @@ export default function ImmersiveGame() {
     })));
   }, []);
 
-  const sampleSky = useCallback((): SkySample => {
-    const current = statsRef.current;
-    const range = fluxRangeRef.current;
-    const flux = current?.fluxRel ?? 1;
-    const toTime = current?.t ?? lastSkyTimeRef.current;
-    const sample: SkySample = {
-      fromTime: lastSkyTimeRef.current,
-      toTime,
-      fluxMean: range.count ? range.sum / range.count : flux,
-      fluxMin: range.count ? range.min : flux,
-      fluxMax: range.count ? range.max : flux,
-      nearestStarDistance: current?.planetDist ?? 1,
-      fate: current ? eraKeyOf(current.planetFate, current.fluxRel) : eraKeyRef.current,
-    };
-    lastSkyTimeRef.current = toTime;
-    fluxRangeRef.current = { min: flux, max: flux, sum: 0, count: 0 };
-    return sample;
-  }, []);
-
   const applyFrame = useCallback((frame: Frame) => {
     hasFrameRef.current = true;
-    if (activeCivilizationRef.current !== frame.civilizationId) {
+    const civilizationChanged = activeCivilizationRef.current !== frame.civilizationId;
+    const branchChanged = Boolean(activeBranchRef.current) && activeBranchRef.current !== frame.branchId;
+    if (civilizationChanged) {
       canvasCivilizationSyncRef.current = true;
     }
     previousCivilizationRef.current = frame.civilizationId;
@@ -273,6 +261,22 @@ export default function ImmersiveGame() {
     setSociety(frame.society);
     setSpeaker(frame.speaker);
     setSpeechLines(frame.speechLines ?? []);
+    const observedIndex = frame.society.observations.civilizationIndex;
+    if (observedIndex) {
+      const point: CivilizationIndexHistoryPoint = {
+        formulaVersion: observedIndex.formulaVersion,
+        total: observedIndex.total,
+        calculatedAtMonth: observedIndex.calculatedAtMonth,
+        stage: observedIndex.stage,
+      };
+      setCivilizationIndexHistory((current) => {
+        const base = civilizationChanged ? [] : current;
+        const beforeCurrentMonth = base.filter((item) => item.calculatedAtMonth < point.calculatedAtMonth);
+        return [...beforeCurrentMonth, point].slice(-2_400);
+      });
+    } else if (civilizationChanged || branchChanged) {
+      setCivilizationIndexHistory([]);
+    }
     for (const entry of frame.entries) {
       pushHistory(entry.month, entry.text, entry.tone, entry.detail, {
         actorIds: entry.actorIds,
@@ -310,9 +314,11 @@ export default function ImmersiveGame() {
       historySequenceRef.current = 0;
       setHistoryTotalCount(0);
       setHistory([]);
+      setCivilizationIndexHistory([]);
     }
     showRuntimeStatus(monthRef.current > 0 ? '演化后端正在恢复连接' : '本地演化正在开始');
-    const sky = sampleSky();
+    const skyAttempt = skySamplerRef.current.prepare(eraKeyRef.current);
+    const sky = skyAttempt.sample;
     try {
       const frame = await elandClient.begin(
         runIdRef.current,
@@ -322,7 +328,11 @@ export default function ImmersiveGame() {
         worldSeed,
         statsRef.current?.cosmosSnapshot,
       );
-      if (generation !== sessionGenerationRef.current) return false;
+      if (generation !== sessionGenerationRef.current) {
+        skySamplerRef.current.rollback(skyAttempt);
+        return false;
+      }
+      skySamplerRef.current.commit(skyAttempt);
       if (pendingCreationRef.current?.id === pendingCreation.id) pendingCreationRef.current = null;
       applyFrame(frame);
       replacementRequestedRef.current = false;
@@ -330,6 +340,7 @@ export default function ImmersiveGame() {
       setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
       return true;
     } catch (error) {
+      skySamplerRef.current.rollback(skyAttempt);
       if (generation !== sessionGenerationRef.current) return false;
       showRuntimeStatus(error instanceof ElandBackendUnavailableError
         ? '后端正在更新，演化会自动重连'
@@ -338,9 +349,13 @@ export default function ImmersiveGame() {
     } finally {
       if (generation === sessionGenerationRef.current) sessionStartingRef.current = false;
     }
-  }, [applyFrame, sampleSky, showRuntimeStatus]);
+  }, [applyFrame, showRuntimeStatus]);
 
-  const restoreLoadedSession = useCallback((frame: Frame, entries: NarrativeEntryView[]) => {
+  const restoreLoadedSession = useCallback((
+    frame: Frame,
+    entries: NarrativeEntryView[],
+    indexHistory: CivilizationIndexHistoryPoint[],
+  ) => {
     pendingCreationRef.current = null;
     sessionGenerationRef.current += 1;
     sessionStartingRef.current = false;
@@ -355,13 +370,8 @@ export default function ImmersiveGame() {
     activeBranchRef.current = frame.branchId;
     activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
-    lastSkyTimeRef.current = frame.skySample.toTime;
-    fluxRangeRef.current = {
-      min: frame.skySample.fluxMean,
-      max: frame.skySample.fluxMean,
-      sum: 0,
-      count: 0,
-    };
+    pendingStepSkyRef.current = null;
+    skySamplerRef.current.restore(frame.skySample);
     statsRef.current = null;
     transitionRef.current = false;
     setCover(false);
@@ -378,6 +388,7 @@ export default function ImmersiveGame() {
     setEraKey(frame.skySample.fate);
     applyFrame(frame);
     replaceHistory(frame, entries);
+    setCivilizationIndexHistory(indexHistory.slice(-2_400));
   }, [applyFrame, replaceHistory, requestUniverseReset]);
 
   useEffect(() => {
@@ -388,10 +399,14 @@ export default function ImmersiveGame() {
     showRuntimeStatus('正在读取本地文明进度');
     const resume = () => {
       if (cancelled || resumeCheckCompleteRef.current) return;
-      void elandClient.state(runIdRef.current).then(({ frame, history: savedHistory }) => {
+      void elandClient.state(runIdRef.current).then(({
+        frame,
+        history: savedHistory,
+        civilizationIndexHistory: savedIndexHistory,
+      }) => {
         if (cancelled || resumeCheckCompleteRef.current) return;
         resumeCheckCompleteRef.current = true;
-        if (frame) restoreLoadedSession(frame, savedHistory);
+        if (frame) restoreLoadedSession(frame, savedHistory, savedIndexHistory);
         else void startCivilization();
       }).catch((error) => {
         if (cancelled || resumeCheckCompleteRef.current) return;
@@ -423,19 +438,47 @@ export default function ImmersiveGame() {
     }
     const generation = sessionGenerationRef.current;
     steppingRef.current = true;
+    let skyAttempt: PreparedSkySample | null = null;
     try {
       const cosmos = statsRef.current?.cosmosSnapshot;
       if (!cosmos) return;
-      const sky = sampleSky();
-      const frame = await elandClient.step(runIdRef.current, sky, cosmos);
-      if (generation === sessionGenerationRef.current
-        && frame
-        && frame.civilizationId === activeCivilizationRef.current
-        && frame.elapsedMonths > monthRef.current) {
-        applyFrame(frame);
-        setUniverseTarget((target) => Math.max(sky.toTime, target) + TU_PER_MONTH);
+      skyAttempt = pendingStepSkyRef.current ?? skySamplerRef.current.prepare(eraKeyRef.current);
+      pendingStepSkyRef.current = skyAttempt;
+      const sky = skyAttempt.sample;
+      const {
+        frame,
+        authoritativeHistory,
+        authoritativeCivilizationIndexHistory,
+        skySampleAcknowledged,
+      } = await elandClient.stepWithRecovery(runIdRef.current, sky, cosmos);
+      if (generation !== sessionGenerationRef.current) {
+        skySamplerRef.current.rollback(skyAttempt);
+        if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
+        return;
+      }
+      if (skySampleAcknowledged) {
+        skySamplerRef.current.commit(skyAttempt);
+      } else {
+        skySamplerRef.current.rollback(skyAttempt);
+        if (frame) skySamplerRef.current.restore(frame.skySample);
+      }
+      if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
+      if (frame && frame.civilizationId === activeCivilizationRef.current) {
+        const advanced = frame.elapsedMonths > monthRef.current;
+        if (advanced || authoritativeHistory) applyFrame(frame);
+        if (authoritativeHistory) replaceHistory(frame, authoritativeHistory);
+        if (authoritativeCivilizationIndexHistory) {
+          setCivilizationIndexHistory(authoritativeCivilizationIndexHistory.slice(-2_400));
+        }
+        if (advanced) setUniverseTarget((target) => Math.max(frame.skySample.toTime, target) + TU_PER_MONTH);
       }
     } catch (error) {
+      const resultUnknown = error instanceof ElandBackendUnavailableError
+        || error instanceof ElandSessionMissingError;
+      if (skyAttempt && !resultUnknown) {
+        skySamplerRef.current.rollback(skyAttempt);
+        if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
+      }
       if (generation === sessionGenerationRef.current) {
         if (error instanceof ElandSessionMissingError) {
           showRuntimeStatus('正在等待原演化会话恢复；不会自动创建新文明');
@@ -450,7 +493,7 @@ export default function ImmersiveGame() {
     } finally {
       steppingRef.current = false;
     }
-  }, [applyFrame, pushHistory, sampleSky, showRuntimeStatus, startCivilization]);
+  }, [applyFrame, pushHistory, replaceHistory, showRuntimeStatus, startCivilization]);
 
   useEffect(() => {
     if (!pageVisible || uiPaused) return;
@@ -476,11 +519,12 @@ export default function ImmersiveGame() {
       }
     }
     statsRef.current = stats;
-    const range = fluxRangeRef.current;
-    range.min = range.count ? Math.min(range.min, stats.fluxRel) : stats.fluxRel;
-    range.max = range.count ? Math.max(range.max, stats.fluxRel) : stats.fluxRel;
-    range.sum += stats.fluxRel;
-    range.count += 1;
+    skySamplerRef.current.observe({
+      time: stats.t,
+      flux: stats.fluxRel,
+      nearestStarDistance: stats.planetDist,
+      fate: eraKeyOf(stats.planetFate, stats.fluxRel),
+    });
 
     const nextEra = eraKeyOf(stats.planetFate, stats.fluxRel);
     if (nextEra !== eraKeyRef.current) {
@@ -606,7 +650,7 @@ export default function ImmersiveGame() {
     setSaveManagerMessage('');
     try {
       const loaded = await elandClient.loadSave(runIdRef.current, saveId);
-      restoreLoadedSession(loaded.frame, loaded.history);
+      restoreLoadedSession(loaded.frame, loaded.history, loaded.civilizationIndexHistory);
       setSaveManagerStatus('idle');
       setSaveManagerMessage('');
       setOverlayMode(null);
@@ -702,8 +746,8 @@ export default function ImmersiveGame() {
     monthRef.current = 0;
     statsRef.current = null;
     resumeCheckCompleteRef.current = true;
-    lastSkyTimeRef.current = 0;
-    fluxRangeRef.current = { min: 1, max: 1, sum: 0, count: 0 };
+    pendingStepSkyRef.current = null;
+    skySamplerRef.current.reset();
     transitionRef.current = false;
     for (const timer of transitionTimersRef.current) clearTimeout(timer);
     transitionTimersRef.current = [];
@@ -713,6 +757,7 @@ export default function ImmersiveGame() {
     setCover(false);
     setView('cosmos');
     setSociety(null);
+    setCivilizationIndexHistory([]);
     setSpeaker(null);
     setSpeechLines([]);
     setEraKey('stable');
@@ -812,8 +857,8 @@ export default function ImmersiveGame() {
       hasFrameRef.current = false;
       monthRef.current = 0;
       statsRef.current = null;
-      lastSkyTimeRef.current = 0;
-      fluxRangeRef.current = { min: 1, max: 1, sum: 0, count: 0 };
+      pendingStepSkyRef.current = null;
+      skySamplerRef.current.reset();
       setUniverseTarget(0);
       requestUniverseReset();
       setRestoreSnapshot(null);
@@ -1081,6 +1126,7 @@ export default function ImmersiveGame() {
         mode={overlayMode}
         civilizationId={activeCivilizationRef.current}
         civilizationIndex={society?.observations.civilizationIndex ?? null}
+        civilizationIndexHistory={civilizationIndexHistory}
         currentMonth={monthRef.current}
         history={history}
         historyTotalCount={historyTotalCount}

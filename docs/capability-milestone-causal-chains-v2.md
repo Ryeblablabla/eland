@@ -299,11 +299,11 @@
 
 | 范围 | 定义数 | `strict` | `guarded` |
 | --- | ---: | ---: | ---: |
-| 当前 `MAP_CATALOG` 地图坐标 | 120 | 53 | 67 |
+| 当前 `MAP_CATALOG` 地图坐标 | 120 | 51 | 69 |
 | `WORLD_SPECIFIC_SPECS` | 17 | 17 | 0 |
-| 合计 | 137 | 70 | 67 |
+| 合计 | 137 | 68 | 69 |
 
-53 个 strict 地图定义按效价分为：`constructive 38`、`harmful 4`、`ambivalent 11`；按阶段分为：`emergence 8`、`practice 25`、`stable 9`、`harm 1`、`decline 2`、`collapse 3`、`recovery 0`、`response 5`。17 个 world-specific 定义按效价分为：`constructive 5`、`harmful 7`、`ambivalent 5`；按阶段分为：`emergence 2`、`practice 0`、`stable 2`、`harm 5`、`decline 2`、`collapse 2`、`recovery 3`、`response 1`。
+51 个 strict 地图定义按效价分为：`constructive 37`、`harmful 4`、`ambivalent 10`；按阶段分为：`emergence 8`、`practice 24`、`stable 9`、`harm 1`、`decline 2`、`collapse 3`、`recovery 0`、`response 4`。17 个 world-specific 定义按效价分为：`constructive 5`、`harmful 7`、`ambivalent 5`；按阶段分为：`emergence 2`、`practice 0`、`stable 2`、`harm 5`、`decline 2`、`collapse 2`、`recovery 3`、`response 1`。
 
 这 120 项只是当前代码从一千项地图中登记的子集，不代表其余 880 项被否定。任何清单外行为都应先作为世界事实保存；观察器可以在后续版本新增精确坐标或保留为 world-specific。无论 strict 还是 guarded，都必须从真实行动者、对象、地点、月份、资源、规则、后果和事件 ID 回放，不能匹配一句叙述文本，也不能用“看起来像”补齐缺失环节。
 

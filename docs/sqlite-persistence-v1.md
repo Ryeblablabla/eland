@@ -12,7 +12,7 @@ SQLite 使用 `user_version=2`、WAL、`foreign_keys=ON`、`synchronous=NORMAL`�
 
 | 表 | 内容 |
 | --- | --- |
-| `chunks` | SHA-256 内容寻址的 codec、原始长度和 BLOB；供其他表共享 |
+| `chunks` | SHA-256 内容寻址的 codec、codec 定义的校验长度 `raw_size` 和 BLOB；供其他表共享 |
 | `runs` | 每个长程运行的当前状态 hash、摘要和 revision |
 | `run_checkpoints` | 按 run、revision 和月份保存的状态 hash |
 | `artifacts` | `evolution-path`、`evolution-report`、`narrative-enhancements` |
@@ -24,9 +24,16 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 
 ## 编码与事务
 
-长程状态和 artifact 使用 `v8-br-v1`：先 V8 serialize，再以 Brotli 压缩；hash 基于压缩前的序列化字节，读取时校验解压长度和 SHA-256。
+长程状态使用增量历史 codec，artifact 继续使用 `v8-br-v1`。一个当前状态由四类内容块组成：
 
-手动存档与实时会话使用 `ELANDV2` 分块语义：
+- `eland-run-state-root-v1` 保存 shell hash、历史 head、lineage、事件数与末事件摘要；
+- `eland-run-state-shell-v1` 保存不含 `world.past` 的当前状态；
+- `eland-run-history-node-v1` 只连接上一个 head 与本批新增事件段；
+- `eland-run-state-events-v1` 每段最多保存 2048 条不可变事件。
+
+正常年度检查点只编码新增事件和新的 shell/root，不再把完整 `world.past` 重复压缩。append 会校验旧事件数量、lineage 与边界事件摘要；截断或改写历史必须显式选择 replace，并生成新的随机 lineage。写入在事务外编码，提交时再用 run 的 `revision + state_hash` 做 CAS；陈旧并发写会失败，不能把两个旧 head 静默串成一条历史。旧 `v8-br-v1` run 仍可读取，第一次保存时升级为新根，不修改其既有 checkpoint 证据。
+
+手动存档与实时会话使用三类内容寻址 codec：
 
 - `eland-session-manifest-v2` 指向 shell 和有序时间线块；
 - `eland-session-shell-v2` 保存一次 V8 serialize + Brotli 的会话 shell；
@@ -34,11 +41,14 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 
 会话块的 hash 同时包含 codec 和内容，防止相同字节在不同语义下错误复用。编码、压缩和 hash 计算在事务外完成；写入时以短 `BEGIN IMMEDIATE` 事务提交缺失块和引用行，失败则回滚。命中既有 hash 时仍比较 codec、长度和字节，不能只相信 hash。
 
+`raw_size` 不是跨 codec 统一的“解压前”或“解压后”业务数据大小。旧 `v8-br-v1` 用它保存 V8 序列化后、Brotli 压缩前的字节数，并在解压后校验；新的增量 run codec 与三类会话 codec 用它保存数据库 BLOB 的实际字节数，并与 `data.byteLength` 一起校验。解释该列必须先读取同一行的 `codec`，不能直接用它估算原始 `SimulationState` 大小。
+
 ## 自动回收
 
-内容块按引用可达性自动回收，不依赖定期全库清扫：
+内容块按引用可达性自动回收：
 
 - artifact upsert 在同一事务内更新引用，并删除已不再被 `runs`、`run_checkpoints` 或 `artifacts` 引用的旧 `v8-br-v1` 块；
+- 新格式 run checkpoint 采用有界批量窗口：最多增长到 256 个，再一次裁剪到最新 128 个；只有发生这次批量裁剪时才从 `runs`、`run_checkpoints` 与 `artifacts` 根计算新 run codec 的可达图并回收孤儿块，避免 1000 年运行从第 129 年起每年全库扫描；legacy checkpoint 不参与该裁剪；
 - 会话存储初始化以及 manual save、live session upsert / delete 后，从 `manual_saves` 与 `live_sessions` 的根 manifest 计算可达集，只回收 `eland-session-manifest-v2`、`eland-session-shell-v2`、`eland-session-timeline-chunk-v1` 三类不可达块；
 - 同一块仍被其他 run、存档或会话引用时必须保留；两类回收器不会跨 codec 家族误删对方的数据。
 

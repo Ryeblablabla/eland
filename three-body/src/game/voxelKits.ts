@@ -32,7 +32,7 @@ export interface DecorInstance {
   entityId?: string;                    // 动态实体 id；静态装饰不设置
   entityX?: number; entityY?: number; entityZ?: number; // 动画原点
   part?: string;                        // body / head / tail / leg-N
-  animation?: 'fire' | 'wind';          // 无实体 id 的环境循环动画
+  animation?: 'fire' | 'wind' | 'facility-smoke' | 'facility-lift' | 'wheel-spin' | 'mill-turn';
 }
 
 /** 格内确定性强散列 */
@@ -761,7 +761,35 @@ export function civilizationStagePreview(stage: string): CivilizationStagePrevie
 
 type StructureMaterialKind = 'wood' | 'stone' | 'mixed';
 
-function kitHut(k: Kit, material: StructureMaterialKind = 'mixed'): void {
+interface StructureVisualProfile {
+  weatherProtection: number;
+  thermalInsulation: number;
+  capacity: number;
+}
+
+const EMPTY_STRUCTURE_PROFILE: StructureVisualProfile = { weatherProtection: 0, thermalInsulation: 0, capacity: 0 };
+
+function addStructureEffectDetails(k: Kit, profile: StructureVisualProfile, size: 'hut' | 'house' | 'hall'): void {
+  const span = size === 'hut' ? 4 : size === 'house' ? 5 : 7;
+  const front = size === 'hut' ? 3 : 4;
+  if (profile.weatherProtection >= 78) {
+    // 高防护来自真实围护拓扑；表现为门前挑檐与承托，而不是额外规则效果。
+    k.m('wood', 0, 5, front, span, 1, 2, 0x6a492f);
+    k.m('organicDark', -span / 2 + 0.5, 2, front, 1, 5, 1, 0x4d3828);
+    k.m('organicDark', span / 2 - 0.5, 2, front, 1, 5, 1, 0x4d3828);
+  }
+  if (profile.thermalInsulation >= 70) {
+    // 高隔热对应真实封闭侧墙；只增加可辨认的木制窗板。
+    k.m('wood', -span / 2, 3, 0, 1, 3, 3, 0x785438);
+    k.m('organicDark', -span / 2 - 0.1, 4, 0, 1, 1, 4, 0x493629);
+  }
+  if (profile.capacity >= 3) {
+    const benchLength = Math.min(7, 2 + profile.capacity);
+    k.m('wood', 0, 0, -front, benchLength, 1, 1, 0x765038);
+  }
+}
+
+function kitHut(k: Kit, material: StructureMaterialKind = 'mixed', profile = EMPTY_STRUCTURE_PROFILE): void {
   const wallBucket: DecorBucket = material === 'stone' ? 'stone' : material === 'wood' ? 'wood' : 'plaster';
   const wallColor = material === 'stone' ? 0x8a8984 : material === 'wood' ? 0x9b6f41 : 0xb59a70;
   for (let y = 0; y <= 1; y++) for (let x = -2; x <= 1; x++) for (let z = -2; z <= 1; z++) {
@@ -774,9 +802,10 @@ function kitHut(k: Kit, material: StructureMaterialKind = 'mixed'): void {
   for (let l = 0; l < 3; l++) for (let x = -3 + l; x <= 2 - l; x++) for (let z = -3 + l; z <= 2 - l; z++)
     k.v(material === 'stone' ? 'roofTile' : 'thatch', x, 2 + l, z,
       jit(material === 'stone' ? 0x5f646a : 0xd8b968, hash01(x * 3 + z + l, 4))); // 茅草/石板顶
+  addStructureEffectDetails(k, profile, 'hut');
 }
 
-function kitHouse(k: Kit, material: StructureMaterialKind = 'mixed'): void {
+function kitHouse(k: Kit, material: StructureMaterialKind = 'mixed', profile = EMPTY_STRUCTURE_PROFILE): void {
   const wallBucket: DecorBucket = material === 'stone' ? 'stone' : material === 'wood' ? 'wood' : 'plaster';
   const wallColor = material === 'stone' ? 0x999994 : material === 'wood' ? 0xa47645 : 0xe8e2d4;
   for (let y = 0; y <= 2; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
@@ -790,9 +819,10 @@ function kitHouse(k: Kit, material: StructureMaterialKind = 'mixed'): void {
   k.v('wood', 0, 0, 2, 0x5f422a); k.v('wood', 0, 1, 2, 0x5f422a);
   for (let l = 0; l < 3; l++) for (let x = -3; x <= 3; x++) for (let z = -3 + l; z <= 2 - l; z++)
     k.v('roofTile', x, 3 + l, z, jit(0x7a4a3a, hash01(x + z + l, 6))); // 坡屋顶
+  addStructureEffectDetails(k, profile, 'house');
 }
 
-function kitHall(k: Kit, material: StructureMaterialKind = 'stone'): void {
+function kitHall(k: Kit, material: StructureMaterialKind = 'stone', profile = EMPTY_STRUCTURE_PROFILE): void {
   const wallBucket: DecorBucket = material === 'wood' ? 'wood' : 'stone';
   const wallColor = material === 'wood' ? 0x8f633d : 0x8a8d92;
   for (let y = 0; y <= 3; y++) for (let x = -3; x <= 2; x++) for (let z = -2; z <= 2; z++) {
@@ -806,6 +836,7 @@ function kitHall(k: Kit, material: StructureMaterialKind = 'stone'): void {
   for (let l = 0; l < 3; l++) for (let x = -4 + l; x <= 3 - l; x++) for (let z = -3 + l; z <= 2 - l; z++)
     k.v(material === 'wood' ? 'thatch' : 'roofTile', x, 4 + l, z,
       jit(material === 'wood' ? 0x9d743f : 0x4a4f58, hash01(x + z + l, 8)));
+  addStructureEffectDetails(k, profile, 'hall');
 }
 
 type ConstructionMaterialKind = 'wood' | 'stone';
@@ -841,6 +872,159 @@ function kitConstructionSite(k: Kit, r: number, material: ConstructionMaterialKi
   }
   k.m('wood', -2.6, 1, 2.5, 1, 4, 1, jit(0x765033, hash01(componentCount, 77)));
   k.m('wood', -2.6, 4.5, 0, 1, 1, 5, jit(0x68462e, hash01(componentCount, 78)));
+
+  if (componentCount < 5) return;
+
+  // 更高进度只补齐另一侧立柱与屋架，仍保留敞开的墙面和裸露脚手架。
+  k.m('wood', 2.6, 1, 2.5, 1, 5, 1, jit(0x765033, hash01(componentCount, 79)));
+  k.m('wood', 0, 5.5, 2.5, 6, 1, 1, jit(0x68462e, hash01(componentCount, 80)));
+  k.m('wood', 0, 7, 0, 1, 1, 7, jit(0x68462e, hash01(componentCount, 81)));
+  for (const x of [-2, 0, 2]) {
+    k.m('wood', x, 6, 0, 1, 1, 7, jit(0x765033, hash01(x + componentCount, 82)));
+  }
+
+  if (componentCount < 8) return;
+
+  // 接近完成时出现局部屋面，但绝不闭合成可入住的完成建筑。
+  for (let z = -2; z <= 0; z += 1) {
+    k.m(material === 'stone' ? 'roofTile' : 'thatch', -1.7, 7.5 + (z + 2) * 0.45, z, 4, 1, 1,
+      jit(material === 'stone' ? 0x686b70 : 0xb99255, hash01(z + componentCount, 83)));
+  }
+}
+
+interface FacilityVisualState {
+  active: boolean;
+  fillRatio: number;
+}
+
+function kitCouncilHearth(k: Kit, r: number, state: FacilityVisualState): void {
+  const ring = [[-2, -1], [-2, 1], [2, -1], [2, 1], [-1, -2], [1, -2], [-1, 2], [1, 2]] as const;
+  ring.forEach(([x, z], index) => k.m('stone', x, 0, z, 2, 1, 2, jit(0x746b5f, hash01(index, 231))));
+  k.m('wood', 0, 0, -4, 6, 1, 1, jit(0x765038, r));
+  k.m('wood', -4, 0, 1, 1, 1, 5, jit(0x765038, hash01(1, 232)));
+  k.m('wood', 4, 0, 1, 1, 1, 5, jit(0x765038, hash01(2, 232)));
+  if (state.active) {
+    k.m('glowRed', 0, 0.4, 0, 2, 2, 2, 0xe55b35, 'fire-core', 'fire');
+    k.m('glowWarm', 0.4, 2, 0, 1, 4, 1, 0xffa33f, 'fire-mid', 'fire');
+    k.m('glowWarm', -0.25, 5, 0.15, 1, 2, 1, 0xffd27a, 'fire-tip', 'fire');
+  } else k.m('organicDark', 0, 0.2, 0, 2, 1, 2, 0x49372b);
+}
+
+function kitWorkshop(k: Kit, r: number, state: FacilityVisualState, hot: 'none' | 'bronze' | 'iron' = 'none'): void {
+  for (const [x, z] of [[-3, -2], [3, -2], [-3, 2], [3, 2]] as const)
+    k.m('organicDark', x, 0, z, 1, 6, 1, jit(0x54402a, r));
+  k.m('wood', 0, 6, 0, 9, 1, 7, jit(0x6e4f33, r));
+  k.m('organicDark', 0, 6.7, -3, 9, 1, 1, 0x4e3822);
+  k.m('wood', -2.5, 0.8, 0.7, 3, 2, 3, jit(0x8a6a48, r));
+  k.m('dark', -0.8, 2.5, 0.5, 3, 1, 2, hot === 'bronze' ? 0xa36c38 : 0x454a50);
+  k.m('stone', 2.2, 0, -1.8, 3, 3, 3, jit(hot === 'none' ? 0x7d8288 : 0x845747, r));
+  if (state.active) {
+    k.m('glowRed', 1.6, 0.7, -2.2, 2, 2, 1, 0xf05232, 'fire-core', 'fire');
+    k.m('glowWarm', 2.1, 2.1, -1.9, 1, 2, 1, 0xffa33f, 'fire-mid', 'fire');
+    if (hot !== 'none') {
+      k.m('plaster', 2.4, 6.8, -1.8, 2, 2, 2, 0xa6a39e, 'facility-smoke', 'facility-smoke');
+      k.m('plaster', 3.1, 8.8, -1.7, 2, 2, 2, 0xc1bdb6, 'facility-smoke', 'facility-smoke');
+    }
+  }
+}
+
+function kitGranary(k: Kit, r: number, state: FacilityVisualState): void {
+  for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]] as const)
+    k.m('organicDark', x, 0, z, 1, 3, 1, jit(0x54402a, r));
+  k.m('wood', 0, 3, 0, 7, 1, 5, jit(0x8a6a48, r));
+  for (const x of [-3, 3]) k.m('wood', x, 4, 0, 1, 5, 5, jit(0xa8815a, hash01(x, 241)));
+  k.m('wood', 0, 4, -2, 5, 5, 1, jit(0xa8815a, r));
+  k.m('wood', 0, 6, 2, 5, 1, 1, jit(0xa8815a, hash01(2, 241)));
+  k.m('organicDark', 0, 4, 2.2, 2, 2, 1, 0x54402a);
+  for (let layer = 0; layer < 3; layer += 1)
+    k.m('thatch', 0, 9 + layer, 0, 9 - layer * 2, 1, 7 - layer * 2, jit(0xd0ae63, hash01(layer, 242)));
+  const visibleStores = Math.min(4, Math.ceil(state.fillRatio * 4));
+  for (let index = 0; index < visibleStores; index += 1) {
+    const x = index % 2 === 0 ? -1.1 : 1.1;
+    const y = index < 2 ? 4.2 : 5.5;
+    k.m('thatch', x, y, 2.55, 2, 1, 1, jit(0xc2a46b, hash01(index, 243)));
+  }
+  if (state.active) k.m('glowWarm', -2.6, 5.5, 0, 1, 2, 1, 0xffc37a);
+}
+
+function kitCistern(k: Kit, r: number, state: FacilityVisualState): void {
+  const ring = [[-3, -1], [-3, 1], [3, -1], [3, 1], [-1, -3], [1, -3], [-1, 3], [1, 3]] as const;
+  ring.forEach(([x, z], index) => k.m('stone', x, 0, z, 2, 2, 2, jit(0x84888d, hash01(index, 251))));
+  k.m('accent', 0, 0.4, 0, 4, 1, 4, 0x1c5d7e);
+  k.m('organicDark', -3, 2, 0, 1, 6, 1, 0x54402a);
+  k.m('organicDark', 3, 2, 0, 1, 6, 1, 0x54402a);
+  k.m('wood', 0, 7, 0, 7, 1, 1, jit(0x7a5636, r));
+  k.m('wood', 0, 3.5, 0, 1, 6, 1, 0xa8905a, 'well-bucket', state.active ? 'facility-lift' : undefined);
+  k.m('organicDark', 0, 1.6, 0, 2, 2, 2, 0x54402a, 'well-bucket', state.active ? 'facility-lift' : undefined);
+}
+
+function kitKiln(k: Kit, r: number, state: FacilityVisualState): void {
+  for (let y = 0; y < 5; y += 1) {
+    const radius = Math.max(1, 3 - Math.floor(y / 2));
+    for (let x = -radius; x <= radius; x += 1) for (let z = -radius; z <= radius; z += 1) {
+      const shell = Math.max(Math.abs(x), Math.abs(z)) === radius;
+      if (!shell || (z === -radius && Math.abs(x) <= 1 && y < 3)) continue;
+      k.m('roofTile', x, y, z, 1, 1, 1, jit(0x9b513b, hash01(x * 17 + z * 5 + y, 261)));
+    }
+  }
+  k.m('stone', 0, 0, 0, 9, 1, 8, jit(0x756e64, r));
+  if (state.active) {
+    k.m('glowRed', 0, 0.8, -3.2, 2, 2, 1, 0xe55532, 'fire-core', 'fire');
+    k.m('glowWarm', 0, 2.4, -2.6, 1, 2, 1, 0xffa33f, 'fire-mid', 'fire');
+    k.m('plaster', 1.3, 5.5, 0.3, 2, 2, 2, 0xaaa49b, 'facility-smoke', 'facility-smoke');
+    k.m('plaster', 2.1, 7.5, 0.5, 2, 2, 2, 0xc2bdb4, 'facility-smoke', 'facility-smoke');
+  } else k.m('organicDark', 0, 0.8, -3.2, 2, 1, 1, 0x49372b);
+}
+
+function kitMill(k: Kit, r: number, state: FacilityVisualState): void {
+  for (let y = 0; y < 2; y += 1) for (let x = -3; x <= 3; x += 1) for (let z = -3; z <= 3; z += 1) {
+    if (Math.hypot(x, z) <= 3.2) k.m('stone', x, y, z, 1, 1, 1, jit(0x858078, hash01(x * 7 + z * 3 + y, 271)));
+  }
+  k.m('organicDark', 0, 2, 0, 1, 5, 1, 0x5a402d);
+  k.m('wood', 2, 6, 0, 5, 1, 1, jit(0x7b5638, r), 'mill-arm', state.active ? 'mill-turn' : undefined);
+  k.m('wood', 4.5, 5.4, 0, 1, 3, 1, 0x69472e, 'mill-arm', state.active ? 'mill-turn' : undefined);
+  if (state.active) k.m('accent', 0, 2.2, -2, 1, 1, 1, 0xc6a15b);
+}
+
+function kitCivicCore(k: Kit, r: number, state: FacilityVisualState, keep = false): void {
+  const material: DecorBucket = keep ? 'stone' : 'roofTile';
+  const base = keep ? 0x66696c : 0xa96945;
+  k.m('stone', 0, 0, 0, 9, 1, 9, jit(0x817b72, r));
+  for (const [x, z] of [[-3, -3], [3, -3], [-3, 3], [3, 3]] as const)
+    k.m(material, x, 1, z, 2, keep ? 8 : 6, 2, jit(base, hash01(x + z, 281)));
+  k.m(material, 0, keep ? 8 : 6, 0, 9, 1, 9, jit(base, r));
+  k.m('wood', 0, 1, 0, 6, 1, 2, jit(0x765038, r));
+  if (state.active) {
+    k.m('glowWarm', -2, 3, -3.4, 1, 2, 1, 0xffc37a);
+    k.m('glowWarm', 2, 3, -3.4, 1, 2, 1, 0xffc37a);
+  }
+}
+
+function kitWaterWheel(k: Kit, r: number, state: FacilityVisualState): void {
+  const animation = state.active ? 'wheel-spin' as const : undefined;
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index * Math.PI / 6;
+    const y = 4 + Math.sin(angle) * 3.2;
+    const z = Math.cos(angle) * 3.2;
+    k.m('wood', 0, y, z, 2, 1.5, 1.5, jit(0x7e5734, hash01(index, 291)), 'wheel-rim', animation);
+  }
+  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+    const y = 4 + Math.sin(angle) * 1.8;
+    const z = Math.cos(angle) * 1.8;
+    k.m('wood', 0, y, z, 2, 1, 5, jit(0x93653d, r), 'wheel-blade', animation);
+  }
+  k.m('dark', 0, 3.4, 0, 4, 2, 2, 0xa16f32, 'wheel-hub', animation);
+}
+
+function kitDriveShaft(k: Kit, r: number, broken: boolean): void {
+  if (broken) {
+    k.m('dark', -2.5, 1.2, -0.7, 3, 1, 1, jit(0x684e32, r));
+    k.m('dark', 2.5, 0.4, 0.7, 3, 1, 1, jit(0x684e32, hash01(1, 301)));
+    k.m('organicDark', 0, 0, 0, 2, 1, 2, 0x3f3328);
+    return;
+  }
+  k.m('dark', 0, 2.5, 0, 8, 1.4, 1.4, jit(0xa16f32, r));
+  for (const x of [-3, 3]) k.m('stone', x, 0, 0, 1, 4, 3, jit(0x77746e, hash01(x, 302)));
 }
 
 interface StructureBounds {

@@ -1,5 +1,6 @@
 import type { MaterialId } from './material';
-import type { ConditionKind, PersonId } from './person';
+import type { MechanicalPowerActionBasis } from './mechanical-power';
+import type { ConditionKind, HibernationPhase, PersonId } from './person';
 import type { ProjectFunction, ProjectProposal } from './project';
 
 export interface VoxelPosition { x: number; y: number; z: number }
@@ -168,6 +169,8 @@ export type PrimitiveAction =
       kind: 'act';
       operation: SourceOperation;
       targets: WorldRef[];
+      /** Exact source -> converter -> connector -> load basis for generic mechanical acts. */
+      mechanicalPowerBasis?: MechanicalPowerActionBasis;
       /** Required by actions whose legality comes from one concrete agreement. */
       authorizationRef?: string;
       toolStackId?: string;
@@ -182,6 +185,8 @@ export type PrimitiveAction =
       kind: 'attend';
       target: WorldRef;
       instrumentStackId?: string;
+      /** A visible current segment selected for source-bound observation. */
+      waterCurrentSegmentId?: string;
       /** Optional source-bound verification compiled from an authoritative material response. */
       verification?: {
         techniqueId: string;
@@ -191,8 +196,11 @@ export type PrimitiveAction =
     }
   | { kind: 'communicate'; content: RepresentationInput; audience: PersonId[]; channel: 'voice' | 'gesture' | 'record'; carrierStackId?: string };
 
-export interface RecordUseBasis {
-  version: 'record-use-basis-v1';
+export function waterCurrentObservationFactId(segmentId: string): string {
+  return `observation:water-current:${segmentId}`;
+}
+
+interface RecordUseBasisFields {
   basisKey: string;
   projectId: string;
   projectOwnerId: PersonId;
@@ -215,7 +223,27 @@ export interface RecordUseBasis {
   sourceFactIds: string[];
 }
 
-export type RecordUseStage = 'share' | 'read-experiment';
+/** Legacy carrier handoff basis kept readable for persisted v1 intents. */
+export interface RecordUseBasisV1 extends RecordUseBasisFields {
+  version: 'record-use-basis-v1';
+}
+
+/** The exact physical carrier perceived by the reader when a record-use chain starts. */
+export type RecordCarrierSource =
+  | { kind: 'inventory'; personId: PersonId; stackId: string }
+  | { kind: 'ground'; dropId: string; cellId: number; z: number };
+
+/** Reader-owned record-use basis. A ground source must be acquired before it can be read. */
+export interface RecordUseBasisV2 extends RecordUseBasisFields {
+  version: 'record-use-basis-v2';
+  carrierSource: RecordCarrierSource;
+  acquisitionRequired: boolean;
+}
+
+export type RecordUseBasis = RecordUseBasisV1 | RecordUseBasisV2;
+
+/** `share` and `read-experiment` remain for persisted v1 intents. */
+export type RecordUseStage = 'share' | 'read-experiment' | 'acquire' | 'read' | 'experiment';
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
@@ -228,7 +256,7 @@ export type FactPredicate =
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
   | { kind: 'near-person'; personId: PersonId }
-  | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean }
+  | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean; phase?: HibernationPhase }
   | { kind: 'project-completed'; projectId: string }
   | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
   | { kind: 'representation-made'; representationId: string };
@@ -292,7 +320,11 @@ export interface Intent {
   /** Present only while this parent is suspended by its current child. */
   suspendedByIntentId?: string;
   suspendedAtMonth?: number;
+  /** A project parent paused for one continuous dehydrated-hibernation episode. */
+  suspendedForHibernationConditionId?: string;
   lastResumedAtMonth?: number;
+  /** Exact month this intent chain was released by a safe hibernation exit. */
+  lastHibernationResumedAtMonth?: number;
   /** Structured local evidence for an edge-triggered interruption of a project. */
   lifeReview?: LifeReviewEvidence;
   lastReproductionAttemptAtMonth?: number;

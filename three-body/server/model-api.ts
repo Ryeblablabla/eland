@@ -24,7 +24,7 @@ function asObject(value: unknown): Record<string, unknown> {
 function modelRoutes(value: unknown): Record<ModelPurpose, string> {
   const input = asObject(value);
   return Object.fromEntries(MODEL_PURPOSES.map((purpose) => {
-    const endpointId = input[purpose];
+    const endpointId = input[purpose] ?? (purpose === 'naming' ? input.decision : undefined);
     if (typeof endpointId !== 'string' || !endpointId.trim()) {
       throw new HttpError(400, `routes.${purpose} 必须是模型端点 ID`);
     }

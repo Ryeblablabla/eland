@@ -28,6 +28,7 @@ domain model and policies ↔ world grid / material primitives
 
 - `domain/model.ts`：`SimulationState` 聚合根（体素世界、掉落物、动物、人物、意图、协议、共同体、权限、容器、纪元预言、文明指数与派生观察）。
 - `domain/person.ts`：人物权威状态（三项身体储备、过程状态、体素位置、私有背包、知识）；脱水休眠在同一 episode 内区分低代谢 `dormant` 与受限补给 `recovering`。
+- `naming.ts`：姓氏传统、确定性后代保底姓名，以及模型 `givenName` 候选的字符、顺序和重名验收；模型不能改姓氏或绕过回退。
 - `domain/material.ts`：物质定义与调色板。
 - `domain/action.ts`：五种原子动作、九种 `SourceOperation`、`WorldRef` 与 `Intent` 类型。
 - `domain/intent.ts`：意图选择的组装与校验。
@@ -93,7 +94,8 @@ domain model and policies ↔ world grid / material primitives
 ### server/ —— 接口与实时会话
 
 - `server/main.ts`：只负责依赖组装、通用 HTTP 边界和启动关闭；`run-api.ts` 承接文明运行接口，`run-evolution-service.ts` 承接每个 run 的串行推进、12 月检查点与报告提交，`model-api.ts` 承接模型决策与设置接口。
-- `server/elandSession.ts`：保留实时会话公共门面与兼容导出。`server/eland-session/session-step.ts` 编排 begin / step、幂等并发、权威月份、sky / cosmos 原子提交与模型回退；`timeline.ts` 负责 checkpoint / delta / seek / fork；`recovery.ts` 负责恢复校验；`frame-history-projector.ts`、`conversation-coordinator.ts` 分别负责帧历史与对话结果投影；`session-manager.ts` 负责 lease、TTL、LRU 与 SQLite 会话协调。
+- `server/elandSession.ts`：保留实时会话公共门面与兼容导出。`server/eland-session/session-step.ts` 编排 begin / step、幂等并发、权威月份、sky / cosmos 原子提交与模型回退；空闲时会话与 controller 共享唯一已提交 `SimulationState`，异步模型月份只在隔离工作副本中推进，成功后再原子提交。`timeline.ts` 负责 checkpoint / delta / seek / fork，恢复时历史块保留为 SQLite hash 引用，回放只按需读取最近年度 checkpoint 与其后 delta；`recovery.ts` 负责恢复校验；`frame-history-projector.ts`、`conversation-coordinator.ts` 分别负责帧历史与对话结果投影；`session-manager.ts` 负责 lease、TTL、LRU 与 SQLite 会话协调。实时分支真正提交到 12 的倍数月份时自动持久化，新时间线 Buffer 成功落盘后即替换为 hash 引用。
+- `server/newborn-naming-service.ts`：在实时模型月份的出生事实对外提交前，按父母 Soul、有源近期经历和当前处境批量请求 `givenName`；本地验收后记录模型来源，失败保持确定性保底姓名，回放不再请求。
 
 ### 根级
 
@@ -107,7 +109,7 @@ domain model and policies ↔ world grid / material primitives
 
 本地规划器是服务端人物行动权威，并在任何模型请求前先生成完整回退决定。模型设置页（`M`）选择模型演进并显式配置 `decision` 路由后，必须回应只在有两个以上合法 required option，或唯一 required option 带有两个以上语义匹配的 follow-up 时才交给模型重选；单一固定回应直接由规则提交。生活对话、空闲新方向、项目停滞或状态复核也必须确有多个合法方向才进入重选；选择本地演进时直接采用规则决定。开局、生存危险和既定履约不进入模型重选；后台快速演化始终只走本地规则。候选模型只能在当前合法 option 中重选，领域层会重新验证强制回应、复合对话的后续行动和意图组合；临时 option ID 只留在 DecisionFact 审计中，长期意图保存规则目标而不是模型文本。
 
-实时月份中的说话先由规则提交为 completed `voice communicate` ActionFact，并投影为只含沟通类型、话题、提议、引用、立场与来源的 `speech-act-v1` 草稿；规则不再提供可显示原话，规则摘要也不再充当隐藏原话或文本相似度锚。尚无更细领域字段的客观陈述只把事实命题放入 `speechAct.subject`，不规定句式。决策阶段已生成合法模型台词时直接复用，其余草稿再按月进入同一 `decision` endpoint 的 speech-only 批次。主动人物对话、决策 utterance 与 speech-only 共用同一只读 Soul，避免同一个人在三条链路中出现三种性格。speech-only 模型从说话者有效人格、本月提交后的当前身体、对听者的当前关系、当前处境与有源近期经历中自主形成当下表达，这些值不是 action tick 精确快照；模型也只能表达该动作已授权的话题、立场和事实。成功且通过沟通类型与结构化立场校验的台词绑定原 ActionFact 进入 `GameFrame.speechLines`，普通陈述不再与规则句子做文本相似度比较；台词不覆写 summary，不写入记忆、关系、知识、意图或文明纪事。模型失败时仍保留沟通事实，但不显示文字气泡，已保存帧回放时不重新调用模型。
+实时月份中的说话先由规则提交为 completed `voice communicate` ActionFact，并投影为只含沟通类型、话题、提议、引用、立场与来源的 `speech-act-v1` 草稿；规则不再提供可显示原话，规则摘要也不再充当隐藏原话或文本相似度锚。尚无更细领域字段的客观陈述只把事实命题放入 `speechAct.subject`，不规定句式。决策阶段已生成合法模型台词时直接复用，其余草稿再按月进入同一 `decision` endpoint 的 speech-only 批次。主动人物对话、决策 utterance 与 speech-only 共用同一只读 Soul，避免同一个人在三条链路中出现三种性格。speech-only 模型从说话者有效人格、本月提交后的当前身体、对听者的当前关系、当前处境与有源近期经历中自主形成当下表达，这些值不是 action tick 精确快照；服务器另从人格、控制敏感度、身体压力、关系及真实伤害 / 背约 / 拒绝后重复施压证据派生 `relational-speech-frame-v1`，允许 warm、familiar、guarded、blunt 与有证据门禁的 confrontational。命令式和短促请求无需礼貌关键词，人物也不必默认寒暄、共情或解释完整；敌意则不能由低宜人性或低信任单独凭空产生。模型仍只能表达该动作已授权的话题、立场和事实。成功且通过沟通类型与结构化立场校验的台词绑定原 ActionFact 进入 `GameFrame.speechLines`，普通陈述不再与规则句子做文本相似度比较；台词不覆写 summary，不写入记忆、关系、知识、意图或文明纪事。模型失败时仍保留沟通事实，但不显示文字气泡，已保存帧回放时不重新调用模型。
 
 文明历史另先由规则层筛出出生、死亡、关键技术、项目完成等重大事件；选择模型总结时再调用 `narrative` 路由压缩本月纪事，选择本地总结时直接保留规则文本。没有重大事件的月份不产出纪事、不调用叙事模型，请求或校验失败时也保留规则文本。赶路、搬运、吃饭和普通失败只留在人物个人记录。意图的原子动作仍由规则引擎编译、预演、修复和结算；前端只能渲染读取投影，不能生成第二套地形、地点或道路。
 
@@ -119,6 +121,6 @@ domain model and policies ↔ world grid / material primitives
 
 玩家本地存档、实时会话恢复、文明/分支/月份一致性和宇宙快照边界见 [`../../../../docs/player-save-v1.md`](../../../../docs/player-save-v1.md)。
 
-实时 `step` 由 Worker 内一次 JSON 编码后以 transferable buffer 交给 HTTP 层。连续同分支月份只返回基于上一已提交帧的 `SocietyPatch`；客户端基线不匹配时重新读取完整 `state`，不会自行推演或补造世界事实。服务端历史帧仍由权威快照重放。
+实时 `step` 由 Worker 内一次 JSON 编码后以 transferable buffer 交给 HTTP 层。连续同分支月份只返回基于上一已提交帧的 `SocietyPatch`；客户端基线不匹配时重新读取完整 `state`，不会自行推演或补造世界事实。`state` / `load` 首屏只返回最近 240 条纪事及其总数、最近 2400 个文明指数点；`SocietyState` 只投影 active intent，终态意图仍保留在权威状态与审计历史中。服务端旧帧由 SQLite 时间线块按需重放，不为当前首屏常驻整条压缩时间线。
 
-`three-body/data/eland.sqlite3` 是唯一持久化事实源；运行时没有文件或混合存储回退。表、codec、事务、备份恢复与 2026-08-20 切换审计见 [`../../../../docs/sqlite-persistence-v1.md`](../../../../docs/sqlite-persistence-v1.md)。`ELAND_PERF_LOG=1` 可输出规则推进、投影、快照、Worker 编码和持久化的分段耗时。
+`three-body/data/eland.sqlite3` 是唯一持久化事实源；运行时没有文件或混合存储回退。表、codec、事务、备份恢复与 2026-08-20 切换审计见 [`../../../../docs/sqlite-persistence-v1.md`](../../../../docs/sqlite-persistence-v1.md)。实时 Worker 默认 old / young generation 上限为 1024 / 64 MB，可用 `ELAND_WORKER_OLD_SPACE_MB` 与 `ELAND_WORKER_YOUNG_SPACE_MB` 覆盖；`.env.local` 会通过服务端环境加载器生效。`ELAND_PERF_LOG=1` 可输出规则推进、投影、快照、Worker 编码和持久化的分段耗时。

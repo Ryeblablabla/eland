@@ -10,27 +10,69 @@ import type {
   SimulationState,
 } from '../../domain/model';
 import { cellX, cellY, isCellId } from '../../world/grid';
-import { createInitialState, restoreSimulationState } from './state-lifecycle';
+import { adoptSimulationState, createInitialState, restoreSimulationState } from './state-lifecycle';
 import { clamp, copyState } from './state-utils';
-import { stepOwnedSimulation, stepSimulationAsync } from './tick-executor';
+import { stepOwnedSimulation, stepOwnedSimulationAsync } from './tick-executor';
+
+export interface ExternalClimateInput {
+  epoch: EpochKind;
+  kind: ClimateKind;
+  severity: number;
+}
 
 export interface SimulationController {
   getState(): SimulationState;
+  /** Trusted infrastructure view. Never mutate it outside the controller. */
+  ownedState(): SimulationState;
   step(count?: number): SimulationState;
   /** Trusted session path: advances and returns the owned state without a second full-history clone. */
   stepOwned(count?: number): SimulationState;
   stepAsync(batch: BatchDecider, count?: number): Promise<SimulationState>;
   stepAsyncOwned(batch: BatchDecider, count?: number): Promise<SimulationState>;
+  /** Applies climate only to the isolated async working copy. */
+  stepAsyncOwnedWithClimate(batch: BatchDecider, climate: ExternalClimateInput, count?: number): Promise<SimulationState>;
   reset(): SimulationState;
   restore(saved: SimulationState): void;
+  /** Trusted ownership transfer; unlike restore(), this does not clone saved. */
+  adoptOwnedState(saved: SimulationState): SimulationState;
   setExternalClimate(epoch: EpochKind, kind: ClimateKind, severity: number): void;
   injectEvent(input: EnvironmentEventInput): SimulationState;
 }
 
-export function createSimulation(options: { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState } = {}): SimulationController {
-  let state = options.state ? restoreSimulationState(options.state) : createInitialState(options.seed, options.config);
+type SimulationOptions = { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState };
+
+function applyExternalClimate(state: SimulationState, climate: ExternalClimateInput): void {
+  state.civilization.externalClimate = {
+    epoch: climate.epoch,
+    kind: climate.kind,
+    severity: clamp(climate.severity, 1, 10),
+  };
+}
+
+function createSimulationController(
+  state: SimulationState,
+  options: SimulationOptions,
+): SimulationController {
+  const stepAsyncTransaction = async (
+    batch: BatchDecider,
+    count: number,
+    climate?: ExternalClimateInput,
+  ): Promise<SimulationState> => {
+    if (count <= 0) return state;
+    // Keep the committed state readable while the model is pending. Only this
+    // working copy may receive next-month climate or partial month mutations.
+    let working = copyState(state);
+    if (climate) applyExternalClimate(working, climate);
+    for (let index = 0; index < count; index += 1) {
+      working = await stepOwnedSimulationAsync(working, batch);
+    }
+    state = working;
+    return state;
+  };
+
   return {
     getState: () => copyState(state),
+    ownedState: () => state,
     step(count = 1) {
       for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(state);
       return copyState(state);
@@ -40,13 +82,11 @@ export function createSimulation(options: { seed?: number; config?: Partial<Simu
       return state;
     },
     async stepAsync(batch, count = 1) {
-      for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch);
+      await stepAsyncTransaction(batch, count);
       return copyState(state);
     },
-    async stepAsyncOwned(batch, count = 1) {
-      for (let index = 0; index < count; index += 1) state = await stepSimulationAsync(state, batch);
-      return state;
-    },
+    stepAsyncOwned: (batch, count = 1) => stepAsyncTransaction(batch, count),
+    stepAsyncOwnedWithClimate: (batch, climate, count = 1) => stepAsyncTransaction(batch, count, climate),
     reset() {
       state = createInitialState(options.seed ?? state.seed, state.civilization.conditions);
       return copyState(state);
@@ -54,8 +94,12 @@ export function createSimulation(options: { seed?: number; config?: Partial<Simu
     restore(saved) {
       state = restoreSimulationState(saved);
     },
+    adoptOwnedState(saved) {
+      state = adoptSimulationState(saved);
+      return state;
+    },
     setExternalClimate(epoch, kind, severity) {
-      state.civilization.externalClimate = { epoch, kind, severity: clamp(severity, 1, 10) };
+      applyExternalClimate(state, { epoch, kind, severity });
     },
     injectEvent(input) {
       if (!isCellId(input.cellId)) throw new Error('环境事件 cellId 无效');
@@ -80,4 +124,16 @@ export function createSimulation(options: { seed?: number; config?: Partial<Simu
       return copyState(state);
     },
   };
+}
+
+export function createSimulation(options: SimulationOptions = {}): SimulationController {
+  const state = options.state
+    ? restoreSimulationState(options.state)
+    : createInitialState(options.seed, options.config);
+  return createSimulationController(state, options);
+}
+
+/** Trusted restore path: ownership of `state` moves into the controller. */
+export function createSimulationFromOwnedState(state: SimulationState): SimulationController {
+  return createSimulationController(adoptSimulationState(state), {});
 }

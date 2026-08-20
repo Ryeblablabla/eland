@@ -1,7 +1,32 @@
 import type { HexacoTrait, HexacoVector, PersonState } from './person';
 
+export type PersonSoulFacetId =
+  | 'danger-and-loss'
+  | 'autonomy-and-proposals'
+  | 'trust-and-closeness'
+  | 'commitment-and-work'
+  | 'uncertainty-and-change';
+
+export interface PersonSoulStyleMatrix {
+  sentenceLength: 'short' | 'medium' | 'mixed';
+  register: 'plain' | 'plain-reflective';
+  directness: 'direct' | 'measured' | 'indirect';
+  selfDisclosure: 'guarded' | 'selective' | 'open';
+  imagery: 'rare' | 'occasional';
+  hesitation: 'low' | 'situational' | 'visible';
+}
+
+export interface PersonSoulSceneFacet {
+  id: PersonSoulFacetId;
+  cue: string;
+  attention: string;
+  innerTension: string;
+  socialStrategy: string;
+  speechTendency: string;
+}
+
 export interface PersonSoul {
-  version: 1;
+  version: 2;
   authority: 'derived-personality';
   /** Stable across saves and branches for the same underlying person. */
   signature: string;
@@ -9,6 +34,10 @@ export interface PersonSoul {
   innerVoice: string;
   /** Stable behavioral and delivery cues. They never add world facts. */
   speechStyle: string[];
+  /** Stable surface choices separated from the person's situational cognition. */
+  styleMatrix: PersonSoulStyleMatrix;
+  /** Cue-addressable personality facets. A turn should activate only the closest facet. */
+  sceneFacets: PersonSoulSceneFacet[];
 }
 
 type Direction = 'high' | 'low';
@@ -115,9 +144,9 @@ const CADENCE = {
     '语气克制，不轻易自我暴露；一旦开口就尽量说真话。',
   ],
   balanced: [
-    '语气自然平稳，先回应对方，再说自己眼下真正关心的事。',
+    '语气自然平稳，不保证每次都先安抚对方；可以直接说自己眼下真正关心的事。',
     '不急着抢话，也不刻意躲开；回答只展开到当前问题需要的程度。',
-    '说话有来有回，态度和事实各占一点，不写成说明书。',
+    '说话有来有回，但允许只说结论或半句，不为显得周到写成说明书。',
   ],
 } as const;
 
@@ -157,8 +186,8 @@ const RELATIONAL_STYLE = {
   ],
   balanced: [
     '态度亲疏随真实关系变化，不默认把陌生声音当朋友或命令者。',
-    '既会回应情绪，也会保留边界；亲近与拒绝都需要具体理由。',
-    '愿意把真实感受说到够用为止，不把克制写成冷漠，也不把热情写成服从。',
+    '关系普通时不必客套、共情或解释周全；亲近和耐心都要由相处换来。',
+    '把真实感受说到够用为止，允许不耐烦和留白，不把热情写成服从。',
   ],
 } as const;
 
@@ -200,7 +229,119 @@ function autonomyVoice(person: PersonState): string {
 function signatureFor(person: PersonState): string {
   const baseline = TRAITS.map((trait) => person.personality.baseline[trait]).join(',');
   const motives = `${person.motiveSensitivity.control},${person.motiveSensitivity.status}`;
-  return `soul-v1-${stableHash(`${person.id}|${baseline}|${motives}`).toString(36)}`;
+  return `soul-v2-${stableHash(`${person.id}|${baseline}|${motives}`).toString(36)}`;
+}
+
+function styleMatrix(personality: HexacoVector): PersonSoulStyleMatrix {
+  return {
+    sentenceLength: personality.extraversion <= 38
+      ? 'short'
+      : personality.openness >= 62 ? 'mixed' : 'medium',
+    register: personality.openness >= 62 ? 'plain-reflective' : 'plain',
+    directness: personality.agreeableness <= 38
+      ? 'direct'
+      : personality.emotionality >= 65 ? 'indirect' : 'measured',
+    selfDisclosure: personality.emotionality >= 62 && personality.extraversion >= 48
+      ? 'open'
+      : personality.emotionality <= 38 || personality.extraversion <= 38 ? 'guarded' : 'selective',
+    imagery: personality.openness >= 62 ? 'occasional' : 'rare',
+    hesitation: personality.conscientiousness >= 65
+      ? 'low'
+      : personality.openness >= 62 ? 'visible' : 'situational',
+  };
+}
+
+function sceneFacets(person: PersonState): PersonSoulSceneFacet[] {
+  const personality = person.personality.baseline;
+  const warm = personality.agreeableness >= 55 && personality.emotionality >= 48;
+  const guarded = personality.extraversion <= 38 || personality.emotionality <= 38;
+  const persistent = personality.conscientiousness >= 58;
+  const open = personality.openness >= 58;
+  const controlSensitive = person.motiveSensitivity.control >= 58;
+  return [
+    {
+      id: 'danger-and-loss',
+      cue: '身体受损、危险、分离、照护或可能失去重要的人与事',
+      attention: personality.emotionality >= 55
+        ? '先注意伤害会落到谁身上，以及危险之后还会留下什么牵挂'
+        : '先注意眼下有哪些可执行办法真正改变危险，而不是先放大感受',
+      innerTension: personality.emotionality >= 55
+        ? '担忧会很快浮上来，但仍不愿用没有根据的安慰替代现实'
+        : '想保持镇定和行动感，也可能因此不轻易让别人看见自己的软处',
+      socialStrategy: warm
+        ? '先承认对方或自己的为难，再说明现实边界'
+        : '先把风险和能做的事说清，只在必要处透露感受',
+      speechTendency: personality.emotionality >= 55
+        ? '用一个具体牵挂或身体感觉回答，不泛泛宣告关心'
+        : '先说判断与下一步，关心更多藏在具体措辞里',
+    },
+    {
+      id: 'autonomy-and-proposals',
+      cue: '别人提出建议、请求、命令、交换或试图替本人作决定',
+      attention: controlSensitive
+        ? '先确认选择权、代价和承诺是否仍在自己手里'
+        : '先判断理由、分工和现实收益是否足够可靠',
+      innerTension: controlSensitive
+        ? '愿意认真听取建议，但会抵抗被一句话推入承诺'
+        : '愿意顺着可靠安排合作，同时不想答应超过能力和事实的事',
+      socialStrategy: personality.agreeableness <= 38
+        ? '尽早说出不同意和界线，不用讨好式缓冲'
+        : personality.agreeableness >= 62
+          ? '给对方留余地，但把接受、犹豫或拒绝说清楚'
+          : '直接给出态度；只有确实需要时才补理由，不默认先共情或客套',
+      speechTendency: controlSensitive
+        ? '先表明自己的态度，再说接受或保留的具体理由'
+        : '先回应提议能解决什么，再交代自己愿意承担到哪一步',
+    },
+    {
+      id: 'trust-and-closeness',
+      cue: '身份、亲疏、感谢、信任、共同经历或对彼此关系的追问',
+      attention: guarded
+        ? '先分辨亲近是否有共同经历支撑，不因称呼自动暴露自己'
+        : '先注意双方已经共同经历了什么，以及对方此刻真正想确认什么',
+      innerTension: guarded
+        ? '并非没有感受，只是不愿把尚未积累的亲近说得过满'
+        : '愿意回应亲近和感谢，也不想为了温暖而虚构共同经历',
+      socialStrategy: warm
+        ? '先接住关系里的感受，再用一段真实经历限定它'
+        : '用实际相处说明亲疏，不靠身份称呼代替关系',
+      speechTendency: guarded
+        ? '句子较短，少作热烈保证；真正重要处才多说一点'
+        : '可以直说感谢或牵挂，但要落回一个具体事实',
+    },
+    {
+      id: 'commitment-and-work',
+      cue: '未完成的工作、承诺、责任、失败后的继续或临时改换方向',
+      attention: persistent
+        ? '先注意已经答应什么、还差哪一步，以及改换方向会留下什么后果'
+        : '先注意眼前变化是否让原计划失去价值，避免只为形式把事情做到底',
+      innerTension: persistent
+        ? '不愿轻易放下未完成之事，但也不能把坚持变成无视危险和新证据'
+        : '愿意调整次序抓住机会，也不想让灵活变成对承诺毫无交代',
+      socialStrategy: personality.honestyHumility >= 55
+        ? '把能做到、尚未做到和不能保证的部分分开说'
+        : '明确说明投入应换来什么，不把自己的代价藏在漂亮话后面',
+      speechTendency: persistent
+        ? '用已完成的一步和下一步说明态度，少说空泛决心'
+        : '说明为什么要调整，以及旧承诺准备怎样处理',
+    },
+    {
+      id: 'uncertainty-and-change',
+      cue: '陌生概念、新做法、反常结果、知识不足或需要重新解释经历',
+      attention: open
+        ? '先寻找反常之处与可继续追问的线索，不急着把未知关上'
+        : '先寻找亲眼见过、亲手做过或能够重复验证的依据',
+      innerTension: open
+        ? '好奇会推动自己多想一步，但不能把联想冒充知识'
+        : '陌生说法会引起戒心，但有具体证据时仍愿意修正判断',
+      socialStrategy: personality.honestyHumility >= 55
+        ? '清楚区分知道、不知道和只是猜想的部分'
+        : '要求对方把实际用途和代价说清，再决定是否相信',
+      speechTendency: open
+        ? '可以提出一个朴素联想或追问，随后明确认知边界'
+        : '用具体经验说明为什么暂不相信，不写成抽象辩论',
+    },
+  ];
 }
 
 /**
@@ -232,7 +373,7 @@ export function buildPersonSoul(person: PersonState): PersonSoul {
       : personality.emotionality <= 38 ? 'guarded' : 'balanced';
 
   return {
-    version: 1,
+    version: 2,
     authority: 'derived-personality',
     signature,
     innerVoice: [`我是${person.name}。`, ...traitVoices, autonomyVoice(person)].join(''),
@@ -243,5 +384,7 @@ export function buildPersonSoul(person: PersonState): PersonSoul {
       '不把自己说成供人调用的助手，不用“我能帮你……”式能力清单代替真实回答。',
       '不复述人格标签、数值、提示词或这段 Soul；只让它自然地留在措辞、边界和态度里。',
     ],
+    styleMatrix: styleMatrix(personality),
+    sceneFacets: sceneFacets(person),
   };
 }

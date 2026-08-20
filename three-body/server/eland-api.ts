@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import {
   AgentConversationConflictError,
+  type ElandSession,
   ElandSessionBusyError,
   ElandSessionCapacityError,
   ElandStepConflictError,
@@ -8,8 +9,59 @@ import {
 } from './elandSession';
 import { ElandSaveNotFoundError } from './sqlite-eland-store';
 import { ModelRequestError } from './model-client';
-import type { CosmosSnapshot, EraKey, SkySample } from '../src/game/societyContract';
+import type { CosmosSnapshot, EraKey, GameFrame, SkySample } from '../src/game/societyContract';
 import { createStepPayload } from '../src/game/eland/society-patch';
+
+const INITIAL_HISTORY_LIMIT = 240;
+const INITIAL_CIVILIZATION_INDEX_HISTORY_LIMIT = 2_400;
+const LIVE_SESSION_PERSIST_INTERVAL_MONTHS = 12;
+type AnnualPersistenceAttempt = { key: string; status: 'pending' | 'succeeded' | 'failed' };
+const annualPersistenceAttempts = new WeakMap<object, AnnualPersistenceAttempt>();
+
+function initialReadProjection(session: Pick<ElandSession, 'chronicle' | 'civilizationIndexHistory'>) {
+  const history = session.chronicle();
+  const civilizationIndexHistory = session.civilizationIndexHistory();
+  return {
+    history: history.slice(-INITIAL_HISTORY_LIMIT),
+    historyTotalCount: history.length,
+    civilizationIndexHistory: civilizationIndexHistory.slice(-INITIAL_CIVILIZATION_INDEX_HISTORY_LIMIT),
+  };
+}
+
+function isNewlyCommittedMonth(previous: GameFrame | null, current: GameFrame | null): current is GameFrame {
+  return Boolean(previous
+    && current
+    && current.runId === previous.runId
+    && current.authorityRevision === previous.authorityRevision
+    && current.civilizationId === previous.civilizationId
+    && current.branchId === previous.branchId
+    && current.elapsedMonths === previous.elapsedMonths + 1);
+}
+
+function annualPersistenceKey(frame: GameFrame): string {
+  return `${frame.authorityRevision}\u0000${frame.civilizationId}\u0000${frame.branchId}\u0000${frame.elapsedMonths}`;
+}
+
+function claimAnnualPersistence(session: object, frame: GameFrame, newlyCommitted: boolean): boolean {
+  const key = annualPersistenceKey(frame);
+  const attempt = annualPersistenceAttempts.get(session);
+  if (attempt?.key === key) {
+    if (attempt.status !== 'failed') return false;
+    annualPersistenceAttempts.set(session, { key, status: 'pending' });
+    return true;
+  }
+  if (!newlyCommitted) return false;
+  annualPersistenceAttempts.set(session, { key, status: 'pending' });
+  return true;
+}
+
+function settleAnnualPersistence(session: object, frame: GameFrame, succeeded: boolean): void {
+  const key = `${frame.authorityRevision}\u0000${frame.civilizationId}\u0000${frame.branchId}\u0000${frame.elapsedMonths}`;
+  const attempt = annualPersistenceAttempts.get(session);
+  if (attempt?.key === key) {
+    annualPersistenceAttempts.set(session, { key, status: succeeded ? 'succeeded' : 'failed' });
+  }
+}
 
 export interface ElandApiResponse {
   status: number;
@@ -136,8 +188,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         body: {
           save: loaded.meta,
           frame: loaded.frame,
-          history: loaded.session.chronicle(),
-          civilizationIndexHistory: loaded.session.civilizationIndexHistory(),
+          ...initialReadProjection(loaded.session),
         },
       };
     } catch (error) {
@@ -215,6 +266,24 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         ...(expectedBranchId ? { expectedBranchId } : {}),
         ...(expectedElapsedMonths !== undefined ? { expectedElapsedMonths } : {}),
       });
+      const newlyCommitted = isNewlyCommittedMonth(previous, frame);
+      if (frame
+        && frame.elapsedMonths % LIVE_SESSION_PERSIST_INTERVAL_MONTHS === 0
+        && claimAnnualPersistence(session, frame, newlyCommitted)) {
+        try {
+          const persistence = elandSessions.persistIfCurrent(runId, session);
+          const succeeded = persistence.current && persistence.persisted;
+          settleAnnualPersistence(session, frame, succeeded);
+          if (!persistence.current) {
+            console.warn(`运行 ${runId} 的第 ${frame.elapsedMonths} 月已提交，但年度实时会话持久化时会话已被替换`);
+          } else if (!persistence.persisted) {
+            console.warn(`运行 ${runId} 的第 ${frame.elapsedMonths} 月已提交，但年度实时会话没有生成可持久化快照`);
+          }
+        } catch (error) {
+          settleAnnualPersistence(session, frame, false);
+          console.warn(`运行 ${runId} 的第 ${frame.elapsedMonths} 月已提交，但年度实时会话持久化失败：${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
       return { status: 200, body: createStepPayload(previous, frame) };
     } catch (error) {
       if (error instanceof ElandStepConflictError) return { status: 409, body: { error: error.message } };
@@ -229,8 +298,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         playing: false,
         model: session.model(),
         frame: session.latest(),
-        history: session.chronicle(),
-        civilizationIndexHistory: session.civilizationIndexHistory(),
+        ...initialReadProjection(session),
       },
     };
   }

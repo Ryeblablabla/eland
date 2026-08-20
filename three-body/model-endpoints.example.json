@@ -40,6 +40,7 @@
     "narrative": "lan-qwen",
     "decision": "kimi",
     "interaction": "kimi",
+    "naming": "kimi",
     "strategy": "lan-qwen"
   },
   "strategies": {

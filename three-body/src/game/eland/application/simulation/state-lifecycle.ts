@@ -188,10 +188,17 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
   return state;
 }
 
-export function restoreSimulationState(input: SimulationState): SimulationState {
+/**
+ * Normalize a state whose ownership has been transferred to the simulation.
+ *
+ * This is a trusted infrastructure path: callers must stop using `input` as an
+ * independently mutable snapshot after the call. Public restore paths use
+ * `restoreSimulationState`, which preserves their copy-in isolation.
+ */
+export function adoptSimulationState(input: SimulationState): SimulationState {
   const version = Number((input as { schemaVersion?: number }).schemaVersion);
   if (version !== 17) throw new Error('当前开发版本只接受 schemaVersion 17；请新建文明运行');
-  const state = structuredClone(input);
+  const state = input;
   state.schemaVersion = 17;
   if (state.civilization.conditions.endpoint.kind === 'months') {
     state.civilization.conditions.endpoint.value = Math.min(
@@ -232,7 +239,7 @@ export function restoreSimulationState(input: SimulationState): SimulationState 
         : [...agreement.partyIds];
     agreement.rejectedByPersonIds ??= agreement.status === 'rejected' ? [agreement.responderId] : [];
   }
-  state.world.grid = hydrateWorld(input.world.grid);
+  state.world.grid = hydrateWorld(state.world.grid);
   if (state.world.mechanicalPower?.version !== MECHANICAL_POWER_WORLD_VERSION) {
     state.world.mechanicalPower = state.world.grid.generator.version === CURRENT_WORLD_GENERATOR_VERSION
       ? mechanicalPowerWorldForSeed(state.world.grid.generator.seed)
@@ -281,6 +288,10 @@ export function restoreSimulationState(input: SimulationState): SimulationState 
   updateDevelopmentObservation(state);
   primeEventIndex(state);
   return state;
+}
+
+export function restoreSimulationState(input: SimulationState): SimulationState {
+  return adoptSimulationState(structuredClone(input));
 }
 
 export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {}): SimulationState {

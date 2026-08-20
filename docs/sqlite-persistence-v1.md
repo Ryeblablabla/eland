@@ -41,6 +41,10 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 
 会话块的 hash 同时包含 codec 和内容，防止相同字节在不同语义下错误复用。编码、压缩和 hash 计算在事务外完成；写入时以短 `BEGIN IMMEDIATE` 事务提交缺失块和引用行，失败则回滚。命中既有 hash 时仍比较 codec、长度和字节，不能只相信 hash。
 
+实时恢复只校验并读取根 manifest 与 shell，把有序时间线保存为轻量 hash 引用，不在启动时把全部 checkpoint / delta BLOB 常驻内存。`frame`、人物历史和 `seek` 回放时才同步解析最近年度 checkpoint 与其后最多 11 个 delta；单个块在读取时校验 codec、长度和 SHA-256，会话只缓存一个最近重建状态，回到当前 head 后立即释放该缓存。新快照携带 active head 完整性标记；缺少标记的旧 schema 17 快照会用 `latestState` 一次性修复可能不完整的旧 head delta。成功持久化后，新产生的内存 Buffer 会原位替换成 hash 引用；后续保存直接复用旧引用，只为新增块计算 hash 和写库。实时分支每到 12 的倍数月份自动持久化，因此正常推进时未释放的新增时间线块保持在一个年度窗口内。
+
+恢复路径把 shell 中的 `latestState` 直接移交给模拟控制器，会话与控制器在空闲时共享同一份已提交状态，不再各保留一份完整 clone。同步本地月份在该受控状态上原地推进；异步模型月份只对隔离工作副本写入新天象和月内变化，成功后才原子替换已提交状态。公开的 `getState` 与普通 `restore` 仍保持复制边界。
+
 `raw_size` 不是跨 codec 统一的“解压前”或“解压后”业务数据大小。旧 `v8-br-v1` 用它保存 V8 序列化后、Brotli 压缩前的字节数，并在解压后校验；新的增量 run codec 与三类会话 codec 用它保存数据库 BLOB 的实际字节数，并与 `data.byteLength` 一起校验。解释该列必须先读取同一行的 `codec`，不能直接用它估算原始 `SimulationState` 大小。
 
 ## 自动回收

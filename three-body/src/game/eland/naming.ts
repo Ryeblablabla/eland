@@ -13,6 +13,11 @@ export interface NamedParent {
   namingTradition?: NamingTradition;
 }
 
+export interface AcceptedNewbornName extends NamingIdentity {
+  givenName: string;
+  name: string;
+}
+
 const EASTERN_COMPOUND_SURNAMES = [
   '孛儿只斤', '木之本', '欧阳', '司马', '上官', '诸葛', '夏侯', '东方', '皇甫', '尉迟',
   '公孙', '慕容', '长孙', '宇文', '司徒', '端木', '月野', '灰原', '毛利', '春野',
@@ -109,4 +114,28 @@ export function createNewbornName(
       : `${givenName}·${identity.familyName}`;
   }
   return { ...identity, name };
+}
+
+const INVALID_GIVEN_NAMES = new Set(['无名', '未知', '孩子', '婴儿', '宝宝', '后代']);
+
+/**
+ * Validate a model-proposed given name without letting the model choose the
+ * inherited family name, ordering convention, or uniqueness rule.
+ */
+export function acceptProposedNewbornGivenName(
+  proposedGivenName: string,
+  identity: NamingIdentity,
+  existingNames: Iterable<string> = [],
+): AcceptedNewbornName | null {
+  const givenName = proposedGivenName.normalize('NFKC').trim();
+  const maximumLength = identity.namingTradition === 'eastern' ? 3 : 8;
+  const characters = Array.from(givenName);
+  if (!characters.length || characters.length > maximumLength) return null;
+  if (!/^\p{Script=Han}+$/u.test(givenName) || INVALID_GIVEN_NAMES.has(givenName)) return null;
+  if (identity.namingTradition === 'eastern' && givenName.startsWith(identity.familyName)) return null;
+  const name = identity.namingTradition === 'eastern'
+    ? `${identity.familyName}${givenName}`
+    : `${givenName}·${identity.familyName}`;
+  if (new Set(existingNames).has(name)) return null;
+  return { ...identity, givenName, name };
 }

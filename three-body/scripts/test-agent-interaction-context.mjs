@@ -119,11 +119,13 @@ try {
   assert.match(messages[0].content, /【身份与代词】/u);
   assert.match(messages[0].content, /玩家固定是你认定的“主”/u);
   assert.match(messages[0].content, /playerUtterance 里的“我\/我的\/我们”=主/u);
-  assert.match(messages[0].content, /主对自己的身份、意图、感受和偏好的陈述是一手信息/u);
+  assert.match(messages[0].content, /主对自己身份、意图、感受和偏好的陈述是一手信息/u);
+  assert.match(messages[0].content, /不自动等于信任、亲近、服从/u);
+  assert.match(messages[0].content, /只内化这一侧面，不同时表演全部人格/u);
   assert.match(messages[0].content, /其他人物尚待回应的世界内提议不是本轮发言/u);
   assert.match(messages[0].content, /actionChoiceRequested=false/u);
   assert.ok(
-    messages[0].content.length <= 1_800,
+    messages[0].content.length <= 2_000,
     `system prompt 过长：${messages[0].content.length} 字符`,
   );
   assert.equal(messages[0].content, AGENT_INTERACTION_SYSTEM_PROMPT);
@@ -272,6 +274,41 @@ try {
     unknownTopicContext,
     JSON.stringify(common),
   ), /没有知识来源的定义问题只能如实回答不知道/u);
+
+  const rememberedPerson = initialState.people[1];
+  person.memories = [
+    {
+      id: 'memory-unrelated-work', kind: 'commitment', summary: '我答应把一处未完成的工作继续做下去。',
+      importance: 99, createdAtMonth: 0, lastRecalledAtMonth: 0,
+      personIds: [], sourceEventIds: ['event-work'], expiresAtMonth: 12,
+    },
+    {
+      id: 'memory-water-help', kind: 'episode', summary: `缺水时，${rememberedPerson.name}把水分给了我。`,
+      importance: 45, createdAtMonth: 0, lastRecalledAtMonth: 0,
+      personIds: [rememberedPerson.id], sourceEventIds: ['event-water-help'],
+    },
+  ];
+  const rememberedContext = buildAgentInteractionContext(
+    buildDecisionContextForPerson(initialState, person),
+    'conversation',
+    `你还记得${rememberedPerson.name}给你水吗？`,
+  );
+  assert.equal(rememberedContext.person.memories[0].summary.includes(rememberedPerson.name), true,
+    '当前点名对象与水主题应优先召回相关亲历，而不是总取最高重要性记忆');
+  assert.deepEqual(rememberedContext.person.memories[0].participants, [rememberedPerson.name]);
+  assert.equal('personIds' in rememberedContext.person.memories[0], false, '人物 ID 不应泄漏到表达模型');
+  assert.ok(rememberedContext.person.communication.guidance.length > 0,
+    '主动人物对话应显式携带年龄和 communication 表达限制');
+  assert.equal(rememberedContext.person.personaFrame.activatedFacet.id, 'trust-and-closeness');
+
+  const proposalPersonaContext = buildAgentInteractionContext(
+    buildDecisionContextForPerson(initialState, person),
+    'suggestion',
+    '我建议你先去找水。',
+  );
+  assert.equal(proposalPersonaContext.person.personaFrame.activatedFacet.id, 'autonomy-and-proposals',
+    '玩家建议应只激活自主与提议侧面');
+  assert.match(proposalPersonaContext.person.personaFrame.relationalStance, /不自动等于信任、亲近、服从/u);
 
   console.log('agent interaction context tests passed');
 } finally {

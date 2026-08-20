@@ -25,6 +25,7 @@ import {
 } from '../backend-decider';
 import { realizeLiveSpeechLines, retainDecisionSpeechLines } from '../live-speech-service';
 import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode, readSummaryMode } from '../model-config';
+import { realizeNewbornNames } from '../newborn-naming-service';
 import { logPerf, perfElapsed, perfNow } from '../perf';
 import { entriesFor } from './frame-history-projector';
 
@@ -96,7 +97,7 @@ export function createSessionBeginning(input: {
   controller.setExternalClimate(env.epoch, env.kind, env.severity);
   return {
     controller,
-    state: controller.getState(),
+    state: controller.ownedState(),
     ...(input.cosmosSnapshot
       ? { cosmosSnapshot: { ...input.cosmosSnapshot, civilizations: input.civilizationId } }
       : {}),
@@ -134,6 +135,7 @@ export class SessionStepCoordinator {
   private inFlightStep: InFlightStep | null = null;
   private readonly completedStepReceipts = new Map<string, string>();
   private lastNarrativeFallbackLogAt = 0;
+  private lastNamingFallbackLogAt = 0;
   private lastSpeechFallbackLogAt = 0;
 
   constructor(private readonly host: SessionStepHost) {}
@@ -280,9 +282,14 @@ export class SessionStepCoordinator {
       const nextSkySample = options.skySample;
       const nextCosmosSnapshot = options.cosmosSnapshot;
       const env = ERA_TO_ENV[nextSkySample.fate];
-      controller.setExternalClimate(env.epoch, env.kind, env.severity);
-      const decisionEndpoint = readEvolutionMode() === 'model' && hasExplicitModelRoute('decision')
+      const externalClimate = { epoch: env.epoch, kind: env.kind, severity: env.severity };
+      const modelEvolutionEnabled = readEvolutionMode() === 'model';
+      const decisionEndpoint = modelEvolutionEnabled && hasExplicitModelRoute('decision')
         ? modelEndpointStatus('decision')
+        : { configured: false };
+      const namingEndpoint = modelEvolutionEnabled
+        && (hasExplicitModelRoute('naming') || hasExplicitModelRoute('decision'))
+        ? modelEndpointStatus('naming')
         : { configured: false };
       const decisionEndpointId = decisionEndpoint.configured ? decisionEndpoint.endpointId : undefined;
       const interactions = this.host.pendingPlayerInteractions();
@@ -295,18 +302,32 @@ export class SessionStepCoordinator {
           pendingOnly: !decisionEndpoint.configured,
         });
         try {
-          state = await controller.stepAsyncOwned(decider);
+          state = await controller.stepAsyncOwnedWithClimate(decider, externalClimate);
           interactionAttempts = decider.takeInteractionAttempts();
         } catch (error) {
           interactionAttempts = decider.takeInteractionAttempts();
           console.warn(`运行 ${this.host.runId} 的关键模型决策已回退到本地规划：${error instanceof Error ? error.message : String(error)}`);
+          controller.setExternalClimate(env.epoch, env.kind, env.severity);
           state = controller.stepOwned();
         }
       } else {
+        controller.setExternalClimate(env.epoch, env.kind, env.severity);
         state = controller.stepOwned();
       }
       const simulationMs = perfElapsed(simulationStartedAt);
       const presentationStartedAt = perfNow();
+      if (namingEndpoint.configured && namingEndpoint.endpointId) {
+        const naming = await realizeNewbornNames(state, state.lastStep, namingEndpoint.endpointId);
+        if (naming.generationErrors.length || naming.rejectedChildIds.length) {
+          const now = Date.now();
+          if (now - this.lastNamingFallbackLogAt >= 60_000) {
+            this.lastNamingFallbackLogAt = now;
+            const detail = naming.generationErrors[0]
+              ?? `${naming.rejectedChildIds.length} 个候选未通过本地姓名规则`;
+            console.warn(`运行 ${this.host.runId} 的后代取名已保留本地姓名：${detail}`);
+          }
+        }
+      }
       const speechDrafts = projectLiveSpeechDrafts(state, state.lastStep);
       const retainedDecisionLines = retainDecisionSpeechLines(speechDrafts);
       const speechPromise = decisionEndpoint.configured && decisionEndpoint.endpointId && speechDrafts.length > 0

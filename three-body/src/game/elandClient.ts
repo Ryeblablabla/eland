@@ -93,6 +93,8 @@ export interface ElandStepResult {
   skySampleAcknowledged: boolean;
   /** Present only when a rejected patch baseline forced a full authoritative reload. */
   authoritativeHistory?: NarrativeEntryView[];
+  /** Server-side total for authoritativeHistory; the returned entries are only the recent window. */
+  authoritativeHistoryTotalCount?: number;
   /** Present with authoritativeHistory so observer charts recover the same branch timeline. */
   authoritativeCivilizationIndexHistory?: CivilizationIndexHistoryPoint[];
 }
@@ -299,6 +301,7 @@ async function stepWithRecovery(
     const previous = latestFrames.get(runId) ?? null;
     let frame = applyStepPayload(previous, payload);
     let authoritativeHistory: NarrativeEntryView[] | undefined;
+    let authoritativeHistoryTotalCount: number | undefined;
     let authoritativeCivilizationIndexHistory: CivilizationIndexHistoryPoint[] | undefined;
     if (payload.kind === 'patch' && !frame) {
       const refreshed = await get<{
@@ -306,6 +309,7 @@ async function stepWithRecovery(
         model: 'local' | ModelProvider;
         frame: Frame | null;
         history: NarrativeEntryView[];
+        historyTotalCount?: number;
         civilizationIndexHistory: CivilizationIndexHistoryPoint[];
       }>(`state?runId=${encodeURIComponent(runId)}`, requestOptions);
       if (authorityEpoch(runId) !== request.authorityEpoch) {
@@ -318,6 +322,7 @@ async function stepWithRecovery(
       }
       frame = refreshed.frame;
       authoritativeHistory = refreshed.history;
+      authoritativeHistoryTotalCount = refreshed.historyTotalCount ?? refreshed.history.length;
       authoritativeCivilizationIndexHistory = refreshed.civilizationIndexHistory;
     }
     // A delayed duplicate must never move a newer local authority head back.
@@ -337,6 +342,7 @@ async function stepWithRecovery(
         expectedElapsedMonths: request.expectedElapsedMonths,
         skySampleAcknowledged: false,
         ...(authoritativeHistory ? { authoritativeHistory } : {}),
+        ...(authoritativeHistoryTotalCount !== undefined ? { authoritativeHistoryTotalCount } : {}),
         ...(authoritativeCivilizationIndexHistory
           ? { authoritativeCivilizationIndexHistory }
           : {}),
@@ -354,6 +360,7 @@ async function stepWithRecovery(
       expectedElapsedMonths: request.expectedElapsedMonths,
       skySampleAcknowledged,
       ...(authoritativeHistory ? { authoritativeHistory } : {}),
+      ...(authoritativeHistoryTotalCount !== undefined ? { authoritativeHistoryTotalCount } : {}),
       ...(authoritativeCivilizationIndexHistory
         ? { authoritativeCivilizationIndexHistory }
         : {}),
@@ -410,6 +417,7 @@ export const elandClient = {
       model: 'local' | ModelProvider;
       frame: Frame | null;
       history: NarrativeEntryView[];
+      historyTotalCount?: number;
       civilizationIndexHistory: CivilizationIndexHistoryPoint[];
     }>(`state?runId=${encodeURIComponent(runId)}`, requestOptions);
     if (authorityEpoch(runId) === requestAuthorityEpoch) {
@@ -420,7 +428,10 @@ export const elandClient = {
       latestFrames.set(runId, result.frame);
       reconcilePendingStep(runId, result.frame);
     }
-    return result;
+    return {
+      ...result,
+      historyTotalCount: result.historyTotalCount ?? result.history.length,
+    };
   },
   history: (runId: string, requestOptions?: ElandRequestOptions) => get<{
     civilizationId: number;
@@ -478,10 +489,14 @@ export const elandClient = {
       save: ElandSaveSummary;
       frame: Frame;
       history: NarrativeEntryView[];
+      historyTotalCount?: number;
       civilizationIndexHistory: CivilizationIndexHistoryPoint[];
     }>('load', { runId, leaseId: PAGE_LEASE_ID, saveId }, requestOptions);
     if (authorityEpoch(runId) === requestAuthorityEpoch) latestFrames.set(runId, loaded.frame);
-    return loaded;
+    return {
+      ...loaded,
+      historyTotalCount: loaded.historyTotalCount ?? loaded.history.length,
+    };
   },
   checkpoint: (runId: string, requestOptions?: ElandRequestOptions) => {
     const body = JSON.stringify({ runId, leaseId: PAGE_LEASE_ID });

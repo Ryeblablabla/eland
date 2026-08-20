@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadFirstServerEnvValue, loadServerEnvValue } from './env';
 
 export const MODEL_PROTOCOLS = ['openai-chat', 'openai-responses', 'anthropic-messages', 'ollama-chat'] as const;
-export const MODEL_PURPOSES = ['decision', 'interaction', 'narrative', 'strategy'] as const;
+export const MODEL_PURPOSES = ['decision', 'interaction', 'narrative', 'naming', 'strategy'] as const;
 export const EVOLUTION_MODES = ['local', 'model'] as const;
 
 export type ModelProtocol = typeof MODEL_PROTOCOLS[number];
@@ -263,7 +263,7 @@ export function resolveModelEndpoint(purpose: ModelPurpose, requestedEndpoint?: 
   }
   const endpointId = requestedEndpoint?.trim()
     || config.routes?.[purpose]
-    || (purpose === 'interaction' ? config.routes?.decision : undefined);
+    || (purpose === 'interaction' || purpose === 'naming' ? config.routes?.decision : undefined);
   if (!endpointId) throw new Error(`模型配置没有为 ${purpose} 指定端点`);
   const definition = config.endpoints[endpointId];
   if (!definition) throw new Error(`模型配置不存在端点 ${endpointId}`);
@@ -356,7 +356,7 @@ export function readModelSettings(): ModelSettingsSnapshot {
         configured,
         ...(!configured ? { issue: `缺少 ${endpoint.apiKeyEnv ?? 'API Key'}` } : {}),
       }],
-      routes: { decision: endpoint.id, interaction: endpoint.id, narrative: endpoint.id, strategy: endpoint.id },
+      routes: { decision: endpoint.id, interaction: endpoint.id, narrative: endpoint.id, naming: endpoint.id, strategy: endpoint.id },
     };
   }
 
@@ -365,7 +365,7 @@ export function readModelSettings(): ModelSettingsSnapshot {
   const routes = Object.fromEntries(MODEL_PURPOSES.map((purpose) => [
     purpose,
     config.routes?.[purpose]
-      ?? (purpose === 'interaction' ? config.routes?.decision : undefined)
+      ?? (purpose === 'interaction' || purpose === 'naming' ? config.routes?.decision : undefined)
       ?? fallbackEndpoint,
   ])) as Record<ModelPurpose, string>;
   const filePath = modelConfigPath();

@@ -153,7 +153,14 @@ try {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ playing: true, model: 'local', frame: refreshedFrame, history: authoritativeHistory }),
+        json: async () => ({
+          playing: true,
+          model: 'local',
+          frame: refreshedFrame,
+          history: authoritativeHistory,
+          historyTotalCount: 12,
+          civilizationIndexHistory: [],
+        }),
       };
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -167,6 +174,8 @@ try {
       authoritativeHistory,
       '补丁基线失配后的全量回源必须把权威历史交给调用方',
     );
+    assert.equal(recovered.authoritativeHistoryTotalCount, 12,
+      '补丁基线失配后的全量回源必须保留服务端历史总数');
     assert.equal(routes.some((route) => route.includes('/state?')), true);
 
     let successfulSignal;
@@ -175,12 +184,34 @@ try {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ playing: true, model: 'local', frame: refreshedFrame, history: authoritativeHistory }),
+        json: async () => ({
+          playing: true,
+          model: 'local',
+          frame: refreshedFrame,
+          history: authoritativeHistory,
+          historyTotalCount: 12,
+          civilizationIndexHistory: [],
+        }),
       };
     };
     await elandClient.state(runId, { timeoutMs: 15 });
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(successfulSignal.aborted, false, '成功请求应清理计时器，不能在返回后被误取消');
+
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        playing: true,
+        model: 'local',
+        frame: refreshedFrame,
+        history: authoritativeHistory,
+        civilizationIndexHistory: [],
+      }),
+    });
+    const legacyStateResponse = await elandClient.state(runId);
+    assert.equal(legacyStateResponse.historyTotalCount, authoritativeHistory.length,
+      '滚动更新期间旧后端缺少 historyTotalCount 时必须回退到已返回历史长度');
 
     const timeoutRunId = 'frontend-timeout-test';
     const timeoutInitialFrame = authorityFrame(timeoutRunId, 2, 'timeout-main', 0);
@@ -376,7 +407,13 @@ try {
       initialFrame: loadInitial,
       switchedFrame: loadSwitched,
       switchCall: {
-        response: { save: { id: 'save-authority' }, frame: loadSwitched, history: [] },
+        response: {
+          save: { id: 'save-authority' },
+          frame: loadSwitched,
+          history: [],
+          historyTotalCount: 0,
+          civilizationIndexHistory: [],
+        },
         execute: () => elandClient.loadSave(loadSwitchRunId, 'save-authority'),
       },
     });

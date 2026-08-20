@@ -1,5 +1,7 @@
 import { Worker } from 'node:worker_threads';
 
+import { loadServerEnvValue } from './env';
+
 export interface EncodedElandApiResponse {
   status: number;
   body: ArrayBuffer;
@@ -31,11 +33,10 @@ export class ElandWorkerClient {
   private startWorker(): Worker {
     if (this.closed) throw new Error('文明演化 Worker 已关闭');
     const worker = new Worker(new URL('./eland-worker.mjs', import.meta.url), {
-      // 演化过程会产生很多短命对象；约束 Worker 的代际堆可让 GC 更早回收，
-      // 同时不挤占 Vite 与 WebGL 页面所在的主进程资源。
+      // 长程推进、按需历史回放和响应投影仍需要堆余量；环境变量可按部署机器容量调整。
       resourceLimits: {
-        maxOldGenerationSizeMb: Number(process.env.ELAND_WORKER_OLD_SPACE_MB) || 256,
-        maxYoungGenerationSizeMb: Number(process.env.ELAND_WORKER_YOUNG_SPACE_MB) || 16,
+        maxOldGenerationSizeMb: Number(loadServerEnvValue('ELAND_WORKER_OLD_SPACE_MB')) || 1_024,
+        maxYoungGenerationSizeMb: Number(loadServerEnvValue('ELAND_WORKER_YOUNG_SPACE_MB')) || 64,
       },
     });
     this.worker = worker;

@@ -39,6 +39,7 @@
     "test:player-interaction": "node scripts/test-player-interaction-choice.mjs",
     "test:agent-interaction": "node scripts/test-agent-interaction-context.mjs",
     "test:live-speech": "node scripts/test-live-speech.mjs",
+    "test:newborn-naming": "node scripts/test-newborn-naming.mjs",
     "experiment:decision-factor-forest": "node scripts/run-decision-factor-forest-sanity.mjs",
     "test:kinship-risk": "node scripts/test-kinship-risk-decision.mjs",
     "test:reproduction-opportunity": "node scripts/test-reproduction-opportunity.mjs",

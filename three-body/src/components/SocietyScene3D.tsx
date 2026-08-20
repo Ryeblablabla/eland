@@ -16,8 +16,10 @@ import type {
   SpeechLineView,
 } from '@/game/societyContract';
 import { Material } from '@/game/eland/domain/material';
+import { createDistantSkyLayer } from '@/game/distantSky';
 import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
+import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
 import { makeStarSurfaceTexture, mulberry32 } from '@/game/proceduralTextures';
 import {
   shorelinePatches,
@@ -50,6 +52,64 @@ class ScopedGTAOPass extends GTAOPass {
     this.excluded.forEach((o, i) => { o.visible = vis[i]; });
   }
 }
+
+/**
+ * 轻量屏幕空间移轴：沿可调焦线保留清晰带，向画面上下两侧逐渐增加模糊。
+ * 它只改变最终画面，不参与人物选择、世界状态或任何模拟规则。
+ */
+const AdaptiveTiltShiftShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uResolution: { value: new THREE.Vector2(1, 1) },
+    uFocusY: { value: 0.5 },
+    uSlope: { value: 0 },
+    uBand: { value: 0.16 },
+    uFeather: { value: 0.18 },
+    uMaxBlur: { value: 0 },
+    uStrength: { value: 0 },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec2 uResolution;
+    uniform float uFocusY;
+    uniform float uSlope;
+    uniform float uBand;
+    uniform float uFeather;
+    uniform float uMaxBlur;
+    uniform float uStrength;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 source = texture2D(tDiffuse, vUv);
+      float focusLine = uFocusY + (vUv.x - 0.5) * uSlope;
+      float focusDistance = abs(vUv.y - focusLine);
+      float blurAmount = smoothstep(uBand, uBand + uFeather, focusDistance) * uStrength;
+      if (blurAmount < 0.001 || uMaxBlur < 0.01) {
+        gl_FragColor = source;
+        return;
+      }
+
+      vec2 radius = vec2(uMaxBlur * blurAmount) / max(uResolution, vec2(1.0));
+      vec3 color = source.rgb * 0.20;
+      color += texture2D(tDiffuse, vUv + vec2( radius.x, 0.0)).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2(-radius.x, 0.0)).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2(0.0,  radius.y)).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2(0.0, -radius.y)).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2( radius.x,  radius.y) * 0.72).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2(-radius.x,  radius.y) * 0.72).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2( radius.x, -radius.y) * 0.72).rgb * 0.10;
+      color += texture2D(tDiffuse, vUv + vec2(-radius.x, -radius.y) * 0.72).rgb * 0.10;
+      gl_FragColor = vec4(color, source.a);
+    }
+  `,
+};
 
 /**
  * 立体沙盘：演化页的 2.5D/3D 视图。
@@ -97,6 +157,41 @@ const SPEECH_TARGET_FONT_PX = 11.5;
 const SPEECH_MAX_LINE_WIDTH_PX = 400;
 const SPEECH_MAX_LINES = 3;
 const SPEECH_COLLISION_GAP_PX = 8;
+const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参与规则、寻路或选择
+const CAMERA_TARGET_INSET_X = 12;
+const CAMERA_TARGET_INSET_Z = 10;
+
+function visualSpatialHash(seed: number, x: number, z: number, salt: number): number {
+  let value = (
+    Math.imul(Math.trunc(seed) + salt, 0x45d9f3b)
+    ^ Math.imul(x, 0x27d4eb2d)
+    ^ Math.imul(z, 0x165667b1)
+  ) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb352d) >>> 0;
+  value ^= value >>> 15;
+  return (value >>> 0) / 0x100000000;
+}
+
+function visualSmoothNoise(seed: number, x: number, z: number, scale: number, salt: number): number {
+  const gridX = Math.floor(x / scale);
+  const gridZ = Math.floor(z / scale);
+  const localX = x / scale - gridX;
+  const localZ = z / scale - gridZ;
+  const smoothX = localX * localX * (3 - 2 * localX);
+  const smoothZ = localZ * localZ * (3 - 2 * localZ);
+  const top = THREE.MathUtils.lerp(
+    visualSpatialHash(seed, gridX, gridZ, salt),
+    visualSpatialHash(seed, gridX + 1, gridZ, salt),
+    smoothX,
+  );
+  const bottom = THREE.MathUtils.lerp(
+    visualSpatialHash(seed, gridX, gridZ + 1, salt),
+    visualSpatialHash(seed, gridX + 1, gridZ + 1, salt),
+    smoothX,
+  );
+  return THREE.MathUtils.lerp(top, bottom, smoothZ);
+}
 
 type SpeechBubblePlacement = 'body-left' | 'center' | 'body-right';
 
@@ -818,7 +913,7 @@ export default function SocietyScene3D({
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
     controls.minPolarAngle = THREE.MathUtils.degToRad(38); // 最高约 52° 俯视，避免翻到纯顶视
-    controls.maxPolarAngle = THREE.MathUtils.degToRad(62); // 最低仍有 28° 俯角，不落到地平线
+    controls.maxPolarAngle = THREE.MathUtils.degToRad(78); // 最低约 12° 俯角，可抬高视线观察天空
     controls.minDistance = 7;
     controls.maxDistance = 245;
     controls.target.copy(cameraTarget);
@@ -851,9 +946,9 @@ export default function SocietyScene3D({
           }
         }
       }
-      // 完整包围盒 fit 视觉上仍会留下过多天空；收紧到 83%，允许最近的极少边角
-      // 越出画面，以换取 16:9 首屏约 78% 宽、60%+ 高的沉浸式占比。
-      return Math.max(78, required * 0.83);
+      // 入场不再展示完整沙盘轮廓：核心聚落填满画面，外围山脉只作为远景框景。
+      // 极少边角允许越出屏幕，继续缩远时再逐步展示更大的地理轮廓。
+      return Math.max(46, required * 0.44);
     };
     const updateCameraFit = (width: number, height: number) => {
       const previousFit = cameraFitDistance;
@@ -861,19 +956,24 @@ export default function SocietyScene3D({
       const currentDirection = camera.position.clone().sub(cameraTarget).normalize();
       cameraFitDistance = fittedDistanceFor(width, height);
       cameraFinal.copy(cameraTarget).addScaledVector(cameraDirection, cameraFitDistance);
-      cameraEntry.copy(cameraTarget).addScaledVector(cameraDirection, cameraFitDistance * 1.65);
+      cameraEntry.copy(cameraTarget).addScaledVector(cameraDirection, cameraFitDistance * 1.32);
       // 近景需要能看清单个人物与建筑细节；极角限制仍保证相机不会钻入地面。
       controls.minDistance = Math.max(7, cameraFitDistance * 0.055);
-      if (controls.maxDistance < 600) controls.maxDistance = Math.max(225, cameraFitDistance * 1.65);
+      // 正常人间视角在装饰缓冲带耗尽前停住；继续缩小则进入返回宇宙的过场。
+      if (controls.maxDistance < 600) controls.maxDistance = Math.max(88, cameraFitDistance * 1.5);
       if (controls.enabled && previousFit > 0) {
         const minZoomRatio = controls.minDistance / cameraFitDistance;
-        const zoomRatio = THREE.MathUtils.clamp(previousDistance / previousFit, minZoomRatio, 1.65);
+        const maxZoomRatio = controls.maxDistance / cameraFitDistance;
+        const zoomRatio = THREE.MathUtils.clamp(previousDistance / previousFit, minZoomRatio, maxZoomRatio);
         camera.position.copy(cameraTarget).addScaledVector(currentDirection, cameraFitDistance * zoomRatio);
         controls.update();
       }
     };
 
-    // ---- 天空球：天顶、地平线和三颗可见恒星附近的散射均可连续调色 ----
+    // 银河噪声只在挂载时烘焙一次；天空球每帧只采样 Cubemap。
+    const galaxyTarget = bakeProceduralGalaxy(renderer);
+
+    // ---- 天空球：天顶、银河、地平线和三颗可见恒星附近的散射均可连续调色 ----
     const skyStarDirections = Array.from({ length: N_STARS }, () => new THREE.Vector3(0, 1, 0));
     const skyStarColors = STAR_STYLES.map((style) => new THREE.Color(style.glow));
     const skyStarStrengths = new Float32Array(N_STARS);
@@ -888,6 +988,9 @@ export default function SocietyScene3D({
       uStarDirections: { value: skyStarDirections },
       uStarColors: { value: skyStarColors },
       uStarStrengths: { value: skyStarStrengths },
+      uGalaxyMap: { value: galaxyTarget.texture },
+      uGalaxyVisibility: { value: 0 },
+      uGalaxyRotation: { value: 0 },
     };
     const skyDome = new THREE.Mesh(
       new THREE.SphereGeometry(700, 48, 28),
@@ -914,6 +1017,9 @@ export default function SocietyScene3D({
           uniform vec3 uStarDirections[3];
           uniform vec3 uStarColors[3];
           uniform float uStarStrengths[3];
+          uniform samplerCube uGalaxyMap;
+          uniform float uGalaxyVisibility;
+          uniform float uGalaxyRotation;
           varying vec3 vSkyDirection;
 
           void main() {
@@ -925,6 +1031,19 @@ export default function SocietyScene3D({
             vec3 color = mix(uHorizonColor, uZenithColor, upper);
             color = mix(color, uNadirColor, lower);
             color = mix(color, uHazeColor, horizonBand * uHazeStrength * 0.22);
+
+            // 沙盘相机始终俯视，因此用校正后的视高度重建天空方向；银河随观察者
+            // 自转缓慢横移，并在地平线附近受到大气消光。
+            float galaxyCos = cos(uGalaxyRotation);
+            float galaxySin = sin(uGalaxyRotation);
+            vec3 galaxyDirection = normalize(vec3(direction.x, altitude, direction.z));
+            galaxyDirection.xz = mat2(
+              galaxyCos, -galaxySin,
+              galaxySin, galaxyCos
+            ) * galaxyDirection.xz;
+            vec3 galaxy = textureCube(uGalaxyMap, galaxyDirection).rgb;
+            float atmosphericClarity = smoothstep(0.015, 0.34, max(0.0, altitude));
+            color += galaxy * uGalaxyVisibility * atmosphericClarity;
 
             for (int i = 0; i < 3; i++) {
               float alignment = max(0.0, dot(direction, normalize(uStarDirections[i])));
@@ -945,12 +1064,13 @@ export default function SocietyScene3D({
       }),
     );
     skyDome.renderOrder = -100;
+    const distantSky = createDistantSkyLayer({ mode: 'surface', radius: 625, renderOrder: -95 });
 
     // ---- 稳定星野：准均匀球面分布 + 三层尺寸/亮度，避免少量随机点像坏点 ----
     const skyBackdrop = new THREE.Group();
     const liveCameraDirection = new THREE.Vector3();
     const skyStarMaterials: Array<{ material: THREE.PointsMaterial; baseOpacity: number }> = [];
-    skyBackdrop.add(skyDome);
+    skyBackdrop.add(skyDome, distantSky.group);
     const starLayerDefinitions = [
       { count: 1_800, size: 0.82, opacity: 0.30, warmChance: 0.10, seed: 0x7e1a4d31 },
       { count: 420, size: 1.22, opacity: 0.54, warmChance: 0.16, seed: 0x51c0b8a7 },
@@ -1131,6 +1251,8 @@ export default function SocietyScene3D({
       const observerPhase = skyObserverPhase
         + skyElapsedSeconds * 0.01
         + Math.sin(skyElapsedSeconds * 0.0065) * 0.022;
+      skyAtmosphereUniforms.uGalaxyRotation.value = observerPhase * 0.72;
+      distantSky.group.rotation.y = observerPhase * 0.72;
       skySuns.forEach((star, index) => {
         if (!star.enabled) return;
         const angleBlend = 1 - Math.exp(-deltaSeconds * 2.4);
@@ -1335,6 +1457,13 @@ export default function SocietyScene3D({
         LIGHT_DAMPING,
         deltaSeconds,
       );
+      skyAtmosphereUniforms.uGalaxyVisibility.value = THREE.MathUtils.damp(
+        skyAtmosphereUniforms.uGalaxyVisibility.value,
+        starVisibilityTarget * 0.72,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      distantSky.setVisibility(starVisibilityTarget);
       skyAtmosphereUniforms.uZenithColor.value.lerp(skyZenithTarget, blend);
       skyAtmosphereUniforms.uHorizonColor.value.lerp(skyHorizonTarget, blend);
       skyAtmosphereUniforms.uNadirColor.value.lerp(skyNadirTarget, blend);
@@ -1366,6 +1495,56 @@ export default function SocietyScene3D({
     land.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     land.castShadow = land.receiveShadow = true;
     scene.add(land);
+    // 权威网格之外只延续地形轮廓与颜色。外圈先抬升成环形山脉，再沉入雾色；
+    // 它不进入任何领域状态、交互射线、寻路或资源判断。
+    const apronSideWidth = world0.width + TERRAIN_APRON_CELLS * 2;
+    const apronSideHeight = world0.height + TERRAIN_APRON_CELLS * 2;
+    const APRON_CAP = apronSideWidth * apronSideHeight - COUNT;
+    const apronGeo = new THREE.BoxGeometry(1, 1, 1);
+    const apronFadeAttribute = new THREE.InstancedBufferAttribute(new Float32Array(APRON_CAP), 1);
+    apronGeo.setAttribute('apronFade', apronFadeAttribute);
+    const apronMat = new THREE.MeshStandardMaterial({
+      color: '#ffffff', roughness: 0.96, metalness: 0, dithering: true,
+    });
+    apronMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float apronFade;\nvarying float vApronFade;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvApronFade = apronFade;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vApronFade;')
+        .replace(
+          '#include <colorspace_fragment>',
+          '#include <colorspace_fragment>\n#ifdef USE_FOG\ngl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, smoothstep(0.48, 1.0, vApronFade));\n#endif',
+        );
+    };
+    apronMat.customProgramCacheKey = () => 'terrain-apron-mountains-v2';
+    const terrainApron = new THREE.InstancedMesh(apronGeo, apronMat, APRON_CAP);
+    terrainApron.count = 0;
+    terrainApron.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    terrainApron.castShadow = false;
+    terrainApron.receiveShadow = true;
+    scene.add(terrainApron);
+    aoExcluded.push(terrainApron);
+    // 远景植被只在山脚和缓坡形成轮廓，不复用可采集树木实体，避免被误认为
+    // 权威资源。两层树冠保持现有微体素语言，同时把额外绘制稳定在三个批次内。
+    const APRON_VEGETATION_CAP = Math.ceil(APRON_CAP * 0.24);
+    const apronTrunks = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.94, metalness: 0 }),
+      APRON_VEGETATION_CAP,
+    );
+    const apronCanopies = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.96, metalness: 0 }),
+      APRON_VEGETATION_CAP * 2,
+    );
+    for (const mesh of [apronTrunks, apronCanopies]) {
+      mesh.count = 0;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+    }
     // 地表内部仍用 1/4 格低对比颗粒；草土、沙地、耕地与湿润岸线改用 1/8 格八邻域过渡。
     // 单一 InstancedMesh 保留合批，不为每格创建独立纹理或材质。
     const GROUND_DETAIL_CAP = COUNT * 28;
@@ -1766,6 +1945,160 @@ export default function SocietyScene3D({
           if (current === undefined || baseZ < current) completeStructureBaseByCell.set(cellId, baseZ);
         }
       }
+      const apronStoneColor = w.palette.find((material) => material.key === 'stone')?.color ?? [108, 106, 100];
+      let aproni = 0;
+      let apronTrunki = 0;
+      let apronCanopyi = 0;
+      for (let apronY = -TERRAIN_APRON_CELLS; apronY < w.height + TERRAIN_APRON_CELLS; apronY++) {
+        for (let apronX = -TERRAIN_APRON_CELLS; apronX < w.width + TERRAIN_APRON_CELLS; apronX++) {
+          if (apronX >= 0 && apronX < w.width && apronY >= 0 && apronY < w.height) continue;
+
+          const outsideX = apronX < 0 ? -apronX : apronX >= w.width ? apronX - w.width + 1 : 0;
+          const outsideY = apronY < 0 ? -apronY : apronY >= w.height ? apronY - w.height + 1 : 0;
+          // 到矩形权威边界的欧氏距离让四个角自然变圆，避免再出现同心矩形轮廓。
+          const edgeDistance = Math.hypot(outsideX, outsideY);
+          const fade = THREE.MathUtils.clamp(
+            (edgeDistance - 1) / Math.max(1, TERRAIN_APRON_CELLS - 1),
+            0,
+            1,
+          );
+          const ring = Math.max(1, Math.ceil(edgeDistance));
+          const jitterSpan = Math.min(6, Math.max(1, Math.floor(ring * 0.42)));
+          const jitterX = Math.round((visualSpatialHash(w.generator.seed, apronX, apronY, 11) - 0.5) * jitterSpan * 2);
+          const jitterY = Math.round((visualSpatialHash(w.generator.seed, apronX, apronY, 17) - 0.5) * jitterSpan * 2);
+          const sourceX = THREE.MathUtils.clamp(
+            apronY < 0 || apronY >= w.height ? apronX + jitterX : apronX,
+            0,
+            w.width - 1,
+          );
+          const sourceY = THREE.MathUtils.clamp(
+            apronX < 0 || apronX >= w.width ? apronY + jitterY : apronY,
+            0,
+            w.height - 1,
+          );
+          const sourceId = sourceY * w.width + sourceX;
+          const macroNoise = visualSmoothNoise(w.generator.seed, apronX, apronY, 12, 101);
+          const mediumNoise = visualSmoothNoise(w.generator.seed, apronX, apronY, 5, 109);
+          const detailNoise = visualSmoothNoise(w.generator.seed, apronX, apronY, 2, 127);
+          const ridgeNoise = macroNoise * 0.52 + mediumNoise * 0.33 + detailNoise * 0.15;
+          // 山地随离开权威边界而逐渐增多，但只在噪声脊线上抬升；这会形成断续
+          // 山链和山口，而不是沿固定距离生成一圈矩形等高线。
+          const ridgedMacro = 1 - Math.abs(macroNoise * 2 - 1);
+          const chainField = ridgedMacro * 0.5 + mediumNoise * 0.34 + detailNoise * 0.16;
+          const outwardGrowth = THREE.MathUtils.smoothstep(fade, 0.04, 0.64);
+          const chainMask = THREE.MathUtils.smoothstep(chainField + fade * 0.1, 0.52, 0.72);
+          const sourceFeatureDepth = featureDepth(w, sourceId, structureCells);
+          const sourceHeight = Math.max(
+            CELL_H,
+            (w.elevation[sourceId] + 1 - sourceFeatureDepth) * CELL_H,
+          );
+          const sourceMaterial = w.palette[w.surface[sourceId]];
+          const sourceIsLiquid = Boolean(sourceMaterial?.tags.includes('liquid'));
+          // 河流从权威边界向外只形成低谷，不被装饰山体凭空截断。
+          const valleyFactor = sourceIsLiquid ? 0.08 : 1;
+          const mountainRise = Math.round(
+            outwardGrowth * chainMask * valleyFactor * (0.35 + Math.pow(ridgeNoise, 1.25) * 4.4) / CELL_H,
+          ) * CELL_H;
+          const outerFalloff = 1 - THREE.MathUtils.smoothstep(fade, 0.88, 1);
+          const displayHeight = Math.max(0.025, sourceHeight * outerFalloff + mountainRise);
+          m4.compose(
+            v.set(
+              apronX - w.width / 2 + 0.5,
+              displayHeight / 2,
+              apronY - w.height / 2 + 0.5,
+            ),
+            q.identity(),
+            sc.set(1, displayHeight, 1),
+          );
+          terrainApron.setMatrixAt(aproni, m4);
+          let apronColor = cellColor(w, sourceId);
+          const underlayMaterialId = featureUnderlayMaterialId(w, sourceId, structureCells);
+          if (underlayMaterialId !== undefined) {
+            const underlay = w.palette[underlayMaterialId];
+            if (underlay) apronColor = { r: underlay.color[0], g: underlay.color[1], b: underlay.color[2] };
+          }
+          const rockAmount = THREE.MathUtils.clamp(
+            THREE.MathUtils.smoothstep(mountainRise, 0.65, 3.4) * (0.52 + ridgeNoise * 0.36),
+            0,
+            0.68,
+          );
+          const tone = 0.94 + detailNoise * 0.09 - fade * 0.05;
+          terrainApron.setColorAt(aproni, col.setRGB(
+            Math.min(255, THREE.MathUtils.lerp(apronColor.r, apronStoneColor[0], rockAmount) * tone) / 255,
+            Math.min(255, THREE.MathUtils.lerp(apronColor.g, apronStoneColor[1], rockAmount) * tone) / 255,
+            Math.min(255, THREE.MathUtils.lerp(apronColor.b, apronStoneColor[2], rockAmount) * tone) / 255,
+            THREE.SRGBColorSpace,
+          ));
+          apronFadeAttribute.setX(aproni, fade);
+          aproni++;
+
+          const forestNoise = visualSmoothNoise(w.generator.seed, apronX, apronY, 9, 211);
+          const vegetationBand = 1 - THREE.MathUtils.smoothstep(fade, 0.5, 0.82);
+          const slopeSuitability = 1 - THREE.MathUtils.smoothstep(mountainRise, 1.4, 3.1);
+          const clusterDensity = THREE.MathUtils.smoothstep(forestNoise, 0.42, 0.72);
+          const sandPenalty = sourceMaterial?.key === 'sand' ? 0.12 : 1;
+          const vegetationChance = 0.38 * vegetationBand * slopeSuitability * clusterDensity * sandPenalty;
+          if (!sourceIsLiquid
+            && apronTrunki < APRON_VEGETATION_CAP
+            && apronCanopyi + 1 < APRON_VEGETATION_CAP * 2
+            && visualSpatialHash(w.generator.seed, apronX, apronY, 223) < vegetationChance) {
+            const treeScale = 0.72 + visualSpatialHash(w.generator.seed, apronX, apronY, 227) * 0.66;
+            const treeX = apronX - w.width / 2 + 0.5
+              + (visualSpatialHash(w.generator.seed, apronX, apronY, 229) - 0.5) * 0.44;
+            const treeZ = apronY - w.height / 2 + 0.5
+              + (visualSpatialHash(w.generator.seed, apronX, apronY, 233) - 0.5) * 0.44;
+            const trunkHeight = 0.56 * treeScale;
+            m4.compose(
+              v.set(treeX, displayHeight + trunkHeight / 2, treeZ),
+              q.identity(),
+              sc.set(0.14 * treeScale, trunkHeight, 0.14 * treeScale),
+            );
+            apronTrunks.setMatrixAt(apronTrunki, m4);
+            const barkTone = 0.82 + visualSpatialHash(w.generator.seed, apronX, apronY, 239) * 0.18;
+            apronTrunks.setColorAt(apronTrunki, col.setRGB(
+              70 / 255 * barkTone,
+              52 / 255 * barkTone,
+              34 / 255 * barkTone,
+              THREE.SRGBColorSpace,
+            ));
+            apronTrunki++;
+
+            const leafTone = 0.82 + visualSpatialHash(w.generator.seed, apronX, apronY, 241) * 0.22;
+            m4.compose(
+              v.set(treeX, displayHeight + trunkHeight + 0.23 * treeScale, treeZ),
+              q.identity(),
+              sc.set(0.72 * treeScale, 0.5 * treeScale, 0.72 * treeScale),
+            );
+            apronCanopies.setMatrixAt(apronCanopyi, m4);
+            apronCanopies.setColorAt(apronCanopyi, col.setRGB(
+              25 / 255 * leafTone,
+              84 / 255 * leafTone,
+              48 / 255 * leafTone,
+              THREE.SRGBColorSpace,
+            ));
+            apronCanopyi++;
+            m4.compose(
+              v.set(treeX, displayHeight + trunkHeight + 0.62 * treeScale, treeZ),
+              q.identity(),
+              sc.set(0.46 * treeScale, 0.54 * treeScale, 0.46 * treeScale),
+            );
+            apronCanopies.setMatrixAt(apronCanopyi, m4);
+            apronCanopies.setColorAt(apronCanopyi, col.setRGB(
+              31 / 255 * leafTone,
+              102 / 255 * leafTone,
+              56 / 255 * leafTone,
+              THREE.SRGBColorSpace,
+            ));
+            apronCanopyi++;
+          }
+        }
+      }
+      terrainApron.count = aproni;
+      terrainApron.computeBoundingSphere();
+      apronTrunks.count = apronTrunki;
+      apronCanopies.count = apronCanopyi;
+      apronTrunks.computeBoundingSphere();
+      apronCanopies.computeBoundingSphere();
       let sti = 0;
       for (let cellId = 0; cellId < COUNT; cellId++) {
         const { x, y } = cellCoordinates(cellId, w.width);
@@ -2243,6 +2576,13 @@ export default function SocietyScene3D({
       if (shoreLip.instanceColor) shoreLip.instanceColor.needsUpdate = true;
       strata.instanceMatrix.needsUpdate = true;
       if (strata.instanceColor) strata.instanceColor.needsUpdate = true;
+      terrainApron.instanceMatrix.needsUpdate = true;
+      if (terrainApron.instanceColor) terrainApron.instanceColor.needsUpdate = true;
+      apronFadeAttribute.needsUpdate = true;
+      apronTrunks.instanceMatrix.needsUpdate = true;
+      if (apronTrunks.instanceColor) apronTrunks.instanceColor.needsUpdate = true;
+      apronCanopies.instanceMatrix.needsUpdate = true;
+      if (apronCanopies.instanceColor) apronCanopies.instanceColor.needsUpdate = true;
       groundDetail.instanceMatrix.needsUpdate = true;
       if (groundDetail.instanceColor) groundDetail.instanceColor.needsUpdate = true;
 
@@ -3127,8 +3467,8 @@ export default function SocietyScene3D({
           const distance = camera.position.distanceTo(controls.target);
           const speed = THREE.MathUtils.clamp(distance * 0.28, 7, 36);
           cameraMove.normalize().multiplyScalar(speed * deltaSeconds);
-          const halfX = world0.width * 0.5;
-          const halfZ = world0.height * 0.5;
+          const halfX = Math.max(1, world0.width * 0.5 - CAMERA_TARGET_INSET_X);
+          const halfZ = Math.max(1, world0.height * 0.5 - CAMERA_TARGET_INSET_Z);
           const nextX = THREE.MathUtils.clamp(cameraTarget.x + cameraMove.x, -halfX, halfX);
           const nextZ = THREE.MathUtils.clamp(cameraTarget.z + cameraMove.z, -halfZ, halfZ);
           cameraMove.set(nextX - cameraTarget.x, 0, nextZ - cameraTarget.z);
@@ -3156,7 +3496,7 @@ export default function SocietyScene3D({
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', clearPressedKeys);
 
-    // ---- 后处理管线：Render → 轻量 GTAO → ACES 输出 → FXAA ----
+    // ---- 后处理管线：Render → 轻量 GTAO → 自适应移轴 → ACES 输出 → FXAA ----
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera)); // 先渲染 beauty（GTAO 在 readBuffer 上合成 AO）
     const gtaoPass = new ScopedGTAOPass(scene, camera, 1, 1);
@@ -3172,9 +3512,82 @@ export default function SocietyScene3D({
     gtaoPass.blendIntensity = 0.52;
     gtaoPass.excluded = aoExcluded;
     composer.addPass(gtaoPass);
+    const tiltShiftPass = new ShaderPass(AdaptiveTiltShiftShader);
+    composer.addPass(tiltShiftPass);
     composer.addPass(new OutputPass());
     const fxaaPass = new ShaderPass(FXAAShader);
     composer.addPass(fxaaPass);
+
+    const tiltFocusWorld = new THREE.Vector3();
+    const tiltCandidateWorld = new THREE.Vector3();
+    const tiltFocusProjected = new THREE.Vector3();
+    let tiltFocusY = 0.5;
+    let tiltStrength = 0;
+    let tiltBand = 0.2;
+    let tiltBlurCssPixels = 0;
+    const updateTiltShift = (deltaSeconds: number, entryT: number) => {
+      const selection = propsRef.current.selectedObject;
+      let hasSubject = false;
+
+      if (selection?.kind === 'agent') {
+        const figure = figures.get(selection.id);
+        if (figure) {
+          figure.group.updateWorldMatrix(true, false);
+          figure.group.getWorldPosition(tiltFocusWorld);
+          tiltFocusWorld.y += 0.8;
+          hasSubject = true;
+        }
+      } else if (selection?.kind === 'structure') {
+        const proxy = structureSelectionGroup.children.find(
+          (child) => child.userData.structureId === selection.id,
+        );
+        if (proxy) {
+          proxy.updateWorldMatrix(true, false);
+          proxy.getWorldPosition(tiltFocusWorld);
+          hasSubject = true;
+        }
+      }
+
+      // 没有显式选择时让清晰带照顾正在发生的对话；多个说话者取平均位置。
+      if (!hasSubject) {
+        let speakerCount = 0;
+        tiltFocusWorld.set(0, 0, 0);
+        for (const speakerId of propsRef.current.speechBySpeaker.keys()) {
+          const figure = figures.get(speakerId);
+          if (!figure?.speechBubble.visible) continue;
+          figure.group.updateWorldMatrix(true, false);
+          figure.group.getWorldPosition(tiltCandidateWorld);
+          tiltCandidateWorld.y += 0.9;
+          tiltFocusWorld.add(tiltCandidateWorld);
+          speakerCount++;
+        }
+        if (speakerCount > 0) {
+          tiltFocusWorld.multiplyScalar(1 / speakerCount);
+          hasSubject = true;
+        }
+      }
+
+      if (!hasSubject) tiltFocusWorld.copy(controls.target);
+      camera.updateMatrixWorld();
+      tiltFocusProjected.copy(tiltFocusWorld).project(camera);
+      const desiredFocusY = THREE.MathUtils.clamp(tiltFocusProjected.y * 0.5 + 0.5, 0.18, 0.82);
+      tiltFocusY = THREE.MathUtils.damp(tiltFocusY, desiredFocusY, 8, deltaSeconds);
+
+      const distanceRatio = camera.position.distanceTo(controls.target) / Math.max(1, cameraFitDistance);
+      const overviewMix = THREE.MathUtils.smoothstep(distanceRatio, 0.18, 1.05);
+      const transitionVisibility = zoomOutAsked ? 0 : THREE.MathUtils.smoothstep(entryT, 0.5, 1);
+      const desiredStrength = (0.12 + overviewMix * 0.88) * transitionVisibility;
+      const desiredBand = THREE.MathUtils.lerp(0.24, hasSubject ? 0.155 : 0.135, overviewMix);
+      const desiredBlurCssPixels = THREE.MathUtils.lerp(0.8, hasSubject ? 4.5 : 5.5, overviewMix);
+      tiltStrength = THREE.MathUtils.damp(tiltStrength, desiredStrength, 6, deltaSeconds);
+      tiltBand = THREE.MathUtils.damp(tiltBand, desiredBand, 7, deltaSeconds);
+      tiltBlurCssPixels = THREE.MathUtils.damp(tiltBlurCssPixels, desiredBlurCssPixels, 7, deltaSeconds);
+
+      tiltShiftPass.uniforms.uFocusY.value = tiltFocusY;
+      tiltShiftPass.uniforms.uBand.value = tiltBand;
+      tiltShiftPass.uniforms.uStrength.value = tiltStrength;
+      tiltShiftPass.uniforms.uMaxBlur.value = tiltBlurCssPixels * renderer.getPixelRatio();
+    };
 
     // ---- 尺寸自适应 ----
     const resize = () => {
@@ -3190,6 +3603,7 @@ export default function SocietyScene3D({
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(wpx, hpx); // 内部会把 GTAO 等 Pass 按 pixelRatio 换算
       const pr = renderer.getPixelRatio();
+      tiltShiftPass.uniforms.uResolution.value.set(wpx * pr, hpx * pr);
       fxaaPass.material.uniforms.resolution.value.set(1 / (wpx * pr), 1 / (hpx * pr));
     };
     const ro = new ResizeObserver(resize);
@@ -3229,6 +3643,7 @@ export default function SocietyScene3D({
       }
       updateKeyboardCamera(deltaSeconds);
       controls.update();
+      updateTiltShift(deltaSeconds, entryT);
       layoutSpeechBubbles();
       // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
       if (skyStars) {
@@ -3281,6 +3696,8 @@ export default function SocietyScene3D({
       skySurfaceTextures.forEach((texture) => texture.dispose());
       skyTexture?.dispose();
       environmentTarget?.dispose();
+      distantSky.dispose();
+      galaxyTarget.dispose();
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();

@@ -47,9 +47,24 @@ try {
   const first = buildPersonSoul(person);
   const repeated = buildPersonSoul(structuredClone(person));
   assert.deepEqual(repeated, first, '同一人物的 Soul 必须可确定性重建');
+  assert.equal(first.version, 2);
   assert.equal(first.authority, 'derived-personality');
-  assert.match(first.signature, /^soul-v1-/u);
+  assert.match(first.signature, /^soul-v2-/u);
   assert.match(first.innerVoice, /^我是阿澜。/u);
+  assert.deepEqual(first.sceneFacets.map((facet) => facet.id), [
+    'danger-and-loss',
+    'autonomy-and-proposals',
+    'trust-and-closeness',
+    'commitment-and-work',
+    'uncertainty-and-change',
+  ], 'Soul 应提供可由处境命中的稳定人格侧面');
+  assert.equal(first.styleMatrix.sentenceLength, 'short');
+  assert.equal(first.styleMatrix.selfDisclosure, 'guarded');
+  assert.match(
+    first.sceneFacets.find((facet) => facet.id === 'autonomy-and-proposals').innerTension,
+    /建议.*承诺/u,
+    '高控制敏感人物面对建议时应保留自主张力',
+  );
   assert.equal(first.speechStyle.some((line) => line.includes('助手')), true,
     'Soul 应明确阻止统一的助手式能力清单');
 

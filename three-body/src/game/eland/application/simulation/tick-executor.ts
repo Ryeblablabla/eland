@@ -239,8 +239,12 @@ export function stepOwnedSimulation(input: SimulationState): SimulationState {
   );
 }
 
-export async function stepSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
-  const prepared = prepareMonth(input, true, true, batch.forceReview);
+async function executeSimulationAsync(
+  input: SimulationState,
+  batch: BatchDecider,
+  cloneInput: boolean,
+): Promise<SimulationState> {
+  const prepared = prepareMonth(input, cloneInput, true, batch.forceReview);
   const living = prepared.contexts.length;
   const rolling = currentRollingLedgers(prepared.state);
   const eligibleCandidates = batch.shouldDecide
@@ -325,4 +329,13 @@ export async function stepSimulationAsync(input: SimulationState, batch: BatchDe
     ledger.modelName = metadata.model;
   }
   return result;
+}
+
+export function stepSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
+  return executeSimulationAsync(input, batch, true);
+}
+
+/** Trusted controller path: `input` is already an isolated working copy. */
+export function stepOwnedSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
+  return executeSimulationAsync(input, batch, false);
 }

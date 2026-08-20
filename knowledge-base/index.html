@@ -1558,6 +1558,101 @@ function genAnimalCondition(B){
   genRabbit(B,{x:6,scale:0.78,activity:'flee'});
 }
 
+/**
+ * 哥斯拉 BOSS 视觉原型。
+ * 草皮顶面是 y=2；眉脊顶端严格落在 y=82，净高 80 微体素 = 10 个地图格。
+ * 这里只验证巨型生物的尺度、剪影和材质语汇，不表示规则层已经存在 BOSS。
+ */
+function genGodzillaBoss(B){
+  const groundY = 2;
+  const topY = groundY + 10*MICRO_PER_MAP_CELL;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y,z,sx,sy,sz,c);
+  const hide=()=>vary(0x35483d,0.01,0.10,0.08);
+  const darkHide=()=>vary(0x22332d,0.01,0.08,0.07);
+  const belly=()=>vary(0x667060,0.01,0.08,0.07);
+  const plate=()=>vary(0x6f8c91,0.015,0.10,0.08);
+
+  // 双足和三趾：脚底从草皮顶面开始，先建立能承受巨大躯干的宽重心。
+  for(const z of [-9,9]){
+    put('leaf',-1,groundY,z, 12,6,11, darkHide());
+    put('leaf',-3,groundY+5,z, 11,10,10, hide());
+    put('leaf',-2,groundY+13,z, 11,16,11, hide());
+    put('leaf',-1,groundY+27,z, 15,17,14, hide());
+    for(const [tz,dz] of [[-4,-3.5],[-1,0],[2,3.5]]){
+      put('leaf',6+tz*0.25,groundY,z+dz, 12,3.5,3.2, darkHide());
+      put('plaster',12+tz*0.25,groundY+0.4,z+dz, 3,2.4,2.6, vary(0xd8d4c5,0.01,0.05,0.05));
+    }
+  }
+
+  // 髋部、腹部和桶形胸腔；前侧浅色鳞片让直立姿态更清楚。
+  put('leaf',-4,groundY+35,0, 22,15,22, hide());
+  put('leaf',-3,groundY+46,0, 23,19,21, hide());
+  put('leaf',0,groundY+58,0, 23,14,22, hide());
+  put('leaf',4,groundY+67,0, 17,10,18, hide());
+  put('stone',8,groundY+40,0, 3,9,14, belly());
+  put('stone',9,groundY+49,0, 3,9,15, belly());
+  put('stone',10,groundY+58,0, 3,8,14, belly());
+  put('stone',10,groundY+66,0, 3,6,12, belly());
+
+  // 肩臂向前收拢，手指末端保留清晰的浅色爪尖。
+  for(const z of [-13,13]){
+    put('leaf',5,groundY+57,z, 10,13,9, hide());
+    put('leaf',10,groundY+48,z, 9,12,8, darkHide());
+    put('leaf',16,groundY+43,z, 9,7,8, hide());
+    for(const dz of [-2.5,0,2.5]){
+      put('leaf',21,groundY+41,z+dz, 7,2.4,2, darkHide());
+      put('plaster',25,groundY+41,z+dz, 2.5,1.6,1.5, vary(0xd8d4c5,0.01,0.04,0.04));
+    }
+  }
+
+  // 咆哮头部：上下颚之间留出暗红口腔，双侧眼睛与牙齿在旋转视角中都可读。
+  put('leaf',7,groundY+69,0, 17,11,16, hide());
+  put('leaf',18,groundY+71,0, 13,7,14, darkHide());
+  put('glowRed',19,groundY+68,0, 13,3,12, 0x6d282b);
+  put('leaf',18,groundY+63,0, 14,5,13, hide());
+  put('glowRed',18,groundY+66,0, 9,2,9, 0xb24b54);
+  for(const z of [-5,-1.8,1.8,5]){
+    put('plaster',19,groundY+69,z, 1.6,3,1.5, 0xeee8d8);
+    put('plaster',18,groundY+67,z, 1.5,2.2,1.4, 0xded8c9);
+  }
+  for(const z of [-8.2,8.2]){
+    put('glowWarm',11,groundY+75,z, 2.2,2.2,1, 0xf4c34f);
+    put('darkMetal',12,groundY+75.4,z<0?-8.8:8.8, 0.9,0.9,0.7, 0x131715);
+    put('darkMetal',24,groundY+74,z<0?-5.2:5.2, 1.5,1.3,1, 0x17201d);
+  }
+  // 最高点由眉脊给出：topY - 3 + 3 = topY，确保正好 10 格高。
+  put('leaf',7,topY-3,-5, 8,3,5, darkHide());
+  put('leaf',7,topY-3, 5, 8,3,5, darkHide());
+
+  // 长尾以阶梯体块逐段贴地收尖，整体尺度远超普通动物。
+  const tail=[
+    [-14,groundY+34,0,18,14,16],[-27,groundY+27,0,17,12,13],
+    [-39,groundY+19,0,15,10,11],[-49,groundY+12,0,13,8,9],
+    [-58,groundY+7,0,11,6,7],[-65,groundY+3,0,8,4,5],
+    [-70,groundY,0,5,3,3],
+  ];
+  tail.forEach(([x,y,z,sx,sy,sz],i)=>put('leaf',x,y,z,sx,sy,sz,i%2?darkHide():hide()));
+
+  // 从尾根延伸到颈后的锯齿背鳍；青蓝内芯预留未来原子吐息的视觉状态。
+  const plates=[
+    [-61,groundY+13,5,5],[-52,groundY+20,7,6],[-42,groundY+28,9,7],
+    [-31,groundY+37,12,8],[-20,groundY+47,15,9],[-12,groundY+58,17,10],
+    [-8,groundY+67,13,8],
+  ];
+  for(const [x,y,h,w] of plates){
+    put('stone',x,y,0,w,h*0.36,5,plate());
+    put('stone',x-2,y+h*0.32,0,w*0.72,h*0.34,3.5,plate());
+    put('stone',x-3,y+h*0.62,0,w*0.38,h*0.38,2,plate());
+    put('glowCyan',x-3,y+h*0.70,0,Math.max(1.5,w*0.18),h*0.2,1.2,0x7fd5df);
+  }
+
+  // 零散深鳞打破大体块平面，但不改变权威尺寸轮廓。
+  for(const z of [-11.2,11.2]){
+    for(const [x,y,sx,sy] of [[-7,43,4,3],[0,49,5,3],[2,57,4,3],[-4,64,3,3],[6,69,3,2]])
+      put('stone',x,groundY+y,z, sx,sy,1.2,darkHide());
+  }
+}
+
 /** 木料堆：三角堆叠的原木，端面更浅 */
 function genWoodPile(B){
   const rows = [[1,[-1,0,1]],[2,[-1,0]],[3,[0]]];
@@ -2440,6 +2535,7 @@ const STYLES = [
   { key:'animal-state',cat:'n',group:'动物状态', name:'受伤与死亡', en:'Injured & Dead',gen:genAnimalCondition, tags:'受伤 · 死亡 · 逃跑' },
   { key:'sheep',      cat:'n', group:'动 物', name:'羊',       en:'Sheep',          gen:genSheep },
   { key:'chicken',    cat:'n', group:'动 物', name:'鸡',       en:'Chicken',        gen:genChicken },
+  { key:'godzilla-boss',cat:'n',group:'巨型生物原型',name:'超巨大哥斯拉',en:'Colossal Godzilla',gen:genGodzillaBoss,overview:false,tags:'视觉原型 · BOSS 候选 · 10 格高 · 80 微体素',note:'仅在素材页验证巨型 BOSS 的尺度与轮廓：从草皮顶面到眉脊正好 10 个地图格。尚未接入物种、行动、战斗、生成或文明毁灭规则，也不会出现在主游戏世界。' },
   { key:'spruce',     cat:'n', group:'树 木', name:'云杉',   en:'Spruce',         gen:genSpruce },
   { key:'oak',        cat:'n', group:'树 木', name:'橡木',   en:'Oak',            gen:genOak },
   { key:'birch',      cat:'n', group:'树 木', name:'白桦',   en:'Birch',          gen:genBirch },
@@ -2668,7 +2764,7 @@ function regenerate(preserveView=false){
     else addGround(B, 2, s.ground || 'grass');
   };
   if (gridMode){
-    const list = STYLES.filter(s => gridMode==='b' ? s.cat==='b' : gridMode==='p' ? s.cat==='p' : s.cat!=='b' && s.cat!=='p');
+    const list = STYLES.filter(s => s.overview!==false && (gridMode==='b' ? s.cat==='b' : gridMode==='p' ? s.cat==='p' : s.cat!=='b' && s.cat!=='p'));
     name = gridMode==='b' ? 'civilization-lv1-8' : gridMode==='p' ? 'people-and-actions' : 'environment-pack';
     if (gridMode==='b'){
       const S = 26;
@@ -2805,7 +2901,7 @@ function updateDetail(){
     return;
   }
   if (gridMode){
-    const list = STYLES.filter(s=>gridMode==='b'?s.cat==='b':s.cat!=='b'&&s.cat!=='p');
+    const list = STYLES.filter(s=>s.overview!==false && (gridMode==='b'?s.cat==='b':s.cat!=='b'&&s.cat!=='p'));
     const live = list.filter(s=>assetStatus(s)==='live').length;
     el.innerHTML = `<b>${gridMode==='b'?'文明建筑长卷':'世界素材长卷'}</b><span class="tags">${live} 项已接入 · ${list.length-live} 项视觉原型</span><span class="note">原型可继续预览和导出，但不会暗示模拟规则已经支持。</span>`;
     return;

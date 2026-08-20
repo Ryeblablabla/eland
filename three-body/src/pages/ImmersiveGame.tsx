@@ -64,7 +64,9 @@ interface EvolutionEntry {
 
 const TU_PER_MONTH = 0.8 / 12;
 const AUTO_STEP_MS = 4_000;
-const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = { decision: '', interaction: '', narrative: '', strategy: '' };
+const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = {
+  decision: '', interaction: '', narrative: '', naming: '', strategy: '',
+};
 
 const ERA_TEXT: Record<EraKey, { big: string; sub: string; cls: string; glow: string }> = {
   stable: { big: '恒纪元', sub: '三日轨度可测 · 文明复苏', cls: 'text-amber-100', glow: 'rgba(251,191,36,0.25)' },
@@ -230,9 +232,12 @@ export default function ImmersiveGame() {
     }]);
   }, []);
 
-  const replaceHistory = useCallback((frame: Frame, entries: NarrativeEntryView[]) => {
-    historySequenceRef.current = entries.length;
-    setHistoryTotalCount(entries.length);
+  const replaceHistory = useCallback((frame: Frame, entries: NarrativeEntryView[], totalCount: number) => {
+    const normalizedTotalCount = Number.isFinite(totalCount)
+      ? Math.max(entries.length, Math.floor(totalCount))
+      : entries.length;
+    historySequenceRef.current = normalizedTotalCount;
+    setHistoryTotalCount(normalizedTotalCount);
     setHistory(entries.slice(-240).map((entry) => ({
       id: entry.id,
       civilizationId: frame.civilizationId,
@@ -354,6 +359,7 @@ export default function ImmersiveGame() {
   const restoreLoadedSession = useCallback((
     frame: Frame,
     entries: NarrativeEntryView[],
+    historyTotalCount: number,
     indexHistory: CivilizationIndexHistoryPoint[],
   ) => {
     pendingCreationRef.current = null;
@@ -387,7 +393,7 @@ export default function ImmersiveGame() {
     eraInitializedRef.current = true;
     setEraKey(frame.skySample.fate);
     applyFrame(frame);
-    replaceHistory(frame, entries);
+    replaceHistory(frame, entries, historyTotalCount);
     setCivilizationIndexHistory(indexHistory.slice(-2_400));
   }, [applyFrame, replaceHistory, requestUniverseReset]);
 
@@ -402,11 +408,17 @@ export default function ImmersiveGame() {
       void elandClient.state(runIdRef.current).then(({
         frame,
         history: savedHistory,
+        historyTotalCount: savedHistoryTotalCount,
         civilizationIndexHistory: savedIndexHistory,
       }) => {
         if (cancelled || resumeCheckCompleteRef.current) return;
         resumeCheckCompleteRef.current = true;
-        if (frame) restoreLoadedSession(frame, savedHistory, savedIndexHistory);
+        if (frame) restoreLoadedSession(
+          frame,
+          savedHistory,
+          savedHistoryTotalCount ?? savedHistory.length,
+          savedIndexHistory,
+        );
         else void startCivilization();
       }).catch((error) => {
         if (cancelled || resumeCheckCompleteRef.current) return;
@@ -448,6 +460,7 @@ export default function ImmersiveGame() {
       const {
         frame,
         authoritativeHistory,
+        authoritativeHistoryTotalCount,
         authoritativeCivilizationIndexHistory,
         skySampleAcknowledged,
       } = await elandClient.stepWithRecovery(runIdRef.current, sky, cosmos);
@@ -466,7 +479,9 @@ export default function ImmersiveGame() {
       if (frame && frame.civilizationId === activeCivilizationRef.current) {
         const advanced = frame.elapsedMonths > monthRef.current;
         if (advanced || authoritativeHistory) applyFrame(frame);
-        if (authoritativeHistory) replaceHistory(frame, authoritativeHistory);
+        if (authoritativeHistory && authoritativeHistoryTotalCount !== undefined) {
+          replaceHistory(frame, authoritativeHistory, authoritativeHistoryTotalCount);
+        }
         if (authoritativeCivilizationIndexHistory) {
           setCivilizationIndexHistory(authoritativeCivilizationIndexHistory.slice(-2_400));
         }
@@ -650,7 +665,12 @@ export default function ImmersiveGame() {
     setSaveManagerMessage('');
     try {
       const loaded = await elandClient.loadSave(runIdRef.current, saveId);
-      restoreLoadedSession(loaded.frame, loaded.history, loaded.civilizationIndexHistory);
+      restoreLoadedSession(
+        loaded.frame,
+        loaded.history,
+        loaded.historyTotalCount ?? loaded.history.length,
+        loaded.civilizationIndexHistory,
+      );
       setSaveManagerStatus('idle');
       setSaveManagerMessage('');
       setOverlayMode(null);
@@ -716,7 +736,7 @@ export default function ImmersiveGame() {
       setModelSummaryModeDraft(settings.summaryMode);
       setModelRouteDraft(settings.routes);
       setModelSettingsStatus('saved');
-      setModelSettingsMessage(`已保存：${settings.evolutionMode === 'model' ? '模型演进' : '本地演进'}，${settings.summaryMode === 'model' ? '模型总结' : '本地总结'}；人物对话路由从下一条消息生效，其余从下个月生效。`);
+      setModelSettingsMessage('已保存');
     } catch (error) {
       setModelSettingsStatus('error');
       setModelSettingsMessage(error instanceof Error ? error.message : '模型路由保存失败');

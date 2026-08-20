@@ -8,6 +8,7 @@
 - 每次保存创建一个不可变存档；当前版本不覆盖、重命名或删除存档。
 - 打开页面时先尝试恢复同一标签页的实时会话；只在后端确认该会话不存在时才建立新文明。
 - 离开页面只写检查点，不再删除实时会话。内存会话超时时先落盘，再从内存逐出。
+- 同一权威分支每真正提交到 12 的倍数月份时自动持久化一次实时会话；重复或并发确认不会重复写库。持久化失败不回滚已经提交的月份，同月确认会重试，之后也可由手动检查点、正常关闭或会话逐出重新落盘。
 - 新文明编号由后端全局序列统一发放。首次进入、主动建立新世界和文明毁灭后的继任文明都会领取下一个编号；刷新、实时恢复、读档和时间分支不会领取新编号。
 - 读取旧文明只恢复它原有的历史编号，不会降低全局编号高水位；此后再建立文明仍从历史已发放的最大编号继续。
 
@@ -34,7 +35,7 @@ GameFrame.universeTime = SkySample.toTime = CosmosSnapshot.t
 - `live_sessions` 保存热重启恢复所需的活动分支、最近帧与最近持久化时间；表内没有独立 `expires_at`，恢复扫描用 `saved_at + ELAND_SESSION_RECOVERY_TTL_MS` 判断是否仍可恢复；
 - `campaign_state` 保存全局文明编号高水位，只增不减。
 
-三者都引用共享 `chunks` 表。会话使用 `eland-session-manifest-v2`、`eland-session-shell-v2` 与 `eland-session-timeline-chunk-v1`：manifest 指向一次 Brotli 压缩的 V8 shell 和已经压缩的月度 checkpoint / delta 块；相同内容按 hash 去重，写入和索引更新在短事务中完成。手动存档不受实时会话 TTL 清理影响。长程实验位于同库的 `runs`、`run_checkpoints` 与 `artifacts`，不会进入玩家档案列表，也不消耗玩家文明编号。
+三者都引用共享 `chunks` 表。会话使用 `eland-session-manifest-v2`、`eland-session-shell-v2` 与 `eland-session-timeline-chunk-v1`：manifest 指向一次 Brotli 压缩的 V8 shell 和已经压缩的月度 checkpoint / delta 块；相同内容按 hash 去重，写入和索引更新在短事务中完成。恢复当前月份时只读取 manifest 与 shell，历史块以 hash 引用留在 SQLite；查看旧帧、人物历史或创建时间分支时，才读取最近年度 checkpoint 和其后最多 11 个 delta。手动存档不受实时会话 TTL 清理影响。长程实验位于同库的 `runs`、`run_checkpoints` 与 `artifacts`，不会进入玩家档案列表，也不消耗玩家文明编号。
 
 HTTP 入口为：
 
@@ -42,6 +43,8 @@ HTTP 入口为：
 - `POST /api/eland/save`
 - `POST /api/eland/load`
 - `POST /api/eland/checkpoint`
+
+`GET /api/eland/state` 与读档响应只携带最近 240 条文明纪事并另给出 `historyTotalCount`；文明指数历史最多返回最近 2400 点。人物投影只携带当前 active intent，终态意图仍保留在权威状态和存档中，不通过首屏 JSON 重复发送。
 
 ## 当前限制
 

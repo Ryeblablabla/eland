@@ -8,8 +8,13 @@ import { deserialize, serialize } from 'node:v8';
 import type { ElandSaveSummary } from '../src/game/societyContract';
 import type { ElandSessionRecoverySnapshot } from './elandSession';
 import {
+  createSessionTimelineChunkReference,
   decodeSessionSnapshotParts,
   encodeSessionSnapshotParts,
+  isSessionTimelineChunkReference,
+  replaceSessionTimelineChunksWithReferences,
+  SESSION_TIMELINE_CHUNK_REFERENCE_KEY,
+  type SessionTimelineChunkReference,
 } from './session-snapshot-codec';
 import { ELAND_DATABASE_FILENAME, ELAND_DATABASE_SCHEMA_VERSION } from './sqlite-run-store';
 
@@ -28,6 +33,7 @@ interface StoredSnapshotChunk {
 interface StoredSessionSnapshot {
   root: StoredSnapshotChunk;
   parts: StoredSnapshotChunk[];
+  timelineChunkHashes: string[];
 }
 
 interface SessionSnapshotManifest {
@@ -176,14 +182,24 @@ function storedChunkHash(codec: string, data: Uint8Array): string {
 function encodeStoredSession(value: unknown): StoredSessionSnapshot {
   const encoded = encodeSessionSnapshotParts(value);
   const shell = storedChunk(SESSION_SHELL_CODEC, encoded.compressedShell);
-  const timeline = encoded.chunks.map((chunk) => storedChunk(SESSION_TIMELINE_CHUNK_CODEC, chunk));
+  const timelineChunkHashes: string[] = [];
+  const newTimelineChunks: StoredSnapshotChunk[] = [];
+  for (const chunk of encoded.chunks) {
+    if (isSessionTimelineChunkReference(chunk)) {
+      timelineChunkHashes.push(chunk[SESSION_TIMELINE_CHUNK_REFERENCE_KEY]);
+      continue;
+    }
+    const stored = storedChunk(SESSION_TIMELINE_CHUNK_CODEC, chunk);
+    timelineChunkHashes.push(stored.hash);
+    newTimelineChunks.push(stored);
+  }
   const manifest: SessionSnapshotManifest = {
     schemaVersion: 1,
     shellHash: shell.hash,
-    timelineChunkHashes: timeline.map((chunk) => chunk.hash),
+    timelineChunkHashes,
   };
   const root = storedChunk(SESSION_MANIFEST_CODEC, serialize(manifest));
-  return { root, parts: [shell, ...timeline] };
+  return { root, parts: [shell, ...newTimelineChunks], timelineChunkHashes };
 }
 
 function parseSessionManifest(data: Buffer): SessionSnapshotManifest {
@@ -491,14 +507,19 @@ export class SqliteElandStore {
     if (shell.codec !== SESSION_SHELL_CODEC) {
       throw new Error(`会话快照 shell ${manifest.shellHash} 使用了不支持的编码 ${shell.codec}`);
     }
-    const chunks = manifest.timelineChunkHashes.map((chunkHash) => {
-      const chunk = this.loadChunk(chunkHash);
-      if (chunk.codec !== SESSION_TIMELINE_CHUNK_CODEC) {
-        throw new Error(`会话快照时间线数据块 ${chunkHash} 使用了不支持的编码 ${chunk.codec}`);
-      }
-      return chunk.data;
-    });
+    const chunks = manifest.timelineChunkHashes.map(createSessionTimelineChunkReference);
     return decodeSessionSnapshotParts<T>({ compressedShell: shell.data, chunks });
+  }
+
+  /** Resolve one compressed checkpoint/delta BLOB on demand for timeline replay. */
+  resolveTimelineChunk(reference: SessionTimelineChunkReference): Buffer {
+    if (!isSessionTimelineChunkReference(reference)) throw new Error('会话时间线数据块引用无效');
+    const hash = reference[SESSION_TIMELINE_CHUNK_REFERENCE_KEY];
+    const chunk = this.loadChunk(hash);
+    if (chunk.codec !== SESSION_TIMELINE_CHUNK_CODEC) {
+      throw new Error(`会话快照时间线数据块 ${hash} 使用了不支持的编码 ${chunk.codec}`);
+    }
+    return chunk.data;
   }
 
   private collectUnreferencedSessionChunks(): void {
@@ -622,6 +643,7 @@ export class SqliteElandStore {
       );
       this.collectUnreferencedSessionChunks();
     });
+    replaceSessionTimelineChunksWithReferences(file, snapshot.timelineChunkHashes);
   }
 
   listLiveSessions(): LiveSessionSummary[] {
@@ -661,6 +683,7 @@ export class SqliteElandStore {
       );
       this.collectUnreferencedSessionChunks();
     });
+    replaceSessionTimelineChunksWithReferences(snapshotInput, stored.timelineChunkHashes);
     return liveSummary(row);
   }
 

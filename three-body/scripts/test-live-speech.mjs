@@ -24,6 +24,7 @@ try {
   const { projectLiveSpeechDrafts } = await import(`${pathToFileURL(projectionBundlePath).href}?test=${Date.now()}`);
   const {
     buildSpeechRequestItem,
+    deriveRelationalSpeechFrame,
     normalizeSpeechResponse,
     retainDecisionSpeechLines,
     speechLineMatchesAct,
@@ -161,6 +162,11 @@ try {
   };
 
   const originalEvents = structuredClone(events);
+  state.people[0].memories.push(...Array.from({ length: 7 }, (_, index) => ({
+    id: `unrelated-memory-${index}`, kind: 'episode', summary: `在别处做过一件无关的工作 ${index}`,
+    importance: 99 - index, createdAtMonth: 6, lastRecalledAtMonth: 6,
+    personIds: [], sourceEventIds: [],
+  })));
   const drafts = projectLiveSpeechDrafts(state, events);
 
   assert.deepEqual(drafts.map((line) => line.sourceEventId), ['voice-decision', 'voice-rule'], '只投影已完成的当面语音沟通');
@@ -187,14 +193,20 @@ try {
   assert.ok(requestItem);
   assert.equal(requestItem.speaker.personality.agreeableness, 75, '请求应携带人物的有效人格');
   assert.equal(requestItem.speaker.communicationCapacity, 47, '台词长度应受到人物表达能力约束');
+  assert.equal(requestItem.speaker.communication.band, 'ordinary', '台词请求应携带可直接执行的表达能力档位');
   assert.equal(requestItem.speaker.soul.authority, 'derived-personality', 'speech-only 台词应复用只读 Soul 人格锚');
   assert.match(requestItem.speaker.soul.innerVoice, /^我是阿澜。/u);
+  assert.equal(requestItem.speaker.soul.sceneFacets.length, 5, 'speech-only 台词应读取可按情境激活的 Soul 侧面');
   assert.deepEqual(requestItem.listeners, [{ name: '泊川', trust: 23, bond: 31, fear: 4 }], '请求应携带说话者视角的关系');
   assert.equal('currentIntent' in requestItem.speaker, false, 'speech-only 不应把可能含规则句式的意图摘要当作原话输入');
   assert.deepEqual(requestItem.communication.speechAct, decisionDraft.speechAct, '模型只读取结构化话语行为');
+  assert.equal(requestItem.communication.relationalFrame.tone, 'guarded', '低信任关系不应默认写成礼貌亲近');
+  assert.equal(requestItem.communication.relationalFrame.hostilityAllowed, false, '低信任本身不构成敌意证据');
   assert.equal('meaningAnchor' in requestItem.communication, false, '请求不得发送规则原话语义锚');
   assert.deepEqual(requestItem.sourcedExperiences, [experience.result], '请求只携带当前话语之前可追溯的亲历事实');
-  assert.deepEqual(requestItem.recentMemories, [{ kind: 'episode', summary: '缺水时，对方曾把水分给我。' }]);
+  assert.deepEqual(requestItem.recentMemories[0], {
+    kind: 'episode', summary: '缺水时，对方曾把水分给我。', participants: ['泊川'],
+  }, '当前听者与话题相关的亲历应压过更高重要性的无关记忆');
   assert.equal(requestItem.recentMemories.some((memory) => memory.summary.includes('CURRENT EVENT')), false, '当前话语生成的记忆不能反向进入同一次请求');
   const futureKnowledgeState = structuredClone(state);
   futureKnowledgeState.world.past.push({
@@ -221,6 +233,107 @@ try {
     communicationKind: 'reject',
     speechAct: { version: 'speech-act-v1', kind: 'reject', details: { referenceId: 'proposal' } },
   };
+  const directRequestLine = {
+    ...ruleDraft,
+    sourceEventId: 'direct-request-action',
+    communicationKind: 'request',
+    speechAct: { version: 'speech-act-v1', kind: 'request', details: { need: 'stone' } },
+  };
+  assert.equal(speechLineMatchesAct(directRequestLine, '石头给我。'), true, '短促命令式请求不应被礼貌词校验器丢弃');
+  assert.equal(speechLineMatchesAct(directRequestLine, '走。'), true, '不带解释的最短行动请求也应合法');
+  assert.equal(speechLineMatchesAct(directRequestLine, '天气已经转晴。'), false, '普通陈述不能伪装成请求');
+
+  const familiarState = structuredClone(state);
+  familiarState.people[0].relations[0] = {
+    personId: 'listener', trust: 72, bond: 78, fear: 0, sourceEventIds: ['experience-care'],
+  };
+  const familiarFrame = deriveRelationalSpeechFrame(
+    familiarState,
+    decisionVoice,
+    familiarState.people[0],
+    ['listener'],
+  );
+  assert.equal(familiarFrame.tone, 'familiar', '高信任高羁绊关系应允许省略客套和熟人式短句');
+  assert.equal(familiarFrame.hostilityAllowed, false);
+
+  const bluntState = structuredClone(state);
+  bluntState.people[0].personality.baseline.agreeableness = 30;
+  bluntState.people[0].personality.learnedDelta.agreeableness = 0;
+  bluntState.people[0].relations[0] = {
+    personId: 'listener', trust: 55, bond: 35, fear: 0, sourceEventIds: ['experience-care'],
+  };
+  const bluntFrame = deriveRelationalSpeechFrame(bluntState, decisionVoice, bluntState.people[0], ['listener']);
+  assert.equal(bluntFrame.tone, 'blunt', '低宜人性人物无需先共情再表态');
+  assert.equal(bluntFrame.reasonBudget, 'none', '短促人格不应被要求每次补完整理由');
+  assert.equal(bluntFrame.hostilityAllowed, false, '低宜人性只能支持直接，不能凭空支持敌意');
+
+  const harmEvent = {
+    ...ruleVoice,
+    id: 'harm-listener-speaker',
+    atMonth: 7,
+    orderInMonth: 3,
+    who: 'listener',
+    action: {
+      kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: 'speaker' }],
+    },
+    result: '泊川对阿澜施力并造成伤害',
+    diff: { victimId: 'speaker', damage: 8 },
+  };
+  const hostileState = structuredClone(state);
+  hostileState.world.past = [experience, harmEvent, ...events];
+  hostileState.people[0].relations[0] = {
+    personId: 'listener', trust: 35, bond: 10, fear: 18, sourceEventIds: [harmEvent.id],
+  };
+  const hostileFrame = deriveRelationalSpeechFrame(hostileState, decisionVoice, hostileState.people[0], ['listener']);
+  assert.equal(hostileFrame.tone, 'confrontational', '真实伤害加低信任可以升级为对抗语气');
+  assert.equal(hostileFrame.hostilityAllowed, true);
+  assert.deepEqual(hostileFrame.frictionEvidence.map((item) => item.sourceEventId), [harmEvent.id]);
+
+  const pressureRequestOne = {
+    ...ruleVoice,
+    id: 'pressure-request-one',
+    atMonth: 6,
+    orderInMonth: 1,
+    who: 'listener',
+    action: {
+      kind: 'communicate', audience: ['speaker'], channel: 'voice',
+      content: { id: 'pressure-proposal-one', kind: 'request', summary: '要求阿澜交出石头' },
+    },
+    result: '泊川要求阿澜交出石头',
+  };
+  const pressureReject = {
+    ...ruleVoice,
+    id: 'pressure-reject',
+    atMonth: 6,
+    orderInMonth: 2,
+    who: 'speaker',
+    action: {
+      kind: 'communicate', audience: ['listener'], channel: 'voice',
+      content: { id: 'pressure-rejection', kind: 'reject', referenceId: 'pressure-proposal-one', summary: '拒绝交出石头' },
+    },
+    result: '阿澜拒绝交出石头',
+  };
+  const pressureRequestTwo = {
+    ...pressureRequestOne,
+    id: 'pressure-request-two',
+    atMonth: 7,
+    orderInMonth: 1,
+    action: {
+      ...pressureRequestOne.action,
+      content: { id: 'pressure-proposal-two', kind: 'request', summary: '再次要求阿澜交出石头' },
+    },
+    result: '泊川再次要求阿澜交出石头',
+  };
+  const pressuredState = structuredClone(state);
+  pressuredState.world.past = [experience, pressureRequestOne, pressureReject, pressureRequestTwo, ...events];
+  pressuredState.people[0].relations[0] = {
+    personId: 'listener', trust: 40, bond: 20, fear: 0, sourceEventIds: [],
+  };
+  const pressuredFrame = deriveRelationalSpeechFrame(pressuredState, decisionVoice, pressuredState.people[0], ['listener']);
+  assert.equal(pressuredFrame.tone, 'confrontational', '拒绝后的重复施压可以支持不耐烦和质问');
+  assert.equal(pressuredFrame.hostilityAllowed, true);
+  assert.equal(pressuredFrame.frictionEvidence.filter((item) => item.kind === 'repeated-pressure').length, 2);
+
   const rejected = normalizeSpeechResponse({ lines: [
     { sourceEventId: 'accept-action', text: '我不同意这件事。' },
     { sourceEventId: 'reject-action', text: '好，我接受你的提议。' },

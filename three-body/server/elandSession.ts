@@ -2,12 +2,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
-  createSimulation,
   buildDecisionContextForPerson,
   type SimulationController,
   type SimulationState,
   type WorldEvent,
 } from '../src/game/eland/simulation';
+import { createSimulationFromOwnedState } from '../src/game/eland/application/simulation/controller';
 import { calendarDate } from '../src/game/eland/domain/calendar';
 import { isAlive } from '../src/game/eland/domain/person';
 import { toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
@@ -32,6 +32,7 @@ import {
 } from './agent-interaction-gateway';
 import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode } from './model-config';
 import { perfElapsed, perfNow } from './perf';
+import type { SessionTimelineChunkResolver } from './session-snapshot-codec';
 import {
   AgentConversationConflictError,
   conversationChoiceBlockedDetail,
@@ -138,6 +139,28 @@ interface QueuedAgentConversationRequest {
   fingerprint: string;
 }
 
+function compactRecoveredFrameIntents(frame: Frame, state: SimulationState): Frame {
+  const activeIntentIds = new Set(state.intents
+    .filter((intent) => intent.status === 'active')
+    .map((intent) => intent.id));
+  const intents = frame.society.intents.filter((intent) => activeIntentIds.has(intent.id));
+  const agents = frame.society.agents.map((agent) => {
+    if (!agent.activeIntentId || activeIntentIds.has(agent.activeIntentId)) return agent;
+    const { activeIntentId: _staleActiveIntentId, ...rest } = agent;
+    return rest;
+  });
+  if (intents.length === frame.society.intents.length
+    && agents.every((agent, index) => agent === frame.society.agents[index])) return frame;
+  return {
+    ...frame,
+    society: {
+      ...frame.society,
+      agents,
+      intents,
+    },
+  };
+}
+
 export class ElandSession {
   private civilizationId = 0;
   private controller: SimulationController | null = null;
@@ -150,6 +173,7 @@ export class ElandSession {
   private snapshotBaseline: SnapshotBaseline | null = null;
   private lastRecordPerf = { projectionMs: 0, snapshotMs: 0 };
   private branches = new Map<string, BranchTimeline>();
+  private replayCache: { branchId: string; month: number; state: SimulationState } | null = null;
   private activeBranchId = '';
   private forkSequence = 0;
   private authorityRevision = createAuthorityRevision();
@@ -157,7 +181,11 @@ export class ElandSession {
   private cosmosSnapshot?: CosmosSnapshot;
   readonly runId: string;
 
-  constructor(runId: string, initialSkySample: SkySample) {
+  constructor(
+    runId: string,
+    initialSkySample: SkySample,
+    private readonly timelineChunkResolver?: SessionTimelineChunkResolver,
+  ) {
     this.runId = runId;
     this.skySample = initialSkySample;
     this.stepCoordinator = new SessionStepCoordinator({
@@ -196,30 +224,38 @@ export class ElandSession {
     return this.authorityRevision;
   }
 
-  static restore(snapshot: ElandSessionRecoverySnapshot, runId = snapshot.runId): ElandSession {
+  static restore(
+    snapshot: ElandSessionRecoverySnapshot,
+    runId = snapshot.runId,
+    timelineChunkResolver?: SessionTimelineChunkResolver,
+  ): ElandSession {
     const { state, cosmosSnapshot } = validateRecoverySnapshot(snapshot);
-    const session = new ElandSession(runId, snapshot.skySample);
+    const session = new ElandSession(runId, snapshot.skySample, timelineChunkResolver);
     session.civilizationId = snapshot.civilizationId;
-    session.controller = createSimulation({ state: snapshot.latestState });
-    session.latestState = session.controller.getState();
+    session.controller = createSimulationFromOwnedState(state);
+    session.latestState = session.controller.ownedState();
     // latestFrame is the committed observer result for this exact month. The
     // controller may refresh annual derived state while hydrating, but recovery
     // must not silently rewrite an already shown/replayable frame.
-    session.latestFrame = {
+    session.latestFrame = compactRecoveredFrameIntents({
       ...snapshot.latestFrame,
       runId,
       authorityRevision: session.authorityRevision,
       ...(cosmosSnapshot ? { cosmosSnapshot } : {}),
-    };
+    }, session.latestState);
     session.branches = normalizeRecoveredBranches(snapshot.branches, runId, session.authorityRevision);
     session.activeBranchId = snapshot.activeBranchId;
     session.forkSequence = snapshot.forkSequence;
     session.cosmosSnapshot = cosmosSnapshot;
     const restoredTimeline = session.branches.get(session.activeBranchId);
     if (!restoredTimeline) throw new Error('实时演化会话缺少活动分支');
-    // Repair a possibly incomplete legacy head delta with the saved committed
-    // state, while leaving the controller free to use its migrated working copy.
-    restoredTimeline.snapshots.set(session.latestFrame.elapsedMonths, checkpoint(state));
+    // Legacy schema-17 snapshots could contain a present but incomplete head
+    // delta. New snapshots carry an explicit completeness marker, so only old
+    // or actually missing heads pay the one-time checkpoint repair cost.
+    if (snapshot.timelineHeadComplete !== true
+      || !restoredTimeline.snapshots.has(session.latestFrame.elapsedMonths)) {
+      restoredTimeline.snapshots.set(session.latestFrame.elapsedMonths, checkpoint(state));
+    }
     session.snapshotBaseline = baselineFor(session.latestState);
     return session;
   }
@@ -325,7 +361,38 @@ export class ElandSession {
   }
 
   private inheritedSnapshot(timeline: BranchTimeline, month: number): SimulationState | undefined {
-    return inheritedSnapshot(this.branches, timeline, month);
+    return inheritedSnapshot(this.branches, timeline, month, this.timelineChunkResolver);
+  }
+
+  /** Keep at most one reconstructed historical state for adjacent read APIs. */
+  private snapshotForRead(timeline: BranchTimeline, month: number): SimulationState | undefined {
+    if (!this.stepCoordinator.isStepping()
+      && timeline.id === this.activeBranchId
+      && this.latestState?.clock.elapsedMonths === month) {
+      this.replayCache = null;
+      return this.latestState;
+    }
+    if (this.replayCache?.branchId === timeline.id && this.replayCache.month === month) {
+      return this.replayCache.state;
+    }
+    const state = this.inheritedSnapshot(timeline, month);
+    this.replayCache = state ? { branchId: timeline.id, month, state } : null;
+    return state;
+  }
+
+  /** Transfer an internal replay state into a new authoritative branch. */
+  private takeSnapshotForFork(timeline: BranchTimeline, month: number): SimulationState | undefined {
+    if (timeline.id === this.activeBranchId && this.latestState?.clock.elapsedMonths === month) {
+      this.replayCache = null;
+      return this.latestState;
+    }
+    if (this.replayCache?.branchId === timeline.id && this.replayCache.month === month) {
+      const state = this.replayCache.state;
+      this.replayCache = null;
+      return state;
+    }
+    this.replayCache = null;
+    return this.inheritedSnapshot(timeline, month);
   }
 
   private pruneSnapshots(timeline: BranchTimeline): void {
@@ -367,6 +434,7 @@ export class ElandSession {
     this.lastRecordPerf = { projectionMs, snapshotMs: perfElapsed(snapshotStartedAt) };
     this.latestState = state;
     this.latestFrame = frame;
+    this.replayCache = null;
     if (timeline.history.length > MAX_HISTORY_MONTHS) {
       const dropped = timeline.history.shift();
       if (dropped) timeline.frameByMonth.delete(dropped.elapsedMonths);
@@ -376,6 +444,7 @@ export class ElandSession {
   }
 
   latest(): Frame | null {
+    if (!this.stepCoordinator.isStepping()) this.replayCache = null;
     return this.latestFrame;
   }
 
@@ -386,7 +455,7 @@ export class ElandSession {
   private committedStateForConversation(): SimulationState | null {
     if (!this.stepCoordinator.isStepping()) return this.latestState;
     if (!this.latestFrame || !this.branches.has(this.activeBranchId)) return this.latestState;
-    return this.inheritedSnapshot(this.activeTimeline(), this.latestFrame.elapsedMonths) ?? this.latestState;
+    return this.snapshotForRead(this.activeTimeline(), this.latestFrame.elapsedMonths) ?? this.latestState;
   }
 
   private async waitForStepToSettle(): Promise<void> {
@@ -487,13 +556,13 @@ export class ElandSession {
     if (this.latestFrame?.elapsedMonths === month) return this.latestFrame;
     const timeline = this.activeTimeline();
     const frame = findStoredFrame(this.branches, timeline, month);
-    const snapshot = frame ? this.inheritedSnapshot(timeline, month) : undefined;
+    const snapshot = frame ? this.snapshotForRead(timeline, month) : undefined;
     return frame && snapshot ? { ...frame, society: toSocietyState(snapshot) } : null;
   }
 
   agentHistory(agentId: string, month: number, limit = 80): AgentHistoryView | null {
     const timeline = this.activeTimeline();
-    const snapshot = this.inheritedSnapshot(timeline, month);
+    const snapshot = this.snapshotForRead(timeline, month);
     return snapshot ? toAgentHistory(snapshot, agentId, limit) : null;
   }
 
@@ -771,19 +840,22 @@ export class ElandSession {
     // 模型决策、台词和纪事仍属于同一个原子月。等待期间不能切换
     // controller / branch，否则旧月份会被写入新分支的 timeline。
     if (this.stepCoordinator.isStepping()) return this.latest();
-    const frame = this.frameAt(month);
     const source = this.activeTimeline();
-    const snapshot = frame ? this.inheritedSnapshot(source, frame.elapsedMonths) : undefined;
+    const frame = findStoredFrame(this.branches, source, month);
+    const snapshot = frame ? this.takeSnapshotForFork(source, frame.elapsedMonths) : undefined;
     if (!frame || !snapshot || !this.controller) return null;
+    const sourceSociety = this.latestFrame?.elapsedMonths === frame.elapsedMonths
+      ? this.latestFrame.society
+      : toSocietyState(snapshot);
     const branchId = `${source.id}-fork-${month}-${++this.forkSequence}`;
-    const branchState = structuredClone(snapshot);
+    const branchState = snapshot;
     branchState.branchId = branchId;
-    this.controller.restore(branchState);
-    this.latestState = branchState;
+    this.latestState = this.controller.adoptOwnedState(branchState);
     this.activeBranchId = branchId;
     this.rotateAuthorityRevision();
     const branchFrame: Frame = {
       ...frame,
+      society: sourceSociety,
       authorityRevision: this.authorityRevision,
       branchId,
     };
@@ -814,8 +886,16 @@ export class ElandSession {
 export class ElandSessionManager extends ElandSessionManagerCore<ElandSession> {
   constructor(options: ElandSessionManagerOptions = {}) {
     super({
-      create: (runId, initialSkySample) => new ElandSession(runId, initialSkySample),
-      restore: (snapshot, runId) => ElandSession.restore(snapshot, runId),
+      create: (runId, initialSkySample, timelineChunkResolver) => new ElandSession(
+        runId,
+        initialSkySample,
+        timelineChunkResolver,
+      ),
+      restore: (snapshot, runId, timelineChunkResolver) => ElandSession.restore(
+        snapshot,
+        runId,
+        timelineChunkResolver,
+      ),
     }, options);
   }
 }

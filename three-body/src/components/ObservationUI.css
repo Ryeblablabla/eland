@@ -1101,29 +1101,19 @@
   gap: 16px;
 }
 
-.person-inventory__heading p,
 .person-inventory__heading h3,
-.person-inventory__note,
 .person-inventory__empty p {
   margin: 0;
 }
 
-.person-inventory__heading p {
-  color: var(--observation-label-tertiary);
-  font-size: 11px;
-  line-height: 16px;
-}
-
 .person-inventory__heading h3 {
-  margin-top: 2px;
   color: var(--observation-label-primary);
   font-size: 20px;
   font-weight: 500;
   line-height: 28px;
 }
 
-.person-inventory__heading > span,
-.person-inventory__note {
+.person-inventory__heading > span {
   color: var(--observation-label-tertiary);
   font-size: 12px;
   line-height: 18px;
@@ -1131,10 +1121,6 @@
 
 .person-inventory__heading > span {
   font-variant-numeric: tabular-nums;
-}
-
-.person-inventory__note {
-  margin-top: 14px;
 }
 
 .person-inventory__list {

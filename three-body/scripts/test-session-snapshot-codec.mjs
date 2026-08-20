@@ -19,7 +19,14 @@ try {
     `--outfile=${codecBundlePath}`,
   ], { stdio: 'pipe' });
 
-  const { decodeSessionSnapshotParts, encodeSessionSnapshotParts } = await import(
+  const {
+    createSessionTimelineChunkReference,
+    decodeSessionSnapshotParts,
+    encodeSessionSnapshotParts,
+    isSessionTimelineChunkReference,
+    replaceSessionTimelineChunksWithReferences,
+    resolveSessionTimelineChunk,
+  } = await import(
     `${pathToFileURL(codecBundlePath).href}?test=${Date.now()}`
   );
   const checkpointData = brotliCompressSync(serialize({ month: 0, people: ['a', 'b'] }));
@@ -63,6 +70,33 @@ try {
     Buffer.isBuffer(session.branches.get('main').snapshots.get(0).data),
     '编码不得修改输入会话',
   );
+
+  const hashes = ['a'.repeat(64), 'b'.repeat(64)];
+  const lazyManaged = decodeSessionSnapshotParts({
+    compressedShell: parts.compressedShell,
+    chunks: hashes.map(createSessionTimelineChunkReference),
+  });
+  const lazyCheckpoint = lazyManaged.session.branches.get('main').snapshots.get(0).data;
+  assert.ok(isSessionTimelineChunkReference(lazyCheckpoint), 'shell index 应映射成 hash 引用');
+  assert.equal(
+    resolveSessionTimelineChunk(lazyCheckpoint, (reference) => {
+      assert.equal(reference.__elandSessionChunkV2, hashes[0]);
+      return checkpointData;
+    }),
+    checkpointData,
+    '按需 resolver 应只解析被访问的数据块',
+  );
+
+  replaceSessionTimelineChunksWithReferences(managed, hashes);
+  assert.ok(
+    isSessionTimelineChunkReference(session.branches.get('main').snapshots.get(0).data),
+    '落库成功后应能原位释放活动分支 Buffer',
+  );
+  const mixedDelta = Buffer.from(deltaData);
+  session.branches.get('main').snapshots.set(2, { kind: 'delta', data: mixedDelta });
+  const mixedParts = encodeSessionSnapshotParts(managed);
+  assert.ok(isSessionTimelineChunkReference(mixedParts.chunks[0]), '旧引用应直接复用');
+  assert.equal(mixedParts.chunks[2], mixedDelta, '新 Buffer 应保留给 store hash/insert');
   assert.throws(
     () => decodeSessionSnapshotParts({ compressedShell: parts.compressedShell, chunks: [] }),
     /不存在的数据块/u,

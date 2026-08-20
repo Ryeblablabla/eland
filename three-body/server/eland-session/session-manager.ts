@@ -6,6 +6,7 @@ import {
   SqliteElandStore,
   type ManagedLiveSessionSnapshot,
 } from '../sqlite-eland-store';
+import type { SessionTimelineChunkResolver } from '../session-snapshot-codec';
 import type { ElandSessionRecoverySnapshot } from './recovery';
 
 export const DEFAULT_SESSION_TTL_MS = 60 * 1_000;
@@ -41,8 +42,16 @@ interface ManagedSession {
 }
 
 export interface ElandSessionFactory<Session extends ManagedSession> {
-  create(runId: string, initialSkySample: SkySample): Session;
-  restore(snapshot: ElandSessionRecoverySnapshot, runId?: string): Session;
+  create(
+    runId: string,
+    initialSkySample: SkySample,
+    timelineChunkResolver: SessionTimelineChunkResolver,
+  ): Session;
+  restore(
+    snapshot: ElandSessionRecoverySnapshot,
+    runId: string | undefined,
+    timelineChunkResolver: SessionTimelineChunkResolver,
+  ): Session;
 }
 
 export interface ElandSessionManagerOptions {
@@ -79,6 +88,7 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
   private readonly activeStepProtectionMs: number;
   private readonly recoveryTtlMs: number;
   private readonly persistence: SqliteElandStore;
+  private readonly timelineChunkResolver: SessionTimelineChunkResolver;
   private closed = false;
 
   constructor(
@@ -92,6 +102,7 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
     this.persistence = options.persistence ?? new SqliteElandStore(path.resolve(
       options.databaseDir ?? path.join(process.cwd(), 'data'),
     ));
+    this.timelineChunkResolver = this.persistence.resolveTimelineChunk.bind(this.persistence);
     this.scanPersisted();
     const savedCivilizationHighWaterMark = this.persistence.listManualSaves()
       .reduce((maximum, save) => Math.max(maximum, save.civilizationId), 0);
@@ -143,7 +154,11 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
         leaseId: snapshot.leaseId,
         creationId: snapshot.creationId ?? '',
       });
-      const session = this.factory.restore(snapshot.session);
+      const session = this.factory.restore(
+        snapshot.session,
+        undefined,
+        this.timelineChunkResolver,
+      );
       this.sessions.set(runId, {
         session,
         touchedAt: Date.now(),
@@ -262,7 +277,7 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
     }
     this.removePersisted(runId);
     const civilizationId = this.persistence.allocateCivilizationId();
-    const session = this.factory.create(runId, skySample);
+    const session = this.factory.create(runId, skySample, this.timelineChunkResolver);
     const frame = session.begin(civilizationId, worldSeed, skySample, characterIds, cosmosSnapshot);
     this.sessions.set(runId, { session, touchedAt: now, lastStepAt: 0, leaseId, creationId });
     return frame;
@@ -287,7 +302,7 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
       throw new ElandSessionCapacityError(this.maxSessions);
     }
     const loaded = this.persistence.loadManual(saveId);
-    const session = this.factory.restore(loaded.session, runId);
+    const session = this.factory.restore(loaded.session, runId, this.timelineChunkResolver);
     const frame = session.latest();
     if (!frame) throw new Error(`存档 ${saveId} 没有可恢复的文明帧`);
     this.persistence.observeCivilizationId(frame.civilizationId);

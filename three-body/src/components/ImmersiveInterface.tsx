@@ -78,11 +78,12 @@ const FIGURE_EIGHT_STEPS = 960;
 const ORBIT_DURATION_SECONDS = 9;
 const OVERLAY_EXIT_MS = 135;
 
-const MODEL_PURPOSE_LABELS: Record<ModelPurpose, { title: string; description: string }> = {
-  decision: { title: '人物决策与台词', description: '关键转折可重选；每次真实口头沟通都优先用同一端点表达' },
-  interaction: { title: '主动人物对话', description: '按需让人物本人回应并形成待规则复核的建议；始终使用模型，不受演进模式开关影响' },
-  narrative: { title: '叙事总结', description: '当前月事实总结与非权威叙事增强' },
-  strategy: { title: '策略', description: '未来文明策略任务的扩展位' },
+const MODEL_PURPOSE_LABELS: Record<ModelPurpose, string> = {
+  decision: '人物决策与台词',
+  interaction: '主动人物对话',
+  narrative: '叙事总结',
+  naming: '后代取名',
+  strategy: '策略',
 };
 
 const CIVILIZATION_INDEX_COMPONENTS: Array<{
@@ -257,7 +258,7 @@ function CivilizationIndexChart({
     return (
       <aside className="civilization-index civilization-index--empty" aria-label="文明指数尚不可用">
         <p>文明指数</p>
-        <span>观察器正在等待权威状态。</span>
+        <span>暂不可用</span>
       </aside>
     );
   }
@@ -331,7 +332,6 @@ function CivilizationIndexChart({
           <p>文明指数</p>
           <h2>{index.stage}</h2>
         </div>
-        <span>观察层</span>
       </header>
       <div className="civilization-index__body">
         <div
@@ -427,9 +427,6 @@ function CivilizationIndexChart({
           })}
         </dl>
       </div>
-      <p className="civilization-index__note" title={`公式 ${index.formulaVersion}`}>
-        {points.length} 个已提交月份 · 计算至 {monthLabel(index.calculatedAtMonth)} · 开放累计，不封顶 100
-      </p>
     </aside>
   );
 }
@@ -606,6 +603,7 @@ export default function ImmersiveInterface({
   const decisionEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.decision);
   const interactionEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.interaction);
   const narrativeEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.narrative);
+  const namingEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.naming);
   const modelEvolutionAvailable = Boolean(decisionEndpoint?.configured);
   const modelSummaryAvailable = Boolean(narrativeEndpoint?.configured);
   const settingsDirty = Boolean(modelSettings && (
@@ -616,6 +614,7 @@ export default function ImmersiveInterface({
   const activeModelUses = [
     { label: '按需人物对话', endpoint: interactionEndpoint },
     ...(modelEvolutionModeDraft === 'model' ? [{ label: '人物决策与台词', endpoint: decisionEndpoint }] : []),
+    ...(modelEvolutionModeDraft === 'model' ? [{ label: '后代取名', endpoint: namingEndpoint }] : []),
     ...(modelSummaryModeDraft === 'model' ? [{ label: '纪事总结', endpoint: narrativeEndpoint }] : []),
   ];
   const modeSummary = `${modelEvolutionModeDraft === 'model' ? '模型演进' : '本地演进'} · ${modelSummaryModeDraft === 'model' ? '模型总结' : '本地总结'} · 对话按需模型`;
@@ -659,9 +658,7 @@ export default function ImmersiveInterface({
       {renderedMode === 'saves' && (
         <section aria-busy={savesBusy} className="save-manager">
           <header>
-            <p className="immersive-eyebrow">权威状态 · 本地档案</p>
             <h1 id={titleId}>文明档案</h1>
-            <p>保存当前文明的世界、历史与活动分支；载入后从记录的月份继续。</p>
           </header>
 
           <form
@@ -673,8 +670,8 @@ export default function ImmersiveInterface({
             }}
           >
             <label htmlFor="eland-save-label">
-              <span>新建存档</span>
-              <small>名称可留空</small>
+              <span>存档名称</span>
+              <small>可选</small>
             </label>
             <div>
               <input
@@ -703,14 +700,14 @@ export default function ImmersiveInterface({
             className={`save-manager__feedback${saveStatus === 'error' ? ' save-manager__feedback--error' : ''}`}
             role={saveStatus === 'error' ? 'alert' : 'status'}
           >
-            {saveMessage || (saveStatus === 'loading' ? '正在读取文明档案…' : '存档保存在本机演化服务中。')}
+            {saveMessage}
           </div>
 
           <div className="save-manager__list" tabIndex={0}>
             {saveStatus === 'loading' && saves.length === 0 ? (
               <p className="save-manager__empty">正在读取文明档案…</p>
             ) : saves.length === 0 ? (
-              <p className="save-manager__empty">还没有存档。为当前文明留下第一份档案吧。</p>
+              <p className="save-manager__empty">暂无存档</p>
             ) : (
               <ol>
                 {saves.map((save) => (
@@ -725,8 +722,6 @@ export default function ImmersiveInterface({
                           第 {save.civilizationId} 号文明
                           <span aria-hidden="true"> · </span>
                           {save.calendarLabel}
-                          <span aria-hidden="true"> · </span>
-                          第 {save.elapsedMonths} 月
                         </p>
                         <dl>
                           <div><dt>人口</dt><dd>{save.livingPeople} 人</dd></div>
@@ -759,7 +754,6 @@ export default function ImmersiveInterface({
 
       {renderedMode === 'new-world' && (
         <div aria-busy={newWorldStatus === 'starting'} className="new-world">
-          <p className="immersive-eyebrow">等质量三体 · 八字形周期解</p>
           <h1 id={titleId}>新文明</h1>
           <FigureEightGateway busy={newWorldStatus === 'starting'} />
           <div className="new-world__status" aria-live="polite">
@@ -786,7 +780,6 @@ export default function ImmersiveInterface({
               {newWorldStatus === 'error' ? '重新开始' : newWorldStatus === 'starting' ? '正在建立' : '开始演化'}
             </button>
           </div>
-          <p className="immersive-hint">Enter 开始 · Esc 返回</p>
         </div>
       )}
 
@@ -826,7 +819,6 @@ export default function ImmersiveInterface({
           <header>
             <p className="immersive-eyebrow">{settingsDirty ? '待保存' : '当前配置'} · {modeSummary}</p>
             <h1 id={titleId}>模型设置</h1>
-            <p>分别控制人物决策、真实口头台词与纪事总结；主动人物对话始终按需走模型。</p>
           </header>
 
           {modelSettingsStatus === 'loading' && (
@@ -846,19 +838,14 @@ export default function ImmersiveInterface({
                   <div className="model-settings__mode-row">
                     <span>
                       <strong>主动人物对话</strong>
-                      <small>只在你发送消息时调用 interaction 路由；回复和影响判断不使用本地模板。</small>
                     </span>
                     <span aria-label="主动人物对话始终使用模型">
                       <strong>按需模型</strong>
-                      <small>不受开关影响</small>
                     </span>
                   </div>
                   <div className="model-settings__mode-row">
                     <span>
                       <strong id="evolution-mode-label">人物决策与说话</strong>
-                      <small>{modelEvolutionModeDraft === 'model'
-                        ? '模型参与关键选择，并为每次真实口头沟通生成台词；本地规则始终裁决事实。'
-                        : '仅使用确定性规则选择人物行动与生成台词。'}</small>
                     </span>
                     <ModeSegmentedControl
                       ariaLabelledBy="evolution-mode-label"
@@ -871,9 +858,6 @@ export default function ImmersiveInterface({
                   <div className="model-settings__mode-row">
                     <span>
                       <strong id="summary-mode-label">纪事总结</strong>
-                      <small>{modelSummaryModeDraft === 'model'
-                        ? '模型压缩已发生的本月事实，失败时保留规则纪事。'
-                        : '直接采用规则投影的事实纪事。'}</small>
                     </span>
                     <ModeSegmentedControl
                       ariaLabelledBy="summary-mode-label"
@@ -905,16 +889,14 @@ export default function ImmersiveInterface({
                 <details className="model-settings__advanced">
                   <summary>
                     <span>高级设置</span>
-                    <small>端点路由与连接状态</small>
                   </summary>
                   <div className="model-settings__advanced-body">
                     <div className="model-settings__routes">
                       {modelSettings.purposes.map((purpose) => {
                         const labelId = `model-purpose-${purpose}-label`;
-                        const descriptionId = `model-purpose-${purpose}-description`;
                         return (
                           <div className="model-field" key={purpose}>
-                            <span id={labelId}>{MODEL_PURPOSE_LABELS[purpose].title}</span>
+                            <span id={labelId}>{MODEL_PURPOSE_LABELS[purpose]}</span>
                             <span>
                               <Select
                                 disabled={!modelSettings.editable || modelSettingsStatus === 'saving'}
@@ -922,7 +904,6 @@ export default function ImmersiveInterface({
                                 value={modelRouteDraft[purpose]}
                               >
                                 <SelectTrigger
-                                  aria-describedby={descriptionId}
                                   aria-labelledby={labelId}
                                   className="model-select__trigger"
                                 >
@@ -941,7 +922,6 @@ export default function ImmersiveInterface({
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <small id={descriptionId}>{MODEL_PURPOSE_LABELS[purpose].description}</small>
                             </span>
                           </div>
                         );
@@ -963,7 +943,6 @@ export default function ImmersiveInterface({
 
                     <div className="model-settings__source">
                       <span>{modelSettings.configFile ?? '旧 Kimi 环境配置'}</span>
-                      {!modelSettings.editable && <small>设置 THREEBODY_MODEL_CONFIG 后可在这里切换路由</small>}
                     </div>
                   </div>
                 </details>
@@ -971,7 +950,7 @@ export default function ImmersiveInterface({
 
               <div className="model-settings__actions">
                 <div className="model-settings__feedback" aria-live="polite">
-                  {modelSettingsMessage || '人物对话路由从下一条消息生效；演进与总结从下个月生效。'}
+                  {modelSettingsMessage}
                 </div>
                 <div className="model-settings__action-buttons">
                   <button className="immersive-button immersive-button--secondary immersive-button--32" onClick={onClose} type="button">取消</button>
@@ -998,7 +977,6 @@ export default function ImmersiveInterface({
 
       {renderedMode === 'shortcuts' && (
         <section className="shortcut-view">
-          <p className="immersive-eyebrow">不打断世界的操作方式</p>
           <h1 id={titleId}>按键</h1>
           <dl>
             <div><dt><kbd>Esc</kbd></dt><dd>观测菜单／返回世界</dd></div>

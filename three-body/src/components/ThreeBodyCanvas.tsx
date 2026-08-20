@@ -5,7 +5,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createDistantSkyLayer } from '@/game/distantSky';
 import { makePlanetTextureSet, makeStarSurfaceTexture } from '@/game/proceduralTextures';
+import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
 import {
   DEFAULT_PRESET,
   N_BODIES,
@@ -110,36 +112,6 @@ function makeGlowTexture(color: string): THREE.CanvasTexture {
   g.fillRect(0, 0, 128, 128);
   const texture = new THREE.CanvasTexture(c);
   // Canvas 颜色来自 CSS 色值，本身已是 sRGB；不标记会被 OutputPass 再提亮一次。
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-/** 白色径向渐变，配合 SpriteMaterial 的 color/opacity 调色 */
-function makeRadialTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 256);
-  return new THREE.CanvasTexture(c);
-}
-
-/** 深空底色渐变（与原 2D 背景一致：中心 #0a0e1f → 边缘 #02030a） */
-function makeBackdropTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 512;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(256, 256, 0, 256, 256, 384);
-  grad.addColorStop(0, '#0a0e1f');
-  grad.addColorStop(0.55, '#060812');
-  grad.addColorStop(1, '#02030a');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 512, 512);
-  const texture = new THREE.CanvasTexture(c);
-  // 保住 #0a0e1f 的真实黑位，避免被当作线性色后输出成灰蓝色。
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
@@ -417,44 +389,14 @@ export default function ThreeBodyCanvas(props: Props) {
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
 
-    // ---- 背景层：深空底色 + 星云 + 星野 ----
-    // 幕布与星云挂在相机局部坐标（天穹行为）：相机无论转到哪一面，
-    // 它们都跟在视野最深处，正/背面观感一致
-    const backdrop = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: makeBackdropTexture(),
-        depthWrite: false,
-        depthTest: false,
-      }),
-    );
-    backdrop.renderOrder = -10;
-    backdrop.position.set(0, 0, -1000); // 相机局部：永远在最远处
-    backdrop.scale.set(2600, 2600, 1);
-    camera.add(backdrop);
-    scene.add(camera); // 相机的子节点需要随相机一起入场景才渲染
-
-    const radialTex = makeRadialTexture();
-    const nebulas: THREE.Sprite[] = [];
-    const addNebula = (x: number, y: number, scale: number, color: string, opacity: number) => {
-      const s = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: radialTex,
-          color,
-          opacity,
-          transparent: true,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      s.position.set(x, y, -950); // 相机局部：贴在视野边缘的远景
-      s.scale.set(scale, scale, 1);
-      s.renderOrder = -9;
-      camera.add(s);
-      nebulas.push(s);
-    };
-    // 星云：调暗调小，只作远处若隐若现的底色，不再洗亮整屏
-    addNebula(-420, 320, 950, '#2c3f8f', 0.035);
-    addNebula(460, -360, 880, '#5e2880', 0.025);
+    // ---- 背景层：一次烘焙的程序化银河 + 清晰星野 ----
+    const galaxyTarget = bakeProceduralGalaxy(renderer);
+    scene.background = galaxyTarget.texture;
+    scene.backgroundIntensity = 0.88;
+    scene.backgroundRotation.set(0.08, -0.42, 0.12);
+    const distantSky = createDistantSkyLayer({ mode: 'universe', radius: 820, renderOrder: -9 });
+    distantSky.group.rotation.copy(scene.backgroundRotation);
+    scene.add(distantSky.group);
 
     const starfieldGeo = new THREE.BufferGeometry();
     {
@@ -901,6 +843,7 @@ export default function ThreeBodyCanvas(props: Props) {
       // 与原 2D 版相同的像素 ↔ 世界单位换算，保持星体在屏幕上等效大小
       const pxPerUnit = Math.min(W, H) / 2 / w.viewR;
       const px2w = (px: number) => px / pxPerUnit;
+      distantSky.group.position.copy(camera.position);
 
       // ---- 轨迹写缓冲 ----
       for (let i = 0; i < N_BODIES; i++) {
@@ -1015,6 +958,9 @@ export default function ThreeBodyCanvas(props: Props) {
       canvas.removeEventListener('dblclick', onFocusDblClick);
       canvas.removeEventListener('wheel', onFocusWheel);
       controls.dispose();
+      scene.background = null;
+      distantSky.dispose();
+      galaxyTarget.dispose();
       disposeScene(scene, composer, renderer);
     };
   }, []);

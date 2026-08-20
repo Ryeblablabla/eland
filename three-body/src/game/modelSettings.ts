@@ -1,4 +1,4 @@
-export type ModelPurpose = 'decision' | 'interaction' | 'narrative' | 'strategy';
+export type ModelPurpose = 'decision' | 'interaction' | 'narrative' | 'naming' | 'strategy';
 export type EvolutionMode = 'local' | 'model';
 
 export interface ModelSettingsEndpoint {

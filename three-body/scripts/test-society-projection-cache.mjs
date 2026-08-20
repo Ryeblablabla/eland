@@ -153,6 +153,29 @@ try {
   assert.deepEqual(withAction.agents[0].lastPath, originalLastPath,
     'later authoritative movement must not mutate an older agent projection');
 
+  const intentFixture = {
+    ownerId: person.id,
+    summary: 'projection intent fixture',
+    domain: 'strategic',
+    goal: { kind: 'at-cell', personId: person.id, cellId: person.position.cellId },
+    nextAction: { kind: 'move', toCellId: person.position.cellId },
+    createdAtMonth: state.clock.elapsedMonths,
+    lastProgressAtMonth: state.clock.elapsedMonths,
+    progress: 0,
+    sourceDecisionEventId: 'projection-intent-decision',
+    actionEventIds: [],
+    replanCount: 0,
+  };
+  state.intents.push(
+    { ...intentFixture, id: 'projection-intent-active', status: 'active' },
+    { ...intentFixture, id: 'projection-intent-suspended', status: 'suspended' },
+    { ...intentFixture, id: 'projection-intent-completed', status: 'completed' },
+  );
+  person.activeIntentId = 'projection-intent-active';
+  const intentView = toSocietyState(state);
+  assert.deepEqual(intentView.intents.map((intent) => intent.id), ['projection-intent-active'],
+    'the UI projection must contain active intents only, never terminal or suspended history');
+
   console.log('society projection cache regression passed');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

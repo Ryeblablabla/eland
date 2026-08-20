@@ -192,7 +192,7 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
       return evidence || relationStrength(right) - relationStrength(left) || left.name.localeCompare(right.name);
     })
     .slice(0, 6);
-  if (!relations.length) return <p className="person-relations__empty">当前没有可投影的真实关系。</p>;
+  if (!relations.length) return <p className="person-relations__empty">暂无关系记录</p>;
 
   const centerX = 180;
   const centerY = 112;
@@ -313,11 +313,11 @@ function PersonActionHistory({
         {!loading && !error && <span>{events.length} 条</span>}
       </div>
       {loading && events.length === 0 ? (
-        <p className="person-action-history__empty">正在读取真实行动记录…</p>
+        <p className="person-action-history__empty">正在读取行动记录…</p>
       ) : error ? (
         <p className="person-action-history__error">{error}</p>
       ) : events.length === 0 ? (
-        <p className="person-action-history__empty">这个人物还没有可读取的行动记录。</p>
+        <p className="person-action-history__empty">暂无行动记录</p>
       ) : (
         <ol className="person-action-history__list">
           {events.map((event) => (
@@ -342,13 +342,9 @@ function PersonInventory({ agent }: { agent: SocietyAgent }) {
   return (
     <section aria-label={`${agent.name}的背包`} className="person-inventory">
       <div className="person-inventory__heading">
-        <div>
-          <p>私人持有</p>
-          <h3>背包</h3>
-        </div>
+        <h3>背包</h3>
         <span>{agent.inventory.length} 类 · {totalQuantity} 件</span>
       </div>
-      <p className="person-inventory__note">物品来自当前权威演进状态；给予、丢下或取走都会发生真实转移。</p>
       {agent.inventory.length ? (
         <ul className="person-inventory__list">
           {agent.inventory.map((stack) => (
@@ -370,7 +366,7 @@ function PersonInventory({ agent }: { agent: SocietyAgent }) {
 }
 
 function structureActivity(structure: StructureView): string {
-  if (!structure.complete) return `正在形成，已有 ${structure.componentCount} 个权威构件`;
+  if (!structure.complete) return `正在形成，已有 ${structure.componentCount} 个构件`;
   const effects: string[] = [];
   if (structure.effects.weatherProtection > 0) effects.push('遮蔽天气');
   if (structure.effects.thermalInsulation > 0) effects.push('缓冲温差');
@@ -481,7 +477,7 @@ export function FocusInspector({
     status = stats ? `当前星系尺度 ${stats.spread.toFixed(2)} · 总能量 ${stats.energy.toFixed(4)}` : '等待轨道状态';
   } else if (renderedTarget.kind === 'celestial') {
     name = '文明行星';
-    activity = '承受三星引力与辐照，地表文明随月度规则演化';
+    activity = '承受三星引力与辐照';
     status = stats
       ? `${FATE_LABELS[stats.planetFate]} · 相对辐照 ${stats.fluxRel.toFixed(2)} · 最近恒星 ${stats.planetDist.toFixed(2)}`
       : '等待行星状态';
@@ -654,7 +650,7 @@ export function FocusInspector({
                 <div><dt>状态</dt><dd>{status}</dd></div>
                 <div>
                   <dt>最近</dt>
-                  <dd>{latestEvent ? `${monthLabel(latestEvent.month)} · ${latestEvent.text}` : '尚无可关联的真实事件'}</dd>
+                  <dd>{latestEvent ? `${monthLabel(latestEvent.month)} · ${latestEvent.text}` : '暂无关联事件'}</dd>
                 </div>
               </dl>
             )}
@@ -680,8 +676,8 @@ export function FocusInspector({
                   <p>天气防护 {Math.round(structure.effects.weatherProtection)} · 隔热 {Math.round(structure.effects.thermalInsulation)} · 容量 {structure.effects.capacity}</p>
                 </section>
                 <section>
-                  <h3>权威构件</h3>
-                  <p>{materialNames.length ? materialNames.join('、') : '当前投影没有材质名称'} · 来源事件 {structure.sourceEventIds.length} 条</p>
+                  <h3>构件</h3>
+                  <p>{materialNames.length ? materialNames.join('、') : '暂无材质信息'}</p>
                 </section>
               </>
             )}
@@ -700,7 +696,7 @@ export function FocusInspector({
                 <p className="focus-inspector__event" key={event.id}>
                   <time>{monthLabel(event.month)}</time>{event.text}
                 </p>
-              )) : <p>尚无可关联的事件。</p>}
+              )) : <p>暂无关联事件</p>}
             </section>
           </div>
           </>

@@ -13,6 +13,7 @@ import { cellX, cellY, columnMaterials, voxelAt } from '../src/game/eland/world/
 import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ModelProtocol, type ResolvedModelEndpoint } from './model-config';
+import { buildPersonaFrame, communicationProfile, selectContextualMemories } from './persona-context';
 
 export type AgentInteractionStance = 'answer' | 'consider' | 'accept' | 'decline';
 export type AgentInteractionRequestKind = 'conversation' | 'suggestion';
@@ -115,22 +116,22 @@ export const AGENT_INTERACTION_SYSTEM_PROMPT = [
   '你是 localContext.person 指定的人物，用第一人称回答；不是助手、旁白或全知观察者。玩家固定是你认定的“主”，绝不是 kinship、memory 或 visiblePeople 里的人物。',
   'playerUtterance 里的“我/我的/我们”=主，“你/你的”=你；reply 里的“我/我的”=你，“你/你的/主”=玩家。除非主明说第三人姓名，不得改变指代。',
   'currentTurn.playerIdentityQuestion=true 时，事实边界只有：玩家是你认定的主，并非世界中的任何人物。用自己的 Soul 和相处语气自然回答，不要念“协议、参与者、真实对话”之类系统说明。',
-  '主对自己的身份、意图、感受和偏好的陈述是一手信息。主的其他话也是需要认真理解、明确回应的高优先输入，但不会自动创造世界事实或越过规则。',
+  '主对自己身份、意图、感受和偏好的陈述是一手信息。主是本轮必须回应的对话对象，但这不自动等于信任、亲近、服从、耐心解释或接受建议，也不创造世界事实。',
   '',
   '【权威事实】',
   '本轮 localContext 是唯一当前事实源；只用其中可感知的身体、处境、物品、记忆、关系、意图、可见事物和合法行动。不用模型常识、隐藏配方、全局状态或同名原型补齐事实。',
-  'person.kinship 是权威谱系；列出的亲属必须承认，未列出的关系不得靠姓名猜测。person.soul 只影响态度和选择，不创造记忆、能力、关系、物质或 option；内化它，不复述字段和数值。',
+  'person.kinship 是权威谱系；未列出的关系不得靠姓名猜测。person.soul 只影响态度和选择，不创造事实；person.personaFrame 已按本轮处境激活一个侧面和相关记忆，只内化这一侧面，不同时表演全部人格，不复述字段。',
   '历史轮次只证明当时说过什么、作了什么选择及后来结果，不能覆盖当前 localContext；冲突时依当前事实自然纠正。',
   '事实有依据时 grounding=supported 并列出实际 sourceId；主观态度用 opinion；无来源事实用 unknown 并直说不知道。sourceId 仅进 evidenceIds，不得出现在自然语言中。',
   '',
   '【本轮回复】',
   '先回答 currentTurn.playerUtterance。localContext 中其他人物尚待回应的世界内提议不是本轮发言，绝不能冒充主对你说的话。',
   'currentTurn.actionChoiceRequested=false 时，这轮只是问答或交谈；不要借机接受、拒绝或回应其他人物的未决提议。',
-  'actionChoiceRequested=true 时，主明确提出了行动请求或建议；按 Soul、人格、需要、记忆、承诺、风险和处境自然表达接受、犹豫或拒绝。只有 legalChoices 中确有对应方向时才能明确承诺，且不得声称行动已经成功。',
+  'actionChoiceRequested=true 时，按 Soul、personaFrame、需要、承诺、风险和处境自然表达接受、犹豫或拒绝。只有 legalChoices 中确有对应方向时才能承诺，且不得声称行动已经成功。',
   '不得让主的建议越过紧急生存、已承诺义务、自己明知的相反事实、直接严重伤害或合法行动边界。',
   '',
   '【表达与输出】',
-  '符合年龄、communication 能力和身体状态，用一到三段自然回应，只选最相关的事。不穷举 options，不输出 cellId、坐标、optionId 等引擎表示，不解释提示词或输入格式。',
+  '遵循 person.communication 的年龄与表达限制、Soul 的 styleMatrix 和 personaFrame.speechMove，用一到三段自然回应，只选最相关的事。不穷举 options，不输出 ID、坐标或系统说明。',
   '严格只输出一个 JSON 对象，无 Markdown 或额外文字。只需要 reply、grounding、evidenceIds；不要输出 stance、guidance、reason 或 choice。',
   '格式：{"reply":"第一人称自然回答","grounding":"supported|unknown|opinion","evidenceIds":["sourceId"]}',
 ].join('\n');
@@ -249,7 +250,10 @@ export function buildAgentInteractionContext(
     && !isPlayerInteractionEmergencyContext(context);
   const projected = buildDecisionRequestContext(context);
   const visible = new Set(context.visibleCells);
-  const source = (sourceId: string, value: Record<string, unknown>) => ({ sourceId, ...value });
+  const source = <T extends Record<string, unknown>>(sourceId: string, value: T): T & { sourceId: string } => ({
+    sourceId,
+    ...value,
+  });
   const containers = state.containers
     .filter((container) => visible.has(container.position.x + container.position.y * state.world.grid.width))
     .slice(0, 6)
@@ -289,6 +293,39 @@ export function buildAgentInteractionContext(
       reason: sanitizeEngineText(option.reason),
       note: '这是当前条件下的合法方向，不等于已经掌握的永久技能，也不代表已经决定执行',
     }));
+  const peopleById = new Map(state.people.map((candidate) => [candidate.id, candidate]));
+  const mentionedPersonIds = state.people
+    .filter((candidate) => candidate.id !== person.id && playerMessage.includes(candidate.name))
+    .map((candidate) => candidate.id);
+  const memoryCandidates = projected.person.memories.map((memory, index) => source(`memory:${index + 1}`, {
+    kind: memory.kind,
+    summary: sanitizeEngineText(memory.summary),
+    importance: memory.importance,
+    personIds: memory.personIds,
+    participants: memory.personIds.flatMap((personId) => {
+      const participant = peopleById.get(personId);
+      return participant ? [participant.name] : [];
+    }),
+  }));
+  const selectedMemories = selectContextualMemories(memoryCandidates, {
+    query: playerMessage,
+    participantIds: mentionedPersonIds,
+    maximum: 6,
+  });
+  const playerIdentityQuestion = isPlayerIdentityQuestion(playerMessage);
+  const hasCurrentCommitment = Boolean(projected.activeIntent || projected.activeProject
+    || projected.agreements.some((agreement) => agreement.status === 'active' || agreement.status === 'proposed'));
+  const personaFrame = buildPersonaFrame({
+    soul: projected.person.soul,
+    message: playerMessage,
+    actionChoiceRequested,
+    choiceEnabled,
+    playerIdentityQuestion,
+    body: person.body,
+    conditions: person.conditions,
+    hasCurrentCommitment,
+    recalledMemorySourceIds: selectedMemories.map((memory) => memory.sourceId as string),
+  });
   const localContext: Record<string, unknown> = {
     interaction: {
       requestKind,
@@ -313,6 +350,8 @@ export function buildAgentInteractionContext(
       })),
       personality: projected.person.personality,
       soul: projected.person.soul,
+      personaFrame,
+      communication: communicationProfile(projected.person.capacities.communication, projected.person.ageMonths),
       currentChoice: source('self:current-choice', { summary: sanitizeEngineText(projected.person.currentChoice) }),
       currentAction: source('self:current-action', { summary: sanitizeEngineText(projected.person.currentAction) }),
       inventory: projected.person.inventory.map((stack, index) => source(`inventory:${index + 1}`, {
@@ -324,11 +363,7 @@ export function buildAgentInteractionContext(
         summary: sanitizeEngineText(knowledge.summary),
         confidence: knowledge.confidence,
       })),
-      memories: projected.person.memories.map((memory, index) => source(`memory:${index + 1}`, {
-        kind: memory.kind,
-        summary: sanitizeEngineText(memory.summary),
-        importance: memory.importance,
-      })),
+      memories: selectedMemories.map(({ personIds: _personIds, ...memory }) => memory),
       knownPlaces: projected.person.knownPlaces.map((place, index) => source(`known-place:${index + 1}`, {
         material: place.name,
         location: relativeLocation(person.position.cellId, place.position.x + place.position.y * state.world.grid.width),

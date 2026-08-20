@@ -192,6 +192,49 @@ try {
   const sharedTimelineHash = manifest.timelineChunkHashes[0];
   const firstLiveRootHash = sessionManifest.hash;
 
+  const originalLoadChunk = store.loadChunk.bind(store);
+  let timelineBlobReads = 0;
+  store.loadChunk = (hash) => {
+    if (hash === sharedTimelineHash) timelineBlobReads += 1;
+    return originalLoadChunk(hash);
+  };
+  const lazyLoaded = store.loadLiveSession('live-run');
+  assert.equal(timelineBlobReads, 0, '恢复 shell 时不得读取 timeline BLOB');
+  const lazyReference = lazyLoaded.session.branches.get('main').snapshots.get(3).data;
+  assert.equal(lazyReference.__elandSessionChunkV2, sharedTimelineHash);
+  const expectedTimelineData = Buffer.from(
+    database.prepare('SELECT data FROM chunks WHERE hash = ?').get(sharedTimelineHash).data,
+  );
+  assert.deepEqual(store.resolveTimelineChunk(lazyReference), expectedTimelineData);
+  assert.equal(timelineBlobReads, 1, 'resolver 应只读取请求的单个 timeline BLOB');
+  store.loadChunk = originalLoadChunk;
+
+  const newTimelineData = brotliCompressSync(serialize({
+    month: 4,
+    checkpointTag: 'new-buffer-among-old-references',
+  }));
+  lazyLoaded.session.branches.get('main').snapshots.set(4, {
+    kind: 'delta',
+    data: newTimelineData,
+  });
+  store.saveLiveSession(lazyLoaded);
+  const mixedSnapshots = lazyLoaded.session.branches.get('main').snapshots;
+  assert.equal(mixedSnapshots.get(3).data.__elandSessionChunkV2, sharedTimelineHash);
+  assert.equal(
+    typeof mixedSnapshots.get(4).data.__elandSessionChunkV2,
+    'string',
+    '事务提交后新 Buffer 应原位替换为 hash ref',
+  );
+  assert.deepEqual(store.loadLiveSession('live-run'), lazyLoaded, '旧 ref + 新 Buffer 重存内容应一致');
+  assert.deepEqual(store.resolveTimelineChunk(mixedSnapshots.get(4).data), newTimelineData);
+  mixedSnapshots.delete(4);
+  store.saveLiveSession(lazyLoaded);
+  assert.equal(
+    sessionChunkCount(database),
+    chunksAfterSecondLiveSave,
+    '移除混合测试块后应回收其 timeline/shell/manifest',
+  );
+
   const firstUpdate = managedLive(recoverySnapshot({
     month: 4,
     savedAt: 1_700_000_000_010,

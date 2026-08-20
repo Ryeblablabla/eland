@@ -61,7 +61,9 @@ interface SocietyProjectionLookup extends StateLookup {
 function stateLookup(state: SimulationState): StateLookup {
   return {
     peopleById: new Map(state.people.map((person) => [person.id, person])),
-    intentsById: new Map(state.intents.map((intent) => [intent.id, intent])),
+    intentsById: new Map(state.intents
+      .filter((intent) => intent.status === 'active')
+      .map((intent) => [intent.id, intent])),
     animalsById: new Map(state.world.animals.map((animal) => [animal.id, animal])),
     dropsById: new Map(state.world.drops.map((drop) => [drop.id, drop])),
     containersById: new Map(state.containers.map((container) => [container.id, container])),
@@ -352,7 +354,7 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
     tickPath: [...person.position.tickPath],
     state: personStateOf(person),
     doing: person.currentActionText,
-    ...(person.activeIntentId ? { activeIntentId: person.activeIntentId } : {}),
+    ...(active ? { activeIntentId: active.id } : {}),
     sex: person.sex,
     lifespanMonths: person.lifespanMonths,
     generation: person.generation,
@@ -461,7 +463,7 @@ export function toSocietyState(state: SimulationState): SocietyState {
       sourceEventIds: [...structure.sourceEventIds],
       materialIds: [...structure.materialIds],
     })),
-    intents: state.intents.map((intent) => {
+    intents: state.intents.filter((intent) => intent.status === 'active').map((intent) => {
       const person = lookup.peopleById.get(intent.ownerId);
       return {
         id: intent.id, ownerId: intent.ownerId, summary: intent.summary,

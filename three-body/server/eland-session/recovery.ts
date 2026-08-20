@@ -5,6 +5,8 @@ import type { BranchTimeline } from './timeline';
 
 export interface ElandSessionRecoverySnapshot {
   schemaVersion: 1;
+  /** New snapshots guarantee that the active timeline head exactly matches latestState. */
+  timelineHeadComplete?: true;
   savedAt: number;
   runId: string;
   civilizationId: number;
@@ -86,6 +88,7 @@ export function createRecoverySnapshot(input: {
 }): ElandSessionRecoverySnapshot {
   return {
     schemaVersion: 1,
+    timelineHeadComplete: true,
     savedAt: input.savedAt,
     runId: input.runId,
     civilizationId: input.civilizationId,

@@ -142,10 +142,6 @@
   text-align: center;
 }
 
-.new-world h1 {
-  margin-top: 8px;
-}
-
 .figure-eight {
   display: block;
   width: min(720px, 100%);
@@ -266,13 +262,6 @@
   transform: none;
 }
 
-.immersive-hint {
-  margin-top: 20px !important;
-  color: var(--ui-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-
 .save-manager {
   display: grid;
   width: min(820px, calc(100vw - 32px));
@@ -281,18 +270,6 @@
   min-height: 0;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: 18px;
-}
-
-.save-manager h1 {
-  margin-top: 8px;
-}
-
-.save-manager header > p:last-child {
-  max-width: 620px;
-  margin-top: 6px;
-  color: var(--ui-label-secondary);
-  font-size: 14px;
-  line-height: 20px;
 }
 
 .save-manager__create {
@@ -574,7 +551,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 24px;
   padding-left: 32px;
   border-left: 0.5px solid rgba(255, 255, 255, 0.12);
@@ -587,9 +564,7 @@
   gap: 16px;
 }
 
-.civilization-index > header p,
-.civilization-index > header > span,
-.civilization-index__note {
+.civilization-index > header p {
   color: var(--ui-label-tertiary);
   font-size: 12px;
   line-height: 18px;
@@ -601,12 +576,6 @@
   font-size: 18px;
   font-weight: 500;
   line-height: 26px;
-}
-
-.civilization-index > header > span {
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--ui-fill-1);
 }
 
 .civilization-index__body {
@@ -858,11 +827,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.civilization-index__note {
-  align-self: end;
-  font-variant-numeric: tabular-nums;
-}
-
 .civilization-index--empty {
   align-content: center;
   color: var(--ui-label-tertiary);
@@ -935,14 +899,6 @@
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
-}
-
-.model-settings header > p:last-child {
-  max-width: 520px;
-  margin-top: 4px;
-  color: var(--ui-label-secondary);
-  font-size: 14px;
-  line-height: 20px;
 }
 
 .model-settings__loading,
@@ -1131,7 +1087,6 @@
   display: none;
 }
 
-.model-settings__advanced summary small,
 .model-settings__advanced summary::after {
   color: var(--ui-label-tertiary);
   font-size: 12px;
@@ -1279,12 +1234,6 @@
   stroke-width: 1.8px;
 }
 
-.model-field small {
-  color: var(--ui-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-
 .model-settings__endpoints {
   display: grid;
   gap: 12px;
@@ -1343,10 +1292,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 18px;
-}
-
-.model-settings__source small {
-  font-family: var(--font-ui);
 }
 
 .model-settings__feedback {
@@ -1488,11 +1433,6 @@
     gap: 12px;
   }
 
-  .save-manager header > p:last-child {
-    font-size: 13px;
-    line-height: 18px;
-  }
-
   .save-manager__create {
     padding: 12px;
   }
@@ -1627,10 +1567,6 @@
   .civilization-index__legend dd strong {
     font-size: 11px;
     text-align: left;
-  }
-
-  .civilization-index__note {
-    display: none;
   }
 
   .history-view__main {

@@ -59,7 +59,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；每月天气叠加在纪元之上。</span></li>
             <li><strong>空间与物质</strong><span>84 × 52 × 12 体素、通行、可达位置、掉落物和材料响应。</span></li>
             <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；普通 Water 不能被猜成动力源。这只是受限机械网络，不代表电力、信号、计算或信息时代。</span></li>
-            <li><strong>身体与人口</strong><span>健康、水分、营养、冷热、伤病、衰老、妊娠、9–15 个月产后恢复、出生与死亡；人口接近 50 时受孕机会递减，超过承载能力后资源消耗继续上升。</span></li>
+            <li><strong>身体与人口</strong><span>健康、水分、营养、冷热、伤病、衰老、妊娠、9–15 个月产后恢复、出生与死亡；人口接近 50 时受孕机会递减，超过承载能力后资源消耗继续上升。出生始终先生成种子可回放的保底姓名；模型演进可在提交前提议 givenName，但姓氏、顺序、字符、重名与失败回退由本地规则控制。</span></li>
             <li><strong>文明终局</strong><span>只有月末无存活者，或运行达到显式 endpoint 时结束。全员脱水休眠不是终局；环境、身体代价、纪元切换与恢复仍继续推进。</span></li>
             <li><strong>生态</strong><span>植物生长、动物迁移 / 捕猎 / 繁殖，以及风暴、干旱、冰雪和火。</span></li>
           </ul>
@@ -74,7 +74,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>能力证据</strong><span>observed 只证明看见；accessible portable 只含本人背包和可取得掉落物；placed facility 必须是世界中真实放置、记忆后重新核对仍在场的设施。旁人背包不能冒充本人工具或公共设施。</span></li>
             <li><strong>工具升级与采用</strong><span>生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力。本人近期真实生产劳动可提高可达高级地面工具与交换报价的价值；他人背包工具只能经同格自愿交换，且持有者交易后必须保留原有最高生产能力。移动后的采集、收获与捕猎会重新选择本人当前实际效用最高的适用工具。</span></li>
             <li><strong>年龄与能力</strong><span>未满 1 岁依赖亲代；1–11 岁可自主跟随、取水、拾取、学习和简单劳动，但普通移动不得逐格漂出当前可见亲代的本地照护半径，严重压力时只可走向当前可见亲代；12–15 岁可生产及协作既有项目；16 岁起才有完整规划能力。</span></li>
-            <li><strong>身体、身份与人格</strong><span>身体储备、状态限制、HEXACO 六维、控制 / 地位敏感度、亲缘认识和共同体职责；父母、子女与兄弟姐妹从 geneticParents 稳定投影，不挤占可衰减的事件记忆。经历只能通过带来源证据缓慢改变人格。baseline 人格和稳定身份还会派生跨轮一致的 Soul，可参与模型在合法候选内的个人取舍，但不创造候选或事实。</span></li>
+            <li><strong>身体、身份与人格</strong><span>身体储备、状态限制、HEXACO 六维、控制 / 地位敏感度、亲缘认识和共同体职责；父母、子女与兄弟姐妹从 geneticParents 稳定投影，不挤占可衰减的事件记忆。经历只能通过带来源证据缓慢改变人格。baseline 人格和稳定身份还会派生跨轮一致的 Soul v2：稳定 styleMatrix 与危险、自主、亲近、承诺、未知五个情境侧面可参与合法候选内的个人取舍，但不创造候选或事实。</span></li>
             <li><strong>当前意图</strong><span>一个 BDI 执行焦点；进度、尽责性、项目压力与个人成功预期维持承诺惯性，普通竞争候选不会让它每刻度重抽。其他压力不会同时变成并行动作。</span></li>
           </ul>
           <code>domain/person.ts · domain/person-soul.ts · domain/memory.ts · application/action-options.ts</code>
@@ -131,7 +131,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>文明指数</strong><span>人口、疆域 / 设施、科技、社会与历史的事后投影。</span></li>
             <li><strong>能力里程碑</strong><span>从事件证据链识别实践、阶段与复杂性，不向人物发奖励。</span></li>
             <li><strong>事实报告</strong><span>运行摘要、转折点、毁灭原因和文明编号都来自真实历史。记录完整链还必须通过同一 basis 的身份、项目、payload / codebook、精确取得、可靠阅读、实验产物与 +18、顺序及项目进度守卫；外部 exact-lineage 交付或既有已读可按真实状态继续，但不补造阶段、不计完整链。</span></li>
-            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul 保持同一声音；规则动作只投影结构化 speechAct，不提供可显示原话。只有成功模型文本才绑定 completed voice communicate ActionFact 进入 GameFrame；失败时保留沟通事实但不显示文字气泡。</span></li>
+            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul 保持同一声音；每轮只激活一个最相关情境侧面，记忆按话题与真实听者筛选，年龄 / communication 能力限制句式。speech-only 还从人格、控制敏感度、身体压力、关系及有源冲突派生 warm / familiar / guarded / blunt / confrontational 姿态：命令式短句不要求礼貌词，敌意只由真实伤害、背约或拒绝后重复施压开放。规则动作只投影结构化 speechAct，不提供可显示原话。只有成功模型文本才绑定 completed voice communicate ActionFact 进入 GameFrame；失败时保留沟通事实但不显示文字气泡。</span></li>
             <li><strong>体素装饰</strong><span>把已有建筑、动作、天气和身体事实映射成画面，不写回世界。</span></li>
           </ul>
           <code>domain/civilization-index.ts · projection/ · voxelKits.ts</code>
@@ -298,7 +298,7 @@ const RULES_PAGE_MARKUP = `
       </div>
       <aside class="model-sidecar">
         <span class="sidecar-line" aria-hidden="true"></span>
-        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型可以回应玩家、重选少量合法方向，并自主表达已发生的说话，但不能直接写入世界</strong><p>三条第一人称路径共用由人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建的只读 Soul；它稳定口吻并影响行动取舍，但不提供新事实、创造候选或绕过规则。主动对话先用 agent-interaction-reply-v1 生成可见回复；只有服务端确认玩家明确提出行动，才用隐藏的 agent-interaction-intent-v1 从原话、实际回复和合法选项中提取承诺。隐藏阶段失败不丢回复，只有明确匹配且通过本地校验的 accept + choice 留下待落实选择；下一月只按稳定 key 本地唯一重配，不再让模型重新决定。</p></div>
+        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型可以回应玩家、重选少量合法方向、自主表达已发生的说话，并为新生儿提名，但不能绕过本地规则</strong><p>三条第一人称路径共用由人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建的只读 Soul v2；styleMatrix 固定表层声音，scene facets 让每轮只激活与处境最相关的一面。主动对话由服务器生成 personaFrame，并按话题 / 点名对象筛选有源记忆；主只是必须回应的稳定身份，不自动意味着信任或服从。后代取名只接收模型 givenName，姓氏继承、顺序、字符、重名与回退由 naming.ts 验收，来源写入出生事实，失败保留种子姓名。明确行动请求仍用隐藏意图协议提取承诺，合法 choice 下一月只按稳定 key 本地唯一重配。</p></div>
       </aside>
     </section>
 
@@ -312,14 +312,15 @@ const RULES_PAGE_MARKUP = `
         <article><strong>人物选项</strong><code>application/action-options.ts</code><span>局部感知、合法可供性与结构化失败重试 basis</span></article>
         <article><strong>因果 BDI</strong><code>application/cognition/** · domain/cognition.ts</code><span>动态需要、人格 / 记忆 / 结果后验门控与意图持续</span></article>
         <article><strong>人格学习</strong><code>domain/personality.ts</code><span>HEXACO 初始化、行动证据、跨情境整合与慢速变化</span></article>
-        <article><strong>人物 Soul</strong><code>domain/person-soul.ts</code><span>baseline 人格与稳定身份到第一人称内在声音的确定性只读派生值</span></article>
+        <article><strong>人物 Soul</strong><code>domain/person-soul.ts · server/persona-context.ts</code><span>baseline 人格到稳定 styleMatrix / scene facets，以及按处境、话题和听者选择的只读 personaFrame 与记忆包</span></article>
         <article><strong>生命周期</strong><code>domain/life-stage.ts · application/age-planning.ts</code><span>年龄门禁、受限劳动与婴儿移动归属</span></article>
         <article><strong>纪元预言</strong><code>domain/era-prediction.ts</code><span>历史估计、可信听众与休眠唤醒边界</span></article>
         <article><strong>人口承载</strong><code>domain/population-capacity.ts</code><span>受孕概率衰减与超载资源竞争</span></article>
         <article><strong>本地排序</strong><code>application/rule-planner.ts</code><span>硬优先级、正向阈值、继续 / 中断 / 改计划</span></article>
         <article><strong>模型重选</strong><code>server/backend-decider.ts · model-decision-gateway.ts</code><span>关键上下文筛选、协议请求、候选 ID 归一化与失败回退</span></article>
-        <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>可见回复与隐藏意图两阶段、来源约束的语义事实、本地合法 choice 与结果追踪</span></article>
-        <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul 与动态语境、speech-only 批处理；规则不提供可见或隐藏原话模板</span></article>
+        <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · server/persona-context.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>可见回复与隐藏意图两阶段、情境人格帧、定向记忆、表达能力、来源约束事实与本地合法 choice</span></article>
+        <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul、关系姿态帧与 speech-only 批处理；直接表达无需礼貌词，敌意必须有冲突证据</span></article>
+        <article><strong>后代取名</strong><code>naming.ts · server/newborn-naming-service.ts</code><span>确定性保底姓名、父母与处境提名上下文、本地 givenName 验收、出生事实来源与失败回退</span></article>
         <article><strong>持续项目</strong><code>application/project-options.ts · application/local-material-evidence.ts · domain/project-material-request.ts</code><span>压力、能力证据、局部去重、材料请求、物流、试验、协作与完成</span></article>
         <article><strong>水流机械链</strong><code>domain/mechanical-power.ts · application/mechanical-power-options.ts · domain/action-executor.ts</code><span>显式有向水流、本人观察、冻结工地、严格拓扑、commissioning 故障、来源绑定维修与维修后运行</span></article>
         <article><strong>耐久记录</strong><code>application/record-use-options.ts · domain/action-executor.ts · server/evolution-artifacts.ts</code><span>写入发布、载体守恒、读者自有项目、精确来源复用与严格完整链审计</span></article>

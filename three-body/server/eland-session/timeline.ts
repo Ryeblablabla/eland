@@ -4,6 +4,11 @@ import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } 
 import type { SimulationState, WorldEvent } from '../../src/game/eland/simulation';
 import { WORLD_CELL_COUNT, setVoxel } from '../../src/game/eland/world/grid';
 import type { CivilizationIndexHistoryPoint, GameFrame } from '../../src/game/societyContract';
+import {
+  resolveSessionTimelineChunk,
+  type SessionTimelineChunkData,
+  type SessionTimelineChunkResolver,
+} from '../session-snapshot-codec';
 import type { AgentConversationTurn } from './conversation-coordinator';
 
 type SnapshotState = Omit<SimulationState, 'world'>;
@@ -16,7 +21,7 @@ export type StoredFrame = Omit<GameFrame, 'society'> & {
 
 export interface SimulationCheckpoint {
   kind: 'checkpoint';
-  data: Buffer;
+  data: SessionTimelineChunkData;
 }
 
 interface SimulationDeltaPayload {
@@ -29,7 +34,7 @@ interface SimulationDeltaPayload {
 
 export interface SimulationDelta {
   kind: 'delta';
-  data: Buffer;
+  data: SessionTimelineChunkData;
 }
 
 export type StoredSnapshot = SimulationCheckpoint | SimulationDelta;
@@ -59,8 +64,15 @@ function pack<T>(value: T): Buffer {
   });
 }
 
-function unpack<T>(data: Buffer): T {
-  return deserialize(brotliDecompressSync(data)) as T;
+function unpack<T>(
+  data: SessionTimelineChunkData,
+  resolver?: SessionTimelineChunkResolver,
+): T {
+  if (!Buffer.isBuffer(data) && !resolver) {
+    throw new Error('会话时间线数据块尚未加载，且没有可用的 SQLite resolver');
+  }
+  const resolved = Buffer.isBuffer(data) ? data : resolveSessionTimelineChunk(data, resolver!);
+  return deserialize(brotliDecompressSync(resolved)) as T;
 }
 
 export function checkpoint(state: SimulationState): SimulationCheckpoint {
@@ -109,8 +121,12 @@ export function deltaBetween(previous: SnapshotBaseline, state: SimulationState)
   };
 }
 
-function applyDelta(state: SimulationState, delta: SimulationDelta): SimulationState {
-  const payload = unpack<SimulationDeltaPayload>(delta.data);
+function applyDelta(
+  state: SimulationState,
+  delta: SimulationDelta,
+  resolver?: SessionTimelineChunkResolver,
+): SimulationState {
+  const payload = unpack<SimulationDeltaPayload>(delta.data, resolver);
   for (let offset = 0; offset < payload.voxelIndices.length; offset += 1) {
     const index = payload.voxelIndices[offset];
     const cell = index % WORLD_CELL_COUNT;
@@ -176,10 +192,11 @@ export function inheritedSnapshot(
   branches: Map<string, BranchTimeline>,
   timeline: BranchTimeline,
   month: number,
+  resolver?: SessionTimelineChunkResolver,
 ): SimulationState | undefined {
   if (month < timeline.forkAtMonth && timeline.parentBranchId) {
     const parent = branches.get(timeline.parentBranchId);
-    return parent ? inheritedSnapshot(branches, parent, month) : undefined;
+    return parent ? inheritedSnapshot(branches, parent, month, resolver) : undefined;
   }
   if (!timeline.snapshots.has(month)) return undefined;
   const months = [...timeline.snapshots.keys()].filter((candidate) => candidate <= month).sort((a, b) => a - b);
@@ -188,8 +205,8 @@ export function inheritedSnapshot(
   let state: SimulationState | undefined;
   for (const candidate of months.slice(checkpointOffset)) {
     const snapshot = timeline.snapshots.get(candidate)!;
-    if (snapshot.kind === 'checkpoint') state = unpack<SimulationState>(snapshot.data);
-    else if (state) state = applyDelta(state, snapshot);
+    if (snapshot.kind === 'checkpoint') state = unpack<SimulationState>(snapshot.data, resolver);
+    else if (state) state = applyDelta(state, snapshot, resolver);
   }
   return state;
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -56,7 +57,7 @@ try {
   process.env.THREEBODY_DATA_DIR = path.join(temporaryDirectory, 'global-database');
   process.chdir(temporaryDirectory);
 
-  const { ElandSessionManager } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { ElandSession, ElandSessionManager } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const managerOptions = {
     databaseDir: path.join(temporaryDirectory, 'session-database'),
     recoveryTtlMs: 60_000,
@@ -85,11 +86,68 @@ try {
   assert.equal(liveTimeline.snapshots.get(11)?.kind, 'delta', '检查点前一月应走增量回放路径');
   assert.equal(liveTimeline.snapshots.get(25)?.kind, 'delta', '检查点后一月应走增量回放路径');
 
+  // Recreate the persisted shape without SQLite so resolver calls are exactly
+  // observable. Recovery itself must not touch any historical BLOB, and a
+  // normal annual replay window must read one checkpoint plus at most 11 deltas.
+  const chunkReferenceKey = '__elandSessionChunkV2';
+  const lazyChunks = new Map();
+  let chunkSequence = 0;
+  const lazyBranches = new Map([...liveSnapshot.branches.entries()].map(([branchId, timeline]) => [
+    branchId,
+    {
+      ...timeline,
+      snapshots: new Map([...timeline.snapshots.entries()].map(([month, snapshot]) => {
+        const hash = createHash('sha256')
+          .update(`${branchId}:${month}:${chunkSequence++}`)
+          .digest('hex');
+        lazyChunks.set(hash, snapshot.data);
+        return [month, { ...snapshot, data: { [chunkReferenceKey]: hash } }];
+      })),
+    },
+  ]));
+  let resolvedChunkCount = 0;
+  const lazySession = ElandSession.restore(
+    { ...liveSnapshot, branches: lazyBranches },
+    liveSnapshot.runId,
+    (reference) => {
+      resolvedChunkCount += 1;
+      const data = lazyChunks.get(reference[chunkReferenceKey]);
+      assert.ok(Buffer.isBuffer(data), 'resolver 必须只返回已持久化的压缩时间线块');
+      return data;
+    },
+  );
+  assert.equal(resolvedChunkCount, 0, '普通恢复不得读取历史 checkpoint/delta BLOB');
+  const lazyRecovery = lazySession.recoverySnapshot();
+  const lazyTimeline = lazyRecovery?.branches.get(lazyRecovery.activeBranchId);
+  assert.equal(lazyTimeline?.snapshots.get(25)?.kind, 'delta', '恢复不得把有效 head delta 改写为完整 checkpoint');
+  assert.equal(
+    typeof lazyTimeline?.snapshots.get(25)?.data?.[chunkReferenceKey],
+    'string',
+    '恢复后时间线应继续持有轻量 hash ref',
+  );
+  assertReplayFrame(lazySession.frameAt(23), frames.get(23), '懒加载回放第 23 月');
+  assert.equal(resolvedChunkCount, 12, '第 23 月只应读取第 12 月 checkpoint 与后续 11 个 delta');
+  const replayAgentId = frames.get(23)?.society.agents[0]?.id;
+  assert.ok(replayAgentId, '懒加载人物历史测试需要一个可观察人物');
+  assert.ok(lazySession.agentHistory(replayAgentId, 23), '人物历史应复用同月重建状态');
+  assert.equal(resolvedChunkCount, 12, '同月 frameAt/agentHistory 应复用唯一重建缓存');
+  const lazyFork = lazySession.seek(13);
+  assert.ok(lazyFork, '懒时间线应能从第 13 月创建分支');
+  assert.equal(resolvedChunkCount, 14, 'seek 应只重建一次：第 12 月 checkpoint 加第 13 月 delta');
+
   for (const [month, expected] of frames) {
     assertReplayFrame(session.frameAt(month), expected, `内存回放第 ${month} 月`);
   }
 
   assert.equal(manager.persist(runId), true, '实时会话必须成功持久化到隔离恢复目录');
+  const persistedInPlace = session.recoverySnapshot();
+  const persistedTimeline = persistedInPlace?.branches.get(persistedInPlace.activeBranchId);
+  assert.equal(
+    typeof persistedTimeline?.snapshots.get(25)?.data?.[chunkReferenceKey],
+    'string',
+    '首次持久化后活动会话应以 hash ref 替换历史 Buffer',
+  );
+  assertReplayFrame(session.frameAt(23), frames.get(23), '新建会话持久化后仍应能懒加载历史帧');
   manager.close();
   const restoredManager = new ElandSessionManager(managerOptions);
   assert.equal(restoredManager.size(), 0, '启动时不应把所有休眠会话预先水合进 Worker');

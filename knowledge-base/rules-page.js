@@ -294,7 +294,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>记录复用</strong><span>新候选只服务读者本人活跃项目的真实技术缺口，只看本人背包与可见公共地面记录，并冻结 exact source。地面正常链为 move → acquire → read → experiment：move 不计取得，只有精确 drop 成功转入本人背包才算 acquire，来源消失或替换时不换源。</span></li>
             <li><strong>制度</strong><span>多人项目、重复角色、授权与分配闭环改变未来行为时才成立。</span></li>
           </ul>
-          <code>application/social-options.ts · application/record-use-options.ts · domain/social-repetition.ts · domain/agreement.ts · domain/governance.ts</code>
+          <code>application/social-options.ts · application/record-use-options.ts · domain/social-repetition.ts · domain/agreement.ts · domain/shared-living.ts · domain/governance.ts</code>
         </details>
 
         <details class="rule-branch observer-branch" data-tone="observer" open>
@@ -313,7 +313,7 @@ const RULES_PAGE_MARKUP = `
 
     <section class="rules-section" id="decisionTree" aria-labelledby="decisionTreeTitle">
       <div class="section-heading">
-        <div><span class="section-no">02</span><div><span class="section-kicker">DECISION TREE</span><h2 id="decisionTreeTitle">每个规划刻度，人物怎样决定</h2></div></div>
+        <div><span class="section-no">03</span><div><span class="section-kicker">DECISION TREE</span><h2 id="decisionTreeTitle">每个规划刻度，人物怎样决定</h2></div></div>
         <p>决定不是一次性抽签。稳定意图默认延续；只有紧急反射、必须回应、履约、真实的新机会、客观停滞，或人物在自然对话中亲自选定的合法方向能改变焦点。界面不要求玩家区分聊天与建议；服务端先保守判定 actionChoiceRequested。第一阶段只生成并校验角色回复，模型误带旧版行动字段不会再拖垮回复；纯问题不暴露他人的 required response，也不触发隐藏意图调用。明确行动请求才用第二个 prompt 从已生成回复中提取意图，失败时静默保留回复；只有明确承诺且通过本地校验的 accept + choice 进入行动链。下一月只做本地稳定 key 重配，不再让模型重新决定。</p>
       </div>
 
@@ -377,31 +377,31 @@ const RULES_PAGE_MARKUP = `
           <div class="decision-tree-scroll wide-tree-scroll">
             <ol class="logic-tree">
               <li>
-                <article class="logic-node" data-kind="condition"><span>P1</span><h4>本刻度需要重新审视吗？</h4><ul><li>没有当前意图，或有待回应 / 待履约协议；有效生殖窗口可继续或撤回，但同一伴侣对当月完成一次尝试后不再重复采样。</li><li>tick 1：健康 &lt;35，水分 / 营养 &lt;28，或冷热 / 伤病 ≥2 级。</li><li>状态目标已过期；或距上次进展 ≥2 个月且目标未满足。</li><li>另行探测：月初生活复核、真实 preview 确认匹配项目缺口的记录、技术示范请求、需回应的真实对话，以及本人在一次玩家建议回复中已经选定、等待本地重验的合法方向。</li><li>完整的可选重规划每人每月最多一次；15 个行动刻度仍全部执行。只有真实记录机会、紧急生存、履约、技术示范或本月新收到且已在只读 overlay 中可解析的 required proposal / 对话，才能在后续刻度再次唤醒；required response 始终优先。</li></ul></article>
+                <article class="logic-node" data-kind="condition"><span>P1</span><h4>本刻度需要重新审视吗？</h4><ul><li>没有当前意图，或有待回应 / 待履约协议；有效生殖窗口可继续或撤回，但同一伴侣对当月完成一次尝试后不再重复采样。</li><li>共同生活协议只在剩余期限已不足以补齐 12 个生活月时形成返回义务；目标是双方共知的固定生活区，不是同伴实时位置。</li><li>tick 1：健康 &lt;35，水分 / 营养 &lt;28，或冷热 / 伤病 ≥2 级。</li><li>状态目标已过期；或距上次进展 ≥2 个月且目标未满足。</li><li>另行探测：月初生活复核、真实 preview 确认匹配项目缺口的记录、技术示范请求、需回应的真实对话，以及本人在一次玩家建议回复中已经选定、等待本地重验的合法方向。</li><li>完整的可选重规划每人每月最多一次；15 个行动刻度仍全部执行。只有真实记录机会、紧急生存、履约、技术示范或本月新收到且已在只读 overlay 中可解析的 required proposal / 对话，才能在后续刻度再次唤醒；required response 始终优先。</li></ul></article>
                 <ol>
                   <li><span class="edge-label edge-no">否</span><article class="logic-node compact-node" data-kind="terminal"><span>CONTINUE</span><h4>不重新决策</h4><p>直接编译当前长期意图。</p></article></li>
                   <li><span class="edge-label edge-yes">是</span>
                     <article class="logic-node" data-kind="process"><span>P2</span><h4>在只读快照中编译候选</h4><p>输入只有可见格 / 人 / 动物 / 掉落物、本人记忆与知识、项目、协议、权限和当前意图。记录使用只检查本人拥有的活跃项目及真实技术缺口，载体来源限于本人背包与调用方已过滤的可见公共地面掉落物；不读他人背包、知识或意图，也不进入通用对话 follow-up。预览搜索路线和物流步骤不会打开真实 campaign 或改写项目；年龄门禁在每次编译时执行。相同结构失败 basis 在失败月起 0–6 月冷却，第 7 月恢复；新来源或目标、数量、人物、项目、记录、关系改变立即重开，required / fulfillment 绕过，旧自由文本无法还原 basis 时 fail-open。相似的可选社交不按固定月份删除，而在后续认知 appraisal 中评估重复成本。</p></article>
                     <ol>
-                      <li><span class="edge-label">候选已排序</span>
-                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>动态需要、个人经验与意图持续</h4><ul><li><b>NeedAgenda</b>：从当前身体、安全、照护、储备、能力、承诺、归属、自主与探究压力派生有界欲望，不把文明指数当奖励。</li><li><b>人格门控</b>：HEXACO 分别调节注意、风险、坚持、探索、社会接近与伤害抑制；不生成候选，也不绕过硬合法性。</li><li><b>个人经验</b>：同语义 ActionFact 的 Beta 后验给出成功预期、不确定度、努力与伤害；结构化情节记忆在社会行动中优先匹配同一目标人物，无位移 move 不学习。</li><li><b>候选 appraisal</b>：需要用概率并集，经验、人格、关系、重复、伦理、可行性和连续性用有语义的乘法门控；不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>BDI intention</b>：当前 Intent 是唯一执行焦点；普通候选不重抽，只有到期、急性需要、持续停滞或明显更强的不同方案才替换。项目 / HTN 编译下一步，领域层最终重验。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>可选模型重选</b>：实时模型只看合法候选和同一只读 cognition 投影，只能引用输入 ID；开局、危险和既定履约不进入重选，返回后仍再次校验 option、follow-up 与结构化立场。</li></ul></article>
+                      <li><span class="edge-label">候选已生成</span>
+                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>动态需要、个人经验与意图持续</h4><ul><li><b>硬优先级先行</b>：可感知的紧急休眠先于 required response，required response 又先于 fulfillment；若当前已经在执行回应或履约，新义务保留排队，不无条件打断。</li><li><b>NeedAgenda</b>：从当前身体、安全、照护、储备、能力、承诺、归属、自主与探究压力派生有界欲望，不把文明指数当奖励。</li><li><b>人格门控</b>：HEXACO 分别调节注意、风险、坚持、探索、社会接近与伤害抑制；不生成候选，也不绕过硬合法性。</li><li><b>个人经验</b>：同语义 ActionFact 的 Beta 后验给出成功预期、不确定度、努力与伤害；结构化情节记忆在社会行动中优先匹配同一目标人物，无位移 move 不学习。</li><li><b>候选 appraisal</b>：需要用概率并集，经验、人格、关系、重复、伦理、可行性和连续性用有语义的乘法门控；不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>BDI intention</b>：当前 Intent 是唯一执行焦点；普通候选不重抽，只有到期、急性需要、持续停滞或明显更强的不同方案才替换。项目 / HTN 编译下一步，领域层最终重验。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>可选模型重选</b>：实时模型只看合法候选和同一只读 cognition 投影，只能引用输入 ID；开局、危险和既定履约不进入重选，返回后仍再次校验 option、follow-up 与结构化立场。</li></ul></article>
                         <ol>
                           <li><span class="edge-label">检查意图</span>
                             <article class="logic-node" data-kind="condition"><span>P3</span><h4>已有当前意图？</h4><p>每人只有一个执行焦点；中断会保存可返回的父意图。</p></article>
                             <ol>
                               <li><span class="edge-label edge-no">没有</span>
-                                <article class="logic-node" data-kind="condition"><span>P4-A</span><h4>存在因果总票为正的合法候选？</h4><p>结构化提议、预测和教学不强配后续动作；只有生活对话与后续行动共享人物、项目或来源事实时才组合。</p></article>
+                                <article class="logic-node" data-kind="condition"><span>P4-A</span><h4>有候选跨过本人的 aspiration？</h4><p>选择 motivation ≥ aspiration 的最高候选。结构化提议、预测和教学不强配后续动作；只有生活对话与后续行动共享人物、项目或来源事实时才组合。</p></article>
                                 <ol>
                                   <li><span class="edge-label edge-yes">有</span><article class="logic-node compact-node" data-kind="action"><span>START</span><h4>创建新意图</h4><p>记录选项、目标与来源事实。</p></article></li>
-                                  <li><span class="edge-label edge-no">没有</span><article class="logic-node compact-node" data-kind="terminal"><span>IDLE</span><h4>保持空闲</h4><p>无候选，或所有候选都没有正向价值。</p></article></li>
+                                  <li><span class="edge-label edge-no">没有</span><article class="logic-node compact-node" data-kind="terminal"><span>IDLE</span><h4>保持空闲</h4><p>无合法候选，或所有候选都没有跨过本人当前行动阈值。</p></article></li>
                                 </ol>
                               </li>
                               <li><span class="edge-label edge-yes">已有</span>
-                                <article class="logic-node interrupt-node" data-kind="condition"><span>P4-B</span><h4>是否存在足以改变焦点的证据？</h4><ol><li><b>必须回应</b>：优先本人作答。</li><li><b>履约 / 职责</b>：履行已生效承诺。</li><li><b>生活复核</b>：具体关系候选存在，且生活压力 ≥ 项目压力 +10；紧急状态不走此分支。</li><li><b>记录使用</b>：读者本人项目的真实技术缺口与本人背包或可见公共地面的精确记录来源匹配，作为可返回父项目的子中断。</li><li><b>共同体延续</b>：与既有协作者重逢且有来源事实。</li><li><b>替换条件</b>：身体紧急、目标到期或恢复后的父意图仍连续 ≥2 月无进展。</li></ol></article>
+                                <article class="logic-node interrupt-node" data-kind="condition"><span>P4-B</span><h4>挑战者足以越过意图持续门槛？</h4><ol><li><b>优先义务</b>：紧急休眠、必须回应与履约在普通 BDI 竞争前处理；已经开始的优先义务先完成，新义务随后保留。</li><li><b>子中断</b>：回应、履约、生活复核或记录使用只有在父项目 / 返回上下文存在时保存可返回父意图。</li><li><b>生活复核</b>：具体关系候选先满足生活压力 ≥ 项目压力 +10，随后仍须成为跨过 aspiration 的挑战者。</li><li><b>意图惯性</b>：同项目最佳步骤直接继续；否则比较进度、尽责性、项目压力、成功后验、停滞和切换边际。</li><li><b>替换证据</b>：期限已过、急性身体 / 安全 / 照护需要、持续停滞，或不同挑战者明显强于当前承诺。</li></ol></article>
                                 <ol>
-                                  <li><span class="edge-label edge-yes">1–4</span><article class="logic-node compact-node" data-kind="action"><span>INTERRUPT</span><h4>创建可返回的子中断</h4><p>回应、履约、生活复核、记录使用，以及生存 / 照护 / 避护完成后返回父意图。</p></article></li>
-                                  <li><span class="edge-label edge-yes">5–6</span><article class="logic-node compact-node" data-kind="action"><span>REVISE</span><h4>改用当前最佳目标</h4><p>共同体机会、紧急、过期或停滞触发替换。</p></article></li>
-                                  <li><span class="edge-label edge-no">都不是</span><article class="logic-node compact-node" data-kind="terminal"><span>CONTINUE</span><h4>保持原意图</h4><p>不为“有新选项”做无意义改换。</p></article></li>
+                                  <li><span class="edge-label edge-yes">有返回上下文</span><article class="logic-node compact-node" data-kind="action"><span>INTERRUPT</span><h4>创建可返回的子中断</h4><p>回应、履约、生活复核、记录使用，以及生存 / 照护 / 避护完成后返回父意图。</p></article></li>
+                                  <li><span class="edge-label edge-yes">越过持续门槛</span><article class="logic-node compact-node" data-kind="action"><span>REVISE</span><h4>改用当前最佳目标</h4><p>期限、急性需要、停滞或明显更强的不同挑战者触发替换。</p></article></li>
+                                  <li><span class="edge-label edge-no">未越过 / 义务执行中</span><article class="logic-node compact-node" data-kind="terminal"><span>CONTINUE</span><h4>保持原意图</h4><p>继续同一目标，或先完成已经开始的优先义务。</p></article></li>
                                 </ol>
                               </li>
                             </ol>
@@ -457,7 +457,7 @@ const RULES_PAGE_MARKUP = `
 
     <section class="rules-section" id="authorityBoundary" aria-labelledby="authorityBoundaryTitle">
       <div class="section-heading compact-heading">
-        <div><span class="section-no">03</span><div><span class="section-kicker">AUTHORITY BOUNDARY</span><h2 id="authorityBoundaryTitle">谁能改变世界，谁只能解释世界</h2></div></div>
+        <div><span class="section-no">04</span><div><span class="section-kicker">AUTHORITY BOUNDARY</span><h2 id="authorityBoundaryTitle">谁能改变世界，谁只能解释世界</h2></div></div>
       </div>
       <div class="authority-flow">
         <article data-tone="world"><span>01 · FACT</span><strong>世界与领域规则</strong><p>唯一事实权威。裁决空间、物质、身体、关系、时间与后果。</p></article>
@@ -476,11 +476,11 @@ const RULES_PAGE_MARKUP = `
 
     <section class="rules-section source-section" id="ruleSources" aria-labelledby="ruleSourcesTitle">
       <div class="section-heading compact-heading">
-        <div><span class="section-no">04</span><div><span class="section-kicker">SOURCE MAP</span><h2 id="ruleSourcesTitle">这张图对应哪些当前源码</h2></div></div>
+        <div><span class="section-no">05</span><div><span class="section-kicker">SOURCE MAP</span><h2 id="ruleSourcesTitle">这张图对应哪些当前源码</h2></div></div>
         <p>解释当前行为时以可执行代码为准；设计文档用于说明边界与意图。</p>
       </div>
       <div class="source-grid">
-        <article><strong>月度主循环</strong><code>application/monthly-simulation.ts</code><span>固定 atMonth、15 tick、执行顺序、月初 / 月末结算与文明终局判定</span></article>
+        <article><strong>月度主循环</strong><code>application/simulation/month-boundary.ts · tick-planner.ts · tick-executor.ts</code><span>固定 atMonth、15 tick、执行顺序、月初 / 月末结算与文明终局判定</span></article>
         <article><strong>人物选项</strong><code>application/action-options.ts</code><span>局部感知、合法可供性与结构化失败重试 basis</span></article>
         <article><strong>因果 BDI</strong><code>application/cognition/** · domain/cognition.ts</code><span>动态需要、人格 / 记忆 / 结果后验门控与意图持续</span></article>
         <article><strong>人格学习</strong><code>domain/personality.ts</code><span>HEXACO 初始化、行动证据、跨情境整合与慢速变化</span></article>
@@ -488,11 +488,12 @@ const RULES_PAGE_MARKUP = `
         <article><strong>生命周期</strong><code>domain/life-stage.ts · application/age-planning.ts</code><span>年龄门禁、受限劳动与婴儿移动归属</span></article>
         <article><strong>纪元预言</strong><code>domain/era-prediction.ts</code><span>历史估计、可信听众与休眠唤醒边界</span></article>
         <article><strong>人口承载</strong><code>domain/population-capacity.ts</code><span>受孕概率衰减与超载资源竞争</span></article>
-        <article><strong>本地排序</strong><code>application/rule-planner.ts</code><span>硬优先级、正向阈值、继续 / 中断 / 改计划</span></article>
+        <article><strong>本地排序</strong><code>application/rule-planner.ts · application/cognition/bdi-deliberation.ts</code><span>硬优先级、aspiration、意图持续与继续 / 中断 / 改计划</span></article>
         <article><strong>模型重选</strong><code>server/backend-decider.ts · model-decision-gateway.ts</code><span>关键上下文筛选、协议请求、候选 ID 归一化与失败回退</span></article>
         <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · server/persona-context.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>可见回复与隐藏意图两阶段、情境人格帧、定向记忆、表达能力、来源约束事实与本地合法 choice</span></article>
         <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul、关系姿态帧与 speech-only 批处理；中性日常为默认，直接表达无需礼貌词，强硬取决于当前话语行为，敌意必须有冲突证据</span></article>
         <article><strong>后代取名</strong><code>naming.ts · server/newborn-naming-service.ts</code><span>确定性保底姓名、父母与处境提名上下文、本地 givenName 验收、出生事实来源与失败回退</span></article>
+        <article><strong>共同生活</strong><code>domain/shared-living.ts · domain/agreement.ts · application/social-options.ts</code><span>稳定生活锚点、12 / 24 月履约窗口、独立行动和不追踪成员实时位置</span></article>
         <article><strong>持续项目</strong><code>application/project-options.ts · application/local-material-evidence.ts · domain/project-material-request.ts</code><span>压力、能力证据、局部去重、材料请求、物流、试验、协作与完成</span></article>
         <article><strong>水流机械链</strong><code>domain/mechanical-power.ts · application/mechanical-power-options.ts · domain/action-executor.ts</code><span>显式有向水流、本人观察、冻结工地、严格拓扑、commissioning 故障、来源绑定维修与维修后运行</span></article>
         <article><strong>耐久记录</strong><code>application/record-use-options.ts · domain/action-executor.ts · server/evolution-artifacts.ts</code><span>写入发布、载体守恒、读者自有项目、精确来源复用与严格完整链审计</span></article>
@@ -640,7 +641,7 @@ export function mountRulesPage({ assets = [], selectAsset = () => false } = {}) 
   const initialRecipeHash = window.location.hash.startsWith('#recipe-');
   const initialRecipesPage = window.location.hash === '#recipes';
   const initialDocsHash = window.location.hash.startsWith('#doc-');
-  const initialRulesHash = /^#(?:rule|decisionTree|authorityBoundary)/.test(window.location.hash);
+  const initialRulesHash = /^#(?:rule|architectureAtlas|decisionTree|authorityBoundary)/.test(window.location.hash);
   selectPage(initialRecipeHash || initialRecipesPage ? 'recipes' : initialDocsHash ? 'docs' : initialRulesHash ? 'rules' : 'assets');
   if (initialAssetHash) requestAnimationFrame(() => selectAsset(window.location.hash.slice(7)));
   if (initialRecipeHash) requestAnimationFrame(() => recipeLibrary?.selectRecipe(window.location.hash.slice(8), false));

@@ -295,7 +295,7 @@ function genThatched(B){
   box(B,'woodDark', 0,H+5,-1, 0,H+5,0, ()=>vary(0x6b4a2e,0,0.1,0.06)); // 屋脊
 }
 
-/** 木屋：圆木墙（逐行深浅交替）+ 山墙顶 + 石烟囱炊烟 */
+/** 木屋：圆木墙（逐行深浅交替）+ 山墙顶 + 石烟囱；预览展示真实生火时的炊烟变体 */
 function genLogCabin(B){
   const x0=-4, x1=3, z0=-3, z1=2, H=3;
   for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=1;y<=H;y++){
@@ -1101,7 +1101,7 @@ const SHORE_WET_COLORS = {
   grass:0x3d5633, soil:0x524639, wetSoil:0x4a483f,
   richSoil:0x474236, exhaustedSoil:0x5f4d3b, cultivated:0x534636, sand:0x7c6c4c,
 };
-/** 同高水面生成两微格湿润岸带；陆地色向湿土/湿沙收敛，不混入蓝色。 */
+/** 同高水面生成两微格湿润岸带，并让同色微体素略探入水缘以打散整格直角。 */
 function genShorelineTransitions(B){
   const layout=[
     ['grass','wetSoil','water','water','sand','sand','sand'],
@@ -1121,6 +1121,22 @@ function genShorelineTransitions(B){
     if(center==='water'){
       B.microCuboid('water',cellX*8,1.72,cellZ*8,8.02,0.50,8.02,0x3f94aa);
       B.microCuboid('flowWater',cellX*8,2.23,cellZ*8,5.6,0.03,0.7,0x68b4bd);
+      const bankNeighbors={};
+      for(const [direction,[dx,dz]] of Object.entries(allDirections)){
+        const neighbor=kindAt(x+dx,z+dz);
+        if(neighbor!==undefined)bankNeighbors[direction]=neighbor!=='water';
+      }
+      const seed=Math.imul(x+47,73856093)^Math.imul(z+53,19349663);
+      for(const patch of shorelineTransitionMask(bankNeighbors,seed)){
+        const [dx,dz]=SURFACE_CARDINAL[patch.source];
+        const bank=kindAt(x+dx,z+dz);
+        if(!bank||bank==='water')continue;
+        const amount=patch.depth===0?0.78:0.52;
+        B.microCuboid(
+          'groundMark',cellX*8+patch.microX-3.5,2.18,cellZ*8+patch.microZ-3.5,
+          1.02,0.12,1.02,mixSurfaceColor(SURFACE_PREVIEW_COLORS[bank],SHORE_WET_COLORS[bank],amount),
+        );
+      }
       continue;
     }
     const centerColor=SURFACE_PREVIEW_COLORS[center];
@@ -1766,6 +1782,42 @@ function genHandMill(B){
   B.vox('accent',0,3,-2,0xc6a15b);
 }
 
+/** 水力传动：真实水轮、传动轴与磨坊负载的同轴构型。 */
+function genWaterPower(B){
+  box(B,'water',-9,0,-4,-1,0,-2,()=>vary(0x1c5d7e,0.01,0.06,0.05));
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6;
+    B.vox('wood',-5+Math.round(Math.cos(a)*3),4+Math.round(Math.sin(a)*3),-3,vary(0x7e5734,0.01,0.08,0.06));
+  }
+  for(let step=1;step<=2;step++){
+    B.vox('wood',-5-step,4,-3,0x8b6039); B.vox('wood',-5+step,4,-3,0x8b6039);
+    B.vox('wood',-5,4-step,-3,0x8b6039); B.vox('wood',-5,4+step,-3,0x8b6039);
+  }
+  B.vox('darkMetal',-5,4,-3,0xa16f32);
+  for(let z=-2;z<=3;z++) B.vox('darkMetal',-5,4,z,vary(0xa16f32,0.01,0.06,0.05));
+  for(const x of [-6,-4]) box(B,'stone',x,1,0,x,3,1,()=>vary(0x77746e,0,0.05,0.06));
+  for(let y=1;y<=2;y++) for(let x=-8;x<=-2;x++) for(let z=4;z<=9;z++)
+    if(Math.hypot(x+5,z-6.5)<=3.1) B.vox('stone',x,y,z,vary(0x858078,0,0.06,0.06));
+  box(B,'woodDark',-5,3,6,-5,6,6,()=>0x5a402d);
+  box(B,'wood',-5,7,6,-1,7,6,()=>0x7b5638);
+}
+
+/** 施工进度：备料、框架、局部屋面都保持敞开，不冒充完工住所。 */
+function genConstructionProgress(B){
+  const stages=[-7,0,7];
+  stages.forEach((cx,index)=>{
+    box(B,'stone',cx-2,1,-2,cx+2,1,2,()=>vary(0x85827c,0,0.06,0.06));
+    B.vox('wood',cx+3,1,-2,0x7d5838);
+    if(index<1)return;
+    for(const [x,z] of [[-2,-2],[2,-2],[-2,2],[2,2]]) box(B,'woodDark',cx+x,2,z,cx+x,6,z,()=>0x765033);
+    box(B,'wood',cx-2,7,-2,cx+2,7,-2,()=>0x68462e);
+    box(B,'wood',cx-2,7,2,cx+2,7,2,()=>0x68462e);
+    if(index<2)return;
+    box(B,'wood',cx,8,-2,cx,8,2,()=>0x68462e);
+    box(B,'thatch',cx-2,9,-2,cx,9,0,()=>vary(0xb99255,0.01,0.08,0.07));
+  });
+}
+
 /** 铸造场 / 铁匠铺：共用棚架，炉体与金属色按时代变化。 */
 function genMetalWorkshop(B, kind){
   genWorkshop(B);
@@ -2197,7 +2249,7 @@ function genSharedCell(B){
 
 function genCooperativeCarry(B){
   genHuman(B,{x:-1.55,sex:'female',action:'carry',withProp:false,phaseOffset:0});
-  genHuman(B,{x: 1.55,sex:'male',action:'carry',withProp:false,phaseOffset:Math.PI});
+  genHuman(B,{x: 1.55,sex:'male',action:'attend',withProp:false,phaseOffset:Math.PI});
   const bob = Math.sin(humanAnimPhase)*0.10;
   B.microCuboid('wood',0,4.05+bob,1.65,4.8,1.15,1.25,vary(0x8a6a48,0.01,0.08,0.07));
   B.microCuboid('thatch',0,4.68+bob,1.65,4.35,0.34,1.02,0xd3ad55);
@@ -2314,7 +2366,7 @@ const STYLES = [
   { key:'working',     cat:'p', group:'动作', name:'建造与劳作', en:'Building & Work', gen:(B)=>genHuman(B,{sex:'female',action:'work'}), tags:'动作 · 锤击 · 木料', note:'建造、维护与加工共用的劳作骨架，手中工具由实际操作替换。' },
   { key:'tend-fire',   cat:'p', group:'动作', name:'照料火堆', en:'Tend Fire', gen:(B)=>genHuman(B,{sex:'male',action:'tend-fire'}), tags:'动作 · 火堆 · 烹饪/取暖', note:'火堆必须来自世界状态；人物动作只在照料、烹饪或取暖时出现。' },
   { key:'attending',   cat:'p', group:'动作', name:'观察与记录', en:'Observe & Record', gen:(B)=>genHuman(B,{sex:'female',action:'attend'}), tags:'动作 · 木牍 · 知识', note:'观察、记录、学习等动作使用木牍作为可读道具。' },
-  { key:'co-carry',    cat:'p', group:'交互', name:'协作搬运', en:'Cooperative Carry', gen:genCooperativeCarry, tags:'交互 · 两人 · 同一负载', note:'两人共享一个负载的高度和节拍，人物仍保持各自独立站位。' },
+  { key:'handoff',     cat:'p', group:'交互', name:'物资交接', en:'Shared Handoff', gen:genCooperativeCarry, tags:'游戏已接入 · 真实转移 · 给予者/接收者', note:'只在已提交 transfer 事实中显示：给予者把同一负载递到双方之间，接收者转身并抬手承接；不会把普通单人搬运伪装成协作搬运。' },
   { key:'communicate', cat:'p', group:'交互', name:'交流与教授', en:'Communicate & Teach', gen:genCommunicationPair, tags:'交互 · 手势 · 倾听/木牍', note:'可用于交流、教授、交易等人与人操作；双方都有明确的姿态角色。' },
   { key:'care',        cat:'p', group:'交互', name:'照护与包扎', en:'Care & Bandage', gen:genCarePair, tags:'交互 · 照护 · 伤员', note:'照护者与被照护者同时入镜，包扎是人物模型的一部分。' },
   { key:'companion',   cat:'p', group:'交互', name:'伴侣与繁衍', en:'Companion & Reproduce', gen:genCompanionPair, tags:'交互 · 伴侣 · 繁衍项目', note:'以克制的双人亲密姿态表达伴侣与繁衍，不使用突兀的表情图标。' },
@@ -2323,11 +2375,11 @@ const STYLES = [
   // 建筑（文明历程 Lv.1–8）
   { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe, tags:'原始部落 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该营地。' },
   { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill, tags:'农耕定居 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该磨坊。' },
-  { key:'thatched',   cat:'b', lv:2, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched },
-  { key:'logcabin',   cat:'b', lv:2, name:'木屋',           en:'Log Cabin',       gen:genLogCabin },
+  { key:'thatched',   cat:'b', lv:2, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched, tags:'游戏已接入 · 混合材质住所', note:'生产装饰层在真实木石混合住所上使用木骨架、灰泥填充与暖色屋面；规模、防护细节和容量仍读取真实结构。' },
+  { key:'logcabin',   cat:'b', lv:2, name:'木屋',           en:'Log Cabin',       gen:genLogCabin, tags:'游戏已接入 · 木质住所', note:'生产装饰层按真实木材构件生成逐层圆木、门廊、山墙木瓦和石烟囱；只有住所内部存在真实火源时才显示炊烟与暖窗。' },
   { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple, tags:'古代文明 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该神庙。' },
   { key:'chinese',    cat:'b', lv:3, name:'中国王朝古代房子', en:'Chinese Dynasty', gen:genChinese },
-  { key:'stone',      cat:'b', lv:3, name:'石头屋',         en:'Stone House',     gen:genStone },
+  { key:'stone',      cat:'b', lv:3, name:'石头屋',         en:'Stone House',     gen:genStone, tags:'游戏已接入 · 石质住所', note:'生产装饰层按真实石材构件生成乱石色差、稳定苔痕、厚门槛、窄窗和四坡石板顶；不会改变权威防护效果。' },
   { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle, tags:'中世纪 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该城堡。' },
   { key:'medieval',   cat:'b', lv:4, name:'中世纪房子',     en:'Medieval',        gen:genMedieval },
   { key:'factory',    cat:'b', lv:5, name:'烟囱工厂',       en:'Factory',         gen:genFactory },
@@ -2339,16 +2391,18 @@ const STYLES = [
   { key:'dome',       cat:'b', lv:8, name:'生态穹顶',       en:'Eco Dome',        gen:genDome },
   // 聚落 · 生存设施
   { key:'councilhearth',cat:'s',group:'聚落设施', name:'议事火塘', en:'Council Hearth', gen:genCouncilHearth, tags:'原始部落 · 固定沟通与教学范围', note:'游戏已接入：附近沟通范围扩大，反复多人使用后可形成固定协调制度。' },
-  { key:'granary',    cat:'s', group:'聚落设施', name:'谷仓',   en:'Granary',       gen:genGranary, tags:'农耕定居 · 96 单位公共储量', note:'游戏已接入：由木制容器加固而来，保留原储物，容量是普通容器四倍。' },
+  { key:'granary',    cat:'s', group:'聚落设施', name:'谷仓',   en:'Granary',       gen:genGranary, tags:'农耕定居 · 96 单位公共储量', note:'游戏已接入：高脚仓、木梯和茅草顶沿用素材关键构型；由木制容器加固而来并保留原储物，仓门处的袋堆按真实 usedCapacity / capacity 分级显示。' },
   { key:'well',       cat:'s', group:'聚落设施', name:'蓄水井', en:'Cistern',       gen:genWell, tags:'农耕定居 · 固定饮水点', note:'游戏已接入：由木制容器与石材改造，可进入人物真实寻水与饮用路径。' },
   { key:'fence',      cat:'s', group:'聚落设施', name:'栅栏',   en:'Fence',         gen:genFence },
-  { key:'workshop',   cat:'s', group:'聚落设施', name:'工具棚', en:'Workshop',      gen:genWorkshop, tags:'原始部落 · 固定生产场地', note:'游戏已接入：附近制作非设施物品时额外产出一份。' },
-  { key:'kiln',       cat:'s', group:'材料设施', name:'陶窑', en:'Kiln', gen:genKiln, tags:'农耕定居 · 黏土与铜锡高温处理', note:'游戏已接入：烧砖并为铜锡矿炭料提供真实高温目标。' },
-  { key:'handmill',   cat:'s', group:'材料设施', name:'石磨', en:'Stone Mill', gen:genHandMill, tags:'农耕定居 · 作物加工', note:'游戏已接入：附近收获成熟作物时增加食物产出。' },
-  { key:'foundry',    cat:'s', group:'材料设施', name:'青铜铸造场', en:'Bronze Foundry', gen:(B)=>genMetalWorkshop(B,'foundry'), tags:'古代文明 · 铜锡与青铜批量生产', note:'游戏已接入：作为铜锡冶炼目标，并提高青铜工具制作产量。' },
+  { key:'workshop',   cat:'s', group:'聚落设施', name:'工具棚', en:'Workshop',      gen:genWorkshop, tags:'原始部落 · 固定生产场地', note:'游戏已接入：附近制作非设施物品时额外产出一份；只有本月真实设施动作才点亮工作态。' },
+  { key:'kiln',       cat:'s', group:'材料设施', name:'陶窑', en:'Kiln', gen:genKiln, tags:'农耕定居 · 黏土与铜锡高温处理', note:'游戏已接入：烧砖并为铜锡矿炭料提供真实高温目标；炉火与烟只在真实使用时出现。' },
+  { key:'handmill',   cat:'s', group:'材料设施', name:'石磨', en:'Stone Mill', gen:genHandMill, tags:'农耕定居 · 作物加工', note:'游戏已接入：附近收获成熟作物时增加食物产出；真实作业时转柄旋转。' },
+  { key:'waterpower', cat:'s', group:'材料设施', name:'水力传动组', en:'Water Wheel & Drive Shaft', gen:genWaterPower, tags:'游戏已接入 · 水轮 → 传动轴 → 磨坊', note:'三个外形分别绑定真实 WaterWheel、DriveShaft 与 Mill 体素；只有已提交机械动力作业才沿真实相邻构件同步转动，断轴显示为分离残件。' },
+  { key:'foundry',    cat:'s', group:'材料设施', name:'青铜铸造场', en:'Bronze Foundry', gen:(B)=>genMetalWorkshop(B,'foundry'), tags:'古代文明 · 铜锡与青铜批量生产', note:'游戏已接入：作为铜锡冶炼目标，并提高青铜工具制作产量；炉火与烟由真实使用事实驱动。' },
   { key:'civichall',  cat:'s', group:'时代核心', name:'城邦公共厅堂', en:'Civic Hall Core', gen:genChinese, tags:'古代文明 · 记录、度量与协调核心', note:'游戏已接入规则；只有实际沟通、记录和多人使用才进入时代观察。' },
-  { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'中世纪 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量。' },
+  { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'中世纪 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量；炉火与烟由真实使用事实驱动。' },
   { key:'keepcore',   cat:'s', group:'时代核心', name:'城堡协调核心', en:'Keep Core', gen:genCastle, tags:'中世纪 · 防护、维护与工匠协调', note:'游戏已接入规则；这是功能核心，不代表整座城堡会因时代名称自动生成。' },
+  { key:'construction-progress',cat:'s',group:'建造阶段',name:'施工进度',en:'Construction Progress',gen:genConstructionProgress,tags:'游戏已接入 · 备料 → 框架 → 局部屋面',note:'直接读取未完成结构的真实 componentCount；即使接近完成也保留敞口和脚手架，只有结构 complete 后才切换为功能建筑。' },
   { key:'woodpile',   cat:'s', group:'物资堆',   name:'木料堆', en:'Wood Pile',     gen:genWoodPile },
   { key:'stonepile',  cat:'s', group:'物资堆',   name:'石料堆', en:'Stone Pile',    gen:genStonePile },
   { key:'foodpile',   cat:'s', group:'物资堆',   name:'食物堆', en:'Food Pile',     gen:genFoodPile },
@@ -2412,13 +2466,13 @@ const STYLES = [
   { key:'ironbridge', cat:'r', group:'桥 梁', lv:5, name:'铁桥',        en:'Iron Bridge',  gen:genIronBridge },
   // 环境 · 纪元状态
   { key:'surface-transition',cat:'e',group:'地表过渡',name:'草土、沙地与耕地边界',en:'Surface Transitions',gen:genSurfaceTransitions,tags:'游戏已接入 · 八邻域 · 1/8 格微体素',note:'草地、普通土、湿土、沃土、贫瘠土、沙地与耕地按真实相邻格生成边界；四向邻居决定边线，对角邻居只收放拐角，不改变地块归属。道路和水体仍使用各自的表现规则。' },
-  { key:'shoreline-transition',cat:'e',group:'地表过渡',name:'沙地与湿润岸线',en:'Wet Shoreline',gen:genShorelineTransitions,tags:'游戏已接入 · 同高水岸 · 湿沙/湿土',note:'只在陆地与同高水面的真实正交邻边生成两微格湿润带；沙地变为湿沙，草土变为湿润岸土，不把蓝色水面混进陆地。对角水格只修角，高差岸壁保持硬边。' },
+  { key:'shoreline-transition',cat:'e',group:'地表过渡',name:'沙地与湿润岸线',en:'Wet Shoreline',gen:genShorelineTransitions,tags:'游戏已接入 · 同高水岸 · 湿沙/湿土',note:'只在陆地与同高水面的真实正交邻边生成两微格湿润带，并让同色微体素略探入水缘打散整格直角；流纹在岸边两微格内渐隐，不会盖到岸土。对角邻格只修角，高差岸壁保持硬边。' },
   { key:'fire',       cat:'e', group:'火焰与焦土', name:'火焰',   en:'Fire',        gen:genFire,    ground:'ash', tags:'1/8 格微体素 · 动态火舌 · 上浮火星', note:'火芯、外焰与火星采用错相循环，石圈和木柴保持稳定。' },
   { key:'scorched',   cat:'e', group:'火焰与焦土', name:'焦土残骸', en:'Scorched',    gen:genScorched, ground:'ash' },
   { key:'snowdrift',  cat:'e', group:'冰雪覆盖',  name:'雪堆',   en:'Snowdrift',    gen:genSnowdrift, ground:'snow' },
   { key:'icespikes',  cat:'e', group:'冰雪覆盖',  name:'冰锥',   en:'Ice Spikes',   gen:genIceSpikes, ground:'snow' },
   { key:'snowspruce', cat:'e', group:'冰雪覆盖',  name:'雪松',   en:'Snow Spruce',  gen:genSnowSpruce, ground:'snow' },
-  { key:'riverflow',  cat:'e', group:'水体演出', name:'体素水流', en:'Voxel River Flow', gen:genRiverFlow, ground:'wet', tags:'游戏已接入 · 1/8 格像素流纹 · 共享动画相位 · 邻接转向', note:'生产场景保留真实水体积；流纹贴在水面并跨格共享相位，雨天加快，不写回水量或地形。' },
+  { key:'riverflow',  cat:'e', group:'水体演出', name:'体素水流', en:'Voxel River Flow', gen:genRiverFlow, ground:'wet', tags:'游戏已接入 · 连续顶面 · 世界坐标流纹 · 邻接转向', note:'生产场景把相连水格合入同一顶面，只在真实岸缘生成侧壁；流纹使用世界坐标跨格共享相位，并在岸边两微格内渐隐。雨天只加快表现，不写回水量或地形。' },
   { key:'rain',       cat:'e', group:'动态天气', name:'降雨与水波', en:'Rain & Ripples', gen:(B)=>genWeather(B,'rain'), ground:'wet', tags:'降雨线 · 水洼 · 扩散水波', note:'雨滴和水波随天气相位更新，地面色差压低为湿润过渡。' },
   { key:'snowfall',   cat:'e', group:'动态天气', name:'降雪', en:'Snowfall',         gen:(B)=>genWeather(B,'snow'), ground:'snow' },
   { key:'fog',        cat:'e', group:'动态天气', name:'雾带', en:'Fog Banks',         gen:(B)=>genWeather(B,'fog'), ground:'wet' },
@@ -2429,8 +2483,8 @@ const STYLES = [
 // 这里描述的是当前生产代码的接入状态，而不是素材完成度。
 const LIVE_ASSET_KEYS = new Set([
   'adult-man','adult-woman','child','elder','dehydrated','walking','gathering','attacking','ingesting','crafting','working','tend-fire','attending',
-  'co-carry','communicate','care','companion','body-states','shared-cell','thatched','logcabin','stone',
-  'councilhearth','granary','well','workshop','kiln','handmill','foundry','civichall','smithy','keepcore',
+  'handoff','communicate','care','companion','body-states','shared-cell','thatched','logcabin','stone',
+  'councilhearth','granary','well','workshop','kiln','handmill','waterpower','foundry','civichall','smithy','keepcore','construction-progress',
   'woodpile','stonepile','foodpile','seedpile','bundles','meatpile','hidepile','bonepile','stonetools','bonetools','spearrack','tablet','fiber','leather','rope','container','cookedfood','herbs','charcoal','clay','copperore','tinore','ironore','woodtool','stonehoe','bronzetool','irontool',
   'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath',
   'surface-transition','shoreline-transition','fire','scorched','snowdrift','icespikes','snowspruce','riverflow','rain','snowfall','fog','storm','drought'

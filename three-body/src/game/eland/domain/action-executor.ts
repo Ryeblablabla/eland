@@ -23,6 +23,7 @@ import { seededFraction } from '../world/generator';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
 import { recordPersonalityEvidence } from './personality';
+import { recordActionOutcomeBelief } from './cognition';
 import { applyRelationEvidence } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
@@ -69,6 +70,8 @@ import {
   personTrustsEraPrediction,
 } from './era-prediction';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
+import { validateWildlifeThreatResponse, wildlifeThreatResponseDiff } from './wildlife-threat';
+import { huntingToolBonus, isProductionToolMaterial, productionToolMultiplier } from './production-tool';
 import {
   MECHANICAL_POWER_ACTION_BASIS_VERSION,
   MECHANICAL_POWER_PLAN_VERSION,
@@ -110,14 +113,6 @@ function nearbyFacilityMaterial(
   return cellsInRadius(person.position.cellId, radius)
     .map((cell) => surfaceMaterial(state.world.grid, cell))
     .find((materialId) => accepted.has(materialId));
-}
-
-function productionToolMultiplier(materialId: MaterialId | undefined): number {
-  if (materialId === Material.IronTool) return 2.6;
-  if (materialId === Material.BronzeTool) return 2.05;
-  if (materialId === Material.StoneHoe || materialId === Material.StoneTool) return 1.5;
-  if (materialId === Material.WoodTool || materialId === Material.BoneTool) return 1.25;
-  return 1;
 }
 
 function mineralObservationId(
@@ -503,6 +498,23 @@ function compactTraversedSurface(state: SimulationState, path: StandingPosition[
 function executeMove(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'move' }>, eventId: string, atMonth: number) {
   if (isDormantDehydratedHibernating(person)) return { status: 'blocked' as const, path: [person.position.cellId], result: '处于低代谢休眠，无法移动', diff: {} };
   if (person.conditions.some((condition) => condition.kind === 'restrained')) return { status: 'blocked' as const, path: [person.position.cellId], result: '身体受到拘束，无法远距离移动', diff: {} };
+  const threatValidation = action.wildlifeThreatBasis
+    ? action.toZ === undefined
+      ? { valid: false as const, reason: '野兽威胁响应缺少精确站立高度' }
+      : validateWildlifeThreatResponse(
+        state,
+        person,
+        atMonth,
+        { cellId: action.toCellId, z: action.toZ },
+        action.wildlifeThreatBasis,
+      )
+    : null;
+  if (threatValidation && !threatValidation.valid) return {
+    status: 'blocked' as const,
+    path: [person.position.cellId],
+    result: threatValidation.reason,
+    diff: { wildlifeThreatResponse: true, wildlifeThreatResponseInvalidated: true },
+  };
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
   // 一个规则刻度最多跨越一条相邻边。能力和身体状态改变代价，不改变空间连续性。
@@ -529,14 +541,24 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   person.body.nutrition = clamp(person.body.nutrition - Math.max(0, segment.length - 1) * 0.16);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
   const reached = to.cellId === action.toCellId && (action.toZ === undefined || to.z === action.toZ);
+  const threatDiff = action.wildlifeThreatBasis
+    ? wildlifeThreatResponseDiff(from, to, action.wildlifeThreatBasis)
+    : {};
   return {
     status: reached ? 'completed' as const : 'progressed' as const,
     path: segment.map((position) => position.cellId),
-    result: reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${moved ? 1 : 0} 步`,
+    result: action.wildlifeThreatBasis
+      ? action.wildlifeThreatBasis.response === 'shelter-step'
+        ? `${person.name}向真实住所移动一步，避开可见野兽威胁`
+        : action.wildlifeThreatBasis.response === 'flee-step'
+          ? `${person.name}与可见野兽拉开距离`
+          : `${person.name}无安全退路，原地警戒野兽`
+      : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${moved ? 1 : 0} 步`,
     diff: {
       spentWork: spent,
       verticalPath: segment.map((position) => position.z),
       materialChanges,
+      ...threatDiff,
       ...(carried.length ? { carriedPersonIds: carried.map((dependent) => dependent.id) } : {}),
     },
   };
@@ -770,8 +792,9 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   const output: Array<{ materialId: MaterialId; quantity: number }> = [];
   const spilled: Array<{ materialId: MaterialId; quantity: number }> = [];
   const selectedTool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.quantity > 0) : undefined;
-  const tool = selectedTool && materialHas(selectedTool.materialId, 'tool') ? selectedTool : undefined;
-  const toolMultiplier = productionToolMultiplier(tool?.materialId);
+  const productionTool = selectedTool && isProductionToolMaterial(selectedTool.materialId) ? selectedTool : undefined;
+  let effectiveTool = productionTool;
+  const toolMultiplier = productionToolMultiplier(productionTool?.materialId);
   const mill = nearbyFacilityMaterial(state, person, [Material.Mill]);
   let replacement: MaterialId = Material.Air;
   if (materialId === Material.Leaves || materialId === Material.Wood) {
@@ -795,7 +818,10 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   } else if (materialId === Material.BerryBush) {
     replacement = Material.Shrub;
     setVoxel(state.world.grid, x, y, z, replacement);
-    output.push({ materialId: Material.Food, quantity: 3 }, { materialId: Material.Seed, quantity: 1 });
+    output.push(
+      { materialId: Material.Food, quantity: Math.max(3, Math.floor(3 * toolMultiplier)) },
+      { materialId: Material.Seed, quantity: Math.max(1, Math.floor(toolMultiplier)) },
+    );
   } else if (materialId === Material.Shrub) {
     replacement = Material.Soil;
     setVoxel(state.world.grid, x, y, z, replacement);
@@ -808,6 +834,7 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
       result: `分离${materialDefinition(materialId).name}需要${materialDefinition(rule.requiredToolMaterialId).name}`,
       diff: { materialId, requiredToolMaterialId: rule.requiredToolMaterialId },
     };
+    if (rule.requiredToolMaterialId !== undefined) effectiveTool = selectedTool;
     if (bodyStandsOn(state, target.position)) return { status: 'blocked' as const, result: '这个物质体素正支撑着身体，不能直接分离', diff: { materialId, position: target.position } };
     if (materialId === Material.Container || materialId === Material.Granary) {
       const containerId = containerIdAt(target.position);
@@ -848,7 +875,7 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
       productionMultiplier: toolMultiplier,
       ...(mill ? { facilityMaterialId: mill } : {}),
       ...(spilled.length ? { spilled } : {}),
-      ...(selectedTool ? { toolMaterialId: selectedTool.materialId, toolStackId: selectedTool.id } : {}),
+      ...(effectiveTool ? { toolMaterialId: effectiveTool.materialId, toolStackId: effectiveTool.id } : {}),
     },
   };
 }
@@ -1384,18 +1411,20 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
   }
   const species = animalSpecies(animal.speciesId);
   const tool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.quantity > 0) : undefined;
-  const toolBonus = tool?.materialId === Material.Spear ? 0.3
-    : tool?.materialId === Material.IronTool ? 0.38
-      : tool?.materialId === Material.BronzeTool ? 0.31
-        : tool?.materialId === Material.StoneTool || tool?.materialId === Material.StoneHoe ? 0.16
-      : tool?.materialId === Material.BoneTool ? 0.11 : 0;
+  const toolBonus = huntingToolBonus(tool?.materialId);
+  const toolDiff = {
+    toolBonus,
+    ...(tool ? { toolMaterialId: tool.materialId, toolStackId: tool.id } : {}),
+  };
   const chance = Math.max(0.08, Math.min(0.9,
     0.12 + person.baselineCapacities.perception / 360 + person.baselineCapacities.manipulation / 420 + toolBonus - species.evasion / 220,
   ));
   const sample = seededFraction(state.seed, `human-hunt:${atMonth}:${person.id}:${animal.id}:${eventId}`);
   if (sample >= chance) {
-    if (species.aggression > 0 && seededFraction(state.seed, `hunt-counter:${atMonth}:${person.id}:${animal.id}`) < species.aggression / 150) {
-      const damage = 4 + Math.floor(species.aggression / 16);
+    const counterChance = species.aggression / 150 * (1 - Math.min(0.45, toolBonus * 0.65));
+    if (species.aggression > 0 && seededFraction(state.seed, `hunt-counter:${atMonth}:${person.id}:${animal.id}`) < counterChance) {
+      const damage = Math.max(1, Math.round((4 + Math.floor(species.aggression / 16))
+        * (1 - Math.min(0.35, toolBonus * 0.55))));
       person.body.health = clamp(person.body.health - damage);
       const wound = person.conditions.find((condition) => condition.kind === 'wound');
       if (wound) {
@@ -1405,13 +1434,16 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
       return {
         status: 'progressed' as const,
         result: `${person.name}捕猎${species.name}失败并被反击`,
-        diff: { animalId: animal.id, animalSpeciesId: animal.speciesId, success: false, chance, sample, counterDamage: damage },
+        diff: {
+          animalId: animal.id, animalSpeciesId: animal.speciesId, success: false,
+          chance, sample, counterChance, counterDamage: damage, ...toolDiff,
+        },
       };
     }
     return {
       status: 'progressed' as const,
       result: `${person.name}没有捕到${species.name}`,
-      diff: { animalId: animal.id, animalSpeciesId: animal.speciesId, success: false, chance, sample },
+      diff: { animalId: animal.id, animalSpeciesId: animal.speciesId, success: false, chance, sample, ...toolDiff },
     };
   }
   const damage = Math.round(26 + person.baselineCapacities.manipulation * 0.42 + toolBonus * 90);
@@ -1419,7 +1451,10 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
   if (animal.health > 0) return {
     status: 'progressed' as const,
     result: `${person.name}击伤了${species.name}，但它仍然存活`,
-    diff: { animalId: animal.id, animalSpeciesId: animal.speciesId, success: true, killed: false, damage, health: animal.health, chance, sample },
+    diff: {
+      animalId: animal.id, animalSpeciesId: animal.speciesId, success: true, killed: false,
+      damage, health: animal.health, chance, sample, ...toolDiff,
+    },
   };
   animal.diedAtMonth = atMonth;
   const products = species.products.flatMap((product) => {
@@ -1448,7 +1483,7 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
     diff: {
       animalId: animal.id, animalSpeciesId: animal.speciesId, success: true, killed: true,
       damage, products, outputMaterialId: Material.RawMeat,
-      ...(tool ? { toolMaterialId: tool.materialId, toolStackId: tool.id } : {}),
+      ...toolDiff,
     },
   };
 }
@@ -2704,7 +2739,8 @@ function hibernationRecoveryActionAllowed(
   atMonth: number,
 ): boolean {
   if (lifePlanningStage(person, atMonth) === 'dependent-child') {
-    return action.kind === 'act'
+    return action.kind === 'move' && Boolean(action.wildlifeThreatBasis)
+      || action.kind === 'act'
       && action.operation === 'ingest'
       && action.targets.some((target) => target.kind === 'inventory-stack' && target.personId === person.id);
   }
@@ -2796,5 +2832,6 @@ export function executePrimitiveAction(
   recordWitnessedDeclarationFulfillment(state, fact);
   rememberAction(state, fact);
   recordPersonalityEvidence(state, fact);
+  recordActionOutcomeBelief(state, fact);
   return fact;
 }

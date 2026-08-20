@@ -1,13 +1,19 @@
 import { goalSatisfied } from '../domain/action-executor';
-import type { ActionOption, FactPredicate, LifeReviewEvidence } from '../domain/action';
+import type { ActionOption, FactPredicate, Intent, LifeReviewEvidence } from '../domain/action';
 import type { AgentDecider, Decision, DecisionContext } from '../domain/model';
 import { ageMonths } from '../domain/person';
 import { followUpSemanticallyMatches } from '../domain/intent-follow-up';
-import { rankByDecisionFactorForest } from './decision-factor-forest';
 import { reproductiveResponsibility } from '../domain/dependent-care';
 import { personalityScore } from '../domain/personality';
 import { planningOverlayEvents } from '../domain/event-index';
 import { isObservedEmergencyHibernationOption } from './action-options';
+import { perceivedKinshipRisk } from './reproductive-risk';
+import {
+  assessIntentionPersistence,
+  deliberate,
+  rankCognitiveOptions,
+  type RankedCognitiveAppraisal,
+} from './cognition/bdi-deliberation';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
 const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
@@ -31,6 +37,20 @@ export function hasRequiredSocialResponse(context: DecisionContext): boolean {
 
 export function hasFulfillmentOpportunity(context: DecisionContext): boolean {
   return context.options.some(isFulfillmentOption);
+}
+
+function isExecutingPriorityObligation(intent: Intent): boolean {
+  if (intent.agreementId) return true;
+  const action = intent.nextAction.kind === 'communicate'
+    ? intent.nextAction
+    : intent.completionAction?.kind === 'communicate'
+      ? intent.completionAction
+      : undefined;
+  if (!action) return false;
+  const content = action.content;
+  return content.kind === 'accept'
+    || content.kind === 'reject'
+    || (content.kind === 'claim' && content.conversation?.turn === 'response');
 }
 
 export function isMaintainableStateGoal(goal: FactPredicate): boolean {
@@ -91,9 +111,11 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
   reasons: string[];
   relationSourceEventIds: string[];
   responsibilitySourceEventIds: string[];
+  kinshipRiskSourceEventIds: string[];
   femaleAgeBand?: LifeReviewEvidence['femaleAgeBand'];
 } {
   const targetId = option.target?.kind === 'person' ? option.target.personId : undefined;
+  const partner = targetId ? context.state.people.find((candidate) => candidate.id === targetId) : undefined;
   const relation = targetId ? context.person.relations.find((candidate) => candidate.personId === targetId) : undefined;
   const relationPressure = Math.min(30, Math.max(0, relation?.trust ?? 0) * 0.9 + Math.max(0, relation?.bond ?? 0) * 1.1);
   const socialAttachment = (personalityScore(context.person, 'emotionality') + personalityScore(context.person, 'extraversion')) / 2;
@@ -102,34 +124,47 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
   const responsibility = option.id.startsWith('offer-reproduce:')
     ? reproductiveResponsibility(context.state, context.person)
     : undefined;
+  const kinshipRisk = option.id.startsWith('offer-reproduce:') && partner
+    ? perceivedKinshipRisk(context.state, context.person, partner)
+    : undefined;
   const base = option.id.startsWith('offer-reproduce:') ? 36 : 30;
   const reasons: string[] = [];
   if (relationPressure > 0) reasons.push('已有关系证据');
   if (window.pressure > 0) reasons.push('女性生育年龄窗口正在收窄');
   if (affiliationPressure > 0) reasons.push('本人有较强归属倾向');
   if (responsibility?.pressure) reasons.push(...responsibility.reasons);
+  if ((kinshipRisk?.cost ?? 0) > 0) reasons.push('本人已有近亲后代风险的有来源认识');
   return {
     pressure: Math.min(140, Math.max(0,
-      base + relationPressure + affiliationPressure + window.pressure - (responsibility?.pressure ?? 0) * 2,
+      base + relationPressure + affiliationPressure + window.pressure
+        - (responsibility?.pressure ?? 0) * 2
+        - (kinshipRisk?.cost ?? 0),
     )),
     reasons,
     relationSourceEventIds: [...new Set(option.relationshipBasis?.relationshipKeys ?? relation?.sourceEventIds ?? [])].sort(),
     responsibilitySourceEventIds: responsibility?.sourceFactIds ?? [],
+    kinshipRiskSourceEventIds: kinshipRisk?.sourceFactIds ?? [],
     ...(window.band ? { femaleAgeBand: window.band } : {}),
   };
 }
 
 function rankOptions(context: DecisionContext, options: ActionOption[], moment: PlanningMoment): ActionOption[] {
-  return rankByDecisionFactorForest(context, options, moment).map((evaluation) => evaluation.option);
+  return rankCognitiveOptions(context, options, moment).map((evaluation) => evaluation.option);
 }
 
-function chooseOption(context: DecisionContext, moment: PlanningMoment): { option?: ActionOption; followUp?: ActionOption } {
-  const ranked = rankByDecisionFactorForest(context, context.options, moment);
-  const option = ranked[0]?.causalScore > 0 ? ranked[0].option : undefined;
+function chooseOption(context: DecisionContext, moment: PlanningMoment): {
+  option?: ActionOption;
+  followUp?: ActionOption;
+  appraisal?: RankedCognitiveAppraisal;
+  reason: string;
+} {
+  const deliberation = deliberate(context, context.options, moment);
+  const appraisal = deliberation.selected;
+  const option = appraisal?.option;
   const followUp = option?.requiresFollowUp
     ? rankOptions(context, context.followUpOptions.filter((candidate) => followUpSemanticallyMatches(option, candidate)), moment)[0]
     : undefined;
-  return { option, followUp };
+  return { option, followUp, appraisal, reason: deliberation.reason };
 }
 
 function urgentReplan(context: DecisionContext): boolean {
@@ -146,10 +181,9 @@ function urgentReplan(context: DecisionContext): boolean {
 }
 
 /**
- * A progressing project may be reviewed only when a concrete, locally compiled
- * relationship option exists and its person-level pressure exceeds that
- * project's own stored pressure. Population and civilization observations are
- * deliberately absent from this comparison.
+ * Build sourced evidence for a possible life-review interruption. This helper
+ * no longer chooses the option; causal BDI and intention persistence do that.
+ * Population and civilization observations are deliberately absent.
  */
 export function groundedLifeReviewOpportunity(context: DecisionContext): GroundedLifeReviewOpportunity | null {
   const active = context.activeIntent;
@@ -194,6 +228,7 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
         ...option.sourceFactIds,
         ...scored.relationSourceEventIds,
         ...scored.responsibilitySourceEventIds,
+        ...scored.kinshipRiskSourceEventIds,
         ...projectSourceEventIds,
       ])];
       const evidence: LifeReviewEvidence = {
@@ -262,6 +297,9 @@ export class RulePlanner implements AgentDecider {
     const forcedOptions = required.length ? required : fulfillment;
     const forced = rankOptions(context, forcedOptions, moment)[0];
     if (active && forced) {
+      if (isExecutingPriorityObligation(active)) {
+        return { kind: 'idle', reason: '先完成已经开始的回应或履约；新收到的义务随后仍会保留并依次处理' };
+      }
       return {
         kind: 'revise',
         intentId: active.id,
@@ -275,34 +313,16 @@ export class RulePlanner implements AgentDecider {
     }
 
     const lifeReview = active ? groundedLifeReviewOpportunity(context) : null;
-    if (active && lifeReview) {
-      const matchingProjectFollowUps = context.followUpOptions.filter((option) => option.projectId === active.projectId
-        && followUpSemanticallyMatches(lifeReview.option, option));
-      const followUp = lifeReview.option.requiresFollowUp
-        ? rankOptions(context, matchingProjectFollowUps, moment)[0]
-        : undefined;
-      return {
-        kind: 'revise',
-        intentId: active.id,
-        optionId: lifeReview.option.id,
-        ...(followUp ? { followUpOptionId: followUp.id } : {}),
-        mode: 'interrupt',
-        interruptionKind: 'life-review',
-        reason: `生活复核：${lifeReview.reasons.length ? lifeReview.reasons.join('、') : '眼前出现具体生活机会'}；生活压力 ${lifeReview.lifePressure} 超过项目压力 ${lifeReview.projectPressure}`,
-        lifeReview: lifeReview.evidence,
-      };
-    }
-
-    const { option, followUp } = chooseOption(context, moment);
+    const { option, followUp, appraisal, reason: deliberationReason } = chooseOption(context, moment);
     if (!active) {
       return option
         ? {
             kind: 'start',
             optionId: option.id,
             ...(followUp ? { followUpOptionId: followUp.id } : {}),
-            reason: option.reason,
+            reason: `${option.reason}；${deliberationReason}`,
           }
-        : { kind: 'idle', reason: context.options.length ? '当前合法目标都没有正向价值' : '当前没有可执行目标' };
+        : { kind: 'idle', reason: context.options.length ? deliberationReason : '当前没有可执行目标' };
     }
 
     if (option?.nextAction.kind === 'act' && option.nextAction.operation === 'dehydrate') {
@@ -314,6 +334,11 @@ export class RulePlanner implements AgentDecider {
         interruptionKind: 'survival-reflex',
         reason: '乱纪元的直接生存风险要求暂时进入脱水休眠，恢复后返回原有安排',
       };
+    }
+
+    const persistence = assessIntentionPersistence(context, active, appraisal, moment);
+    if (persistence.keep || !option || goalSatisfied(context.state, context.person, active.goal)) {
+      return { kind: 'idle', reason: persistence.reason };
     }
 
     if (option?.recordUseBasis
@@ -333,6 +358,24 @@ export class RulePlanner implements AgentDecider {
       };
     }
 
+    if (lifeReview?.option.id === option.id) {
+      const matchingProjectFollowUps = context.followUpOptions.filter((candidate) => candidate.projectId === active.projectId
+        && followUpSemanticallyMatches(lifeReview.option, candidate));
+      const lifeReviewFollowUp = lifeReview.option.requiresFollowUp
+        ? rankOptions(context, matchingProjectFollowUps, moment)[0]
+        : undefined;
+      return {
+        kind: 'revise',
+        intentId: active.id,
+        optionId: lifeReview.option.id,
+        ...(lifeReviewFollowUp ? { followUpOptionId: lifeReviewFollowUp.id } : {}),
+        mode: 'interrupt',
+        interruptionKind: 'life-review',
+        reason: `${persistence.reason}；生活复核：${lifeReview.reasons.length ? lifeReview.reasons.join('、') : '眼前出现具体生活机会'}；${deliberationReason}`,
+        lifeReview: lifeReview.evidence,
+      };
+    }
+
     if (option?.id.startsWith('offer-collective:') && option.sourceFactIds.length > 0) {
       return {
         kind: 'revise',
@@ -343,29 +386,13 @@ export class RulePlanner implements AgentDecider {
       };
     }
 
-    const overdue = active.stateGoalUntilMonth !== undefined
-      && moment.atMonth > active.stateGoalUntilMonth
-      && !goalSatisfied(context.state, context.person, active.goal);
-    // Time spent suspended by an explicit child intent is not project
-    // stagnation. Give the restored parent a chance to recompile and act
-    // before an ordinary revise may replace it.
-    const progressAnchorMonth = Math.max(active.lastProgressAtMonth, active.lastResumedAtMonth ?? active.lastProgressAtMonth);
-    const stalled = moment.atMonth - progressAnchorMonth >= 2
-      && !goalSatisfied(context.state, context.person, active.goal);
-    if ((urgentReplan(context) || overdue || stalled) && option) {
-      return {
-        kind: 'revise',
-        intentId: active.id,
-        optionId: option.id,
-        ...(followUp ? { followUpOptionId: followUp.id } : {}),
-        reason: urgentReplan(context)
-          ? '身体或环境危险需要立即改变执行焦点'
-          : overdue
-            ? '长期状态目标到期仍未满足，改用当前最佳可执行目标'
-            : '原目标持续没有进展，改用当前最佳可执行目标',
-      };
-    }
-    return { kind: 'idle', reason: '现有长期意图仍可继续，不做无意义改换' };
+    return {
+      kind: 'revise',
+      intentId: active.id,
+      optionId: option.id,
+      ...(followUp ? { followUpOptionId: followUp.id } : {}),
+      reason: `${persistence.reason}；${deliberationReason}`,
+    };
   }
 }
 

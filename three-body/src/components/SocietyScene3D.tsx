@@ -18,7 +18,7 @@ import type {
 import { Material } from '@/game/eland/domain/material';
 import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
-import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
+import { makeStarSurfaceTexture, mulberry32 } from '@/game/proceduralTextures';
 import {
   shorelinePatches,
   surfaceTransitionKind,
@@ -54,7 +54,7 @@ class ScopedGTAOPass extends GTAOPass {
 /**
  * 立体沙盘：演化页的 2.5D/3D 视图。
  * - 地形：每格一根体素柱（InstancedMesh），高度 = world.elevation，颜色 = cellColor
- * - 水面：独立半透明体素层 + 1/8 格像素流纹，方向来自真实水格邻接
+ * - 水面：相连水格共享连续顶面，只有真实岸缘保留侧壁；1/8 格流纹使用世界坐标
  * - 人物：3D 像素小人（体素拼装），步行摆动 + 头顶名牌
  * - 相机：OrbitControls 拖拽旋转 / 滚轮缩放，固定目标避免构图漂移
  * 数据全部来自权威 SocietyState，只读不改。
@@ -128,6 +128,42 @@ const ERA_LIGHT: Record<EraKey, {
   burned:         { sun: '#ff9a5e', sunI: 3.0, hemi: 0.88, rim: 0.26, env: 0.78, exposure: 1.25, fog: '#1a0907' },
   frozen:         { sun: '#9fb8e8', sunI: 1.15, hemi: 0.78, rim: 0.58, env: 1.10, exposure: 1.08, fog: '#07101d' },
   extinct:        { sun: '#a394d8', sunI: 1.2, hemi: 0.72, rim: 0.48, env: 0.90, exposure: 1.05, fog: '#0b0918' },
+};
+
+/** 纪元只改变天空的色彩倾向；可见亮度继续由同一套日照循环平滑调制。 */
+const ERA_SKY: Record<EraKey, {
+  dayZenith: string; dayHorizon: string;
+  nightZenith: string; nightHorizon: string;
+  nadir: string; haze: string;
+}> = {
+  stable: {
+    dayZenith: '#173f73', dayHorizon: '#416b97',
+    nightZenith: '#04091a', nightHorizon: '#14213a', nadir: '#030611', haze: '#e6a56a',
+  },
+  chaotic: {
+    dayZenith: '#263454', dayHorizon: '#555c72',
+    nightZenith: '#050719', nightHorizon: '#1a1930', nadir: '#050510', haze: '#d99463',
+  },
+  'chaotic-heat': {
+    dayZenith: '#4e2d23', dayHorizon: '#995238',
+    nightZenith: '#160706', nightHorizon: '#3b180f', nadir: '#0b0404', haze: '#e77c4d',
+  },
+  'chaotic-cold': {
+    dayZenith: '#244a70', dayHorizon: '#5c82a6',
+    nightZenith: '#030a18', nightHorizon: '#14273d', nadir: '#030710', haze: '#8fb7e8',
+  },
+  burned: {
+    dayZenith: '#51271c', dayHorizon: '#9f4a31',
+    nightZenith: '#170604', nightHorizon: '#40130b', nadir: '#0b0303', haze: '#df7044',
+  },
+  frozen: {
+    dayZenith: '#244462', dayHorizon: '#587a99',
+    nightZenith: '#030918', nightHorizon: '#16283d', nadir: '#030710', haze: '#91b3dd',
+  },
+  extinct: {
+    dayZenith: '#342d49', dayHorizon: '#605675',
+    nightZenith: '#090617', nightHorizon: '#21192f', nadir: '#05040d', haze: '#9882bd',
+  },
 };
 
 interface DaylightKeyframe {
@@ -747,7 +783,8 @@ export default function SocietyScene3D({
     camera.position.copy(cameraEntry); // 沿最终 45° 对角视线从太空入场
     const mountedAt = performance.now();
 
-    // 程序化天空与环境贴图同源：画面可见渐变，同时为 PBR 材质提供反射源。
+    // 环境贴图只为 PBR 材质提供稳定反射源；可见天空由下方天空球单独渲染，
+    // 避免为了渐变动画每帧重建昂贵的 PMREM。
     let environmentTarget: THREE.WebGLRenderTarget | null = null;
     let skyTexture: THREE.CanvasTexture | null = null;
     {
@@ -765,8 +802,6 @@ export default function SocietyScene3D({
       envTex.mapping = THREE.EquirectangularReflectionMapping;
       envTex.colorSpace = THREE.SRGBColorSpace;
       skyTexture = envTex;
-      scene.background = skyTexture;
-      scene.backgroundIntensity = 0.82;
       const pmrem = new THREE.PMREMGenerator(renderer);
       environmentTarget = pmrem.fromEquirectangular(envTex);
       scene.environment = environmentTarget.texture;
@@ -838,48 +873,133 @@ export default function SocietyScene3D({
       }
     };
 
-    // ---- 星野背景（星球悬浮其中）----
-    let skyStars: THREE.Points | null = null;
-    {
-      const N = 700;
-      const pos = new Float32Array(N * 3);
-      const col3 = new Float32Array(N * 3);
-      const cCool = new THREE.Color('#cdd8ff');
-      const cWarm = new THREE.Color('#ffe9c9');
-      for (let i = 0; i < N; i++) {
-        const u = Math.random() * 2 - 1;
-        const th = Math.random() * Math.PI * 2;
-        const r = 140 + Math.random() * 150;
-        const s = Math.sqrt(1 - u * u);
-        pos[i * 3] = r * s * Math.cos(th);
-        pos[i * 3 + 1] = r * u * 0.72 + 10;
-        pos[i * 3 + 2] = r * s * Math.sin(th);
-        const base = Math.random() < 0.85 ? cCool : cWarm;
-        const a = 0.2 + Math.random() * 0.55;
-        col3[i * 3] = base.r * a;
-        col3[i * 3 + 1] = base.g * a;
-        col3[i * 3 + 2] = base.b * a;
+    // ---- 天空球：天顶、地平线和三颗可见恒星附近的散射均可连续调色 ----
+    const skyStarDirections = Array.from({ length: N_STARS }, () => new THREE.Vector3(0, 1, 0));
+    const skyStarColors = STAR_STYLES.map((style) => new THREE.Color(style.glow));
+    const skyStarStrengths = new Float32Array(N_STARS);
+    const skyAtmosphereUniforms = {
+      uZenithColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nightZenith) },
+      uHorizonColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nightHorizon) },
+      uNadirColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nadir) },
+      uHazeColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].haze) },
+      uHazeStrength: { value: 0.12 },
+      // 沙盘相机始终俯视；把构图中心映射到地平线附近，保留可见的天顶—地平线层次。
+      uVerticalBias: { value: -cameraForward.y },
+      uStarDirections: { value: skyStarDirections },
+      uStarColors: { value: skyStarColors },
+      uStarStrengths: { value: skyStarStrengths },
+    };
+    const skyDome = new THREE.Mesh(
+      new THREE.SphereGeometry(700, 48, 28),
+      new THREE.ShaderMaterial({
+        uniforms: skyAtmosphereUniforms,
+        vertexShader: `
+          varying vec3 vSkyDirection;
+
+          void main() {
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vSkyDirection = normalize(worldPosition.xyz - cameraPosition);
+            vec4 clipPosition = projectionMatrix * viewMatrix * worldPosition;
+            clipPosition.z = clipPosition.w;
+            gl_Position = clipPosition;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uZenithColor;
+          uniform vec3 uHorizonColor;
+          uniform vec3 uNadirColor;
+          uniform vec3 uHazeColor;
+          uniform float uHazeStrength;
+          uniform float uVerticalBias;
+          uniform vec3 uStarDirections[3];
+          uniform vec3 uStarColors[3];
+          uniform float uStarStrengths[3];
+          varying vec3 vSkyDirection;
+
+          void main() {
+            vec3 direction = normalize(vSkyDirection);
+            float altitude = clamp(direction.y + uVerticalBias, -1.0, 1.0);
+            float upper = pow(smoothstep(0.0, 0.84, max(0.0, altitude)), 0.72);
+            float lower = smoothstep(0.0, 0.62, max(0.0, -altitude));
+            float horizonBand = pow(max(0.0, 1.0 - abs(altitude)), 3.4);
+            vec3 color = mix(uHorizonColor, uZenithColor, upper);
+            color = mix(color, uNadirColor, lower);
+            color = mix(color, uHazeColor, horizonBand * uHazeStrength * 0.22);
+
+            for (int i = 0; i < 3; i++) {
+              float alignment = max(0.0, dot(direction, normalize(uStarDirections[i])));
+              float broadScatter = pow(alignment, 28.0);
+              float nearScatter = pow(alignment, 220.0);
+              color += uStarColors[i]
+                * (broadScatter * 0.055 + nearScatter * 0.12)
+                * uStarStrengths[i];
+            }
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+        side: THREE.BackSide,
+        depthTest: false,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      }),
+    );
+    skyDome.renderOrder = -100;
+
+    // ---- 稳定星野：准均匀球面分布 + 三层尺寸/亮度，避免少量随机点像坏点 ----
+    const skyBackdrop = new THREE.Group();
+    const liveCameraDirection = new THREE.Vector3();
+    const skyStarMaterials: Array<{ material: THREE.PointsMaterial; baseOpacity: number }> = [];
+    skyBackdrop.add(skyDome);
+    const starLayerDefinitions = [
+      { count: 1_800, size: 0.82, opacity: 0.30, warmChance: 0.10, seed: 0x7e1a4d31 },
+      { count: 420, size: 1.22, opacity: 0.54, warmChance: 0.16, seed: 0x51c0b8a7 },
+      { count: 72, size: 1.85, opacity: 0.78, warmChance: 0.24, seed: 0x2d93f06b },
+    ] as const;
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    starLayerDefinitions.forEach((definition, layerIndex) => {
+      const rng = mulberry32(definition.seed);
+      const pos = new Float32Array(definition.count * 3);
+      const col3 = new Float32Array(definition.count * 3);
+      const cool = new THREE.Color('#cdd8ff');
+      const warm = new THREE.Color('#ffe2bd');
+      for (let i = 0; i < definition.count; i++) {
+        const y = 1 - ((i + 0.5) / definition.count) * 2;
+        const radial = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = i * goldenAngle + layerIndex * 1.37 + (rng() - 0.5) * 0.24;
+        const radius = 470 + rng() * 120;
+        pos[i * 3] = radius * radial * Math.cos(theta);
+        pos[i * 3 + 1] = radius * y;
+        pos[i * 3 + 2] = radius * radial * Math.sin(theta);
+        const base = rng() < definition.warmChance ? warm : cool;
+        const brightness = 0.48 + Math.pow(rng(), 1.8) * 0.52;
+        col3[i * 3] = base.r * brightness;
+        col3[i * 3 + 1] = base.g * brightness;
+        col3[i * 3 + 2] = base.b * brightness;
       }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      g.setAttribute('color', new THREE.BufferAttribute(col3, 3));
-      const stars = new THREE.Points(
-        g,
-        new THREE.PointsMaterial({
-          size: 1.25,
-          sizeAttenuation: false,
-          vertexColors: true,
-          transparent: true,
-          opacity: 0.78,
-          depthWrite: false,
-          fog: false,
-          toneMapped: false,
-        }),
-      );
-      skyStars = stars;
-      scene.add(stars);
-      aoExcluded.push(stars);
-    }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(col3, 3));
+      const material = new THREE.PointsMaterial({
+        size: definition.size,
+        sizeAttenuation: false,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0,
+        depthTest: true,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      });
+      const layer = new THREE.Points(geometry, material);
+      layer.frustumCulled = false;
+      layer.renderOrder = -90 + layerIndex;
+      skyBackdrop.add(layer);
+      skyStarMaterials.push({ material, baseOpacity: definition.opacity });
+    });
+    const skyStars = skyBackdrop;
+    scene.add(skyBackdrop);
+    aoExcluded.push(skyBackdrop);
 
     // ---- 人间天穹：把当前三体系统的相对方位投影成可辨认的恒星圆面 ----
     const skyGlowTexture = makeHumanSkyGlowTexture();
@@ -958,9 +1078,10 @@ export default function SocietyScene3D({
 
     skyApiRef.current = (snapshot) => {
       if (!snapshot || snapshot.bodies.length < 8) {
-        skySuns.forEach((star) => {
+        skySuns.forEach((star, index) => {
           star.enabled = false;
           star.core.visible = star.glow.visible = false;
+          skyStarStrengths[index] = 0;
         });
         return;
       }
@@ -1035,6 +1156,11 @@ export default function SocietyScene3D({
           // 沙盘相机始终俯视，实际可见天空只在地图上沿；把昼弧落入这条窄天空带。
           .addScaledVector(skyUp, 0.13 + altitude * 0.12)
           .normalize();
+        skyStarDirections[index].copy(skyDirection);
+        skyStarStrengths[index] = star.horizonOpacity
+          * star.glowOpacity
+          * star.apparentScale
+          * (0.34 + skyDaylightStrength * 0.66);
         star.core.position.copy(camera.position).addScaledVector(skyDirection, 180);
         star.glow.position.copy(star.core.position);
         star.core.scale.setScalar(star.apparentScale);
@@ -1061,6 +1187,13 @@ export default function SocietyScene3D({
     const eraSunColor = new THREE.Color();
     const chaosTone = new THREE.Color();
     const fogTargetColor = new THREE.Color(ERA_LIGHT[activeLightEra].fog);
+    const skyZenithTarget = new THREE.Color(ERA_SKY[activeLightEra].nightZenith);
+    const skyHorizonTarget = new THREE.Color(ERA_SKY[activeLightEra].nightHorizon);
+    const skyNadirTarget = new THREE.Color(ERA_SKY[activeLightEra].nadir);
+    const skyHazeTarget = new THREE.Color(ERA_SKY[activeLightEra].haze);
+    const skyColorScratch = new THREE.Color();
+    let skyDaylightStrength = 0;
+    let skyStarVisibility = 0;
     let fogTargetNear = 175;
     let fogTargetFar = 460;
 
@@ -1145,6 +1278,77 @@ export default function SocietyScene3D({
         LIGHT_DAMPING,
         deltaSeconds,
       );
+
+      // 可见天空与日照、纪元和天气共享目标状态；这只改变表现层，不反向影响模拟。
+      const skyPalette = ERA_SKY[activeLightEra];
+      const daylightStrength = THREE.MathUtils.smoothstep(directMultiplier, 0.30, 0.94);
+      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
+      const weatherStrength = THREE.MathUtils.clamp(weather.intensity / 10, 0, 1);
+      skyZenithTarget.set(skyPalette.nightZenith)
+        .lerp(skyColorScratch.set(skyPalette.dayZenith), daylightStrength);
+      skyHorizonTarget.set(skyPalette.nightHorizon)
+        .lerp(skyColorScratch.set(skyPalette.dayHorizon), daylightStrength);
+      skyNadirTarget.set(skyPalette.nadir);
+      skyHazeTarget.set(skyPalette.haze);
+      let hazeStrength = THREE.MathUtils.lerp(0.08, 0.34, daylightStrength);
+      let starWeatherVisibility = 1;
+
+      if (weather.kind === 'fog') {
+        const veil = 0.48 + weatherStrength * 0.30;
+        skyZenithTarget.lerp(skyColorScratch.set('#758188'), veil * 0.72);
+        skyHorizonTarget.lerp(skyColorScratch.set('#aab5b5'), veil);
+        skyNadirTarget.lerp(skyColorScratch.set('#5f696c'), veil * 0.64);
+        hazeStrength = 0.88;
+        starWeatherVisibility = 0.03;
+      } else if (weather.kind === 'storm') {
+        skyZenithTarget.lerp(skyColorScratch.set('#172431'), 0.54 + weatherStrength * 0.24);
+        skyHorizonTarget.lerp(skyColorScratch.set('#3d5362'), 0.48 + weatherStrength * 0.24);
+        hazeStrength = 0.62;
+        starWeatherVisibility = 0.10;
+      } else if (weather.kind === 'rain') {
+        skyZenithTarget.lerp(skyColorScratch.set('#263747'), 0.38 + weatherStrength * 0.22);
+        skyHorizonTarget.lerp(skyColorScratch.set('#526574'), 0.34 + weatherStrength * 0.20);
+        hazeStrength = 0.58;
+        starWeatherVisibility = 0.24;
+      } else if (weather.kind === 'snow') {
+        skyZenithTarget.lerp(skyColorScratch.set('#677887'), 0.32 + weatherStrength * 0.22);
+        skyHorizonTarget.lerp(skyColorScratch.set('#abb8c1'), 0.42 + weatherStrength * 0.22);
+        hazeStrength = 0.66;
+        starWeatherVisibility = 0.16;
+      } else if (weather.kind === 'drought') {
+        skyZenithTarget.lerp(skyColorScratch.set('#62503b'), 0.20 + weatherStrength * 0.20);
+        skyHorizonTarget.lerp(skyColorScratch.set('#9f8059'), 0.32 + weatherStrength * 0.24);
+        hazeStrength = 0.62;
+        starWeatherVisibility = 0.56;
+      }
+
+      skyDaylightStrength = THREE.MathUtils.damp(
+        skyDaylightStrength,
+        daylightStrength,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      const starVisibilityTarget = Math.pow(1 - daylightStrength, 1.65) * starWeatherVisibility;
+      skyStarVisibility = THREE.MathUtils.damp(
+        skyStarVisibility,
+        starVisibilityTarget,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      skyAtmosphereUniforms.uZenithColor.value.lerp(skyZenithTarget, blend);
+      skyAtmosphereUniforms.uHorizonColor.value.lerp(skyHorizonTarget, blend);
+      skyAtmosphereUniforms.uNadirColor.value.lerp(skyNadirTarget, blend);
+      skyAtmosphereUniforms.uHazeColor.value.lerp(skyHazeTarget, blend);
+      skyAtmosphereUniforms.uHazeStrength.value = THREE.MathUtils.damp(
+        skyAtmosphereUniforms.uHazeStrength.value,
+        hazeStrength,
+        LIGHT_DAMPING,
+        deltaSeconds,
+      );
+      skyStarMaterials.forEach(({ material, baseOpacity }) => {
+        material.opacity = baseOpacity * skyStarVisibility;
+      });
+
       const fog = scene.fog as THREE.Fog;
       fog.color.lerp(fogTargetColor, blend);
       fog.near = THREE.MathUtils.damp(fog.near, fogTargetNear, LIGHT_DAMPING, deltaSeconds);
@@ -1182,40 +1386,66 @@ export default function SocietyScene3D({
     groundDetail.renderOrder = 2;
     scene.add(groundDetail);
     aoExcluded.push(groundDetail);
-    // 水体积仍严格来自权威液体体素；上层演出用 1/8 格量化的低对比流纹。
-    // 像素边界保留体素感，整片材质共享相位保持连续；只读水格邻接，不写回水事实。
+    // 水体积仍严格来自权威液体体素；表现层把所有顶面合进一个网格，只在真实岸缘
+    // 生成侧壁。这样不再渲染相邻透明盒的内部侧面，也不会出现逐格叠色形成的棋盘缝。
     const waterMat = new THREE.MeshPhysicalMaterial({
-      color: '#ffffff', roughness: 0.21, metalness: 0,
-      transmission: 0.58, ior: 1.33, thickness: 0.45, specularIntensity: 1.15,
-      attenuationColor: '#58b7c8', attenuationDistance: 3.2,
-      clearcoat: 0.42, clearcoatRoughness: 0.24,
-      emissive: '#092b3b', emissiveIntensity: 0.22,
+      color: '#347f91', roughness: 0.24, metalness: 0,
+      transmission: 0.34, ior: 1.33, thickness: 0.28, specularIntensity: 1.02,
+      attenuationColor: '#5aa4af', attenuationDistance: 4.8,
+      clearcoat: 0.34, clearcoatRoughness: 0.3,
+      emissive: '#0b2d38', emissiveIntensity: 0.16,
     });
-    const water = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), waterMat, COUNT);
-    water.count = 0;
-    water.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    water.receiveShadow = false; // 树冠阴影不再把窄河压成纯黑沟槽
-    scene.add(water);
-    aoExcluded.push(water); // 透射水不是实体遮蔽体，避免 GTAO 给每格水面压出黑缝
+    const waterSurface = new THREE.Mesh(new THREE.BufferGeometry(), waterMat);
+    waterSurface.receiveShadow = false; // 树冠阴影不再把窄河压成纯黑沟槽
+    waterSurface.renderOrder = 1;
+    scene.add(waterSurface);
+    aoExcluded.push(waterSurface); // 透射水不是实体遮蔽体，避免 GTAO 给水面压出暗边
+    const waterSideMat = new THREE.MeshStandardMaterial({
+      color: '#245f70', roughness: 0.42, metalness: 0,
+      transparent: true, opacity: 0.76, side: THREE.DoubleSide,
+    });
+    const waterSides = new THREE.Mesh(new THREE.BufferGeometry(), waterSideMat);
+    waterSides.receiveShadow = false;
+    waterSides.renderOrder = 1;
+    scene.add(waterSides);
+    aoExcluded.push(waterSides);
+
+    // 湿土/湿沙以 1/8 格微体素跨入水格边缘，打散整格直角；它只覆盖水面的一小段，
+    // 不改变该格在权威世界中仍然是 Water 的事实。
+    const SHORE_LIP_CAP = COUNT * 16;
+    const shoreLip = new THREE.InstancedMesh(
+      boxGeo,
+      new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.98, metalness: 0 }),
+      SHORE_LIP_CAP,
+    );
+    shoreLip.count = 0;
+    shoreLip.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    shoreLip.castShadow = false;
+    shoreLip.receiveShadow = true;
+    shoreLip.renderOrder = 4;
+    scene.add(shoreLip);
+    aoExcluded.push(shoreLip);
+
     const waterFlowUniforms = { uTime: { value: 0 }, uRain: { value: 0 } };
-    const waterFlowOffsets = new Float32Array(COUNT);
-    const waterFlowGeo = new THREE.PlaneGeometry(1.02, 1.02);
-    waterFlowGeo.rotateX(-Math.PI / 2);
-    const waterFlowOffsetAttribute = new THREE.InstancedBufferAttribute(waterFlowOffsets, 1);
-    waterFlowGeo.setAttribute('aFlowOffset', waterFlowOffsetAttribute);
-    const waterFlow = new THREE.InstancedMesh(
-      waterFlowGeo,
+    const waterFlow = new THREE.Mesh(
+      new THREE.BufferGeometry(),
       new THREE.ShaderMaterial({
         uniforms: waterFlowUniforms,
         vertexShader: `
-          attribute float aFlowOffset;
+          attribute vec2 aFlowDirection;
+          attribute vec2 aFlowLocal;
+          attribute vec4 aFlowNeighbors;
           varying vec2 vFlowCoord;
-          varying float vFlowOffset;
+          varying vec2 vFlowDirection;
+          varying vec2 vFlowLocal;
+          varying vec4 vFlowNeighbors;
 
           void main() {
-            vFlowCoord = vec2(position.x, position.z + aFlowOffset);
-            vFlowOffset = aFlowOffset;
-            vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vFlowCoord = worldPosition.xz;
+            vFlowDirection = normalize(aFlowDirection);
+            vFlowLocal = aFlowLocal;
+            vFlowNeighbors = aFlowNeighbors;
             gl_Position = projectionMatrix * viewMatrix * worldPosition;
           }
         `,
@@ -1223,21 +1453,35 @@ export default function SocietyScene3D({
           uniform float uTime;
           uniform float uRain;
           varying vec2 vFlowCoord;
-          varying float vFlowOffset;
+          varying vec2 vFlowDirection;
+          varying vec2 vFlowLocal;
+          varying vec4 vFlowNeighbors;
 
           void main() {
-            // 先把取样位置锁进 1/8 格，再让色阶连续传播：轮廓是体素的，运动不再硬跳。
+            // 世界坐标保证相邻格共用相位；局部流向只旋转波纹，不会重置纹理原点。
             vec2 voxel = floor(vFlowCoord * 8.0) / 8.0;
+            vec2 direction = normalize(vFlowDirection);
+            vec2 acrossDirection = vec2(-direction.y, direction.x);
+            float along = dot(voxel, direction);
+            float across = dot(voxel, acrossDirection);
             float time = uTime * (1.0 + uRain * 0.28);
             float mainBand = 0.5 + 0.5 * sin(
-              voxel.y * 4.2 - time * 1.45 + sin(voxel.x * 4.8 + vFlowOffset * 0.17) * 0.42
+              along * 4.2 - time * 1.45 + sin(across * 4.8) * 0.42
             );
             float crossBand = 0.5 + 0.5 * sin(
-              voxel.y * 7.6 - time * 2.05 + voxel.x * 2.1
+              along * 7.6 - time * 2.05 + across * 2.1
             );
             float flow = smoothstep(0.38, 0.94, mainBand) * (0.72 + crossBand * 0.28);
-            vec3 flowColor = mix(vec3(0.10, 0.37, 0.45), vec3(0.34, 0.66, 0.70), flow);
-            float alpha = 0.018 + flow * (0.075 + uRain * 0.018);
+            vec3 flowColor = mix(vec3(0.12, 0.36, 0.42), vec3(0.31, 0.58, 0.62), flow);
+            // 没有相邻水格的一侧是真实河岸。流纹在岸边两微格内退去，
+            // 避免透明高光盖到湿土/湿沙的岸缘台阶上。
+            float bankDistance = 1.0;
+            if (vFlowNeighbors.x < 0.5) bankDistance = min(bankDistance, vFlowLocal.y);
+            if (vFlowNeighbors.y < 0.5) bankDistance = min(bankDistance, 1.0 - vFlowLocal.x);
+            if (vFlowNeighbors.z < 0.5) bankDistance = min(bankDistance, 1.0 - vFlowLocal.y);
+            if (vFlowNeighbors.w < 0.5) bankDistance = min(bankDistance, vFlowLocal.x);
+            float bankFade = smoothstep(0.22, 0.38, bankDistance);
+            float alpha = (0.012 + flow * (0.058 + uRain * 0.014)) * bankFade;
             gl_FragColor = vec4(flowColor, alpha);
           }
         `,
@@ -1245,10 +1489,8 @@ export default function SocietyScene3D({
         depthWrite: false,
         side: THREE.DoubleSide,
       }),
-      COUNT,
     );
-    waterFlow.count = 0;
-    waterFlow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    waterFlow.position.y = 0.012;
     waterFlow.castShadow = waterFlow.receiveShadow = false;
     waterFlow.renderOrder = 3;
     scene.add(waterFlow);
@@ -1470,11 +1712,26 @@ export default function SocietyScene3D({
       const w = s.world;
       const structureCells = new Set(s.structures.flatMap((structure) => structure.occupiedCells));
       const liquidDepthByCell = new Uint8Array(COUNT);
+      const liquidStartByCell = new Uint8Array(COUNT);
+      const liquidTopByCell = new Float32Array(COUNT);
+      const liquidBaseByCell = new Float32Array(COUNT);
       for (let cellId = 0; cellId < COUNT; cellId++) {
         const stack = w.columns[cellId];
+        const topMaterial = w.palette[stack[0]];
+        let start = topMaterial?.tags.includes('liquid') ? 0 : topMaterial?.key === 'water_wheel' ? 1 : stack.length;
+        while (start < stack.length && !w.palette[stack[start]]?.tags.includes('liquid')) start++;
         let depth = 0;
-        while (depth < stack.length && w.palette[stack[depth]]?.tags.includes('liquid')) depth++;
+        while (start + depth < stack.length && w.palette[stack[start + depth]]?.tags.includes('liquid')) depth++;
+        liquidStartByCell[cellId] = depth > 0 ? start : 0;
         liquidDepthByCell[cellId] = depth;
+        if (depth > 0) {
+          const liquidHeight = depth * CELL_H;
+          const columnHeight = (w.elevation[cellId] + 1) * CELL_H;
+          const displayFeatureDepth = start > 0 ? featureDepth(w, cellId, structureCells) : 0;
+          const liquidTop = Math.max(liquidHeight, columnHeight - displayFeatureDepth * CELL_H);
+          liquidTopByCell[cellId] = liquidTop;
+          liquidBaseByCell[cellId] = Math.max(0, liquidTop - liquidHeight);
+        }
       }
       const hasLiquid = (x: number, y: number): boolean => x >= 0 && x < w.width
         && y >= 0 && y < w.height
@@ -1509,7 +1766,6 @@ export default function SocietyScene3D({
           if (current === undefined || baseZ < current) completeStructureBaseByCell.set(cellId, baseZ);
         }
       }
-      let wi = 0;
       let sti = 0;
       for (let cellId = 0; cellId < COUNT; cellId++) {
         const { x, y } = cellCoordinates(cellId, w.width);
@@ -1517,9 +1773,7 @@ export default function SocietyScene3D({
         const wz = y - w.height / 2 + 0.5;
         const stack = w.columns[cellId];
         const liquidDepth = liquidDepthByCell[cellId];
-        const solidLevels = stack.length - liquidDepth;
-        const solidH = solidLevels * CELL_H;
-        const waterH = liquidDepth * CELL_H;
+        const liquidStart = liquidStartByCell[cellId];
         const h = (w.elevation[cellId] + 1) * CELL_H;
         const completeStructureBaseZ = completeStructureBaseByCell.get(cellId);
         const isBoundary = x === 0 || x === w.width - 1 || y === 0 || y === w.height - 1;
@@ -1565,10 +1819,11 @@ export default function SocietyScene3D({
           }
         } else {
           if (liquidDepth > 0) {
-            // 水格的不透明柱只到真实河床；顶色取水下首个固体，不再把水画进 land 柱。
-            const bed = w.palette[stack[liquidDepth]];
+            // 功能设施可以位于水体素上方；水面高度扣除其视觉替身深度，仍保留真实河流。
+            const waterBaseH = liquidBaseByCell[cellId];
+            const bed = w.palette[stack[liquidStart + liquidDepth]];
             const bedColor = bed?.color ?? [90, 80, 70];
-            const visibleH = Math.max(0.0001, solidH);
+            const visibleH = Math.max(0.0001, waterBaseH);
             m4.compose(v.set(wx, visibleH / 2, wz), q.identity(), sc.set(1, visibleH, 1));
             land.setMatrixAt(cellId, m4);
             land.setColorAt(cellId, col.setRGB(
@@ -1595,42 +1850,124 @@ export default function SocietyScene3D({
             land.setColorAt(cellId, col.setRGB(c.r / 255, c.g / 255, c.b / 255, THREE.SRGBColorSpace));
           }
         }
-        if (liquidDepth > 0) {
-          const material = w.palette[stack[0]];
-          // 几何厚度严格来自连续液体层；顶面 = (elevation + 1) * CELL_H，无额外凸起。
-          // 略微重叠相邻水格，消除透射盒体之间的发丝缝；颜色同时编码水深和岸缘。
-          m4.compose(v.set(wx, solidH + waterH / 2, wz), q.identity(), sc.set(1.018, waterH, 1.018));
-          water.setMatrixAt(wi, m4);
-          const waterColor = material?.color ?? [28, 91, 126];
-          let liquidNeighbors = 0;
-          if (x > 0 && liquidDepthByCell[cellId - 1] > 0) liquidNeighbors++;
-          if (x + 1 < w.width && liquidDepthByCell[cellId + 1] > 0) liquidNeighbors++;
-          if (y > 0 && liquidDepthByCell[cellId - w.width] > 0) liquidNeighbors++;
-          if (y + 1 < w.height && liquidDepthByCell[cellId + w.width] > 0) liquidNeighbors++;
-          const depthT = THREE.MathUtils.clamp((liquidDepth - 1) / 3, 0, 1);
-          const shoreT = 1 - liquidNeighbors / 4;
-          const targetShallow = [65, 150, 170] as const;
-          const targetDeep = [24, 84, 126] as const;
-          const targetChannel = (channel: number) => THREE.MathUtils.lerp(targetShallow[channel], targetDeep[channel], depthT);
-          const waterMix = 0.62 + shoreT * 0.18;
-          const visibleChannel = (channel: number) => Math.min(255,
-            THREE.MathUtils.lerp(waterColor[channel], targetChannel(channel), waterMix) + shoreT * (channel === 0 ? 12 : 22));
-          water.setColorAt(wi, col.setRGB(
-            visibleChannel(0) / 255, visibleChannel(1) / 255, visibleChannel(2) / 255, THREE.SRGBColorSpace,
-          ));
-          const [dirX, dirZ] = flowDirection(x, y);
-          const flowAngle = Math.atan2(dirX, dirZ);
-          m4.compose(
-            v.set(wx, solidH + waterH + 0.012, wz),
-            q.setFromAxisAngle(decorAxisY, flowAngle),
-            sc.set(1, 1, 1),
-          );
-          waterFlow.setMatrixAt(wi, m4);
-          // 纵向格坐标让整条河共享动画相位；少量横向偏移只避免转弯处完全镜像。
-          waterFlowOffsetAttribute.setX(wi, y + x * 0.125);
-          wi++;
+      }
+
+      // 所有水格的顶面进入同一个 BufferGeometry；同高相邻格只共享平面，不再有
+      // 透明内部侧面。只有水域外缘或水位真实落差处才补一面垂直水壁。
+      const topPositions: number[] = [];
+      const topIndices: number[] = [];
+      const topFlowDirections: number[] = [];
+      const topFlowLocal: number[] = [];
+      const topFlowNeighbors: number[] = [];
+      const sidePositions: number[] = [];
+      const sideIndices: number[] = [];
+      const appendTop = (
+        minX: number,
+        maxX: number,
+        top: number,
+        minZ: number,
+        maxZ: number,
+        direction: readonly [number, number],
+        neighbors: readonly [number, number, number, number],
+      ) => {
+        const base = topPositions.length / 3;
+        topPositions.push(
+          minX, top, minZ,
+          maxX, top, minZ,
+          maxX, top, maxZ,
+          minX, top, maxZ,
+        );
+        topIndices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        topFlowLocal.push(0, 0, 1, 0, 1, 1, 0, 1);
+        for (let vertex = 0; vertex < 4; vertex += 1) {
+          topFlowDirections.push(direction[0], direction[1]);
+          topFlowNeighbors.push(neighbors[0], neighbors[1], neighbors[2], neighbors[3]);
+        }
+      };
+      const appendSide = (
+        firstX: number,
+        firstZ: number,
+        secondX: number,
+        secondZ: number,
+        bottom: number,
+        top: number,
+      ) => {
+        if (top - bottom <= 0.001) return;
+        const base = sidePositions.length / 3;
+        sidePositions.push(
+          firstX, bottom, firstZ,
+          secondX, bottom, secondZ,
+          secondX, top, secondZ,
+          firstX, top, firstZ,
+        );
+        sideIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      };
+      const waterEdges = [
+        { dx: 0, dy: -1, edge: (wx: number, wz: number) => [wx - 0.5, wz - 0.5, wx + 0.5, wz - 0.5] as const },
+        { dx: 1, dy: 0, edge: (wx: number, wz: number) => [wx + 0.5, wz - 0.5, wx + 0.5, wz + 0.5] as const },
+        { dx: 0, dy: 1, edge: (wx: number, wz: number) => [wx + 0.5, wz + 0.5, wx - 0.5, wz + 0.5] as const },
+        { dx: -1, dy: 0, edge: (wx: number, wz: number) => [wx - 0.5, wz + 0.5, wx - 0.5, wz - 0.5] as const },
+      ];
+      for (let cellId = 0; cellId < COUNT; cellId += 1) {
+        if (liquidDepthByCell[cellId] === 0) continue;
+        const { x, y } = cellCoordinates(cellId, w.width);
+        const wx = x - w.width / 2 + 0.5;
+        const wz = y - w.height / 2 + 0.5;
+        const top = liquidTopByCell[cellId];
+        const base = liquidBaseByCell[cellId];
+        appendTop(
+          wx - 0.5,
+          wx + 0.5,
+          top,
+          wz - 0.5,
+          wz + 0.5,
+          flowDirection(x, y),
+          [
+            Number(hasLiquid(x, y - 1)),
+            Number(hasLiquid(x + 1, y)),
+            Number(hasLiquid(x, y + 1)),
+            Number(hasLiquid(x - 1, y)),
+          ],
+        );
+        for (const { dx, dy, edge } of waterEdges) {
+          const nx = x + dx;
+          const ny = y + dy;
+          const neighborId = nx >= 0 && nx < w.width && ny >= 0 && ny < w.height
+            ? ny * w.width + nx
+            : -1;
+          const neighborTop = neighborId >= 0 && liquidDepthByCell[neighborId] > 0
+            ? liquidTopByCell[neighborId]
+            : Number.NEGATIVE_INFINITY;
+          if (neighborTop >= top - 0.001) continue;
+          const bottom = neighborId >= 0 && liquidDepthByCell[neighborId] > 0
+            ? Math.max(base, neighborTop)
+            : base;
+          const [firstX, firstZ, secondX, secondZ] = edge(wx, wz);
+          appendSide(firstX, firstZ, secondX, secondZ, bottom, top);
         }
       }
+      const nextWaterTopGeometry = new THREE.BufferGeometry();
+      nextWaterTopGeometry.setAttribute('position', new THREE.Float32BufferAttribute(topPositions, 3));
+      nextWaterTopGeometry.setAttribute('aFlowDirection', new THREE.Float32BufferAttribute(topFlowDirections, 2));
+      nextWaterTopGeometry.setAttribute('aFlowLocal', new THREE.Float32BufferAttribute(topFlowLocal, 2));
+      nextWaterTopGeometry.setAttribute('aFlowNeighbors', new THREE.Float32BufferAttribute(topFlowNeighbors, 4));
+      nextWaterTopGeometry.setIndex(topIndices);
+      nextWaterTopGeometry.computeVertexNormals();
+      nextWaterTopGeometry.computeBoundingSphere();
+      const previousWaterSurfaceGeometry = waterSurface.geometry;
+      const previousWaterFlowGeometry = waterFlow.geometry;
+      waterSurface.geometry = nextWaterTopGeometry;
+      waterFlow.geometry = nextWaterTopGeometry;
+      previousWaterSurfaceGeometry.dispose();
+      if (previousWaterFlowGeometry !== previousWaterSurfaceGeometry) previousWaterFlowGeometry.dispose();
+
+      const nextWaterSideGeometry = new THREE.BufferGeometry();
+      nextWaterSideGeometry.setAttribute('position', new THREE.Float32BufferAttribute(sidePositions, 3));
+      nextWaterSideGeometry.setIndex(sideIndices);
+      nextWaterSideGeometry.computeVertexNormals();
+      nextWaterSideGeometry.computeBoundingSphere();
+      waterSides.geometry.dispose();
+      waterSides.geometry = nextWaterSideGeometry;
 
       // 普通陆地内部铺少量 1/4 格色片，材质边界则铺 1/8 格微体素。
       // 硬轮廓和地块归属不变，过渡只发生在格内。
@@ -1817,7 +2154,7 @@ export default function SocietyScene3D({
           if (nx < 0 || ny < 0 || nx >= w.width || ny >= w.height) continue;
           const neighborId = ny * w.width + nx;
           const sameLevelWater = liquidDepthByCell[neighborId] > 0
-            && Math.abs(detailTop[cellId] - (w.elevation[neighborId] + 1) * CELL_H) <= 0.02;
+            && Math.abs(detailTop[cellId] - liquidTopByCell[neighborId]) <= 0.02;
           shorelineNeighbors[direction] = sameLevelWater;
           const neighborKind = detailKind[neighborId];
           if (!detailVisible[neighborId] || neighborKind === undefined) continue;
@@ -1851,16 +2188,59 @@ export default function SocietyScene3D({
           );
         }
       }
+
+      // 反向复用同一套 1/8 格岸线掩码：陆地格内保留湿润带，水格边缘再覆盖一层
+      // 极薄湿土/湿沙微体素，使岸线轮廓跨出整格直角，但不修改水格拓扑。
+      let shorei = 0;
+      for (let cellId = 0; cellId < COUNT && shorei < SHORE_LIP_CAP; cellId += 1) {
+        if (liquidDepthByCell[cellId] === 0) continue;
+        const { x, y } = cellCoordinates(cellId, w.width);
+        const bankNeighbors: ShorelineNeighbors = {};
+        for (const [direction, [dx, dy]] of Object.entries(transitionOffsets) as Array<
+          [keyof ShorelineNeighbors, readonly [number, number]]
+        >) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w.width || ny >= w.height) continue;
+          const neighborId = ny * w.width + nx;
+          bankNeighbors[direction] = Boolean(
+            detailVisible[neighborId]
+            && detailKind[neighborId] !== undefined
+            && Math.abs(detailTop[neighborId] - liquidTopByCell[cellId]) <= 0.02,
+          );
+        }
+        const transitionSeed = Math.floor(terrainHash(cellId, 41) * 0xffffffff) >>> 0;
+        for (const patch of shorelinePatches(bankNeighbors, transitionSeed ^ 0x51f15e5d)) {
+          if (shorei >= SHORE_LIP_CAP) break;
+          const [dx, dy] = cardinalOffsets[patch.source];
+          const bankId = (y + dy) * w.width + x + dx;
+          const bankKind = detailKind[bankId];
+          if (bankKind === undefined) continue;
+          const amount = patch.depth === 0 ? 0.78 : 0.52;
+          m4.compose(
+            v.set(
+              x - w.width / 2 + 0.5 + microOffset8(patch.microX),
+              liquidTopByCell[cellId] + 0.007,
+              y - w.height / 2 + 0.5 + microOffset8(patch.microZ),
+            ),
+            q.identity(),
+            sc.set(0.126, 0.014, 0.126),
+          );
+          shoreLip.setMatrixAt(shorei, m4);
+          const bankColor = wetBankColor(bankId, bankKind, amount);
+          shoreLip.setColorAt(shorei, col.setRGB(
+            bankColor[0] / 255, bankColor[1] / 255, bankColor[2] / 255, THREE.SRGBColorSpace,
+          ));
+          shorei += 1;
+        }
+      }
       groundDetail.count = gdi;
-      water.count = wi;
-      waterFlow.count = wi;
+      shoreLip.count = shorei;
       strata.count = sti;
       land.instanceMatrix.needsUpdate = true;
       if (land.instanceColor) land.instanceColor.needsUpdate = true;
-      water.instanceMatrix.needsUpdate = true;
-      if (water.instanceColor) water.instanceColor.needsUpdate = true;
-      waterFlow.instanceMatrix.needsUpdate = true;
-      waterFlowOffsetAttribute.needsUpdate = true;
+      shoreLip.instanceMatrix.needsUpdate = true;
+      if (shoreLip.instanceColor) shoreLip.instanceColor.needsUpdate = true;
       strata.instanceMatrix.needsUpdate = true;
       if (strata.instanceColor) strata.instanceColor.needsUpdate = true;
       groundDetail.instanceMatrix.needsUpdate = true;
@@ -1947,6 +2327,8 @@ export default function SocietyScene3D({
     // 动物和火焰仍与其他装饰共享 InstancedMesh 合批；带 entityId / animation 的构件逐帧更新矩阵。
     // 这样无需为每个动态素材创建独立 Mesh，也能获得动物步态与火舌、火星循环。
     const animalAxisY = new THREE.Vector3(0, 1, 0);
+    const facilityAxisX = new THREE.Vector3(1, 0, 0);
+    const facilityAxisZ = new THREE.Vector3(0, 0, 1);
     const animalRollX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
     const animalPhaseCache = new Map<string, number>();
     const animalIdleYawCache = new Map<string, number>();
@@ -2007,6 +2389,77 @@ export default function SocietyScene3D({
                 sc.set(inst.sx * width, inst.sy * stretch, inst.sz * (2 - width)),
               );
             }
+            mesh.setMatrixAt(index, m4);
+            touched = true;
+            return;
+          }
+          if (inst.animation === 'facility-smoke') {
+            const seed = inst.x * 5.31 + inst.z * 7.17 + inst.y * 3.83;
+            const wave = Math.sin(now * 0.0026 + seed);
+            const drift = Math.sin(now * 0.0017 - seed * 1.3);
+            const pulse = 0.9 + wave * 0.08;
+            m4.compose(
+              v.set(inst.x + drift * 0.035, inst.y + wave * 0.025, inst.z + wave * 0.02),
+              q.identity(),
+              sc.set(inst.sx * pulse, inst.sy * (1.04 + wave * 0.08), inst.sz * pulse),
+            );
+            mesh.setMatrixAt(index, m4);
+            touched = true;
+            return;
+          }
+          if (inst.animation === 'facility-lift') {
+            const lift = (Math.sin(now * 0.0034 + inst.x * 2.1 + inst.z * 1.7) + 1) * 0.055;
+            m4.compose(
+              v.set(inst.x, inst.y + lift, inst.z),
+              q.identity(),
+              sc.set(inst.sx, inst.sy, inst.sz),
+            );
+            mesh.setMatrixAt(index, m4);
+            touched = true;
+            return;
+          }
+          if (inst.animation === 'wheel-spin') {
+            const angle = now * 0.0021;
+            const originX = inst.entityX ?? inst.x;
+            const originY = (inst.entityY ?? inst.y) + 0.5;
+            const originZ = inst.entityZ ?? inst.z;
+            let localX = inst.x - originX;
+            let localY = inst.y - originY;
+            let localZ = inst.z - originZ;
+            const alongZ = (inst.entityRotation ?? 0) % 2 === 1;
+            if (alongZ) {
+              const rotatedX = localX * Math.cos(angle) - localY * Math.sin(angle);
+              localY = localX * Math.sin(angle) + localY * Math.cos(angle);
+              localX = rotatedX;
+              q.setFromAxisAngle(facilityAxisZ, angle);
+            } else {
+              const rotatedY = localY * Math.cos(angle) - localZ * Math.sin(angle);
+              localZ = localY * Math.sin(angle) + localZ * Math.cos(angle);
+              localY = rotatedY;
+              q.setFromAxisAngle(facilityAxisX, angle);
+            }
+            m4.compose(
+              v.set(originX + localX, originY + localY, originZ + localZ),
+              q,
+              sc.set(inst.sx, inst.sy, inst.sz),
+            );
+            mesh.setMatrixAt(index, m4);
+            touched = true;
+            return;
+          }
+          if (inst.animation === 'mill-turn') {
+            const angle = now * 0.0018;
+            const originX = inst.entityX ?? inst.x;
+            const originZ = inst.entityZ ?? inst.z;
+            const localX = inst.x - originX;
+            const localZ = inst.z - originZ;
+            const rotatedX = localX * Math.cos(angle) + localZ * Math.sin(angle);
+            const rotatedZ = -localX * Math.sin(angle) + localZ * Math.cos(angle);
+            m4.compose(
+              v.set(originX + rotatedX, inst.y, originZ + rotatedZ),
+              q.setFromAxisAngle(animalAxisY, angle),
+              sc.set(inst.sx, inst.sy, inst.sz),
+            );
             mesh.setMatrixAt(index, m4);
             touched = true;
             return;
@@ -2117,6 +2570,36 @@ export default function SocietyScene3D({
           cellOffsetByAgent.set(agent.id, sharedCellOffset(index, occupants.length));
         });
       }
+      type IncomingInteraction = {
+        actorId: string;
+        kind: 'handoff' | 'care' | 'listen' | 'companion';
+        sourceOrderInMonth: number;
+      };
+      const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+      const incomingInteractionByAgent = new Map<string, IncomingInteraction>();
+      for (const actor of agents) {
+        const view = actor.visualAction;
+        if (!view?.sourceEventId || !view.targetPersonId || view.targetPersonId === actor.id) continue;
+        const target = agentsById.get(view.targetPersonId);
+        if (!target || target.state === 'dead') continue;
+        const distance = Math.abs(actor.cellId % w.width - target.cellId % w.width)
+          + Math.abs(Math.floor(actor.cellId / w.width) - Math.floor(target.cellId / w.width));
+        if (distance > 1) continue;
+        const kind: IncomingInteraction['kind'] | undefined = view.actionKind === 'transfer'
+          ? 'handoff'
+          : view.actionKind === 'communicate'
+            ? 'listen'
+            : view.operation === 'combine' || view.operation === 'rehydrate' || view.operation === 'dehydrate'
+              ? 'care'
+              : view.operation === 'reproduce' ? 'companion' : undefined;
+        if (!kind) continue;
+        const order = view.sourceOrderInMonth ?? 0;
+        if ((target.visualAction?.sourceOrderInMonth ?? -1) > order) continue;
+        const current = incomingInteractionByAgent.get(target.id);
+        if (!current || current.sourceOrderInMonth <= order) {
+          incomingInteractionByAgent.set(target.id, { actorId: actor.id, kind, sourceOrderInMonth: order });
+        }
+      }
       for (const agent of agents) {
         let f = figures.get(agent.id);
         const visualKey = figureVisualKey(agent);
@@ -2141,6 +2624,7 @@ export default function SocietyScene3D({
         const sleeping = agent.state === 'dehydrated' || agent.state === 'hibernating';
         const activeIntent = activeIntentByOwner.get(agent.id);
         const actionView = figureActionView(agent, activeIntent);
+        const incomingInteraction = incomingInteractionByAgent.get(agent.id);
         const action = figureActionOf(agent, activeIntent, moving);
         const phase = hueOf(agent.id) * Math.PI * 2;
         const cycle = now * 0.012 + phase;
@@ -2152,8 +2636,9 @@ export default function SocietyScene3D({
           point.y - w.height / 2 + 0.5 + offset.z,
         );
         if (moving && !dead) f.group.rotation.y = Math.atan2(dx, dz);
-        else if (!dead && actionView?.targetPersonId) {
-          const target = agents.find((candidate) => candidate.id === actionView.targetPersonId);
+        else if (!dead && (agent.visualAction?.targetPersonId || incomingInteraction?.actorId || actionView?.targetPersonId)) {
+          const facingPersonId = agent.visualAction?.targetPersonId ?? incomingInteraction?.actorId ?? actionView?.targetPersonId;
+          const target = agentsById.get(facingPersonId!);
           if (target) {
             const targetOffset = cellOffsetByAgent.get(target.id) ?? { x: 0, z: 0 };
             const tx = target.cellId % w.width - w.width / 2 + 0.5 + targetOffset.x;
@@ -2216,6 +2701,7 @@ export default function SocietyScene3D({
         f.spear.visible = false;
         f.handTool.visible = false;
         f.heldLoad.visible = false;
+        f.heldLoad.position.z = 0.33;
         f.tablet.visible = false;
         f.heldFood.visible = false;
         const toolKey = actionView?.toolMaterialId !== undefined ? w.palette[actionView.toolMaterialId]?.key : undefined;
@@ -2269,6 +2755,16 @@ export default function SocietyScene3D({
             f.armL.rotation.x = -0.98;
             f.armR.rotation.x = -0.98;
             f.heldLoad.position.y = 0.44 + Math.sin(cycle) * 0.015;
+            if (agent.visualAction?.sourceEventId && agent.visualAction.targetPersonId) {
+              const target = agentsById.get(agent.visualAction.targetPersonId);
+              if (target) {
+                const targetOffset = cellOffsetByAgent.get(target.id) ?? { x: 0, z: 0 };
+                const tx = target.cellId % w.width - w.width / 2 + 0.5 + targetOffset.x;
+                const tz = Math.floor(target.cellId / w.width) - w.height / 2 + 0.5 + targetOffset.z;
+                const distance = Math.hypot(tx - f.group.position.x, tz - f.group.position.z);
+                f.heldLoad.position.z = THREE.MathUtils.clamp(distance / (FIGURE_SCALE * 2), 0.36, 0.9);
+              }
+            }
             f.heldLoad.visible = true;
           } else if (action === 'ingest') {
             const sip = 0.08 + Math.abs(Math.sin(cycle * 0.65)) * 0.14;
@@ -2336,6 +2832,28 @@ export default function SocietyScene3D({
             f.upperBody.rotation.x = 0.22;
             f.armL.rotation.x = -0.25;
             f.armR.rotation.x = -0.18;
+          }
+          // 接收方姿态只来自同月已提交、且没有被自己更晚动作覆盖的互动事实。
+          if (incomingInteraction?.kind === 'handoff') {
+            f.upperBody.rotation.x = 0.08;
+            f.armL.rotation.x = -1.08;
+            f.armR.rotation.x = -1.08;
+            f.armL.rotation.z = 0.16;
+            f.armR.rotation.z = -0.16;
+          } else if (incomingInteraction?.kind === 'care') {
+            f.upperBody.position.y = 0.27;
+            f.upperBody.rotation.x = 0.18;
+            f.armL.rotation.x = -0.38;
+            f.armR.rotation.x = -0.34;
+          } else if (incomingInteraction?.kind === 'listen') {
+            f.upperBody.rotation.y = Math.sin(cycle * 0.28) * 0.035;
+            f.armL.rotation.x = -0.18;
+            f.armR.rotation.x = -0.28;
+          } else if (incomingInteraction?.kind === 'companion') {
+            f.armL.rotation.x = -0.48;
+            f.armL.rotation.z = 0.24;
+            f.armR.rotation.x = -0.48;
+            f.armR.rotation.z = -0.24;
           }
         }
         const selected = p.selectedAgentId === agent.id
@@ -2713,7 +3231,11 @@ export default function SocietyScene3D({
       controls.update();
       layoutSpeechBubbles();
       // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
-      if (skyStars) skyStars.position.copy(camera.position);
+      if (skyStars) {
+        skyStars.position.copy(camera.position);
+        camera.getWorldDirection(liveCameraDirection);
+        skyAtmosphereUniforms.uVerticalBias.value = -liveCameraDirection.y;
+      }
       updateHumanSky(deltaSeconds);
       composer.render();
     };

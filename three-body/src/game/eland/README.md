@@ -52,23 +52,27 @@ domain model and policies ↔ world grid / material primitives
 - `domain/mechanical-power.ts`：显式水流源、`WaterWheel → DriveShaft → Mill` 严格拓扑、安装计划与网络身份，以及安装、commissioning 故障、维修和运行的追加式来源事实；普通 Water 体素不能被猜成动力源，断流也不能由下游局部 Water 绕过。
 - `domain/monthly-processes.ts`：无人行动也推进的世界过程：气候与纪元、预言结算、妊娠 / 产后恢复等身体结算、动物生态，以及月初月末同处且无直接伤害配对的可追溯关系经验。全员休眠不会终止文明；恒纪元使旧 `dormant` episode 转入不凭空增加储备的 `recovering`，真实补水 / 补食并达到三项最低储备 45 后才退出，乱纪元重临则沿用原 episode 返回 `dormant`。
 - `domain/animal.ts`：动物实体的位置、身体、繁殖与行为。
-- `domain/kinship.ts`：由出生事实派生的亲缘距离与遗传风险；只影响结果，不禁止动作。
+- `domain/kinship.ts`：由出生事实派生亲缘距离、遗传风险与人物有来源的风险认知强度；亲缘影响后代结果与人物选择，但不把动作改成非法。
 - `domain/agreement.ts`、`domain/collective.ts`、`domain/permission.ts`、`domain/governance.ts`、`domain/declaration.ts`、`domain/record.ts`、`domain/social-facts.ts`、`domain/relation.ts`：协议、共同体、授权、治理规则、声明、实体记录、社会事实与定向关系账本。
 - `domain/civilization-index.ts`：文明指数纯观察投影，不反向解锁能力。
 - `domain/decision-budget.ts`：实时关键重选的人月额度与 endpoint / token 审计；不得决定人物是否获得本地规划。
+- `domain/cognition.ts`：人物私有的有界行动结果后验与结构化因果记忆 basis；只从已提交 `ActionFact` 学习，排除临时 option / intent / project / cell / person ID，无位移 move 不作为经验样本。
 - `domain/event-index.ts`：事件流查询索引。
 - `domain/personality.ts`：HEXACO 六维初始化、有效值、行动证据与月末慢速变化；人格只调节已有合法候选。
 - `domain/person-soul.ts`：从人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建只读 Soul；它为三条第一人称路径提供稳定的内在声音，也可供可选模型在当前合法候选内形成一致的个人取舍，但不写入人物状态，不创造记忆、知识、动机、候选或世界事实。
 
 ### application/ —— 用例
 
-- `application/monthly-simulation.ts`：创建文明、执行每月 15 个规划刻度、状态迁移、恢复状态和生成报告；一次推进先固定 `atMonth = elapsedMonths + 1`，候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份。只读查询仍读取最近已提交月，文明创世是显式的零月例外；含一部分里程碑观察器。
-- `application/rule-planner.ts`：每个规划刻度始终可用的正式本地目标选择器。
+- `application/monthly-simulation.ts`：月度模拟的稳定公共门面，保留创建、恢复、推进、报告与 controller API；具体职责拆到 `application/simulation/`，调用方不依赖内部编排文件。
+- `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行；`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
+- `application/rule-planner.ts`：每个规划刻度始终可用的正式本地目标选择器；硬门禁后委托因果 BDI，自主候选由动态需要、人格、亲历后验和当前意图共同决定。
 - `application/player-interaction-choice.ts`：把人物在主动建议对话中选中的当月合法方向编译为稳定语义键，并在最新上下文中本地重配；临时月份 / 表达 ID 变化不造成假失败，必须回应、履约和 follow-up 仍由同一门禁约束。
-- `application/decision-factor-forest.ts`：九棵可解释因果树（need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm）的投票排序；每棵树输出理由与来源，稳定随机值只破同分。
+- `application/cognition/need-agenda.ts`、`option-appraisal.ts`、`bdi-deliberation.ts`：从局部 `DecisionContext` 派生动态需要，把 HEXACO 用作注意 / 风险 / 坚持 / 探索 / 社会接近门控，读取同一目标人物的结构化情节记忆和本人 Beta 结果后验，并以唯一当前 `Intent` 实现持续、切换与急性中断。项目 / HTN 仍负责步骤展开，领域执行器仍负责硬合法性。
+- `application/decision-factor-forest.ts`：旧报告与测试的诊断兼容门面；仍投影 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 的理由和来源，但规划器不再把九类数值直接相加。
+- `application/reproductive-risk.ts`：把人物持有的近亲风险知识置信度连续映射为本地生殖选择成本；满置信度成本仍是可被关系与生活压力权衡的软偏好，不承担动作合法性。
 - `application/age-planning.ts`：按生命周期过滤简单劳动、项目发起、社会协议与繁衍候选。
-- `application/project-pressure.ts`、`application/project-options.ts`：从本人及其局部可见事实形成项目压力，再编译材料、场地、物流、假说与完成证据。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。当前材料协作只为固定场地的合金项目开放。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施。便携产物项目只有在 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交时才完成，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面的步骤优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
-- `application/action-options.ts`、`construction-options.ts`、`container-options.ts`、`separation-options.ts`、`social-options.ts`：各类合法可供性候选的生成。通用有形库存候选、自然假说、已知配方与项目子装配的消耗选择都会排除已带 `recordPayloadId` 的载体，避免规划器反复生成必被领域层拒绝的普通加工。失败重试按动作、目标、数量、人物、项目、记录和关系组成的稳定结构 basis 比较：失败当月起 0–6 月压住同因果候选，第 7 月恢复；新来源或任一结构字段改变会立即重开，必须回应与履约绕过冷却，无法还原结构 basis 的旧自由文本失败记忆不拦候选。
+- `application/project-pressure.ts`、`application/project-options.ts`：前者从本人及其局部可见事实形成项目压力，后者保留项目公共 API 门面。`application/projects/` 按生命周期、提案、局部感知 / 场地、材料计划、假说调查、物流搜索、步骤编译和完成证据拆分；这些模块共同编译项目行动，不复制领域规则。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。当前材料协作只为固定场地的合金项目开放。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施，可见但没有实体站立路径的掉落物也不能冒充可取得能力。生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力，不能一票否决升级项目。`efficient-production`、`bronze-tooling` 与 `iron-tooling` 只有在项目来源的更优工具仍由 owner 持有、且对应制作技艺已通过源绑定复验达到可靠阈值后才完成。其他便携产物项目仍要求 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面的步骤优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
+- `application/action-options.ts`、`construction-options.ts`、`container-options.ts`、`separation-options.ts`、`social-options.ts`：各类合法可供性候选的生成。本人近期真实完成过分离生产劳动时，可达的更高级地面工具会以劳动节省形成明确取得候选；他人背包仍不可直接读取或拿取，只能在同格、持有者交易后仍保留不低于原最高生产能力的工具、请求者也有实体余量可交付时走既有自愿交换。工具取得意图固定精确 drop，移动后的木材、灌木、成熟作物与捕猎重编译会重新选择本人当前效用最高的适用工具，不会退回徒手或较弱武器。通用有形库存候选、自然假说、已知配方与项目子装配的消耗选择都会排除已带 `recordPayloadId` 的载体，避免规划器反复生成必被领域层拒绝的普通加工。失败重试按动作、目标、数量、人物、项目、记录和关系组成的稳定结构 basis 比较：失败当月起 0–6 月压住同因果候选，第 7 月恢复；新来源或任一结构字段改变会立即重开，必须回应与履约绕过冷却，无法还原结构 basis 的旧自由文本失败记忆不拦候选。
 - `application/record-use-options.ts`：只为读者本人拥有的活跃项目及其真实技术缺口生成记录使用候选；来源限于本人背包与调用方已过滤的可见公共地面掉落物，不读取他人背包、知识或意图。v2 basis 冻结读者、项目、payload、技术和精确载体来源；地面来源正常按 `move → acquire → read → experiment` 推进，其中移动不算取得，只有从精确掉落物成功转移到本人背包才算 `acquire`，来源消失或替换时不会另换载体。阅读只形成不高于 54 的暂定技术知识，真实项目实验再增加 18 并写入项目进度；明确直接教学仍可到 60。外部交付同一地面来源谱系，或人物此前已经读过该记录时，可依当前真实持有与知识继续，但不会补造缺失阶段，也不构成完整记录链。
 - `application/mechanical-power-options.ts`：只让做过真实 Mill 辅助谷物分离劳动的人物关注本人当前可见、可达的水流段；成功 `attend` 后形成只属于本人的有来源观察。由此提出的项目只是冻结水流源与可见工地几何的试建假说，不泄漏隐藏配方、时代标签或观察器目标；未知部件仍走有预算的材料假说与验证。
 - `application/agreement-continuation.ts`：已接受协议的履约推进。
@@ -80,10 +84,16 @@ domain model and policies ↔ world grid / material primitives
 ### projection/ —— 只读观察
 
 - `projection/capability-milestones.ts`：v2 纯可回放因果观察器；含 120 个精确地图坐标和 17 个 world-specific 复杂事件，并以 strict/guarded、阶段门槛和完整 episode 隔离误报，事实不反向进入人物决策。
+- `projection/derived-observations.ts`：从已提交权威状态派生 structures、practices、institutions、regions、milestones 与 development 观察结果；只写观察投影，不参与候选或人物选择。
 - `projection/live-speech.ts`：把每个已完成且具有可解析真实听者的口头沟通 ActionFact 投影为无显示文本的结构化 `speechAct` 草稿；只有已校验的模型台词才进入 `GameFrame.speechLines`，从不反写动作事实。
 - `projection/society-world-cache.ts`：只读 WeakMap 投影缓存；复用静态 palette / biome，无体素变化时复用世界几何，有变化时仅复制并重算受影响列。
 
 `server/evolution-artifacts.ts` 对记录使用保留原始阶段计数与独立违规项，但只有同时通过读者 / 项目 / payload / codebook、精确取得来源、阅读理解与可靠度、实验产物与 `+18`、动作顺序和项目进度守卫的 basis 才计入 `completeRecordUseChains`；普通移动和无记录语义的复合对话动作不会冒充记录阶段。
+
+### server/ —— 接口与实时会话
+
+- `server/main.ts`：只负责依赖组装、通用 HTTP 边界和启动关闭；`run-api.ts` 承接文明运行接口，`run-evolution-service.ts` 承接每个 run 的串行推进、12 月检查点与报告提交，`model-api.ts` 承接模型决策与设置接口。
+- `server/elandSession.ts`：保留实时会话公共门面与兼容导出。`server/eland-session/session-step.ts` 编排 begin / step、幂等并发、权威月份、sky / cosmos 原子提交与模型回退；`timeline.ts` 负责 checkpoint / delta / seek / fork；`recovery.ts` 负责恢复校验；`frame-history-projector.ts`、`conversation-coordinator.ts` 分别负责帧历史与对话结果投影；`session-manager.ts` 负责 lease、TTL、LRU 与 SQLite 会话协调。
 
 ### 根级
 

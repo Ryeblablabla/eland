@@ -28,7 +28,9 @@ try {
     export { executePrimitiveAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-executor.ts'))};
     export { buildProjectPressureBasis } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-pressure.ts'))};
     export { buildLocalMaterialEvidence } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/local-material-evidence.ts'))};
+    export { evaluateDecisionOption } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/decision-factor-forest.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project.ts'))};
+    export { inventoryCombinationForOutput, inventoryCombinationTechniqueId } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/interaction-rules.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export {
       cellId,
@@ -55,9 +57,12 @@ try {
     cellsInRadius,
     createInitialState,
     ensureProject,
+    evaluateDecisionOption,
     executeActiveIntent,
     executePrimitiveAction,
     instantiateProject,
+    inventoryCombinationForOutput,
+    inventoryCombinationTechniqueId,
     projectFunctionSatisfied,
     recordProjectAction,
     recompileProjectNextAction,
@@ -206,6 +211,10 @@ try {
       need: 'production-efficiency', desiredFunction: 'efficient-production', beneficiaryIds: [actor.id], createdAtMonth: 1,
     }, 1, view);
     assert.ok(withOwnTool.pressure < toolMaking.pressure, '本人真正持有工具后才应降低同类工具项目压力');
+    assert.ok(withOwnTool.reasonKeys.includes('production-tool-upgrade-needed'),
+      '木制工具低于石锄级目标时，压力证据必须明确记录升级缺口');
+    assert.ok(withOwnTool.edgeKeys.includes('state:production-tool-upgrade-gap:2'),
+      '工具升级压力必须记录当前等级到目标等级的精确差值');
   }
 
   {
@@ -310,8 +319,25 @@ try {
       id: 'accessible-own-tool', materialId: Material.WoodTool, quantity: 1, sourceEventIds: ['source:accessible-own-tool'],
     });
     const withOwnTool = buildProjectOptions(state, actor, visibleCells, [], [other]);
-    assert.ok(!withOwnTool.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
-      '本人真正持有生产工具时必须抑制重复工具项目');
+    const toolUpgrade = withOwnTool.find((option) => option.projectProposal?.desiredFunction === 'efficient-production');
+    assert.ok(toolUpgrade,
+      '木制工具只能部分缓解劳动压力，不能阻止人物继续寻找石锄级升级');
+    assert.equal(toolUpgrade.projectProposal.productionToolBaselineRank, 1,
+      '工具项目 proposal 必须冻结形成项目时本人实际持有的生产工具等级');
+    actor.inventory.push({
+      id: 'mid-project-bronze-tool', materialId: Material.BronzeTool, quantity: 1,
+      sourceEventIds: ['source:mid-project-bronze-tool'],
+    });
+    const refreshedToolPressure = buildProjectPressureBasis(
+      state,
+      actor,
+      toolUpgrade.projectProposal,
+      2,
+      { visibleCells, visibleDrops: [], visiblePeople: [other] },
+    );
+    assert.ok(refreshedToolPressure.edgeKeys.includes('state:production-tool-rank:1'),
+      '项目途中拾取高级工具后，压力刷新仍必须使用 proposal 冻结的工具基线');
+    actor.inventory = actor.inventory.filter((stack) => stack.id !== 'mid-project-bronze-tool');
 
     actor.inventory = actor.inventory.filter((stack) => stack.id !== 'accessible-own-tool');
     const visibleToolDrop = {
@@ -321,8 +347,15 @@ try {
     };
     state.world.drops = [visibleToolDrop];
     const withVisibleToolDrop = buildProjectOptions(state, actor, visibleCells, [visibleToolDrop], []);
-    assert.ok(!withVisibleToolDrop.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
-      '本人可合法拾取的可见地面工具应视为当前可用能力');
+    assert.ok(withVisibleToolDrop.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '可合法拾取的木制工具仍低于石锄级目标，不能伪装成充分能力');
+
+    actor.inventory.push({
+      id: 'accessible-own-stone-hoe', materialId: Material.StoneHoe, quantity: 1, sourceEventIds: ['source:accessible-own-stone-hoe'],
+    });
+    const withAdequateTool = buildProjectOptions(state, actor, visibleCells, [visibleToolDrop], []);
+    assert.ok(!withAdequateTool.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '本人持有达到项目目标等级的石锄后才应抑制重复工具项目');
   }
 
   {
@@ -394,6 +427,30 @@ try {
     assert.ok(placed.pressure < carried.pressure, '只有真正落地的窑炉才应降低高温能力压力');
     assert.ok(placed.reasonKeys.includes('high-heat-site-present'),
       '落地窑炉必须留下可回放的工作地存在证据');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9624);
+    actor.inventory.push(
+      { id: 'unreachable-tool-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['source:unreachable-tool-wood'] },
+      { id: 'unreachable-tool-rope', materialId: Material.Rope, quantity: 1, sourceEventIds: ['source:unreachable-tool-rope'] },
+    );
+    const visibleCells = cellsInRadius(center, 8);
+    const unreachableTool = {
+      id: 'visible-but-unreachable-bronze-tool', materialId: Material.BronzeTool, quantity: 1,
+      cellId: center, z: actor.position.z + 4, createdAtMonth: 0,
+      sourceEventIds: ['source:visible-but-unreachable-bronze-tool'],
+    };
+    const evidence = buildLocalMaterialEvidence(state, actor, {
+      visibleCells, visibleDrops: [unreachableTool], visiblePeople: [],
+    });
+    assert.ok(evidence.observedMaterialIds.has(Material.BronzeTool),
+      '可见但不可达的高级工具仍然是本人观察到的实体');
+    assert.ok(!evidence.accessiblePortableMaterialIds.has(Material.BronzeTool),
+      '没有可达站位的掉落工具不得冒充本人当前可使用能力');
+    const options = buildProjectOptions(state, actor, visibleCells, [unreachableTool], []);
+    assert.ok(options.some((option) => option.projectProposal?.desiredFunction === 'efficient-production'),
+      '不可达高级工具不能压低真实的本地工具升级压力');
   }
 
   {
@@ -847,6 +904,203 @@ try {
     project.actionEventIds.push(projectHarvestA.id, projectHarvestB.id);
     assert.equal(projectFunctionSatisfied(state, project), true,
       '固定地块内的播种和本项目两次真实收获才构成完成证据');
+  }
+
+  {
+    const { state, actor } = createFixture(9624);
+    const project = instantiateProject({
+      id: 'test-frozen-tool-baseline-work-step',
+      kind: 'production',
+      need: 'production-efficiency',
+      desiredFunction: 'efficient-production',
+      summary: '测试途中取得高级工具后继续原项目',
+      ownerId: actor.id,
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['pressure:test-frozen-tool-baseline-work-step'],
+      pressure: 80,
+      productionToolBaselineRank: 1,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+    });
+    const rule = inventoryCombinationForOutput(Material.StoneHoe);
+    assert.ok(rule, '石锄必须有可执行的实体配方');
+    const techniqueId = inventoryCombinationTechniqueId(rule);
+    actor.inventory = [{
+      id: 'test-mid-project-iron-tool', materialId: Material.IronTool, quantity: 1,
+      sourceEventIds: ['source:test-mid-project-iron-tool'],
+    }, {
+      id: 'test-stone-tool-input', materialId: Material.StoneTool, quantity: 1,
+      sourceEventIds: ['source:test-stone-tool-input'],
+    }, {
+      id: 'test-plank-input', materialId: Material.Plank, quantity: 1,
+      sourceEventIds: ['source:test-plank-input'],
+    }];
+    actor.knowledge = [{
+      id: techniqueId,
+      kind: 'technique',
+      summary: '石制工具与木板可制成石锄',
+      confidence: 68,
+      learnedAtMonth: 0,
+      sourceEventIds: ['source:test-stone-hoe-technique'],
+    }];
+    state.projects = [project];
+    const nextAction = recompileProjectNextAction(state, actor, project.id);
+    assert.equal(nextAction?.kind, 'act',
+      '项目途中取得更高级工具后，冻结基线仍必须允许编译原项目升级成品');
+    assert.deepEqual(nextAction?.kind === 'act'
+      ? nextAction.targets.filter((target) => target.kind === 'inventory-stack').map((target) => target.stackId).sort()
+      : [], ['test-plank-input', 'test-stone-tool-input'],
+    '原项目必须继续使用已知石锄配方，不能因当前背包出现铁工具而跳过候选并死锁');
+  }
+
+  {
+    const { state, actor } = createFixture(9625);
+    const project = instantiateProject({
+      id: 'test-bronze-tool-verification-project',
+      kind: 'production',
+      need: 'alloy-capability',
+      desiredFunction: 'bronze-tooling',
+      summary: '测试青铜工具从样品到可靠技艺',
+      ownerId: actor.id,
+      beneficiaryIds: [actor.id],
+      triggerFactIds: ['pressure:test-bronze-tool-verification'],
+      pressure: 80,
+      productionToolBaselineRank: 1,
+      createdAtMonth: 0,
+      reviewAtMonth: 120,
+      site: { cellId: actor.position.cellId, z: actor.position.z },
+    });
+    state.projects = [project];
+    const rule = inventoryCombinationForOutput(Material.BronzeTool);
+    assert.ok(rule, '青铜工具必须有可执行的实体配方');
+    const techniqueId = inventoryCombinationTechniqueId(rule);
+    const outputId = 'test-bronze-tool-first-output';
+    const toolStackId = 'test-bronze-tool-first-stack';
+    const output = actionFact(actor, outputId, 'combine', {
+      techniqueId,
+      inputMaterialIds: [Material.Bronze, Material.Wood],
+      outputMaterialId: Material.BronzeTool,
+      outputQuantity: 1,
+      outputStackId: toolStackId,
+    });
+    actor.inventory = [{
+      id: toolStackId,
+      materialId: Material.BronzeTool,
+      quantity: 1,
+      sourceEventIds: [outputId],
+    }, {
+      id: 'test-mid-project-acquired-iron-tool',
+      materialId: Material.IronTool,
+      quantity: 1,
+      sourceEventIds: ['test-mid-project-exchange'],
+    }];
+    actor.knowledge.push({
+      id: techniqueId,
+      kind: 'technique',
+      summary: '青铜与木材可制成青铜工具',
+      confidence: 46,
+      learnedAtMonth: 1,
+      sourceEventIds: [outputId],
+    });
+    state.world.past.push(output);
+    project.actionEventIds = [outputId];
+    assert.equal(projectFunctionSatisfied(state, project), false,
+      '第一件偶然样品和46置信度技艺不能让工具项目立即完成');
+
+    const verificationId = 'test-bronze-tool-source-bound-verification';
+    state.world.past.push({
+      ...actionFact(actor, verificationId, 'attend', {
+        factId: techniqueId,
+        verifiedTechnique: true,
+        verifiedSourceEventId: outputId,
+        verifiedMaterialId: Material.BronzeTool,
+        verifiedStackId: toolStackId,
+      }),
+      action: { kind: 'attend', target: { kind: 'inventory-stack', personId: actor.id, stackId: toolStackId } },
+    });
+    project.actionEventIds.push(verificationId);
+    const knowledge = actor.knowledge.find((fact) => fact.id === techniqueId);
+    knowledge.confidence = 68;
+    knowledge.sourceEventIds.push(verificationId);
+    assert.equal(projectFunctionSatisfied(state, project), true,
+      '途中交换得到更高级工具不能改写冻结基线；项目原定升级经过源绑定复验后仍应完成');
+  }
+
+  {
+    const { state, actor, center } = createFixture(9626);
+    const partner = structuredClone(actor);
+    partner.id = 'test-tool-exchange-partner';
+    partner.name = '工具持有者';
+    actor.inventory = [{
+      id: 'test-current-wood-tool',
+      materialId: Material.WoodTool,
+      quantity: 1,
+      sourceEventIds: ['test-current-wood-tool-source'],
+    }, {
+      id: 'test-exchange-offer-material',
+      materialId: Material.Food,
+      quantity: 2,
+      sourceEventIds: ['test-exchange-offer-source'],
+    }];
+    partner.inventory = [{
+      id: 'test-requested-bronze-tool',
+      materialId: Material.BronzeTool,
+      quantity: 2,
+      sourceEventIds: ['test-requested-tool-source'],
+    }];
+    state.people = [actor, partner];
+    const labor = actionFact(actor, 'test-tool-exchange-labor', 'separate', {
+      sourceMaterialId: Material.Wood,
+      outputs: [{ materialId: Material.Plank, quantity: 1 }],
+    });
+    state.world.past.push(labor);
+    const representationId = 'test-tool-upgrade-exchange';
+    const option = {
+      id: representationId,
+      summary: '用食物交换青铜生产工具',
+      reason: '本人近期生产劳动显示青铜工具可以节省劳动',
+      goal: { kind: 'representation-made', representationId },
+      nextAction: {
+        kind: 'communicate',
+        content: {
+          id: representationId,
+          kind: 'offer',
+          summary: '用食物交换青铜工具',
+          proposal: {
+            kind: 'exchange',
+            offererId: actor.id,
+            partnerId: partner.id,
+            offererMaterialId: Material.Food,
+            offererQuantity: 1,
+            partnerMaterialId: Material.BronzeTool,
+            partnerQuantity: 1,
+            expiresAtMonth: 12,
+          },
+        },
+        audience: [partner.id],
+        channel: 'voice',
+      },
+      target: { kind: 'person', personId: partner.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [labor.id, 'test-exchange-offer-source', 'test-requested-tool-source'],
+      domain: 'social',
+    };
+    const context = {
+      state,
+      person: actor,
+      visibleCells: cellsInRadius(center, 8),
+      visiblePeople: [partner],
+      visibleDrops: [],
+      visibleAnimals: [],
+      options: [option],
+      followUpOptions: [],
+    };
+    const need = evaluateDecisionOption(context, option, { atMonth: 1, planningTick: 1 })
+      .votes.find((item) => item.tree === 'need');
+    assert.ok(need?.score > 0,
+      '工具交换必须用 proposal 中请求材料的等级差和本人近期生产劳动形成正向需要票');
+    assert.match(need.reasons.join('；'), /交换取得更高效工具/,
+      '工具交换评分必须留下可解释的劳动节省因果理由');
   }
 
   process.stdout.write('causal development eligibility tests passed\n');

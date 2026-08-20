@@ -1,5 +1,6 @@
 import type { ActionFact, SimulationState } from './model';
 import type { MemoryRecord, PersonState } from './person';
+import { causalMemoryTraceForAction, isMeaningfulCognitiveOutcome } from './cognition';
 
 const MAX_MEMORIES = 24;
 const MAX_PROJECTED_MEMORIES = 8;
@@ -16,6 +17,7 @@ export function remember(person: PersonState, memory: MemoryRecord): void {
     existing.lastRecalledAtMonth = Math.max(existing.lastRecalledAtMonth, memory.lastRecalledAtMonth);
     existing.personIds = [...new Set([...existing.personIds, ...memory.personIds])];
     existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...memory.sourceEventIds])].slice(-12);
+    if (!existing.causal && memory.causal) existing.causal = structuredClone(memory.causal);
     return;
   }
   person.memories.push(memory);
@@ -80,9 +82,27 @@ export function projectMemories(person: PersonState, atMonth: number): Array<Pic
 export function rememberAction(state: SimulationState, fact: ActionFact): void {
   const actor = state.people.find((person) => person.id === fact.who);
   if (!actor) return;
-  const others = fact.action.kind === 'communicate'
-    ? state.people.filter((person) => fact.action.kind === 'communicate' && fact.action.audience.includes(person.id))
-    : [];
+  const causal = isMeaningfulCognitiveOutcome(fact)
+    ? causalMemoryTraceForAction(state, fact)
+    : undefined;
+  const participantIds = fact.action.kind === 'communicate'
+    ? fact.action.audience
+    : fact.action.kind === 'transfer'
+      ? [
+          ...(fact.action.from.kind === 'person' ? [fact.action.from.personId] : []),
+          ...(fact.action.to.kind === 'person' ? [fact.action.to.personId] : []),
+        ]
+      : fact.action.kind === 'act'
+        ? fact.action.targets.flatMap((target) => target.kind === 'person' ? [target.personId] : [])
+        : fact.action.kind === 'attend' && fact.action.target.kind === 'person'
+          ? [fact.action.target.personId]
+          : [];
+  const others = [...new Set(participantIds)]
+    .filter((personId) => personId !== actor.id)
+    .flatMap((personId) => {
+      const person = state.people.find((candidate) => candidate.id === personId);
+      return person ? [person] : [];
+    });
   const failed = fact.status === 'blocked' || fact.status === 'failed';
   const groundedCommunication = fact.action.kind === 'communicate'
     && fact.action.content.kind === 'claim'
@@ -99,6 +119,7 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     lastRecalledAtMonth: fact.atMonth,
     personIds: others.map((person) => person.id),
     sourceEventIds: [fact.id],
+    ...(causal ? { causal } : {}),
     ...(fact.action.kind === 'communicate' && (fact.action.content.kind === 'request' || fact.action.content.kind === 'offer')
       ? { expiresAtMonth: fact.action.content.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
       : {}),

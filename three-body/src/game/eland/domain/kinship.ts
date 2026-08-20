@@ -44,6 +44,17 @@ export function inheritedGeneticLoad(state: SimulationState, mother: PersonState
   return Math.max(0, Math.min(1, parentalLoad * 0.5 + relationshipRisk * 0.55));
 }
 
+export function kinshipRiskKnowledge(person: PersonState): PersonState['knowledge'][number] | undefined {
+  return person.knowledge
+    .filter((fact) => fact.id === KINSHIP_RISK_KNOWLEDGE_ID)
+    .sort((left, right) => right.confidence - left.confidence)[0];
+}
+
+/** Evidence strength is continuous; the 55-point threshold remains observer-only. */
+export function kinshipRiskAwareness(person: PersonState): number {
+  return Math.max(0, Math.min(1, (kinshipRiskKnowledge(person)?.confidence ?? 0) / 100));
+}
+
 export function hasLearnedKinshipRisk(person: PersonState): boolean {
-  return person.knowledge.some((fact) => fact.id === KINSHIP_RISK_KNOWLEDGE_ID && fact.confidence >= 55);
+  return (kinshipRiskKnowledge(person)?.confidence ?? 0) >= 55;
 }

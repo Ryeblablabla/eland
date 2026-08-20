@@ -31,6 +31,7 @@ export interface DecorInstance {
   c: number;                            // 0xRRGGBB
   entityId?: string;                    // 动态实体 id；静态装饰不设置
   entityX?: number; entityY?: number; entityZ?: number; // 动画原点
+  entityRotation?: number;              // Kit 的 90° 朝向；设施部件动画据此选择转轴
   part?: string;                        // body / head / tail / leg-N
   animation?: 'fire' | 'wind' | 'facility-smoke' | 'facility-lift' | 'wheel-spin' | 'mill-turn';
 }
@@ -103,6 +104,7 @@ class Kit {
       instance.entityX = this.ox;
       instance.entityY = this.oy;
       instance.entityZ = this.oz;
+      instance.entityRotation = this.rot;
     }
     this.out.push(instance);
   }
@@ -470,11 +472,15 @@ function kitTablet(k: Kit, r: number): void {
   }
 }
 
-function kitContainer(k: Kit, r: number): void {
+function kitContainer(k: Kit, r: number, fillRatio = 0): void {
   k.m('wood', 0, 0, 0, 7, 1, 7, jit(0x82552f, r));
   for (const [x, z, sx, sz] of [[-3, 0, 1, 6], [3, 0, 1, 6], [0, -3, 6, 1], [0, 3, 6, 1]] as const)
     k.m('wood', x, 1, z, sx, 4, sz, jit(0x94643b, hash01(x + z, 109)));
-  k.m('organicDark', 0, 4.6, 0, 6, 0.7, 6, 0x604029);
+  if (fillRatio > 0) {
+    const fillHeight = Math.max(0.5, Math.min(2.8, fillRatio * 2.8));
+    k.m('thatch', 0, 1, 0, 5, fillHeight, 5, jit(0xb79b62, r));
+    k.m('wood', 0, 5.1, -2.6, 6, 0.7, 2, 0x604029);
+  } else k.m('organicDark', 0, 4.6, 0, 6, 0.7, 6, 0x604029);
 }
 
 function kitCookedFood(k: Kit, r: number): void {
@@ -765,9 +771,42 @@ interface StructureVisualProfile {
   weatherProtection: number;
   thermalInsulation: number;
   capacity: number;
+  hearthActive: boolean;
 }
 
-const EMPTY_STRUCTURE_PROFILE: StructureVisualProfile = { weatherProtection: 0, thermalInsulation: 0, capacity: 0 };
+const EMPTY_STRUCTURE_PROFILE: StructureVisualProfile = {
+  weatherProtection: 0,
+  thermalInsulation: 0,
+  capacity: 0,
+  hearthActive: false,
+};
+
+function structureStoneColor(x: number, y: number, z: number, seed: number): number {
+  const moss = hash01(x * 31 + y * 17 + z * 13, 401 + seed) < 0.08;
+  return jit(moss ? 0x6f7a5f : 0x8a8d92, hash01(x * 7 + y * 19 + z * 11, 402 + seed));
+}
+
+function structureWindow(profile: StructureVisualProfile): { bucket: DecorBucket; color: number } {
+  return profile.hearthActive
+    ? { bucket: 'glowWarm', color: 0xffc37a }
+    : { bucket: 'dark', color: 0x2c3844 };
+}
+
+function addStructureChimney(
+  k: Kit,
+  x: number,
+  z: number,
+  baseY: number,
+  height: number,
+  profile: StructureVisualProfile,
+): void {
+  for (let y = baseY; y < baseY + height; y += 1)
+    k.v('stone', x, y, z, structureStoneColor(x, y, z, 409));
+  if (!profile.hearthActive) return;
+  k.v('plaster', x, baseY + height, z, 0xb9bec4, 'chimney-smoke', 'facility-smoke');
+  k.v('plaster', x, baseY + height + 1, z, 0xc9ced4, 'chimney-smoke', 'facility-smoke');
+  k.v('plaster', x + 1, baseY + height + 2, z, 0xd5d9de, 'chimney-smoke', 'facility-smoke');
+}
 
 function addStructureEffectDetails(k: Kit, profile: StructureVisualProfile, size: 'hut' | 'house' | 'hall'): void {
   const span = size === 'hut' ? 4 : size === 'house' ? 5 : 7;
@@ -789,53 +828,163 @@ function addStructureEffectDetails(k: Kit, profile: StructureVisualProfile, size
   }
 }
 
-function kitHut(k: Kit, material: StructureMaterialKind = 'mixed', profile = EMPTY_STRUCTURE_PROFILE): void {
-  const wallBucket: DecorBucket = material === 'stone' ? 'stone' : material === 'wood' ? 'wood' : 'plaster';
-  const wallColor = material === 'stone' ? 0x8a8984 : material === 'wood' ? 0x9b6f41 : 0xb59a70;
+function kitHut(
+  k: Kit,
+  material: StructureMaterialKind = 'mixed',
+  profile = EMPTY_STRUCTURE_PROFILE,
+  seed = 0,
+): void {
+  const window = structureWindow(profile);
   for (let y = 0; y <= 1; y++) for (let x = -2; x <= 1; x++) for (let z = -2; z <= 1; z++) {
     const edge = x === -2 || x === 1 || z === -2 || z === 1;
     if (!edge) continue;
     if (z === 1 && x === 0 && y === 0) continue;                 // 门洞
-    k.v(wallBucket, x, y, z, jit(wallColor, hash01(x + z * 7 + y, 3)));
+    if (z === 1 && x === -1 && y === 1) {
+      k.v(window.bucket, x, y, z, window.color);
+      continue;
+    }
+    const corner = (x === -2 || x === 1) && (z === -2 || z === 1);
+    if (material === 'stone') k.v('stone', x, y, z, structureStoneColor(x, y, z, 420 + Math.floor(seed * 31)));
+    else if (material === 'wood') {
+      const color = corner ? 0x5a3d26 : y % 2 === 0 ? 0x7a5636 : 0x6b4a2e;
+      k.v('wood', x, y, z, jit(color, hash01(x + z * 7 + y, 421)));
+    } else k.v(corner ? 'organicDark' : 'plaster', x, y, z,
+      corner ? 0x6b4a2e : jit(0xb59a70, hash01(x + z * 7 + y, 422)));
   }
   k.v('wood', 0, 0, 1, 0x5f422a);                               // 门
+  if (material === 'wood') {
+    k.v('wood', -1, 0, 2, 0x7a5636);
+    k.v('wood', 0, 0, 2, 0x7a5636);                              // 小门廊
+  } else if (material === 'stone') k.v('stone', 0, 0, 2, 0x777872); // 门槛石
+  const roofBucket: DecorBucket = material === 'mixed' ? 'thatch' : 'roofTile';
+  const roofColor = material === 'stone' ? 0x4a4f58 : material === 'wood' ? 0x5a4030 : 0xd8b968;
   for (let l = 0; l < 3; l++) for (let x = -3 + l; x <= 2 - l; x++) for (let z = -3 + l; z <= 2 - l; z++)
-    k.v(material === 'stone' ? 'roofTile' : 'thatch', x, 2 + l, z,
-      jit(material === 'stone' ? 0x5f646a : 0xd8b968, hash01(x * 3 + z + l, 4))); // 茅草/石板顶
+    k.v(roofBucket, x, 2 + l, z, jit(roofColor, hash01(x * 3 + z + l, 423))); // 树皮瓦/石板/茅草顶
   addStructureEffectDetails(k, profile, 'hut');
 }
 
-function kitHouse(k: Kit, material: StructureMaterialKind = 'mixed', profile = EMPTY_STRUCTURE_PROFILE): void {
-  const wallBucket: DecorBucket = material === 'stone' ? 'stone' : material === 'wood' ? 'wood' : 'plaster';
-  const wallColor = material === 'stone' ? 0x999994 : material === 'wood' ? 0xa47645 : 0xe8e2d4;
-  for (let y = 0; y <= 2; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
-    const edge = x === -2 || x === 2 || z === -2 || z === 2;
-    if (!edge) continue;
-    if (z === 2 && x === 0 && y <= 1) continue;                  // 门洞
-    const beam = (x === -2 || x === 2) && (z === -2 || z === 2);
-    if (z === 2 && x === -1 && y === 1) { k.v('glowWarm', x, y, z, 0xffc37a); continue; }
-    k.v(beam ? 'organicDark' : wallBucket, x, y, z, beam ? 0x4a3626 : jit(wallColor, hash01(x + z + y, 2)));
+function kitHouse(
+  k: Kit,
+  material: StructureMaterialKind = 'mixed',
+  profile = EMPTY_STRUCTURE_PROFILE,
+  seed = 0,
+): void {
+  const window = structureWindow(profile);
+  if (material === 'wood') {
+    // 素材库木屋：逐层圆木、门廊、山墙木瓦和石烟囱。
+    const x0 = -4, x1 = 3, z0 = -3, z1 = 2;
+    for (let y = 0; y <= 2; y++) for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+      const edge = x === x0 || x === x1 || z === z0 || z === z1;
+      if (!edge) continue;
+      if (z === z1 && x === 0 && y <= 1) continue;
+      if (z === z1 && (x === -2 || x === 2) && y === 1) {
+        k.v(window.bucket, x, y, z, window.color);
+        continue;
+      }
+      if (z === z0 && x === -1 && y === 1) {
+        k.v('dark', x, y, z, 0x3a2f26);
+        continue;
+      }
+      const corner = (x === x0 || x === x1) && (z === z0 || z === z1);
+      const color = corner ? 0x5a3d26 : y % 2 === 0 ? 0x7a5636 : 0x6b4a2e;
+      k.v('wood', x, y, z, jit(color, hash01(x * 11 + z * 5 + y, 430 + Math.floor(seed * 17))));
+    }
+    k.v('wood', 0, 0, z1, 0x4e3822); k.v('wood', 0, 1, z1, 0x4e3822);
+    for (let x = -1; x <= 1; x += 1) k.v('wood', x, 0, z1 + 1, jit(0x7a5636, hash01(x, 431)));
+    addStructureChimney(k, 2, -1, 3, 5, profile);
+    for (let layer = 0; layer < 4; layer += 1) {
+      const minZ = z0 - 1 + layer, maxZ = z1 + 1 - layer;
+      for (let x = x0 - 1; x <= x1 + 1; x += 1) for (let z = minZ; z <= maxZ; z += 1) {
+        if (x === 2 && z === -1) continue;
+        k.v('roofTile', x, 3 + layer, z, jit(0x5a4030, hash01(x * 7 + z + layer, 432)));
+      }
+    }
+    for (let x = x0 - 1; x <= x1 + 1; x += 1) k.v('organicDark', x, 7, 0, 0x4e3822);
+  } else if (material === 'stone') {
+    // 素材库石屋：厚重乱石墙、稀疏苔痕、窄窗和四坡石板顶。
+    const x0 = -3, x1 = 3, z0 = -3, z1 = 2;
+    for (let y = 0; y <= 3; y++) for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+      const edge = x === x0 || x === x1 || z === z0 || z === z1;
+      if (!edge) continue;
+      if (z === z1 && x === 0 && y <= 2) continue;
+      if ((x === x0 || x === x1) && z === 0 && (y === 1 || y === 2)) {
+        k.v(x === x1 ? window.bucket : 'dark', x, y, z, x === x1 ? window.color : 0x2c3844);
+        continue;
+      }
+      if (z === z1 && (x === -2 || x === 2) && y === 2) {
+        k.v(x === -2 ? window.bucket : 'dark', x, y, z, x === -2 ? window.color : 0x2c3844);
+        continue;
+      }
+      k.v('stone', x, y, z, structureStoneColor(x, y, z, 440 + Math.floor(seed * 23)));
+    }
+    k.v('wood', 0, 0, z1, 0x5f422a); k.v('wood', 0, 1, z1, 0x5f422a);
+    k.v('stone', 0, 0, z1 + 1, 0x777872);
+    for (let layer = 0; layer < 4; layer += 1) {
+      const minX = x0 - 1 + layer, maxX = x1 + 1 - layer;
+      const minZ = z0 - 1 + layer, maxZ = z1 + 1 - layer;
+      for (let x = minX; x <= maxX; x += 1) for (let z = minZ; z <= maxZ; z += 1)
+        k.v('roofTile', x, 4 + layer, z, jit(0x4a4f58, hash01(x * 5 + z * 3 + layer, 441)));
+    }
+  } else {
+    // 混合材质保留木骨架与灰泥填充，和纯木、纯石住所形成第三种轮廓。
+    for (let y = 0; y <= 2; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
+      const edge = x === -2 || x === 2 || z === -2 || z === 2;
+      if (!edge) continue;
+      if (z === 2 && x === 0 && y <= 1) continue;
+      if (z === 2 && x === -1 && y === 1) {
+        k.v(window.bucket, x, y, z, window.color);
+        continue;
+      }
+      const corner = (x === -2 || x === 2) && (z === -2 || z === 2);
+      const beam = corner || y === 0 || y === 2 || ((z === -2 || z === 2) && x % 2 === 0);
+      k.v(beam ? 'organicDark' : 'plaster', x, y, z,
+        beam ? 0x4a3626 : jit(0xe8e2d4, hash01(x + z + y, 450)));
+    }
+    k.v('wood', 0, 0, 2, 0x5f422a); k.v('wood', 0, 1, 2, 0x5f422a);
+    for (let layer = 0; layer < 3; layer += 1) for (let x = -3; x <= 3; x += 1)
+      for (let z = -3 + layer; z <= 2 - layer; z += 1)
+        k.v('roofTile', x, 3 + layer, z, jit(0x7a4a3a, hash01(x + z + layer, 451)));
   }
-  k.v('wood', 0, 0, 2, 0x5f422a); k.v('wood', 0, 1, 2, 0x5f422a);
-  for (let l = 0; l < 3; l++) for (let x = -3; x <= 3; x++) for (let z = -3 + l; z <= 2 - l; z++)
-    k.v('roofTile', x, 3 + l, z, jit(0x7a4a3a, hash01(x + z + l, 6))); // 坡屋顶
   addStructureEffectDetails(k, profile, 'house');
 }
 
-function kitHall(k: Kit, material: StructureMaterialKind = 'stone', profile = EMPTY_STRUCTURE_PROFILE): void {
-  const wallBucket: DecorBucket = material === 'wood' ? 'wood' : 'stone';
-  const wallColor = material === 'wood' ? 0x8f633d : 0x8a8d92;
+function kitHall(
+  k: Kit,
+  material: StructureMaterialKind = 'stone',
+  profile = EMPTY_STRUCTURE_PROFILE,
+  seed = 0,
+): void {
+  const window = structureWindow(profile);
   for (let y = 0; y <= 3; y++) for (let x = -3; x <= 2; x++) for (let z = -2; z <= 2; z++) {
     const edge = x === -3 || x === 2 || z === -2 || z === 2;
     if (!edge) continue;
     if (z === 2 && x === 0 && y <= 1) continue;
-    if ((z === 2 || z === -2) && y === 2 && x % 2 === 0) { k.v('glowWarm', x, y, z, 0xffc37a); continue; }
-    k.v(wallBucket, x, y, z, jit(wallColor, hash01(x * 3 + z + y, 4)));
+    if ((z === 2 || z === -2) && y === 2 && x % 2 === 0) {
+      k.v(window.bucket, x, y, z, window.color);
+      continue;
+    }
+    const corner = (x === -3 || x === 2) && (z === -2 || z === 2);
+    if (material === 'stone') k.v('stone', x, y, z, structureStoneColor(x, y, z, 460 + Math.floor(seed * 29)));
+    else if (material === 'wood') {
+      const color = corner ? 0x5a3d26 : y % 2 === 0 ? 0x8f633d : 0x765033;
+      k.v('wood', x, y, z, jit(color, hash01(x * 3 + z + y, 461)));
+    } else {
+      const beam = corner || y === 0 || y === 3 || ((z === -2 || z === 2) && x % 2 === 0);
+      k.v(beam ? 'organicDark' : 'plaster', x, y, z,
+        beam ? 0x4a3626 : jit(0xd9d1c1, hash01(x * 3 + z + y, 462)));
+    }
   }
   k.v('wood', 0, 0, 2, 0x4e3822); k.v('wood', 0, 1, 2, 0x4e3822);
+  if (material === 'stone') {
+    for (const x of [-3, 2]) for (const z of [-2, 2]) k.v('stone', x, 0, z, 0x73736f); // 厚墙扶壁
+  } else if (material === 'wood') {
+    for (let x = -2; x <= 1; x += 1) k.v('wood', x, 0, 3, jit(0x7a5636, hash01(x, 463))); // 长门廊
+    addStructureChimney(k, 2, -1, 4, 4, profile);
+  }
+  const roofBucket: DecorBucket = material === 'wood' ? 'thatch' : 'roofTile';
+  const roofColor = material === 'wood' ? 0x9d743f : material === 'stone' ? 0x4a4f58 : 0x6f4437;
   for (let l = 0; l < 3; l++) for (let x = -4 + l; x <= 3 - l; x++) for (let z = -3 + l; z <= 2 - l; z++)
-    k.v(material === 'wood' ? 'thatch' : 'roofTile', x, 4 + l, z,
-      jit(material === 'wood' ? 0x9d743f : 0x4a4f58, hash01(x + z + l, 8)));
+    k.v(roofBucket, x, 4 + l, z, jit(roofColor, hash01(x + z + l, 464)));
   addStructureEffectDetails(k, profile, 'hall');
 }
 
@@ -936,13 +1085,17 @@ function kitGranary(k: Kit, r: number, state: FacilityVisualState): void {
   k.m('wood', 0, 4, -2, 5, 5, 1, jit(0xa8815a, r));
   k.m('wood', 0, 6, 2, 5, 1, 1, jit(0xa8815a, hash01(2, 241)));
   k.m('organicDark', 0, 4, 2.2, 2, 2, 1, 0x54402a);
+  // 素材原型的高脚木梯；它只解释如何抵达仓门，不形成新的可通行规则。
+  k.m('organicDark', -0.9, 0, 3, 1, 4, 1, 0x68472f);
+  k.m('organicDark', 0.9, 0, 3, 1, 4, 1, 0x68472f);
+  for (const y of [0.6, 1.7, 2.8]) k.m('wood', 0, y, 3, 3, 0.5, 1, jit(0x8a6a48, hash01(y * 10, 242)));
   for (let layer = 0; layer < 3; layer += 1)
-    k.m('thatch', 0, 9 + layer, 0, 9 - layer * 2, 1, 7 - layer * 2, jit(0xd0ae63, hash01(layer, 242)));
+    k.m('thatch', 0, 9 + layer, 0, 9 - layer * 2, 1, 7 - layer * 2, jit(0xd0ae63, hash01(layer, 243)));
   const visibleStores = Math.min(4, Math.ceil(state.fillRatio * 4));
   for (let index = 0; index < visibleStores; index += 1) {
     const x = index % 2 === 0 ? -1.1 : 1.1;
     const y = index < 2 ? 4.2 : 5.5;
-    k.m('thatch', x, y, 2.55, 2, 1, 1, jit(0xc2a46b, hash01(index, 243)));
+    k.m('thatch', x, y, 2.55, 2, 1, 1, jit(0xc2a46b, hash01(index, 244)));
   }
   if (state.active) k.m('glowWarm', -2.6, 5.5, 0, 1, 2, 1, 0xffc37a);
 }
@@ -1002,17 +1155,15 @@ function kitCivicCore(k: Kit, r: number, state: FacilityVisualState, keep = fals
 
 function kitWaterWheel(k: Kit, r: number, state: FacilityVisualState): void {
   const animation = state.active ? 'wheel-spin' as const : undefined;
+  for (const x of [-2, 2]) k.m('stone', x, 0, 0, 2, 4, 2, jit(0x77746e, hash01(x, 290)));
   for (let index = 0; index < 12; index += 1) {
     const angle = index * Math.PI / 6;
     const y = 4 + Math.sin(angle) * 3.2;
     const z = Math.cos(angle) * 3.2;
     k.m('wood', 0, y, z, 2, 1.5, 1.5, jit(0x7e5734, hash01(index, 291)), 'wheel-rim', animation);
   }
-  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-    const y = 4 + Math.sin(angle) * 1.8;
-    const z = Math.cos(angle) * 1.8;
-    k.m('wood', 0, y, z, 2, 1, 5, jit(0x93653d, r), 'wheel-blade', animation);
-  }
+  k.m('wood', 0, 3.5, 0, 2, 1, 7, jit(0x93653d, r), 'wheel-blade', animation);
+  k.m('wood', 0, 0.5, 0, 2, 7, 1, jit(0x93653d, hash01(1, 292)), 'wheel-blade', animation);
   k.m('dark', 0, 3.4, 0, 4, 2, 2, 0xa16f32, 'wheel-hub', animation);
 }
 
@@ -1025,6 +1176,23 @@ function kitDriveShaft(k: Kit, r: number, broken: boolean): void {
   }
   k.m('dark', 0, 2.5, 0, 8, 1.4, 1.4, jit(0xa16f32, r));
   for (const x of [-3, 3]) k.m('stone', x, 0, 0, 1, 4, 3, jit(0x77746e, hash01(x, 302)));
+}
+
+function facilityBuilderFor(key: string, state: FacilityVisualState): KitBuilder | undefined {
+  if (key === 'council_hearth') return (k, r) => kitCouncilHearth(k, r, state);
+  if (key === 'workshop') return (k, r) => kitWorkshop(k, r, state);
+  if (key === 'granary') return (k, r) => kitGranary(k, r, state);
+  if (key === 'cistern') return (k, r) => kitCistern(k, r, state);
+  if (key === 'kiln') return (k, r) => kitKiln(k, r, state);
+  if (key === 'mill') return (k, r) => kitMill(k, r, state);
+  if (key === 'civic_hall') return (k, r) => kitCivicCore(k, r, state);
+  if (key === 'foundry') return (k, r) => kitWorkshop(k, r, state, 'bronze');
+  if (key === 'smithy') return (k, r) => kitWorkshop(k, r, state, 'iron');
+  if (key === 'keep_core') return (k, r) => kitCivicCore(k, r, state, true);
+  if (key === 'water_wheel') return (k, r) => kitWaterWheel(k, r, state);
+  if (key === 'drive_shaft') return (k, r) => kitDriveShaft(k, r, false);
+  if (key === 'broken_drive_shaft') return (k, r) => kitDriveShaft(k, r, true);
+  return undefined;
 }
 
 interface StructureBounds {
@@ -1080,10 +1248,11 @@ function structureBounds(cellIds: number[], worldWidth: number): StructureBounds
   })[0];
 }
 
-/** 将房屋印章居中拟合进权威占地，四周预留缝隙，不额外生成地基。 */
+/** 将房屋印章居中拟合进权威占地；已完工建筑可用少量挑檐扩展视觉轮廓，不额外生成地基。 */
 function placeStructureStamp(
   out: DecorInstance[], build: KitBuilder, bounds: StructureBounds,
   worldWidth: number, worldHeight: number, groundY: number, rot: number, r: number,
+  decorativeOverhang = 0,
 ): void {
   const stamp: DecorInstance[] = [];
   build(new Kit(stamp, 0, 0, 0, 1, rot), r);
@@ -1098,8 +1267,8 @@ function placeStructureStamp(
   const targetCenterX = (bounds.minX + bounds.maxX + 1) / 2 - worldWidth / 2;
   const targetCenterZ = (bounds.minY + bounds.maxY + 1) / 2 - worldHeight / 2;
   const gap = 0.1;
-  const targetWidth = bounds.maxX - bounds.minX + 1 - gap * 2;
-  const targetDepth = bounds.maxY - bounds.minY + 1 - gap * 2;
+  const targetWidth = bounds.maxX - bounds.minX + 1 + decorativeOverhang * 2 - gap * 2;
+  const targetDepth = bounds.maxY - bounds.minY + 1 + decorativeOverhang * 2 - gap * 2;
   const scaleX = targetWidth / (maxX - minX);
   const scaleZ = targetDepth / (maxZ - minZ);
   // 水平可按真实矩形成为长屋；高度仅适度收缩，不再随占地无限放大。
@@ -1183,8 +1352,15 @@ function kitWolf(k: Kit, r: number): void {
 /* 世界扫描                                                             */
 /* ------------------------------------------------------------------ */
 
+const FUNCTIONAL_MODEL_KEYS = new Set([
+  'council_hearth', 'workshop', 'granary', 'cistern', 'kiln', 'mill',
+  'civic_hall', 'foundry', 'smithy', 'keep_core',
+  'water_wheel', 'drive_shaft', 'broken_drive_shaft',
+]);
+
 const SURFACE_REPLACEMENT_DECOR = new Set([
   'shrub', 'berry_bush', 'crop_sprout', 'crop_mature', 'packed_soil', 'fire',
+  ...FUNCTIONAL_MODEL_KEYS,
 ]);
 
 /**
@@ -1202,6 +1378,7 @@ export function featureDepth(
   // 被压缩掉的高度；否则地形合批会把悬空屋顶填成一根实心“底座”。
   const missingLevels = Math.max(0, world.elevation[cellId] + 1 - stack.length);
   const top = world.palette[stack[0]];
+  const modeledDepth = top?.key && FUNCTIONAL_MODEL_KEYS.has(top.key) ? missingLevels + 1 : 0;
   const overheadDepth = missingLevels > 0 && top?.tags.includes('solid') && top.tags.includes('building')
     ? missingLevels + 1
     : 0;
@@ -1221,7 +1398,7 @@ export function featureDepth(
     if (key === 'leaves') { depth += 2; continue; }        // 树叶下必有一格木
     break;
   }
-  return Math.max(depth, overheadDepth, constructionDepth);
+  return Math.max(depth, overheadDepth, constructionDepth, modeledDepth);
 }
 
 function visibleGroundMaterialId(
@@ -1252,6 +1429,13 @@ export function featureUnderlayMaterialId(
   const feature = featureDepth(world, cellId, constructionCells);
   if (!key || !SURFACE_REPLACEMENT_DECOR.has(key)) {
     return feature > 0 ? visibleGroundMaterialId(world, cellId, constructionCells) : undefined;
+  }
+
+  if (FUNCTIONAL_MODEL_KEYS.has(key)) {
+    // 功能设施是权威体素的具象替身。优先保留它正下方的真实地表/水面，
+    // 尤其不能让架在河流上方的水轮把水面误画成邻近草地。
+    const below = world.palette[stack[1]];
+    if (below && (below.tags.includes('ground') || below.tags.includes('liquid') || below.key === 'grass')) return below.id;
   }
 
   const x0 = cellId % world.width;
@@ -1498,9 +1682,59 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   const cold = era === 'frozen' || era === 'chaotic-cold' || society.weather?.kind === 'snow';
   const scorched = era === 'burned' || era === 'extinct';
   const COUNT = w.width * w.height;
-  const constructionCells = new Set(society.structures.flatMap((structure) => structure.occupiedCells));
+  // 结构投影会把谷仓、窑炉等固体设施也识别成 structure；这些格子已有专用设施模型，
+  // 不能再叠一层通用房屋或施工架，否则会在视觉上显得又大又密。
+  const renderedStructures = society.structures.filter((structure) => (
+    !(structure.materialIds ?? []).some((materialId) => (
+      FUNCTIONAL_MODEL_KEYS.has(w.palette[materialId]?.key ?? '')
+    ))
+  ));
+  const constructionCells = new Set(renderedStructures.flatMap((structure) => structure.occupiedCells));
   const storm = society.weather?.kind === 'storm';
   const drought = society.weather?.kind === 'drought';
+  const facilityCellsByMaterial = new Map<number, number[]>();
+  const functionalCells = new Set<number>();
+  for (let id = 0; id < COUNT; id += 1) {
+    const materialId = w.surface[id];
+    if (!FUNCTIONAL_MODEL_KEYS.has(w.palette[materialId]?.key ?? '')) continue;
+    functionalCells.add(id);
+    const cells = facilityCellsByMaterial.get(materialId);
+    if (cells) cells.push(id); else facilityCellsByMaterial.set(materialId, [id]);
+  }
+  const cellDistance = (left: number, right: number): number => Math.abs(left % w.width - right % w.width)
+    + Math.abs(Math.floor(left / w.width) - Math.floor(right / w.width));
+  const activeFacilityCells = new Set<number>();
+  for (const agent of society.agents) {
+    const action = agent.visualAction;
+    if (!action?.sourceEventId) continue;
+    const anchor = action.targetCellId ?? action.sourceCellId ?? agent.cellId;
+    if (functionalCells.has(anchor)) activeFacilityCells.add(anchor);
+    if (action.facilityMaterialId !== undefined) {
+      const nearest = (facilityCellsByMaterial.get(action.facilityMaterialId) ?? [])
+        .map((cellId) => ({ cellId, distance: cellDistance(anchor, cellId) }))
+        .filter(({ distance }) => distance <= 2)
+        .sort((left, right) => left.distance - right.distance || left.cellId - right.cellId)[0];
+      if (nearest) activeFacilityCells.add(nearest.cellId);
+    }
+    if (action.mechanicalPowerOperation) {
+      // 动力作业只点亮该 ActionFact 所属权威网络的已安装构件，不从邻接猜网络身份。
+      for (const cellId of action.linkedFacilityCellIds ?? []) {
+        const key = w.palette[w.surface[cellId]]?.key;
+        if (key === 'mill' || key === 'water_wheel' || key === 'drive_shaft') activeFacilityCells.add(cellId);
+      }
+    }
+  }
+  const containerByCell = new Map(society.containers.map((container) => [container.cellId, container]));
+  const facilityRotationFor = (cellId: number): number => {
+    const x = cellId % w.width;
+    const y = Math.floor(cellId / w.width);
+    const mechanicalAt = (nx: number, ny: number): boolean => {
+      if (nx < 0 || ny < 0 || nx >= w.width || ny >= w.height) return false;
+      const key = w.palette[w.surface[ny * w.width + nx]]?.key;
+      return key === 'water_wheel' || key === 'drive_shaft' || key === 'mill' || key === 'broken_drive_shaft';
+    };
+    return mechanicalAt(x, y - 1) || mechanicalAt(x, y + 1) ? 1 : 0;
+  };
 
   // 水面集合（判断近水树种）
   const water = new Set<number>();
@@ -1591,8 +1825,24 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
       case 'soil': case 'exhausted_soil': case 'packed_soil':
         if (drought && r < 0.22) smallKit(kitDroughtCracks, 0.46);
         break;
-      default:
+      default: {
+        const container = containerByCell.get(id);
+        const facilityState: FacilityVisualState = {
+          active: activeFacilityCells.has(id),
+          fillRatio: container ? Math.min(1, container.usedCapacity / Math.max(1, container.capacity)) : 0,
+        };
+        const build = key ? facilityBuilderFor(key, facilityState) : undefined;
+        if (build) {
+          const start = out.length;
+          const rot = key === 'water_wheel' || key === 'drive_shaft' || key === 'broken_drive_shaft'
+            ? facilityRotationFor(id)
+            : Math.floor(r * 4);
+          const scale = key === 'granary' ? 0.72 : 1;
+          build(new Kit(out, wx, gt, wz, scale, rot, `facility:${id}`), r);
+          markWind(start);
+        }
         break;
+      }
     }
   }
 
@@ -1669,10 +1919,11 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     });
   }
   for (const c of society.containers) {
+    if (w.palette[c.materialId]?.key === 'granary') continue;
     pileGroup(c.cellId, c.z).containers.push({
       materialId: c.materialId,
       quantity: Math.max(1, c.usedCapacity),
-      build: kitContainer,
+      build: (k, r) => kitContainer(k, r, Math.min(1, c.usedCapacity / Math.max(1, c.capacity))),
       r: hash01(c.cellId, 11),
     });
   }
@@ -1703,7 +1954,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   }
 
   // 建筑 → 文明印章（规模决定形制）
-  for (const st of society.structures) {
+  for (const st of renderedStructures) {
     if (!st.occupiedCells.length) continue;
     const cells = st.occupiedCells.length;
     const bounds = structureBounds(st.occupiedCells, w.width);
@@ -1742,15 +1993,23 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const stoneCount = materialKeys.filter((key) => key === 'stone').length;
     const woodCount = materialKeys.filter((key) => key === 'wood' || key === 'plank').length;
     const material: StructureMaterialKind = stoneCount > woodCount ? 'stone' : woodCount > stoneCount ? 'wood' : 'mixed';
-    const build: KitBuilder = cells <= 1
-      ? (k) => kitHut(k, material)
-      : cells <= 4 ? (k) => kitHouse(k, material) : (k) => kitHall(k, material);
+    const structureCells = new Set([...st.occupiedCells, ...st.interiorCells]);
+    const hearthActive = [...structureCells].some((cellId) => (
+      w.columns[cellId]?.some((materialId) => w.palette[materialId]?.key === 'fire')
+    ));
+    const profile: StructureVisualProfile = { ...st.effects, hearthActive };
+    const usableScale = Math.max(cells, st.effects.capacity);
+    const build: KitBuilder = usableScale <= 1
+      ? (k, random) => kitHut(k, material, profile, random)
+      : usableScale <= 4
+        ? (k, random) => kitHouse(k, material, profile, random)
+        : (k, random) => kitHall(k, material, profile, random);
     const r = hash01(st.occupiedCells[0], 13);
     const width = bounds.maxX - bounds.minX + 1;
     const depth = bounds.maxY - bounds.minY + 1;
     const flip = r < 0.5 ? 0 : 2;
     const rot = ((depth > width ? 1 : 0) + flip) % 4;
-    placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r);
+    placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, 0.16);
   }
 
   // 动物

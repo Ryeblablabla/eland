@@ -188,6 +188,31 @@ try {
   }
 
   {
+    const { state, actor } = createFixture(9499);
+    actor.inventory.push(itemStack('test-material-boundary-stone', Material.Stone, 1));
+    addHeatExposure(state, actor, 'test-material-boundary-heat');
+    const proposal = adaptationOptions(state, actor)[0]?.projectProposal;
+    assert.ok(proposal?.shelterRequirement, '夹具必须先形成一个未完成的住所适应项目');
+    const project = ensureProject(state, proposal);
+
+    actor.inventory = [itemStack('test-material-boundary-granary', Material.Granary, 9)];
+    const facilityOnlyOptions = optionsFor(state, actor);
+    assert.ok(!facilityOnlyOptions.some((option) => option.nextAction.kind === 'act'
+      && option.nextAction.operation === 'combine'
+      && option.nextAction.targets.some((target) => target.kind === 'inventory-stack'
+        && target.stackId === 'test-material-boundary-granary')),
+    '已组装谷仓不能被住所项目当作墙体材料');
+
+    actor.inventory.push(itemStack('test-material-boundary-stone-available', Material.Stone, 1));
+    const materialOption = optionsFor(state, actor)
+      .find((option) => option.projectId === project.id && option.nextAction.kind === 'act');
+    assert.ok(materialOption?.nextAction.kind === 'act' && materialOption.nextAction.operation === 'combine');
+    assert.ok(materialOption.nextAction.targets.some((target) => target.kind === 'inventory-stack'
+      && target.stackId === 'test-material-boundary-stone-available'),
+    '存在普通石材时住所项目应继续使用石材');
+  }
+
+  {
     const { state, actor, center, site, initialWallCell, shelter: baselineShelter } = createFixture(9501);
     actor.inventory.push(itemStack('test-adaptation-stone', Material.Stone, 2));
     const heatEventId = 'test-resolvable-self-heat-event';

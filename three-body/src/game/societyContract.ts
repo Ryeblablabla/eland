@@ -212,12 +212,15 @@ export interface ActionVisualView {
   actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
   /** 仅真实 ActionFact 投影携带；意图预览没有来源事件，装饰层不得把它当成已发生动作。 */
   sourceEventId?: string;
+  sourceOrderInMonth?: number;
   sourceCellId?: number;
   sourceZ?: number;
   targetCellId?: number;
   targetZ?: number;
   /** 领域后果明确记录的设施材质；位置仍由真实动作落点与附近同材质设施共同解析。 */
   facilityMaterialId?: number;
+  mechanicalPowerOperation?: boolean;
+  linkedFacilityCellIds?: number[];
   operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
   targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'person';
   targetPersonId?: string;

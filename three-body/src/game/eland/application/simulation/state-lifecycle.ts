@@ -1,0 +1,299 @@
+import { CHARACTER_PROFILES, type CharacterProfile } from '../../character-profiles';
+import {
+  createFounderAgeMonths,
+  createLifespanMonths,
+  deterministicFraction,
+} from '../../population';
+import { MONTHS_PER_YEAR, PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
+import { createInitialAnimals } from '../../domain/animal';
+import { emptyCivilizationIndex } from '../../domain/civilization-index';
+import { createCognitionState, ensureCognitionState } from '../../domain/cognition';
+import { primeEventIndex } from '../../domain/event-index';
+import { Material } from '../../domain/material';
+import {
+  MECHANICAL_POWER_WORLD_VERSION,
+  emptyMechanicalPowerWorldState,
+} from '../../domain/mechanical-power';
+import { initialEraSchedule } from '../../domain/monthly-processes';
+import type {
+  EnvironmentFact,
+  EvolutionReport,
+  SimulationConfig,
+  SimulationState,
+} from '../../domain/model';
+import type { PersonState } from '../../domain/person';
+import { createMotiveSensitivity, createPersonality } from '../../domain/personality';
+import { FOUNDER_INITIAL_RELATION } from '../../domain/relation';
+import { normalizeAnimalEcologies } from '../../domain/wildlife-ecology';
+import { inferNamingIdentity } from '../../naming';
+import { deriveObservations, updateDevelopmentObservation } from '../../projection/derived-observations';
+import {
+  hydrateWorld,
+  surfaceStandingPosition,
+  topZ,
+} from '../../world/grid';
+import {
+  CURRENT_WORLD_GENERATOR_VERSION,
+  generateVoxelWorld,
+  mechanicalPowerWorldForSeed,
+} from '../../world/generator';
+import { clamp, copyState } from './state-utils';
+
+export const MAX_SIMULATION_YEARS = 1_000;
+export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
+
+function chooseProfiles(seed: number, civilizationNo: number, characterIds?: string[]): CharacterProfile[] {
+  if (characterIds?.length) {
+    const wanted = new Set(characterIds);
+    const chosen = CHARACTER_PROFILES.filter((profile) => wanted.has(profile.id));
+    if (chosen.length) return chosen.slice(0, 10);
+  }
+  return [...CHARACTER_PROFILES]
+    .sort((a, b) => deterministicFraction(seed + civilizationNo * 991, `profile:${a.id}`) - deterministicFraction(seed + civilizationNo * 991, `profile:${b.id}`))
+    .slice(0, 5 + Math.floor(deterministicFraction(seed, `population:${civilizationNo}`) * 4));
+}
+
+function ensureNamingMetadata(people: PersonState[]): void {
+  for (const person of [...people].sort((a, b) => a.generation - b.generation || a.bornAtMonth - b.bornAtMonth || a.id.localeCompare(b.id))) {
+    const archived = CHARACTER_PROFILES.find((profile) => profile.id === person.id);
+    const father = person.geneticParents
+      .map((parentId) => people.find((candidate) => candidate.id === parentId))
+      .find((parent): parent is PersonState => parent?.sex === 'male');
+    const source = archived ?? father ?? person;
+    const identity = inferNamingIdentity(source);
+    person.familyName ||= identity.familyName;
+    person.namingTradition ??= identity.namingTradition;
+  }
+}
+
+export function createDefaultSimulationConfig(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
+  return {
+    civilizationNo: Math.max(1, Math.round(overrides.civilizationNo ?? 1)),
+    climateBias: overrides.climateBias === 'cold' || overrides.climateBias === 'hot' ? overrides.climateBias : 'balanced',
+    chaosIntensity: clamp(Math.round(overrides.chaosIntensity ?? 0), 0, 10),
+    endpoint: {
+      kind: overrides.endpoint?.kind === 'milestones' ? 'milestones' : 'months',
+      value: overrides.endpoint?.kind === 'milestones'
+        ? Math.max(1, Math.round(overrides.endpoint.value))
+        : Math.min(MAX_SIMULATION_MONTHS, Math.max(1, Math.round(overrides.endpoint?.value ?? MAX_SIMULATION_MONTHS))),
+    },
+    ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, 10) } : {}),
+  };
+}
+
+const FOUNDER_COHORT_EVENT_ID = 'e-0-environment-founding-0';
+
+function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, spawnZ: number, profiles: CharacterProfile[]): PersonState {
+  const founderAge = createFounderAgeMonths(seed, profile.id);
+  const capacity = (key: string, floor: number, span: number) => floor + Math.floor(deterministicFraction(seed, `${key}:${profile.id}`) * span);
+  return {
+    id: profile.id,
+    name: profile.name,
+    color: profile.color,
+    profile: { description: profile.description },
+    bornAtMonth: -founderAge,
+    lifespanMonths: createLifespanMonths(seed, profile.id, founderAge),
+    sex: profile.sex,
+    familyName: profile.familyName,
+    namingTradition: profile.namingTradition,
+    geneticParents: [],
+    generation: 0,
+    geneticLoad: 0,
+    position: { cellId: spawnCell, z: spawnZ, previousCellId: spawnCell, previousZ: spawnZ, lastPath: [spawnCell], tickPath: [spawnCell] },
+    body: { health: 92, hydration: 82, nutrition: 78 },
+    baselineCapacities: {
+      locomotion: capacity('locomotion', 48, 35),
+      manipulation: capacity('manipulation', 45, 35),
+      perception: capacity('perception', 42, 40),
+      communication: capacity('communication', 42, 40),
+      cognition: capacity('cognition', 42, 40),
+    },
+    personality: createPersonality(seed, profile.id),
+    cognition: createCognitionState(),
+    motiveSensitivity: createMotiveSensitivity(seed, profile.id),
+    conditions: [],
+    inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
+    knowledge: [],
+    knownPlaces: [],
+    memories: [],
+    relations: profiles.filter((other) => other.id !== profile.id).map((other) => ({
+      personId: other.id,
+      trust: FOUNDER_INITIAL_RELATION,
+      bond: FOUNDER_INITIAL_RELATION,
+      fear: 0,
+      sourceEventIds: [FOUNDER_COHORT_EVENT_ID],
+    })),
+    currentActionText: '观察身边的物质',
+    lastDecisionText: '尚未作出关键决定',
+  };
+}
+
+export function createInitialState(seed = 17, inputConfig: Partial<SimulationConfig> = {}): SimulationState {
+  const config = createDefaultSimulationConfig(inputConfig);
+  const generated = generateVoxelWorld(seed);
+  const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
+  const people = profiles.map((profile, index) => {
+    const spawnCell = generated.spawnCells[index] ?? generated.spawnCells[0];
+    const spawnZ = surfaceStandingPosition(generated.world, spawnCell)?.z ?? Math.min(generated.world.levels - 2, Math.max(1, topZ(generated.world, spawnCell) + 1));
+    return initialPerson(seed + config.civilizationNo * 997, profile, spawnCell, spawnZ, profiles);
+  });
+  const foundingFact: EnvironmentFact = {
+    id: FOUNDER_COHORT_EVENT_ID,
+    kind: 'environment',
+    atMonth: 0,
+    orderInMonth: 0,
+    cellId: people[0]?.position.cellId ?? 0,
+    change: 'founding',
+    result: '开局先民共同抵达，并已形成基本的相互熟悉',
+    diff: { participantIds: people.map((person) => person.id) },
+  };
+  const state: SimulationState = {
+    schemaVersion: 17,
+    seed,
+    branchId: `root-${seed}-${config.civilizationNo}`,
+    clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
+    world: {
+      grid: generated.world,
+      drops: generated.drops,
+      animals: createInitialAnimals(seed, generated.world, generated.spawnCells.slice(0, people.length)),
+      past: [foundingFact],
+      traffic: {},
+      mechanicalPower: generated.mechanicalPower,
+    },
+    people,
+    intents: [],
+    agreements: [],
+    records: [],
+    collectives: [],
+    permissions: [],
+    containers: [],
+    eraPredictions: [],
+    projects: [],
+    civilization: {
+      number: config.civilizationNo,
+      status: 'running',
+      stage: '自然群体',
+      epoch: 'stable',
+      era: initialEraSchedule(seed, config.chaosIntensity),
+      climate: { kind: 'temperate', severity: 1, sinceMonth: 0 },
+      weather: { kind: 'clear', intensity: 1, sinceMonth: 0 },
+      conditions: config,
+      civilizationIndex: emptyCivilizationIndex(),
+    },
+    decisionBudget: { credits: 0, tokensPerContext: 8_000, ledgers: [] },
+    derived: { practices: [], institutions: [], milestones: [], regions: [], structures: [] },
+    lastStep: [],
+  };
+  updateDevelopmentObservation(state);
+  return state;
+}
+
+export function restoreSimulationState(input: SimulationState): SimulationState {
+  const version = Number((input as { schemaVersion?: number }).schemaVersion);
+  if (version !== 17) throw new Error('当前开发版本只接受 schemaVersion 17；请新建文明运行');
+  const state = structuredClone(input);
+  state.schemaVersion = 17;
+  if (state.civilization.conditions.endpoint.kind === 'months') {
+    state.civilization.conditions.endpoint.value = Math.min(
+      MAX_SIMULATION_MONTHS,
+      Math.max(1, Math.round(state.civilization.conditions.endpoint.value)),
+    );
+  }
+  state.world.animals ??= [];
+  normalizeAnimalEcologies(state.world.animals);
+  state.civilization.weather ??= { kind: 'clear', intensity: 1, sinceMonth: state.clock.elapsedMonths };
+  state.civilization.civilizationIndex ??= emptyCivilizationIndex(state.clock.elapsedMonths);
+  delete (state.civilization as SimulationState['civilization'] & { integrity?: number }).integrity;
+  state.records ??= [];
+  state.collectives ??= [];
+  state.permissions ??= [];
+  state.containers ??= [];
+  state.eraPredictions ??= [];
+  state.projects ??= [];
+  state.civilization.era ??= initialEraSchedule(state.seed, state.civilization.conditions.chaosIntensity);
+  if (!state.world.traffic) {
+    state.world.traffic = {};
+    for (const event of state.world.past) {
+      if (event.kind !== 'action') continue;
+      const verticalPath = Array.isArray(event.diff.verticalPath) ? event.diff.verticalPath : [];
+      event.pathSegment.slice(1).forEach((cellId, index) => {
+        const z = Number(verticalPath[index + 1] ?? event.toZ);
+        const key = `${cellId}:${z}`;
+        state.world.traffic![key] = (state.world.traffic![key] ?? 0) + 1;
+      });
+    }
+  }
+  for (const agreement of state.agreements) {
+    agreement.requiredResponderIds ??= [agreement.responderId];
+    agreement.acceptedByPersonIds ??= agreement.status === 'proposed'
+      ? [agreement.proposerId]
+      : agreement.status === 'rejected'
+        ? [agreement.proposerId]
+        : [...agreement.partyIds];
+    agreement.rejectedByPersonIds ??= agreement.status === 'rejected' ? [agreement.responderId] : [];
+  }
+  state.world.grid = hydrateWorld(input.world.grid);
+  if (state.world.mechanicalPower?.version !== MECHANICAL_POWER_WORLD_VERSION) {
+    state.world.mechanicalPower = state.world.grid.generator.version === CURRENT_WORLD_GENERATOR_VERSION
+      ? mechanicalPowerWorldForSeed(state.world.grid.generator.seed)
+      : emptyMechanicalPowerWorldState();
+  }
+  ensureNamingMetadata(state.people);
+  for (const drop of state.world.drops) {
+    drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
+  }
+  for (const person of state.people) {
+    ensureCognitionState(person);
+    person.knownPlaces ??= [];
+    person.geneticLoad = Number.isFinite(person.geneticLoad) ? clamp(person.geneticLoad, 0, 1) : 0;
+    const start = person.position.previousCellId ?? person.position.cellId;
+    const migratedPosition = surfaceStandingPosition(state.world.grid, person.position.cellId);
+    person.position.z = Number.isInteger(person.position.z) ? person.position.z : migratedPosition?.z ?? Math.min(state.world.grid.levels - 2, Math.max(1, topZ(state.world.grid, person.position.cellId) + 1));
+    person.position.previousZ = Number.isInteger(person.position.previousZ) ? person.position.previousZ : person.position.z;
+    person.position.lastPath = person.position.lastPath?.length ? person.position.lastPath : [start, person.position.cellId];
+    person.position.tickPath = person.position.tickPath?.length
+      ? person.position.tickPath
+      : Array.from({ length: PLANNING_TICKS_PER_MONTH + 1 }, (_, index) => index === PLANNING_TICKS_PER_MONTH ? person.position.cellId : start);
+  }
+  for (const collective of state.collectives) {
+    collective.decisionRules ??= [];
+    collective.mandates ??= [];
+  }
+  for (const event of state.world.past) {
+    event.planningTick ??= event.kind === 'action' ? event.actionTick : 0;
+    event.orderInTick ??= event.orderInMonth;
+    if (event.kind !== 'action') continue;
+    event.fromZ = Number.isInteger(event.fromZ)
+      ? event.fromZ
+      : surfaceStandingPosition(state.world.grid, event.fromCellId)?.z ?? 1;
+    event.toZ = Number.isInteger(event.toZ)
+      ? event.toZ
+      : surfaceStandingPosition(state.world.grid, event.toCellId)?.z ?? event.fromZ;
+  }
+  for (const intent of state.intents) {
+    if (intent.agreementId) continue;
+    const agreement = state.agreements.find((candidate) => candidate.status === 'active'
+      && (intent.sourceFactIds ?? []).includes(candidate.proposalEventId)
+      && Boolean(candidate.responseEventId && (intent.sourceFactIds ?? []).includes(candidate.responseEventId)));
+    if (agreement) intent.agreementId = agreement.id;
+  }
+  state.derived = deriveObservations(state);
+  updateDevelopmentObservation(state);
+  primeEventIndex(state);
+  return state;
+}
+
+export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {}): SimulationState {
+  return createInitialState(seed, config);
+}
+
+export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {
+  return {
+    schemaVersion: 17,
+    exportedAt: new Date().toISOString(),
+    civilization: structuredClone(finalState.civilization),
+    finalState: copyState(finalState),
+    checkpoints: checkpoints.map(copyState),
+    review: { milestones: structuredClone(finalState.derived.milestones), eventCount: finalState.world.past.length },
+  };
+}

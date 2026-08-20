@@ -85,6 +85,49 @@ export interface MemoryRecord {
   personIds: PersonId[];
   sourceEventIds: string[];
   expiresAtMonth?: number;
+  /**
+   * Optional machine-readable interpretation of an experienced action. Free
+   * text remains presentation only; decisions learn from this sourced trace.
+   */
+  causal?: CausalMemoryTrace;
+}
+
+export type CognitiveOutcome = 'completed' | 'progressed' | 'blocked' | 'failed';
+
+export interface CausalMemoryTrace {
+  /** Stable across transient option and intent ids. */
+  basisKey: string;
+  actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
+  operation?: string;
+  goalKind?: string;
+  outcome: CognitiveOutcome;
+  /** -1..1, derived only from the actor's replayable result. */
+  valence: number;
+  consequenceTags: string[];
+}
+
+/** A small Beta outcome model learned only from this person's own actions. */
+export interface OutcomeBelief {
+  basisKey: string;
+  attempts: number;
+  completed: number;
+  progressed: number;
+  blocked: number;
+  failed: number;
+  /** Beta posterior parameters. They start with a weak, non-certain prior. */
+  successAlpha: number;
+  successBeta: number;
+  /** Running mean of experienced observations in the 0..1 range. */
+  expectedEffort: number;
+  expectedHarm: number;
+  lastUpdatedAtMonth: number;
+  sourceEventIds: string[];
+}
+
+export interface CognitionState {
+  version: 'causal-bdi-v1';
+  /** Bounded person-local expectations; never global civilization knowledge. */
+  outcomeBeliefs: OutcomeBelief[];
 }
 
 export type HexacoTrait =
@@ -185,6 +228,8 @@ export interface PersonState {
   knownPlaces: KnownPlace[];
   relations: DirectedRelation[];
   memories: MemoryRecord[];
+  /** Optional only so old schema-v17 states and small test fixtures can hydrate. */
+  cognition?: CognitionState;
   activeIntentId?: string;
   currentActionText: string;
   lastDecisionText: string;

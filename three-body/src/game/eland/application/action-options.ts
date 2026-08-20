@@ -27,6 +27,7 @@ import {
   isPassable,
   nearestCell,
   neighbors4,
+  surfaceStandingPosition,
   surfaceMaterial,
   topPosition,
   topZ,
@@ -40,7 +41,6 @@ import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
 import { findReachableShelter } from '../domain/shelter-access';
-import { geneticKinshipRisk, hasLearnedKinshipRisk } from '../domain/kinship';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
 import { separationToolFits, voxelSeparationRuleFor } from '../domain/separation-rules';
@@ -80,6 +80,14 @@ import {
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
 import { buildWaterCurrentObservationOptions } from './mechanical-power-options';
+import {
+  bestHuntingToolStack,
+  bestProductionToolStack,
+  isProductionToolMaterial,
+  productionToolRank,
+  recentPersonalProductionLaborEvents,
+} from '../domain/production-tool';
+import { perceivedKinshipRisk } from './reproductive-risk';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -126,20 +134,10 @@ function knownTechniqueForPrefix(person: PersonState, prefix: string) {
   return person.knowledge.find((fact) => fact.kind === 'technique' && fact.id.startsWith(prefix));
 }
 
-function productionToolRank(materialId: number): number {
-  if (materialId === Material.IronTool) return 5;
-  if (materialId === Material.BronzeTool) return 4;
-  if (materialId === Material.StoneHoe) return 3;
-  if (materialId === Material.StoneTool || materialId === Material.Spear) return 2;
-  if (materialId === Material.WoodTool || materialId === Material.BoneTool) return 1;
-  return 0;
-}
-
-function bestProductionTool(person: PersonState) {
-  return person.inventory
-    .filter((stack) => stack.quantity > 0 && productionToolRank(stack.materialId) > 0)
-    .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId)
-      || left.id.localeCompare(right.id))[0];
+function knownTechniqueOutputMaterialId(technique: ReturnType<typeof knownTechniqueForPrefix>): number | undefined {
+  if (!technique) return undefined;
+  const outputMaterialId = Number(technique.id.split(':').at(-1));
+  return Number.isInteger(outputMaterialId) ? outputMaterialId : undefined;
 }
 
 export function visibleRadius(person: PersonState): number {
@@ -156,30 +154,39 @@ export function cloneMutableProjectsForPlanning(
   return projects.map((project) => project.status === 'active' ? cloneProjectForPlanning(project) : project);
 }
 
-function actionForDrop(person: PersonState, drop: DropState): PrimitiveAction {
-  if (person.position.cellId === drop.cellId && person.position.z === drop.z) {
+function dropStandingZ(state: SimulationState, drop: DropState): number {
+  return Number.isInteger(drop.z)
+    ? drop.z
+    : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
+}
+
+function actionForDrop(state: SimulationState, person: PersonState, drop: DropState): PrimitiveAction {
+  const dropZ = dropStandingZ(state, drop);
+  if (person.position.cellId === drop.cellId && person.position.z === dropZ) {
     return {
       kind: 'transfer',
       materialId: drop.materialId,
       quantity: Math.min(3, drop.quantity),
-      from: { kind: 'ground', cellId: drop.cellId, z: drop.z },
+      from: { kind: 'ground', cellId: drop.cellId, z: dropZ },
       to: { kind: 'person', personId: person.id },
       dropId: drop.id,
     };
   }
-  return { kind: 'move', toCellId: drop.cellId, toZ: drop.z };
+  return { kind: 'move', toCellId: drop.cellId, toZ: dropZ };
 }
 
-function optionForDrop(person: PersonState, drop: DropState): ActionOption {
+function optionForDrop(state: SimulationState, person: PersonState, drop: DropState): ActionOption {
   const material = materialDefinition(drop.materialId);
   const current = inventoryQuantity(person, drop.materialId);
+  const dropZ = dropStandingZ(state, drop);
   return {
     id: `collect:${drop.id}`,
     summary: `取得${material.name}`,
     reason: `看见地上的${material.name}`,
     goal: { kind: 'inventory-at-least', materialId: drop.materialId, quantity: current + Math.min(3, drop.quantity) },
-    nextAction: actionForDrop(person, drop),
-    estimatedDuration: person.position.cellId === drop.cellId && person.position.z === drop.z ? 'one-month' : 'several-months',
+    nextAction: actionForDrop(state, person, drop),
+    target: { kind: 'drop', dropId: drop.id },
+    estimatedDuration: person.position.cellId === drop.cellId && person.position.z === dropZ ? 'one-month' : 'several-months',
     sourceFactIds: drop.sourceEventIds,
   };
 }
@@ -425,12 +432,64 @@ export function isObservedEmergencyHibernationOption(
 }
 
 function localPeopleWithDifferentGoods(person: PersonState, people: PersonState[]) {
+  const currentProductionToolRank = productionToolRank(bestProductionToolStack(person)?.materialId ?? Material.Air);
   return people.flatMap((other) => {
     if (!sameLocation(other, person)) return [];
     const own = person.inventory.find((stack) => stack.quantity >= 2 && !other.inventory.some((item) => item.materialId === stack.materialId));
-    const their = other.inventory.find((stack) => stack.quantity >= 2 && !person.inventory.some((item) => item.materialId === stack.materialId));
+    const their = other.inventory.find((stack) => stack.quantity >= 2
+      && !person.inventory.some((item) => item.materialId === stack.materialId)
+      && productionToolRank(stack.materialId) <= currentProductionToolRank);
     return own && their ? [{ person: other, own, their }] : [];
   });
+}
+
+function betterGroundProductionTool(
+  state: SimulationState,
+  person: PersonState,
+  visibleDrops: DropState[],
+): { drop: DropState; pathLength: number } | undefined {
+  const currentRank = productionToolRank(bestProductionToolStack(person)?.materialId ?? Material.Air);
+  return visibleDrops
+    .filter((drop) => drop.quantity > 0
+      && isProductionToolMaterial(drop.materialId)
+      && productionToolRank(drop.materialId) > currentRank)
+    .map((drop) => ({
+      drop,
+      pathLength: findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: drop.z }).length,
+    }))
+    .filter((candidate) => candidate.pathLength > 0)
+    .sort((left, right) => productionToolRank(right.drop.materialId) - productionToolRank(left.drop.materialId)
+      || left.pathLength - right.pathLength
+      || left.drop.id.localeCompare(right.drop.id))[0];
+}
+
+function toolUpgradeTradeCandidate(state: SimulationState, person: PersonState, people: PersonState[]) {
+  const currentRank = productionToolRank(bestProductionToolStack(person)?.materialId ?? Material.Air);
+  const ownGoods = tangibleInventoryStacks(person).filter((stack) => stack.quantity >= 2);
+  return people
+    .filter((other) => sameLocation(other, person)
+      && !hasOpenExchangeOfferBetween(state, person.id, other.id))
+    .flatMap((other) => {
+      const holderHighestRank = other.inventory.reduce((highest, stack) => stack.quantity > 0
+        ? Math.max(highest, productionToolRank(stack.materialId))
+        : highest, 0);
+      return other.inventory
+        .filter((their) => their.quantity > 0 && productionToolRank(their.materialId) > currentRank)
+        .filter((their) => {
+          const retainedRank = Math.max(holderHighestRank, productionToolRank(their.materialId));
+          return their.quantity >= 2 || other.inventory.some((backup) => backup.id !== their.id
+            && backup.quantity > 0
+            && isProductionToolMaterial(backup.materialId)
+            && productionToolRank(backup.materialId) >= retainedRank);
+        })
+        .flatMap((their) => {
+          const own = ownGoods.find((stack) => stack.materialId !== their.materialId);
+          return own ? [{ person: other, own, their }] : [];
+        });
+    })
+    .sort((left, right) => productionToolRank(right.their.materialId) - productionToolRank(left.their.materialId)
+      || left.person.id.localeCompare(right.person.id)
+      || left.their.id.localeCompare(right.their.id))[0];
 }
 
 function acceptedExchangeAt(state: SimulationState, person: PersonState, atMonth: number) {
@@ -706,16 +765,40 @@ function buildOptions(
     });
   }
 
+  const recentProductionLabor = recentPersonalProductionLaborEvents(state, person.id, atMonth);
+  const groundToolUpgrade = recentProductionLabor.length
+    ? betterGroundProductionTool(state, person, visibleDrops)
+    : undefined;
+  if (groundToolUpgrade) {
+    const drop = groundToolUpgrade.drop;
+    const material = materialDefinition(drop.materialId);
+    options.push({
+      id: `adopt-production-tool:${drop.id}`,
+      summary: `取得更高效的${material.name}`,
+      reason: `本人近期完成过真实生产劳动，并看见可达的${material.name}能替代当前较低效工具`,
+      goal: {
+        kind: 'inventory-at-least',
+        materialId: drop.materialId,
+        quantity: inventoryQuantity(person, drop.materialId) + 1,
+      },
+      nextAction: actionForDrop(state, person, drop),
+      target: { kind: 'drop', dropId: drop.id },
+      estimatedDuration: groundToolUpgrade.pathLength <= 1 ? 'one-month' : 'several-months',
+      sourceFactIds: [...recentProductionLabor.map((event) => event.id), ...drop.sourceEventIds],
+      domain: 'strategic',
+    });
+  }
+
   const nearestDropsByMaterial = new Map<number, DropState>();
   for (const drop of [...visibleDrops].sort((a, b) => distance(person.position.cellId, a.cellId) - distance(person.position.cellId, b.cellId) || a.id.localeCompare(b.id))) {
+    if (drop.id === groundToolUpgrade?.drop.id) continue;
     if (!nearestDropsByMaterial.has(drop.materialId)) nearestDropsByMaterial.set(drop.materialId, drop);
   }
   for (const drop of [...nearestDropsByMaterial.values()].slice(0, 8)) {
-    options.push(optionForDrop(person, drop));
+    options.push(optionForDrop(state, person, drop));
   }
 
-  const huntingTool = person.inventory.find((stack) => stack.quantity > 0 && stack.materialId === Material.Spear)
-    ?? bestProductionTool(person);
+  const huntingTool = bestHuntingToolStack(person);
   const nearbyAnimals = [...visibleAnimals]
     .filter(isAnimalAlive)
     .sort((a, b) => distance(person.position.cellId, a.position.cellId) - distance(person.position.cellId, b.position.cellId) || a.id.localeCompare(b.id));
@@ -753,7 +836,7 @@ function buildOptions(
   options.push(...buildMaterialSeparationOptions(state, person, visibleCells));
   options.push(...buildContainerOptions(state, person, visibleCells));
 
-  const productionTool = bestProductionTool(person);
+  const productionTool = bestProductionToolStack(person);
 
   for (const cellId of visibleCells) {
     const surface = surfaceMaterial(state.world.grid, cellId);
@@ -812,6 +895,13 @@ function buildOptions(
       known: knownTechniqueForPrefix(person, inventoryCombinationTechniquePrefix(trial.first.materialId, trial.second.materialId)),
       stableRank: seededFraction(state.seed, `ordinary-inventory-combine:${person.id}:${trial.materialKey}`),
     }))
+    // A verified facility recipe is a legal project step, not a permanent
+    // free-form hobby. Repeating it here makes people fill their backpacks with
+    // granaries, kilns, and other public facilities after the need is solved.
+    .filter(({ known }) => {
+      const outputMaterialId = knownTechniqueOutputMaterialId(known);
+      return outputMaterialId === undefined || !materialHas(outputMaterialId, 'facility');
+    })
     .sort((a, b) => (a.known ? 0 : 1) - (b.known ? 0 : 1)
       || a.stableRank - b.stableRank
       || a.materialKey.localeCompare(b.materialKey)
@@ -1049,7 +1139,50 @@ function buildOptions(
     });
   }
 
-  const tradePartner = !incomingExchange && !acceptedExchange
+  const toolUpgradeTrade = !incomingExchange && !acceptedExchange && recentProductionLabor.length
+    ? toolUpgradeTradeCandidate(state, person, visiblePeople)
+    : undefined;
+  if (toolUpgradeTrade) {
+    const representationId = `offer-tool-upgrade:${atMonth}:${person.id}:${toolUpgradeTrade.person.id}:${toolUpgradeTrade.their.id}`;
+    const offeredMaterial = materialDefinition(toolUpgradeTrade.own.materialId);
+    const requestedTool = materialDefinition(toolUpgradeTrade.their.materialId);
+    options.push({
+      id: representationId,
+      summary: `向${toolUpgradeTrade.person.name}提出生产工具升级交换`,
+      reason: `本人近期完成过真实生产劳动；对方可保留另一件生产工具，并持有更高效的${requestedTool.name}`,
+      goal: { kind: 'representation-made', representationId },
+      nextAction: {
+        kind: 'communicate',
+        content: {
+          id: representationId,
+          kind: 'offer',
+          summary: `用${offeredMaterial.name}换取${requestedTool.name}`,
+          proposal: {
+            kind: 'exchange',
+            offererId: person.id,
+            partnerId: toolUpgradeTrade.person.id,
+            offererMaterialId: toolUpgradeTrade.own.materialId,
+            offererQuantity: 1,
+            partnerMaterialId: toolUpgradeTrade.their.materialId,
+            partnerQuantity: 1,
+            expiresAtMonth: atMonth + 12,
+          },
+        },
+        audience: [toolUpgradeTrade.person.id],
+        channel: 'voice',
+      },
+      target: { kind: 'person', personId: toolUpgradeTrade.person.id },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [
+        ...recentProductionLabor.map((event) => event.id),
+        ...toolUpgradeTrade.own.sourceEventIds,
+        ...toolUpgradeTrade.their.sourceEventIds,
+      ],
+      domain: 'social',
+    });
+  }
+
+  const tradePartner = !incomingExchange && !acceptedExchange && !toolUpgradeTrade
     ? localPeopleWithDifferentGoods(person, visiblePeople)
       .find((candidate) => !hasOpenExchangeOfferBetween(state, person.id, candidate.person.id))
     : undefined;
@@ -1158,7 +1291,7 @@ function buildOptions(
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
       const together = sameLocation(proposer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
-      const learnedRisk = hasLearnedKinshipRisk(person) && geneticKinshipRisk(state, person, proposer) > 0;
+      const learnedRisk = perceivedKinshipRisk(state, person, proposer).cost > 0;
       if (relationshipReady && reproductivePairEligible(person, proposer, atMonth)) options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
@@ -1190,10 +1323,9 @@ function buildOptions(
     }
   }
 
-  const learnedKinshipRisk = hasLearnedKinshipRisk(person);
   const livingPopulation = state.people.filter(isAlive).length;
   const reproductionCapacity = humanReproductionCapacityFactor(livingPopulation);
-  const reproductiveCandidate = visiblePeople.filter((other) => {
+  const reproductiveCandidates = visiblePeople.filter((other) => {
     if (reproductionCapacity <= 0) return false;
     if (activeReproductionAgreement) return false;
     return reproductivePairEligible(person, other, atMonth);
@@ -1201,19 +1333,20 @@ function buildOptions(
     other,
     basis: buildRelationshipCausalBasis(state, person, other, 'reproduce', atMonth),
   })).filter((candidate) => canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
-    .sort((a, b) => (learnedKinshipRisk ? geneticKinshipRisk(state, person, a.other) - geneticKinshipRisk(state, person, b.other) : 0)
-      || a.other.id.localeCompare(b.other.id))[0];
-  if (reproductiveCandidate) {
-    const { other: reproductivePartner, basis } = reproductiveCandidate;
+    .sort((a, b) => a.other.id.localeCompare(b.other.id));
+  for (const { other: reproductivePartner, basis } of reproductiveCandidates) {
     const together = sameLocation(reproductivePartner, person);
     if (!incomingOffer) {
       const representationId = `offer-reproduce:${atMonth}:${person.id}:${reproductivePartner.id}`;
+      const perceivedRisk = perceivedKinshipRisk(state, person, reproductivePartner);
       options.push({
         id: representationId,
         summary: `向${reproductivePartner.name}提出共同生殖`,
-        reason: together
-          ? '彼此已有可追溯的共同经历和最低信任、亲近，且身体条件允许生殖'
-          : '彼此已有可追溯的共同经历和最低信任、亲近，对方可见且身体条件允许生殖',
+        reason: perceivedRisk.cost > 0
+          ? '彼此满足关系与身体条件，但本人记得这段亲缘可能增加后代风险'
+          : together
+            ? '彼此已有可追溯的共同经历和最低信任、亲近，且身体条件允许生殖'
+            : '彼此已有可追溯的共同经历和最低信任、亲近，对方可见且身体条件允许生殖',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? {
           kind: 'communicate',
@@ -1227,7 +1360,7 @@ function buildOptions(
         } } : {}),
         target: { kind: 'person', personId: reproductivePartner.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: basis.sourceFactIds,
+        sourceFactIds: [...new Set([...basis.sourceFactIds, ...perceivedRisk.sourceFactIds])],
         relationshipBasis: basis,
       });
     }
@@ -1571,11 +1704,21 @@ export function recompileNextAction(
   }
   if (intent.goal.kind === 'inventory-at-least') {
     const materialId = intent.goal.materialId;
+    if (intent.target?.kind === 'drop') {
+      const targetDropId = intent.target.dropId;
+      const drop = state.world.drops.find((candidate) => candidate.id === targetDropId
+        && candidate.materialId === materialId
+        && candidate.quantity > 0);
+      if (!drop || drop.materialId !== materialId || drop.quantity <= 0) return null;
+      const dropZ = dropStandingZ(state, drop);
+      const path = findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: dropZ });
+      return path.length ? actionForDrop(state, person, drop) : null;
+    }
     if (intent.target?.kind === 'animal') {
       const animalId = intent.target.animalId;
       const animal = state.world.animals.find((candidate) => candidate.id === animalId && isAnimalAlive(candidate));
       if (animal) {
-        const tool = bestProductionTool(person);
+        const tool = bestHuntingToolStack(person);
         return person.position.cellId === animal.position.cellId && person.position.z === animal.position.z
           ? { kind: 'act', operation: 'hunt', targets: [{ kind: 'animal', animalId }], ...(tool ? { toolStackId: tool.id } : {}) }
           : { kind: 'move', toCellId: animal.position.cellId, toZ: animal.position.z };
@@ -1598,7 +1741,8 @@ export function recompileNextAction(
       const targetCell = intent.target.position.x + intent.target.position.y * state.world.grid.width;
       const targetMaterial = voxelAt(state.world.grid, intent.target.position.x, intent.target.position.y, intent.target.position.z);
       const separationRule = voxelSeparationRuleFor(targetMaterial);
-      const targetStillMatches = (materialId === Material.Food && targetMaterial === Material.CropMature)
+      const targetStillMatches = (materialId === Material.Food
+          && (targetMaterial === Material.CropMature || targetMaterial === Material.BerryBush))
         || (materialId === Material.Wood && (targetMaterial === Material.Wood || targetMaterial === Material.Leaves))
         || Boolean(separationRule?.outputs.some((output) => output.materialId === materialId));
       if (targetStillMatches) {
@@ -1607,38 +1751,46 @@ export function recompileNextAction(
             ? undefined
             : person.inventory
               .filter((stack) => stack.quantity > 0 && separationToolFits(separationRule, stack.materialId))
-              .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId))[0];
+              .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId)
+                || left.id.localeCompare(right.id))[0];
           if (separationRule?.requiredToolMaterialId !== undefined && !requiredTool) return null;
+          const productionToolApplies = targetMaterial === Material.Wood
+            || targetMaterial === Material.Leaves
+            || targetMaterial === Material.CropMature
+            || targetMaterial === Material.BerryBush
+            || targetMaterial === Material.Shrub;
+          const selectedTool = requiredTool ?? (productionToolApplies ? bestProductionToolStack(person) : undefined);
           return {
             kind: 'act', operation: 'separate', targets: [intent.target],
-            ...(materialId === Material.Wood
-              ? { toolStackId: bestProductionTool(person)?.id }
-              : requiredTool ? { toolStackId: requiredTool.id } : {}),
+            ...(selectedTool ? { toolStackId: selectedTool.id } : {}),
           };
         }
         const destination = intent.nextAction.kind === 'move' ? intent.nextAction.toCellId : targetCell;
         return { kind: 'move', toCellId: destination };
       }
     }
-    const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId && drop.z === person.position.z && drop.materialId === materialId && drop.quantity > 0);
-    if (local) return actionForDrop(person, local);
+    const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId
+      && dropStandingZ(state, drop) === person.position.z
+      && drop.materialId === materialId
+      && drop.quantity > 0);
+    if (local) return actionForDrop(state, person, local);
     const visible = new Set(visibleCellsFor(person));
     const reachable = state.world.drops
       .filter((drop) => visible.has(drop.cellId) && drop.materialId === materialId && drop.quantity > 0)
-      .map((drop) => ({ drop, path: findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: drop.z }) }))
+      .map((drop) => ({
+        drop,
+        path: findStandingPath(state.world.grid, person.position, {
+          cellId: drop.cellId,
+          z: dropStandingZ(state, drop),
+        }),
+      }))
       .filter(({ path }) => path.length > 0)
       .sort((a, b) => a.path.length - b.path.length || a.drop.id.localeCompare(b.drop.id))[0];
-    if (reachable) return actionForDrop(person, reachable.drop);
+    if (reachable) return actionForDrop(state, person, reachable.drop);
     if (intent.nextAction.kind === 'move') {
       const toCellId = intent.nextAction.toCellId;
       const atTarget = state.world.drops.find((drop) => drop.cellId === toCellId && drop.materialId === materialId && drop.quantity > 0);
-      if (atTarget) return actionForDrop(person, atTarget);
-      if (intent.target?.kind === 'voxel') {
-        const targetCell = intent.target.position.x + intent.target.position.y * state.world.grid.width;
-        if (distance(person.position.cellId, targetCell) <= 1) {
-          return { kind: 'act', operation: 'separate', targets: [intent.target] };
-        }
-      }
+      if (atTarget) return actionForDrop(state, person, atTarget);
     }
   }
   if (intent.goal.kind === 'body-at-least' && intent.goal.field === 'hydration') {

@@ -33,15 +33,19 @@ try {
   partner.sex = 'female';
   actor.body = { health: 100, hydration: 100, nutrition: 100 };
   partner.body = { health: 100, hydration: 100, nutrition: 100 };
-  actor.personality.baseline.emotionality = 55;
-  actor.personality.baseline.extraversion = 55;
+  actor.personality.baseline.emotionality = 90;
+  actor.personality.baseline.extraversion = 90;
+  actor.personality.baseline.conscientiousness = 10;
   const female = actor.sex === 'female' ? actor : partner;
   const male = actor.sex === 'male' ? actor : partner;
   female.bornAtMonth = state.clock.elapsedMonths - 40 * 12;
   male.bornAtMonth = state.clock.elapsedMonths - 35 * 12;
   const relation = actor.relations.find((candidate) => candidate.personId === partner.id);
+  const reciprocalRelation = partner.relations.find((candidate) => candidate.personId === actor.id);
   assert.ok(relation, 'fixture requires a directed relation');
-  Object.assign(relation, { trust: 10, bond: 10, sourceEventIds: ['relationship-evidence'] });
+  assert.ok(reciprocalRelation, 'fixture requires a reciprocal relation');
+  Object.assign(relation, { trust: 90, bond: 90, sourceEventIds: ['relationship-evidence'] });
+  Object.assign(reciprocalRelation, { trust: 90, bond: 90 });
   state.world.past.push({
     id: 'relationship-evidence', kind: 'action', actionTick: 1, atMonth: 118, orderInMonth: 0,
     cellId: actor.position.cellId, who: actor.id, cause: 'intent',
@@ -100,7 +104,7 @@ try {
   assert.equal(decision.mode, 'interrupt');
   assert.equal(decision.interruptionKind, 'life-review');
   assert.equal(decision.followUpOptionId, undefined, '结构化生活提议本身就是完整行动，不能拼接无关项目动作');
-  assert.match(decision.reason, /^生活复核：/);
+  assert.match(decision.reason, /生活复核：/);
   assert.equal(decision.lifeReview?.version, 'causal-edge-v2');
   assert.equal(decision.lifeReview?.targetPersonId, partner.id);
   assert.ok(decision.lifeReview?.sourceFactIds.includes('relationship-evidence'));

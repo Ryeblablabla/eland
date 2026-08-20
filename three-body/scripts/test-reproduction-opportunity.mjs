@@ -116,6 +116,32 @@ try {
   assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '没有真实来源时关系分数仍不得解锁生殖');
   directedRelation.sourceEventIds = [founding.id];
 
+  const smoothRiskState = structuredClone(state);
+  const smoothRiskFemale = smoothRiskState.people.find((person) => person.id === female.id);
+  const smoothRiskMale = smoothRiskState.people.find((person) => person.id === male.id);
+  smoothRiskFemale.geneticParents = ['shared-parent', 'female-parent'];
+  smoothRiskMale.geneticParents = ['shared-parent', 'male-parent'];
+  const consentScoreAtConfidence = (confidence) => {
+    smoothRiskFemale.knowledge = confidence > 0 ? [{
+      id: 'claim:close-kin-offspring-risk', kind: 'claim', summary: '近亲后代更容易体弱或生病',
+      confidence, learnedAtMonth: 1, sourceEventIds: ['test-inherited-outcome'],
+    }] : [];
+    const riskContext = buildDecisionContexts(smoothRiskState).find((candidate) => candidate.person.id === smoothRiskFemale.id);
+    const riskOffer = riskContext?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+    assert.ok(riskContext && riskOffer, `风险知识置信度 ${confidence} 时，近亲生殖仍应是合法候选`);
+    const consent = evaluateDecisionOption(riskContext, riskOffer, { atMonth: 6, planningTick: 1 })
+      .votes.find((vote) => vote.tree === 'consent');
+    assert.ok(consent, '生殖提议必须经过 consent 因子树');
+    return consent.score;
+  };
+  const noRiskKnowledgeScore = consentScoreAtConfidence(0);
+  const tentativeRiskKnowledgeScore = consentScoreAtConfidence(50);
+  const confidentRiskKnowledgeScore = consentScoreAtConfidence(100);
+  assert.ok(Math.abs((noRiskKnowledgeScore - tentativeRiskKnowledgeScore) - 16.2) < 1e-9,
+    '半同胞风险在 50 置信度时应连续形成 16.2 点成本，而不是等待 55 分后跳变');
+  assert.ok(Math.abs((noRiskKnowledgeScore - confidentRiskKnowledgeScore) - 32.4) < 1e-9,
+    '半同胞风险在满置信度时应形成 32.4 点软成本，不再使用 162 点近似否决');
+
   const actionFact = (id, atMonth, who, action) => ({
     id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0,
     cellId: female.position.cellId, who, cause: 'intent', action,

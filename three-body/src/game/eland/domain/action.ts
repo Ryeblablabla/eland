@@ -2,6 +2,7 @@ import type { MaterialId } from './material';
 import type { MechanicalPowerActionBasis } from './mechanical-power';
 import type { ConditionKind, HibernationPhase, PersonId } from './person';
 import type { ProjectFunction, ProjectProposal } from './project';
+import type { WildlifeThreatBasis } from './wildlife-threat';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -163,6 +164,8 @@ export type PrimitiveAction =
       toZ?: number;
       /** Visible biological caregiver chosen as the causal target of a child's crisis rendezvous. */
       caregiverRef?: PersonId;
+      /** Exact current local threat and the one-step refuge response validated by the domain. */
+      wildlifeThreatBasis?: WildlifeThreatBasis;
     }
   | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
   | {

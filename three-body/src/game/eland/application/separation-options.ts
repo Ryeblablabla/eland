@@ -2,6 +2,7 @@ import type { ActionOption } from '../domain/action';
 import { inventoryQuantity, isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
 import { materialDefinition } from '../domain/material';
+import { productionToolRank } from '../domain/production-tool';
 import {
   separationTechniqueId,
   separationTechniqueSummary,
@@ -66,7 +67,8 @@ export function buildMaterialSeparationOptions(
       ? undefined
       : person.inventory
         .filter((stack) => stack.quantity > 0 && separationToolFits(rule, stack.materialId))
-        .sort((left, right) => materialDefinition(right.materialId).hardness - materialDefinition(left.materialId).hardness
+        .sort((left, right) => productionToolRank(right.materialId) - productionToolRank(left.materialId)
+          || materialDefinition(right.materialId).hardness - materialDefinition(left.materialId).hardness
           || left.id.localeCompare(right.id))[0];
     if (rule.requiredToolMaterialId !== undefined && !tool) continue;
     const candidate = visibleCells

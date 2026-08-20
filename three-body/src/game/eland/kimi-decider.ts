@@ -6,6 +6,8 @@ import type { BatchDecider, Decision, DecisionContext, TokenUsage } from './simu
 import { CONTAINER_CAPACITY } from './domain/container';
 import { assessSocialRepetition } from './domain/social-repetition';
 import { buildPersonSoul } from './domain/person-soul';
+import { cognitionStateOf, outcomeBeliefSuccess } from './domain/cognition';
+import { buildCognitiveFrame } from './application/cognition/option-appraisal';
 import { speechActFromRepresentation } from './projection/speech-act';
 import type { SpeechActView } from '../societyContract';
 
@@ -29,6 +31,7 @@ export interface DecisionRequestContext {
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
     knownPlaces: Array<{ materialId: number; name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     memories: ReturnType<typeof projectMemories>;
+    cognition: ReturnType<typeof buildDecisionCognitionProjection>;
     kinship: {
       parents: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'mother' | 'father' }>;
       children: Array<{ id: string; name: string; sex: DecisionContext['person']['sex']; relation: 'daughter' | 'son' }>;
@@ -100,6 +103,47 @@ export interface DecisionRequestContext {
     capacity: number; usedCapacity: number;
     contents: Array<{ materialId: number; name: string; quantity: number }>;
   }>;
+}
+
+export function buildDecisionCognitionProjection(context: DecisionContext) {
+  const planningMonth = context.state.clock.elapsedMonths + 1;
+  const frame = buildCognitiveFrame(context, context.options, { atMonth: planningMonth, planningTick: 1 });
+  const appraisalByOption = new Map(frame.appraisals.map((appraisal) => [appraisal.option.id, appraisal]));
+  return {
+    architecture: frame.architecture,
+    planningMonth,
+    needs: frame.needs.slice(0, 6).map((need) => ({
+      kind: need.kind,
+      urgency: Math.round(need.urgency * 100) / 100,
+      reasons: need.reasons.slice(0, 2),
+      sourceFactIds: need.sourceFactIds.slice(-6),
+    })),
+    outcomeBeliefs: cognitionStateOf(context.person).outcomeBeliefs
+      .slice()
+      .sort((left, right) => right.lastUpdatedAtMonth - left.lastUpdatedAtMonth || right.attempts - left.attempts)
+      .slice(0, 8)
+      .map((belief) => ({
+        basisKey: belief.basisKey,
+        attempts: belief.attempts,
+        expectedSuccess: Math.round(outcomeBeliefSuccess(belief) * 100) / 100,
+        expectedEffort: Math.round(belief.expectedEffort * 100) / 100,
+        expectedHarm: Math.round(belief.expectedHarm * 100) / 100,
+        sourceFactIds: belief.sourceEventIds.slice(-6),
+      })),
+    optionAppraisals: context.options.map((option) => {
+      const appraisal = appraisalByOption.get(option.id);
+      return {
+        optionId: option.id,
+        addressedNeeds: appraisal?.addressedNeeds.map((need) => need.kind) ?? [],
+        motivation: Math.round((appraisal?.motivation ?? 0) * 100) / 100,
+        aspiration: Math.round((appraisal?.aspiration ?? 0) * 100) / 100,
+        expectedSuccess: Math.round((appraisal?.expectedSuccess ?? 0.5) * 100) / 100,
+        uncertainty: Math.round((appraisal?.uncertainty ?? 1) * 100) / 100,
+        reasons: appraisal?.reasons.slice(0, 3) ?? [],
+        sourceFactIds: appraisal?.sourceFactIds.slice(-8) ?? option.sourceFactIds.slice(-8),
+      };
+    }),
+  };
 }
 
 function pressureConsequences(kind: string, stage: number): string[] {
@@ -195,6 +239,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         .slice(0, 8)
         .map(({ materialId, position, lastConfirmedAtMonth }) => ({ materialId, name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
       memories: projectMemories(person, state.clock.elapsedMonths),
+      cognition: buildDecisionCognitionProjection(context),
       kinship: immediateKinship(state, person),
     },
     clock: { elapsedMonths: state.clock.elapsedMonths },

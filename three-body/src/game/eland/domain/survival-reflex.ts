@@ -18,6 +18,7 @@ import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
+import { compileWildlifeThreatResponse, wildlifeThreatUrgency } from './wildlife-threat';
 import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
@@ -82,6 +83,13 @@ export function chooseHibernationRecoveryReflex(
   person: PersonState,
 ): PrimitiveAction | null {
   if (!isRecoveringFromDehydratedHibernation(person) || state.civilization.epoch !== 'stable') return null;
+  const wildlifeThreat = compileWildlifeThreatResponse(state, person);
+  if (wildlifeThreat) return {
+    kind: 'move',
+    toCellId: wildlifeThreat.toCellId,
+    toZ: wildlifeThreat.toZ,
+    wildlifeThreatBasis: wildlifeThreat.basis,
+  };
   const episode = person.conditions.find((condition) => condition.kind === 'dehydrated-hibernation');
   const lacksPhysicalRecoverySource = (episode?.recoverySourceEventIds?.length ?? 0) === 0;
   const stableRecoveryReserve = 65;
@@ -146,14 +154,14 @@ export function chooseHibernationRecoveryReflex(
 }
 
 /** Comparable urgency for choosing between self-preservation and dependent care. */
-export function survivalReflexUrgency(person: PersonState): number {
+export function survivalReflexUrgency(state: SimulationState, person: PersonState): number {
   const hydration = Math.max(0, 58 - person.body.hydration) * 2.4;
   const nutrition = Math.max(0, 52 - person.body.nutrition) * 1.9;
   const health = Math.max(0, 45 - person.body.health) * 2.2;
   const thermal = person.conditions
     .filter((condition) => condition.kind === 'cold' || condition.kind === 'heat')
     .reduce((maximum, condition) => Math.max(maximum, condition.stage * 34), 0);
-  return Math.max(hydration, nutrition, health, thermal);
+  return Math.max(hydration, nutrition, health, thermal, wildlifeThreatUrgency(state, person));
 }
 
 /**
@@ -190,6 +198,13 @@ export function chooseSurvivalReflex(
   const caregiverRendezvous = visibleCaregiverRendezvous(state, person);
   const failedShelterHibernation = chooseFailedShelterHibernationReflex(state, person);
   const food = person.inventory.find((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'edible'));
+  const wildlifeThreat = compileWildlifeThreatResponse(state, person);
+  if (wildlifeThreat) return {
+    kind: 'move',
+    toCellId: wildlifeThreat.toCellId,
+    toZ: wildlifeThreat.toZ,
+    wildlifeThreatBasis: wildlifeThreat.basis,
+  };
 
   if (person.body.hydration < 58) {
     const visible = cellsInRadius(person.position.cellId, visibleRadius(person));

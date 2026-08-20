@@ -1,7 +1,7 @@
 import { materialHas, type MaterialId } from '../domain/material';
 import type { DropState, SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
-import { surfaceMaterial, voxelAt } from '../world/grid';
+import { findStandingPath, surfaceMaterial, voxelAt } from '../world/grid';
 
 export interface LocalMaterialEvidenceView {
   visibleCells: number[];
@@ -35,6 +35,10 @@ export function buildLocalMaterialEvidence(
   const visibleDropMaterialIds = view.visibleDrops
     .filter((drop) => drop.quantity > 0)
     .map((drop) => drop.materialId);
+  const accessibleDropMaterialIds = view.visibleDrops
+    .filter((drop) => drop.quantity > 0
+      && findStandingPath(state.world.grid, observer.position, { cellId: drop.cellId, z: drop.z }).length > 0)
+    .map((drop) => drop.materialId);
   const visibleSurfaceMaterialIds = view.visibleCells
     .map((cellId) => surfaceMaterial(state.world.grid, cellId));
   const otherObservedMaterialIds = view.visiblePeople
@@ -62,7 +66,7 @@ export function buildLocalMaterialEvidence(
     ]),
     accessiblePortableMaterialIds: new Set([
       ...ownMaterialIds,
-      ...visibleDropMaterialIds,
+      ...accessibleDropMaterialIds,
     ]),
     placedFacilityMaterialIds: new Set([
       ...visibleSurfaceMaterialIds.filter((materialId) => materialHas(materialId, 'facility')),

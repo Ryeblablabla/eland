@@ -143,6 +143,8 @@ export interface ProjectProposal {
   triggerFactIds: string[];
   pressure: number;
   pressureBasis?: ProjectPressureBasis;
+  /** Best production-tool rank personally held when this tool project was proposed. */
+  productionToolBaselineRank?: number;
   createdAtMonth: number;
   reviewAtMonth: number;
   site?: ProjectSite;

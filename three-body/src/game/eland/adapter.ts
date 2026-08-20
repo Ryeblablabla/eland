@@ -185,13 +185,24 @@ function actionVisual(
   const facilityMaterialId = fact && typeof fact.diff.facilityMaterialId === 'number'
     ? fact.diff.facilityMaterialId
     : undefined;
-  const factLocation: Pick<ActionVisualView, 'sourceEventId' | 'sourceCellId' | 'sourceZ' | 'targetCellId' | 'targetZ' | 'facilityMaterialId'> = fact ? {
+  const mechanicalPowerOperation = fact?.diff.mechanicalPowerOperation === true;
+  const mechanicalNetworkId = mechanicalPowerOperation && typeof fact?.diff.networkId === 'string'
+    ? fact.diff.networkId
+    : undefined;
+  const linkedFacilityCellIds = mechanicalNetworkId
+    ? state.world.mechanicalPower?.networks.find((network) => network.id === mechanicalNetworkId)?.components
+      .map((component) => component.position.x + component.position.y * state.world.grid.width)
+    : undefined;
+  const factLocation: Pick<ActionVisualView, 'sourceEventId' | 'sourceOrderInMonth' | 'sourceCellId' | 'sourceZ' | 'targetCellId' | 'targetZ' | 'facilityMaterialId' | 'mechanicalPowerOperation' | 'linkedFacilityCellIds'> = fact ? {
     sourceEventId: fact.id,
+    sourceOrderInMonth: fact.orderInMonth,
     sourceCellId: fact.fromCellId,
     sourceZ: fact.fromZ,
     targetCellId: fact.toCellId,
     targetZ: fact.toZ,
     ...(facilityMaterialId !== undefined ? { facilityMaterialId } : {}),
+    ...(mechanicalPowerOperation ? { mechanicalPowerOperation: true } : {}),
+    ...(linkedFacilityCellIds?.length ? { linkedFacilityCellIds: [...new Set(linkedFacilityCellIds)] } : {}),
   } : {};
   if (action.kind === 'move') return { actionKind: 'move', ...factLocation };
   if (action.kind === 'transfer') {
@@ -207,12 +218,17 @@ function actionVisual(
     const materialIds = action.targets
       .map((target) => materialForTarget(state, lookup, target))
       .filter((materialId): materialId is number => materialId !== undefined);
+    const facilityTarget = action.targets.find((target) => {
+      const materialId = materialForTarget(state, lookup, target);
+      return materialId !== undefined && materialDefinition(materialId).tags.includes('facility');
+    });
+    const visualTarget = facilityTarget ?? action.targets[0];
     const toolMaterialId = action.toolStackId
       ? lookup.inventoryByPersonId.get(person.id)?.get(action.toolStackId)?.materialId
       : undefined;
     return {
       actionKind: 'act', operation: action.operation,
-      ...factLocation, ...targetIdentity(action.targets[0]), ...worldRefLocation(state, lookup, action.targets[0]),
+      ...factLocation, ...targetIdentity(visualTarget), ...worldRefLocation(state, lookup, visualTarget),
       ...(materialIds[0] !== undefined ? { materialId: materialIds[0] } : {}),
       ...(materialIds.length ? { materialIds } : {}),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),

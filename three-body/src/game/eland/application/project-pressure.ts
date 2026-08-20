@@ -8,6 +8,7 @@ import { shelterGeometryAt } from '../domain/structure';
 import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
 import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
+import { productionToolRank } from '../domain/production-tool';
 import { buildLocalMaterialEvidence } from './local-material-evidence';
 import { mechanicalPowerPressureEvidence } from './mechanical-power-options';
 
@@ -16,6 +17,7 @@ export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as con
 export type ProjectPressureSubject = Pick<
   ProjectProposal,
   'need' | 'beneficiaryIds' | 'createdAtMonth' | 'targetKnowledgeId' | 'shelterRequirement' | 'pressureBasis'
+    | 'productionToolBaselineRank'
 > & { desiredFunction?: ProjectProposal['desiredFunction'] };
 
 export interface ProjectPressureView {
@@ -378,7 +380,15 @@ function developmentBasis(
   const hasPlacedFacility = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
     materialEvidence.placedFacilityMaterialIds.has(materialId)
   ));
-  const productionTool = hasAccessiblePortable(Material.WoodTool, Material.StoneHoe, Material.BronzeTool, Material.IronTool);
+  const observedProductionToolRank = [...materialEvidence.accessiblePortableMaterialIds]
+    .reduce((highest, materialId) => Math.max(highest, productionToolRank(materialId)), 0);
+  const currentProductionToolRank = subject.desiredFunction === 'efficient-production'
+    && typeof subject.productionToolBaselineRank === 'number'
+    && Number.isFinite(subject.productionToolBaselineRank)
+    ? Math.max(0, Math.floor(subject.productionToolBaselineRank))
+    : observedProductionToolRank;
+  const efficientProductionTargetRank = productionToolRank(Material.StoneHoe);
+  const productionTool = currentProductionToolRank > 0;
   const pressureFacilities = [...materialEvidence.placedFacilityMaterialIds];
   const completedJointProjects = state.projects.filter((project) => project.status === 'completed'
     && project.contributorIds.includes(owner.id)
@@ -426,19 +436,31 @@ function developmentBasis(
   if (subject.need === 'production-efficiency') {
     const crowding = Math.max(0, visiblePopulation - 3);
     const shortage = Math.max(0, 2.5 - foodPerPerson);
-    const productionToolAddressesFunction = productionTool
+    const productionToolAddressesFunction = currentProductionToolRank >= efficientProductionTargetRank
       && subject.desiredFunction === 'efficient-production';
+    const upgradeGap = subject.desiredFunction === 'efficient-production'
+      ? Math.max(0, efficientProductionTargetRank - currentProductionToolRank)
+      : 0;
+    const partialToolRelief = subject.desiredFunction === 'efficient-production'
+      ? Math.min(10, currentProductionToolRank * 5)
+      : 0;
     return makeBasis(subject, owner, atMonth,
       24 + crowding * 7 + shortage * 10 + hungryPeople * 9 + dependentPeople * 4
-        - (productionToolAddressesFunction ? 28 : 0),
-      [...commonEdges, `state:production-tool:${productionTool ? 'present' : 'absent'}`],
+        - (productionToolAddressesFunction ? 28 : partialToolRelief),
+      [
+        ...commonEdges,
+        `state:production-tool:${productionTool ? 'present' : 'absent'}`,
+        `state:production-tool-rank:${currentProductionToolRank}`,
+        `state:production-tool-target-rank:${efficientProductionTargetRank}`,
+        `state:production-tool-upgrade-gap:${upgradeGap}`,
+      ],
       [
         ...(crowding >= 2 ? ['visible-population-growth'] : []),
         ...(shortage > 0 ? ['visible-food-pressure'] : []),
         ...(hungryPeople ? ['visible-hunger'] : []),
         ...(dependentPeople ? ['visible-dependent-load'] : []),
         ...(productionTool
-          ? [productionToolAddressesFunction ? 'production-tool-present' : 'production-tool-not-sufficient-for-function']
+          ? [productionToolAddressesFunction ? 'production-tool-sufficient-rank' : 'production-tool-upgrade-needed']
           : ['production-tool-absent']),
       ], sourceFactIds);
   }

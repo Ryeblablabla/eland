@@ -8,6 +8,12 @@ import {
   type VoxelWorld,
 } from '../world/grid';
 import { seededFraction } from '../world/generator';
+import {
+  createInitialAnimalEcology,
+  initialWolfPackId,
+  reachableWildlifeCells,
+  type AnimalEcologyState,
+} from './wildlife-ecology';
 
 export type AnimalSpeciesId = 'deer' | 'rabbit' | 'boar' | 'wolf';
 
@@ -27,6 +33,8 @@ export interface AnimalSpeciesDefinition {
   hungerPerMonth: number;
   evasion: number;
   aggression: number;
+  /** Human-visible caution radius; behavior still requires local reachability. */
+  alarmRadius: number;
   carryingCapacity: number;
   products: AnimalProduct[];
 }
@@ -42,13 +50,14 @@ export interface AnimalState {
   health: number;
   hunger: number;
   lastAteAtMonth: number;
+  ecology: AnimalEcologyState;
   diedAtMonth?: number;
 }
 
 export const ANIMAL_SPECIES: Record<AnimalSpeciesId, AnimalSpeciesDefinition> = {
   deer: {
     id: 'deer', name: '鹿', diet: 'herbivore', adultAtMonths: 18, lifespanMonths: 15 * 12,
-    movementPerMonth: 3, hungerPerMonth: 9, evasion: 34, aggression: 0, carryingCapacity: 30,
+    movementPerMonth: 3, hungerPerMonth: 9, evasion: 34, aggression: 0, alarmRadius: 2, carryingCapacity: 30,
     products: [
       { materialId: Material.RawMeat, minQuantity: 4, maxQuantity: 7 },
       { materialId: Material.Hide, minQuantity: 1, maxQuantity: 2 },
@@ -57,7 +66,7 @@ export const ANIMAL_SPECIES: Record<AnimalSpeciesId, AnimalSpeciesDefinition> = 
   },
   rabbit: {
     id: 'rabbit', name: '兔', diet: 'herbivore', adultAtMonths: 6, lifespanMonths: 7 * 12,
-    movementPerMonth: 2, hungerPerMonth: 12, evasion: 48, aggression: 0, carryingCapacity: 56,
+    movementPerMonth: 2, hungerPerMonth: 12, evasion: 48, aggression: 0, alarmRadius: 1, carryingCapacity: 56,
     products: [
       { materialId: Material.RawMeat, minQuantity: 1, maxQuantity: 2 },
       { materialId: Material.Hide, minQuantity: 0, maxQuantity: 1 },
@@ -65,7 +74,7 @@ export const ANIMAL_SPECIES: Record<AnimalSpeciesId, AnimalSpeciesDefinition> = 
   },
   boar: {
     id: 'boar', name: '野猪', diet: 'herbivore', adultAtMonths: 14, lifespanMonths: 12 * 12,
-    movementPerMonth: 2, hungerPerMonth: 10, evasion: 24, aggression: 42, carryingCapacity: 18,
+    movementPerMonth: 2, hungerPerMonth: 10, evasion: 24, aggression: 42, alarmRadius: 3, carryingCapacity: 18,
     products: [
       { materialId: Material.RawMeat, minQuantity: 5, maxQuantity: 9 },
       { materialId: Material.Hide, minQuantity: 1, maxQuantity: 2 },
@@ -74,7 +83,7 @@ export const ANIMAL_SPECIES: Record<AnimalSpeciesId, AnimalSpeciesDefinition> = 
   },
   wolf: {
     id: 'wolf', name: '狼', diet: 'predator', adultAtMonths: 16, lifespanMonths: 11 * 12,
-    movementPerMonth: 4, hungerPerMonth: 13, evasion: 38, aggression: 68, carryingCapacity: 12,
+    movementPerMonth: 4, hungerPerMonth: 13, evasion: 38, aggression: 68, alarmRadius: 5, carryingCapacity: 12,
     products: [
       { materialId: Material.RawMeat, minQuantity: 2, maxQuantity: 4 },
       { materialId: Material.Hide, minQuantity: 1, maxQuantity: 2 },
@@ -101,6 +110,8 @@ function initialAnimal(
   index: number,
   world: VoxelWorld,
   cellId: number,
+  packId?: string,
+  ecologyAnchorCellId = cellId,
 ): AnimalState {
   const species = animalSpecies(speciesId);
   const id = `animal-${speciesId}-${index}`;
@@ -123,6 +134,7 @@ function initialAnimal(
     health: 78 + Math.floor(seededFraction(seed, `${id}:health`) * 20),
     hunger: 15 + Math.floor(seededFraction(seed, `${id}:hunger`) * 30),
     lastAteAtMonth: 0,
+    ecology: createInitialAnimalEcology(speciesId, id, ecologyAnchorCellId, packId),
   };
 }
 
@@ -139,19 +151,49 @@ export function createInitialAnimals(seed: number, world: VoxelWorld, humanSpawn
     ['boar', 6],
     ['wolf', 4],
   ];
+  const wolfPackAnchors: number[] = [];
   for (const [speciesId, count] of populations) {
     for (let index = 0; index < count; index += 1) {
-      const start = Math.floor(seededFraction(seed, `animal-spawn:${speciesId}:${index}`) * passable.length);
+      const wolfPackIndex = speciesId === 'wolf' ? Math.floor(index / 2) : -1;
+      const wolfPackAnchor = wolfPackIndex >= 0 ? wolfPackAnchors[wolfPackIndex] : undefined;
+      const wolfPackStanding = wolfPackAnchor === undefined ? undefined : surfaceStandingPosition(world, wolfPackAnchor);
+      const nearbyPackCells = wolfPackAnchor === undefined
+        ? []
+        : [...reachableWildlifeCells(world, wolfPackStanding ?? { cellId: wolfPackAnchor, z: 1 }, 2).keys()]
+          .sort((first, second) => seededFraction(seed, `animal-pack-spawn:${speciesId}:${index}:${first}`)
+            - seededFraction(seed, `animal-pack-spawn:${speciesId}:${index}:${second}`)
+            || first - second);
+      const candidates = nearbyPackCells.length ? nearbyPackCells : passable;
+      const start = Math.floor(seededFraction(seed, `animal-spawn:${speciesId}:${index}`) * candidates.length);
       let cellId: number | undefined;
-      for (let probe = 0; probe < passable.length; probe += 1) {
-        const candidate = passable[(start + probe * 97) % passable.length];
+      for (let probe = 0; probe < candidates.length; probe += 1) {
+        const candidate = candidates[(start + probe * 97) % candidates.length];
         if (used.has(candidate) || (speciesId === 'wolf' && humanArea.has(candidate))) continue;
+        if (speciesId === 'wolf' && wolfPackAnchor === undefined
+          && wolfPackAnchors.some((anchor) => cellsInRadius(anchor, 8).includes(candidate))) continue;
+        if (speciesId === 'wolf' && wolfPackAnchor === undefined
+          && ![...reachableWildlifeCells(
+            world,
+            surfaceStandingPosition(world, candidate) ?? { cellId: candidate, z: 1 },
+            2,
+          ).keys()].some((neighbor) => neighbor !== candidate
+            && !used.has(neighbor)
+            && !humanArea.has(neighbor))) continue;
         cellId = candidate;
         break;
       }
       if (cellId === undefined) break;
+      if (speciesId === 'wolf' && wolfPackAnchor === undefined) wolfPackAnchors[wolfPackIndex] = cellId;
       used.add(cellId);
-      animals.push(initialAnimal(seed, speciesId, index, world, cellId));
+      animals.push(initialAnimal(
+        seed,
+        speciesId,
+        index,
+        world,
+        cellId,
+        speciesId === 'wolf' ? initialWolfPackId(index) : undefined,
+        speciesId === 'wolf' ? wolfPackAnchors[wolfPackIndex] : cellId,
+      ));
     }
   }
   return animals;

@@ -1,0 +1,509 @@
+import type { ActionOption, PrimitiveAction } from '../../domain/action';
+import {
+  cognitiveOutcomeBasisKey,
+  outcomeBeliefFor,
+  outcomeBeliefSuccess,
+  outcomeBeliefUncertainty,
+} from '../../domain/cognition';
+import { reproductiveResponsibility } from '../../domain/dependent-care';
+import { materialHas } from '../../domain/material';
+import type { DecisionContext } from '../../domain/model';
+import { personalityScore } from '../../domain/personality';
+import {
+  bestProductionToolStack,
+  productionToolRank,
+  recentPersonalProductionLaborEvents,
+} from '../../domain/production-tool';
+import { assessSocialRepetition } from '../../domain/social-repetition';
+import { perceivedKinshipRisk } from '../reproductive-risk';
+import { deriveNeedAgenda, type NeedKind, type NeedSignal } from './need-agenda';
+
+export type CognitiveFactorName =
+  | 'need'
+  | 'care'
+  | 'commitment'
+  | 'learning'
+  | 'relationship'
+  | 'social-repetition'
+  | 'consent'
+  | 'feasibility'
+  | 'harm';
+
+export interface CognitiveFactor {
+  kind: CognitiveFactorName;
+  value: number;
+  reasons: string[];
+  sourceFactIds: string[];
+}
+
+export interface NeedAlignment {
+  kind: NeedKind;
+  strength: number;
+  reason: string;
+}
+
+export interface CognitiveOptionAppraisal {
+  option: ActionOption;
+  basisKey: string;
+  needAlignments: NeedAlignment[];
+  addressedNeeds: NeedSignal[];
+  needActivation: number;
+  expectedSuccess: number;
+  uncertainty: number;
+  expectedEffort: number;
+  expectedHarm: number;
+  personalityGate: number;
+  memoryGate: number;
+  feasibilityGate: number;
+  relationshipGate: number;
+  repetitionGate: number;
+  ethicalGate: number;
+  continuityGate: number;
+  motivation: number;
+  aspiration: number;
+  causalScore: number;
+  factors: CognitiveFactor[];
+  reasons: string[];
+  sourceFactIds: string[];
+}
+
+export interface CognitiveFrame {
+  architecture: 'causal-bdi-v1';
+  planningMonth: number;
+  planningTick: number;
+  needs: NeedSignal[];
+  appraisals: CognitiveOptionAppraisal[];
+}
+
+function clamp(value: number, minimum = 0, maximum = 1): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function union(values: number[]): number {
+  return 1 - values.reduce((remaining, value) => remaining * (1 - clamp(value)), 1);
+}
+
+function geometricMean(values: number[]): number {
+  if (!values.length) return 1;
+  return Math.exp(values.reduce((sum, value) => sum + Math.log(Math.max(0.05, value)), 0) / values.length);
+}
+
+function trait(context: DecisionContext, key: Parameters<typeof personalityScore>[1]): number {
+  return personalityScore(context.person, key) / 100;
+}
+
+function traitGate(value: number, amplitude = 0.35, direction: 1 | -1 = 1): number {
+  return clamp(1 + direction * (value - 0.5) * amplitude * 2, 0.45, 1.55);
+}
+
+function communicationAction(option: ActionOption): Extract<PrimitiveAction, { kind: 'communicate' }> | undefined {
+  return option.nextAction.kind === 'communicate'
+    ? option.nextAction
+    : option.completionAction?.kind === 'communicate'
+      ? option.completionAction
+      : undefined;
+}
+
+function mergeAlignments(items: NeedAlignment[]): NeedAlignment[] {
+  const byKind = new Map<NeedKind, NeedAlignment>();
+  for (const item of items) {
+    const current = byKind.get(item.kind);
+    if (!current || item.strength > current.strength) byKind.set(item.kind, item);
+  }
+  return [...byKind.values()].sort((left, right) => right.strength - left.strength || left.kind.localeCompare(right.kind));
+}
+
+function projectNeedKind(need: string | undefined): NeedKind {
+  if (need === 'thermal-safety' || need === 'hunting-safety' || need === 'shelter-capacity') return 'safety';
+  if (need === 'care-capability') return 'care';
+  if (need === 'reserve-security' || need === 'water-security' || need === 'food-preparation') return 'reserve';
+  if (need === 'coordination-capacity') return 'belonging';
+  if (need === 'knowledge-preservation') return 'inquiry';
+  return 'capability';
+}
+
+function optionNeedAlignments(context: DecisionContext, option: ActionOption, atMonth: number): NeedAlignment[] {
+  const result: NeedAlignment[] = [];
+  const add = (kind: NeedKind, strength: number, reason: string) => result.push({ kind, strength: clamp(strength), reason });
+  const goal = option.goal;
+  const targetPersonId = option.target?.kind === 'person' ? option.target.personId : undefined;
+  const caresForOther = Boolean(targetPersonId && targetPersonId !== context.person.id)
+    && (goal.kind === 'body-at-least' || goal.kind === 'body-at-most' || goal.kind === 'condition');
+
+  if (caresForOther) add('care', 1, '候选会直接改变眼前他人的身体处境');
+  else if (goal.kind === 'body-at-least') add('homeostasis', 1, '候选直接恢复本人的身体储备');
+  if (goal.kind === 'sheltered' || (goal.kind === 'condition' && goal.personId === context.person.id)) {
+    add('safety', 1, '候选改变本人当前暴露或危险状态');
+  }
+  if (goal.kind === 'inventory-at-least') {
+    if (materialHas(goal.materialId, 'edible') || materialHas(goal.materialId, 'drinkable')) {
+      add('reserve', 0.9, '候选增加可携带的食水缓冲');
+      if (context.person.body.hydration < 55 || context.person.body.nutrition < 55) add('homeostasis', 0.85, '当前身体缺口使食水具有即时价值');
+    }
+    const desiredRank = productionToolRank(goal.materialId);
+    const currentRank = productionToolRank(bestProductionToolStack(context.person)?.materialId ?? 0);
+    if (desiredRank > currentRank) {
+      const groundedLabor = recentPersonalProductionLaborEvents(context.state, context.person.id, atMonth)
+        .filter((event) => option.sourceFactIds.includes(event.id));
+      if (groundedLabor.length) add('capability', clamp((desiredRank - currentRank) / 3 + 0.45), '本人近期劳动说明更好的工具能改变结果');
+    }
+  }
+  if (goal.kind === 'container-inventory-at-least') add('reserve', 1, '候选建立或使用真实储备能力');
+  if (goal.kind === 'knowledge' || option.nextAction.kind === 'attend' || option.recordUseBasis) {
+    add('inquiry', option.projectId || option.recordUseBasis ? 1 : 0.7, '候选回应一个有来源的观察或知识缺口');
+  }
+  if (goal.kind === 'project-completed' || option.projectId || option.projectProposal) {
+    add('commitment', option.projectId ? 1 : 0.72, option.projectId ? '候选推进一个已存在项目' : '候选可建立有复核点的持续项目');
+    const project = option.projectProposal ?? context.state.projects.find((candidate) => candidate.id === option.projectId);
+    add(projectNeedKind(project?.need), clamp((option.projectPressure ?? project?.pressure ?? 35) / 70), `项目回应${project?.need ?? '局部能力缺口'}`);
+  }
+  if (goal.kind === 'near-person') add('belonging', 0.65, '候选接近一个当前可感知的人');
+  if (goal.kind === 'representation-made') add('belonging', 0.55, '候选形成一次有来源的社会表达');
+  if (option.nextAction.kind === 'move' && option.sourceFactIds.length && !option.projectId) {
+    add('inquiry', 0.35, '移动目标来自当前可追溯线索');
+  }
+
+  const communication = communicationAction(option);
+  if (communication) {
+    const content = communication.content;
+    if (content.kind === 'accept' || content.kind === 'reject' || content.kind === 'revoke-agreement'
+      || content.kind === 'revoke' || content.kind === 'withdraw') add('autonomy', 1, '候选是本人对具体关系或协议的表态');
+    if ((content.kind === 'request' || content.kind === 'offer') && content.proposal?.kind === 'assist') {
+      const requesterIsSelf = content.proposal.requesterId === context.person.id;
+      add(requesterIsSelf ? (content.proposal.need === 'company' ? 'belonging' : 'homeostasis') : 'care', 0.9, '候选回应一项具体求助');
+    }
+    if ((content.kind === 'request' || content.kind === 'offer') && content.proposal
+      && ['companion', 'reproduce', 'collective', 'membership'].includes(content.proposal.kind)) {
+      add('belonging', 0.9, '候选会改变一项具体社会关系');
+    }
+    if (content.kind === 'request' && (content.techniqueDemonstration || content.projectMaterialContribution)) {
+      add('commitment', 0.9, '沟通直接服务于一个真实项目缺口');
+      add('capability', 0.75, '候选寻求材料或技术能力');
+    }
+  }
+  return mergeAlignments(result);
+}
+
+function personalityCongruence(context: DecisionContext, alignments: NeedAlignment[]): number {
+  const kinds = new Set(alignments.map((alignment) => alignment.kind));
+  const gates: number[] = [];
+  if (kinds.has('care')) gates.push(geometricMean([
+    traitGate(trait(context, 'agreeableness')),
+    traitGate(trait(context, 'emotionality')),
+  ]));
+  if (kinds.has('commitment')) gates.push(traitGate(trait(context, 'conscientiousness'), 0.42));
+  if (kinds.has('inquiry')) gates.push(traitGate(trait(context, 'openness'), 0.5));
+  if (kinds.has('capability')) gates.push(geometricMean([
+    traitGate(trait(context, 'openness'), 0.32),
+    traitGate(trait(context, 'conscientiousness'), 0.32),
+  ]));
+  if (kinds.has('belonging')) gates.push(geometricMean([
+    traitGate(trait(context, 'extraversion'), 0.42),
+    traitGate(trait(context, 'agreeableness'), 0.25),
+  ]));
+  if (kinds.has('safety')) gates.push(traitGate(trait(context, 'emotionality'), 0.22));
+  return geometricMean(gates);
+}
+
+function memoryAppraisal(context: DecisionContext, option: ActionOption, basisKey: string, atMonth: number): {
+  gate: number;
+  value: number;
+  sourceFactIds: string[];
+  reason?: string;
+} {
+  const matchingBasis = context.person.memories.filter((memory) => memory.causal?.basisKey === basisKey);
+  const targetPersonId = optionTargetPersonId(context, option);
+  const targetSpecific = targetPersonId
+    ? matchingBasis.filter((memory) => memory.personIds.includes(targetPersonId))
+    : [];
+  // A result involving one person must not silently become evidence about
+  // everybody else. Target-free memories remain transferable motor/technical
+  // experience, while exact interpersonal episodes take precedence.
+  const related = targetSpecific.length
+    ? targetSpecific
+    : targetPersonId
+      ? matchingBasis.filter((memory) => memory.personIds.length === 0)
+      : matchingBasis;
+  if (!related.length) return { gate: 1, value: 0, sourceFactIds: [] };
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const memory of related) {
+    const age = Math.max(0, atMonth - memory.createdAtMonth);
+    const weight = clamp(memory.importance / 100) * Math.exp(-age / 24);
+    weighted += (memory.causal?.valence ?? 0) * weight;
+    totalWeight += weight;
+  }
+  const value = totalWeight ? clamp(weighted / totalWeight, -1, 1) : 0;
+  return {
+    gate: clamp(Math.exp(value * 0.48), 0.55, 1.62),
+    value,
+    sourceFactIds: [...new Set(related.flatMap((memory) => memory.sourceEventIds))].slice(-24),
+    reason: value >= 0
+      ? targetPersonId ? '本人记得与这个人进行相似行动曾带来进展' : '本人记得相似行动曾带来进展'
+      : targetPersonId ? '本人记得与这个人进行相似行动曾受阻或造成损失' : '本人记得相似行动曾受阻或造成损失',
+  };
+}
+
+function optionTargetPersonId(context: DecisionContext, option: ActionOption): string | undefined {
+  if (option.target?.kind === 'person') return option.target.personId;
+  const communication = communicationAction(option);
+  const listener = communication?.audience.find((personId) => personId !== context.person.id);
+  if (listener) return listener;
+  if (option.nextAction.kind === 'transfer') {
+    if (option.nextAction.from.kind === 'person' && option.nextAction.from.personId !== context.person.id) return option.nextAction.from.personId;
+    if (option.nextAction.to.kind === 'person' && option.nextAction.to.personId !== context.person.id) return option.nextAction.to.personId;
+  }
+  return undefined;
+}
+
+function relationshipAppraisal(context: DecisionContext, option: ActionOption): {
+  gate: number;
+  consentValue: number;
+  consentDiagnostic: number;
+  reasons: string[];
+  sourceFactIds: string[];
+} {
+  const targetId = optionTargetPersonId(context, option);
+  const relation = targetId ? context.person.relations.find((candidate) => candidate.personId === targetId) : undefined;
+  const communication = communicationAction(option);
+  const content = communication?.content;
+  const proceeds = content?.kind === 'offer' || content?.kind === 'accept'
+    || (option.nextAction.kind === 'act' && option.nextAction.operation === 'reproduce');
+  const refuses = content?.kind === 'reject' || content?.kind === 'revoke-agreement'
+    || content?.kind === 'revoke' || content?.kind === 'withdraw';
+  let preference = ((relation?.trust ?? 0) + (relation?.bond ?? 0) - Math.max(0, relation?.fear ?? 0) * 1.25) / 65;
+  const reasons: string[] = [];
+  const sourceFactIds = new Set(relation?.sourceEventIds ?? []);
+  if (relation) reasons.push('本人依据与目标人物的信任、羁绊和恐惧预期社会后果');
+  const reproduction = option.id.startsWith('offer-reproduce:')
+    || option.id.startsWith('reproduce:')
+    || option.id.startsWith('withdraw-reproduce:')
+    || ((content?.kind === 'offer') && content.proposal?.kind === 'reproduce');
+  if (reproduction) {
+    const responsibility = reproductiveResponsibility(context.state, context.person);
+    preference -= responsibility.pressure / 28;
+    responsibility.sourceFactIds.forEach((id) => sourceFactIds.add(id));
+    reasons.push(...responsibility.reasons);
+    const target = targetId ? context.state.people.find((candidate) => candidate.id === targetId) : undefined;
+    if (target) {
+      const risk = perceivedKinshipRisk(context.state, context.person, target);
+      preference -= risk.cost / 42;
+      risk.sourceFactIds.forEach((id) => sourceFactIds.add(id));
+      if (risk.cost > 0) reasons.push(`本人以置信度 ${Math.round(risk.knowledgeConfidence)} 把已学习到的亲缘后果风险计入预期`);
+    }
+  }
+  const boundedPreference = Math.tanh(preference);
+  const direction = proceeds ? 1 : refuses ? -1 : 0;
+  return {
+    gate: direction ? clamp(Math.exp(direction * boundedPreference * 0.55), 0.48, 1.72) : clamp(1 + boundedPreference * 0.22, 0.72, 1.28),
+    consentValue: direction * boundedPreference,
+    // Keep the diagnostic projection linear so reports can show exactly how
+    // much a learned risk changed the expectation. The planner itself uses
+    // the bounded multiplicative gate above and never adds this number.
+    consentDiagnostic: direction * preference * 42,
+    reasons,
+    sourceFactIds: [...sourceFactIds],
+  };
+}
+
+function ethicalAppraisal(context: DecisionContext, option: ActionOption, needs: NeedSignal[]): {
+  gate: number;
+  value: number;
+  reason?: string;
+  sourceFactIds: string[];
+} {
+  const action = option.nextAction;
+  const unauthorized = action.kind === 'transfer'
+    && action.from.kind === 'person'
+    && action.from.personId !== context.person.id
+    && !action.authorizationRef;
+  const interpersonalHarm = action.kind === 'act' && action.operation === 'exert'
+    && action.targets.some((target) => target.kind === 'person');
+  const restraint = option.goal.kind === 'condition' && option.goal.condition === 'restrained' && option.goal.present;
+  const hunting = action.kind === 'act' && action.operation === 'hunt';
+  if (!unauthorized && !interpersonalHarm && !restraint && !hunting) return { gate: 1, value: 0, sourceFactIds: [] };
+  const acute = Math.max(...needs.filter((need) => need.kind === 'homeostasis' || need.kind === 'safety').map((need) => need.urgency), 0);
+  const resistance = unauthorized
+    ? (trait(context, 'honestyHumility') + trait(context, 'conscientiousness')) / 2
+    : hunting
+      ? trait(context, 'emotionality')
+      : (trait(context, 'honestyHumility') + trait(context, 'agreeableness') + trait(context, 'conscientiousness') + trait(context, 'emotionality')) / 4;
+  const opposition = (resistance - 0.5) * 1.25 * (1 - acute * 0.72);
+  return {
+    gate: clamp(Math.exp(-opposition), 0.35, 1.9),
+    value: -opposition,
+    reason: acute > 0.65 ? '严重求生压力部分压低了本人对伤害风险的抑制' : '人格调节本人对占取、杀伤或强制后果的接受度',
+    sourceFactIds: context.person.personality.changes.slice(-6).flatMap((change) => change.sourceEventIds),
+  };
+}
+
+function feasibilityAppraisal(context: DecisionContext, option: ActionOption, expectedEffort: number, expectedHarm: number): number {
+  const duration = option.estimatedMonths
+    ?? (option.estimatedDuration === 'one-month' ? 1 : option.estimatedDuration === 'several-months' ? 4 : option.estimatedDuration === 'long' ? 9 : 6);
+  const cognitionCapacity = context.person.baselineCapacities?.cognition ?? 50;
+  const horizon = 2 + cognitionCapacity / 24 + trait(context, 'conscientiousness') * 3;
+  const durationGate = 1 / (1 + duration / Math.max(1, horizon));
+  const statedRisk = 1 - Math.exp(-(option.risks?.length ?? 0) / 2);
+  const riskExposure = union([statedRisk, expectedHarm]);
+  const riskAversion = 0.3 + trait(context, 'emotionality') * 0.45 + trait(context, 'conscientiousness') * 0.15;
+  const riskGate = clamp(1 - riskExposure * riskAversion * 0.72, 0.22, 1);
+  const effortGate = clamp(1 - expectedEffort * 0.45, 0.45, 1);
+  return geometricMean([durationGate, riskGate, effortGate]);
+}
+
+function continuityAppraisal(context: DecisionContext, option: ActionOption): number {
+  const active = context.activeIntent;
+  if (!active) return 1;
+  const sameProject = Boolean(active.projectId && option.projectId === active.projectId);
+  const sameGoal = active.goal.kind === option.goal.kind;
+  if (!sameProject && !sameGoal) return 1;
+  return 1.15 + trait(context, 'conscientiousness') * 0.32 + active.progress * 0.18;
+}
+
+function factor(
+  kind: CognitiveFactorName,
+  value: number,
+  reasons: string[],
+  sourceFactIds: string[] = [],
+): CognitiveFactor {
+  return { kind, value, reasons, sourceFactIds: [...new Set(sourceFactIds)].slice(-24) };
+}
+
+export function evaluateCognitiveOption(
+  context: DecisionContext,
+  option: ActionOption,
+  moment: { atMonth: number; planningTick: number },
+  agenda = deriveNeedAgenda(context, moment.atMonth),
+): CognitiveOptionAppraisal {
+  const alignments = optionNeedAlignments(context, option, moment.atMonth);
+  const needByKind = new Map<NeedKind, NeedSignal>();
+  for (const need of agenda) {
+    const current = needByKind.get(need.kind);
+    if (!current || need.urgency > current.urgency) needByKind.set(need.kind, need);
+  }
+  const addressedNeeds = alignments.flatMap((alignment) => {
+    const need = needByKind.get(alignment.kind);
+    return need ? [need] : [];
+  });
+  const dynamicNeedActivation = union(alignments.map((alignment) => (needByKind.get(alignment.kind)?.urgency ?? 0) * alignment.strength));
+  const groundedOpportunity = option.sourceFactIds.length || option.projectId || option.projectProposal
+    ? clamp(0.14 + Math.min(0.1, option.sourceFactIds.length * 0.018) + (option.projectId || option.projectProposal ? 0.08 : 0))
+    : 0;
+  const needActivation = union([dynamicNeedActivation, groundedOpportunity]);
+  const basisKey = cognitiveOutcomeBasisKey(option.nextAction, option.goal);
+  const belief = outcomeBeliefFor(context.person, basisKey);
+  const expectedSuccess = outcomeBeliefSuccess(belief);
+  const uncertainty = outcomeBeliefUncertainty(belief);
+  const learnedGate = clamp(
+    0.65 + expectedSuccess * 0.7 + (trait(context, 'openness') - 0.5) * uncertainty * 0.18,
+    0.38,
+    1.42,
+  );
+  const memory = memoryAppraisal(context, option, basisKey, moment.atMonth);
+  const personalityGate = personalityCongruence(context, alignments);
+  const relationship = relationshipAppraisal(context, option);
+  const repetition = assessSocialRepetition(context.state, context.person, option);
+  const repetitionGate = repetition.subjectKey
+    ? clamp(Math.exp(Math.tanh(repetition.score / 55) * 1.15), 0.28, 2.9)
+    : 1;
+  const ethical = ethicalAppraisal(context, option, agenda);
+  const expectedEffort = belief?.expectedEffort ?? 0.18;
+  const expectedHarm = belief?.expectedHarm ?? 0;
+  const feasibilityGate = feasibilityAppraisal(context, option, expectedEffort, expectedHarm);
+  const continuityGate = continuityAppraisal(context, option);
+  const motivation = needActivation
+    * personalityGate
+    * learnedGate
+    * memory.gate
+    * feasibilityGate
+    * relationship.gate
+    * repetitionGate
+    * ethical.gate
+    * continuityGate;
+  const aspiration = 0.095 + (context.person.baselineCapacities?.cognition ?? 50) / 2_500;
+  const causalScore = (motivation - aspiration) * 100;
+  const activationFor = (kind: NeedKind) => {
+    const alignment = alignments.find((candidate) => candidate.kind === kind)?.strength ?? 0;
+    return (needByKind.get(kind)?.urgency ?? 0) * alignment;
+  };
+  const carePersonality = geometricMean([
+    traitGate(trait(context, 'agreeableness')),
+    traitGate(trait(context, 'emotionality')),
+  ]);
+  const learningPersonality = traitGate(trait(context, 'openness'), 0.5);
+  const commitmentPersonality = traitGate(trait(context, 'conscientiousness'), 0.42);
+  const socialPersonality = geometricMean([
+    traitGate(trait(context, 'extraversion'), 0.42),
+    traitGate(trait(context, 'agreeableness'), 0.25),
+  ]);
+  const factors = [
+    factor('need', needActivation * 100, alignments.map((alignment) => alignment.reason), addressedNeeds.flatMap((need) => need.sourceFactIds)),
+    factor('care', activationFor('care') * carePersonality * 100, ['情绪性与宜人性门控有来源的照护需要'], addressedNeeds.filter((need) => need.kind === 'care').flatMap((need) => need.sourceFactIds)),
+    factor('commitment', Math.max(
+      activationFor('commitment'),
+      (alignments.find((alignment) => alignment.kind === 'commitment')?.strength ?? 0) * groundedOpportunity,
+    ) * commitmentPersonality * continuityGate * 100, ['尽责性与真实进度门控意图持续'], context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
+    factor('learning', union([activationFor('inquiry'), activationFor('capability')]) * learningPersonality * 100, ['开放性调节对未知结果的探索，而不创造知识'], addressedNeeds.filter((need) => need.kind === 'inquiry' || need.kind === 'capability').flatMap((need) => need.sourceFactIds)),
+    factor('relationship', activationFor('belonging') * socialPersonality * 100 + (relationship.gate - 1) * 40, relationship.reasons, relationship.sourceFactIds),
+    factor('social-repetition', repetition.score, repetition.reasons, repetition.sourceFactIds),
+    factor('consent', relationship.consentDiagnostic, relationship.reasons, relationship.sourceFactIds),
+    factor('feasibility', (feasibilityGate - 0.5) * 100, ['预计时长、本人经验中的努力和伤害共同约束可行性'], belief?.sourceEventIds ?? option.sourceFactIds),
+    factor('harm', ethical.value * 100, ethical.reason ? [ethical.reason] : [], ethical.sourceFactIds),
+  ];
+  const strongestNeeds = [...addressedNeeds].sort((left, right) => right.urgency - left.urgency).slice(0, 2);
+  const reasons = [
+    ...strongestNeeds.flatMap((need) => need.reasons.slice(0, 1)),
+    ...(belief ? [`本人对相似行动的成功预期为 ${Math.round(expectedSuccess * 100)}%（${belief.attempts} 次亲历）`] : ['本人尚无相似行动经验，使用保守先验']),
+    ...(memory.reason ? [memory.reason] : []),
+    ...relationship.reasons.slice(0, 1),
+    ...(repetition.subjectKey ? repetition.reasons.slice(0, 1) : []),
+    ...(ethical.reason ? [ethical.reason] : []),
+  ];
+  return {
+    option,
+    basisKey,
+    needAlignments: alignments,
+    addressedNeeds: strongestNeeds,
+    needActivation,
+    expectedSuccess,
+    uncertainty,
+    expectedEffort,
+    expectedHarm,
+    personalityGate,
+    memoryGate: memory.gate,
+    feasibilityGate,
+    relationshipGate: relationship.gate,
+    repetitionGate,
+    ethicalGate: ethical.gate,
+    continuityGate,
+    motivation,
+    aspiration,
+    causalScore,
+    factors,
+    reasons: [...new Set(reasons)],
+    sourceFactIds: [...new Set([
+      ...option.sourceFactIds,
+      ...strongestNeeds.flatMap((need) => need.sourceFactIds),
+      ...(belief?.sourceEventIds ?? []),
+      ...memory.sourceFactIds,
+      ...relationship.sourceFactIds,
+      ...repetition.sourceFactIds,
+      ...ethical.sourceFactIds,
+    ])].slice(-32),
+  };
+}
+
+export function buildCognitiveFrame(
+  context: DecisionContext,
+  options: ActionOption[],
+  moment: { atMonth: number; planningTick: number },
+): CognitiveFrame {
+  const needs = deriveNeedAgenda(context, moment.atMonth);
+  return {
+    architecture: 'causal-bdi-v1',
+    planningMonth: moment.atMonth,
+    planningTick: moment.planningTick,
+    needs,
+    appraisals: options.map((option) => evaluateCognitiveOption(context, option, moment, needs)),
+  };
+}

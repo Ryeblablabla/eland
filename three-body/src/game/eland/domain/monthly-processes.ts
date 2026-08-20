@@ -1096,6 +1096,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     motiveSensitivity: createMotiveSensitivity(state.seed, id),
     cognition: createCognitionState(),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
+    bereavements: [],
     relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
   };
@@ -1183,6 +1184,13 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
+  const deathEventId = `e-${atMonth}-environment-death-${events.length}`;
+  state.world.remains ??= [];
+  for (const carried of state.world.remains.filter((remains) => remains.carriedByPersonId === person.id)) {
+    carried.status = 'exposed';
+    carried.position = { cellId: person.position.cellId, z: person.position.z };
+    delete carried.carriedByPersonId;
+  }
   for (const stack of person.inventory) {
     addDrop(
       state,
@@ -1190,14 +1198,24 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
       stack.quantity,
       person.position.cellId,
       atMonth,
-      [...stack.sourceEventIds],
+      [...new Set([...stack.sourceEventIds, deathEventId])],
       `${person.id}-death`,
       stack.recordPayloadId,
       person.position.z,
       [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
+      person.id,
     );
   }
   person.inventory = [];
+  if (!state.world.remains.some((remains) => remains.personId === person.id)) state.world.remains.push({
+    id: `remains:${person.id}`,
+    personId: person.id,
+    position: { cellId: person.position.cellId, z: person.position.z },
+    status: 'exposed',
+    createdAtMonth: atMonth,
+    deathEventId,
+    sourceEventIds: [deathEventId],
+  });
   const dyingDuringHibernation = person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation');
   const hibernationFailedIntentIds: string[] = [];
   const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
@@ -1242,7 +1260,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   }
   delete person.activeIntentId;
   const causalConditions = person.conditions.flatMap((current) => current.sourceEventIds);
-  event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，私有背包遗留在原地`, {
+  const deathFact = event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，遗体和私有背包留在原地`, {
     personId: person.id,
     ageMonths: atMonth - person.bornAtMonth,
     cause,
@@ -1252,6 +1270,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
       ? { hibernationFailedIntentIds: [...new Set(hibernationFailedIntentIds)] }
       : {}),
   }, person);
+  if (deathFact.id !== deathEventId) throw new Error('死亡事实与遗体来源事件顺序不一致');
 }
 
 function maintainHibernationIntentSuspension(

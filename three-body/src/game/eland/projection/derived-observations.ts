@@ -129,6 +129,10 @@ export function deriveObservations(state: SimulationState): SimulationState['der
   });
   const cultivation = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'combine' && Number(event.diff.outputMaterialId) === Material.CropSprout);
   const harvests = actions.filter((event) => event.action.kind === 'act' && event.action.operation === 'separate' && Number(event.diff.sourceMaterialId) === Material.CropMature);
+  const burials = actions.filter((event) => event.status === 'completed'
+    && event.action.kind === 'act'
+    && event.action.operation === 'inter'
+    && event.diff.remainsInterred === true);
   const structures = deriveStructures(state);
   const functionalBuildings = observeFunctionalBuildings(state);
   const trailCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.PackedSoil);
@@ -142,6 +146,7 @@ export function deriveObservations(state: SimulationState): SimulationState['der
     containerTransfers.length ? { key: 'storage', label: '使用空间容器储藏物质', count: containerTransfers.length, agentIds: [...new Set(containerTransfers.map((event) => event.who))], eventIds: containerTransfers.map((event) => event.id), stability: clamp(containerTransfers.length * 8) } : null,
     movements.length ? { key: 'travel', label: '跨格迁行', count: movements.length, agentIds: [...new Set(movements.map((event) => event.who))], eventIds: movements.map((event) => event.id), stability: clamp(movements.length * 4) } : null,
     cultivation.length ? { key: 'cultivation', label: '种植实践', count: cultivation.length, agentIds: [...new Set(cultivation.map((event) => event.who))], eventIds: cultivation.map((event) => event.id), stability: clamp(cultivation.length * 12) } : null,
+    burials.length ? { key: 'mortuary-care', label: '照料并安葬死者', count: burials.length, agentIds: [...new Set(burials.map((event) => event.who))], eventIds: burials.map((event) => event.id), stability: clamp(burials.length * 14) } : null,
   ].filter((item): item is PracticeObservation => Boolean(item));
   const governanceInstitutions: InstitutionObservation[] = state.collectives.flatMap((collective) => collective.decisionRules.flatMap((rule) => {
     const exercisedMandates = collective.mandates.filter((mandate) => mandate.decisionRuleId === rule.id
@@ -206,7 +211,19 @@ export function deriveObservations(state: SimulationState): SimulationState['der
       note: '可靠技术被多次明确教导或示范，不再只保存在原生产者身上。',
     }]
     : [];
-  const institutions = [...governanceInstitutions, ...buildingInstitutions, ...apprenticeshipInstitutions];
+  const burialActors = new Set(burials.map((event) => event.who));
+  const burialMonths = burials.map((event) => event.atMonth);
+  const mortuaryInstitutions: InstitutionObservation[] = burials.length >= 3
+    && burialActors.size >= 2
+    && Math.max(...burialMonths) - Math.min(...burialMonths) >= 12
+    ? [{
+        key: 'mortuary-care:repeated-interment',
+        label: '重复丧葬照料惯例',
+        evidenceEventIds: burials.map((event) => event.id),
+        note: '至少两人跨一年以上反复完成有死亡来源、挖墓、放置与覆土证据的安葬；这是观察到的惯例，不是人物奖励。',
+      }]
+    : [];
+  const institutions = [...governanceInstitutions, ...buildingInstitutions, ...apprenticeshipInstitutions, ...mortuaryInstitutions];
   const regions: EmergentRegion[] = [];
   const waterCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water || surfaceMaterial(state.world.grid, cell) === Material.Ice);
   if (waterCells.length) regions.push({ id: 'natural-water', kind: 'natural', cells: waterCells, confidence: 1, evidenceEventIds: [], firstObservedMonth: 0, lastObservedMonth: state.clock.elapsedMonths, label: '水域' });

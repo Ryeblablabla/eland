@@ -138,7 +138,7 @@ export function assessIntentionPersistence(
   );
   const frame = buildCognitiveFrame(context, challenger ? [challenger.option] : [], moment);
   const acuteNeed = frame.needs
-    .filter((need) => need.kind === 'homeostasis' || need.kind === 'safety' || need.kind === 'care')
+    .filter((need) => need.kind === 'homeostasis' || need.kind === 'safety' || need.kind === 'care' || need.kind === 'bereavement')
     .reduce((maximum, need) => Math.max(maximum, need.urgency), 0);
   const challengerStrength = challenger?.motivation ?? 0;
   const overdue = active.stateGoalUntilMonth !== undefined && moment.atMonth > active.stateGoalUntilMonth;
@@ -158,7 +158,7 @@ export function assessIntentionPersistence(
     reason: overdue
       ? '长期状态的复核期限已过'
       : acuteOverride
-        ? '新的身体、安全或照护需要已经压过当前意图'
+        ? '新的身体、安全、照护或强烈悲恸需要已经压过当前意图'
         : stalledOverride
           ? '当前意图持续缺少进展，而另一合法方案跨过行动阈值'
           : strongerAlternative

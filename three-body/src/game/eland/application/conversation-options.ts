@@ -13,6 +13,7 @@ import {
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, sameLocation, type PersonState } from '../domain/person';
 import { cellsInRadius, findStandingPath } from '../world/grid';
+import { knowsDeath, remainsById } from '../domain/mortuary';
 
 interface ConversationCandidate {
   topic: GroundedConversationTopic;
@@ -31,6 +32,7 @@ const TOPIC_LABEL: Record<GroundedConversationTopic, string> = {
   failure: '失败与挫折',
   discovery: '新发现',
   family: '共同养育',
+  loss: '死亡与失去',
 };
 
 function resolvedSourceIds(state: SimulationState, sourceIds: string[]): string[] {
@@ -182,6 +184,24 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     priority: 62,
   });
 
+  const loss = [...(person.bereavements ?? [])]
+    .filter((bereavement) => {
+      const remains = remainsById(state, bereavement.remainsId);
+      return Boolean(remains && !knowsDeath(other, remains.id) && worldEventById(state, bereavement.deathEventId));
+    })
+    .sort((left, right) => right.learnedAtMonth - left.learnedAtMonth || right.intensity - left.intensity)[0];
+  if (loss) {
+    const remains = remainsById(state, loss.remainsId);
+    const deceased = remains ? state.people.find((candidate) => candidate.id === remains.personId) : undefined;
+    if (deceased) candidates.push({
+      topic: 'loss',
+      summary: `告诉${other.name}${deceased.name}已经死亡，并谈起自己对这次失去的感受`,
+      reason: '本人亲眼见过遗体或从有来源的交谈得知死讯，而对方尚不知道',
+      sourceFactIds: [loss.deathEventId],
+      priority: 88,
+    });
+  }
+
   const discovery = [...person.knowledge]
     .filter((fact) => (fact.kind === 'observation' || fact.kind === 'claim')
       && fact.confidence >= 55
@@ -275,6 +295,7 @@ function responseMeaning(topic: GroundedConversationTopic, guarded: boolean): st
   if (topic === 'shared-work') return '回应双方共同劳动的经历，并确认协作带来的陪伴感';
   if (topic === 'failure') return '接纳对方对失败的复盘请求，并愿意共同寻找遗漏环节';
   if (topic === 'discovery') return '愿意继续了解对方的新发现及其可能用途';
+  if (topic === 'loss') return '听见并确认这次死亡，愿意陪对方谈论失去';
   return '回应共同养育话题，并愿意在照护孩子和彼此疲惫时互相支持';
 }
 

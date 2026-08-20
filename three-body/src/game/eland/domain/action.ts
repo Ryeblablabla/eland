@@ -3,6 +3,7 @@ import type { MechanicalPowerActionBasis } from './mechanical-power';
 import type { ConditionKind, HibernationPhase, PersonId } from './person';
 import type { ProjectFunction, ProjectProposal } from './project';
 import type { WildlifeThreatBasis } from './wildlife-threat';
+import type { MortuaryPhase } from './mortuary';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -12,6 +13,7 @@ export type WorldRef =
   | { kind: 'container'; containerId: string }
   | { kind: 'inventory-stack'; personId: PersonId; stackId: string }
   | { kind: 'animal'; animalId: string }
+  | { kind: 'remains'; remainsId: string }
   | { kind: 'person'; personId: PersonId };
 
 export type HolderRef =
@@ -19,7 +21,7 @@ export type HolderRef =
   | { kind: 'container'; containerId: string }
   | { kind: 'person'; personId: PersonId };
 
-export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
+export type SourceOperation = 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate' | 'inter';
 
 export type HibernationWakeBasis =
   | 'prediction-invalidated'
@@ -89,7 +91,8 @@ export type GroundedConversationTopic =
   | 'shared-work'
   | 'failure'
   | 'discovery'
-  | 'family';
+  | 'family'
+  | 'loss';
 
 /** A social utterance grounded in replayable life history rather than generic flavor text. */
 export interface GroundedConversationRef {
@@ -182,7 +185,18 @@ export type PrimitiveAction =
       /** Exact current local threat and the one-step refuge response validated by the domain. */
       wildlifeThreatBasis?: WildlifeThreatBasis;
     }
-  | { kind: 'transfer'; materialId: MaterialId; quantity: number; from: HolderRef; to: HolderRef; dropId?: string; stackId?: string; authorizationRef?: string }
+  | {
+      kind: 'transfer';
+      materialId: MaterialId;
+      quantity: number;
+      from: HolderRef;
+      to: HolderRef;
+      dropId?: string;
+      stackId?: string;
+      authorizationRef?: string;
+      /** Present only when the actor knows this exact ground drop is a deceased person's estate. */
+      estateCarePersonId?: PersonId;
+    }
   | {
       kind: 'act';
       operation: SourceOperation;
@@ -198,6 +212,8 @@ export type PrimitiveAction =
       /** Local exposure facts that made a failed shelter hibernation response actionable. */
       hibernationEvidenceEventIds?: string[];
       hibernationWakeBasis?: HibernationWakeBasis;
+      /** Physical phase of a sourced mortuary act; only valid with operation=inter. */
+      mortuaryPhase?: MortuaryPhase;
     }
   | {
       kind: 'attend';
@@ -277,6 +293,9 @@ export type FactPredicate =
   | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean; phase?: HibernationPhase }
   | { kind: 'project-completed'; projectId: string }
   | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
+  | { kind: 'death-mourned'; remainsId: string }
+  | { kind: 'remains-interred'; remainsId: string }
+  | { kind: 'memorial-marked'; remainsId: string }
   | { kind: 'representation-made'; representationId: string };
 
 export type IntentStatus = 'active' | 'suspended' | 'completed' | 'blocked' | 'abandoned' | 'failed';

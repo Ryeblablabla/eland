@@ -31,6 +31,7 @@
     "test:renewal-opportunity-commitment": "node scripts/test-renewal-opportunity-commitment.mjs",
     "test:direct-technique-teaching": "node scripts/test-direct-technique-teaching.mjs",
     "test:grounded-conversation": "node scripts/test-grounded-conversation.mjs",
+    "test:mortuary-care": "node scripts/test-mortuary-care.mjs",
     "test:social-repetition": "node scripts/test-social-repetition.mjs",
     "test:decision-factor-forest": "node scripts/test-decision-factor-forest.mjs",
     "test:personality": "node scripts/test-personality.mjs",

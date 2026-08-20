@@ -55,6 +55,9 @@ function goalFamilyKey(goal?: FactPredicate): string {
     case 'condition': return `${goal.kind}:${goal.condition}:${goal.present ? 'present' : 'absent'}`;
     case 'project-completed': return goal.kind;
     case 'technique-demonstrated': return goal.kind;
+    case 'death-mourned': return goal.kind;
+    case 'remains-interred': return goal.kind;
+    case 'memorial-marked': return goal.kind;
     case 'representation-made': return goal.kind;
   }
 }

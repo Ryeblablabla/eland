@@ -17,6 +17,7 @@ const CHILD_SIMPLE_OPTION_PREFIXES = [
   'attend-animal:',
   'verify-technique:',
   'follow-parent:',
+  'mourn:',
 ] as const;
 
 const ADOLESCENT_RESTRICTED_PREFIXES = [

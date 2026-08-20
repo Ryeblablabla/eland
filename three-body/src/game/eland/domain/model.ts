@@ -11,11 +11,13 @@ import type { ContainerState } from './container';
 import type { AnimalState } from './animal';
 import type { ProjectState } from './project';
 import type { MechanicalPowerWorldState } from './mechanical-power';
+import type { HumanRemainsState, MemorialMarkerState } from './mortuary';
 
 export * from './action';
 export * from './material';
 export * from './person';
 export * from './mechanical-power';
+export * from './mortuary';
 
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
@@ -42,6 +44,8 @@ export interface DropState {
   /** Exact physical sources this drop descended from across transfers. */
   sourceLineageKeys?: string[];
   recordPayloadId?: string;
+  /** The deceased owner whose private inventory produced this exact drop. */
+  estateOfPersonId?: PersonId;
 }
 
 export interface DecisionContext {
@@ -51,6 +55,7 @@ export interface DecisionContext {
   visiblePeople: PersonState[];
   visibleDrops: DropState[];
   visibleAnimals: AnimalState[];
+  visibleRemains?: HumanRemainsState[];
   options: ActionOption[];
   followUpOptions: ActionOption[];
   activeIntent?: Intent;
@@ -324,6 +329,10 @@ export interface SimulationState {
     grid: VoxelWorld;
     drops: DropState[];
     animals: AnimalState[];
+    /** Optional only for old schema-v17 states and compact test fixtures. */
+    remains?: HumanRemainsState[];
+    /** Physical memorial carriers created by completed mortuary acts. */
+    memorials?: MemorialMarkerState[];
     past: WorldEvent[];
     /** Incremental traversal counts keyed by `cellId:z`. */
     traffic?: Record<string, number>;

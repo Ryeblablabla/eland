@@ -159,6 +159,10 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
   }
   if (goal.kind === 'near-person') add('belonging', 0.65, '候选接近一个当前可感知的人');
   if (goal.kind === 'representation-made') add('belonging', 0.55, '候选形成一次有来源的社会表达');
+  if (goal.kind === 'death-mourned') add('bereavement', 0.82, '候选让本人对一项有来源的死亡作出悼念回应');
+  if (goal.kind === 'remains-interred') add('bereavement', 1, '候选用实体行动照料本人知晓的遗体');
+  if (goal.kind === 'memorial-marked') add('bereavement', 0.58, '候选在真实安葬和材料基础上留下墓记');
+  if (option.id.startsWith('estate:')) add('bereavement', 0.7, '候选收拢本人知晓的死者遗物');
   if (option.nextAction.kind === 'move' && option.sourceFactIds.length && !option.projectId) {
     add('inquiry', 0.35, '移动目标来自当前可追溯线索');
   }
@@ -190,6 +194,11 @@ function personalityCongruence(context: DecisionContext, alignments: NeedAlignme
   if (kinds.has('care')) gates.push(geometricMean([
     traitGate(trait(context, 'agreeableness')),
     traitGate(trait(context, 'emotionality')),
+  ]));
+  if (kinds.has('bereavement')) gates.push(geometricMean([
+    traitGate(trait(context, 'emotionality'), 0.42),
+    traitGate(trait(context, 'agreeableness'), 0.34),
+    traitGate(trait(context, 'conscientiousness'), 0.24),
   ]));
   if (kinds.has('commitment')) gates.push(traitGate(trait(context, 'conscientiousness'), 0.42));
   if (kinds.has('inquiry')) gates.push(traitGate(trait(context, 'openness'), 0.5));
@@ -438,7 +447,7 @@ export function evaluateCognitiveOption(
   ]);
   const factors = [
     factor('need', needActivation * 100, alignments.map((alignment) => alignment.reason), addressedNeeds.flatMap((need) => need.sourceFactIds)),
-    factor('care', activationFor('care') * carePersonality * 100, ['情绪性与宜人性门控有来源的照护需要'], addressedNeeds.filter((need) => need.kind === 'care').flatMap((need) => need.sourceFactIds)),
+    factor('care', Math.max(activationFor('care'), activationFor('bereavement')) * carePersonality * 100, ['情绪性与宜人性门控有来源的照护与悲恸需要'], addressedNeeds.filter((need) => need.kind === 'care' || need.kind === 'bereavement').flatMap((need) => need.sourceFactIds)),
     factor('commitment', Math.max(
       activationFor('commitment'),
       (alignments.find((alignment) => alignment.kind === 'commitment')?.strength ?? 0) * groundedOpportunity,

@@ -26,7 +26,7 @@ export interface CapabilityStageCriteria {
 
 type DetectorKey =
   | 'birth' | 'conception' | 'dependent-care' | 'dependent-protection' | 'kinship' | 'illness' | 'care' | 'repeated-care'
-  | 'herbal-care' | 'end-of-life-care' | 'aging' | 'death'
+  | 'herbal-care' | 'end-of-life-care' | 'aging' | 'death' | 'burial-memorial'
   | 'gather-food' | 'food-identification' | 'infant-feeding' | 'food-storage' | 'gift' | 'hunt' | 'tool-hunt' | 'migration' | 'disaster-response'
   | 'tool-craft' | 'spear-craft' | 'rope-craft' | 'container-practice' | 'fire-making'
   | 'fire-practice' | 'cooking' | 'clothing' | 'shelter' | 'settlement' | 'communication' | 'direct-communication'
@@ -220,6 +220,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     'end-of-life-care': ['人物获得真实照护动作', '同一人物随后在有限时间内出现死亡事实'],
     aging: ['人物年龄达到衰老压力区间', '月度结算写入 aging 条件事实'],
     death: ['人物身体或寿命结算达到死亡条件', '死亡事实保存 personId、原因与来源'],
+    'burial-memorial': ['死亡生成唯一遗体并保存 deathEventId', '近身动作真实挖墓、放置遗体并用同一挖掘物覆土', '安葬后消耗实体记录材料并用工具留下墓记'],
     'gather-food': ['可食物资来自地面掉落物', 'completed transfer 把同一物资交给具体人物'],
     'food-identification': ['人物先从地面取得带 edible 性质的具体物资', '同一人物随后摄入同一材料并产生身体后果'],
     'infant-feeding': ['completed transfer 把可食材料交给未独立儿童', '行动者是儿童父母或动作保存明确照护来源'],
@@ -388,6 +389,34 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       return eventEpisodes(environments.filter((event) => event.change === 'condition' && event.diff.condition === 'aging'), (event) => event.who ? [event.who] : []);
     case 'death':
       return eventEpisodes(environments.filter((event) => event.change === 'death' && typeof event.diff.personId === 'string'), (event) => typeof event.diff.personId === 'string' ? [event.diff.personId] : []);
+    case 'burial-memorial': {
+      const burials = completed.filter((event) => event.action.kind === 'act'
+        && event.action.operation === 'inter'
+        && event.diff.remainsInterred === true
+        && typeof event.diff.remainsId === 'string');
+      const markers = completed.filter((event) => event.action.kind === 'act'
+        && event.action.operation === 'inter'
+        && event.diff.memorialMarked === true
+        && Number(event.diff.markerMaterialId) === Material.WoodTablet
+        && typeof event.diff.remainsId === 'string');
+      return markers.flatMap((marker) => {
+        const burial = burials.find((event) => event.id === marker.diff.burialEventId
+          && event.diff.remainsId === marker.diff.remainsId
+          && event.diff.mortuaryPhase === 'cover-grave');
+        const deathEventId = typeof marker.diff.deathEventId === 'string' ? marker.diff.deathEventId : undefined;
+        const death = deathEventId ? index.byId.get(deathEventId) : undefined;
+        const deceasedPersonId = typeof marker.diff.deceasedPersonId === 'string' ? marker.diff.deceasedPersonId : undefined;
+        const markerSources = Array.isArray(marker.diff.sourceEventIds) ? marker.diff.sourceEventIds : [];
+        const burialSources = burial && Array.isArray(burial.diff.sourceEventIds) ? burial.diff.sourceEventIds : [];
+        return burial && death?.kind === 'environment' && death.change === 'death' && deceasedPersonId
+          && burial.diff.deathEventId === death.id
+          && markerSources.includes(death.id)
+          && markerSources.includes(burial.id)
+          && burialSources.includes(death.id)
+          ? episode([death, burial, marker], unique([burial.who, marker.who]), [deceasedPersonId]) ?? []
+          : [];
+      });
+    }
     case 'gather-food':
       return actionEvents((event) => event.action.kind === 'transfer' && event.action.from.kind === 'ground'
         && event.status === 'completed' && materialHas(event.action.materialId, 'edible'));
@@ -1066,6 +1095,7 @@ const MAP_CATALOG = [
   [7, '照料弱者'],
   [8, '衰老'],
   [9, '死亡'],
+  [10, '埋葬并纪念死者'],
   [11, '采集食物'],
   [12, '捕猎动物'],
   [13, '分享资源'],
@@ -1206,6 +1236,9 @@ const STRICT_MAP_SPECS = [
   [7, 'health', 'constructive', 'stable', 'repeated-care', STABLE_AGGREGATE],
   [8, 'life', 'ambivalent', 'decline', 'aging'],
   [9, 'life', 'ambivalent', 'collapse', 'death'],
+  [10, 'life', 'constructive', 'practice', 'burial-memorial', {
+    minEpisodes: 1, minDistinctMonths: 1, minDistinctActors: 1, minEvidenceEvents: 3,
+  }],
   [11, 'subsistence', 'constructive', 'practice', 'gather-food'],
   [12, 'subsistence', 'ambivalent', 'practice', 'hunt'],
   [13, 'subsistence', 'constructive', 'practice', 'gift'],

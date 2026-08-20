@@ -42,6 +42,8 @@ export interface SocietyAgent {
   lastPath: number[];
   tickPath: number[];
   state: 'active' | 'dehydrated' | 'hibernating' | 'dead';
+  /** Read-only disposition of this dead person's authoritative remains. */
+  bodyDisposition?: 'exposed' | 'carried' | 'placed' | 'interred';
   doing: string;
   activeIntentId?: string;
   sex: 'female' | 'male';
@@ -194,6 +196,19 @@ export interface ContainerView {
   contents: { materialId: number; name: string; quantity: number }[];
 }
 
+export interface GraveView {
+  id: string;
+  remainsId: string;
+  personId: string;
+  personName: string;
+  cellId: number;
+  /** Top of the restored grave surface, in standing-height coordinates. */
+  z: number;
+  marked: boolean;
+  markerMaterialId?: number;
+  inscription?: string;
+}
+
 export interface StructureView {
   id: string;
   name: string;
@@ -221,8 +236,9 @@ export interface ActionVisualView {
   facilityMaterialId?: number;
   mechanicalPowerOperation?: boolean;
   linkedFacilityCellIds?: number[];
-  operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
-  targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'person';
+  operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate' | 'inter';
+  mortuaryPhase?: 'mourn' | 'lift' | 'prepare-grave' | 'place-in-grave' | 'cover-grave' | 'mark';
+  targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
   targetPersonId?: string;
   targetAnimalId?: string;
   materialId?: number;
@@ -271,6 +287,7 @@ export interface SocietyState {
   animals: AnimalView[];
   drops: DropView[];
   containers: ContainerView[];
+  graves?: GraveView[];
   structures: StructureView[];
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];

@@ -1,6 +1,7 @@
 import type { BiologicalSex } from '../population';
 import type { NamingTradition } from '../naming';
 import type { MaterialId } from './material';
+import type { BereavementState } from './mortuary';
 
 export type PersonId = string;
 export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'postpartum-recovery' | 'restrained' | 'dehydrated-hibernation';
@@ -228,6 +229,8 @@ export interface PersonState {
   knownPlaces: KnownPlace[];
   relations: DirectedRelation[];
   memories: MemoryRecord[];
+  /** Sourced, person-local awareness of a death; optional for schema-v17 saves. */
+  bereavements?: BereavementState[];
   /** Optional only so old schema-v17 states and small test fixtures can hydrate. */
   cognition?: CognitionState;
   activeIntentId?: string;

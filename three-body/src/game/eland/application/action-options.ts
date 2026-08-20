@@ -88,6 +88,8 @@ import {
   recentPersonalProductionLaborEvents,
 } from '../domain/production-tool';
 import { perceivedKinshipRisk } from './reproductive-risk';
+import { knowsDeath, remainsForPerson, type HumanRemainsState } from '../domain/mortuary';
+import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-options';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -162,6 +164,10 @@ function dropStandingZ(state: SimulationState, drop: DropState): number {
 
 function actionForDrop(state: SimulationState, person: PersonState, drop: DropState): PrimitiveAction {
   const dropZ = dropStandingZ(state, drop);
+  const estateRemains = drop.estateOfPersonId ? remainsForPerson(state, drop.estateOfPersonId) : undefined;
+  const estateCarePersonId = drop.estateOfPersonId && estateRemains && knowsDeath(person, estateRemains.id)
+    ? drop.estateOfPersonId
+    : undefined;
   if (person.position.cellId === drop.cellId && person.position.z === dropZ) {
     return {
       kind: 'transfer',
@@ -170,6 +176,7 @@ function actionForDrop(state: SimulationState, person: PersonState, drop: DropSt
       from: { kind: 'ground', cellId: drop.cellId, z: dropZ },
       to: { kind: 'person', personId: person.id },
       dropId: drop.id,
+      ...(estateCarePersonId ? { estateCarePersonId } : {}),
     };
   }
   return { kind: 'move', toCellId: drop.cellId, toZ: dropZ };
@@ -179,10 +186,15 @@ function optionForDrop(state: SimulationState, person: PersonState, drop: DropSt
   const material = materialDefinition(drop.materialId);
   const current = inventoryQuantity(person, drop.materialId);
   const dropZ = dropStandingZ(state, drop);
+  const estateOwner = drop.estateOfPersonId
+    ? state.people.find((candidate) => candidate.id === drop.estateOfPersonId)
+    : undefined;
+  const estateRemains = estateOwner ? remainsForPerson(state, estateOwner.id) : undefined;
+  const awareEstate = Boolean(estateOwner && estateRemains && knowsDeath(person, estateRemains.id));
   return {
-    id: `collect:${drop.id}`,
-    summary: `取得${material.name}`,
-    reason: `看见地上的${material.name}`,
+    id: `${awareEstate ? 'estate' : 'collect'}:${drop.id}`,
+    summary: awareEstate ? `收拢${estateOwner?.name}留下的${material.name}` : `取得${material.name}`,
+    reason: awareEstate ? `本人知道${estateOwner?.name}已经死亡，并看见其有来源的遗物` : `看见地上的${material.name}`,
     goal: { kind: 'inventory-at-least', materialId: drop.materialId, quantity: current + Math.min(3, drop.quantity) },
     nextAction: actionForDrop(state, person, drop),
     target: { kind: 'drop', dropId: drop.id },
@@ -543,9 +555,11 @@ function buildOptions(
   visibleDrops: DropState[],
   visiblePeople: PersonState[],
   visibleAnimals: AnimalState[],
+  visibleRemains: HumanRemainsState[],
   atMonth: number,
 ): ActionOption[] {
   const options: ActionOption[] = [];
+  options.push(...buildMortuaryOptions(state, person, visibleRemains));
   const planningStage = lifePlanningStage(person, atMonth);
   if (planningStage === 'learning-child') {
     const visibleParent = visiblePeople.find((candidate) => person.geneticParents.includes(candidate.id));
@@ -1548,12 +1562,14 @@ export function buildDecisionContext(
   const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal)
     && visibleSet.has(animal.position.cellId)
     && Math.abs(animal.position.z - person.position.z) <= visibleRadius);
+  const visibleRemains = (state.world.remains ?? []).filter((remains) => visibleSet.has(remains.position.cellId)
+    && Math.abs(remains.position.z - person.position.z) <= visibleRadius);
   // Project options own a copy of the one project they may route; unrelated
   // projects and all terminal evidence are read-only in this context.
   const planningState = state;
   const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
   const stage = lifePlanningStage(person, atMonth);
-  const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, atMonth)
+  const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, visibleRemains, atMonth)
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
     .filter((option) => optionAllowedForLifeStage(stage, option))
     .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
@@ -1576,6 +1592,7 @@ export function buildDecisionContext(
     visiblePeople,
     visibleDrops,
     visibleAnimals,
+    visibleRemains,
     options: requiredSocialResponses.length
       ? [...observedEmergencyHibernation, ...requiredSocialResponses]
       : options,
@@ -1607,6 +1624,9 @@ export function recompileNextAction(
 ): PrimitiveAction | null {
   if (reproductionIntentAttemptedThisMonth(state, person, intent, atMonth)) return null;
   if (intent.recordUseBasis) return recompileRecordUseNextAction(state, person, intent);
+  if (intent.goal.kind === 'death-mourned'
+    || intent.goal.kind === 'remains-interred'
+    || intent.goal.kind === 'memorial-marked') return recompileMortuaryNextAction(state, person, intent);
   if ((intent.nextAction.kind === 'communicate'
       && intent.nextAction.content.kind === 'request'
       && intent.nextAction.content.techniqueDemonstration)

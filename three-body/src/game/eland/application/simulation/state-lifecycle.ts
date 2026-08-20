@@ -123,6 +123,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
       fear: 0,
       sourceEventIds: [FOUNDER_COHORT_EVENT_ID],
     })),
+    bereavements: [],
     currentActionText: '观察身边的物质',
     lastDecisionText: '尚未作出关键决定',
   };
@@ -156,6 +157,8 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
       grid: generated.world,
       drops: generated.drops,
       animals: createInitialAnimals(seed, generated.world, generated.spawnCells.slice(0, people.length)),
+      remains: [],
+      memorials: [],
       past: [foundingFact],
       traffic: {},
       mechanicalPower: generated.mechanicalPower,
@@ -207,6 +210,8 @@ export function adoptSimulationState(input: SimulationState): SimulationState {
     );
   }
   state.world.animals ??= [];
+  state.world.remains ??= [];
+  state.world.memorials ??= [];
   normalizeAnimalEcologies(state.world.animals);
   state.civilization.weather ??= { kind: 'clear', intensity: 1, sinceMonth: state.clock.elapsedMonths };
   state.civilization.civilizationIndex ??= emptyCivilizationIndex(state.clock.elapsedMonths);
@@ -251,6 +256,7 @@ export function adoptSimulationState(input: SimulationState): SimulationState {
   }
   for (const person of state.people) {
     ensureCognitionState(person);
+    person.bereavements ??= [];
     person.knownPlaces ??= [];
     person.geneticLoad = Number.isFinite(person.geneticLoad) ? clamp(person.geneticLoad, 0, 1) : 0;
     const start = person.position.previousCellId ?? person.position.cellId;

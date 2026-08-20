@@ -8,6 +8,7 @@ import {
 } from '../../domain/decision-budget';
 import { chooseDependentCareReflex, dependentCareUrgency, shouldRemainShelteredForDependent } from '../../domain/dependent-care';
 import { lifePlanningStage } from '../../domain/life-stage';
+import { synchronizeMortuaryPerceptions } from '../../domain/mortuary';
 import type {
   AgentDecider,
   BatchDecider,
@@ -181,6 +182,7 @@ function executePrepared(
     for (const person of participants) person.position.tickPath.push(person.position.cellId);
   }
   events.push(...advanceBodies(state, atMonth));
+  events.push(...synchronizeMortuaryPerceptions(state, atMonth, events.length));
   events.push(...synchronizeHibernationIntentSuspensions(state, atMonth));
   events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
   events.push(...advanceSharedRelationshipExperience(state, events, atMonth));

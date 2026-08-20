@@ -725,6 +725,11 @@ function figureActionOf(agent: SocietyAgent, intent: IntentView | undefined, mov
   if (view.operation === 'combine') return view.targetKind === 'person' ? 'care' : 'craft';
   if (view.operation === 'expose') return 'tend-fire';
   if (view.operation === 'rehydrate' || view.operation === 'dehydrate') return 'care';
+  if (view.operation === 'inter') {
+    if (view.mortuaryPhase === 'lift') return 'carry';
+    if (view.mortuaryPhase === 'prepare-grave' || view.mortuaryPhase === 'cover-grave' || view.mortuaryPhase === 'mark') return 'work';
+    return 'attend';
+  }
   if (view.operation === 'reproduce') return 'reproduce';
   return 'idle';
 }
@@ -3386,6 +3391,7 @@ void main() {`,
         .map((intent) => [intent.ownerId, intent]));
       const agentsByCell = new Map<number, SocietyAgent[]>();
       for (const agent of agents) {
+        if (agent.bodyDisposition === 'interred') continue;
         const occupants = agentsByCell.get(agent.cellId);
         if (occupants) occupants.push(agent);
         else agentsByCell.set(agent.cellId, [agent]);
@@ -3441,6 +3447,8 @@ void main() {`,
           figures.set(agent.id, f);
           aoExcluded.push(f.sprite, f.speechBubble); // 名牌和台词气泡都不参与 AO
         }
+        f.group.visible = agent.bodyDisposition !== 'interred';
+        if (!f.group.visible) continue;
         const path = agent.tickPath.length === RULE_TICKS + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
         const point = interpolatePath(path, w.width, motion);
         const prev = interpolatePath(path, w.width, Math.max(0, motion - 0.08));

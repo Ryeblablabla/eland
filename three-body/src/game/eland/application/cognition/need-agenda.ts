@@ -2,12 +2,14 @@ import { animalSpecies } from '../../domain/animal';
 import { cognitionStateOf, outcomeBeliefSuccess, outcomeBeliefUncertainty } from '../../domain/cognition';
 import { materialHas } from '../../domain/material';
 import type { DecisionContext } from '../../domain/model';
+import { bereavementUrgency } from '../../domain/mortuary';
 import { personalityScore } from '../../domain/personality';
 
 export type NeedKind =
   | 'homeostasis'
   | 'safety'
   | 'care'
+  | 'bereavement'
   | 'reserve'
   | 'capability'
   | 'commitment'
@@ -111,6 +113,20 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     ],
     hazardousConditions.flatMap((condition) => condition.sourceEventIds),
   ));
+
+  const grief = (person.bereavements ?? []).map((bereavement) => ({
+    bereavement,
+    urgency: bereavementUrgency(context.state, bereavement, atMonth),
+  })).sort((left, right) => right.urgency - left.urgency)[0];
+  if (grief?.urgency > 0) {
+    const deceased = context.state.people.find((candidate) => candidate.id === grief.bereavement.deceasedPersonId);
+    needs.push(signal(
+      'bereavement',
+      grief.urgency,
+      [`本人以可追溯来源知道${deceased?.name ?? '一位熟识的人'}已经死亡，仍有悼念、遗物或遗体照料没有完成`],
+      grief.bereavement.sourceEventIds,
+    ));
+  }
 
   let edibleUnits = 0;
   let drinkableUnits = 0;

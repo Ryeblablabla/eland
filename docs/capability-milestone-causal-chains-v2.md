@@ -45,7 +45,7 @@
 
 ### 家族 1：生命循环、亲族、伴侣与同意
 
-可能的证据路径：出生或生殖约定（`emergence`）→ 有来源的亲子/伴侣关系 → 持续照护（`stable`）；危险可引出保护（`response`），衰老或关系拒绝可形成 `decline`，死亡形成 `collapse`。这些是可分叉、可中断的观察路径，不是人生脚本。
+可能的证据路径：出生或生殖约定（`emergence`）→ 有来源的亲子/伴侣关系 → 持续照护（`stable`）；危险可引出保护（`response`），衰老或关系拒绝可形成 `decline`，死亡形成 `collapse`。死亡后还可由知情人物真实挖墓、入葬、覆土并以实体材料留下墓记，形成独立的建设性实践。以上都是可分叉、可中断的观察路径，不是人生脚本。
 
 | 地图坐标（原标签） | 当前定义 ID | 效价 · 阶段/分支 | 当前支持与证据口径 |
 | --- | --- | --- | --- |
@@ -55,6 +55,7 @@
 | `4 结成家庭与亲族` | `capability:4:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：出生亲缘事实还不足以证明家庭组织已经形成。 |
 | `8 衰老` | `capability:8:decline:aging:v2` | `ambivalent · decline` | `strict · aging`：人物进入衰老压力年龄，月度结算写入有来源 `aging` 条件。 |
 | `9 死亡` | `capability:9:collapse:death:v2` | `ambivalent · collapse` | `strict · death`：身体或寿命结算写入人物、原因和来源明确的死亡事实。 |
+| `10 埋葬并纪念死者` | `capability:10:practice:burial-memorial:v2` | `constructive · practice` | `strict · burial-memorial`：同一遗体先由近身动作挖墓、放置并用该次挖掘产生的同材质覆土完成安葬；随后真实消耗 `WoodTablet` 并使用合格工具留下墓记。死亡、安葬和墓记事件必须互相引用，单有遗体、土坑或表现层墓碑均不成立。 |
 | `161 表达爱慕与建立伴侣关系` | `capability:161:stable:companion:v2` | `constructive · stable` | `strict · companion`：面向具体人物的伴侣提议被接受，并保存稳定共同生活地点；双方在同一生活区域累计满跨月门槛，不要求体素坐标重合。 |
 | `162 拒绝或结束亲密关系` | `capability:162:decline:relationship-rejection:v2` | `ambivalent · decline` | `strict · relationship-rejection`：具体 `companion` 或 `reproduce` 提议被目标明确拒绝，未形成有效关系约定。 |
 | `165 确认或争议亲子身份` | `capability:165:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：出生事实与 `geneticParents` 一致只能证明生物亲缘，不能证明人物或共同体完成了身份确认，更不能覆盖争议支路。 |
@@ -299,12 +300,12 @@
 
 | 范围 | 定义数 | `strict` | `guarded` |
 | --- | ---: | ---: | ---: |
-| 当前 `MAP_CATALOG` 地图坐标 | 120 | 51 | 69 |
+| 当前 `MAP_CATALOG` 地图坐标 | 121 | 52 | 69 |
 | `WORLD_SPECIFIC_SPECS` | 17 | 17 | 0 |
-| 合计 | 137 | 68 | 69 |
+| 合计 | 138 | 69 | 69 |
 
-51 个 strict 地图定义按效价分为：`constructive 37`、`harmful 4`、`ambivalent 10`；按阶段分为：`emergence 8`、`practice 24`、`stable 9`、`harm 1`、`decline 2`、`collapse 3`、`recovery 0`、`response 4`。17 个 world-specific 定义按效价分为：`constructive 5`、`harmful 7`、`ambivalent 5`；按阶段分为：`emergence 2`、`practice 0`、`stable 2`、`harm 5`、`decline 2`、`collapse 2`、`recovery 3`、`response 1`。
+52 个 strict 地图定义按效价分为：`constructive 38`、`harmful 4`、`ambivalent 10`；按阶段分为：`emergence 8`、`practice 25`、`stable 9`、`harm 1`、`decline 2`、`collapse 3`、`recovery 0`、`response 4`。17 个 world-specific 定义按效价分为：`constructive 5`、`harmful 7`、`ambivalent 5`；按阶段分为：`emergence 2`、`practice 0`、`stable 2`、`harm 5`、`decline 2`、`collapse 2`、`recovery 3`、`response 1`。
 
-这 120 项只是当前代码从一千项地图中登记的子集，不代表其余 880 项被否定。任何清单外行为都应先作为世界事实保存；观察器可以在后续版本新增精确坐标或保留为 world-specific。无论 strict 还是 guarded，都必须从真实行动者、对象、地点、月份、资源、规则、后果和事件 ID 回放，不能匹配一句叙述文本，也不能用“看起来像”补齐缺失环节。
+这 121 项只是当前代码从一千项地图中登记的子集，不代表其余 879 项被否定。任何清单外行为都应先作为世界事实保存；观察器可以在后续版本新增精确坐标或保留为 world-specific。无论 strict 还是 guarded，都必须从真实行动者、对象、地点、月份、资源、规则、后果和事件 ID 回放，不能匹配一句叙述文本，也不能用“看起来像”补齐缺失环节。
 
 最后，本目录没有读取或引用任何具体 run 的权威状态、事实报告或叙事增强结果，因此**没有声称上述任一里程碑已经在自然模拟历史中发生**。判断“已发生”必须另行对具体运行调用观察器，并展示满足门槛的证据事件链。

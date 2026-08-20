@@ -2,6 +2,7 @@ import { goalSatisfied } from '../../domain/action-executor';
 import { registerPlanningEventOverlay } from '../../domain/event-index';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { Material } from '../../domain/material';
+import { strongestBereavementUrgency } from '../../domain/mortuary';
 import type {
   ActionFact,
   AgentDecider,
@@ -110,6 +111,7 @@ function needsFullPlanningReview(
     person.body.health < 35
     || person.body.hydration < 28
     || person.body.nutrition < 28
+    || strongestBereavementUrgency(state, person, atMonth) >= 0.7
     || person.conditions.some((condition) => (
       condition.kind === 'cold'
       || condition.kind === 'heat'

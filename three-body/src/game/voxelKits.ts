@@ -1871,6 +1871,40 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     );
   }
 
+  // 墓葬只由权威 interred 遗体投影。土冢是同一安葬事实的稳定视觉细节；
+  // 竖立墓记必须另外存在已经消耗真实材料创建的 marker。
+  for (const grave of society.graves ?? []) {
+    const x = grave.cellId % w.width;
+    const y = Math.floor(grave.cellId / w.width);
+    const centerX = x - w.width / 2 + 0.5;
+    const centerZ = y - w.height / 2 + 0.5;
+    const groundY = grave.z * CELL_H;
+    const turn = hash01(grave.cellId ^ w.generator.seed, 207) < 0.5 ? 0 : Math.PI / 2;
+    out.push({
+      b: 'groundMark', x: centerX, y: groundY + 0.012, z: centerZ,
+      sx: 0.54, sy: 0.025, sz: 0.78, ry: turn, c: 0x705947,
+    });
+    out.push({
+      b: 'stone', x: centerX, y: groundY + 0.038, z: centerZ,
+      sx: 0.44, sy: 0.055, sz: 0.66, ry: turn, c: 0x847766,
+    });
+    if (grave.marked) {
+      const markerColor = grave.markerMaterialId === undefined
+        ? 0x896039
+        : (() => {
+            const color = w.palette[grave.markerMaterialId]?.color ?? [137, 96, 57];
+            return (color[0] << 16) | (color[1] << 8) | color[2];
+          })();
+      const headZ = centerZ - (turn === 0 ? 0.27 : 0);
+      const headX = centerX - (turn === 0 ? 0 : 0.27);
+      out.push({
+        b: 'wood', x: headX, y: groundY + 0.23, z: headZ,
+        sx: turn === 0 ? 0.34 : 0.075, sy: 0.44, sz: turn === 0 ? 0.075 : 0.34,
+        c: markerColor,
+      });
+    }
+  }
+
   // 掉落物 / 容器 → 同格聚合物资堆
   const pileFor = (materialKey: string | undefined): KitBuilder =>
     materialKey === 'wood' || materialKey === 'plank' ? kitWoodpile

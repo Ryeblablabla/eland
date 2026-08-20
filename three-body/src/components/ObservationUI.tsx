@@ -1,18 +1,24 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
+  Award,
   Baby,
+  Backpack,
   Bandage,
+  Brain,
   Droplets,
   Eye,
+  Footprints,
   Heart,
   Lock,
+  MessageCircle,
   Moon,
   Package,
   Shield,
   Skull,
   Snowflake,
   Thermometer,
+  UserRound,
   Utensils,
   Users,
 } from 'lucide-react';
@@ -73,12 +79,17 @@ interface CivilizationEndingProps {
 const FOCUS_EXIT_MS = 135;
 const END_EXIT_MS = 240;
 
-const AGENT_SUBTABS: Array<{ key: AgentSubtab; label: string; shortcut?: string }> = [
-  { key: 'overview', label: '概况' },
-  { key: 'conversation', label: '对话', shortcut: 'C' },
-  { key: 'inventory', label: '背包', shortcut: 'B' },
-  { key: 'history', label: '行动', shortcut: 'H' },
-];
+const AGENT_SUBTABS = [
+  { key: 'overview', label: '概况', icon: UserRound },
+  { key: 'conversation', label: '对话', shortcut: 'C', icon: MessageCircle },
+  { key: 'inventory', label: '背包', shortcut: 'B', icon: Backpack },
+  { key: 'history', label: '行动', shortcut: 'H', icon: Footprints },
+] satisfies Array<{
+  key: AgentSubtab;
+  label: string;
+  shortcut?: string;
+  icon: typeof UserRound;
+}>;
 
 function conciseEndingSummary(ending: CivilizationEndingView): string {
   const terminalLives = ending.summary.match(/^文明最后的\s*(\d+)\s*个生命在第\s*\d+\s*月因.+终止，没有留下生还者。$/u)?.[1];
@@ -527,7 +538,25 @@ export function FocusInspector({
             </div>
             <div className="person-header__identity">
               <p className="focus-inspector__eyebrow">{eyebrow} · 第 {agent.generation} 代 · {ageLabel(agent.body.ageMonths)}</p>
-              <h2>{name}</h2>
+              <div className="person-header__title-row">
+                <h2>{name}</h2>
+                <div aria-label="当前状态" className="person-header__statuses">
+                  <span className={`person-header__state person-header__state--${agent.state}`}>
+                    <AgentStateGlyph state={agent.state} />
+                    {agentStateLabel(agent)}
+                  </span>
+                  {agent.conditions.map((condition) => (
+                    <span
+                      className={`person-header__condition person-header__condition--stage-${condition.stage}`}
+                      key={condition.id}
+                      title={`${condition.label} · 阶段 ${condition.stage}`}
+                    >
+                      <ConditionGlyph kind={condition.kind} />
+                      {condition.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           </header>
         ) : (
@@ -546,6 +575,7 @@ export function FocusInspector({
           >
             {AGENT_SUBTABS.map((tab) => {
               const selected = agentSubtab === tab.key;
+              const TabIcon = tab.icon;
               return (
                 <button
                   aria-controls={`${personTabsId}-${tab.key}-panel`}
@@ -559,6 +589,7 @@ export function FocusInspector({
                   tabIndex={selected ? 0 : -1}
                   type="button"
                 >
+                  <TabIcon aria-hidden="true" size={18} strokeWidth={1.8} />
                   <span>{tab.label}</span>
                   {tab.shortcut && <kbd>{tab.shortcut}</kbd>}
                 </button>
@@ -600,47 +631,53 @@ export function FocusInspector({
             {agent ? (
               <>
             <div className="person-overview">
-              <div className={`person-overview__state person-overview__state--${agent.state}`}>
-                <AgentStateGlyph state={agent.state} />
-                <span>{agentStateLabel(agent)}</span>
-                <span className="person-overview__respect">声望 {agent.respect}</span>
+              <div className="person-vitals" aria-label="人物状态数值">
+                <div
+                  aria-label={`健康 ${Math.round(agent.body.health)}`}
+                  className={`person-vital person-vital--${vitalityTone(agent.body.health)}`}
+                  title="健康"
+                >
+                  <Heart aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <strong>{Math.round(agent.body.health)}</strong>
+                </div>
+                <div
+                  aria-label={`水分 ${Math.round(agent.body.hydration)}`}
+                  className={`person-vital person-vital--${vitalityTone(agent.body.hydration)}`}
+                  title="水分"
+                >
+                  <Droplets aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <strong>{Math.round(agent.body.hydration)}</strong>
+                </div>
+                <div
+                  aria-label={`营养 ${Math.round(agent.body.nutrition)}`}
+                  className={`person-vital person-vital--${vitalityTone(agent.body.nutrition)}`}
+                  title="营养"
+                >
+                  <Utensils aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <strong>{Math.round(agent.body.nutrition)}</strong>
+                </div>
+                <div aria-label={`声望 ${agent.respect}`} className="person-vital person-vital--respect" title="声望">
+                  <Award aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <strong>{agent.respect}</strong>
+                </div>
               </div>
-              <div className="person-vitals" aria-label="身体状态">
-                <div className={`person-vital person-vital--${vitalityTone(agent.body.health)}`} title="健康">
-                  <Heart aria-hidden="true" size={16} strokeWidth={1.7} />
-                  <span>健康</span><strong>{Math.round(agent.body.health)}</strong>
-                </div>
-                <div className={`person-vital person-vital--${vitalityTone(agent.body.hydration)}`} title="水分">
-                  <Droplets aria-hidden="true" size={16} strokeWidth={1.7} />
-                  <span>水分</span><strong>{Math.round(agent.body.hydration)}</strong>
-                </div>
-                <div className={`person-vital person-vital--${vitalityTone(agent.body.nutrition)}`} title="营养">
-                  <Utensils aria-hidden="true" size={16} strokeWidth={1.7} />
-                  <span>营养</span><strong>{Math.round(agent.body.nutrition)}</strong>
-                </div>
-              </div>
-              {agent.conditions.length > 0 && (
-                <div className="person-conditions" aria-label="当前身体状况">
-                  {agent.conditions.map((condition) => {
-                    return (
-                      <span className={`person-condition person-condition--stage-${condition.stage}`} key={condition.id} title={`${condition.label} · 阶段 ${condition.stage}`}>
-                        <ConditionGlyph kind={condition.kind} />
-                        {condition.label}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             <dl className="focus-inspector__summary focus-inspector__summary--person">
               {activeIntent ? (
                 <div>
-                  <dt>长期意图</dt>
+                  <dt aria-label="长期意图" title="长期意图">
+                    <Brain aria-hidden="true" size={18} strokeWidth={1.8} />
+                  </dt>
                   <dd>{activeIntent.summary} · {Math.round(activeIntent.progress * 100)}%</dd>
                 </div>
               ) : (
-                <div><dt>内在取向</dt><dd>{agent.mind.want}</dd></div>
+                <div>
+                  <dt aria-label="内在取向" title="内在取向">
+                    <Brain aria-hidden="true" size={18} strokeWidth={1.8} />
+                  </dt>
+                  <dd>{agent.mind.want}</dd>
+                </div>
               )}
             </dl>
               </>

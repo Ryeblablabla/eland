@@ -197,63 +197,72 @@
   min-width: 0;
 }
 
-.person-header__identity h2 {
+.person-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
   margin-top: 4px;
 }
 
+.person-header__title-row h2 {
+  margin: 0;
+}
+
+.person-header__statuses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.person-header__state,
+.person-header__condition {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--observation-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.person-header__state--active {
+  color: #7ad9c9;
+}
+
+.person-header__state--dehydrated,
+.person-header__state--hibernating,
+.person-header__condition--stage-2,
+.person-header__condition--stage-3 {
+  color: #e8be66;
+}
+
+.person-header__state--dead {
+  color: #ff7182;
+}
+
 .person-overview {
-  display: grid;
-  gap: 14px;
   margin-top: 22px;
   padding: 18px 0;
   border-top: 0.5px solid var(--observation-separator);
   border-bottom: 0.5px solid var(--observation-separator);
 }
 
-.person-overview__state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--observation-label-secondary);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.person-overview__state--active {
-  color: #7ad9c9;
-}
-
-.person-overview__state--dehydrated,
-.person-overview__state--hibernating {
-  color: #e8be66;
-}
-
-.person-overview__state--dead {
-  color: #ff7182;
-}
-
-.person-overview__respect {
-  margin-left: auto;
-  color: var(--observation-label-tertiary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .person-vitals {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
 .person-vital {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   min-width: 0;
   color: var(--observation-label-tertiary);
-  font-size: 11px;
-  line-height: 16px;
 }
 
 .person-vital strong {
@@ -275,24 +284,8 @@
   color: #ff7182;
 }
 
-.person-conditions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-}
-
-.person-condition {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--observation-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.person-condition--stage-2,
-.person-condition--stage-3 {
-  color: #e8be66;
+.person-vital--respect svg {
+  color: var(--observation-label-secondary);
 }
 
 .focus-inspector__summary--person {
@@ -300,7 +293,13 @@
 }
 
 .focus-inspector__summary--person > div {
-  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+.focus-inspector__summary--person dt {
+  display: flex;
+  align-items: center;
+  height: 20px;
 }
 
 .person-relations {
@@ -418,7 +417,7 @@
   height: 34px;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   padding: 0 8px;
   border: 0;
   border-radius: 9px;
@@ -444,6 +443,10 @@
   color: var(--observation-label-disabled);
   font: inherit;
   font-size: 9px;
+}
+
+.person-tabs button > svg {
+  flex: 0 0 auto;
 }
 
 .person-tabpanel {
@@ -1405,14 +1408,6 @@
 
   .person-tabs kbd {
     display: none;
-  }
-
-  .person-vital {
-    grid-template-columns: auto 1fr;
-  }
-
-  .person-vital strong {
-    grid-column: 2;
   }
 
   .civilization-ending {

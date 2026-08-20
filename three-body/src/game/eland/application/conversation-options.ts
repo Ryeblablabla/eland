@@ -232,26 +232,35 @@ function openingOption(
     sourceFactIds: [...candidate.sourceFactIds],
   };
   const representationId = `conversation:${candidate.topic}:${atMonth}:${person.id}:${other.id}`;
+  const conversationAction = {
+    kind: 'communicate' as const,
+    content: {
+      id: representationId,
+      kind: 'claim' as const,
+      summary: candidate.summary,
+      ...(candidate.factId ? { factId: candidate.factId } : {}),
+      conversation,
+    },
+    audience: [other.id],
+    channel: 'voice' as const,
+  };
+  const together = sameLocation(person, other);
+  const path = together ? [] : findStandingPath(state.world.grid, person.position, other.position);
+  if (!together && !path.length) return null;
   return {
     id: representationId,
-    summary: `与${other.name}谈${TOPIC_LABEL[candidate.topic]}：${candidate.summary}`,
-    reason: candidate.reason,
+    summary: together
+      ? `与${other.name}谈${TOPIC_LABEL[candidate.topic]}：${candidate.summary}`
+      : `去找${other.name}谈${TOPIC_LABEL[candidate.topic]}：${candidate.summary}`,
+    reason: together ? candidate.reason : `${candidate.reason}；靠近后立即开始这次具体交谈`,
     goal: { kind: 'representation-made', representationId },
-    nextAction: {
-      kind: 'communicate',
-      content: {
-        id: representationId,
-        kind: 'claim',
-        summary: candidate.summary,
-        ...(candidate.factId ? { factId: candidate.factId } : {}),
-        conversation,
-      },
-      audience: [other.id],
-      channel: 'voice',
-    },
+    nextAction: together
+      ? conversationAction
+      : { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
+    ...(!together ? { completionAction: conversationAction } : {}),
     target: { kind: 'person', personId: other.id },
-    estimatedDuration: 'one-month',
-    estimatedMonths: 1,
+    estimatedDuration: together ? 'one-month' : 'several-months',
+    estimatedMonths: together ? 1 : Math.max(1, Math.ceil((path.length - 1) / 15)),
     risks: [],
     domain: 'social',
     sourceFactIds: [...candidate.sourceFactIds],
@@ -386,8 +395,7 @@ export function buildGroundedConversationOptions(
   const requiredResponse = responseOption(state, person, visiblePeople, atMonth);
   if (requiredResponse) return [requiredResponse];
   return visiblePeople
-    .filter((other) => sameLocation(person, other)
-      && ageMonths(other, atMonth) >= 12 * 12
+    .filter((other) => ageMonths(other, atMonth) >= 12 * 12
       && !isDehydratedHibernating(other))
     .slice(0, 3)
     .flatMap((other) => openingCandidates(state, person, other)

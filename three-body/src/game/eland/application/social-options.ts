@@ -710,19 +710,5 @@ export function buildSocialOptions(
     }
   }
 
-  if (!localPeople.length) {
-    for (const other of visiblePeople.slice(0, 2)) {
-      const path = findStandingPath(state.world.grid, person.position, other.position);
-      if (!path.length) continue;
-      options.push({
-        id: `meet:${other.id}`,
-        summary: `去与${other.name}会合`, reason: '看见另一个人，接近后才能沟通、求助或共同做事',
-        goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
-        target: { kind: 'person', personId: other.id }, estimatedDuration: path.length <= 4 ? 'one-month' : 'several-months',
-        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
-        risks: [], domain: 'social', sourceFactIds: relationTo(person, other.id)?.sourceEventIds ?? [],
-      });
-    }
-  }
   return options;
 }

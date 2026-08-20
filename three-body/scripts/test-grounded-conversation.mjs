@@ -9,12 +9,14 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-grounded-conve
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const executorBundlePath = path.join(temporaryDirectory, 'action-executor.mjs');
 const relationshipBundlePath = path.join(temporaryDirectory, 'relationship-evidence.mjs');
+const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
 
 try {
   for (const [entry, output] of [
     ['src/game/eland/simulation.ts', simulationBundlePath],
     ['src/game/eland/domain/action-executor.ts', executorBundlePath],
     ['src/game/eland/domain/relationship-evidence.ts', relationshipBundlePath],
+    ['src/game/eland/world/grid.ts', gridBundlePath],
   ]) {
     execFileSync(path.resolve('node_modules/.bin/esbuild'), [
       entry, '--bundle', '--platform=node', '--format=esm', `--outfile=${output}`,
@@ -24,6 +26,7 @@ try {
   const { buildDecisionContexts, createInitialState } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
   const { executePrimitiveAction } = await import(`${pathToFileURL(executorBundlePath).href}?test=${Date.now()}`);
   const { buildRelationshipCausalBasis } = await import(`${pathToFileURL(relationshipBundlePath).href}?test=${Date.now()}`);
+  const { cellsInRadius, findStandingPath, standingPositions } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
 
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
@@ -57,6 +60,14 @@ try {
   });
   state.clock.elapsedMonths = 1;
 
+  const visiblePosition = cellsInRadius(speaker.position.cellId, 3)
+    .filter((cellId) => cellId !== speaker.position.cellId)
+    .flatMap((cellId) => standingPositions(state.world.grid, cellId))
+    .find((position) => findStandingPath(state.world.grid, speaker.position, position).length > 0);
+  assert.ok(visiblePosition, '测试地图需要一个可见的邻近位置');
+  listener.position.cellId = visiblePosition.cellId;
+  listener.position.z = visiblePosition.z;
+
   let contexts = buildDecisionContexts(state);
   const openingOption = contexts.find((context) => context.person.id === speaker.id)?.options.find((option) => (
     option.id.startsWith('conversation:care:')
@@ -66,10 +77,22 @@ try {
   assert.ok(openingOption, '真实身体处境应生成有具体正文的生活聊天开场');
   assert.ok(openingOption.summary.includes('不舒服') || openingOption.summary.includes('冷得厉害'), '生活聊天不能退回通用占位句');
   assert.deepEqual(openingOption.sourceFactIds, [conditionEvent.id], '开场必须携带可解析的身体事件');
+  assert.equal(openingOption.nextAction.kind, 'move', '可见但不同地的人只能因具体话题而短程靠近');
+  assert.equal(openingOption.completionAction?.kind, 'communicate', '靠近必须绑定真实交谈，不能停在无目的会合');
+  assert.equal(contexts.find((context) => context.person.id === speaker.id)?.options.some((option) => option.id.startsWith('meet:')), false, '不得生成没有后续行动的通用会合');
+
+  placeWith(listener, speaker);
+  contexts = buildDecisionContexts(state);
+  const localOpeningOption = contexts.find((context) => context.person.id === speaker.id)?.options.find((option) => (
+    option.id.startsWith('conversation:care:')
+      && option.target?.kind === 'person'
+      && option.target.personId === listener.id
+  ));
+  assert.equal(localOpeningOption?.nextAction.kind, 'communicate', '已经同地时应直接交谈');
 
   const speakerBefore = structuredClone(relation(speaker, listener));
   const listenerBefore = structuredClone(relation(listener, speaker));
-  const openingEvent = runAction(state, speaker, openingOption.nextAction, 1, 1);
+  const openingEvent = runAction(state, speaker, localOpeningOption.nextAction, 1, 1);
   assert.equal(openingEvent.status, 'completed');
   assert.equal(openingEvent.diff.groundedConversationTurn, 'opening');
   assert.equal(relation(speaker, listener).bond - speakerBefore.bond, 2, '照护开场应增加两点羁绊');
@@ -101,7 +124,7 @@ try {
   const duplicateResponse = runAction(state, listener, duplicateResponseAction, 1, 3);
   assert.equal(duplicateResponse.status, 'blocked', '同一开场不能重复回应刷关系');
 
-  const forgedAction = structuredClone(openingOption.nextAction);
+  const forgedAction = structuredClone(localOpeningOption.nextAction);
   forgedAction.content.id = 'conversation:care:forged';
   forgedAction.content.conversation.basisKey = 'grounded-conversation-v1|forged';
   forgedAction.content.conversation.sourceFactIds = ['missing-source-event'];

@@ -101,6 +101,7 @@ try {
   agreement.dueAtMonth = 25;
   let options = buildDecisionContext(state, first, 2).options;
   assert.equal(options.some((option) => option.id.startsWith('rejoin-companion:')), false, '不得再追踪伴侣实时位置');
+  assert.equal(options.some((option) => option.id.startsWith('meet:')), false, '共同生活区外也不得退回无后续目的的通用会合');
   assert.equal(options.some((option) => option.id.startsWith('return-shared-living:')), false, '约定仍有时间余量时应允许独立行动');
 
   agreement.coLocatedMonths = 11;

@@ -13,6 +13,7 @@ const intentBundlePath = path.join(temporaryDirectory, 'intent.mjs');
 const memoryBundlePath = path.join(temporaryDirectory, 'memory.mjs');
 const waterAccessBundlePath = path.join(temporaryDirectory, 'water-access.mjs');
 const constructionBundlePath = path.join(temporaryDirectory, 'construction-options.mjs');
+const monthlyProcessesBundlePath = path.join(temporaryDirectory, 'monthly-processes.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -36,6 +37,9 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/application/construction-options.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${constructionBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/monthly-processes.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${monthlyProcessesBundlePath}`,
+  ], { stdio: 'pipe' });
   const { buildDecisionContexts, createInitialState, createSimulation, executeActiveIntent, seededFraction, stepSimulation, stepSimulationAsync } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
@@ -43,6 +47,7 @@ try {
   const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
   const { findReachableWater } = await import(`${pathToFileURL(waterAccessBundlePath).href}?test=${Date.now()}`);
   const { buildConstructionOptions } = await import(`${pathToFileURL(constructionBundlePath).href}?test=${Date.now()}`);
+  const { resolveWeather } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
     person.position.z = other.position.z;
@@ -79,6 +84,79 @@ try {
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 55 && relation.bond === 55 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民应有中等且可追溯的相互熟悉关系');
   const cappedLongRun = createInitialState(311_000, { endpoint: { kind: 'months', value: 99_999 } });
   assert.equal(cappedLongRun.civilization.conditions.endpoint.value, 12_000, '长期演化可持续到全员死亡，但时间硬上限暂定为一千年');
+
+  const weatherTrace = (seed) => {
+    const state = {
+      seed,
+      civilization: {
+        epoch: 'stable',
+        era: { sequence: 0 },
+        climate: { kind: 'temperate' },
+        weather: { kind: 'clear', intensity: 1, sinceMonth: 0 },
+      },
+    };
+    const trace = [];
+    for (let atMonth = 1; atMonth <= 120; atMonth += 1) {
+      const previous = { ...state.civilization.weather };
+      const events = resolveWeather(state, atMonth);
+      const current = state.civilization.weather;
+      if (current.kind !== previous.kind) {
+        assert.equal(current.sinceMonth, atMonth, '新天气过程必须记录真实开始月');
+      } else if (atMonth > 1) {
+        assert.equal(current.sinceMonth, previous.sinceMonth, '同种天气的强度漂移不得伪造新过程');
+      }
+      if (current.kind === previous.kind && current.intensity !== previous.intensity) {
+        assert.equal(Math.abs(current.intensity - previous.intensity), 1, '持续期内天气强度每月最多变化一级');
+      }
+      trace.push(...events.map((event) => ({
+        atMonth: event.atMonth,
+        kind: event.diff.kind,
+        intensity: event.diff.intensity,
+        episodeStarted: event.diff.episodeStarted,
+      })));
+    }
+    return trace;
+  };
+  for (const seed of [185, 20260815, 20260816]) {
+    const trace = weatherTrace(seed);
+    const transitionRate = (trace.length - 1) / 119;
+    assert.ok(transitionRate >= 0.25 && transitionRate <= 0.5, `天气状态变化率应保持在有持续性但仍可感知的区间，实际 ${transitionRate}`);
+    assert.deepEqual(trace, weatherTrace(seed), '同一种子的天气过程必须完全可回放');
+  }
+  const incompatibleWeatherState = {
+    seed: 185,
+    civilization: {
+      epoch: 'chaotic',
+      era: { sequence: 1 },
+      climate: { kind: 'cold' },
+      weather: { kind: 'rain', intensity: 2, sinceMonth: 1 },
+    },
+  };
+  resolveWeather(incompatibleWeatherState, 2);
+  assert.notEqual(incompatibleWeatherState.civilization.weather.kind, 'rain', '气候已不兼容时不得强行保留旧天气');
+  assert.equal(incompatibleWeatherState.civilization.weather.sinceMonth, 2);
+
+  const stableWeatherCounts = { clear: 0, rain: 0, storm: 0, drought: 0, snow: 0, fog: 0 };
+  for (let seed = 1; seed <= 100; seed += 1) {
+    const state = {
+      seed,
+      civilization: {
+        epoch: 'stable',
+        era: { sequence: 0 },
+        climate: { kind: 'temperate' },
+        weather: { kind: 'clear', intensity: 1, sinceMonth: 0 },
+      },
+    };
+    for (let atMonth = 1; atMonth <= 120; atMonth += 1) {
+      resolveWeather(state, atMonth);
+      stableWeatherCounts[state.civilization.weather.kind] += 1;
+    }
+  }
+  const stableWeatherTargetShares = { clear: 0.49, rain: 0.27, storm: 0.07, drought: 0.05, snow: 0, fog: 0.12 };
+  for (const [kind, targetShare] of Object.entries(stableWeatherTargetShares)) {
+    const observedShare = stableWeatherCounts[kind] / 12_000;
+    assert.ok(Math.abs(observedShare - targetShare) <= 0.035, `延续惯性不得改写温和气候下 ${kind} 的长程目标占比，实际 ${observedShare}`);
+  }
 
   const memoryPerson = structuredClone(initial.people[0]);
   memoryPerson.memories = Array.from({ length: 6 }, (_, index) => ({ id: `dialogue-${index}`, kind: 'dialogue', summary: `普通对话 ${index}`, importance: 90 - index, createdAtMonth: index, lastRecalledAtMonth: index, personIds: [], sourceEventIds: [] }));
@@ -503,10 +581,12 @@ try {
   const companionB = companionState.people[1];
   placeWith(companionB, companionA);
   const companionId = 'test-companion-agreement';
-  recordAgreementAction(companionState, actionFact('test-companion-proposal', 1, companionA.id, { kind: 'communicate', content: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, audience: [companionB.id], channel: 'voice' }));
-  recordAgreementAction(companionState, actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'communicate', content: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, audience: [companionA.id], channel: 'voice' }));
+  const companionProposal = { ...actionFact('test-companion-proposal', 1, companionA.id, { kind: 'communicate', content: { id: companionId, kind: 'offer', summary: '结伴', proposal: { kind: 'companion', proposerId: companionA.id, partnerId: companionB.id, expiresAtMonth: 4 } }, audience: [companionB.id], channel: 'voice' }), cellId: companionA.position.cellId, fromCellId: companionA.position.cellId, toCellId: companionA.position.cellId, fromZ: companionA.position.z, toZ: companionA.position.z, pathSegment: [companionA.position.cellId] };
+  const companionAcceptance = { ...actionFact('test-companion-acceptance', 2, companionB.id, { kind: 'communicate', content: { id: 'test-companion-acceptance-content', kind: 'accept', referenceId: companionId }, audience: [companionA.id], channel: 'voice' }), cellId: companionB.position.cellId, fromCellId: companionB.position.cellId, toCellId: companionB.position.cellId, fromZ: companionB.position.z, toZ: companionB.position.z, pathSegment: [companionB.position.cellId] };
+  recordAgreementAction(companionState, companionProposal);
+  recordAgreementAction(companionState, companionAcceptance);
   for (let month = 3; month <= 27; month += 1) advanceAgreementLifecycle(companionState, month);
-  assert.equal(companionState.agreements[0]?.status, 'fulfilled', '结伴必须由足够月份的实际共处履行');
+  assert.equal(companionState.agreements[0]?.status, 'fulfilled', '结伴必须由足够月份的稳定共同生活履行');
   assert.ok((companionState.agreements[0]?.coLocatedMonths ?? 0) >= 12);
 
   const breachState = createInitialState(32, { endpoint: { kind: 'months', value: 24 } });

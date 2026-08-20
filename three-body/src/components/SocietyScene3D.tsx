@@ -39,6 +39,15 @@ import { N_STARS, STAR_STYLES } from '@/lib/threebody';
  */
 class ScopedGTAOPass extends GTAOPass {
   excluded: THREE.Object3D[] = [];
+  resolutionScale = 0.5;
+
+  override setSize(width: number, height: number): void {
+    super.setSize(
+      Math.max(1, Math.floor(width * this.resolutionScale)),
+      Math.max(1, Math.floor(height * this.resolutionScale)),
+    );
+  }
+
   override render(
     renderer: THREE.WebGLRenderer,
     writeBuffer: THREE.WebGLRenderTarget,
@@ -158,6 +167,7 @@ const SPEECH_MAX_LINE_WIDTH_PX = 400;
 const SPEECH_MAX_LINES = 3;
 const SPEECH_COLLISION_GAP_PX = 8;
 const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参与规则、寻路或选择
+const SOCIETY_MAX_PIXEL_RATIO = 1.5;
 const CAMERA_TARGET_INSET_X = 12;
 const CAMERA_TARGET_INSET_Z = 10;
 
@@ -191,6 +201,149 @@ function visualSmoothNoise(seed: number, x: number, z: number, scale: number, sa
     smoothX,
   );
   return THREE.MathUtils.lerp(top, bottom, smoothZ);
+}
+
+function tileableCloudNoise(seed: number, u: number, v: number, cells: number, salt: number): number {
+  const x = u * cells;
+  const z = v * cells;
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const tx = x - x0;
+  const tz = z - z0;
+  const smoothX = tx * tx * (3 - 2 * tx);
+  const smoothZ = tz * tz * (3 - 2 * tz);
+  const wrappedHash = (ix: number, iz: number) => visualSpatialHash(
+    seed,
+    ((ix % cells) + cells) % cells,
+    ((iz % cells) + cells) % cells,
+    salt,
+  );
+  const top = THREE.MathUtils.lerp(wrappedHash(x0, z0), wrappedHash(x0 + 1, z0), smoothX);
+  const bottom = THREE.MathUtils.lerp(wrappedHash(x0, z0 + 1), wrappedHash(x0 + 1, z0 + 1), smoothX);
+  return THREE.MathUtils.lerp(top, bottom, smoothZ);
+}
+
+/** 世界种子决定的可平铺云密度；同一权威状态重进场景会得到同一片云系。 */
+function makeCloudNoiseTexture(seed: number): THREE.DataTexture {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  const octaves = [4, 8, 16, 32] as const;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size;
+      const v = y / size;
+      let amplitude = 1;
+      let total = 0;
+      let weight = 0;
+      octaves.forEach((cells, octave) => {
+        total += tileableCloudNoise(seed, u, v, cells, 0x41c64e6d + octave * 977) * amplitude;
+        weight += amplitude;
+        amplitude *= 0.52;
+      });
+      const broad = tileableCloudNoise(seed, u, v, 3, 0x2d93f06b);
+      const density = THREE.MathUtils.clamp((total / weight) * 0.78 + broad * 0.22, 0, 1);
+      const value = Math.round(density * 255);
+      const offset = (y * size + x) * 4;
+      data[offset] = value;
+      data[offset + 1] = value;
+      data[offset + 2] = value;
+      data[offset + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+type SocietyWeatherKind = NonNullable<SocietyState['weather']>['kind'];
+
+const CLOUD_WEATHER: Record<SocietyWeatherKind, {
+  opacity: number;
+  presence: number;
+  shadowThreshold: number;
+  speed: number;
+  light: string;
+  shade: string;
+}> = {
+  clear:   { opacity: 0, presence: 0, shadowThreshold: 0.68, speed: 0.48, light: '#f7f9fb', shade: '#7f8c9a' },
+  rain:    { opacity: 0.46, presence: 0.72, shadowThreshold: 0.52, speed: 1.15, light: '#aebac2', shade: '#46535e' },
+  storm:   { opacity: 0.58, presence: 1, shadowThreshold: 0.44, speed: 2.30, light: '#7f8b94', shade: '#2d3943' },
+  drought: { opacity: 0, presence: 0, shadowThreshold: 0.78, speed: 0.90, light: '#e0d0b2', shade: '#8b755b' },
+  snow:    { opacity: 0.52, presence: 0.82, shadowThreshold: 0.51, speed: 0.75, light: '#eef2f4', shade: '#87949f' },
+  fog:     { opacity: 0, presence: 0, shadowThreshold: 0.70, speed: 0.28, light: '#ccd2d2', shade: '#858f92' },
+};
+
+/** 有真实厚度的软边云团材质；几何轮廓负责体积，噪声只用于内部明暗而不裁出硬边。 */
+function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      uNoiseMap: { value: noiseMap },
+      uOffset: { value: new THREE.Vector2() },
+      uOpacity: { value: 0 },
+      uDaylight: { value: 1 },
+      uLightColor: { value: new THREE.Color(CLOUD_WEATHER.clear.light) },
+      uShadeColor: { value: new THREE.Color(CLOUD_WEATHER.clear.shade) },
+    }]),
+    vertexShader: /* glsl */`
+      varying vec3 vCloudLocal;
+      varying vec3 vCloudNormal;
+      varying vec3 vViewNormal;
+      #include <fog_pars_vertex>
+      void main() {
+        vCloudLocal = position;
+        vCloudNormal = normal;
+        vViewNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform sampler2D uNoiseMap;
+      uniform vec2 uOffset;
+      uniform float uOpacity;
+      uniform float uDaylight;
+      uniform vec3 uLightColor;
+      uniform vec3 uShadeColor;
+      varying vec3 vCloudLocal;
+      varying vec3 vCloudNormal;
+      varying vec3 vViewNormal;
+      #include <common>
+      #include <fog_pars_fragment>
+
+      void main() {
+        vec2 cloudUvA = vCloudLocal.xz * 0.22 + vec2(0.5) + uOffset;
+        vec2 cloudUvB = vCloudLocal.xy * 0.31 + vec2(0.5) - uOffset * 0.37;
+        float detailA = texture2D(uNoiseMap, cloudUvA).r;
+        float detailB = texture2D(uNoiseMap, cloudUvB).r;
+        float detail = detailA * 0.62 + detailB * 0.38;
+
+        // 球体掠射角连续趋于透明，因此任何观察角度都不会出现矩形或硬切边。
+        float facing = clamp(abs(vViewNormal.z), 0.0, 1.0);
+        float edgeFade = smoothstep(0.035, 0.72, facing);
+        float density = 0.70 + detail * 0.30;
+        float alpha = uOpacity * edgeFade * density;
+        if (alpha < 0.004) discard;
+
+        float topLight = clamp(vCloudNormal.y * 0.5 + 0.5, 0.0, 1.0);
+        float lightMix = clamp(0.24 + uDaylight * 0.38 + topLight * 0.22 + detail * 0.13, 0.0, 1.0);
+        vec3 color = mix(uShadeColor, uLightColor, lightMix);
+        color *= 0.94 + detail * 0.08;
+        gl_FragColor = vec4(color, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+    fog: true,
+  });
 }
 
 type SpeechBubblePlacement = 'body-left' | 'center' | 'body-right';
@@ -857,7 +1010,7 @@ export default function SocietyScene3D({
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setClearColor('#040610'); // 深空底色：星球浮在宇宙中
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;       // WebGLRenderer 支持的 PCF 阴影，避免弃用回退警告
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; // 电影级色调映射（由 OutputPass 应用）
     renderer.toneMappingExposure = 1.06;
     const scene = new THREE.Scene();
@@ -1327,7 +1480,7 @@ export default function SocietyScene3D({
     sunlightTargetColor.set(initialEraLight.sun).lerp(daylightTone, 0.56);
     sun.position.copy(sunlightTargetPosition);
     sun.color.copy(sunlightTargetColor);
-    sun.intensity = initialEraLight.sunI * initialDaylight.direct;
+    sun.intensity = initialEraLight.sunI * initialDaylight.direct * 0.82;
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const shadowExtent = Math.max(world0.width, world0.height) / 2 + 8;
@@ -1335,14 +1488,139 @@ export default function SocietyScene3D({
     sun.shadow.camera.right = shadowExtent;
     sun.shadow.camera.top = shadowExtent;
     sun.shadow.camera.bottom = -shadowExtent;
-    sun.shadow.camera.near = 10;
-    sun.shadow.camera.far = 220;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 260;
     sun.shadow.bias = -0.00008;
     sun.shadow.normalBias = 0.032;
+    sun.shadow.radius = 3.2;
     scene.add(sun);
+    // 少量无阴影直射光模拟天空与地表的多次散射，避免体素背光面和云影落成纯黑。
+    const sunScatter = new THREE.DirectionalLight(sun.color, initialEraLight.sunI * initialDaylight.direct * 0.18);
+    sunScatter.position.copy(sun.position);
+    scene.add(sunScatter);
     const rim = new THREE.DirectionalLight('#9fb8e8', 0.62);
     rim.position.set(44, 34, 50); // 镜头侧冷填光只抬暗面，不与主光争夺形体
     scene.add(rim);
+
+    // ---- 稳定世界种子驱动的双层云；下层进入太阳深度图，形成随风移动的真实云影 ----
+    const cloudNoiseTexture = makeCloudNoiseTexture(world0.generator.seed);
+    const cloudShadowTexture = cloudNoiseTexture.clone();
+    cloudShadowTexture.repeat.set(1, 1);
+    cloudShadowTexture.offset.set(0, 0);
+    cloudShadowTexture.needsUpdate = true;
+    const cloudShadowMaterial = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      alphaMap: cloudShadowTexture,
+      alphaTest: 0.20,
+      side: THREE.DoubleSide,
+    });
+    const cloudShadowUniforms = {
+      threshold: { value: CLOUD_WEATHER.clear.shadowThreshold },
+      presence: { value: 0 },
+    };
+    cloudShadowMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uCloudThreshold = cloudShadowUniforms.threshold;
+      shader.uniforms.uCloudPresence = cloudShadowUniforms.presence;
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          'void main() {',
+          `uniform float uCloudThreshold;
+uniform float uCloudPresence;
+void main() {`,
+        )
+        .replace(
+          '#include <alphamap_fragment>',
+          `#ifdef USE_ALPHAMAP
+  vec2 centeredUv = vAlphaMapUv * 2.0 - 1.0;
+  float radialFade = 1.0 - smoothstep(0.30, 0.94, length(centeredUv));
+  float cloudA = texture2D(alphaMap, vAlphaMapUv).g;
+  float cloudB = texture2D(alphaMap, vAlphaMapUv * 0.72 + vec2(0.14, 0.18)).g;
+  float cloudDensity = cloudA * 0.68 + cloudB * 0.32;
+  diffuseColor.a *= uCloudPresence * radialFade
+    * smoothstep(uCloudThreshold - 0.11, uCloudThreshold + 0.09, cloudDensity);
+#endif`,
+        );
+    };
+    cloudShadowMaterial.customProgramCacheKey = () => 'cloud-shadow-local-caster-v5';
+    const cloudShadowGeometry = new THREE.CircleGeometry(1, 24);
+    const cloudShadowSurfaceMaterial = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    // 可见云由多个椭球体组成真实空间云团：近景因位于世界外缘而不遮住聚落，
+    // 拉远或升空后可从下方、侧面和上方观察；移动始终是同一世界风向的直线平移。
+    const cloudVisualGroup = new THREE.Group();
+    const cloudBlobGeometry = new THREE.SphereGeometry(1, 16, 10);
+    const cloudFieldHalfX = world0.width * 0.5 + 66;
+    const cloudFieldHalfZ = world0.height * 0.5 + 60;
+    const cloudCellSize = 6;
+    const cloudWindDirection = new THREE.Vector2(1, 0.34).normalize();
+    const cloudClusters = Array.from({ length: 14 }, (_, index) => {
+      const angleJitter = (visualSpatialHash(world0.generator.seed, index, 3, 0x1b873593) - 0.5) * 0.22;
+      const angle = index / 14 * Math.PI * 2 + angleJitter;
+      const radialScale = 0.52 + visualSpatialHash(world0.generator.seed, index, 7, 0x85ebca6b) * 0.26;
+      const baseY = 19 + visualSpatialHash(world0.generator.seed, index, 11, 0xc2b2ae35) * 7;
+      const material = makeCloudVolumeMaterial(cloudNoiseTexture);
+      const cluster = new THREE.Group();
+      const blobCount = 4 + Math.floor(visualSpatialHash(world0.generator.seed, index, 13, 0x27d4eb2f) * 3);
+      for (let blobIndex = 0; blobIndex < blobCount; blobIndex += 1) {
+        const blob = new THREE.Mesh(cloudBlobGeometry, material);
+        const horizontal = (visualSpatialHash(world0.generator.seed, index, blobIndex, 0x165667b1) - 0.5) * 9;
+        const depth = (visualSpatialHash(world0.generator.seed, blobIndex, index, 0x9e3779b9) - 0.5) * 6;
+        const lift = (visualSpatialHash(world0.generator.seed, index + blobIndex, 17, 0x7f4a7c15) - 0.5) * 2.8;
+        blob.position.set(horizontal, lift, depth);
+        blob.scale.set(
+          4.2 + visualSpatialHash(world0.generator.seed, index, blobIndex, 0x72e4a19b) * 3.1,
+          1.45 + visualSpatialHash(world0.generator.seed, blobIndex, index, 0x18c6d2f1) * 1.15,
+          3.1 + visualSpatialHash(world0.generator.seed, index + 5, blobIndex, 0x3e7a91d5) * 2.3,
+        );
+        blob.castShadow = false;
+        blob.receiveShadow = false;
+        blob.renderOrder = -18 + index * 0.001 + blobIndex * 0.0001;
+        cluster.add(blob);
+
+        // 每个云泡对应一个椭圆投影，重叠后形成不规则云影；几何本身不再含矩形轮廓。
+        const shadowCaster = new THREE.Mesh(cloudShadowGeometry, cloudShadowSurfaceMaterial);
+        shadowCaster.rotation.x = -Math.PI / 2;
+        shadowCaster.position.set(horizontal, -1.1, depth);
+        shadowCaster.scale.set(blob.scale.x * 0.78, blob.scale.z * 0.78, 1);
+        shadowCaster.castShadow = true;
+        shadowCaster.receiveShadow = false;
+        shadowCaster.customDepthMaterial = cloudShadowMaterial;
+        cluster.add(shadowCaster);
+      }
+      cluster.position.set(
+        Math.round(Math.cos(angle) * cloudFieldHalfX * radialScale / cloudCellSize) * cloudCellSize,
+        baseY,
+        Math.round(Math.sin(angle) * cloudFieldHalfZ * radialScale / cloudCellSize) * cloudCellSize,
+      );
+      cluster.userData.cloudBaseY = baseY;
+      cluster.userData.cloudPhase = visualSpatialHash(world0.generator.seed, index, 19, 0x27d4eb2d) * Math.PI * 2;
+      cluster.userData.cloudDrift = 0.78 + visualSpatialHash(world0.generator.seed, index, 23, 0x6bc2a483) * 0.46;
+      cluster.userData.cloudActivation = 0.14 + visualSpatialHash(world0.generator.seed, index, 29, 0x5f356495) * 0.66;
+      cluster.userData.cloudMaterial = material;
+      cloudVisualGroup.add(cluster);
+      return cluster;
+    });
+    const cloudGroup = new THREE.Group();
+    cloudGroup.add(cloudVisualGroup);
+    scene.add(cloudGroup);
+    aoExcluded.push(cloudGroup);
+
+    const cloudOffset = new THREE.Vector2(
+      visualSpatialHash(world0.generator.seed, 11, 17, 0x72e4a19b),
+      visualSpatialHash(world0.generator.seed, 23, 5, 0x18c6d2f1),
+    );
+    let cloudMorphPhase = visualSpatialHash(world0.generator.seed, 3, 19, 0x27d4eb2d) * Math.PI * 2;
+    let cloudOpacity = CLOUD_WEATHER.clear.opacity;
+    let cloudPresence = CLOUD_WEATHER.clear.presence;
+    let cloudShadowThreshold = CLOUD_WEATHER.clear.shadowThreshold;
+    let cloudSpeed = CLOUD_WEATHER.clear.speed;
+    const cloudLightTarget = new THREE.Color(CLOUD_WEATHER.clear.light);
+    const cloudShadeTarget = new THREE.Color(CLOUD_WEATHER.clear.shade);
+
     lightApiRef.current = (eraKey) => {
       activeLightEra = eraKey;
     };
@@ -1353,6 +1631,8 @@ export default function SocietyScene3D({
       const daylight = sampleDaylight(phase, sunlightTargetPosition, daylightTone);
       const eraLight = ERA_LIGHT[activeLightEra];
       const chaotic = isChaoticLightEra(activeLightEra);
+      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
+      const weatherStrength = THREE.MathUtils.clamp(weather.intensity / 10, 0, 1);
       let directMultiplier = daylight.direct;
       let ambientMultiplier = daylight.ambient;
       let exposureMultiplier = daylight.exposure;
@@ -1382,10 +1662,23 @@ export default function SocietyScene3D({
         sunlightTargetColor.lerp(chaosTone, 0.28 + Math.abs(thermalShift) * 0.30);
       }
 
+      // 阴雨、雪与雾减少直射但保留大气散射；云影负责局部明暗，不伪造天气事实。
+      const overcast = weather.kind === 'storm' ? 0.38 + weatherStrength * 0.30
+        : weather.kind === 'rain' ? 0.20 + weatherStrength * 0.22
+          : weather.kind === 'snow' ? 0.24 + weatherStrength * 0.20
+            : weather.kind === 'fog' ? 0.32 + weatherStrength * 0.24 : 0;
+      directMultiplier *= 1 - overcast;
+      ambientMultiplier *= 1 - overcast * 0.10;
+      exposureMultiplier *= 1 - overcast * 0.06;
+
       const blend = 1 - Math.exp(-LIGHT_DAMPING * deltaSeconds);
       sun.position.lerp(sunlightTargetPosition, blend);
       sun.color.lerp(sunlightTargetColor, blend);
-      sun.intensity = THREE.MathUtils.damp(sun.intensity, eraLight.sunI * directMultiplier, LIGHT_DAMPING, deltaSeconds);
+      sunScatter.position.copy(sun.position);
+      sunScatter.color.copy(sun.color);
+      const targetDirectIntensity = eraLight.sunI * directMultiplier;
+      sun.intensity = THREE.MathUtils.damp(sun.intensity, targetDirectIntensity * 0.82, LIGHT_DAMPING, deltaSeconds);
+      sunScatter.intensity = THREE.MathUtils.damp(sunScatter.intensity, targetDirectIntensity * 0.18, LIGHT_DAMPING, deltaSeconds);
       hemi.intensity = THREE.MathUtils.damp(hemi.intensity, eraLight.hemi * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
       rim.intensity = THREE.MathUtils.damp(rim.intensity, eraLight.rim * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
       scene.environmentIntensity = THREE.MathUtils.damp(
@@ -1404,8 +1697,6 @@ export default function SocietyScene3D({
       // 可见天空与日照、纪元和天气共享目标状态；这只改变表现层，不反向影响模拟。
       const skyPalette = ERA_SKY[activeLightEra];
       const daylightStrength = THREE.MathUtils.smoothstep(directMultiplier, 0.30, 0.94);
-      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
-      const weatherStrength = THREE.MathUtils.clamp(weather.intensity / 10, 0, 1);
       skyZenithTarget.set(skyPalette.nightZenith)
         .lerp(skyColorScratch.set(skyPalette.dayZenith), daylightStrength);
       skyHorizonTarget.set(skyPalette.nightHorizon)
@@ -1483,6 +1774,62 @@ export default function SocietyScene3D({
       fog.near = THREE.MathUtils.damp(fog.near, fogTargetNear, LIGHT_DAMPING, deltaSeconds);
       fog.far = THREE.MathUtils.damp(fog.far, fogTargetFar, LIGHT_DAMPING, deltaSeconds);
       renderer.setClearColor(fog.color);
+    };
+
+    const updateClouds = (deltaSeconds: number) => {
+      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
+      const profile = CLOUD_WEATHER[weather.kind];
+      const severity = THREE.MathUtils.clamp((weather.intensity - 1) / 9, 0, 1);
+      const targetOpacity = THREE.MathUtils.clamp(profile.opacity + severity * 0.06, 0, 1);
+      const targetPresence = profile.presence * THREE.MathUtils.lerp(0.72, 1, severity);
+      const targetShadowThreshold = profile.shadowThreshold - (weather.kind === 'clear' || weather.kind === 'drought' ? 0 : severity * 0.045);
+
+      // 生成和消散都保留数秒过渡，但晴天、旱天与雾天最终会彻底无云。
+      cloudOpacity = THREE.MathUtils.damp(cloudOpacity, targetOpacity, 0.46, deltaSeconds);
+      cloudPresence = THREE.MathUtils.damp(cloudPresence, targetPresence, 0.38, deltaSeconds);
+      cloudShadowThreshold = THREE.MathUtils.damp(cloudShadowThreshold, targetShadowThreshold, 0.46, deltaSeconds);
+      cloudSpeed = THREE.MathUtils.damp(cloudSpeed, profile.speed, 0.72, deltaSeconds);
+      cloudLightTarget.set(profile.light);
+      cloudShadeTarget.set(profile.shade);
+
+      cloudMorphPhase += deltaSeconds * (0.18 + cloudSpeed * 0.075);
+      const shadowWindX = deltaSeconds * cloudSpeed * 0.0016;
+      const shadowWindY = deltaSeconds * cloudSpeed * 0.00052;
+      cloudOffset.x = (cloudOffset.x + shadowWindX) % 1;
+      cloudOffset.y = (cloudOffset.y + shadowWindY) % 1;
+      cloudNoiseTexture.offset.copy(cloudOffset);
+      cloudShadowUniforms.threshold.value = cloudShadowThreshold;
+      cloudShadowUniforms.presence.value = cloudPresence;
+
+      const nightVisibility = THREE.MathUtils.lerp(0.52, 1, skyDaylightStrength);
+      const colorBlend = 1 - Math.exp(-0.9 * deltaSeconds);
+      cloudClusters.forEach((cluster, index) => {
+        const material = cluster.userData.cloudMaterial as THREE.ShaderMaterial;
+        const layerOffset = material.uniforms.uOffset.value as THREE.Vector2;
+        layerOffset.set(
+          (cloudOffset.x * (0.82 + index * 0.07) + index * 0.19) % 1,
+          (cloudOffset.y * (1.08 - index * 0.06) + index * 0.23) % 1,
+        );
+        const activation = cluster.userData.cloudActivation as number;
+        const activationFade = THREE.MathUtils.smoothstep(cloudPresence, activation - 0.16, activation + 0.08);
+        material.uniforms.uOpacity.value = cloudOpacity * activationFade * nightVisibility * 0.72;
+        material.uniforms.uDaylight.value = skyDaylightStrength;
+        (material.uniforms.uLightColor.value as THREE.Color).lerp(cloudLightTarget, colorBlend);
+        (material.uniforms.uShadeColor.value as THREE.Color).lerp(cloudShadeTarget, colorBlend);
+
+        // Minecraft 式世界云场：统一高度层、固定世界朝向、按 ticks 沿风向平移并在边界循环。
+        const drift = cluster.userData.cloudDrift as number;
+        const travel = deltaSeconds * (0.72 + cloudSpeed * 0.62) * drift;
+        cluster.position.x += cloudWindDirection.x * travel;
+        cluster.position.z += cloudWindDirection.y * travel;
+        if (cluster.position.x > cloudFieldHalfX) cluster.position.x -= cloudFieldHalfX * 2;
+        if (cluster.position.x < -cloudFieldHalfX) cluster.position.x += cloudFieldHalfX * 2;
+        if (cluster.position.z > cloudFieldHalfZ) cluster.position.z -= cloudFieldHalfZ * 2;
+        if (cluster.position.z < -cloudFieldHalfZ) cluster.position.z += cloudFieldHalfZ * 2;
+        cluster.position.y = (cluster.userData.cloudBaseY as number)
+          + Math.sin(cloudMorphPhase * 0.36 + (cluster.userData.cloudPhase as number)) * 0.18;
+        cluster.visible = activationFade > 0.006 && cloudOpacity > 0.006;
+      });
     };
 
     // ---- 地形体素柱（InstancedMesh，逐实例颜色；PBR 材质）----
@@ -2617,50 +2964,190 @@ export default function SocietyScene3D({
       }),
     };
     const decorGroup = new THREE.Group();
-    let animatedDecorBatches: Array<{ mesh: THREE.InstancedMesh; instances: DecorInstance[] }> = [];
+    interface DecorBatch {
+      mesh: THREE.InstancedMesh;
+      capacity: number;
+      keys: Array<string | null>;
+      instances: Array<DecorInstance | null>;
+      signatures: Array<string | null>;
+      slotByKey: Map<string, number>;
+    }
+    const decorBatches = new Map<DecorBucket, DecorBatch>();
+    let animatedDecorBatches: Array<{
+      mesh: THREE.InstancedMesh;
+      instances: Array<{ index: number; instance: DecorInstance }>;
+    }> = [];
     scene.add(decorGroup);
+
+    const decorInstanceBaseKey = (instance: DecorInstance): string => {
+      const entityAnchored = instance.entityId !== undefined;
+      const anchorX = instance.entityX ?? instance.x;
+      const anchorY = instance.entityY ?? instance.y;
+      const anchorZ = instance.entityZ ?? instance.z;
+      return [
+        entityAnchored ? `entity:${instance.entityId}` : 'static',
+        instance.b,
+        instance.part ?? '',
+        entityAnchored ? instance.x - anchorX : instance.x,
+        entityAnchored ? instance.y - anchorY : instance.y,
+        entityAnchored ? instance.z - anchorZ : instance.z,
+        instance.sx,
+        instance.sy,
+        instance.sz,
+      ].join('|');
+    };
+    const keyedDecorInstances = (instances: DecorInstance[]) => {
+      const occurrences = new Map<string, number>();
+      return instances.map((instance) => {
+        const base = decorInstanceBaseKey(instance);
+        const occurrence = occurrences.get(base) ?? 0;
+        occurrences.set(base, occurrence + 1);
+        return { key: `${base}|${occurrence}`, instance };
+      });
+    };
+    const decorInstanceSignature = (instance: DecorInstance): string => [
+      instance.x, instance.y, instance.z,
+      instance.sx, instance.sy, instance.sz,
+      instance.ry ?? '', instance.c,
+      instance.entityId ?? '',
+      instance.entityX ?? '', instance.entityY ?? '', instance.entityZ ?? '',
+      instance.entityRotation ?? '', instance.part ?? '', instance.animation ?? '',
+    ].join('|');
+    const decorCapacityFor = (required: number): number => {
+      let capacity = 16;
+      while (capacity < required) capacity *= 2;
+      return capacity;
+    };
+    const createDecorBatch = (bucket: DecorBucket, capacity: number): DecorBatch => {
+      const material = DECOR_MATS[bucket] ?? DECOR_MATS.plaster;
+      const mesh = new THREE.InstancedMesh(boxGeo, material, capacity);
+      mesh.count = 0;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      // 叶簇保留 AO 接触层次，但不再让数百个微体素互相投出致黑阴影。
+      mesh.castShadow = bucket !== 'leaf' && bucket !== 'groundMark' && bucket !== 'glowWarm' && bucket !== 'glowRed';
+      mesh.receiveShadow = true;
+      decorGroup.add(mesh);
+      return {
+        mesh,
+        capacity,
+        keys: new Array<string | null>(capacity).fill(null),
+        instances: new Array<DecorInstance | null>(capacity).fill(null),
+        signatures: new Array<string | null>(capacity).fill(null),
+        slotByKey: new Map<string, number>(),
+      };
+    };
+    const ensureDecorBatch = (bucket: DecorBucket, required: number): DecorBatch => {
+      const current = decorBatches.get(bucket);
+      if (current && current.capacity >= required) return current;
+      const replacement = createDecorBatch(bucket, decorCapacityFor(required));
+      if (current) {
+        decorGroup.remove(current.mesh);
+        current.mesh.dispose();
+      }
+      decorBatches.set(bucket, replacement);
+      return replacement;
+    };
+    const writeDecorInstance = (mesh: THREE.InstancedMesh, index: number, instance: DecorInstance, bucket: DecorBucket) => {
+      const rotation = instance.ry === undefined
+        ? q.identity()
+        : q.setFromAxisAngle(decorAxisY, instance.ry);
+      m4.compose(v.set(instance.x, instance.y, instance.z), rotation, sc.set(instance.sx, instance.sy, instance.sz));
+      mesh.setMatrixAt(index, m4);
+      col.setHex(instance.c);
+      if (bucket === 'leaf' || bucket === 'wood') {
+        // 连续空间波形让同一树冠形成成片明暗，而不是每个微体素独立闪烁。
+        const cluster = (
+          Math.sin(instance.x * 2.13 + instance.z * 1.37 + instance.y * 0.71)
+          + Math.sin(instance.x * 0.83 - instance.z * 1.91 + instance.y * 1.17)
+        ) * 0.25;
+        col.multiplyScalar(1 + cluster * (bucket === 'leaf' ? 0.12 : 0.055));
+      }
+      mesh.setColorAt(index, col);
+    };
+
     decorApiRef.current = (s, era) => {
       const instances = collectDecor(s, era);
       animatedDecorBatches = [];
-      for (const child of [...decorGroup.children]) {
-        (child as THREE.InstancedMesh).dispose();   // 只释放实例缓冲，共享几何体不动
-        decorGroup.remove(child);
-      }
       const byBucket = new Map<DecorBucket, DecorInstance[]>();
       for (const inst of instances) {
         const list = byBucket.get(inst.b);
         if (list) list.push(inst); else byBucket.set(inst.b, [inst]);
       }
-      for (const [bucket, list] of byBucket) {
-        const material = DECOR_MATS[bucket] ?? DECOR_MATS.plaster;
-        const mesh = new THREE.InstancedMesh(boxGeo, material, list.length);
-        list.forEach((inst, i) => {
-          const rotation = inst.ry === undefined
-            ? q.identity()
-            : q.setFromAxisAngle(decorAxisY, inst.ry);
-          m4.compose(v.set(inst.x, inst.y, inst.z), rotation, sc.set(inst.sx, inst.sy, inst.sz));
-          mesh.setMatrixAt(i, m4);
-          col.setHex(inst.c);
-          if (bucket === 'leaf' || bucket === 'wood') {
-            // 连续空间波形让同一树冠形成成片明暗，而不是每个微体素独立闪烁。
-            const cluster = (
-              Math.sin(inst.x * 2.13 + inst.z * 1.37 + inst.y * 0.71)
-              + Math.sin(inst.x * 0.83 - inst.z * 1.91 + inst.y * 1.17)
-            ) * 0.25;
-            col.multiplyScalar(1 + cluster * (bucket === 'leaf' ? 0.12 : 0.055));
-          }
-          mesh.setColorAt(i, col);
-        });
-        // 叶簇保留 AO 接触层次，但不再让数百个微体素互相投出致黑阴影。
-        mesh.castShadow = bucket !== 'leaf' && bucket !== 'groundMark' && bucket !== 'glowWarm' && bucket !== 'glowRed';
-        mesh.receiveShadow = true;
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        if (list.some((inst) => inst.entityId || inst.animation)) {
-          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-          animatedDecorBatches.push({ mesh, instances: list });
+      const activeBuckets = new Set<DecorBucket>([...decorBatches.keys(), ...byBucket.keys()]);
+      for (const bucket of activeBuckets) {
+        const list = byBucket.get(bucket) ?? [];
+        const batch = list.length > 0
+          ? ensureDecorBatch(bucket, list.length)
+          : decorBatches.get(bucket);
+        if (!batch) continue;
+
+        const keyed = keyedDecorInstances(list);
+        const nextByKey = new Map(keyed.map((entry) => [entry.key, entry.instance]));
+        let matrixMin = Number.POSITIVE_INFINITY;
+        let matrixMax = -1;
+        let colorMin = Number.POSITIVE_INFINITY;
+        let colorMax = -1;
+        const markMatrixChanged = (index: number) => {
+          matrixMin = Math.min(matrixMin, index);
+          matrixMax = Math.max(matrixMax, index);
+        };
+        const markColorChanged = (index: number) => {
+          colorMin = Math.min(colorMin, index);
+          colorMax = Math.max(colorMax, index);
+        };
+
+        for (const [key, slot] of [...batch.slotByKey]) {
+          if (nextByKey.has(key)) continue;
+          batch.slotByKey.delete(key);
+          batch.keys[slot] = null;
+          batch.instances[slot] = null;
+          batch.signatures[slot] = null;
+          m4.makeScale(0, 0, 0);
+          batch.mesh.setMatrixAt(slot, m4);
+          markMatrixChanged(slot);
         }
-        decorGroup.add(mesh);
+
+        const freeSlots: number[] = [];
+        for (let slot = 0; slot < batch.capacity; slot++) {
+          if (batch.keys[slot] === null) freeSlots.push(slot);
+        }
+        let freeSlotIndex = 0;
+        for (const { key, instance } of keyed) {
+          let slot = batch.slotByKey.get(key);
+          if (slot === undefined) {
+            slot = freeSlots[freeSlotIndex++];
+            batch.slotByKey.set(key, slot);
+            batch.keys[slot] = key;
+          }
+          const signature = decorInstanceSignature(instance);
+          batch.instances[slot] = instance;
+          if (batch.signatures[slot] === signature) continue;
+          batch.signatures[slot] = signature;
+          writeDecorInstance(batch.mesh, slot, instance, bucket);
+          markMatrixChanged(slot);
+          markColorChanged(slot);
+        }
+
+        let highWater = batch.capacity - 1;
+        while (highWater >= 0 && batch.keys[highWater] === null) highWater--;
+        batch.mesh.count = highWater + 1;
+        if (matrixMax >= matrixMin) {
+          batch.mesh.instanceMatrix.clearUpdateRanges();
+          batch.mesh.instanceMatrix.addUpdateRange(matrixMin * 16, (matrixMax - matrixMin + 1) * 16);
+          batch.mesh.instanceMatrix.needsUpdate = true;
+        }
+        if (batch.mesh.instanceColor && colorMax >= colorMin) {
+          batch.mesh.instanceColor.clearUpdateRanges();
+          batch.mesh.instanceColor.addUpdateRange(colorMin * 3, (colorMax - colorMin + 1) * 3);
+          batch.mesh.instanceColor.needsUpdate = true;
+        }
+
+        const animatedInstances = batch.instances.flatMap((instance, index) => (
+          instance && (instance.entityId || instance.animation) ? [{ index, instance }] : []
+        ));
+        if (animatedInstances.length > 0) animatedDecorBatches.push({ mesh: batch.mesh, instances: animatedInstances });
       }
     };
 
@@ -2686,7 +3173,7 @@ export default function SocietyScene3D({
 
       for (const { mesh, instances } of animatedDecorBatches) {
         let touched = false;
-        instances.forEach((inst, index) => {
+        instances.forEach(({ index, instance: inst }) => {
           if (inst.animation === 'wind') {
             const intensity = Math.max(1, p.society.weather?.intensity ?? 1);
             const seed = inst.x * 1.83 + inst.z * 2.37 + inst.y * 0.71;
@@ -3518,6 +4005,18 @@ export default function SocietyScene3D({
     const fxaaPass = new ShaderPass(FXAAShader);
     composer.addPass(fxaaPass);
 
+    // 交互时优先保证镜头跟手；松手后恢复环境遮蔽和景深表现。
+    const onControlsStart = () => {
+      gtaoPass.enabled = false;
+      tiltShiftPass.enabled = false;
+    };
+    const onControlsEnd = () => {
+      gtaoPass.enabled = true;
+      tiltShiftPass.enabled = true;
+    };
+    controls.addEventListener('start', onControlsStart);
+    controls.addEventListener('end', onControlsEnd);
+
     const tiltFocusWorld = new THREE.Vector3();
     const tiltCandidateWorld = new THREE.Vector3();
     const tiltFocusProjected = new THREE.Vector3();
@@ -3594,7 +4093,7 @@ export default function SocietyScene3D({
       const wpx = mount.clientWidth;
       const hpx = mount.clientHeight;
       if (wpx <= 0 || hpx <= 0) return;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SOCIETY_MAX_PIXEL_RATIO));
       renderer.setSize(wpx, hpx, false);
       camera.aspect = wpx / hpx;
       // 选择完整画幅下方 7% 的视窗，相当于把地表主体稳定上提 7%，且不改变旋转中心。
@@ -3625,6 +4124,7 @@ export default function SocietyScene3D({
       waterFlowUniforms.uTime.value = now * 0.001;
       updateWeather(now, deltaSeconds);
       updateLighting(deltaSeconds);
+      updateClouds(deltaSeconds);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
       DECOR_MATS.glowWarm.emissiveIntensity = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
@@ -3680,6 +4180,8 @@ export default function SocietyScene3D({
       canvas.removeEventListener('pointercancel', onRisePinchPointerCancel);
       canvas.removeEventListener('pointerdown', onSelectionPointerDown);
       canvas.removeEventListener('pointerup', onSelectionPointerUp);
+      controls.removeEventListener('start', onControlsStart);
+      controls.removeEventListener('end', onControlsEnd);
       controls.dispose();
       terrainApiRef.current = null;
       lightApiRef.current = null;
@@ -3694,6 +4196,9 @@ export default function SocietyScene3D({
       scene.background = null;
       skyGlowTexture.dispose();
       skySurfaceTextures.forEach((texture) => texture.dispose());
+      cloudNoiseTexture.dispose();
+      cloudShadowTexture.dispose();
+      cloudShadowMaterial.dispose();
       skyTexture?.dispose();
       environmentTarget?.dispose();
       distantSky.dispose();

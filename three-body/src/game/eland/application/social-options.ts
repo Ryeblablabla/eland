@@ -18,7 +18,7 @@ import {
   openMembershipOfferFor,
   openPermissionOfferFor,
 } from '../domain/social-facts';
-import { cellsInRadius, findStandingPath } from '../world/grid';
+import { cellX, cellY, cellsInRadius, findStandingPath } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
@@ -32,6 +32,13 @@ import {
 } from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
 import { personalityScore } from '../domain/personality';
+import {
+  companionReturnRequired,
+  companionLivingAnchor,
+  personWithinLivingArea,
+  sharedLivingReturnTarget,
+  SHARED_LIVING_RADIUS,
+} from '../domain/shared-living';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -247,18 +254,24 @@ export function buildSocialOptions(
     }
   }
 
-  for (const other of visiblePeople) {
-    const companionship = acceptedCompanionBetween(state, person.id, other.id, atMonth);
-    if (!companionship || sameLocation(other, person)) continue;
-    const path = findStandingPath(state.world.grid, person.position, other.position);
-    if (!path.length) continue;
+  for (const companionship of state.agreements.filter((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'companion'
+    && agreement.partyIds.includes(person.id))) {
+    const anchor = companionLivingAnchor(state, companionship);
+    if (!anchor || personWithinLivingArea(person, anchor) || !companionReturnRequired(companionship, atMonth)) continue;
+    const target = sharedLivingReturnTarget(state, companionship, person);
+    if (!target) continue;
+    const path = findStandingPath(state.world.grid, person.position, target);
     options.push({
-      id: `rejoin-companion:${other.id}:${companionship.offer.id}`,
-      summary: `重新与同伴${other.name}会合`, reason: '双方已通过对话形成结伴承诺，但现在彼此分离',
-      goal: { kind: 'near-person', personId: other.id }, nextAction: { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
-      target: { kind: 'person', personId: other.id }, estimatedDuration: 'several-months',
+      id: `return-shared-living:${companionship.id}:${person.id}`,
+      summary: '回到双方约定的共同生活地点',
+      reason: '结伴约定已用完时间余量，需要回到稳定地点履行共同生活，而不是追踪对方的实时位置',
+      goal: { kind: 'at-cell', cellId: target.cellId },
+      nextAction: { kind: 'move', toCellId: target.cellId, toZ: target.z },
+      target: { kind: 'voxel', position: { x: cellX(target.cellId), y: cellY(target.cellId), z: target.z } },
+      estimatedDuration: 'several-months',
       estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
-      risks: [], domain: 'social', sourceFactIds: [companionship.offer.id, companionship.acceptance.id],
+      risks: [], domain: 'social', sourceFactIds: [...companionship.sourceEventIds],
     });
   }
   const incomingAssist = openAssistRequestFor(state, person.id);
@@ -381,19 +394,6 @@ export function buildSocialOptions(
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
-    const visibleMember = visiblePeople.find((other) => memberIds.has(other.id) && !sameLocation(other, person));
-    if (visibleMember) {
-      const path = findStandingPath(state.world.grid, person.position, visibleMember.position);
-      if (path.length) options.push({
-        id: `rejoin-collective:${collective.id}:${visibleMember.id}`,
-        summary: `重新与共同体成员${visibleMember.name}会合`,
-        reason: `双方仍属于以“${collective.purposeSummary}”为目的的持续共同体`,
-        goal: { kind: 'near-person', personId: visibleMember.id }, nextAction: { kind: 'move', toCellId: visibleMember.position.cellId, toZ: visibleMember.position.z },
-        target: { kind: 'person', personId: visibleMember.id }, estimatedDuration: 'several-months',
-        estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
-        risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
-      });
-    }
     const localMember = localPeople.find((other) => memberIds.has(other.id));
     const relations = activeMemberIds(state, collective)
       .filter((id) => id !== person.id)
@@ -665,7 +665,7 @@ export function buildSocialOptions(
         summary: `邀请${other.name}结伴行动`,
         reason: '彼此的信任与羁绊已达到结伴门槛，结伴可能降低长期风险',
         goal: { kind: 'representation-made', representationId },
-        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: '希望今后一段时间结伴行动', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: atMonth + 6, basis: companionBasis } }, audience: [other.id], channel: 'voice' },
+        nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: '希望以这里为稳定生活地点，各自行动但持续共同生活', proposal: { kind: 'companion', proposerId: person.id, partnerId: other.id, expiresAtMonth: atMonth + 6, basis: companionBasis, sharedLivingAnchor: { version: 'shared-living-anchor-v1', cellId: person.position.cellId, z: person.position.z, radius: SHARED_LIVING_RADIUS } } }, audience: [other.id], channel: 'voice' },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: companionBasis.sourceFactIds,
         relationshipBasis: companionBasis,
       });

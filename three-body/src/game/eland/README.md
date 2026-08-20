@@ -39,6 +39,7 @@ domain model and policies ↔ world grid / material primitives
 - `domain/life-stage.ts`：按月龄划分未满 1 岁完全依赖、1–11 岁受限自主、12–15 岁既有项目协作与 16 岁以上完整规划。
 - `domain/survival-reflex.ts`：不消耗模型额度的吃、喝与紧急避险反射；1–11 岁幼童在严重身体或冷热压力下会走向当前确实可见的亲生照护者，动作以 `caregiverRef` 留下因果证据，不读取远方亲代位置。
 - `domain/shelter-access.ts`：从可见或记得的真实结构中寻找当前仍可达的住所内部。
+- `domain/shared-living.ts`：结伴约定的稳定生活地点、不同格共同生活结算与有界返家目标；不追踪伴侣实时坐标。
 - `domain/water-access.ts`：真实水体素的可达性与取水规则。
 - `domain/separation-rules.ts`：定义体素物质如何通过同一 `separate` 原语被采出或拆回。
 - `domain/container.ts`：有体素位置和内部物品堆的空间持有者；本身不预设所有权。

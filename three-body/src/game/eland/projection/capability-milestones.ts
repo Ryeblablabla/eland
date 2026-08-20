@@ -263,7 +263,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     'repeated-exchange': ['同一双方至少完成两次交换约定', '交换发生在不同月份并有各自履约转移'],
     agreement: ['结构化 offer/request 指定双方与期限', '所需回应者明确接受并建立 active/fulfilled 约定'],
     'agreement-rejection': ['存在面向具体回应者的结构化提议', '回应者明确 reject 且 agreement 状态为 rejected'],
-    companion: ['一方向具体人物提出 companion 关系', '对方接受且双方在约定期真实共同停留'],
+    companion: ['一方向具体人物提出带稳定生活地点的 companion 关系', '对方接受且双方在约定期于同一生活区域累计生活，不要求坐标重合'],
     'relationship-rejection': ['存在 companion 或 reproduce 关系提议', '目标人物明确 reject，未形成 active 关系约定'],
     'membership-belonging': ['候选人先主动请求加入指定共同体，且请求进入同一接纳来源链', '现有成员随后提议、所需审批者接受，并生成仍 active 的 membership'],
     'membership-admission': ['active collective 的现有成员提议指定候选人和全体审批者', '候选人与所需成员接受后生成 active membership，候选人主动请求的 episode 由归属探针独占'],

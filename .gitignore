@@ -18,6 +18,9 @@
 **/data/*.sqlite3
 **/data/*.sqlite3-shm
 **/data/*.sqlite3-wal
+**/data/**/*.sqlite3
+**/data/**/*.sqlite3-shm
+**/data/**/*.sqlite3-wal
 
 # Local research/render intermediates and large audio working exports.
 /tmp/

@@ -42,9 +42,180 @@ const RULES_PAGE_MARKUP = `
       </div>
     </header>
 
+    <section class="rules-section" id="architectureAtlas" aria-labelledby="architectureAtlasTitle">
+      <div class="section-heading">
+        <div><span class="section-no">01</span><div><span class="section-kicker">ARCHITECTURE ATLAS</span><h2 id="architectureAtlasTitle">先看层次，再看规则细节</h2></div></div>
+        <p>四张图从游戏整体下钻到世界、人物与文明。箭头只表示真实依赖和事实流；模型与观察器始终在权威主链之外。</p>
+      </div>
+
+      <div class="architecture-legend" aria-label="架构图图例">
+        <span data-tone="world">世界 / 事实</span>
+        <span data-tone="agent">人物 / 决策</span>
+        <span data-tone="effect">动作 / 提交</span>
+        <span data-tone="social">社会 / 涌现</span>
+        <span data-tone="observer">只读 / 可选</span>
+      </div>
+
+      <div class="architecture-atlas">
+        <article class="architecture-board architecture-board-wide" aria-labelledby="gameArchitectureTitle">
+          <header class="architecture-board-head">
+            <div><span>01 · GAME ARCHITECTURE</span><h3 id="gameArchitectureTitle">游戏总架构</h3></div>
+            <p>命令逐层向下，只有提交后的事实能够沿投影链返回画面。</p>
+          </header>
+          <div class="architecture-stack game-stack">
+            <section class="architecture-layer" data-tone="observer">
+              <div class="architecture-layer-label"><span>L5</span><strong>体验与只读呈现</strong><small>玩家看到什么</small></div>
+              <div class="architecture-node-grid architecture-node-grid-3">
+                <div class="architecture-node"><strong>三体宇宙</strong><small>连续缩放 · 纪元与天体</small></div>
+                <div class="architecture-node"><strong>人间体素世界</strong><small>人物 · 建筑 · 生态装饰</small></div>
+                <div class="architecture-node"><strong>人物与历史界面</strong><small>对话 · 回放 · 报告</small></div>
+              </div>
+            </section>
+            <div class="architecture-arrow architecture-arrow-dual"><span>玩家命令 ↓</span><span>GameFrame / 报告 ↑</span></div>
+            <section class="architecture-layer" data-tone="world">
+              <div class="architecture-layer-label"><span>L4</span><strong>交付与会话</strong><small>入口，不裁决世界</small></div>
+              <div class="architecture-node-grid architecture-node-grid-3">
+                <div class="architecture-node"><strong>React / HTTP</strong><small>交互与 API 适配</small></div>
+                <div class="architecture-node"><strong>实时 Session</strong><small>月份推进 · 分支 · seek</small></div>
+                <div class="architecture-node"><strong>Timeline</strong><small>checkpoint · delta · 恢复</small></div>
+              </div>
+            </section>
+            <div class="architecture-arrow"><span>用例命令 ↓</span></div>
+            <section class="architecture-layer" data-tone="agent">
+              <div class="architecture-layer-label"><span>L3</span><strong>应用编排</strong><small>组织规则，不复制规则</small></div>
+              <div class="architecture-node-grid architecture-node-grid-4">
+                <div class="architecture-node"><strong>月度主循环</strong><small>15 planning ticks</small></div>
+                <div class="architecture-node"><strong>本地规划器</strong><small>反射 · BDI · Intent</small></div>
+                <div class="architecture-node"><strong>项目编译器</strong><small>HTN · 物流 · 试验</small></div>
+                <div class="architecture-node"><strong>动作预演</strong><small>局部修复 · 重验</small></div>
+              </div>
+            </section>
+            <div class="architecture-arrow"><span>合法候选与动作 ↓</span></div>
+            <section class="architecture-layer" data-tone="effect">
+              <div class="architecture-layer-label"><span>L2</span><strong>模拟内核</strong><small>唯一规则裁决</small></div>
+              <div class="architecture-kernel-link">
+                <div class="architecture-node"><strong>Domain Model</strong><small>身体 · 物质 · 关系 · 项目 · 协议</small></div>
+                <span aria-hidden="true">↔</span>
+                <div class="architecture-node"><strong>World Primitives</strong><small>体素网格 · 路径 · 水流 · 空间</small></div>
+              </div>
+            </section>
+            <div class="architecture-arrow"><span>提交客观变化 ↓</span></div>
+            <section class="architecture-layer architecture-fact-layer" data-tone="world">
+              <div class="architecture-layer-label"><span>L1</span><strong>权威事实与持久化</strong><small>可回放、可恢复</small></div>
+              <div class="architecture-node-grid architecture-node-grid-3">
+                <div class="architecture-node"><strong>SimulationState</strong><small>当前权威聚合</small></div>
+                <div class="architecture-node"><strong>WorldEvent</strong><small>DecisionFact · ActionFact · 环境事实</small></div>
+                <div class="architecture-node"><strong>SQLite WAL</strong><small>运行 · 会话 · 时间线 · 内容块</small></div>
+              </div>
+            </section>
+          </div>
+          <div class="architecture-rails">
+            <aside data-tone="observer"><span>READ MODEL RAIL</span><strong>Projection / Report / GameFrame</strong><p>只读取已提交状态和事件，再返回 UI；不得写回人物、建筑或文明能力。</p></aside>
+            <aside data-tone="observer"><span>OPTIONAL MODEL RAIL</span><strong>合法候选内重选 · 台词 · 提名</strong><p>缺席或失败时本地主链照常完成；所有建议仍由本地规则重验。</p></aside>
+          </div>
+        </article>
+
+        <article class="architecture-board" aria-labelledby="worldArchitectureTitle">
+          <header class="architecture-board-head">
+            <div><span>02 · WORLD ARCHITECTURE</span><h3 id="worldArchitectureTitle">世界架构</h3></div>
+            <p><code>SimulationState</code> 是根；物理、生命、社会与历史共享同一条时间线。</p>
+          </header>
+          <div class="architecture-root" data-tone="world">
+            <span>ROOT</span><strong>SimulationState</strong><small>不是多个互相猜测的子世界</small>
+          </div>
+          <div class="architecture-branch-grid architecture-branch-grid-2">
+            <section data-tone="world"><span>W1 · 物理世界</span><strong>空间与物质</strong><p>84 × 52 × 12 体素、掉落物、结构、容器、水流、站立位置和路径。</p></section>
+            <section data-tone="world"><span>W2 · 自然世界</span><strong>时间与生态</strong><p>纪元、跨月天气、火、作物、动物、身体过程、出生与死亡。</p></section>
+            <section data-tone="agent"><span>W3 · 人物与社会</span><strong>持续状态</strong><p>人物、库存、知识、记忆、关系、Intent、Project、Agreement、Collective 与 Governance。</p></section>
+            <section data-tone="effect"><span>W4 · 历史与控制</span><strong>因果时间线</strong><p>clock、branch、past、lastStep、决策额度、文明条件与真实终局。</p></section>
+          </div>
+          <div class="architecture-stage-flow" aria-label="月度世界流程">
+            <div><span>MONTH START</span><strong>纪元 · 天气 · 生态 · 协议</strong></div>
+            <i aria-hidden="true">↓</i>
+            <div><span>15 TICKS</span><strong>人物按已提交世界依次行动</strong></div>
+            <i aria-hidden="true">↓</i>
+            <div><span>MONTH END</span><strong>身体 · 项目 · 社会生命周期</strong></div>
+            <i aria-hidden="true">↓</i>
+            <div data-tone="observer"><span>DERIVED</span><strong>结构 · 里程碑 · 指数 · 报告</strong></div>
+          </div>
+          <p class="architecture-guard"><b>边界：</b><code>derived.structures</code> 可从体素事实重建；文明指数、阶段、里程碑、实践和制度观察不能成为人物目标。</p>
+        </article>
+
+        <article class="architecture-board" aria-labelledby="personArchitectureTitle">
+          <header class="architecture-board-head">
+            <div><span>03 · PERSON ARCHITECTURE</span><h3 id="personArchitectureTitle">人物架构</h3></div>
+            <p>人物不是一个 prompt，而是一条从局部事实到行动后学习的闭环。</p>
+          </header>
+          <div class="person-architecture">
+            <section class="person-layer" data-tone="world">
+              <span>P1 · 权威输入</span><strong>世界事实 + PersonState + 共享承诺状态</strong>
+              <p>身体、位置、库存、知识、记忆、关系、人格，以及状态中的 Intent / Project / Agreement。</p>
+            </section>
+            <div class="architecture-arrow"><span>只投影本人可获得的事实 ↓</span></div>
+            <section class="person-layer" data-tone="agent">
+              <span>P2 · 局部认知视图</span><strong>DecisionContext</strong>
+              <p>可见格、人、动物、掉落物，有来源记忆、当前意图和已通过感知边界的能力证据。</p>
+            </section>
+            <div class="architecture-arrow"><span>生成合法可供性 ↓</span></div>
+            <section class="person-layer person-layer-split" data-tone="agent">
+              <div><span>P3-A · 硬门禁</span><strong>休眠 · 生存 · 照护 · 年龄 · 回应 · 履约</strong><p>不可推迟的事实先行；正在执行的优先义务不会被新义务无条件打断。</p></div>
+              <div><span>P3-B · 自主选择</span><strong>ActionOption → NeedAgenda → Appraisal</strong><p>motivation 跨过本人 aspiration 后，才成为 BDI 挑战者。</p></div>
+            </section>
+            <div class="architecture-arrow"><span>检查意图持续与切换边际 ↓</span></div>
+            <section class="person-layer" data-tone="social">
+              <span>P4 · 唯一执行焦点</span><strong>Intent → Project / HTN → 下一原子动作</strong>
+              <p>进度、尽责性、项目压力与个人成功后验形成承诺惯性；子中断保存可返回的父意图。</p>
+            </section>
+            <div class="architecture-arrow"><span>领域预演与重验 ↓</span></div>
+            <section class="person-layer" data-tone="effect">
+              <span>P5 · 规则提交</span><strong>ActionExecutor → ActionFact / WorldEvent</strong>
+              <p>每 tick 至多一个动作；成功、推进、阻塞与失败都留下路径、消耗、产物和来源。</p>
+            </section>
+            <div class="person-feedback" data-tone="world">
+              <span>↺ FEEDBACK</span><strong>事实反哺下一次决定</strong>
+              <p>更新本人结果后验、结构化记忆、人格学习、关系、项目和协议进度；不从模型文本学习世界事实。</p>
+            </div>
+          </div>
+          <div class="architecture-rails architecture-rails-compact">
+            <aside data-tone="observer"><span>READ-ONLY SOUL</span><strong>PersonSoul / personaFrame</strong><p>由身份与 baseline 人格确定性派生，维持表达一致性；不写入 PersonState。</p></aside>
+            <aside data-tone="observer"><span>OUTSIDE THE MIND</span><strong>文明指数 / 模型 / UI</strong><p>可以解释或在合法候选内重选，但不能制造需要、知识、动作或物质后果。</p></aside>
+          </div>
+        </article>
+
+        <article class="architecture-board architecture-board-wide" aria-labelledby="civilizationArchitectureTitle">
+          <header class="architecture-board-head">
+            <div><span>04 · EMERGENCE ARCHITECTURE</span><h3 id="civilizationArchitectureTitle">文明涌现架构</h3></div>
+            <p>文明不是人物主动追逐的等级；它是多个闭环在历史中反复成功后留下的观察结果。</p>
+          </header>
+          <div class="emergence-layers">
+            <section data-tone="world">
+              <div class="emergence-layer-label"><span>E1</span><strong>压力层</strong></div>
+              <div class="architecture-node-grid architecture-node-grid-4"><div class="architecture-node">气候与生态</div><div class="architecture-node">身体与照护</div><div class="architecture-node">材料与劳动</div><div class="architecture-node">协调与不确定性</div></div>
+            </section>
+            <div class="architecture-arrow"><span>局部感知与有源记忆 ↓</span></div>
+            <section data-tone="agent">
+              <div class="emergence-layer-label"><span>E2</span><strong>人物适应层</strong></div>
+              <div class="architecture-node-grid architecture-node-grid-4"><div class="architecture-node">动态 Need</div><div class="architecture-node">持续 Project</div><div class="architecture-node">合法 Action</div><div class="architecture-node">客观 Consequence</div></div>
+            </section>
+            <div class="architecture-arrow"><span>重复成功并被记住 ↓</span></div>
+            <section data-tone="social">
+              <div class="emergence-layer-label"><span>E3</span><strong>能力传播层</strong></div>
+              <div class="architecture-node-grid architecture-node-grid-4"><div class="architecture-node">个人技术</div><div class="architecture-node">教学与记录</div><div class="architecture-node">共同项目</div><div class="architecture-node">履约与信任</div></div>
+            </section>
+            <div class="architecture-arrow"><span>改变未来行为 ↓</span></div>
+            <section data-tone="effect">
+              <div class="emergence-layer-label"><span>E4</span><strong>社会结构层</strong></div>
+              <div class="architecture-node-grid architecture-node-grid-4"><div class="architecture-node">Practice</div><div class="architecture-node">Role</div><div class="architecture-node">Norm</div><div class="architecture-node">Institution</div></div>
+            </section>
+            <div class="emergence-feedback" data-tone="world"><span>↺</span><strong>新能力、设施和制度改变下一轮世界压力</strong><small>观察器只在事后识别阶段，不向人物发放奖励。</small></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section class="rules-section" id="ruleTree" aria-labelledby="ruleTreeTitle">
       <div class="section-heading">
-        <div><span class="section-no">01</span><div><span class="section-kicker">RULE TREE</span><h2 id="ruleTreeTitle">当前游戏规则树</h2></div></div>
+        <div><span class="section-no">02</span><div><span class="section-kicker">RULE TREE</span><h2 id="ruleTreeTitle">当前游戏规则树</h2></div></div>
         <p>根节点是唯一的 <code>SimulationState</code>。每条分支最终都要落到真实状态或只读投影，不能从表现层倒灌事实。</p>
       </div>
 
@@ -56,7 +227,7 @@ const RULES_PAGE_MARKUP = `
         <details class="rule-branch" data-tone="world" open>
           <summary><span>世界过程</span><small>即使无人行动也会推进</small></summary>
           <ul>
-            <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；每月天气叠加在纪元之上。</span></li>
+            <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；天气按月结算但以跨月过程叠加在纪元之上，类型具有不改变长程占比的延续惯性，强度只偶发逐级变化。</span></li>
             <li><strong>空间与物质</strong><span>84 × 52 × 12 体素、通行、可达位置、掉落物和材料响应。</span></li>
             <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；普通 Water 不能被猜成动力源。这只是受限机械网络，不代表电力、信号、计算或信息时代。</span></li>
             <li><strong>身体与人口</strong><span>健康、水分、营养、冷热、伤病、衰老、妊娠、9–15 个月产后恢复、出生与死亡；人口接近 50 时受孕机会递减，超过承载能力后资源消耗继续上升。出生始终先生成种子可回放的保底姓名；模型演进可在提交前提议 givenName，但姓氏、顺序、字符、重名与失败回退由本地规则控制。</span></li>
@@ -115,6 +286,7 @@ const RULES_PAGE_MARKUP = `
           <summary><span>社会与学习</span><small>重复的真实协作才可能形成社会结构</small></summary>
           <ul>
             <li><strong>互动</strong><span>先民双向关系从 55 开始；同月每 5 个“双方都行动且行动后同地”的规划刻度，双向增加 trust / bond 各 1，单月最多 3。单纯同处、空闲、休眠和失败动作不计；伤害、拘束或未授权取物的双方当月不增加。结伴门槛为本人有来源的 20 / 20，生殖要求双方双向 60 / 60。</span></li>
+            <li><strong>共同生活</strong><span>结伴提议保存双方共知的稳定生活地点；生活区内可以各站不同格。日常取水、劳动、学习可各自行动；只在 24 个月约定的时间余量用尽、若不返回就无法累计 12 个月共同生活时，才以空闲生活槽位为目标返回。结伴或共同体身份不再自动追踪成员实时坐标。</span></li>
             <li><strong>承诺</strong><span>提议必须回应；生效协议要通过后续行动履约。生殖接受形成最长四个月的可撤回窗口，同一伴侣对每月最多一次真实尝试；每次动作精确绑定协议并重验 60 / 60，未受孕继续窗口，受孕、撤回、关系失效或到期才结清。</span></li>
             <li><strong>近亲风险认识</strong><span>亲缘不改变动作合法性，而是提高后代遗传负荷、出生偏差、寿命压力与后续疾病概率。人物观察或学到这些后果后，风险知识从第一次有源证据起按置信度连续形成软成本；满置信度也不再近似否决。每个关系与身体条件合格的伴侣都保留独立候选，再由同一认知 appraisal 比较关系、责任与亲缘风险。</span></li>
             <li><strong>再次开口</strong><span>没有固定两月冷却：可选社交仍生成候选，再由人物自己的记忆评估同受众、同主题是否有新事实。无新证据且上次未回应 / 拒绝 / 保留会降权；新事实，或与求助 / 照护 / 困境直接相关的显著生存危险，可提高再次开口价值。协议幂等、每人一次回应、同一事实 basis 与开场回应去重仍是硬门禁。</span></li>
@@ -159,7 +331,7 @@ const RULES_PAGE_MARKUP = `
           <div class="decision-tree-scroll">
             <ol class="logic-tree">
               <li>
-                <article class="logic-node" data-kind="process"><span>MONTH START</span><h4>推进月初世界</h4><p>纪元 / 天气 → 预言结算 → 自然过程 → 协议与授权 → 记忆维护。</p></article>
+                <article class="logic-node" data-kind="process"><span>MONTH START</span><h4>推进月初世界</h4><p>纪元 / 跨月天气过程 → 预言结算 → 自然过程 → 协议与授权 → 记忆维护。</p></article>
                 <ol>
                   <li><span class="edge-label">planning tick × 15</span>
                     <article class="logic-node" data-kind="condition"><span>G1</span><h4>人物仍存活？</h4><p>参与者列表只保留活人；刻度内再次检查。</p></article>

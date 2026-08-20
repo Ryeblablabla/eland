@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ThreeBodyCanvas, { type CelestialSelection, type SimStats } from '@/components/ThreeBodyCanvas';
 import SocietyScene3D, { type SocietySceneSelection } from '@/components/SocietyScene3D';
+import AtmosphereTransition, {
+  type AtmosphereTransitionDirection,
+} from '@/components/AtmosphereTransition';
 import AdaptiveMusic from '@/components/AdaptiveMusic';
 import ImmersiveInterface, {
   type ImmersiveOverlayMode,
@@ -109,7 +112,7 @@ export default function ImmersiveGame() {
   const [history, setHistory] = useState<EvolutionEntry[]>([]);
   const [historyTotalCount, setHistoryTotalCount] = useState(0);
   const [civilizationIndexHistory, setCivilizationIndexHistory] = useState<CivilizationIndexHistoryPoint[]>([]);
-  const [cover, setCover] = useState(false);
+  const [atmosphereTransition, setAtmosphereTransition] = useState<AtmosphereTransitionDirection | null>(null);
   const [universeTarget, setUniverseTarget] = useState(0);
   const [universeResetToken, setUniverseResetToken] = useState(0);
   const [restoreSnapshot, setRestoreSnapshot] = useState<CosmosSnapshot | null>(null);
@@ -160,18 +163,13 @@ export default function ImmersiveGame() {
   const collapseHandledRef = useRef(false);
   const replacementRequestedRef = useRef(false);
   const transitionRef = useRef(false);
-  const transitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const newWorldLaunchingRef = useRef(false);
-  const uiPaused = overlayMode !== null || civilizationEnding !== null;
+  const uiPaused = overlayMode !== null || civilizationEnding !== null || atmosphereTransition !== null;
 
   useEffect(() => {
     const checkpointSession = () => { void elandClient.checkpoint(runIdRef.current); };
     window.addEventListener('pagehide', checkpointSession);
     return () => window.removeEventListener('pagehide', checkpointSession);
-  }, []);
-
-  const after = useCallback((delay: number, action: () => void) => {
-    transitionTimersRef.current.push(setTimeout(action, delay));
   }, []);
 
   const requestUniverseReset = useCallback(() => {
@@ -181,7 +179,6 @@ export default function ImmersiveGame() {
   }, []);
 
   useEffect(() => () => {
-    for (const timer of transitionTimersRef.current) clearTimeout(timer);
     if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
   }, []);
 
@@ -380,7 +377,7 @@ export default function ImmersiveGame() {
     skySamplerRef.current.restore(frame.skySample);
     statsRef.current = null;
     transitionRef.current = false;
-    setCover(false);
+    setAtmosphereTransition(null);
     setView('cosmos');
     setFocusTarget(null);
     setFocusAgentSubtab('overview');
@@ -572,31 +569,30 @@ export default function ImmersiveGame() {
     transitionRef.current = true;
     setFocusTarget(null);
     setFocusAgentSubtab('overview');
-    setCover(true);
-    after(320, () => {
-      setView('society');
-      after(160, () => {
-        setCover(false);
-        transitionRef.current = false;
-      });
-    });
-  }, [after, society]);
+    setAtmosphereTransition('dive');
+  }, [society]);
 
   const riseToCosmos = useCallback(() => {
     if (transitionRef.current) return;
     transitionRef.current = true;
     setFocusTarget(null);
     setFocusAgentSubtab('overview');
-    setCover(true);
-    after(320, () => {
+    setAtmosphereTransition('rise');
+  }, []);
+
+  const switchSceneBehindAtmosphere = useCallback((direction: AtmosphereTransitionDirection) => {
+    if (direction === 'dive') {
+      setView('society');
+    } else {
       setView('cosmos');
       setExitFocusToken((token) => token + 1);
-      after(160, () => {
-        setCover(false);
-        transitionRef.current = false;
-      });
-    });
-  }, [after]);
+    }
+  }, []);
+
+  const finishAtmosphereTransition = useCallback((direction: AtmosphereTransitionDirection) => {
+    setAtmosphereTransition((current) => current === direction ? null : current);
+    transitionRef.current = false;
+  }, []);
 
   const closeOverlay = useCallback(() => {
     if (newWorldLaunchingRef.current) return;
@@ -769,12 +765,10 @@ export default function ImmersiveGame() {
     pendingStepSkyRef.current = null;
     skySamplerRef.current.reset();
     transitionRef.current = false;
-    for (const timer of transitionTimersRef.current) clearTimeout(timer);
-    transitionTimersRef.current = [];
     if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
     announceTimerRef.current = null;
     setAnnounce(null);
-    setCover(false);
+    setAtmosphereTransition(null);
     setView('cosmos');
     setSociety(null);
     setCivilizationIndexHistory([]);
@@ -867,6 +861,8 @@ export default function ImmersiveGame() {
     setFocusTarget(null);
     setFocusAgentSubtab('overview');
     setAnnounce(null);
+    transitionRef.current = false;
+    setAtmosphereTransition(null);
     setView('cosmos');
     setExitFocusToken((token) => token + 1);
     if (systemExtinct) {
@@ -1137,10 +1133,13 @@ export default function ImmersiveGame() {
         onAgentSubtabChange={changeFocusAgentSubtab}
       />
 
-      <div
-        className="pointer-events-none absolute inset-0 z-[60] bg-[#02030a] transition-opacity duration-300"
-        style={{ opacity: cover ? 1 : 0 }}
-      />
+      {atmosphereTransition && (
+        <AtmosphereTransition
+          direction={atmosphereTransition}
+          onComplete={finishAtmosphereTransition}
+          onOpaque={switchSceneBehindAtmosphere}
+        />
+      )}
 
       <ImmersiveInterface
         mode={overlayMode}

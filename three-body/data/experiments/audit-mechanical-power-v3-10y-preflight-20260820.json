@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "observerVersion": "mechanical-power-chain-audit-v1",
+  "generatedAt": "2026-08-20T10:27:15.717Z",
+  "source": {
+    "matrixPath": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/info-age-v3-mechanical-power-10y-preflight-20260820.json",
+    "matrixSha256": "60a2d0525c4afc218b33f457687fcfd7b6a59a80166cbe0cc27e7d4bde7a349c",
+    "experiment": {
+      "prefix": "info-age-v3-mechanical-power-20260820",
+      "baseUrl": "http://127.0.0.1:3222",
+      "seeds": [
+        185,
+        20260815,
+        20260816
+      ],
+      "years": [
+        10
+      ],
+      "repeats": 1,
+      "civilizationNo": 1,
+      "chaosIntensity": 0,
+      "climateBias": "balanced"
+    },
+    "matrixSchemaVersion": 1,
+    "matrixGeneratedAt": "2026-08-20T10:26:59.262Z",
+    "runCount": 3
+  },
+  "method": {
+    "authority": "SQLite terminal SimulationState loaded read-only; the observer never advances a run.",
+    "strictChain": "owner source-bound current observation -> exact project installations -> failed commissioning operation preserving input -> source-bound replacement repair -> completed post-repair powered operation -> project completion evidence",
+    "noProxyPolicy": "Nearby Mill bonuses, material names, era/index labels and terminal network presence cannot substitute for versioned project-bound action facts.",
+    "sourceAvailabilityPolicy": "The action executor is authoritative at commit; observer requires the completed operation to persist the exact source segment among supportingSegmentIds.",
+    "zeroDenominatorPolicy": "No mechanical project is unsupported, never a vacuous 100% success.",
+    "embeddedSelfTest": "Locks one strict clean chain and rejects completion evidence that points to the commissioning fault."
+  },
+  "aggregates": {
+    "overall": {
+      "horizonYears": "all",
+      "runs": 3,
+      "seeds": [
+        "185",
+        "20260815",
+        "20260816"
+      ],
+      "support": "unsupported",
+      "matrixStatuses": {
+        "ended": 3
+      },
+      "totals": {
+        "projects": 0,
+        "completedProjects": 0,
+        "strictCompleteChains": 0,
+        "completedWithoutStrictChain": 0,
+        "projectsWithAnomalies": 0,
+        "unresolvedActionEventIds": 0,
+        "duplicateWorldEventIds": 0
+      },
+      "strictCompletionRate": null,
+      "naturalOccurrenceCoverage": 0,
+      "distributions": {
+        "projectsPerRun": {
+          "count": 3,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        },
+        "strictChainsPerRun": {
+          "count": 3,
+          "min": 0,
+          "median": 0,
+          "mean": 0,
+          "max": 0
+        }
+      },
+      "anomalyReasons": {}
+    },
+    "horizons": [
+      {
+        "horizonYears": 10,
+        "runs": 3,
+        "seeds": [
+          "185",
+          "20260815",
+          "20260816"
+        ],
+        "support": "unsupported",
+        "matrixStatuses": {
+          "ended": 3
+        },
+        "totals": {
+          "projects": 0,
+          "completedProjects": 0,
+          "strictCompleteChains": 0,
+          "completedWithoutStrictChain": 0,
+          "projectsWithAnomalies": 0,
+          "unresolvedActionEventIds": 0,
+          "duplicateWorldEventIds": 0
+        },
+        "strictCompletionRate": null,
+        "naturalOccurrenceCoverage": 0,
+        "distributions": {
+          "projectsPerRun": {
+            "count": 3,
+            "min": 0,
+            "median": 0,
+            "mean": 0,
+            "max": 0
+          },
+          "strictChainsPerRun": {
+            "count": 3,
+            "min": 0,
+            "median": 0,
+            "mean": 0,
+            "max": 0
+          }
+        },
+        "anomalyReasons": {}
+      }
+    ]
+  },
+  "runs": [
+    {
+      "runId": "info-age-v3-mechanical-power-20260820-s185-y10-r1",
+      "seed": 185,
+      "horizonYears": 10,
+      "repeat": 1,
+      "matrixStatus": "ended",
+      "matrixThroughMonth": 120,
+      "sqliteMeta": {
+        "revision": 11,
+        "elapsedMonths": 120,
+        "status": "ended",
+        "eventCount": 4797
+      },
+      "support": "unsupported",
+      "metrics": {
+        "projects": 0,
+        "completedProjects": 0,
+        "strictCompleteChains": 0,
+        "completedWithoutStrictChain": 0,
+        "strictCompletionRate": null,
+        "projectsWithAnomalies": 0,
+        "unresolvedActionEventIds": 0,
+        "duplicateWorldEventIds": 0
+      },
+      "anomalyReasons": {},
+      "projects": []
+    },
+    {
+      "runId": "info-age-v3-mechanical-power-20260820-s20260815-y10-r1",
+      "seed": 20260815,
+      "horizonYears": 10,
+      "repeat": 1,
+      "matrixStatus": "ended",
+      "matrixThroughMonth": 120,
+      "sqliteMeta": {
+        "revision": 11,
+        "elapsedMonths": 120,
+        "status": "ended",
+        "eventCount": 5298
+      },
+      "support": "unsupported",
+      "metrics": {
+        "projects": 0,
+        "completedProjects": 0,
+        "strictCompleteChains": 0,
+        "completedWithoutStrictChain": 0,
+        "strictCompletionRate": null,
+        "projectsWithAnomalies": 0,
+        "unresolvedActionEventIds": 0,
+        "duplicateWorldEventIds": 0
+      },
+      "anomalyReasons": {},
+      "projects": []
+    },
+    {
+      "runId": "info-age-v3-mechanical-power-20260820-s20260816-y10-r1",
+      "seed": 20260816,
+      "horizonYears": 10,
+      "repeat": 1,
+      "matrixStatus": "ended",
+      "matrixThroughMonth": 120,
+      "sqliteMeta": {
+        "revision": 11,
+        "elapsedMonths": 120,
+        "status": "ended",
+        "eventCount": 6200
+      },
+      "support": "unsupported",
+      "metrics": {
+        "projects": 0,
+        "completedProjects": 0,
+        "strictCompleteChains": 0,
+        "completedWithoutStrictChain": 0,
+        "strictCompletionRate": null,
+        "projectsWithAnomalies": 0,
+        "unresolvedActionEventIds": 0,
+        "duplicateWorldEventIds": 0
+      },
+      "anomalyReasons": {},
+      "projects": []
+    }
+  ]
+}

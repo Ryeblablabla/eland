@@ -1,0 +1,44 @@
+Controlled public-granary audit
+Date: 2026-08-20
+Horizon: 10 years (120 months)
+Seeds: 185, 20260815, 20260816
+
+Hypothesis
+The excess comes from three general execution gaps: a reserve project can return
+to facility manufacture after placement, linked collaborators can reopen the
+same completed facility, and a verified facility recipe can repeat as ordinary
+inventory craft. A fourth same-month gap lets two collaborators manufacture the
+same project facility before either places it.
+
+Isolation
+Baseline and candidate were built from the same temporary source snapshot. The
+only source differences were the public-facility convergence changes in
+application/project-options.ts, application/action-options.ts, and
+application/monthly-simulation.ts.
+
+seed       baseline reserve/craft/place/held/linked-duplicate   candidate reserve/craft/place/held/linked-duplicate
+185        2 / 4 / 2 / 1 / 1                                  1 / 1 / 1 / 0 / 0
+20260815   3 / 41 / 4 / 38 / 2                                1 / 1 / 1 / 0 / 0
+20260816   0 / 0 / 0 / 0 / 0                                  0 / 0 / 0 / 0 / 0
+
+Definitions
+- craft: completed outputMaterialId=Granary without a placement position.
+- place: completed outputMaterialId=Granary with a real placement position.
+- held: terminal Granary units in living and dead person inventories.
+- linked duplicate: a later reserve project whose owner was linked to an
+  earlier completed reserve project before creating the later project.
+
+Guardrails observed
+- A seed without reserve demand did not manufacture a granary.
+- Each triggered candidate run retained one real granary placement.
+- No candidate run ended with a granary in a person's inventory.
+- All three candidate runs completed 120 months; no civilization went extinct.
+
+Decision
+Accept the convergence mechanism for this 10-year causal horizon. This matrix is
+not evidence about 30-year or longer civilization outcomes.
+
+Artifacts
+- granary-controlled-baseline-v3-20260820.json
+- granary-controlled-candidate-v5-20260820.json
+- compare-granary-controlled-v3-v5-20260820.txt

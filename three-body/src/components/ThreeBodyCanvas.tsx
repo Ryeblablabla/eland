@@ -6,7 +6,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createDistantSkyLayer } from '@/game/distantSky';
-import { makePlanetTextureSet, makeStarSurfaceTexture } from '@/game/proceduralTextures';
+import { createEarthlikePlanet } from '@/game/earthlikePlanet';
+import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
 import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
 import {
   DEFAULT_PRESET,
@@ -77,6 +78,8 @@ interface Props {
 const DT = 0.001;
 const MAX_TRAIL = 4096; // 轨迹缓冲上限（UI 滑杆最大 3000）
 const STARFIELD_COUNT = 1500;
+const PLANET_DOUBLE_CLICK_APPROACH_MS = 720;
+const PLANET_DOUBLE_CLICK_CLOUD_START_PROGRESS = 0.72;
 
 function freshUniverseRandomState(): number {
   const value = new Uint32Array(1);
@@ -122,18 +125,23 @@ interface DisposableObject {
   isPoints?: boolean;
   isSprite?: boolean;
   geometry?: THREE.BufferGeometry;
-  material?: THREE.Material & { map?: THREE.Texture | null };
+  material?: THREE.Material | THREE.Material[];
 }
 
 function disposeScene(scene: THREE.Scene, composer: EffectComposer, renderer: THREE.WebGLRenderer) {
+  const textures = new Set<THREE.Texture>();
   scene.traverse((obj) => {
     const d = obj as unknown as DisposableObject;
     d.geometry?.dispose();
-    if (d.material) {
-      d.material.map?.dispose();
-      d.material.dispose();
+    const materials = d.material ? (Array.isArray(d.material) ? d.material : [d.material]) : [];
+    for (const material of materials) {
+      for (const value of Object.values(material)) {
+        if (value instanceof THREE.Texture) textures.add(value);
+      }
+      material.dispose();
     }
   });
+  for (const texture of textures) texture.dispose();
   composer.dispose();
   renderer.dispose();
 }
@@ -250,9 +258,11 @@ export default function ThreeBodyCanvas(props: Props) {
     const focus = {
       active: false,      // 聚焦中
       planetR: 0.05,      // 行星视觉半径（聚焦时从等效像素大小平滑实体化）
-      lastWheelIn: -1e9,  // 最近一次"放大"滚轮时间
+      lastWheelIn: -1e9,  // 最近一次滚轮/键盘放大时间
       diveHold: 0,        // 在阈值内持续停留的时长
       dove: false,        // 已发起俯冲（本次聚焦只触发一次）
+      diveApproachStartedAt: -1, // 双击时快速逼近行星，尾段与大气过场重叠
+      diveApproachStartDistance: 0,
       justActivated: false, // 本帧刚进入聚焦（行星半径从等效像素起步）
       seenExitToken: -1,
       screenX: 0, screenY: 0, screenR: 0, hasScreen: false, // 行星屏幕圆（点击/双击命中用）
@@ -260,12 +270,29 @@ export default function ThreeBodyCanvas(props: Props) {
     const planetVec = new THREE.Vector3();
     const projVec = new THREE.Vector3();
     const originVec = new THREE.Vector3(0, 0, 0);
+    const cameraOffsetVec = new THREE.Vector3();
     const bodyScreens = Array.from({ length: N_BODIES }, () => ({ x: 0, y: 0, r: 0, visible: false }));
     // 调试探针挂载点（window.__tbPlanet / __tbDebug）
     const dbgPlanet = ((window as unknown as { __tbPlanet?: { x: number; y: number } }).__tbPlanet ??=
       { x: 0, y: 0 });
     const dbg = ((window as unknown as { __tbDebug?: Record<string, unknown> }).__tbDebug ??= {});
     const divePinch = new PinchTransitionGesture('zoom-in');
+    const beginPlanetDive = (withFastApproach: boolean) => {
+      const p = propsRef.current;
+      if (!p.planetFocusEnabled || focus.dove || focus.diveApproachStartedAt >= 0) return;
+      focus.diveHold = 0;
+      if (withFastApproach) {
+        focus.diveApproachStartedAt = performance.now();
+        focus.diveApproachStartDistance = Math.max(
+          camera.position.distanceTo(controls.target),
+          focus.planetR * 2.2,
+        );
+        manualUntil = 0;
+        return;
+      }
+      focus.dove = true;
+      p.onPlanetDive?.();
+    };
     let canvasDown: { x: number; y: number } | null = null;
     const onFocusPointerDown = (ev: PointerEvent) => { canvasDown = { x: ev.clientX, y: ev.clientY }; };
     const onFocusPointerUp = (ev: PointerEvent) => {
@@ -314,12 +341,11 @@ export default function ThreeBodyCanvas(props: Props) {
           focus.justActivated = true;
           p.onPlanetFocusChange?.(true);
         }
-        focus.dove = true;
-        focus.diveHold = 0;
-        p.onPlanetDive?.();
+        beginPlanetDive(true);
       } else if (focus.active) {
         focus.active = false;
         focus.dove = false;
+        focus.diveApproachStartedAt = -1;
         p.onPlanetFocusChange?.(false);
       }
     };
@@ -354,9 +380,7 @@ export default function ThreeBodyCanvas(props: Props) {
         p.onPlanetFocusChange?.(true);
       }
       if (update.triggered && !focus.dove) {
-        focus.dove = true;
-        focus.diveHold = 0;
-        p.onPlanetDive?.();
+        beginPlanetDive(false);
       }
     };
     const onDivePinchPointerUp = (ev: PointerEvent) => {
@@ -376,6 +400,31 @@ export default function ThreeBodyCanvas(props: Props) {
     canvas.addEventListener('pointerup', onFocusPointerUp);
     canvas.addEventListener('dblclick', onFocusDblClick);
     canvas.addEventListener('wheel', onFocusWheel, { passive: true });
+
+    // 与人间页对齐：选中并聚焦地球后，↑ 放大、↓ 缩小。
+    const pressedZoomKeys = new Set<string>();
+    const isEditableTarget = (target: EventTarget | null) => target instanceof HTMLElement
+      && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+    const onZoomKeyDown = (ev: KeyboardEvent) => {
+      if ((ev.code !== 'ArrowUp' && ev.code !== 'ArrowDown')
+        || ev.metaKey
+        || ev.ctrlKey
+        || ev.altKey
+        || isEditableTarget(ev.target)) return;
+      const p = propsRef.current;
+      if (!p.planetFocusEnabled
+        || !focus.active
+        || focus.dove
+        || focus.diveApproachStartedAt >= 0
+        || p.selectedCelestial?.kind !== 'planet') return;
+      ev.preventDefault();
+      pressedZoomKeys.add(ev.code);
+    };
+    const onZoomKeyUp = (ev: KeyboardEvent) => { pressedZoomKeys.delete(ev.code); };
+    const clearZoomKeys = () => { pressedZoomKeys.clear(); };
+    window.addEventListener('keydown', onZoomKeyDown);
+    window.addEventListener('keyup', onZoomKeyUp);
+    window.addEventListener('blur', clearZoomKeys);
 
     // 后处理：MSAA 渲染目标 + 泛光 + 色彩输出
     const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
@@ -470,84 +519,17 @@ export default function ThreeBodyCanvas(props: Props) {
       starGlows.push(glow);
     }
 
-    // ---- 行星：不发光，只反射星光（地球式：受光球芯 + 海面高光 + 独立云层 + 大气边缘光）----
-    // 高光参数按"近距离聚焦观看"标定：窄而弱（隔离台实证：大高光团会洗掉昼面）
-    const planetTex = makePlanetTextureSet(4242);
-    const planetCore = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 28, 20),
-      new THREE.MeshPhongMaterial({
-        map: planetTex.day,
-        specularMap: planetTex.spec, // 海面反射星光
-        specular: new THREE.Color('#24333b'),
-        shininess: 60,
-        // 电影化夜面最低可见度：沿用昼面纹理，避免背光相位退化成纯黑圆球。
-        emissive: new THREE.Color('#ffffff'),
-        emissiveMap: planetTex.day,
-        emissiveIntensity: 0.22,
-        // 深空幕布也参与渲染排序；放入透明队列，确保地表不会被远景覆盖。
-        transparent: true,
-      }),
-    );
-    planetCore.rotation.x = 0.15; // 轻微轴倾
-    planetCore.renderOrder = 4;
-    scene.add(planetCore);
-    // 独立云层：略大一圈、与地表差速自转（薄云，不遮地表）
-    const planetClouds = new THREE.Mesh(
-      new THREE.SphereGeometry(1.035, 28, 20),
-      new THREE.MeshPhongMaterial({
-        map: planetTex.clouds,
-        transparent: true,
-        opacity: 0.6,
-        depthWrite: false,
-      }),
-    );
-    planetClouds.rotation.x = 0.15;
-    planetClouds.renderOrder = 5;
-    scene.add(planetClouds);
-    // 大气：菲涅尔 rim，只有轮廓一圈发亮（加法混合，不触发 bloom）；
-    // 迎光面亮、背光面暗（uSunDir 每帧指向当前通量最强的恒星）
-    const atmosphereMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(PLANET_STYLE.glow) },
-        uPower: { value: 3.8 }, // 更紧的 rim：放大时不至于糊住昼面
-        uSunDir: { value: new THREE.Vector3(0, 0, 1) },
-      },
-      vertexShader: `
-        varying vec3 vNormalW;
-        varying vec3 vWorldPos;
-        void main() {
-          vNormalW = normalize(mat3(modelMatrix) * normal);
-          vec4 wp = modelMatrix * vec4(position, 1.0);
-          vWorldPos = wp.xyz;
-          gl_Position = projectionMatrix * viewMatrix * wp;
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColor;
-        uniform float uPower;
-        uniform vec3 uSunDir;
-        varying vec3 vNormalW;
-        varying vec3 vWorldPos;
-        void main() {
-          vec3 viewDir = normalize(cameraPosition - vWorldPos);
-          float rim = pow(1.0 - max(dot(viewDir, normalize(vNormalW)), 0.0), uPower);
-          float day = max(dot(normalize(vNormalW), uSunDir), 0.0);
-          rim *= 0.25 + 0.75 * day;
-          gl_FragColor = vec4(uColor * rim, rim);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(1.14, 32, 24),
-      atmosphereMat,
-    );
-    atmosphere.renderOrder = 6;
-    scene.add(atmosphere);
+    // ---- 行星：PBR 海陆 + 云影 + 独立云层 + 轻量 Rayleigh/Mie 大气 ----
+    const planetVisual = createEarthlikePlanet(4242);
+    const planetCore = planetVisual.core;
+    const planetCloudShadow = planetVisual.cloudShadow;
+    const planetClouds = planetVisual.clouds;
+    const atmosphere = planetVisual.atmosphere;
+    const atmosphereMat = planetVisual.atmosphereMaterial;
+    scene.add(planetCore, planetCloudShadow, planetClouds, atmosphere);
     // 调试探针：图层隔离截图（无头调试脚本用）
     dbg.planetCore = planetCore;
+    dbg.planetCloudShadow = planetCloudShadow;
     dbg.planetClouds = planetClouds;
     dbg.atmosphere = atmosphere;
 
@@ -559,8 +541,8 @@ export default function ThreeBodyCanvas(props: Props) {
       scene.add(l);
       starLights.push(l);
     }
-    // 冷色弱补光只影响行星/云层等受光材质；恒星使用 MeshBasicMaterial，不会被一并抬亮。
-    scene.add(new THREE.AmbientLight('#b8c8d8', 0.42));
+    // 极弱冷色散射只防止夜面退化成纯黑；恒星使用 MeshBasicMaterial，不受补光影响。
+    scene.add(new THREE.AmbientLight('#8fa6bd', 0.22));
 
     // ---- 孪生系统恒星：空心小圈 ----
     const twinRings: THREE.Mesh[] = [];
@@ -791,6 +773,8 @@ export default function ThreeBodyCanvas(props: Props) {
         if (focus.active) {
           focus.active = false;
           focus.dove = false;
+          focus.diveApproachStartedAt = -1;
+          pressedZoomKeys.clear();
           p.onPlanetFocusChange?.(false);
         }
       }
@@ -803,7 +787,6 @@ export default function ThreeBodyCanvas(props: Props) {
           focus.planetR = 2.2 / (Math.min(W, H) / 2 / w.viewR);
         }
         focus.planetR += (0.06 - focus.planetR) * 0.045; // 实体化到固定世界半径（丝滑）
-        if (focus.dove) focus.planetR *= 1.045; // 俯冲过场期间行星迎面放大
         controls.minDistance = focus.planetR * 2.2;
         controls.maxDistance = Math.max(dist * 6, 1);
       } else {
@@ -813,15 +796,62 @@ export default function ThreeBodyCanvas(props: Props) {
 
       if (focus.active) {
         planetVec.set(w.sys.state[PLANET_IDX * 2], w.sys.state[PLANET_IDX * 2 + 1], 0);
-        controls.target.lerp(planetVec, 0.14);
+        const diveApproaching = focus.diveApproachStartedAt >= 0;
+        controls.target.lerp(planetVec, diveApproaching ? 0.38 : 0.14);
         controls.update();
-        // 俯冲检测：最近 0.6s 内有放大动作 + 距离进入阈值并停留 0.18s
-        const dCam = camera.position.distanceTo(controls.target);
-        if (!focus.dove && now - focus.lastWheelIn < 600 && dCam < focus.planetR * 2.7) {
-          focus.diveHold += frameDt;
-          if (focus.diveHold > 0.18) {
+
+        if (diveApproaching) {
+          // 双击入场先让地球迅速撑满视野，推进尾段提前淡入体积云以无缝衔接。
+          const progress = THREE.MathUtils.clamp(
+            (now - focus.diveApproachStartedAt) / PLANET_DOUBLE_CLICK_APPROACH_MS,
+            0,
+            1,
+          );
+          const eased = 1 - Math.pow(1 - progress, 4);
+          cameraOffsetVec.subVectors(camera.position, controls.target);
+          if (cameraOffsetVec.lengthSq() < 1e-8) cameraOffsetVec.set(0, 0, 1);
+          const approachDistance = THREE.MathUtils.lerp(
+            focus.diveApproachStartDistance,
+            focus.planetR * 2.24,
+            eased,
+          );
+          camera.position.copy(controls.target).addScaledVector(cameraOffsetVec.normalize(), approachDistance);
+          controls.update();
+          if (!focus.dove && progress >= PLANET_DOUBLE_CLICK_CLOUD_START_PROGRESS) {
             focus.dove = true;
             p.onPlanetDive?.();
+          }
+          if (progress >= 1) {
+            focus.diveApproachStartedAt = -1;
+          }
+        } else if (!focus.dove && p.selectedCelestial?.kind === 'planet') {
+          const zoomAxis = Number(pressedZoomKeys.has('ArrowDown'))
+            - Number(pressedZoomKeys.has('ArrowUp'));
+          if (zoomAxis !== 0) {
+            cameraOffsetVec.subVectors(camera.position, controls.target);
+            const distance = cameraOffsetVec.length();
+            const nextDistance = THREE.MathUtils.clamp(
+              distance * Math.exp(zoomAxis * 1.1 * frameDt),
+              controls.minDistance,
+              controls.maxDistance,
+            );
+            if (distance > 1e-6) {
+              camera.position.copy(controls.target).addScaledVector(cameraOffsetVec.normalize(), nextDistance);
+              controls.update();
+            }
+            if (zoomAxis < 0) focus.lastWheelIn = now;
+            else focus.diveHold = 0;
+          }
+        }
+        // 俯冲检测：最近 0.6s 内有放大动作 + 距离进入阈值并停留 0.18s
+        const dCam = camera.position.distanceTo(controls.target);
+        if (!focus.dove
+          && focus.diveApproachStartedAt < 0
+          && now - focus.lastWheelIn < 600
+          && dCam < focus.planetR * 2.7) {
+          focus.diveHold += frameDt;
+          if (focus.diveHold > 0.18) {
+            beginPlanetDive(false);
           }
         } else if (dCam >= focus.planetR * 2.7) {
           focus.diveHold = 0;
@@ -895,9 +925,12 @@ export default function ThreeBodyCanvas(props: Props) {
       planetCore.position.set(s[PLANET_IDX * 2], s[PLANET_IDX * 2 + 1], 0);
       planetCore.scale.setScalar(planetR);
       planetCore.rotation.y += 0.18 * frameDt;
+      planetCloudShadow.position.copy(planetCore.position);
+      planetCloudShadow.scale.setScalar(planetR);
       planetClouds.position.copy(planetCore.position);
       planetClouds.scale.setScalar(planetR);
       planetClouds.rotation.y += 0.23 * frameDt;
+      planetCloudShadow.rotation.y = planetClouds.rotation.y + 0.018;
       atmosphere.position.copy(planetCore.position);
       atmosphere.scale.setScalar(planetR);
 
@@ -930,6 +963,12 @@ export default function ThreeBodyCanvas(props: Props) {
       atmosphereMat.uniforms.uSunDir.value
         .set(s[hostIdx * 2] - px, s[hostIdx * 2 + 1] - py, 0)
         .normalize();
+      atmosphereMat.uniforms.uSunColor.value.set(STAR_STYLES[hostIdx].core);
+      atmosphereMat.uniforms.uIntensity.value = THREE.MathUtils.clamp(
+        0.78 + Math.sqrt(Math.max(hostFlux, 0)) * 0.12,
+        0.78,
+        1.04,
+      );
 
       composer.render();
     };
@@ -957,6 +996,9 @@ export default function ThreeBodyCanvas(props: Props) {
       canvas.removeEventListener('pointerup', onFocusPointerUp);
       canvas.removeEventListener('dblclick', onFocusDblClick);
       canvas.removeEventListener('wheel', onFocusWheel);
+      window.removeEventListener('keydown', onZoomKeyDown);
+      window.removeEventListener('keyup', onZoomKeyUp);
+      window.removeEventListener('blur', clearZoomKeys);
       controls.dispose();
       scene.background = null;
       distantSky.dispose();

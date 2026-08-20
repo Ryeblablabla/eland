@@ -84,72 +84,178 @@ export function makeStarSurfaceTexture(coreHex: string, glowHex: string, seed: n
   return tex;
 }
 
-/** 三体星表面组：日间海陆（无云）+ 高光掩码（海面反光）+ 独立云层 */
-export function makePlanetTextureSet(seed: number): {
+export interface PlanetTextureSet {
   day: THREE.CanvasTexture;
-  spec: THREE.CanvasTexture;
+  roughness: THREE.CanvasTexture;
+  normal: THREE.CanvasTexture;
+  water: THREE.CanvasTexture;
   clouds: THREE.CanvasTexture;
-} {
-  const W = 512, H = 256; // 512 宽：聚焦近景时大陆边缘仍清晰
+}
+
+/**
+ * 三体星表面组：按类地气候规则生成虚构地理，而不是复刻真实地球大陆。
+ * 输出 PBR 所需的昼面、粗糙度、微法线、水体 clearcoat 掩码与独立云层。
+ */
+export function makePlanetTextureSet(seed: number): PlanetTextureSet {
+  const W = 1024, H = 512;
   const rng = mulberry32(seed);
-  const grids = makeNoiseGrids([4, 8, 16, 32, 64], rng);
-  const cloudGrids = makeNoiseGrids([3, 6, 12, 24], rng);
+  const continentGrids = makeNoiseGrids([3, 6, 12, 24, 48, 96], rng);
+  const reliefGrids = makeNoiseGrids([8, 16, 32, 64], rng);
+  const moistureGrids = makeNoiseGrids([4, 8, 16, 32], rng);
+  const cloudGrids = makeNoiseGrids([4, 8, 16, 32, 64], rng);
+  const weatherGrids = makeNoiseGrids([3, 6, 12, 24], rng);
   const makeCanvas = () => {
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     return c;
   };
-  const dayC = makeCanvas(), specC = makeCanvas(), cloudC = makeCanvas();
+  const dayC = makeCanvas();
+  const roughnessC = makeCanvas();
+  const normalC = makeCanvas();
+  const waterC = makeCanvas();
+  const cloudC = makeCanvas();
   const dayCtx = dayC.getContext('2d')!;
-  const specCtx = specC.getContext('2d')!;
+  const roughnessCtx = roughnessC.getContext('2d')!;
+  const normalCtx = normalC.getContext('2d')!;
+  const waterCtx = waterC.getContext('2d')!;
   const cloudCtx = cloudC.getContext('2d')!;
   const dayImg = dayCtx.createImageData(W, H);
-  const specImg = specCtx.createImageData(W, H);
+  const roughnessImg = roughnessCtx.createImageData(W, H);
+  const normalImg = normalCtx.createImageData(W, H);
+  const waterImg = waterCtx.createImageData(W, H);
   const cloudImg = cloudCtx.createImageData(W, H);
-  // 提高对比度与饱和：近景下海洋不糊成黑团、陆地更暖
-  const deep = new THREE.Color('#0e4258');
-  const shallow = new THREE.Color('#1f7a8c');
-  const landLow = new THREE.Color('#4a7a58');
-  const landHigh = new THREE.Color('#a8946a');
-  const ice = new THREE.Color('#ddf3ee');
+  const elevation = new Float32Array(W * H);
+  const deep = new THREE.Color('#061f38');
+  const ocean = new THREE.Color('#0b4f73');
+  const shallow = new THREE.Color('#2b8ca0');
+  const beach = new THREE.Color('#b6a878');
+  const dry = new THREE.Color('#a98b55');
+  const grass = new THREE.Color('#4f7548');
+  const forest = new THREE.Color('#244f3b');
+  const rock = new THREE.Color('#756d61');
+  const tundra = new THREE.Color('#8e9a82');
+  const ice = new THREE.Color('#e8f5f3');
   const tmp = new THREE.Color();
+  const coastTmp = new THREE.Color();
   const dayEncoded = new THREE.Color();
+  const seaLevel = 0.525;
+
+  // 先得到连续高度场，随后由高度梯度生成切线空间微法线。
   for (let y = 0; y < H; y++) {
-    const lat = Math.abs(y / H - 0.5) * 2; // 0 赤道 → 1 极
+    const v = y / H;
     for (let x = 0; x < W; x++) {
-      const n = fbm(grids, x / W, y / H);
-      const isIce = lat > 0.82 - n * 0.1;
-      const isWater = !isIce && n < 0.53;
-      if (isIce) tmp.copy(ice);
-      else if (n < 0.47) tmp.copy(deep).lerp(shallow, Math.max(0, (n - 0.36) / 0.11));
-      else if (n < 0.53) tmp.copy(shallow);
-      else if (n < 0.62) tmp.copy(landLow).lerp(landHigh, (n - 0.53) / 0.09);
-      else tmp.copy(landHigh);
+      const u = x / W;
+      const continent = fbm(continentGrids, u, v);
+      const relief = fbm(reliefGrids, u + 0.035 * Math.sin(v * Math.PI * 2), v);
+      elevation[y * W + x] = continent * 0.84 + relief * 0.16;
+    }
+  }
+
+  for (let y = 0; y < H; y++) {
+    const v = y / H;
+    const latitude = Math.abs(v - 0.5) * 2; // 0 赤道 → 1 极
+    for (let x = 0; x < W; x++) {
+      const u = x / W;
+      const h = elevation[y * W + x];
+      const landHeight = Math.max(0, (h - seaLevel) / (1 - seaLevel));
+      const moisture = fbm(moistureGrids, u + 0.025 * Math.sin(v * Math.PI * 4), v);
+      const surfaceDetail = fbm(reliefGrids, u + 0.173, v + 0.117);
+      const temperature = THREE.MathUtils.clamp(1 - Math.pow(latitude, 1.35) - landHeight * 0.42, 0, 1);
+      const polarIce = latitude > 0.86 - 0.07 * surfaceDetail;
+      const isWater = h < seaLevel && !polarIce;
+      const isIce = polarIce || (!isWater && temperature < 0.12);
+
+      if (isIce) {
+        tmp.copy(ice).lerp(tundra, THREE.MathUtils.clamp((0.18 - temperature) * 1.5, 0, 0.2));
+      } else if (isWater) {
+        const coast = THREE.MathUtils.smoothstep(h, seaLevel - 0.16, seaLevel);
+        tmp.copy(deep).lerp(ocean, coast).lerp(shallow, coast * coast * 0.42);
+      } else if (landHeight < 0.012) {
+        tmp.copy(beach);
+      } else if (landHeight > 0.33) {
+        tmp.copy(rock).lerp(ice, THREE.MathUtils.smoothstep(landHeight, 0.55, 0.9));
+      } else if (temperature < 0.28) {
+        tmp.copy(tundra).lerp(grass, moisture * 0.28);
+      } else if (moisture < 0.42 && latitude > 0.16 && latitude < 0.62) {
+        tmp.copy(dry).lerp(grass, THREE.MathUtils.smoothstep(moisture, 0.28, 0.48) * 0.35);
+      } else {
+        tmp.copy(grass).lerp(forest, THREE.MathUtils.smoothstep(moisture, 0.46, 0.72));
+      }
+
+      if (!isWater && !isIce) tmp.multiplyScalar(0.84 + surfaceDetail * 0.3);
+      // 在一个很窄的高度区间内抗锯齿，避免程序化大陆边缘出现像素阶梯。
+      if (!isIce && Math.abs(h - seaLevel) < 0.012) {
+        coastTmp.copy(tmp);
+        tmp.copy(shallow).lerp(
+          coastTmp,
+          THREE.MathUtils.smoothstep(h, seaLevel - 0.006, seaLevel + 0.012),
+        );
+      }
+
       dayEncoded.copy(tmp).convertLinearToSRGB();
       const i = (y * W + x) * 4;
       dayImg.data[i] = Math.round(dayEncoded.r * 255);
       dayImg.data[i + 1] = Math.round(dayEncoded.g * 255);
       dayImg.data[i + 2] = Math.round(dayEncoded.b * 255);
       dayImg.data[i + 3] = 255;
-      // 高光掩码：海面反光收窄（大白斑教训：控制在柔和范围）
-      const sp = isWater ? 150 : isIce ? 56 : 14;
-      specImg.data[i] = specImg.data[i + 1] = specImg.data[i + 2] = sp;
-      specImg.data[i + 3] = 255;
-      // 云层：更高阈值 + 更缓透明度，避免整面白纱
-      const cl = fbm(cloudGrids, x / W, (y / H) * 0.35);
-      const ca = cl > 0.63 ? Math.min((cl - 0.63) * 2.8, 0.75) : 0;
-      cloudImg.data[i] = cloudImg.data[i + 1] = cloudImg.data[i + 2] = 255;
+
+      const roughness = isWater ? 82 : isIce ? 155 : Math.round(205 + landHeight * 38);
+      roughnessImg.data[i] = roughnessImg.data[i + 1] = roughnessImg.data[i + 2] = roughness;
+      roughnessImg.data[i + 3] = 255;
+      const waterMask = isWater ? 255 : isIce ? 42 : 0;
+      waterImg.data[i] = waterImg.data[i + 1] = waterImg.data[i + 2] = waterMask;
+      waterImg.data[i + 3] = 255;
+
+      // 两组不同尺度的天气噪声形成云带，纬度调制让副热带区域更稀疏。
+      const windU = u + 0.045 * Math.sin(v * Math.PI * 4);
+      const cloudNoise = fbm(cloudGrids, windU, v) * 0.72 + fbm(weatherGrids, u, v) * 0.28;
+      const subtropicalDry = Math.exp(-Math.pow((latitude - 0.36) / 0.13, 2)) * 0.055;
+      const cloudDensity = cloudNoise - subtropicalDry;
+      const ca = THREE.MathUtils.smoothstep(cloudDensity, 0.49, 0.62) * 0.82;
+      cloudImg.data[i] = 235;
+      cloudImg.data[i + 1] = 246;
+      cloudImg.data[i + 2] = 255;
       cloudImg.data[i + 3] = Math.round(ca * 255);
     }
   }
+
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - 1);
+    const y1 = Math.min(H - 1, y + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = (x - 1 + W) % W;
+      const x1 = (x + 1) % W;
+      const dx = (elevation[y * W + x1] - elevation[y * W + x0]) * 18;
+      const dy = (elevation[y1 * W + x] - elevation[y0 * W + x]) * 9;
+      const nx = -dx;
+      const ny = dy;
+      const nz = 1;
+      const invLength = 1 / Math.hypot(nx, ny, nz);
+      const i = (y * W + x) * 4;
+      normalImg.data[i] = Math.round((nx * invLength * 0.5 + 0.5) * 255);
+      normalImg.data[i + 1] = Math.round((ny * invLength * 0.5 + 0.5) * 255);
+      normalImg.data[i + 2] = Math.round((nz * invLength * 0.5 + 0.5) * 255);
+      normalImg.data[i + 3] = 255;
+    }
+  }
+
   dayCtx.putImageData(dayImg, 0, 0);
-  specCtx.putImageData(specImg, 0, 0);
+  roughnessCtx.putImageData(roughnessImg, 0, 0);
+  normalCtx.putImageData(normalImg, 0, 0);
+  waterCtx.putImageData(waterImg, 0, 0);
   cloudCtx.putImageData(cloudImg, 0, 0);
   const toTex = (c: HTMLCanvasElement, srgb: boolean) => {
     const t = new THREE.CanvasTexture(c);
     t.wrapS = THREE.RepeatWrapping;
+    t.anisotropy = 4;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
     return t;
   };
-  return { day: toTex(dayC, true), spec: toTex(specC, false), clouds: toTex(cloudC, true) };
+  return {
+    day: toTex(dayC, true),
+    roughness: toTex(roughnessC, false),
+    normal: toTex(normalC, false),
+    water: toTex(waterC, false),
+    clouds: toTex(cloudC, true),
+  };
 }

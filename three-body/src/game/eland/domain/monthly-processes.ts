@@ -27,6 +27,7 @@ import {
   type AnimalState,
 } from './animal';
 import { humanResourceCompetitionMultiplier } from './population-capacity';
+import { companionLivingAnchor, positionWithinLivingArea } from './shared-living';
 import {
   HERBIVORE_DANGER_RADIUS,
   PACK_CUE_SHARE_RADIUS,
@@ -141,20 +142,95 @@ export function resolveClimate(state: SimulationState, atMonth: number): Environ
   return events;
 }
 
-export function resolveWeather(state: SimulationState, atMonth: number): EnvironmentFact[] {
-  const events: EnvironmentFact[] = [];
+const WEATHER_LABEL: Record<WeatherKind, string> = {
+  clear: '晴朗',
+  rain: '降雨',
+  storm: '风暴',
+  drought: '干旱',
+  snow: '降雪',
+  fog: '浓雾',
+};
+
+const WEATHER_CONTINUATION_PROBABILITY = 0.55;
+
+function sampledWeatherKind(state: SimulationState, atMonth: number): WeatherKind {
   const climate = state.civilization.climate;
   const sample = seededFraction(state.seed, `weather:${state.civilization.era.sequence}:${atMonth}`);
-  let kind: WeatherKind = 'clear';
-  if (climate.kind === 'cold') kind = sample < 0.48 ? 'snow' : sample < 0.62 ? 'storm' : sample < 0.76 ? 'fog' : 'clear';
-  else if (climate.kind === 'heat' || climate.kind === 'fire') kind = sample < 0.46 ? 'drought' : sample < 0.58 ? 'storm' : 'clear';
-  else kind = sample < 0.27 ? 'rain' : sample < 0.34 ? 'storm' : sample < 0.46 ? 'fog' : sample < 0.51 ? 'drought' : 'clear';
-  const intensity = kind === 'clear' ? 1 : 1 + Math.floor(seededFraction(state.seed, `weather-intensity:${atMonth}`) * (state.civilization.epoch === 'chaotic' ? 5 : 3));
-  const changed = state.civilization.weather.kind !== kind || state.civilization.weather.intensity !== intensity;
-  state.civilization.weather = { kind, intensity, sinceMonth: changed ? atMonth : state.civilization.weather.sinceMonth };
-  if (changed || atMonth === 1) {
-    const label: Record<WeatherKind, string> = { clear: '晴朗', rain: '降雨', storm: '风暴', drought: '干旱', snow: '降雪', fog: '浓雾' };
-    event(state, atMonth, events, 'weather', `本月天气转为${label[kind]}`, { kind, intensity });
+  if (climate.kind === 'cold') return sample < 0.48 ? 'snow' : sample < 0.62 ? 'storm' : sample < 0.76 ? 'fog' : 'clear';
+  if (climate.kind === 'heat' || climate.kind === 'fire') return sample < 0.46 ? 'drought' : sample < 0.58 ? 'storm' : 'clear';
+  return sample < 0.27 ? 'rain' : sample < 0.34 ? 'storm' : sample < 0.46 ? 'fog' : sample < 0.51 ? 'drought' : 'clear';
+}
+
+function sampledWeatherIntensity(state: SimulationState, atMonth: number, kind: WeatherKind): number {
+  if (kind === 'clear') return 1;
+  const maximum = state.civilization.epoch === 'chaotic' ? 5 : 3;
+  return 1 + Math.floor(seededFraction(
+    state.seed,
+    `weather-intensity:${state.civilization.era.sequence}:${atMonth}:${kind}`,
+  ) * maximum);
+}
+
+function weatherFitsClimate(kind: WeatherKind, climate: SimulationState['civilization']['climate']['kind']): boolean {
+  if (kind === 'snow') return climate === 'cold';
+  if (kind === 'rain') return climate === 'temperate';
+  if (kind === 'drought') return climate !== 'cold';
+  return true;
+}
+
+function driftedWeatherIntensity(state: SimulationState, atMonth: number): number {
+  const weather = state.civilization.weather;
+  if (weather.kind === 'clear') return 1;
+  const maximum = state.civilization.epoch === 'chaotic' ? 5 : 3;
+  if (weather.intensity > maximum) return weather.intensity - 1;
+  if (seededFraction(state.seed, `weather-intensity-drift:${weather.sinceMonth}:${atMonth}`) >= 0.12) {
+    return weather.intensity;
+  }
+  const direction = seededFraction(state.seed, `weather-intensity-direction:${weather.sinceMonth}:${atMonth}`) < 0.5 ? -1 : 1;
+  return Math.max(1, Math.min(maximum, weather.intensity + direction));
+}
+
+export function resolveWeather(state: SimulationState, atMonth: number): EnvironmentFact[] {
+  const events: EnvironmentFact[] = [];
+  const previous = state.civilization.weather;
+  const initialObservation = atMonth === 1 && previous.sinceMonth === 0;
+  const incompatibleWithClimate = !weatherFitsClimate(previous.kind, state.civilization.climate.kind);
+  const continuation = seededFraction(
+    state.seed,
+    `weather-continuation:${state.civilization.era.sequence}:${atMonth}`,
+  ) < WEATHER_CONTINUATION_PROBABILITY;
+  const candidateKind = initialObservation || incompatibleWithClimate || !continuation
+    ? sampledWeatherKind(state, atMonth)
+    : previous.kind;
+
+  if (initialObservation || incompatibleWithClimate || candidateKind !== previous.kind) {
+    const intensity = sampledWeatherIntensity(state, atMonth, candidateKind);
+    state.civilization.weather = { kind: candidateKind, intensity, sinceMonth: atMonth };
+    event(state, atMonth, events, 'weather', `本月天气转为${WEATHER_LABEL[candidateKind]}`, {
+      kind: candidateKind,
+      intensity,
+      previousKind: previous.kind,
+      previousIntensity: previous.intensity,
+      episodeStarted: true,
+    });
+    return events;
+  }
+
+  const intensity = driftedWeatherIntensity(state, atMonth);
+  if (intensity !== previous.intensity) {
+    state.civilization.weather = { ...previous, intensity };
+    event(
+      state,
+      atMonth,
+      events,
+      'weather',
+      `本月${WEATHER_LABEL[previous.kind]}强度${intensity > previous.intensity ? '升至' : '降至'}${intensity}`,
+      {
+        kind: previous.kind,
+        intensity,
+        previousIntensity: previous.intensity,
+        episodeStarted: false,
+      },
+    );
   }
   return events;
 }
@@ -1559,7 +1635,7 @@ function adverseRelationshipPair(event: WorldEvent): string | undefined {
   return undefined;
 }
 
-/** Five co-located action ticks form one replayable unit of shared experience. */
+/** Five nearby action ticks form one replayable unit of shared experience. */
 export function advanceSharedRelationshipExperience(
   state: SimulationState,
   currentMonthEvents: readonly WorldEvent[],
@@ -1570,16 +1646,21 @@ export function advanceSharedRelationshipExperience(
     return pair ? [pair] : [];
   }));
   const peopleById = new Map(state.people.filter(isAlive).map((person) => [person.id, person]));
-  const actionsByTickAndPlace = new Map<string, ActionFact[]>();
+  const sharedLivingAreaByPair = new Map(state.agreements
+    .filter((agreement) => agreement.status === 'active' && agreement.proposal.kind === 'companion')
+    .flatMap((agreement) => {
+      const anchor = companionLivingAnchor(state, agreement);
+      return anchor ? [[relationshipPairKey(agreement.partyIds[0]!, agreement.partyIds[1]!), anchor] as const] : [];
+    }));
+  const actionsByTick = new Map<number, ActionFact[]>();
   for (const fact of currentMonthEvents) {
     if (fact.kind !== 'action'
       || (fact.status !== 'completed' && fact.status !== 'progressed')
       || fact.action.kind === 'communicate'
       || !peopleById.has(fact.who)) continue;
-    const key = `${fact.actionTick}:${fact.toCellId}:${fact.toZ}`;
-    const actions = actionsByTickAndPlace.get(key) ?? [];
+    const actions = actionsByTick.get(fact.actionTick) ?? [];
     actions.push(fact);
-    actionsByTickAndPlace.set(key, actions);
+    actionsByTick.set(fact.actionTick, actions);
   }
   const pairActivity = new Map<string, {
     first: PersonState;
@@ -1588,7 +1669,7 @@ export function advanceSharedRelationshipExperience(
     sourceEventIds: Set<string>;
     cellId: number;
   }>();
-  for (const actions of actionsByTickAndPlace.values()) {
+  for (const actions of actionsByTick.values()) {
     const actorActions = [...new Map(actions.map((fact) => [fact.who, fact])).values()]
       .sort((left, right) => left.who.localeCompare(right.who));
     for (let left = 0; left < actorActions.length; left += 1) {
@@ -1599,6 +1680,12 @@ export function advanceSharedRelationshipExperience(
         const second = peopleById.get(rightAction.who);
         if (!first || !second) continue;
         const pairKey = relationshipPairKey(first.id, second.id);
+        const exactPlace = leftAction.toCellId === rightAction.toCellId && leftAction.toZ === rightAction.toZ;
+        const livingAnchor = sharedLivingAreaByPair.get(pairKey);
+        const sharedLivingPlace = Boolean(livingAnchor
+          && positionWithinLivingArea({ cellId: leftAction.toCellId, z: leftAction.toZ }, livingAnchor)
+          && positionWithinLivingArea({ cellId: rightAction.toCellId, z: rightAction.toZ }, livingAnchor));
+        if (!exactPlace && !sharedLivingPlace) continue;
         const activity = pairActivity.get(pairKey) ?? {
           first,
           second,

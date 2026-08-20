@@ -40,6 +40,17 @@ export interface RelationshipCausalBasis {
   sourceFactIds: string[];
 }
 
+/**
+ * A mutually known, stable place for shared life. It is not another person's
+ * live position: members may move independently inside and outside this area.
+ */
+export interface SharedLivingAnchor {
+  version: 'shared-living-anchor-v1';
+  cellId: number;
+  z: number;
+  radius: number;
+}
+
 export interface TechniqueDemonstrationRequest {
   projectId: string;
   desiredFunction: ProjectFunction;
@@ -124,7 +135,11 @@ export type RepresentationInput =
 export type SocialProposal =
   | { kind: 'reproduce'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number; basis?: RelationshipCausalBasis }
   | { kind: 'assist'; requesterId: PersonId; helperId: PersonId; need: 'water' | 'food' | 'shelter' | 'company'; expiresAtMonth: number }
-  | { kind: 'companion'; proposerId: PersonId; partnerId: PersonId; expiresAtMonth: number; basis?: RelationshipCausalBasis }
+  | {
+      kind: 'companion'; proposerId: PersonId; partnerId: PersonId;
+      expiresAtMonth: number; basis?: RelationshipCausalBasis;
+      sharedLivingAnchor?: SharedLivingAnchor;
+    }
   | { kind: 'collective'; proposerId: PersonId; partnerId: PersonId; purposeSummary: string; expiresAtMonth: number }
   | {
       kind: 'membership'; proposerId: PersonId; partnerId: PersonId;

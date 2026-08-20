@@ -6,6 +6,11 @@ import { applyRelationEvidence } from './relation';
 import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
+import {
+  companionSharesLivingArea,
+  REQUIRED_SHARED_LIVING_MONTHS,
+  SHARED_LIVING_RADIUS,
+} from './shared-living';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
@@ -47,6 +52,7 @@ export interface Agreement {
   reproductionAttemptEventIds?: string[];
   /** Enforces at most one reproductive probability sample per calendar month. */
   lastReproductionAttemptAtMonth?: number;
+  /** Persisted field name kept for save compatibility; now counts months in the shared living area. */
   coLocatedMonths: number;
   sourceEventIds: string[];
   /** Append-only clock facts; the proposal's original acceptByMonth is immutable. */
@@ -227,9 +233,16 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       const relationshipBasisSources = (content.proposal.kind === 'companion' || content.proposal.kind === 'reproduce')
         ? content.proposal.basis?.sourceFactIds ?? []
         : [];
+      const proposal = structuredClone(content.proposal);
+      if (proposal.kind === 'companion') proposal.sharedLivingAnchor = {
+        version: 'shared-living-anchor-v1',
+        cellId: fact.toCellId,
+        z: fact.toZ,
+        radius: SHARED_LIVING_RADIUS,
+      };
       state.agreements.push({
         id: content.id,
-        proposal: structuredClone(content.proposal),
+        proposal,
         ...pair,
         partyIds: [...new Set([pair.proposerId, ...pair.requiredResponderIds])],
         requiredResponderIds: [...pair.requiredResponderIds],
@@ -485,9 +498,8 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       events.push(fact);
       continue;
     }
-    if (agreement.proposal.kind === 'companion') {
-      const [first, second] = agreement.partyIds.map((id) => state.people.find((candidate) => candidate.id === id));
-      if (first && second && sameLocation(first, second)) agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
+    if (agreement.proposal.kind === 'companion' && companionSharesLivingArea(state, agreement)) {
+      agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
     }
     if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
     if (agreement.proposal.kind === 'reproduce') {
@@ -499,10 +511,10 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       events.push(fact);
       continue;
     }
-    if (agreement.proposal.kind === 'companion' && agreement.coLocatedMonths >= 12) {
+    if (agreement.proposal.kind === 'companion' && agreement.coLocatedMonths >= REQUIRED_SHARED_LIVING_MONTHS) {
       agreement.status = 'fulfilled';
       agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'fulfilled', `双方在约定期内共同停留了 ${agreement.coLocatedMonths} 个月`);
+      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'fulfilled', `双方在稳定共同生活区域内累计生活了 ${agreement.coLocatedMonths} 个月，期间可以各自行动`);
       agreement.sourceEventIds.push(fact.id);
       for (const personId of agreement.partyIds) {
         const person = state.people.find((candidate) => candidate.id === personId);

@@ -55,7 +55,7 @@
 | `4 结成家庭与亲族` | `capability:4:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：出生亲缘事实还不足以证明家庭组织已经形成。 |
 | `8 衰老` | `capability:8:decline:aging:v2` | `ambivalent · decline` | `strict · aging`：人物进入衰老压力年龄，月度结算写入有来源 `aging` 条件。 |
 | `9 死亡` | `capability:9:collapse:death:v2` | `ambivalent · collapse` | `strict · death`：身体或寿命结算写入人物、原因和来源明确的死亡事实。 |
-| `161 表达爱慕与建立伴侣关系` | `capability:161:stable:companion:v2` | `constructive · stable` | `strict · companion`：面向具体人物的伴侣提议被接受，且双方在约定期真实共同停留；再过双人、跨月门槛。 |
+| `161 表达爱慕与建立伴侣关系` | `capability:161:stable:companion:v2` | `constructive · stable` | `strict · companion`：面向具体人物的伴侣提议被接受，并保存稳定共同生活地点；双方在同一生活区域累计满跨月门槛，不要求体素坐标重合。 |
 | `162 拒绝或结束亲密关系` | `capability:162:decline:relationship-rejection:v2` | `ambivalent · decline` | `strict · relationship-rejection`：具体 `companion` 或 `reproduce` 提议被目标明确拒绝，未形成有效关系约定。 |
 | `165 确认或争议亲子身份` | `capability:165:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：出生事实与 `geneticParents` 一致只能证明生物亲缘，不能证明人物或共同体完成了身份确认，更不能覆盖争议支路。 |
 | `168 分配父母与照护责任` | `capability:168:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：照护动作不足以证明责任已经协商和分配。 |

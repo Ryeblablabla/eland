@@ -131,7 +131,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>文明指数</strong><span>人口、疆域 / 设施、科技、社会与历史的事后投影。</span></li>
             <li><strong>能力里程碑</strong><span>从事件证据链识别实践、阶段与复杂性，不向人物发奖励。</span></li>
             <li><strong>事实报告</strong><span>运行摘要、转折点、毁灭原因和文明编号都来自真实历史。记录完整链还必须通过同一 basis 的身份、项目、payload / codebook、精确取得、可靠阅读、实验产物与 +18、顺序及项目进度守卫；外部 exact-lineage 交付或既有已读可按真实状态继续，但不补造阶段、不计完整链。</span></li>
-            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul 保持同一声音；每轮只激活一个最相关情境侧面，记忆按话题与真实听者筛选，年龄 / communication 能力限制句式。speech-only 还从人格、控制敏感度、身体压力、关系及有源冲突派生 warm / familiar / guarded / blunt / confrontational 姿态：命令式短句不要求礼貌词，敌意只由真实伤害、背约或拒绝后重复施压开放。规则动作只投影结构化 speechAct，不提供可显示原话。只有成功模型文本才绑定 completed voice communicate ActionFact 进入 GameFrame；失败时保留沟通事实但不显示文字气泡。</span></li>
+            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul 保持同一声音；每轮只激活一个最相关情境侧面，记忆按话题与真实听者筛选，年龄 / communication 能力限制句式。speech-only 还从当前 speechAct、人格、控制敏感度、身体压力、关系及有源冲突派生 neutral / warm / familiar / guarded / blunt / confrontational 姿态：日常陈述默认 neutral，低信任通常先 guarded，blunt 只在边界话语与低宜人性、控制敏感或急迫压力共同支持时出现。命令式短句不要求礼貌词，但直接不自动等于不耐烦；敌意只由真实伤害、背约或拒绝后重复施压开放。规则动作只投影结构化 speechAct，不提供可显示原话。只有成功模型文本才绑定 completed voice communicate ActionFact 进入 GameFrame；失败时保留沟通事实但不显示文字气泡。</span></li>
             <li><strong>体素装饰</strong><span>把已有建筑、动作、天气和身体事实映射成画面，不写回世界。</span></li>
           </ul>
           <code>domain/civilization-index.ts · projection/ · voxelKits.ts</code>
@@ -319,7 +319,7 @@ const RULES_PAGE_MARKUP = `
         <article><strong>本地排序</strong><code>application/rule-planner.ts</code><span>硬优先级、正向阈值、继续 / 中断 / 改计划</span></article>
         <article><strong>模型重选</strong><code>server/backend-decider.ts · model-decision-gateway.ts</code><span>关键上下文筛选、协议请求、候选 ID 归一化与失败回退</span></article>
         <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · server/persona-context.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>可见回复与隐藏意图两阶段、情境人格帧、定向记忆、表达能力、来源约束事实与本地合法 choice</span></article>
-        <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul、关系姿态帧与 speech-only 批处理；直接表达无需礼貌词，敌意必须有冲突证据</span></article>
+        <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul、关系姿态帧与 speech-only 批处理；中性日常为默认，直接表达无需礼貌词，强硬取决于当前话语行为，敌意必须有冲突证据</span></article>
         <article><strong>后代取名</strong><code>naming.ts · server/newborn-naming-service.ts</code><span>确定性保底姓名、父母与处境提名上下文、本地 givenName 验收、出生事实来源与失败回退</span></article>
         <article><strong>持续项目</strong><code>application/project-options.ts · application/local-material-evidence.ts · domain/project-material-request.ts</code><span>压力、能力证据、局部去重、材料请求、物流、试验、协作与完成</span></article>
         <article><strong>水流机械链</strong><code>domain/mechanical-power.ts · application/mechanical-power-options.ts · domain/action-executor.ts</code><span>显式有向水流、本人观察、冻结工地、严格拓扑、commissioning 故障、来源绑定维修与维修后运行</span></article>

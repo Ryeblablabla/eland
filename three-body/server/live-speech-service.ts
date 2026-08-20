@@ -58,9 +58,10 @@ const SYSTEM_PROMPT = [
   'personality 是 0 到 100 的 HEXACO 有效人格：高外向可更主动，高情绪性可更敏感，高宜人性可更温和，高尽责可更明确，高开放可更好奇，高诚实谦逊应少夸耀；低值表现为相反倾向，但不要机械套模板。',
   'speaker.soul 是稳定表达锚；从 sceneFacets 中只激活与本次 speechAct 最接近的一个侧面，再按 styleMatrix 写话。不要同时表演全部人格，不复述 Soul、标签或数值，也不要改变 speechAct。',
   '遵循 speaker.communication 的年龄与表达限制；孩子或表达有限的人要更短、更具体，不能照抄 Soul 里的成年书面语言。recentMemories 已按当前听者与话题筛选，只可改变措辞和态度。',
-  'communication.relationalFrame 是服务器根据人格、控制敏感度、身体压力、关系与有源冲突计算的本轮交谈姿态，必须遵循其中 tone、instruction 与 reasonBudget。它只改变表达，不改变 speechAct。',
-  '不要默认礼貌、共情、道谢、道歉或完整解释。blunt 可以直接命令或只给结论；guarded 可以怀疑、反问或少说；familiar 可以省略客套、使用熟人间的短句或轻微调侃；warm 才主动照顾对方感受。',
-  '打断、反问、少说和一时不耐烦不等于敌意，可由 guarded、blunt 或 familiar 姿态自然产生。只有 relationalFrame.hostilityAllowed=true 时才可升级为针对具体过错的指责、羞辱或威胁，而且只能依据 frictionEvidence 中的真实伤害、背约或持续施压。',
+  'communication.relationalFrame 是服务器根据人格、当前话语行为、身体压力、关系与有源冲突计算的本轮交谈姿态，必须遵循其中 tone、intensity、instruction 与 reasonBudget。它只改变表达，不改变 speechAct。',
+  '以 neutral 的自然日常交流为常态：说到够用，不刻意客套，也不刻意强硬。warm、familiar、guarded 和 blunt 只在 relationalFrame 明确指定时轻度改变口吻，不要把一种姿态写满整句话。',
+  '直接不等于不耐烦，少说不等于冷漠，guarded 不等于自动怀疑。不要把“别、别指望、别磨蹭”当作直接表达的固定开头；只有 speechAct 确实包含劝阻、边界，或当前有对应 frictionEvidence 时才这样说。',
+  '只有 relationalFrame.hostilityAllowed=true 时才可升级为针对具体过错的指责、羞辱或威胁，而且只能依据 frictionEvidence 中的真实伤害、背约或持续施压。',
   'request 可以是命令式、短促式或礼貌请求；人物无需每次陈述完整理由。每句使用说话者第一人称，像当面自然说出的话，通常 2 到 90 个汉字，半句也可以。不要写旁白、舞台说明、引号、ID、坐标、系统术语或现代游戏评论。',
   'claim 必须忠实表达 speechAct 的 subject、details 与有源经历；若 details.factId 存在，只能表达 knownFacts 中同 id 的事实。request/offer 必须保留请求或提议；accept/reject 必须保持原立场；revoke/withdraw 必须清楚表达撤回或退出。',
   '严格输出一个 JSON 对象，不输出解释，格式为：{"lines":[{"sourceEventId":"输入中的原值","text":"实际台词"}]}。每个输入必须恰好返回一次。',
@@ -130,12 +131,13 @@ function eventBefore(source: WorldEvent | undefined, speech: ActionEvent): boole
     || source.atMonth === speech.atMonth && source.orderInMonth < speech.orderInMonth;
 }
 
-export type RelationalSpeechTone = 'warm' | 'familiar' | 'guarded' | 'blunt' | 'confrontational';
+export type RelationalSpeechTone = 'neutral' | 'warm' | 'familiar' | 'guarded' | 'blunt' | 'confrontational';
 
 export interface RelationalSpeechFrame {
   version: 'relational-speech-frame-v1';
   tone: RelationalSpeechTone;
-  reasonBudget: 'none' | 'one-brief-reason' | 'situational';
+  intensity: 'low' | 'medium' | 'high';
+  reasonBudget: 'optional' | 'one-brief-reason' | 'situational';
   hostilityAllowed: boolean;
   drivers: string[];
   frictionEvidence: Array<{
@@ -212,11 +214,12 @@ function repeatedPressureEvidence(
 }
 
 const TONE_INSTRUCTION: Record<RelationalSpeechTone, string> = {
-  warm: '可以照顾对方感受，但不要套用客气话；最多给一个与眼前事实有关的简短理由。',
-  familiar: '省略寒暄和客套，像熟人一样用短句、共享称呼或轻微调侃；不得借调侃捏造旧事。',
-  guarded: '保持距离，可以少说、怀疑、打断或反问；不必先表示理解，也不必交代完整理由。',
-  blunt: '先给结论或直接要求，允许命令式、半句和一时不耐烦；不要加讨好式缓冲，也不用自动解释。',
-  confrontational: '可以基于 frictionEvidence 质问、打断或表现不耐烦；只说有证据的冲突，不扩大成无来源的羞辱或威胁。',
+  neutral: '像普通人当面说话，直接或委婉都可以；说到够用即可，不主动添加客套、警告或冲突。',
+  warm: '自然照顾对方感受，可给一个与眼前事实有关的简短理由；温和不等于郑重客套。',
+  familiar: '可以省略寒暄，使用熟人间的短句或轻微调侃；保持自然，不要每句都刻意表现熟络。',
+  guarded: '保持一点距离，少透露自己；优先简短作答，只有话题确有疑点时才反问或表示保留。',
+  blunt: '先给结论或直接要求，可以省略理由；语气清楚即可，不自动添加“别”、训斥或不耐烦。',
+  confrontational: '可以基于 frictionEvidence 质问或表达不满；只说有证据的冲突，不扩大成无来源的羞辱或威胁。',
 };
 
 export function deriveRelationalSpeechFrame(
@@ -250,39 +253,64 @@ export function deriveRelationalSpeechFrame(
   const lowAgreeableness = personality.agreeableness <= 38;
   const controlSensitive = speaker.motiveSensitivity.control >= 64;
   const allFamiliar = listenerIds.length > 0 && minimumTrust >= 50 && minimumBond >= 65 && maximumFear < 30;
-  const hostilityAllowed = frictionEvidence.length > 0;
+  const hasFrictionEvidence = frictionEvidence.length > 0;
+  const communicationKind = speech.action.kind === 'communicate' ? speech.action.content.kind : undefined;
+  const conversationTopic = speech.action.kind === 'communicate' && speech.action.content.kind === 'claim'
+    ? speech.action.content.conversation?.topic
+    : undefined;
+  const boundaryAct = communicationKind === 'request'
+    || communicationKind === 'reject'
+    || communicationKind === 'revoke'
+    || communicationKind === 'revoke-agreement'
+    || communicationKind === 'withdraw';
+  const careLike = conversationTopic === 'care'
+    || conversationTopic === 'gratitude'
+    || conversationTopic === 'family';
+  const sustainedPressure = frictionEvidence.some((evidence) => evidence.kind === 'repeated-pressure');
 
   let tone: RelationalSpeechTone;
-  if (hostilityAllowed && (minimumTrust < 50 || lowAgreeableness || controlSensitive || acutePressure)) {
+  if (hasFrictionEvidence && (boundaryAct || sustainedPressure || minimumTrust <= 35 || maximumFear >= 40)) {
     tone = 'confrontational';
   } else if (allFamiliar) {
     tone = 'familiar';
-  } else if (lowAgreeableness || controlSensitive || acutePressure || personality.agreeableness < 50) {
+  } else if (careLike && personality.agreeableness >= 50 && minimumTrust >= 45) {
+    tone = 'warm';
+  } else if (boundaryAct && (lowAgreeableness || controlSensitive || acutePressure)) {
     tone = 'blunt';
-  } else if (minimumTrust < 45 || maximumFear >= 35 || personality.extraversion <= 38) {
+  } else if (minimumTrust < 35 || maximumFear >= 40
+    || personality.extraversion <= 30 && minimumTrust < 50) {
     tone = 'guarded';
-  } else if (personality.agreeableness >= 58 && minimumTrust >= 50) {
+  } else if (personality.agreeableness >= 65 && minimumTrust >= 50) {
     tone = 'warm';
   } else {
-    tone = 'guarded';
+    tone = 'neutral';
   }
 
   const drivers = [
     ...(lowAgreeableness ? ['low-agreeableness'] : []),
     ...(controlSensitive ? ['control-sensitive'] : []),
     ...(acutePressure ? ['acute-body-pressure'] : []),
-    ...(minimumTrust < 45 ? ['low-trust'] : []),
+    ...(minimumTrust < 35 ? ['low-trust'] : []),
     ...(minimumBond >= 65 ? ['high-bond'] : []),
-    ...(maximumFear >= 35 ? ['fear'] : []),
+    ...(maximumFear >= 40 ? ['fear'] : []),
+    ...(boundaryAct ? ['boundary-act'] : []),
+    ...(careLike ? ['care-like-topic'] : []),
     ...(frictionEvidence.some((evidence) => evidence.kind !== 'repeated-pressure') ? ['sourced-conflict'] : []),
     ...(frictionEvidence.some((evidence) => evidence.kind === 'repeated-pressure') ? ['repeated-pressure'] : []),
   ];
-  const reasonBudget = tone === 'blunt'
-    ? 'none'
-    : tone === 'warm' ? 'one-brief-reason' : 'situational';
+  const reasonBudget = tone === 'warm'
+    ? 'one-brief-reason'
+    : tone === 'confrontational' ? 'situational' : 'optional';
+  const intensity = tone === 'confrontational'
+    ? frictionEvidence.some((evidence) => evidence.kind === 'harm' || evidence.kind === 'coercion')
+      ? 'high'
+      : 'medium'
+    : 'low';
+  const hostilityAllowed = tone === 'confrontational';
   return {
     version: 'relational-speech-frame-v1',
     tone,
+    intensity,
     reasonBudget,
     hostilityAllowed,
     drivers,

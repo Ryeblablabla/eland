@@ -201,6 +201,7 @@ try {
   assert.equal('currentIntent' in requestItem.speaker, false, 'speech-only 不应把可能含规则句式的意图摘要当作原话输入');
   assert.deepEqual(requestItem.communication.speechAct, decisionDraft.speechAct, '模型只读取结构化话语行为');
   assert.equal(requestItem.communication.relationalFrame.tone, 'guarded', '低信任关系不应默认写成礼貌亲近');
+  assert.equal(requestItem.communication.relationalFrame.intensity, 'low', '普通疏离只应轻度改变口吻');
   assert.equal(requestItem.communication.relationalFrame.hostilityAllowed, false, '低信任本身不构成敌意证据');
   assert.equal('meaningAnchor' in requestItem.communication, false, '请求不得发送规则原话语义锚');
   assert.deepEqual(requestItem.sourcedExperiences, [experience.result], '请求只携带当前话语之前可追溯的亲历事实');
@@ -254,6 +255,7 @@ try {
     ['listener'],
   );
   assert.equal(familiarFrame.tone, 'familiar', '高信任高羁绊关系应允许省略客套和熟人式短句');
+  assert.equal(familiarFrame.intensity, 'low');
   assert.equal(familiarFrame.hostilityAllowed, false);
 
   const bluntState = structuredClone(state);
@@ -262,10 +264,37 @@ try {
   bluntState.people[0].relations[0] = {
     personId: 'listener', trust: 55, bond: 35, fear: 0, sourceEventIds: ['experience-care'],
   };
-  const bluntFrame = deriveRelationalSpeechFrame(bluntState, decisionVoice, bluntState.people[0], ['listener']);
-  assert.equal(bluntFrame.tone, 'blunt', '低宜人性人物无需先共情再表态');
-  assert.equal(bluntFrame.reasonBudget, 'none', '短促人格不应被要求每次补完整理由');
+  const ordinaryLowAgreeablenessFrame = deriveRelationalSpeechFrame(
+    bluntState,
+    ruleVoice,
+    bluntState.people[0],
+    ['listener'],
+  );
+  assert.equal(ordinaryLowAgreeablenessFrame.tone, 'neutral', '低宜人性不应让普通陈述自动变成强硬训斥');
+  const directRequestEvent = {
+    ...ruleVoice,
+    id: 'direct-request-event',
+    action: {
+      kind: 'communicate', audience: ['listener'], channel: 'voice',
+      content: { id: 'direct-request', kind: 'request', summary: '请求对方交出石头' },
+    },
+    result: '阿澜请求泊川交出石头',
+  };
+  const bluntFrame = deriveRelationalSpeechFrame(bluntState, directRequestEvent, bluntState.people[0], ['listener']);
+  assert.equal(bluntFrame.tone, 'blunt', '低宜人性只在请求或拒绝等边界场景中支持直接口吻');
+  assert.equal(bluntFrame.reasonBudget, 'optional', '直接表达可以省略理由，但不应被强制永远没有理由');
+  assert.equal(bluntFrame.intensity, 'low', '没有冲突证据的直接表达只能是低强度');
   assert.equal(bluntFrame.hostilityAllowed, false, '低宜人性只能支持直接，不能凭空支持敌意');
+
+  const neutralState = structuredClone(state);
+  neutralState.people[0].personality.baseline.agreeableness = 55;
+  neutralState.people[0].personality.learnedDelta.agreeableness = 0;
+  neutralState.people[0].relations[0] = {
+    personId: 'listener', trust: 55, bond: 35, fear: 0, sourceEventIds: ['experience-care'],
+  };
+  const neutralFrame = deriveRelationalSpeechFrame(neutralState, ruleVoice, neutralState.people[0], ['listener']);
+  assert.equal(neutralFrame.tone, 'neutral', '普通人格与普通关系应以自然中性交流为默认');
+  assert.equal(neutralFrame.reasonBudget, 'optional');
 
   const harmEvent = {
     ...ruleVoice,
@@ -286,8 +315,22 @@ try {
   };
   const hostileFrame = deriveRelationalSpeechFrame(hostileState, decisionVoice, hostileState.people[0], ['listener']);
   assert.equal(hostileFrame.tone, 'confrontational', '真实伤害加低信任可以升级为对抗语气');
+  assert.equal(hostileFrame.intensity, 'high', '直接伤害证据可以支持高强度对抗');
   assert.equal(hostileFrame.hostilityAllowed, true);
   assert.deepEqual(hostileFrame.frictionEvidence.map((item) => item.sourceEventId), [harmEvent.id]);
+
+  const reconciledState = structuredClone(hostileState);
+  reconciledState.people[0].relations[0] = {
+    personId: 'listener', trust: 68, bond: 72, fear: 0, sourceEventIds: [harmEvent.id],
+  };
+  const reconciledFrame = deriveRelationalSpeechFrame(
+    reconciledState,
+    ruleVoice,
+    reconciledState.people[0],
+    ['listener'],
+  );
+  assert.equal(reconciledFrame.tone, 'familiar', '旧冲突存在但当前关系已缓和时，普通陈述不应继续对抗');
+  assert.equal(reconciledFrame.hostilityAllowed, false, '冲突证据只是必要条件，当前姿态未对抗时不得开放敌意');
 
   const pressureRequestOne = {
     ...ruleVoice,
@@ -331,6 +374,7 @@ try {
   };
   const pressuredFrame = deriveRelationalSpeechFrame(pressuredState, decisionVoice, pressuredState.people[0], ['listener']);
   assert.equal(pressuredFrame.tone, 'confrontational', '拒绝后的重复施压可以支持不耐烦和质问');
+  assert.equal(pressuredFrame.intensity, 'medium', '重复施压支持中度对抗，不自动等同直接伤害');
   assert.equal(pressuredFrame.hostilityAllowed, true);
   assert.equal(pressuredFrame.frictionEvidence.filter((item) => item.kind === 'repeated-pressure').length, 2);
 

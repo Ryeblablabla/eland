@@ -429,15 +429,17 @@ export function applyDecision(
   const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
     ? context.options.find((option) => option.id === decision.optionId)
     : undefined;
-  const selectedCognitiveSources = selectedOption && (
+  const selectedReproductionOption = selectedOption && (
     selectedOption.id.startsWith('offer-reproduce:')
       || selectedOption.id.startsWith('accept-reproduce:')
       || selectedOption.id.startsWith('reject-reproduce:')
       || selectedOption.id.startsWith('reproduce:')
       || selectedOption.id.startsWith('withdraw-reproduce:')
-  )
-    ? evaluateCognitiveOption(context, selectedOption, { atMonth, planningTick }).sourceFactIds
-    : [];
+  ) ? selectedOption : undefined;
+  const selectedCognitiveAppraisal = selectedReproductionOption
+    ? evaluateCognitiveOption(context, selectedReproductionOption, { atMonth, planningTick })
+    : undefined;
+  const selectedCognitiveSources = selectedCognitiveAppraisal?.sourceFactIds ?? [];
   const attachLifeReview = (intent: Intent | null): void => {
     if (!intent || (decision.kind !== 'start' && decision.kind !== 'revise')) return;
     intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...selectedCognitiveSources])];
@@ -510,6 +512,35 @@ export function applyDecision(
     decision,
     ...(intentId ? { intentId } : {}),
     ...(domain ? { domain } : {}),
+    ...(selectedCognitiveAppraisal ? {
+      reproductionEvidence: {
+        version: 'family-readiness-v2' as const,
+        optionId: selectedCognitiveAppraisal.option.id,
+        direction: selectedCognitiveAppraisal.option.id.startsWith('reject-reproduce:')
+          || selectedCognitiveAppraisal.option.id.startsWith('withdraw-reproduce:')
+          ? 'withdraw' as const
+          : 'proceed' as const,
+        generativityUrgency: selectedCognitiveAppraisal.generativityUrgency,
+        needActivation: selectedCognitiveAppraisal.needActivation,
+        motivation: selectedCognitiveAppraisal.motivation,
+        aspiration: selectedCognitiveAppraisal.aspiration,
+        relationshipGate: selectedCognitiveAppraisal.relationshipGate,
+        readinessGate: selectedCognitiveAppraisal.readinessGate,
+        ...(selectedCognitiveAppraisal.familyReadiness ? {
+          familyReadiness: {
+            readiness: selectedCognitiveAppraisal.familyReadiness.readiness,
+            food: selectedCognitiveAppraisal.familyReadiness.food,
+            water: selectedCognitiveAppraisal.familyReadiness.water,
+            shelter: selectedCognitiveAppraisal.familyReadiness.shelter,
+            careCapacity: selectedCognitiveAppraisal.familyReadiness.careCapacity,
+            climateSafety: selectedCognitiveAppraisal.familyReadiness.climateSafety,
+            basisKeys: [...selectedCognitiveAppraisal.familyReadiness.basisKeys],
+            sourceFactIds: [...selectedCognitiveAppraisal.familyReadiness.sourceFactIds],
+          },
+        } : {}),
+        sourceFactIds: [...selectedCognitiveAppraisal.sourceFactIds],
+      },
+    } : {}),
     usedModel,
     result,
   };

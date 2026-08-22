@@ -354,7 +354,7 @@
 .recipes-hero h2 { max-width:760px; color:var(--rule-label-primary); font-size:clamp(36px,5vw,64px); line-height:1.13; font-weight:500; letter-spacing:-.025em; }
 .recipes-hero-copy > div > p { max-width:720px; margin-top:24px; color:var(--rule-label-secondary); font-size:16px; line-height:26px; }
 .recipes-hero code,.recipe-empty code { color:var(--rule-label-primary); font:400 .9em/1.5 "SF Mono","Cascadia Code",monospace; }
-.recipe-facts { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:40px; overflow:hidden; border-radius:var(--rule-radius-lg); background:var(--rule-separator); }
+.recipe-facts { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; margin-top:40px; overflow:hidden; border-radius:var(--rule-radius-lg); background:var(--rule-separator); }
 .recipe-facts div { min-width:0; padding:16px 20px; background:var(--rule-bg-secondary); }
 .recipe-facts strong { display:block; font:500 24px/30px "SF Mono","Cascadia Code",monospace; }
 .recipe-facts span { display:block; margin-top:4px; color:var(--rule-label-tertiary); font-size:12px; line-height:18px; }
@@ -382,6 +382,7 @@
 .recipe-kind.combine { color:var(--rule-world); background:rgba(26,136,255,.12); }
 .recipe-kind.exert { color:var(--rule-agent); background:rgba(206,145,120,.12); }
 .recipe-kind.expose { color:var(--rule-effect); background:rgba(255,71,86,.12); }
+.recipe-kind.separate { color:#72d9b4; background:rgba(74,194,151,.12); }
 .recipe-card h3 { margin-top:18px; font-size:20px; line-height:28px; font-weight:500; }
 .recipe-card > p { min-height:42px; margin-top:6px; color:var(--rule-label-secondary); font-size:13px; line-height:21px; }
 .recipe-formula { margin-top:18px; padding-top:16px; border-top:1px solid var(--rule-separator); }

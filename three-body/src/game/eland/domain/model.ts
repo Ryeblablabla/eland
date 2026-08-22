@@ -21,6 +21,7 @@ export * from './mortuary';
 
 export type EpochKind = 'stable' | 'chaotic';
 export type ClimateKind = 'temperate' | 'cold' | 'heat' | 'fire';
+export type TerminalCatastropheKind = 'triple-sun-vaporization';
 export type ClimateBias = 'balanced' | 'cold' | 'hot';
 export type WeatherKind = 'clear' | 'rain' | 'storm' | 'drought' | 'snow' | 'fog';
 
@@ -102,6 +103,29 @@ export interface DecisionOpportunityFact extends BaseEvent {
   result: string;
 }
 
+export interface ReproductionDecisionEvidence {
+  version: 'family-readiness-v2';
+  optionId: string;
+  direction: 'proceed' | 'withdraw';
+  generativityUrgency: number;
+  needActivation: number;
+  motivation: number;
+  aspiration: number;
+  relationshipGate: number;
+  readinessGate: number;
+  familyReadiness?: {
+    readiness: number;
+    food: number;
+    water: number;
+    shelter: number;
+    careCapacity: number;
+    climateSafety: number;
+    basisKeys: string[];
+    sourceFactIds: string[];
+  };
+  sourceFactIds: string[];
+}
+
 export interface DecisionFact extends BaseEvent {
   kind: 'decision';
   who: PersonId;
@@ -109,6 +133,7 @@ export interface DecisionFact extends BaseEvent {
   intentId?: string;
   usedModel: boolean;
   domain?: 'strategic' | 'social';
+  reproductionEvidence?: ReproductionDecisionEvidence;
   result: string;
 }
 
@@ -357,7 +382,12 @@ export interface SimulationState {
     era: EraSchedule;
     climate: { kind: ClimateKind; severity: number; sinceMonth: number };
     weather: { kind: WeatherKind; intensity: number; sinceMonth: number };
-    externalClimate?: { epoch: EpochKind; kind: ClimateKind; severity: number };
+    externalClimate?: {
+      epoch: EpochKind;
+      kind: ClimateKind;
+      severity: number;
+      terminalCatastrophe?: TerminalCatastropheKind;
+    };
     conditions: SimulationConfig;
     civilizationIndex: CivilizationIndex;
     /** Pure observer state. Planners and world rules must never read it. */

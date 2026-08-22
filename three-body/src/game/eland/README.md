@@ -40,12 +40,12 @@ domain model and policies ↔ world grid / material primitives
 - `domain/life-stage.ts`：按月龄划分未满 1 岁完全依赖、1–11 岁受限自主、12–15 岁既有项目协作与 16 岁以上完整规划。
 - `domain/survival-reflex.ts`：不消耗模型额度的吃、喝与紧急避险反射；1–11 岁幼童在严重身体或冷热压力下会走向当前确实可见的亲生照护者，动作以 `caregiverRef` 留下因果证据，不读取远方亲代位置。
 - `domain/shelter-access.ts`：从可见或记得的真实结构中寻找当前仍可达的住所内部；家庭准备度另作更严格判断，只有当前可见且确认空余的真实内部位置计入 shelter 分量，记忆中的远处住所只保留未验证来源且贡献为 0。
-- `domain/shared-living.ts`：结伴约定的稳定生活地点、不同格共同生活结算与有界返家目标；不追踪伴侣实时坐标。
+- `domain/shared-living.ts`：结伴约定的稳定生活地点、不同格共同生活结算与有界返家目标；不追踪伴侣实时坐标，最后可履约窗口会为待建立关系的已接受约定形成承诺需要，并按履约优先协议打断普通工作。
 - `domain/water-access.ts`：真实水体素的可达性与取水规则。
 - `domain/separation-rules.ts`：定义体素物质如何通过同一 `separate` 原语被采出或拆回。
 - `domain/container.ts`：有体素位置和内部物品堆的空间持有者；本身不预设所有权。
 - `domain/dependent-care.ts`：亲代可读取视野内 12 岁以下亲生子女的真实危机；只有会合后确有安全休眠、手中食物转移或携婴取水 / 入住所等可执行帮助时才接近并近身保护。1–11 岁儿童的普通移动还受当前可见亲代的本地照护半径约束，已有普通意图越界时会放弃；它不读取视野外身体、不替代长期家庭意图，也不赋予满 1 岁儿童同步移动。远处未成年子女客观死亡不会自动解除 `reproductiveResponsibility`，亲代取得引用该死亡的有来源丧亲认知后才释放责任。
-- `domain/mortuary.ts`：死亡后的一人一遗体、死亡知情来源、丧亲压力、墓穴与墓记事实。人物只能因局部看见遗体 / 有标记墓穴，或经有来源的死亡对话得知死讯；遗体不是普通材料，安葬状态也不由观察器补写。
+- `domain/mortuary.ts`：普通死亡后的一人一遗体、死亡知情来源、丧亲压力、墓穴与墓记事实。人物只能因局部看见遗体 / 有标记墓穴，或经有来源的死亡对话得知死讯；遗体不是普通材料，安葬状态也不由观察器补写。三日凌空汽化是终局例外，不生成遗体或遗物。
 - `domain/population-capacity.ts`：50 人软承载附近的受孕概率衰减与超载资源竞争；它是身体 / 生态约束，不进入人物目标或文明指数。
 - `domain/structure.ts`：从可站立空气、头顶实体与侧向围护的真实体素拓扑计算结构效果。
 - `domain/memory.ts`：有界预算的情节、对话、承诺和失败记忆，负责遗忘与摘要；灵记只扩大本人预算与留存时长，不创造知识。
@@ -54,10 +54,10 @@ domain model and policies ↔ world grid / material primitives
 - `domain/spatial-knowledge.ts`、`domain/interaction-knowledge.ts`：人物的空间知识与交互/技术知识。
 - `domain/interaction-rules.ts`：物质响应原语的数据驱动规则（`InteractionRule`）。
 - `domain/mechanical-power.ts`：显式水流源、`WaterWheel → DriveShaft → Mill` 严格拓扑、安装计划与网络身份，以及安装、commissioning 故障、维修和运行的追加式来源事实；普通 Water 体素不能被猜成动力源，断流也不能由下游局部 Water 绕过。
-- `domain/monthly-processes.ts`：无人行动也推进的世界过程：气候与纪元、预言结算、妊娠 / 产后恢复等身体结算、死亡后遗体与个人遗物形成、动物生态，以及月初月末同处且无直接伤害配对的可追溯关系经验。全员休眠不会终止文明；恒纪元使旧 `dormant` episode 转入不凭空增加储备的 `recovering`，真实补水 / 补食并达到三项最低储备 45 后才退出，乱纪元重临则沿用原 episode 返回 `dormant`。直接死亡会终结当前及全部暂停意图；休眠恢复若发现人物死亡或项目已经完成、阻塞、放弃、缺失，也按真实样本结算 `goalOutcome` 并清理中断边，只有真正恢复为 active 的意图暂不结算。
+- `domain/monthly-processes.ts`：无人行动也推进的世界过程：气候与纪元、预言结算、妊娠 / 产后恢复等身体结算、普通死亡后的遗体与个人遗物、动物生态，以及月初月末同处且无直接伤害配对的可追溯关系经验。实时宇宙传入的 `triple-sun-vaporization` 在第一个规划刻度内绕过住所、休眠与特质，使全部存活人物汽化、销毁随身库存且不生成遗体或遗物；普通 `fire` 仍逐月结算。全员休眠不会终止文明；恒纪元使旧 `dormant` episode 转入不凭空增加储备的 `recovering`，真实补水 / 补食并达到三项最低储备 45 后才退出，乱纪元重临则沿用原 episode 返回 `dormant`。直接死亡会终结当前及全部暂停意图；休眠恢复若发现人物死亡或项目已经完成、阻塞、放弃、缺失，也按真实样本结算 `goalOutcome` 并清理中断边，只有真正恢复为 active 的意图暂不结算。
 - `domain/animal.ts`：动物实体的位置、身体、繁殖与行为。
 - `domain/kinship.ts`：由出生事实派生亲缘距离、遗传风险与人物有来源的风险认知强度；亲缘影响后代结果与人物选择，但不把动作改成非法。
-- `domain/agreement.ts`、`domain/collective.ts`、`domain/permission.ts`、`domain/governance.ts`、`domain/declaration.ts`、`domain/record.ts`、`domain/social-facts.ts`、`domain/relation.ts`：协议、共同体、授权、治理规则、声明、实体记录、社会事实与定向关系账本。
+- `domain/agreement.ts`、`domain/collective.ts`、`domain/permission.ts`、`domain/governance.ts`、`domain/declaration.ts`、`domain/record.ts`、`domain/social-facts.ts`、`domain/relation.ts`：协议、共同体、授权、治理规则、声明、实体记录、社会事实与定向关系账本；只剩一名在世成员的 `dormant` 共同体可经全体在世参与者明确接受新成员后恢复为 `active`。
 - `domain/civilization-index.ts`：文明指数纯观察投影，不反向解锁能力。
 - `domain/decision-budget.ts`：实时关键重选的人月额度与 endpoint / token 审计；不得决定人物是否获得本地规划。
 - `domain/cognition.ts`：人物私有的有界行动结果后验与结构化因果记忆 basis；只从已提交 `ActionFact` 学习，排除临时 option / intent / project / cell / person ID，无位移 move 不作为经验样本。
@@ -75,7 +75,7 @@ domain model and policies ↔ world grid / material primitives
 - `application/decision-factor-forest.ts`：旧报告与测试的诊断兼容门面；仍投影 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 的理由和来源，但规划器不再把九类数值直接相加。
 - `application/reproductive-risk.ts`：把人物持有的近亲风险知识置信度连续映射为本地生殖选择成本；满置信度成本仍是可被关系与生活压力权衡的软偏好，不承担动作合法性。
 - `application/age-planning.ts`：按生命周期过滤简单劳动、项目发起、社会协议与繁衍候选。
-- `application/project-pressure.ts`、`application/project-options.ts`：前者从本人及其局部可见事实形成项目压力，后者保留项目公共 API 门面。项目完工只给交付最后功能性动作的人物记录 `NeedResolutionEpisode`；它在 12 个月内对同 `need + desiredFunction` 的新提案压力最多降低 45%，只表示本人近期观察到需要被缓解，绝不补造库存或住所，也不能单独重开已被拒绝的生殖配对。`application/projects/` 按生命周期、提案、局部感知 / 场地、材料计划、假说调查、物流搜索、步骤编译和完成证据拆分；这些模块共同编译项目行动，不复制领域规则。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目场址内的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。材料协作只为固定场地的合金、铁器与明确公共厅堂项目开放；铁匠铺可由已观察到的青铜能力与烧结砖提出，后续铁料、还原、锻打和工具阶段必须返回真实 Smithy，并以逐段原料缺口、请求与真实交付接续。历史搜索只有与当前缺口完全一致且晚于最近进展，同时不存在协作、休眠、当月落地或作物生长等待时，才会把项目结为阻塞。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施，可见但没有实体站立路径的掉落物也不能冒充可取得能力。生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力，不能一票否决升级项目。`efficient-production`、`bronze-tooling` 与 `iron-tooling` 只有在项目来源的更优工具仍由 owner 持有、且对应制作技艺已通过源绑定复验达到可靠阈值后才完成。其他便携产物项目仍要求 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
+- `application/project-pressure.ts`、`application/project-options.ts`：前者从本人及其局部可见事实形成项目压力，后者保留项目公共 API 门面。项目完工只给交付最后功能性动作的人物记录 `NeedResolutionEpisode`；它在 12 个月内对同 `need + desiredFunction` 的新提案压力最多降低 45%，只表示本人近期观察到需要被缓解，绝不补造库存或住所，也不能单独重开已被拒绝的生殖配对。`application/projects/` 按生命周期、提案、局部感知 / 场地、材料计划、假说调查、物流搜索、步骤编译和完成证据拆分；这些模块共同编译项目行动，不复制领域规则。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目场址内的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。材料协作只为固定场地的合金、铁器与明确公共厅堂项目开放；铁匠铺可由已观察到的青铜能力与烧结砖提出，后续铁料、还原、锻打和工具阶段必须返回真实 Smithy，并以逐段原料缺口、请求与真实交付接续。历史搜索只有与当前缺口完全一致且晚于最近进展，同时不存在协作、休眠、当月落地或作物生长等待时，才会把项目结为阻塞。纯材料搜索或实体假说已经终局失败时，人物会把当时机会依据跨项目继承；同一 owner + desiredFunction 只有看见精确的新材料来源、取得与功能相关的可靠计划、发现新目标环境或新 verified response 才能重开，项目 ID、月份、压力、移动和相同来源改名都不算新机会。后继项目首步必须实际使用所声明 renewal；从未发生搜索 / 假说失败的普通 construction 提案保持原行为。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施，可见但没有实体站立路径的掉落物也不能冒充可取得能力。生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力，不能一票否决升级项目。`efficient-production`、`bronze-tooling` 与 `iron-tooling` 只有在项目来源的更优工具仍由 owner 持有、且对应制作技艺已通过源绑定复验达到可靠阈值后才完成。其他便携产物项目仍要求 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
 - `application/action-options.ts`、`mortuary-options.ts`、`construction-options.ts`、`container-options.ts`、`separation-options.ts`、`social-options.ts`：各类合法可供性候选的生成。生殖提议只要求提议者有可追溯关系，不再要求固定或双向分数；身体适格的回应者同时获得接受与拒绝，活跃协议同时提供继续与撤回，交给本地 appraisal 依据本人关系、恐惧、人格、责任和已知风险排序。死亡照料从人物本人已知的具体死亡出发，依次编译悼念、搬运遗体、选择可达墓址、挖墓、入葬、使用同一掘土来源覆土，以及在拥有空白木板和合格工具时立墓记；遗物保持带死亡来源和原主人身份的普通实体栈。本人近期真实完成过分离生产劳动时，可达的更高级地面工具会以劳动节省形成明确取得候选；他人背包仍不可直接读取或拿取，只能在同格、持有者交易后仍保留不低于原最高生产能力的工具、请求者也有实体余量可交付时走既有自愿交换。工具取得意图固定精确 drop，移动后的木材、灌木、成熟作物与捕猎重编译会重新选择本人当前效用最高的适用工具，不会退回徒手或较弱武器。通用有形库存候选、自然假说、已知配方与项目子装配的消耗选择都会排除已带 `recordPayloadId` 的载体，避免规划器反复生成必被领域层拒绝的普通加工。失败重试按动作、目标、数量、人物、项目、记录和关系组成的稳定结构 basis 比较：失败当月起 0–6 月压住同因果候选，第 7 月恢复；新来源或任一结构字段改变会立即重开，必须回应与履约绕过冷却，无法还原结构 basis 的旧自由文本失败记忆不拦候选。
 - `application/record-use-options.ts`：只为读者本人拥有的活跃项目及其真实技术缺口生成记录使用候选；来源限于本人背包与调用方已过滤的可见公共地面掉落物，不读取他人背包、知识或意图。v2 basis 冻结读者、项目、payload、技术和精确载体来源；地面来源正常按 `move → acquire → read → experiment` 推进，其中移动不算取得，只有从精确掉落物成功转移到本人背包才算 `acquire`，来源消失或替换时不会另换载体。阅读只形成不高于 54 的暂定技术知识，真实项目实验再增加 18 并写入项目进度；明确直接教学仍可到 60。外部交付同一地面来源谱系，或人物此前已经读过该记录时，可依当前真实持有与知识继续，但不会补造缺失阶段，也不构成完整记录链。
 - `application/mechanical-power-options.ts`：只让做过真实 Mill 辅助谷物分离劳动的人物关注本人当前可见、可达的水流段；成功 `attend` 后形成只属于本人的有来源观察。由此提出的项目只是冻结水流源与可见工地几何的试建假说，不泄漏隐藏配方、时代标签或观察器目标；未知部件仍走有预算的材料假说与验证。
@@ -89,6 +89,7 @@ domain model and policies ↔ world grid / material primitives
 
 - `projection/capability-milestones.ts`：v2 纯可回放因果观察器；含精确地图坐标和 world-specific 复杂事件，并以 strict/guarded、阶段门槛和完整 episode 隔离误报。死亡照料能力只在真实死亡、完整安葬和物质墓记来源闭合后出现；任何观察结果都不反向进入人物决策。
 - `projection/derived-observations.ts`：从已提交权威状态派生 structures、practices、institutions、regions、milestones 与 development 观察结果；当前 `cultivated` region 只表示仍存在的作物 / 幼苗 / 贫瘠地，服务物理疆域和容量。时代观察器 v2 另从同一已完成定居耕作项目的 6 个不同播种格与 2 次成熟收获重验既成能力，土地恢复后不会误退回“从未形成农耕”。这些字段都只写观察投影，不参与候选或人物选择。
+- `projection/player-narrative.ts`：从已提交事件筛选文明开端、纪元切换、重要天气、野兽袭击、死亡、出生、协议、关键技术和项目完成，并保留来源事件、涉及人物与可展开详情。动物死因必须由死亡来源链中的同对象袭击证明；同月袭击被死亡吸收后不会重复列史。
 - `projection/live-speech.ts`：把每个已完成且具有可解析真实听者的口头沟通 ActionFact 投影为无显示文本的结构化 `speechAct` 草稿；只有已校验的模型台词才进入 `GameFrame.speechLines`，从不反写动作事实。
 - `projection/society-world-cache.ts`：只读 WeakMap 投影缓存；复用静态 palette / biome，无体素变化时复用世界几何，有变化时仅复制并重算受影响列。
 
@@ -120,11 +121,11 @@ domain model and policies ↔ world grid / material primitives
 
 实时月份中的说话先由规则提交为 completed `voice communicate` ActionFact，并投影为只含沟通类型、话题、提议、引用、立场与来源的 `speech-act-v1` 草稿；规则不再提供可显示原话，规则摘要也不再充当隐藏原话或文本相似度锚。尚无更细领域字段的客观陈述只把事实命题放入 `speechAct.subject`，不规定句式。决策阶段已生成合法模型台词时直接复用，其余草稿再按月进入同一 `decision` endpoint 的 speech-only 批次。主动人物对话、决策 utterance 与 speech-only 共用同一只读 Soul，避免同一个人在三条链路中出现三种性格。speech-only 模型从说话者有效人格、本月提交后的当前身体、对听者的当前关系、当前处境与有源近期经历中自主形成当下表达，这些值不是 action tick 精确快照；服务器另从当前 speechAct、人格、控制敏感度、身体压力、关系及真实伤害 / 背约 / 拒绝后重复施压证据派生 `relational-speech-frame-v1`。普通陈述默认 neutral；blunt 只在请求、拒绝、撤回等边界话语结合低宜人性、控制敏感或急迫压力时出现，低信任通常先表现为 guarded；warm、familiar 与有证据门禁的 confrontational 仍按关系和处境开放。命令式和短促请求无需礼貌关键词，人物也不必默认寒暄、共情或解释完整，但直接不自动等于不耐烦，也不应机械地以“别”开头；敌意不能由低宜人性或低信任单独凭空产生。模型仍只能表达该动作已授权的话题、立场和事实。成功且通过沟通类型与结构化立场校验的台词绑定原 ActionFact 进入 `GameFrame.speechLines`，普通陈述不再与规则句子做文本相似度比较；台词不覆写 summary，不写入记忆、关系、知识、意图或文明纪事。模型失败时仍保留沟通事实，但不显示文字气泡，已保存帧回放时不重新调用模型。
 
-文明历史另先由规则层筛出出生、死亡、关键技术、项目完成等重大事件；选择模型总结时再调用 `narrative` 路由压缩本月纪事，选择本地总结时直接保留规则文本。没有重大事件的月份不产出纪事、不调用叙事模型，请求或校验失败时也保留规则文本。赶路、搬运、吃饭和普通失败只留在人物个人记录。意图的原子动作仍由规则引擎编译、预演、修复和结算；前端只能渲染读取投影，不能生成第二套地形、地点或道路。
+文明历史另先由规则层筛出文明开端、纪元切换、重要天气、野兽袭击、死亡、出生、协议、关键技术和项目完成等重大事件；选择模型总结时再调用 `narrative` 路由压缩本月纪事，选择本地总结时直接保留规则文本。没有重大事件的月份不产出纪事、不调用叙事模型，请求或校验失败时也保留规则文本。赶路、搬运、吃饭和普通失败只留在人物个人记录。意图的原子动作仍由规则引擎编译、预演、修复和结算；前端只能渲染读取投影，不能生成第二套地形、地点或道路。
 
 乱纪元与恒纪元的每次真实切换都是文明历史的最高优先级事件，投影必须同时说明哪个纪元结束、哪个纪元开始。这组更迭事实由规则文本直接进入历史，不传给模型；同月其他重大事件的模型概括也会另外保留。
 
-文明纪事在表达层按真实来源和业务语义归并：同阶段重复的冷热伤害不反复记史，对称的结伴或生育约定只显示一次，项目完成会覆盖同源的原子动作，放置与制作使用不同句式。归并只改变玩家看到的文本，全部 `sourceEventIds` 仍会保留。文明开端与结局由服务端写入史册，载入或恢复会话后不会消失。
+文明纪事在表达层按真实来源和业务语义归并：同阶段重复的冷热伤害不反复记史，对称的结伴或生育约定只显示一次，项目完成会覆盖同源的原子动作，放置与制作使用不同句式；动物袭击只有出现在同一死者的死亡来源链中才可写成死因，同月已被死亡吸收的袭击不再重复。归并只改变玩家看到的文本，全部 `sourceEventIds`、涉及人物和事实详情仍会保留，并可在历史条目中展开查看。文明开端与结局由服务端写入史册，载入或恢复会话后不会消失。
 
 服务端模型配置与 `ollama-chat / openai-chat / openai-responses / anthropic-messages` 路由见 [`../../../design/model-endpoint-routing.md`](../../../design/model-endpoint-routing.md)。
 

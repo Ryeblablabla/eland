@@ -1,16 +1,28 @@
 import type { NarrativeEntryView } from '../../societyContract';
 import type { SimulationState, WorldEvent } from '../simulation';
 import type { HolderRef } from '../domain/action';
+import { animalSpecies, type AnimalSpeciesId } from '../domain/animal';
 import { Material, materialDefinition } from '../domain/material';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
 type EnvironmentEvent = Extract<WorldEvent, { kind: 'environment' }>;
 type AgreementEvent = Extract<WorldEvent, { kind: 'agreement' }>;
+type AnimalAttackEvent = EnvironmentEvent & {
+  change: 'animal';
+  diff: EnvironmentEvent['diff'] & { process: 'attack-human' };
+};
 
 interface NarrativeCandidate extends NarrativeEntryView {
   orderInMonth: number;
   dedupeKey?: string;
+}
+
+interface DeathAttackEvidence {
+  sourceEventIds: string[];
+  sourceEvents: WorldEvent[];
+  attacks: AnimalAttackEvent[];
+  directAttacks: AnimalAttackEvent[];
 }
 
 function unique<T>(values: T[]): T[] {
@@ -25,6 +37,202 @@ function briefNameList(names: string[]): string {
 
 function personName(state: SimulationState, personId: string | undefined): string {
   return state.people.find((person) => person.id === personId)?.name ?? '某人';
+}
+
+function stringIds(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function displayNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/u, '');
+}
+
+function isAnimalSpeciesId(value: unknown): value is AnimalSpeciesId {
+  return value === 'deer' || value === 'rabbit' || value === 'boar' || value === 'wolf';
+}
+
+function isAnimalAttackEvent(event: WorldEvent | undefined): event is AnimalAttackEvent {
+  return event?.kind === 'environment'
+    && event.change === 'animal'
+    && event.diff.process === 'attack-human';
+}
+
+function animalNameForAttack(state: SimulationState, event: EnvironmentEvent): string {
+  const animalId = typeof event.diff.animalId === 'string' ? event.diff.animalId : undefined;
+  const animal = animalId ? state.world.animals?.find((candidate) => candidate.id === animalId) : undefined;
+  const speciesId = animal?.speciesId ?? event.diff.animalSpeciesId;
+  if (isAnimalSpeciesId(speciesId)) return animalSpecies(speciesId).name;
+  return event.result.match(/^(.+?)(?:袭击|在被近身时冲撞)/u)?.[1] ?? '野兽';
+}
+
+function animalAttackDetail(event: EnvironmentEvent): string {
+  const healthBefore = finiteNumber(event.diff.healthBefore);
+  const healthAfter = finiteNumber(event.diff.healthAfter);
+  const woundStageBefore = finiteNumber(event.diff.woundStageBefore);
+  const woundStageAfter = finiteNumber(event.diff.woundStageAfter);
+  return unique([
+    event.result,
+    healthBefore !== null && healthAfter !== null
+      ? `健康值 ${displayNumber(healthBefore)}→${displayNumber(healthAfter)}`
+      : '',
+    woundStageBefore !== null && woundStageAfter !== null
+      ? `伤势阶段 ${displayNumber(woundStageBefore)}→${displayNumber(woundStageAfter)}`
+      : '',
+  ].filter(Boolean)).join('；');
+}
+
+const WEATHER_NAMES: Record<string, string> = {
+  clear: '晴朗',
+  rain: '降雨',
+  storm: '风暴',
+  drought: '干旱',
+  snow: '降雪',
+  fog: '浓雾',
+};
+
+const CLIMATE_NAMES: Record<string, string> = {
+  temperate: '温和',
+  cold: '寒冷',
+  heat: '炎热',
+  fire: '烈火',
+};
+
+const EPOCH_NAMES: Record<string, string> = {
+  stable: '恒纪元',
+  chaotic: '乱纪元',
+};
+
+const HISTORICAL_WEATHER_KINDS = new Set(['storm', 'drought', 'snow']);
+
+function weatherName(value: unknown): string {
+  return typeof value === 'string' ? WEATHER_NAMES[value] ?? value : '未知天气';
+}
+
+function climateName(value: unknown): string {
+  return typeof value === 'string' ? CLIMATE_NAMES[value] ?? value : '未知气候';
+}
+
+function epochName(value: unknown): string {
+  return typeof value === 'string' ? EPOCH_NAMES[value] ?? value : '未知纪元';
+}
+
+function climateHistoryCandidate(event: EnvironmentEvent): NarrativeCandidate | null {
+  if (event.change !== 'climate') return null;
+  const epoch = typeof event.diff.epoch === 'string' ? event.diff.epoch : undefined;
+  const previousEpoch = typeof event.diff.previousEpoch === 'string'
+    ? event.diff.previousEpoch
+    : epoch === 'stable' ? 'chaotic' : epoch === 'chaotic' ? 'stable' : undefined;
+  const kind = typeof event.diff.kind === 'string' ? event.diff.kind : undefined;
+  const previousKind = typeof event.diff.previousKind === 'string' ? event.diff.previousKind : undefined;
+  const severity = finiteNumber(event.diff.severity);
+  const previousSeverity = finiteNumber(event.diff.previousSeverity);
+  const epochChanged = event.diff.eraTransition === true || event.diff.epochChanged === true;
+  const kindChanged = event.diff.climateKindChanged === true
+    && kind !== undefined && previousKind !== undefined && kind !== previousKind;
+  if (!epochChanged && !kindChanged) return null;
+
+  const initialObservation = event.atMonth <= 1;
+  const text = initialObservation
+    ? `文明开端处于${epochName(epoch)}，地表为${climateName(kind)}`
+    : epochChanged
+      ? `${epochName(previousEpoch)}结束，${epochName(epoch)}开始，地表${epoch === 'stable' ? '恢复' : '转为'}${climateName(kind)}`
+      : `${epochName(epoch)}中，地表气候由${climateName(previousKind)}转为${climateName(kind)}`;
+  return {
+    id: `narrative:${event.id}`,
+    month: event.atMonth,
+    text: finishSentence(text),
+    detail: unique([
+      event.result,
+      epochChanged && !initialObservation ? `纪元 ${epochName(previousEpoch)}→${epochName(epoch)}` : '',
+      kindChanged ? `气候 ${climateName(previousKind)}→${climateName(kind)}` : '',
+      severity !== null && previousSeverity !== null
+        ? `严酷度 ${displayNumber(previousSeverity)}→${displayNumber(severity)}`
+        : severity !== null ? `严酷度 ${displayNumber(severity)}` : '',
+    ].filter(Boolean)).join('；'),
+    tone: epochChanged ? 'era' : kind === 'temperate' ? 'good' : 'bad',
+    kind: 'epoch',
+    importance: epochChanged ? 132 : 94,
+    sourceEventIds: [event.id],
+    actorIds: [],
+    orderInMonth: event.orderInMonth,
+  };
+}
+
+function weatherHistoryCandidate(event: EnvironmentEvent): NarrativeCandidate | null {
+  if (event.change !== 'weather') return null;
+  const kind = typeof event.diff.kind === 'string' ? event.diff.kind : undefined;
+  const previousKind = typeof event.diff.previousKind === 'string' ? event.diff.previousKind : undefined;
+  const intensity = finiteNumber(event.diff.intensity);
+  const previousIntensity = finiteNumber(event.diff.previousIntensity);
+  const kindChanged = event.diff.episodeStarted === true
+    && kind !== undefined && previousKind !== undefined && kind !== previousKind;
+  const initialObservation = event.atMonth <= 1;
+  const historicallyMeaningfulKindChange = kindChanged && (
+    HISTORICAL_WEATHER_KINDS.has(kind)
+    || HISTORICAL_WEATHER_KINDS.has(previousKind)
+    || (kind !== 'clear' && intensity !== null && intensity >= 2)
+    || (previousKind !== 'clear' && previousIntensity !== null && previousIntensity >= 2)
+  );
+  const becameHighImpact = event.diff.episodeStarted === false && kind !== 'clear'
+    && intensity !== null && previousIntensity !== null && previousIntensity < 2 && intensity >= 2;
+  const leftHighImpact = event.diff.episodeStarted === false && kind !== 'clear'
+    && intensity !== null && previousIntensity !== null && previousIntensity >= 2 && intensity < 2;
+  if (!historicallyMeaningfulKindChange && !becameHighImpact && !leftHighImpact) return null;
+  const currentName = weatherName(kind);
+  const text = historicallyMeaningfulKindChange
+    ? initialObservation
+      ? `文明开端天气为${currentName}`
+      : `天气由${weatherName(previousKind)}转为${currentName}`
+    : becameHighImpact
+      ? `${currentName}强度升至 ${displayNumber(intensity ?? 2)}`
+      : `${currentName}强度降至 ${displayNumber(intensity ?? 1)}`;
+  const adverse = kind === 'storm' || kind === 'drought' || becameHighImpact;
+  return {
+    id: `narrative:${event.id}`,
+    month: event.atMonth,
+    text: finishSentence(text),
+    detail: unique([
+      event.result,
+      historicallyMeaningfulKindChange && !initialObservation
+        ? `天气过程 ${weatherName(previousKind)}→${currentName}`
+        : '',
+      intensity !== null && previousIntensity !== null
+        ? `强度 ${displayNumber(previousIntensity)}→${displayNumber(intensity)}`
+        : intensity !== null ? `强度 ${displayNumber(intensity)}` : '',
+    ].filter(Boolean)).join('；'),
+    tone: kind === 'clear' ? 'good' : adverse ? 'bad' : 'plain',
+    kind: 'epoch',
+    importance: becameHighImpact ? 92 : leftHighImpact ? 84 : adverse ? 88 : 80,
+    sourceEventIds: [event.id],
+    actorIds: [],
+    orderInMonth: event.orderInMonth,
+  };
+}
+
+function eventLookup(state: SimulationState, events: WorldEvent[]): Map<string, WorldEvent> {
+  return new Map([...state.world.past, ...events].map((event) => [event.id, event]));
+}
+
+function deathAttackEvidence(event: EnvironmentEvent, eventsById: Map<string, WorldEvent>): DeathAttackEvidence {
+  const personId = event.who ?? (typeof event.diff.personId === 'string' ? event.diff.personId : undefined);
+  const sourceEventIds = unique(stringIds(event.diff.sourceEventIds));
+  const sourceEvents = sourceEventIds.flatMap((eventId) => {
+    const source = eventsById.get(eventId);
+    return source ? [source] : [];
+  });
+  const attacks = sourceEvents.filter((source): source is AnimalAttackEvent => (
+    isAnimalAttackEvent(source)
+      && (source.diff.victimId === personId || (source.diff.victimId === undefined && source.who === personId))
+  ));
+  const directAttacks = attacks.filter((attack) => {
+    const healthAfter = finiteNumber(attack.diff.healthAfter);
+    return healthAfter !== null && healthAfter <= 0;
+  });
+  return { sourceEventIds, sourceEvents, attacks, directAttacks };
 }
 
 function finishSentence(text: string): string {
@@ -383,7 +591,43 @@ function repeatsConditionStage(state: SimulationState, event: EnvironmentEvent):
   return Number(previous.diff.stage) === stage;
 }
 
-function environmentCandidate(state: SimulationState, event: EnvironmentEvent): NarrativeCandidate | null {
+function animalAttackCandidate(state: SimulationState, event: EnvironmentEvent): NarrativeCandidate {
+  const victimId = typeof event.diff.victimId === 'string' ? event.diff.victimId : event.who;
+  const animalName = animalNameForAttack(state, event);
+  const victimName = personName(state, victimId);
+  const woundStageAfter = finiteNumber(event.diff.woundStageAfter);
+  const healthAfter = finiteNumber(event.diff.healthAfter);
+  const verb = event.diff.behavior === 'defensive-charge' ? '冲撞了' : '袭击了';
+  const consequence = healthAfter !== null && healthAfter <= 0
+    ? '，造成致命伤害'
+    : woundStageAfter !== null && woundStageAfter >= 3
+      ? '，使其身受重伤'
+      : '，使其受伤';
+  return {
+    id: `narrative:${event.id}`,
+    month: event.atMonth,
+    text: finishSentence(`${animalName}${verb}${victimName}${consequence}`),
+    detail: animalAttackDetail(event),
+    tone: 'bad',
+    kind: 'epoch',
+    importance: 110,
+    sourceEventIds: [event.id],
+    actorIds: victimId ? [victimId] : [],
+    orderInMonth: event.orderInMonth,
+  };
+}
+
+function environmentCandidate(
+  state: SimulationState,
+  event: EnvironmentEvent,
+  eventsById: Map<string, WorldEvent>,
+): NarrativeCandidate | null {
+  if (isAnimalAttackEvent(event)) return animalAttackCandidate(state, event);
+  if (event.change === 'weather') return weatherHistoryCandidate(event);
+  if (event.change === 'climate') {
+    const climate = climateHistoryCandidate(event);
+    if (climate) return climate;
+  }
   const founding = event.change === 'founding';
   const born = typeof event.diff.bornPersonId === 'string';
   const era = event.diff.eraTransition === true;
@@ -396,24 +640,57 @@ function environmentCandidate(state: SimulationState, event: EnvironmentEvent): 
   const actorIds = founding
     ? foundingParticipantIds
     : event.who ? [event.who] : typeof event.diff.bornPersonId === 'string' ? [event.diff.bornPersonId] : [];
+  const deathEvidence = event.change === 'death' ? deathAttackEvidence(event, eventsById) : null;
+  const directAnimalNames = deathEvidence
+    ? unique(deathEvidence.directAttacks.map((attack) => animalNameForAttack(state, attack)))
+    : [];
+  const relatedAnimalNames = deathEvidence
+    ? unique(deathEvidence.attacks.map((attack) => animalNameForAttack(state, attack)))
+    : [];
   const text = founding
     ? `第 ${state.civilization.number} 号文明在自然地表上开始，${foundingParticipantIds.length} 位先民共同抵达`
     : event.change === 'death'
-    ? `${personName(state, event.who)}去世了，随身物品留在原地`
+      ? event.diff.cause === 'triple-sun-vaporization'
+        ? `${personName(state, event.who)}在三日凌空中瞬间汽化`
+        : directAnimalNames.length
+        ? `${personName(state, event.who)}被${briefNameList(directAnimalNames)}袭击致死，随身物品留在原地`
+        : relatedAnimalNames.length
+          ? `${personName(state, event.who)}去世了；生前曾遭${briefNameList(relatedAnimalNames)}袭击，随身物品留在原地`
+          : `${personName(state, event.who)}去世了，随身物品留在原地`
     : era
       ? event.diff.epoch === 'chaotic'
         ? `恒纪元结束，乱纪元开始，地表转为${event.diff.kind === 'cold' ? '寒冷' : event.diff.kind === 'heat' ? '炎热' : '灼热'}`
         : '乱纪元结束，恒纪元开始，地表恢复温和'
       : event.result.replaceAll('的身体储备发生显著变化', '的身体状况明显变化');
+  const prioritizedDeathAttacks = deathEvidence
+    ? unique([
+      ...deathEvidence.directAttacks,
+      ...[...deathEvidence.attacks].reverse(),
+    ]).slice(0, 2)
+    : [];
+  const recentOtherDeathSources = deathEvidence
+    ? deathEvidence.sourceEvents
+      .filter((source) => !isAnimalAttackEvent(source))
+      .slice(-2)
+    : [];
+  const detail = deathEvidence
+    ? unique([
+      event.result,
+      ...prioritizedDeathAttacks.map(animalAttackDetail),
+      ...recentOtherDeathSources.map((source) => source.result),
+    ].filter(Boolean)).map((part) => concisePlayerText(part, 120)).join('；')
+    : event.result;
   return {
     id: `narrative:${event.id}`,
     month: event.atMonth,
     text: finishSentence(text),
-    detail: event.result,
+    detail,
     tone: event.change === 'death' || severeCondition || event.diff.correct === false ? 'bad' : founding || era ? 'era' : 'good',
     kind: 'epoch',
     importance: founding ? 140 : era ? 132 : event.change === 'death' ? 124 : born ? 116 : severeCondition ? 96 : 90,
-    sourceEventIds: [event.id],
+    sourceEventIds: deathEvidence
+      ? unique([...deathEvidence.sourceEventIds, event.id])
+      : [event.id],
     actorIds,
     orderInMonth: event.orderInMonth,
   };
@@ -560,12 +837,20 @@ function mergeCandidatesBy(candidates: NarrativeCandidate[], keyFor: (candidate:
 
 export function playerTextForEvent(state: SimulationState, event: WorldEvent): string {
   if (event.kind === 'action' || event.kind === 'decision') return standaloneCandidate(state, event).text;
-  if (event.kind === 'environment') return environmentCandidate(state, event)?.text ?? finishSentence(event.result);
+  if (event.kind === 'environment') return environmentCandidate(state, event, eventLookup(state, [event]))?.text ?? finishSentence(event.result);
   if (event.kind === 'agreement') return agreementCandidate(state, event)?.text ?? finishSentence(event.result);
   return finishSentence(event.result);
 }
 
 export function projectPlayerNarrative(state: SimulationState, events: WorldEvent[], limit = 4): NarrativeEntryView[] {
+  const eventsById = eventLookup(state, events);
+  const attacksAbsorbedByDeath = new Set(events.flatMap((event) => (
+    event.kind === 'environment' && event.change === 'death'
+      ? deathAttackEvidence(event, eventsById).attacks
+        .filter((attack) => attack.atMonth === event.atMonth)
+        .map((attack) => attack.id)
+      : []
+  )));
   const projectCandidates = completedProjectCandidates(state, events);
   const projectSourceEventIds = new Set(projectCandidates.flatMap((candidate) => candidate.sourceEventIds));
   const candidates: NarrativeCandidate[] = [];
@@ -573,7 +858,8 @@ export function projectPlayerNarrative(state: SimulationState, events: WorldEven
     if (event.kind === 'action') {
       if (!projectSourceEventIds.has(event.id) && isMajorHistoricalAction(state, event)) candidates.push(standaloneCandidate(state, event));
     } else if (event.kind === 'environment') {
-      const candidate = environmentCandidate(state, event);
+      if (isAnimalAttackEvent(event) && attacksAbsorbedByDeath.has(event.id)) continue;
+      const candidate = environmentCandidate(state, event, eventsById);
       if (candidate) candidates.push(candidate);
     } else if (event.kind === 'agreement') {
       const candidate = agreementCandidate(state, event);

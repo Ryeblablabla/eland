@@ -8,6 +8,7 @@ import type {
   EpochKind,
   SimulationConfig,
   SimulationState,
+  TerminalCatastropheKind,
 } from '../../domain/model';
 import { cellX, cellY, isCellId } from '../../world/grid';
 import { adoptSimulationState, createInitialState, restoreSimulationState } from './state-lifecycle';
@@ -18,6 +19,7 @@ export interface ExternalClimateInput {
   epoch: EpochKind;
   kind: ClimateKind;
   severity: number;
+  terminalCatastrophe?: TerminalCatastropheKind;
 }
 
 export interface SimulationController {
@@ -35,7 +37,12 @@ export interface SimulationController {
   restore(saved: SimulationState): void;
   /** Trusted ownership transfer; unlike restore(), this does not clone saved. */
   adoptOwnedState(saved: SimulationState): SimulationState;
-  setExternalClimate(epoch: EpochKind, kind: ClimateKind, severity: number): void;
+  setExternalClimate(
+    epoch: EpochKind,
+    kind: ClimateKind,
+    severity: number,
+    terminalCatastrophe?: TerminalCatastropheKind,
+  ): void;
   injectEvent(input: EnvironmentEventInput): SimulationState;
 }
 
@@ -46,6 +53,7 @@ function applyExternalClimate(state: SimulationState, climate: ExternalClimateIn
     epoch: climate.epoch,
     kind: climate.kind,
     severity: clamp(climate.severity, 1, 10),
+    ...(climate.terminalCatastrophe ? { terminalCatastrophe: climate.terminalCatastrophe } : {}),
   };
 }
 
@@ -98,8 +106,8 @@ function createSimulationController(
       state = adoptSimulationState(saved);
       return state;
     },
-    setExternalClimate(epoch, kind, severity) {
-      applyExternalClimate(state, { epoch, kind, severity });
+    setExternalClimate(epoch, kind, severity, terminalCatastrophe) {
+      applyExternalClimate(state, { epoch, kind, severity, terminalCatastrophe });
     },
     injectEvent(input) {
       if (!isCellId(input.cellId)) throw new Error('环境事件 cellId 无效');

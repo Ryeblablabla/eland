@@ -133,6 +133,7 @@
 .save-manager__create input:focus-visible,
 .save-manager__list:focus-visible,
 .history-view__list:focus-visible,
+.history-entry__summary:focus-visible,
 .model-select__trigger:focus-visible {
   box-shadow: 0 0 0 2px var(--ui-focus);
 }
@@ -549,7 +550,87 @@
   line-height: 22px;
 }
 
-.history-entry--era p {
+.history-entry__details {
+  margin: -7px -8px;
+}
+
+.history-entry__summary {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  list-style: none;
+}
+
+.history-entry__summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-entry__summary:hover {
+  background: var(--ui-fill-1);
+}
+
+.history-entry__text {
+  color: var(--ui-label-secondary);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 430;
+  letter-spacing: 0.015em;
+  line-height: 22px;
+}
+
+.history-entry__disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ui-label-tertiary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.history-entry__disclosure svg {
+  transition: transform 160ms ease;
+}
+
+.history-entry__details[open] .history-entry__disclosure svg {
+  transform: rotate(90deg);
+}
+
+.history-entry__expanded {
+  margin: 2px 8px 7px;
+  padding: 10px 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 78%);
+}
+
+.history-entry__expanded > p {
+  color: var(--ui-label-tertiary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: normal;
+  line-height: 19px;
+}
+
+.history-entry__expanded > p + p {
+  margin-top: 6px;
+}
+
+.history-entry__expanded > .history-entry__source {
+  color: color-mix(in srgb, var(--ui-label-tertiary) 76%, transparent);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.history-entry--era p,
+.history-entry--era .history-entry__text {
   color: #ffd230;
 }
 
@@ -2411,6 +2492,10 @@
   }
 
   .model-select__trigger svg {
+    transition: none;
+  }
+
+  .history-entry__disclosure svg {
     transition: none;
   }
 }

@@ -79,7 +79,7 @@ export function withCivilizationEntries(
     ...entries.filter((entry) => !(
       entry.id === ending.id
         || (entry.sourceEventIds.length > 0
-          && entry.sourceEventIds.every((eventId) => deathEventIds.has(eventId)))
+          && entry.sourceEventIds.some((eventId) => deathEventIds.has(eventId)))
     )),
     ending,
   ];
@@ -138,9 +138,34 @@ export function storeFrame(frame: GameFrame): StoredFrame {
   };
 }
 
+function refreshStoredDeathEntries(entries: FrameEntry[], state: SimulationState): FrameEntry[] {
+  const deathsById = new Map(state.world.past.flatMap((event): Array<[string, WorldEvent]> => (
+    event.kind === 'environment' && event.change === 'death' ? [[event.id, event]] : []
+  )));
+  const refreshed = new Map<string, FrameEntry>();
+  return entries.map((entry) => {
+    const narrativeDeathId = entry.id.startsWith('narrative:') ? entry.id.slice('narrative:'.length) : undefined;
+    const soleSourceId = entry.sourceEventIds.length === 1 ? entry.sourceEventIds[0] : undefined;
+    const death = (narrativeDeathId ? deathsById.get(narrativeDeathId) : undefined)
+      ?? (soleSourceId ? deathsById.get(soleSourceId) : undefined);
+    if (!death) return entry;
+    const cached = refreshed.get(death.id);
+    if (cached) return cached;
+    const projection = entriesFor(state, [death]).find((candidate) => candidate.id === `narrative:${death.id}`);
+    if (!projection) return entry;
+    refreshed.set(death.id, projection);
+    return projection;
+  });
+}
+
 export function projectChronicle(frames: StoredFrame[], state: SimulationState | null): FrameEntry[] {
-  const entries = frames.flatMap((frame) => frame.entries);
-  if (!state) return entries;
+  const storedEntries = frames.flatMap((frame) => frame.entries);
+  if (!state) return storedEntries;
+  // Stored frames keep their original presentation, but simple one-death rule
+  // entries can be safely refreshed to expose causal evidence added later.
+  // Mixed model summaries remain untouched because their identity/source set is
+  // not an exact death entry.
+  const entries = refreshStoredDeathEntries(storedEntries, state);
   const foundingEntries = entriesFor(state, foundingEventsFor(state));
   const withFounding = foundingEntries.some((founding) => (
     !entries.some((entry) => entry.sourceEventIds.some((eventId) => founding.sourceEventIds.includes(eventId)))

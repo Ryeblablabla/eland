@@ -138,6 +138,8 @@ function nextEra(state: SimulationState, atMonth: number): EraSchedule {
 export function resolveClimate(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
   const external = state.civilization.externalClimate;
+  const previousEpoch = state.civilization.epoch;
+  const previousClimate = state.civilization.climate;
   let eraTransition = false;
   if (!external && atMonth > state.civilization.era.endsAtMonth) {
     state.civilization.era = nextEra(state, atMonth);
@@ -153,9 +155,14 @@ export function resolveClimate(state: SimulationState, atMonth: number): Environ
   const chaos = state.civilization.conditions.chaosIntensity / 10;
   const severity = external?.severity
     ?? (epoch === 'stable' ? 1 : Math.min(10, 3 + Math.floor(seededFraction(state.seed, `climate-severity:${scheduled.sequence}:${atMonth}`) * (5 + chaos * 3))));
-  const changed = state.civilization.climate.kind !== kind || state.civilization.climate.severity !== severity || state.civilization.epoch !== epoch;
+  // Observed external epoch changes are historical facts. Keep eraTransition
+  // reserved for the local schedule because prediction rules consume it.
+  const epochChanged = previousEpoch !== epoch;
+  const climateKindChanged = previousClimate.kind !== kind;
+  const climateSeverityChanged = previousClimate.severity !== severity;
+  const changed = climateKindChanged || climateSeverityChanged || epochChanged;
   state.civilization.epoch = epoch;
-  state.civilization.climate = { kind, severity, sinceMonth: changed ? atMonth : state.civilization.climate.sinceMonth };
+  state.civilization.climate = { kind, severity, sinceMonth: changed ? atMonth : previousClimate.sinceMonth };
   if (changed || atMonth === 1 || eraTransition) event(
     state,
     atMonth,
@@ -165,10 +172,55 @@ export function resolveClimate(state: SimulationState, atMonth: number): Environ
     {
       epoch, kind, severity, eraSequence: scheduled.sequence,
       eraSinceMonth: scheduled.sinceMonth,
+      previousEpoch,
+      previousKind: previousClimate.kind,
+      previousSeverity: previousClimate.severity,
+      ...(epochChanged ? { epochChanged: true } : {}),
+      ...(climateKindChanged ? { climateKindChanged: true } : {}),
+      ...(climateSeverityChanged ? { climateSeverityChanged: true } : {}),
       ...(eraTransition ? { eraTransition: true } : {}),
     },
   );
   return events;
+}
+
+/**
+ * A real three-sun collapse is not survivable weather. It resolves before the
+ * first planning tick so shelters, hibernation, traits, or queued actions
+ * cannot turn a terminal astronomical event into an ordinary heat episode.
+ */
+export function resolveTerminalCatastrophe(
+  state: SimulationState,
+  atMonth: number,
+  events: EnvironmentFact[],
+): boolean {
+  if (state.civilization.externalClimate?.terminalCatastrophe !== 'triple-sun-vaporization') return false;
+  const catastropheFact: EnvironmentFact = {
+    id: `e-${atMonth}-environment-triple-sun-vaporization`,
+    kind: 'environment',
+    atMonth,
+    orderInMonth: events.length,
+    planningTick: 1,
+    orderInTick: 0,
+    cellId: 0,
+    change: 'climate',
+    result: '三日凌空，地表在第一个规划刻度内进入足以汽化全部人类的辐射与烈焰',
+    diff: {
+      terminalCatastrophe: 'triple-sun-vaporization',
+      vaporization: true,
+      bypassesShelter: true,
+      bypassesHibernation: true,
+      bypassesTraits: true,
+    },
+  };
+  events.push(catastropheFact);
+  for (const person of state.people.filter(isAlive)) {
+    die(state, person, atMonth, events, 'triple-sun-vaporization', {
+      sourceEventIds: [catastropheFact.id],
+      vaporized: true,
+    });
+  }
+  return true;
 }
 
 const WEATHER_LABEL: Record<WeatherKind, string> = {
@@ -630,8 +682,10 @@ function applyAnimalAttack(
   const chance = species.aggression / 180;
   if (seededFraction(state.seed, `predator-attack:${atMonth}:${animal.id}:${victim.id}`) >= chance) return;
   const damage = 6 + Math.floor(species.aggression / 11);
+  const healthBefore = victim.body.health;
   victim.body.health = clamp(victim.body.health - damage);
   const wound = victim.conditions.find((condition) => condition.kind === 'wound');
+  const woundStageBefore = wound?.stage ?? 0;
   if (wound) wound.stage = Math.min(3, wound.stage + 1) as 1 | 2 | 3;
   else victim.conditions.push({
     id: `condition-wound-animal-${victim.id}-${atMonth}`,
@@ -644,6 +698,10 @@ function applyAnimalAttack(
     process: 'attack-human',
     victimId: victim.id,
     damage,
+    healthBefore,
+    healthAfter: victim.body.health,
+    woundStageBefore,
+    woundStageAfter: wound?.stage ?? 2,
     monthOpeningCoLocated: opening.cellId === victim.position.cellId && opening.z === victim.position.z,
     attackEligibility: 'month-opening-contact-only',
     targetSelection: intent.targetSelectionBasis ? {
@@ -675,8 +733,10 @@ function applyBoarDefensiveAttack(
   const chance = species.aggression / 240;
   if (seededFraction(state.seed, `animal-attack:${atMonth}:${animal.id}:${victim.id}`) >= chance) return;
   const damage = 4 + Math.floor(species.aggression / 14);
+  const healthBefore = victim.body.health;
   victim.body.health = clamp(victim.body.health - damage);
   const wound = victim.conditions.find((condition) => condition.kind === 'wound');
+  const woundStageBefore = wound?.stage ?? 0;
   if (wound) wound.stage = Math.min(3, wound.stage + 1) as 1 | 2 | 3;
   else victim.conditions.push({
     id: `condition-wound-animal-${victim.id}-${atMonth}`,
@@ -690,6 +750,10 @@ function applyBoarDefensiveAttack(
     behavior: 'defensive-charge',
     victimId: victim.id,
     damage,
+    healthBefore,
+    healthAfter: victim.body.health,
+    woundStageBefore,
+    woundStageAfter: wound?.stage ?? 1,
     monthOpeningCoLocated: opening.cellId === victim.position.cellId && opening.z === victim.position.z,
     attackEligibility: 'month-opening-contact-only',
     pursuit: false,
@@ -1322,34 +1386,55 @@ function advancePostpartumRecovery(state: SimulationState, person: PersonState, 
   recovery.stage = progress < 1 / 3 ? 3 : progress < 2 / 3 ? 2 : 1;
 }
 
-function die(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[], cause: 'body-failure' | 'aging-terminal'): void {
+type DeathCause = 'body-failure' | 'aging-terminal' | 'triple-sun-vaporization';
+
+function die(
+  state: SimulationState,
+  person: PersonState,
+  atMonth: number,
+  events: EnvironmentFact[],
+  cause: DeathCause,
+  options: { sourceEventIds?: string[]; vaporized?: boolean } = {},
+): void {
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
   const deathEventId = `e-${atMonth}-environment-death-${events.length}`;
   state.world.remains ??= [];
-  for (const carried of state.world.remains.filter((remains) => remains.carriedByPersonId === person.id)) {
-    carried.status = 'exposed';
-    carried.position = { cellId: person.position.cellId, z: person.position.z };
-    delete carried.carriedByPersonId;
-  }
-  for (const stack of person.inventory) {
-    addDrop(
-      state,
-      stack.materialId,
-      stack.quantity,
-      person.position.cellId,
-      atMonth,
-      [...new Set([...stack.sourceEventIds, deathEventId])],
-      `${person.id}-death`,
-      stack.recordPayloadId,
-      person.position.z,
-      [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
-      person.id,
-    );
+  const destroyedInventory = options.vaporized
+    ? person.inventory.map((stack) => ({
+        stackId: stack.id,
+        materialId: stack.materialId,
+        quantity: stack.quantity,
+        ...(stack.recordPayloadId ? { recordPayloadId: stack.recordPayloadId } : {}),
+      }))
+    : [];
+  if (options.vaporized) {
+    state.world.remains = state.world.remains.filter((remains) => remains.carriedByPersonId !== person.id);
+  } else {
+    for (const carried of state.world.remains.filter((remains) => remains.carriedByPersonId === person.id)) {
+      carried.status = 'exposed';
+      carried.position = { cellId: person.position.cellId, z: person.position.z };
+      delete carried.carriedByPersonId;
+    }
+    for (const stack of person.inventory) {
+      addDrop(
+        state,
+        stack.materialId,
+        stack.quantity,
+        person.position.cellId,
+        atMonth,
+        [...new Set([...stack.sourceEventIds, deathEventId])],
+        `${person.id}-death`,
+        stack.recordPayloadId,
+        person.position.z,
+        [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
+        person.id,
+      );
+    }
   }
   person.inventory = [];
-  if (!state.world.remains.some((remains) => remains.personId === person.id)) state.world.remains.push({
+  if (!options.vaporized && !state.world.remains.some((remains) => remains.personId === person.id)) state.world.remains.push({
     id: `remains:${person.id}`,
     personId: person.id,
     position: { cellId: person.position.cellId, z: person.position.z },
@@ -1375,7 +1460,9 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const dyingImmediatelyAfterHibernationRestore = justRestoredAncestorIds.size > 0;
   if (intent) {
     intent.status = 'failed';
-    intent.blockedReason = '人物已经死亡，无法继续原意图';
+    intent.blockedReason = options.vaporized
+      ? '人物在三日凌空中汽化，无法继续原意图'
+      : '人物已经死亡，无法继续原意图';
     recordIntentGoalOutcome(
       state,
       intent,
@@ -1397,7 +1484,9 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
       || Boolean(suspended.suspendedForHibernationConditionId)
       || justRestoredAncestorIds.has(suspended.id);
     suspended.status = 'failed';
-    suspended.blockedReason = hibernationRelated
+    suspended.blockedReason = options.vaporized
+      ? '人物在三日凌空中汽化，无法继续暂停意图'
+      : hibernationRelated
       ? '人物在休眠 episode 完成恢复前已经死亡'
       : '人物已经死亡，无法继续暂停意图';
     recordIntentGoalOutcome(
@@ -1418,16 +1507,25 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   }
   delete person.activeIntentId;
   const causalConditions = person.conditions.flatMap((current) => current.sourceEventIds);
-  const deathFact = event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，遗体和私有背包留在原地`, {
+  const sourceEventIds = [...new Set([...causalConditions, ...(options.sourceEventIds ?? [])])].slice(-24);
+  const deathFact = event(state, atMonth, events, 'death', options.vaporized
+    ? `${person.name}在三日凌空中于第 ${atMonth} 月瞬间汽化，没有留下遗体或遗物`
+    : `${person.name}在第 ${atMonth} 月死亡，遗体和私有背包留在原地`, {
     personId: person.id,
     ageMonths: atMonth - person.bornAtMonth,
     cause,
     healthBeforeDeath,
-    sourceEventIds: [...new Set(causalConditions)].slice(-24),
+    sourceEventIds,
+    ...(options.vaporized ? {
+      vaporized: true,
+      remainsCreated: false,
+      destroyedInventory,
+    } : {}),
     ...(hibernationFailedIntentIds.length
       ? { hibernationFailedIntentIds: [...new Set(hibernationFailedIntentIds)] }
       : {}),
   }, person);
+  if (options.vaporized) deathFact.planningTick = 1;
   if (deathFact.id !== deathEventId) throw new Error('死亡事实与遗体来源事件顺序不一致');
 }
 

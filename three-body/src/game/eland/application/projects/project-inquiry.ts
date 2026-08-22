@@ -500,20 +500,37 @@ export function buildProjectInquiryOpportunityBasis(
   visibleDrops: DropState[] = visibleDropsFor(state, person),
   atMonth = state.clock.elapsedMonths + 1,
 ): ProjectInquiryOpportunityBasis {
-  const materialSources = new Map<MaterialId, { sourceKey: string; sourceFactIds: string[] }>();
+  const materialSources = new Map<MaterialId, Array<{ sourceKeys: string[]; sourceFactIds: string[] }>>();
+  const addMaterialSource = (
+    materialId: MaterialId,
+    sourceKey: string,
+    sourceLineageKeys: string[],
+    sourceFactIds: string[],
+  ): void => {
+    const sources = materialSources.get(materialId) ?? [];
+    const sourceKeys = [...new Set([sourceKey, ...sourceLineageKeys])];
+    if (!sources.some((source) => source.sourceKeys.some((key) => sourceKeys.includes(key)))) {
+      sources.push({ sourceKeys, sourceFactIds: [...new Set(sourceFactIds)] });
+      materialSources.set(materialId, sources);
+    }
+  };
   for (const stack of [...person.inventory].filter((item) => item.quantity > 0)
     .sort((left, right) => left.materialId - right.materialId || left.id.localeCompare(right.id))) {
-    if (!materialSources.has(stack.materialId)) materialSources.set(stack.materialId, {
-      sourceKey: inventorySourceKey(person, stack),
-      sourceFactIds: [...stack.sourceEventIds],
-    });
+    addMaterialSource(
+      stack.materialId,
+      inventorySourceKey(person, stack),
+      stack.sourceLineageKeys ?? [],
+      stack.sourceEventIds,
+    );
   }
   for (const drop of [...visibleDrops].filter((item) => item.quantity > 0)
     .sort((left, right) => left.materialId - right.materialId || left.id.localeCompare(right.id))) {
-    if (!materialSources.has(drop.materialId)) materialSources.set(drop.materialId, {
-      sourceKey: dropSourceKey(drop),
-      sourceFactIds: [...drop.sourceEventIds],
-    });
+    addMaterialSource(
+      drop.materialId,
+      dropSourceKey(drop),
+      drop.sourceLineageKeys ?? [],
+      drop.sourceEventIds,
+    );
   }
   const techniques = reliableTechniqueFacts(person, desiredFunction);
   const verifiedAttempts = state.projects
@@ -544,13 +561,13 @@ export function buildProjectInquiryOpportunityBasis(
     ...verifiedResponseEventIds.map((eventId) => `response:${eventId}`),
   ].sort();
   const opportunitySources: ProjectInquiryOpportunitySource[] = [
-    ...[...materialSources].map(([materialId, source]) => ({
+    ...[...materialSources].flatMap(([materialId, sources]) => sources.map((source) => ({
       opportunityKey: `material:${materialId}`,
       kind: 'material' as const,
       materialId,
-      sourceKeys: [source.sourceKey],
+      sourceKeys: [...source.sourceKeys],
       sourceFactIds: [...source.sourceFactIds],
-    })),
+    }))),
     ...techniques.map((fact) => ({
       opportunityKey: `knowledge:${fact.id}`,
       kind: 'knowledge' as const,
@@ -612,7 +629,65 @@ function failedInquiryProjects(
   return projectsOwnedBy(state, person.id).filter((project) => project.ownerId === person.id
     && project.desiredFunction === desiredFunction
     && project.status === 'blocked'
-    && Boolean(project.hypothesisCampaign?.attempts.length));
+    && (Boolean(project.hypothesisCampaign?.attempts.length)
+      || project.searchCampaigns?.some((campaign) => campaign.status === 'exhausted')));
+}
+
+function exhaustedSearchCampaigns(project: ProjectState) {
+  return (project.searchCampaigns ?? []).filter((campaign) => campaign.status === 'exhausted');
+}
+
+function sourceAlreadyExplored(
+  source: ProjectInquiryOpportunitySource,
+  priorSources: ProjectInquiryOpportunitySource[],
+): boolean {
+  return priorSources.some((prior) => prior.kind === 'material'
+    && prior.materialId === source.materialId
+    && (prior.sourceKeys.some((key) => source.sourceKeys.includes(key))
+      || (source.sourceFactIds.length > 0
+        && prior.sourceFactIds.some((eventId) => source.sourceFactIds.includes(eventId)))));
+}
+
+function sourceAlreadySearched(
+  source: ProjectInquiryOpportunitySource,
+  prior: ProjectState[],
+): boolean {
+  if (source.materialId === undefined || source.sourceFactIds.length === 0) return false;
+  const sourceFactIds = new Set(source.sourceFactIds);
+  return prior.some((project) => exhaustedSearchCampaigns(project).some((campaign) => (
+    campaign.materialIds.includes(source.materialId!)
+      && campaign.sourceFactIds.some((eventId) => sourceFactIds.has(eventId))
+  )));
+}
+
+function exactSearchRenewalEvidence(
+  basis: ProjectInquiryOpportunityBasis,
+  prior: ProjectState[],
+): { opportunityKeys: string[]; opportunitySources: ProjectInquiryOpportunitySource[] } {
+  const searchedMaterialIds = new Set(prior
+    .flatMap(exhaustedSearchCampaigns)
+    .flatMap((campaign) => campaign.materialIds));
+  const priorSources = prior.flatMap((project) => {
+    const stored = project.terminalInquiryOpportunityBasis ?? project.inquiryOpportunityBasis;
+    return stored?.opportunitySources ?? [];
+  });
+  const sources = basis.opportunitySources.flatMap((source) => {
+    if (source.kind !== 'material'
+      || source.materialId === undefined
+      || !searchedMaterialIds.has(source.materialId)
+      || sourceAlreadyExplored(source, priorSources)
+      || sourceAlreadySearched(source, prior)) return [];
+    const exactSourceKey = source.sourceKeys[0];
+    if (!exactSourceKey) return [];
+    return [{
+      ...source,
+      opportunityKey: `search-source:${source.materialId}:${exactSourceKey}`,
+    }];
+  });
+  return {
+    opportunityKeys: sources.map((source) => source.opportunityKey).sort(),
+    opportunitySources: sources.sort((left, right) => left.opportunityKey.localeCompare(right.opportunityKey)),
+  };
 }
 
 function exploredOpportunityKeys(project: ProjectState): string[] {
@@ -633,7 +708,6 @@ export function proposalWithInquiryOpportunityMemory(
   visibleDrops: DropState[],
   candidate: ProjectProposal,
 ): ProjectProposal | null {
-  if (candidate.kind === 'construction') return candidate;
   const basis = buildProjectInquiryOpportunityBasis(
     state,
     person,
@@ -641,16 +715,39 @@ export function proposalWithInquiryOpportunityMemory(
     visibleDrops,
     candidate.createdAtMonth,
   );
-  const prior = failedInquiryProjects(state, person, candidate.desiredFunction);
+  const failed = failedInquiryProjects(state, person, candidate.desiredFunction);
+  const searchPrior = failed.filter((project) => exhaustedSearchCampaigns(project).length > 0);
+  const hypothesisPrior = failed.filter((project) => Boolean(project.hypothesisCampaign?.attempts.length));
+  const prior = [...new Map([...searchPrior, ...hypothesisPrior]
+    .map((project) => [project.id, project])).values()];
+  if (!prior.length) return candidate.kind === 'construction' ? candidate : {
+    ...candidate,
+    inquiryOpportunityBasis: basis,
+  };
   const explored = new Set(prior.flatMap(exploredOpportunityKeys));
-  const renewalKeys = basis.opportunityKeys.filter((key) => !explored.has(key));
-  if (prior.length > 0 && renewalKeys.length === 0) return null;
+  const hypothesisRenewalKeys = hypothesisPrior.length > 0
+    ? basis.opportunityKeys.filter((key) => !explored.has(key))
+    : [];
+  const searchRenewal = exactSearchRenewalEvidence(basis, searchPrior);
+  const reliablePlanRenewalKeys = searchPrior.length > 0
+    ? basis.opportunitySources
+      .filter((source) => source.kind === 'knowledge' && !explored.has(source.opportunityKey))
+      .map((source) => source.opportunityKey)
+    : [];
+  const renewalKeys = [...new Set([
+    ...hypothesisRenewalKeys,
+    ...searchRenewal.opportunityKeys,
+    ...reliablePlanRenewalKeys,
+  ])].sort();
+  if (renewalKeys.length === 0) return null;
   return {
     ...candidate,
     inquiryOpportunityBasis: {
       ...basis,
+      opportunityKeys: [...new Set([...basis.opportunityKeys, ...searchRenewal.opportunityKeys])].sort(),
+      opportunitySources: [...basis.opportunitySources, ...searchRenewal.opportunitySources],
       inheritedProjectIds: prior.map((project) => project.id).sort(),
-      renewalKeys: prior.length > 0 ? renewalKeys : [],
+      renewalKeys,
     },
   };
 }
@@ -661,7 +758,8 @@ export function freezeTerminalInquiryOpportunityBasis(
   project: ProjectState,
   atMonth: number,
 ): void {
-  if (!project.hypothesisCampaign?.attempts.length || project.terminalInquiryOpportunityBasis) return;
+  if ((!project.hypothesisCampaign?.attempts.length && exhaustedSearchCampaigns(project).length === 0)
+    || project.terminalInquiryOpportunityBasis) return;
   const current = buildProjectInquiryOpportunityBasis(
     state,
     person,
@@ -670,16 +768,43 @@ export function freezeTerminalInquiryOpportunityBasis(
     atMonth,
   );
   const opening = project.inquiryOpportunityBasis;
+  const planKnowledge = project.planKnowledgeId
+    ? person.knowledge.find((fact) => fact.id === project.planKnowledgeId)
+    : undefined;
+  const planOpportunityKey = project.planKnowledgeId ? `knowledge:${project.planKnowledgeId}` : undefined;
+  const planOpportunitySource: ProjectInquiryOpportunitySource | undefined = planOpportunityKey ? {
+    opportunityKey: planOpportunityKey,
+    kind: 'knowledge',
+    sourceKeys: [planOpportunityKey],
+    sourceFactIds: [...new Set([
+      ...(planKnowledge?.sourceEventIds ?? []),
+      ...exhaustedSearchCampaigns(project)
+        .filter((campaign) => campaign.planKnowledgeId === project.planKnowledgeId)
+        .flatMap((campaign) => campaign.sourceFactIds),
+    ])],
+  } : undefined;
   const materialIds = [...new Set([...(opening?.materialIds ?? []), ...current.materialIds])]
     .sort((left, right) => left - right);
-  const techniqueIds = [...new Set([...(opening?.techniqueIds ?? []), ...current.techniqueIds])].sort();
+  const techniqueIds = [...new Set([
+    ...(opening?.techniqueIds ?? []),
+    ...current.techniqueIds,
+    ...(project.planKnowledgeId ? [project.planKnowledgeId] : []),
+  ])].sort();
   const targetSourceKeys = [...new Set([...(opening?.targetSourceKeys ?? []), ...current.targetSourceKeys])].sort();
   const verifiedResponseEventIds = [...new Set([
     ...(opening?.verifiedResponseEventIds ?? []),
     ...current.verifiedResponseEventIds,
   ])].sort();
-  const opportunityKeys = [...new Set([...(opening?.opportunityKeys ?? []), ...current.opportunityKeys])].sort();
-  const opportunitySources = [...(opening?.opportunitySources ?? []), ...current.opportunitySources]
+  const opportunityKeys = [...new Set([
+    ...(opening?.opportunityKeys ?? []),
+    ...current.opportunityKeys,
+    ...(planOpportunityKey ? [planOpportunityKey] : []),
+  ])].sort();
+  const opportunitySources = [
+    ...(opening?.opportunitySources ?? []),
+    ...current.opportunitySources,
+    ...(planOpportunitySource ? [planOpportunitySource] : []),
+  ]
     .filter((source, index, all) => all.findIndex((candidate) => candidate.opportunityKey === source.opportunityKey
       && candidate.kind === source.kind
       && candidate.sourceKeys.join('|') === source.sourceKeys.join('|')) === index)
@@ -693,8 +818,11 @@ export function freezeTerminalInquiryOpportunityBasis(
     verifiedResponseEventIds,
     opportunityKeys,
     opportunitySources,
-    sourceFactIds: [...new Set([...(opening?.sourceFactIds ?? []), ...current.sourceFactIds])],
-    sourceKeys: [...new Set([...(opening?.sourceKeys ?? []), ...current.sourceKeys])],
+    sourceFactIds: [...new Set([
+      ...opportunitySources.flatMap((source) => source.sourceFactIds),
+      ...exhaustedSearchCampaigns(project).flatMap((campaign) => campaign.sourceFactIds),
+    ])],
+    sourceKeys: [...new Set(opportunitySources.flatMap((source) => source.sourceKeys))],
     basisKey: `${person.id}:${project.desiredFunction}:${opportunityKeys.join('|')}`,
     inheritedProjectIds: [...(opening?.inheritedProjectIds ?? [])],
     renewalKeys: [...(opening?.renewalKeys ?? [])],
@@ -738,7 +866,7 @@ export function openingStepUsesRenewalCommitment(
   const sources = (basis.opportunitySources ?? []).filter((source) => renewalKeys.has(source.opportunityKey));
   if (!sources.length) return false;
   const active = activeHypothesisCandidate(project);
-  if (active?.reasonKeys.includes('cross-project-renewal-opportunity')) return true;
+  const activeUsesRenewal = active?.reasonKeys.includes('cross-project-renewal-opportunity') ?? false;
   const inventorySourceKeys = actionInventorySourceKeys(person, step.action);
   const stepSourceKeys = new Set([
     ...inventorySourceKeys,
@@ -756,6 +884,15 @@ export function openingStepUsesRenewalCommitment(
       : []),
   ]);
   return sources.some((source) => {
+    if (source.kind === 'material' && source.materialId !== undefined) {
+      const prefix = `search-source:${source.materialId}:`;
+      if (source.opportunityKey.startsWith(prefix)) {
+        const exactSourceKey = source.opportunityKey.slice(prefix.length);
+        return (exactSourceKey.startsWith('inventory:') || exactSourceKey.startsWith('drop:'))
+          && stepSourceKeys.has(exactSourceKey);
+      }
+    }
+    if (activeUsesRenewal) return true;
     if (source.kind === 'knowledge') return step.planKnowledgeId === source.opportunityKey.slice('knowledge:'.length);
     if (source.kind === 'verified-response') return source.sourceFactIds.some((eventId) => step.sourceFactIds.includes(eventId))
       && source.sourceKeys.some((sourceKey) => stepSourceKeys.has(sourceKey));

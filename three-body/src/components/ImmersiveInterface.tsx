@@ -49,6 +49,8 @@ export interface ImmersiveHistoryEntry {
   text: string;
   tone: 'plain' | 'good' | 'bad' | 'era';
   detail?: string;
+  actorIds?: string[];
+  sourceEventIds?: string[];
   status?: true;
 }
 
@@ -1013,12 +1015,35 @@ export default function ImmersiveInterface({
               ) : visibleHistory.map((entry, index) => {
                 const sameMonthAsPrevious = visibleHistory[index - 1]?.month === entry.month;
                 const label = monthLabel(entry.month);
+                const detail = entry.detail?.trim();
+                const evidenceCount = entry.sourceEventIds?.length ?? 0;
+                const actorCount = entry.actorIds?.length ?? 0;
+                const canExpand = Boolean(detail || evidenceCount || actorCount);
                 return (
-                  <article className={`history-entry history-entry--${entry.tone}`} key={entry.id} title={entry.detail}>
+                  <article className={`history-entry history-entry--${entry.tone}`} key={entry.id}>
                     <time aria-hidden={sameMonthAsPrevious || undefined}>{sameMonthAsPrevious ? '' : label}</time>
                     <div>
                       {sameMonthAsPrevious && <span className="sr-only">{label}：</span>}
-                      <p>{entry.text}</p>
+                      {canExpand ? (
+                        <details className="history-entry__details">
+                          <summary className="history-entry__summary">
+                            <span className="history-entry__text">{entry.text}</span>
+                            <span className="history-entry__disclosure" aria-hidden="true">
+                              {evidenceCount > 0 ? `${evidenceCount} 条证据` : '详情'}
+                              <ChevronRight size={14} strokeWidth={1.7} />
+                            </span>
+                          </summary>
+                          <div className="history-entry__expanded">
+                            {detail && <p>{detail}</p>}
+                            <p className="history-entry__source">
+                              {evidenceCount > 0 ? `来源：关联 ${evidenceCount} 条模拟事件` : '来源：历史投影说明'}
+                              {actorCount > 0 ? ` · 涉及 ${actorCount} 人` : ''}
+                            </p>
+                          </div>
+                        </details>
+                      ) : (
+                        <p>{entry.text}</p>
+                      )}
                     </div>
                   </article>
                 );

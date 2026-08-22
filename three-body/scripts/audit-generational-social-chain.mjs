@@ -258,8 +258,12 @@ function socialFunnelAtMonth(state, events, personById, agreementFacts, atMonth)
     persistentSharedLiving: {
       events: persistent.length,
       byGenerationPair: persistentByGenerationPair,
-      firstAtMonth: persistent.length ? Math.min(...persistent.map((event) => event.atMonth)) : null,
-      lastAtMonth: persistent.length ? Math.max(...persistent.map((event) => event.atMonth)) : null,
+      firstAtMonth: persistent.length
+        ? persistent.reduce((minimum, event) => Math.min(minimum, event.atMonth), Number.POSITIVE_INFINITY)
+        : null,
+      lastAtMonth: persistent.length
+        ? persistent.reduce((maximum, event) => Math.max(maximum, event.atMonth), Number.NEGATIVE_INFINITY)
+        : null,
     },
   };
 }

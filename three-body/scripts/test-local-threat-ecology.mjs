@@ -365,6 +365,10 @@ try {
     assert.ok(attack);
     assert.equal(attack.diff.behavior, 'defensive-charge');
     assert.equal(attack.diff.victimId, wounded.id);
+    assert.equal(attack.diff.healthBefore, 55);
+    assert.equal(attack.diff.healthAfter, 48);
+    assert.equal(attack.diff.woundStageBefore, 2);
+    assert.equal(attack.diff.woundStageAfter, 3);
     assert.equal(attack.diff.monthOpeningCoLocated, true);
     assert.equal(events.some((event) => event.diff.process === 'pursuit-human'), false);
     assert.ok(wounded.conditions.find((condition) => condition.kind === 'wound').sourceEventIds.includes(attack.id));
@@ -418,6 +422,10 @@ try {
     assert.ok(attack);
     assert.equal(attack.diff.monthOpeningCoLocated, true);
     assert.equal(attack.diff.attackEligibility, 'month-opening-contact-only');
+    assert.equal(attack.diff.healthBefore, 90);
+    assert.equal(attack.diff.healthAfter, 78);
+    assert.equal(attack.diff.woundStageBefore, 0);
+    assert.equal(attack.diff.woundStageAfter, 2);
   }
 
   // Animal/person array order cannot affect month-opening intents or outcomes.

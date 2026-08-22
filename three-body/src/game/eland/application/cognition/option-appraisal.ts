@@ -25,7 +25,7 @@ import {
   type ReserveResource,
 } from './need-agenda';
 import { projectById } from '../../domain/state-index';
-import { assessFamilyReadiness } from './family-readiness';
+import { assessFamilyReadiness, type FamilyReadinessAssessment } from './family-readiness';
 
 export type CognitiveFactorName =
   | 'need'
@@ -61,6 +61,7 @@ export interface CognitiveOptionAppraisal {
   needAlignments: NeedAlignment[];
   addressedNeeds: NeedSignal[];
   needActivation: number;
+  generativityUrgency: number;
   expectedSuccess: number;
   uncertainty: number;
   expectedEffort: number;
@@ -70,6 +71,7 @@ export interface CognitiveOptionAppraisal {
   feasibilityGate: number;
   relationshipGate: number;
   readinessGate: number;
+  familyReadiness?: FamilyReadinessAssessment;
   repetitionGate: number;
   ethicalGate: number;
   continuityGate: number;
@@ -423,7 +425,7 @@ function familyReadinessAppraisal(
   context: DecisionContext,
   option: ActionOption,
   atMonth: number,
-): { gate: number; reasons: string[]; sourceFactIds: string[] } {
+): { gate: number; reasons: string[]; sourceFactIds: string[]; assessment?: FamilyReadinessAssessment } {
   const direction = reproductionDirection(option);
   if (!direction) return { gate: 1, reasons: [], sourceFactIds: [] };
   if (isSuccubusReproductionOption(option)) return {
@@ -442,6 +444,7 @@ function familyReadinessAppraisal(
       ...assessment.reasons,
     ],
     sourceFactIds: assessment.sourceFactIds,
+    assessment,
   };
 }
 
@@ -532,16 +535,15 @@ export function evaluateCognitiveOption(
   const dynamicNeedActivation = union(motivatingAlignments.map((alignment) => (
     (needForAlignment(alignment)?.urgency ?? 0) * alignment.strength
   )));
-  const communication = communicationAction(option);
-  const standingWithdrawal = communication?.content.kind === 'revoke-agreement'
-    || communication?.content.kind === 'revoke'
-    || communication?.content.kind === 'withdraw';
-  const groundedOpportunity = !standingWithdrawal
-    && !positiveReproduction
-    && (option.sourceFactIds.length || option.projectId || option.projectProposal)
-    ? clamp(0.14 + Math.min(0.1, option.sourceFactIds.length * 0.018) + (option.projectId || option.projectProposal ? 0.08 : 0))
-    : 0;
-  const needActivation = union([dynamicNeedActivation, groundedOpportunity]);
+  // Source facts justify why an option exists; they are not a need by
+  // themselves. Turning every sourced observation into generic motivation
+  // makes a stream of fresh conversations crowd out slower needs such as
+  // generativity. Projects, social contact, inquiry, care and withdrawal all
+  // already receive pressure from their corresponding sourced need signals.
+  const needActivation = dynamicNeedActivation;
+  const generativityUrgency = Math.max(...addressedNeeds
+    .filter((need) => need.kind === 'generativity')
+    .map((need) => need.urgency), 0);
   const basisKey = cognitiveOutcomeBasisKey(option.nextAction, option.goal);
   const goalBasisKey = cognitiveOutcomeBasisKey(option.completionAction ?? option.nextAction, option.goal);
   const actionBelief = outcomeBeliefFor(context.person, basisKey);
@@ -596,10 +598,7 @@ export function evaluateCognitiveOption(
   const factors = [
     factor('need', needActivation * 100, motivatingAlignments.map((alignment) => alignment.reason), addressedNeeds.flatMap((need) => need.sourceFactIds)),
     factor('care', Math.max(activationFor('care'), activationFor('bereavement')) * carePersonality * 100, ['情绪性与宜人性门控有来源的照护与悲恸需要'], addressedNeeds.filter((need) => need.kind === 'care' || need.kind === 'bereavement').flatMap((need) => need.sourceFactIds)),
-    factor('commitment', Math.max(
-      activationFor('commitment'),
-      (alignments.find((alignment) => alignment.kind === 'commitment')?.strength ?? 0) * groundedOpportunity,
-    ) * commitmentPersonality * continuityGate * 100, ['尽责性与真实进度门控意图持续'], context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
+    factor('commitment', activationFor('commitment') * commitmentPersonality * continuityGate * 100, ['尽责性与真实进度门控意图持续'], context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
     factor('learning', union([activationFor('inquiry'), activationFor('capability')]) * learningPersonality * 100, ['开放性调节对未知结果的探索，而不创造知识'], addressedNeeds.filter((need) => need.kind === 'inquiry' || need.kind === 'capability').flatMap((need) => need.sourceFactIds)),
     factor('relationship', activationFor('belonging') * socialPersonality * 100 + (relationship.gate - 1) * 40, relationship.reasons, relationship.sourceFactIds),
     factor('family-readiness', (readiness.gate - 1) * 100, readiness.reasons, readiness.sourceFactIds),
@@ -624,6 +623,7 @@ export function evaluateCognitiveOption(
     needAlignments: alignments,
     addressedNeeds: strongestNeeds,
     needActivation,
+    generativityUrgency,
     expectedSuccess,
     uncertainty,
     expectedEffort,
@@ -633,6 +633,7 @@ export function evaluateCognitiveOption(
     feasibilityGate,
     relationshipGate: relationship.gate,
     readinessGate: readiness.gate,
+    ...(readiness.assessment ? { familyReadiness: readiness.assessment } : {}),
     repetitionGate,
     ethicalGate: ethical.gate,
     continuityGate,

@@ -18,6 +18,7 @@ import {
   advanceHibernationRecoveryPhases,
   advanceWorldProcesses,
   resolveClimate,
+  resolveTerminalCatastrophe,
   resolveWeather,
 } from '../../domain/monthly-processes';
 import { advancePermissionLifecycle } from '../../domain/permission';
@@ -76,9 +77,21 @@ export function prepareMonth(
   }
   const climateEvents = resolveClimate(state, atMonth);
   const eraTransition = climateEvents.some((candidate) => candidate.diff.eraTransition === true);
+  const environmentEvents = [...climateEvents];
+  if (resolveTerminalCatastrophe(state, atMonth, environmentEvents)) {
+    return {
+      state,
+      events: environmentEvents,
+      contexts: [],
+      candidates: [],
+      naturallyTriggeredPeople,
+      livingAgents: 0,
+      atMonth,
+    };
+  }
   const hibernationPhaseEvents = advanceHibernationRecoveryPhases(state, atMonth);
   const events: WorldEvent[] = [
-    ...climateEvents,
+    ...environmentEvents,
     ...hibernationPhaseEvents,
     ...advanceEraPredictions(state, atMonth, eraTransition),
     ...resolveWeather(state, atMonth),
@@ -173,7 +186,13 @@ function destructionOutcome(
   const count = (predicate: (person: PersonState) => boolean) => observedPeople.filter(predicate).length;
   const deathFacts = events.filter((event): event is EnvironmentFact =>
     event.kind === 'environment' && event.change === 'death');
+  const tripleSunDeaths = deathFacts.filter((event) => event.diff.cause === 'triple-sun-vaporization').length;
   const agingTerminalDeaths = deathFacts.filter((event) => event.diff.cause === 'aging-terminal').length;
+
+  if (tripleSunDeaths > 0) return {
+    cause: '三日凌空',
+    summary: `文明最后的 ${tripleSunDeaths} 个生命在第 ${atMonth} 月的第一个规划刻度内全部汽化，没有留下生还者。`,
+  };
 
   const candidates = [
     {

@@ -48,6 +48,7 @@
 - [生殖自主同意实验](./evolution-autonomous-reproduction-consent-experiment-2026-08-22.md)：移除固定生殖关系分数，以有来源候选、个人 appraisal 和明确可撤回协议取代。
 - [BDI 项目满足与家庭准备度实验](./evolution-bdi-family-readiness-experiment-2026-08-22.md)：项目完成 episode、需要缓解、家庭准备度与生殖目标结果的三种子初步审计；结论为 `revise/preliminary`。
 - [文明高粮食停滞与时代断层修复实验](./evolution-civ61-stagnation-fixes-experiment-2026-08-22.md)：储备动机、动作投影、历史耕作门槛与铁器项目链的四项机制修复，以及三种子 10/30 年初步配对；群体结论为 `revise/preliminary`。
+- [搜索耗尽项目重复重开实验](./evolution-project-reopen-churn-experiment-2026-08-22.md)：跨项目终局机会记忆、精确来源续证和建造假说重开约束的三种子 10/30 年配对；结论为 `accept/preliminary`。
 - 所有 `evolution-*-experiment-YYYY-MM-DD.md`、`evolution-*-audit-YYYY-MM-DD.md`、带日期的长程报告与端到端复盘。
 - `three-body/data/experiments/**/manifest.md` 和 `three-body/exports/**/SUMMARY.md` 等冻结运行旁证。
 
@@ -55,13 +56,17 @@
 
 实验报告的状态必须是已经发生的事实，例如“接受”“拒绝”“按门槛停止”“历史矩阵未完成”。不允许永久保留没有负责人和运行任务的“进行中”“以后补跑”。需要复验时，以当前代码新建带日期的实验，不改写旧结论。
 
-## Knowledge Base 镜像
+## Knowledge Base 镜像与生成数据
 
 `knowledge-base/knowledge-docs.js` 是生成文件，不能手改。源文档清单在 `knowledge-base/scripts/sync-docs.mjs`；修改其中任一源文档后，从 `knowledge-base/` 运行：
 
 ```bash
 npm run sync:docs
 ```
+
+知识库“文档”页合订导入上表全部 14 份当前规范，不导入历史实验报告或扩展目标设计。新增、替换或废止当前规范时，应同时更新本索引和同步清单；生成后的页面数量可作为漏同步的快速检查，但不替代源码审计。
+
+`knowledge-base/recipes-data.js` 同样是生成文件。它从 `material.ts`、`interaction-rules.ts` 与 `separation-rules.ts` 汇总组合、施力、暴露和分离四类当前合法物质操作；修改这些领域规则后，从 `knowledge-base/` 运行 `npm run sync:recipes`，不要直接修补生成数据。
 
 `knowledge-base/rules-page.js` 不是生成镜像，而是当前规则树的手写静态导览。月度循环、项目链、模型边界或观察器边界变化时必须同步更新。
 

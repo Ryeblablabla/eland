@@ -2,7 +2,8 @@
 export const RECIPE_KNOWLEDGE = {
   "generatedFrom": [
     "three-body/src/game/eland/domain/material.ts",
-    "three-body/src/game/eland/domain/interaction-rules.ts"
+    "three-body/src/game/eland/domain/interaction-rules.ts",
+    "three-body/src/game/eland/domain/separation-rules.ts"
   ],
   "materials": [
     {
@@ -3720,13 +3721,252 @@ export const RECIPE_KNOWLEDGE = {
           "tool-material"
         ]
       }
+    },
+    {
+      "id": "split-stone-with-stone-tool",
+      "type": "separate",
+      "inputs": [
+        {
+          "materialId": 1,
+          "key": "stone",
+          "name": "石",
+          "quantity": 1,
+          "color": [
+            111,
+            108,
+            102
+          ],
+          "tags": [
+            "solid",
+            "ground",
+            "building",
+            "tool-material"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "materialId": 24,
+          "key": "stone_tool",
+          "name": "石制工具",
+          "quantity": 1,
+          "color": [
+            122,
+            119,
+            109
+          ],
+          "tags": [
+            "solid",
+            "tool"
+          ]
+        }
+      ],
+      "targets": [],
+      "output": {
+        "materialId": 1,
+        "key": "stone",
+        "name": "石",
+        "quantity": 1,
+        "color": [
+          111,
+          108,
+          102
+        ],
+        "tags": [
+          "solid",
+          "ground",
+          "building",
+          "tool-material"
+        ]
+      },
+      "outputs": [
+        {
+          "materialId": 1,
+          "key": "stone",
+          "name": "石",
+          "quantity": 1,
+          "color": [
+            111,
+            108,
+            102
+          ],
+          "tags": [
+            "solid",
+            "ground",
+            "building",
+            "tool-material"
+          ]
+        }
+      ],
+      "replacement": {
+        "materialId": 0,
+        "key": "air",
+        "name": "空气",
+        "quantity": 1,
+        "color": [
+          13,
+          20,
+          24
+        ],
+        "tags": [
+          "air"
+        ]
+      }
+    },
+    {
+      "id": "recover-plank",
+      "type": "separate",
+      "inputs": [
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 19,
+        "key": "plank",
+        "name": "木板",
+        "quantity": 1,
+        "color": [
+          155,
+          111,
+          65
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "fuel",
+          "flammable"
+        ]
+      },
+      "outputs": [
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "replacement": {
+        "materialId": 0,
+        "key": "air",
+        "name": "空气",
+        "quantity": 1,
+        "color": [
+          13,
+          20,
+          24
+        ],
+        "tags": [
+          "air"
+        ]
+      }
+    },
+    {
+      "id": "recover-container",
+      "type": "separate",
+      "inputs": [
+        {
+          "materialId": 28,
+          "key": "container",
+          "name": "木制容器",
+          "quantity": 1,
+          "color": [
+            119,
+            80,
+            45
+          ],
+          "tags": [
+            "solid",
+            "placeable",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 28,
+        "key": "container",
+        "name": "木制容器",
+        "quantity": 1,
+        "color": [
+          119,
+          80,
+          45
+        ],
+        "tags": [
+          "solid",
+          "placeable",
+          "flammable"
+        ]
+      },
+      "outputs": [
+        {
+          "materialId": 28,
+          "key": "container",
+          "name": "木制容器",
+          "quantity": 1,
+          "color": [
+            119,
+            80,
+            45
+          ],
+          "tags": [
+            "solid",
+            "placeable",
+            "flammable"
+          ]
+        }
+      ],
+      "replacement": {
+        "materialId": 0,
+        "key": "air",
+        "name": "空气",
+        "quantity": 1,
+        "color": [
+          13,
+          20,
+          24
+        ],
+        "tags": [
+          "air"
+        ]
+      }
     }
   ],
   "counts": {
     "materials": 67,
-    "recipes": 44,
+    "recipes": 47,
     "combine": 30,
     "exert": 2,
-    "expose": 12
+    "expose": 12,
+    "separate": 3
   }
 };

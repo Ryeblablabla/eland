@@ -1,6 +1,6 @@
 /** 领域状态到 UI 读取模型的纯投影。 */
 import type { ActionVisualView, AgentHistoryItem, AgentHistoryView, EraKey, SocietyAgent, SocietyState } from '../societyContract';
-import type { ClimateKind, EpochKind, SimulationState, WorldEvent } from './simulation';
+import type { ClimateKind, EpochKind, SimulationState, TerminalCatastropheKind, WorldEvent } from './simulation';
 import { Material, materialDefinition } from './domain/material';
 import { ageMonths, isAlive, isDormantDehydratedHibernating, type PersonState } from './domain/person';
 import { personalityScore } from './domain/personality';
@@ -16,12 +16,17 @@ import { traitDefinition, traitStatesOf } from './domain/trait';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 
-export const ERA_TO_ENV: Record<EraKey, { epoch: EpochKind; kind: ClimateKind; severity: number }> = {
+export const ERA_TO_ENV: Record<EraKey, {
+  epoch: EpochKind;
+  kind: ClimateKind;
+  severity: number;
+  terminalCatastrophe?: TerminalCatastropheKind;
+}> = {
   stable: { epoch: 'stable', kind: 'temperate', severity: 1 },
   chaotic: { epoch: 'chaotic', kind: 'temperate', severity: 4 },
   'chaotic-heat': { epoch: 'chaotic', kind: 'heat', severity: 7 },
   'chaotic-cold': { epoch: 'chaotic', kind: 'cold', severity: 7 },
-  burned: { epoch: 'chaotic', kind: 'fire', severity: 10 },
+  burned: { epoch: 'chaotic', kind: 'fire', severity: 10, terminalCatastrophe: 'triple-sun-vaporization' },
   frozen: { epoch: 'chaotic', kind: 'cold', severity: 10 },
   extinct: { epoch: 'chaotic', kind: 'fire', severity: 10 },
 };
@@ -592,6 +597,20 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
       if (event.who !== agentId) return [];
       const label = event.status === 'completed' ? '行动完成' : event.status === 'blocked' ? '行动受阻' : event.status === 'failed' ? '行动失败' : '正在行动';
       return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `应对眼前危险 · ${label}` : label, summary: playerTextForEvent(state, event), detail: actionHistoryDetail(state, lookup, event), ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
+    }
+    if (event.kind === 'environment' && event.who === agentId
+      && event.change === 'animal' && event.diff.process === 'attack-human') {
+      return [{
+        id: event.id,
+        month: event.atMonth,
+        orderInMonth: event.orderInMonth,
+        cellId: event.cellId,
+        kind: 'life',
+        label: '遭遇野兽袭击',
+        summary: playerTextForEvent(state, event),
+        detail: historyCellLabel(state, event.cellId),
+        status: 'animal-attack',
+      }];
     }
     if (event.kind === 'environment' && event.who === agentId && (event.change === 'death' || event.change === 'condition' || event.change === 'body')) {
       return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), status: event.change }];

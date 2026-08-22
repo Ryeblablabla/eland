@@ -209,7 +209,7 @@ function migrationResidenceAfter(
 function detectorConditions(): Record<DetectorKey, readonly string[]> {
   return {
     birth: ['月度身体结算生成 bornPersonId 与父母 ID', '新人物的 geneticParents 与出生事实一致'],
-    conception: ['双方先形成有效的生殖同意约定', 'reproduce 原语完成且 conceived=true'],
+    conception: ['普通路径形成有效双方生殖协议；魅魔路径保存 succubus-unilateral 单方授权', 'reproduce 原语完成且 conceived=true'],
     'dependent-care': ['照护者与未独立儿童存在亲子或真实照护关系', '携带、转移物资或协助脱水产生可解析动作事实'],
     'dependent-protection': ['儿童处于依赖年龄且与照护者有亲子或真实照护关系', '乱纪元危险中 completed 动作明确保存 assistedDependentId 或 carriedPersonIds'],
     kinship: ['出生事实保存父母与新生儿 ID', '人物状态保存同一 geneticParents 关系'],

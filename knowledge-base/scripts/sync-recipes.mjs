@@ -7,10 +7,12 @@ const labDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoDir = resolve(labDir, '..');
 const materialPath = 'three-body/src/game/eland/domain/material.ts';
 const rulePath = 'three-body/src/game/eland/domain/interaction-rules.ts';
+const separationPath = 'three-body/src/game/eland/domain/separation-rules.ts';
 
-const [materialSource, ruleSource] = await Promise.all([
+const [materialSource, ruleSource, separationSource] = await Promise.all([
   readFile(resolve(repoDir, materialPath), 'utf8'),
   readFile(resolve(repoDir, rulePath), 'utf8'),
+  readFile(resolve(repoDir, separationPath), 'utf8'),
 ]);
 
 function parse(source, path) {
@@ -67,6 +69,7 @@ function evaluate(node, scope = {}) {
 
 const materialFile = parse(materialSource, materialPath);
 const ruleFile = parse(ruleSource, rulePath);
+const separationFile = parse(separationSource, separationPath);
 const Material = evaluate(variableInitializer(materialFile, 'Material'));
 const materials = evaluate(variableInitializer(materialFile, 'MATERIAL_PALETTE'), { Material });
 const materialsById = new Map(materials.map((material) => [material.id, material]));
@@ -87,6 +90,7 @@ function materialRef(materialId, quantity = 1) {
 const combinations = evaluate(variableInitializer(ruleFile, 'INVENTORY_COMBINATIONS'), { Material });
 const exertions = evaluate(variableInitializer(ruleFile, 'EXERTION_RULES'), { Material });
 const exposures = evaluate(variableInitializer(ruleFile, 'EXPOSURE_RULES'), { Material });
+const separations = evaluate(variableInitializer(separationFile, 'VOXEL_SEPARATION_RULES'), { Material });
 
 const recipes = [
   ...combinations.map((rule) => ({
@@ -115,10 +119,20 @@ const recipes = [
     targets: [materialRef(rule.targetMaterialId)],
     output: materialRef(rule.outputMaterialId),
   })),
+  ...separations.map((rule) => ({
+    id: rule.id,
+    type: 'separate',
+    inputs: [materialRef(rule.inputMaterialId)],
+    tools: rule.requiredToolMaterialId === undefined ? [] : [materialRef(rule.requiredToolMaterialId)],
+    targets: [],
+    output: materialRef(rule.outputs[0].materialId, rule.outputs[0].quantity),
+    outputs: rule.outputs.map((output) => materialRef(output.materialId, output.quantity)),
+    replacement: materialRef(rule.replacementMaterialId),
+  })),
 ];
 
 const payload = {
-  generatedFrom: [materialPath, rulePath],
+  generatedFrom: [materialPath, rulePath, separationPath],
   materials,
   recipes,
   counts: {
@@ -127,6 +141,7 @@ const payload = {
     combine: combinations.length,
     exert: exertions.length,
     expose: exposures.length,
+    separate: separations.length,
   },
 };
 

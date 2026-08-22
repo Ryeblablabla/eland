@@ -94,7 +94,7 @@ export function createSessionBeginning(input: {
     }),
   });
   const env = ERA_TO_ENV[input.skySample.fate];
-  controller.setExternalClimate(env.epoch, env.kind, env.severity);
+  controller.setExternalClimate(env.epoch, env.kind, env.severity, env.terminalCatastrophe);
   return {
     controller,
     state: controller.ownedState(),
@@ -282,7 +282,12 @@ export class SessionStepCoordinator {
       const nextSkySample = options.skySample;
       const nextCosmosSnapshot = options.cosmosSnapshot;
       const env = ERA_TO_ENV[nextSkySample.fate];
-      const externalClimate = { epoch: env.epoch, kind: env.kind, severity: env.severity };
+      const externalClimate = {
+        epoch: env.epoch,
+        kind: env.kind,
+        severity: env.severity,
+        ...(env.terminalCatastrophe ? { terminalCatastrophe: env.terminalCatastrophe } : {}),
+      };
       const modelEvolutionEnabled = readEvolutionMode() === 'model';
       const decisionEndpoint = modelEvolutionEnabled && hasExplicitModelRoute('decision')
         ? modelEndpointStatus('decision')
@@ -307,11 +312,11 @@ export class SessionStepCoordinator {
         } catch (error) {
           interactionAttempts = decider.takeInteractionAttempts();
           console.warn(`运行 ${this.host.runId} 的关键模型决策已回退到本地规划：${error instanceof Error ? error.message : String(error)}`);
-          controller.setExternalClimate(env.epoch, env.kind, env.severity);
+          controller.setExternalClimate(env.epoch, env.kind, env.severity, env.terminalCatastrophe);
           state = controller.stepOwned();
         }
       } else {
-        controller.setExternalClimate(env.epoch, env.kind, env.severity);
+        controller.setExternalClimate(env.epoch, env.kind, env.severity, env.terminalCatastrophe);
         state = controller.stepOwned();
       }
       const simulationMs = perfElapsed(simulationStartedAt);

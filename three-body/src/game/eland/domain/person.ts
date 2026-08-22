@@ -237,7 +237,7 @@ export interface PersonState {
   generation: number;
   /** Accumulated inherited susceptibility. It changes outcomes, not action legality. */
   geneticLoad: number;
-  /** 出生时一次确定、终身不变；可选仅用于兼容旧存档与轻量测试夹具。 */
+  /** 出生时一次确定、终身不变，最多三个遗传 / 先民特质加一个随机异变；可选仅用于兼容旧存档与轻量测试夹具。 */
   traits?: PersonTraitState[];
   /** 母脉出生链中，母亲已完成的真实技术教导；首项获得一次 72 置信度加成。 */
   maternalTeachingSourceEventIds?: string[];

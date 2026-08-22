@@ -12,7 +12,7 @@
 | --- | --- |
 | [ELAND 模块边界](../three-body/src/game/eland/README.md) | 当前模块、运行链和主要源码入口 |
 | [规则优先人物架构](./rule-first-agent-architecture-v1.md) | 因果 BDI、人格 / 记忆 / 结果后验、本地规划器和可选模型的权威边界 |
-| [人物特质](./person-traits-v1.md) | 十种永久特质、固定先民配置、确定性遗传与领域效果 |
+| [人物特质](./person-traits-v1.md) | 十三种永久特质、固定先民配置、确定性遗传、随机异变与领域效果 |
 | [月度时间模型](./monthly-time-model-v1.md) | 固定月份、15 tick、身体、关系、协议与月末提交 |
 | [空间行动契约](./spatial-action-contract-v1.md) | 当前候选、意图、原子动作、执行顺序与 ActionFact |
 | [体素世界](./pixel-world-v1.md) | 84×52×12 权威空间、v4 生成器、3D 投影、回放与分支 |

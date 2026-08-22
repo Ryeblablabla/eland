@@ -28,7 +28,7 @@ domain model and policies ↔ world grid / material primitives
 
 - `domain/model.ts`：`SimulationState` 聚合根（体素世界、掉落物、动物、人物、意图、协议、共同体、权限、容器、纪元预言、文明指数与派生观察）。
 - `domain/person.ts`：人物权威状态（三项身体储备、过程状态、体素位置、私有背包、知识与有来源的丧亲经历）；脱水休眠在同一 episode 内区分低代谢 `dormant` 与受限补给 `recovering`。
-- `domain/trait.ts`：出生时一次确定且终身不变的十种人物特质、固定先民配置、最多三项的确定性遗传审计，以及寿命、能力、身体、记忆、配方与母脉效果的共享规则。
+- `domain/trait.ts`：出生时一次确定且终身不变的十三种人物特质、固定先民配置、最多三项的确定性遗传与一项随机异变审计，以及寿命、能力、身体、生殖、记忆、配方与母脉效果的共享规则。
 - `naming.ts`：姓氏传统、确定性后代保底姓名，以及模型 `givenName` 候选的字符、顺序和重名验收；模型不能改姓氏或绕过回退。
 - `domain/material.ts`：物质定义与调色板。
 - `domain/action.ts`：五种原子动作、十种 `SourceOperation`、`WorldRef` 与 `Intent` 类型。

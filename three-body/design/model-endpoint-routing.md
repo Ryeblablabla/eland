@@ -1,6 +1,6 @@
 # 通用模型端点与协议路由
 
-状态：后端基础设施已实现；模型设置页（`M`）可分别选择当前文明的本地 / 模型演进与本地 / 模型总结。模型演进会把少量存在真实选择空间的关键决定、实时月份中已经发生的口头沟通台词和本月后代取名分别交给 `decision` 与 `naming` 路由；模型总结会让 `narrative` 路由压缩当前月的规则纪事。本人物页的主动对话始终按需调用 `interaction` 路由，不受演进模式开关影响。`strategy` 与 `strategies` 仍是后续文明策略任务的配置扩展位。后台快速演化继续只运行本地规则。
+状态：后端基础设施与游戏内管理界面已实现；模型设置页（`M`）可分别选择本地 / 模型演进与本地 / 模型表述，也可添加、编辑、删除多个命名端点并分配用途路由。新建或改动的端点必须使用所选协议、URL、模型与认证信息完成一次真实的最小生成请求，且成功解析非空文本后才能保存接入。模型演进会把少量存在真实选择空间的关键决定、实时月份中已经发生的口头沟通台词和本月后代取名分别交给 `decision` 与 `naming` 路由；模型表述会让 `narrative` 路由压缩当前月的规则纪事。本人物页的主动对话始终按需调用 `interaction` 路由，不受演进模式开关影响。`strategy` 与 `strategies` 仍是后续文明策略任务的配置扩展位。后台快速演化继续只运行本地规则。
 
 ## 边界
 
@@ -20,13 +20,13 @@ decision（候选重选 + speech-only 台词）/ interaction / narrative / namin
 
 ## 配置
 
-复制 [`../model-endpoints.example.json`](../model-endpoints.example.json) 为 `model-endpoints.local.json`，再在 `.env.local` 中设置：
+模型设置页会把安装级配置写入 Git 已忽略的 `model-endpoints.local.json`。玩家可以直接在游戏内编辑协议、完整 URL、模型名称、认证方式和 API Key，不需要手写配置文件。只有需要改用其他路径时，才在 `.env.local` 中设置：
 
 ```bash
 THREEBODY_MODEL_CONFIG=./model-endpoints.local.json
 ```
 
-本地配置文件已被 Git 忽略。每个 endpoint 使用完整 `url`，所以不同用途可以指向不同域名、局域网地址或端口。当前协议值：
+每个 endpoint 使用完整 `url`，所以不同用途可以指向不同域名、局域网地址或端口。端点只在连接测试成功后保存；测试成功凭证与该次测试的完整连接参数绑定，任何字段改动都会要求重新测试。当前协议值：
 
 配置文件可分别保存 `"evolutionMode": "local" | "model"` 与 `"summaryMode": "local" | "model"`。旧配置没有这些字段时，显式的 `routes.decision` / `routes.narrative` 继续保持原有模型行为；设置页首次保存后会写入明确模式。后端在每个实时月份开始时读取两项设置，因此对当前文明立即生效而不需要重开世界。`evolutionMode: "model"` 同时允许关键候选重选、完成口头沟通的模型台词和本月新生儿提名；旧配置没有 `routes.naming` 时回退到 `routes.decision`。`summaryMode` 只控制当前月玩家纪事是否交给模型压缩。
 
@@ -37,14 +37,16 @@ THREEBODY_MODEL_CONFIG=./model-endpoints.local.json
 | `openai-responses` | OpenAI Responses | `/v1/responses` |
 | `anthropic-messages` | Anthropic Messages | `/v1/messages` |
 
-`auth` 支持 `bearer`、`x-api-key` 和 `none`。未显式填写时，Anthropic 默认使用 `x-api-key`，Ollama 默认无认证，其他协议默认 Bearer。`apiKeyEnv` 只保存环境变量名；实际密钥放在 `.env.local`。
+`auth` 支持 `bearer`、`x-api-key` 和 `none`。未显式填写时，Anthropic 默认使用 `x-api-key`，Ollama 默认无认证，其他协议默认 Bearer。游戏内录入的 API Key 只写入本机配置；设置接口只返回“是否已配置”，不会回传密钥。手写配置仍可用 `apiKeyEnv` 引用 `.env.local` 中的环境变量。
+
+端点、用途路由、演进 / 表述模式和密钥都是安装级设置，不属于文明事实。它们不会写入 SQLite 文明状态、手动存档、历史页或状态导出，也不会随文明分支复制。只有一个端点时五种用途自动路由到它，界面默认收起路由选择；增加第二个端点后才显示逐用途分配。
 
 `structuredOutput` 有两种取值：
 
 - `prompt`：只靠系统提示约束 JSON，兼容性最好；
 - `native-json`：使用协议的原生结构化输出字段。Ollama 使用 `format: "json"`，Chat Completions 使用 `response_format`，Responses 使用 JSON Schema；Anthropic Messages 当前仍依靠提示约束。
 
-Ollama endpoint 可用 `thinking` 控制思考输出。叙事和结构化决策通常设为 `false`，避免输出额度被思考文本耗尽。endpoint 还可设置 `temperature`；局域网小模型的结构化决策建议使用较低温度。
+Ollama endpoint 可用 `thinking` 控制思考输出；指向 DeepSeek 官方 API 的 OpenAI-compatible Chat endpoint 只有在显式配置 `thinking` 时才发送其兼容字段：`false` 映射为 `thinking.type=disabled`，`true` 或 effort 字符串映射为启用思考与对应的 `reasoning_effort`。其他 OpenAI-compatible 服务与未配置 `thinking` 的端点不额外收到 DeepSeek 扩展字段。叙事和结构化决策通常设为 `false`，避免输出额度被思考文本耗尽。endpoint 还可设置 `temperature`；局域网小模型的结构化决策建议使用较低温度。
 
 ## 实时关键决策与人物话语
 
@@ -70,7 +72,7 @@ Ollama endpoint 可用 `thinking` 控制思考输出。叙事和结构化决策�
 - 只有成功模型文本才作为 `GameFrame.speechLines` 中的 `projection-only` 记录绑定 `sourceEventId`，不改写 ActionFact summary / result / diff，不写入人物记忆、关系、知识、意图或文明纪事；
 - 结构化 `accept / reject` 的自然语言若改变立场，或批次缺项、超时、失败，该沟通不写入 `speechLines`、不显示文字气泡；普通陈述不再与规则摘要做文本相似度比较，ActionFact 本身始终有效。
 
-实时候选决策默认最多等待 12 秒、最多输出 600 token，可用 `MODEL_DECISION_TIMEOUT_MS` 和 `MODEL_DECISION_MAX_OUTPUT_TOKENS` 调整。speech-only 服务每批至多 6 条、最多 3 批并发，默认每批最多等待 12 秒、整月所有台词批次合计最多等待 24 秒；可用 `MODEL_SPEECH_TIMEOUT_MS`、`MODEL_SPEECH_TOTAL_TIMEOUT_MS` 与 `MODEL_SPEECH_MAX_OUTPUT_TOKENS` 调整。取名只在本月确有出生时批量调用一次，默认等待 12 秒、输出 480 token，可用 `MODEL_NAMING_TIMEOUT_MS` 与 `MODEL_NAMING_MAX_OUTPUT_TOKENS` 调整。实现分别位于 `server/live-speech-service.ts` 与 `server/newborn-naming-service.ts`。
+实时候选决策默认最多等待 12 秒、最多输出 600 token，可用 `MODEL_DECISION_TIMEOUT_MS` 和 `MODEL_DECISION_MAX_OUTPUT_TOKENS` 调整。模型若只返回 `reasoning_content` 而没有最终 `content`，与额度耗尽、超时和中止一样只做一次简洁重试；内部推理不会被当作最终决策 JSON。speech-only 服务每批至多 6 条、最多 3 批并发，默认每批最多等待 12 秒、整月所有台词批次合计最多等待 24 秒；可用 `MODEL_SPEECH_TIMEOUT_MS`、`MODEL_SPEECH_TOTAL_TIMEOUT_MS` 与 `MODEL_SPEECH_MAX_OUTPUT_TOKENS` 调整。取名只在本月确有出生时批量调用一次，默认等待 12 秒、输出 480 token，可用 `MODEL_NAMING_TIMEOUT_MS` 与 `MODEL_NAMING_MAX_OUTPUT_TOKENS` 调整。实现分别位于 `server/live-speech-service.ts` 与 `server/newborn-naming-service.ts`。
 
 任一请求失败都不会回滚月份或撤销已经发生的沟通；取名失败只保留本地种子姓名。完成的月度 DecisionBudget 账本仍只记录候选重选的 endpoint、协议、模型、调用数和 token，当前不累计 speech-only 或取名 token；成功取名的 endpoint、模型、token、保底名与提议理由保存在对应出生事实。可见台词投影只记录 `source: decision-model | speech-model`；仅 speech-only 模型成功的台词另记录 `endpointId` 与 `model`。后台 `/evolve` 与实验矩阵不调用该实时路径。已保存的 GameFrame 与姓名回放时均不重新调用模型。
 
@@ -99,6 +101,6 @@ Ollama endpoint 可用 `thinking` 控制思考输出。叙事和结构化决策�
 
 ## 兼容与状态
 
-没有设置 `THREEBODY_MODEL_CONFIG` 时，后端继续读取 `KIMI_API_KEY` / `MOONSHOT_API_KEY`、`KIMI_API_URL` 和 `KIMI_MODEL`，行为与原接入一致。
+没有设置 `THREEBODY_MODEL_CONFIG` 且默认 `model-endpoints.local.json` 不存在时，后端继续读取 `KIMI_API_KEY` / `MOONSHOT_API_KEY`、`KIMI_API_URL` 和 `KIMI_MODEL`，行为与原接入一致；首次从游戏内保存端点时会创建默认本地配置文件。
 
 叙事增强 API 的响应保留 `providerConfigured`，并新增 `modelEndpoint`，返回所选 endpoint id、协议、模型和配置问题，但不返回密钥或完整请求头。完成的旁车任务同时记录 `endpointId`、`protocol` 和 `model`。

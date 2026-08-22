@@ -215,8 +215,8 @@ try {
   const cultivatedRelationship = cultivatedReproductionActor.relations.find((relation) => relation.personId === cultivatedReproductionPartner.id);
   const cultivatedReciprocalRelationship = cultivatedReproductionPartner.relations.find((relation) => relation.personId === cultivatedReproductionActor.id);
   assert.ok(cultivatedRelationship && cultivatedReciprocalRelationship, '关系培养测试需要双向关系');
-  Object.assign(cultivatedRelationship, { trust: 60, bond: 60, sourceEventIds: [cultivatedRelationshipEventId] });
-  Object.assign(cultivatedReciprocalRelationship, { trust: 60, bond: 60, sourceEventIds: [cultivatedRelationshipEventId] });
+  Object.assign(cultivatedRelationship, { trust: 5, bond: 5, sourceEventIds: [cultivatedRelationshipEventId] });
+  Object.assign(cultivatedReciprocalRelationship, { trust: 0, bond: 0, sourceEventIds: [] });
   cultivatedReproductionState.world.past.push({
     id: cultivatedRelationshipEventId, kind: 'action', actionTick: 1, atMonth: 0, orderInMonth: 0,
     cellId: cultivatedReproductionActor.position.cellId, who: cultivatedReproductionActor.id, cause: 'intent',
@@ -226,7 +226,7 @@ try {
     status: 'completed', result: '共同经历形成了足够的信任与亲近', diff: {},
   });
   const cultivatedReproductionContext = buildDecisionContexts(cultivatedReproductionState).find((context) => context.person.id === cultivatedReproductionActor.id);
-  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '有合格共同经历且信任、亲近达标后应允许提出生殖');
+  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者有可追溯共同经历后，应由本人评估是否提出生殖，不要求固定或双向关系分数');
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 6, bond: 6, sourceEventIds: [foundingFact.id] });
   feasibleActor.inventory = [
     { id: 'test-feasible-food', materialId: 21, quantity: 3, sourceEventIds: [] },
@@ -586,7 +586,8 @@ try {
   recordAgreementAction(companionState, companionProposal);
   recordAgreementAction(companionState, companionAcceptance);
   for (let month = 3; month <= 27; month += 1) advanceAgreementLifecycle(companionState, month);
-  assert.equal(companionState.agreements[0]?.status, 'fulfilled', '结伴必须由足够月份的稳定共同生活履行');
+  assert.equal(companionState.agreements[0]?.status, 'active', '完成足够月份的稳定共同生活后，结伴应作为可撤回的持续关系保持生效');
+  assert.ok(Number.isInteger(companionState.agreements[0]?.companionEstablishedAtMonth), '结伴建立月份必须由累计共同生活事实确定');
   assert.ok((companionState.agreements[0]?.coLocatedMonths ?? 0) >= 12);
 
   const breachState = createInitialState(32, { endpoint: { kind: 'months', value: 24 } });

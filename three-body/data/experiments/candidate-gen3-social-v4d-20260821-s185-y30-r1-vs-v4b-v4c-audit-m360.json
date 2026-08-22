@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "companion-calendar-v4d-s185-comparison-v1",
+  "generatedAt": "2026-08-20T20:25:23Z",
+  "authority": "Exact terminal SimulationState and append-only world.past loaded read-only from SQLite; no run was advanced or mutated.",
+  "selector": {
+    "seed": 185,
+    "throughMonth": 360,
+    "runs": {
+      "v4b": "candidate-gen3-social-v4b-20260821-s185-y30-r1",
+      "v4c": "candidate-gen3-social-v4c-20260821-s185-y30-r1",
+      "v4d": "candidate-gen3-social-v4d-20260821-s185-y30-r1"
+    }
+  },
+  "definitions": {
+    "completeEstablishedEpisode": "A per-person return-shared-living episode whose agreement was established by its first return decision and whose startMonth+3 observation window is fully present.",
+    "partnerChoice": "The other agreement party has a return-shared-living DecisionFact for the same agreement within episode startMonth plus or minus 3 months.",
+    "success": "Both living agreement parties are reconstructed inside the fixed sharedLivingAnchor in at least one month from episode startMonth through startMonth+3.",
+    "actualReturnPathShare": "Unique return-intent move ActionFacts with status progressed or completed divided by every intent-caused move ActionFact with status progressed or completed. Each observed event traversed one path edge, so event and path-edge shares are identical.",
+    "failureClassification": "Mutually exclusive partner evidence at the exact review month, ordered as other companion return, required response, ordinary decision, then no DecisionFact with latest completed dehydrate/rehydrate state. Active-lock is reported only when directly supported by an agreement-bound active action/idle trace rather than inferred from absence."
+  },
+  "comparison": {
+    "v4b": {
+      "establishedEpisodes": 88,
+      "completeEstablishedEpisodes": 87,
+      "censoredEstablishedEpisodes": 1,
+      "partnerChoice": { "count": 17, "denominator": 87, "percent": 19.54 },
+      "success": { "count": 39, "denominator": 87, "percent": 44.83 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 507,
+        "establishedMaintenancePathEdges": 375,
+        "allIntentMovePathEdges": 4827,
+        "allReturnPercent": 10.5,
+        "establishedMaintenancePercent": 7.77
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 24, "accepted": 19, "fulfilled": 19, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 4, "accepted": 4, "established": 0, "active": 2, "cancelled": 0, "breached": 2 },
+        "persistentSharedLivingEvents": 0,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 26, "generation0": 6, "generation1": 20, "maxGeneration": 1 }
+    },
+    "v4c": {
+      "establishedEpisodes": 114,
+      "completeEstablishedEpisodes": 111,
+      "censoredEstablishedEpisodes": 3,
+      "partnerChoice": { "count": 96, "denominator": 111, "percent": 86.49 },
+      "success": { "count": 105, "denominator": 111, "percent": 94.59 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 800,
+        "establishedMaintenancePathEdges": 436,
+        "allIntentMovePathEdges": 4151,
+        "allReturnPercent": 19.27,
+        "establishedMaintenancePercent": 10.5
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 6, "accepted": 4, "fulfilled": 4, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 0, "accepted": 0, "established": 0, "active": 0, "cancelled": 0, "breached": 0 },
+        "persistentSharedLivingEvents": 0,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 22, "generation0": 6, "generation1": 16, "maxGeneration": 1 }
+    },
+    "v4d": {
+      "establishedEpisodes": 67,
+      "completeEstablishedEpisodes": 65,
+      "censoredEstablishedEpisodes": 2,
+      "partnerChoice": { "count": 20, "denominator": 65, "percent": 30.77 },
+      "success": { "count": 25, "denominator": 65, "percent": 38.46 },
+      "pairedEpisodesSuccessful": { "count": 20, "denominator": 20, "percent": 100 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 738,
+        "establishedMaintenancePathEdges": 358,
+        "allIntentMovePathEdges": 3741,
+        "allReturnPercent": 19.73,
+        "establishedMaintenancePercent": 9.57
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 7, "accepted": 3, "fulfilled": 3, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 1, "accepted": 1, "established": 1, "active": 1, "cancelled": 0, "breached": 0 },
+        "persistentSharedLivingEvents": 2,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 19, "generation0": 6, "generation1": 13, "maxGeneration": 1 }
+    }
+  },
+  "v4dCompleteFailureClassification": {
+    "failedEpisodes": 40,
+    "partnerSameAgreementWithinPlusMinus3": 0,
+    "atExactReviewMonth": {
+      "dehydratedNoDecision": 14,
+      "requiredResponse": 11,
+      "ordinaryDecision": 9,
+      "otherCompanionReturn": 6,
+      "directlyObservedActiveAgreementLock": 0
+    },
+    "withinPlusMinus3PriorityClassification": {
+      "requiredResponse": 20,
+      "otherCompanionReturn": 13,
+      "ordinaryDecision": 6,
+      "noDecision": 1
+    },
+    "note": "One dehydrated partner also retained an older agreement-bound return intent; dehydration was the observable reason no new choice occurred, so it is not double-counted as active-lock evidence."
+  },
+  "assessment": {
+    "singleSeedDecision": "reject-v4d-single-month-review-slot",
+    "reason": "Relative to V4c, established maintenance path share fell only 0.93 percentage points while partner choice fell 55.72 points and three-month success fell 56.13 points. Every complete V4d failure lacked a same-agreement partner choice; legitimate one-month conflicts and dehydration defer coordination to a later six-month slot.",
+    "positiveButInsufficient": "V4d produced one established g1-g1 companionship and two g1-g1 persistent shared-living events in this seed, but no g1-g1 reproduction and no generation 2. This downstream occurrence does not compensate for the maintenance regression or establish a multi-seed result."
+  },
+  "sourceArtifacts": {
+    "v4dReturnAudit": "data/experiments/candidate-gen3-social-v4d-20260821-s185-y30-r1-companion-return-audit-m360.json",
+    "v4dGenerationalAudit": "data/experiments/candidate-gen3-social-v4d-20260821-s185-y30-r1-generational-social-chain-audit-m360.json",
+    "v4bReturnAudit": "data/experiments/candidate-gen3-social-v4b-20260821-s185-y30-r1-companion-return-audit-m360.json",
+    "v4cReturnAudit": "data/experiments/candidate-gen3-social-v4c-20260821-s185-y30-r1-companion-return-audit-m360.json"
+  }
+}

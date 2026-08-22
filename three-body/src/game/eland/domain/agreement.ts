@@ -6,6 +6,8 @@ import { applyRelationEvidence } from './relation';
 import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
+import { completedActionFactsForPerson, worldEventById } from './event-index';
+import { intentById, personById } from './state-index';
 import {
   companionSharesLivingArea,
   REQUIRED_SHARED_LIVING_MONTHS,
@@ -54,6 +56,12 @@ export interface Agreement {
   lastReproductionAttemptAtMonth?: number;
   /** Persisted field name kept for save compatibility; now counts months in the shared living area. */
   coLocatedMonths: number;
+  /** The companionship stays active after this sourced establishment fact. */
+  companionEstablishedAtMonth?: number;
+  /** Latest calendar month when every living party was actually inside the agreed living area. */
+  lastCompanionCoLocatedAtMonth?: number;
+  /** Last cumulative shared-living month already converted into relationship evidence. */
+  lastCompanionRelationshipAtCoLocatedMonth?: number;
   sourceEventIds: string[];
   /** Append-only clock facts; the proposal's original acceptByMonth is immutable. */
   responseDeadlineSuspensions?: ResponseDeadlineSuspensionFact[];
@@ -122,14 +130,75 @@ export function reproductionAttemptedBetweenInMonth(
   b: PersonId,
   atMonth: number,
 ): boolean {
-  return state.agreements.some((agreement) => agreement.proposal.kind === 'reproduce'
+  const agreementAttempt = agreementsForPerson(state, a).some((agreement) => agreement.proposal.kind === 'reproduce'
     && agreement.partyIds.includes(a)
     && agreement.partyIds.includes(b)
     && reproductionAttemptedInMonth(agreement, atMonth));
+  if (agreementAttempt) return true;
+  return completedActionFactsForPerson(state, a).some((fact) => fact.atMonth === atMonth
+    && fact.action.kind === 'act'
+    && fact.action.operation === 'reproduce'
+    && fact.action.targets.some((target) => target.kind === 'person' && target.personId === b))
+    || completedActionFactsForPerson(state, b).some((fact) => fact.atMonth === atMonth
+      && fact.action.kind === 'act'
+      && fact.action.operation === 'reproduce'
+      && fact.action.targets.some((target) => target.kind === 'person' && target.personId === a));
+}
+
+interface AgreementIdIndex {
+  indexedLength: number;
+  lastIndexedAgreement?: Agreement;
+  byId: Map<string, Agreement>;
+  byProposalEventId: Map<string, Agreement>;
+  byParticipantId: Map<PersonId, Agreement[]>;
+}
+
+const agreementIdIndexes = new WeakMap<SimulationState['agreements'], AgreementIdIndex>();
+
+function agreementIdIndex(state: SimulationState): AgreementIdIndex {
+  const agreements = state.agreements;
+  let index = agreementIdIndexes.get(agreements);
+  if (!index
+    || index.indexedLength > agreements.length
+    || (index.indexedLength > 0 && agreements[index.indexedLength - 1] !== index.lastIndexedAgreement)) {
+    index = { indexedLength: 0, byId: new Map(), byProposalEventId: new Map(), byParticipantId: new Map() };
+    agreementIdIndexes.set(agreements, index);
+  }
+  for (let offset = index.indexedLength; offset < agreements.length; offset += 1) {
+    const agreement = agreements[offset];
+    // Preserve Array.find semantics even for an invalid duplicate id: first wins.
+    if (!index.byId.has(agreement.id)) index.byId.set(agreement.id, agreement);
+    if (!index.byProposalEventId.has(agreement.proposalEventId)) {
+      index.byProposalEventId.set(agreement.proposalEventId, agreement);
+    }
+    const participantIds = new Set<PersonId>([
+      agreement.proposerId,
+      agreement.responderId,
+      ...(agreement.partyIds ?? []),
+      ...(agreement.requiredResponderIds ?? []),
+    ].filter((personId): personId is PersonId => typeof personId === 'string'));
+    for (const participantId of participantIds) {
+      const participantAgreements = index.byParticipantId.get(participantId) ?? [];
+      participantAgreements.push(agreement);
+      index.byParticipantId.set(participantId, participantAgreements);
+    }
+  }
+  index.indexedLength = agreements.length;
+  index.lastIndexedAgreement = agreements.at(-1);
+  return index;
 }
 
 export function agreementById(state: SimulationState, id: string): Agreement | undefined {
-  return state.agreements.find((agreement) => agreement.id === id);
+  return agreementIdIndex(state).byId.get(id);
+}
+
+export function agreementByProposalEventId(state: SimulationState, eventId: string): Agreement | undefined {
+  return agreementIdIndex(state).byProposalEventId.get(eventId);
+}
+
+/** Agreement membership is immutable after creation; status fields remain live. */
+export function agreementsForPerson(state: SimulationState, personId: PersonId): readonly Agreement[] {
+  return agreementIdIndex(state).byParticipantId.get(personId) ?? [];
 }
 
 /**
@@ -144,7 +213,7 @@ export function activeReproductionAgreementBetween(
   atMonth: number,
   agreementId?: string,
 ): Agreement | undefined {
-  return [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+  return [...agreementsForPerson(state, a)].reverse().find((agreement) => agreement.status === 'active'
     && (!agreementId || agreement.id === agreementId)
     && agreement.proposal.kind === 'reproduce'
     && agreement.partyIds.includes(a)
@@ -181,14 +250,16 @@ export function agreementAuthorizesTransfer(
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
   const action = fact.action;
-  const waterAssistance = state.agreements.find((agreement) => agreement.status === 'active'
+  const waterAssistance = agreementsForPerson(state, fact.who).find((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'assist'
     && agreement.proposal.need === 'water'
     && agreement.partyIds.includes(fact.who));
   if (waterAssistance?.proposal.kind === 'assist') {
     const proposal = waterAssistance.proposal;
-    const helper = state.people.find((candidate) => candidate.id === proposal.helperId && isAlive(candidate));
-    const requester = state.people.find((candidate) => candidate.id === proposal.requesterId && isAlive(candidate));
+    const helperCandidate = personById(state, proposal.helperId);
+    const requesterCandidate = personById(state, proposal.requesterId);
+    const helper = helperCandidate && isAlive(helperCandidate) ? helperCandidate : undefined;
+    const requester = requesterCandidate && isAlive(requesterCandidate) ? requesterCandidate : undefined;
     const helperReachedWater = fact.who === proposal.helperId && (
       (action.kind === 'move' && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
       || (action.kind === 'communicate' && action.audience.includes(proposal.requesterId) && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
@@ -207,7 +278,10 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
       if (!waterAssistance.sourceEventIds.includes(fact.id)) waterAssistance.sourceEventIds.push(fact.id);
       const helperArrival = waterAssistance.fulfillmentEventIds
-        .flatMap((eventId) => state.world.past.filter((event): event is ActionFact => event.id === eventId && event.kind === 'action'))
+        .flatMap((eventId) => {
+          const event = worldEventById(state, eventId);
+          return event?.kind === 'action' ? [event] : [];
+        })
         .find((event) => event.who === proposal.helperId);
       if (helper && requester
         && (sameLocation(helper, requester) || (helperArrival?.cellId === fact.cellId && helperArrival.toZ === requester.position.z))
@@ -216,6 +290,29 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         fulfill(state, waterAssistance, fact);
         return;
       }
+    }
+  }
+  const sourceIntent = fact.intentId ? intentById(state, fact.intentId) : undefined;
+  const companyAssistance = sourceIntent?.agreementId
+    ? agreementById(state, sourceIntent.agreementId)
+    : undefined;
+  const companyProposal = companyAssistance?.proposal.kind === 'assist'
+    && companyAssistance.proposal.need === 'company'
+    ? companyAssistance.proposal
+    : undefined;
+  if (companyAssistance?.status === 'active'
+    && companyProposal
+    && fact.who === companyProposal.helperId
+    && action.kind === 'attend'
+    && action.target.kind === 'person'
+    && action.target.personId === companyProposal.requesterId) {
+    const helperCandidate = personById(state, companyProposal.helperId);
+    const requesterCandidate = personById(state, companyProposal.requesterId);
+    const helper = helperCandidate && isAlive(helperCandidate) ? helperCandidate : undefined;
+    const requester = requesterCandidate && isAlive(requesterCandidate) ? requesterCandidate : undefined;
+    if (helper && requester && sameLocation(helper, requester)) {
+      fulfill(state, companyAssistance, fact);
+      return;
     }
   }
   if (action.kind === 'communicate') {
@@ -227,9 +324,7 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         : [];
       if ((content.proposal.kind === 'membership' || content.proposal.kind === 'decision-rule' || content.proposal.kind === 'mandate')
         && !pair.requiredResponderIds.every((id) => reachedAudienceIds.includes(id))) return;
-      const intentSources = fact.intentId
-        ? state.intents.find((intent) => intent.id === fact.intentId)?.sourceFactIds ?? []
-        : [];
+      const intentSources = fact.intentId ? intentById(state, fact.intentId)?.sourceFactIds ?? [] : [];
       const relationshipBasisSources = (content.proposal.kind === 'companion' || content.proposal.kind === 'reproduce')
         ? content.proposal.basis?.sourceFactIds ?? []
         : [];
@@ -263,7 +358,9 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       const agreement = agreementById(state, content.referenceId);
       if (!agreement
         || agreement.status !== 'active'
-        || agreement.proposal.kind !== 'reproduce'
+        || (agreement.proposal.kind !== 'reproduce'
+          && agreement.proposal.kind !== 'companion'
+          && !(agreement.proposal.kind === 'assist' && agreement.proposal.need === 'company'))
         || !agreement.partyIds.includes(fact.who)) return;
       agreement.status = 'cancelled';
       agreement.resolvedAtMonth = fact.atMonth;
@@ -311,12 +408,12 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
   if (action.kind === 'act' && action.operation === 'reproduce') {
     const target = action.targets.find((item) => item.kind === 'person');
     if (!target || target.kind !== 'person') return;
-    const agreement = action.authorizationRef
-      ? state.agreements.find((item) => item.id === action.authorizationRef
-      && item.status === 'active'
-      && item.proposal.kind === 'reproduce'
-      && item.partyIds.includes(fact.who)
-      && item.partyIds.includes(target.personId))
+    const candidate = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
+    const agreement = candidate?.status === 'active'
+      && candidate.proposal.kind === 'reproduce'
+      && candidate.partyIds.includes(fact.who)
+      && candidate.partyIds.includes(target.personId)
+      ? candidate
       : undefined;
     if (agreement) {
       agreement.reproductionAttemptEventIds = [...new Set([
@@ -342,7 +439,7 @@ function fulfill(state: SimulationState, agreement: Agreement, fact: ActionFact)
   if (!agreement.sourceEventIds.includes(fact.id)) agreement.sourceEventIds.push(fact.id);
   const trust = agreement.proposal.kind === 'assist' ? 8 : agreement.proposal.kind === 'exchange' ? 5 : 2;
   for (const personId of agreement.partyIds) {
-    const person = state.people.find((candidate) => candidate.id === personId);
+    const person = personById(state, personId);
     const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
     if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust, bond: 3 });
   }
@@ -413,7 +510,7 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
   const events: AgreementFact[] = [];
   for (const agreement of state.agreements) {
     for (const responderId of agreement.requiredResponderIds) {
-      const responder = state.people.find((person) => person.id === responderId);
+      const responder = personById(state, responderId);
       if (!responder || !isAlive(responder)) continue;
       const activeEpisodes = responder.conditions.filter((condition) => condition.kind === 'dehydrated-hibernation');
       const activeEpisodeIds = new Set(activeEpisodes.map((condition) => condition.id));
@@ -469,9 +566,19 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
 export function advanceAgreementLifecycle(state: SimulationState, atMonth: number, orderOffset = 0): AgreementFact[] {
   const events: AgreementFact[] = [];
   for (const agreement of state.agreements) {
+    // Older saves ended a successfully established companionship.  Recover it
+    // as the same ongoing, revocable relationship instead of forcing a fresh
+    // proposal with no new causal basis.
+    if (agreement.status === 'fulfilled' && agreement.proposal.kind === 'companion') {
+      agreement.status = 'active';
+      agreement.companionEstablishedAtMonth ??= agreement.resolvedAtMonth ?? agreement.dueAtMonth ?? atMonth;
+      agreement.lastCompanionCoLocatedAtMonth ??= agreement.companionEstablishedAtMonth;
+      agreement.lastCompanionRelationshipAtCoLocatedMonth ??= agreement.coLocatedMonths ?? REQUIRED_SHARED_LIVING_MONTHS;
+      delete agreement.resolvedAtMonth;
+    }
     if (agreement.status !== 'proposed' && agreement.status !== 'active') continue;
     const livingParties = agreement.partyIds.every((id) => {
-      const person = state.people.find((candidate) => candidate.id === id);
+      const person = personById(state, id);
       return person ? isAlive(person) : false;
     });
     if (!livingParties) {
@@ -498,9 +605,45 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       events.push(fact);
       continue;
     }
-    if (agreement.proposal.kind === 'companion' && companionSharesLivingArea(state, agreement)) {
-      agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
+    if (agreement.proposal.kind === 'companion') {
+      if (agreement.companionEstablishedAtMonth !== undefined) {
+        // Establishment itself required real shared living, so it is the oldest
+        // safe migration value for active saves created before this field.
+        agreement.lastCompanionCoLocatedAtMonth ??= agreement.companionEstablishedAtMonth;
+      }
+      if (companionSharesLivingArea(state, agreement)) {
+        agreement.coLocatedMonths = (agreement.coLocatedMonths ?? 0) + 1;
+        agreement.lastCompanionCoLocatedAtMonth = atMonth;
+      }
     }
+    if (agreement.proposal.kind === 'companion'
+      && agreement.companionEstablishedAtMonth === undefined
+      && agreement.coLocatedMonths >= REQUIRED_SHARED_LIVING_MONTHS) {
+      agreement.companionEstablishedAtMonth = atMonth;
+      agreement.lastCompanionRelationshipAtCoLocatedMonth = agreement.coLocatedMonths;
+      const fact = agreementFact(
+        agreement,
+        atMonth,
+        orderOffset + events.length,
+        'fulfilled',
+        `双方在稳定共同生活区域内累计生活了 ${agreement.coLocatedMonths} 个月，建立了可持续且可撤回的共同生活关系`,
+      );
+      agreement.fulfillmentEventIds = [...new Set([...agreement.fulfillmentEventIds, fact.id])];
+      agreement.fulfilledByPersonIds = [...new Set([...agreement.fulfilledByPersonIds, ...agreement.partyIds])];
+      agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+      for (const personId of agreement.partyIds) {
+        const person = personById(state, personId);
+        const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
+        if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust: 3, bond: 5 });
+      }
+      events.push(fact);
+      continue;
+    }
+    // An established companionship is not a 24-month job that completes and
+    // disappears.  Its parties may work independently and explicitly revoke
+    // it; continued relationship growth is settled from later shared-living
+    // or joint-action facts.
+    if (agreement.proposal.kind === 'companion' && agreement.companionEstablishedAtMonth !== undefined) continue;
     if ((agreement.dueAtMonth ?? Number.POSITIVE_INFINITY) >= atMonth) continue;
     if (agreement.proposal.kind === 'reproduce') {
       agreement.status = 'expired';
@@ -508,19 +651,6 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       const attempts = agreement.reproductionAttemptEventIds?.length ?? 0;
       const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', `双方同意的生殖尝试窗口结束，${attempts > 0 ? `期间完成了 ${attempts} 次尝试但没有受孕` : '期间没有完成尝试'}`);
       agreement.sourceEventIds.push(fact.id);
-      events.push(fact);
-      continue;
-    }
-    if (agreement.proposal.kind === 'companion' && agreement.coLocatedMonths >= REQUIRED_SHARED_LIVING_MONTHS) {
-      agreement.status = 'fulfilled';
-      agreement.resolvedAtMonth = atMonth;
-      const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'fulfilled', `双方在稳定共同生活区域内累计生活了 ${agreement.coLocatedMonths} 个月，期间可以各自行动`);
-      agreement.sourceEventIds.push(fact.id);
-      for (const personId of agreement.partyIds) {
-        const person = state.people.find((candidate) => candidate.id === personId);
-        const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
-        if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust: 3, bond: 5 });
-      }
       events.push(fact);
       continue;
     }
@@ -534,7 +664,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
         ? agreement.partyIds.filter((id) => !agreement.fulfilledByPersonIds.includes(id))
         : agreement.partyIds;
     for (const creditorId of agreement.partyIds.filter((id) => !debtors.includes(id))) {
-      const creditor = state.people.find((candidate) => candidate.id === creditorId);
+      const creditor = personById(state, creditorId);
       for (const debtorId of debtors) if (creditor) applyRelationEvidence(creditor, debtorId, fact.id, { trust: -10, bond: -3 });
     }
     events.push(fact);

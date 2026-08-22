@@ -15,7 +15,11 @@ import {
 import { canWorkSource } from './project-logistics';
 import { visibleCellsFor } from './project-perception';
 
-const METALLURGY_FACILITIES = [Material.Kiln, Material.Foundry] as const;
+// A foundry is the specialized continuation of kiln metallurgy. Once a person
+// can perceive and reach one, later metallurgy projects should return there so
+// its real batch effect can become a repeated practice instead of leaving the
+// new facility idle beside older kilns.
+const METALLURGY_FACILITIES = [Material.Foundry, Material.Kiln] as const;
 
 export function fixedFacilityWorkplace(
   state: SimulationState,
@@ -68,7 +72,12 @@ export function knownFacilitySite(
       const work = fixedFacilityWorkplace(state, person, site, materialIds);
       return work ? [{ site, pathLength: work.pathLength }] : [];
     })
-    .sort((left, right) => left.pathLength - right.pathLength
+    .sort((left, right) => {
+      const leftMaterialId = voxelAt(state.world.grid, cellX(left.site.cellId), cellY(left.site.cellId), left.site.z);
+      const rightMaterialId = voxelAt(state.world.grid, cellX(right.site.cellId), cellY(right.site.cellId), right.site.z);
+      return materialIds.indexOf(leftMaterialId) - materialIds.indexOf(rightMaterialId)
+        || left.pathLength - right.pathLength
       || left.site.cellId - right.site.cellId
-      || left.site.z - right.site.z)[0]?.site;
+        || left.site.z - right.site.z;
+    })[0]?.site;
 }

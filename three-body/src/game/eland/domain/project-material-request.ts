@@ -1,6 +1,7 @@
 import type { ActionFact, SimulationState } from './model';
 import { worldEventById } from './event-index';
-import { inventoryQuantity, isAlive } from './person';
+import type { MaterialId } from './material';
+import { isAlive, type PersonState } from './person';
 import type {
   ProjectMaterialContributionRequestBasis,
   ProjectMaterialDemand,
@@ -20,6 +21,15 @@ export interface ProjectMaterialContributionRequestView {
   outstandingQuantity: number;
   deliverableQuantity: number;
   availableContributorIds: string[];
+}
+
+/** Written carriers are preserved records, not blank project feedstock. */
+function consumableInventoryQuantity(person: PersonState, materialId: MaterialId): number {
+  return person.inventory.reduce((sum, stack) => (
+    stack.materialId === materialId && !stack.recordPayloadId
+      ? sum + Math.max(0, stack.quantity)
+      : sum
+  ), 0);
 }
 
 /**
@@ -74,7 +84,7 @@ export function inspectProjectMaterialContributionRequest(
 ): ProjectMaterialContributionRequestView {
   const owner = state.people.find((person) => person.id === project.ownerId);
   const outstandingQuantity = demand?.materialId === request.materialId && owner
-    ? Math.max(0, demand.requiredQuantity - inventoryQuantity(owner, request.materialId))
+    ? Math.max(0, demand.requiredQuantity - consumableInventoryQuantity(owner, request.materialId))
     : 0;
   const contributedQuantity = contributedQuantityForProjectMaterialRequest(state, project, request);
   const requestRemainingQuantity = Math.max(0, request.requestedQuantity - contributedQuantity);
@@ -82,7 +92,7 @@ export function inspectProjectMaterialContributionRequest(
     const contributor = state.people.find((person) => person.id === personId);
     return Boolean(contributor
       && isAlive(contributor)
-      && inventoryQuantity(contributor, request.materialId) > 0);
+      && consumableInventoryQuantity(contributor, request.materialId) > 0);
   });
   const deliverableQuantity = Math.min(requestRemainingQuantity, outstandingQuantity);
   const status: ProjectMaterialContributionRequestStatus = outstandingQuantity <= 0 || requestRemainingQuantity <= 0

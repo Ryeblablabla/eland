@@ -54,19 +54,25 @@ function coLocatedYoungDependents(state: SimulationState, caregiver: PersonState
 }
 
 /**
- * A person's remembered responsibility for living biological children. Child
- * age is known from the birth history; an extra crisis cost is used only when
- * parent and child are co-located, so the decision never reads remote health.
+ * A person's remembered responsibility for biological children. A remote
+ * child's objective death cannot release that responsibility until the parent
+ * has learned the death through a sourced bereavement. Child age is known from
+ * birth history; extra crisis cost is used only when parent and child are
+ * co-located, so the decision never reads remote health.
  */
 export function reproductiveResponsibility(
   state: SimulationState,
   caregiver: PersonState,
   atMonth = state.clock.elapsedMonths,
 ): ReproductiveResponsibility {
-  const dependents = state.people
-    .filter((candidate) => isAlive(candidate)
-      && candidate.geneticParents.includes(caregiver.id)
-      && ageMonths(candidate, atMonth) < DEPENDENT_MONTHS)
+  const rememberedChildren = state.people
+    .filter((candidate) => candidate.geneticParents.includes(caregiver.id)
+      && ageMonths(candidate, atMonth) < DEPENDENT_MONTHS);
+  const knownChildDeaths = new Map((caregiver.bereavements ?? [])
+    .filter((bereavement) => rememberedChildren.some((child) => child.id === bereavement.deceasedPersonId))
+    .map((bereavement) => [bereavement.deceasedPersonId, bereavement]));
+  const dependents = rememberedChildren
+    .filter((candidate) => !knownChildDeaths.has(candidate.id))
     .sort((left, right) => left.id.localeCompare(right.id));
   const postpartum = caregiver.conditions.find((condition) => condition.kind === 'postpartum-recovery');
   let pressure = postpartum ? 72 : 0;
@@ -76,6 +82,12 @@ export function reproductiveResponsibility(
   const basisKeys: string[] = postpartum
     ? [`postpartum-recovery:stage-${postpartum.stage}`]
     : [];
+  for (const child of rememberedChildren.filter((candidate) => knownChildDeaths.has(candidate.id))) {
+    const knownDeath = knownChildDeaths.get(child.id);
+    basisKeys.push(`dependent-care:${child.id}:known-death`);
+    reasons.push(`本人已有来源得知${child.name}死亡，不再把对方计作持续照护责任`);
+    knownDeath?.sourceEventIds.forEach((eventId) => sourceFactIds.add(eventId));
+  }
   for (const dependent of dependents) {
     const age = ageMonths(dependent, atMonth);
     const ageBand = age < INFANT_MONTHS ? 'infant' : age < 6 * 12 ? 'young-child' : 'older-child';

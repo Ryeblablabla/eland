@@ -88,9 +88,9 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return;
   }
 
-  if (url.pathname === '/api/decide' || url.pathname === '/api/model-settings') {
+  if (url.pathname === '/api/decide' || url.pathname.startsWith('/api/model-settings')) {
     const readsBody = (url.pathname === '/api/decide' && request.method === 'POST')
-      || (url.pathname === '/api/model-settings' && request.method === 'PUT');
+      || (url.pathname.startsWith('/api/model-settings') && ['POST', 'PUT', 'DELETE'].includes(request.method ?? ''));
     const result = await handleModelApi(
       request.method,
       url.pathname,

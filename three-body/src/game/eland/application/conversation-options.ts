@@ -4,14 +4,18 @@ import type {
   GroundedConversationTopic,
 } from '../domain/action';
 import {
+  agreementFactsForPerson,
+  completedActionFactsForPerson,
   groundedConversationOpeningsForListener,
   hasGroundedConversationOpeningBasis,
   hasGroundedConversationResponse,
   planningOverlayEvents,
   worldEventById,
+  worldEventsByIdsInHistoryOrder,
 } from '../domain/event-index';
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, sameLocation, type PersonState } from '../domain/person';
+import { intentsOwnedBy, personById } from '../domain/state-index';
 import { cellsInRadius, findStandingPath } from '../world/grid';
 import { knowsDeath, remainsById } from '../domain/mortuary';
 
@@ -94,15 +98,16 @@ function conditionPhrase(person: PersonState): { summary: string; sourceFactIds:
 }
 
 function gratitudeEvent(state: SimulationState, person: PersonState, other: PersonState): WorldEvent | undefined {
-  return latestEvent(state, (event) => {
-    if (event.kind === 'agreement') {
-      return event.change === 'fulfilled' && event.partyIds.includes(person.id) && event.partyIds.includes(other.id);
-    }
-    if (event.kind !== 'action' || event.status !== 'completed' || event.who !== other.id) return false;
-    if (event.diff.caredPersonId === person.id) return true;
-    if (event.action.kind !== 'transfer' || event.action.to.kind !== 'person') return false;
-    return event.action.to.personId === person.id;
-  });
+  const agreementIds = agreementFactsForPerson(state, person.id)
+    .filter((event) => event.change === 'fulfilled' && event.partyIds.includes(other.id))
+    .map((event) => event.id);
+  const actionIds = completedActionFactsForPerson(state, other.id)
+    .filter((event) => event.diff.caredPersonId === person.id
+      || (event.action.kind === 'transfer'
+        && event.action.to.kind === 'person'
+        && event.action.to.personId === person.id))
+    .map((event) => event.id);
+  return worldEventsByIdsInHistoryOrder(state, [...agreementIds, ...actionIds]).at(-1);
 }
 
 function sharedProject(state: SimulationState, person: PersonState, other: PersonState) {
@@ -192,7 +197,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     .sort((left, right) => right.learnedAtMonth - left.learnedAtMonth || right.intensity - left.intensity)[0];
   if (loss) {
     const remains = remainsById(state, loss.remainsId);
-    const deceased = remains ? state.people.find((candidate) => candidate.id === remains.personId) : undefined;
+    const deceased = remains ? personById(state, remains.personId) : undefined;
     if (deceased) candidates.push({
       topic: 'loss',
       summary: `告诉${other.name}${deceased.name}已经死亡，并谈起自己对这次失去的感受`,
@@ -301,8 +306,8 @@ function responseMeaning(topic: GroundedConversationTopic, guarded: boolean): st
 
 function liveResponseOpeningIds(state: SimulationState, person: PersonState): Set<string> {
   const liveResponseOpeningIds = new Set<string>();
-  for (const intent of state.intents) {
-    if (intent.ownerId !== person.id || (intent.status !== 'active' && intent.status !== 'suspended')) continue;
+  for (const intent of intentsOwnedBy(state, person.id)) {
+    if (intent.status !== 'active' && intent.status !== 'suspended') continue;
     for (const action of [intent.nextAction, intent.completionAction]) {
       if (action?.kind !== 'communicate'
         || action.content.kind !== 'claim'
@@ -338,7 +343,8 @@ function responseOptionForOpening(
   if (!opening || opening.action.kind !== 'communicate' || opening.action.content.kind !== 'claim') return null;
   const openingConversation = opening.action.content.conversation;
   if (!openingConversation) return null;
-  const speaker = state.people.find((candidate) => candidate.id === openingConversation.speakerId && isAlive(candidate));
+  const speakerCandidate = personById(state, openingConversation.speakerId);
+  const speaker = speakerCandidate && isAlive(speakerCandidate) ? speakerCandidate : undefined;
   if (!speaker || (!sameLocation(person, speaker) && !visiblePeople.some((candidate) => candidate.id === speaker.id))) return null;
   const relation = person.relations.find((candidate) => candidate.personId === speaker.id);
   const guarded = (relation?.fear ?? 0) >= 35 && (relation?.trust ?? 0) < 8;

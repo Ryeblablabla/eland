@@ -1,0 +1,3557 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-20T20:25:36.095Z",
+  "metricVersions": {
+    "behaviorObserver": "causal-person-month-v22",
+    "civilizationIndex": "open-material-institution-v1"
+  },
+  "experiment": {
+    "prefix": "candidate-gen3-social-v4e-20260821",
+    "baseUrl": "http://127.0.0.1:3235",
+    "seeds": [
+      185
+    ],
+    "years": [
+      30
+    ],
+    "repeats": 1,
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced"
+  },
+  "aggregates": [
+    {
+      "years": 30,
+      "runs": 1,
+      "completed": 1,
+      "endedEarly": 0,
+      "extinctionRate": 0,
+      "finalPopulation": {
+        "count": 1,
+        "min": 23,
+        "median": 23,
+        "mean": 23,
+        "max": 23
+      },
+      "births": {
+        "count": 1,
+        "min": 19,
+        "median": 19,
+        "mean": 19,
+        "max": 19
+      },
+      "reproductionOffers": {
+        "count": 1,
+        "min": 40,
+        "median": 40,
+        "mean": 40,
+        "max": 40
+      },
+      "reproductionAcceptances": {
+        "count": 1,
+        "min": 39,
+        "median": 39,
+        "mean": 39,
+        "max": 39
+      },
+      "reproductionAttempts": {
+        "count": 1,
+        "min": 56,
+        "median": 56,
+        "mean": 56,
+        "max": 56
+      },
+      "reproductionConceptions": {
+        "count": 1,
+        "min": 19,
+        "median": 19,
+        "mean": 19,
+        "max": 19
+      },
+      "relationshipProposalOffers": {
+        "count": 1,
+        "min": 87,
+        "median": 87,
+        "mean": 87,
+        "max": 87
+      },
+      "relationshipProposalUniqueBases": {
+        "count": 1,
+        "min": 87,
+        "median": 87,
+        "mean": 87,
+        "max": 87
+      },
+      "relationshipProposalRepeatedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "relationshipProposalOffersWithoutBasis": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "relationshipProposalRepeatedDirectedPairs": {
+        "count": 1,
+        "min": 22,
+        "median": 22,
+        "mean": 22,
+        "max": 22
+      },
+      "relationshipProposalMaxPerDirectedPair": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "lifeReviewDecisions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectLifeReviewDecisions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "lifeReviewPersonMonths": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "lifeReviewSameMonthDuplicates": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "lifeReviewUniqueBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "lifeReviewRepeatedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptedIntentChildren": {
+        "count": 1,
+        "min": 317,
+        "median": 317,
+        "mean": 317,
+        "max": 317
+      },
+      "interruptLifeReviewChildren": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptRequiredResponseChildren": {
+        "count": 1,
+        "min": 45,
+        "median": 45,
+        "mean": 45,
+        "max": 45
+      },
+      "interruptFulfillmentChildren": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "interruptChildrenCompleted": {
+        "count": 1,
+        "min": 284,
+        "median": 284,
+        "mean": 284,
+        "max": 284
+      },
+      "interruptChildrenBlocked": {
+        "count": 1,
+        "min": 32,
+        "median": 32,
+        "mean": 32,
+        "max": 32
+      },
+      "interruptChildrenFailed": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptChildrenAbandoned": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptReturnsResumed": {
+        "count": 1,
+        "min": 316,
+        "median": 316,
+        "mean": 316,
+        "max": 316
+      },
+      "interruptReturnsParentCompleted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptReturnsParentBlocked": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptReturnsParentUnavailable": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptUnresolvedTerminalChildren": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptChildrenWithProjectId": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptReturnLatencyMeanMonths": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptReturnLatencyMaxMonths": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "interruptResumedParentsWithSubsequentAction": {
+        "count": 1,
+        "min": 248,
+        "median": 248,
+        "mean": 248,
+        "max": 248
+      },
+      "interruptResumedParentsWithoutSubsequentAction": {
+        "count": 1,
+        "min": 68,
+        "median": 68,
+        "mean": 68,
+        "max": 68
+      },
+      "interruptImmediateSameProjectReplacements": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "orphanSuspendedProjectIntents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "deaths": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "childDeaths": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "childExposureDeaths": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "civilizationIndex": {
+        "count": 1,
+        "min": 1043.95,
+        "median": 1043.95,
+        "mean": 1043.95,
+        "max": 1043.95
+      },
+      "completedActions": {
+        "count": 1,
+        "min": 4199,
+        "median": 4199,
+        "mean": 4199,
+        "max": 4199
+      },
+      "actionPersonMonths": {
+        "count": 1,
+        "min": 1732,
+        "median": 1732,
+        "mean": 1732,
+        "max": 1732
+      },
+      "projectActionPersonMonths": {
+        "count": 1,
+        "min": 284,
+        "median": 284,
+        "mean": 284,
+        "max": 284
+      },
+      "projectActionMonthShare": {
+        "count": 1,
+        "min": 16.4,
+        "median": 16.4,
+        "mean": 16.4,
+        "max": 16.4
+      },
+      "ruleDecisions": {
+        "count": 1,
+        "min": 2966,
+        "median": 2966,
+        "mean": 2966,
+        "max": 2966
+      },
+      "strategicIntents": {
+        "count": 1,
+        "min": 1254,
+        "median": 1254,
+        "mean": 1254,
+        "max": 1254
+      },
+      "socialIntents": {
+        "count": 1,
+        "min": 1622,
+        "median": 1622,
+        "mean": 1622,
+        "max": 1622
+      },
+      "strategicShare": {
+        "count": 1,
+        "min": 43.6,
+        "median": 43.6,
+        "mean": 43.6,
+        "max": 43.6
+      },
+      "communications": {
+        "count": 1,
+        "min": 568,
+        "median": 568,
+        "mean": 568,
+        "max": 568
+      },
+      "survivalReflexActions": {
+        "count": 1,
+        "min": 3317,
+        "median": 3317,
+        "mean": 3317,
+        "max": 3317
+      },
+      "projectsStarted": {
+        "count": 1,
+        "min": 78,
+        "median": 78,
+        "mean": 78,
+        "max": 78
+      },
+      "projectsCompleted": {
+        "count": 1,
+        "min": 39,
+        "median": 39,
+        "mean": 39,
+        "max": 39
+      },
+      "projectsBlocked": {
+        "count": 1,
+        "min": 35,
+        "median": 35,
+        "mean": 35,
+        "max": 35
+      },
+      "projectPressureBasisProjects": {
+        "count": 1,
+        "min": 78,
+        "median": 78,
+        "mean": 78,
+        "max": 78
+      },
+      "projectPressureBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "projectPressureHistoryEntries": {
+        "count": 1,
+        "min": 1384,
+        "median": 1384,
+        "mean": 1384,
+        "max": 1384
+      },
+      "projectsWithPressureUpdates": {
+        "count": 1,
+        "min": 71,
+        "median": 71,
+        "mean": 71,
+        "max": 71
+      },
+      "projectPressureUpdates": {
+        "count": 1,
+        "min": 1306,
+        "median": 1306,
+        "mean": 1306,
+        "max": 1306
+      },
+      "projectPressureIncreases": {
+        "count": 1,
+        "min": 235,
+        "median": 235,
+        "mean": 235,
+        "max": 235
+      },
+      "projectPressureDecreases": {
+        "count": 1,
+        "min": 276,
+        "median": 276,
+        "mean": 276,
+        "max": 276
+      },
+      "projectPressureUnchangedUpdates": {
+        "count": 1,
+        "min": 795,
+        "median": 795,
+        "mean": 795,
+        "max": 795
+      },
+      "projectPressureDuplicateBasisEntries": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureUnresolvedSourceFacts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "huntingPressureCrossOwnerSources": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "huntingPressureNonThreatAnimalSources": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureChangesWithoutEdgeChange": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureObserverMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureUpdatesThermalSafety": {
+        "count": 1,
+        "min": 16,
+        "median": 16,
+        "mean": 16,
+        "max": 16
+      },
+      "projectPressureUpdatesHuntingSafety": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureUpdatesCareCapability": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectPressureUpdatesFoodPreparation": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "projectPressureUpdatesShelterCapacity": {
+        "count": 1,
+        "min": 24,
+        "median": 24,
+        "mean": 24,
+        "max": 24
+      },
+      "projectPressureUpdatesKnowledgePreservation": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressEvidenceCount": {
+        "count": 1,
+        "min": 1521,
+        "median": 1521,
+        "mean": 1521,
+        "max": 1521
+      },
+      "projectProgressProjects": {
+        "count": 1,
+        "min": 74,
+        "median": 74,
+        "mean": 74,
+        "max": 74
+      },
+      "projectLogisticsAdvanceProgress": {
+        "count": 1,
+        "min": 933,
+        "median": 933,
+        "mean": 933,
+        "max": 933
+      },
+      "projectMaterialContributionProgress": {
+        "count": 1,
+        "min": 588,
+        "median": 588,
+        "mean": 588,
+        "max": 588
+      },
+      "projectProgressDuplicateEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressUnresolvedEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressEpisodeMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressIntentMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressNonAdvancingLogistics": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectProgressEventsAfterTermination": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectStagnationBlocksWithRecentProgress": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectTerminalMonthCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "projectsBlockedAfterLogisticsProgress": {
+        "count": 1,
+        "min": 26,
+        "median": 26,
+        "mean": 26,
+        "max": 26
+      },
+      "projectSearchCampaigns": {
+        "count": 1,
+        "min": 38,
+        "median": 38,
+        "mean": 38,
+        "max": 38
+      },
+      "projectsWithSearchCampaigns": {
+        "count": 1,
+        "min": 22,
+        "median": 22,
+        "mean": 22,
+        "max": 22
+      },
+      "searchCampaignActive": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "searchCampaignExhausted": {
+        "count": 1,
+        "min": 18,
+        "median": 18,
+        "mean": 18,
+        "max": 18
+      },
+      "searchCampaignSuperseded": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "searchCampaignClosed": {
+        "count": 1,
+        "min": 15,
+        "median": 15,
+        "mean": 15,
+        "max": 15
+      },
+      "searchCampaignAttemptedTargets": {
+        "count": 1,
+        "min": 63,
+        "median": 63,
+        "mean": 63,
+        "max": 63
+      },
+      "searchCampaignMaxTargets": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "searchCampaignEpisodeCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "searchEpisodesMissingCampaign": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignRepeatedTargets": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignDuplicateBasis": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignTargetOutsideArea": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignEpisodeTargetNotAttempted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignOwnerMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignMaterialMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignUnresolvedSourceFacts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignsWithInheritedExperience": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "searchCampaignInheritedCampaigns": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "searchCampaignInheritedTargets": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "searchCampaignExhaustedOnOpen": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignCrossProjectRepeatedTargets": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignDuplicateInheritedTargets": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedTargetOutsideArea": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedTargetMissingFromSource": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignUnresolvedInheritedCampaigns": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedSameProjectSources": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedMaterialMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchCampaignInheritedPlanMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectDropDemandCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "dropEpisodesWithMaterialDemand": {
+        "count": 1,
+        "min": 215,
+        "median": 215,
+        "mean": 215,
+        "max": 215
+      },
+      "dropDemandRequestedQuantity": {
+        "count": 1,
+        "min": 247,
+        "median": 247,
+        "mean": 247,
+        "max": 247
+      },
+      "dropDemandTransferQuantity": {
+        "count": 1,
+        "min": 225,
+        "median": 225,
+        "mean": 225,
+        "max": 225
+      },
+      "dropDemandNonPositiveOutstanding": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandBalanceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandStartingQuantityMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandStartingAtOrAboveRequired": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandRequestedExceedsOutstanding": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandTransferExceedsRequested": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandMaterialMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "dropDemandUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectSearchDemandCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "searchEpisodesWithMaterialDemands": {
+        "count": 1,
+        "min": 63,
+        "median": 63,
+        "mean": 63,
+        "max": 63
+      },
+      "searchDemandNonPositiveOutstanding": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "searchDemandBalanceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "preparedFoodFiberDropEpisodes": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "preparedFoodFiberEpisodesStartingAboveZero": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "preparedFoodMaxFiberStartingQuantity": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "preparedFoodMaxFiberRequestedQuantity": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "preparedFoodProjectsWithExcessStoneTools": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "preparedFoodExcessStoneTools": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectWoodSourceEpisodes": {
+        "count": 1,
+        "min": 44,
+        "median": 44,
+        "mean": 44,
+        "max": 44
+      },
+      "projectsWithWoodSourceEpisodes": {
+        "count": 1,
+        "min": 24,
+        "median": 24,
+        "mean": 24,
+        "max": 24
+      },
+      "woodSourceDemandCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "woodSourceFulfilled": {
+        "count": 1,
+        "min": 38,
+        "median": 38,
+        "mean": 38,
+        "max": 38
+      },
+      "woodSourceInvalidated": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "woodSourceActive": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceMoveActions": {
+        "count": 1,
+        "min": 105,
+        "median": 105,
+        "mean": 105,
+        "max": 105
+      },
+      "woodSourceSeparationActions": {
+        "count": 1,
+        "min": 38,
+        "median": 38,
+        "mean": 38,
+        "max": 38
+      },
+      "woodSourceOutputQuantity": {
+        "count": 1,
+        "min": 90,
+        "median": 90,
+        "mean": 90,
+        "max": 90
+      },
+      "woodSourceNonWoodDemands": {
+        "count": 1,
+        "min": 26,
+        "median": 26,
+        "mean": 26,
+        "max": 26
+      },
+      "woodSourceDemandBalanceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceReferenceMismatches": {
+        "count": 1,
+        "min": 13,
+        "median": 13,
+        "mean": 13,
+        "max": 13
+      },
+      "woodSourceSnapshotMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceTargetMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceOutputMismatches": {
+        "count": 1,
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "woodSourceFulfilledWithoutProduction": {
+        "count": 1,
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "woodSourceProductionStatusMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceUnresolvedSourceFacts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "projectWoodSearchEpisodes": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "woodSearchSourceSnapshotCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "woodSearchVisibleSourceAtOpen": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "woodSourceWastedMoveActions": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "shelterAdaptationProjects": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationCompleted": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationBlocked": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationActive": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationAbandoned": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationDependentBeneficiaries": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationRequirements": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationRequirementCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "shelterAdaptationSourceEvents": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "shelterAdaptationSourcedProjects": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "shelterAdaptationResolvedSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "shelterAdaptationPlacements": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "shelterAdaptationProjectsWithPlacements": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationCompletedWithOutcome": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationOutcomeCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "shelterAdaptationOutcomeEvidenceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "shelterAdaptationBaselineEnclosedSides": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationBaselineOpenSides": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "shelterAdaptationCompletedEnclosedSides": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "shelterAdaptationCompletedOpenSides": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationEnclosedSideGain": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "shelterAdaptationWeatherProtectionGain": {
+        "count": 1,
+        "min": 60,
+        "median": 60,
+        "mean": 60,
+        "max": 60
+      },
+      "shelterAdaptationThermalInsulationGain": {
+        "count": 1,
+        "min": 108,
+        "median": 108,
+        "mean": 108,
+        "max": 108
+      },
+      "shelterAdaptationProtectionImprovements": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "shelterAdaptationMissingRequirements": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationProjectsMissingSources": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationUnresolvedSourceEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationNonConditionSourceEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationSourceBeneficiaryMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationSourceExposureKindMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationSourceEventsAfterCreation": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationSourceSiteMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationProjectBeneficiaryMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationInvalidDependentBeneficiaries": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationInvalidBaselinesOrMinimums": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationInvalidOpenSideBaselines": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationMissingSites": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationDuplicateActiveOwnerSites": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationCompletedMissingOutcome": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationCompletedBelowMinimumSides": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationCompletedWeatherNotImproved": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationCompletedThermalNotImproved": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationOutcomesOnNonCompletedProjects": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationEntranceSealingProjects": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationCompletedWithoutOpenSide": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationOffsitePlacements": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationDirectBodyMutationEvents": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "shelterAdaptationUnresolvedOutcomeEvidence": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "shelterAdaptationActionIntentMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseShares": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseReads": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseExperiments": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseExperimentSuccesses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseProjectProgresses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "completeRecordUseChains": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseUniqueBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseActionsMissingBasisKey": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseUnresolvedProjects": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseReaderMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseTechniqueMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseExperimentsWithoutRead": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseAuthorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUsePayloadMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseCodebookMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseReadUnderstandingViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseReadReliabilityViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseExperimentOutputMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordUseExperimentConfidenceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisCampaigns": {
+        "count": 1,
+        "min": 48,
+        "median": 48,
+        "mean": 48,
+        "max": 48
+      },
+      "hypothesisCandidates": {
+        "count": 1,
+        "min": 628,
+        "median": 628,
+        "mean": 628,
+        "max": 628
+      },
+      "hypothesisAttempts": {
+        "count": 1,
+        "min": 114,
+        "median": 114,
+        "mean": 114,
+        "max": 114
+      },
+      "hypothesisResponses": {
+        "count": 1,
+        "min": 27,
+        "median": 27,
+        "mean": 27,
+        "max": 27
+      },
+      "hypothesisNoResponses": {
+        "count": 1,
+        "min": 87,
+        "median": 87,
+        "mean": 87,
+        "max": 87
+      },
+      "hypothesisExhaustedCampaigns": {
+        "count": 1,
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "hypothesisFirstAttemptResponses": {
+        "count": 1,
+        "min": 20,
+        "median": 20,
+        "mean": 20,
+        "max": 20
+      },
+      "hypothesisFirstAttemptNoResponses": {
+        "count": 1,
+        "min": 28,
+        "median": 28,
+        "mean": 28,
+        "max": 28
+      },
+      "hypothesisCombineAttempts": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisCombineResponses": {
+        "count": 1,
+        "min": 22,
+        "median": 22,
+        "mean": 22,
+        "max": 22
+      },
+      "hypothesisCombineNoResponses": {
+        "count": 1,
+        "min": 78,
+        "median": 78,
+        "mean": 78,
+        "max": 78
+      },
+      "hypothesisExertAttempts": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "hypothesisExertResponses": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "hypothesisExertNoResponses": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "hypothesisExposeAttempts": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "hypothesisExposeResponses": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "hypothesisExposeNoResponses": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "hypothesisConnectManipulatorShapesCandidates": {
+        "count": 1,
+        "min": 477,
+        "median": 477,
+        "mean": 477,
+        "max": 477
+      },
+      "hypothesisConnectManipulatorShapesAttempts": {
+        "count": 1,
+        "min": 98,
+        "median": 98,
+        "mean": 98,
+        "max": 98
+      },
+      "hypothesisConnectManipulatorShapesResponses": {
+        "count": 1,
+        "min": 22,
+        "median": 22,
+        "mean": 22,
+        "max": 22
+      },
+      "hypothesisConnectManipulatorShapesNoResponses": {
+        "count": 1,
+        "min": 76,
+        "median": 76,
+        "mean": 76,
+        "max": 76
+      },
+      "hypothesisConnectFlexibleLayersCandidates": {
+        "count": 1,
+        "min": 24,
+        "median": 24,
+        "mean": 24,
+        "max": 24
+      },
+      "hypothesisConnectFlexibleLayersAttempts": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "hypothesisConnectFlexibleLayersResponses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisConnectFlexibleLayersNoResponses": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "hypothesisSeekLocalHeatCandidates": {
+        "count": 1,
+        "min": 68,
+        "median": 68,
+        "mean": 68,
+        "max": 68
+      },
+      "hypothesisSeekLocalHeatAttempts": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "hypothesisSeekLocalHeatResponses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisSeekLocalHeatNoResponses": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "hypothesisShapePortableSurfaceCandidates": {
+        "count": 1,
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "hypothesisShapePortableSurfaceAttempts": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "hypothesisShapePortableSurfaceResponses": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "hypothesisShapePortableSurfaceNoResponses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisTransformSubjectWithObservedHeatCandidates": {
+        "count": 1,
+        "min": 47,
+        "median": 47,
+        "mean": 47,
+        "max": 47
+      },
+      "hypothesisTransformSubjectWithObservedHeatAttempts": {
+        "count": 1,
+        "min": 6,
+        "median": 6,
+        "mean": 6,
+        "max": 6
+      },
+      "hypothesisTransformSubjectWithObservedHeatResponses": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "hypothesisTransformSubjectWithObservedHeatNoResponses": {
+        "count": 1,
+        "min": 2,
+        "median": 2,
+        "mean": 2,
+        "max": 2
+      },
+      "hypothesisCandidatesWithRoleBasis": {
+        "count": 1,
+        "min": 628,
+        "median": 628,
+        "mean": 628,
+        "max": 628
+      },
+      "hypothesisAttemptsWithRoleBasis": {
+        "count": 1,
+        "min": 114,
+        "median": 114,
+        "mean": 114,
+        "max": 114
+      },
+      "hypothesisCandidateRoleBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisAttemptRoleBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisCandidatesWithEntityRoleBasis": {
+        "count": 1,
+        "min": 628,
+        "median": 628,
+        "mean": 628,
+        "max": 628
+      },
+      "hypothesisAttemptsWithEntityRoleBasis": {
+        "count": 1,
+        "min": 114,
+        "median": 114,
+        "mean": 114,
+        "max": 114
+      },
+      "hypothesisActionDiffsWithEntityRoleBasis": {
+        "count": 1,
+        "min": 114,
+        "median": 114,
+        "mean": 114,
+        "max": 114
+      },
+      "hypothesisCandidateEntityRoleBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisAttemptEntityRoleBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisActionDiffEntityRoleBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "hypothesisCandidatesMissingQuestionKind": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisCandidatesMissingRoleBasis": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisAttemptsMissingQuestionKind": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisAttemptsMissingRoleBasis": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisCandidateAttemptRoleBasisMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActionDiffRoleBasisMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisNonFiniteRoleScores": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisQuestionOperationMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisExertVerifiedResponseToolAttempts": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "hypothesisExertVerifiedResponseInputAttempts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisExactEntityVerifiedResponseToolAttempts": {
+        "count": 1,
+        "min": 7,
+        "median": 7,
+        "mean": 7,
+        "max": 7
+      },
+      "hypothesisExactEntityVerifiedResponseInputAttempts": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "hypothesisMaterialOnlyVerifiedResponseAttributionViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisVerifiedResponses": {
+        "count": 1,
+        "min": 27,
+        "median": 27,
+        "mean": 27,
+        "max": 27
+      },
+      "hypothesisResponseDrivenTransitions": {
+        "count": 1,
+        "min": 10,
+        "median": 10,
+        "mean": 10,
+        "max": 10
+      },
+      "hypothesisUniquePairs": {
+        "count": 1,
+        "min": 59,
+        "median": 59,
+        "mean": 59,
+        "max": 59
+      },
+      "hypothesisUniqueSignatures": {
+        "count": 1,
+        "min": 59,
+        "median": 59,
+        "mean": 59,
+        "max": 59
+      },
+      "hypothesisUnresolvedProjects": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisUnresolvedActors": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisUnresolvedCampaigns": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisCampaignMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActionMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisOperationMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisDuplicateProjectPairs": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisDuplicateProjectSignatures": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisBudgetExceeds": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisTotalBudgetExceeds": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisNoResponseBudgetExceeds": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisResponseBudgetExceeds": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisAttemptOrdinalMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActionDiffPairMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActionDiffSignatureMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisActionDiffOutcomeMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisMissingSourceKeys": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisReliableKnowledgeViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityBasisProjects": {
+        "count": 1,
+        "min": 33,
+        "median": 33,
+        "mean": 33,
+        "max": 33
+      },
+      "inquiryOpportunityBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityFailedProjects": {
+        "count": 1,
+        "min": 17,
+        "median": 17,
+        "mean": 17,
+        "max": 17
+      },
+      "inquiryOpportunityTerminalBasisProjects": {
+        "count": 1,
+        "min": 17,
+        "median": 17,
+        "mean": 17,
+        "max": 17
+      },
+      "inquiryOpportunityTerminalBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalProjects": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "inquiryOpportunityRenewalKeys": {
+        "count": 1,
+        "min": 10,
+        "median": 10,
+        "mean": 10,
+        "max": 10
+      },
+      "inquiryOpportunityReopenWithoutRenewalViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityUnresolvedInheritedProjects": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityInheritedActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityInheritedFunctionMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityInheritedStatusMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalKeyMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "hypothesisReliableNoResponseExcessAttempts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalHypothesisProjects": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "inquiryOpportunityRenewalHypothesisCandidateCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalHypothesisAttemptProjects": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "inquiryOpportunityRenewalHypothesisFirstAttemptCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunitySourceBasisProjects": {
+        "count": 1,
+        "min": 33,
+        "median": 33,
+        "mean": 33,
+        "max": 33
+      },
+      "inquiryOpportunitySourceBasisCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalCommitmentProjects": {
+        "count": 1,
+        "min": 4,
+        "median": 4,
+        "mean": 4,
+        "max": 4
+      },
+      "inquiryOpportunityRenewalCommitmentProjectCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalCommitmentSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityUnresolvedSources": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalCommitmentActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalCommitmentFunctionMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalCommitmentInheritedStatusMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityRenewalFirstCandidateExactSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalFirstAttemptExactSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "inquiryOpportunityRenewalFallbackBeforeCommitmentViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "inquiryOpportunityMaterialOnlyCommitmentAttributionViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationRequestAttempts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationRequests": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationUniqueProjectTeachers": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationDuplicateRequests": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationActions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationResponses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationSourcedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "techniqueDemonstrationExactSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "techniqueDemonstrationTentativeLessons": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationDirectReliableViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationUnresolvedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationUnresolvedRequestEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationUnresolvedActionEvents": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationRequestPersonMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationRequestProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationRequestFunctionMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationDemonstratorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationDemonstratorReliabilityMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationLearnerMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationFunctionMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationColocationMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationTechniqueMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationOperationMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationResponseMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationOrderViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationSourceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationExactSourceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationAttempts": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationResponses": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationExactSourceCoverage": {
+        "count": 1,
+        "min": 100,
+        "median": 100,
+        "mean": 100,
+        "max": 100
+      },
+      "techniqueImitationUnresolvedBases": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationSourceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationActorMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationProjectMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationTechniqueMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationOperationMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationResponseMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationOrderViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueImitationExactSourceMismatches": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueDemonstrationReliableLearners": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "techniqueReliableWithoutOwnImitationViolations": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "completeTechniqueLearningChains": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "completeTechniqueLearningProjectProgressChains": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "completeTechniqueLearningProjectCompletionChains": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "generationGtZeroCausalReliableLearners": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "unrequestedTechniqueTeaches": null,
+      "projectLogisticsEpisodes": {
+        "count": 1,
+        "min": 322,
+        "median": 322,
+        "mean": 322,
+        "max": 322
+      },
+      "projectLogisticsFulfilled": {
+        "count": 1,
+        "min": 302,
+        "median": 302,
+        "mean": 302,
+        "max": 302
+      },
+      "projectLogisticsExhausted": {
+        "count": 1,
+        "min": 10,
+        "median": 10,
+        "mean": 10,
+        "max": 10
+      },
+      "projectSearchEpisodes": {
+        "count": 1,
+        "min": 63,
+        "median": 63,
+        "mean": 63,
+        "max": 63
+      },
+      "projectDropEpisodes": {
+        "count": 1,
+        "min": 215,
+        "median": 215,
+        "mean": 215,
+        "max": 215
+      },
+      "projectLogisticsActionEvents": {
+        "count": 1,
+        "min": 1167,
+        "median": 1167,
+        "mean": 1167,
+        "max": 1167
+      },
+      "jointProjectsCompleted": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "productionProjectsCompleted": {
+        "count": 1,
+        "min": 9,
+        "median": 9,
+        "mean": 9,
+        "max": 9
+      },
+      "constructionProjectsCompleted": {
+        "count": 1,
+        "min": 30,
+        "median": 30,
+        "mean": 30,
+        "max": 30
+      },
+      "totalStructures": {
+        "count": 1,
+        "min": 22,
+        "median": 22,
+        "mean": 22,
+        "max": 22
+      },
+      "completedStructures": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "constructionPlacements": {
+        "count": 1,
+        "min": 48,
+        "median": 48,
+        "mean": 48,
+        "max": 48
+      },
+      "containersBuilt": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "standingContainers": {
+        "count": 1,
+        "min": 5,
+        "median": 5,
+        "mean": 5,
+        "max": 5
+      },
+      "containerTransfers": {
+        "count": 1,
+        "min": 189,
+        "median": 189,
+        "mean": 189,
+        "max": 189
+      },
+      "storedUnits": {
+        "count": 1,
+        "min": 320,
+        "median": 320,
+        "mean": 320,
+        "max": 320
+      },
+      "movementActionShare": {
+        "count": 1,
+        "min": 68.45,
+        "median": 68.45,
+        "mean": 68.45,
+        "max": 68.45
+      },
+      "usefulProductionOccurrenceRate": 100,
+      "spearsCrafted": {
+        "count": 1,
+        "min": 3,
+        "median": 3,
+        "mean": 3,
+        "max": 3
+      },
+      "leatherClothingCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "herbalMedicineCrafted": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "cookedFoodProduced": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "recordsCreated": {
+        "count": 1,
+        "min": 1,
+        "median": 1,
+        "mean": 1,
+        "max": 1
+      },
+      "functionalInstitutions": {
+        "count": 1,
+        "min": 8,
+        "median": 8,
+        "mean": 8,
+        "max": 8
+      },
+      "predictionAccuracy": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "assistedDependentHibernations": {
+        "count": 1,
+        "min": 32,
+        "median": 32,
+        "mean": 32,
+        "max": 32
+      },
+      "wildlifePopulation": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      },
+      "modelDecisions": {
+        "count": 1,
+        "min": 0,
+        "median": 0,
+        "mean": 0,
+        "max": 0
+      }
+    }
+  ],
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v4e-20260821-s185-y30-r1",
+      "seed": 185,
+      "years": 30,
+      "months": 360,
+      "repeat": 1,
+      "status": "ended",
+      "throughMonth": 360,
+      "endedEarly": false,
+      "outcomeKind": "boundary",
+      "initialPopulation": 6,
+      "finalPopulation": 23,
+      "births": 19,
+      "projectPressureBasisProjects": 78,
+      "projectPressureBasisCoverage": 100,
+      "projectPressureHistoryEntries": 1384,
+      "projectsWithPressureUpdates": 71,
+      "projectPressureUpdates": 1306,
+      "projectPressureIncreases": 235,
+      "projectPressureDecreases": 276,
+      "projectPressureUnchangedUpdates": 795,
+      "projectPressureDuplicateBasisEntries": 0,
+      "projectPressureUnresolvedSourceFacts": 0,
+      "huntingPressureCrossOwnerSources": 0,
+      "huntingPressureNonThreatAnimalSources": 0,
+      "projectPressureChangesWithoutEdgeChange": 0,
+      "projectPressureObserverMismatches": 0,
+      "projectPressureUpdatesThermalSafety": 16,
+      "projectPressureUpdatesHuntingSafety": 0,
+      "projectPressureUpdatesCareCapability": 0,
+      "projectPressureUpdatesFoodPreparation": 8,
+      "projectPressureUpdatesShelterCapacity": 24,
+      "projectPressureUpdatesKnowledgePreservation": 0,
+      "projectProgressEvidenceCount": 1521,
+      "projectProgressProjects": 74,
+      "projectLogisticsAdvanceProgress": 933,
+      "projectMaterialContributionProgress": 588,
+      "projectProgressDuplicateEvents": 0,
+      "projectProgressUnresolvedEvents": 0,
+      "projectProgressActorMismatches": 0,
+      "projectProgressEpisodeMismatches": 0,
+      "projectProgressIntentMismatches": 0,
+      "projectProgressNonAdvancingLogistics": 0,
+      "projectProgressEventsAfterTermination": 0,
+      "projectStagnationBlocksWithRecentProgress": 0,
+      "projectTerminalMonthCoverage": 100,
+      "projectsBlockedAfterLogisticsProgress": 26,
+      "projectSearchCampaigns": 38,
+      "projectsWithSearchCampaigns": 22,
+      "searchCampaignActive": 1,
+      "searchCampaignExhausted": 18,
+      "searchCampaignSuperseded": 4,
+      "searchCampaignClosed": 15,
+      "searchCampaignAttemptedTargets": 63,
+      "searchCampaignMaxTargets": 3,
+      "searchCampaignEpisodeCoverage": 100,
+      "searchEpisodesMissingCampaign": 0,
+      "searchCampaignRepeatedTargets": 0,
+      "searchCampaignDuplicateBasis": 0,
+      "searchCampaignTargetOutsideArea": 0,
+      "searchCampaignEpisodeTargetNotAttempted": 0,
+      "searchCampaignProjectMismatches": 0,
+      "searchCampaignOwnerMismatches": 0,
+      "searchCampaignActorMismatches": 0,
+      "searchCampaignMaterialMismatches": 0,
+      "searchCampaignUnresolvedSourceFacts": 0,
+      "searchCampaignsWithInheritedExperience": 2,
+      "searchCampaignInheritedCampaigns": 2,
+      "searchCampaignInheritedTargets": 4,
+      "searchCampaignExhaustedOnOpen": 0,
+      "searchCampaignCrossProjectRepeatedTargets": 0,
+      "searchCampaignDuplicateInheritedTargets": 0,
+      "searchCampaignInheritedTargetOutsideArea": 0,
+      "searchCampaignInheritedTargetMissingFromSource": 0,
+      "searchCampaignUnresolvedInheritedCampaigns": 0,
+      "searchCampaignInheritedSameProjectSources": 0,
+      "searchCampaignInheritedActorMismatches": 0,
+      "searchCampaignInheritedMaterialMismatches": 0,
+      "searchCampaignInheritedPlanMismatches": 0,
+      "projectDropDemandCoverage": 100,
+      "dropEpisodesWithMaterialDemand": 215,
+      "dropDemandRequestedQuantity": 247,
+      "dropDemandTransferQuantity": 225,
+      "dropDemandNonPositiveOutstanding": 0,
+      "dropDemandBalanceMismatches": 0,
+      "dropDemandStartingQuantityMismatches": 0,
+      "dropDemandStartingAtOrAboveRequired": 0,
+      "dropDemandRequestedExceedsOutstanding": 0,
+      "dropDemandTransferExceedsRequested": 0,
+      "dropDemandMaterialMismatches": 0,
+      "dropDemandActorMismatches": 0,
+      "dropDemandUnresolvedActionEvents": 0,
+      "projectSearchDemandCoverage": 100,
+      "searchEpisodesWithMaterialDemands": 63,
+      "searchDemandNonPositiveOutstanding": 0,
+      "searchDemandBalanceMismatches": 0,
+      "preparedFoodFiberDropEpisodes": 3,
+      "preparedFoodFiberEpisodesStartingAboveZero": 0,
+      "preparedFoodMaxFiberStartingQuantity": 0,
+      "preparedFoodMaxFiberRequestedQuantity": 1,
+      "preparedFoodProjectsWithExcessStoneTools": 0,
+      "preparedFoodExcessStoneTools": 0,
+      "projectWoodSourceEpisodes": 44,
+      "projectsWithWoodSourceEpisodes": 24,
+      "woodSourceDemandCoverage": 100,
+      "woodSourceFulfilled": 38,
+      "woodSourceInvalidated": 4,
+      "woodSourceActive": 0,
+      "woodSourceMoveActions": 105,
+      "woodSourceSeparationActions": 38,
+      "woodSourceOutputQuantity": 90,
+      "woodSourceNonWoodDemands": 26,
+      "woodSourceDemandBalanceMismatches": 0,
+      "woodSourceReferenceMismatches": 13,
+      "woodSourceSnapshotMismatches": 0,
+      "woodSourceProjectMismatches": 0,
+      "woodSourceActorMismatches": 0,
+      "woodSourceTargetMismatches": 0,
+      "woodSourceOutputMismatches": 12,
+      "woodSourceFulfilledWithoutProduction": 12,
+      "woodSourceProductionStatusMismatches": 0,
+      "woodSourceUnresolvedActionEvents": 0,
+      "woodSourceUnresolvedSourceFacts": 0,
+      "projectWoodSearchEpisodes": 5,
+      "woodSearchSourceSnapshotCoverage": 100,
+      "woodSearchVisibleSourceAtOpen": 0,
+      "woodSourceWastedMoveActions": 8,
+      "shelterAdaptationProjects": 3,
+      "shelterAdaptationCompleted": 3,
+      "shelterAdaptationBlocked": 0,
+      "shelterAdaptationActive": 0,
+      "shelterAdaptationAbandoned": 0,
+      "shelterAdaptationDependentBeneficiaries": 0,
+      "shelterAdaptationRequirements": 3,
+      "shelterAdaptationRequirementCoverage": 100,
+      "shelterAdaptationSourceEvents": 8,
+      "shelterAdaptationSourcedProjects": 3,
+      "shelterAdaptationSourceCoverage": 100,
+      "shelterAdaptationResolvedSourceCoverage": 100,
+      "shelterAdaptationPlacements": 6,
+      "shelterAdaptationProjectsWithPlacements": 3,
+      "shelterAdaptationCompletedWithOutcome": 3,
+      "shelterAdaptationOutcomeCoverage": 100,
+      "shelterAdaptationOutcomeEvidenceCoverage": 100,
+      "shelterAdaptationBaselineEnclosedSides": 3,
+      "shelterAdaptationBaselineOpenSides": 9,
+      "shelterAdaptationCompletedEnclosedSides": 9,
+      "shelterAdaptationCompletedOpenSides": 3,
+      "shelterAdaptationEnclosedSideGain": 6,
+      "shelterAdaptationWeatherProtectionGain": 60,
+      "shelterAdaptationThermalInsulationGain": 108,
+      "shelterAdaptationProtectionImprovements": 3,
+      "shelterAdaptationMissingRequirements": 0,
+      "shelterAdaptationProjectsMissingSources": 0,
+      "shelterAdaptationUnresolvedSourceEvents": 0,
+      "shelterAdaptationNonConditionSourceEvents": 0,
+      "shelterAdaptationSourceBeneficiaryMismatches": 0,
+      "shelterAdaptationSourceExposureKindMismatches": 0,
+      "shelterAdaptationSourceEventsAfterCreation": 0,
+      "shelterAdaptationSourceSiteMismatches": 0,
+      "shelterAdaptationProjectBeneficiaryMismatches": 0,
+      "shelterAdaptationInvalidDependentBeneficiaries": 0,
+      "shelterAdaptationInvalidBaselinesOrMinimums": 0,
+      "shelterAdaptationInvalidOpenSideBaselines": 0,
+      "shelterAdaptationMissingSites": 0,
+      "shelterAdaptationDuplicateActiveOwnerSites": 0,
+      "shelterAdaptationCompletedMissingOutcome": 0,
+      "shelterAdaptationCompletedBelowMinimumSides": 0,
+      "shelterAdaptationCompletedWeatherNotImproved": 0,
+      "shelterAdaptationCompletedThermalNotImproved": 0,
+      "shelterAdaptationOutcomesOnNonCompletedProjects": 0,
+      "shelterAdaptationEntranceSealingProjects": 0,
+      "shelterAdaptationCompletedWithoutOpenSide": 0,
+      "shelterAdaptationOffsitePlacements": 0,
+      "shelterAdaptationDirectBodyMutationEvents": 1,
+      "shelterAdaptationUnresolvedOutcomeEvidence": 0,
+      "shelterAdaptationUnresolvedActionEvents": 0,
+      "shelterAdaptationActionIntentMismatches": 0,
+      "recordUseShares": 0,
+      "recordUseReads": 0,
+      "recordUseExperiments": 0,
+      "recordUseExperimentSuccesses": 0,
+      "recordUseProjectProgresses": 0,
+      "completeRecordUseChains": 0,
+      "recordUseUniqueBases": 0,
+      "recordUseActionsMissingBasisKey": 0,
+      "recordUseUnresolvedProjects": 0,
+      "recordUseReaderMismatches": 0,
+      "recordUseTechniqueMismatches": 0,
+      "recordUseExperimentsWithoutRead": 0,
+      "recordUseProjectMismatches": 0,
+      "recordUseUnresolvedActionEvents": 0,
+      "recordUseAuthorMismatches": 0,
+      "recordUsePayloadMismatches": 0,
+      "recordUseCodebookMismatches": 0,
+      "recordUseReadUnderstandingViolations": 0,
+      "recordUseReadReliabilityViolations": 0,
+      "recordUseExperimentOutputMismatches": 0,
+      "recordUseExperimentConfidenceMismatches": 0,
+      "hypothesisCampaigns": 48,
+      "hypothesisCandidates": 628,
+      "hypothesisAttempts": 114,
+      "hypothesisResponses": 27,
+      "hypothesisNoResponses": 87,
+      "hypothesisExhaustedCampaigns": 12,
+      "hypothesisFirstAttemptResponses": 20,
+      "hypothesisFirstAttemptNoResponses": 28,
+      "hypothesisCombineAttempts": 100,
+      "hypothesisCombineResponses": 22,
+      "hypothesisCombineNoResponses": 78,
+      "hypothesisExertAttempts": 8,
+      "hypothesisExertResponses": 1,
+      "hypothesisExertNoResponses": 7,
+      "hypothesisExposeAttempts": 6,
+      "hypothesisExposeResponses": 4,
+      "hypothesisExposeNoResponses": 2,
+      "hypothesisConnectManipulatorShapesCandidates": 477,
+      "hypothesisConnectManipulatorShapesAttempts": 98,
+      "hypothesisConnectManipulatorShapesResponses": 22,
+      "hypothesisConnectManipulatorShapesNoResponses": 76,
+      "hypothesisConnectFlexibleLayersCandidates": 24,
+      "hypothesisConnectFlexibleLayersAttempts": 2,
+      "hypothesisConnectFlexibleLayersResponses": 0,
+      "hypothesisConnectFlexibleLayersNoResponses": 2,
+      "hypothesisSeekLocalHeatCandidates": 68,
+      "hypothesisSeekLocalHeatAttempts": 7,
+      "hypothesisSeekLocalHeatResponses": 0,
+      "hypothesisSeekLocalHeatNoResponses": 7,
+      "hypothesisShapePortableSurfaceCandidates": 12,
+      "hypothesisShapePortableSurfaceAttempts": 1,
+      "hypothesisShapePortableSurfaceResponses": 1,
+      "hypothesisShapePortableSurfaceNoResponses": 0,
+      "hypothesisTransformSubjectWithObservedHeatCandidates": 47,
+      "hypothesisTransformSubjectWithObservedHeatAttempts": 6,
+      "hypothesisTransformSubjectWithObservedHeatResponses": 4,
+      "hypothesisTransformSubjectWithObservedHeatNoResponses": 2,
+      "hypothesisCandidatesWithRoleBasis": 628,
+      "hypothesisAttemptsWithRoleBasis": 114,
+      "hypothesisCandidateRoleBasisCoverage": 100,
+      "hypothesisAttemptRoleBasisCoverage": 100,
+      "hypothesisCandidatesWithEntityRoleBasis": 628,
+      "hypothesisAttemptsWithEntityRoleBasis": 114,
+      "hypothesisActionDiffsWithEntityRoleBasis": 114,
+      "hypothesisCandidateEntityRoleBasisCoverage": 100,
+      "hypothesisAttemptEntityRoleBasisCoverage": 100,
+      "hypothesisActionDiffEntityRoleBasisCoverage": 100,
+      "hypothesisCandidatesMissingQuestionKind": 0,
+      "hypothesisCandidatesMissingRoleBasis": 0,
+      "hypothesisAttemptsMissingQuestionKind": 0,
+      "hypothesisAttemptsMissingRoleBasis": 0,
+      "hypothesisCandidateAttemptRoleBasisMismatches": 0,
+      "hypothesisActionDiffRoleBasisMismatches": 0,
+      "hypothesisNonFiniteRoleScores": 0,
+      "hypothesisQuestionOperationMismatches": 0,
+      "hypothesisExertVerifiedResponseToolAttempts": 1,
+      "hypothesisExertVerifiedResponseInputAttempts": 0,
+      "hypothesisExactEntityVerifiedResponseToolAttempts": 7,
+      "hypothesisExactEntityVerifiedResponseInputAttempts": 3,
+      "hypothesisMaterialOnlyVerifiedResponseAttributionViolations": 0,
+      "hypothesisVerifiedResponses": 27,
+      "hypothesisResponseDrivenTransitions": 10,
+      "hypothesisUniquePairs": 59,
+      "hypothesisUniqueSignatures": 59,
+      "hypothesisUnresolvedProjects": 0,
+      "hypothesisProjectMismatches": 0,
+      "hypothesisUnresolvedActors": 0,
+      "hypothesisActorMismatches": 0,
+      "hypothesisUnresolvedCampaigns": 0,
+      "hypothesisCampaignMismatches": 0,
+      "hypothesisUnresolvedActionEvents": 0,
+      "hypothesisActionMismatches": 0,
+      "hypothesisOperationMismatches": 0,
+      "hypothesisDuplicateProjectPairs": 0,
+      "hypothesisDuplicateProjectSignatures": 0,
+      "hypothesisBudgetExceeds": 0,
+      "hypothesisTotalBudgetExceeds": 0,
+      "hypothesisNoResponseBudgetExceeds": 0,
+      "hypothesisResponseBudgetExceeds": 0,
+      "hypothesisAttemptOrdinalMismatches": 0,
+      "hypothesisActionDiffPairMismatches": 0,
+      "hypothesisActionDiffSignatureMismatches": 0,
+      "hypothesisActionDiffOutcomeMismatches": 0,
+      "hypothesisMissingSourceKeys": 0,
+      "hypothesisReliableKnowledgeViolations": 0,
+      "inquiryOpportunityBasisProjects": 33,
+      "inquiryOpportunityBasisCoverage": 100,
+      "inquiryOpportunityFailedProjects": 17,
+      "inquiryOpportunityTerminalBasisProjects": 17,
+      "inquiryOpportunityTerminalBasisCoverage": 100,
+      "inquiryOpportunityRenewalProjects": 4,
+      "inquiryOpportunityRenewalKeys": 10,
+      "inquiryOpportunityReopenWithoutRenewalViolations": 0,
+      "inquiryOpportunityUnresolvedInheritedProjects": 0,
+      "inquiryOpportunityInheritedActorMismatches": 0,
+      "inquiryOpportunityInheritedFunctionMismatches": 0,
+      "inquiryOpportunityInheritedStatusMismatches": 0,
+      "inquiryOpportunityRenewalKeyMismatches": 0,
+      "hypothesisReliableNoResponseExcessAttempts": 0,
+      "inquiryOpportunityRenewalHypothesisProjects": 4,
+      "inquiryOpportunityRenewalHypothesisCandidateCoverage": 100,
+      "inquiryOpportunityRenewalHypothesisAttemptProjects": 4,
+      "inquiryOpportunityRenewalHypothesisFirstAttemptCoverage": 100,
+      "inquiryOpportunitySourceBasisProjects": 33,
+      "inquiryOpportunitySourceBasisCoverage": 100,
+      "inquiryOpportunityRenewalCommitmentProjects": 4,
+      "inquiryOpportunityRenewalCommitmentProjectCoverage": 100,
+      "inquiryOpportunityRenewalCommitmentSourceCoverage": 100,
+      "inquiryOpportunityUnresolvedSources": 0,
+      "inquiryOpportunityRenewalCommitmentActorMismatches": 0,
+      "inquiryOpportunityRenewalCommitmentFunctionMismatches": 0,
+      "inquiryOpportunityRenewalCommitmentInheritedStatusMismatches": 0,
+      "inquiryOpportunityRenewalFirstCandidateExactSourceCoverage": 100,
+      "inquiryOpportunityRenewalFirstAttemptExactSourceCoverage": 100,
+      "inquiryOpportunityRenewalFallbackBeforeCommitmentViolations": 0,
+      "inquiryOpportunityMaterialOnlyCommitmentAttributionViolations": 0,
+      "techniqueDemonstrationRequestAttempts": 0,
+      "techniqueDemonstrationRequests": 0,
+      "techniqueDemonstrationUniqueProjectTeachers": 0,
+      "techniqueDemonstrationDuplicateRequests": 0,
+      "techniqueDemonstrationActions": 0,
+      "techniqueDemonstrationResponses": 0,
+      "techniqueDemonstrationBases": 0,
+      "techniqueDemonstrationSourcedBases": 0,
+      "techniqueDemonstrationSourceCoverage": 100,
+      "techniqueDemonstrationExactSourceCoverage": 100,
+      "techniqueDemonstrationTentativeLessons": 0,
+      "techniqueDemonstrationDirectReliableViolations": 0,
+      "techniqueDemonstrationUnresolvedBases": 0,
+      "techniqueDemonstrationUnresolvedRequestEvents": 0,
+      "techniqueDemonstrationUnresolvedActionEvents": 0,
+      "techniqueDemonstrationRequestPersonMismatches": 0,
+      "techniqueDemonstrationRequestProjectMismatches": 0,
+      "techniqueDemonstrationRequestFunctionMismatches": 0,
+      "techniqueDemonstrationDemonstratorMismatches": 0,
+      "techniqueDemonstrationDemonstratorReliabilityMismatches": 0,
+      "techniqueDemonstrationLearnerMismatches": 0,
+      "techniqueDemonstrationProjectMismatches": 0,
+      "techniqueDemonstrationFunctionMismatches": 0,
+      "techniqueDemonstrationColocationMismatches": 0,
+      "techniqueDemonstrationTechniqueMismatches": 0,
+      "techniqueDemonstrationOperationMismatches": 0,
+      "techniqueDemonstrationResponseMismatches": 0,
+      "techniqueDemonstrationOrderViolations": 0,
+      "techniqueDemonstrationSourceMismatches": 0,
+      "techniqueDemonstrationExactSourceMismatches": 0,
+      "techniqueImitationAttempts": 0,
+      "techniqueImitationResponses": 0,
+      "techniqueImitationExactSourceCoverage": 100,
+      "techniqueImitationUnresolvedBases": 0,
+      "techniqueImitationSourceMismatches": 0,
+      "techniqueImitationActorMismatches": 0,
+      "techniqueImitationProjectMismatches": 0,
+      "techniqueImitationTechniqueMismatches": 0,
+      "techniqueImitationOperationMismatches": 0,
+      "techniqueImitationResponseMismatches": 0,
+      "techniqueImitationOrderViolations": 0,
+      "techniqueImitationExactSourceMismatches": 0,
+      "techniqueDemonstrationReliableLearners": 0,
+      "techniqueReliableWithoutOwnImitationViolations": 0,
+      "completeTechniqueLearningChains": 0,
+      "completeTechniqueLearningProjectProgressChains": 0,
+      "completeTechniqueLearningProjectCompletionChains": 0,
+      "generationGtZeroCausalReliableLearners": 0,
+      "unrequestedTechniqueTeaches": null,
+      "reproductionOffers": 40,
+      "reproductionAcceptances": 39,
+      "reproductionAttempts": 56,
+      "reproductionConceptions": 19,
+      "relationshipProposalOffers": 87,
+      "relationshipProposalUniqueBases": 87,
+      "relationshipProposalRepeatedBases": 0,
+      "relationshipProposalOffersWithoutBasis": 0,
+      "relationshipProposalRepeatedDirectedPairs": 22,
+      "relationshipProposalMaxPerDirectedPair": 6,
+      "lifeReviewDecisions": 0,
+      "projectLifeReviewDecisions": 0,
+      "lifeReviewPersonMonths": 0,
+      "lifeReviewSameMonthDuplicates": 0,
+      "lifeReviewUniqueBases": 0,
+      "lifeReviewRepeatedBases": 0,
+      "interruptedIntentChildren": 317,
+      "interruptLifeReviewChildren": 0,
+      "interruptRequiredResponseChildren": 45,
+      "interruptFulfillmentChildren": 2,
+      "interruptChildrenCompleted": 284,
+      "interruptChildrenBlocked": 32,
+      "interruptChildrenFailed": 0,
+      "interruptChildrenAbandoned": 0,
+      "interruptReturnsResumed": 316,
+      "interruptReturnsParentCompleted": 0,
+      "interruptReturnsParentBlocked": 0,
+      "interruptReturnsParentUnavailable": 0,
+      "interruptUnresolvedTerminalChildren": 0,
+      "interruptChildrenWithProjectId": 0,
+      "interruptReturnLatencyMeanMonths": 0,
+      "interruptReturnLatencyMaxMonths": 0,
+      "interruptResumedParentsWithSubsequentAction": 248,
+      "interruptResumedParentsWithoutSubsequentAction": 68,
+      "interruptImmediateSameProjectReplacements": 0,
+      "orphanSuspendedProjectIntents": 0,
+      "deaths": 2,
+      "childDeaths": 1,
+      "childExposureDeaths": 1,
+      "civilizationIndex": 1043.95,
+      "civilizationComponents": {
+        "population": 146,
+        "territory": 261.45,
+        "technology": 144.27,
+        "social": 275.93,
+        "history": 216.3
+      },
+      "completedActions": 4199,
+      "actionPersonMonths": 1732,
+      "projectActionPersonMonths": 284,
+      "projectActionMonthShare": 16.4,
+      "ruleDecisions": 2966,
+      "modelDecisions": 0,
+      "strategicIntents": 1254,
+      "socialIntents": 1622,
+      "strategicShare": 43.6,
+      "communications": 568,
+      "survivalReflexActions": 3317,
+      "correctPredictions": 0,
+      "incorrectPredictions": 3,
+      "predictionAccuracy": 0,
+      "dehydrationHibernations": 108,
+      "assistedDependentHibernations": 32,
+      "wildlifePopulation": 0,
+      "animalsHunted": 1,
+      "animalAttacks": 0,
+      "projectsStarted": 78,
+      "projectsCompleted": 39,
+      "projectsBlocked": 35,
+      "projectLogisticsEpisodes": 322,
+      "projectLogisticsFulfilled": 302,
+      "projectLogisticsExhausted": 10,
+      "projectSearchEpisodes": 63,
+      "projectDropEpisodes": 215,
+      "projectLogisticsActionEvents": 1167,
+      "jointProjectsCompleted": 8,
+      "productionProjectsCompleted": 9,
+      "constructionProjectsCompleted": 30,
+      "totalStructures": 22,
+      "completedStructures": 8,
+      "constructionPlacements": 48,
+      "containersBuilt": 5,
+      "standingContainers": 5,
+      "containerTransfers": 189,
+      "storedUnits": 320,
+      "movementActions": 7345,
+      "movementActionShare": 68.45,
+      "spearsCrafted": 3,
+      "leatherClothingCrafted": 0,
+      "herbalMedicineCrafted": 0,
+      "cookedFoodProduced": 0,
+      "recordsCreated": 1,
+      "functionalInstitutions": 8,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "milestoneIds": [
+        "world:project-breakdown:collapse:project-breakdown:v2",
+        "world:project-recovery:recovery:project-recovery:v2",
+        "world:weather-change:emergence:weather:v2",
+        "capability:16:practice:tool-craft:v2",
+        "capability:59:practice:tested-hypothesis:v2",
+        "capability:324:practice:rope-craft:v2",
+        "capability:11:practice:gather-food:v2",
+        "capability:22:stable:joint-project:v2",
+        "capability:58:practice:natural-observation:v2",
+        "capability:390:practice:storage:v2",
+        "capability:2:emergence:conception:v2",
+        "capability:48:emergence:agreement:v2",
+        "capability:1:emergence:birth:v2",
+        "capability:169:response:dependent-protection:v2",
+        "world:agreement-breach:harm:breach:v2",
+        "world:era-prediction:emergence:prediction:v2",
+        "world:incorrect-era-prediction:decline:incorrect-prediction:v2",
+        "capability:45:practice:exchange:v2",
+        "capability:13:practice:gift:v2",
+        "capability:131:practice:infant-feeding:v2",
+        "capability:462:practice:gift:v2",
+        "capability:12:practice:hunt:v2",
+        "capability:20:emergence:shelter:v2",
+        "capability:201:practice:gesture-communication:v2",
+        "world:era-prediction-practice:stable:prediction-practice:v2",
+        "capability:3:stable:dependent-care:v2",
+        "capability:241:practice:memory:v2",
+        "capability:222:stable:trial-learning:v2",
+        "capability:488:emergence:membership-admission:v2",
+        "capability:32:practice:cultivation:v2",
+        "capability:9:collapse:death:v2",
+        "capability:524:stable:decision-rule:v2",
+        "capability:162:decline:relationship-rejection:v2",
+        "capability:8:decline:aging:v2",
+        "world:era-cycle:stable:era-cycle:v2",
+        "capability:161:stable:companion:v2"
+      ]
+    }
+  ]
+}

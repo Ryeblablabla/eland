@@ -1,0 +1,990 @@
+{
+  "schemaVersion": 1,
+  "prefix": "candidate-ancient-bridge-v1-replay-20260822",
+  "startedAt": "2026-08-21T16:37:22.401Z",
+  "finishedAt": "2026-08-21T16:38:01.201Z",
+  "wait": true,
+  "concurrency": 1,
+  "matrix": {
+    "seeds": [
+      185
+    ],
+    "years": [
+      30
+    ],
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced"
+  },
+  "cases": [
+    {
+      "ok": true,
+      "id": "candidate-ancient-bridge-v1-replay-20260822-s185-y30",
+      "seed": 185,
+      "years": 30,
+      "months": 360,
+      "created": true,
+      "evolution": {
+        "schemaVersion": 2,
+        "runId": "candidate-ancient-bridge-v1-replay-20260822-s185-y30",
+        "provider": "local",
+        "model": "rule-planner-v1",
+        "status": "completed",
+        "startedAt": "2026-08-21T16:37:22.531Z",
+        "updatedAt": "2026-08-21T16:38:01.007Z",
+        "fromMonth": 0,
+        "requestedEndMonth": 360,
+        "reachedMonth": 360,
+        "checkpoints": [
+          {
+            "month": 0,
+            "eventCount": 1,
+            "livingPeople": 6,
+            "totalPeople": 6,
+            "stage": "原始部落",
+            "civilizationIndex": {
+              "formulaVersion": "open-material-institution-v1",
+              "total": 48.58,
+              "calculatedAtMonth": 0,
+              "components": {
+                "population": {
+                  "score": 36,
+                  "weight": 1,
+                  "evidence": {
+                    "livingPeople": 6,
+                    "totalPeople": 6,
+                    "generations": 1
+                  }
+                },
+                "territory": {
+                  "score": 0.08,
+                  "weight": 1,
+                  "evidence": {
+                    "cognitiveCells": 6,
+                    "cognitiveCoverage": 0.14,
+                    "persistentModifiedCells": 0,
+                    "traceCells": 0,
+                    "trailCells": 0,
+                    "incompleteStructureCells": 0,
+                    "functionalStructureCells": 0,
+                    "functionalStructures": 0,
+                    "shelterCapacity": 0,
+                    "standingContainers": 0,
+                    "usedContainers": 0,
+                    "storedUnits": 0,
+                    "cultivatedCells": 0,
+                    "cultivatedSiteCells": 0,
+                    "functionalSites": 0,
+                    "sustainedFunctionalSites": 0,
+                    "logisticsRoutes": 0,
+                    "cognitiveScore": 0.39,
+                    "persistentTraceScore": 0,
+                    "constructionProgressScore": 0,
+                    "functionalCapacityScore": 0,
+                    "networkScore": 0,
+                    "infrastructureScore": 0,
+                    "rawTerritoryScore": 0.22,
+                    "territoryCap": 25,
+                    "functionalBuildings": 0,
+                    "usedFacilities": 0
+                  }
+                },
+                "technology": {
+                  "score": 0,
+                  "weight": 1,
+                  "evidence": {
+                    "confidentTechniques": 0,
+                    "realizedProcesses": 0,
+                    "techniqueDiffusion": 0,
+                    "materialCapabilityPoints": 0,
+                    "processedWoodStage": 0,
+                    "masonryStoneStage": 0,
+                    "bronzeStage": 0,
+                    "ironStage": 0
+                  }
+                },
+                "social": {
+                  "score": 12.5,
+                  "weight": 1,
+                  "evidence": {
+                    "relationDyads": 15,
+                    "interactionDyads": 0,
+                    "interactionKinds": 0,
+                    "institutionalFacts": 0,
+                    "fulfilledAgreements": 0,
+                    "fulfilledReproductionAgreements": 0,
+                    "completedJointProjects": 0,
+                    "functionalInstitutions": 0,
+                    "roleHolders": 0,
+                    "activeCollectives": 0,
+                    "largestCollectiveSize": 0
+                  }
+                },
+                "history": {
+                  "score": 0,
+                  "weight": 1,
+                  "evidence": {
+                    "causalEpisodes": 0,
+                    "turningCategories": 0,
+                    "milestones": 0,
+                    "milestoneCapabilities": 0,
+                    "completedCausalProjects": 0,
+                    "births": 0,
+                    "deaths": 0,
+                    "agreementOutcomes": 0,
+                    "eraTransitions": 0,
+                    "recordedKnowledge": 0,
+                    "taughtFacts": 0,
+                    "transmittedTechniques": 0,
+                    "crossGenerationKnowledge": 0
+                  }
+                }
+              }
+            },
+            "milestoneIds": [],
+            "ruleDecisions": 0,
+            "modelDecisions": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "month": 120,
+            "eventCount": 3454,
+            "livingPeople": 5,
+            "totalPeople": 6,
+            "stage": "原始部落",
+            "civilizationIndex": {
+              "formulaVersion": "open-material-institution-v1",
+              "total": 416.47,
+              "calculatedAtMonth": 120,
+              "components": {
+                "population": {
+                  "score": 30,
+                  "weight": 1,
+                  "evidence": {
+                    "livingPeople": 5,
+                    "totalPeople": 6,
+                    "generations": 1
+                  }
+                },
+                "territory": {
+                  "score": 102.64,
+                  "weight": 1,
+                  "evidence": {
+                    "cognitiveCells": 439,
+                    "cognitiveCoverage": 10.05,
+                    "persistentModifiedCells": 108,
+                    "traceCells": 91,
+                    "trailCells": 20,
+                    "incompleteStructureCells": 5,
+                    "functionalStructureCells": 5,
+                    "functionalStructures": 5,
+                    "shelterCapacity": 5,
+                    "standingContainers": 2,
+                    "usedContainers": 2,
+                    "storedUnits": 113,
+                    "cultivatedCells": 5,
+                    "cultivatedSiteCells": 5,
+                    "functionalSites": 7,
+                    "sustainedFunctionalSites": 5,
+                    "logisticsRoutes": 1,
+                    "cognitiveScore": 28.72,
+                    "persistentTraceScore": 53.16,
+                    "constructionProgressScore": 8,
+                    "functionalCapacityScore": 64.68,
+                    "networkScore": 39.35,
+                    "infrastructureScore": 51.53,
+                    "rawTerritoryScore": 38.98,
+                    "territoryCap": 100,
+                    "functionalBuildings": 5,
+                    "usedFacilities": 5
+                  }
+                },
+                "technology": {
+                  "score": 85.04,
+                  "weight": 1,
+                  "evidence": {
+                    "confidentTechniques": 15,
+                    "realizedProcesses": 15,
+                    "techniqueDiffusion": 61.33,
+                    "materialCapabilityPoints": 24.5,
+                    "processedWoodStage": 4,
+                    "masonryStoneStage": 1,
+                    "bronzeStage": 0,
+                    "ironStage": 0
+                  }
+                },
+                "social": {
+                  "score": 140.11,
+                  "weight": 1,
+                  "evidence": {
+                    "relationDyads": 15,
+                    "interactionDyads": 7,
+                    "interactionKinds": 7,
+                    "institutionalFacts": 21,
+                    "fulfilledAgreements": 3,
+                    "fulfilledReproductionAgreements": 0,
+                    "completedJointProjects": 2,
+                    "functionalInstitutions": 4,
+                    "roleHolders": 1,
+                    "activeCollectives": 0,
+                    "largestCollectiveSize": 0
+                  }
+                },
+                "history": {
+                  "score": 58.68,
+                  "weight": 1,
+                  "evidence": {
+                    "causalEpisodes": 47,
+                    "turningCategories": 27,
+                    "milestones": 20,
+                    "milestoneCapabilities": 15,
+                    "completedCausalProjects": 9,
+                    "births": 0,
+                    "deaths": 1,
+                    "agreementOutcomes": 8,
+                    "eraTransitions": 6,
+                    "recordedKnowledge": 0,
+                    "taughtFacts": 7,
+                    "transmittedTechniques": 12,
+                    "crossGenerationKnowledge": 0
+                  }
+                }
+              }
+            },
+            "milestoneIds": [
+              "world:project-breakdown:collapse:project-breakdown:v2",
+              "world:project-recovery:recovery:project-recovery:v2",
+              "world:weather-change:emergence:weather:v2",
+              "capability:16:practice:tool-craft:v2",
+              "capability:59:practice:tested-hypothesis:v2",
+              "capability:241:practice:memory:v2",
+              "capability:324:practice:rope-craft:v2",
+              "capability:11:practice:gather-food:v2",
+              "capability:22:stable:joint-project:v2",
+              "capability:58:practice:natural-observation:v2",
+              "capability:390:practice:storage:v2",
+              "capability:48:emergence:agreement:v2",
+              "capability:12:practice:hunt:v2",
+              "world:agreement-breach:harm:breach:v2",
+              "capability:9:collapse:death:v2",
+              "capability:20:emergence:shelter:v2",
+              "capability:32:practice:cultivation:v2",
+              "capability:201:practice:gesture-communication:v2",
+              "capability:222:stable:trial-learning:v2",
+              "world:era-cycle:stable:era-cycle:v2"
+            ],
+            "ruleDecisions": 605,
+            "modelDecisions": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "month": 240,
+            "eventCount": 6573,
+            "livingPeople": 5,
+            "totalPeople": 6,
+            "stage": "原始部落",
+            "civilizationIndex": {
+              "formulaVersion": "open-material-institution-v1",
+              "total": 570.01,
+              "calculatedAtMonth": 240,
+              "components": {
+                "population": {
+                  "score": 30,
+                  "weight": 1,
+                  "evidence": {
+                    "livingPeople": 5,
+                    "totalPeople": 6,
+                    "generations": 1
+                  }
+                },
+                "territory": {
+                  "score": 146.42,
+                  "weight": 1,
+                  "evidence": {
+                    "cognitiveCells": 712,
+                    "cognitiveCoverage": 16.3,
+                    "persistentModifiedCells": 195,
+                    "traceCells": 175,
+                    "trailCells": 46,
+                    "incompleteStructureCells": 9,
+                    "functionalStructureCells": 8,
+                    "functionalStructures": 8,
+                    "shelterCapacity": 8,
+                    "standingContainers": 2,
+                    "usedContainers": 2,
+                    "storedUnits": 174,
+                    "cultivatedCells": 1,
+                    "cultivatedSiteCells": 0,
+                    "functionalSites": 9,
+                    "sustainedFunctionalSites": 7,
+                    "logisticsRoutes": 1,
+                    "cognitiveScore": 46.57,
+                    "persistentTraceScore": 76.74,
+                    "constructionProgressScore": 13.93,
+                    "functionalCapacityScore": 73.4,
+                    "networkScore": 47.42,
+                    "infrastructureScore": 61.29,
+                    "rawTerritoryScore": 53.2,
+                    "territoryCap": 100,
+                    "functionalBuildings": 7,
+                    "usedFacilities": 7
+                  }
+                },
+                "technology": {
+                  "score": 118.09,
+                  "weight": 1,
+                  "evidence": {
+                    "confidentTechniques": 19,
+                    "realizedProcesses": 20,
+                    "techniqueDiffusion": 65.26,
+                    "materialCapabilityPoints": 46.75,
+                    "processedWoodStage": 4,
+                    "masonryStoneStage": 2,
+                    "bronzeStage": 1,
+                    "ironStage": 0
+                  }
+                },
+                "social": {
+                  "score": 207.75,
+                  "weight": 1,
+                  "evidence": {
+                    "relationDyads": 15,
+                    "interactionDyads": 7,
+                    "interactionKinds": 7,
+                    "institutionalFacts": 30,
+                    "fulfilledAgreements": 3,
+                    "fulfilledReproductionAgreements": 0,
+                    "completedJointProjects": 2,
+                    "functionalInstitutions": 7,
+                    "roleHolders": 1,
+                    "activeCollectives": 0,
+                    "largestCollectiveSize": 0
+                  }
+                },
+                "history": {
+                  "score": 67.75,
+                  "weight": 1,
+                  "evidence": {
+                    "causalEpisodes": 73,
+                    "turningCategories": 29,
+                    "milestones": 20,
+                    "milestoneCapabilities": 15,
+                    "completedCausalProjects": 17,
+                    "births": 0,
+                    "deaths": 1,
+                    "agreementOutcomes": 18,
+                    "eraTransitions": 11,
+                    "recordedKnowledge": 0,
+                    "taughtFacts": 17,
+                    "transmittedTechniques": 15,
+                    "crossGenerationKnowledge": 0
+                  }
+                }
+              }
+            },
+            "milestoneIds": [
+              "world:project-breakdown:collapse:project-breakdown:v2",
+              "world:project-recovery:recovery:project-recovery:v2",
+              "world:weather-change:emergence:weather:v2",
+              "capability:16:practice:tool-craft:v2",
+              "capability:59:practice:tested-hypothesis:v2",
+              "capability:241:practice:memory:v2",
+              "capability:324:practice:rope-craft:v2",
+              "capability:11:practice:gather-food:v2",
+              "capability:22:stable:joint-project:v2",
+              "capability:58:practice:natural-observation:v2",
+              "capability:390:practice:storage:v2",
+              "capability:48:emergence:agreement:v2",
+              "capability:12:practice:hunt:v2",
+              "world:agreement-breach:harm:breach:v2",
+              "capability:9:collapse:death:v2",
+              "capability:20:emergence:shelter:v2",
+              "capability:32:practice:cultivation:v2",
+              "capability:201:practice:gesture-communication:v2",
+              "capability:222:stable:trial-learning:v2",
+              "world:era-cycle:stable:era-cycle:v2"
+            ],
+            "ruleDecisions": 1319,
+            "modelDecisions": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "month": 360,
+            "eventCount": 9066,
+            "livingPeople": 4,
+            "totalPeople": 6,
+            "stage": "原始部落",
+            "civilizationIndex": {
+              "formulaVersion": "open-material-institution-v1",
+              "total": 615.49,
+              "calculatedAtMonth": 360,
+              "components": {
+                "population": {
+                  "score": 24,
+                  "weight": 1,
+                  "evidence": {
+                    "livingPeople": 4,
+                    "totalPeople": 6,
+                    "generations": 1
+                  }
+                },
+                "territory": {
+                  "score": 162.4,
+                  "weight": 1,
+                  "evidence": {
+                    "cognitiveCells": 674,
+                    "cognitiveCoverage": 15.43,
+                    "persistentModifiedCells": 180,
+                    "traceCells": 157,
+                    "trailCells": 63,
+                    "incompleteStructureCells": 12,
+                    "functionalStructureCells": 9,
+                    "functionalStructures": 9,
+                    "shelterCapacity": 9,
+                    "standingContainers": 2,
+                    "usedContainers": 2,
+                    "storedUnits": 174,
+                    "cultivatedCells": 0,
+                    "cultivatedSiteCells": 0,
+                    "functionalSites": 10,
+                    "sustainedFunctionalSites": 9,
+                    "logisticsRoutes": 0,
+                    "cognitiveScore": 44.09,
+                    "persistentTraceScore": 72.97,
+                    "constructionProgressScore": 18.13,
+                    "functionalCapacityScore": 76.3,
+                    "networkScore": 47.42,
+                    "infrastructureScore": 62.93,
+                    "rawTerritoryScore": 52.57,
+                    "territoryCap": 100,
+                    "functionalBuildings": 8,
+                    "usedFacilities": 8
+                  }
+                },
+                "technology": {
+                  "score": 123.3,
+                  "weight": 1,
+                  "evidence": {
+                    "confidentTechniques": 23,
+                    "realizedProcesses": 23,
+                    "techniqueDiffusion": 65.22,
+                    "materialCapabilityPoints": 46.75,
+                    "processedWoodStage": 4,
+                    "masonryStoneStage": 2,
+                    "bronzeStage": 1,
+                    "ironStage": 0
+                  }
+                },
+                "social": {
+                  "score": 232.04,
+                  "weight": 1,
+                  "evidence": {
+                    "relationDyads": 15,
+                    "interactionDyads": 7,
+                    "interactionKinds": 7,
+                    "institutionalFacts": 33,
+                    "fulfilledAgreements": 3,
+                    "fulfilledReproductionAgreements": 0,
+                    "completedJointProjects": 2,
+                    "functionalInstitutions": 8,
+                    "roleHolders": 1,
+                    "activeCollectives": 0,
+                    "largestCollectiveSize": 0
+                  }
+                },
+                "history": {
+                  "score": 73.75,
+                  "weight": 1,
+                  "evidence": {
+                    "causalEpisodes": 97,
+                    "turningCategories": 32,
+                    "milestones": 22,
+                    "milestoneCapabilities": 17,
+                    "completedCausalProjects": 28,
+                    "births": 0,
+                    "deaths": 2,
+                    "agreementOutcomes": 20,
+                    "eraTransitions": 18,
+                    "recordedKnowledge": 0,
+                    "taughtFacts": 19,
+                    "transmittedTechniques": 17,
+                    "crossGenerationKnowledge": 0
+                  }
+                }
+              }
+            },
+            "milestoneIds": [
+              "world:project-breakdown:collapse:project-breakdown:v2",
+              "world:project-recovery:recovery:project-recovery:v2",
+              "world:weather-change:emergence:weather:v2",
+              "capability:16:practice:tool-craft:v2",
+              "capability:59:practice:tested-hypothesis:v2",
+              "capability:241:practice:memory:v2",
+              "capability:324:practice:rope-craft:v2",
+              "capability:11:practice:gather-food:v2",
+              "capability:22:stable:joint-project:v2",
+              "capability:58:practice:natural-observation:v2",
+              "capability:390:practice:storage:v2",
+              "capability:48:emergence:agreement:v2",
+              "capability:12:practice:hunt:v2",
+              "world:agreement-breach:harm:breach:v2",
+              "capability:9:collapse:death:v2",
+              "capability:20:emergence:shelter:v2",
+              "capability:32:practice:cultivation:v2",
+              "capability:201:practice:gesture-communication:v2",
+              "capability:222:stable:trial-learning:v2",
+              "capability:161:stable:companion:v2",
+              "world:era-cycle:stable:era-cycle:v2",
+              "capability:8:decline:aging:v2"
+            ],
+            "ruleDecisions": 1830,
+            "modelDecisions": 0,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        ],
+        "turningPoints": [
+          {
+            "id": "milestone:capability:16:practice:tool-craft:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "制造工具",
+            "summary": "combine 使用真实输入材料；completed diff 产生工具类 outputMaterialId。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-leonardo-69"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:capability:241:practice:memory:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "记住个人经历",
+            "summary": "人物记忆保存具体 sourceEventIds；来源事实能解析到亲历、对话、承诺或失败事件。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-marie-curie-17"
+            ],
+            "personIds": [
+              "marie-curie",
+              "socrates"
+            ]
+          },
+          {
+            "id": "milestone:capability:324:practice:rope-craft:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "编织、缝合与制绳",
+            "summary": "纤维等真实输入材料参与 combine；completed diff 明确产生 Rope。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-leonardo-61"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:capability:59:practice:tested-hypothesis:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "用实验检验猜想",
+            "summary": "可靠技术知识引用至少一次真实物质试验；同一知识来源还包含 understood/verified 的主动核验。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-leonardo-61",
+              "e-1-action-leonardo-65"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:world:project-breakdown:collapse:project-breakdown:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "项目因有来源的供给失败而阻塞",
+            "summary": "项目曾有真实触发事实和行动历史；项目转为 blocked 或物流事件 exhausted/invalidated 并保存失败来源。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-leonardo-11",
+              "e-1-action-leonardo-39",
+              "e-1-action-leonardo-45",
+              "e-1-action-leonardo-47",
+              "e-1-action-leonardo-52"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:world:project-recovery:recovery:project-recovery:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "项目在有来源失败后恢复并完成",
+            "summary": "同一项目先出现阻塞或物流失败事实；后续真实行动使项目完成或恢复推进。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-leonardo-11",
+              "e-1-action-leonardo-39",
+              "e-1-action-leonardo-45",
+              "e-1-action-leonardo-47",
+              "e-1-action-leonardo-52",
+              "e-1-action-leonardo-69",
+              "e-1-action-leonardo-71"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:world:weather-change:emergence:weather:v2",
+            "month": 1,
+            "kind": "milestone",
+            "title": "天气或气候变化发生",
+            "summary": "环境结算生成结构化 weather/climate 事实；事实保存种类、强度或纪元序号。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-environment-climate-0"
+            ],
+            "personIds": []
+          },
+          {
+            "id": "milestone:capability:11:practice:gather-food:v2",
+            "month": 2,
+            "kind": "milestone",
+            "title": "采集食物",
+            "summary": "可食物资来自地面掉落物；completed transfer 把同一物资交给具体人物。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-2-action-socrates-34"
+            ],
+            "personIds": [
+              "socrates"
+            ]
+          },
+          {
+            "id": "milestone:capability:22:stable:joint-project:v2",
+            "month": 3,
+            "kind": "milestone",
+            "title": "协同行动",
+            "summary": "项目行动由至少两名 contributor 完成；项目 completionEventIds 闭合目标功能。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-sima-qian-25",
+              "e-1-action-sima-qian-29",
+              "e-1-action-sima-qian-50",
+              "e-1-action-sima-qian-56",
+              "e-1-action-sima-qian-76",
+              "e-2-action-sima-qian-45",
+              "e-2-action-sima-qian-47",
+              "e-2-action-sima-qian-49",
+              "e-2-action-sima-qian-52",
+              "e-3-action-leonardo-6",
+              "e-3-action-sima-qian-7",
+              "e-3-action-marie-curie-9",
+              "e-3-action-sima-qian-10",
+              "e-3-action-marie-curie-12",
+              "e-3-action-leonardo-13",
+              "e-3-action-leonardo-14",
+              "e-3-action-sima-qian-15",
+              "e-3-action-marie-curie-16",
+              "e-3-action-leonardo-18",
+              "e-3-action-marie-curie-19",
+              "e-3-action-sima-qian-21",
+              "e-3-action-sima-qian-22",
+              "e-3-action-marie-curie-23",
+              "e-3-action-leonardo-24",
+              "e-3-action-marie-curie-25",
+              "e-3-action-sima-qian-26",
+              "e-3-action-marie-curie-31",
+              "e-3-action-sima-qian-32",
+              "e-3-action-marie-curie-33",
+              "e-3-action-sima-qian-34",
+              "e-3-action-marie-curie-35",
+              "e-3-action-leonardo-36",
+              "e-3-action-marie-curie-37",
+              "e-3-action-leonardo-38",
+              "e-3-action-sima-qian-39",
+              "e-3-action-leonardo-40",
+              "e-3-action-sima-qian-41",
+              "e-3-action-marie-curie-42",
+              "e-3-action-leonardo-43",
+              "e-3-action-sima-qian-44",
+              "e-3-action-marie-curie-45",
+              "e-3-action-leonardo-46",
+              "e-3-action-sima-qian-47",
+              "e-3-action-marie-curie-48"
+            ],
+            "personIds": [
+              "sima-qian",
+              "leonardo",
+              "marie-curie",
+              "socrates",
+              "persephone"
+            ]
+          },
+          {
+            "id": "milestone:capability:390:practice:storage:v2",
+            "month": 3,
+            "kind": "milestone",
+            "title": "装卸、仓储与分拣货物",
+            "summary": "实体容器有体素位置与来源；completed transfer 把物资放入或取出同一容器。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-3-action-marie-curie-45"
+            ],
+            "personIds": [
+              "marie-curie"
+            ]
+          },
+          {
+            "id": "milestone:capability:58:practice:natural-observation:v2",
+            "month": 3,
+            "kind": "milestone",
+            "title": "观察自然现象",
+            "summary": "人物完成 attend 并指向动物、体素或自然掉落物；观察事实保存人物和真实世界对象。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-3-action-marie-curie-42"
+            ],
+            "personIds": [
+              "marie-curie"
+            ]
+          },
+          {
+            "id": "milestone:capability:48:emergence:agreement:v2",
+            "month": 5,
+            "kind": "milestone",
+            "title": "订立契约",
+            "summary": "结构化 offer/request 指定双方与期限；所需回应者明确接受并建立 active/fulfilled 约定。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-3-action-marie-curie-37",
+              "e-3-action-marie-curie-45",
+              "e-3-action-marie-curie-48",
+              "e-5-action-sima-qian-14",
+              "e-5-action-leonardo-16"
+            ],
+            "personIds": [
+              "sima-qian",
+              "leonardo",
+              "marie-curie"
+            ]
+          },
+          {
+            "id": "milestone:capability:12:practice:hunt:v2",
+            "month": 13,
+            "kind": "milestone",
+            "title": "捕猎动物",
+            "summary": "hunt 原语指向真实动物 ID；动作完成并记录 killed=true 与动物产物。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-13-action-usagi-tsukino-18"
+            ],
+            "personIds": [
+              "usagi-tsukino"
+            ]
+          },
+          {
+            "id": "milestone:world:agreement-breach:harm:breach:v2",
+            "month": 26,
+            "kind": "milestone",
+            "title": "已接受的约定逾期未履行",
+            "summary": "约定已被所需回应者接受并进入 active；超期未履行后显式产生 agreement:breached；只保留提议、接受和违约结果证据。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-1-action-marie-curie-17",
+              "e-1-action-socrates-22",
+              "e-26-agreement-breached-offer-companion:1:marie-curie:socrates"
+            ],
+            "personIds": [
+              "marie-curie",
+              "socrates"
+            ]
+          },
+          {
+            "id": "death:e-27-environment-death-4",
+            "month": 27,
+            "kind": "death",
+            "title": "生命终止",
+            "summary": "司马迁在第 27 月死亡，遗体和私有背包留在原地",
+            "evidenceEventIds": [
+              "e-27-environment-death-4"
+            ],
+            "personIds": [
+              "sima-qian"
+            ]
+          },
+          {
+            "id": "milestone:capability:9:collapse:death:v2",
+            "month": 27,
+            "kind": "milestone",
+            "title": "死亡",
+            "summary": "人物身体或寿命结算达到死亡条件；死亡事实保存 personId、原因与来源。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-27-environment-death-4"
+            ],
+            "personIds": [
+              "sima-qian"
+            ]
+          },
+          {
+            "id": "milestone:capability:20:emergence:shelter:v2",
+            "month": 37,
+            "kind": "milestone",
+            "title": "建造住所",
+            "summary": "多次建造动作形成有来源体素结构；结构具有内部空间、容量和防护且标记 complete。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-37-action-leonardo-47"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:capability:32:practice:cultivation:v2",
+            "month": 44,
+            "kind": "milestone",
+            "title": "栽培作物",
+            "summary": "种子与肥沃地表结合生成作物；自然生长后由 separate 产生真实收获。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-2-action-persephone-43",
+              "e-44-action-persephone-27"
+            ],
+            "personIds": [
+              "persephone"
+            ]
+          },
+          {
+            "id": "milestone:capability:201:practice:gesture-communication:v2",
+            "month": 60,
+            "kind": "milestone",
+            "title": "用手势传达意图",
+            "summary": "communicate 明确使用 gesture 渠道；至少一名不同人物处于实际 audience。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-60-action-leonardo-6"
+            ],
+            "personIds": [
+              "leonardo",
+              "usagi-tsukino"
+            ]
+          },
+          {
+            "id": "milestone:capability:222:stable:trial-learning:v2",
+            "month": 60,
+            "kind": "milestone",
+            "title": "通过试错掌握技能",
+            "summary": "可靠技术知识引用至少两次真实物质试验；试验来源跨越阶段门槛要求的月份。阶段门槛已验证，保留 8 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-3-action-marie-curie-16",
+              "e-3-action-marie-curie-23",
+              "e-2-action-sima-qian-36",
+              "e-9-action-sima-qian-13",
+              "e-37-action-leonardo-24",
+              "e-37-action-leonardo-32",
+              "e-37-action-leonardo-47",
+              "e-38-action-usagi-tsukino-30",
+              "e-39-action-usagi-tsukino-12",
+              "e-4-action-marie-curie-45",
+              "e-43-action-marie-curie-29",
+              "e-44-action-persephone-53",
+              "e-45-action-persephone-12",
+              "e-46-action-persephone-33",
+              "e-46-action-persephone-36",
+              "e-2-action-persephone-43",
+              "e-40-action-persephone-9",
+              "e-45-action-persephone-28",
+              "e-46-action-persephone-17",
+              "e-47-action-persephone-2",
+              "e-1-action-leonardo-61",
+              "e-60-action-leonardo-21"
+            ],
+            "personIds": [
+              "marie-curie",
+              "sima-qian",
+              "leonardo",
+              "usagi-tsukino",
+              "persephone"
+            ]
+          },
+          {
+            "id": "milestone:world:era-cycle:stable:era-cycle:v2",
+            "month": 117,
+            "kind": "milestone",
+            "title": "恒纪元与乱纪元交替发生",
+            "summary": "至少两次 eraTransition 事实可解析；恒纪元与乱纪元均在历史中真实出现。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-17-environment-climate-0",
+              "e-29-environment-climate-0",
+              "e-70-environment-climate-0",
+              "e-78-environment-climate-0",
+              "e-106-environment-climate-0",
+              "e-117-environment-climate-0"
+            ],
+            "personIds": []
+          },
+          {
+            "id": "death:e-251-environment-death-5",
+            "month": 251,
+            "kind": "death",
+            "title": "生命终止",
+            "summary": "达·芬奇在第 251 月死亡，遗体和私有背包留在原地",
+            "evidenceEventIds": [
+              "e-251-environment-death-5"
+            ],
+            "personIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "id": "milestone:capability:161:stable:companion:v2",
+            "month": 348,
+            "kind": "milestone",
+            "title": "表达爱慕与建立伴侣关系",
+            "summary": "一方向具体人物提出带稳定生活地点的 companion 关系；对方接受且双方在约定期于同一生活区域累计生活，不要求坐标重合。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-0-environment-founding-0",
+              "e-123-action-persephone-19",
+              "e-123-action-usagi-tsukino-21",
+              "e-160-action-persephone-13",
+              "e-160-action-usagi-tsukino-19",
+              "e-173-action-usagi-tsukino-15",
+              "e-173-action-persephone-17",
+              "e-186-action-persephone-19",
+              "e-186-action-usagi-tsukino-21",
+              "e-223-action-usagi-tsukino-5",
+              "e-223-action-persephone-8",
+              "e-224-action-persephone-3",
+              "e-224-action-usagi-tsukino-5",
+              "e-247-agreement-fulfilled-offer-companion:224:persephone:usagi-tsukino",
+              "e-250-environment-relationship-0",
+              "e-253-environment-relationship-0",
+              "e-256-environment-relationship-0",
+              "e-266-environment-relationship-0",
+              "e-269-environment-relationship-0",
+              "e-272-environment-relationship-0",
+              "e-275-environment-relationship-0",
+              "e-278-environment-relationship-0",
+              "e-281-environment-relationship-0",
+              "e-296-environment-relationship-0",
+              "e-328-environment-relationship-0",
+              "e-335-environment-relationship-0",
+              "e-345-environment-relationship-0",
+              "e-348-environment-relationship-0"
+            ],
+            "personIds": [
+              "persephone",
+              "usagi-tsukino"
+            ]
+          },
+          {
+            "id": "milestone:capability:8:decline:aging:v2",
+            "month": 352,
+            "kind": "milestone",
+            "title": "衰老",
+            "summary": "人物年龄达到衰老压力区间；月度结算写入 aging 条件事实。阶段门槛已验证，保留 1 条完整可回放因果链。",
+            "evidenceEventIds": [
+              "e-352-environment-condition-0"
+            ],
+            "personIds": [
+              "socrates"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

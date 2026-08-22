@@ -1,0 +1,7 @@
+interface:
+  display_name: "Grill Me"
+  short_description: "逐项追问、核实事实并压力测试计划，最终收敛成清晰可执行的决策简报。"
+  default_prompt: "使用 $grill-me 压力测试我接下来描述的计划，并一次只问一个关键问题。"
+
+policy:
+  allow_implicit_invocation: false

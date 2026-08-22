@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ELAND KNOWLEDGE BASE · 世界、规则与素材</title>
-<link rel="stylesheet" href="./rules.css">
+<link rel="stylesheet" href="./rules.css?v=architecture-v4">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:100%; height:100%; overflow:hidden; background:#121519;
@@ -106,6 +106,7 @@
     <span class="rule-nav-kicker">RULE MAP</span>
     <a href="#ruleOverview" class="active">总览<small>AUTHORITY</small></a>
     <a href="#architectureAtlas">架构总图<small>ARCHITECTURE</small></a>
+    <a href="#personArchitecture">人物 Agent<small>BDI AGENT</small></a>
     <a href="#ruleTree">游戏规则树<small>RULE TREE</small></a>
     <a href="#decisionTree">人物决策树<small>DECISION TREE</small></a>
     <a href="#authorityBoundary">权威边界<small>BOUNDARY</small></a>
@@ -142,7 +143,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { mountRulesPage } from './rules-page.js';
+import { mountRulesPage } from './rules-page.js?v=architecture-v4';
 
 /* ================= 确定性随机 ================= */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;

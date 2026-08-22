@@ -1,0 +1,214 @@
+{
+  "runId": "candidate-gen3-social-v4-20260821-s20260815-y100-r1",
+  "checkpoint": {
+    "month": 360,
+    "revision": 31
+  },
+  "adults": 7,
+  "adultsMoreThanOneCompatibleReturnSite": 0,
+  "adultsMoreThanOneCompatibleReturnSiteShare": 0,
+  "maximumMinimumCompatibleReturnSites": 1,
+  "adultRows": [
+    {
+      "personId": "zhugeliang",
+      "name": "诸葛亮",
+      "generation": 0,
+      "activeEstablishedAgreements": 1,
+      "distinctAnchorKeys": [
+        "2956:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:334:zhugeliang:tesla",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 2956,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "zhaotianli",
+      "name": "照天离",
+      "generation": 0,
+      "activeEstablishedAgreements": 2,
+      "distinctAnchorKeys": [
+        "1359:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:234:zhaotianli:bai-suzhen",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:237:zhaotianli:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "bai-suzhen",
+      "name": "白素贞",
+      "generation": 0,
+      "activeEstablishedAgreements": 3,
+      "distinctAnchorKeys": [
+        "1444:5:2",
+        "1359:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:62:bai-suzhen:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1444,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:234:zhaotianli:bai-suzhen",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:236:armstrong:bai-suzhen",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "cangtianying",
+      "name": "苍天影",
+      "generation": 0,
+      "activeEstablishedAgreements": 3,
+      "distinctAnchorKeys": [
+        "1444:5:2",
+        "1359:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:62:bai-suzhen:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1444,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:237:zhaotianli:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:238:armstrong:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "tesla",
+      "name": "尼古拉·特斯拉",
+      "generation": 0,
+      "activeEstablishedAgreements": 1,
+      "distinctAnchorKeys": [
+        "2956:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:334:zhugeliang:tesla",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 2956,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "armstrong",
+      "name": "尼尔·阿姆斯特朗",
+      "generation": 0,
+      "activeEstablishedAgreements": 2,
+      "distinctAnchorKeys": [
+        "1359:5:2"
+      ],
+      "minimumCompatibleReturnSites": 1,
+      "agreements": [
+        {
+          "agreementId": "offer-companion:236:armstrong:bai-suzhen",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        },
+        {
+          "agreementId": "offer-companion:238:armstrong:cangtianying",
+          "anchor": {
+            "version": "shared-living-anchor-v1",
+            "cellId": 1359,
+            "z": 5,
+            "radius": 2
+          }
+        }
+      ]
+    },
+    {
+      "personId": "born-144-zhaotianli-7",
+      "name": "艾琳·特斯拉",
+      "generation": 1,
+      "activeEstablishedAgreements": 0,
+      "distinctAnchorKeys": [],
+      "minimumCompatibleReturnSites": 0,
+      "agreements": []
+    }
+  ],
+  "last12Months": {
+    "fromExclusive": 348,
+    "returnSelections": 12,
+    "incompatibleIneffectiveSwitches": 0,
+    "ineffectiveAba": 0,
+    "ineffectiveAbab": 0,
+    "ineffectiveSwitchEvidence": [],
+    "ineffectiveAbaEvidence": [],
+    "ineffectiveAbabEvidence": []
+  }
+}

@@ -3,6 +3,7 @@ import { agreementById, reproductionAttemptedBetweenInMonth } from '../domain/ag
 import { materialHas } from '../domain/material';
 import type { SimulationState } from '../domain/model';
 import { sameLocation, type PersonId, type PersonState } from '../domain/person';
+import { personById } from '../domain/state-index';
 import { findReachableWater } from '../domain/water-access';
 import { cellsInRadius, findStandingPath } from '../world/grid';
 
@@ -41,9 +42,21 @@ export function compileAgreementContinuations(
   const sourceFactIds = [...agreement.sourceEventIds];
   if (agreement.proposal.kind === 'assist') {
     const proposal = agreement.proposal;
-    const helper = state.people.find((person) => person.id === proposal.helperId);
-    const requester = state.people.find((person) => person.id === proposal.requesterId);
+    const helper = personById(state, proposal.helperId);
+    const requester = personById(state, proposal.requesterId);
     if (!helper || !requester) return [];
+    if (proposal.need === 'company') {
+      if (!sameLocation(helper, requester)) return [];
+      return [{
+        agreementId: agreement.id,
+        personId: helper.id,
+        summary: `履行承诺，留在这里陪伴${requester.name}`,
+        goal: { kind: 'agreement-fulfilled', agreementId: agreement.id },
+        nextAction: { kind: 'attend', target: { kind: 'person', personId: requester.id } },
+        target: { kind: 'person', personId: requester.id },
+        sourceFactIds,
+      }];
+    }
     if (proposal.need === 'food') {
       const stack = helper.inventory.find((item) => item.quantity > 0 && materialHas(item.materialId, 'edible'));
       if (!stack) return [];
@@ -97,9 +110,9 @@ export function compileAgreementContinuations(
     const proposal = agreement.proposal;
     return agreement.partyIds.flatMap((personId) => {
       if (agreement.fulfilledByPersonIds.includes(personId)) return [];
-      const person = state.people.find((candidate) => candidate.id === personId);
+      const person = personById(state, personId);
       const receiverId = personId === proposal.offererId ? proposal.partnerId : proposal.offererId;
-      const receiver = state.people.find((candidate) => candidate.id === receiverId);
+      const receiver = personById(state, receiverId);
       const materialId = personId === proposal.offererId ? proposal.offererMaterialId : proposal.partnerMaterialId;
       const quantity = personId === proposal.offererId ? proposal.offererQuantity : proposal.partnerQuantity;
       const stack = person?.inventory.find((item) => item.materialId === materialId && item.quantity >= quantity);
@@ -119,8 +132,8 @@ export function compileAgreementContinuations(
     });
   }
   if (agreement.proposal.kind === 'reproduce') {
-    const responder = state.people.find((person) => person.id === agreement.responderId);
-    const proposer = state.people.find((person) => person.id === agreement.proposerId);
+    const responder = personById(state, agreement.responderId);
+    const proposer = personById(state, agreement.proposerId);
     if (!responder || !proposer) return [];
     if (reproductionAttemptedBetweenInMonth(state, responder.id, proposer.id, atMonth)) return [];
     const female = responder.sex === 'female' ? responder : proposer.sex === 'female' ? proposer : undefined;

@@ -1,8 +1,9 @@
 import type { ActionOption, PrimitiveAction } from '../domain/action';
 import { inventoryCombinationRules, inventoryCombinationTechniqueId } from '../domain/interaction-rules';
-import type { MaterialId } from '../domain/material';
+import { Material, type MaterialId } from '../domain/material';
 import type { ActionFact, DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
+import { intentsOwnedBy, personById, projectById, projectsOwnedBy } from '../domain/state-index';
 import {
   cloneProjectForPlanning,
   instantiateProject,
@@ -14,12 +15,19 @@ import {
   transferMatchesProjectMaterialRequest,
 } from '../domain/project-material-request';
 import type { ProjectPressureView } from './project-pressure';
+import { surfaceMaterial } from '../world/grid';
 import {
   closeProjectHypothesisCampaign,
   recordProjectHypothesisAttempt,
   recordProjectHypothesisVerification,
 } from './project-hypotheses';
-import { projectCompletionEvidence, projectFunctionSatisfied } from './projects/project-completion';
+import {
+  completedFunctionMaterialIds,
+  projectCultivationCells,
+  projectActionFacts,
+  projectCompletionEvidence,
+  projectFunctionSatisfied,
+} from './projects/project-completion';
 import {
   activeLogisticsEpisode,
   closeProjectSearchCampaigns,
@@ -52,6 +60,7 @@ import {
   compileProjectStep,
   projectContributionStep,
   projectOption,
+  projectSupportsMaterialContribution,
 } from './projects/project-step-compiler';
 export {
   buildProjectInquiryOpportunityBasis,
@@ -61,9 +70,106 @@ export {
   visibleReachableSearchDestination,
 };
 
+function sameMaterialBasis(left: readonly MaterialId[], right: readonly MaterialId[]): boolean {
+  const normalizedLeft = [...new Set(left)].sort((a, b) => a - b);
+  const normalizedRight = [...new Set(right)].sort((a, b) => a - b);
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((materialId, index) => materialId === normalizedRight[index]);
+}
+
+function currentOutstandingMaterialIds(project: ProjectState): MaterialId[] {
+  const demands = (project.materialDemands ?? [])
+    .filter((demand) => demand.outstandingQuantity > 0)
+    .map((demand) => demand.materialId);
+  return [...new Set(demands.length ? demands : project.missingMaterialIds)].sort((a, b) => a - b);
+}
+
+function projectInquiryExplicitlyExhausted(project: ProjectState): boolean {
+  const currentMaterials = currentOutstandingMaterialIds(project);
+  if (currentMaterials.length) {
+    const relevantSearches = (project.searchCampaigns ?? []).filter((campaign) => (
+      campaign.planKnowledgeId === project.planKnowledgeId
+      && sameMaterialBasis(campaign.materialIds, currentMaterials)
+    ));
+    if (relevantSearches.some((campaign) => campaign.status === 'active')) return false;
+    const latestRelevantSearch = relevantSearches
+      .filter((campaign) => campaign.status === 'exhausted')
+      .sort((left, right) => (right.closedAt ?? right.openedAt) - (left.closedAt ?? left.openedAt))[0];
+    return Boolean(latestRelevantSearch
+      && (latestRelevantSearch.closedAt ?? latestRelevantSearch.openedAt) >= project.lastProgressAtMonth);
+  }
+  // Search and entity hypotheses are consecutive branches. Once there is no
+  // current material deficit, an old still-active search cannot keep a later
+  // exhausted hypothesis alive; while a material deficit exists, the inverse
+  // is also true and only its exact search basis is relevant.
+  if (project.hypothesisCampaign?.status === 'active') return false;
+  return Boolean(project.hypothesisCampaign?.status === 'exhausted'
+    && (project.hypothesisCampaign.endedAt ?? project.hypothesisCampaign.openedAt) >= project.lastProgressAtMonth);
+}
+
+function projectHasLegitimateWait(
+  state: SimulationState,
+  owner: PersonState,
+  project: ProjectState,
+  atMonth: number,
+): boolean {
+  if (project.desiredFunction === 'settled-cultivation') {
+    // Old seed searches describe an older material branch. The compiler keeps
+    // Seed outstanding only while the anchored plot still has fewer than six
+    // planted cells; once that physical threshold is met, sprouts are a real
+    // growth wait even when the last carried seed was just planted.
+    const seedOutstanding = currentOutstandingMaterialIds(project).includes(Material.Seed);
+    if (seedOutstanding) return false;
+    return projectCultivationCells(project).some((cellId) => {
+      const materialId = surfaceMaterial(state.world.grid, cellId);
+      return materialId === Material.CropSprout || materialId === Material.CropMature;
+    });
+  }
+  if (owner.conditions.some((condition) => condition.kind === 'dehydrated-hibernation')) return true;
+  const episode = activeLogisticsEpisode(project);
+  if (episode?.status === 'active' && episode.actorId !== owner.id) return true;
+  const openContribution = project.materialContributionRequests?.some((request) => {
+    const demand = project.materialDemands?.find((candidate) => candidate.materialId === request.materialId);
+    return Boolean(demand && inspectProjectMaterialContributionRequest(
+      state,
+      project,
+      request,
+      atMonth,
+      demand,
+    ).status === 'open');
+  });
+  if (openContribution) return true;
+  const pendingOutputs = new Set(completedFunctionMaterialIds(project));
+  return projectActionFacts(state, project).some((event) => event.status === 'completed'
+    && event.atMonth === atMonth
+    && pendingOutputs.has(Number(event.diff.outputMaterialId))
+    && !event.diff.position);
+}
+
+function blockExplicitlyExhaustedProject(
+  state: SimulationState,
+  owner: PersonState,
+  project: ProjectState,
+  atMonth: number,
+): boolean {
+  if (project.status !== 'active'
+    || !projectInquiryExplicitlyExhausted(project)
+    || projectHasLegitimateWait(state, owner, project, atMonth)) return false;
+  freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
+  project.status = 'blocked';
+  project.blockedAtMonth = atMonth;
+  project.blockedReason = '有限材料搜索或实体假说已经穷尽，且当前没有协作者、休眠或自然生长等待依据';
+  project.reservations = [];
+  project.materialDemands = [];
+  endActiveLogisticsEpisode(project, atMonth, 'exhausted', 'project-blocked');
+  closeProjectSearchCampaigns(project, atMonth);
+  closeProjectHypothesisCampaign(project, atMonth, 'project-blocked');
+  return true;
+}
+
 export function synchronizeProject(state: SimulationState, project: ProjectState, atMonth = state.clock.elapsedMonths): void {
   if (project.status !== 'active') {
-    const terminalOwner = state.people.find((person) => person.id === project.ownerId);
+    const terminalOwner = personById(state, project.ownerId);
     if (project.status === 'blocked' && terminalOwner) {
       freezeTerminalInquiryOpportunityBasis(state, terminalOwner, project, atMonth);
     }
@@ -78,7 +184,7 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     completeProject(state, project, atMonth, evidenceEventIds);
     return;
   }
-  const owner = state.people.find((person) => person.id === project.ownerId);
+  const owner = personById(state, project.ownerId);
   if (!owner || !isAlive(owner)) {
     if (owner) freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
     project.status = 'blocked';
@@ -92,8 +198,11 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
   }
   refreshProjectPressure(state, project, atMonth);
   if (project.desiredFunction === 'healing') {
-    const unresolved = project.beneficiaryIds.some((personId) => state.people.find((person) => person.id === personId && isAlive(person))
-      ?.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'));
+    const unresolved = project.beneficiaryIds.some((personId) => {
+      const beneficiary = personById(state, personId);
+      return Boolean(beneficiary && isAlive(beneficiary)
+        && beneficiary.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'));
+    });
     if (!unresolved) {
       project.status = 'abandoned';
       project.abandonedAtMonth = atMonth;
@@ -106,8 +215,7 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
       return;
     }
   }
-  const ownerProjectIntent = [...state.intents].reverse().find((intent) => intent.ownerId === project.ownerId
-    && intent.projectId === project.id
+  const ownerProjectIntent = [...intentsOwnedBy(state, project.ownerId)].reverse().find((intent) => intent.projectId === project.id
     && (intent.status === 'active' || intent.status === 'suspended'));
   const hibernationSuspensionActive = Boolean(ownerProjectIntent?.suspendedForHibernationConditionId
     && owner.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
@@ -136,9 +244,9 @@ export function advanceProjects(state: SimulationState, atMonth = state.clock.el
 }
 
 export function recordProjectAction(state: SimulationState, projectId: string, fact: ActionFact): void {
-  const project = state.projects.find((candidate) => candidate.id === projectId);
+  const project = projectById(state, projectId);
   if (!project || project.status !== 'active') return;
-  const actor = state.people.find((candidate) => candidate.id === fact.who);
+  const actor = personById(state, fact.who);
   recordProjectHypothesisAttempt(project, fact, actor);
   recordProjectHypothesisVerification(
     project,
@@ -262,7 +370,7 @@ function adoptableConstructionProjects(state: SimulationState, person: PersonSta
 function requestedMaterialProjects(state: SimulationState, person: PersonState): ProjectState[] {
   return state.projects.filter((project) => project.status === 'active'
     && project.ownerId !== person.id
-    && project.need === 'alloy-capability'
+    && projectSupportsMaterialContribution(project)
     && project.materialContributionRequests?.some((request) => {
       if (!request.contributorIds.includes(person.id)) return false;
       const demand = project.materialDemands?.find((candidate) => candidate.materialId === request.materialId);
@@ -290,6 +398,39 @@ function previewProjectState(
   };
 }
 
+/**
+ * Planning previews may prove an already-authoritative finite campaign has no
+ * remaining candidate. Commit only that terminal fact; routes, demands and
+ * newly generated preview state remain non-authoritative until an action is
+ * actually selected.
+ */
+function commitPreviewTerminalInquiryCampaign(
+  project: ProjectState,
+  preview: ProjectState,
+): void {
+  const previewHypothesis = preview.hypothesisCampaign;
+  const hypothesis = project.hypothesisCampaign;
+  if (previewHypothesis?.status === 'exhausted'
+    && hypothesis?.status === 'active'
+    && hypothesis.id === previewHypothesis.id) {
+    hypothesis.status = 'exhausted';
+    hypothesis.endedAt = previewHypothesis.endedAt;
+    hypothesis.endingReason = previewHypothesis.endingReason;
+    delete hypothesis.activeCandidateKey;
+  }
+  for (const previewSearch of preview.searchCampaigns ?? []) {
+    if (previewSearch.status !== 'exhausted') continue;
+    const search = project.searchCampaigns?.find((candidate) => (
+      candidate.id === previewSearch.id
+      && candidate.basisKey === previewSearch.basisKey
+      && candidate.status === 'active'
+    ));
+    if (!search) continue;
+    search.status = 'exhausted';
+    search.closedAt = previewSearch.closedAt;
+  }
+}
+
 export function buildProjectOptions(
   state: SimulationState,
   person: PersonState,
@@ -307,14 +448,18 @@ export function buildProjectOptions(
       projectPressure: Math.max(64, project.pressure),
     });
   }
-  const own = state.projects.filter((project) => project.ownerId === person.id && project.status === 'active');
+  const own = projectsOwnedBy(state, person.id).filter((project) => project.status === 'active');
   for (const project of own) {
     if (projectFunctionSatisfied(state, project)) continue;
     const preview = previewProjectState(state, project);
     const step = compileProjectStep(preview.state, person, visibleDrops, preview.project);
     if (step) options.push(projectOption(preview.project, step));
+    else if (projectInquiryExplicitlyExhausted(preview.project)) {
+      commitPreviewTerminalInquiryCampaign(project, preview.project);
+      blockExplicitlyExhaustedProject(state, person, project, state.clock.elapsedMonths + 1);
+    }
   }
-  if (options.length || own.length) return options;
+  if (options.length || own.some((project) => project.status === 'active')) return options;
 
   // A witnessed failure of the shelter currently being used belongs ahead of
   // optional work on somebody else's structure. The proposal still has to
@@ -368,7 +513,7 @@ export function buildProjectOptions(
         ...projectOption(preview.project, step),
         reason: linked
           ? `${step.reason}；本人是该项目的受益者、既有贡献者，或收到过仍有效的项目请求`
-          : `看见${state.people.find((candidate) => candidate.id === project.ownerId)?.name ?? '他人'}在可见工地留下真实施工进展；继续同一结构比另开重复项目更有用`,
+          : `看见${personById(state, project.ownerId)?.name ?? '他人'}在可见工地留下真实施工进展；继续同一结构比另开重复项目更有用`,
         projectPressure: Math.max(35, project.pressure - 8),
       });
       break;
@@ -397,7 +542,7 @@ export function ensureProject(
   proposal: ProjectProposal,
   decisionContext?: ProjectDecisionContext,
 ): ProjectState {
-  const existing = state.projects.find((project) => project.id === proposal.id);
+  const existing = projectById(state, proposal.id);
   if (existing) return existing;
   if (decisionContext) {
     const overlapping = state.projects.find((project) => activeProjectOverlapsLocalProposal(
@@ -429,16 +574,31 @@ export function ensureProject(
 }
 
 export function recompileProjectNextAction(state: SimulationState, person: PersonState, projectId: string): PrimitiveAction | null {
-  const project = state.projects.find((candidate) => candidate.id === projectId);
+  const project = projectById(state, projectId);
   if (!project || project.status !== 'active') return null;
   synchronizeProject(state, project, state.clock.elapsedMonths + 1);
   if (project.status !== 'active') return null;
   const step = compileProjectStep(state, person, visibleDropsFor(state, person), project);
   if (!step) {
     if (project.ownerId === person.id) {
-      project.missingMaterialIds = [];
-      project.materialDemands = [];
-      project.reservations = [];
+      const legitimateWait = projectHasLegitimateWait(
+        state,
+        person,
+        project,
+        state.clock.elapsedMonths + 1,
+      );
+      const blockedForExhaustion = blockExplicitlyExhaustedProject(
+        state,
+        person,
+        project,
+        state.clock.elapsedMonths + 1,
+      );
+      if (!legitimateWait) {
+        project.missingMaterialIds = [];
+        project.materialDemands = [];
+        project.reservations = [];
+      }
+      if (blockedForExhaustion) return null;
     } else {
       project.reservations = project.reservations.filter((reservation) => reservation.personId !== person.id);
     }
@@ -460,7 +620,7 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
 
 export function hasViableConstructionProjectOption(state: SimulationState, options: ActionOption[]): boolean {
   return options.some((option) => option.projectProposal?.kind === 'construction'
-    || Boolean(option.projectId && state.projects.some((project) => project.id === option.projectId && project.kind === 'construction')));
+    || Boolean(option.projectId && projectById(state, option.projectId)?.kind === 'construction'));
 }
 
 export function knownProductionOutputs(person: PersonState): MaterialId[] {

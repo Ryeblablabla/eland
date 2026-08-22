@@ -20,7 +20,7 @@ export const RUN_STATE_CODECS = [
   RUN_STATE_EVENT_SEGMENT_CODEC,
 ] as const;
 
-const EVENT_CONTENT_DOMAIN = 'eland-run-event-content-v1';
+const EVENT_CONTENT_DOMAIN = 'eland-run-event-content-v2';
 const MAX_EVENTS_PER_SEGMENT = 2_048;
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const LINEAGE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -45,7 +45,7 @@ export interface RunStateSegmentReference {
  * Chunk hashes are the codec-scoped content/integrity hashes.
  */
 export interface RunStateRootMetadata {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   shellHash: string;
   historyHeadHash: string | null;
   lineageId: string;
@@ -106,11 +106,26 @@ function storedChunk(codec: string, data: Buffer): RunStateChunk {
   };
 }
 
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => canonicalJsonValue(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value as Record<string, unknown>)
+    .sort()
+    .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+    .map((key) => [key, canonicalJsonValue((value as Record<string, unknown>)[key])]));
+}
+
 function eventContentHash(event: WorldEvent): string {
+  // V8 serialization is a storage codec, not a process-stable canonical form:
+  // internalized and freshly allocated strings can produce different bytes in
+  // the evolution worker and the long-lived API process. World events are
+  // JSON-shaped facts, so sorted-key JSON gives the append boundary a stable
+  // semantic hash without depending on one Node process's string internals.
+  const canonical = JSON.stringify(canonicalJsonValue(event));
   return createHash('sha256')
     .update(EVENT_CONTENT_DOMAIN)
     .update('\0')
-    .update(serialize(event))
+    .update(canonical)
     .digest('hex');
 }
 
@@ -200,7 +215,7 @@ export function verifiedRunStateChunkData(
 export function parseRunStateRoot(chunk: RunStateChunk): RunStateRootMetadata {
   const data = verifiedRunStateChunkData(chunk, RUN_STATE_ROOT_CODEC, '运行状态根');
   const root = parsedV8Object(data, '运行状态根');
-  if (root.schemaVersion !== 1
+  if ((root.schemaVersion !== 1 && root.schemaVersion !== 2)
     || !validHash(root.shellHash)
     || !validOptionalHash(root.historyHeadHash)
     || !validLineage(root.lineageId)
@@ -249,6 +264,9 @@ async function decodeCompressedV8<T>(chunk: RunStateChunk, codec: string, label:
 }
 
 function assertAppendBoundary(state: SimulationState, previous: RunStateRootMetadata): void {
+  if (previous.schemaVersion !== 2) {
+    throw new Error('旧版运行状态根必须先通过 replace 模式升级，不能直接追加');
+  }
   const events = state.world.past;
   if (events.length < previous.eventCount) {
     throw new Error(
@@ -308,7 +326,7 @@ export async function encodeSegmentedRunState(
   const shell = await compressedV8Chunk(RUN_STATE_SHELL_CODEC, stateShell(state));
   parts.unshift(shell);
   const metadata: RunStateRootMetadata = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     shellHash: shell.hash,
     historyHeadHash,
     lineageId,
@@ -406,7 +424,8 @@ export async function decodeSegmentedRunState(
       events.push(...segment as WorldEvent[]);
     }
   }
-  if (events.length !== root.eventCount || tailEventContentHash(events) !== root.tailEventContentHash) {
+  if (events.length !== root.eventCount
+    || (root.schemaVersion === 2 && tailEventContentHash(events) !== root.tailEventContentHash)) {
     throw new Error('运行状态事件历史与状态根不一致');
   }
 

@@ -7,6 +7,7 @@ import {
 import type { DecisionContext } from '../../domain/model';
 import { personalityScore } from '../../domain/personality';
 import { seededFraction } from '../../world/generator';
+import { projectById } from '../../domain/state-index';
 import {
   buildCognitiveFrame,
   type CognitiveFrame,
@@ -121,7 +122,7 @@ export function assessIntentionPersistence(
     reason: '当前最佳步骤仍属于同一长期意图，继续执行而不重建意图',
   };
   const project = active.projectId
-    ? context.state.projects.find((candidate) => candidate.id === active.projectId)
+    ? projectById(context.state, active.projectId)
     : undefined;
   const belief = outcomeBeliefFor(context.person, cognitiveOutcomeBasisKey(active.nextAction, active.goal));
   const successExpectation = outcomeBeliefSuccess(belief);

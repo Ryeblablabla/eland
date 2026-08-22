@@ -1,4 +1,5 @@
 import { Material, type MaterialId } from './material';
+import { completedActionFactsForPerson } from './event-index';
 import type { ActionFact, SimulationState } from './model';
 import type { ItemStack, PersonId, PersonState } from './person';
 
@@ -76,7 +77,7 @@ export function recentPersonalProductionLaborEvents(
   atMonth = state.clock.elapsedMonths,
   maxAgeMonths = RECENT_PERSONAL_PRODUCTION_MONTHS,
 ): ActionFact[] {
-  return state.world.past
+  return completedActionFactsForPerson(state, personId)
     .filter((event): event is ActionFact => isCompletedPersonalProduction(event, personId)
       && event.atMonth <= atMonth
       && atMonth - event.atMonth <= maxAgeMonths)

@@ -1,0 +1,628 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "generational-social-chain-audit-v2",
+  "generatedAt": "2026-08-20T18:34:53.677Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-gen3-social-v2-20260821-s20260821-y100-r1"
+      ]
+    }
+  },
+  "method": {
+    "target": "Every person with generation >= 2.",
+    "coreChain": "person state parents -> exact birth fact -> conceived reproduce ActionFact -> authorized reproduce agreement -> proposal/acceptance/fulfillment source integrity",
+    "socialChain": "company assist fulfillment -> companion establishment -> persistent shared-living fact -> reproduction relationship basis",
+    "missingEvidencePolicy": "Missing or unresolved source facts are reported explicitly and never inferred from generation or observer milestones."
+  },
+  "aggregate": {
+    "runs": 1,
+    "runsWithGeneration2": 0,
+    "runsWithGeneration3": 0,
+    "maxGeneration": 1,
+    "targetPeople": 0,
+    "coreCompleteChains": 0,
+    "hypothesisCompleteChains": 0,
+    "missingLinkCounts": {}
+  },
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v2-20260821-s20260821-y100-r1",
+      "seed": 20260821,
+      "status": "running",
+      "elapsedMonths": 456,
+      "people": 16,
+      "peopleByGeneration": {
+        "0": 6,
+        "1": 10
+      },
+      "maxGeneration": 1,
+      "targetPeople": 0,
+      "coreCompleteChains": 0,
+      "hypothesisCompleteChains": 0,
+      "support": "no-generation-2",
+      "socialFunnel": {
+        "company": {
+          "totals": {
+            "proposed": 46,
+            "accepted": 36,
+            "fulfilled": 36,
+            "rejected": 0,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "byGenerationPair": {
+            "g0|g1": {
+              "proposed": 44,
+              "accepted": 36,
+              "fulfilled": 36,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            },
+            "g1|g1": {
+              "proposed": 2,
+              "accepted": 0,
+              "fulfilled": 0,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            }
+          }
+        },
+        "companion": {
+          "totals": {
+            "proposed": 106,
+            "accepted": 103,
+            "established": 20,
+            "active": 20,
+            "cancelled": 0,
+            "breached": 83
+          },
+          "byGenerationPair": {
+            "g0|g0": {
+              "proposed": 91,
+              "accepted": 90,
+              "established": 14,
+              "active": 14,
+              "cancelled": 0,
+              "breached": 76
+            },
+            "g0|g1": {
+              "proposed": 15,
+              "accepted": 13,
+              "established": 6,
+              "active": 6,
+              "cancelled": 0,
+              "breached": 7
+            }
+          }
+        },
+        "persistentSharedLiving": {
+          "events": 345,
+          "byGenerationPair": {
+            "g0|g0": 306,
+            "g0|g1": 39
+          },
+          "firstAtMonth": 105,
+          "lastAtMonth": 456
+        }
+      },
+      "relationshipFrontier": {
+        "atMonth": 456,
+        "livingGenerationOneAdults": 6,
+        "highestBilateralMinimum": 47,
+        "adultFrontier": [
+          {
+            "person": {
+              "personId": "born-103-joan-of-arc-6",
+              "name": "埃利奥特·凯撒",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 353,
+              "bodyMinimum": 79.40000000000018
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "darwin",
+                "name": "达尔文",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 588,
+                "bodyMinimum": 75.4500000000001
+              },
+              "minimumTrustBond": 39,
+              "firstToSecond": {
+                "trust": 42,
+                "bond": 39,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-253-action-born-103-joan-of-arc-6-16",
+                  "e-253-action-darwin-23",
+                  "e-253-action-darwin-25",
+                  "e-269-environment-relationship-0",
+                  "e-271-action-born-103-joan-of-arc-6-7",
+                  "e-271-action-darwin-24",
+                  "e-271-action-darwin-35",
+                  "e-364-action-born-103-joan-of-arc-6-14",
+                  "e-364-action-darwin-20",
+                  "e-364-action-darwin-24",
+                  "e-389-action-born-103-joan-of-arc-6-48",
+                  "e-389-action-darwin-44",
+                  "e-390-action-born-103-joan-of-arc-6-12",
+                  "e-390-action-darwin-10",
+                  "e-393-action-darwin-32",
+                  "e-397-action-darwin-36",
+                  "e-416-action-born-103-joan-of-arc-6-19",
+                  "e-416-action-darwin-12",
+                  "e-429-action-born-103-joan-of-arc-6-31",
+                  "e-429-action-darwin-27",
+                  "e-430-action-born-103-joan-of-arc-6-19",
+                  "e-430-action-darwin-17"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 42,
+                "bond": 39,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-253-action-born-103-joan-of-arc-6-16",
+                  "e-253-action-darwin-23",
+                  "e-253-action-darwin-25",
+                  "e-269-environment-relationship-0",
+                  "e-271-action-born-103-joan-of-arc-6-7",
+                  "e-271-action-darwin-24",
+                  "e-271-action-darwin-35",
+                  "e-364-action-born-103-joan-of-arc-6-14",
+                  "e-364-action-darwin-20",
+                  "e-364-action-darwin-24",
+                  "e-389-action-born-103-joan-of-arc-6-48",
+                  "e-389-action-darwin-44",
+                  "e-390-action-born-103-joan-of-arc-6-12",
+                  "e-390-action-darwin-10",
+                  "e-393-action-darwin-32",
+                  "e-397-action-darwin-36",
+                  "e-416-action-born-103-joan-of-arc-6-19",
+                  "e-416-action-darwin-12",
+                  "e-429-action-born-103-joan-of-arc-6-31",
+                  "e-429-action-darwin-27",
+                  "e-430-action-born-103-joan-of-arc-6-19",
+                  "e-430-action-darwin-17"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-121-dorothy-gale-7",
+              "name": "西尔维娅·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 335,
+              "bodyMinimum": 50.550000000000125
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "caesar",
+                "name": "凯撒",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 600,
+                "bodyMinimum": 59.947500000000076
+              },
+              "minimumTrustBond": 47,
+              "firstToSecond": {
+                "trust": 47,
+                "bond": 47,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-362-action-caesar-11",
+                  "e-362-action-caesar-6",
+                  "e-363-action-born-121-dorothy-gale-7-2",
+                  "e-363-action-caesar-4",
+                  "e-364-action-born-121-dorothy-gale-7-6",
+                  "e-364-action-caesar-2",
+                  "e-366-action-born-121-dorothy-gale-7-11",
+                  "e-366-action-caesar-9",
+                  "e-367-environment-relationship-0",
+                  "e-415-environment-relationship-0",
+                  "e-417-action-born-121-dorothy-gale-7-24",
+                  "e-417-action-caesar-35",
+                  "e-418-action-born-121-dorothy-gale-7-11",
+                  "e-418-action-caesar-5",
+                  "e-429-agreement-fulfilled-offer-companion:417:born-121-dorothy-gale-7:caesar",
+                  "e-432-environment-relationship-2",
+                  "e-435-environment-relationship-2",
+                  "e-438-environment-relationship-2",
+                  "e-441-environment-relationship-2",
+                  "e-444-environment-relationship-1",
+                  "e-447-environment-relationship-1",
+                  "e-450-environment-relationship-1",
+                  "e-453-environment-relationship-1",
+                  "e-456-environment-relationship-1"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 47,
+                "bond": 47,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-362-action-caesar-11",
+                  "e-362-action-caesar-6",
+                  "e-363-action-born-121-dorothy-gale-7-2",
+                  "e-363-action-caesar-4",
+                  "e-364-action-born-121-dorothy-gale-7-6",
+                  "e-364-action-caesar-2",
+                  "e-366-action-born-121-dorothy-gale-7-11",
+                  "e-366-action-caesar-9",
+                  "e-367-environment-relationship-0",
+                  "e-415-environment-relationship-0",
+                  "e-417-action-born-121-dorothy-gale-7-24",
+                  "e-417-action-caesar-35",
+                  "e-418-action-born-121-dorothy-gale-7-11",
+                  "e-418-action-caesar-5",
+                  "e-429-agreement-fulfilled-offer-companion:417:born-121-dorothy-gale-7:caesar",
+                  "e-432-environment-relationship-2",
+                  "e-435-environment-relationship-2",
+                  "e-438-environment-relationship-2",
+                  "e-441-environment-relationship-2",
+                  "e-444-environment-relationship-1",
+                  "e-447-environment-relationship-1",
+                  "e-450-environment-relationship-1",
+                  "e-453-environment-relationship-1",
+                  "e-456-environment-relationship-1"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-150-dorothy-gale-9",
+              "name": "乔治·达尔文",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 306,
+              "bodyMinimum": 61.600000000001586
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "dorothy-gale",
+                "name": "多萝西·盖尔",
+                "generation": 0,
+                "sex": "female",
+                "ageMonths": 804,
+                "bodyMinimum": 49.457500000001005
+              },
+              "minimumTrustBond": 20,
+              "firstToSecond": {
+                "trust": 20,
+                "bond": 30,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-150-environment-body-0",
+                  "e-151-action-dorothy-gale-2",
+                  "e-170-environment-relationship-0",
+                  "e-172-action-dorothy-gale-3",
+                  "e-432-action-born-150-dorothy-gale-9-43",
+                  "e-432-action-dorothy-gale-39",
+                  "e-437-action-born-150-dorothy-gale-9-18",
+                  "e-437-action-dorothy-gale-22",
+                  "e-437-action-dorothy-gale-23",
+                  "e-440-action-born-150-dorothy-gale-9-29",
+                  "e-440-action-born-150-dorothy-gale-9-30",
+                  "e-440-action-dorothy-gale-21"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 20,
+                "bond": 30,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-150-environment-body-0",
+                  "e-151-action-dorothy-gale-2",
+                  "e-170-environment-relationship-0",
+                  "e-172-action-dorothy-gale-3",
+                  "e-432-action-born-150-dorothy-gale-9-43",
+                  "e-432-action-dorothy-gale-39",
+                  "e-437-action-born-150-dorothy-gale-9-18",
+                  "e-437-action-dorothy-gale-22",
+                  "e-437-action-dorothy-gale-23",
+                  "e-440-action-born-150-dorothy-gale-9-29",
+                  "e-440-action-born-150-dorothy-gale-9-30",
+                  "e-440-action-dorothy-gale-21"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-186-dorothy-gale-11",
+              "name": "奥罗拉·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 270,
+              "bodyMinimum": 51.35000000000011
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-121-dorothy-gale-7",
+                "name": "西尔维娅·达尔文",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 335,
+                "bodyMinimum": 50.550000000000125
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-380-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-380-environment-relationship-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-240-joan-of-arc-12",
+              "name": "威廉·托尔",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 216,
+              "bodyMinimum": 68.45000000000016
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "thor",
+                "name": "托尔",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 708,
+                "bodyMinimum": 77.50000000000014
+              },
+              "minimumTrustBond": 31,
+              "firstToSecond": {
+                "trust": 31,
+                "bond": 43,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-240-environment-body-1",
+                  "e-422-action-born-240-joan-of-arc-12-11",
+                  "e-422-action-thor-18",
+                  "e-422-action-thor-29",
+                  "e-428-action-born-240-joan-of-arc-12-2",
+                  "e-428-action-thor-19",
+                  "e-428-action-thor-6",
+                  "e-435-action-born-240-joan-of-arc-12-38",
+                  "e-435-action-thor-40",
+                  "e-436-action-born-240-joan-of-arc-12-12",
+                  "e-436-action-thor-18",
+                  "e-436-action-thor-23",
+                  "e-437-action-born-240-joan-of-arc-12-6",
+                  "e-437-action-thor-10",
+                  "e-440-action-born-240-joan-of-arc-12-4",
+                  "e-440-action-thor-11",
+                  "e-449-agreement-fulfilled-offer-companion:437:born-240-joan-of-arc-12:thor",
+                  "e-452-environment-relationship-5",
+                  "e-455-environment-relationship-5"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 31,
+                "bond": 43,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-240-environment-body-1",
+                  "e-422-action-born-240-joan-of-arc-12-11",
+                  "e-422-action-thor-18",
+                  "e-422-action-thor-29",
+                  "e-428-action-born-240-joan-of-arc-12-2",
+                  "e-428-action-thor-19",
+                  "e-428-action-thor-6",
+                  "e-435-action-born-240-joan-of-arc-12-38",
+                  "e-435-action-thor-40",
+                  "e-436-action-born-240-joan-of-arc-12-12",
+                  "e-436-action-thor-18",
+                  "e-436-action-thor-23",
+                  "e-437-action-born-240-joan-of-arc-12-6",
+                  "e-437-action-thor-10",
+                  "e-440-action-born-240-joan-of-arc-12-4",
+                  "e-440-action-thor-11",
+                  "e-449-agreement-fulfilled-offer-companion:437:born-240-joan-of-arc-12:thor",
+                  "e-452-environment-relationship-5",
+                  "e-455-environment-relationship-5"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-259-joan-of-arc-13",
+              "name": "塞缪尔·托尔",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 197,
+              "bodyMinimum": 53.54000000000022
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-186-dorothy-gale-11",
+                "name": "奥罗拉·达尔文",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 270,
+                "bodyMinimum": 51.35000000000011
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-323-environment-relationship-3",
+                  "e-381-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-323-environment-relationship-3",
+                  "e-381-environment-relationship-0"
+                ]
+              }
+            }
+          }
+        ],
+        "fertileGenerationOneFemales": 2,
+        "fertileFemaleCandidates": [
+          {
+            "female": {
+              "personId": "born-121-dorothy-gale-7",
+              "name": "西尔维娅·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 335,
+              "bodyMinimum": 50.550000000000125,
+              "bodyEligible": false
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "caesar",
+                "name": "凯撒",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 600,
+                "bodyMinimum": 59.947500000000076,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 47,
+              "firstToSecond": {
+                "trust": 47,
+                "bond": 47,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-362-action-caesar-11",
+                  "e-362-action-caesar-6",
+                  "e-363-action-born-121-dorothy-gale-7-2",
+                  "e-363-action-caesar-4",
+                  "e-364-action-born-121-dorothy-gale-7-6",
+                  "e-364-action-caesar-2",
+                  "e-366-action-born-121-dorothy-gale-7-11",
+                  "e-366-action-caesar-9",
+                  "e-367-environment-relationship-0",
+                  "e-415-environment-relationship-0",
+                  "e-417-action-born-121-dorothy-gale-7-24",
+                  "e-417-action-caesar-35",
+                  "e-418-action-born-121-dorothy-gale-7-11",
+                  "e-418-action-caesar-5",
+                  "e-429-agreement-fulfilled-offer-companion:417:born-121-dorothy-gale-7:caesar",
+                  "e-432-environment-relationship-2",
+                  "e-435-environment-relationship-2",
+                  "e-438-environment-relationship-2",
+                  "e-441-environment-relationship-2",
+                  "e-444-environment-relationship-1",
+                  "e-447-environment-relationship-1",
+                  "e-450-environment-relationship-1",
+                  "e-453-environment-relationship-1",
+                  "e-456-environment-relationship-1"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 47,
+                "bond": 47,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-362-action-caesar-11",
+                  "e-362-action-caesar-6",
+                  "e-363-action-born-121-dorothy-gale-7-2",
+                  "e-363-action-caesar-4",
+                  "e-364-action-born-121-dorothy-gale-7-6",
+                  "e-364-action-caesar-2",
+                  "e-366-action-born-121-dorothy-gale-7-11",
+                  "e-366-action-caesar-9",
+                  "e-367-environment-relationship-0",
+                  "e-415-environment-relationship-0",
+                  "e-417-action-born-121-dorothy-gale-7-24",
+                  "e-417-action-caesar-35",
+                  "e-418-action-born-121-dorothy-gale-7-11",
+                  "e-418-action-caesar-5",
+                  "e-429-agreement-fulfilled-offer-companion:417:born-121-dorothy-gale-7:caesar",
+                  "e-432-environment-relationship-2",
+                  "e-435-environment-relationship-2",
+                  "e-438-environment-relationship-2",
+                  "e-441-environment-relationship-2",
+                  "e-444-environment-relationship-1",
+                  "e-447-environment-relationship-1",
+                  "e-450-environment-relationship-1",
+                  "e-453-environment-relationship-1",
+                  "e-456-environment-relationship-1"
+                ]
+              },
+              "reachesCompanionThreshold20": true,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-186-dorothy-gale-11",
+              "name": "奥罗拉·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 270,
+              "bodyMinimum": 51.35000000000011,
+              "bodyEligible": false
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "born-259-joan-of-arc-13",
+                "name": "塞缪尔·托尔",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 197,
+                "bodyMinimum": 53.54000000000022,
+                "bodyEligible": false
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-323-environment-relationship-3",
+                  "e-381-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-323-environment-relationship-3",
+                  "e-381-environment-relationship-0"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          }
+        ]
+      },
+      "missingLinkCounts": {},
+      "chains": []
+    }
+  ]
+}

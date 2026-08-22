@@ -21,6 +21,7 @@ import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
 import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
 import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
 import { makeStarSurfaceTexture, mulberry32 } from '@/game/proceduralTextures';
+import { createHumanMeteorLayer } from '@/game/skyPhenomena';
 import {
   shorelinePatches,
   surfaceTransitionKind,
@@ -264,17 +265,18 @@ type SocietyWeatherKind = NonNullable<SocietyState['weather']>['kind'];
 const CLOUD_WEATHER: Record<SocietyWeatherKind, {
   opacity: number;
   presence: number;
+  shadowOpacity: number;
   shadowThreshold: number;
   speed: number;
   light: string;
   shade: string;
 }> = {
-  clear:   { opacity: 0, presence: 0, shadowThreshold: 0.68, speed: 0.48, light: '#f7f9fb', shade: '#7f8c9a' },
-  rain:    { opacity: 0.46, presence: 0.72, shadowThreshold: 0.52, speed: 1.15, light: '#aebac2', shade: '#46535e' },
-  storm:   { opacity: 0.58, presence: 1, shadowThreshold: 0.44, speed: 2.30, light: '#7f8b94', shade: '#2d3943' },
-  drought: { opacity: 0, presence: 0, shadowThreshold: 0.78, speed: 0.90, light: '#e0d0b2', shade: '#8b755b' },
-  snow:    { opacity: 0.52, presence: 0.82, shadowThreshold: 0.51, speed: 0.75, light: '#eef2f4', shade: '#87949f' },
-  fog:     { opacity: 0, presence: 0, shadowThreshold: 0.70, speed: 0.28, light: '#ccd2d2', shade: '#858f92' },
+  clear:   { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.68, speed: 0.48, light: '#f7f9fb', shade: '#7f8c9a' },
+  rain:    { opacity: 0.46, presence: 0.72, shadowOpacity: 0.30, shadowThreshold: 0.52, speed: 1.15, light: '#aebac2', shade: '#46535e' },
+  storm:   { opacity: 0.58, presence: 1, shadowOpacity: 0.46, shadowThreshold: 0.44, speed: 2.30, light: '#7f8b94', shade: '#2d3943' },
+  drought: { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.78, speed: 0.90, light: '#e0d0b2', shade: '#8b755b' },
+  snow:    { opacity: 0.52, presence: 0.82, shadowOpacity: 0.26, shadowThreshold: 0.51, speed: 0.75, light: '#eef2f4', shade: '#87949f' },
+  fog:     { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.70, speed: 0.28, light: '#ccd2d2', shade: '#858f92' },
 };
 
 /** 有真实厚度的软边云团材质；几何轮廓负责体积，噪声只用于内部明暗而不裁出硬边。 */
@@ -614,7 +616,7 @@ function speechBubbleTexture(text: string, placement: SpeechBubblePlacement): Sp
 // 3D 像素小人
 // ---------------------------------------------------------------------------
 
-type FigureAction = 'idle' | 'walk' | 'gather' | 'attack' | 'carry' | 'ingest'
+type FigureAction = 'idle' | 'walk' | 'gather' | 'harvest' | 'attack' | 'carry' | 'ingest'
   | 'craft' | 'work' | 'tend-fire' | 'attend' | 'communicate' | 'care' | 'reproduce';
 type FigureAge = 'child' | 'adult' | 'elder';
 
@@ -720,7 +722,12 @@ function figureActionOf(agent: SocietyAgent, intent: IntentView | undefined, mov
   if (view.actionKind === 'communicate') return view.channel === 'record' ? 'attend' : 'communicate';
   if (view.operation === 'ingest') return 'ingest';
   if (view.operation === 'hunt') return 'attack';
-  if (view.operation === 'separate') return view.toolMaterialId !== undefined ? 'work' : 'gather';
+  if (view.operation === 'separate') {
+    const sourceMaterialId = view.sourceMaterialId ?? view.materialId;
+    if (sourceMaterialId === Material.BerryBush) return 'gather';
+    if (sourceMaterialId === Material.CropMature) return 'harvest';
+    return view.toolMaterialId !== undefined ? 'work' : 'gather';
+  }
   if (view.operation === 'exert') return view.targetKind === 'person' ? 'attack' : 'work';
   if (view.operation === 'combine') return view.targetKind === 'person' ? 'care' : 'craft';
   if (view.operation === 'expose') return 'tend-fire';
@@ -1278,6 +1285,8 @@ export default function SocietyScene3D({
     const skyStars = skyBackdrop;
     scene.add(skyBackdrop);
     aoExcluded.push(skyBackdrop);
+    const humanMeteors = createHumanMeteorLayer(scene, world0.generator.seed);
+    aoExcluded.push(humanMeteors.object);
 
     // ---- 人间天穹：把当前三体系统的相对方位投影成可辨认的恒星圆面 ----
     const skyGlowTexture = makeHumanSkyGlowTexture();
@@ -1516,21 +1525,24 @@ export default function SocietyScene3D({
     const cloudShadowMaterial = new THREE.MeshDepthMaterial({
       depthPacking: THREE.RGBADepthPacking,
       alphaMap: cloudShadowTexture,
-      alphaTest: 0.20,
+      alphaTest: 0.50,
       side: THREE.DoubleSide,
     });
     const cloudShadowUniforms = {
       threshold: { value: CLOUD_WEATHER.clear.shadowThreshold },
       presence: { value: 0 },
+      opacity: { value: 0 },
     };
     cloudShadowMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uCloudThreshold = cloudShadowUniforms.threshold;
       shader.uniforms.uCloudPresence = cloudShadowUniforms.presence;
+      shader.uniforms.uCloudShadowOpacity = cloudShadowUniforms.opacity;
       shader.fragmentShader = shader.fragmentShader
         .replace(
           'void main() {',
           `uniform float uCloudThreshold;
 uniform float uCloudPresence;
+uniform float uCloudShadowOpacity;
 void main() {`,
         )
         .replace(
@@ -1541,12 +1553,18 @@ void main() {`,
   float cloudA = texture2D(alphaMap, vAlphaMapUv).g;
   float cloudB = texture2D(alphaMap, vAlphaMapUv * 0.72 + vec2(0.14, 0.18)).g;
   float cloudDensity = cloudA * 0.68 + cloudB * 0.32;
-  diffuseColor.a *= uCloudPresence * radialFade
-    * smoothstep(uCloudThreshold - 0.11, uCloudThreshold + 0.09, cloudDensity);
+  float densityMask = smoothstep(uCloudThreshold - 0.11, uCloudThreshold + 0.09, cloudDensity);
+  float shadowCoverage = clamp(
+    uCloudPresence * uCloudShadowOpacity * radialFade * densityMask,
+    0.0,
+    1.0
+  );
+  float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  diffuseColor.a *= step(dither, shadowCoverage);
 #endif`,
         );
     };
-    cloudShadowMaterial.customProgramCacheKey = () => 'cloud-shadow-local-caster-v5';
+    cloudShadowMaterial.customProgramCacheKey = () => 'cloud-shadow-dithered-opacity-v6';
     const cloudShadowGeometry = new THREE.CircleGeometry(1, 24);
     const cloudShadowSurfaceMaterial = new THREE.MeshBasicMaterial({
       colorWrite: false,
@@ -1558,8 +1576,9 @@ void main() {`,
     // 拉远或升空后可从下方、侧面和上方观察；移动始终是同一世界风向的直线平移。
     const cloudVisualGroup = new THREE.Group();
     const cloudBlobGeometry = new THREE.SphereGeometry(1, 16, 10);
-    const cloudFieldHalfX = world0.width * 0.5 + 66;
-    const cloudFieldHalfZ = world0.height * 0.5 + 60;
+    const cloudFieldHalfX = world0.width * 0.5 + TERRAIN_APRON_CELLS + 24;
+    const cloudFieldHalfZ = world0.height * 0.5 + TERRAIN_APRON_CELLS + 24;
+    const cloudBoundaryFadeWidth = 24;
     const cloudCellSize = 6;
     const cloudWindDirection = new THREE.Vector2(1, 0.34).normalize();
     const cloudClusters = Array.from({ length: 14 }, (_, index) => {
@@ -1569,6 +1588,7 @@ void main() {`,
       const baseY = 19 + visualSpatialHash(world0.generator.seed, index, 11, 0xc2b2ae35) * 7;
       const material = makeCloudVolumeMaterial(cloudNoiseTexture);
       const cluster = new THREE.Group();
+      const clusterShadowCasters: THREE.Mesh[] = [];
       const blobCount = 4 + Math.floor(visualSpatialHash(world0.generator.seed, index, 13, 0x27d4eb2f) * 3);
       for (let blobIndex = 0; blobIndex < blobCount; blobIndex += 1) {
         const blob = new THREE.Mesh(cloudBlobGeometry, material);
@@ -1594,6 +1614,7 @@ void main() {`,
         shadowCaster.castShadow = true;
         shadowCaster.receiveShadow = false;
         shadowCaster.customDepthMaterial = cloudShadowMaterial;
+        clusterShadowCasters.push(shadowCaster);
         cluster.add(shadowCaster);
       }
       cluster.position.set(
@@ -1606,6 +1627,7 @@ void main() {`,
       cluster.userData.cloudDrift = 0.78 + visualSpatialHash(world0.generator.seed, index, 23, 0x6bc2a483) * 0.46;
       cluster.userData.cloudActivation = 0.14 + visualSpatialHash(world0.generator.seed, index, 29, 0x5f356495) * 0.66;
       cluster.userData.cloudMaterial = material;
+      cluster.userData.cloudShadowCasters = clusterShadowCasters;
       cloudVisualGroup.add(cluster);
       return cluster;
     });
@@ -1621,6 +1643,7 @@ void main() {`,
     let cloudMorphPhase = visualSpatialHash(world0.generator.seed, 3, 19, 0x27d4eb2d) * Math.PI * 2;
     let cloudOpacity = CLOUD_WEATHER.clear.opacity;
     let cloudPresence = CLOUD_WEATHER.clear.presence;
+    let cloudShadowOpacity = CLOUD_WEATHER.clear.shadowOpacity;
     let cloudShadowThreshold = CLOUD_WEATHER.clear.shadowThreshold;
     let cloudSpeed = CLOUD_WEATHER.clear.speed;
     const cloudLightTarget = new THREE.Color(CLOUD_WEATHER.clear.light);
@@ -1787,11 +1810,13 @@ void main() {`,
       const severity = THREE.MathUtils.clamp((weather.intensity - 1) / 9, 0, 1);
       const targetOpacity = THREE.MathUtils.clamp(profile.opacity + severity * 0.06, 0, 1);
       const targetPresence = profile.presence * THREE.MathUtils.lerp(0.72, 1, severity);
+      const targetShadowOpacity = THREE.MathUtils.clamp(profile.shadowOpacity + severity * 0.06, 0, 0.56);
       const targetShadowThreshold = profile.shadowThreshold - (weather.kind === 'clear' || weather.kind === 'drought' ? 0 : severity * 0.045);
 
       // 生成和消散都保留数秒过渡，但晴天、旱天与雾天最终会彻底无云。
       cloudOpacity = THREE.MathUtils.damp(cloudOpacity, targetOpacity, 0.46, deltaSeconds);
       cloudPresence = THREE.MathUtils.damp(cloudPresence, targetPresence, 0.38, deltaSeconds);
+      cloudShadowOpacity = THREE.MathUtils.damp(cloudShadowOpacity, targetShadowOpacity, 0.46, deltaSeconds);
       cloudShadowThreshold = THREE.MathUtils.damp(cloudShadowThreshold, targetShadowThreshold, 0.46, deltaSeconds);
       cloudSpeed = THREE.MathUtils.damp(cloudSpeed, profile.speed, 0.72, deltaSeconds);
       cloudLightTarget.set(profile.light);
@@ -1805,6 +1830,7 @@ void main() {`,
       cloudNoiseTexture.offset.copy(cloudOffset);
       cloudShadowUniforms.threshold.value = cloudShadowThreshold;
       cloudShadowUniforms.presence.value = cloudPresence;
+      cloudShadowUniforms.opacity.value = cloudShadowOpacity;
 
       const nightVisibility = THREE.MathUtils.lerp(0.52, 1, skyDaylightStrength);
       const colorBlend = 1 - Math.exp(-0.9 * deltaSeconds);
@@ -1817,7 +1843,6 @@ void main() {`,
         );
         const activation = cluster.userData.cloudActivation as number;
         const activationFade = THREE.MathUtils.smoothstep(cloudPresence, activation - 0.16, activation + 0.08);
-        material.uniforms.uOpacity.value = cloudOpacity * activationFade * nightVisibility * 0.72;
         material.uniforms.uDaylight.value = skyDaylightStrength;
         (material.uniforms.uLightColor.value as THREE.Color).lerp(cloudLightTarget, colorBlend);
         (material.uniforms.uShadeColor.value as THREE.Color).lerp(cloudShadeTarget, colorBlend);
@@ -1833,7 +1858,19 @@ void main() {`,
         if (cluster.position.z < -cloudFieldHalfZ) cluster.position.z += cloudFieldHalfZ * 2;
         cluster.position.y = (cluster.userData.cloudBaseY as number)
           + Math.sin(cloudMorphPhase * 0.36 + (cluster.userData.cloudPhase as number)) * 0.18;
-        cluster.visible = activationFade > 0.006 && cloudOpacity > 0.006;
+        const boundaryDistance = Math.min(
+          cloudFieldHalfX - Math.abs(cluster.position.x),
+          cloudFieldHalfZ - Math.abs(cluster.position.z),
+        );
+        const boundaryFade = THREE.MathUtils.smoothstep(boundaryDistance, 0, cloudBoundaryFadeWidth);
+        material.uniforms.uOpacity.value = cloudOpacity
+          * activationFade
+          * boundaryFade
+          * nightVisibility
+          * 0.72;
+        const shadowCasters = cluster.userData.cloudShadowCasters as THREE.Mesh[];
+        shadowCasters.forEach((caster) => { caster.visible = boundaryFade > 0.08; });
+        cluster.visible = activationFade > 0.006 && cloudOpacity > 0.006 && boundaryFade > 0.002;
       });
     };
 
@@ -3577,6 +3614,16 @@ void main() {`,
             f.legR.rotation.x = -0.18;
             f.armL.rotation.x = -reach;
             f.armR.rotation.x = -reach;
+          } else if (action === 'harvest') {
+            const sweep = Math.sin(cycle * 0.72);
+            f.upperBody.position.y = 0.26;
+            f.upperBody.rotation.x = 0.28;
+            f.upperBody.rotation.y = sweep * 0.16;
+            f.legL.rotation.x = 0.24;
+            f.legR.rotation.x = -0.2;
+            f.armL.rotation.x = -0.78 - sweep * 0.18;
+            f.armR.rotation.x = -1.08 + sweep * 0.34;
+            f.handTool.visible = actionView?.toolMaterialId !== undefined;
           } else if (action === 'attack') {
             const thrust = Math.sin(cycle * 1.2) * 0.16;
             f.upperBody.rotation.y = thrust * 0.35;
@@ -4133,6 +4180,7 @@ void main() {`,
       updateWeather(now, deltaSeconds);
       updateLighting(deltaSeconds);
       updateClouds(deltaSeconds);
+      humanMeteors.update(deltaSeconds, camera, skyStarVisibility);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
       DECOR_MATS.glowWarm.emissiveIntensity = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
@@ -4209,6 +4257,7 @@ void main() {`,
       cloudShadowMaterial.dispose();
       skyTexture?.dispose();
       environmentTarget?.dispose();
+      humanMeteors.dispose();
       distantSky.dispose();
       galaxyTarget.dispose();
       scene.traverse((obj) => {

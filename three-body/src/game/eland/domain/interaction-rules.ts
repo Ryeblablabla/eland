@@ -204,6 +204,10 @@ const EXERTION_RULES: readonly ExertionRule[] = [
   },
 ] as const;
 
+export function exertionRules(): readonly ExertionRule[] {
+  return EXERTION_RULES;
+}
+
 const EXPOSURE_RULES: readonly ExposureRule[] = [
   {
     id: 'cook-food',
@@ -278,6 +282,10 @@ const EXPOSURE_RULES: readonly ExposureRule[] = [
     outputMaterialId: Material.IronBloom,
   },
 ] as const;
+
+export function exposureRules(): readonly ExposureRule[] {
+  return EXPOSURE_RULES;
+}
 
 function counts(materialIds: MaterialId[]): Map<MaterialId, number> {
   const result = new Map<MaterialId, number>();

@@ -22,6 +22,7 @@ import type {
   ProjectState,
 } from '../../domain/project';
 import { worldEventById } from '../../domain/event-index';
+import { projectsOwnedBy } from '../../domain/state-index';
 import { findStandingPath, voxelAt } from '../../world/grid';
 import {
   nextProjectHypothesisCandidate,
@@ -608,7 +609,7 @@ function failedInquiryProjects(
   person: PersonState,
   desiredFunction: ProjectFunction,
 ): ProjectState[] {
-  return state.projects.filter((project) => project.ownerId === person.id
+  return projectsOwnedBy(state, person.id).filter((project) => project.ownerId === person.id
     && project.desiredFunction === desiredFunction
     && project.status === 'blocked'
     && Boolean(project.hypothesisCampaign?.attempts.length));

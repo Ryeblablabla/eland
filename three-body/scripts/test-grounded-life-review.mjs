@@ -9,12 +9,16 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-life-revie
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const plannerBundlePath = path.join(temporaryDirectory, 'rule-planner.mjs');
 const relationshipEvidenceBundlePath = path.join(temporaryDirectory, 'relationship-evidence.mjs');
+const materialBundlePath = path.join(temporaryDirectory, 'material.mjs');
+const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
 
 try {
   for (const [entryPoint, outputPath] of [
     ['src/game/eland/simulation.ts', simulationBundlePath],
     ['src/game/eland/application/rule-planner.ts', plannerBundlePath],
     ['src/game/eland/domain/relationship-evidence.ts', relationshipEvidenceBundlePath],
+    ['src/game/eland/domain/material.ts', materialBundlePath],
+    ['src/game/eland/world/grid.ts', gridBundlePath],
   ]) {
     execFileSync(path.resolve('node_modules/.bin/esbuild'), [
       entryPoint, '--bundle', '--platform=node', '--format=esm', `--outfile=${outputPath}`,
@@ -24,6 +28,8 @@ try {
   const { createInitialState, previewGroundedLifeReviewOpportunity } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
   const { groundedLifeReviewOpportunity, RulePlanner } = await import(`${pathToFileURL(plannerBundlePath).href}?test=${Date.now()}`);
   const { buildRelationshipCausalBasis, canOfferRelationshipProposal } = await import(`${pathToFileURL(relationshipEvidenceBundlePath).href}?test=${Date.now()}`);
+  const { Material } = await import(`${pathToFileURL(materialBundlePath).href}?test=${Date.now()}`);
+  const { cellX, cellY, neighbors4, setVoxel } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(710, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   state.clock.elapsedMonths = 120;
@@ -46,6 +52,11 @@ try {
   assert.ok(reciprocalRelation, 'fixture requires a reciprocal relation');
   Object.assign(relation, { trust: 90, bond: 90, sourceEventIds: ['relationship-evidence'] });
   Object.assign(reciprocalRelation, { trust: 90, bond: 90 });
+  partner.position = structuredClone(actor.position);
+  actor.inventory = [
+    { id: 'life-review-ready-food', materialId: Material.Food, quantity: 8, sourceEventIds: ['relationship-evidence'] },
+    { id: 'life-review-ready-water', materialId: Material.Water, quantity: 4, sourceEventIds: ['relationship-evidence'] },
+  ];
   state.world.past.push({
     id: 'relationship-evidence', kind: 'action', actionTick: 1, atMonth: 118, orderInMonth: 0,
     cellId: actor.position.cellId, who: actor.id, cause: 'intent',
@@ -88,8 +99,36 @@ try {
     sourceFactIds: relationshipBasis.sourceFactIds, domain: 'social', requiresFollowUp: false,
     relationshipBasis,
   };
+  state.derived.structures = [];
+  const shelterCenter = actor.position.cellId;
+  const shelterZ = actor.position.z;
+  const adjacent = neighbors4(shelterCenter);
+  const spareCell = adjacent[1] ?? adjacent[0];
+  const spareNeighbors = neighbors4(spareCell);
+  const shelterCells = [...new Set([shelterCenter, ...adjacent, spareCell, ...spareNeighbors])];
+  for (const cell of shelterCells) {
+    setVoxel(state.world.grid, cellX(cell), cellY(cell), shelterZ - 1, Material.PackedSoil);
+    setVoxel(state.world.grid, cellX(cell), cellY(cell), shelterZ, Material.Air);
+    setVoxel(state.world.grid, cellX(cell), cellY(cell), shelterZ + 1, Material.Air);
+    setVoxel(state.world.grid, cellX(cell), cellY(cell), shelterZ + 2, Material.Air);
+  }
+  setVoxel(state.world.grid, cellX(shelterCenter), cellY(shelterCenter), shelterZ + 2, Material.Stone);
+  setVoxel(state.world.grid, cellX(spareCell), cellY(spareCell), shelterZ + 2, Material.Stone);
+  const spareWalls = spareNeighbors.filter((cell) => cell !== shelterCenter);
+  for (const wallCell of spareWalls) {
+    setVoxel(state.world.grid, cellX(wallCell), cellY(wallCell), shelterZ, Material.Stone);
+  }
+  state.derived.structures.push({
+    id: 'life-review-family-ready-shelter',
+    materialIds: [Material.Stone],
+    occupiedCells: [shelterCenter, spareCell, ...spareWalls],
+    interiorPositions: [{ cellId: shelterCenter, z: shelterZ }, { cellId: spareCell, z: shelterZ }],
+    complete: true,
+    capacity: 2,
+    sourceEventIds: ['relationship-evidence'],
+  });
   const context = {
-    state, person: actor, visibleCells: [actor.position.cellId], visiblePeople: [partner], visibleDrops: [], visibleAnimals: [],
+    state, person: actor, visibleCells: [actor.position.cellId, spareCell], visiblePeople: [partner], visibleDrops: [], visibleAnimals: [],
     options: [projectOption, lifeOption], followUpOptions: [projectOption], activeIntent,
   };
 
@@ -159,6 +198,19 @@ try {
   const unchangedAfterTime = buildRelationshipCausalBasis(rejectedState, rejectedActor, rejectedPartner, 'reproduce', 125);
   assert.equal(canOfferRelationshipProposal(rejectedState, rejectedActor, rejectedPartner, unchangedAfterTime), false,
     'elapsed months alone must not reopen a rejected relationship proposal');
+
+  rejectedActor.cognition ??= { version: 'causal-bdi-v1', outcomeBeliefs: [], goalOutcomeBeliefs: [], needResolutionEpisodes: [] };
+  rejectedActor.cognition.needResolutionEpisodes ??= [];
+  rejectedActor.cognition.needResolutionEpisodes.push({
+    version: 'need-resolution-episode-v1', id: 'need-resolution:rejected-project:actor',
+    projectId: 'rejected-project', projectNeed: 'reserve-security', desiredFunction: 'settled-cultivation',
+    basisKey: 'need-resolution:reserve-security:settled-cultivation', observedAtMonth: 125,
+    observationKind: 'completion-action', triggerFactIds: ['project-trigger'], outcomeEventIds: ['project-outcome'],
+    sourceFactIds: ['project-trigger', 'project-outcome'],
+  });
+  const afterProjectCompletion = buildRelationshipCausalBasis(rejectedState, rejectedActor, rejectedPartner, 'reproduce', 125);
+  assert.equal(canOfferRelationshipProposal(rejectedState, rejectedActor, rejectedPartner, afterProjectCompletion), false,
+    '项目完成可以缓解项目需要，但不能单独重开已经被拒绝的关系配对');
 
   const talkEventId = 'ordinary-talk-after-rejection';
   rejectedState.world.past.push({

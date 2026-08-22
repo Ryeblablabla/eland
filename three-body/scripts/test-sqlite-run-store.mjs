@@ -204,6 +204,7 @@ try {
   integrityDatabase.prepare("DELETE FROM chunks WHERE hash = ?").run(fakeHash);
 
   const currentRoot = deserialize(currentStateChunk.data);
+  assert.equal(currentRoot.schemaVersion, 2, "新运行状态根必须使用跨进程稳定的事件哈希");
   const currentShellHash = String(currentRoot.shellHash);
   const currentShellCodec = String(integrityDatabase.prepare("SELECT codec FROM chunks WHERE hash = ?")
     .get(currentShellHash).codec);

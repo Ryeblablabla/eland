@@ -11,6 +11,9 @@ const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const executorBundlePath = path.join(temporaryDirectory, 'action-executor.mjs');
 const decisionFactorBundlePath = path.join(temporaryDirectory, 'decision-factor-forest.mjs');
 const monthlyProcessesBundlePath = path.join(temporaryDirectory, 'monthly-processes.mjs');
+const personalityBundlePath = path.join(temporaryDirectory, 'personality.mjs');
+const materialBundlePath = path.join(temporaryDirectory, 'material.mjs');
+const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
 
 try {
   for (const [entry, output] of [
@@ -19,17 +22,23 @@ try {
     ['src/game/eland/domain/action-executor.ts', executorBundlePath],
     ['src/game/eland/application/decision-factor-forest.ts', decisionFactorBundlePath],
     ['src/game/eland/domain/monthly-processes.ts', monthlyProcessesBundlePath],
+    ['src/game/eland/domain/personality.ts', personalityBundlePath],
+    ['src/game/eland/domain/material.ts', materialBundlePath],
+    ['src/game/eland/world/grid.ts', gridBundlePath],
   ]) {
     execFileSync(path.resolve('node_modules/.bin/esbuild'), [
       entry, '--bundle', '--platform=node', '--format=esm', `--outfile=${output}`,
     ], { stdio: 'pipe' });
   }
 
-  const { buildDecisionContexts, createInitialState, seededFraction, stepSimulation } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
+  const { buildDecisionContexts, createInitialState, executeActiveIntent, seededFraction, stepSimulation } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { executePrimitiveAction } = await import(`${pathToFileURL(executorBundlePath).href}?test=${Date.now()}`);
   const { evaluateDecisionOption } = await import(`${pathToFileURL(decisionFactorBundlePath).href}?test=${Date.now()}`);
   const { advanceSharedRelationshipExperience } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
+  const { newbornInitialTrust } = await import(`${pathToFileURL(personalityBundlePath).href}?test=${Date.now()}`);
+  const { Material } = await import(`${pathToFileURL(materialBundlePath).href}?test=${Date.now()}`);
+  const { cellX, cellY, neighbors4, setVoxel } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(319, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const founding = state.world.past.find((event) => event.kind === 'environment' && event.change === 'founding');
@@ -54,6 +63,18 @@ try {
   female.conditions = [];
   male.conditions = [];
   male.position = structuredClone(female.position);
+  const originalSocialPersonality = new Map([female, male].map((person) => [person.id, {
+    agreeableness: person.personality.baseline.agreeableness,
+    extraversion: person.personality.baseline.extraversion,
+    learnedAgreeableness: person.personality.learnedDelta.agreeableness,
+    learnedExtraversion: person.personality.learnedDelta.extraversion,
+  }]));
+  for (const person of [female, male]) {
+    person.personality.baseline.agreeableness = 0;
+    person.personality.baseline.extraversion = 0;
+    person.personality.learnedDelta.agreeableness = 0;
+    person.personality.learnedDelta.extraversion = 0;
+  }
   state.people = [female, male];
 
   const directedRelation = female.relations.find((relation) => relation.personId === male.id);
@@ -67,10 +88,24 @@ try {
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.ok(context?.options.some((option) => option.id.startsWith('offer-companion:')), '关系 20/20 且有共同事实时应允许提出结伴');
 
+  Object.assign(directedRelation, { trust: 5, bond: 5, sourceEventIds: [founding.id] });
+  Object.assign(reciprocalRelation, { trust: 0, bond: 0, sourceEventIds: [] });
+  context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
+  const lowRelationshipOffer = context?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+  assert.ok(context && lowRelationshipOffer, '只要提议者拥有可追溯关系，低分和非对称关系也不得被系统硬门槛裁掉');
+  const lowRelationshipConsent = evaluateDecisionOption(context, lowRelationshipOffer, { atMonth: 0, planningTick: 1 })
+    .votes.find((vote) => vote.tree === 'consent');
+  Object.assign(directedRelation, { trust: 90, bond: 90 });
+  context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
+  const highRelationshipOffer = context?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+  const highRelationshipConsent = context && highRelationshipOffer
+    ? evaluateDecisionOption(context, highRelationshipOffer, { atMonth: 0, planningTick: 1 }).votes.find((vote) => vote.tree === 'consent')
+    : undefined;
+  assert.ok(lowRelationshipConsent && highRelationshipConsent && highRelationshipConsent.score > lowRelationshipConsent.score,
+    '关系质量应连续改变人物愿不愿提出生殖，而不是充当固定资格线');
+
   Object.assign(directedRelation, { trust: 55, bond: 55, sourceEventIds: [founding.id] });
   Object.assign(reciprocalRelation, { trust: 55, bond: 55, sourceEventIds: [founding.id] });
-  context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '先民初始关系 55 不应立即解锁生殖');
   const sharedActionTicks = (atMonth, tickCount, first = female, second = male) => Array.from({ length: tickCount }, (_, index) => index + 1)
     .flatMap((actionTick) => [first, second].map((actor, actorIndex) => ({
       id: `test-shared-action-${atMonth}-${actionTick}-${actor.id}`,
@@ -84,10 +119,38 @@ try {
   assert.equal(advanceSharedRelationshipExperience(state, sharedActionTicks(0, 4), 0).length, 0, '同月不足五个共同活动刻度不得增加关系');
   const fullMonthSharedState = structuredClone(state);
   const fullMonthFacts = advanceSharedRelationshipExperience(fullMonthSharedState, sharedActionTicks(0, 15), 0);
-  assert.equal(fullMonthFacts[0]?.diff.trustDelta, 3, '同月十五个共同活动刻度应按每五刻度累计三次关系增长');
+  assert.equal(fullMonthFacts[0]?.diff.trustDelta, 4, '二十四岁人物的十五个共同活动刻度应形成三点基础信任和一点年轻加成');
+  assert.equal(fullMonthFacts[0]?.diff.bondDelta, 3, '年轻加成只作用于信任，不增加羁绊');
+  assert.ok(fullMonthFacts[0]?.diff.relationshipDeltas.every((delta) => (
+    delta.tickThreshold === 5 && delta.baseDelta === 3 && delta.youthTrustBonus === 1
+  )), '关系事实必须保存每个人的性格门槛、基础增量和年龄加成');
   assert.equal(
     fullMonthSharedState.people.find((person) => person.id === female.id).relations.find((relation) => relation.personId === male.id).bond,
     58,
+  );
+  const personalitySharedState = structuredClone(state);
+  const personalityFirst = personalitySharedState.people.find((person) => person.id === female.id);
+  const personalitySecond = personalitySharedState.people.find((person) => person.id === male.id);
+  personalityFirst.bornAtMonth = -35 * 12;
+  personalitySecond.bornAtMonth = -35 * 12;
+  personalityFirst.personality.baseline.agreeableness = 100;
+  personalityFirst.personality.baseline.extraversion = 100;
+  const personalityFacts = advanceSharedRelationshipExperience(
+    personalitySharedState,
+    sharedActionTicks(0, 3, personalityFirst, personalitySecond),
+    0,
+  );
+  const fastDelta = personalityFacts[0]?.diff.relationshipDeltas.find((delta) => delta.observerId === personalityFirst.id);
+  const slowDelta = personalityFacts[0]?.diff.relationshipDeltas.find((delta) => delta.observerId === personalitySecond.id);
+  assert.deepEqual(
+    { tickThreshold: fastDelta?.tickThreshold, trustDelta: fastDelta?.trustDelta, bondDelta: fastDelta?.bondDelta },
+    { tickThreshold: 3, trustDelta: 1, bondDelta: 1 },
+    '高社会接近人格应在三个共同活动刻度后形成一份定向关系证据',
+  );
+  assert.deepEqual(
+    { tickThreshold: slowDelta?.tickThreshold, trustDelta: slowDelta?.trustDelta, bondDelta: slowDelta?.bondDelta },
+    { tickThreshold: 5, trustDelta: 0, bondDelta: 0 },
+    '同一经历对低社会接近人格仍须累积到五个刻度',
   );
   for (let month = 1; month <= 4; month += 1) {
     const sharedActions = sharedActionTicks(month, 5);
@@ -96,25 +159,32 @@ try {
     state.clock.elapsedMonths = month;
   }
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.equal(directedRelation.trust, 59);
+  assert.equal(directedRelation.trust, 63);
   assert.equal(directedRelation.bond, 59);
-  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '四个月每月五个共同活动刻度后的 59/59 仍不得提出生殖');
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '关系 63/59 时仍应允许人物自行评估是否提出生殖');
   const fifthMonthActions = sharedActionTicks(5, 5);
   const fifthMonthFacts = advanceSharedRelationshipExperience(state, fifthMonthActions, 5);
   state.world.past.push(...fifthMonthActions, ...fifthMonthFacts);
   state.clock.elapsedMonths = 5;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.equal(directedRelation.trust, 60);
+  assert.equal(directedRelation.trust, 65);
   assert.equal(directedRelation.bond, 60);
-  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), `五个月每月五个共同活动刻度达到双方 60/60 后应允许提出生殖；实际选项：${context?.options.map((option) => option.id).join(',')}`);
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), `共同活动提高关系后仍应保留人物评估选项；实际选项：${context?.options.map((option) => option.id).join(',')}`);
   reciprocalRelation.trust = 59;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '任一方低于生殖门槛时都不得提出生殖');
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '对方的关系分数不应替代提议者的个人判断');
   reciprocalRelation.trust = 60;
   Object.assign(directedRelation, { trust: 60, bond: 60, sourceEventIds: [] });
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '没有真实来源时关系分数仍不得解锁生殖');
   directedRelation.sourceEventIds = [founding.id];
+  for (const person of [female, male]) {
+    const original = originalSocialPersonality.get(person.id);
+    person.personality.baseline.agreeableness = original.agreeableness;
+    person.personality.baseline.extraversion = original.extraversion;
+    person.personality.learnedDelta.agreeableness = original.learnedAgreeableness;
+    person.personality.learnedDelta.extraversion = original.learnedExtraversion;
+  }
 
   const smoothRiskState = structuredClone(state);
   const smoothRiskFemale = smoothRiskState.people.find((person) => person.id === female.id);
@@ -149,6 +219,135 @@ try {
     fromZ: female.position.z, toZ: female.position.z, pathSegment: [female.position.cellId],
     status: 'completed', result: id, diff: {},
   });
+  const withoutAgreement = executePrimitiveAction(state, female, {
+    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }],
+  }, 1, 0, { cause: 'intent', actionTick: 1 });
+  assert.equal(withoutAgreement.status, 'blocked', '人物判断不能绕过双方明确同意；没有有效协议时领域动作必须阻断');
+  assert.equal(withoutAgreement.diff.consent, false);
+  const blockedIntentState = structuredClone(state);
+  const blockedIntentFemale = blockedIntentState.people.find((person) => person.id === female.id);
+  const blockedIntentMale = blockedIntentState.people.find((person) => person.id === male.id);
+  const blockedReproductionAction = {
+    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: blockedIntentMale.id }],
+  };
+  const blockedReproductionIntent = {
+    id: 'test-blocked-reproduction-intent', ownerId: blockedIntentFemale.id,
+    summary: '没有协议的生殖动作不得冒充一次受孕尝试', domain: 'social',
+    goal: { kind: 'condition', personId: blockedIntentFemale.id, condition: 'pregnancy', present: true },
+    openingAction: structuredClone(blockedReproductionAction), openingActionCompleted: false,
+    nextAction: structuredClone(blockedReproductionAction),
+    target: { kind: 'person', personId: blockedIntentMale.id }, status: 'active',
+    createdAtMonth: 1, lastProgressAtMonth: 1, progress: 0,
+    sourceDecisionEventId: 'test-blocked-reproduction-decision', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+  };
+  blockedIntentState.intents = [blockedReproductionIntent];
+  blockedIntentFemale.activeIntentId = blockedReproductionIntent.id;
+  const blockedIntentFact = executeActiveIntent(blockedIntentState, blockedIntentFemale, 1, 0, 1, []);
+  assert.equal(blockedIntentFact?.status, 'blocked');
+  assert.equal(blockedReproductionIntent.goalOutcome?.kind, 'not-evaluated',
+    '被同意门槛阻断的动作没有发生，不能作为 conceived=false 的受孕失败经验');
+
+  const responseState = structuredClone(state);
+  responseState.clock.elapsedMonths = 6;
+  responseState.agreements = [];
+  const responseFemale = responseState.people.find((person) => person.id === female.id);
+  const responseMale = responseState.people.find((person) => person.id === male.id);
+  const responseOfferId = 'test-autonomous-reproduction-response';
+  const responseOfferFact = actionFact('test-autonomous-reproduction-offer-fact', 6, responseFemale.id, {
+    kind: 'communicate',
+    content: {
+      id: responseOfferId, kind: 'offer', summary: '是否愿意共同生育后代',
+      proposal: { kind: 'reproduce', proposerId: responseFemale.id, partnerId: responseMale.id, expiresAtMonth: 10 },
+    },
+    audience: [responseMale.id], channel: 'voice',
+  });
+  responseState.world.past.push(responseOfferFact);
+  recordAgreementAction(responseState, responseOfferFact);
+  const responseRelation = responseMale.relations.find((relation) => relation.personId === responseFemale.id);
+  Object.assign(responseRelation, { trust: 5, bond: 5, fear: 50, sourceEventIds: [founding.id] });
+  let responseContext = buildDecisionContexts(responseState, 6).find((candidate) => candidate.person.id === responseMale.id);
+  let acceptResponse = responseContext?.options.find((option) => option.id.startsWith('accept-reproduce:'));
+  let rejectResponse = responseContext?.options.find((option) => option.id.startsWith('reject-reproduce:'));
+  assert.ok(responseContext && acceptResponse && rejectResponse, '身体条件允许时，接受与拒绝都必须交给回应者本人选择');
+  assert.ok(
+    evaluateDecisionOption(responseContext, rejectResponse, { atMonth: 6, planningTick: 1 }).causalScore
+      > evaluateDecisionOption(responseContext, acceptResponse, { atMonth: 6, planningTick: 1 }).causalScore,
+    '低信任且高恐惧时，回应者应通过自己的评估倾向拒绝，而不是由系统资格线代答',
+  );
+  Object.assign(responseRelation, { trust: 90, bond: 90, fear: 0 });
+  responseMale.personality.baseline.extraversion = 100;
+  responseMale.personality.baseline.agreeableness = 100;
+  responseMale.personality.baseline.openness = 100;
+  responseMale.personality.baseline.emotionality = 100;
+  responseMale.personality.baseline.conscientiousness = 0;
+  responseContext = buildDecisionContexts(responseState, 6).find((candidate) => candidate.person.id === responseMale.id);
+  acceptResponse = responseContext?.options.find((option) => option.id.startsWith('accept-reproduce:'));
+  rejectResponse = responseContext?.options.find((option) => option.id.startsWith('reject-reproduce:'));
+  assert.ok(responseContext && acceptResponse && rejectResponse);
+  const unreadyHighRelationAccept = evaluateDecisionOption(
+    responseContext,
+    acceptResponse,
+    { atMonth: 6, planningTick: 1 },
+  );
+  assert.ok(
+    evaluateDecisionOption(responseContext, rejectResponse, { atMonth: 6, planningTick: 1 }).causalScore
+      > unreadyHighRelationAccept.causalScore,
+    '即使关系很好，没有真实生成性需要时也不能仅由 belonging 推动接受生殖',
+  );
+  responseMale.inventory = [
+    { id: 'response-ready-food', materialId: Material.Food, quantity: 8, sourceEventIds: [founding.id] },
+    { id: 'response-ready-water', materialId: Material.Water, quantity: 4, sourceEventIds: [founding.id] },
+  ];
+  responseState.derived.structures = [];
+  const responseShelterCenter = responseMale.position.cellId;
+  const responseShelterZ = responseMale.position.z;
+  const responseAdjacent = neighbors4(responseShelterCenter);
+  const responseSpareCell = responseAdjacent[1] ?? responseAdjacent[0];
+  const responseSpareNeighbors = neighbors4(responseSpareCell);
+  const responseShelterCells = [...new Set([
+    responseShelterCenter,
+    ...responseAdjacent,
+    responseSpareCell,
+    ...responseSpareNeighbors,
+  ])];
+  for (const cell of responseShelterCells) {
+    setVoxel(responseState.world.grid, cellX(cell), cellY(cell), responseShelterZ - 1, Material.PackedSoil);
+    setVoxel(responseState.world.grid, cellX(cell), cellY(cell), responseShelterZ, Material.Air);
+    setVoxel(responseState.world.grid, cellX(cell), cellY(cell), responseShelterZ + 1, Material.Air);
+    setVoxel(responseState.world.grid, cellX(cell), cellY(cell), responseShelterZ + 2, Material.Air);
+  }
+  setVoxel(responseState.world.grid, cellX(responseShelterCenter), cellY(responseShelterCenter), responseShelterZ + 2, Material.Stone);
+  setVoxel(responseState.world.grid, cellX(responseSpareCell), cellY(responseSpareCell), responseShelterZ + 2, Material.Stone);
+  const responseSpareWalls = responseSpareNeighbors.filter((cell) => cell !== responseShelterCenter);
+  for (const wallCell of responseSpareWalls) {
+    setVoxel(responseState.world.grid, cellX(wallCell), cellY(wallCell), responseShelterZ, Material.Stone);
+  }
+  responseState.derived.structures.push({
+    id: 'response-family-ready-shelter',
+    materialIds: [Material.Stone],
+    occupiedCells: [responseShelterCenter, responseSpareCell, ...responseSpareWalls],
+    interiorPositions: [
+      { cellId: responseShelterCenter, z: responseShelterZ },
+      { cellId: responseSpareCell, z: responseShelterZ },
+    ],
+    complete: true,
+    capacity: 2,
+    sourceEventIds: [founding.id],
+  });
+  responseContext = buildDecisionContexts(responseState, 6).find((candidate) => candidate.person.id === responseMale.id);
+  acceptResponse = responseContext?.options.find((option) => option.id.startsWith('accept-reproduce:'));
+  rejectResponse = responseContext?.options.find((option) => option.id.startsWith('reject-reproduce:'));
+  assert.ok(responseContext && acceptResponse && rejectResponse);
+  const readyHighRelationAccept = evaluateDecisionOption(
+    responseContext,
+    acceptResponse,
+    { atMonth: 6, planningTick: 1 },
+  );
+  assert.ok(readyHighRelationAccept.causalScore > unreadyHighRelationAccept.causalScore,
+    '真实食水、可见空余住所和照护余量成立后，同一人物接受生殖的倾向必须连续上升');
+  assert.ok((readyHighRelationAccept.votes.find((vote) => vote.tree === 'need')?.score ?? 0) > 0,
+    '准备充分的接受候选必须由非零 generativity 需要激活，而不是只靠关系分');
+
   const agreementId = 'test-independent-reproduction-attempts';
   recordAgreementAction(state, actionFact('test-reproduction-offer', 1, female.id, {
     kind: 'communicate',
@@ -192,9 +391,17 @@ try {
   assert.equal(firstMonthPairActions[0]?.diff.conceived, false, '固定夹具必须保留未受孕窗口以验证次月重试');
   const mirrorIntent = afterFullTickAttempt.intents.find((intent) => intent.id.startsWith('test-pair-reproduction-intent:')
     && intent.actionEventIds.length === 0);
+  const actingIntent = afterFullTickAttempt.intents.find((intent) => intent.id.startsWith('test-pair-reproduction-intent:')
+    && intent.actionEventIds.length === 1);
+  assert.equal(actingIntent?.goalOutcome?.kind, 'attempted-unmet',
+    '实际执行者的未受孕尝试应结算为动作完成、妊娠目标未达成');
+  assert.deepEqual(actingIntent?.goalOutcome?.sourceEventIds, [firstMonthPairActions[0].id]);
   assert.equal(mirrorIntent?.status, 'completed',
     '另一方已编译的同月镜像意图应无动作完成本月评估，而不是因为 pair 已尝试被永久 blocked');
   assert.equal(mirrorIntent?.blockedReason, undefined);
+  assert.equal(mirrorIntent?.goalOutcome?.kind, 'attempted-unmet',
+    '镜像方也应引用真实尝试结算未达成，而不是留下无来源的 completed');
+  assert.ok(mirrorIntent?.goalOutcome?.sourceEventIds.includes(firstMonthPairActions[0].id));
   const retryMonthContext = buildDecisionContexts(afterFullTickAttempt, 3)
     .find((candidate) => candidate.options.some((option) => option.id.startsWith('reproduce:')));
   const nextMonthOption = retryMonthContext?.options.find((option) => option.id.startsWith('reproduce:'));
@@ -231,12 +438,20 @@ try {
   );
   assert.equal(attack.status, 'completed');
   assert.equal(advanceSharedRelationshipExperience(conflictState, [...sharedActionTicks(2, 5), attack], 2).length, 0, '发生直接伤害的双方当月不得获得共同活动关系加成');
-  const conflictContext = buildDecisionContexts(conflictState).find((candidate) => candidate.person.id === conflictFemale.id);
-  assert.equal(conflictContext?.options.some((option) => option.id.startsWith('reproduce:')), false, '伤害使任一方关系跌破 60 后不得继续执行生殖');
-  assert.ok(conflictContext?.options.some((option) => option.id.startsWith('withdraw-reproduce:')), '关系跌破门槛后仍应保留撤回同意选项');
-  const blockedAfterAttack = executePrimitiveAction(conflictState, conflictFemale, reproduceAction, 2, 1, { cause: 'intent', actionTick: 2 });
-  assert.equal(blockedAfterAttack.status, 'blocked', '刚发生伤害后不能凭旧协议直接生殖');
-  assert.equal(blockedAfterAttack.diff.relationshipReady, false);
+  Object.assign(conflictMale.relations.find((relation) => relation.personId === conflictFemale.id), { trust: 5, bond: 10, fear: 70 });
+  const conflictContext = buildDecisionContexts(conflictState).find((candidate) => candidate.person.id === conflictMale.id);
+  const conflictProceed = conflictContext?.options.find((option) => option.id.startsWith('reproduce:'));
+  const conflictWithdraw = conflictContext?.options.find((option) => option.id.startsWith('withdraw-reproduce:'));
+  assert.ok(conflictContext && conflictProceed && conflictWithdraw, '关系恶化后系统仍须同时提供继续与撤回，让当事人重新判断');
+  assert.ok(
+    evaluateDecisionOption(conflictContext, conflictWithdraw, { atMonth: 2, planningTick: 2 }).causalScore
+      > evaluateDecisionOption(conflictContext, conflictProceed, { atMonth: 2, planningTick: 2 }).causalScore,
+    '伤害、低信任和高恐惧应让受害者倾向撤回，而不是让固定分数线替人物撤回',
+  );
+  const validAgreementAttemptAfterConflict = executePrimitiveAction(conflictState, conflictMale, {
+    kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: conflictFemale.id }], authorizationRef: agreementId,
+  }, 2, 1, { cause: 'intent', actionTick: 2 });
+  assert.equal(validAgreementAttemptAfterConflict.status, 'completed', '若人物仍明确选择继续，领域层只验证有效双方协议和身体边界，不再追加关系分数否决');
 
   const highRelationConflictState = structuredClone(state);
   highRelationConflictState.clock.elapsedMonths = 2;
@@ -252,10 +467,10 @@ try {
     0,
     { cause: 'intent', actionTick: 1 },
   );
-  assert.ok(highRelationMale.relations.find((relation) => relation.personId === highRelationFemale.id).trust >= 60, '高关系承受一次伤害后仍可保持在生殖门槛以上');
+  assert.ok(highRelationMale.relations.find((relation) => relation.personId === highRelationFemale.id).trust >= 60, '夹具中的高关系在一次伤害后仍保持较高，可用于检查连续偏好');
   assert.equal(advanceSharedRelationshipExperience(highRelationConflictState, [...sharedActionTicks(2, 5), highRelationAttack], 2).length, 0, '即使关系仍高，发生伤害的双方当月也不获得额外共同活动加成');
   const highRelationConflictContext = buildDecisionContexts(highRelationConflictState).find((candidate) => candidate.person.id === highRelationFemale.id);
-  assert.ok(highRelationConflictContext?.options.some((option) => option.id.startsWith('reproduce:')), '伤害后双方关系仍在 60 以上时，旧生殖协议仍可执行');
+  assert.ok(highRelationConflictContext?.options.some((option) => option.id.startsWith('reproduce:')), '伤害后有效协议的继续选项仍由人物自行评估');
   const highRelationAttempt = executePrimitiveAction(highRelationConflictState, highRelationFemale, reproduceAction, 2, 1, { cause: 'intent', actionTick: 2 });
   assert.equal(highRelationAttempt.status, 'completed');
 
@@ -265,6 +480,8 @@ try {
   const attemptB = executePrimitiveAction(attemptStateB, attemptStateB.people.find((person) => person.id === female.id), reproduceAction, 2, 1, { cause: 'intent', actionTick: 2 });
   assert.equal(attemptA.status, 'completed');
   assert.equal(attemptB.status, 'completed');
+  assert.equal(attemptA.diff.agreementId, agreementId, '每次生殖尝试必须记录实际授权协议');
+  assert.equal(attemptA.diff.relationshipSnapshot.length, 2, '每次尝试必须保留双方当时关系快照，供回放验证个人判断而非分数门禁');
   assert.equal(attemptA.diff.chance, 0.28, '承载上限以下、身体状态良好时应使用提高后的基础受孕概率');
   assert.equal(attemptB.diff.chance, 0.28);
   assert.notEqual(attemptA.diff.sampleKey, attemptB.diff.sampleKey, '同月两次真实动作必须拥有不同采样键');
@@ -318,6 +535,64 @@ try {
   recordAgreementAction(conceptionState, conceptionFact);
   assert.equal(conceptionState.agreements[0].status, 'fulfilled', '窗口内真实受孕应立即履行并结束协议');
   assert.deepEqual(conceptionState.agreements[0].fulfillmentEventIds, [conceptionFact.id]);
+
+  let achievedExecution;
+  for (let order = 0; order < 40 && !achievedExecution; order += 1) {
+    const candidate = structuredClone(state);
+    candidate.clock.elapsedMonths = 1;
+    const candidateFemale = candidate.people.find((person) => person.id === female.id);
+    const candidateMale = candidate.people.find((person) => person.id === male.id);
+    const candidateIntent = {
+      id: `test-integrated-conception-intent:${order}`,
+      ownerId: candidateFemale.id,
+      summary: '验证真实受孕目标结算',
+      domain: 'social',
+      goal: { kind: 'condition', personId: candidateFemale.id, condition: 'pregnancy', present: true },
+      nextAction: { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: candidateMale.id }], authorizationRef: agreementId },
+      target: { kind: 'person', personId: candidateMale.id },
+      status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1, progress: 0,
+      sourceDecisionEventId: `test-integrated-conception-decision:${order}`,
+      agreementId, sourceFactIds: [...candidate.agreements[0].sourceEventIds], actionEventIds: [], replanCount: 0,
+    };
+    candidate.intents = [candidateIntent];
+    candidateFemale.activeIntentId = candidateIntent.id;
+    delete candidateMale.activeIntentId;
+    const fact = executeActiveIntent(candidate, candidateFemale, 2, order, (order % 15) + 1, []);
+    if (fact?.kind === 'action' && fact.diff.conceived === true) achievedExecution = {
+      state: candidate,
+      fact,
+      actorIntent: candidateIntent,
+      partner: candidateMale,
+    };
+  }
+  assert.ok(achievedExecution, '固定搜索窗口应找到一个可回放的真实受孕动作');
+  assert.equal(achievedExecution.actorIntent.goalOutcome?.kind, 'achieved');
+  assert.deepEqual(achievedExecution.actorIntent.goalOutcome?.sourceEventIds, [achievedExecution.fact.id]);
+  const fulfilledMirrorIntent = {
+    id: 'test-integrated-conception-mirror',
+    ownerId: achievedExecution.partner.id,
+    summary: '验证 fulfilled 协议的镜像目标结算',
+    domain: 'social',
+    goal: structuredClone(achievedExecution.actorIntent.goal),
+    nextAction: { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: female.id }], authorizationRef: agreementId },
+    target: { kind: 'person', personId: female.id },
+    status: 'active', createdAtMonth: 2, lastProgressAtMonth: 2, progress: 0,
+    sourceDecisionEventId: 'test-integrated-conception-mirror-decision',
+    agreementId, sourceFactIds: [...achievedExecution.state.agreements[0].sourceEventIds], actionEventIds: [], replanCount: 0,
+  };
+  achievedExecution.state.intents.push(fulfilledMirrorIntent);
+  achievedExecution.partner.activeIntentId = fulfilledMirrorIntent.id;
+  const mirrorFact = executeActiveIntent(
+    achievedExecution.state,
+    achievedExecution.partner,
+    2,
+    41,
+    15,
+    [achievedExecution.fact],
+  );
+  assert.equal(mirrorFact, null, 'fulfilled 镜像应从协议终态结算，不再制造第二条生殖动作');
+  assert.equal(fulfilledMirrorIntent.goalOutcome?.kind, 'achieved');
+  assert.ok(fulfilledMirrorIntent.goalOutcome?.sourceEventIds.includes(achievedExecution.fact.id));
 
   state.agreements[0].status = 'expired';
   state.agreements[0].resolvedAtMonth = 5;
@@ -389,6 +664,26 @@ try {
   const birthState = structuredClone(state);
   birthState.clock.elapsedMonths = 0;
   const birthMother = birthState.people.find((person) => person.id === female.id);
+  const birthWitness = structuredClone(birthState.people.find((person) => person.id === male.id));
+  birthWitness.id = 'birth-local-witness';
+  birthWitness.name = '在场照护者';
+  birthWitness.geneticParents = [];
+  birthWitness.conditions = [];
+  birthWitness.relations = [];
+  delete birthWitness.activeIntentId;
+  birthWitness.position = structuredClone(birthMother.position);
+  const lateVisitor = structuredClone(birthWitness);
+  lateVisitor.id = 'birth-late-visitor';
+  lateVisitor.name = '后来到访者';
+  lateVisitor.position.cellId = birthMother.position.cellId === 0 ? 1 : 0;
+  lateVisitor.position.previousCellId = lateVisitor.position.cellId;
+  birthState.people.push(birthWitness, lateVisitor);
+  const expectedInitialTrustPersonIds = birthState.people
+    .filter((person) => person.diedAtMonth === undefined
+      && person.position.cellId === birthMother.position.cellId
+      && person.position.z === birthMother.position.z)
+    .map((person) => person.id)
+    .sort();
   birthMother.conditions = [{
     id: 'test-birth-pregnancy', kind: 'pregnancy', stage: 3, sinceMonth: 0, dueAtMonth: 1,
     otherPersonId: male.id, sourceEventIds: [],
@@ -398,12 +693,37 @@ try {
   const afterBirth = stepSimulation(birthState, { decide: () => ({ kind: 'idle', reason: '只检查出生关系' }) });
   const child = afterBirth.people.find((person) => person.bornAtMonth === 1);
   assert.ok(child, '到期妊娠应产生新生儿');
+  const birthFact = afterBirth.world.past.find((event) => event.kind === 'environment' && event.diff.bornPersonId === child.id);
+  assert.ok(birthFact, '出生必须留下可解析的新生儿社会先验来源');
   const postpartum = afterBirth.people.find((person) => person.id === female.id).conditions.find((condition) => condition.kind === 'postpartum-recovery');
   assert.ok(postpartum?.endsAtMonth > afterBirth.clock.elapsedMonths, '分娩后应留下有明确结束月份的产后恢复状态');
   const postpartumContext = buildDecisionContexts(afterBirth).find((candidate) => candidate.person.id === female.id);
   assert.equal(postpartumContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '产后恢复期间不得开始下一次生殖提议');
   assert.ok(child.relations.every((relation) => !relation.sourceEventIds.includes(founding.id)), '新生儿不得继承先民共同抵达来源');
-  assert.ok(child.relations.filter((relation) => !child.geneticParents.includes(relation.personId)).every((relation) => relation.trust === 0 && relation.bond === 0 && relation.fear === 0 && relation.sourceEventIds.length === 0), '新生儿对非父母人物不得自动获得先民关系加成');
+  const expectedInitialTrust = newbornInitialTrust(child);
+  assert.ok(expectedInitialTrust >= 3 && expectedInitialTrust <= 9 && expectedInitialTrust < 20, '性格先验必须保持微弱，并低于结伴门槛');
+  assert.equal(birthFact.diff.initialSocialTrust, expectedInitialTrust);
+  assert.deepEqual(birthFact.diff.initialSocialTrustPersonIds, expectedInitialTrustPersonIds, '出生事实必须精确记录当时存活且同格的信任目标');
+  const witnessRelation = child.relations.find((relation) => relation.personId === birthWitness.id);
+  assert.equal(witnessRelation?.trust, expectedInitialTrust, '新生儿应按自身性格对出生时真实在场者形成微弱初始信任');
+  assert.equal(witnessRelation?.bond, 0, '性格先验不能凭空创造亲密羁绊');
+  assert.deepEqual(witnessRelation?.sourceEventIds, [birthFact.id], '初始信任必须只引用真实出生事实');
+  const witnessToChild = afterBirth.people.find((person) => person.id === birthWitness.id)
+    .relations.find((relation) => relation.personId === child.id);
+  assert.equal(witnessToChild?.trust, 0, '初始信任只能从新生儿指向在场者，不能伪造双向关系');
+  const lateRelation = child.relations.find((relation) => relation.personId === lateVisitor.id);
+  assert.deepEqual(lateRelation, { personId: lateVisitor.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] }, '出生时不在场的陌生人不能获得初始关系');
+
+  const laterArrivalState = structuredClone(afterBirth);
+  const laterChild = laterArrivalState.people.find((person) => person.id === child.id);
+  const laterVisitor = laterArrivalState.people.find((person) => person.id === lateVisitor.id);
+  laterVisitor.position = structuredClone(laterChild.position);
+  const afterLaterArrival = stepSimulation(laterArrivalState, { decide: () => ({ kind: 'idle', reason: '检查后来到场者' }) });
+  assert.deepEqual(
+    afterLaterArrival.people.find((person) => person.id === child.id).relations.find((relation) => relation.personId === lateVisitor.id),
+    { personId: lateVisitor.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] },
+    '陌生人后来同格不会追授出生时人格先验',
+  );
 
   const attachmentState = structuredClone(afterBirth);
   const attachedChild = attachmentState.people.find((person) => person.id === child.id);
@@ -448,6 +768,7 @@ try {
     const secondRelation = second.relations.find((relation) => relation.personId === first.id);
     Object.assign(firstRelation, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
     Object.assign(secondRelation, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
+    let monthTwentyConsentScore;
     for (let month = 1; month <= 60; month += 1) {
       const sharedActions = sharedActionTicks(month, 5, first, second);
       const facts = advanceSharedRelationshipExperience(relationshipState, sharedActions, month);
@@ -459,11 +780,20 @@ try {
           monthTwenty?.options.some((option) => option.id.startsWith('offer-companion:')),
           `seed ${seed} 从零共同生活 20 个月应达到结伴门槛（当前 ${firstRelation.trust}/${firstRelation.bond}，关系事实 ${firstRelation.sourceEventIds.length} 条）`,
         );
-        assert.equal(monthTwenty?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, `seed ${seed} 在关系 20 时仍不应生殖`);
+        const monthTwentyOffer = monthTwenty?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+        assert.ok(monthTwenty && monthTwentyOffer, `seed ${seed} 有共同经历后应能自行判断是否提出生殖`);
+        monthTwentyConsentScore = evaluateDecisionOption(monthTwenty, monthTwentyOffer, { atMonth: month, planningTick: 1 })
+          .votes.find((vote) => vote.tree === 'consent')?.score;
       }
     }
     const monthSixty = buildDecisionContexts(relationshipState).find((candidate) => candidate.person.id === first.id);
-    assert.ok(monthSixty?.options.some((option) => option.id.startsWith('offer-reproduce:')), `seed ${seed} 从零共同生活 60 个月应达到生殖门槛`);
+    const monthSixtyOffer = monthSixty?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+    const monthSixtyConsentScore = monthSixty && monthSixtyOffer
+      ? evaluateDecisionOption(monthSixty, monthSixtyOffer, { atMonth: 60, planningTick: 1 })
+        .votes.find((vote) => vote.tree === 'consent')?.score
+      : undefined;
+    assert.ok(monthSixtyOffer && monthSixtyConsentScore > monthTwentyConsentScore,
+      `seed ${seed} 的长期共同生活应连续提高生殖提议倾向，而不是跨过固定门槛`);
   }
 
   console.log('reproduction opportunity tests passed');

@@ -27,33 +27,34 @@ domain model and policies ↔ world grid / material primitives
 ### domain/ —— 领域模型与规则
 
 - `domain/model.ts`：`SimulationState` 聚合根（体素世界、掉落物、动物、人物、意图、协议、共同体、权限、容器、纪元预言、文明指数与派生观察）。
-- `domain/person.ts`：人物权威状态（三项身体储备、过程状态、体素位置、私有背包、知识）；脱水休眠在同一 episode 内区分低代谢 `dormant` 与受限补给 `recovering`。
+- `domain/person.ts`：人物权威状态（三项身体储备、过程状态、体素位置、私有背包、知识与有来源的丧亲经历）；脱水休眠在同一 episode 内区分低代谢 `dormant` 与受限补给 `recovering`。
+- `domain/trait.ts`：出生时一次确定且终身不变的十种人物特质、固定先民配置、最多三项的确定性遗传审计，以及寿命、能力、身体、记忆、配方与母脉效果的共享规则。
 - `naming.ts`：姓氏传统、确定性后代保底姓名，以及模型 `givenName` 候选的字符、顺序和重名验收；模型不能改姓氏或绕过回退。
 - `domain/material.ts`：物质定义与调色板。
 - `domain/action.ts`：五种原子动作、十种 `SourceOperation`、`WorldRef` 与 `Intent` 类型。
 - `domain/intent.ts`：意图选择的组装与校验。
 - `domain/intent-follow-up.ts`：生活对话开场与后续物理行动的共同人物、项目或来源事实校验。
-- `domain/action-executor.ts`：原子动作的预演与执行；person→ground 转移只允许投到人物当前 cell / z，不能远程落物；普通 `combine / exert / expose` 在扣减前拒绝把本人背包中带 `recordPayloadId` 的已写载体作为输入，空白载体仍可进入写入或其他合法动作；生殖动作必须绑定一份精确的有效协议，同一伴侣对同一自然月最多完成一次尝试；亲代移动只携带同处、清醒且未满 1 岁的婴儿，休眠者不会隐式换位。
+- `domain/action-executor.ts`：原子动作的预演与执行；person→ground 转移只允许投到人物当前 cell / z，不能远程落物；普通 `combine / exert / expose` 在扣减前拒绝把本人背包中带 `recordPayloadId` 的已写载体作为输入，空白载体仍可进入写入或其他合法动作；生殖动作必须绑定一份精确的有效协议，同一伴侣对同一自然月最多完成一次尝试，并在事实中保存协议与双方当时的关系快照；亲代移动只携带同处、清醒且未满 1 岁的婴儿，休眠者不会隐式换位。
 - `domain/calendar.ts`：唯一的月历换算规则（`PLANNING_TICKS_PER_MONTH = 15`）。
 - `domain/era-prediction.ts`：可行动的乱纪元预言窗口、听众信任门槛与休眠 / 唤醒的局部判断。
 - `domain/life-stage.ts`：按月龄划分未满 1 岁完全依赖、1–11 岁受限自主、12–15 岁既有项目协作与 16 岁以上完整规划。
 - `domain/survival-reflex.ts`：不消耗模型额度的吃、喝与紧急避险反射；1–11 岁幼童在严重身体或冷热压力下会走向当前确实可见的亲生照护者，动作以 `caregiverRef` 留下因果证据，不读取远方亲代位置。
-- `domain/shelter-access.ts`：从可见或记得的真实结构中寻找当前仍可达的住所内部。
+- `domain/shelter-access.ts`：从可见或记得的真实结构中寻找当前仍可达的住所内部；家庭准备度另作更严格判断，只有当前可见且确认空余的真实内部位置计入 shelter 分量，记忆中的远处住所只保留未验证来源且贡献为 0。
 - `domain/shared-living.ts`：结伴约定的稳定生活地点、不同格共同生活结算与有界返家目标；不追踪伴侣实时坐标。
 - `domain/water-access.ts`：真实水体素的可达性与取水规则。
 - `domain/separation-rules.ts`：定义体素物质如何通过同一 `separate` 原语被采出或拆回。
 - `domain/container.ts`：有体素位置和内部物品堆的空间持有者；本身不预设所有权。
-- `domain/dependent-care.ts`：亲代可读取视野内 12 岁以下亲生子女的真实危机；只有会合后确有安全休眠、手中食物转移或携婴取水 / 入住所等可执行帮助时才接近并近身保护。1–11 岁儿童的普通移动还受当前可见亲代的本地照护半径约束，已有普通意图越界时会放弃；它不读取视野外身体、不替代长期家庭意图，也不赋予满 1 岁儿童同步移动。
+- `domain/dependent-care.ts`：亲代可读取视野内 12 岁以下亲生子女的真实危机；只有会合后确有安全休眠、手中食物转移或携婴取水 / 入住所等可执行帮助时才接近并近身保护。1–11 岁儿童的普通移动还受当前可见亲代的本地照护半径约束，已有普通意图越界时会放弃；它不读取视野外身体、不替代长期家庭意图，也不赋予满 1 岁儿童同步移动。远处未成年子女客观死亡不会自动解除 `reproductiveResponsibility`，亲代取得引用该死亡的有来源丧亲认知后才释放责任。
 - `domain/mortuary.ts`：死亡后的一人一遗体、死亡知情来源、丧亲压力、墓穴与墓记事实。人物只能因局部看见遗体 / 有标记墓穴，或经有来源的死亡对话得知死讯；遗体不是普通材料，安葬状态也不由观察器补写。
 - `domain/population-capacity.ts`：50 人软承载附近的受孕概率衰减与超载资源竞争；它是身体 / 生态约束，不进入人物目标或文明指数。
 - `domain/structure.ts`：从可站立空气、头顶实体与侧向围护的真实体素拓扑计算结构效果。
-- `domain/memory.ts`：固定预算的情节、对话、承诺和失败记忆，负责遗忘与摘要。
+- `domain/memory.ts`：有界预算的情节、对话、承诺和失败记忆，负责遗忘与摘要；灵记只扩大本人预算与留存时长，不创造知识。
 - `domain/social-repetition.ts`：从人物本人保留的沟通记忆评估同受众、同语义主题的再次开口成本；新事实或与求助、照护、困境直接相关的显著生存危险可重新提高价值，必须回应与履约不进入这项软投票。
 - `domain/project-material-request.ts`：从追加式项目材料请求与真实转移事实派生 `open / fulfilled / expired / contributors-unavailable`，不另存第二套请求状态机；新转移精确绑定请求引用，贡献量以请求剩余量和项目当前缺口共同截断。
 - `domain/spatial-knowledge.ts`、`domain/interaction-knowledge.ts`：人物的空间知识与交互/技术知识。
 - `domain/interaction-rules.ts`：物质响应原语的数据驱动规则（`InteractionRule`）。
 - `domain/mechanical-power.ts`：显式水流源、`WaterWheel → DriveShaft → Mill` 严格拓扑、安装计划与网络身份，以及安装、commissioning 故障、维修和运行的追加式来源事实；普通 Water 体素不能被猜成动力源，断流也不能由下游局部 Water 绕过。
-- `domain/monthly-processes.ts`：无人行动也推进的世界过程：气候与纪元、预言结算、妊娠 / 产后恢复等身体结算、死亡后遗体与个人遗物形成、动物生态，以及月初月末同处且无直接伤害配对的可追溯关系经验。全员休眠不会终止文明；恒纪元使旧 `dormant` episode 转入不凭空增加储备的 `recovering`，真实补水 / 补食并达到三项最低储备 45 后才退出，乱纪元重临则沿用原 episode 返回 `dormant`。
+- `domain/monthly-processes.ts`：无人行动也推进的世界过程：气候与纪元、预言结算、妊娠 / 产后恢复等身体结算、死亡后遗体与个人遗物形成、动物生态，以及月初月末同处且无直接伤害配对的可追溯关系经验。全员休眠不会终止文明；恒纪元使旧 `dormant` episode 转入不凭空增加储备的 `recovering`，真实补水 / 补食并达到三项最低储备 45 后才退出，乱纪元重临则沿用原 episode 返回 `dormant`。直接死亡会终结当前及全部暂停意图；休眠恢复若发现人物死亡或项目已经完成、阻塞、放弃、缺失，也按真实样本结算 `goalOutcome` 并清理中断边，只有真正恢复为 active 的意图暂不结算。
 - `domain/animal.ts`：动物实体的位置、身体、繁殖与行为。
 - `domain/kinship.ts`：由出生事实派生亲缘距离、遗传风险与人物有来源的风险认知强度；亲缘影响后代结果与人物选择，但不把动作改成非法。
 - `domain/agreement.ts`、`domain/collective.ts`、`domain/permission.ts`、`domain/governance.ts`、`domain/declaration.ts`、`domain/record.ts`、`domain/social-facts.ts`、`domain/relation.ts`：协议、共同体、授权、治理规则、声明、实体记录、社会事实与定向关系账本。
@@ -61,21 +62,21 @@ domain model and policies ↔ world grid / material primitives
 - `domain/decision-budget.ts`：实时关键重选的人月额度与 endpoint / token 审计；不得决定人物是否获得本地规划。
 - `domain/cognition.ts`：人物私有的有界行动结果后验与结构化因果记忆 basis；只从已提交 `ActionFact` 学习，排除临时 option / intent / project / cell / person ID，无位移 move 不作为经验样本。
 - `domain/event-index.ts`：事件流查询索引。
-- `domain/personality.ts`：HEXACO 六维初始化、有效值、行动证据与月末慢速变化；人格只调节已有合法候选。
+- `domain/personality.ts`：HEXACO 六维初始化、有效值、行动证据与月末慢速变化；人格只调节已有合法候选或真实共同经历的转化效率。新生儿会按本人的有效宜人性与外向性取得 `3..9` 的弱初始信任值，但只由出生过程把它单向应用到出生时真实同地的人；后续共同活动按每个人的有效外向性与宜人性采用 `3..5` 刻度门槛，年轻人只在已有基础增量的月份获得额外信任，不凭人格或年龄直接创造关系对象。
 - `domain/person-soul.ts`：从人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建只读 Soul；它为三条第一人称路径提供稳定的内在声音，也可供可选模型在当前合法候选内形成一致的个人取舍，但不写入人物状态，不创造记忆、知识、动机、候选或世界事实。
 
 ### application/ —— 用例
 
 - `application/monthly-simulation.ts`：月度模拟的稳定公共门面，保留创建、恢复、推进、报告与 controller API；具体职责拆到 `application/simulation/`，调用方不依赖内部编排文件。
-- `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行；`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
+- `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行，并把 Action 执行结果与 Intent `goalOutcome` 分开结算：未受孕仍是 completed 动作但妊娠目标为 attempted-unmet，无真实受孕样本的提前阻塞是 not-evaluated；`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
 - `application/rule-planner.ts`：每个规划刻度始终可用的正式本地目标选择器；硬门禁后委托因果 BDI，自主候选由动态需要、人格、亲历后验和当前意图共同决定。
 - `application/player-interaction-choice.ts`：把人物在主动建议对话中选中的当月合法方向编译为稳定语义键，并在最新上下文中本地重配；临时月份 / 表达 ID 变化不造成假失败，必须回应、履约和 follow-up 仍由同一门禁约束。
-- `application/cognition/need-agenda.ts`、`option-appraisal.ts`、`bdi-deliberation.ts`：从局部 `DecisionContext` 派生动态需要，把 HEXACO 用作注意 / 风险 / 坚持 / 探索 / 社会接近门控，读取同一目标人物的结构化情节记忆和本人 Beta 结果后验，并以唯一当前 `Intent` 实现持续、切换与急性中断。项目 / HTN 仍负责步骤展开，领域执行器仍负责硬合法性。
+- `application/cognition/need-agenda.ts`、`family-readiness.ts`、`option-appraisal.ts`、`bdi-deliberation.ts`：从局部 `DecisionContext` 派生动态需要，其中食物储备与饮水储备是两个带资源维度的独立缺口，身体稳态再精确区分健康、营养与水分；候选只能缓解同资源储备或对应身体压力，取得型候选还必须确认本人没有对应可摄入库存。项目来源的 need 精确绑定 `projectId`，普通采食不能冒领公共储备项目压力。正向生殖的 `needActivation` 只接受 `generativity`；`belonging` 与 `autonomy` 不能激活正向选项，关系、人格、同意与风险只在激活后连续门控，拒绝或撤回仍可由 `autonomy` 驱动。家庭准备度只读本人当前可感知的食物、水、真实可达且有当前可见空余位置的住所、照护余量与气候安全，住所质量每次从 `weatherProtection / thermalInsulation` 重验；记忆中的远处住所对 shelter 分量贡献为 0。动作后验供预计努力与伤害，`goalOutcome` Beta 后验决定目标成功预期。唯一当前 `Intent` 实现持续、切换与急性中断；项目 / HTN 仍负责步骤展开，领域执行器仍负责硬合法性。
 - `application/decision-factor-forest.ts`：旧报告与测试的诊断兼容门面；仍投影 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 的理由和来源，但规划器不再把九类数值直接相加。
 - `application/reproductive-risk.ts`：把人物持有的近亲风险知识置信度连续映射为本地生殖选择成本；满置信度成本仍是可被关系与生活压力权衡的软偏好，不承担动作合法性。
 - `application/age-planning.ts`：按生命周期过滤简单劳动、项目发起、社会协议与繁衍候选。
-- `application/project-pressure.ts`、`application/project-options.ts`：前者从本人及其局部可见事实形成项目压力，后者保留项目公共 API 门面。`application/projects/` 按生命周期、提案、局部感知 / 场地、材料计划、假说调查、物流搜索、步骤编译和完成证据拆分；这些模块共同编译项目行动，不复制领域规则。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。当前材料协作只为固定场地的合金项目开放。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施，可见但没有实体站立路径的掉落物也不能冒充可取得能力。生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力，不能一票否决升级项目。`efficient-production`、`bronze-tooling` 与 `iron-tooling` 只有在项目来源的更优工具仍由 owner 持有、且对应制作技艺已通过源绑定复验达到可靠阈值后才完成。其他便携产物项目仍要求 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面的步骤优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
-- `application/action-options.ts`、`mortuary-options.ts`、`construction-options.ts`、`container-options.ts`、`separation-options.ts`、`social-options.ts`：各类合法可供性候选的生成。死亡照料从人物本人已知的具体死亡出发，依次编译悼念、搬运遗体、选择可达墓址、挖墓、入葬、使用同一掘土来源覆土，以及在拥有空白木板和合格工具时立墓记；遗物保持带死亡来源和原主人身份的普通实体栈。本人近期真实完成过分离生产劳动时，可达的更高级地面工具会以劳动节省形成明确取得候选；他人背包仍不可直接读取或拿取，只能在同格、持有者交易后仍保留不低于原最高生产能力的工具、请求者也有实体余量可交付时走既有自愿交换。工具取得意图固定精确 drop，移动后的木材、灌木、成熟作物与捕猎重编译会重新选择本人当前效用最高的适用工具，不会退回徒手或较弱武器。通用有形库存候选、自然假说、已知配方与项目子装配的消耗选择都会排除已带 `recordPayloadId` 的载体，避免规划器反复生成必被领域层拒绝的普通加工。失败重试按动作、目标、数量、人物、项目、记录和关系组成的稳定结构 basis 比较：失败当月起 0–6 月压住同因果候选，第 7 月恢复；新来源或任一结构字段改变会立即重开，必须回应与履约绕过冷却，无法还原结构 basis 的旧自由文本失败记忆不拦候选。
+- `application/project-pressure.ts`、`application/project-options.ts`：前者从本人及其局部可见事实形成项目压力，后者保留项目公共 API 门面。项目完工只给交付最后功能性动作的人物记录 `NeedResolutionEpisode`；它在 12 个月内对同 `need + desiredFunction` 的新提案压力最多降低 45%，只表示本人近期观察到需要被缓解，绝不补造库存或住所，也不能单独重开已被拒绝的生殖配对。`application/projects/` 按生命周期、提案、局部感知 / 场地、材料计划、假说调查、物流搜索、步骤编译和完成证据拆分；这些模块共同编译项目行动，不复制领域规则。定居耕作没有附近人口硬门槛，固定在局部地块；缺种走真实种源，等待生长不猜配方，完成只读取本项目场址内的播种与收获历史。局部重叠项目在候选阶段复用、提交边界再校验；若同刻度另一个人物已创建等价项目，则合并受益者与触发事实并把意图重绑到权威项目。非所有者只在创建当月有界等待已有步骤，远处项目仍可并行。材料协作只为固定场地的合金、铁器与明确公共厅堂项目开放；铁匠铺可由已观察到的青铜能力与烧结砖提出，后续铁料、还原、锻打和工具阶段必须返回真实 Smithy，并以逐段原料缺口、请求与真实交付接续。历史搜索只有与当前缺口完全一致且晚于最近进展，同时不存在协作、休眠、当月落地或作物生长等待时，才会把项目结为阻塞。材料能力另区分 `observed`、本人可合法取得的 `accessible portable` 与已经放入世界的 `placed facility`；旁人背包只能证明看见，不能证明本人已有工具或世界已有设施，可见但没有实体站立路径的掉落物也不能冒充可取得能力。生产工具按木 / 骨、石器、石锄、青铜、铁的真实效用等级比较；低级工具只部分缓解劳动压力，不能一票否决升级项目。`efficient-production`、`bronze-tooling` 与 `iron-tooling` 只有在项目来源的更优工具仍由 owner 持有、且对应制作技艺已通过源绑定复验达到可靠阈值后才完成。其他便携产物项目仍要求 owner 当前目标材料栈的来源事实与本项目 `actionEventIds` 相交，跨项目复用的旧产物与可靠技术不会被伪写成本项目完成证据。耐久记录项目在固定场地写入空白载体；一旦所有者背包存在与本项目所有者、目标知识和写入事实精确匹配的已写载体，返回场地并投放到精确地面优先于仍活跃的旧搜索 / 物流，投放后沿既有 `project-completed` 收口。没有合格已写载体时，仍按原制造与物流顺序推进。
+- `application/action-options.ts`、`mortuary-options.ts`、`construction-options.ts`、`container-options.ts`、`separation-options.ts`、`social-options.ts`：各类合法可供性候选的生成。生殖提议只要求提议者有可追溯关系，不再要求固定或双向分数；身体适格的回应者同时获得接受与拒绝，活跃协议同时提供继续与撤回，交给本地 appraisal 依据本人关系、恐惧、人格、责任和已知风险排序。死亡照料从人物本人已知的具体死亡出发，依次编译悼念、搬运遗体、选择可达墓址、挖墓、入葬、使用同一掘土来源覆土，以及在拥有空白木板和合格工具时立墓记；遗物保持带死亡来源和原主人身份的普通实体栈。本人近期真实完成过分离生产劳动时，可达的更高级地面工具会以劳动节省形成明确取得候选；他人背包仍不可直接读取或拿取，只能在同格、持有者交易后仍保留不低于原最高生产能力的工具、请求者也有实体余量可交付时走既有自愿交换。工具取得意图固定精确 drop，移动后的木材、灌木、成熟作物与捕猎重编译会重新选择本人当前效用最高的适用工具，不会退回徒手或较弱武器。通用有形库存候选、自然假说、已知配方与项目子装配的消耗选择都会排除已带 `recordPayloadId` 的载体，避免规划器反复生成必被领域层拒绝的普通加工。失败重试按动作、目标、数量、人物、项目、记录和关系组成的稳定结构 basis 比较：失败当月起 0–6 月压住同因果候选，第 7 月恢复；新来源或任一结构字段改变会立即重开，必须回应与履约绕过冷却，无法还原结构 basis 的旧自由文本失败记忆不拦候选。
 - `application/record-use-options.ts`：只为读者本人拥有的活跃项目及其真实技术缺口生成记录使用候选；来源限于本人背包与调用方已过滤的可见公共地面掉落物，不读取他人背包、知识或意图。v2 basis 冻结读者、项目、payload、技术和精确载体来源；地面来源正常按 `move → acquire → read → experiment` 推进，其中移动不算取得，只有从精确掉落物成功转移到本人背包才算 `acquire`，来源消失或替换时不会另换载体。阅读只形成不高于 54 的暂定技术知识，真实项目实验再增加 18 并写入项目进度；明确直接教学仍可到 60。外部交付同一地面来源谱系，或人物此前已经读过该记录时，可依当前真实持有与知识继续，但不会补造缺失阶段，也不构成完整记录链。
 - `application/mechanical-power-options.ts`：只让做过真实 Mill 辅助谷物分离劳动的人物关注本人当前可见、可达的水流段；成功 `attend` 后形成只属于本人的有来源观察。由此提出的项目只是冻结水流源与可见工地几何的试建假说，不泄漏隐藏配方、时代标签或观察器目标；未知部件仍走有预算的材料假说与验证。
 - `application/agreement-continuation.ts`：已接受协议的履约推进。
@@ -87,7 +88,7 @@ domain model and policies ↔ world grid / material primitives
 ### projection/ —— 只读观察
 
 - `projection/capability-milestones.ts`：v2 纯可回放因果观察器；含精确地图坐标和 world-specific 复杂事件，并以 strict/guarded、阶段门槛和完整 episode 隔离误报。死亡照料能力只在真实死亡、完整安葬和物质墓记来源闭合后出现；任何观察结果都不反向进入人物决策。
-- `projection/derived-observations.ts`：从已提交权威状态派生 structures、practices、institutions、regions、milestones 与 development 观察结果；只写观察投影，不参与候选或人物选择。
+- `projection/derived-observations.ts`：从已提交权威状态派生 structures、practices、institutions、regions、milestones 与 development 观察结果；当前 `cultivated` region 只表示仍存在的作物 / 幼苗 / 贫瘠地，服务物理疆域和容量。时代观察器 v2 另从同一已完成定居耕作项目的 6 个不同播种格与 2 次成熟收获重验既成能力，土地恢复后不会误退回“从未形成农耕”。这些字段都只写观察投影，不参与候选或人物选择。
 - `projection/live-speech.ts`：把每个已完成且具有可解析真实听者的口头沟通 ActionFact 投影为无显示文本的结构化 `speechAct` 草稿；只有已校验的模型台词才进入 `GameFrame.speechLines`，从不反写动作事实。
 - `projection/society-world-cache.ts`：只读 WeakMap 投影缓存；复用静态 palette / biome，无体素变化时复用世界几何，有变化时仅复制并重算受影响列。
 
@@ -99,9 +100,15 @@ domain model and policies ↔ world grid / material primitives
 - `server/elandSession.ts`：保留实时会话公共门面与兼容导出。`server/eland-session/session-step.ts` 编排 begin / step、幂等并发、权威月份、sky / cosmos 原子提交与模型回退；空闲时会话与 controller 共享唯一已提交 `SimulationState`，异步模型月份只在隔离工作副本中推进，成功后再原子提交。`timeline.ts` 负责 checkpoint / delta / seek / fork，恢复时历史块保留为 SQLite hash 引用，回放只按需读取最近年度 checkpoint 与其后 delta；`recovery.ts` 负责恢复校验；`frame-history-projector.ts`、`conversation-coordinator.ts` 分别负责帧历史与对话结果投影；`session-manager.ts` 负责 lease、TTL、LRU 与 SQLite 会话协调。实时分支真正提交到 12 的倍数月份时自动持久化，新时间线 Buffer 成功落盘后即替换为 hash 引用。
 - `server/newborn-naming-service.ts`：在实时模型月份的出生事实对外提交前，按父母 Soul、有源近期经历和当前处境批量请求 `givenName`；本地验收后记录模型来源，失败保持确定性保底姓名，回放不再请求。
 
+### scripts/ —— Agent 调试与实验入口
+
+- `scripts/eland.mjs`：现有 HTTP API 的零新增依赖 CLI 适配器。`run` 管理后台持久化演化，`session` 管理逐月实时会话，两者保持不同的身份与并发语义；`inspect` 只从权威状态提取人物、项目、事件和文明摘要，不写回观察结果。
+- `experiment run`：按唯一前缀、种子和年数创建或恢复矩阵运行，使用绝对 `requestedEndMonth` 与完整 expected identity；默认单并发等待，矩阵 JSON 只用于离线交换和复核。
+- CLI 写操作仍经过 HTTP 层、应用用例和持久化事务。脚本不直接打开 SQLite 写连接，不复制领域规则；完整命令与退出码见 [`../../../../docs/agent-cli-v1.md`](../../../../docs/agent-cli-v1.md)。
+
 ### 根级
 
-- `character-profiles.ts`：人物档案池；开局按种子抽取 5–8 位或由配置指定。
+- `character-profiles.ts`：人物档案池；开局按种子确定性抽取 5–12 位，或由配置指定最多 12 位。
 - `population.ts`：开局年龄与寿命的确定性采样。
 - `adapter.ts`：领域状态到 UI 读取模型的单向投影；事件活动按追加游标增量累计，实体查找在每次投影中建立 Map，缓存不写回领域状态。
 - `kimi-decider.ts`：实时关键决策发送给通用模型端点的局部事实 DTO；包含人物档案、有效人格、身体、有向关系与有源近期经历，但不暴露隐藏世界事实。历史文件名保留，但不再绑定 Kimi 供应商。

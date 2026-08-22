@@ -1195,11 +1195,12 @@ export function nextProjectHypothesisCandidate(
   if (campaign.status !== 'active') return null;
   const evidence = localMaterialEvidence(person, visibleDrops);
   const attempted = new Set(campaign.attempts.map((attempt) => attempt.candidateKey));
-  const allowed = (candidate: ProjectHypothesisCandidate) => candidate.operation === request.operation
-    && !attempted.has(candidate.key)
+  const actionable = (candidate: ProjectHypothesisCandidate) => !attempted.has(candidate.key)
     && !knowsReliableNoResponse(person, noResponseFactId(candidate))
     && reliableKnowledgeForCandidate(person, candidate) === null
     && candidateGrounded(candidate, evidence);
+  const allowed = (candidate: ProjectHypothesisCandidate) => candidate.operation === request.operation
+    && actionable(candidate);
   const renewalAttempted = campaign.attempts.some((attempt) => {
     const attemptedCandidate = campaign.candidates.find((candidate) => candidate.key === attempt.candidateKey);
     return Boolean(attemptedCandidate?.reasonKeys.includes('cross-project-renewal-opportunity'));
@@ -1214,7 +1215,23 @@ export function nextProjectHypothesisCandidate(
   const selectedRenewal = campaign.candidates.find((candidate) => allowed(candidate)
     && candidate.reasonKeys.includes('cross-project-renewal-opportunity'));
   const selected = selectedRenewal ?? (commitmentPending ? undefined : campaign.candidates.find(allowed));
-  if (!selected) return null;
+  if (!selected) {
+    // The numeric attempt budget is only an upper bound. A small tangible
+    // evidence set can run out of distinct, grounded experiments earlier.
+    // Persist that terminal fact so lifecycle does not hold the owner until a
+    // distant review; genuinely new entity evidence can still justify a new
+    // project through the existing inquiry-opportunity renewal protocol.
+    const requestPoolWasTangible = campaign.candidates.some((candidate) => candidate.operation === request.operation);
+    const anySelectableCandidate = campaign.candidates.some((candidate) => actionable(candidate)
+      && (!commitmentPending || candidate.reasonKeys.includes('cross-project-renewal-opportunity')));
+    if (campaign.attempts.length > 0 && requestPoolWasTangible && !anySelectableCandidate) {
+      campaign.status = 'exhausted';
+      campaign.endedAt = atMonth;
+      campaign.endingReason = 'attempt-budget-exhausted';
+      delete campaign.activeCandidateKey;
+    }
+    return null;
+  }
   campaign.activeCandidateKey = selected.key;
   return selected;
 }

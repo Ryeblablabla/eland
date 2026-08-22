@@ -1,5 +1,6 @@
-import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from './model';
+import type { ActionFact, AgreementFact, EnvironmentFact, SimulationState, WorldEvent } from './model';
 import { Material } from './material';
+import type { PersonId } from './person';
 import { WORLD_CELL_COUNT } from '../world/grid';
 
 export interface ActionActivityIndex {
@@ -15,8 +16,11 @@ interface CachedEventIndex {
   byId: Map<string, WorldEvent>;
   ordinalById: Map<string, number>;
   actions: ActionFact[];
+  actionsByPersonId: Map<PersonId, ActionFact[]>;
   completedActions: ActionFact[];
+  completedActionsByPersonId: Map<PersonId, ActionFact[]>;
   environmentEvents: EnvironmentFact[];
+  agreementEventsByPersonId: Map<PersonId, AgreementFact[]>;
   completedCommunications: ActionFact[];
   groundedCommunications: ActionFact[];
   groundedOpeningBasisKeys: Set<string>;
@@ -35,8 +39,11 @@ interface PlanningEventOverlay {
   byId: Map<string, WorldEvent>;
   indexById: Map<string, number>;
   actions: ActionFact[];
+  actionsByPersonId: Map<PersonId, ActionFact[]>;
   completedActions: ActionFact[];
+  completedActionsByPersonId: Map<PersonId, ActionFact[]>;
   environmentEvents: EnvironmentFact[];
+  agreementEventsByPersonId: Map<PersonId, AgreementFact[]>;
   completedCommunications: ActionFact[];
   groundedCommunications: ActionFact[];
   groundedOpeningBasisKeys: Set<string>;
@@ -49,10 +56,18 @@ interface PlanningEventOverlay {
 
 const planningOverlays = new WeakMap<SimulationState, PlanningEventOverlay>();
 
+function appendForPerson<T>(index: Map<PersonId, T[]>, personId: PersonId, item: T): void {
+  const items = index.get(personId) ?? [];
+  items.push(item);
+  index.set(personId, items);
+}
+
 export function registerPlanningEventOverlay(state: SimulationState, events: WorldEvent[]): void {
   const overlay: PlanningEventOverlay = {
     events,
-    byId: new Map(), indexById: new Map(), actions: [], completedActions: [], environmentEvents: [],
+    byId: new Map(), indexById: new Map(), actions: [], actionsByPersonId: new Map(),
+    completedActions: [], completedActionsByPersonId: new Map(), environmentEvents: [],
+    agreementEventsByPersonId: new Map(),
     completedCommunications: [], groundedCommunications: [], groundedOpeningBasisKeys: new Set(),
     groundedOpeningsByListener: new Map(), groundedResponseOpeningIds: new Set(), matureCropHarvests: [],
     communicationByRepresentationId: new Map(), completedConstructionActions: [],
@@ -61,10 +76,15 @@ export function registerPlanningEventOverlay(state: SimulationState, events: Wor
     overlay.byId.set(event.id, event);
     overlay.indexById.set(event.id, index);
     if (event.kind === 'environment') overlay.environmentEvents.push(event);
+    if (event.kind === 'agreement') {
+      for (const personId of new Set(event.partyIds)) appendForPerson(overlay.agreementEventsByPersonId, personId, event);
+    }
     if (event.kind !== 'action') return;
     overlay.actions.push(event);
+    appendForPerson(overlay.actionsByPersonId, event.who, event);
     if (event.status !== 'completed') return;
     overlay.completedActions.push(event);
+    appendForPerson(overlay.completedActionsByPersonId, event.who, event);
     if (event.action.kind === 'communicate') {
       overlay.completedCommunications.push(event);
       overlay.communicationByRepresentationId.set(event.action.content.id, event);
@@ -104,8 +124,11 @@ function emptyIndex(): CachedEventIndex {
     byId: new Map(),
     ordinalById: new Map(),
     actions: [],
+    actionsByPersonId: new Map(),
     completedActions: [],
+    completedActionsByPersonId: new Map(),
     environmentEvents: [],
+    agreementEventsByPersonId: new Map(),
     completedCommunications: [],
     groundedCommunications: [],
     groundedOpeningBasisKeys: new Set(),
@@ -155,6 +178,9 @@ function indexFor(state: SimulationState): CachedEventIndex {
     index.byId.set(event.id, event);
     index.ordinalById.set(event.id, offset);
     if (event.kind === 'environment') index.environmentEvents.push(event);
+    if (event.kind === 'agreement') {
+      for (const personId of new Set(event.partyIds)) appendForPerson(index.agreementEventsByPersonId, personId, event);
+    }
     if (event.kind !== 'action') continue;
     if (!activityCopied) {
       // The previous arrays may already belong to an emitted UI frame. Copy
@@ -165,8 +191,10 @@ function indexFor(state: SimulationState): CachedEventIndex {
     }
     appendActivity(index.activity, event);
     index.actions.push(event);
+    appendForPerson(index.actionsByPersonId, event.who, event);
     if (event.status !== 'completed') continue;
     index.completedActions.push(event);
+    appendForPerson(index.completedActionsByPersonId, event.who, event);
     if (event.action.kind === 'communicate') {
       index.completedCommunications.push(event);
       index.communicationByRepresentationId.set(event.action.content.id, event);
@@ -263,8 +291,26 @@ export function completedActionFacts(state: SimulationState): readonly ActionFac
   return withOverlay(state, indexFor(state).completedActions, (overlay) => overlay.completedActions);
 }
 
+export function completedActionFactsForPerson(state: SimulationState, personId: PersonId): readonly ActionFact[] {
+  const base = indexFor(state).completedActionsByPersonId.get(personId) ?? [];
+  const extra = planningOverlays.get(state)?.completedActionsByPersonId.get(personId) ?? [];
+  return extra.length ? [...base, ...extra] : base;
+}
+
 export function actionFacts(state: SimulationState): readonly ActionFact[] {
   return withOverlay(state, indexFor(state).actions, (overlay) => overlay.actions);
+}
+
+export function actionFactsForPerson(state: SimulationState, personId: PersonId): readonly ActionFact[] {
+  const base = indexFor(state).actionsByPersonId.get(personId) ?? [];
+  const extra = planningOverlays.get(state)?.actionsByPersonId.get(personId) ?? [];
+  return extra.length ? [...base, ...extra] : base;
+}
+
+export function agreementFactsForPerson(state: SimulationState, personId: PersonId): readonly AgreementFact[] {
+  const base = indexFor(state).agreementEventsByPersonId.get(personId) ?? [];
+  const extra = planningOverlays.get(state)?.agreementEventsByPersonId.get(personId) ?? [];
+  return extra.length ? [...base, ...extra] : base;
 }
 
 export function environmentFacts(state: SimulationState): readonly EnvironmentFact[] {

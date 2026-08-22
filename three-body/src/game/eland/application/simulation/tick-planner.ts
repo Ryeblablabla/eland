@@ -1,4 +1,5 @@
 import { goalSatisfied } from '../../domain/action-executor';
+import { agreementsForPerson } from '../../domain/agreement';
 import { registerPlanningEventOverlay } from '../../domain/event-index';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { Material } from '../../domain/material';
@@ -19,6 +20,7 @@ import {
   type PersonId,
   type PersonState,
 } from '../../domain/person';
+import { personById } from '../../domain/state-index';
 import {
   buildDecisionContext,
   cloneMutableProjectsForPlanning,
@@ -73,13 +75,66 @@ export function buildDecisionContexts(
   return state.people.filter(isAlive).map((person) => buildDecisionContextForPerson(state, person, atMonth));
 }
 
+interface CurrentMonthPlanningIndex {
+  indexedLength: number;
+  lastIndexedEvent?: WorldEvent;
+  lifeReviewsByPerson: Map<PersonId, DecisionFact[]>;
+  groundedOpeningsByListener: Map<PersonId, ActionFact[]>;
+  socialProposalsByAudience: Map<PersonId, ActionFact[]>;
+}
+
+const currentMonthPlanningIndexes = new WeakMap<WorldEvent[], CurrentMonthPlanningIndex>();
+
+function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): CurrentMonthPlanningIndex {
+  let index = currentMonthPlanningIndexes.get(events);
+  if (!index
+    || index.indexedLength > events.length
+    || (index.indexedLength > 0 && events[index.indexedLength - 1] !== index.lastIndexedEvent)) {
+    index = {
+      indexedLength: 0,
+      lifeReviewsByPerson: new Map(),
+      groundedOpeningsByListener: new Map(),
+      socialProposalsByAudience: new Map(),
+    };
+    currentMonthPlanningIndexes.set(events, index);
+  }
+  for (let offset = index.indexedLength; offset < events.length; offset += 1) {
+    const event = events[offset];
+    if (event.atMonth !== atMonth) continue;
+    if (event.kind === 'decision'
+      && (event.decision.kind === 'start' || event.decision.kind === 'revise')
+      && event.decision.lifeReview) {
+      const reviews = index.lifeReviewsByPerson.get(event.who) ?? [];
+      reviews.push(event);
+      index.lifeReviewsByPerson.set(event.who, reviews);
+    }
+    if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'communicate') continue;
+    const content = event.action.content;
+    if (content.kind === 'claim' && content.conversation?.turn === 'opening') {
+      const openings = index.groundedOpeningsByListener.get(content.conversation.listenerId) ?? [];
+      openings.push(event);
+      index.groundedOpeningsByListener.set(content.conversation.listenerId, openings);
+    }
+    if ((content.kind === 'request' || content.kind === 'offer') && content.proposal) {
+      for (const audienceId of event.action.audience) {
+        const proposals = index.socialProposalsByAudience.get(audienceId) ?? [];
+        proposals.push(event);
+        index.socialProposalsByAudience.set(audienceId, proposals);
+      }
+    }
+  }
+  index.indexedLength = events.length;
+  index.lastIndexedEvent = events.at(-1);
+  return index;
+}
+
 function hasPendingAgreementWork(
   state: SimulationState,
   person: PersonState,
   active: Intent | undefined,
   atMonth: number,
 ): boolean {
-  return state.agreements.some((agreement) => {
+  return agreementsForPerson(state, person.id).some((agreement) => {
     const coveredByActiveIntent = active?.agreementId === agreement.id
       || Boolean(active?.sourceFactIds?.some((factId) => agreement.sourceEventIds.includes(factId)));
     if (agreement.status === 'proposed') {
@@ -88,13 +143,12 @@ function hasPendingAgreementWork(
         && !agreement.rejectedByPersonIds.includes(person.id)
         && !coveredByActiveIntent;
     }
-    const hasContinuation = compileAgreementContinuations(state, agreement.id, atMonth)
+    if (agreement.status !== 'active'
+      || !agreement.partyIds.includes(person.id)
+      || agreement.fulfilledByPersonIds.includes(person.id)
+      || coveredByActiveIntent) return false;
+    return compileAgreementContinuations(state, agreement.id, atMonth)
       .some((continuation) => continuation.personId === person.id);
-    return agreement.status === 'active'
-      && agreement.partyIds.includes(person.id)
-      && !agreement.fulfilledByPersonIds.includes(person.id)
-      && hasContinuation
-      && !coveredByActiveIntent;
   });
 }
 
@@ -138,7 +192,7 @@ export function previewGroundedLifeReviewOpportunity(
     ...state,
     projects: cloneMutableProjectsForPlanning(state.projects),
   };
-  const previewPerson = previewState.people.find((candidate) => candidate.id === person.id);
+  const previewPerson = personById(previewState, person.id);
   if (!previewPerson) return null;
   return groundedLifeReviewOpportunity(buildDecisionContext(previewState, previewPerson, atMonth));
 }
@@ -169,7 +223,7 @@ function previewDemandBoundRecordUseOpportunity(
     ...state,
     projects: cloneMutableProjectsForPlanning(state.projects),
   };
-  const previewPerson = previewState.people.find((candidate) => candidate.id === person.id);
+  const previewPerson = personById(previewState, person.id);
   return Boolean(previewPerson && buildDecisionContext(previewState, previewPerson, atMonth).options.some((option) => option.recordUseBasis));
 }
 
@@ -197,27 +251,14 @@ export function planLocallyForTick(
     }
     return cachedRecordUseOpportunity;
   };
-  const lifeReviewEvents = events.filter((event): event is DecisionFact => event.kind === 'decision'
-    && event.atMonth === atMonth
-    && event.who === person.id
-    && (event.decision.kind === 'start' || event.decision.kind === 'revise')
-    && Boolean(event.decision.lifeReview));
+  const planningIndex = currentMonthPlanningIndex(events, atMonth);
+  const lifeReviewEvents = planningIndex.lifeReviewsByPerson.get(person.id) ?? [];
   const checkTechniqueRequest = state.projects.some((project) => project.status === 'active'
     && project.techniqueDemonstrationRequests?.some((request) => request.teacherIds.includes(person.id)
       && request.expiresAtMonth >= atMonth
       && !project.techniqueDemonstrations?.some((basis) => basis.requestEventId === request.requestEventId)));
-  const currentMonthGroundedOpenings = events.filter((event): event is ActionFact => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'opening'
-    && event.action.content.conversation.listenerId === person.id);
-  const currentMonthSocialProposals = events.filter((event): event is ActionFact => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'communicate'
-    && (event.action.content.kind === 'request' || event.action.content.kind === 'offer')
-    && Boolean(event.action.content.proposal)
-    && event.action.audience.includes(person.id));
+  const currentMonthGroundedOpenings = planningIndex.groundedOpeningsByListener.get(person.id) ?? [];
+  const currentMonthSocialProposals = planningIndex.socialProposalsByAudience.get(person.id) ?? [];
   const planningEvidence = [
     ...lifeReviewEvents,
     ...currentMonthGroundedOpenings,
@@ -225,7 +266,7 @@ export function planLocallyForTick(
   ];
   const planningState = planningEvidence.length ? { ...state } : state;
   if (planningState !== state) registerPlanningEventOverlay(planningState, planningEvidence);
-  const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
+  const planningPerson = personById(planningState, person.id) ?? person;
   const hasCurrentMonthOpening = currentMonthGroundedOpenings.length > 0;
   let compiledContext: DecisionContext | undefined;
   const contextForPlanning = (): DecisionContext => compiledContext ??= buildDecisionContext(planningState, planningPerson, atMonth);

@@ -20,6 +20,7 @@ import type { DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { recompileProjectNextAction } from './project-options';
+import { intentById, projectById } from '../domain/state-index';
 
 interface ResolvedTechniqueAction {
   action: Extract<PrimitiveAction, { kind: 'act' }>;
@@ -182,14 +183,13 @@ function previewProjectAction(
 }
 
 function activeOwnedProject(state: SimulationState, reader: PersonState) {
-  const activeIntent = state.intents.find((intent) => intent.id === reader.activeIntentId
-    && intent.ownerId === reader.id
-    && intent.status === 'active'
-    && intent.projectId);
-  if (!activeIntent?.projectId) return null;
-  const project = state.projects.find((candidate) => candidate.id === activeIntent.projectId
-    && candidate.ownerId === reader.id
-    && candidate.status === 'active');
+  const activeIntent = reader.activeIntentId ? intentById(state, reader.activeIntentId) : undefined;
+  if (!activeIntent
+    || activeIntent.ownerId !== reader.id
+    || activeIntent.status !== 'active'
+    || !activeIntent.projectId) return null;
+  const project = projectById(state, activeIntent.projectId);
+  if (project?.ownerId !== reader.id || project.status !== 'active') return null;
   return project ? { intent: activeIntent, project } : null;
 }
 
@@ -386,9 +386,10 @@ export function recompileRecordUseNextAction(
   }
   if (basis.readerId !== person.id) return null;
   if (basis.version === 'record-use-basis-v1' && intent.recordUseStage !== 'read-experiment') return null;
-  const project = state.projects.find((candidate) => candidate.id === basis.projectId
-    && candidate.ownerId === person.id
-    && candidate.status === 'active');
+  const projectCandidate = projectById(state, basis.projectId);
+  const project = projectCandidate?.ownerId === person.id && projectCandidate.status === 'active'
+    ? projectCandidate
+    : undefined;
   const record = state.records.find((candidate) => candidate.id === basis.recordId
     && candidate.kind === 'technique'
     && candidate.knowledgeId === basis.knowledgeId

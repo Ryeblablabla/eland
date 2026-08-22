@@ -293,6 +293,7 @@ export type FactPredicate =
   | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean; phase?: HibernationPhase }
   | { kind: 'project-completed'; projectId: string }
   | { kind: 'technique-demonstrated'; projectId: string; requestEventId: string }
+  | { kind: 'agreement-fulfilled'; agreementId: string }
   | { kind: 'death-mourned'; remainsId: string }
   | { kind: 'remains-interred'; remainsId: string }
   | { kind: 'memorial-marked'; remainsId: string }
@@ -321,6 +322,17 @@ export interface LifeReviewEvidence {
   lifePressure: number;
   projectPressure: number;
   relationshipBasis?: RelationshipCausalBasis;
+}
+
+export type IntentGoalOutcomeKind = 'achieved' | 'attempted-unmet' | 'not-evaluated';
+
+/** Lifecycle completion and goal achievement are deliberately distinct. */
+export interface IntentGoalOutcome {
+  version: 'intent-goal-outcome-v1';
+  kind: IntentGoalOutcomeKind;
+  basisKey: string;
+  resolvedAtMonth: number;
+  sourceEventIds: string[];
 }
 
 export interface Intent {
@@ -368,6 +380,8 @@ export interface Intent {
   lastProcessAttemptAtMonth?: number;
   sourceFactIds?: string[];
   actionEventIds: string[];
+  /** Optional for old states; never inferred from a legacy completed status. */
+  goalOutcome?: IntentGoalOutcome;
   blockedReason?: string;
   replanCount: number;
 }

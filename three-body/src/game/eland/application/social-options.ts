@@ -20,7 +20,7 @@ import {
 } from '../domain/social-facts';
 import { cellX, cellY, cellsInRadius, findStandingPath } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
-import { canAcceptAssist } from './agreement-continuation';
+import { canAcceptAssist, compileAgreementContinuations } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
 import { activeMandatesFor } from '../domain/governance';
 import { activePermissionsFor } from '../domain/permission';
@@ -32,6 +32,9 @@ import {
 } from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
 import { personalityScore } from '../domain/personality';
+import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
+import { agreementById, agreementsForPerson } from '../domain/agreement';
+import { intentsOwnedBy, personById } from '../domain/state-index';
 import {
   companionReturnRequired,
   companionLivingAnchor,
@@ -44,13 +47,18 @@ function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
 }
 
+function groundedRelationSourceIds(state: SimulationState, person: PersonState, otherId: string): string[] {
+  return (relationTo(person, otherId)?.sourceEventIds ?? [])
+    .filter((eventId) => worldEventById(state, eventId));
+}
+
 function reachableWater(state: SimulationState, person: PersonState) {
   const radius = 4 + Math.floor(person.baselineCapacities.perception / 25);
   return findReachableWater(state, person, cellsInRadius(person.position.cellId, radius));
 }
 
 function latestCollectiveAttemptMonth(state: SimulationState, firstId: string, secondId: string): number {
-  return state.agreements
+  return agreementsForPerson(state, firstId)
     .filter((agreement) => agreement.proposal.kind === 'collective'
       && agreement.partyIds.includes(firstId)
       && agreement.partyIds.includes(secondId))
@@ -59,6 +67,61 @@ function latestCollectiveAttemptMonth(state: SimulationState, firstId: string, s
 
 function completedAfter(project: SimulationState['projects'][number], month: number): boolean {
   return (project.completedAtMonth ?? project.lastProgressAtMonth ?? project.createdAtMonth) > month;
+}
+
+function companyAssistInFlightBetween(state: SimulationState, firstId: string, secondId: string): boolean {
+  return agreementsForPerson(state, firstId).some((agreement) => (agreement.status === 'proposed' || agreement.status === 'active')
+    && agreement.proposal.kind === 'assist'
+    && agreement.proposal.need === 'company'
+    && agreement.partyIds.includes(firstId)
+    && agreement.partyIds.includes(secondId));
+}
+
+const COMPANY_REQUEST_REOFFER_MONTHS = 6;
+const LOCAL_SOCIAL_ATTENTION_LIMIT = 3;
+
+/**
+ * A person can only appraise a few local relationships in one month, but the
+ * bounded window must not make state insertion order a lifelong social fate.
+ * The person-specific phase also keeps a whole settlement from focusing on
+ * the same three people at once.
+ */
+function localSocialAttention(
+  person: PersonState,
+  localPeople: PersonState[],
+  atMonth: number,
+): PersonState[] {
+  if (!localPeople.length) return [];
+  const ordered = [...localPeople].sort((left, right) => left.id.localeCompare(right.id));
+  const identityPhase = [...person.id].reduce((total, character) => total + character.charCodeAt(0), 0);
+  const start = (identityPhase + atMonth) % ordered.length;
+  return Array.from(
+    { length: Math.min(LOCAL_SOCIAL_ATTENTION_LIMIT, ordered.length) },
+    (_, index) => ordered[(start + index) % ordered.length]!,
+  );
+}
+
+function canRequestCompanyWithCurrentBasis(
+  state: SimulationState,
+  requesterId: string,
+  helperId: string,
+  relationshipSourceFactIds: string[],
+  atMonth: number,
+): boolean {
+  const previous = [...agreementsForPerson(state, requesterId)].reverse().find((agreement) => agreement.proposal.kind === 'assist'
+    && agreement.proposal.need === 'company'
+    && agreement.proposal.requesterId === requesterId
+    && agreement.proposal.helperId === helperId);
+  if (!previous) return true;
+  if (previous.status === 'proposed' || previous.status === 'active') return false;
+  const resolvedAtMonth = previous.resolvedAtMonth ?? previous.proposedAtMonth;
+  if (atMonth - resolvedAtMonth < COMPANY_REQUEST_REOFFER_MONTHS) return false;
+  return relationshipSourceFactIds.some((eventId) => {
+    const ordered = worldEventsByIdsInHistoryOrder(state, [previous.proposalEventId, eventId]);
+    return ordered.length === 2
+      && ordered[0]?.id === previous.proposalEventId
+      && ordered[1]?.id === eventId;
+  });
 }
 
 function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission' | 'decision-rule' | 'mandate'): ActionOption {
@@ -83,12 +146,12 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
 }
 
 function membershipResponseOption(state: SimulationState, person: PersonState, referenceId: string, accept: boolean): ActionOption | null {
-  const agreement = state.agreements.find((candidate) => candidate.id === referenceId && candidate.status === 'proposed' && candidate.proposal.kind === 'membership');
-  if (!agreement || agreement.proposal.kind !== 'membership') return null;
+  const agreement = agreementById(state, referenceId);
+  if (agreement?.status !== 'proposed' || agreement.proposal.kind !== 'membership') return null;
   const proposal = agreement.proposal;
-  const proposer = state.people.find((candidate) => candidate.id === agreement.proposerId);
+  const proposer = personById(state, agreement.proposerId);
   if (!proposer) return null;
-  const candidate = state.people.find((other) => other.id === proposal.candidateId);
+  const candidate = personById(state, proposal.candidateId);
   const representationId = `${accept ? 'accept' : 'reject'}:${referenceId}:${person.id}`;
   const joining = proposal.candidateId === person.id;
   const summary = joining
@@ -143,7 +206,7 @@ export function buildSocialOptions(
       && atMonth - project.completedAtMonth <= 12
       && coreIds.includes(person.id)
       && coreIds.some((personId) => personId !== person.id
-        && state.people.some((candidate) => candidate.id === personId && candidate.diedAtMonth === undefined))
+        && personById(state, personId)?.diedAtMonth === undefined)
       && !coreIds.some((personId) => personId !== person.id
         && visiblePeople.some((candidate) => candidate.id === personId));
   });
@@ -163,14 +226,14 @@ export function buildSocialOptions(
       risks: [], domain: 'strategic', sourceFactIds: [...recentJointProject.completionEventIds],
     });
   }
-  const requestedWaterAssist = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+  const requestedWaterAssist = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'assist'
     && agreement.proposal.need === 'water'
     && agreement.proposal.requesterId === person.id);
   if (requestedWaterAssist?.proposal.kind === 'assist') {
     const proposal = requestedWaterAssist.proposal;
-    const helper = state.people.find((other) => other.id === proposal.helperId);
-    const helperRoute = [...state.intents].reverse().find((intent) => intent.ownerId === helper?.id
+    const helper = personById(state, proposal.helperId);
+    const helperRoute = helper && [...intentsOwnedBy(state, helper.id)].reverse().find((intent) => intent.ownerId === helper.id
       && intent.goal.kind === 'at-cell'
       && (intent.sourceFactIds ?? []).some((eventId) => requestedWaterAssist.sourceEventIds.includes(eventId)));
     if (helper && helperRoute?.goal.kind === 'at-cell' && person.position.cellId !== helperRoute.goal.cellId) {
@@ -190,7 +253,7 @@ export function buildSocialOptions(
   }
   const acceptedAssist = acceptedAssistFor(state, person.id, atMonth);
   if (acceptedAssist) {
-    const requester = state.people.find((other) => other.id === acceptedAssist.proposal.requesterId);
+    const requester = personById(state, acceptedAssist.proposal.requesterId);
     let alreadyHelped = false;
     for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
       const event = state.world.past[index];
@@ -208,7 +271,24 @@ export function buildSocialOptions(
     if (requester && !alreadyHelped) {
       const food = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
       const water = acceptedAssist.proposal.need === 'water' ? reachableWater(state, person) : null;
-      if (acceptedAssist.proposal.need === 'food' && food && sameLocation(requester, person)) options.push({
+      const agreementId = acceptedAssist.request.action.kind === 'communicate'
+        ? acceptedAssist.request.action.content.id
+        : undefined;
+      const companyContinuation = acceptedAssist.proposal.need === 'company' && agreementId
+        ? compileAgreementContinuations(state, agreementId, atMonth)
+          .find((continuation) => continuation.personId === person.id)
+        : undefined;
+      if (companyContinuation) options.push({
+        id: `fulfill-assist:${agreementId}`,
+        summary: companyContinuation.summary,
+        reason: '自己已经明确接受陪伴请求，且双方仍在同一地点，可以用真实共同在场履行承诺',
+        goal: companyContinuation.goal,
+        nextAction: companyContinuation.nextAction,
+        ...(companyContinuation.target ? { target: companyContinuation.target } : {}),
+        estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...companyContinuation.sourceFactIds],
+      });
+      else if (acceptedAssist.proposal.need === 'food' && food && sameLocation(requester, person)) options.push({
         id: `fulfill-assist:${acceptedAssist.request.id}`,
         summary: `履行承诺，把食物交给${requester.name}`,
         reason: '自己已经在对话中接受对方的求助',
@@ -217,7 +297,7 @@ export function buildSocialOptions(
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
       });
-      else if (!sameLocation(requester, person)) options.push({
+      else if (acceptedAssist.proposal.need !== 'company' && !sameLocation(requester, person)) options.push({
         id: `meet-to-assist:${acceptedAssist.request.id}`,
         summary: `去与${requester.name}会合以履行帮助承诺`, reason: '已经接受求助，必须先回到对方身边',
         goal: { kind: 'near-person', personId: requester.id }, nextAction: { kind: 'move', toCellId: requester.position.cellId, toZ: requester.position.z },
@@ -240,7 +320,7 @@ export function buildSocialOptions(
           estimatedMonths: Math.max(1, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)),
           risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
         });
-      } else {
+      } else if (acceptedAssist.proposal.need !== 'company') {
         const representationId = `fulfill-assist:${acceptedAssist.request.id}:${person.id}`;
         options.push({
           id: representationId,
@@ -254,9 +334,28 @@ export function buildSocialOptions(
     }
   }
 
-  for (const companionship of state.agreements.filter((agreement) => agreement.status === 'active'
+  for (const companionship of agreementsForPerson(state, person.id).filter((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'companion'
     && agreement.partyIds.includes(person.id))) {
+    const partnerId = companionship.partyIds.find((candidate) => candidate !== person.id);
+    const partner = partnerId ? personById(state, partnerId) : undefined;
+    if (partner && sameLocation(person, partner)) {
+      const representationId = `withdraw-companion:${atMonth}:${companionship.id}:${person.id}`;
+      options.push({
+        id: representationId,
+        summary: `向${partner.name}明确结束共同生活关系`,
+        reason: '共同生活关系持续有效但不剥夺任何一方退出的能力；退出必须由本人当面表达',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: { id: representationId, kind: 'revoke-agreement', referenceId: companionship.id, summary: '我决定结束我们的共同生活关系' },
+          audience: [partner.id], channel: 'voice',
+        },
+        target: { kind: 'person', personId: partner.id },
+        estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: [], domain: 'social', sourceFactIds: [...companionship.sourceEventIds],
+      });
+    }
     const anchor = companionLivingAnchor(state, companionship);
     if (!anchor || personWithinLivingArea(person, anchor) || !companionReturnRequired(companionship, atMonth)) continue;
     const target = sharedLivingReturnTarget(state, companionship, person);
@@ -265,7 +364,9 @@ export function buildSocialOptions(
     options.push({
       id: `return-shared-living:${companionship.id}:${person.id}`,
       summary: '回到双方约定的共同生活地点',
-      reason: '结伴约定已用完时间余量，需要回到稳定地点履行共同生活，而不是追踪对方的实时位置',
+      reason: companionship.companionEstablishedAtMonth !== undefined
+        ? '已建立的共同生活承诺到达维护时点，需要回到协议中的固定地点，而不是追踪对方的实时位置'
+        : '结伴约定已用完时间余量，需要回到协议中的固定地点履行共同生活，而不是追踪对方的实时位置',
       goal: { kind: 'at-cell', cellId: target.cellId },
       nextAction: { kind: 'move', toCellId: target.cellId, toZ: target.z },
       target: { kind: 'voxel', position: { x: cellX(target.cellId), y: cellY(target.cellId), z: target.z } },
@@ -276,16 +377,27 @@ export function buildSocialOptions(
   }
   const incomingAssist = openAssistRequestFor(state, person.id);
   if (incomingAssist) {
-    const requester = state.people.find((other) => other.id === incomingAssist.fact.who);
+    const requester = personById(state, incomingAssist.fact.who);
     if (requester) {
       const proposal = incomingAssist.content.proposal;
-      if (proposal?.kind === 'assist' && canAcceptAssist(state, person, requester, proposal.need)) options.push(responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'));
-      options.push(responseOption(state, person, incomingAssist.content.id, requester, false, 'assist'));
+      const locallyPerceived = proposal?.kind !== 'assist'
+        || proposal.need !== 'company'
+        || visiblePeople.some((other) => other.id === requester.id);
+      if (proposal?.kind === 'assist' && locallyPerceived) {
+        if (canAcceptAssist(state, person, requester, proposal.need)) options.push({
+          ...responseOption(state, person, incomingAssist.content.id, requester, true, 'assist'),
+          sourceFactIds: [incomingAssist.fact.id],
+        });
+        options.push({
+          ...responseOption(state, person, incomingAssist.content.id, requester, false, 'assist'),
+          sourceFactIds: [incomingAssist.fact.id],
+        });
+      }
     }
   }
   const incomingCompanion = openCompanionOfferFor(state, person.id);
   if (incomingCompanion) {
-    const proposer = state.people.find((other) => other.id === incomingCompanion.fact.who);
+    const proposer = personById(state, incomingCompanion.fact.who);
     if (proposer) {
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'companion', atMonth);
       if (hasCultivatedCompanionRelationship(state, person, proposer, responseBasis)) {
@@ -296,7 +408,7 @@ export function buildSocialOptions(
   }
   const incomingCollective = openCollectiveOfferFor(state, person.id);
   if (incomingCollective) {
-    const proposer = state.people.find((other) => other.id === incomingCollective.fact.who);
+    const proposer = personById(state, incomingCollective.fact.who);
     const proposal = incomingCollective.content.proposal;
     if (proposer && proposal?.kind === 'collective') {
       const canFormInitialCollective = activeCollectivesFor(state, person.id).length === 0
@@ -307,7 +419,7 @@ export function buildSocialOptions(
   }
   const incomingPermission = openPermissionOfferFor(state, person.id);
   if (incomingPermission) {
-    const grantor = state.people.find((other) => other.id === incomingPermission.fact.who);
+    const grantor = personById(state, incomingPermission.fact.who);
     const proposal = incomingPermission.content.proposal;
     if (grantor && proposal?.kind === 'permission') {
       options.push({ ...responseOption(state, person, incomingPermission.content.id, grantor, true, 'permission'), sourceFactIds: [incomingPermission.fact.id] });
@@ -323,7 +435,7 @@ export function buildSocialOptions(
   }
   const incomingDecisionRule = openDecisionRuleOfferFor(state, person.id);
   if (incomingDecisionRule) {
-    const proposer = state.people.find((other) => other.id === incomingDecisionRule.fact.who);
+    const proposer = personById(state, incomingDecisionRule.fact.who);
     if (proposer) {
       options.push(responseOption(state, person, incomingDecisionRule.content.id, proposer, true, 'decision-rule'));
       options.push(responseOption(state, person, incomingDecisionRule.content.id, proposer, false, 'decision-rule'));
@@ -331,7 +443,7 @@ export function buildSocialOptions(
   }
   const incomingMandate = openMandateOfferFor(state, person.id);
   if (incomingMandate) {
-    const proposer = state.people.find((other) => other.id === incomingMandate.fact.who);
+    const proposer = personById(state, incomingMandate.fact.who);
     if (proposer) {
       options.push(responseOption(state, person, incomingMandate.content.id, proposer, true, 'mandate'));
       options.push(responseOption(state, person, incomingMandate.content.id, proposer, false, 'mandate'));
@@ -418,7 +530,7 @@ export function buildSocialOptions(
           && permission.grantorId === person.id
           && permission.granteeId === localMember.id
           && permission.materialId === stack.materialId)
-        && !state.agreements.some((agreement) => agreement.status === 'proposed'
+        && !agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
           && agreement.proposal.kind === 'permission'
           && agreement.proposal.grantorId === person.id
           && agreement.proposal.granteeId === localMember.id
@@ -446,17 +558,17 @@ export function buildSocialOptions(
       }
     }
     const allMembersHere = activeMemberIds(state, collective).every((id) => {
-      const member = state.people.find((candidate) => candidate.id === id);
+      const member = personById(state, id);
       return Boolean(member && sameLocation(member, person));
     });
     const activeMembers = activeMemberIds(state, collective)
-      .flatMap((id) => state.people.filter((candidate) => candidate.id === id));
+      .flatMap((id) => personById(state, id) ?? []);
     const requiredMemberApprovals = activeMembers.map((member) => member.id).filter((id) => id !== person.id);
     const initiativeMember = [...activeMembers].sort((a, b) =>
       (b.motiveSensitivity.status + personalityScore(b, 'extraversion') * 0.35 + b.baselineCapacities.cognition)
         - (a.motiveSensitivity.status + personalityScore(a, 'extraversion') * 0.35 + a.baselineCapacities.cognition)
       || a.id.localeCompare(b.id))[0];
-    const pendingDecisionRule = state.agreements.some((agreement) => agreement.status === 'proposed'
+    const pendingDecisionRule = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'decision-rule'
       && agreement.proposal.collectiveId === collective.id);
     if (allMembersHere
@@ -504,7 +616,7 @@ export function buildSocialOptions(
     }
     const rule = collective.decisionRules.find((candidate) => candidate.status === 'active');
     const activeMandate = collective.mandates.find((candidate) => candidate.status === 'active' && candidate.decisionRuleId === rule?.id);
-    const pendingMandate = state.agreements.some((agreement) => agreement.status === 'proposed'
+    const pendingMandate = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'mandate'
       && agreement.proposal.collectiveId === collective.id);
     const lastMandate = [...collective.mandates]
@@ -546,7 +658,7 @@ export function buildSocialOptions(
     const candidate = allMembersHere ? localPeople.find((other) => {
       if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
       const relation = relationTo(person, other.id);
-      const fulfilledTogether = state.agreements.some((agreement) => agreement.status === 'fulfilled'
+      const fulfilledTogether = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'fulfilled'
         && agreement.partyIds.includes(person.id)
         && agreement.partyIds.includes(other.id)
         && (agreement.proposal.kind === 'assist' || agreement.proposal.kind === 'exchange' || agreement.proposal.kind === 'companion'));
@@ -578,7 +690,7 @@ export function buildSocialOptions(
 
   for (const mandate of activeMandatesFor(state, person.id)
     .filter((candidate) => atMonth >= candidate.validFromMonth && atMonth <= candidate.validUntilMonth)) {
-    const holder = state.people.find((other) => other.id === mandate.holderId);
+    const holder = personById(state, mandate.holderId);
     if (!holder) continue;
     if (person.id !== holder.id
       && sameLocation(person, holder)
@@ -613,8 +725,8 @@ export function buildSocialOptions(
 
   for (const permission of activePermissionsFor(state, person.id)
     .filter((candidate) => atMonth >= candidate.validFromMonth && atMonth <= candidate.validUntilMonth)) {
-    const grantor = state.people.find((other) => other.id === permission.grantorId);
-    const grantee = state.people.find((other) => other.id === permission.granteeId);
+    const grantor = personById(state, permission.grantorId);
+    const grantee = personById(state, permission.granteeId);
     if (person.id === permission.granteeId && grantor && sameLocation(grantor, person)) {
       const stack = grantor.inventory.find((item) => item.materialId === permission.materialId && item.quantity > 0);
       if (stack) options.push({
@@ -641,8 +753,47 @@ export function buildSocialOptions(
     }
   }
 
-  for (const other of localPeople.slice(0, 3)) {
+  for (const agreement of agreementsForPerson(state, person.id).filter((candidate) => candidate.status === 'active'
+    && candidate.proposal.kind === 'assist'
+    && candidate.proposal.need === 'company'
+    && candidate.partyIds.includes(person.id))) {
+    const otherId = agreement.partyIds.find((candidate) => candidate !== person.id);
+    const other = otherId ? personById(state, otherId) : undefined;
+    const relation = other ? relationTo(person, other.id) : undefined;
+    const adverseRelationship = Boolean(relation?.sourceEventIds.length
+      && relation.fear > Math.max(relation.trust, relation.bond));
+    const severeBodyState = Math.min(person.body.health, person.body.hydration, person.body.nutrition) < 35;
+    const acuteConditionSources = person.conditions
+      .filter((condition) => condition.stage >= 3)
+      .flatMap((condition) => condition.sourceEventIds);
+    if (!other || !sameLocation(person, other) || (!adverseRelationship && !severeBodyState && !acuteConditionSources.length)) continue;
+    const representationId = `withdraw-company-assist:${atMonth}:${agreement.id}:${person.id}`;
+    options.push({
+      id: representationId,
+      summary: `向${other.name}明确撤回这次陪伴约定`,
+      reason: adverseRelationship
+        ? '协议生效后出现了有来源的关系危险，本人可以明确退出'
+        : '本人正经历严重身体状态，可以明确撤回尚未履行的陪伴承诺',
+      goal: { kind: 'representation-made', representationId },
+      nextAction: {
+        kind: 'communicate',
+        content: { id: representationId, kind: 'revoke-agreement', referenceId: agreement.id, summary: '我现在无法继续这次陪伴约定' },
+        audience: [other.id], channel: 'voice',
+      },
+      target: { kind: 'person', personId: other.id },
+      estimatedDuration: 'one-month', estimatedMonths: 1,
+      risks: [], domain: 'social',
+      sourceFactIds: [...new Set([
+        ...agreement.sourceEventIds,
+        ...(adverseRelationship ? relation?.sourceEventIds ?? [] : []),
+        ...acuteConditionSources,
+      ])],
+    });
+  }
+
+  for (const other of localSocialAttention(person, localPeople, atMonth)) {
     const relation = relationTo(person, other.id);
+    const relationshipSourceFactIds = groundedRelationSourceIds(state, person, other.id);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);
     const need: 'water' | 'food' | null = person.body.hydration < 45 ? 'water' : person.body.nutrition < 45 ? 'food' : null;
     if (need && !hasOpenAssistRequestBetween(state, person.id, other.id)) {
@@ -654,6 +805,37 @@ export function buildSocialOptions(
         goal: { kind: 'representation-made', representationId },
         nextAction: { kind: 'communicate', content: { id: representationId, kind: 'request', summary: need === 'water' ? '请帮助我找到水' : '请帮助我取得食物', proposal: { kind: 'assist', requesterId: person.id, helperId: other.id, need, expiresAtMonth: atMonth + 4 } }, audience: [other.id], channel: 'voice' },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social', sourceFactIds: [],
+      });
+    }
+    const locallyApproachable = Math.max(0, relation?.trust ?? 0) + Math.max(0, relation?.bond ?? 0)
+      >= Math.max(0, relation?.fear ?? 0);
+    if (locallyApproachable
+      && !hasCultivatedCompanionRelationship(state, person, other, companionBasis)
+      && !companyAssistInFlightBetween(state, person.id, other.id)
+      && canRequestCompanyWithCurrentBasis(state, person.id, other.id, relationshipSourceFactIds, atMonth)
+      && !acceptedCompanionBetween(state, person.id, other.id, atMonth)) {
+      const representationId = `request-assist:${atMonth}:${person.id}:${other.id}:company`;
+      options.push({
+        id: `request-company:${atMonth}:${person.id}:${other.id}`,
+        summary: `请求${other.name}在这里陪伴自己一段时间`,
+        reason: relationshipSourceFactIds.length
+          ? '双方此刻同地，且本人记得彼此真实发生过的关系经历；可以请求而不能预设对方同意'
+          : '双方此刻同地且可以直接沟通；这是一次低风险接近请求，不声称彼此已经建立关系',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: {
+            id: representationId,
+            kind: 'request',
+            summary: '愿不愿意留在这里陪我一段时间？',
+            proposal: { kind: 'assist', requesterId: person.id, helperId: other.id, need: 'company', expiresAtMonth: atMonth + 4 },
+          },
+          audience: [other.id], channel: 'voice',
+        },
+        target: { kind: 'person', personId: other.id },
+        estimatedDuration: 'one-month', estimatedMonths: 1,
+        risks: ['对方可以拒绝或在关系恶化时撤回'], domain: 'social',
+        sourceFactIds: [...relationshipSourceFactIds],
       });
     }
     if (!hasOpenCompanionOfferBetween(state, person.id, other.id)
@@ -671,7 +853,7 @@ export function buildSocialOptions(
       });
     }
     const lastCollectiveAttempt = latestCollectiveAttemptMonth(state, person.id, other.id);
-    const sharedFulfillment = [...state.agreements].reverse().find((agreement) => agreement.status === 'fulfilled'
+    const sharedFulfillment = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'fulfilled'
       && agreement.partyIds.includes(person.id)
       && agreement.partyIds.includes(other.id)
       && (agreement.proposal.kind === 'assist' || agreement.proposal.kind === 'exchange' || agreement.proposal.kind === 'companion')

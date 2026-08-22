@@ -10,6 +10,7 @@ import { cognitionStateOf, outcomeBeliefSuccess } from './domain/cognition';
 import { buildCognitiveFrame } from './application/cognition/option-appraisal';
 import { speechActFromRepresentation } from './projection/speech-act';
 import type { SpeechActView } from '../societyContract';
+import { traitDefinition, traitStatesOf } from './domain/trait';
 
 export interface DecisionRequestContext {
   person: {
@@ -21,6 +22,7 @@ export interface DecisionRequestContext {
     body: DecisionContext['person']['body'];
     conditions: DecisionContext['person']['conditions'];
     capacities: DecisionContext['person']['baselineCapacities'];
+    traits: Array<{ id: string; name: string; description: string }>;
     personality: ReturnType<typeof effectivePersonality>;
     motiveSensitivity: DecisionContext['person']['motiveSensitivity'];
     soul: ReturnType<typeof buildPersonSoul>;
@@ -223,6 +225,10 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       body: person.body,
       conditions: person.conditions,
       capacities: person.baselineCapacities,
+      traits: traitStatesOf(person).map((trait) => {
+        const definition = traitDefinition(trait.id);
+        return { id: definition.id, name: definition.name, description: definition.description };
+      }),
       personality: effectivePersonality(person),
       motiveSensitivity: person.motiveSensitivity,
       soul: buildPersonSoul(person),

@@ -49,6 +49,8 @@ export interface SocietyAgent {
   sex: 'female' | 'male';
   lifespanMonths: number;
   generation: number;
+  /** 新投影始终提供；可选仅用于读取特质系统上线前的历史帧。 */
+  traits?: { id: string; name: string; description: string }[];
   respect: number;
   mind: { want: string; choice: string; ought: string };
   needs: { level: string; label: string; intensity: number; dominant: boolean }[];
@@ -241,6 +243,8 @@ export interface ActionVisualView {
   targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
   targetPersonId?: string;
   targetAnimalId?: string;
+  /** 已完成分离动作的权威来源材质；动作后目标体素可能已经改变。 */
+  sourceMaterialId?: number;
   materialId?: number;
   materialIds?: number[];
   toolMaterialId?: number;
@@ -355,7 +359,7 @@ export interface GameFrame {
   skySample: SkySample;
   cosmosSnapshot?: CosmosSnapshot;
   society: SocietyState;
-  civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones'; cause: string; summary: string } | null;
+  civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; summary: string } | null;
   entries: NarrativeEntryView[];
   /**
    * 已发生沟通的表层台词。它绑定权威 ActionFact，但只用于表现，

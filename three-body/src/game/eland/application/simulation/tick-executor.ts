@@ -28,6 +28,7 @@ import {
   isRecoveringFromDehydratedHibernation,
   type PersonId,
 } from '../../domain/person';
+import { personById } from '../../domain/state-index';
 import {
   chooseHibernationRecoveryReflex,
   chooseSurvivalReflex,
@@ -80,7 +81,7 @@ function executePrepared(
   const reviewedPeople = new Set<PersonId>();
   const plannedAtTickOne = new Set<PersonId>();
   for (const candidate of candidates) {
-    const person = state.people.find((item) => item.id === candidate.person.id);
+    const person = personById(state, candidate.person.id);
     if (!person || !isAlive(person)) continue;
     const freshContext = buildDecisionContext(state, person, atMonth);
     const picked = decisions.get(person.id);

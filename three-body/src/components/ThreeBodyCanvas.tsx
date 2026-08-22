@@ -9,6 +9,7 @@ import { createDistantSkyLayer } from '@/game/distantSky';
 import { createEarthlikePlanet } from '@/game/earthlikePlanet';
 import { makeStarSurfaceTexture } from '@/game/proceduralTextures';
 import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
+import { createDistantCometLayer } from '@/game/skyPhenomena';
 import {
   DEFAULT_PRESET,
   N_BODIES,
@@ -446,6 +447,7 @@ export default function ThreeBodyCanvas(props: Props) {
     const distantSky = createDistantSkyLayer({ mode: 'universe', radius: 820, renderOrder: -9 });
     distantSky.group.rotation.copy(scene.backgroundRotation);
     scene.add(distantSky.group);
+    const distantComet = createDistantCometLayer(scene);
 
     const starfieldGeo = new THREE.BufferGeometry();
     {
@@ -874,6 +876,7 @@ export default function ThreeBodyCanvas(props: Props) {
       const pxPerUnit = Math.min(W, H) / 2 / w.viewR;
       const px2w = (px: number) => px / pxPerUnit;
       distantSky.group.position.copy(camera.position);
+      distantComet.update(frameDt, camera, w.t, p.resetToken);
 
       // ---- 轨迹写缓冲 ----
       for (let i = 0; i < N_BODIES; i++) {
@@ -1001,6 +1004,7 @@ export default function ThreeBodyCanvas(props: Props) {
       window.removeEventListener('blur', clearZoomKeys);
       controls.dispose();
       scene.background = null;
+      distantComet.dispose();
       distantSky.dispose();
       galaxyTarget.dispose();
       disposeScene(scene, composer, renderer);

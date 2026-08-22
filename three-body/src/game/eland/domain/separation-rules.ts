@@ -30,6 +30,10 @@ const VOXEL_SEPARATION_RULES: readonly VoxelSeparationRule[] = [
   },
 ] as const;
 
+export function separationRules(): readonly VoxelSeparationRule[] {
+  return VOXEL_SEPARATION_RULES;
+}
+
 export function voxelSeparationRuleFor(materialId: MaterialId): VoxelSeparationRule | undefined {
   return VOXEL_SEPARATION_RULES.find((rule) => rule.inputMaterialId === materialId);
 }

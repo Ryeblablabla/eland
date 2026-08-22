@@ -1,7 +1,7 @@
 import type { DecisionRequestContext } from '../src/game/eland/kimi-decider';
 import type { Decision, TokenUsage } from '../src/game/eland/simulation';
 import { loadServerEnvValue } from './env';
-import { requestModelText, type ModelMessage } from './model-client';
+import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
 
 const MAX_AGENTS = 12;
@@ -57,6 +57,15 @@ function decisionMaxOutputTokens(): number {
   return Number.isFinite(configured) ? Math.max(128, Math.min(2_000, Math.floor(configured))) : 600;
 }
 
+function isReasoningOnlyOpenAiChatResponse(error: unknown, endpoint: ResolvedModelEndpoint): boolean {
+  if (endpoint.protocol !== 'openai-chat'
+    || !(error instanceof ModelRequestError)
+    || error.code !== 'invalid-response'
+    || !error.message.includes('没有返回最终文本')) return false;
+  return /finish_reason=(?:length|stop)\b/u.test(error.message)
+    && /reasoning_length=[1-9]\d*/u.test(error.message);
+}
+
 async function requestModelDecision(
   endpoint: ResolvedModelEndpoint,
   context: DecisionRequestContext,
@@ -78,7 +87,7 @@ async function requestModelDecision(
   );
   if (conciseRetry) messages.push({
     role: 'user',
-    content: '上一轮内部推理耗尽额度且没有最终 JSON。不要展开长推理；直接比较合法选项并在 300 字以内输出一个最终 JSON 对象。',
+    content: '上一轮只返回了内部推理，没有最终 JSON。不要展开长推理；直接比较合法选项并在 300 字以内输出一个最终 JSON 对象。',
   });
   const response = await requestModelText(endpoint, {
     messages,
@@ -137,7 +146,10 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
       completion = await requestModelDecision(endpoint, context, correction, conciseRetry);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const retryable = message.includes('finish_reason=length') || message.toLowerCase().includes('timeout') || message.toLowerCase().includes('aborted');
+      const retryable = isReasoningOnlyOpenAiChatResponse(error, endpoint)
+        || message.includes('finish_reason=length')
+        || message.toLowerCase().includes('timeout')
+        || message.toLowerCase().includes('aborted');
       if (!conciseRetry && retryable) {
         conciseRetry = true;
         continue;

@@ -704,7 +704,8 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       return state.agreements.filter((agreement) => agreement.status === 'rejected' && agreement.rejectedByPersonIds.length > 0)
         .flatMap((agreement) => episode(resolvedEvents(index, agreement.sourceEventIds), agreement.partyIds, agreement.rejectedByPersonIds) ?? []);
     case 'companion':
-      return state.agreements.filter((agreement) => agreement.proposal.kind === 'companion' && agreement.status === 'fulfilled')
+      return state.agreements.filter((agreement) => agreement.proposal.kind === 'companion'
+        && (agreement.companionEstablishedAtMonth !== undefined || agreement.status === 'fulfilled'))
         .flatMap((agreement) => episode(resolvedEvents(index, agreement.sourceEventIds), agreement.partyIds) ?? []);
     case 'relationship-rejection':
       return state.agreements.filter((agreement) => (agreement.proposal.kind === 'companion' || agreement.proposal.kind === 'reproduce')

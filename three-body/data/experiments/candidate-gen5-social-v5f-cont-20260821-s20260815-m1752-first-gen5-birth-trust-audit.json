@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "kind": "first-generation-5-birth-and-newborn-trust-audit",
+  "generatedAt": "2026-08-21T00:56:49Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run was advanced or mutated",
+    "runId": "candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1",
+    "elapsedMonths": 1752,
+    "revision": 68,
+    "stateHash": "5ab9efe213f577be92bf966b8d9d7c12d9c0ac8a8f305819120040e88f4b2451",
+    "sqliteStatus": "running"
+  },
+  "child": {
+    "personId": "born-1750-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-89",
+    "name": "克拉拉·阿姆斯特朗",
+    "generation": 5,
+    "bornAtMonth": 1750,
+    "sex": "female",
+    "geneticParents": [
+      "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+      "born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73"
+    ],
+    "geneticLoad": 0.74628125,
+    "stateAtM1752": {
+      "body": {
+        "health": 66.80000000000001,
+        "hydration": 71.30000000000001,
+        "nutrition": 73.5
+      },
+      "baselineCapacities": {
+        "locomotion": 50,
+        "manipulation": 48,
+        "perception": 41,
+        "communication": 59,
+        "cognition": 56
+      }
+    }
+  },
+  "conception": {
+    "eventId": "e-1741-action-born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73-43",
+    "atMonth": 1741,
+    "status": "completed",
+    "authorizationRef": "offer-reproduce:1737:born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73:born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+    "conceived": true,
+    "dueAtMonth": 1750,
+    "chance": 0.22022000000000014,
+    "sample": 0.17447121278382838,
+    "kinshipRisk": 0.9,
+    "livingPopulation": 25,
+    "capacityFactor": 1
+  },
+  "birthFact": {
+    "eventId": "e-1750-environment-body-0",
+    "atMonth": 1750,
+    "who": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+    "generation": 5,
+    "parentalKinshipRisk": 0.9,
+    "geneticLoad": 0.74628125,
+    "inheritedHealth": 64,
+    "inheritedCapacities": {
+      "locomotion": 50,
+      "manipulation": 48,
+      "perception": 41,
+      "communication": 59,
+      "cognition": 56
+    },
+    "postpartumRecoveryMonths": 9,
+    "postpartumRecoveryUntilMonth": 1759,
+    "initialSocialTrust": 6,
+    "initialSocialTrustPersonIds": [
+      "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+      "born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73"
+    ]
+  },
+  "newbornTrust": {
+    "personalityInputs": {
+      "agreeableness": 39,
+      "extraversion": 64
+    },
+    "calculation": "round(clamp(2 + (39 * 0.7 + 64 * 0.3) * 0.08, 3, 9)) = 6",
+    "birthTargetsWereExactlyBothParents": true,
+    "relationsAtM1752": [
+      {
+        "personId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+        "name": "诸葛芷若",
+        "childToParent": {
+          "trust": 6,
+          "bond": 13,
+          "fear": 0,
+          "sourceEventIds": [
+            "e-1750-environment-body-0",
+            "e-1751-action-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-12"
+          ]
+        },
+        "parentToChild": {
+          "trust": 0,
+          "bond": 13,
+          "fear": 0,
+          "sourceEventIds": [
+            "e-1750-environment-body-0",
+            "e-1751-action-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-12"
+          ]
+        }
+      },
+      {
+        "personId": "born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73",
+        "name": "诺亚·阿姆斯特朗",
+        "childToParent": {
+          "trust": 6,
+          "bond": 13,
+          "fear": 0,
+          "sourceEventIds": [
+            "e-1750-environment-body-0",
+            "e-1751-action-born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73-22"
+          ]
+        },
+        "parentToChild": {
+          "trust": 0,
+          "bond": 13,
+          "fear": 0,
+          "sourceEventIds": [
+            "e-1750-environment-body-0",
+            "e-1751-action-born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73-22"
+          ]
+        }
+      }
+    ]
+  },
+  "chain": {
+    "companyFulfillmentEventId": "e-1501-action-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-94",
+    "companionEstablishmentEventId": "e-1527-agreement-fulfilled-offer-companion:1502:born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73:born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+    "persistentSharedLivingEventId": "e-1552-environment-relationship-10",
+    "reproductionProposalEventId": "e-1737-action-born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73-68",
+    "reproductionAcceptanceEventId": "e-1738-action-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-58",
+    "conceptionEventId": "e-1741-action-born-1237-born-937-born-576-born-190-cangtianying-15-27-50-73-43",
+    "birthEventId": "e-1750-environment-body-0",
+    "coreReproductionChainComplete": true,
+    "socialChainComplete": true,
+    "missingLinks": []
+  },
+  "fullSocialChainAudit": {
+    "path": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m1752-first-gen5-social-chain-audit.json",
+    "sha256": "dfc92dc69cad3d8a28ef89c2a41f53799f56cb39b19b6dbb59cb352dbb211d1d"
+  }
+}

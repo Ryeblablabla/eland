@@ -2,6 +2,8 @@ import type { ActionOption, PrimitiveAction, RepresentationInput } from './actio
 import { worldEventById } from './event-index';
 import type { ActionFact, SimulationState } from './model';
 import type { PersonState } from './person';
+import { agreementByProposalEventId } from './agreement';
+import { intentById } from './state-index';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
 const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique|withdraw-reproduce):/;
@@ -105,7 +107,7 @@ function actionBasisSourceIds(state: SimulationState, event: ActionFact): string
     ? event.diff.assertedFactSourceEventIds.filter((eventId): eventId is string => typeof eventId === 'string')
     : [];
   const intentSources = event.intentId
-    ? state.intents.find((intent) => intent.id === event.intentId)?.sourceFactIds ?? []
+    ? intentById(state, event.intentId)?.sourceFactIds ?? []
     : [];
   return [...new Set([...conversationSources, ...relationshipSources, ...assertedSources, ...intentSources])];
 }
@@ -147,7 +149,7 @@ function rememberedResponseTo(
 }
 
 function outcomeFor(state: SimulationState, person: PersonState, event: ActionFact): { outcome: SocialOutcome; sourceFactIds: string[] } {
-  const agreement = state.agreements.find((candidate) => candidate.proposalEventId === event.id);
+  const agreement = agreementByProposalEventId(state, event.id);
   if (agreement) {
     const outcome = agreement.status === 'proposed'
       ? 'proposed'

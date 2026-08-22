@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "kind": "authoritative-no-replay-continuation",
+  "sourceRunId": "candidate-gen5-social-v5f-20260821-s20260815-y100-r1",
+  "targetRunId": "candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1",
+  "targetLabel": "candidate-gen5-social-v5f-cont-20260821 seed=20260815 from=948 through=2400",
+  "authority": {
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "candidateDirectory": "/tmp/eland-gen3-candidate.1ejlGu/three-body",
+    "gitHead": "2344213875bbe79225c68a5f1d8d9e3421771061",
+    "trackedSourceDiffSha256": "a78e9a0b78f733ed3eecf120f72e31dfec768c2574a86dae9337c0b76a94bef9",
+    "distMainSha256": "8ebb22f36434b86fe92c74c6d46b090925f8cc38e72ab902f0c03cb0df00786a",
+    "distWorkerSha256": "24bb8aa54c15dfb923c9d77d8de8d1c73a0f4eb7b8c6e3f895a9700d4671a331"
+  },
+  "creation": {
+    "maintenanceScript": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-create-from-m948.mjs",
+    "maintenanceScriptSha256": "b1f3226ef09cabbb5ffa2dd015ec6a92d8de6011f8b3c978fd18c0110f91c2d8",
+    "writePath": "frozen candidate SqliteRunStore.create; no direct SQL write and no source overwrite",
+    "sourceCreatedAt": "2026-08-20T20:38:32.097Z",
+    "sourceUpdatedAt": "2026-08-20T21:09:31.730Z",
+    "targetCreatedAt": "2026-08-20T22:02:46.546Z",
+    "preCreatePathAssertionAttempt": "exited before create because macOS canonicalized /tmp as /private/tmp; target absence was rechecked before the successful create",
+    "successfulCreateProcessExit": "post-create validation exited nonzero because the pre-migration V8 byte hash was not stable across SqliteRunStore.create normalization; the target was created exactly once and was not retried",
+    "sourceStateHash": "236e039f36d6695009cffe8accdf39d8bb44f733dde80ccaf0446f980819ff21",
+    "targetStateHash": "4ec2289e4a5fc5f858de5d7b48468bb910547052af3c0cdbd73c79f9d5f2fb3e",
+    "sourceRevision": 80,
+    "targetRevision": 1
+  },
+  "initialState": {
+    "elapsedMonths": 948,
+    "seed": 20260815,
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced",
+    "status": "running",
+    "people": 51,
+    "livingAgents": 42,
+    "events": 89827,
+    "milestones": 47,
+    "sourceEndpoint": {
+      "kind": "months",
+      "value": 1200
+    },
+    "targetEndpoint": {
+      "kind": "months",
+      "value": 2400
+    },
+    "peopleByGeneration": {
+      "0": 7,
+      "1": 19,
+      "2": 24,
+      "3": 1
+    },
+    "maxGeneration": 3
+  },
+  "stateDifferenceAudit": {
+    "verdict": "endpoint + historical provenance normalization",
+    "endpointDifferenceCount": 1,
+    "historicalProvenanceDifferenceCount": 27,
+    "otherDifferenceCount": 0,
+    "activeIntentDifferenceCount": 0,
+    "explanation": "SqliteRunStore.create necessarily calls migrated(input), whose adoptSimulationState backfills agreementId when an existing intent carries both proposal and response source facts for an active agreement. All 27 affected intents are already blocked or completed; no active intent, action, person, event, agreement, observation, clock, seed, population, or history fact changed.",
+    "historicalIntentAgreementIdBackfills": [
+      { "path": "intents[2454].agreementId", "intentId": "intent-327-born-65-bai-suzhen-7-2454", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2482].agreementId", "intentId": "intent-328-born-142-zhaotianli-14-2482", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2487].agreementId", "intentId": "intent-328-born-65-bai-suzhen-7-2487", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2496].agreementId", "intentId": "intent-329-born-141-bai-suzhen-13-2496", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2530].agreementId", "intentId": "intent-330-born-65-bai-suzhen-7-2530", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2602].agreementId", "intentId": "intent-333-born-65-bai-suzhen-7-2602", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2646].agreementId", "intentId": "intent-335-born-65-bai-suzhen-7-2646", "status": "blocked", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2647].agreementId", "intentId": "intent-335-born-142-zhaotianli-14-2647", "status": "completed", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[2871].agreementId", "intentId": "intent-348-born-142-zhaotianli-14-2871", "status": "completed", "agreementId": "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14" },
+      { "path": "intents[4383].agreementId", "intentId": "intent-421-born-98-bai-suzhen-10-4383", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4468].agreementId", "intentId": "intent-424-born-98-bai-suzhen-10-4468", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4482].agreementId", "intentId": "intent-425-born-98-bai-suzhen-10-4482", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4507].agreementId", "intentId": "intent-426-born-98-bai-suzhen-10-4507", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4530].agreementId", "intentId": "intent-427-born-98-bai-suzhen-10-4530", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4642].agreementId", "intentId": "intent-430-born-98-bai-suzhen-10-4642", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4749].agreementId", "intentId": "intent-433-born-98-bai-suzhen-10-4749", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4844].agreementId", "intentId": "intent-437-born-98-bai-suzhen-10-4844", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[4909].agreementId", "intentId": "intent-440-born-98-bai-suzhen-10-4909", "status": "blocked", "agreementId": "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14" },
+      { "path": "intents[12584].agreementId", "intentId": "intent-771-born-576-born-190-cangtianying-15-27-12584", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[13226].agreementId", "intentId": "intent-791-born-576-born-190-cangtianying-15-27-13226", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[13284].agreementId", "intentId": "intent-802-born-576-born-190-cangtianying-15-27-13284", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[13303].agreementId", "intentId": "intent-803-born-576-born-190-cangtianying-15-27-13303", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[13342].agreementId", "intentId": "intent-804-born-576-born-190-cangtianying-15-27-13342", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[13397].agreementId", "intentId": "intent-806-born-576-born-190-cangtianying-15-27-13397", "status": "blocked", "agreementId": "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla" },
+      { "path": "intents[15979].agreementId", "intentId": "intent-882-born-647-born-98-bai-suzhen-10-31-15979", "status": "blocked", "agreementId": "offer-companion:880:born-65-bai-suzhen-7:born-647-born-98-bai-suzhen-10-31" },
+      { "path": "intents[17722].agreementId", "intentId": "intent-935-born-728-born-190-cangtianying-15-37-17722", "status": "blocked", "agreementId": "offer-companion:933:born-728-born-190-cangtianying-15-37:tesla" },
+      { "path": "intents[18287].agreementId", "intentId": "intent-948-tesla-18287", "status": "completed", "agreementId": "offer-reproduce:947:tesla:born-576-born-190-cangtianying-15-27" }
+    ]
+  },
+  "evolution": {
+    "protocol": "ensure-through",
+    "fromMonth": 948,
+    "requestedEndMonth": 2400,
+    "serverPort": 3237,
+    "serverPid": 6700,
+    "serverExecSessionId": 4017,
+    "runnerPid": 6772,
+    "runnerExecSessionId": 4569,
+    "runnerScript": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1-runner.mjs",
+    "runnerScriptSha256": "9423043837bc6f563a688f25532deba19fd87b74f31e31d0e94384411529c9e5",
+    "serverLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1-server-p3237.log",
+    "runnerLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1-runner.log",
+    "claimedAt": "2026-08-20T22:08:18.036Z",
+    "initialPath": {
+      "status": "running",
+      "fromMonth": 948,
+      "reachedMonth": 948,
+      "requestedEndMonth": 2400
+    },
+    "status": "stopped-on-first-authoritative-gen5-at-m1752"
+  },
+  "outcome": {
+    "status": "first-authoritative-gen5-preserved",
+    "stoppedAt": "2026-08-21T00:56:49Z",
+    "finalMonth": 1752,
+    "finalRevision": 68,
+    "finalStateHash": "5ab9efe213f577be92bf966b8d9d7c12d9c0ac8a8f305819120040e88f4b2451",
+    "eventCount": 212635,
+    "agentCount": 90,
+    "livingAgents": 25,
+    "generationCounts": {
+      "0": 7,
+      "1": 19,
+      "2": 24,
+      "3": 22,
+      "4": 17,
+      "5": 1
+    },
+    "firstGeneration5PersonId": "born-1750-born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71-89",
+    "finalRuntime": {
+      "serverPid": 28619,
+      "runnerPid": 28833,
+      "port": 3237,
+      "serverExitedAfterTerm": true,
+      "runnerExitedNaturally": true,
+      "portReleased": true,
+      "distMainSha256": "5aca19368a0e90f26d8f90fc3c3479428ae14d192cea1020a77f94cff8deb14e",
+      "distWorkerSha256": "b394bb6df1c5e42a28ed1b9fe0188102f7e2cafb0320a351d0d7424486e4f59d",
+      "sourceContentSha256": "77dd8258208756f9cc8712ec531724d417d18341da7a44a20d71665b71d252f2"
+    },
+    "sqliteStatusPreserved": "running",
+    "sqliteStatusSemantics": "The persisted run remains resumable; this status does not assert that a server or ensure-through runner process is live.",
+    "socialChainAudit": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m1752-first-gen5-social-chain-audit.json",
+    "socialChainAuditSha256": "dfc92dc69cad3d8a28ef89c2a41f53799f56cb39b19b6dbb59cb352dbb211d1d",
+    "birthTrustAudit": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m1752-first-gen5-birth-trust-audit.json",
+    "birthTrustAuditSha256": "7115da9a61e32766de05b80f138040e4c37d156214d87cd0ccda1e48f5447a8f"
+  }
+}

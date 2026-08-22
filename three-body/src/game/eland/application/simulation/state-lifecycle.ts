@@ -24,6 +24,15 @@ import type {
 import type { PersonState } from '../../domain/person';
 import { createMotiveSensitivity, createPersonality } from '../../domain/personality';
 import { FOUNDER_INITIAL_RELATION } from '../../domain/relation';
+import {
+  applyTraitCapacityModifiers,
+  applyTraitLifespanModifier,
+  founderTraitsFor,
+  grantProphetKnowledge,
+  inheritPersonTraits,
+  normalizePersonTraits,
+  traitDefinition,
+} from '../../domain/trait';
 import { normalizeAnimalEcologies } from '../../domain/wildlife-ecology';
 import { inferNamingIdentity } from '../../naming';
 import { deriveObservations, updateDevelopmentObservation } from '../../projection/derived-observations';
@@ -41,16 +50,21 @@ import { clamp, copyState } from './state-utils';
 
 export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
+const MIN_FOUNDER_COUNT = 5;
+const MAX_FOUNDER_COUNT = 12;
 
 function chooseProfiles(seed: number, civilizationNo: number, characterIds?: string[]): CharacterProfile[] {
   if (characterIds?.length) {
     const wanted = new Set(characterIds);
     const chosen = CHARACTER_PROFILES.filter((profile) => wanted.has(profile.id));
-    if (chosen.length) return chosen.slice(0, 10);
+    if (chosen.length) return chosen.slice(0, MAX_FOUNDER_COUNT);
   }
   return [...CHARACTER_PROFILES]
     .sort((a, b) => deterministicFraction(seed + civilizationNo * 991, `profile:${a.id}`) - deterministicFraction(seed + civilizationNo * 991, `profile:${b.id}`))
-    .slice(0, 5 + Math.floor(deterministicFraction(seed, `population:${civilizationNo}`) * 4));
+    .slice(0, MIN_FOUNDER_COUNT + Math.floor(
+      deterministicFraction(seed, `population:${civilizationNo}`)
+      * (MAX_FOUNDER_COUNT - MIN_FOUNDER_COUNT + 1),
+    ));
 }
 
 function ensureNamingMetadata(people: PersonState[]): void {
@@ -77,7 +91,7 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
         ? Math.max(1, Math.round(overrides.endpoint.value))
         : Math.min(MAX_SIMULATION_MONTHS, Math.max(1, Math.round(overrides.endpoint?.value ?? MAX_SIMULATION_MONTHS))),
     },
-    ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, 10) } : {}),
+    ...(overrides.characterIds?.length ? { characterIds: [...new Set(overrides.characterIds)].slice(0, MAX_FOUNDER_COUNT) } : {}),
   };
 }
 
@@ -86,28 +100,30 @@ const FOUNDER_COHORT_EVENT_ID = 'e-0-environment-founding-0';
 function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, spawnZ: number, profiles: CharacterProfile[]): PersonState {
   const founderAge = createFounderAgeMonths(seed, profile.id);
   const capacity = (key: string, floor: number, span: number) => floor + Math.floor(deterministicFraction(seed, `${key}:${profile.id}`) * span);
-  return {
+  const traits = founderTraitsFor(profile.id, FOUNDER_COHORT_EVENT_ID);
+  const person: PersonState = {
     id: profile.id,
     name: profile.name,
     color: profile.color,
     profile: { description: profile.description },
     bornAtMonth: -founderAge,
-    lifespanMonths: createLifespanMonths(seed, profile.id, founderAge),
+    lifespanMonths: applyTraitLifespanModifier(createLifespanMonths(seed, profile.id, founderAge), traits),
     sex: profile.sex,
     familyName: profile.familyName,
     namingTradition: profile.namingTradition,
     geneticParents: [],
     generation: 0,
     geneticLoad: 0,
+    traits,
     position: { cellId: spawnCell, z: spawnZ, previousCellId: spawnCell, previousZ: spawnZ, lastPath: [spawnCell], tickPath: [spawnCell] },
     body: { health: 92, hydration: 82, nutrition: 78 },
-    baselineCapacities: {
+    baselineCapacities: applyTraitCapacityModifiers({
       locomotion: capacity('locomotion', 48, 35),
       manipulation: capacity('manipulation', 45, 35),
       perception: capacity('perception', 42, 40),
       communication: capacity('communication', 42, 40),
       cognition: capacity('cognition', 42, 40),
-    },
+    }, traits),
     personality: createPersonality(seed, profile.id),
     cognition: createCognitionState(),
     motiveSensitivity: createMotiveSensitivity(seed, profile.id),
@@ -127,6 +143,8 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     currentActionText: '观察身边的物质',
     lastDecisionText: '尚未作出关键决定',
   };
+  grantProphetKnowledge(person, 0, FOUNDER_COHORT_EVENT_ID);
+  return person;
 }
 
 export function createInitialState(seed = 17, inputConfig: Partial<SimulationConfig> = {}): SimulationState {
@@ -146,7 +164,12 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     cellId: people[0]?.position.cellId ?? 0,
     change: 'founding',
     result: '开局先民共同抵达，并已形成基本的相互熟悉',
-    diff: { participantIds: people.map((person) => person.id) },
+    diff: {
+      participantIds: people.map((person) => person.id),
+      traitsByPersonId: Object.fromEntries(people
+        .filter((person) => person.traits?.length)
+        .map((person) => [person.id, person.traits!.map((trait) => ({ id: trait.id, name: traitDefinition(trait.id).name }))])),
+    },
   };
   const state: SimulationState = {
     schemaVersion: 17,
@@ -254,7 +277,25 @@ export function adoptSimulationState(input: SimulationState): SimulationState {
   for (const drop of state.world.drops) {
     drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
   }
-  for (const person of state.people) {
+  for (const person of [...state.people].sort((left, right) => left.generation - right.generation || left.bornAtMonth - right.bornAtMonth || left.id.localeCompare(right.id))) {
+    if (!person.traits) {
+      const birthFact = state.world.past.find((candidate) => candidate.kind === 'environment'
+        && candidate.change === 'body'
+        && candidate.diff.bornPersonId === person.id);
+      const sourceEventId = birthFact?.id ?? FOUNDER_COHORT_EVENT_ID;
+      const mother = person.geneticParents
+        .map((parentId) => state.people.find((candidate) => candidate.id === parentId))
+        .find((parent): parent is PersonState => parent?.sex === 'female');
+      const father = person.geneticParents
+        .map((parentId) => state.people.find((candidate) => candidate.id === parentId))
+        .find((parent): parent is PersonState => parent?.sex === 'male');
+      person.traits = person.generation === 0 || !mother
+        ? founderTraitsFor(person.id, sourceEventId)
+        : inheritPersonTraits(state.seed, person.id, mother, father).traits.map((trait) => ({ ...trait, sourceEventIds: [sourceEventId] }));
+      person.lifespanMonths = applyTraitLifespanModifier(person.lifespanMonths, person.traits);
+      person.baselineCapacities = applyTraitCapacityModifiers(person.baselineCapacities, person.traits);
+      grantProphetKnowledge(person, person.bornAtMonth, sourceEventId);
+    } else person.traits = normalizePersonTraits(person.traits);
     ensureCognitionState(person);
     person.bereavements ??= [];
     person.knownPlaces ??= [];

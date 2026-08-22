@@ -6,6 +6,7 @@ import { followUpSemanticallyMatches } from '../domain/intent-follow-up';
 import { reproductiveResponsibility } from '../domain/dependent-care';
 import { personalityScore } from '../domain/personality';
 import { planningOverlayEvents } from '../domain/event-index';
+import { intentsOwnedBy, projectById } from '../domain/state-index';
 import { isObservedEmergencyHibernationOption } from './action-options';
 import { perceivedKinshipRisk } from './reproductive-risk';
 import {
@@ -205,8 +206,8 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
       && (event.decision.kind === 'start' || event.decision.kind === 'revise')
       && event.decision.lifeReview) return null;
   }
-  const project = context.state.projects.find((candidate) => candidate.id === active.projectId && candidate.status === 'active');
-  if (!project) return null;
+  const project = projectById(context.state, active.projectId);
+  if (project?.status !== 'active') return null;
   const candidates = context.options
     .filter((option) => OPTIONAL_LIFE_REVIEW.test(option.id))
     .flatMap((option) => {
@@ -216,7 +217,7 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
         ? 'offer-reproduce'
         : 'offer-companion';
       const basisKey = option.relationshipBasis.basisKey;
-      if (context.state.intents.some((intent) => intent.ownerId === context.person.id
+      if (intentsOwnedBy(context.state, context.person.id).some((intent) => intent.ownerId === context.person.id
         && (intent.lifeReview?.relationshipBasis?.basisKey === basisKey
           || intent.lifeReview?.basisKey === basisKey
           || intent.relationshipBasis?.basisKey === basisKey))) return [];

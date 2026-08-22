@@ -13,7 +13,13 @@ try {
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildDecisionContext } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
     export { evaluateDecisionOption } from ${JSON.stringify(path.resolve('src/game/eland/application/decision-factor-forest.ts'))};
-    export { consolidatePersonality, recordPersonalityEvidence } from ${JSON.stringify(path.resolve('src/game/eland/domain/personality.ts'))};
+    export {
+      consolidatePersonality,
+      newbornInitialTrust,
+      recordPersonalityEvidence,
+      sharedActivityTickThreshold,
+      youthfulSharedActivityTrustBonus,
+    } from ${JSON.stringify(path.resolve('src/game/eland/domain/personality.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -24,7 +30,10 @@ try {
     consolidatePersonality,
     createInitialState,
     evaluateDecisionOption,
+    newbornInitialTrust,
     recordPersonalityEvidence,
+    sharedActivityTickThreshold,
+    youthfulSharedActivityTrustBonus,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(26081901, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
@@ -41,6 +50,34 @@ try {
     conscientiousness: 50,
     openness: 50,
   });
+  actor.personality.learnedDelta.agreeableness = 0;
+  actor.personality.learnedDelta.extraversion = 0;
+  actor.personality.baseline.agreeableness = 0;
+  actor.personality.baseline.extraversion = 0;
+  assert.equal(newbornInitialTrust(actor), 3, '最低人格组合仍只提供 3 点弱信任');
+  actor.personality.baseline.agreeableness = 100;
+  actor.personality.baseline.extraversion = 0;
+  assert.equal(newbornInitialTrust(actor), 8, '宜人性必须承担初始信任的主要权重');
+  actor.personality.baseline.agreeableness = 0;
+  actor.personality.baseline.extraversion = 100;
+  assert.equal(newbornInitialTrust(actor), 4, '外向性只承担较小的接近权重');
+  actor.personality.baseline.agreeableness = 100;
+  actor.personality.baseline.extraversion = 100;
+  assert.equal(newbornInitialTrust(actor), 9, '最高人格组合仍须封顶在 9 点');
+  actor.personality.baseline.agreeableness = 0;
+  actor.personality.baseline.extraversion = 0;
+  assert.equal(sharedActivityTickThreshold(actor), 5, '低社会接近人格每五个共同活动刻度形成一次关系证据');
+  actor.personality.baseline.agreeableness = 40;
+  actor.personality.baseline.extraversion = 40;
+  assert.equal(sharedActivityTickThreshold(actor), 4, '中等社会接近人格每四个共同活动刻度形成一次关系证据');
+  actor.personality.baseline.agreeableness = 100;
+  actor.personality.baseline.extraversion = 100;
+  assert.equal(sharedActivityTickThreshold(actor), 3, '高社会接近人格每三个共同活动刻度形成一次关系证据');
+  assert.equal(youthfulSharedActivityTrustBonus(16 * 12 - 1), 2, '未满十六岁时每个有共同经历的月份额外获得两点信任');
+  assert.equal(youthfulSharedActivityTrustBonus(16 * 12), 1, '十六岁起年轻成人的月度信任加成为一点');
+  assert.equal(youthfulSharedActivityTrustBonus(30 * 12), 0, '三十岁起不再获得年轻信任加成');
+  actor.personality.baseline.agreeableness = 50;
+  actor.personality.baseline.extraversion = 50;
   const context = buildDecisionContext(state, actor);
   const moment = { atMonth: 1, planningTick: 1 };
   const voteScore = (option, tree) => evaluateDecisionOption(context, option, moment).votes.find((vote) => vote.tree === tree)?.score;

@@ -1,0 +1,793 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "generational-social-chain-audit-v1",
+  "generatedAt": "2026-08-20T18:27:53.000Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-gen3-social-v1-20260821-s20260815-y100-r1"
+      ]
+    }
+  },
+  "method": {
+    "target": "Every person with generation >= 2.",
+    "coreChain": "person state parents -> exact birth fact -> conceived reproduce ActionFact -> authorized reproduce agreement -> proposal/acceptance/fulfillment source integrity",
+    "socialChain": "company assist fulfillment -> companion establishment -> persistent shared-living fact -> reproduction relationship basis",
+    "missingEvidencePolicy": "Missing or unresolved source facts are reported explicitly and never inferred from generation or observer milestones."
+  },
+  "aggregate": {
+    "runs": 1,
+    "runsWithGeneration2": 0,
+    "runsWithGeneration3": 0,
+    "maxGeneration": 1,
+    "targetPeople": 0,
+    "coreCompleteChains": 0,
+    "hypothesisCompleteChains": 0,
+    "missingLinkCounts": {}
+  },
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v1-20260821-s20260815-y100-r1",
+      "seed": 20260815,
+      "status": "running",
+      "elapsedMonths": 528,
+      "people": 15,
+      "peopleByGeneration": {
+        "0": 7,
+        "1": 8
+      },
+      "maxGeneration": 1,
+      "targetPeople": 0,
+      "coreCompleteChains": 0,
+      "hypothesisCompleteChains": 0,
+      "support": "no-generation-2",
+      "socialFunnel": {
+        "company": {
+          "totals": {
+            "proposed": 34,
+            "accepted": 31,
+            "fulfilled": 31,
+            "rejected": 0,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "byGenerationPair": {
+            "g0|g1": {
+              "proposed": 19,
+              "accepted": 19,
+              "fulfilled": 19,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            },
+            "g1|g1": {
+              "proposed": 15,
+              "accepted": 12,
+              "fulfilled": 12,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            }
+          }
+        },
+        "companion": {
+          "totals": {
+            "proposed": 72,
+            "accepted": 72,
+            "established": 6,
+            "active": 12,
+            "cancelled": 0,
+            "breached": 60
+          },
+          "byGenerationPair": {
+            "g0|g0": {
+              "proposed": 55,
+              "accepted": 55,
+              "established": 6,
+              "active": 8,
+              "cancelled": 0,
+              "breached": 47
+            },
+            "g1|g1": {
+              "proposed": 10,
+              "accepted": 10,
+              "established": 0,
+              "active": 2,
+              "cancelled": 0,
+              "breached": 8
+            },
+            "g0|g1": {
+              "proposed": 7,
+              "accepted": 7,
+              "established": 0,
+              "active": 2,
+              "cancelled": 0,
+              "breached": 5
+            }
+          }
+        },
+        "persistentSharedLiving": {
+          "events": 61,
+          "byGenerationPair": {
+            "g0|g0": 61
+          },
+          "firstAtMonth": 42,
+          "lastAtMonth": 385
+        }
+      },
+      "relationshipFrontier": {
+        "atMonth": 528,
+        "livingGenerationOneAdults": 7,
+        "highestBilateralMinimum": 49,
+        "adultFrontier": [
+          {
+            "person": {
+              "personId": "born-147-bai-suzhen-8",
+              "name": "奥利弗·特斯拉",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 381,
+              "bodyMinimum": 90.10000000000053
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-196-bai-suzhen-10",
+                "name": "孙玄同",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 332,
+                "bodyMinimum": 62.74000000000129
+              },
+              "minimumTrustBond": 42,
+              "firstToSecond": {
+                "trust": 42,
+                "bond": 89,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-468-action-born-147-bai-suzhen-8-24",
+                  "e-469-action-born-147-bai-suzhen-8-22",
+                  "e-481-action-born-147-bai-suzhen-8-2",
+                  "e-492-action-born-196-bai-suzhen-10-20",
+                  "e-493-action-born-147-bai-suzhen-8-60",
+                  "e-493-action-born-196-bai-suzhen-10-54",
+                  "e-494-action-born-147-bai-suzhen-8-15",
+                  "e-494-action-born-196-bai-suzhen-10-7",
+                  "e-495-action-born-147-bai-suzhen-8-14",
+                  "e-495-action-born-196-bai-suzhen-10-10",
+                  "e-496-action-born-147-bai-suzhen-8-17",
+                  "e-496-action-born-196-bai-suzhen-10-13",
+                  "e-498-action-born-147-bai-suzhen-8-21",
+                  "e-498-environment-prediction-0",
+                  "e-505-environment-relationship-0",
+                  "e-510-action-born-147-bai-suzhen-8-38",
+                  "e-519-action-born-147-bai-suzhen-8-61",
+                  "e-519-action-born-196-bai-suzhen-10-67",
+                  "e-520-action-born-147-bai-suzhen-8-15",
+                  "e-520-action-born-147-bai-suzhen-8-42",
+                  "e-520-action-born-196-bai-suzhen-10-38",
+                  "e-521-action-born-147-bai-suzhen-8-7",
+                  "e-521-action-born-196-bai-suzhen-10-56",
+                  "e-523-action-born-147-bai-suzhen-8-70"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 42,
+                "bond": 89,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-468-action-born-147-bai-suzhen-8-24",
+                  "e-469-action-born-147-bai-suzhen-8-22",
+                  "e-481-action-born-147-bai-suzhen-8-2",
+                  "e-492-action-born-196-bai-suzhen-10-20",
+                  "e-493-action-born-147-bai-suzhen-8-60",
+                  "e-493-action-born-196-bai-suzhen-10-54",
+                  "e-494-action-born-147-bai-suzhen-8-15",
+                  "e-494-action-born-196-bai-suzhen-10-7",
+                  "e-495-action-born-147-bai-suzhen-8-14",
+                  "e-495-action-born-196-bai-suzhen-10-10",
+                  "e-496-action-born-147-bai-suzhen-8-17",
+                  "e-496-action-born-196-bai-suzhen-10-13",
+                  "e-498-action-born-147-bai-suzhen-8-21",
+                  "e-505-environment-relationship-0",
+                  "e-510-action-born-147-bai-suzhen-8-38",
+                  "e-519-action-born-147-bai-suzhen-8-61",
+                  "e-519-action-born-196-bai-suzhen-10-67",
+                  "e-520-action-born-147-bai-suzhen-8-15",
+                  "e-520-action-born-147-bai-suzhen-8-42",
+                  "e-520-action-born-196-bai-suzhen-10-38",
+                  "e-521-action-born-147-bai-suzhen-8-7",
+                  "e-521-action-born-196-bai-suzhen-10-56",
+                  "e-523-action-born-147-bai-suzhen-8-70",
+                  "e-526-environment-prediction-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-152-zhaotianli-9",
+              "name": "塞巴斯蒂安·特斯拉",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 376,
+              "bodyMinimum": 62.500000000000114
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "zhugeliang",
+                "name": "诸葛亮",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 876,
+                "bodyMinimum": 81.57000000000006
+              },
+              "minimumTrustBond": 32,
+              "firstToSecond": {
+                "trust": 32,
+                "bond": 41,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-152-zhaotianli-9-10",
+                  "e-373-action-zhugeliang-19",
+                  "e-373-action-zhugeliang-21",
+                  "e-469-action-born-152-zhaotianli-9-98",
+                  "e-469-action-zhugeliang-101",
+                  "e-470-action-born-152-zhaotianli-9-5",
+                  "e-470-action-zhugeliang-10",
+                  "e-470-action-zhugeliang-27",
+                  "e-471-action-born-152-zhaotianli-9-6",
+                  "e-471-action-zhugeliang-13",
+                  "e-477-action-born-152-zhaotianli-9-11",
+                  "e-477-action-zhugeliang-16",
+                  "e-496-action-tesla-28",
+                  "e-503-environment-relationship-0",
+                  "e-506-action-born-152-zhaotianli-9-14",
+                  "e-507-action-zhugeliang-4",
+                  "e-508-environment-relationship-0",
+                  "e-524-action-born-152-zhaotianli-9-57",
+                  "e-524-action-zhugeliang-50",
+                  "e-525-action-born-152-zhaotianli-9-11",
+                  "e-525-action-zhugeliang-6",
+                  "e-526-action-born-152-zhaotianli-9-16",
+                  "e-526-action-zhugeliang-6",
+                  "e-528-action-zhugeliang-13"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 32,
+                "bond": 41,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-152-zhaotianli-9-10",
+                  "e-373-action-zhugeliang-19",
+                  "e-373-action-zhugeliang-21",
+                  "e-469-action-born-152-zhaotianli-9-98",
+                  "e-469-action-zhugeliang-101",
+                  "e-470-action-born-152-zhaotianli-9-5",
+                  "e-470-action-zhugeliang-10",
+                  "e-470-action-zhugeliang-27",
+                  "e-471-action-born-152-zhaotianli-9-6",
+                  "e-471-action-zhugeliang-13",
+                  "e-477-action-born-152-zhaotianli-9-11",
+                  "e-477-action-zhugeliang-16",
+                  "e-496-action-tesla-28",
+                  "e-503-environment-relationship-0",
+                  "e-506-action-born-152-zhaotianli-9-14",
+                  "e-507-action-zhugeliang-4",
+                  "e-508-environment-relationship-0",
+                  "e-524-action-born-152-zhaotianli-9-57",
+                  "e-524-action-zhugeliang-50",
+                  "e-525-action-born-152-zhaotianli-9-11",
+                  "e-525-action-zhugeliang-6",
+                  "e-526-action-born-152-zhaotianli-9-16",
+                  "e-526-action-zhugeliang-6",
+                  "e-528-action-zhugeliang-13"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-196-bai-suzhen-10",
+              "name": "孙玄同",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 332,
+              "bodyMinimum": 62.74000000000129
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-147-bai-suzhen-8",
+                "name": "奥利弗·特斯拉",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 381,
+                "bodyMinimum": 90.10000000000053
+              },
+              "minimumTrustBond": 42,
+              "firstToSecond": {
+                "trust": 42,
+                "bond": 89,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-468-action-born-147-bai-suzhen-8-24",
+                  "e-469-action-born-147-bai-suzhen-8-22",
+                  "e-481-action-born-147-bai-suzhen-8-2",
+                  "e-492-action-born-196-bai-suzhen-10-20",
+                  "e-493-action-born-147-bai-suzhen-8-60",
+                  "e-493-action-born-196-bai-suzhen-10-54",
+                  "e-494-action-born-147-bai-suzhen-8-15",
+                  "e-494-action-born-196-bai-suzhen-10-7",
+                  "e-495-action-born-147-bai-suzhen-8-14",
+                  "e-495-action-born-196-bai-suzhen-10-10",
+                  "e-496-action-born-147-bai-suzhen-8-17",
+                  "e-496-action-born-196-bai-suzhen-10-13",
+                  "e-498-action-born-147-bai-suzhen-8-21",
+                  "e-505-environment-relationship-0",
+                  "e-510-action-born-147-bai-suzhen-8-38",
+                  "e-519-action-born-147-bai-suzhen-8-61",
+                  "e-519-action-born-196-bai-suzhen-10-67",
+                  "e-520-action-born-147-bai-suzhen-8-15",
+                  "e-520-action-born-147-bai-suzhen-8-42",
+                  "e-520-action-born-196-bai-suzhen-10-38",
+                  "e-521-action-born-147-bai-suzhen-8-7",
+                  "e-521-action-born-196-bai-suzhen-10-56",
+                  "e-523-action-born-147-bai-suzhen-8-70",
+                  "e-526-environment-prediction-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 42,
+                "bond": 89,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-468-action-born-147-bai-suzhen-8-24",
+                  "e-469-action-born-147-bai-suzhen-8-22",
+                  "e-481-action-born-147-bai-suzhen-8-2",
+                  "e-492-action-born-196-bai-suzhen-10-20",
+                  "e-493-action-born-147-bai-suzhen-8-60",
+                  "e-493-action-born-196-bai-suzhen-10-54",
+                  "e-494-action-born-147-bai-suzhen-8-15",
+                  "e-494-action-born-196-bai-suzhen-10-7",
+                  "e-495-action-born-147-bai-suzhen-8-14",
+                  "e-495-action-born-196-bai-suzhen-10-10",
+                  "e-496-action-born-147-bai-suzhen-8-17",
+                  "e-496-action-born-196-bai-suzhen-10-13",
+                  "e-498-action-born-147-bai-suzhen-8-21",
+                  "e-498-environment-prediction-0",
+                  "e-505-environment-relationship-0",
+                  "e-510-action-born-147-bai-suzhen-8-38",
+                  "e-519-action-born-147-bai-suzhen-8-61",
+                  "e-519-action-born-196-bai-suzhen-10-67",
+                  "e-520-action-born-147-bai-suzhen-8-15",
+                  "e-520-action-born-147-bai-suzhen-8-42",
+                  "e-520-action-born-196-bai-suzhen-10-38",
+                  "e-521-action-born-147-bai-suzhen-8-7",
+                  "e-521-action-born-196-bai-suzhen-10-56",
+                  "e-523-action-born-147-bai-suzhen-8-70"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-197-zhaotianli-11",
+              "name": "维克多·特斯拉",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 331,
+              "bodyMinimum": 63.47500000000143
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-152-zhaotianli-9",
+                "name": "塞巴斯蒂安·特斯拉",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 376,
+                "bodyMinimum": 62.500000000000114
+              },
+              "minimumTrustBond": 26,
+              "firstToSecond": {
+                "trust": 26,
+                "bond": 40,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-425-action-born-152-zhaotianli-9-16",
+                  "e-425-action-born-197-zhaotianli-11-11",
+                  "e-426-action-born-152-zhaotianli-9-14",
+                  "e-426-action-born-197-zhaotianli-11-4",
+                  "e-427-action-born-152-zhaotianli-9-14",
+                  "e-427-action-born-197-zhaotianli-11-18",
+                  "e-427-action-born-197-zhaotianli-11-21",
+                  "e-428-action-born-152-zhaotianli-9-19",
+                  "e-428-action-born-197-zhaotianli-11-7",
+                  "e-429-action-born-152-zhaotianli-9-29",
+                  "e-429-action-born-152-zhaotianli-9-34",
+                  "e-429-action-born-197-zhaotianli-11-14",
+                  "e-430-action-born-152-zhaotianli-9-19",
+                  "e-430-action-born-197-zhaotianli-11-7",
+                  "e-431-action-born-152-zhaotianli-9-14",
+                  "e-431-action-born-197-zhaotianli-11-12",
+                  "e-470-action-born-152-zhaotianli-9-23",
+                  "e-470-action-born-197-zhaotianli-11-21",
+                  "e-471-action-born-152-zhaotianli-9-6",
+                  "e-471-action-born-197-zhaotianli-11-17",
+                  "e-472-action-born-152-zhaotianli-9-14",
+                  "e-472-action-born-197-zhaotianli-11-6",
+                  "e-473-action-born-152-zhaotianli-9-14",
+                  "e-473-action-born-197-zhaotianli-11-16"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 26,
+                "bond": 40,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-425-action-born-152-zhaotianli-9-16",
+                  "e-425-action-born-197-zhaotianli-11-11",
+                  "e-426-action-born-152-zhaotianli-9-14",
+                  "e-426-action-born-197-zhaotianli-11-4",
+                  "e-427-action-born-152-zhaotianli-9-14",
+                  "e-427-action-born-197-zhaotianli-11-18",
+                  "e-427-action-born-197-zhaotianli-11-21",
+                  "e-428-action-born-152-zhaotianli-9-19",
+                  "e-428-action-born-197-zhaotianli-11-7",
+                  "e-429-action-born-152-zhaotianli-9-29",
+                  "e-429-action-born-152-zhaotianli-9-34",
+                  "e-429-action-born-197-zhaotianli-11-14",
+                  "e-430-action-born-152-zhaotianli-9-19",
+                  "e-430-action-born-197-zhaotianli-11-7",
+                  "e-431-action-born-152-zhaotianli-9-14",
+                  "e-431-action-born-197-zhaotianli-11-12",
+                  "e-470-action-born-152-zhaotianli-9-23",
+                  "e-470-action-born-197-zhaotianli-11-21",
+                  "e-471-action-born-152-zhaotianli-9-6",
+                  "e-471-action-born-197-zhaotianli-11-17",
+                  "e-472-action-born-152-zhaotianli-9-14",
+                  "e-472-action-born-197-zhaotianli-11-6",
+                  "e-473-action-born-152-zhaotianli-9-14",
+                  "e-473-action-born-197-zhaotianli-11-16"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-244-zhaotianli-12",
+              "name": "维多利亚·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 284,
+              "bodyMinimum": 60.15000000000011
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "cangtianying",
+                "name": "苍天影",
+                "generation": 0,
+                "sex": "female",
+                "ageMonths": 828,
+                "bodyMinimum": 59.700000000000124
+              },
+              "minimumTrustBond": 49,
+              "firstToSecond": {
+                "trust": 49,
+                "bond": 55,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-469-action-born-244-zhaotianli-12-42",
+                  "e-469-action-cangtianying-45",
+                  "e-470-action-born-244-zhaotianli-12-8",
+                  "e-470-action-cangtianying-15",
+                  "e-470-action-cangtianying-24",
+                  "e-472-action-born-244-zhaotianli-12-61",
+                  "e-472-action-cangtianying-64",
+                  "e-473-action-born-244-zhaotianli-12-8",
+                  "e-473-action-cangtianying-27",
+                  "e-498-action-born-244-zhaotianli-12-57",
+                  "e-498-action-cangtianying-59",
+                  "e-499-action-born-244-zhaotianli-12-12",
+                  "e-499-action-cangtianying-14",
+                  "e-500-action-cangtianying-17",
+                  "e-503-environment-relationship-2",
+                  "e-514-action-born-244-zhaotianli-12-15",
+                  "e-514-action-cangtianying-21",
+                  "e-514-action-cangtianying-25",
+                  "e-515-action-born-244-zhaotianli-12-10",
+                  "e-515-action-cangtianying-22",
+                  "e-515-action-cangtianying-33",
+                  "e-525-action-born-244-zhaotianli-12-20",
+                  "e-525-action-cangtianying-22",
+                  "e-526-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 49,
+                "bond": 55,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-469-action-born-244-zhaotianli-12-42",
+                  "e-469-action-cangtianying-45",
+                  "e-470-action-born-244-zhaotianli-12-8",
+                  "e-470-action-cangtianying-15",
+                  "e-470-action-cangtianying-24",
+                  "e-472-action-born-244-zhaotianli-12-61",
+                  "e-472-action-cangtianying-64",
+                  "e-473-action-born-244-zhaotianli-12-8",
+                  "e-473-action-cangtianying-27",
+                  "e-498-action-born-244-zhaotianli-12-57",
+                  "e-498-action-cangtianying-59",
+                  "e-499-action-born-244-zhaotianli-12-12",
+                  "e-499-action-cangtianying-14",
+                  "e-500-action-cangtianying-17",
+                  "e-503-environment-relationship-2",
+                  "e-514-action-born-244-zhaotianli-12-15",
+                  "e-514-action-cangtianying-21",
+                  "e-514-action-cangtianying-25",
+                  "e-515-action-born-244-zhaotianli-12-10",
+                  "e-515-action-cangtianying-22",
+                  "e-515-action-cangtianying-33",
+                  "e-525-action-born-244-zhaotianli-12-20",
+                  "e-525-action-cangtianying-22",
+                  "e-526-environment-relationship-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-247-bai-suzhen-13",
+              "name": "奥黛丽·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 281,
+              "bodyMinimum": 66.78000000000112
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "cangtianying",
+                "name": "苍天影",
+                "generation": 0,
+                "sex": "female",
+                "ageMonths": 828,
+                "bodyMinimum": 59.700000000000124
+              },
+              "minimumTrustBond": 27,
+              "firstToSecond": {
+                "trust": 28,
+                "bond": 27,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-410-action-born-247-bai-suzhen-13-49",
+                  "e-410-action-cangtianying-52",
+                  "e-411-action-born-247-bai-suzhen-13-10",
+                  "e-411-action-cangtianying-12",
+                  "e-411-action-cangtianying-13",
+                  "e-412-environment-relationship-0",
+                  "e-424-action-born-247-bai-suzhen-13-8",
+                  "e-424-action-cangtianying-16",
+                  "e-424-action-cangtianying-31",
+                  "e-425-action-born-247-bai-suzhen-13-3",
+                  "e-425-action-born-247-bai-suzhen-13-35",
+                  "e-425-action-cangtianying-31",
+                  "e-428-action-born-247-bai-suzhen-13-21",
+                  "e-428-action-cangtianying-29",
+                  "e-428-action-cangtianying-43",
+                  "e-429-action-born-247-bai-suzhen-13-2",
+                  "e-429-action-cangtianying-20"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 28,
+                "bond": 27,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-410-action-born-247-bai-suzhen-13-49",
+                  "e-410-action-cangtianying-52",
+                  "e-411-action-born-247-bai-suzhen-13-10",
+                  "e-411-action-cangtianying-12",
+                  "e-411-action-cangtianying-13",
+                  "e-412-environment-relationship-0",
+                  "e-424-action-born-247-bai-suzhen-13-8",
+                  "e-424-action-cangtianying-16",
+                  "e-424-action-cangtianying-31",
+                  "e-425-action-born-247-bai-suzhen-13-3",
+                  "e-425-action-born-247-bai-suzhen-13-35",
+                  "e-425-action-cangtianying-31",
+                  "e-428-action-born-247-bai-suzhen-13-21",
+                  "e-428-action-cangtianying-29",
+                  "e-428-action-cangtianying-43",
+                  "e-429-action-born-247-bai-suzhen-13-2",
+                  "e-429-action-cangtianying-20"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-288-bai-suzhen-14",
+              "name": "诸葛望舒",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 240,
+              "bodyMinimum": 85.3075000000008
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-244-zhaotianli-12",
+                "name": "维多利亚·特斯拉",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 284,
+                "bodyMinimum": 60.15000000000011
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-320-environment-relationship-9",
+                  "e-321-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-320-environment-relationship-9",
+                  "e-321-environment-relationship-0"
+                ]
+              }
+            }
+          }
+        ],
+        "fertileGenerationOneFemales": 3,
+        "fertileFemaleCandidates": [
+          {
+            "female": {
+              "personId": "born-244-zhaotianli-12",
+              "name": "维多利亚·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 284,
+              "bodyMinimum": 60.15000000000011,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "zhugeliang",
+                "name": "诸葛亮",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 876,
+                "bodyMinimum": 81.57000000000006,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 12,
+              "firstToSecond": {
+                "trust": 12,
+                "bond": 17,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-427-action-born-244-zhaotianli-12-33",
+                  "e-427-action-zhugeliang-43",
+                  "e-428-action-born-244-zhaotianli-12-22",
+                  "e-428-action-zhugeliang-31",
+                  "e-429-action-born-244-zhaotianli-12-6",
+                  "e-429-action-zhugeliang-18",
+                  "e-429-action-zhugeliang-31",
+                  "e-431-action-born-244-zhaotianli-12-39",
+                  "e-431-action-zhugeliang-46"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 12,
+                "bond": 17,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-427-action-born-244-zhaotianli-12-33",
+                  "e-427-action-zhugeliang-43",
+                  "e-428-action-born-244-zhaotianli-12-22",
+                  "e-428-action-zhugeliang-31",
+                  "e-429-action-born-244-zhaotianli-12-6",
+                  "e-429-action-zhugeliang-18",
+                  "e-429-action-zhugeliang-31",
+                  "e-431-action-born-244-zhaotianli-12-39",
+                  "e-431-action-zhugeliang-46"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-247-bai-suzhen-13",
+              "name": "奥黛丽·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 281,
+              "bodyMinimum": 66.78000000000112,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 876,
+                "bodyMinimum": 71.82000000000006,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 1,
+              "firstToSecond": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-465-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-465-environment-relationship-0"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-288-bai-suzhen-14",
+              "name": "诸葛望舒",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 240,
+              "bodyMinimum": 85.3075000000008,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 876,
+                "bodyMinimum": 71.82000000000006,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          }
+        ]
+      },
+      "missingLinkCounts": {},
+      "chains": []
+    }
+  ]
+}

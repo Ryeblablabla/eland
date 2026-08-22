@@ -2,7 +2,6 @@ import type { DirectedRelation, PersonState } from './person';
 
 export const FOUNDER_INITIAL_RELATION = 55;
 export const COMPANION_RELATION_THRESHOLD = 20;
-export const REPRODUCTION_RELATION_THRESHOLD = 60;
 
 export function relationshipPairKey(firstId: string, secondId: string): string {
   return [firstId, secondId].sort().join('|');

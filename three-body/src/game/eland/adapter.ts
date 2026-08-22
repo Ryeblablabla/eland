@@ -12,6 +12,7 @@ import { playerTextForEvent } from './projection/player-narrative';
 import { projectSocietyWorld } from './projection/society-world-cache';
 import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
+import { traitDefinition, traitStatesOf } from './domain/trait';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 
@@ -221,21 +222,36 @@ function actionVisual(
     };
   }
   if (action.kind === 'act') {
-    const materialIds = action.targets
+    const targetMaterialIds = action.targets
       .map((target) => materialForTarget(state, lookup, target))
       .filter((materialId): materialId is number => materialId !== undefined);
+    const diffSourceMaterialId = action.operation === 'separate'
+      ? Number(fact?.diff.sourceMaterialId ?? fact?.diff.materialId)
+      : Number.NaN;
+    const sourceMaterialId = Number.isInteger(diffSourceMaterialId)
+      ? diffSourceMaterialId
+      : undefined;
+    const materialIds = fact && action.operation === 'separate'
+      ? (sourceMaterialId === undefined ? [] : [sourceMaterialId])
+      : sourceMaterialId === undefined
+        ? targetMaterialIds
+        : [sourceMaterialId, ...targetMaterialIds.filter((materialId) => materialId !== sourceMaterialId)];
     const facilityTarget = action.targets.find((target) => {
       const materialId = materialForTarget(state, lookup, target);
       return materialId !== undefined && materialDefinition(materialId).tags.includes('facility');
     });
     const visualTarget = facilityTarget ?? action.targets[0];
-    const toolMaterialId = action.toolStackId
-      ? lookup.inventoryByPersonId.get(person.id)?.get(action.toolStackId)?.materialId
-      : undefined;
+    const diffToolMaterialId = Number(fact?.diff.toolMaterialId);
+    const toolMaterialId = Number.isInteger(diffToolMaterialId)
+      ? diffToolMaterialId
+      : action.toolStackId
+        ? lookup.inventoryByPersonId.get(person.id)?.get(action.toolStackId)?.materialId
+        : undefined;
     return {
       actionKind: 'act', operation: action.operation,
       ...(action.mortuaryPhase ? { mortuaryPhase: action.mortuaryPhase } : {}),
       ...factLocation, ...targetIdentity(visualTarget), ...worldRefLocation(state, lookup, visualTarget),
+      ...(sourceMaterialId !== undefined ? { sourceMaterialId } : {}),
       ...(materialIds[0] !== undefined ? { materialId: materialIds[0] } : {}),
       ...(materialIds.length ? { materialIds } : {}),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
@@ -352,6 +368,12 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
   const active = activeIntent?.status === 'active' ? activeIntent : undefined;
   const currentNeed = needs.find((need) => need.dominant)?.label ?? '维持生活';
   const visualAction = recentActionFor(state, lookup, person);
+  const visualSourceMaterialId = visualAction?.sourceMaterialId ?? visualAction?.materialId;
+  const currentActionText = visualAction?.operation === 'separate' && visualSourceMaterialId === Material.BerryBush
+    ? '采集野果'
+    : visualAction?.operation === 'separate' && visualSourceMaterialId === Material.CropMature
+      ? '收割成熟作物'
+      : person.currentActionText;
   const remains = state.world.remains?.find((candidate) => candidate.personId === person.id);
   const projectedPosition = remains?.status === 'interred' && remains.grave
     ? { cellId: remains.position.cellId, z: remains.grave.position.z + 1 }
@@ -369,11 +391,15 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
     tickPath: remains ? remainsPath : [...person.position.tickPath],
     state: personStateOf(person),
     ...(remains ? { bodyDisposition: remains.status } : {}),
-    doing: person.currentActionText,
+    doing: currentActionText,
     ...(active ? { activeIntentId: active.id } : {}),
     sex: person.sex,
     lifespanMonths: person.lifespanMonths,
     generation: person.generation,
+    traits: traitStatesOf(person).map((trait) => {
+      const definition = traitDefinition(trait.id);
+      return { id: definition.id, name: definition.name, description: definition.description };
+    }),
     respect: Math.round(person.relations.reduce((sum, relation) => sum + relation.trust, 0) / Math.max(1, person.relations.length)),
     mind: {
       want: `当前最迫切的是${currentNeed}`,

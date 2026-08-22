@@ -107,6 +107,15 @@ export function techniqueSupportsProjectFunction(techniqueId: string, desiredFun
   return outputSupportsFunction(outputMaterialId, desiredFunction);
 }
 
+/** Output semantics are exposed only for a technique the caller already knows. */
+export function techniqueOutputMaterialId(techniqueId: string): MaterialId | undefined {
+  const parsed = techniqueRule(techniqueId);
+  if (!parsed) return undefined;
+  return parsed.operation === 'combine'
+    ? parsed.rule.output.materialId
+    : parsed.rule.outputMaterialId;
+}
+
 export function reliableTechniquesForFunction(person: PersonState, desiredFunction: ProjectFunction): string[] {
   return person.knowledge
     .filter((fact) => fact.kind === 'technique'

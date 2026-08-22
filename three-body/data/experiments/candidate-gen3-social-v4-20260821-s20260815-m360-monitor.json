@@ -1,0 +1,475 @@
+{
+  "runId": "candidate-gen3-social-v4-20260821-s20260815-y100-r1",
+  "checkpoint": {
+    "month": 360,
+    "revision": 31,
+    "requestedMonth": "360"
+  },
+  "generation": {
+    "maxGeneration": 1,
+    "peopleByGeneration": {
+      "g0": 7,
+      "g1": 5
+    },
+    "livingByGeneration": {
+      "g0": 6,
+      "g1": 5
+    },
+    "births": [
+      {
+        "id": "born-144-zhaotianli-7",
+        "name": "艾琳·特斯拉",
+        "generation": 1,
+        "sex": "female",
+        "bornAtMonth": 144,
+        "diedAtMonth": null,
+        "geneticParents": [
+          "zhaotianli",
+          "tesla"
+        ]
+      },
+      {
+        "id": "born-205-bai-suzhen-8",
+        "name": "露易丝·阿姆斯特朗",
+        "generation": 1,
+        "sex": "female",
+        "bornAtMonth": 205,
+        "diedAtMonth": null,
+        "geneticParents": [
+          "bai-suzhen",
+          "armstrong"
+        ]
+      },
+      {
+        "id": "born-296-bai-suzhen-9",
+        "name": "维多利亚·阿姆斯特朗",
+        "generation": 1,
+        "sex": "female",
+        "bornAtMonth": 296,
+        "diedAtMonth": null,
+        "geneticParents": [
+          "bai-suzhen",
+          "armstrong"
+        ]
+      },
+      {
+        "id": "born-309-zhaotianli-10",
+        "name": "玛蒂尔达·阿姆斯特朗",
+        "generation": 1,
+        "sex": "female",
+        "bornAtMonth": 309,
+        "diedAtMonth": null,
+        "geneticParents": [
+          "zhaotianli",
+          "armstrong"
+        ]
+      },
+      {
+        "id": "born-357-zhaotianli-11",
+        "name": "朱莉娅·阿姆斯特朗",
+        "generation": 1,
+        "sex": "female",
+        "bornAtMonth": 357,
+        "diedAtMonth": null,
+        "geneticParents": [
+          "zhaotianli",
+          "armstrong"
+        ]
+      }
+    ],
+    "generation2OrLater": []
+  },
+  "social": {
+    "company": {
+      "totals": {
+        "proposed": 6,
+        "accepted": 2,
+        "fulfilled": 2,
+        "established": 0,
+        "active": 0,
+        "rejected": 0,
+        "cancelled": 0,
+        "breached": 0,
+        "expired": 3
+      },
+      "byGenerationPair": {
+        "g0|g1": {
+          "proposed": 6,
+          "accepted": 2,
+          "fulfilled": 2,
+          "established": 0,
+          "active": 0,
+          "rejected": 0,
+          "cancelled": 0,
+          "breached": 0,
+          "expired": 3
+        }
+      },
+      "kind": "company"
+    },
+    "companion": {
+      "totals": {
+        "proposed": 59,
+        "accepted": 56,
+        "fulfilled": 6,
+        "established": 6,
+        "active": 7,
+        "rejected": 2,
+        "cancelled": 3,
+        "breached": 46,
+        "expired": 1
+      },
+      "byGenerationPair": {
+        "g0": {
+          "proposed": 55,
+          "accepted": 54,
+          "fulfilled": 6,
+          "established": 6,
+          "active": 6,
+          "rejected": 0,
+          "cancelled": 3,
+          "breached": 45,
+          "expired": 1
+        },
+        "g0|g1": {
+          "proposed": 4,
+          "accepted": 2,
+          "fulfilled": 0,
+          "established": 0,
+          "active": 1,
+          "rejected": 2,
+          "cancelled": 0,
+          "breached": 1,
+          "expired": 0
+        }
+      },
+      "kind": "companion"
+    },
+    "persistentSharedLiving": {
+      "events": 71,
+      "byGenerationPair": {
+        "g0": 71
+      }
+    },
+    "reproduction": {
+      "agreements": {
+        "totals": {
+          "proposed": 21,
+          "accepted": 21,
+          "fulfilled": 5,
+          "established": 0,
+          "active": 0,
+          "rejected": 0,
+          "cancelled": 1,
+          "breached": 0,
+          "expired": 15
+        },
+        "byGenerationPair": {
+          "g0": {
+            "proposed": 21,
+            "accepted": 21,
+            "fulfilled": 5,
+            "established": 0,
+            "active": 0,
+            "rejected": 0,
+            "cancelled": 1,
+            "breached": 0,
+            "expired": 15
+          }
+        },
+        "kind": "reproduce"
+      },
+      "actions": 52,
+      "completedActions": 52,
+      "conceived": 5,
+      "byGenerationPair": {
+        "g0": 52
+      },
+      "conceivedByGenerationPair": {
+        "g0": 5
+      }
+    }
+  },
+  "movement": {
+    "allActionFacts": 8383,
+    "actualMoves": 5607,
+    "actualMoveShare": 0.6688536323511869,
+    "returnSelections": 85,
+    "returnMoveActions": 485,
+    "returnPeople": {
+      "armstrong": 10,
+      "bai-suzhen": 31,
+      "cangtianying": 32,
+      "tesla": 2,
+      "zhaotianli": 9,
+      "zhugeliang": 1
+    },
+    "last12Months": {
+      "fromExclusive": 348,
+      "actualMoves": 318,
+      "aba": 42,
+      "abab": 0,
+      "returnLinkedAba": 14,
+      "returnLinkedAbab": 0,
+      "abaEvidence": [
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-349-action-cangtianying-14",
+            "e-350-action-cangtianying-13"
+          ],
+          "months": [
+            349,
+            350
+          ],
+          "returnLinked": true
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-350-action-cangtianying-23",
+            "e-351-action-cangtianying-10"
+          ],
+          "months": [
+            350,
+            351
+          ],
+          "returnLinked": true
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-351-action-cangtianying-18",
+            "e-352-action-cangtianying-11"
+          ],
+          "months": [
+            351,
+            352
+          ],
+          "returnLinked": true
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-355-action-cangtianying-36",
+            "e-356-action-cangtianying-17"
+          ],
+          "months": [
+            355,
+            356
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-356-action-cangtianying-22",
+            "e-356-action-cangtianying-28"
+          ],
+          "months": [
+            356,
+            356
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-357-action-cangtianying-24",
+            "e-358-action-cangtianying-21"
+          ],
+          "months": [
+            357,
+            358
+          ],
+          "returnLinked": true
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-358-action-cangtianying-25",
+            "e-358-action-cangtianying-33"
+          ],
+          "months": [
+            358,
+            358
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "cangtianying",
+          "eventIds": [
+            "e-358-action-cangtianying-36",
+            "e-359-action-cangtianying-9"
+          ],
+          "months": [
+            358,
+            359
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "born-205-bai-suzhen-8",
+          "eventIds": [
+            "e-349-action-born-205-bai-suzhen-8-22",
+            "e-351-action-born-205-bai-suzhen-8-17"
+          ],
+          "months": [
+            349,
+            351
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "born-205-bai-suzhen-8",
+          "eventIds": [
+            "e-357-action-born-205-bai-suzhen-8-17",
+            "e-359-action-born-205-bai-suzhen-8-16"
+          ],
+          "months": [
+            357,
+            359
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "bai-suzhen",
+          "eventIds": [
+            "e-349-action-bai-suzhen-23",
+            "e-349-action-bai-suzhen-27"
+          ],
+          "months": [
+            349,
+            349
+          ],
+          "returnLinked": false
+        },
+        {
+          "personId": "bai-suzhen",
+          "eventIds": [
+            "e-349-action-bai-suzhen-49",
+            "e-349-action-bai-suzhen-52"
+          ],
+          "months": [
+            349,
+            349
+          ],
+          "returnLinked": false
+        }
+      ],
+      "ababEvidence": []
+    },
+    "activeEstablishedCompanions": 6,
+    "dueAwayCompanionAnchors": [
+      {
+        "person": {
+          "id": "cangtianying",
+          "name": "苍天影",
+          "generation": 0,
+          "sex": "female",
+          "bornAtMonth": -300,
+          "diedAtMonth": null,
+          "geneticParents": []
+        },
+        "agreementId": "offer-companion:62:bai-suzhen:cangtianying",
+        "anchor": {
+          "version": "shared-living-anchor-v1",
+          "cellId": 1444,
+          "z": 5,
+          "radius": 2
+        },
+        "lastCompanionCoLocatedAtMonth": 350
+      }
+    ],
+    "multipleAnchorPeople": [
+      {
+        "person": {
+          "id": "bai-suzhen",
+          "name": "白素贞",
+          "generation": 0,
+          "sex": "female",
+          "bornAtMonth": -204,
+          "diedAtMonth": null,
+          "geneticParents": []
+        },
+        "distinctAnchors": 2,
+        "agreements": [
+          {
+            "agreementId": "offer-companion:62:bai-suzhen:cangtianying",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1444,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 350
+          },
+          {
+            "agreementId": "offer-companion:234:zhaotianli:bai-suzhen",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1359,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 359
+          },
+          {
+            "agreementId": "offer-companion:236:armstrong:bai-suzhen",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1359,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 359
+          }
+        ]
+      },
+      {
+        "person": {
+          "id": "cangtianying",
+          "name": "苍天影",
+          "generation": 0,
+          "sex": "female",
+          "bornAtMonth": -300,
+          "diedAtMonth": null,
+          "geneticParents": []
+        },
+        "distinctAnchors": 2,
+        "agreements": [
+          {
+            "agreementId": "offer-companion:62:bai-suzhen:cangtianying",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1444,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 350
+          },
+          {
+            "agreementId": "offer-companion:237:zhaotianli:cangtianying",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1359,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 359
+          },
+          {
+            "agreementId": "offer-companion:238:armstrong:cangtianying",
+            "anchor": {
+              "version": "shared-living-anchor-v1",
+              "cellId": 1359,
+              "z": 5,
+              "radius": 2
+            },
+            "lastCompanionCoLocatedAtMonth": 359
+          }
+        ]
+      }
+    ]
+  }
+}

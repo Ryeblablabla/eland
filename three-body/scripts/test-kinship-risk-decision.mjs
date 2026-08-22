@@ -51,14 +51,13 @@ try {
     options: [], followUpOptions: [],
   };
   const option = {
-    id: 'offer-reproduce:6:person-a:person-b',
-    summary: '提出共同生殖', reason: '关系与身体条件允许',
-    goal: { kind: 'representation-made', representationId: 'offer-reproduce:6:person-a:person-b' },
+    id: 'accept-reproduce:test-offer',
+    summary: '接受共同生殖提议', reason: '由本人权衡关系、人格、责任与已知风险',
+    goal: { kind: 'representation-made', representationId: 'accept:test-offer:person-a' },
     nextAction: {
       kind: 'communicate', channel: 'voice', audience: ['person-b'],
       content: {
-        id: 'offer-reproduce:6:person-a:person-b', kind: 'offer', summary: '是否愿意共同生育后代',
-        proposal: { kind: 'reproduce', proposerId: 'person-a', partnerId: 'person-b', expiresAtMonth: 10 },
+        id: 'accept:test-offer:person-a', kind: 'accept', referenceId: 'test-offer',
       },
     },
     target: { kind: 'person', personId: 'person-b' },

@@ -2,6 +2,8 @@ import type { BiologicalSex } from '../population';
 import type { NamingTradition } from '../naming';
 import type { MaterialId } from './material';
 import type { BereavementState } from './mortuary';
+import type { ProjectFunction, ProjectNeed } from './project';
+import type { PersonTraitState } from './trait';
 
 export type PersonId = string;
 export type ConditionKind = 'cold' | 'heat' | 'wound' | 'illness' | 'aging' | 'pregnancy' | 'postpartum-recovery' | 'restrained' | 'dehydrated-hibernation';
@@ -125,10 +127,44 @@ export interface OutcomeBelief {
   sourceEventIds: string[];
 }
 
+/** A Beta model for whether an intended state was achieved, separate from action legality. */
+export interface GoalOutcomeBelief {
+  basisKey: string;
+  attempts: number;
+  achieved: number;
+  attemptedUnmet: number;
+  successAlpha: number;
+  successBeta: number;
+  lastUpdatedAtMonth: number;
+  sourceEventIds: string[];
+}
+
+/**
+ * A person-local observation that their own final project action resolved a
+ * concrete need. This is evidence, not a stored happiness or reward score.
+ */
+export interface NeedResolutionEpisode {
+  version: 'need-resolution-episode-v1';
+  id: string;
+  projectId: string;
+  projectNeed: ProjectNeed;
+  desiredFunction: ProjectFunction;
+  basisKey: string;
+  observedAtMonth: number;
+  observationKind: 'completion-action';
+  triggerFactIds: string[];
+  outcomeEventIds: string[];
+  sourceFactIds: string[];
+}
+
 export interface CognitionState {
   version: 'causal-bdi-v1';
   /** Bounded person-local expectations; never global civilization knowledge. */
   outcomeBeliefs: OutcomeBelief[];
+  /** Optional for schema-v17 save compatibility; hydrated without backfilling old outcomes. */
+  goalOutcomeBeliefs?: GoalOutcomeBelief[];
+  /** Optional for schema-v17 save compatibility; old projects are not inferred retroactively. */
+  needResolutionEpisodes?: NeedResolutionEpisode[];
 }
 
 export type HexacoTrait =
@@ -201,6 +237,10 @@ export interface PersonState {
   generation: number;
   /** Accumulated inherited susceptibility. It changes outcomes, not action legality. */
   geneticLoad: number;
+  /** 出生时一次确定、终身不变；可选仅用于兼容旧存档与轻量测试夹具。 */
+  traits?: PersonTraitState[];
+  /** 母脉出生链中，母亲已完成的真实技术教导；首项获得一次 72 置信度加成。 */
+  maternalTeachingSourceEventIds?: string[];
   position: {
     cellId: number;
     /** 双脚所在的空气体素高度；cellId 仍是给地图和区域规则使用的水平投影。 */

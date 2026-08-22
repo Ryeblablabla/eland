@@ -87,7 +87,7 @@ function archiveToProfile(entry: ArchiveCharacter): CharacterProfile {
 
 /**
  * 引擎抽人池（101 位）：档案只写自然语言描述；动机由身体缺口、状态、关系与
- * 局部事实派生，不预生成人格数值。引擎每局按种子随机抽取 5–8 位入局，或由
- * 开局配置指定 characterIds（至多 10 位）。
+ * 局部事实派生，不预生成人格数值。引擎每局按种子随机抽取 5–12 位入局，或由
+ * 开局配置指定 characterIds（至多 12 位）。
  */
 export const CHARACTER_PROFILES: CharacterProfile[] = CHARACTERS.map(archiveToProfile);

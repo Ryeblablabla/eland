@@ -2,8 +2,18 @@ import { animalSpecies } from '../../domain/animal';
 import { cognitionStateOf, outcomeBeliefSuccess, outcomeBeliefUncertainty } from '../../domain/cognition';
 import { materialHas } from '../../domain/material';
 import type { DecisionContext } from '../../domain/model';
-import { bereavementUrgency } from '../../domain/mortuary';
 import { personalityScore } from '../../domain/personality';
+import { bereavementUrgency } from '../../domain/mortuary';
+import { worldEventById } from '../../domain/event-index';
+import { agreementsForPerson } from '../../domain/agreement';
+import { personById, projectById } from '../../domain/state-index';
+import { ageMonths } from '../../domain/person';
+import {
+  companionLivingAnchor,
+  companionReturnRequired,
+  personWithinLivingArea,
+} from '../../domain/shared-living';
+import { assessFamilyReadiness } from './family-readiness';
 
 export type NeedKind =
   | 'homeostasis'
@@ -14,12 +24,22 @@ export type NeedKind =
   | 'capability'
   | 'commitment'
   | 'belonging'
+  | 'generativity'
   | 'autonomy'
   | 'inquiry';
+
+export type ReserveResource = 'food' | 'water';
+export type HomeostasisField = 'health' | 'hydration' | 'nutrition';
 
 export interface NeedSignal {
   key: string;
   kind: NeedKind;
+  /** Keep food and water deficits distinct so one resource cannot satisfy the other. */
+  resource?: ReserveResource;
+  /** Body deficits remain distinct so hydration cannot motivate food, or vice versa. */
+  bodyField?: HomeostasisField;
+  /** Project pressure is scoped so unrelated ordinary actions cannot claim it. */
+  projectId?: string;
   urgency: number;
   reasons: string[];
   sourceFactIds: string[];
@@ -53,10 +73,16 @@ function signal(
   urgency: number,
   reasons: string[],
   sourceFactIds: string[] = [],
+  resource?: ReserveResource,
+  projectId?: string,
+  bodyField?: HomeostasisField,
 ): NeedSignal {
   return {
-    key: `need:${kind}`,
+    key: `need:${kind}${resource ? `:${resource}` : ''}${bodyField ? `:${bodyField}` : ''}${projectId ? `:project:${projectId}` : ''}`,
     kind,
+    ...(resource ? { resource } : {}),
+    ...(bodyField ? { bodyField } : {}),
+    ...(projectId ? { projectId } : {}),
     urgency: clamp(urgency),
     reasons: [...new Set(reasons)],
     sourceFactIds: [...new Set(sourceFactIds)].slice(-24),
@@ -71,27 +97,40 @@ function isResponseOption(context: DecisionContext): boolean {
         ? option.completionAction
         : undefined;
     return action?.content.kind === 'accept'
-      || action?.content.kind === 'reject'
-      || action?.content.kind === 'revoke-agreement'
-      || action?.content.kind === 'revoke'
-      || action?.content.kind === 'withdraw';
+      || action?.content.kind === 'reject';
   });
 }
 
 export function deriveNeedAgenda(context: DecisionContext, atMonth: number): NeedSignal[] {
   const person = context.person;
   const needs: NeedSignal[] = [];
+  const positiveReproductionOptions = context.options.filter((option) => option.id.startsWith('offer-reproduce:')
+    || option.id.startsWith('accept-reproduce:')
+    || option.id.startsWith('reproduce:'));
+  const succubusReproductionOptions = positiveReproductionOptions.filter((option) => option.id.startsWith('reproduce:succubus:'));
+  const reproductiveWithdrawalOptions = context.options.filter((option) => option.id.startsWith('reject-reproduce:')
+    || option.id.startsWith('withdraw-reproduce:'));
+  const familyReadiness = positiveReproductionOptions.length || reproductiveWithdrawalOptions.length
+    ? assessFamilyReadiness(context, atMonth)
+    : undefined;
   const bodyDeficits = (['health', 'hydration', 'nutrition'] as const).map((field) => ({
     field,
     deficit: Math.max(0, COGNITIVE_POLICY.bodyComfort - person.body[field]),
   }));
   const bodyUrgency = Math.max(...bodyDeficits.map(({ deficit }) => saturating(deficit, COGNITIVE_POLICY.bodyDeficitScale)));
-  if (bodyUrgency > 0) needs.push(signal(
-    'homeostasis',
-    bodyUrgency,
-    bodyDeficits.filter(({ deficit }) => deficit > 0).map(({ field }) => `${field}低于本人舒适储备`),
-    person.conditions.flatMap((condition) => condition.sourceEventIds),
-  ));
+  for (const { field, deficit } of bodyDeficits) {
+    const urgency = saturating(deficit, COGNITIVE_POLICY.bodyDeficitScale);
+    if (urgency <= 0) continue;
+    needs.push(signal(
+      'homeostasis',
+      urgency,
+      [`${field}低于本人舒适储备`],
+      person.conditions.flatMap((condition) => condition.sourceEventIds),
+      undefined,
+      undefined,
+      field,
+    ));
+  }
 
   const hazardousConditions = person.conditions.filter((condition) => condition.kind === 'cold'
     || condition.kind === 'heat'
@@ -119,7 +158,7 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     urgency: bereavementUrgency(context.state, bereavement, atMonth),
   })).sort((left, right) => right.urgency - left.urgency)[0];
   if (grief?.urgency > 0) {
-    const deceased = context.state.people.find((candidate) => candidate.id === grief.bereavement.deceasedPersonId);
+    const deceased = personById(context.state, grief.bereavement.deceasedPersonId);
     needs.push(signal(
       'bereavement',
       grief.urgency,
@@ -135,25 +174,52 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     if (materialHas(stack.materialId, 'edible')) edibleUnits += stack.quantity;
     if (materialHas(stack.materialId, 'drinkable')) drinkableUnits += stack.quantity;
   }
-  const reserveGap = Math.max(
+  const reserveUrgency = (units: number) => Math.max(
     0,
-    1 - Math.min(1, Math.min(edibleUnits, drinkableUnits) / COGNITIVE_POLICY.personalReserveUnits),
-  );
-  if (reserveGap > 0) needs.push(signal(
+    1 - Math.min(1, units / COGNITIVE_POLICY.personalReserveUnits),
+  ) * (0.45 + Math.max(bodyUrgency, conditionDanger) * 0.55);
+  const foodReserveGap = reserveUrgency(edibleUnits);
+  if (foodReserveGap > 0) needs.push(signal(
     'reserve',
-    reserveGap * (0.45 + Math.max(bodyUrgency, conditionDanger) * 0.55),
-    ['本人可携带的食水缓冲不足'],
-    person.inventory.flatMap((stack) => stack.sourceEventIds),
+    foodReserveGap,
+    ['本人可携带的食物缓冲不足'],
+    person.inventory.filter((stack) => materialHas(stack.materialId, 'edible'))
+      .flatMap((stack) => stack.sourceEventIds),
+    'food',
+  ));
+  const waterReserveGap = reserveUrgency(drinkableUnits);
+  if (waterReserveGap > 0) needs.push(signal(
+    'reserve',
+    waterReserveGap,
+    ['本人可携带的饮水缓冲不足'],
+    person.inventory.filter((stack) => materialHas(stack.materialId, 'drinkable'))
+      .flatMap((stack) => stack.sourceEventIds),
+    'water',
   ));
 
-  const strongestProjectOption = [...context.options]
+  const recentNeedResolutions = cognitionStateOf(person).needResolutionEpisodes ?? [];
+  const projectCandidates = context.options
     .filter((option) => option.projectId || option.projectProposal)
-    .sort((left, right) => (right.projectPressure ?? right.projectProposal?.pressure ?? 0)
-      - (left.projectPressure ?? left.projectProposal?.pressure ?? 0))[0];
-  if (strongestProjectOption) {
-    const project = strongestProjectOption.projectProposal
-      ?? context.state.projects.find((candidate) => candidate.id === strongestProjectOption.projectId);
-    const pressure = strongestProjectOption.projectPressure ?? project?.pressure ?? 0;
+    .map((option) => {
+      const project = option.projectProposal
+        ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
+      const rawPressure = option.projectPressure ?? project?.pressure ?? 0;
+      const matchingResolution = !option.projectId && project
+        ? recentNeedResolutions
+          .filter((episode) => episode.projectNeed === project.need
+            && episode.desiredFunction === project.desiredFunction
+            && episode.observedAtMonth <= atMonth
+            && atMonth - episode.observedAtMonth < 12)
+          .sort((left, right) => right.observedAtMonth - left.observedAtMonth || left.id.localeCompare(right.id))[0]
+        : undefined;
+      const resolutionAge = matchingResolution ? atMonth - matchingResolution.observedAtMonth : 12;
+      const relief = matchingResolution ? 0.45 * (1 - resolutionAge / 12) : 0;
+      return { option, project, matchingResolution, pressure: rawPressure * (1 - relief) };
+    })
+    .sort((left, right) => right.pressure - left.pressure || left.option.id.localeCompare(right.option.id));
+  const strongestProjectCandidate = projectCandidates[0];
+  if (strongestProjectCandidate) {
+    const { option: strongestProjectOption, project, matchingResolution, pressure } = strongestProjectCandidate;
     const projectNeed = project?.need;
     const kind: NeedKind = projectNeed === 'thermal-safety'
       || projectNeed === 'hunting-safety'
@@ -168,11 +234,20 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
           : projectNeed === 'coordination-capacity'
             ? 'belonging'
             : 'capability';
+    const resource: ReserveResource | undefined = projectNeed === 'water-security'
+      ? 'water'
+      : projectNeed === 'reserve-security' || projectNeed === 'food-preparation'
+        ? 'food'
+        : undefined;
     needs.push(signal(
       kind,
       pressure / (pressure + 45),
-      [`一个由局部事实触发的${projectNeed ?? '持续项目'}正在等待投入`],
-      strongestProjectOption.sourceFactIds,
+      [matchingResolution
+        ? `本人近期亲手完成过同类${projectNeed ?? '持续项目'}，新建压力暂时缓解但仍可重新出现`
+        : `一个由局部事实触发的${projectNeed ?? '持续项目'}正在等待投入`],
+      [...strongestProjectOption.sourceFactIds, ...(matchingResolution?.sourceFactIds ?? [])],
+      resource,
+      project?.id,
     ));
   }
 
@@ -201,24 +276,80 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
   }
   if (strongestCare > 0) needs.push(signal('care', strongestCare, careReasons, careSources));
 
+  if (familyReadiness && positiveReproductionOptions.length) {
+    const possibleFemaleAges = positiveReproductionOptions.flatMap((option) => {
+      const target = option.target?.kind === 'person' ? personById(context.state, option.target.personId) : undefined;
+      const female = person.sex === 'female' ? person : target?.sex === 'female' ? target : undefined;
+      return female ? [ageMonths(female, atMonth) / 12] : [];
+    });
+    const oldestFemaleAge = possibleFemaleAges.length ? Math.max(...possibleFemaleAges) : 0;
+    const ageWindow = oldestFemaleAge < 30
+      ? 0
+      : oldestFemaleAge < 35
+        ? 0.1
+        : oldestFemaleAge < 38
+          ? 0.2
+          : 0.3;
+    const readinessUrgency = (0.18 + ageWindow * 0.6) * Math.pow(familyReadiness.readiness, 1.5);
+    const urgency = succubusReproductionOptions.length
+      ? Math.max(0.48 + ageWindow * 0.2, readinessUrgency)
+      : readinessUrgency;
+    needs.push(signal(
+      'generativity',
+      urgency,
+      succubusReproductionOptions.length
+        ? ['魅魔特质产生了不依赖关系、双方协议或家庭准备度的单方生殖机会']
+        : [
+            `本人当前可感知的食物、水源、住所、照护余量与气候共同形成${Math.round(familyReadiness.readiness * 100)}%的家庭准备度`,
+            ...familyReadiness.reasons,
+          ],
+      succubusReproductionOptions.length
+        ? [...new Set(succubusReproductionOptions.flatMap((option) => option.sourceFactIds))]
+        : familyReadiness.sourceFactIds,
+    ));
+  }
+
   const active = context.activeIntent;
+  let commitmentUrgency = 0;
+  const commitmentReasons: string[] = [];
+  const commitmentSources: string[] = [];
   if (active) {
-    const project = active.projectId
-      ? context.state.projects.find((candidate) => candidate.id === active.projectId)
-      : undefined;
+    const project = active.projectId ? projectById(context.state, active.projectId) : undefined;
     const staleMonths = Math.max(0, atMonth - Math.max(active.lastProgressAtMonth, active.lastResumedAtMonth ?? active.lastProgressAtMonth));
     const continuity = clamp(0.28
       + active.progress * 0.35
       + (project?.pressure ?? 0) / 250
       + trait(person, 'conscientiousness') * 0.22
       - saturating(staleMonths, COGNITIVE_POLICY.staleCommitmentMonths) * 0.3);
-    needs.push(signal(
-      'commitment',
-      continuity,
-      [project ? '本人已经承担一个有真实进度的项目' : '本人已有尚未完成的长期意图'],
-      [...(active.sourceFactIds ?? []), ...(project?.triggerFactIds ?? [])],
-    ));
+    commitmentUrgency = Math.max(commitmentUrgency, continuity);
+    commitmentReasons.push(project ? '本人已经承担一个有真实进度的项目' : '本人已有尚未完成的长期意图');
+    commitmentSources.push(...(active.sourceFactIds ?? []), ...(project?.triggerFactIds ?? []));
   }
+
+  const dueCompanionCommitments = agreementsForPerson(context.state, person.id).filter((agreement) => {
+    if (agreement.status !== 'active'
+      || agreement.proposal.kind !== 'companion'
+      || agreement.companionEstablishedAtMonth === undefined
+      || !agreement.partyIds.includes(person.id)) return false;
+    const anchor = companionLivingAnchor(context.state, agreement);
+    if (!anchor) return false;
+    return !personWithinLivingArea(person, anchor)
+      && companionReturnRequired(agreement, atMonth);
+  });
+  if (dueCompanionCommitments.length) {
+    // The domain owns the maintenance calendar. Once it says the established
+    // commitment is due, the need is substantial without multiplying by
+    // conscientiousness here; personality remains a choice gate in appraisal.
+    commitmentUrgency = Math.max(commitmentUrgency, 0.62);
+    commitmentReasons.push('本人已离开约定的共同生活地点，且有来源的长期共同生活承诺已到维护时点');
+    commitmentSources.push(...dueCompanionCommitments.flatMap((agreement) => agreement.sourceEventIds));
+  }
+  if (commitmentUrgency > 0) needs.push(signal(
+    'commitment',
+    commitmentUrgency,
+    commitmentReasons,
+    commitmentSources,
+  ));
 
   const beliefs = cognitionStateOf(person).outcomeBeliefs;
   const difficult = beliefs.filter((belief) => belief.attempts > 0 && outcomeBeliefSuccess(belief) < 0.5);
@@ -233,27 +364,75 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     difficult.flatMap((belief) => belief.sourceEventIds),
   ));
 
-  const socialOptions = context.options.filter((option) => option.domain === 'social');
-  const sourcedRelations = person.relations.filter((relation) => relation.sourceEventIds.length > 0
-    && context.visiblePeople.some((other) => other.id === relation.personId));
-  if (socialOptions.length && sourcedRelations.length) {
-    const strongestRelation = sourcedRelations.reduce((maximum, relation) => Math.max(
+  const visibleRelationshipOpportunities = context.visiblePeople.filter((other) => other.id !== person.id);
+  const activeCompanions = agreementsForPerson(context.state, person.id).filter((agreement) => agreement.status === 'active'
+    && agreement.proposal.kind === 'companion'
+    && agreement.partyIds.includes(person.id));
+  const availableRelationshipOpportunities = visibleRelationshipOpportunities.filter((other) => !activeCompanions
+    .some((agreement) => agreement.partyIds.includes(other.id)));
+  const visibleSourcedRelations = person.relations.flatMap((relation) => {
+    if (!visibleRelationshipOpportunities.some((other) => other.id === relation.personId)) return [];
+    const sourceFactIds = relation.sourceEventIds.filter((eventId) => worldEventById(context.state, eventId));
+    return sourceFactIds.length ? [{ relation, sourceFactIds }] : [];
+  });
+  const affiliationRelations = visibleSourcedRelations.filter(({ relation }) => availableRelationshipOpportunities
+    .some((other) => other.id === relation.personId));
+  if (availableRelationshipOpportunities.length) {
+    const strongestRelation = affiliationRelations.reduce((maximum, { relation }) => Math.max(
       maximum,
       clamp((Math.max(0, relation.bond) + Math.max(0, relation.trust) - Math.max(0, relation.fear)) / 100),
     ), 0);
     needs.push(signal(
       'belonging',
-      strongestRelation * (0.35 + trait(person, 'extraversion') * 0.4 + trait(person, 'agreeableness') * 0.25),
-      ['当前可见关系与本人社会接近倾向形成了真实互动机会'],
-      sourcedRelations.flatMap((relation) => relation.sourceEventIds),
+      (activeCompanions.length ? 0.28 : 0.42) + strongestRelation * 0.38,
+      [affiliationRelations.length
+        ? '本人眼前出现了曾与自己形成可追溯经历的人，可以主动延续这段关系'
+        : activeCompanions.length
+          ? '本人已有共同生活关系，但眼前还有尚未形成稳定关系的人；共同生活并不自动排除其他真实社会关系'
+          : '本人眼前有可以沟通的人，但尚未形成稳定陪伴关系；当前局部相遇本身构成一次低风险接近机会'],
+      affiliationRelations.flatMap(({ sourceFactIds }) => sourceFactIds),
     ));
   }
 
-  if (isResponseOption(context)) needs.push(signal(
+  const waitingForResponse = isResponseOption(context);
+  const adverseRelations = visibleSourcedRelations.filter(({ relation }) => (
+    relation.fear >= Math.max(relation.trust, relation.bond) + 10
+  ));
+  const adverseRelationshipUrgency = adverseRelations.reduce((maximum, { relation }) => Math.max(
+    maximum,
+    clamp(0.35 + (relation.fear - Math.max(relation.trust, relation.bond)) / 100),
+  ), 0);
+  const activeAgreements = agreementsForPerson(context.state, person.id).filter((agreement) => agreement.status === 'active'
+    && agreement.partyIds.includes(person.id));
+  const severeBodyUrgency = activeAgreements.length
+    ? Math.max(
+        saturating(35 - person.body.health, 18),
+        saturating(35 - person.body.hydration, 18),
+        saturating(35 - person.body.nutrition, 18),
+        person.conditions.reduce((maximum, condition) => Math.max(maximum, condition.stage >= 3 ? 0.65 : 0), 0),
+      )
+    : 0;
+  const responseUrgency = waitingForResponse ? 0.45 + person.motiveSensitivity.control / 200 : 0;
+  const readinessWithdrawalUrgency = reproductiveWithdrawalOptions.length && familyReadiness
+    ? 0.18 + (1 - familyReadiness.readiness) * 0.42
+    : 0;
+  const autonomyUrgency = Math.max(responseUrgency, adverseRelationshipUrgency, severeBodyUrgency, readinessWithdrawalUrgency);
+  if (autonomyUrgency > 0) needs.push(signal(
     'autonomy',
-    0.45 + person.motiveSensitivity.control / 200,
-    ['一项具体提议、权限或共同体关系正在等待本人表态'],
-    context.options.flatMap((option) => option.sourceFactIds),
+    autonomyUrgency,
+    [
+      ...(waitingForResponse ? ['一项具体提议正在等待本人接受或拒绝'] : []),
+      ...(adverseRelations.length ? ['本人眼前一段有来源的关系中，恐惧已经明显压过信任与羁绊'] : []),
+      ...(severeBodyUrgency > 0 ? ['本人正处于严重身体状态，需要重新判断仍在生效的承诺'] : []),
+      ...(readinessWithdrawalUrgency > 0 ? ['当前家庭准备度使本人有理由重新判断生殖提议或已给出的单次同意'] : []),
+    ],
+    [
+      ...context.options.flatMap((option) => option.sourceFactIds),
+      ...adverseRelations.flatMap(({ sourceFactIds }) => sourceFactIds),
+      ...activeAgreements.flatMap((agreement) => agreement.sourceEventIds),
+      ...(familyReadiness?.sourceFactIds ?? []),
+      ...person.conditions.filter((condition) => condition.stage >= 3).flatMap((condition) => condition.sourceEventIds),
+    ],
   ));
 
   const inquiryOptions = context.options.filter((option) => option.goal.kind === 'knowledge'

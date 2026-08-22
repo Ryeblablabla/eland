@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "kind": "matched-authoritative-no-replay-continuation",
+  "sourceRunId": "candidate-gen5-social-v5f-20260821-s20260815-y100-r1",
+  "targetRunId": "candidate-gen5-social-v6b-cont-20260821-s20260815-m948-y200-r1",
+  "targetLabel": "candidate-gen5-social-v6b-cont-20260821 seed=20260815 from=948 through=2400",
+  "authority": {
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "candidateDirectory": "/tmp/eland-gen5-v6.txS4lV/three-body",
+    "candidateGitMetadata": "not present in frozen candidate copy",
+    "sourceAndServerFileCount": 242,
+    "sourceAndServerContentListSha256": "a123ffa0266ec64c5de919388bd073c54b27c6950dce8a0de93e991999602e62",
+    "distMainSha256": "756e75c4af1ad68ea472021c3d18bc5d38607c9330d70f4bc440b873998558d4",
+    "distWorkerSha256": "4cd93119595624044ee1c9e69775708787d18b2d02ef3238ba2062069b4361ea"
+  },
+  "creation": {
+    "maintenanceScript": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-create-from-m948.mjs",
+    "maintenanceScriptSha256": "145d3be5341b4c6e8a8848444b9c48c1e052cc0ed79c8c8d95f69ef3c0cb902f",
+    "writePath": "V6b SqliteRunStore.create after isolated exact-create preflight; no direct SQL write and no source overwrite",
+    "sourceStateHash": "236e039f36d6695009cffe8accdf39d8bb44f733dde80ccaf0446f980819ff21",
+    "targetInitialStateHash": "15bb63ed398a64758bae0d60d7250f26a28e7b093041e1861d85ef73e02814cd",
+    "targetCreatedAt": "2026-08-20T22:27:45.177Z"
+  },
+  "initialState": {
+    "elapsedMonths": 948,
+    "seed": 20260815,
+    "civilizationNo": 1,
+    "chaosIntensity": 0,
+    "climateBias": "balanced",
+    "status": "running",
+    "people": 51,
+    "livingAgents": 42,
+    "events": 89827,
+    "sourceEndpoint": { "kind": "months", "value": 1200 },
+    "targetEndpoint": { "kind": "months", "value": 2400 },
+    "peopleByGeneration": { "0": 7, "1": 19, "2": 24, "3": 1 },
+    "maxGeneration": 3
+  },
+  "stateDifferenceAudit": {
+    "verdict": "endpoint + same 27 inactive historical provenance normalizations as matched V5 create",
+    "endpointDifferenceCount": 1,
+    "historicalProvenanceDifferenceCount": 27,
+    "activeIntentDifferenceCount": 0,
+    "otherDifferenceCount": 0,
+    "completeDetailReference": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1-continuation-manifest.json"
+  },
+  "m960Gate": {
+    "method": "SIGSTOP exact server immediately after SQLite reaches m960, run frozen V6b household auditor read-only, resume only if every global invariant violation total is zero",
+    "auditor": "/tmp/eland-gen5-v6.txS4lV/three-body/scripts/audit-household-co-residence.mjs",
+    "auditorSha256": "a7dd91a063b31cf579a84d810ba8a153562b72ffb1201f592e975f7b29a15636",
+    "artifact": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-s20260815-m960-household-audit.json",
+    "artifactSha256": "bff53f46591ad1c316c64d12de27c9b452be24e2fb270d6d1d0f53652a52de4e",
+    "stateHashAtGate": "826e8dc5b0d8366855fd28e8c3e5fd62c58101d943b784951976f1d97c8c74de",
+    "householdFacts": 17,
+    "validFacts": 17,
+    "invalidFacts": 0,
+    "globalInvariantViolationTotals": {
+      "duplicateSourceBlocks": 0,
+      "overlappingQualifyingMonths": 0,
+      "sameMonthMultipleFacts": 0,
+      "pairFactCountExceedsChildhoodBound": 0
+    },
+    "status": "passed-and-resumed"
+  },
+  "evolution": {
+    "protocol": "ensure-through",
+    "fromMonth": 948,
+    "requestedEndMonth": 2400,
+    "serverPort": 3235,
+    "serverPid": 12595,
+    "serverExecSessionId": 1342,
+    "runnerPid": 12804,
+    "runnerExecSessionId": 66257,
+    "runnerScript": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-s20260815-m948-y200-r1-runner.mjs",
+    "runnerScriptSha256": "42d59f530ea88bd31f38de51a9630f1dde47570cefe149cdab361c8335361f9c",
+    "serverLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-s20260815-m948-y200-r1-server-p3235.log",
+    "runnerLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-s20260815-m948-y200-r1-runner.log",
+    "claimedAt": "2026-08-20T22:29:52.395Z",
+    "initialPath": {
+      "status": "running",
+      "fromMonth": 948,
+      "reachedMonth": 948,
+      "requestedEndMonth": 2400
+    },
+    "status": "rejected-vertical-crowding-frozen-at-m1368"
+  },
+  "outcome": {
+    "status": "rejected-vertical-crowding",
+    "decisionBasisMonth": 1320,
+    "decisionBasis": "Matched m1320 evidence: V5 had 3 generation-4 people while V6b had 0; valid household producers were present, but horizontal births filled the soft population cap and generation-3 reproduction remained at 0.",
+    "frozenAtMonth": 1368,
+    "frozenRevision": 36,
+    "frozenStateHash": "5fd2f4fc0787ac543eb0d674352e34796d844f55c915159f00495f621e27f1eb",
+    "eventCount": 164285,
+    "agentCount": 79,
+    "livingAgents": 49,
+    "serverPid": 29615,
+    "runnerPid": 29833,
+    "port": 3235,
+    "portReleased": true,
+    "sqliteStatusPreserved": "running",
+    "audit": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v6b-cont-20260821-s20260815-m1368-rejected-vertical-crowding-social-chain-audit.json",
+    "auditSha256": "c6a0a69c332e4fa40da3371e452aa6278b6dab152f70c764e871e2fe2a283c50"
+  }
+}

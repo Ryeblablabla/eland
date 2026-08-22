@@ -3,7 +3,10 @@ import { handleDecide } from './model-decision-gateway';
 import {
   EVOLUTION_MODES,
   MODEL_PURPOSES,
+  deleteModelEndpoint,
   readModelSettings,
+  saveTestedModelEndpoint,
+  testModelEndpoint,
   updateModelSettings,
   type EvolutionMode,
   type ModelPurpose,
@@ -70,6 +73,35 @@ export async function handleModelApi(
           modelUseMode(body.summaryMode, 'summaryMode'),
         ),
       };
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(400, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/model-settings/endpoints/test') {
+    try {
+      return { status: 200, body: await testModelEndpoint(bodyValue) };
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(400, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (method === 'PUT' && pathname === '/api/model-settings/endpoints') {
+    const body = asObject(bodyValue);
+    try {
+      return { status: 200, body: saveTestedModelEndpoint(body.token) };
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(400, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (method === 'DELETE' && pathname === '/api/model-settings/endpoints') {
+    const body = asObject(bodyValue);
+    try {
+      return { status: 200, body: deleteModelEndpoint(body.id) };
     } catch (error) {
       if (error instanceof HttpError) throw error;
       throw new HttpError(400, error instanceof Error ? error.message : String(error));

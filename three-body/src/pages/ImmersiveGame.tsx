@@ -6,16 +6,18 @@ import AtmosphereTransition, {
 } from '@/components/AtmosphereTransition';
 import AdaptiveMusic from '@/components/AdaptiveMusic';
 import ImmersiveInterface, {
+  type CivilizationSettlementStatus,
   type ImmersiveOverlayMode,
   type ModelSettingsStatus,
   type NewWorldStatus,
   type SaveManagerStatus,
 } from '@/components/ImmersiveInterface';
+import CivilizationRequiem, {
+  type CivilizationEndingView,
+} from '@/components/CivilizationRequiem';
 import {
-  CivilizationEnding,
   FocusInspector,
   type AgentSubtab,
-  type CivilizationEndingView,
   type FocusTarget,
 } from '@/components/ObservationUI';
 import {
@@ -34,6 +36,8 @@ import {
 import {
   modelSettingsClient,
   type EvolutionMode,
+  type ModelEndpointDraft,
+  type ModelEndpointTestResult,
   type ModelPurpose,
   type ModelSettingsSnapshot,
 } from '@/game/modelSettings';
@@ -49,6 +53,11 @@ import type {
 } from '@/game/societyContract';
 import type { PlanetFate } from '@/lib/threebody';
 import { useDocumentVisible } from '@/hooks/use-document-visible';
+import {
+  DEFAULT_EVOLUTION_SPEED,
+  normalizeEvolutionSpeed,
+  type EvolutionSpeed,
+} from '@/game/evolutionSpeed';
 
 type ViewMode = 'cosmos' | 'society';
 
@@ -66,11 +75,11 @@ interface EvolutionEntry {
 }
 
 const TU_PER_MONTH = 0.8 / 12;
-const AUTO_STEP_MS = 4_000;
+const AUTO_STEP_BASE_MS = 4_000;
+const EVOLUTION_SPEED_STORAGE_KEY = 'threebody:eland:evolution-speed-multiplier';
 const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = {
   decision: '', interaction: '', narrative: '', naming: '', strategy: '',
 };
-
 const ERA_TEXT: Record<EraKey, { big: string; sub: string; cls: string; glow: string }> = {
   stable: { big: '恒纪元', sub: '三日轨度可测 · 文明复苏', cls: 'text-amber-100', glow: 'rgba(251,191,36,0.25)' },
   chaotic: { big: '乱纪元', sub: '飞星失序 · 脱水！脱水！', cls: 'text-rose-200', glow: 'rgba(244,63,94,0.22)' },
@@ -99,6 +108,24 @@ function eraKeyOf(fate: PlanetFate, fluxRel: number): EraKey {
 function monthLabel(month: number): string {
   if (month <= 0) return '月初';
   return `第${Math.floor((month - 1) / 12) + 1}年 · ${((month - 1) % 12) + 1}月`;
+}
+
+function readEvolutionSpeed(): EvolutionSpeed {
+  if (typeof window === 'undefined') return DEFAULT_EVOLUTION_SPEED;
+  try {
+    const stored = window.localStorage.getItem(EVOLUTION_SPEED_STORAGE_KEY);
+    return stored === null ? DEFAULT_EVOLUTION_SPEED : normalizeEvolutionSpeed(Number(stored));
+  } catch {
+    return DEFAULT_EVOLUTION_SPEED;
+  }
+}
+
+function storeEvolutionSpeed(speed: EvolutionSpeed): void {
+  try {
+    window.localStorage.setItem(EVOLUTION_SPEED_STORAGE_KEY, String(speed));
+  } catch {
+    // 浏览器禁用本地存储时仍保留当前标签页内的速度选择。
+  }
 }
 
 export default function ImmersiveGame() {
@@ -136,6 +163,9 @@ export default function ImmersiveGame() {
   const [focusAgentHistoryLoading, setFocusAgentHistoryLoading] = useState(false);
   const [focusAgentHistoryError, setFocusAgentHistoryError] = useState('');
   const [civilizationEnding, setCivilizationEnding] = useState<CivilizationEndingView | null>(null);
+  const [civilizationSettlementStatus, setCivilizationSettlementStatus] = useState<CivilizationSettlementStatus>('idle');
+  const [civilizationSettlementMessage, setCivilizationSettlementMessage] = useState('');
+  const [evolutionSpeed, setEvolutionSpeed] = useState<EvolutionSpeed>(readEvolutionSpeed);
 
   const runIdRef = useRef(getElandRunId());
   const startedRef = useRef(false);
@@ -287,13 +317,15 @@ export default function ImmersiveGame() {
     }
 
     if (frame.civilizationEnd) sessionReadyRef.current = false;
-    if (frame.civilizationEnd?.kind === 'destroyed' && !replacementRequestedRef.current) {
+    if (frame.civilizationEnd && !replacementRequestedRef.current) {
       replacementRequestedRef.current = true;
       setFocusTarget(null);
       setFocusAgentSubtab('overview');
       setCivilizationEnding({
         civilizationId: frame.civilizationId,
+        branchId: frame.branchId,
         elapsedMonths: frame.elapsedMonths,
+        kind: frame.civilizationEnd.kind,
         cause: frame.civilizationEnd.cause,
         summary: frame.civilizationEnd.summary,
       });
@@ -510,12 +542,12 @@ export default function ImmersiveGame() {
   useEffect(() => {
     if (!pageVisible || uiPaused) return;
     const firstStep = setTimeout(() => { void stepOnce(); }, 1_000);
-    const interval = setInterval(() => { void stepOnce(); }, AUTO_STEP_MS);
+    const interval = setInterval(() => { void stepOnce(); }, AUTO_STEP_BASE_MS / evolutionSpeed);
     return () => {
       clearTimeout(firstStep);
       clearInterval(interval);
     };
-  }, [pageVisible, stepOnce, uiPaused]);
+  }, [evolutionSpeed, pageVisible, stepOnce, uiPaused]);
 
   const onStats = useCallback((stats: SimStats) => {
     // “重新开始”会先重置 ThreeBodyCanvas，再创建新的权威会话。重置提交前，
@@ -703,6 +735,65 @@ export default function ImmersiveGame() {
     setOverlayMode('shortcuts');
   }, []);
 
+  const openCivilizationEnding = useCallback(() => {
+    if (newWorldLaunchingRef.current) return;
+    setFocusTarget(null);
+    setFocusAgentSubtab('overview');
+    setCivilizationSettlementStatus('idle');
+    setCivilizationSettlementMessage('');
+    setOverlayMode('civilization-ending');
+  }, []);
+
+  const endCivilization = useCallback(async () => {
+    if (civilizationSettlementStatus === 'settling') return;
+    setCivilizationSettlementStatus('settling');
+    setCivilizationSettlementMessage('正在冻结当前权威历史…');
+    try {
+      const frame = await elandClient.settleCivilization(runIdRef.current);
+      applyFrame(frame);
+      setCivilizationSettlementStatus('idle');
+      setCivilizationSettlementMessage('');
+      setOverlayMode(null);
+    } catch (error) {
+      setCivilizationSettlementStatus('error');
+      setCivilizationSettlementMessage(error instanceof Error ? error.message : '文明结算失败，请重试');
+    }
+  }, [applyFrame, civilizationSettlementStatus]);
+
+  const loadCivilizationRequiem = useCallback(() => {
+    if (!civilizationEnding) return Promise.reject(new Error('当前没有已结算的文明'));
+    return elandClient.civilizationRequiem(runIdRef.current, {
+      civilizationId: civilizationEnding.civilizationId,
+      branchId: civilizationEnding.branchId,
+      endedAtMonth: civilizationEnding.elapsedMonths,
+    }, { timeoutMs: 60_000 });
+  }, [civilizationEnding]);
+
+  const applyModelSettingsSnapshot = useCallback((settings: ModelSettingsSnapshot) => {
+    setModelSettings(settings);
+    setModelEvolutionModeDraft(settings.evolutionMode);
+    setModelSummaryModeDraft(settings.summaryMode);
+    setModelRouteDraft(settings.routes);
+    setModelSettingsStatus('idle');
+    setModelSettingsMessage('');
+  }, []);
+
+  const testModelEndpoint = useCallback((draft: ModelEndpointDraft): Promise<ModelEndpointTestResult> => (
+    modelSettingsClient.testEndpoint(draft)
+  ), []);
+
+  const saveModelEndpoint = useCallback(async (token: string) => {
+    const settings = await modelSettingsClient.saveEndpoint(token);
+    applyModelSettingsSnapshot(settings);
+    return settings;
+  }, [applyModelSettingsSnapshot]);
+
+  const deleteModelEndpoint = useCallback(async (id: string) => {
+    const settings = await modelSettingsClient.deleteEndpoint(id);
+    applyModelSettingsSnapshot(settings);
+    return settings;
+  }, [applyModelSettingsSnapshot]);
+
   const changeModelRoute = useCallback((purpose: ModelPurpose, endpointId: string) => {
     setModelRouteDraft((current) => ({ ...current, [purpose]: endpointId }));
     setModelSettingsStatus('idle');
@@ -713,6 +804,12 @@ export default function ImmersiveGame() {
     setModelEvolutionModeDraft(mode);
     setModelSettingsStatus('idle');
     setModelSettingsMessage('');
+  }, []);
+
+  const changeEvolutionSpeed = useCallback((speed: EvolutionSpeed) => {
+    const normalized = normalizeEvolutionSpeed(speed);
+    setEvolutionSpeed(normalized);
+    storeEvolutionSpeed(normalized);
   }, []);
 
   const changeSummaryMode = useCallback((mode: EvolutionMode) => {
@@ -919,7 +1016,8 @@ export default function ImmersiveGame() {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (overlayMode) closeOverlay();
+        if (overlayMode && overlayMode !== 'menu' && overlayMode !== 'history') openMenu();
+        else if (overlayMode) closeOverlay();
         else if (focusTarget) closeFocus();
         else openMenu();
         return;
@@ -1006,7 +1104,7 @@ export default function ImmersiveGame() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#02030a] text-slate-200">
-      <AdaptiveMusic audible={pageVisible} era={eraKey} view={view} />
+      <AdaptiveMusic audible={pageVisible} ducked={Boolean(civilizationEnding)} era={eraKey} view={view} />
       <style>{`
         @keyframes era-flash {
           0% { opacity: 0; letter-spacing: 0.1em; transform: scale(0.96); filter: blur(6px); }
@@ -1152,6 +1250,7 @@ export default function ImmersiveGame() {
         modelEvolutionModeDraft={modelEvolutionModeDraft}
         modelRouteDraft={modelRouteDraft}
         modelSummaryModeDraft={modelSummaryModeDraft}
+        evolutionSpeed={evolutionSpeed}
         modelSettings={modelSettings}
         modelSettingsMessage={modelSettingsMessage}
         modelSettingsStatus={modelSettingsStatus}
@@ -1160,25 +1259,35 @@ export default function ImmersiveGame() {
         saves={saves}
         saveStatus={saveManagerStatus}
         saveMessage={saveManagerMessage}
+        civilizationSettlementStatus={civilizationSettlementStatus}
+        civilizationSettlementMessage={civilizationSettlementMessage}
         onClose={closeOverlay}
         onCreateSave={(label) => { void createSave(label); }}
         onLoadSave={(saveId) => { void loadSave(saveId); }}
+        onOpenMenu={openMenu}
         onOpenHistory={openHistory}
         onOpenModelSettings={openModelSettings}
         onOpenNewWorld={openNewWorld}
         onOpenSaves={openSaves}
         onOpenShortcuts={openShortcuts}
+        onOpenCivilizationEnding={openCivilizationEnding}
         onEvolutionModeChange={changeEvolutionMode}
+        onEvolutionSpeedChange={changeEvolutionSpeed}
         onModelRouteChange={changeModelRoute}
         onSummaryModeChange={changeSummaryMode}
         onRefreshSeed={refreshNewWorldSeed}
         onSaveModelSettings={() => { void saveModelSettings(); }}
+        onDeleteModelEndpoint={deleteModelEndpoint}
+        onSaveModelEndpoint={saveModelEndpoint}
         onStartNewWorld={() => { void launchNewWorld(); }}
+        onEndCivilization={() => { void endCivilization(); }}
+        onTestModelEndpoint={testModelEndpoint}
       />
 
       {civilizationEnding && !overlayMode && (
-        <CivilizationEnding
+        <CivilizationRequiem
           ending={civilizationEnding}
+          loadRequiem={loadCivilizationRequiem}
           onContinue={observeNextCivilization}
           onOpenHistory={openHistory}
         />

@@ -1,0 +1,2912 @@
+{
+  "schemaVersion": 2,
+  "auditVersion": "generational-social-chain-audit-v2",
+  "generatedAt": "2026-08-20T20:29:00.348Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-gen3-social-v4f-20260821-s185-y30-r1"
+      ]
+    }
+  },
+  "method": {
+    "target": "Every person with generation >= 2.",
+    "coreChain": "person state parents -> exact birth fact -> conceived reproduce ActionFact -> authorized reproduce agreement -> proposal/acceptance/fulfillment source integrity",
+    "socialChain": "company assist fulfillment -> companion establishment -> persistent shared-living fact -> reproduction relationship basis",
+    "sliceBias": "At observed proposal ActionFacts, reconstruct co-location and preserve SimulationState.people insertion order to audit the localPeople first-three cap; generation-one insertion order is checked against birth order.",
+    "missingEvidencePolicy": "Missing or unresolved source facts are reported explicitly and never inferred from generation or observer milestones."
+  },
+  "aggregate": {
+    "runs": 1,
+    "runsWithGeneration2": 0,
+    "runsWithGeneration3": 0,
+    "maxGeneration": 1,
+    "targetPeople": 0,
+    "coreCompleteChains": 0,
+    "hypothesisCompleteChains": 0,
+    "missingLinkCounts": {}
+  },
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v4f-20260821-s185-y30-r1",
+      "seed": 185,
+      "status": "ended",
+      "elapsedMonths": 360,
+      "people": 23,
+      "peopleByGeneration": {
+        "0": 6,
+        "1": 17
+      },
+      "maxGeneration": 1,
+      "targetPeople": 0,
+      "coreCompleteChains": 0,
+      "hypothesisCompleteChains": 0,
+      "support": "no-generation-2",
+      "socialFunnel": {
+        "company": {
+          "totals": {
+            "proposed": 11,
+            "accepted": 5,
+            "fulfilled": 5,
+            "rejected": 0,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "byGenerationPair": {
+            "g0|g1": {
+              "proposed": 7,
+              "accepted": 2,
+              "fulfilled": 2,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            },
+            "g1|g1": {
+              "proposed": 4,
+              "accepted": 3,
+              "fulfilled": 3,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            }
+          }
+        },
+        "companion": {
+          "totals": {
+            "proposed": 47,
+            "accepted": 47,
+            "established": 14,
+            "active": 15,
+            "cancelled": 0,
+            "breached": 32
+          },
+          "byGenerationPair": {
+            "g0|g0": {
+              "proposed": 46,
+              "accepted": 46,
+              "established": 14,
+              "active": 15,
+              "cancelled": 0,
+              "breached": 31
+            },
+            "g1|g1": {
+              "proposed": 1,
+              "accepted": 1,
+              "established": 0,
+              "active": 0,
+              "cancelled": 0,
+              "breached": 1
+            }
+          }
+        },
+        "persistentSharedLiving": {
+          "events": 434,
+          "byGenerationPair": {
+            "g0|g0": 434
+          },
+          "firstAtMonth": 127,
+          "lastAtMonth": 360
+        }
+      },
+      "relationshipFrontier": {
+        "atMonth": 360,
+        "livingGenerationOneAdults": 4,
+        "highestBilateralMinimum": 25,
+        "adultFrontier": [
+          {
+            "person": {
+              "personId": "born-15-marie-curie-6",
+              "name": "司马弘毅",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 345,
+              "bodyMinimum": 54.720000000000454
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-129-usagi-tsukino-10",
+                "name": "朱利安·芬奇",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 231,
+                "bodyMinimum": 82.05000000000007
+              },
+              "minimumTrustBond": 25,
+              "firstToSecond": {
+                "trust": 27,
+                "bond": 25,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-294-action-born-129-usagi-tsukino-10-11",
+                  "e-294-action-born-129-usagi-tsukino-10-16",
+                  "e-294-action-born-15-marie-curie-6-5",
+                  "e-295-action-born-15-marie-curie-6-8",
+                  "e-299-environment-relationship-0",
+                  "e-300-action-born-129-usagi-tsukino-10-43",
+                  "e-300-action-born-129-usagi-tsukino-10-50",
+                  "e-300-action-born-15-marie-curie-6-25",
+                  "e-311-action-born-129-usagi-tsukino-10-70",
+                  "e-311-action-born-15-marie-curie-6-74",
+                  "e-319-action-born-15-marie-curie-6-25",
+                  "e-320-action-born-129-usagi-tsukino-10-20",
+                  "e-320-action-born-129-usagi-tsukino-10-23",
+                  "e-320-action-born-15-marie-curie-6-11",
+                  "e-321-action-born-129-usagi-tsukino-10-2",
+                  "e-321-action-born-129-usagi-tsukino-10-22",
+                  "e-321-action-born-15-marie-curie-6-11"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 27,
+                "bond": 25,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-294-action-born-129-usagi-tsukino-10-11",
+                  "e-294-action-born-129-usagi-tsukino-10-16",
+                  "e-294-action-born-15-marie-curie-6-5",
+                  "e-295-action-born-15-marie-curie-6-8",
+                  "e-299-environment-relationship-0",
+                  "e-300-action-born-129-usagi-tsukino-10-43",
+                  "e-300-action-born-129-usagi-tsukino-10-50",
+                  "e-300-action-born-15-marie-curie-6-25",
+                  "e-311-action-born-129-usagi-tsukino-10-70",
+                  "e-311-action-born-15-marie-curie-6-74",
+                  "e-319-action-born-15-marie-curie-6-25",
+                  "e-320-action-born-129-usagi-tsukino-10-20",
+                  "e-320-action-born-129-usagi-tsukino-10-23",
+                  "e-320-action-born-15-marie-curie-6-11",
+                  "e-321-action-born-129-usagi-tsukino-10-2",
+                  "e-321-action-born-129-usagi-tsukino-10-22",
+                  "e-321-action-born-15-marie-curie-6-11"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-42-marie-curie-7",
+              "name": "埃莉诺·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 318,
+              "bodyMinimum": 78.30000000000007
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-73-marie-curie-8",
+                "name": "贝娅特丽丝·苏格拉底",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 287,
+                "bodyMinimum": 64.18000000000136
+              },
+              "minimumTrustBond": 11,
+              "firstToSecond": {
+                "trust": 13,
+                "bond": 11,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-156-environment-relationship-0",
+                  "e-323-action-born-73-marie-curie-8-57",
+                  "e-342-action-born-73-marie-curie-8-36",
+                  "e-356-action-born-42-marie-curie-7-54",
+                  "e-356-action-born-73-marie-curie-8-59"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 13,
+                "bond": 11,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-156-environment-relationship-0",
+                  "e-323-action-born-73-marie-curie-8-57",
+                  "e-342-action-born-73-marie-curie-8-36",
+                  "e-356-action-born-42-marie-curie-7-54",
+                  "e-356-action-born-73-marie-curie-8-59"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-73-marie-curie-8",
+              "name": "贝娅特丽丝·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 287,
+              "bodyMinimum": 64.18000000000136
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-42-marie-curie-7",
+                "name": "埃莉诺·苏格拉底",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 318,
+                "bodyMinimum": 78.30000000000007
+              },
+              "minimumTrustBond": 11,
+              "firstToSecond": {
+                "trust": 13,
+                "bond": 11,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-156-environment-relationship-0",
+                  "e-323-action-born-73-marie-curie-8-57",
+                  "e-342-action-born-73-marie-curie-8-36",
+                  "e-356-action-born-42-marie-curie-7-54",
+                  "e-356-action-born-73-marie-curie-8-59"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 13,
+                "bond": 11,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-156-environment-relationship-0",
+                  "e-323-action-born-73-marie-curie-8-57",
+                  "e-342-action-born-73-marie-curie-8-36",
+                  "e-356-action-born-42-marie-curie-7-54",
+                  "e-356-action-born-73-marie-curie-8-59"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-129-usagi-tsukino-10",
+              "name": "朱利安·芬奇",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 231,
+              "bodyMinimum": 82.05000000000007
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-15-marie-curie-6",
+                "name": "司马弘毅",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 345,
+                "bodyMinimum": 54.720000000000454
+              },
+              "minimumTrustBond": 25,
+              "firstToSecond": {
+                "trust": 27,
+                "bond": 25,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-294-action-born-129-usagi-tsukino-10-11",
+                  "e-294-action-born-129-usagi-tsukino-10-16",
+                  "e-294-action-born-15-marie-curie-6-5",
+                  "e-295-action-born-15-marie-curie-6-8",
+                  "e-299-environment-relationship-0",
+                  "e-300-action-born-129-usagi-tsukino-10-43",
+                  "e-300-action-born-129-usagi-tsukino-10-50",
+                  "e-300-action-born-15-marie-curie-6-25",
+                  "e-311-action-born-129-usagi-tsukino-10-70",
+                  "e-311-action-born-15-marie-curie-6-74",
+                  "e-319-action-born-15-marie-curie-6-25",
+                  "e-320-action-born-129-usagi-tsukino-10-20",
+                  "e-320-action-born-129-usagi-tsukino-10-23",
+                  "e-320-action-born-15-marie-curie-6-11",
+                  "e-321-action-born-129-usagi-tsukino-10-2",
+                  "e-321-action-born-129-usagi-tsukino-10-22",
+                  "e-321-action-born-15-marie-curie-6-11"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 27,
+                "bond": 25,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-294-action-born-129-usagi-tsukino-10-11",
+                  "e-294-action-born-129-usagi-tsukino-10-16",
+                  "e-294-action-born-15-marie-curie-6-5",
+                  "e-295-action-born-15-marie-curie-6-8",
+                  "e-299-environment-relationship-0",
+                  "e-300-action-born-129-usagi-tsukino-10-43",
+                  "e-300-action-born-129-usagi-tsukino-10-50",
+                  "e-300-action-born-15-marie-curie-6-25",
+                  "e-311-action-born-129-usagi-tsukino-10-70",
+                  "e-311-action-born-15-marie-curie-6-74",
+                  "e-319-action-born-15-marie-curie-6-25",
+                  "e-320-action-born-129-usagi-tsukino-10-20",
+                  "e-320-action-born-129-usagi-tsukino-10-23",
+                  "e-320-action-born-15-marie-curie-6-11",
+                  "e-321-action-born-129-usagi-tsukino-10-2",
+                  "e-321-action-born-129-usagi-tsukino-10-22",
+                  "e-321-action-born-15-marie-curie-6-11"
+                ]
+              }
+            }
+          }
+        ],
+        "fertileGenerationOneFemales": 2,
+        "fertileFemaleCandidates": [
+          {
+            "female": {
+              "personId": "born-42-marie-curie-7",
+              "name": "埃莉诺·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 318,
+              "bodyMinimum": 78.30000000000007,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "born-129-usagi-tsukino-10",
+                "name": "朱利安·芬奇",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 231,
+                "bodyMinimum": 82.05000000000007,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-73-marie-curie-8",
+              "name": "贝娅特丽丝·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 287,
+              "bodyMinimum": 64.18000000000136,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "born-129-usagi-tsukino-10",
+                "name": "朱利安·芬奇",
+                "generation": 1,
+                "sex": "male",
+                "ageMonths": 231,
+                "bodyMinimum": 82.05000000000007,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          }
+        ]
+      },
+      "birthOrderSliceAudit": {
+        "atMonth": 360,
+        "method": {
+          "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+          "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+        },
+        "proposals": 58,
+        "reconstructedProposals": 56,
+        "reconstructionFailures": 2,
+        "targetCandidateRankCounts": {
+          "1": 39,
+          "2": 9,
+          "3": 5,
+          "4": 1,
+          "5": 1,
+          "6": 1
+        },
+        "targetBeyondSliceCap": 3,
+        "crowdedProposalMoments": 12,
+        "byKind": {
+          "company": {
+            "proposals": 11,
+            "reconstructed": 9,
+            "crowded": 2,
+            "targetBeyondSliceCap": 2,
+            "generationPair": {
+              "g0|g1": 7,
+              "g1|g1": 4
+            }
+          },
+          "companion": {
+            "proposals": 47,
+            "reconstructed": 47,
+            "crowded": 10,
+            "targetBeyondSliceCap": 1,
+            "generationPair": {
+              "g0|g0": 46,
+              "g1|g1": 1
+            }
+          }
+        },
+        "generationOne": {
+          "people": 17,
+          "insertionOrderMatchesBirthOrder": true,
+          "hardExcludedAppearances": 10,
+          "laterBornRankFourOrGreaterExclusions": 9,
+          "peopleByBirthOrder": [
+            {
+              "personId": "born-15-marie-curie-6",
+              "name": "司马弘毅",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 15,
+              "stateInsertionIndex": 6,
+              "generationBirthRank": 1,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 4,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-42-marie-curie-7",
+              "name": "埃莉诺·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 42,
+              "stateInsertionIndex": 7,
+              "generationBirthRank": 2,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-73-marie-curie-8",
+              "name": "贝娅特丽丝·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 73,
+              "stateInsertionIndex": 8,
+              "generationBirthRank": 3,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-99-marie-curie-9",
+              "name": "弗洛拉·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 99,
+              "stateInsertionIndex": 9,
+              "generationBirthRank": 4,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-129-usagi-tsukino-10",
+              "name": "朱利安·芬奇",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 129,
+              "stateInsertionIndex": 10,
+              "generationBirthRank": 5,
+              "targeted": 4,
+              "includedInFirstThreeAtObservedProposalMoments": 4,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-131-marie-curie-11",
+              "name": "朱利安·苏格拉底",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 131,
+              "stateInsertionIndex": 11,
+              "generationBirthRank": 6,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-173-usagi-tsukino-12",
+              "name": "司马庭轩",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 173,
+              "stateInsertionIndex": 12,
+              "generationBirthRank": 7,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-174-persephone-13",
+              "name": "司马令仪",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 174,
+              "stateInsertionIndex": 13,
+              "generationBirthRank": 8,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 2
+            },
+            {
+              "personId": "born-178-marie-curie-14",
+              "name": "弗洛拉·芬奇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 178,
+              "stateInsertionIndex": 14,
+              "generationBirthRank": 9,
+              "targeted": 2,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-202-marie-curie-15",
+              "name": "克拉拉·苏格拉底",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 202,
+              "stateInsertionIndex": 15,
+              "generationBirthRank": 10,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 2
+            },
+            {
+              "personId": "born-226-usagi-tsukino-16",
+              "name": "司马采薇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 226,
+              "stateInsertionIndex": 16,
+              "generationBirthRank": 11,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-232-persephone-17",
+              "name": "司马清晏",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 232,
+              "stateInsertionIndex": 17,
+              "generationBirthRank": 12,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-269-usagi-tsukino-18",
+              "name": "凯瑟琳·芬奇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 269,
+              "stateInsertionIndex": 18,
+              "generationBirthRank": 13,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-294-persephone-19",
+              "name": "司马子安",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 294,
+              "stateInsertionIndex": 19,
+              "generationBirthRank": 14,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-295-usagi-tsukino-20",
+              "name": "司马知夏",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 295,
+              "stateInsertionIndex": 20,
+              "generationBirthRank": 15,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-322-usagi-tsukino-21",
+              "name": "维克多·芬奇",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 322,
+              "stateInsertionIndex": 21,
+              "generationBirthRank": 16,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-351-usagi-tsukino-22",
+              "name": "乔治·芬奇",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 351,
+              "stateInsertionIndex": 22,
+              "generationBirthRank": 17,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            }
+          ]
+        },
+        "assessment": {
+          "allReconstructedTargetsWithinFirstThree": false,
+          "supportsBirthOrderExclusionAtObservedMoments": false
+        },
+        "targetedPeople": [
+          {
+            "personId": "marie-curie",
+            "name": "居里夫人",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -324,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 1,
+            "count": 10
+          },
+          {
+            "personId": "usagi-tsukino",
+            "name": "月野兔",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -156,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 6,
+            "count": 6
+          },
+          {
+            "personId": "socrates",
+            "name": "苏格拉底",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -324,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 2,
+            "count": 12
+          },
+          {
+            "personId": "sima-qian",
+            "name": "司马迁",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -192,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 5,
+            "count": 5
+          },
+          {
+            "personId": "leonardo",
+            "name": "达·芬奇",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -216,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 4,
+            "count": 9
+          },
+          {
+            "personId": "persephone",
+            "name": "珀耳塞福涅",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -252,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 3,
+            "count": 6
+          },
+          {
+            "personId": "born-15-marie-curie-6",
+            "name": "司马弘毅",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 15,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 1
+          },
+          {
+            "personId": "born-129-usagi-tsukino-10",
+            "name": "朱利安·芬奇",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 129,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 5,
+            "count": 4
+          },
+          {
+            "personId": "born-173-usagi-tsukino-12",
+            "name": "司马庭轩",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 173,
+            "stateInsertionIndex": 12,
+            "generationBirthRank": 7,
+            "count": 1
+          },
+          {
+            "personId": "born-178-marie-curie-14",
+            "name": "弗洛拉·芬奇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 178,
+            "stateInsertionIndex": 14,
+            "generationBirthRank": 9,
+            "count": 2
+          },
+          {
+            "personId": "born-226-usagi-tsukino-16",
+            "name": "司马采薇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 226,
+            "stateInsertionIndex": 16,
+            "generationBirthRank": 11,
+            "count": 1
+          },
+          {
+            "personId": "born-269-usagi-tsukino-18",
+            "name": "凯瑟琳·芬奇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 269,
+            "stateInsertionIndex": 18,
+            "generationBirthRank": 13,
+            "count": 1
+          }
+        ],
+        "includedSlotAppearances": [
+          {
+            "personId": "marie-curie",
+            "name": "居里夫人",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -324,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 1,
+            "count": 21
+          },
+          {
+            "personId": "usagi-tsukino",
+            "name": "月野兔",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -156,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 6,
+            "count": 19
+          },
+          {
+            "personId": "socrates",
+            "name": "苏格拉底",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -324,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 2,
+            "count": 16
+          },
+          {
+            "personId": "sima-qian",
+            "name": "司马迁",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -192,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 5,
+            "count": 18
+          },
+          {
+            "personId": "leonardo",
+            "name": "达·芬奇",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -216,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 4,
+            "count": 18
+          },
+          {
+            "personId": "persephone",
+            "name": "珀耳塞福涅",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -252,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 3,
+            "count": 13
+          },
+          {
+            "personId": "born-15-marie-curie-6",
+            "name": "司马弘毅",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 15,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 4
+          },
+          {
+            "personId": "born-129-usagi-tsukino-10",
+            "name": "朱利安·芬奇",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 129,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 5,
+            "count": 4
+          },
+          {
+            "personId": "born-173-usagi-tsukino-12",
+            "name": "司马庭轩",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 173,
+            "stateInsertionIndex": 12,
+            "generationBirthRank": 7,
+            "count": 1
+          },
+          {
+            "personId": "born-174-persephone-13",
+            "name": "司马令仪",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 174,
+            "stateInsertionIndex": 13,
+            "generationBirthRank": 8,
+            "count": 1
+          },
+          {
+            "personId": "born-269-usagi-tsukino-18",
+            "name": "凯瑟琳·芬奇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 269,
+            "stateInsertionIndex": 18,
+            "generationBirthRank": 13,
+            "count": 1
+          }
+        ],
+        "hardExcludedAppearances": [
+          {
+            "personId": "sima-qian",
+            "name": "司马迁",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -192,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 5,
+            "count": 2
+          },
+          {
+            "personId": "leonardo",
+            "name": "达·芬奇",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -216,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 4,
+            "count": 3
+          },
+          {
+            "personId": "persephone",
+            "name": "珀耳塞福涅",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -252,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 3,
+            "count": 8
+          },
+          {
+            "personId": "born-15-marie-curie-6",
+            "name": "司马弘毅",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 15,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 1
+          },
+          {
+            "personId": "born-129-usagi-tsukino-10",
+            "name": "朱利安·芬奇",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 129,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 5,
+            "count": 1
+          },
+          {
+            "personId": "born-173-usagi-tsukino-12",
+            "name": "司马庭轩",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 173,
+            "stateInsertionIndex": 12,
+            "generationBirthRank": 7,
+            "count": 1
+          },
+          {
+            "personId": "born-174-persephone-13",
+            "name": "司马令仪",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 174,
+            "stateInsertionIndex": 13,
+            "generationBirthRank": 8,
+            "count": 2
+          },
+          {
+            "personId": "born-178-marie-curie-14",
+            "name": "弗洛拉·芬奇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 178,
+            "stateInsertionIndex": 14,
+            "generationBirthRank": 9,
+            "count": 1
+          },
+          {
+            "personId": "born-202-marie-curie-15",
+            "name": "克拉拉·苏格拉底",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 202,
+            "stateInsertionIndex": 15,
+            "generationBirthRank": 10,
+            "count": 2
+          },
+          {
+            "personId": "born-232-persephone-17",
+            "name": "司马清晏",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 232,
+            "stateInsertionIndex": 17,
+            "generationBirthRank": 12,
+            "count": 1
+          },
+          {
+            "personId": "born-269-usagi-tsukino-18",
+            "name": "凯瑟琳·芬奇",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 269,
+            "stateInsertionIndex": 18,
+            "generationBirthRank": 13,
+            "count": 1
+          }
+        ],
+        "crowdedEvidence": [
+          {
+            "agreementId": "offer-companion:116:persephone:usagi-tsukino",
+            "eventId": "e-116-action-persephone-8",
+            "atMonth": 116,
+            "orderInMonth": 8,
+            "kind": "companion",
+            "proposer": {
+              "personId": "persephone",
+              "name": "珀耳塞福涅",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 3
+            },
+            "target": {
+              "personId": "usagi-tsukino",
+              "name": "月野兔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -156,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 2789,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "usagi-tsukino",
+              "sima-qian",
+              "leonardo"
+            ],
+            "excludedCandidateIds": [
+              "born-15-marie-curie-6"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:129:socrates:usagi-tsukino",
+            "eventId": "e-129-action-socrates-3",
+            "atMonth": 129,
+            "orderInMonth": 3,
+            "kind": "companion",
+            "proposer": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "target": {
+              "personId": "usagi-tsukino",
+              "name": "月野兔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -156,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 2621,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 2,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "sima-qian"
+            ],
+            "excludedCandidateIds": [
+              "leonardo",
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:129:leonardo:persephone",
+            "eventId": "e-129-action-leonardo-11",
+            "atMonth": 129,
+            "orderInMonth": 11,
+            "kind": "companion",
+            "proposer": {
+              "personId": "leonardo",
+              "name": "达·芬奇",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "target": {
+              "personId": "persephone",
+              "name": "珀耳塞福涅",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 3
+            },
+            "position": {
+              "cellId": 2621,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 5,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "socrates"
+            ],
+            "excludedCandidateIds": [
+              "sima-qian",
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:130:leonardo:socrates",
+            "eventId": "e-130-action-leonardo-6",
+            "atMonth": 130,
+            "orderInMonth": 6,
+            "kind": "companion",
+            "proposer": {
+              "personId": "leonardo",
+              "name": "达·芬奇",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "target": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "position": {
+              "cellId": 2621,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "socrates"
+            ],
+            "excludedCandidateIds": [
+              "sima-qian",
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:170:leonardo:marie-curie",
+            "eventId": "e-170-action-leonardo-3",
+            "atMonth": 170,
+            "orderInMonth": 3,
+            "kind": "companion",
+            "proposer": {
+              "personId": "leonardo",
+              "name": "达·芬奇",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "target": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2370,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "sima-qian"
+            ],
+            "excludedCandidateIds": [
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:170:usagi-tsukino:marie-curie",
+            "eventId": "e-170-action-usagi-tsukino-5",
+            "atMonth": 170,
+            "orderInMonth": 5,
+            "kind": "companion",
+            "proposer": {
+              "personId": "usagi-tsukino",
+              "name": "月野兔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -156,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2370,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "sima-qian",
+              "leonardo"
+            ],
+            "excludedCandidateIds": [
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:170:persephone:marie-curie",
+            "eventId": "e-170-action-persephone-7",
+            "atMonth": 170,
+            "orderInMonth": 7,
+            "kind": "companion",
+            "proposer": {
+              "personId": "persephone",
+              "name": "珀耳塞福涅",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 3
+            },
+            "target": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2370,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "sima-qian"
+            ],
+            "excludedCandidateIds": [
+              "leonardo"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:214:sima-qian:marie-curie",
+            "eventId": "e-214-action-sima-qian-22",
+            "atMonth": 214,
+            "orderInMonth": 22,
+            "kind": "companion",
+            "proposer": {
+              "personId": "sima-qian",
+              "name": "司马迁",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -192,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2705,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "leonardo",
+              "persephone"
+            ],
+            "excludedCandidateIds": [
+              "born-174-persephone-13"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:216:socrates:marie-curie",
+            "eventId": "e-216-action-socrates-4",
+            "atMonth": 216,
+            "orderInMonth": 4,
+            "kind": "companion",
+            "proposer": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "target": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2705,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "sima-qian",
+              "leonardo"
+            ],
+            "excludedCandidateIds": [
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:217:sima-qian:socrates",
+            "eventId": "e-217-action-sima-qian-19",
+            "atMonth": 217,
+            "orderInMonth": 19,
+            "kind": "companion",
+            "proposer": {
+              "personId": "sima-qian",
+              "name": "司马迁",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -192,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "position": {
+              "cellId": 2705,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "socrates"
+            ],
+            "excludedCandidateIds": [
+              "persephone"
+            ]
+          },
+          {
+            "agreementId": "request-assist:283:born-15-marie-curie-6:leonardo:company",
+            "eventId": "e-283-action-born-15-marie-curie-6-24",
+            "atMonth": 283,
+            "orderInMonth": 24,
+            "kind": "company",
+            "proposer": {
+              "personId": "born-15-marie-curie-6",
+              "name": "司马弘毅",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 15,
+              "stateInsertionIndex": 6,
+              "generationBirthRank": 1
+            },
+            "target": {
+              "personId": "leonardo",
+              "name": "达·芬奇",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 2705,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 8,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "socrates"
+            ],
+            "excludedCandidateIds": [
+              "leonardo",
+              "persephone",
+              "born-129-usagi-tsukino-10",
+              "born-202-marie-curie-15",
+              "born-269-usagi-tsukino-18"
+            ]
+          },
+          {
+            "agreementId": "request-assist:300:socrates:born-178-marie-curie-14:company",
+            "eventId": "e-300-action-socrates-22",
+            "atMonth": 300,
+            "orderInMonth": 22,
+            "kind": "company",
+            "proposer": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "target": {
+              "personId": "born-178-marie-curie-14",
+              "name": "弗洛拉·芬奇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 178,
+              "stateInsertionIndex": 14,
+              "generationBirthRank": 9
+            },
+            "position": {
+              "cellId": 2705,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 6,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 8,
+            "includedCandidateIds": [
+              "marie-curie",
+              "leonardo",
+              "persephone"
+            ],
+            "excludedCandidateIds": [
+              "born-173-usagi-tsukino-12",
+              "born-174-persephone-13",
+              "born-178-marie-curie-14",
+              "born-202-marie-curie-15",
+              "born-232-persephone-17"
+            ]
+          }
+        ],
+        "reconstructionFailureEvidence": [
+          {
+            "agreementId": "request-assist:179:marie-curie:born-178-marie-curie-14:company",
+            "eventId": "e-179-action-marie-curie-3",
+            "atMonth": 179,
+            "orderInMonth": 3,
+            "kind": "company",
+            "proposer": {
+              "personId": "marie-curie",
+              "name": "居里夫人",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "target": {
+              "personId": "born-178-marie-curie-14",
+              "name": "弗洛拉·芬奇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 178,
+              "stateInsertionIndex": 14,
+              "generationBirthRank": 9
+            },
+            "position": {
+              "cellId": 2453,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 1,
+            "includedCandidateIds": [
+              "socrates"
+            ],
+            "excludedCandidateIds": []
+          },
+          {
+            "agreementId": "request-assist:231:socrates:born-226-usagi-tsukino-16:company",
+            "eventId": "e-231-action-socrates-5",
+            "atMonth": 231,
+            "orderInMonth": 5,
+            "kind": "company",
+            "proposer": {
+              "personId": "socrates",
+              "name": "苏格拉底",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -324,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 2
+            },
+            "target": {
+              "personId": "born-226-usagi-tsukino-16",
+              "name": "司马采薇",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 226,
+              "stateInsertionIndex": 16,
+              "generationBirthRank": 11
+            },
+            "position": {
+              "cellId": 2707,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 3,
+            "includedCandidateIds": [
+              "marie-curie",
+              "usagi-tsukino",
+              "leonardo"
+            ],
+            "excludedCandidateIds": []
+          }
+        ]
+      },
+      "checkpointAudits": {
+        "requested": [
+          360
+        ],
+        "reached": [
+          360
+        ],
+        "unreached": [],
+        "stages": [
+          {
+            "atMonth": 360,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 11,
+                  "accepted": 5,
+                  "fulfilled": 5,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {
+                  "g0|g1": {
+                    "proposed": 7,
+                    "accepted": 2,
+                    "fulfilled": 2,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  },
+                  "g1|g1": {
+                    "proposed": 4,
+                    "accepted": 3,
+                    "fulfilled": 3,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  }
+                }
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 47,
+                  "accepted": 47,
+                  "established": 14,
+                  "active": 15,
+                  "cancelled": 0,
+                  "breached": 32
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 46,
+                    "accepted": 46,
+                    "established": 14,
+                    "active": 15,
+                    "cancelled": 0,
+                    "breached": 31
+                  },
+                  "g1|g1": {
+                    "proposed": 1,
+                    "accepted": 1,
+                    "established": 0,
+                    "active": 0,
+                    "cancelled": 0,
+                    "breached": 1
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 434,
+                "byGenerationPair": {
+                  "g0|g0": 434
+                },
+                "firstAtMonth": 127,
+                "lastAtMonth": 360
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 360,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 58,
+              "reconstructedProposals": 56,
+              "reconstructionFailures": 2,
+              "targetCandidateRankCounts": {
+                "1": 39,
+                "2": 9,
+                "3": 5,
+                "4": 1,
+                "5": 1,
+                "6": 1
+              },
+              "targetBeyondSliceCap": 3,
+              "crowdedProposalMoments": 12,
+              "byKind": {
+                "company": {
+                  "proposals": 11,
+                  "reconstructed": 9,
+                  "crowded": 2,
+                  "targetBeyondSliceCap": 2,
+                  "generationPair": {
+                    "g0|g1": 7,
+                    "g1|g1": 4
+                  }
+                },
+                "companion": {
+                  "proposals": 47,
+                  "reconstructed": 47,
+                  "crowded": 10,
+                  "targetBeyondSliceCap": 1,
+                  "generationPair": {
+                    "g0|g0": 46,
+                    "g1|g1": 1
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 17,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 10,
+                "laterBornRankFourOrGreaterExclusions": 9,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-15-marie-curie-6",
+                    "name": "司马弘毅",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 15,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 4,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-42-marie-curie-7",
+                    "name": "埃莉诺·苏格拉底",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 42,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-73-marie-curie-8",
+                    "name": "贝娅特丽丝·苏格拉底",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 73,
+                    "stateInsertionIndex": 8,
+                    "generationBirthRank": 3,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-99-marie-curie-9",
+                    "name": "弗洛拉·苏格拉底",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 99,
+                    "stateInsertionIndex": 9,
+                    "generationBirthRank": 4,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-129-usagi-tsukino-10",
+                    "name": "朱利安·芬奇",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 129,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 5,
+                    "targeted": 4,
+                    "includedInFirstThreeAtObservedProposalMoments": 4,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-131-marie-curie-11",
+                    "name": "朱利安·苏格拉底",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 131,
+                    "stateInsertionIndex": 11,
+                    "generationBirthRank": 6,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-173-usagi-tsukino-12",
+                    "name": "司马庭轩",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 173,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 7,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-174-persephone-13",
+                    "name": "司马令仪",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 174,
+                    "stateInsertionIndex": 13,
+                    "generationBirthRank": 8,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 2
+                  },
+                  {
+                    "personId": "born-178-marie-curie-14",
+                    "name": "弗洛拉·芬奇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 178,
+                    "stateInsertionIndex": 14,
+                    "generationBirthRank": 9,
+                    "targeted": 2,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-202-marie-curie-15",
+                    "name": "克拉拉·苏格拉底",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 202,
+                    "stateInsertionIndex": 15,
+                    "generationBirthRank": 10,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 2
+                  },
+                  {
+                    "personId": "born-226-usagi-tsukino-16",
+                    "name": "司马采薇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 226,
+                    "stateInsertionIndex": 16,
+                    "generationBirthRank": 11,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-232-persephone-17",
+                    "name": "司马清晏",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 232,
+                    "stateInsertionIndex": 17,
+                    "generationBirthRank": 12,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-269-usagi-tsukino-18",
+                    "name": "凯瑟琳·芬奇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 269,
+                    "stateInsertionIndex": 18,
+                    "generationBirthRank": 13,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-294-persephone-19",
+                    "name": "司马子安",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 294,
+                    "stateInsertionIndex": 19,
+                    "generationBirthRank": 14,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-295-usagi-tsukino-20",
+                    "name": "司马知夏",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 295,
+                    "stateInsertionIndex": 20,
+                    "generationBirthRank": 15,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-322-usagi-tsukino-21",
+                    "name": "维克多·芬奇",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 322,
+                    "stateInsertionIndex": 21,
+                    "generationBirthRank": 16,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-351-usagi-tsukino-22",
+                    "name": "乔治·芬奇",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 351,
+                    "stateInsertionIndex": 22,
+                    "generationBirthRank": 17,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": false,
+                "supportsBirthOrderExclusionAtObservedMoments": false
+              },
+              "targetedPeople": [
+                {
+                  "personId": "marie-curie",
+                  "name": "居里夫人",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -324,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 10
+                },
+                {
+                  "personId": "usagi-tsukino",
+                  "name": "月野兔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -156,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 6,
+                  "count": 6
+                },
+                {
+                  "personId": "socrates",
+                  "name": "苏格拉底",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -324,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 2,
+                  "count": 12
+                },
+                {
+                  "personId": "sima-qian",
+                  "name": "司马迁",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -192,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 5,
+                  "count": 5
+                },
+                {
+                  "personId": "leonardo",
+                  "name": "达·芬奇",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 9
+                },
+                {
+                  "personId": "persephone",
+                  "name": "珀耳塞福涅",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 3,
+                  "count": 6
+                },
+                {
+                  "personId": "born-15-marie-curie-6",
+                  "name": "司马弘毅",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 15,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-129-usagi-tsukino-10",
+                  "name": "朱利安·芬奇",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 129,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 4
+                },
+                {
+                  "personId": "born-173-usagi-tsukino-12",
+                  "name": "司马庭轩",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 173,
+                  "stateInsertionIndex": 12,
+                  "generationBirthRank": 7,
+                  "count": 1
+                },
+                {
+                  "personId": "born-178-marie-curie-14",
+                  "name": "弗洛拉·芬奇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 178,
+                  "stateInsertionIndex": 14,
+                  "generationBirthRank": 9,
+                  "count": 2
+                },
+                {
+                  "personId": "born-226-usagi-tsukino-16",
+                  "name": "司马采薇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 226,
+                  "stateInsertionIndex": 16,
+                  "generationBirthRank": 11,
+                  "count": 1
+                },
+                {
+                  "personId": "born-269-usagi-tsukino-18",
+                  "name": "凯瑟琳·芬奇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 269,
+                  "stateInsertionIndex": 18,
+                  "generationBirthRank": 13,
+                  "count": 1
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "marie-curie",
+                  "name": "居里夫人",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -324,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 21
+                },
+                {
+                  "personId": "usagi-tsukino",
+                  "name": "月野兔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -156,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 6,
+                  "count": 19
+                },
+                {
+                  "personId": "socrates",
+                  "name": "苏格拉底",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -324,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 2,
+                  "count": 16
+                },
+                {
+                  "personId": "sima-qian",
+                  "name": "司马迁",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -192,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 5,
+                  "count": 18
+                },
+                {
+                  "personId": "leonardo",
+                  "name": "达·芬奇",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 18
+                },
+                {
+                  "personId": "persephone",
+                  "name": "珀耳塞福涅",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 3,
+                  "count": 13
+                },
+                {
+                  "personId": "born-15-marie-curie-6",
+                  "name": "司马弘毅",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 15,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 4
+                },
+                {
+                  "personId": "born-129-usagi-tsukino-10",
+                  "name": "朱利安·芬奇",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 129,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 4
+                },
+                {
+                  "personId": "born-173-usagi-tsukino-12",
+                  "name": "司马庭轩",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 173,
+                  "stateInsertionIndex": 12,
+                  "generationBirthRank": 7,
+                  "count": 1
+                },
+                {
+                  "personId": "born-174-persephone-13",
+                  "name": "司马令仪",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 174,
+                  "stateInsertionIndex": 13,
+                  "generationBirthRank": 8,
+                  "count": 1
+                },
+                {
+                  "personId": "born-269-usagi-tsukino-18",
+                  "name": "凯瑟琳·芬奇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 269,
+                  "stateInsertionIndex": 18,
+                  "generationBirthRank": 13,
+                  "count": 1
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "sima-qian",
+                  "name": "司马迁",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -192,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 5,
+                  "count": 2
+                },
+                {
+                  "personId": "leonardo",
+                  "name": "达·芬奇",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 3
+                },
+                {
+                  "personId": "persephone",
+                  "name": "珀耳塞福涅",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 3,
+                  "count": 8
+                },
+                {
+                  "personId": "born-15-marie-curie-6",
+                  "name": "司马弘毅",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 15,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-129-usagi-tsukino-10",
+                  "name": "朱利安·芬奇",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 129,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 1
+                },
+                {
+                  "personId": "born-173-usagi-tsukino-12",
+                  "name": "司马庭轩",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 173,
+                  "stateInsertionIndex": 12,
+                  "generationBirthRank": 7,
+                  "count": 1
+                },
+                {
+                  "personId": "born-174-persephone-13",
+                  "name": "司马令仪",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 174,
+                  "stateInsertionIndex": 13,
+                  "generationBirthRank": 8,
+                  "count": 2
+                },
+                {
+                  "personId": "born-178-marie-curie-14",
+                  "name": "弗洛拉·芬奇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 178,
+                  "stateInsertionIndex": 14,
+                  "generationBirthRank": 9,
+                  "count": 1
+                },
+                {
+                  "personId": "born-202-marie-curie-15",
+                  "name": "克拉拉·苏格拉底",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 202,
+                  "stateInsertionIndex": 15,
+                  "generationBirthRank": 10,
+                  "count": 2
+                },
+                {
+                  "personId": "born-232-persephone-17",
+                  "name": "司马清晏",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 232,
+                  "stateInsertionIndex": 17,
+                  "generationBirthRank": 12,
+                  "count": 1
+                },
+                {
+                  "personId": "born-269-usagi-tsukino-18",
+                  "name": "凯瑟琳·芬奇",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 269,
+                  "stateInsertionIndex": 18,
+                  "generationBirthRank": 13,
+                  "count": 1
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:116:persephone:usagi-tsukino",
+                  "eventId": "e-116-action-persephone-8",
+                  "atMonth": 116,
+                  "orderInMonth": 8,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "persephone",
+                    "name": "珀耳塞福涅",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "usagi-tsukino",
+                    "name": "月野兔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -156,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 2789,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "usagi-tsukino",
+                    "sima-qian",
+                    "leonardo"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-15-marie-curie-6"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:129:socrates:usagi-tsukino",
+                  "eventId": "e-129-action-socrates-3",
+                  "atMonth": 129,
+                  "orderInMonth": 3,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "usagi-tsukino",
+                    "name": "月野兔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -156,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 2621,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 2,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "sima-qian"
+                  ],
+                  "excludedCandidateIds": [
+                    "leonardo",
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:129:leonardo:persephone",
+                  "eventId": "e-129-action-leonardo-11",
+                  "atMonth": 129,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "leonardo",
+                    "name": "达·芬奇",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "persephone",
+                    "name": "珀耳塞福涅",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 3
+                  },
+                  "position": {
+                    "cellId": 2621,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 5,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "socrates"
+                  ],
+                  "excludedCandidateIds": [
+                    "sima-qian",
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:130:leonardo:socrates",
+                  "eventId": "e-130-action-leonardo-6",
+                  "atMonth": 130,
+                  "orderInMonth": 6,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "leonardo",
+                    "name": "达·芬奇",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 2621,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "socrates"
+                  ],
+                  "excludedCandidateIds": [
+                    "sima-qian",
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:170:leonardo:marie-curie",
+                  "eventId": "e-170-action-leonardo-3",
+                  "atMonth": 170,
+                  "orderInMonth": 3,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "leonardo",
+                    "name": "达·芬奇",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2370,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "sima-qian"
+                  ],
+                  "excludedCandidateIds": [
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:170:usagi-tsukino:marie-curie",
+                  "eventId": "e-170-action-usagi-tsukino-5",
+                  "atMonth": 170,
+                  "orderInMonth": 5,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "usagi-tsukino",
+                    "name": "月野兔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -156,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2370,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "sima-qian",
+                    "leonardo"
+                  ],
+                  "excludedCandidateIds": [
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:170:persephone:marie-curie",
+                  "eventId": "e-170-action-persephone-7",
+                  "atMonth": 170,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "persephone",
+                    "name": "珀耳塞福涅",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2370,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "sima-qian"
+                  ],
+                  "excludedCandidateIds": [
+                    "leonardo"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:214:sima-qian:marie-curie",
+                  "eventId": "e-214-action-sima-qian-22",
+                  "atMonth": 214,
+                  "orderInMonth": 22,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "sima-qian",
+                    "name": "司马迁",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -192,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2705,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "leonardo",
+                    "persephone"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-174-persephone-13"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:216:socrates:marie-curie",
+                  "eventId": "e-216-action-socrates-4",
+                  "atMonth": 216,
+                  "orderInMonth": 4,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2705,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "sima-qian",
+                    "leonardo"
+                  ],
+                  "excludedCandidateIds": [
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:217:sima-qian:socrates",
+                  "eventId": "e-217-action-sima-qian-19",
+                  "atMonth": 217,
+                  "orderInMonth": 19,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "sima-qian",
+                    "name": "司马迁",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -192,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 2705,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "socrates"
+                  ],
+                  "excludedCandidateIds": [
+                    "persephone"
+                  ]
+                },
+                {
+                  "agreementId": "request-assist:283:born-15-marie-curie-6:leonardo:company",
+                  "eventId": "e-283-action-born-15-marie-curie-6-24",
+                  "atMonth": 283,
+                  "orderInMonth": 24,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "born-15-marie-curie-6",
+                    "name": "司马弘毅",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 15,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "leonardo",
+                    "name": "达·芬奇",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 2705,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 8,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "socrates"
+                  ],
+                  "excludedCandidateIds": [
+                    "leonardo",
+                    "persephone",
+                    "born-129-usagi-tsukino-10",
+                    "born-202-marie-curie-15",
+                    "born-269-usagi-tsukino-18"
+                  ]
+                },
+                {
+                  "agreementId": "request-assist:300:socrates:born-178-marie-curie-14:company",
+                  "eventId": "e-300-action-socrates-22",
+                  "atMonth": 300,
+                  "orderInMonth": 22,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "born-178-marie-curie-14",
+                    "name": "弗洛拉·芬奇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 178,
+                    "stateInsertionIndex": 14,
+                    "generationBirthRank": 9
+                  },
+                  "position": {
+                    "cellId": 2705,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 6,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 8,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "leonardo",
+                    "persephone"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-173-usagi-tsukino-12",
+                    "born-174-persephone-13",
+                    "born-178-marie-curie-14",
+                    "born-202-marie-curie-15",
+                    "born-232-persephone-17"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": [
+                {
+                  "agreementId": "request-assist:179:marie-curie:born-178-marie-curie-14:company",
+                  "eventId": "e-179-action-marie-curie-3",
+                  "atMonth": 179,
+                  "orderInMonth": 3,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "marie-curie",
+                    "name": "居里夫人",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "born-178-marie-curie-14",
+                    "name": "弗洛拉·芬奇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 178,
+                    "stateInsertionIndex": 14,
+                    "generationBirthRank": 9
+                  },
+                  "position": {
+                    "cellId": 2453,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 1,
+                  "includedCandidateIds": [
+                    "socrates"
+                  ],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:231:socrates:born-226-usagi-tsukino-16:company",
+                  "eventId": "e-231-action-socrates-5",
+                  "atMonth": 231,
+                  "orderInMonth": 5,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "socrates",
+                    "name": "苏格拉底",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -324,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "born-226-usagi-tsukino-16",
+                    "name": "司马采薇",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 226,
+                    "stateInsertionIndex": 16,
+                    "generationBirthRank": 11
+                  },
+                  "position": {
+                    "cellId": 2707,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 3,
+                  "includedCandidateIds": [
+                    "marie-curie",
+                    "usagi-tsukino",
+                    "leonardo"
+                  ],
+                  "excludedCandidateIds": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "missingLinkCounts": {},
+      "chains": []
+    }
+  ]
+}

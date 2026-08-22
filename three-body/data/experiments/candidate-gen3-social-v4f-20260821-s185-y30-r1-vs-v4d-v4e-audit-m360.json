@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "companion-calendar-v4f-s185-comparison-v1",
+  "generatedAt": "2026-08-20T20:30:20Z",
+  "authority": "Exact terminal SimulationState and append-only world.past loaded read-only from SQLite; no run was advanced or mutated.",
+  "selector": {
+    "seed": 185,
+    "throughMonth": 360,
+    "runs": {
+      "v4d": "candidate-gen3-social-v4d-20260821-s185-y30-r1",
+      "v4e": "candidate-gen3-social-v4e-20260821-s185-y30-r1",
+      "v4f": "candidate-gen3-social-v4f-20260821-s185-y30-r1"
+    }
+  },
+  "definitions": {
+    "completeEstablishedEpisode": "A per-person return episode whose companion agreement was established at the first decision and whose full startMonth through startMonth+3 observation window is present.",
+    "partnerChoice": "For every complete established per-person episode, the other party has a same-agreement return DecisionFact within startMonth plus or minus 3.",
+    "success": "Both living parties are reconstructed inside the fixed agreement anchor at least once from startMonth through startMonth+3.",
+    "actualReturnPathShare": "Unique progressed or completed return-intent move ActionFacts divided by every progressed or completed intent-caused move ActionFact. Each observed move ActionFact traversed one path edge.",
+    "g1SocialFunnel": "Events whose two agreement parties are both generation 1; reproduce actions and conceptions are independently checked."
+  },
+  "comparison": {
+    "v4d": {
+      "completeEstablishedEpisodes": 65,
+      "partnerChoice": { "count": 20, "denominator": 65, "percent": 30.77 },
+      "success": { "count": 25, "denominator": 65, "percent": 38.46 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 738,
+        "establishedMaintenancePathEdges": 358,
+        "allIntentMovePathEdges": 3741,
+        "allReturnPercent": 19.73,
+        "establishedMaintenancePercent": 9.57
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 7, "accepted": 3, "fulfilled": 3, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 1, "accepted": 1, "established": 1, "active": 1, "cancelled": 0, "breached": 0 },
+        "persistentSharedLivingEvents": 2,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 19, "generation0": 6, "generation1": 13, "maxGeneration": 1 }
+    },
+    "v4e": {
+      "completeEstablishedEpisodes": 179,
+      "partnerChoice": { "count": 97, "denominator": 179, "percent": 54.19 },
+      "success": { "count": 165, "denominator": 179, "percent": 92.18 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 940,
+        "establishedMaintenancePathEdges": 506,
+        "allIntentMovePathEdges": 4524,
+        "allReturnPercent": 20.78,
+        "establishedMaintenancePercent": 11.18
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 9, "accepted": 6, "fulfilled": 6, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 0, "accepted": 0, "established": 0, "active": 0, "cancelled": 0, "breached": 0 },
+        "persistentSharedLivingEvents": 0,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 25, "generation0": 6, "generation1": 19, "maxGeneration": 1 }
+    },
+    "v4f": {
+      "establishedEpisodes": 178,
+      "completeEstablishedEpisodes": 171,
+      "censoredEstablishedEpisodes": 7,
+      "partnerChoice": { "count": 87, "denominator": 171, "percent": 50.88 },
+      "success": { "count": 145, "denominator": 171, "percent": 84.8 },
+      "pairedEpisodesSuccessful": { "count": 87, "denominator": 87, "percent": 100 },
+      "unpairedEpisodesSuccessful": { "count": 58, "denominator": 84, "percent": 69.05 },
+      "failedEpisodes": { "count": 26, "denominator": 171, "percent": 15.2 },
+      "actualReturnPath": {
+        "allReturnPathEdges": 980,
+        "establishedMaintenancePathEdges": 512,
+        "allIntentMovePathEdges": 4218,
+        "allReturnPercent": 23.23,
+        "establishedMaintenancePercent": 12.14
+      },
+      "g1SocialFunnel": {
+        "company": { "proposed": 4, "accepted": 3, "fulfilled": 3, "rejected": 0, "cancelled": 0, "breached": 0 },
+        "companion": { "proposed": 1, "accepted": 1, "established": 0, "active": 0, "cancelled": 0, "breached": 1 },
+        "persistentSharedLivingEvents": 0,
+        "reproduce": { "proposed": 0, "accepted": 0, "completedActions": 0, "conceived": 0 }
+      },
+      "population": { "total": 23, "generation0": 6, "generation1": 17, "maxGeneration": 1 }
+    }
+  },
+  "v4fDeltaPercentagePoints": {
+    "versusV4d": {
+      "partnerChoice": 20.11,
+      "success": 46.34,
+      "allReturnPathShare": 3.5,
+      "establishedMaintenancePathShare": 2.57
+    },
+    "versusV4e": {
+      "partnerChoice": -3.31,
+      "success": -7.38,
+      "allReturnPathShare": 2.45,
+      "establishedMaintenancePathShare": 0.96
+    }
+  },
+  "assessment": {
+    "singleSeedDecision": "reject-or-revise-v4f",
+    "reason": "Against the immediately preceding V4e mechanism, V4f lowered same-agreement partner choice and three-month reunion success while increasing both all-return and established-maintenance path share. It therefore did not improve the declared coordination-versus-movement tradeoff on seed 185.",
+    "downstreamObservation": "Generation-1 pairs produced three fulfilled company agreements but no established companion, persistent shared-living, reproduce action, or conception. V4d alone produced one generation-1 established companion and two persistent events, but still no generation-1 reproduction.",
+    "uncertainty": "This is one matched seed at 30 years; it is a mechanism probe, not a multi-seed candidate conclusion."
+  },
+  "sourceArtifacts": {
+    "v4fReturnAudit": "data/experiments/candidate-gen3-social-v4f-20260821-s185-y30-r1-companion-return-audit-m360.json",
+    "v4fGenerationalAudit": "data/experiments/candidate-gen3-social-v4f-20260821-s185-y30-r1-generational-social-chain-audit-m360.json",
+    "v4eComparison": "data/experiments/candidate-gen3-social-v4e-20260821-s185-y30-r1-vs-v4c-v4d-audit-m360.json",
+    "v4dComparison": "data/experiments/candidate-gen3-social-v4d-20260821-s185-y30-r1-vs-v4b-v4c-audit-m360.json"
+  }
+}

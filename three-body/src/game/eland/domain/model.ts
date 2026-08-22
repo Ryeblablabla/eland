@@ -308,7 +308,8 @@ export interface FunctionalBuildingObservation {
 }
 
 export interface CivilizationDevelopmentObservation {
-  observerVersion: 'material-institution-era-v1';
+  /** v1 remains readable for persisted snapshots; new observations are emitted as v2. */
+  observerVersion: 'material-institution-era-v1' | 'material-institution-era-v2';
   currentEra: DevelopmentEraKey;
   historicalPeakEra: DevelopmentEraKey;
   candidateEra: DevelopmentEraKey;
@@ -361,7 +362,7 @@ export interface SimulationState {
     civilizationIndex: CivilizationIndex;
     /** Pure observer state. Planners and world rules must never read it. */
     development?: CivilizationDevelopmentObservation;
-    outcome?: { kind: 'destroyed' | 'boundary' | 'milestones'; cause: string; atMonth: number; summary: string };
+    outcome?: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; atMonth: number; summary: string };
   };
   decisionBudget: { credits: number; tokensPerContext: number; ledgers: DecisionMonthLedger[] };
   derived: {

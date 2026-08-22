@@ -37,6 +37,13 @@ function endingEntryFor(state: SimulationState, events: WorldEvent[]): FrameEntr
       event.kind === 'environment' && event.change === 'death'
     ))
     : [];
+  const conclusionEvents = outcome.kind === 'concluded'
+    ? events.filter((event): event is Extract<WorldEvent, { kind: 'environment' }> => (
+      event.kind === 'environment'
+        && event.change === 'condition'
+        && event.diff.civilizationEnd === true
+    ))
+    : [];
   const actorIds = [...new Set(deathEvents.flatMap((event) => (
     event.who ? [event.who] : typeof event.diff.personId === 'string' ? [event.diff.personId] : []
   )))];
@@ -44,7 +51,9 @@ function endingEntryFor(state: SimulationState, events: WorldEvent[]): FrameEntr
     ? `文明毁灭于${outcome.cause}。`
     : outcome.kind === 'boundary'
       ? `文明演化至第 ${outcome.atMonth} 月，观察结束。`
-      : '文明达到观察目标，演化结束。';
+      : outcome.kind === 'milestones'
+        ? '文明达到观察目标，演化结束。'
+        : `第 ${state.civilization.number} 号文明由观察者结算。`;
   return {
     id: `narrative:civilization:${state.civilization.number}:${outcome.kind}:${outcome.atMonth}`,
     month: outcome.atMonth,
@@ -53,7 +62,7 @@ function endingEntryFor(state: SimulationState, events: WorldEvent[]): FrameEntr
     tone: outcome.kind === 'destroyed' ? 'bad' : 'era',
     kind: 'epoch',
     importance: 200,
-    sourceEventIds: deathEvents.map((event) => event.id),
+    sourceEventIds: [...deathEvents, ...conclusionEvents].map((event) => event.id),
     actorIds,
   };
 }

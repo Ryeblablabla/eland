@@ -57,6 +57,21 @@ function requestHeaders(endpoint: ResolvedModelEndpoint): Headers {
   return headers;
 }
 
+function isOfficialDeepSeekApiUrl(url: string): boolean {
+  const hostname = new URL(url).hostname.toLowerCase();
+  return hostname === 'api.deepseek.com' || hostname.endsWith('.api.deepseek.com');
+}
+
+function openAiChatThinking(endpoint: ResolvedModelEndpoint): Record<string, unknown> {
+  if (!isOfficialDeepSeekApiUrl(endpoint.url) || endpoint.thinking === undefined) return {};
+  if (endpoint.thinking === false) return { thinking: { type: 'disabled' } };
+  if (endpoint.thinking === true) return { thinking: { type: 'enabled' } };
+  return {
+    thinking: { type: 'enabled' },
+    reasoning_effort: endpoint.thinking,
+  };
+}
+
 function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest): Record<string, unknown> {
   const common = {
     model: endpoint.model,
@@ -67,6 +82,7 @@ function requestBody(endpoint: ResolvedModelEndpoint, request: ModelTextRequest)
       ...common,
       max_tokens: request.maxOutputTokens,
       messages: request.messages,
+      ...openAiChatThinking(endpoint),
       ...(request.jsonObject && endpoint.structuredOutput === 'native-json'
         ? { response_format: { type: 'json_object' } }
         : {}),

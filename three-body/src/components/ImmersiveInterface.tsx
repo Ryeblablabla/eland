@@ -1,4 +1,5 @@
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Check, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -6,7 +7,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { EvolutionMode, ModelPurpose, ModelSettingsSnapshot } from '@/game/modelSettings';
+import type {
+  EvolutionMode,
+  ModelAuth,
+  ModelEndpointDraft,
+  ModelEndpointTestResult,
+  ModelProtocol,
+  ModelPurpose,
+  ModelSettingsEndpoint,
+  ModelSettingsSnapshot,
+  ModelThinking,
+  StructuredOutputMode,
+} from '@/game/modelSettings';
 import type {
   CivilizationIndexHistoryPoint,
   CivilizationIndexView,
@@ -14,15 +26,22 @@ import type {
 } from '@/game/societyContract';
 import { STAR_STYLES } from '@/lib/threebody';
 import { civilizationStagePreview } from '@/game/voxelKits';
+import {
+  EVOLUTION_SPEED_MAX,
+  EVOLUTION_SPEED_MIN,
+  EVOLUTION_SPEED_STEP,
+  type EvolutionSpeed,
+} from '@/game/evolutionSpeed';
 import { CivilizationStageBuilding } from './CivilizationStageBuilding';
 import './ImmersiveInterface.css';
 
-export type ImmersiveOverlayMode = 'menu' | 'saves' | 'new-world' | 'history' | 'model-settings' | 'shortcuts' | null;
+export type ImmersiveOverlayMode = 'menu' | 'saves' | 'new-world' | 'history' | 'model-settings' | 'shortcuts' | 'civilization-ending' | null;
 type ActiveImmersiveOverlayMode = Exclude<ImmersiveOverlayMode, null>;
 type OverlayTransitionPhase = 'enter' | 'idle' | 'exit';
 export type NewWorldStatus = 'idle' | 'starting' | 'error';
 export type ModelSettingsStatus = 'idle' | 'loading' | 'saving' | 'saved' | 'error';
 export type SaveManagerStatus = 'idle' | 'loading' | 'saving' | 'loading-save' | 'saved' | 'error';
+export type CivilizationSettlementStatus = 'idle' | 'settling' | 'error';
 
 export interface ImmersiveHistoryEntry {
   id: string;
@@ -52,25 +71,35 @@ interface Props {
   modelEvolutionModeDraft: EvolutionMode;
   modelRouteDraft: Record<ModelPurpose, string>;
   modelSummaryModeDraft: EvolutionMode;
+  evolutionSpeed: EvolutionSpeed;
   newWorldSeed: number;
   newWorldStatus: NewWorldStatus;
   saves: ElandSaveSummary[];
   saveStatus: SaveManagerStatus;
   saveMessage: string;
+  civilizationSettlementStatus: CivilizationSettlementStatus;
+  civilizationSettlementMessage: string;
   onClose: () => void;
+  onOpenMenu: () => void;
   onOpenSaves: () => void;
   onOpenNewWorld: () => void;
   onOpenHistory: () => void;
   onOpenModelSettings: () => void;
   onOpenShortcuts: () => void;
+  onOpenCivilizationEnding: () => void;
   onCreateSave: (label: string) => void;
   onLoadSave: (saveId: string) => void;
   onEvolutionModeChange: (mode: EvolutionMode) => void;
+  onEvolutionSpeedChange: (speed: EvolutionSpeed) => void;
   onModelRouteChange: (purpose: ModelPurpose, endpointId: string) => void;
   onSummaryModeChange: (mode: EvolutionMode) => void;
   onSaveModelSettings: () => void;
+  onDeleteModelEndpoint: (id: string) => Promise<ModelSettingsSnapshot>;
+  onSaveModelEndpoint: (token: string) => Promise<ModelSettingsSnapshot>;
+  onTestModelEndpoint: (draft: ModelEndpointDraft) => Promise<ModelEndpointTestResult>;
   onRefreshSeed: () => void;
   onStartNewWorld: () => void;
+  onEndCivilization: () => void;
 }
 
 const FIGURE_EIGHT_PERIOD = 6.32591398;
@@ -79,12 +108,74 @@ const ORBIT_DURATION_SECONDS = 9;
 const OVERLAY_EXIT_MS = 135;
 
 const MODEL_PURPOSE_LABELS: Record<ModelPurpose, string> = {
-  decision: '人物决策与台词',
-  interaction: '主动人物对话',
-  narrative: '叙事总结',
+  decision: '文明决策',
+  interaction: '人物对话',
+  narrative: '纪事表述',
   naming: '后代取名',
-  strategy: '策略',
+  strategy: '文明策略',
 };
+
+const MODEL_PROTOCOL_LABELS: Record<ModelProtocol, string> = {
+  'openai-chat': 'OpenAI Chat Completions',
+  'openai-responses': 'OpenAI Responses',
+  'anthropic-messages': 'Anthropic Messages',
+  'ollama-chat': 'Ollama Chat',
+};
+
+const MODEL_AUTH_LABELS: Record<ModelAuth, string> = {
+  bearer: 'Bearer Token',
+  'x-api-key': 'x-api-key',
+  none: '无需认证',
+};
+
+interface EndpointEditorView {
+  draft: ModelEndpointDraft;
+  headerText: string;
+  headersChanged: boolean;
+}
+
+function endpointEditorView(endpoint?: ModelSettingsEndpoint): EndpointEditorView {
+  if (endpoint) {
+    return {
+      draft: {
+        id: endpoint.id,
+        originalId: endpoint.id,
+        protocol: endpoint.protocol,
+        url: endpoint.url,
+        model: endpoint.model,
+        auth: endpoint.auth,
+        timeoutMs: endpoint.timeoutMs,
+        ...(endpoint.temperature === undefined ? {} : { temperature: endpoint.temperature }),
+        structuredOutput: endpoint.structuredOutput,
+        ...(endpoint.thinking === undefined ? {} : { thinking: endpoint.thinking }),
+      },
+      headerText: '',
+      headersChanged: false,
+    };
+  }
+  return {
+    draft: {
+      id: '',
+      protocol: 'openai-chat',
+      url: 'https://api.openai.com/v1/chat/completions',
+      model: '',
+      auth: 'bearer',
+      timeoutMs: 90_000,
+      structuredOutput: 'prompt',
+      thinking: false,
+    },
+    headerText: '',
+    headersChanged: false,
+  };
+}
+
+function parseHeaderText(value: string): Record<string, string> {
+  return Object.fromEntries(value.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const separator = line.indexOf(':');
+    if (separator <= 0 || !line.slice(separator + 1).trim()) throw new Error(`自定义请求头格式错误：${line}`);
+    return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
+  }));
+}
 
 const CIVILIZATION_INDEX_COMPONENTS: Array<{
   key: keyof CivilizationIndexView['components'];
@@ -507,6 +598,43 @@ function ModeSegmentedControl({
   );
 }
 
+interface EvolutionSpeedSliderProps {
+  ariaLabelledBy: string;
+  onChange: (speed: EvolutionSpeed) => void;
+  value: EvolutionSpeed;
+}
+
+function evolutionSpeedLabel(value: EvolutionSpeed): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function EvolutionSpeedSlider({
+  ariaLabelledBy,
+  onChange,
+  value,
+}: EvolutionSpeedSliderProps) {
+  const progress = ((value - EVOLUTION_SPEED_MIN) / (EVOLUTION_SPEED_MAX - EVOLUTION_SPEED_MIN)) * 100;
+  const label = evolutionSpeedLabel(value);
+
+  return (
+    <div className="evolution-speed-slider">
+      <input
+        aria-labelledby={ariaLabelledBy}
+        aria-valuetext={`${label} 倍`}
+        id="evolution-speed"
+        max={EVOLUTION_SPEED_MAX}
+        min={EVOLUTION_SPEED_MIN}
+        onChange={(event) => onChange(Number(event.target.value))}
+        step={EVOLUTION_SPEED_STEP}
+        style={{ '--evolution-speed-progress': `${progress}%` } as CSSProperties}
+        type="range"
+        value={value}
+      />
+      <output htmlFor="evolution-speed">{label}×</output>
+    </div>
+  );
+}
+
 export default function ImmersiveInterface({
   mode,
   civilizationId,
@@ -521,25 +649,35 @@ export default function ImmersiveInterface({
   modelEvolutionModeDraft,
   modelRouteDraft,
   modelSummaryModeDraft,
+  evolutionSpeed,
   newWorldSeed,
   newWorldStatus,
   saves,
   saveStatus,
   saveMessage,
+  civilizationSettlementStatus,
+  civilizationSettlementMessage,
   onClose,
+  onOpenMenu,
   onOpenSaves,
   onOpenNewWorld,
   onOpenHistory,
   onOpenModelSettings,
   onOpenShortcuts,
+  onOpenCivilizationEnding,
   onCreateSave,
   onLoadSave,
   onEvolutionModeChange,
+  onEvolutionSpeedChange,
   onModelRouteChange,
   onSummaryModeChange,
   onSaveModelSettings,
+  onDeleteModelEndpoint,
+  onSaveModelEndpoint,
   onRefreshSeed,
   onStartNewWorld,
+  onEndCivilization,
+  onTestModelEndpoint,
 }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -548,6 +686,10 @@ export default function ImmersiveInterface({
   const [renderedMode, setRenderedMode] = useState<ActiveImmersiveOverlayMode | null>(mode);
   const [transitionPhase, setTransitionPhase] = useState<OverlayTransitionPhase>(mode ? 'enter' : 'idle');
   const [saveLabel, setSaveLabel] = useState('');
+  const [endpointEditor, setEndpointEditor] = useState<EndpointEditorView | null>(null);
+  const [endpointTest, setEndpointTest] = useState<ModelEndpointTestResult | null>(null);
+  const [endpointEditorStatus, setEndpointEditorStatus] = useState<'idle' | 'testing' | 'saving' | 'deleting' | 'error'>('idle');
+  const [endpointEditorMessage, setEndpointEditorMessage] = useState('');
 
   useEffect(() => {
     if (mode === renderedMode) return;
@@ -593,6 +735,14 @@ export default function ImmersiveInterface({
     return () => cancelAnimationFrame(frame);
   }, [renderedMode, transitionPhase]);
 
+  useEffect(() => {
+    if (mode === 'model-settings') return;
+    setEndpointEditor(null);
+    setEndpointTest(null);
+    setEndpointEditorStatus('idle');
+    setEndpointEditorMessage('');
+  }, [mode]);
+
   const visibleHistory = useMemo(() => history.filter((entry) => !entry.status).slice().reverse(), [history]);
   const historyCountLabel = historyTotalCount > visibleHistory.length
     ? `最近 ${visibleHistory.length} 条记录 · 更早记录已省略`
@@ -603,23 +753,77 @@ export default function ImmersiveInterface({
   const decisionEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.decision);
   const interactionEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.interaction);
   const narrativeEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.narrative);
-  const namingEndpoint = modelSettings?.endpoints.find((endpoint) => endpoint.id === modelRouteDraft.naming);
-  const modelEvolutionAvailable = Boolean(decisionEndpoint?.configured);
-  const modelSummaryAvailable = Boolean(narrativeEndpoint?.configured);
+  const modelEvolutionAvailable = Boolean(decisionEndpoint?.configured && decisionEndpoint.verified);
+  const modelSummaryAvailable = Boolean(narrativeEndpoint?.configured && narrativeEndpoint.verified);
   const settingsDirty = Boolean(modelSettings && (
     modelSettings.evolutionMode !== modelEvolutionModeDraft
     || modelSettings.summaryMode !== modelSummaryModeDraft
     || modelSettings.purposes.some((purpose) => modelSettings.routes[purpose] !== modelRouteDraft[purpose])
   ));
-  const activeModelUses = [
-    { label: '按需人物对话', endpoint: interactionEndpoint },
-    ...(modelEvolutionModeDraft === 'model' ? [{ label: '人物决策与台词', endpoint: decisionEndpoint }] : []),
-    ...(modelEvolutionModeDraft === 'model' ? [{ label: '后代取名', endpoint: namingEndpoint }] : []),
-    ...(modelSummaryModeDraft === 'model' ? [{ label: '纪事总结', endpoint: narrativeEndpoint }] : []),
-  ];
-  const modeSummary = `${modelEvolutionModeDraft === 'model' ? '模型演进' : '本地演进'} · ${modelSummaryModeDraft === 'model' ? '模型总结' : '本地总结'} · 对话按需模型`;
   const savesBusy = saveStatus === 'loading' || saveStatus === 'saving' || saveStatus === 'loading-save';
   const civilizationLabel = civilizationId > 0 ? `第 ${civilizationId} 号文明` : '文明编号待分配';
+  const editEndpoint = (endpoint?: ModelSettingsEndpoint) => {
+    setEndpointEditor(endpointEditorView(endpoint));
+    setEndpointTest(null);
+    setEndpointEditorStatus('idle');
+    setEndpointEditorMessage('');
+  };
+  const changeEndpointDraft = (patch: Partial<ModelEndpointDraft>) => {
+    setEndpointEditor((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current);
+    setEndpointTest(null);
+    setEndpointEditorStatus('idle');
+    setEndpointEditorMessage('');
+  };
+  const testedEndpointDraft = (): ModelEndpointDraft => {
+    if (!endpointEditor) throw new Error('端点编辑器未打开');
+    return {
+      ...endpointEditor.draft,
+      ...(endpointEditor.headersChanged ? { headers: parseHeaderText(endpointEditor.headerText) } : {}),
+    };
+  };
+  const testEndpoint = async () => {
+    setEndpointEditorStatus('testing');
+    setEndpointEditorMessage('正在发起真实生成请求…');
+    setEndpointTest(null);
+    try {
+      const result = await onTestModelEndpoint(testedEndpointDraft());
+      setEndpointTest(result);
+      setEndpointEditorStatus('idle');
+      setEndpointEditorMessage(`连接成功 · ${result.latencyMs} ms · 返回「${result.preview}」`);
+    } catch (error) {
+      setEndpointEditorStatus('error');
+      setEndpointEditorMessage(error instanceof Error ? error.message : '连接测试失败');
+    }
+  };
+  const saveEndpoint = async () => {
+    if (!endpointTest) return;
+    setEndpointEditorStatus('saving');
+    setEndpointEditorMessage('正在保存已验证端点…');
+    try {
+      await onSaveModelEndpoint(endpointTest.token);
+      setEndpointEditor(null);
+      setEndpointTest(null);
+      setEndpointEditorStatus('idle');
+      setEndpointEditorMessage('');
+    } catch (error) {
+      setEndpointEditorStatus('error');
+      setEndpointEditorMessage(error instanceof Error ? error.message : '端点保存失败');
+    }
+  };
+  const removeEndpoint = async () => {
+    const id = endpointEditor?.draft.originalId;
+    if (!id || !window.confirm(`删除模型端点「${id}」？`)) return;
+    setEndpointEditorStatus('deleting');
+    setEndpointEditorMessage('');
+    try {
+      await onDeleteModelEndpoint(id);
+      setEndpointEditor(null);
+      setEndpointEditorStatus('idle');
+    } catch (error) {
+      setEndpointEditorStatus('error');
+      setEndpointEditorMessage(error instanceof Error ? error.message : '端点删除失败');
+    }
+  };
   return (
     <div
       ref={overlayRef}
@@ -630,35 +834,47 @@ export default function ImmersiveInterface({
     >
       {renderedMode === 'menu' && (
         <div className="immersive-menu">
-          <p className="immersive-eyebrow">{civilizationLabel} · {monthLabel(currentMonth)}</p>
-          <h1 id={titleId}>观测</h1>
+          <header className="utility-header">
+            <div>
+              <p className="immersive-eyebrow">{civilizationLabel} · {monthLabel(currentMonth)}</p>
+              <h1 id={titleId}>观测与设置</h1>
+            </div>
+            <button aria-label="返回世界" className="utility-icon-button" onClick={onClose} type="button"><X size={18} /></button>
+          </header>
           <nav aria-label="观测命令" className="immersive-menu__actions">
-            <button data-autofocus onClick={onClose} type="button">
-              <span>继续</span><kbd>Esc</kbd>
-            </button>
-            <button onClick={onOpenSaves} type="button">
-              <span>文明档案</span>
-            </button>
-            <button onClick={onOpenNewWorld} type="button">
-              <span>新文明</span><kbd>N</kbd>
-            </button>
-            <button onClick={onOpenHistory} type="button">
-              <span>文明历史</span><kbd>H</kbd>
-            </button>
-            <button onClick={onOpenModelSettings} type="button">
-              <span>模型设置</span><kbd>M</kbd>
-            </button>
-            <button onClick={onOpenShortcuts} type="button">
-              <span>按键</span><kbd>?</kbd>
-            </button>
+            <p>文明</p>
+            <div>
+              <button data-autofocus onClick={onOpenSaves} type="button"><span>文明档案<small>保存与读取当前文明</small></span><ChevronRight size={17} /></button>
+              <button onClick={onOpenHistory} type="button"><span>文明历史<small>查看文明留下的事实记录</small></span><kbd>H</kbd></button>
+              <div className="immersive-menu__setting">
+                <span>
+                  <strong id="evolution-speed-label">演化速度</strong>
+                  <small>0.5–10× · 本机推进频率</small>
+                </span>
+                <EvolutionSpeedSlider
+                  ariaLabelledBy="evolution-speed-label"
+                  onChange={onEvolutionSpeedChange}
+                  value={evolutionSpeed}
+                />
+              </div>
+              <button onClick={onOpenCivilizationEnding} type="button"><span>文明终章<small>让 AI 编排终章或结束当前文明</small></span><ChevronRight size={17} /></button>
+            </div>
+            <p>系统</p>
+            <div>
+              <button onClick={onOpenModelSettings} type="button"><span>模型设置<small>演进方式、端点与用途路由</small></span><kbd>M</kbd></button>
+              <button onClick={onOpenShortcuts} type="button"><span>按键<small>查看观察与移动操作</small></span><kbd>?</kbd></button>
+            </div>
+            <button className="immersive-menu__new-world" onClick={onOpenNewWorld} type="button"><span>建立新文明</span><kbd>N</kbd></button>
           </nav>
+          <footer><button className="immersive-text-action" onClick={onClose} type="button">继续观察 · Esc</button></footer>
         </div>
       )}
 
       {renderedMode === 'saves' && (
         <section aria-busy={savesBusy} className="save-manager">
-          <header>
-            <h1 id={titleId}>文明档案</h1>
+          <header className="utility-header">
+            <div><p className="immersive-eyebrow">文明</p><h1 id={titleId}>文明档案</h1></div>
+            <button aria-label="返回观测与设置" className="utility-icon-button" onClick={onOpenMenu} type="button"><X size={18} /></button>
           </header>
 
           <form
@@ -747,7 +963,7 @@ export default function ImmersiveInterface({
           </div>
 
           <footer>
-            <button className="immersive-text-action save-manager__cancel" onClick={onClose} type="button">取消 · Esc</button>
+            <button className="immersive-text-action save-manager__cancel" onClick={onOpenMenu} type="button">返回 · Esc</button>
           </footer>
         </section>
       )}
@@ -815,17 +1031,213 @@ export default function ImmersiveInterface({
       )}
 
       {renderedMode === 'model-settings' && (
-        <section className="model-settings" data-autofocus tabIndex={-1}>
-          <header>
-            <p className="immersive-eyebrow">{settingsDirty ? '待保存' : '当前配置'} · {modeSummary}</p>
-            <h1 id={titleId}>模型设置</h1>
+        <section className={`model-settings${endpointEditor ? ' model-settings--editing' : ''}`} data-autofocus tabIndex={-1}>
+          <header className="utility-header model-settings__header">
+            <button
+              aria-label={endpointEditor ? '返回模型设置' : '返回观测与设置'}
+              className="utility-icon-button"
+              onClick={() => endpointEditor ? setEndpointEditor(null) : onOpenMenu()}
+              type="button"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <p className="immersive-eyebrow">系统 · {endpointEditor ? '端点编辑' : settingsDirty ? '有未保存改动' : '当前配置'}</p>
+              <h1 id={titleId}>{endpointEditor ? endpointEditor.draft.originalId ? '编辑模型端点' : '添加模型端点' : '模型设置'}</h1>
+            </div>
           </header>
 
           {modelSettingsStatus === 'loading' && (
             <p className="model-settings__loading" aria-live="polite">正在读取模型路由……</p>
           )}
 
-          {modelSettingsStatus !== 'loading' && modelSettings && (
+          {modelSettingsStatus !== 'loading' && modelSettings && endpointEditor && (
+            <form
+              className="model-endpoint-editor"
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                event.stopPropagation();
+                setEndpointEditor(null);
+              }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void (endpointTest ? saveEndpoint() : testEndpoint());
+              }}
+            >
+              <div className="model-endpoint-editor__body">
+                <div className="model-endpoint-editor__grid">
+                  <label>
+                    <span>端点名称</span>
+                    <input
+                      autoComplete="off"
+                      disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                      onChange={(event) => changeEndpointDraft({ id: event.target.value })}
+                      placeholder="例如：主模型"
+                      required
+                      value={endpointEditor.draft.id}
+                    />
+                  </label>
+                  <label>
+                    <span>协议</span>
+                    <select
+                      disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                      onChange={(event) => changeEndpointDraft({ protocol: event.target.value as ModelProtocol })}
+                      value={endpointEditor.draft.protocol}
+                    >
+                      {Object.entries(MODEL_PROTOCOL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label className="model-endpoint-editor__wide">
+                    <span>请求 URL</span>
+                    <input
+                      autoCapitalize="none"
+                      autoComplete="url"
+                      disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                      onChange={(event) => changeEndpointDraft({ url: event.target.value })}
+                      placeholder="https://…"
+                      required
+                      spellCheck={false}
+                      type="url"
+                      value={endpointEditor.draft.url}
+                    />
+                  </label>
+                  <label>
+                    <span>模型名称</span>
+                    <input
+                      autoComplete="off"
+                      disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                      onChange={(event) => changeEndpointDraft({ model: event.target.value })}
+                      placeholder="provider-model-name"
+                      required
+                      spellCheck={false}
+                      value={endpointEditor.draft.model}
+                    />
+                  </label>
+                  <label>
+                    <span>认证方式</span>
+                    <select
+                      disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                      onChange={(event) => changeEndpointDraft({ auth: event.target.value as ModelAuth })}
+                      value={endpointEditor.draft.auth}
+                    >
+                      {Object.entries(MODEL_AUTH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  {endpointEditor.draft.auth !== 'none' && (
+                    <label className="model-endpoint-editor__wide">
+                      <span>API Key</span>
+                      <input
+                        autoComplete="off"
+                        disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                        onChange={(event) => changeEndpointDraft({ apiKey: event.target.value })}
+                        placeholder={endpointEditor.draft.originalId ? '已配置；留空保持不变' : '仅写入本机配置，保存后不再显示'}
+                        type="password"
+                        value={endpointEditor.draft.apiKey ?? ''}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <details className="model-endpoint-editor__advanced">
+                  <summary>高级兼容选项</summary>
+                  <div className="model-endpoint-editor__grid">
+                    <label>
+                      <span>结构化输出</span>
+                      <select
+                        onChange={(event) => changeEndpointDraft({ structuredOutput: event.target.value as StructuredOutputMode })}
+                        value={endpointEditor.draft.structuredOutput ?? 'prompt'}
+                      >
+                        <option value="prompt">提示词约束</option>
+                        <option value="native-json">原生 JSON</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>思考模式</span>
+                      <select
+                        onChange={(event) => changeEndpointDraft({ thinking: event.target.value === 'false' ? false : event.target.value as ModelThinking })}
+                        value={String(endpointEditor.draft.thinking ?? false)}
+                      >
+                        <option value="false">关闭</option>
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                        <option value="max">最高</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>温度</span>
+                      <input
+                        max="2"
+                        min="0"
+                        onChange={(event) => changeEndpointDraft({ temperature: event.target.value === '' ? undefined : Number(event.target.value) })}
+                        placeholder="由用途决定"
+                        step="0.1"
+                        type="number"
+                        value={endpointEditor.draft.temperature ?? ''}
+                      />
+                    </label>
+                    <label>
+                      <span>超时（秒）</span>
+                      <input
+                        max="300"
+                        min="1"
+                        onChange={(event) => changeEndpointDraft({ timeoutMs: Number(event.target.value) * 1_000 })}
+                        type="number"
+                        value={Math.round((endpointEditor.draft.timeoutMs ?? 90_000) / 1_000)}
+                      />
+                    </label>
+                    <label className="model-endpoint-editor__wide">
+                      <span>自定义请求头</span>
+                      <textarea
+                        onChange={(event) => {
+                          setEndpointEditor((current) => current ? { ...current, headerText: event.target.value, headersChanged: true } : current);
+                          setEndpointTest(null);
+                          setEndpointEditorStatus('idle');
+                          setEndpointEditorMessage('');
+                        }}
+                        placeholder={endpointEditor.draft.originalId && modelSettings.endpoints.find((item) => item.id === endpointEditor.draft.originalId)?.headerNames.length
+                          ? `已配置请求头；留空保持不变。替换时每行填写 Header: value`
+                          : '每行填写 Header: value'}
+                        rows={3}
+                        value={endpointEditor.headerText}
+                      />
+                    </label>
+                  </div>
+                </details>
+              </div>
+
+              <footer className="model-settings__actions model-endpoint-editor__actions">
+                <div aria-live="polite" className={`model-settings__feedback${endpointEditorStatus === 'error' ? ' is-error' : ''}${endpointTest ? ' is-success' : ''}`}>
+                  {endpointTest && <Check aria-hidden="true" size={15} />}{endpointEditorMessage || '保存前必须通过一次真实生成测试'}
+                </div>
+                <div className="model-settings__action-buttons">
+                  {endpointEditor.draft.originalId && (
+                    <button
+                      aria-label="删除端点"
+                      className="immersive-button immersive-button--danger immersive-button--32"
+                      disabled={endpointEditorStatus === 'deleting' || endpointEditorStatus === 'saving'}
+                      onClick={() => { void removeEndpoint(); }}
+                      type="button"
+                    ><Trash2 size={16} />删除</button>
+                  )}
+                  <button
+                    className="immersive-button immersive-button--secondary immersive-button--32"
+                    disabled={endpointEditorStatus === 'testing' || endpointEditorStatus === 'saving'}
+                    onClick={() => { void testEndpoint(); }}
+                    type="button"
+                  >{endpointEditorStatus === 'testing' ? '测试中…' : endpointTest ? '重新测试' : '测试连接'}</button>
+                  <button
+                    className="immersive-button immersive-button--primary immersive-button--32"
+                    disabled={!endpointTest || endpointEditorStatus === 'saving'}
+                    type="submit"
+                  >{endpointEditorStatus === 'saving' ? '保存中…' : '保存并接入'}</button>
+                </div>
+              </footer>
+            </form>
+          )}
+
+          {modelSettingsStatus !== 'loading' && modelSettings && !endpointEditor && (
             <form
               className="model-settings__form"
               onSubmit={(event) => {
@@ -837,15 +1249,8 @@ export default function ImmersiveInterface({
                 <section aria-label="演进与总结方式" className="model-settings__mode-list">
                   <div className="model-settings__mode-row">
                     <span>
-                      <strong>主动人物对话</strong>
-                    </span>
-                    <span aria-label="主动人物对话始终使用模型">
-                      <strong>按需模型</strong>
-                    </span>
-                  </div>
-                  <div className="model-settings__mode-row">
-                    <span>
-                      <strong id="evolution-mode-label">人物决策与说话</strong>
+                      <strong id="evolution-mode-label">文明演进</strong>
+                      <small>人物仍只提出建议，规则层验证后才会提交结果</small>
                     </span>
                     <ModeSegmentedControl
                       ariaLabelledBy="evolution-mode-label"
@@ -857,7 +1262,8 @@ export default function ImmersiveInterface({
                   </div>
                   <div className="model-settings__mode-row">
                     <span>
-                      <strong id="summary-mode-label">纪事总结</strong>
+                      <strong id="summary-mode-label">纪事表述</strong>
+                      <small>只改变事实如何被写出，不改动文明历史</small>
                     </span>
                     <ModeSegmentedControl
                       ariaLabelledBy="summary-mode-label"
@@ -869,30 +1275,35 @@ export default function ImmersiveInterface({
                   </div>
                 </section>
 
-                <section aria-label="当前参与的模型" className="model-settings__active">
-                  <span>当前参与</span>
-                  <div>
-                    {activeModelUses.length === 0 ? (
-                      <p>
-                        <strong>仅本地规则</strong>
-                        <small>当前月不会请求模型</small>
-                      </p>
-                    ) : activeModelUses.map(({ label, endpoint }) => (
-                      <p key={label}>
-                        <strong>{label}</strong>
-                        <small>{endpoint ? `${endpoint.id} · ${endpoint.model}` : '模型端点不可用'}</small>
-                      </p>
-                    ))}
-                  </div>
+                <section aria-label="人物对话状态" className="model-settings__active">
+                  <span>人物对话</span>
+                  <p><strong>按需模型</strong><small>{interactionEndpoint ? `${interactionEndpoint.id} · ${interactionEndpoint.model}` : '尚无可用端点'}</small></p>
                 </section>
 
                 <details className="model-settings__advanced">
                   <summary>
-                    <span>高级设置</span>
+                    <span>端点与用途路由</span>
                   </summary>
                   <div className="model-settings__advanced-body">
-                    <div className="model-settings__routes">
-                      {modelSettings.purposes.map((purpose) => {
+                    <section className="model-settings__endpoint-section">
+                      <header><div><strong>模型端点</strong><small>密钥保存后只显示配置状态</small></div><button className="immersive-button immersive-button--secondary immersive-button--32" onClick={() => editEndpoint()} type="button"><Plus size={15} />添加</button></header>
+                      <div className="model-settings__endpoints" aria-label="模型端点状态">
+                        {modelSettings.endpoints.map((endpoint) => (
+                          <button key={endpoint.id} onClick={() => editEndpoint(endpoint)} type="button">
+                            <span aria-hidden="true" className={endpoint.configured && endpoint.verified ? 'is-ready' : 'is-missing'} />
+                            <p><strong>{endpoint.id}</strong><small>{endpoint.model} · {MODEL_PROTOCOL_LABELS[endpoint.protocol]} · {endpointHost(endpoint.url)}</small></p>
+                            <em>{endpoint.configured && endpoint.verified ? '已验证' : endpoint.issue ?? '需要测试'}</em>
+                            <Pencil aria-hidden="true" size={15} />
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="model-settings__route-section">
+                      <header><strong>用途路由</strong><small>{modelSettings.endpoints.length <= 1 ? '当前只有一个端点，所有用途自动使用它' : '分别指定不同用途使用的端点'}</small></header>
+                    {modelSettings.endpoints.length > 1 ? (
+                      <div className="model-settings__routes">
+                        {modelSettings.purposes.map((purpose) => {
                         const labelId = `model-purpose-${purpose}-label`;
                         return (
                           <div className="model-field" key={purpose}>
@@ -915,7 +1326,7 @@ export default function ImmersiveInterface({
                                   position="popper"
                                   sideOffset={4}
                                 >
-                                  {modelSettings.endpoints.map((endpoint) => (
+                                  {modelSettings.endpoints.filter((endpoint) => endpoint.configured && endpoint.verified).map((endpoint) => (
                                     <SelectItem className="model-select__item" key={endpoint.id} value={endpoint.id}>
                                       {endpoint.id} · {endpoint.model}
                                     </SelectItem>
@@ -925,24 +1336,13 @@ export default function ImmersiveInterface({
                             </span>
                           </div>
                         );
-                      })}
-                    </div>
-
-                    <div className="model-settings__endpoints" aria-label="模型端点状态">
-                      {modelSettings.endpoints.map((endpoint) => (
-                        <div key={endpoint.id}>
-                          <span aria-hidden="true" className={endpoint.configured ? 'is-ready' : 'is-missing'} />
-                          <p>
-                            <strong>{endpoint.id}</strong>
-                            <small>{endpoint.model} · {endpoint.protocol} · {endpointHost(endpoint.url)}</small>
-                          </p>
-                          <em>{endpoint.configured ? '已配置' : endpoint.issue}</em>
-                        </div>
-                      ))}
-                    </div>
+                        })}
+                      </div>
+                    ) : <p className="model-settings__single-route">{modelSettings.endpoints[0]?.id ?? '尚无端点'}</p>}
+                    </section>
 
                     <div className="model-settings__source">
-                      <span>{modelSettings.configFile ?? '旧 Kimi 环境配置'}</span>
+                      <span>安装级配置 · {modelSettings.configFile ?? '旧 Kimi 环境配置'} · 不写入文明存档</span>
                     </div>
                   </div>
                 </details>
@@ -953,7 +1353,7 @@ export default function ImmersiveInterface({
                   {modelSettingsMessage}
                 </div>
                 <div className="model-settings__action-buttons">
-                  <button className="immersive-button immersive-button--secondary immersive-button--32" onClick={onClose} type="button">取消</button>
+                  <button className="immersive-button immersive-button--secondary immersive-button--32" onClick={onOpenMenu} type="button">返回</button>
                   <button
                     className="immersive-button immersive-button--primary immersive-button--32"
                     disabled={!modelSettings.editable || modelSettingsStatus === 'saving' || !settingsDirty}
@@ -969,7 +1369,7 @@ export default function ImmersiveInterface({
           {modelSettingsStatus === 'error' && !modelSettings && (
             <div className="model-settings__failure" aria-live="assertive">
               <p>{modelSettingsMessage || '模型设置读取失败。'}</p>
-              <button className="immersive-text-action" onClick={onClose} type="button">合上 · Esc</button>
+              <button className="immersive-text-action" onClick={onOpenMenu} type="button">返回 · Esc</button>
             </div>
           )}
         </section>
@@ -977,7 +1377,7 @@ export default function ImmersiveInterface({
 
       {renderedMode === 'shortcuts' && (
         <section className="shortcut-view">
-          <h1 id={titleId}>按键</h1>
+          <header className="utility-header"><div><p className="immersive-eyebrow">系统</p><h1 id={titleId}>按键</h1></div><button aria-label="返回观测与设置" className="utility-icon-button" onClick={onOpenMenu} type="button"><X size={18} /></button></header>
           <dl>
             <div><dt><kbd>Esc</kbd></dt><dd>观测菜单／返回世界</dd></div>
             <div><dt><kbd>⌘K</kbd></dt><dd>打开所有命令</dd></div>
@@ -989,7 +1389,54 @@ export default function ImmersiveInterface({
             <div><dt><kbd>W A S D</kbd></dt><dd>在人间移动观察点</dd></div>
             <div><dt><kbd>↑ ↓</kbd></dt><dd>靠近或离开世界</dd></div>
           </dl>
-          <button className="immersive-text-action" data-autofocus onClick={onClose} type="button">合上 · Esc</button>
+          <button className="immersive-text-action" data-autofocus onClick={onOpenMenu} type="button">返回 · Esc</button>
+        </section>
+      )}
+
+      {renderedMode === 'civilization-ending' && (
+        <section aria-busy={civilizationSettlementStatus === 'settling'} className="civilization-ending-settings">
+          <header className="utility-header">
+            <button
+              aria-label="返回观测与设置"
+              className="utility-icon-button"
+              onClick={onOpenMenu}
+              type="button"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <p className="immersive-eyebrow">文明 · {civilizationLabel}</p>
+              <h1 id={titleId}>文明终章</h1>
+            </div>
+          </header>
+
+          <div className="civilization-ending-settings__body">
+            <div className="civilization-ending-settings__intro">
+              <p>自然终结与手动结算共用同一套终章。它只读取已经发生的权威历史；模型不可用时，本地诗仍会完成演出。</p>
+            </div>
+            <section className="civilization-ending-settings__orchestration">
+              <div><span>事实来源</span><strong>当前文明的权威历史</strong></div>
+              <div><span>诗风选择</span><strong>由 AI 根据文明一生自决</strong></div>
+              <div><span>演出形式</span><strong>单轴诗幕 · 逐句浮现</strong></div>
+              <p>AI 只在四言重章、田园纪事、诗史长歌、古代名录史诗、鲁拜短章与自由诗名录之间判断；玩家不预设这段文明该被怎样书写。</p>
+            </section>
+          </div>
+
+          <footer className="civilization-ending-settings__footer">
+            <div aria-live={civilizationSettlementStatus === 'error' ? 'assertive' : 'polite'} role={civilizationSettlementStatus === 'error' ? 'alert' : 'status'}>
+              <strong>结束文明不会伪造死亡</strong>
+              <span>{civilizationSettlementMessage || '它会冻结当前权威历史，随后立即进入统一终章演出。'}</span>
+            </div>
+            <button
+              className="immersive-button immersive-button--44 civilization-ending-settings__end"
+              data-autofocus
+              disabled={civilizationSettlementStatus === 'settling'}
+              onClick={onEndCivilization}
+              type="button"
+            >
+              {civilizationSettlementStatus === 'settling' ? '正在结算…' : '结束'}
+            </button>
+          </footer>
         </section>
       )}
     </div>

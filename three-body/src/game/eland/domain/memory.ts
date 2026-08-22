@@ -1,9 +1,18 @@
 import type { ActionFact, SimulationState } from './model';
 import type { MemoryRecord, PersonState } from './person';
 import { causalMemoryTraceForAction, isMeaningfulCognitiveOutcome } from './cognition';
+import { memoryCapacityMultiplier, memoryDurationMultiplier } from './trait';
 
 const MAX_MEMORIES = 24;
 const MAX_PROJECTED_MEMORIES = 8;
+
+export function personMemoryCapacity(person: Pick<PersonState, 'traits'>): number {
+  return Math.round(MAX_MEMORIES * memoryCapacityMultiplier(person));
+}
+
+export function personProjectedMemoryCapacity(person: Pick<PersonState, 'traits'>): number {
+  return Math.round(MAX_PROJECTED_MEMORIES * memoryCapacityMultiplier(person));
+}
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -27,11 +36,11 @@ export function remember(person: PersonState, memory: MemoryRecord): void {
       const bDurable = b.kind === 'commitment' ? 30 : b.kind === 'failure' ? 12 : 0;
       return b.importance + bDurable - (a.importance + aDurable) || b.createdAtMonth - a.createdAtMonth;
     })
-    .slice(0, MAX_MEMORIES);
+    .slice(0, personMemoryCapacity(person));
 }
 
-function score(memory: MemoryRecord, atMonth: number): number {
-  const age = Math.max(0, atMonth - memory.createdAtMonth);
+function score(person: Pick<PersonState, 'traits'>, memory: MemoryRecord, atMonth: number): number {
+  const age = Math.max(0, atMonth - memory.createdAtMonth) / memoryDurationMultiplier(person);
   const durable = memory.kind === 'commitment' ? 28 : memory.kind === 'failure' ? 12 : memory.kind === 'summary' ? 10 : 0;
   const activeCommitment = memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth ? 35 : 0;
   return memory.importance + durable + activeCommitment - Math.min(55, age * 1.4);
@@ -42,14 +51,14 @@ export function maintainMemories(state: SimulationState, atMonth: number): void 
     const retained = person.memories.filter((memory) => memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth);
     const candidates = person.memories
       .filter((memory) => !retained.includes(memory))
-      .map((memory) => ({ memory, score: score(memory, atMonth) }))
-      .filter(({ memory, score: value }) => value >= 12 || atMonth - memory.createdAtMonth <= 6)
+      .map((memory) => ({ memory, score: score(person, memory, atMonth) }))
+      .filter(({ memory, score: value }) => value >= 12 || atMonth - memory.createdAtMonth <= 6 * memoryDurationMultiplier(person))
       .sort((a, b) => b.score - a.score || b.memory.createdAtMonth - a.memory.createdAtMonth);
     const forgotten = person.memories.filter((memory) => !retained.includes(memory) && !candidates.some((item) => item.memory === memory));
     const summaries = forgotten.filter((memory) => memory.kind !== 'summary').slice(-6);
     const next = [...retained, ...candidates.map((item) => item.memory)]
-      .sort((a, b) => score(b, atMonth) - score(a, atMonth))
-      .slice(0, MAX_MEMORIES);
+      .sort((a, b) => score(person, b, atMonth) - score(person, a, atMonth))
+      .slice(0, personMemoryCapacity(person));
     if (summaries.length && !next.some((memory) => memory.id === `memory-summary-${person.id}-${Math.floor(atMonth / 12)}`)) {
       next.push({
         id: `memory-summary-${person.id}-${Math.floor(atMonth / 12)}`,
@@ -63,19 +72,19 @@ export function maintainMemories(state: SimulationState, atMonth: number): void 
       });
     }
     person.memories = next
-      .sort((a, b) => score(b, atMonth) - score(a, atMonth))
-      .slice(0, MAX_MEMORIES);
+      .sort((a, b) => score(person, b, atMonth) - score(person, a, atMonth))
+      .slice(0, personMemoryCapacity(person));
   }
 }
 
 export function projectMemories(person: PersonState, atMonth: number): Array<Pick<MemoryRecord, 'kind' | 'summary' | 'importance' | 'personIds'>> {
   const ranked = person.memories
     .filter((memory) => memory.kind !== 'commitment' || (memory.expiresAtMonth ?? atMonth) >= atMonth)
-    .sort((a, b) => score(b, atMonth) - score(a, atMonth) || b.createdAtMonth - a.createdAtMonth);
+    .sort((a, b) => score(person, b, atMonth) - score(person, a, atMonth) || b.createdAtMonth - a.createdAtMonth);
   let dialogueCount = 0;
   return ranked
     .filter((memory) => memory.kind !== 'dialogue' || dialogueCount++ < 2)
-    .slice(0, MAX_PROJECTED_MEMORIES)
+    .slice(0, personProjectedMemoryCapacity(person))
     .map(({ kind, summary, importance, personIds }) => ({ kind, summary, importance, personIds }));
 }
 

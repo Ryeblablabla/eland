@@ -1,7 +1,9 @@
 import fs from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import { loadFirstServerEnvValue, loadServerEnvValue } from './env';
+import { requestModelText } from './model-client';
 
 export const MODEL_PROTOCOLS = ['openai-chat', 'openai-responses', 'anthropic-messages', 'ollama-chat'] as const;
 export const MODEL_PURPOSES = ['decision', 'interaction', 'narrative', 'naming', 'strategy'] as const;
@@ -25,6 +27,7 @@ interface ModelEndpointDefinition {
   protocol: ModelProtocol;
   url: string;
   model: string;
+  apiKey?: string;
   apiKeyEnv?: string;
   auth?: ModelAuth;
   headers?: Record<string, string>;
@@ -32,6 +35,8 @@ interface ModelEndpointDefinition {
   temperature?: number;
   structuredOutput?: StructuredOutputMode;
   thinking?: ModelThinking;
+  verifiedAt?: string;
+  verificationFingerprint?: string;
 }
 
 interface ModelConfigFile {
@@ -48,8 +53,40 @@ export interface ModelSettingsEndpoint {
   protocol: ModelProtocol;
   url: string;
   model: string;
+  auth: ModelAuth;
   configured: boolean;
+  hasApiKey: boolean;
+  verified: boolean;
+  verifiedAt?: string;
+  timeoutMs: number;
+  temperature?: number;
+  structuredOutput: StructuredOutputMode;
+  thinking?: ModelThinking;
+  headerNames: string[];
   issue?: string;
+}
+
+export interface ModelEndpointDraft {
+  id: string;
+  originalId?: string;
+  protocol: ModelProtocol;
+  url: string;
+  model: string;
+  auth: ModelAuth;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  temperature?: number;
+  structuredOutput?: StructuredOutputMode;
+  thinking?: ModelThinking;
+}
+
+export interface ModelEndpointTestResult {
+  token: string;
+  testedAt: string;
+  latencyMs: number;
+  model: string;
+  preview: string;
 }
 
 export interface ModelSettingsSnapshot {
@@ -89,6 +126,16 @@ export interface ModelEndpointStatus {
 
 const DEFAULT_KIMI_URL = 'https://api.kimi.com/coding/v1/chat/completions';
 const DEFAULT_KIMI_MODEL = 'kimi-for-coding';
+const TEST_TOKEN_TTL_MS = 10 * 60 * 1_000;
+
+const verifiedDrafts = new Map<string, {
+  expiresAt: number;
+  originalId?: string;
+  id: string;
+  definition: ModelEndpointDefinition;
+  fingerprint: string;
+  testedAt: string;
+}>();
 
 function object(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} 必须是 JSON 对象`);
@@ -139,6 +186,7 @@ function parseEndpoint(id: string, input: unknown): ModelEndpointDefinition {
     protocol: protocol as ModelProtocol,
     url,
     model: nonEmptyString(raw.model, `模型端点 ${id}.model`),
+    ...(raw.apiKey === undefined ? {} : { apiKey: nonEmptyString(raw.apiKey, `模型端点 ${id}.apiKey`) }),
     ...(raw.apiKeyEnv === undefined ? {} : { apiKeyEnv: nonEmptyString(raw.apiKeyEnv, `模型端点 ${id}.apiKeyEnv`) }),
     ...(auth ? { auth: auth as ModelAuth } : {}),
     headers: normalizedHeaders,
@@ -146,6 +194,10 @@ function parseEndpoint(id: string, input: unknown): ModelEndpointDefinition {
     ...(raw.temperature === undefined ? {} : { temperature: optionalNumber(raw.temperature, `模型端点 ${id}.temperature`) }),
     ...(structuredOutput ? { structuredOutput: structuredOutput as StructuredOutputMode } : {}),
     ...(raw.thinking === undefined ? {} : { thinking: optionalThinking(raw.thinking, `模型端点 ${id}.thinking`) }),
+    ...(raw.verifiedAt === undefined ? {} : { verifiedAt: nonEmptyString(raw.verifiedAt, `模型端点 ${id}.verifiedAt`) }),
+    ...(raw.verificationFingerprint === undefined ? {} : {
+      verificationFingerprint: nonEmptyString(raw.verificationFingerprint, `模型端点 ${id}.verificationFingerprint`),
+    }),
   };
 }
 
@@ -161,7 +213,7 @@ function parseStrategy(id: string, input: unknown): CivilizationStrategyDefiniti
 
 function loadConfigFile(): ModelConfigFile | null {
   const filePath = modelConfigPath();
-  if (!filePath) return null;
+  if (!fs.existsSync(filePath)) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
@@ -203,9 +255,9 @@ function loadConfigFile(): ModelConfigFile | null {
   };
 }
 
-function modelConfigPath(): string | null {
+function modelConfigPath(): string {
   const configuredPath = loadServerEnvValue('THREEBODY_MODEL_CONFIG');
-  return configuredPath ? path.resolve(configuredPath) : null;
+  return configuredPath ? path.resolve(configuredPath) : path.resolve(process.cwd(), 'model-endpoints.local.json');
 }
 
 function defaultAuth(protocol: ModelProtocol): ModelAuth {
@@ -220,7 +272,7 @@ function defaultApiKeyEnv(protocol: ModelProtocol): string {
 function resolveDefinition(id: string, definition: ModelEndpointDefinition): ResolvedModelEndpoint {
   const auth = definition.auth ?? defaultAuth(definition.protocol);
   const apiKeyEnv = auth === 'none' ? definition.apiKeyEnv : definition.apiKeyEnv ?? defaultApiKeyEnv(definition.protocol);
-  const apiKey = apiKeyEnv ? loadServerEnvValue(apiKeyEnv) : '';
+  const apiKey = definition.apiKey ?? (apiKeyEnv ? loadServerEnvValue(apiKeyEnv) : '');
   return {
     id,
     protocol: definition.protocol,
@@ -236,6 +288,28 @@ function resolveDefinition(id: string, definition: ModelEndpointDefinition): Res
     ...(definition.thinking === undefined ? {} : { thinking: definition.thinking }),
     source: 'config-file',
   };
+}
+
+function endpointFingerprint(id: string, definition: ModelEndpointDefinition): string {
+  const endpoint = resolveDefinition(id, definition);
+  return createHash('sha256').update(JSON.stringify({
+    id: endpoint.id,
+    protocol: endpoint.protocol,
+    url: endpoint.url,
+    model: endpoint.model,
+    auth: endpoint.auth,
+    apiKey: endpoint.apiKey,
+    headers: Object.entries(endpoint.headers).sort(([left], [right]) => left.localeCompare(right)),
+    timeoutMs: endpoint.timeoutMs,
+    temperature: endpoint.temperature,
+    structuredOutput: endpoint.structuredOutput,
+    thinking: endpoint.thinking,
+  })).digest('hex');
+}
+
+function endpointVerified(id: string, definition: ModelEndpointDefinition): boolean {
+  return !definition.verificationFingerprint
+    || definition.verificationFingerprint === endpointFingerprint(id, definition);
 }
 
 function legacyKimiEndpoint(): ResolvedModelEndpoint {
@@ -254,6 +328,19 @@ function legacyKimiEndpoint(): ResolvedModelEndpoint {
   };
 }
 
+function legacyKimiDefinition(): ModelEndpointDefinition {
+  return {
+    protocol: 'openai-chat',
+    url: loadServerEnvValue('KIMI_API_URL') || DEFAULT_KIMI_URL,
+    model: loadServerEnvValue('KIMI_MODEL') || DEFAULT_KIMI_MODEL,
+    auth: 'bearer',
+    apiKeyEnv: loadServerEnvValue('KIMI_API_KEY') ? 'KIMI_API_KEY' : 'MOONSHOT_API_KEY',
+    headers: {},
+    timeoutMs: 90_000,
+    structuredOutput: 'native-json',
+  };
+}
+
 export function resolveModelEndpoint(purpose: ModelPurpose, requestedEndpoint?: string): ResolvedModelEndpoint {
   const config = loadConfigFile();
   if (!config) {
@@ -267,6 +354,7 @@ export function resolveModelEndpoint(purpose: ModelPurpose, requestedEndpoint?: 
   if (!endpointId) throw new Error(`模型配置没有为 ${purpose} 指定端点`);
   const definition = config.endpoints[endpointId];
   if (!definition) throw new Error(`模型配置不存在端点 ${endpointId}`);
+  if (!endpointVerified(endpointId, definition)) throw new Error(`模型端点 ${endpointId} 的连接信息已改变，请重新测试`);
   return resolveDefinition(endpointId, definition);
 }
 
@@ -326,13 +414,25 @@ export function resolveCivilizationStrategyEndpoint(id: string): ResolvedModelEn
 function endpointSetting(id: string, definition: ModelEndpointDefinition): ModelSettingsEndpoint {
   const endpoint = resolveDefinition(id, definition);
   const configured = endpoint.auth === 'none' || Boolean(endpoint.apiKey);
+  const verified = endpointVerified(id, definition);
   return {
     id,
     protocol: endpoint.protocol,
     url: endpoint.url,
     model: endpoint.model,
+    auth: endpoint.auth,
     configured,
-    ...(!configured ? { issue: `缺少 ${endpoint.apiKeyEnv ?? 'API Key'}` } : {}),
+    hasApiKey: Boolean(endpoint.apiKey),
+    verified,
+    ...(definition.verifiedAt ? { verifiedAt: definition.verifiedAt } : {}),
+    timeoutMs: endpoint.timeoutMs,
+    ...(endpoint.temperature === undefined ? {} : { temperature: endpoint.temperature }),
+    structuredOutput: endpoint.structuredOutput,
+    ...(endpoint.thinking === undefined ? {} : { thinking: endpoint.thinking }),
+    headerNames: Object.keys(endpoint.headers),
+    ...(!configured
+      ? { issue: `缺少 ${endpoint.apiKeyEnv ?? 'API Key'}` }
+      : !verified ? { issue: '连接信息已改变，请重新测试' } : {}),
   };
 }
 
@@ -344,7 +444,7 @@ export function readModelSettings(): ModelSettingsSnapshot {
     const configured = Boolean(endpoint.apiKey);
     return {
       source: 'legacy-kimi',
-      editable: false,
+      editable: true,
       evolutionMode: 'local',
       summaryMode: configured ? 'model' : 'local',
       purposes: MODEL_PURPOSES,
@@ -353,7 +453,13 @@ export function readModelSettings(): ModelSettingsSnapshot {
         protocol: endpoint.protocol,
         url: endpoint.url,
         model: endpoint.model,
+        auth: endpoint.auth,
         configured,
+        hasApiKey: Boolean(endpoint.apiKey),
+        verified: true,
+        timeoutMs: endpoint.timeoutMs,
+        structuredOutput: endpoint.structuredOutput,
+        headerNames: [],
         ...(!configured ? { issue: `缺少 ${endpoint.apiKeyEnv ?? 'API Key'}` } : {}),
       }],
       routes: { decision: endpoint.id, interaction: endpoint.id, narrative: endpoint.id, naming: endpoint.id, strategy: endpoint.id },
@@ -374,7 +480,7 @@ export function readModelSettings(): ModelSettingsSnapshot {
     editable: true,
     evolutionMode: config.evolutionMode ?? (config.routes?.decision ? 'model' : 'local'),
     summaryMode: config.summaryMode ?? (config.routes?.narrative ? 'model' : 'local'),
-    ...(filePath ? { configFile: path.relative(process.cwd(), filePath) || path.basename(filePath) } : {}),
+    configFile: path.relative(process.cwd(), filePath) || path.basename(filePath),
     purposes: MODEL_PURPOSES,
     endpoints: Object.entries(config.endpoints).map(([id, definition]) => endpointSetting(id, definition)),
     routes,
@@ -387,10 +493,14 @@ export function updateModelSettings(
   evolutionMode: EvolutionMode = readEvolutionMode(),
   summaryMode: EvolutionMode = readSummaryMode(),
 ): ModelSettingsSnapshot {
-  const filePath = modelConfigPath();
-  if (!filePath) throw new Error('当前使用旧 Kimi 环境配置；请先设置 THREEBODY_MODEL_CONFIG');
-  const config = loadConfigFile();
-  if (!config) throw new Error('模型配置不存在');
+  const config: ModelConfigFile = loadConfigFile() ?? {
+    schemaVersion: 1,
+    evolutionMode: 'local',
+    summaryMode: 'local',
+    endpoints: { kimi: legacyKimiDefinition() },
+    routes: Object.fromEntries(MODEL_PURPOSES.map((purpose) => [purpose, 'kimi'])),
+    strategies: {},
+  };
   for (const purpose of MODEL_PURPOSES) {
     const endpointId = routes[purpose]?.trim();
     if (!endpointId || !config.endpoints[endpointId]) {
@@ -408,10 +518,137 @@ export function updateModelSettings(
     if (!status.configured) throw new Error(status.issue ?? '叙事总结模型端点尚未配置');
   }
 
-  const raw = object(JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown, '模型配置');
-  raw.evolutionMode = evolutionMode;
-  raw.summaryMode = summaryMode;
-  raw.routes = Object.fromEntries(MODEL_PURPOSES.map((purpose) => [purpose, routes[purpose].trim()]));
-  fs.writeFileSync(filePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  config.evolutionMode = evolutionMode;
+  config.summaryMode = summaryMode;
+  config.routes = Object.fromEntries(MODEL_PURPOSES.map((purpose) => [purpose, routes[purpose].trim()]));
+  writeConfig(config);
+  return readModelSettings();
+}
+
+function endpointId(value: unknown, label = '端点名称'): string {
+  const id = nonEmptyString(value, label);
+  if (id.length > 64 || /[\u0000-\u001f/\\]/u.test(id)) throw new Error(`${label} 不能超过 64 字且不能包含路径字符`);
+  return id;
+}
+
+function normalizeEndpointDraft(input: unknown): { id: string; originalId?: string; definition: ModelEndpointDefinition } {
+  const raw = object(input, '模型端点');
+  const id = endpointId(raw.id);
+  const originalId = raw.originalId === undefined ? undefined : endpointId(raw.originalId, '原端点名称');
+  const config = loadConfigFile();
+  const existing = config?.endpoints[originalId ?? id]
+    ?? ((originalId ?? id) === 'kimi' ? legacyKimiDefinition() : undefined);
+  const merged: Record<string, unknown> = {
+    ...(existing ?? {}),
+    protocol: raw.protocol,
+    url: raw.url,
+    model: raw.model,
+    auth: raw.auth,
+    structuredOutput: raw.structuredOutput ?? existing?.structuredOutput ?? 'prompt',
+    timeoutMs: raw.timeoutMs ?? existing?.timeoutMs ?? 90_000,
+  };
+  if (raw.temperature !== undefined) merged.temperature = raw.temperature;
+  else delete merged.temperature;
+  if (raw.thinking !== undefined) merged.thinking = raw.thinking;
+  else delete merged.thinking;
+  if (raw.headers !== undefined) merged.headers = raw.headers;
+  if (typeof raw.apiKey === 'string' && raw.apiKey.trim()) {
+    merged.apiKey = raw.apiKey.trim();
+    delete merged.apiKeyEnv;
+  }
+  delete merged.verifiedAt;
+  delete merged.verificationFingerprint;
+  return { id, ...(originalId ? { originalId } : {}), definition: parseEndpoint(id, merged) };
+}
+
+export async function testModelEndpoint(input: unknown): Promise<ModelEndpointTestResult> {
+  const draft = normalizeEndpointDraft(input);
+  const endpoint = resolveDefinition(draft.id, draft.definition);
+  const startedAt = Date.now();
+  const response = await requestModelText(endpoint, {
+    messages: [{ role: 'user', content: '只回复 OK，用于验证模型连接。' }],
+    maxOutputTokens: 16,
+    temperature: 0,
+    timeoutMs: endpoint.timeoutMs,
+  });
+  if (!response.text.trim()) throw new Error('模型连接成功，但没有返回可解析文本');
+  const testedAt = new Date().toISOString();
+  const token = randomUUID();
+  const fingerprint = endpointFingerprint(draft.id, draft.definition);
+  for (const [key, value] of verifiedDrafts) {
+    if (value.expiresAt <= Date.now()) verifiedDrafts.delete(key);
+  }
+  verifiedDrafts.set(token, {
+    expiresAt: Date.now() + TEST_TOKEN_TTL_MS,
+    ...(draft.originalId ? { originalId: draft.originalId } : {}),
+    id: draft.id,
+    definition: draft.definition,
+    fingerprint,
+    testedAt,
+  });
+  return {
+    token,
+    testedAt,
+    latencyMs: Date.now() - startedAt,
+    model: response.model,
+    preview: response.text.trim().slice(0, 80),
+  };
+}
+
+function writeConfig(config: ModelConfigFile): void {
+  const filePath = modelConfigPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
+export function saveTestedModelEndpoint(tokenValue: unknown): ModelSettingsSnapshot {
+  const token = nonEmptyString(tokenValue, '连接测试凭证');
+  const tested = verifiedDrafts.get(token);
+  verifiedDrafts.delete(token);
+  if (!tested || tested.expiresAt <= Date.now()) throw new Error('连接测试已失效，请重新测试');
+  if (tested.fingerprint !== endpointFingerprint(tested.id, tested.definition)) throw new Error('端点内容已改变，请重新测试');
+
+  const current = loadConfigFile();
+  const config: ModelConfigFile = current ?? {
+    schemaVersion: 1,
+    evolutionMode: 'local',
+    summaryMode: 'local',
+    endpoints: {},
+    routes: {},
+    strategies: {},
+  };
+  if (tested.id !== tested.originalId && config.endpoints[tested.id]) throw new Error(`模型端点 ${tested.id} 已存在`);
+  if (tested.originalId && tested.originalId !== tested.id) {
+    for (const [purpose, routedId] of Object.entries(config.routes ?? {})) {
+      if (routedId === tested.originalId) config.routes = { ...config.routes, [purpose]: tested.id };
+    }
+    for (const strategy of Object.values(config.strategies ?? {})) {
+      if (strategy.endpoint === tested.originalId) strategy.endpoint = tested.id;
+    }
+    delete config.endpoints[tested.originalId];
+  }
+  config.endpoints[tested.id] = {
+    ...tested.definition,
+    verifiedAt: tested.testedAt,
+    verificationFingerprint: tested.fingerprint,
+  };
+  if (!Object.values(config.routes ?? {}).some(Boolean)) {
+    config.routes = Object.fromEntries(MODEL_PURPOSES.map((purpose) => [purpose, tested.id]));
+  }
+  writeConfig(config);
+  return readModelSettings();
+}
+
+export function deleteModelEndpoint(value: unknown): ModelSettingsSnapshot {
+  const id = endpointId(value);
+  const config = loadConfigFile();
+  if (!config?.endpoints[id]) throw new Error(`模型端点 ${id} 不存在`);
+  if (Object.keys(config.endpoints).length <= 1) throw new Error('至少保留一个模型端点');
+  const routedPurpose = Object.entries(config.routes ?? {}).find(([, endpoint]) => endpoint === id)?.[0];
+  if (routedPurpose) throw new Error(`模型端点仍用于 ${routedPurpose}，请先调整用途路由`);
+  const strategy = Object.entries(config.strategies ?? {}).find(([, definition]) => definition.endpoint === id)?.[0];
+  if (strategy) throw new Error(`模型端点仍用于文明策略 ${strategy}`);
+  delete config.endpoints[id];
+  writeConfig(config);
   return readModelSettings();
 }

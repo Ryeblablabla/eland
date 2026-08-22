@@ -1,5 +1,4 @@
-.focus-inspector,
-.civilization-ending {
+.focus-inspector {
   --observation-label-primary: rgba(255, 255, 255, 0.84);
   --observation-label-secondary: rgba(255, 255, 255, 0.56);
   --observation-label-tertiary: rgba(255, 255, 255, 0.42);
@@ -63,8 +62,7 @@
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
-.focus-inspector__eyebrow,
-.civilization-ending__eyebrow {
+.focus-inspector__eyebrow {
   margin: 0;
   color: var(--observation-label-tertiary);
   font-size: 12px;
@@ -150,6 +148,109 @@
   line-height: 18px;
 }
 
+.focus-inspector--structure {
+  width: min(390px, calc(100vw - 48px));
+  max-height: min(640px, calc(100vh - 48px));
+  grid-template-rows: minmax(0, 1fr);
+  background: rgba(8, 10, 18, 0.32);
+  -webkit-backdrop-filter: blur(10px) saturate(116%);
+  backdrop-filter: blur(10px) saturate(116%);
+}
+
+.focus-inspector--structure .focus-inspector__scroll {
+  padding: 22px 24px 24px;
+}
+
+.structure-inspector__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.structure-inspector__header button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  outline: none;
+  background: var(--observation-fill-1);
+  color: var(--observation-label-secondary);
+  cursor: pointer;
+}
+
+.structure-inspector__header button:hover,
+.structure-inspector__header button:focus-visible {
+  background: var(--observation-fill-2);
+  color: var(--observation-label-primary);
+}
+
+.structure-inspector__header button:focus-visible {
+  box-shadow: 0 0 0 2px var(--observation-focus);
+}
+
+.structure-inspector__summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: var(--observation-fill-1);
+}
+
+.structure-inspector__summary > p {
+  color: var(--observation-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.structure-inspector__summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.structure-inspector__summary span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--observation-fill-1);
+  color: var(--observation-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.structure-inspector__details {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 0.5px solid var(--observation-separator);
+}
+
+.structure-inspector__details section {
+  display: grid;
+  gap: 6px;
+}
+
+.structure-inspector__details h3 {
+  margin: 0;
+  color: var(--observation-label-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.structure-inspector__details p {
+  margin: 0;
+  color: var(--observation-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .person-header {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
@@ -218,7 +319,8 @@
 }
 
 .person-header__state,
-.person-header__condition {
+.person-header__condition,
+.person-header__trait {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -226,6 +328,14 @@
   font-size: 12px;
   line-height: 18px;
   white-space: nowrap;
+}
+
+.person-header__trait {
+  padding: 0 7px;
+  border: 1px solid rgba(194, 166, 255, 0.32);
+  border-radius: 999px;
+  color: #d4c0ff;
+  background: rgba(112, 72, 168, 0.16);
 }
 
 .person-header__state--active {
@@ -1271,66 +1381,6 @@
   transform: none;
 }
 
-.civilization-ending {
-  position: absolute;
-  inset: 0;
-  z-index: 810;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  padding: 32px;
-  background: rgba(2, 3, 10, 0.82);
-  -webkit-backdrop-filter: blur(10px) saturate(110%);
-  backdrop-filter: blur(10px) saturate(110%);
-  animation: civilization-ending-enter 480ms var(--observation-ease-out) both;
-}
-
-.civilization-ending--leaving {
-  pointer-events: none;
-  animation: civilization-ending-exit 240ms var(--observation-ease-out) both;
-}
-
-.civilization-ending__content {
-  width: min(768px, calc(100vw - 32px));
-  text-align: center;
-}
-
-.civilization-ending__content h1 {
-  margin: 12px 0 0;
-  color: var(--observation-label-primary);
-  font-family: var(--font-display);
-  font-size: 64px;
-  font-weight: 560;
-  letter-spacing: 0.035em;
-  line-height: 1.18;
-}
-
-.civilization-ending__duration {
-  margin: 20px 0 0;
-  color: var(--observation-label-secondary);
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-  line-height: 24px;
-}
-
-.civilization-ending__summary {
-  max-width: 560px;
-  margin: 16px auto 0;
-  color: var(--observation-label-tertiary);
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 430;
-  letter-spacing: 0.015em;
-  line-height: 22px;
-}
-
-.civilization-ending__actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 32px;
-}
-
 @keyframes focus-inspector-enter {
   from { opacity: 0; transform: translateX(16px); }
   to { opacity: 1; transform: translateX(0); }
@@ -1348,16 +1398,6 @@
 
 @keyframes person-conversation-spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes civilization-ending-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes civilization-ending-exit {
-  from { opacity: 1; }
-  to { opacity: 0; }
 }
 
 @media (max-width: 640px) {
@@ -1388,6 +1428,16 @@
     padding: 12px 20px max(20px, env(safe-area-inset-bottom));
   }
 
+  .focus-inspector--structure {
+    width: 100%;
+    max-width: 100%;
+    max-height: 54vh;
+  }
+
+  .focus-inspector--structure .focus-inspector__scroll {
+    padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+  }
+
   .person-vitals {
     gap: 8px;
   }
@@ -1410,30 +1460,13 @@
     display: none;
   }
 
-  .civilization-ending {
-    padding: 24px 16px;
-  }
-
-  .civilization-ending__actions {
-    flex-direction: column-reverse;
-  }
-
-  .civilization-ending__actions .observation-button {
-    width: 100%;
-  }
-
-  .civilization-ending__content h1 {
-    font-size: 40px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .focus-inspector,
   .focus-inspector--closing,
   .focus-inspector__details,
-  .person-inventory,
-  .civilization-ending,
-  .civilization-ending--leaving {
+  .person-inventory {
     animation-duration: 0.01ms !important;
   }
 

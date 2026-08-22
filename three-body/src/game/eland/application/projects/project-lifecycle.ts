@@ -2,6 +2,7 @@ import type { SimulationState } from '../../domain/model';
 import { isAlive, type PersonState } from '../../domain/person';
 import type { ProjectState } from '../../domain/project';
 import { shelterGeometryAt } from '../../domain/structure';
+import { recordProjectNeedResolution } from '../../domain/cognition';
 import { applyRelationEvidence } from '../../domain/relation';
 import { remember } from '../../domain/memory';
 import { buildProjectPressureBasis } from '../project-pressure';
@@ -52,6 +53,17 @@ function rememberJointCompletion(state: SimulationState, project: ProjectState):
   }
 }
 
+function finalCompletionActor(state: SimulationState, project: ProjectState): PersonState | undefined {
+  const completionIds = new Set(project.completionEventIds);
+  const finalProjectActionId = [...project.actionEventIds].reverse().find((eventId) => completionIds.has(eventId))
+    ?? project.completionEventIds.at(-1);
+  if (!finalProjectActionId) return undefined;
+  const actorId = [...(project.progressEvidence ?? [])].reverse()
+    .find((evidence) => evidence.eventId === finalProjectActionId)?.actorId;
+  if (!actorId) return undefined;
+  return state.people.find((person) => person.id === actorId && isAlive(person));
+}
+
 export function completeProject(
   state: SimulationState,
   project: ProjectState,
@@ -77,5 +89,7 @@ export function completeProject(
       evidenceEventIds: [...new Set(evidenceEventIds)],
     };
   }
+  const completionActor = finalCompletionActor(state, project);
+  if (completionActor) recordProjectNeedResolution(completionActor, project, atMonth);
   rememberJointCompletion(state, project);
 }

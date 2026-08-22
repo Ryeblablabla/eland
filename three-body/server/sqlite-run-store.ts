@@ -603,7 +603,7 @@ export class SqliteRunStore implements RunStore {
     const previousMetadata = this.runStateRootMetadata(encodedAgainst.stateHash);
     const snapshot = await encodeSegmentedRunState(
       state,
-      previousMetadata && options.historyMode !== "replace"
+      previousMetadata?.schemaVersion === 2 && options.historyMode !== "replace"
         ? { mode: "append", previous: previousMetadata }
         : { mode: "replace" },
     );

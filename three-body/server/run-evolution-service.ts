@@ -1,5 +1,4 @@
-import { createSimulation, type SimulationState } from '../src/game/eland/simulation';
-import { buildEvolutionFactsReport, checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
+import { checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
 import {
   assertEvolutionIdentity,
   evolutionExpectedBasisKey,
@@ -7,7 +6,8 @@ import {
   type EvolutionRunRequest,
 } from './evolution-request';
 import { HttpError } from './http-error';
-import { logPerf, perfElapsed, perfNow } from './perf';
+import { completeLongEvolution } from './run-evolution-executor';
+import { executeLongEvolutionInWorker } from './run-evolution-worker-client';
 import type { SqliteRunStore } from './sqlite-run-store';
 
 const RULE_PLANNER_MODEL = 'rule-planner-v1';
@@ -61,104 +61,6 @@ export class RunEvolutionService {
     } catch (error) {
       this.releaseEvolutionJob(id, job);
       throw error;
-    }
-  }
-
-  private async completeEvolution(
-    id: string,
-    state: SimulationState,
-    previous: EvolutionPath,
-    requestedEndMonth: number,
-  ): Promise<EvolutionPath> {
-    const running = evolvePath(state, {
-      runId: id,
-      provider: 'local',
-      model: previous.model,
-      fromMonth: previous.fromMonth,
-      requestedEndMonth,
-      previous,
-      checkpoint: checkpointFor(state, {
-        inputTokens: previous.checkpoints.at(-1)?.inputTokens ?? 0,
-        outputTokens: previous.checkpoints.at(-1)?.outputTokens ?? 0,
-      }, previous.checkpoints.at(-1)),
-      status: 'running',
-    });
-    const report = buildEvolutionFactsReport(state, running);
-    await this.store.saveEvolutionReport(id, report);
-    const completed = evolvePath(state, {
-      runId: id,
-      provider: 'local',
-      model: running.model,
-      fromMonth: running.fromMonth,
-      requestedEndMonth,
-      previous: running,
-      status: 'completed',
-    });
-    await this.store.saveEvolutionPath(id, completed);
-    return completed;
-  }
-
-  private async executeLongEvolution(
-    id: string,
-    requestedEndMonth: number,
-    initialPath: EvolutionPath,
-  ): Promise<void> {
-    const current = await this.store.load(id);
-    const controller = createSimulation({ state: current.state });
-    let persisted = current.state;
-    let path = initialPath;
-    const inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;
-    const outputTokens = path.checkpoints.at(-1)?.outputTokens ?? 0;
-    try {
-      while (persisted.clock.elapsedMonths < requestedEndMonth && persisted.civilization.status === 'running') {
-        const batchMonths = Math.min(12, requestedEndMonth - persisted.clock.elapsedMonths);
-        const batchStartedAt = perfNow();
-        const simulationStartedAt = perfNow();
-        const state = controller.step(batchMonths);
-        const simulationMs = perfElapsed(simulationStartedAt);
-        if (state.clock.elapsedMonths <= persisted.clock.elapsedMonths && state.civilization.status === 'running') {
-          throw new Error(`演化未向前推进：仍在第 ${state.clock.elapsedMonths} 月`);
-        }
-        persisted = state;
-        const persistenceStartedAt = perfNow();
-        persisted = (await this.store.save(id, persisted, undefined, { historyMode: 'append' })).state;
-        path = evolvePath(persisted, {
-          runId: id,
-          provider: 'local',
-          model: RULE_PLANNER_MODEL,
-          fromMonth: initialPath.fromMonth,
-          requestedEndMonth,
-          previous: path,
-          checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }, path.checkpoints.at(-1)),
-          status: 'running',
-        });
-        await this.store.saveEvolutionPath(id, path);
-        logPerf('long-evolution-batch', {
-          runId: id,
-          throughMonth: persisted.clock.elapsedMonths,
-          batchMonths,
-          people: persisted.people.length,
-          totalEvents: persisted.world.past.length,
-          simulationMs,
-          persistenceMs: perfElapsed(persistenceStartedAt),
-          totalMs: perfElapsed(batchStartedAt),
-        });
-      }
-      await this.completeEvolution(id, persisted, path, requestedEndMonth);
-    } catch (error) {
-      persisted = (await this.store.save(id, persisted, undefined, { historyMode: 'append' })).state;
-      path = evolvePath(persisted, {
-        runId: id,
-        provider: 'local',
-        model: path.model,
-        fromMonth: initialPath.fromMonth,
-        requestedEndMonth,
-        previous: path,
-        checkpoint: checkpointFor(persisted, { inputTokens, outputTokens }, path.checkpoints.at(-1)),
-        status: 'failed',
-        failure: error instanceof Error ? error.message : String(error),
-      });
-      await this.store.saveEvolutionPath(id, path);
     }
   }
 
@@ -221,12 +123,16 @@ export class RunEvolutionService {
       await this.store.saveEvolutionPath(id, initial);
 
       if (current.state.civilization.status === 'ended' || current.state.clock.elapsedMonths >= requestedEndMonth) {
-        const completed = await this.completeEvolution(id, current.state, initial, requestedEndMonth);
+        const completed = await completeLongEvolution(this.store, id, current.state, initial, requestedEndMonth);
         this.releaseEvolutionJob(id, job);
         return completed;
       }
 
-      const promise = this.serializeRun(id, () => this.executeLongEvolution(id, requestedEndMonth, initial)).then(() => undefined);
+      const promise = this.serializeRun(id, () => executeLongEvolutionInWorker(
+        this.store.dataDirectory(),
+        id,
+        requestedEndMonth,
+      )).then(() => undefined);
       job.promise = promise;
       this.observeEvolutionJob(id, job, promise);
       return initial;

@@ -8,6 +8,7 @@ import {
 } from '../../domain/decision-budget';
 import { chooseDependentCareReflex, dependentCareUrgency, shouldRemainShelteredForDependent } from '../../domain/dependent-care';
 import { lifePlanningStage } from '../../domain/life-stage';
+import { synchronizeMortuaryPerceptions } from '../../domain/mortuary';
 import type {
   AgentDecider,
   BatchDecider,
@@ -27,6 +28,7 @@ import {
   isRecoveringFromDehydratedHibernation,
   type PersonId,
 } from '../../domain/person';
+import { personById } from '../../domain/state-index';
 import {
   chooseHibernationRecoveryReflex,
   chooseSurvivalReflex,
@@ -79,7 +81,7 @@ function executePrepared(
   const reviewedPeople = new Set<PersonId>();
   const plannedAtTickOne = new Set<PersonId>();
   for (const candidate of candidates) {
-    const person = state.people.find((item) => item.id === candidate.person.id);
+    const person = personById(state, candidate.person.id);
     if (!person || !isAlive(person)) continue;
     const freshContext = buildDecisionContext(state, person, atMonth);
     const picked = decisions.get(person.id);
@@ -181,6 +183,7 @@ function executePrepared(
     for (const person of participants) person.position.tickPath.push(person.position.cellId);
   }
   events.push(...advanceBodies(state, atMonth));
+  events.push(...synchronizeMortuaryPerceptions(state, atMonth, events.length));
   events.push(...synchronizeHibernationIntentSuspensions(state, atMonth));
   events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
   events.push(...advanceSharedRelationshipExperience(state, events, atMonth));

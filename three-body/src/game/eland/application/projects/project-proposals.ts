@@ -43,6 +43,7 @@ import {
 import { proposalWithInquiryOpportunityMemory } from './project-inquiry';
 import { visibleCellsFor } from './project-perception';
 import { knownFacilitySite } from './project-workplace';
+import { projectsOwnedBy } from '../../domain/state-index';
 function proposal(
   state: SimulationState,
   person: PersonState,
@@ -229,7 +230,7 @@ export function shelterAdaptationProposal(
  * it opens planning but neither creates a project nor changes the body.
  */
 export function hasCausalShelterAdaptationNeed(state: SimulationState, person: PersonState): boolean {
-  const activeProjects = state.projects.filter((project) => project.ownerId === person.id && project.status === 'active');
+  const activeProjects = projectsOwnedBy(state, person.id).filter((project) => project.status === 'active');
   if (activeProjects.some((project) => project.shelterRequirement)) return true;
   if (activeProjects.length) return false;
   const visibleCells = visibleCellsFor(person);
@@ -253,7 +254,7 @@ export function deriveProjectProposals(
   visibleDrops: DropState[],
   visiblePeople: PersonState[],
 ): ProjectProposal[] {
-  if (state.projects.some((project) => project.ownerId === person.id && project.status === 'active')) return [];
+  if (projectsOwnedBy(state, person.id).some((project) => project.status === 'active')) return [];
   const visible = new Set(visibleCells);
   const pressureView: ProjectPressureView = { visibleCells, visibleDrops, visiblePeople };
   const proposals: ProjectProposal[] = [];
@@ -332,7 +333,7 @@ export function deriveProjectProposals(
     targetKnowledgeId: durableKnowledge.id,
   }, pressureView, knowledgeBasis));
 
-  if (!state.projects.some((project) => project.ownerId === person.id
+  if (!projectsOwnedBy(state, person.id).some((project) => project.ownerId === person.id
     && project.status === 'completed'
     && project.desiredFunction === 'water-powered-crop-processing')) {
     const mechanicalCandidate = mechanicalPowerProposalCandidate(state, person, visibleCells);
@@ -580,7 +581,10 @@ export function deriveProjectProposals(
     'coordination-capacity',
     'civic-coordination',
     '建立公共厅堂，让记录、度量与分配成为稳定制度',
-    hasObserved(Material.Bronze, Material.BronzeTool) && ownsAll(Material.FiredBrick, Material.WoodTablet)
+    hasObserved(Material.Bronze, Material.BronzeTool)
+      && hasObserved(Material.FiredBrick)
+      && (hasObserved(Material.WoodTablet)
+        || (hasObserved(Material.StoneTool) && hasObserved(Material.Wood)))
       && !hasFacility(Material.CivicHall, Material.KeepCore),
     'construction',
   );
@@ -589,18 +593,22 @@ export function deriveProjectProposals(
     'iron-capability',
     'iron-workshop',
     '建立铁匠铺，以青铜经验和耐火砖跨过铁器高温门槛',
-    hasObserved(Material.Bronze, Material.BronzeTool) && ownsAll(Material.Bronze, Material.FiredBrick)
+    hasObserved(Material.Bronze, Material.BronzeTool) && hasObserved(Material.FiredBrick)
       && !hasFacility(Material.Smithy),
     'construction',
   );
+  const smithySite = knownFacilitySite(state, person, [Material.Smithy]);
   pushDevelopmentProposal('iron-capability', 'iron-charge', '把铁矿与木炭配成可还原的铁料',
-    ownsAll(Material.IronOre, Material.Charcoal) && hasFacility(Material.Smithy));
+    Boolean(smithySite && hasObserved(Material.IronOre) && hasObserved(Material.Charcoal)),
+    'production', smithySite);
   pushDevelopmentProposal('iron-capability', 'iron-reduction', '在铁匠铺中把铁料还原成海绵铁',
-    hasOwn(Material.IronCharge) && hasFacility(Material.Smithy));
+    Boolean(smithySite && hasObserved(Material.IronCharge)), 'production', smithySite);
   pushDevelopmentProposal('iron-capability', 'iron-working', '反复加热和锤炼海绵铁，得到可用铁料',
-    ownsAll(Material.IronBloom, Material.Charcoal));
+    Boolean(smithySite && hasObserved(Material.IronBloom) && hasObserved(Material.Charcoal)),
+    'production', smithySite);
   pushDevelopmentProposal('iron-capability', 'iron-tooling', '锻造铁制生产工具，缓解更大人口的持续资源压力',
-    ownsAll(Material.Iron, Material.Wood));
+    Boolean(smithySite && hasObserved(Material.Iron) && hasObserved(Material.Wood)),
+    'production', smithySite);
   pushDevelopmentProposal(
     'coordination-capacity',
     'fortified-coordination',

@@ -1,0 +1,3418 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "household-co-residence-audit-v1",
+  "generatedAt": "2026-08-21T00:12:39.497Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; the audit never advances or mutates a run.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "runId": "candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1",
+    "checkpointMonth": 1440
+  },
+  "method": {
+    "householdFactContract": "EnvironmentFact change=relationship and diff.process=household-co-residence",
+    "invariant": "Each fact resolves an active-established companion agreement, proposal/establishment/birth sources, twelve globally unique unconsumed child-adult co-residence months, a non-parent adult, and bilateral relation evidence. A missing terminal relation source is accepted only when all 24 bounded-cache slots resolve to evidence later than that fact.",
+    "eligibleTransition": "At birth, a co-located age>=16 non-parent adult in an already established companion agreement with a genetic parent begins as newborn->adult sourced trust only; a valid household fact makes the pair bilateral. Agreements established later in childhood are reported separately.",
+    "controls": "Genetic parents and co-located adults who never overlap a child-age established companion agreement with a genetic parent must receive no household-co-residence fact.",
+    "observerBoundary": "Counts and validation only; no result is fed back into needs, options, relationships, or civilization indices."
+  },
+  "run": {
+    "runId": "candidate-gen5-social-v5f-cont-20260821-s20260815-m948-y200-r1",
+    "seed": 20260815,
+    "status": "running",
+    "elapsedMonths": 1440,
+    "people": 77,
+    "livingPeople": 49,
+    "maxGeneration": 4,
+    "peopleByGeneration": {
+      "0": 7,
+      "1": 19,
+      "2": 24,
+      "3": 22,
+      "4": 5
+    },
+    "householdFacts": {
+      "total": 0,
+      "valid": 0,
+      "invalid": 0,
+      "issueCounts": {},
+      "sourceRetention": {
+        "retainedDirections": 0,
+        "sourceEvictedByBoundedCacheDirections": 0,
+        "missingDirections": 0,
+        "factsWithSourceEvictedByBoundedCache": 0,
+        "factsWithUnaccountedMissingSource": 0
+      },
+      "globalInvariantViolations": {
+        "duplicateSourceBlocks": {
+          "total": 0,
+          "evidence": []
+        },
+        "overlappingQualifyingMonths": {
+          "total": 0,
+          "evidence": []
+        },
+        "sameMonthMultipleFacts": {
+          "total": 0,
+          "evidence": []
+        },
+        "pairFactCountExceedsChildhoodBound": {
+          "total": 0,
+          "evidence": []
+        }
+      },
+      "facts": []
+    },
+    "eligibleStepAdultNewbornPairs": {
+      "total": 117,
+      "initialOneWay": 117,
+      "becameBilateral": 0,
+      "conversionRate": 0,
+      "unconverted": 117,
+      "pairs": [
+        {
+          "childPersonId": "born-69-cangtianying-8",
+          "childGeneration": 1,
+          "childBornAtMonth": 69,
+          "adultPersonId": "zhugeliang",
+          "adultGeneration": 0,
+          "birthEventId": "e-69-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:6:cangtianying:zhugeliang",
+            "offer-companion:7:zhugeliang:armstrong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-98-cangtianying-11",
+          "childGeneration": 1,
+          "childBornAtMonth": 98,
+          "adultPersonId": "tesla",
+          "adultGeneration": 0,
+          "birthEventId": "e-98-environment-body-2",
+          "companionAgreementIds": [
+            "offer-companion:70:cangtianying:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-98-cangtianying-11",
+          "childGeneration": 1,
+          "childBornAtMonth": 98,
+          "adultPersonId": "zhugeliang",
+          "adultGeneration": 0,
+          "birthEventId": "e-98-environment-body-2",
+          "companionAgreementIds": [
+            "offer-companion:6:cangtianying:zhugeliang",
+            "offer-companion:7:zhugeliang:armstrong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-140-cangtianying-12",
+          "childGeneration": 1,
+          "childBornAtMonth": 140,
+          "adultPersonId": "armstrong",
+          "adultGeneration": 0,
+          "birthEventId": "e-140-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:6:armstrong:cangtianying"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-140-cangtianying-12",
+          "childGeneration": 1,
+          "childBornAtMonth": 140,
+          "adultPersonId": "zhugeliang",
+          "adultGeneration": 0,
+          "birthEventId": "e-140-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:40:zhugeliang:tesla",
+            "offer-companion:6:cangtianying:zhugeliang"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-213-cangtianying-18",
+          "childGeneration": 1,
+          "childBornAtMonth": 213,
+          "adultPersonId": "tesla",
+          "adultGeneration": 0,
+          "birthEventId": "e-213-environment-body-3",
+          "companionAgreementIds": [
+            "offer-companion:129:armstrong:tesla",
+            "offer-companion:70:cangtianying:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-213-cangtianying-18",
+          "childGeneration": 1,
+          "childBornAtMonth": 213,
+          "adultPersonId": "zhugeliang",
+          "adultGeneration": 0,
+          "birthEventId": "e-213-environment-body-3",
+          "companionAgreementIds": [
+            "offer-companion:6:cangtianying:zhugeliang",
+            "offer-companion:7:zhugeliang:armstrong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-246-bai-suzhen-19",
+          "childGeneration": 1,
+          "childBornAtMonth": 246,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-246-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:112:zhaotianli:bai-suzhen"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-258-zhaotianli-21",
+          "childGeneration": 1,
+          "childBornAtMonth": 258,
+          "adultPersonId": "bai-suzhen",
+          "adultGeneration": 0,
+          "birthEventId": "e-258-environment-body-2",
+          "companionAgreementIds": [
+            "offer-companion:112:sunwukong:bai-suzhen",
+            "offer-companion:112:zhaotianli:bai-suzhen"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-284-bai-suzhen-22",
+          "childGeneration": 1,
+          "childBornAtMonth": 284,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-284-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:112:zhaotianli:bai-suzhen",
+            "offer-companion:235:zhaotianli:sunwukong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-301-zhaotianli-23",
+          "childGeneration": 1,
+          "childBornAtMonth": 301,
+          "adultPersonId": "bai-suzhen",
+          "adultGeneration": 0,
+          "birthEventId": "e-301-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:112:sunwukong:bai-suzhen",
+            "offer-companion:112:zhaotianli:bai-suzhen"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-311-bai-suzhen-24",
+          "childGeneration": 1,
+          "childBornAtMonth": 311,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-311-environment-body-2",
+          "companionAgreementIds": [
+            "offer-companion:112:zhaotianli:bai-suzhen",
+            "offer-companion:235:zhaotianli:sunwukong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "childGeneration": 2,
+          "childBornAtMonth": 551,
+          "adultPersonId": "bai-suzhen",
+          "adultGeneration": 0,
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:351:bai-suzhen:born-65-bai-suzhen-7"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "childGeneration": 2,
+          "childBornAtMonth": 551,
+          "adultPersonId": "born-141-bai-suzhen-13",
+          "adultGeneration": 1,
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:433:born-141-bai-suzhen-13:born-65-bai-suzhen-7",
+            "offer-companion:488:born-142-zhaotianli-14:born-141-bai-suzhen-13"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "childGeneration": 2,
+          "childBornAtMonth": 551,
+          "adultPersonId": "born-98-bai-suzhen-10",
+          "adultGeneration": 1,
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14",
+            "offer-companion:533:born-65-bai-suzhen-7:born-98-bai-suzhen-10"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "childGeneration": 2,
+          "childBornAtMonth": 551,
+          "adultPersonId": "sunwukong",
+          "adultGeneration": 0,
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:439:sunwukong:born-65-bai-suzhen-7",
+            "offer-companion:499:born-142-zhaotianli-14:sunwukong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "childGeneration": 2,
+          "childBornAtMonth": 551,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:433:zhaotianli:born-142-zhaotianli-14",
+            "offer-companion:467:born-65-bai-suzhen-7:zhaotianli"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-578-born-142-zhaotianli-14-28",
+          "childGeneration": 2,
+          "childBornAtMonth": 578,
+          "adultPersonId": "born-141-bai-suzhen-13",
+          "adultGeneration": 1,
+          "birthEventId": "e-578-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:433:born-141-bai-suzhen-13:born-65-bai-suzhen-7",
+            "offer-companion:488:born-142-zhaotianli-14:born-141-bai-suzhen-13"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "childGeneration": 2,
+          "childBornAtMonth": 628,
+          "adultPersonId": "born-141-bai-suzhen-13",
+          "adultGeneration": 1,
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:433:born-141-bai-suzhen-13:born-65-bai-suzhen-7",
+            "offer-companion:488:born-142-zhaotianli-14:born-141-bai-suzhen-13"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "childGeneration": 2,
+          "childBornAtMonth": 628,
+          "adultPersonId": "born-69-cangtianying-8",
+          "adultGeneration": 1,
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:573:born-65-bai-suzhen-7:born-69-cangtianying-8",
+            "offer-companion:587:born-142-zhaotianli-14:born-69-cangtianying-8"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "childGeneration": 2,
+          "childBornAtMonth": 628,
+          "adultPersonId": "born-98-bai-suzhen-10",
+          "adultGeneration": 1,
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14",
+            "offer-companion:533:born-65-bai-suzhen-7:born-98-bai-suzhen-10"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "childGeneration": 2,
+          "childBornAtMonth": 628,
+          "adultPersonId": "sunwukong",
+          "adultGeneration": 0,
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:439:sunwukong:born-65-bai-suzhen-7",
+            "offer-companion:499:born-142-zhaotianli-14:sunwukong"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "childGeneration": 2,
+          "childBornAtMonth": 628,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:433:zhaotianli:born-142-zhaotianli-14",
+            "offer-companion:467:born-65-bai-suzhen-7:zhaotianli"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-647-born-98-bai-suzhen-10-31",
+          "childGeneration": 2,
+          "childBornAtMonth": 647,
+          "adultPersonId": "born-142-zhaotianli-14",
+          "adultGeneration": 1,
+          "birthEventId": "e-647-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:323:born-65-bai-suzhen-7:born-142-zhaotianli-14",
+            "offer-companion:414:born-98-bai-suzhen-10:born-142-zhaotianli-14"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-647-born-98-bai-suzhen-10-31",
+          "childGeneration": 2,
+          "childBornAtMonth": 647,
+          "adultPersonId": "sunwukong",
+          "adultGeneration": 0,
+          "birthEventId": "e-647-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:439:sunwukong:born-65-bai-suzhen-7"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-647-born-98-bai-suzhen-10-31",
+          "childGeneration": 2,
+          "childBornAtMonth": 647,
+          "adultPersonId": "zhaotianli",
+          "adultGeneration": 0,
+          "birthEventId": "e-647-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:467:born-65-bai-suzhen-7:zhaotianli"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-677-born-142-zhaotianli-14-33",
+          "childGeneration": 2,
+          "childBornAtMonth": 677,
+          "adultPersonId": "born-141-bai-suzhen-13",
+          "adultGeneration": 1,
+          "birthEventId": "e-677-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:488:born-142-zhaotianli-14:born-141-bai-suzhen-13"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-678-born-190-cangtianying-15-34",
+          "childGeneration": 2,
+          "childBornAtMonth": 678,
+          "adultPersonId": "tesla",
+          "adultGeneration": 0,
+          "birthEventId": "e-678-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:472:born-213-cangtianying-18:tesla",
+            "offer-companion:475:born-190-cangtianying-15:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-678-born-190-cangtianying-15-34",
+          "childGeneration": 2,
+          "childBornAtMonth": 678,
+          "adultPersonId": "zhugeliang",
+          "adultGeneration": 0,
+          "birthEventId": "e-678-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:507:zhugeliang:born-213-cangtianying-18",
+            "offer-companion:525:zhugeliang:born-190-cangtianying-15"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-728-born-190-cangtianying-15-37",
+          "childGeneration": 2,
+          "childBornAtMonth": 728,
+          "adultPersonId": "tesla",
+          "adultGeneration": 0,
+          "birthEventId": "e-728-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:426:born-140-cangtianying-12:tesla",
+            "offer-companion:475:born-190-cangtianying-15:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-730-born-301-zhaotianli-23-38",
+          "childGeneration": 2,
+          "childBornAtMonth": 730,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-730-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-740-born-386-zhaotianli-25-39",
+          "childGeneration": 2,
+          "childBornAtMonth": 740,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-740-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-770-born-386-zhaotianli-25-40",
+          "childGeneration": 2,
+          "childBornAtMonth": 770,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-770-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-772-born-311-bai-suzhen-24-41",
+          "childGeneration": 2,
+          "childBornAtMonth": 772,
+          "adultPersonId": "born-195-bai-suzhen-17",
+          "adultGeneration": 1,
+          "birthEventId": "e-772-environment-body-24",
+          "companionAgreementIds": [
+            "offer-companion:652:born-195-bai-suzhen-17:born-311-bai-suzhen-24",
+            "offer-companion:683:born-258-zhaotianli-21:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-782-born-301-zhaotianli-23-42",
+          "childGeneration": 2,
+          "childBornAtMonth": 782,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-782-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "bai-suzhen",
+          "adultGeneration": 0,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:569:bai-suzhen:born-195-bai-suzhen-17",
+            "offer-companion:576:born-311-bai-suzhen-24:bai-suzhen"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "born-142-zhaotianli-14",
+          "adultGeneration": 1,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:647:born-142-zhaotianli-14:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "born-258-zhaotianli-21",
+          "adultGeneration": 1,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:620:born-258-zhaotianli-21:born-311-bai-suzhen-24",
+            "offer-companion:683:born-258-zhaotianli-21:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "born-69-cangtianying-8",
+          "adultGeneration": 1,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:619:born-311-bai-suzhen-24:born-69-cangtianying-8",
+            "offer-companion:734:born-69-cangtianying-8:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "born-98-bai-suzhen-10",
+          "adultGeneration": 1,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:695:born-311-bai-suzhen-24:born-98-bai-suzhen-10",
+            "offer-companion:715:born-98-bai-suzhen-10:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "sunwukong",
+          "adultGeneration": 0,
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:647:sunwukong:born-195-bai-suzhen-17"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-795-born-386-zhaotianli-25-44",
+          "childGeneration": 2,
+          "childBornAtMonth": 795,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-795-environment-body-23",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "childGeneration": 2,
+          "childBornAtMonth": 811,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "childGeneration": 2,
+          "childBornAtMonth": 829,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "childGeneration": 2,
+          "childBornAtMonth": 851,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "childGeneration": 2,
+          "childBornAtMonth": 890,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23",
+            "offer-companion:858:born-301-zhaotianli-23:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "childGeneration": 3,
+          "childBornAtMonth": 937,
+          "adultPersonId": "born-140-cangtianying-12",
+          "adultGeneration": 1,
+          "birthEventId": "e-937-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:426:born-140-cangtianying-12:tesla",
+            "offer-companion:821:born-576-born-190-cangtianying-15-27:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "childGeneration": 3,
+          "childBornAtMonth": 937,
+          "adultPersonId": "born-190-cangtianying-15",
+          "adultGeneration": 1,
+          "birthEventId": "e-937-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:475:born-190-cangtianying-15:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "childGeneration": 3,
+          "childBornAtMonth": 937,
+          "adultPersonId": "born-213-cangtianying-18",
+          "adultGeneration": 1,
+          "birthEventId": "e-937-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:472:born-213-cangtianying-18:tesla",
+            "offer-companion:820:born-576-born-190-cangtianying-15-27:born-213-cangtianying-18"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "childGeneration": 3,
+          "childBornAtMonth": 937,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-937-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27",
+            "offer-companion:895:born-678-born-190-cangtianying-15-34:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-972-born-576-born-190-cangtianying-15-27-51",
+          "childGeneration": 3,
+          "childBornAtMonth": 972,
+          "adultPersonId": "born-190-cangtianying-15",
+          "adultGeneration": 1,
+          "birthEventId": "e-972-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:508:born-190-cangtianying-15:born-140-cangtianying-12",
+            "offer-companion:938:born-190-cangtianying-15:born-576-born-190-cangtianying-15-27"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-992-born-576-born-190-cangtianying-15-27-52",
+          "childGeneration": 3,
+          "childBornAtMonth": 992,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-992-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27",
+            "offer-companion:895:born-678-born-190-cangtianying-15-34:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "childGeneration": 3,
+          "childBornAtMonth": 1015,
+          "adultPersonId": "born-140-cangtianying-12",
+          "adultGeneration": 1,
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:518:born-140-cangtianying-12:born-213-cangtianying-18",
+            "offer-companion:821:born-576-born-190-cangtianying-15-27:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "childGeneration": 3,
+          "childBornAtMonth": 1015,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27",
+            "offer-companion:857:born-213-cangtianying-18:born-678-born-190-cangtianying-15-34"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "childGeneration": 3,
+          "childBornAtMonth": 1015,
+          "adultPersonId": "born-704-born-190-cangtianying-15-35",
+          "adultGeneration": 2,
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:961:born-704-born-190-cangtianying-15-35:born-576-born-190-cangtianying-15-27",
+            "offer-companion:969:born-704-born-190-cangtianying-15-35:born-213-cangtianying-18"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "childGeneration": 3,
+          "childBornAtMonth": 1015,
+          "adultPersonId": "tesla",
+          "adultGeneration": 0,
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:472:born-213-cangtianying-18:tesla",
+            "offer-companion:766:born-576-born-190-cangtianying-15-27:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1050-born-551-born-142-zhaotianli-14-26-55",
+          "childGeneration": 3,
+          "childBornAtMonth": 1050,
+          "adultPersonId": "born-142-zhaotianli-14",
+          "adultGeneration": 1,
+          "birthEventId": "e-1050-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:488:born-142-zhaotianli-14:born-141-bai-suzhen-13"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "childGeneration": 3,
+          "childBornAtMonth": 1060,
+          "adultPersonId": "born-140-cangtianying-12",
+          "adultGeneration": 1,
+          "birthEventId": "e-1060-environment-body-31",
+          "companionAgreementIds": [
+            "offer-companion:426:born-140-cangtianying-12:tesla",
+            "offer-companion:821:born-576-born-190-cangtianying-15-27:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "childGeneration": 3,
+          "childBornAtMonth": 1060,
+          "adultPersonId": "born-213-cangtianying-18",
+          "adultGeneration": 1,
+          "birthEventId": "e-1060-environment-body-31",
+          "companionAgreementIds": [
+            "offer-companion:472:born-213-cangtianying-18:tesla",
+            "offer-companion:820:born-576-born-190-cangtianying-15-27:born-213-cangtianying-18"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "childGeneration": 3,
+          "childBornAtMonth": 1060,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-1060-environment-body-31",
+          "companionAgreementIds": [
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27",
+            "offer-companion:895:born-678-born-190-cangtianying-15-34:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "childGeneration": 3,
+          "childBornAtMonth": 1060,
+          "adultPersonId": "born-704-born-190-cangtianying-15-35",
+          "adultGeneration": 2,
+          "birthEventId": "e-1060-environment-body-31",
+          "companionAgreementIds": [
+            "offer-companion:961:born-704-born-190-cangtianying-15-35:born-576-born-190-cangtianying-15-27",
+            "offer-companion:988:tesla:born-704-born-190-cangtianying-15-35"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "childGeneration": 3,
+          "childBornAtMonth": 1060,
+          "adultPersonId": "born-728-born-190-cangtianying-15-37",
+          "adultGeneration": 2,
+          "birthEventId": "e-1060-environment-body-31",
+          "companionAgreementIds": [
+            "offer-companion:933:born-728-born-190-cangtianying-15-37:tesla"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-730-born-301-zhaotianli-23-38",
+          "adultGeneration": 2,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:1026:born-730-born-301-zhaotianli-23-38:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9",
+            "offer-companion:970:born-706-born-301-zhaotianli-23-36:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultGeneration": 2,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultGeneration": 2,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:983:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:988:born-811-born-301-zhaotianli-23-45:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "childGeneration": 3,
+          "childBornAtMonth": 1062,
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultGeneration": 2,
+          "birthEventId": "e-1062-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:993:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:994:born-829-born-386-zhaotianli-25-47:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "childGeneration": 3,
+          "childBornAtMonth": 1085,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "childGeneration": 3,
+          "childBornAtMonth": 1085,
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultGeneration": 2,
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:983:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "childGeneration": 3,
+          "childBornAtMonth": 1085,
+          "adultPersonId": "born-98-zhaotianli-9",
+          "adultGeneration": 1,
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9",
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "childGeneration": 3,
+          "childBornAtMonth": 1089,
+          "adultPersonId": "born-140-cangtianying-12",
+          "adultGeneration": 1,
+          "birthEventId": "e-1089-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:821:born-576-born-190-cangtianying-15-27:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "childGeneration": 3,
+          "childBornAtMonth": 1089,
+          "adultPersonId": "born-213-cangtianying-18",
+          "adultGeneration": 1,
+          "birthEventId": "e-1089-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:820:born-576-born-190-cangtianying-15-27:born-213-cangtianying-18",
+            "offer-companion:969:born-704-born-190-cangtianying-15-35:born-213-cangtianying-18"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "childGeneration": 3,
+          "childBornAtMonth": 1089,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-1089-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "childGeneration": 3,
+          "childBornAtMonth": 1104,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "childGeneration": 3,
+          "childBornAtMonth": 1104,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "childGeneration": 3,
+          "childBornAtMonth": 1104,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "childGeneration": 3,
+          "childBornAtMonth": 1104,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "childGeneration": 3,
+          "childBornAtMonth": 1104,
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultGeneration": 2,
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1109-born-576-born-190-cangtianying-15-27-63",
+          "childGeneration": 3,
+          "childBornAtMonth": 1109,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-1109-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1007:born-678-born-190-cangtianying-15-34:born-140-cangtianying-12",
+            "offer-companion:833:born-678-born-190-cangtianying-15-34:born-576-born-190-cangtianying-15-27"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1109-born-576-born-190-cangtianying-15-27-63",
+          "childGeneration": 3,
+          "childBornAtMonth": 1109,
+          "adultPersonId": "born-728-born-190-cangtianying-15-37",
+          "adultGeneration": 2,
+          "birthEventId": "e-1109-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1030:born-728-born-190-cangtianying-15-37:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "childGeneration": 3,
+          "childBornAtMonth": 1112,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "childGeneration": 3,
+          "childBornAtMonth": 1112,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "childGeneration": 3,
+          "childBornAtMonth": 1112,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9",
+            "offer-companion:970:born-706-born-301-zhaotianli-23-36:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "childGeneration": 3,
+          "childBornAtMonth": 1112,
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultGeneration": 2,
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "childGeneration": 3,
+          "childBornAtMonth": 1112,
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultGeneration": 2,
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:988:born-811-born-301-zhaotianli-23-45:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "childGeneration": 3,
+          "childBornAtMonth": 1142,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "childGeneration": 3,
+          "childBornAtMonth": 1142,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "childGeneration": 3,
+          "childBornAtMonth": 1142,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "childGeneration": 3,
+          "childBornAtMonth": 1146,
+          "adultPersonId": "born-301-zhaotianli-23",
+          "adultGeneration": 1,
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:579:born-98-zhaotianli-9:born-301-zhaotianli-23"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "childGeneration": 3,
+          "childBornAtMonth": 1146,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "childGeneration": 3,
+          "childBornAtMonth": 1179,
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultGeneration": 2,
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1156:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "childGeneration": 3,
+          "childBornAtMonth": 1180,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1168:born-795-born-386-zhaotianli-25-44:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "childGeneration": 3,
+          "childBornAtMonth": 1180,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1156:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "childGeneration": 3,
+          "childBornAtMonth": 1180,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1148:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "childGeneration": 3,
+          "childBornAtMonth": 1212,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1156:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "childGeneration": 3,
+          "childBornAtMonth": 1212,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1148:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "childGeneration": 3,
+          "childBornAtMonth": 1213,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1179:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "childGeneration": 3,
+          "childBornAtMonth": 1213,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1173:born-770-born-386-zhaotianli-25-40:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "childGeneration": 4,
+          "childBornAtMonth": 1214,
+          "adultPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "adultGeneration": 3,
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1187:born-704-born-190-cangtianying-15-35:born-1015-born-576-born-190-cangtianying-15-27-53"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "childGeneration": 4,
+          "childBornAtMonth": 1214,
+          "adultPersonId": "born-140-cangtianying-12",
+          "adultGeneration": 1,
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1085:born-704-born-190-cangtianying-15-35:born-140-cangtianying-12",
+            "offer-companion:1153:born-937-born-576-born-190-cangtianying-15-27-50:born-140-cangtianying-12"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "childGeneration": 4,
+          "childBornAtMonth": 1214,
+          "adultPersonId": "born-576-born-190-cangtianying-15-27",
+          "adultGeneration": 2,
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1117:born-576-born-190-cangtianying-15-27:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:961:born-704-born-190-cangtianying-15-35:born-576-born-190-cangtianying-15-27"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "childGeneration": 4,
+          "childBornAtMonth": 1214,
+          "adultPersonId": "born-678-born-190-cangtianying-15-34",
+          "adultGeneration": 2,
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1112:born-937-born-576-born-190-cangtianying-15-27-50:born-678-born-190-cangtianying-15-34",
+            "offer-companion:1168:born-678-born-190-cangtianying-15-34:born-704-born-190-cangtianying-15-35"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "childGeneration": 4,
+          "childBornAtMonth": 1214,
+          "adultPersonId": "born-728-born-190-cangtianying-15-37",
+          "adultGeneration": 2,
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1173:born-937-born-576-born-190-cangtianying-15-27-50:born-728-born-190-cangtianying-15-37",
+            "offer-companion:960:born-728-born-190-cangtianying-15-37:born-704-born-190-cangtianying-15-35"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "childGeneration": 3,
+          "childBornAtMonth": 1237,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1180:born-386-zhaotianli-25:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "childGeneration": 3,
+          "childBornAtMonth": 1237,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1173:born-770-born-386-zhaotianli-25-40:born-706-born-301-zhaotianli-23-36"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "childGeneration": 3,
+          "childBornAtMonth": 1237,
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultGeneration": 2,
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1208:born-890-born-386-zhaotianli-25-49:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1308-born-937-born-576-born-190-cangtianying-15-27-50-74",
+          "childGeneration": 4,
+          "childBornAtMonth": 1308,
+          "adultPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "adultGeneration": 3,
+          "birthEventId": "e-1308-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1219:born-1015-born-576-born-190-cangtianying-15-27-53:born-678-born-190-cangtianying-15-34"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1362-born-937-born-576-born-190-cangtianying-15-27-50-75",
+          "childGeneration": 4,
+          "childBornAtMonth": 1362,
+          "adultPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "adultGeneration": 3,
+          "birthEventId": "e-1362-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1250:born-1060-born-576-born-190-cangtianying-15-27-56:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1347:born-1060-born-576-born-190-cangtianying-15-27-56:born-728-born-190-cangtianying-15-37"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "adultGeneration": 3,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1320:born-1104-born-811-born-301-zhaotianli-23-45-62:born-829-born-386-zhaotianli-25-47"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "adultGeneration": 3,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1352:born-1062-born-706-born-301-zhaotianli-23-36-57:born-1112-born-706-born-301-zhaotianli-23-36-64"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-386-zhaotianli-25",
+          "adultGeneration": 1,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1221:born-386-zhaotianli-25:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1316:born-829-born-386-zhaotianli-25-47:born-386-zhaotianli-25"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultGeneration": 2,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1203:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultGeneration": 2,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1308:born-1062-born-706-born-301-zhaotianli-23-36-57:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1318:born-829-born-386-zhaotianli-25-47:born-770-born-386-zhaotianli-25-40"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultGeneration": 2,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "childGeneration": 4,
+          "childBornAtMonth": 1364,
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultGeneration": 2,
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1311:born-1062-born-706-born-301-zhaotianli-23-36-57:born-851-born-386-zhaotianli-25-48"
+          ],
+          "initialOneWay": true,
+          "bilateralHouseholdFactEventIds": [],
+          "becameBilateral": false
+        }
+      ]
+    },
+    "laterChildhoodStepAdultPairs": {
+      "total": 133,
+      "pairs": [
+        {
+          "childPersonId": "born-69-cangtianying-8",
+          "adultPersonId": "tesla",
+          "birthEventId": "e-69-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:129:armstrong:tesla",
+            "offer-companion:70:cangtianying:tesla"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-246-bai-suzhen-19",
+          "adultPersonId": "born-65-bai-suzhen-7",
+          "birthEventId": "e-246-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:351:bai-suzhen:born-65-bai-suzhen-7"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-301-zhaotianli-23",
+          "adultPersonId": "born-142-zhaotianli-14",
+          "birthEventId": "e-301-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:433:zhaotianli:born-142-zhaotianli-14"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-301-zhaotianli-23",
+          "adultPersonId": "born-65-bai-suzhen-7",
+          "birthEventId": "e-301-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:439:sunwukong:born-65-bai-suzhen-7",
+            "offer-companion:467:born-65-bai-suzhen-7:zhaotianli"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-311-bai-suzhen-24",
+          "adultPersonId": "born-191-zhaotianli-16",
+          "birthEventId": "e-311-environment-body-2",
+          "companionAgreementIds": [
+            "offer-companion:398:born-191-zhaotianli-16:sunwukong"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "adultPersonId": "born-195-bai-suzhen-17",
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:647:born-142-zhaotianli-14:born-195-bai-suzhen-17",
+            "offer-companion:677:born-65-bai-suzhen-7:born-195-bai-suzhen-17"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "adultPersonId": "born-258-zhaotianli-21",
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:621:born-142-zhaotianli-14:born-258-zhaotianli-21"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-551-born-142-zhaotianli-14-26",
+          "adultPersonId": "born-69-cangtianying-8",
+          "birthEventId": "e-551-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:573:born-65-bai-suzhen-7:born-69-cangtianying-8",
+            "offer-companion:587:born-142-zhaotianli-14:born-69-cangtianying-8"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-578-born-142-zhaotianli-14-28",
+          "adultPersonId": "born-551-born-142-zhaotianli-14-26",
+          "birthEventId": "e-578-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:736:born-551-born-142-zhaotianli-14-26:born-65-bai-suzhen-7"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "adultPersonId": "born-258-zhaotianli-21",
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:621:born-142-zhaotianli-14:born-258-zhaotianli-21"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-628-born-142-zhaotianli-14-29",
+          "adultPersonId": "born-551-born-142-zhaotianli-14-26",
+          "birthEventId": "e-628-environment-body-26",
+          "companionAgreementIds": [
+            "offer-companion:736:born-551-born-142-zhaotianli-14-26:born-65-bai-suzhen-7"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-647-born-98-bai-suzhen-10-31",
+          "adultPersonId": "born-195-bai-suzhen-17",
+          "birthEventId": "e-647-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:677:born-65-bai-suzhen-7:born-195-bai-suzhen-17",
+            "offer-companion:715:born-98-bai-suzhen-10:born-195-bai-suzhen-17"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-677-born-142-zhaotianli-14-33",
+          "adultPersonId": "born-551-born-142-zhaotianli-14-26",
+          "birthEventId": "e-677-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:830:sunwukong:born-551-born-142-zhaotianli-14-26"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-706-born-301-zhaotianli-23-36",
+          "adultPersonId": "born-386-zhaotianli-25",
+          "birthEventId": "e-706-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:705:born-98-zhaotianli-9:born-386-zhaotianli-25",
+            "offer-companion:858:born-301-zhaotianli-23:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-730-born-301-zhaotianli-23-38",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-730-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-740-born-386-zhaotianli-25-39",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-740-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-770-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-770-born-386-zhaotianli-25-40",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-770-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-782-born-301-zhaotianli-23-42",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-782-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-782-born-301-zhaotianli-23-42",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-782-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "adultPersonId": "born-141-bai-suzhen-13",
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:787:born-141-bai-suzhen-13:born-195-bai-suzhen-17"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "adultPersonId": "born-246-cangtianying-20",
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:894:born-246-cangtianying-20:born-195-bai-suzhen-17"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "adultPersonId": "born-551-born-142-zhaotianli-14-26",
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:835:born-551-born-142-zhaotianli-14-26:born-195-bai-suzhen-17",
+            "offer-companion:896:born-311-bai-suzhen-24:born-551-born-142-zhaotianli-14-26"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-311-bai-suzhen-24-43",
+          "adultPersonId": "born-647-born-98-bai-suzhen-10-31",
+          "birthEventId": "e-795-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:948:born-647-born-98-bai-suzhen-10-31:born-311-bai-suzhen-24"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-795-environment-body-23",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-795-environment-body-23",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-795-born-386-zhaotianli-25-44",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-795-environment-body-23",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultPersonId": "born-730-born-301-zhaotianli-23-38",
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:968:born-98-zhaotianli-9:born-730-born-301-zhaotianli-23-38"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-811-born-301-zhaotianli-23-45",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-811-environment-body-21",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-730-born-301-zhaotianli-23-38",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:968:born-98-zhaotianli-9:born-730-born-301-zhaotianli-23-38",
+            "offer-companion:984:born-386-zhaotianli-25:born-730-born-301-zhaotianli-23-38"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:977:born-795-born-386-zhaotianli-25-44:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-829-born-386-zhaotianli-25-47",
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "birthEventId": "e-829-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:988:born-811-born-301-zhaotianli-23-45:born-98-zhaotianli-9",
+            "offer-companion:992:born-811-born-301-zhaotianli-23-45:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-730-born-301-zhaotianli-23-38",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1026:born-730-born-301-zhaotianli-23-38:born-98-zhaotianli-9",
+            "offer-companion:1028:born-730-born-301-zhaotianli-23-38:born-386-zhaotianli-25",
+            "offer-companion:968:born-98-zhaotianli-9:born-730-born-301-zhaotianli-23-38",
+            "offer-companion:984:born-386-zhaotianli-25:born-730-born-301-zhaotianli-23-38"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:977:born-795-born-386-zhaotianli-25-44:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:988:born-811-born-301-zhaotianli-23-45:born-98-zhaotianli-9",
+            "offer-companion:992:born-811-born-301-zhaotianli-23-45:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-851-born-386-zhaotianli-25-48",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-851-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:994:born-829-born-386-zhaotianli-25-47:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-706-born-301-zhaotianli-23-36",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:899:born-706-born-301-zhaotianli-23-36:born-98-zhaotianli-9",
+            "offer-companion:964:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-730-born-301-zhaotianli-23-38",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1026:born-730-born-301-zhaotianli-23-38:born-98-zhaotianli-9",
+            "offer-companion:1028:born-730-born-301-zhaotianli-23-38:born-386-zhaotianli-25",
+            "offer-companion:968:born-98-zhaotianli-9:born-730-born-301-zhaotianli-23-38",
+            "offer-companion:984:born-386-zhaotianli-25:born-730-born-301-zhaotianli-23-38"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-740-born-386-zhaotianli-25-39",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:902:born-98-zhaotianli-9:born-740-born-386-zhaotianli-25-39"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:966:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:970:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:977:born-795-born-386-zhaotianli-25-44:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1026:born-386-zhaotianli-25:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:988:born-811-born-301-zhaotianli-23-45:born-98-zhaotianli-9",
+            "offer-companion:992:born-811-born-301-zhaotianli-23-45:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-890-born-386-zhaotianli-25-49",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-890-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:994:born-829-born-386-zhaotianli-25-47:born-98-zhaotianli-9"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "adultPersonId": "born-704-born-190-cangtianying-15-35",
+          "birthEventId": "e-937-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:961:born-704-born-190-cangtianying-15-35:born-576-born-190-cangtianying-15-27",
+            "offer-companion:988:tesla:born-704-born-190-cangtianying-15-35"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "adultPersonId": "born-728-born-190-cangtianying-15-37",
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:1055:born-728-born-190-cangtianying-15-37:born-213-cangtianying-18",
+            "offer-companion:1110:born-728-born-190-cangtianying-15-37:born-576-born-190-cangtianying-15-27"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "adultPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "birthEventId": "e-1015-environment-body-15",
+          "companionAgreementIds": [
+            "offer-companion:1117:born-576-born-190-cangtianying-15-27:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1147:born-937-born-576-born-190-cangtianying-15-27-50:born-213-cangtianying-18"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1037-born-576-born-190-cangtianying-15-27-54",
+          "adultPersonId": "born-1015-born-576-born-190-cangtianying-15-27-53",
+          "birthEventId": "e-1037-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1204:born-576-born-190-cangtianying-15-27:born-1015-born-576-born-190-cangtianying-15-27-53"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1037-born-576-born-190-cangtianying-15-27-54",
+          "adultPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "birthEventId": "e-1037-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1112:born-937-born-576-born-190-cangtianying-15-27-50:born-678-born-190-cangtianying-15-34",
+            "offer-companion:1117:born-576-born-190-cangtianying-15-27:born-937-born-576-born-190-cangtianying-15-27-50"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1255:born-1062-born-706-born-301-zhaotianli-23-36-57:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "adultPersonId": "born-301-zhaotianli-23",
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1096:born-706-born-301-zhaotianli-23-36:born-301-zhaotianli-23",
+            "offer-companion:1117:born-706-born-301-zhaotianli-23-36:born-301-zhaotianli-23"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1078:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1148:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1227:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1086:born-829-born-386-zhaotianli-25-47:born-706-born-301-zhaotianli-23-36",
+            "offer-companion:1111:born-829-born-386-zhaotianli-25-47:born-706-born-301-zhaotianli-23-36",
+            "offer-companion:1157:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1203:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1085-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1087:born-890-born-386-zhaotianli-25-49:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1168:born-890-born-386-zhaotianli-25-49:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1208:born-890-born-386-zhaotianli-25-49:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "adultPersonId": "born-937-born-576-born-190-cangtianying-15-27-50",
+          "birthEventId": "e-1089-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1103:born-704-born-190-cangtianying-15-35:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1117:born-576-born-190-cangtianying-15-27:born-937-born-576-born-190-cangtianying-15-27-50"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1110:born-98-zhaotianli-9:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1104-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1153:born-851-born-386-zhaotianli-25-48:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1256:born-706-born-301-zhaotianli-23-36:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1112-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1110:born-98-zhaotianli-9:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1111:born-829-born-386-zhaotianli-25-47:born-706-born-301-zhaotianli-23-36",
+            "offer-companion:1157:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1203:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1287:born-1085-born-706-born-301-zhaotianli-23-36-58:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1279:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1281:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1138:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9",
+            "offer-companion:1312:born-770-born-386-zhaotianli-25-40:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1150:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1168:born-811-born-301-zhaotianli-23-45:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1318:born-795-born-386-zhaotianli-25-44:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1142-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1153:born-851-born-386-zhaotianli-25-48:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1256:born-706-born-301-zhaotianli-23-36:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1138:born-770-born-386-zhaotianli-25-40:born-98-zhaotianli-9",
+            "offer-companion:1173:born-770-born-386-zhaotianli-25-40:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1150:born-98-zhaotianli-9:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1156:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1216:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1251:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1286:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1146-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1157:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1203:born-706-born-301-zhaotianli-23-36:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1233:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1249:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1268:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1285:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1321:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1256:born-706-born-301-zhaotianli-23-36:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1323:born-829-born-386-zhaotianli-25-47:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1358:born-829-born-386-zhaotianli-25-47:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1284:born-1104-born-811-born-301-zhaotianli-23-45-62:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1320:born-1104-born-811-born-301-zhaotianli-23-45-62:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1349:born-1112-born-706-born-301-zhaotianli-23-36-64:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-386-zhaotianli-25",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1179:born-386-zhaotianli-25:born-706-born-301-zhaotianli-23-36",
+            "offer-companion:1261:born-829-born-386-zhaotianli-25-47:born-386-zhaotianli-25",
+            "offer-companion:1316:born-829-born-386-zhaotianli-25-47:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-770-born-386-zhaotianli-25-40",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1173:born-770-born-386-zhaotianli-25-40:born-706-born-301-zhaotianli-23-36",
+            "offer-companion:1318:born-829-born-386-zhaotianli-25-47:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1357:born-829-born-386-zhaotianli-25-47:born-851-born-386-zhaotianli-25-48"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1179-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1285:born-890-born-386-zhaotianli-25-49:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1356:born-829-born-386-zhaotianli-25-47:born-890-born-386-zhaotianli-25-49"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1323:born-795-born-386-zhaotianli-25-44:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1269:born-795-born-386-zhaotianli-25-44:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1287:born-1085-born-706-born-301-zhaotianli-23-36-58:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1321:born-1085-born-706-born-301-zhaotianli-23-36-58:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1279:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62",
+            "offer-companion:1349:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1281:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1180-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1169:born-890-born-386-zhaotianli-25-49:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1231:born-795-born-386-zhaotianli-25-44:born-890-born-386-zhaotianli-25-49",
+            "offer-companion:1355:born-890-born-386-zhaotianli-25-49:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1323:born-795-born-386-zhaotianli-25-44:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1377:born-795-born-386-zhaotianli-25-44:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1269:born-795-born-386-zhaotianli-25-44:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1287:born-1085-born-706-born-301-zhaotianli-23-36-58:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1321:born-1085-born-706-born-301-zhaotianli-23-36-58:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1378:born-795-born-386-zhaotianli-25-44:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1279:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62",
+            "offer-companion:1349:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1281:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1380:born-795-born-386-zhaotianli-25-44:born-1112-born-706-born-301-zhaotianli-23-36-64",
+            "offer-companion:1381:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1382:born-1179-born-706-born-301-zhaotianli-23-36-67:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-386-zhaotianli-25",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1214:born-386-zhaotianli-25:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1231:born-386-zhaotianli-25:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1254:born-386-zhaotianli-25:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1272:born-386-zhaotianli-25:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1304:born-811-born-301-zhaotianli-23-45:born-386-zhaotianli-25"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1379:born-851-born-386-zhaotianli-25-48:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1212-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1231:born-795-born-386-zhaotianli-25-44:born-890-born-386-zhaotianli-25-49",
+            "offer-companion:1355:born-890-born-386-zhaotianli-25-49:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1233:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1249:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1254:born-706-born-301-zhaotianli-23-36:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1268:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1285:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1321:born-829-born-386-zhaotianli-25-47:born-1062-born-706-born-301-zhaotianli-23-36-57"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1256:born-706-born-301-zhaotianli-23-36:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1323:born-829-born-386-zhaotianli-25-47:born-1085-born-706-born-301-zhaotianli-23-36-58",
+            "offer-companion:1358:born-829-born-386-zhaotianli-25-47:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1284:born-1104-born-811-born-301-zhaotianli-23-45-62:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1320:born-1104-born-811-born-301-zhaotianli-23-45-62:born-829-born-386-zhaotianli-25-47"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1349:born-1112-born-706-born-301-zhaotianli-23-36-64:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1371:born-1180-born-811-born-301-zhaotianli-23-45-68:born-706-born-301-zhaotianli-23-36"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1376:born-706-born-301-zhaotianli-23-36:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-811-born-301-zhaotianli-23-45",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1216:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1251:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1286:born-706-born-301-zhaotianli-23-36:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1357:born-829-born-386-zhaotianli-25-47:born-851-born-386-zhaotianli-25-48"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1213-born-706-born-301-zhaotianli-23-36-70",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1213-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1285:born-890-born-386-zhaotianli-25-49:born-829-born-386-zhaotianli-25-47",
+            "offer-companion:1356:born-829-born-386-zhaotianli-25-47:born-890-born-386-zhaotianli-25-49"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "adultPersonId": "born-1037-born-576-born-190-cangtianying-15-27-54",
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1268:born-1037-born-576-born-190-cangtianying-15-27-54:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1393:born-1037-born-576-born-190-cangtianying-15-27-54:born-704-born-190-cangtianying-15-35"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "adultPersonId": "born-1060-born-576-born-190-cangtianying-15-27-56",
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1250:born-1060-born-576-born-190-cangtianying-15-27-56:born-937-born-576-born-190-cangtianying-15-27-50"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1214-born-937-born-576-born-190-cangtianying-15-27-50-71",
+          "adultPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "birthEventId": "e-1214-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1306:born-1089-born-576-born-190-cangtianying-15-27-60:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1363:born-704-born-190-cangtianying-15-35:born-1089-born-576-born-190-cangtianying-15-27-60"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1062-born-706-born-301-zhaotianli-23-36-57",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1255:born-1062-born-706-born-301-zhaotianli-23-36-57:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1279:born-770-born-386-zhaotianli-25-40:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1308:born-1062-born-706-born-301-zhaotianli-23-36-57:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1287:born-1085-born-706-born-301-zhaotianli-23-36-58:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1410:born-770-born-386-zhaotianli-25-40:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1104-born-811-born-301-zhaotianli-23-45-62",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1279:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62",
+            "offer-companion:1349:born-811-born-301-zhaotianli-23-45:born-1104-born-811-born-301-zhaotianli-23-45-62"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1112-born-706-born-301-zhaotianli-23-36-64",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1281:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1319:born-770-born-386-zhaotianli-25-40:born-1112-born-706-born-301-zhaotianli-23-36-64",
+            "offer-companion:1381:born-1112-born-706-born-301-zhaotianli-23-36-64:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1376:born-1142-born-811-born-301-zhaotianli-23-45-65:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1407:born-811-born-301-zhaotianli-23-45:born-1142-born-811-born-301-zhaotianli-23-45-65"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1146-born-706-born-301-zhaotianli-23-36-66",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1369:born-1146-born-706-born-301-zhaotianli-23-36-66:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1179-born-706-born-301-zhaotianli-23-36-67",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1382:born-1179-born-706-born-301-zhaotianli-23-36-67:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1180-born-811-born-301-zhaotianli-23-45-68",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1410:born-811-born-301-zhaotianli-23-45:born-1180-born-811-born-301-zhaotianli-23-45-68"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-1212-born-811-born-301-zhaotianli-23-45-69",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1412:born-811-born-301-zhaotianli-23-45:born-1212-born-811-born-301-zhaotianli-23-45-69"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1227:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1317:born-795-born-386-zhaotianli-25-44:born-770-born-386-zhaotianli-25-40",
+            "offer-companion:1318:born-795-born-386-zhaotianli-25-44:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1361:born-811-born-301-zhaotianli-23-45:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1379:born-811-born-301-zhaotianli-23-45:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-829-born-386-zhaotianli-25-47",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1302:born-829-born-386-zhaotianli-25-47:born-811-born-301-zhaotianli-23-45",
+            "offer-companion:1318:born-829-born-386-zhaotianli-25-47:born-770-born-386-zhaotianli-25-40"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1237-born-811-born-301-zhaotianli-23-45-72",
+          "adultPersonId": "born-851-born-386-zhaotianli-25-48",
+          "birthEventId": "e-1237-environment-body-22",
+          "companionAgreementIds": [
+            "offer-companion:1379:born-851-born-386-zhaotianli-25-48:born-811-born-301-zhaotianli-23-45"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1308-born-937-born-576-born-190-cangtianying-15-27-50-74",
+          "adultPersonId": "born-1089-born-576-born-190-cangtianying-15-27-60",
+          "birthEventId": "e-1308-environment-body-1",
+          "companionAgreementIds": [
+            "offer-companion:1306:born-1089-born-576-born-190-cangtianying-15-27-60:born-937-born-576-born-190-cangtianying-15-27-50",
+            "offer-companion:1308:born-1089-born-576-born-190-cangtianying-15-27-60:born-678-born-190-cangtianying-15-34"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "adultPersonId": "born-1085-born-706-born-301-zhaotianli-23-36-58",
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1358:born-829-born-386-zhaotianli-25-47:born-1085-born-706-born-301-zhaotianli-23-36-58"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "adultPersonId": "born-1142-born-811-born-301-zhaotianli-23-45-65",
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1381:born-1062-born-706-born-301-zhaotianli-23-36-57:born-1142-born-811-born-301-zhaotianli-23-45-65"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "adultPersonId": "born-795-born-386-zhaotianli-25-44",
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1377:born-795-born-386-zhaotianli-25-44:born-1062-born-706-born-301-zhaotianli-23-36-57",
+            "offer-companion:1393:born-829-born-386-zhaotianli-25-47:born-795-born-386-zhaotianli-25-44",
+            "offer-companion:1410:born-1062-born-706-born-301-zhaotianli-23-36-57:born-795-born-386-zhaotianli-25-44"
+          ],
+          "householdFactEventIds": []
+        },
+        {
+          "childPersonId": "born-1364-born-1062-born-706-born-301-zhaotianli-23-36-57-76",
+          "adultPersonId": "born-890-born-386-zhaotianli-25-49",
+          "birthEventId": "e-1364-environment-body-0",
+          "companionAgreementIds": [
+            "offer-companion:1356:born-829-born-386-zhaotianli-25-47:born-890-born-386-zhaotianli-25-49"
+          ],
+          "householdFactEventIds": []
+        }
+      ]
+    },
+    "controls": {
+      "geneticParentPairs": {
+        "total": 140,
+        "householdMechanismHits": 0,
+        "hitEvidence": []
+      },
+      "coLocatedPasserbyPairs": {
+        "total": 67,
+        "householdMechanismHits": 0,
+        "hitEvidence": []
+      }
+    },
+    "accumulatedDeltaByChild": [],
+    "socialFunnel": {
+      "company": {
+        "totals": {
+          "proposed": 1601,
+          "accepted": 1322,
+          "fulfilled": 1318,
+          "rejected": 3,
+          "expired": 264,
+          "cancelled": 6,
+          "breached": 4
+        },
+        "byGenerationPair": {
+          "g0|g1": {
+            "proposed": 111,
+            "accepted": 109,
+            "fulfilled": 108,
+            "rejected": 0,
+            "expired": 2,
+            "cancelled": 0,
+            "breached": 1
+          },
+          "g1|g1": {
+            "proposed": 157,
+            "accepted": 151,
+            "fulfilled": 151,
+            "rejected": 0,
+            "expired": 6,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g1|g2": {
+            "proposed": 256,
+            "accepted": 233,
+            "fulfilled": 230,
+            "rejected": 0,
+            "expired": 22,
+            "cancelled": 1,
+            "breached": 3
+          },
+          "g0|g2": {
+            "proposed": 41,
+            "accepted": 39,
+            "fulfilled": 39,
+            "rejected": 0,
+            "expired": 2,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g2|g2": {
+            "proposed": 243,
+            "accepted": 181,
+            "fulfilled": 181,
+            "rejected": 3,
+            "expired": 54,
+            "cancelled": 5,
+            "breached": 0
+          },
+          "g2|g3": {
+            "proposed": 411,
+            "accepted": 310,
+            "fulfilled": 310,
+            "rejected": 0,
+            "expired": 97,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g1|g3": {
+            "proposed": 70,
+            "accepted": 60,
+            "fulfilled": 60,
+            "rejected": 0,
+            "expired": 10,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g3|g3": {
+            "proposed": 272,
+            "accepted": 215,
+            "fulfilled": 215,
+            "rejected": 0,
+            "expired": 55,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g3|g4": {
+            "proposed": 26,
+            "accepted": 17,
+            "fulfilled": 17,
+            "rejected": 0,
+            "expired": 9,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g4|g4": {
+            "proposed": 1,
+            "accepted": 0,
+            "fulfilled": 0,
+            "rejected": 0,
+            "expired": 1,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g2|g4": {
+            "proposed": 11,
+            "accepted": 5,
+            "fulfilled": 5,
+            "rejected": 0,
+            "expired": 6,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "g1|g4": {
+            "proposed": 2,
+            "accepted": 2,
+            "fulfilled": 2,
+            "rejected": 0,
+            "expired": 0,
+            "cancelled": 0,
+            "breached": 0
+          }
+        }
+      },
+      "companion": {
+        "totals": {
+          "proposed": 877,
+          "accepted": 753,
+          "established": 367,
+          "active": 141,
+          "rejected": 122,
+          "expired": 1,
+          "cancelled": 494,
+          "breached": 119
+        },
+        "byGenerationPair": {
+          "g0|g0": {
+            "proposed": 27,
+            "accepted": 27,
+            "established": 9,
+            "active": 0,
+            "rejected": 0,
+            "expired": 0,
+            "cancelled": 10,
+            "breached": 17
+          },
+          "g0|g1": {
+            "proposed": 93,
+            "accepted": 60,
+            "established": 35,
+            "active": 0,
+            "rejected": 33,
+            "expired": 0,
+            "cancelled": 36,
+            "breached": 24
+          },
+          "g1|g1": {
+            "proposed": 70,
+            "accepted": 70,
+            "established": 36,
+            "active": 1,
+            "rejected": 0,
+            "expired": 0,
+            "cancelled": 45,
+            "breached": 24
+          },
+          "g1|g2": {
+            "proposed": 225,
+            "accepted": 173,
+            "established": 81,
+            "active": 12,
+            "rejected": 51,
+            "expired": 1,
+            "cancelled": 143,
+            "breached": 18
+          },
+          "g0|g2": {
+            "proposed": 12,
+            "accepted": 11,
+            "established": 10,
+            "active": 0,
+            "rejected": 1,
+            "expired": 0,
+            "cancelled": 10,
+            "breached": 1
+          },
+          "g2|g2": {
+            "proposed": 189,
+            "accepted": 182,
+            "established": 71,
+            "active": 31,
+            "rejected": 6,
+            "expired": 0,
+            "cancelled": 135,
+            "breached": 17
+          },
+          "g2|g3": {
+            "proposed": 160,
+            "accepted": 137,
+            "established": 75,
+            "active": 57,
+            "rejected": 23,
+            "expired": 0,
+            "cancelled": 77,
+            "breached": 3
+          },
+          "g1|g3": {
+            "proposed": 16,
+            "accepted": 14,
+            "established": 11,
+            "active": 5,
+            "rejected": 2,
+            "expired": 0,
+            "cancelled": 9,
+            "breached": 0
+          },
+          "g3|g3": {
+            "proposed": 78,
+            "accepted": 74,
+            "established": 39,
+            "active": 34,
+            "rejected": 4,
+            "expired": 0,
+            "cancelled": 29,
+            "breached": 11
+          },
+          "g3|g4": {
+            "proposed": 6,
+            "accepted": 5,
+            "established": 0,
+            "active": 1,
+            "rejected": 1,
+            "expired": 0,
+            "cancelled": 0,
+            "breached": 4
+          },
+          "g2|g4": {
+            "proposed": 1,
+            "accepted": 0,
+            "established": 0,
+            "active": 0,
+            "rejected": 1,
+            "expired": 0,
+            "cancelled": 0,
+            "breached": 0
+          }
+        }
+      },
+      "reproduce": {
+        "totals": {
+          "proposed": 200,
+          "accepted": 185,
+          "attempts": 403,
+          "conceived": 73,
+          "births": 70
+        },
+        "byGenerationPair": {
+          "g0|g0": {
+            "proposed": 49,
+            "accepted": 42,
+            "attempts": 86,
+            "conceived": 19,
+            "births": 19
+          },
+          "g1|g1": {
+            "proposed": 36,
+            "accepted": 35,
+            "attempts": 82,
+            "conceived": 22,
+            "births": 22
+          },
+          "g0|g1": {
+            "proposed": 9,
+            "accepted": 7,
+            "attempts": 11,
+            "conceived": 2,
+            "births": 2
+          },
+          "g0|g2": {
+            "proposed": 9,
+            "accepted": 8,
+            "attempts": 17,
+            "conceived": 3,
+            "births": 3
+          },
+          "g1|g2": {
+            "proposed": 37,
+            "accepted": 37,
+            "attempts": 86,
+            "conceived": 11,
+            "births": 11
+          },
+          "g2|g2": {
+            "proposed": 38,
+            "accepted": 36,
+            "attempts": 72,
+            "conceived": 8,
+            "births": 8
+          },
+          "g2|g3": {
+            "proposed": 13,
+            "accepted": 12,
+            "attempts": 30,
+            "conceived": 7,
+            "births": 5
+          },
+          "g1|g3": {
+            "proposed": 2,
+            "accepted": 1,
+            "attempts": 2,
+            "conceived": 0,
+            "births": 0
+          },
+          "g3|g3": {
+            "proposed": 7,
+            "accepted": 7,
+            "attempts": 17,
+            "conceived": 1,
+            "births": 0
+          }
+        }
+      },
+      "householdFactsByGenerationPair": {}
+    }
+  }
+}

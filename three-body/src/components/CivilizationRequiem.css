@@ -1,0 +1,352 @@
+.civilization-requiem {
+  --requiem-primary: rgba(244, 247, 252, 0.9);
+  --requiem-secondary: rgba(229, 235, 244, 0.6);
+  --requiem-tertiary: rgba(218, 227, 240, 0.4);
+  --requiem-focus: #1a88ff;
+  position: absolute;
+  inset: 0;
+  z-index: 820;
+  overflow: hidden;
+  background: rgba(8, 10, 18, 0.32);
+  -webkit-backdrop-filter: blur(10px) saturate(116%);
+  backdrop-filter: blur(10px) saturate(116%);
+  color: var(--requiem-primary);
+  font-family: var(--font-ui);
+  animation: requiem-enter 480ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.civilization-requiem--leaving {
+  pointer-events: none;
+  animation: requiem-exit 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.civilization-requiem__veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(141, 170, 208, 0.1), transparent 38%),
+    linear-gradient(180deg, rgba(4, 7, 12, 0.06), rgba(4, 7, 12, 0.34));
+}
+
+.civilization-requiem__topbar {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: max(20px, env(safe-area-inset-top)) 28px 16px;
+  background: linear-gradient(180deg, rgba(5, 8, 14, 0.4), transparent);
+}
+
+.civilization-requiem__topbar p,
+.civilization-requiem__topbar button,
+.civilization-requiem__controls,
+.civilization-requiem__finale button,
+.civilization-requiem__error button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.civilization-requiem__topbar p {
+  margin: 0;
+  color: var(--requiem-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.civilization-requiem button {
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--requiem-secondary);
+  cursor: pointer;
+}
+
+.civilization-requiem button:hover,
+.civilization-requiem button:focus-visible {
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--requiem-primary);
+}
+
+.civilization-requiem button:focus-visible {
+  box-shadow: 0 0 0 2px var(--requiem-focus);
+}
+
+.civilization-requiem button:active {
+  transform: scale(0.97);
+}
+
+.civilization-requiem__topbar button {
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+.civilization-requiem__stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.civilization-requiem__intro,
+.civilization-requiem__error,
+.civilization-requiem__finale {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: min(760px, calc(100vw - 48px));
+  margin-inline: auto;
+  place-content: center;
+  justify-items: center;
+  padding: 104px 0;
+  text-align: center;
+  animation: requiem-content-enter 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.civilization-requiem__intro > p,
+.civilization-requiem__finale > p {
+  margin: 0;
+  color: var(--requiem-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0.12em;
+}
+
+.civilization-requiem__intro h1,
+.civilization-requiem__finale h2 {
+  margin: 18px 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(42px, 7vw, 80px);
+  font-weight: 520;
+  line-height: 1.16;
+  letter-spacing: 0.035em;
+}
+
+.civilization-requiem__intro > span,
+.civilization-requiem__finale > span {
+  max-width: 620px;
+  margin-top: 24px;
+  color: var(--requiem-secondary);
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 26px;
+}
+
+.civilization-requiem__intro > i {
+  width: 32px;
+  height: 1px;
+  margin-top: 32px;
+  background: var(--requiem-secondary);
+  animation: requiem-breathe 1.5s ease-in-out infinite;
+}
+
+.civilization-requiem__error {
+  gap: 18px;
+  color: var(--requiem-secondary);
+}
+
+.civilization-requiem__error p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.civilization-requiem__error button {
+  min-height: 32px;
+  padding: 6px 14px;
+}
+
+.civilization-requiem__stream {
+  position: absolute;
+  inset: 0;
+}
+
+.civilization-requiem__style {
+  position: absolute;
+  top: max(90px, 11vh);
+  left: 50%;
+  margin: 0;
+  color: var(--requiem-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0.12em;
+  transform: translateX(-50%);
+}
+
+.civilization-requiem__verse {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  width: min(1120px, calc(100vw - 96px));
+  margin: 0;
+  color: rgba(237, 241, 248, 0.9);
+  font-family: var(--font-display);
+  font-size: clamp(27px, 3.4vw, 50px);
+  font-weight: 430;
+  line-height: 1.48;
+  letter-spacing: 0.035em;
+  text-align: center;
+  text-wrap: balance;
+  transform: translate(-50%, calc(-50% + var(--verse-y)));
+  transition:
+    opacity 780ms cubic-bezier(0.23, 1, 0.32, 1),
+    filter 780ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 780ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: opacity, filter, transform;
+}
+
+.civilization-requiem__verse--current {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.civilization-requiem__verse--recent {
+  width: min(900px, calc(100vw - 96px));
+  opacity: 0.08;
+  filter: blur(0.4px);
+  font-size: clamp(20px, 2.2vw, 32px);
+  line-height: 1.45;
+}
+
+.civilization-requiem__verse--distant {
+  width: min(840px, calc(100vw - 96px));
+  opacity: 0.025;
+  filter: blur(1px);
+  font-size: clamp(18px, 1.8vw, 26px);
+}
+
+.civilization-requiem__verse--hidden {
+  opacity: 0;
+  filter: blur(1.4px);
+  pointer-events: none;
+}
+
+.civilization-requiem__finale {
+  gap: 0;
+  color: var(--requiem-secondary);
+}
+
+.civilization-requiem__finale h2 {
+  font-size: clamp(36px, 6vw, 64px);
+}
+
+.civilization-requiem__finale > div,
+.civilization-requiem__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.civilization-requiem__finale > div {
+  margin-top: 34px;
+}
+
+.civilization-requiem__finale button {
+  min-height: 40px;
+  padding: 9px 16px;
+}
+
+.civilization-requiem__finale .civilization-requiem__primary {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(10, 12, 18, 0.9);
+}
+
+.civilization-requiem__controls {
+  position: absolute;
+  z-index: 3;
+  right: 24px;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  padding: 6px;
+  border: 0.5px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  background: rgba(8, 10, 18, 0.32);
+  -webkit-backdrop-filter: blur(14px) saturate(116%);
+  backdrop-filter: blur(14px) saturate(116%);
+}
+
+.civilization-requiem__controls button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-color: transparent;
+}
+
+.civilization-requiem__controls span {
+  min-width: 52px;
+  padding: 0 8px;
+  color: var(--requiem-tertiary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes requiem-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes requiem-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes requiem-content-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes requiem-breathe {
+  0%, 100% { opacity: 0.25; transform: scaleX(0.45); }
+  50% { opacity: 0.9; transform: scaleX(1); }
+}
+
+@media (max-width: 640px) {
+  .civilization-requiem__topbar {
+    padding-inline: 16px;
+  }
+
+  .civilization-requiem__intro,
+  .civilization-requiem__error,
+  .civilization-requiem__finale {
+    width: min(100% - 32px, 760px);
+  }
+
+  .civilization-requiem__verse {
+    top: 50%;
+    width: calc(100vw - 40px);
+    font-size: clamp(24px, 7vw, 38px);
+  }
+
+  .civilization-requiem__controls {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    justify-content: center;
+  }
+
+  .civilization-requiem__finale > div {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .civilization-requiem__finale button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .civilization-requiem,
+  .civilization-requiem--leaving,
+  .civilization-requiem__intro,
+  .civilization-requiem__error,
+  .civilization-requiem__finale,
+  .civilization-requiem__verse,
+  .civilization-requiem__intro > i {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

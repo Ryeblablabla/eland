@@ -8,6 +8,7 @@ import type {
   PersonState,
 } from './person';
 import { seededFraction } from '../world/generator';
+import { intentById, personById, projectById } from './state-index';
 
 export const HEXACO_TRAITS: HexacoTrait[] = [
   'honestyHumility',
@@ -82,6 +83,53 @@ export function personalityScore(person: PersonState, trait: HexacoTrait): numbe
   return clamp(person.personality.baseline[trait] + person.personality.learnedDelta[trait]);
 }
 
+/**
+ * Weak, replayable social prior for people actually present at a birth.
+ * Agreeableness carries most of the weight and extraversion only adjusts
+ * approach. The 3..9 range stays below companionship (20) and reproduction
+ * (60), so temperament can open contact without inventing earned closeness.
+ */
+export function newbornInitialTrust(person: Pick<PersonState, 'personality'>): number {
+  const agreeableness = clamp(
+    person.personality.baseline.agreeableness + person.personality.learnedDelta.agreeableness,
+  );
+  const extraversion = clamp(
+    person.personality.baseline.extraversion + person.personality.learnedDelta.extraversion,
+  );
+  return Math.round(clamp(2 + (agreeableness * 0.7 + extraversion * 0.3) * 0.08, 3, 9));
+}
+
+/**
+ * How many same-place planning ticks this person needs before shared activity
+ * becomes one unit of relationship evidence. Extraversion mainly affects how
+ * readily repeated contact becomes familiarity; agreeableness affects how
+ * readily that familiarity is interpreted positively.
+ */
+export function sharedActivityTickThreshold(
+  person: Pick<PersonState, 'personality'>,
+): 3 | 4 | 5 {
+  const agreeableness = clamp(
+    person.personality.baseline.agreeableness + person.personality.learnedDelta.agreeableness,
+  );
+  const extraversion = clamp(
+    person.personality.baseline.extraversion + person.personality.learnedDelta.extraversion,
+  );
+  const socialReadiness = extraversion * 0.6 + agreeableness * 0.4;
+  if (socialReadiness >= 65) return 3;
+  if (socialReadiness >= 40) return 4;
+  return 5;
+}
+
+/**
+ * Young people turn an earned month of shared experience into trust more
+ * readily. This never creates evidence by itself and does not accelerate bond.
+ */
+export function youthfulSharedActivityTrustBonus(ageInMonths: number): 0 | 1 | 2 {
+  if (ageInMonths < 16 * 12) return 2;
+  if (ageInMonths < 30 * 12) return 1;
+  return 0;
+}
+
 export function effectivePersonality(person: PersonState): HexacoVector {
   return Object.fromEntries(HEXACO_TRAITS.map((trait) => [trait, personalityScore(person, trait)])) as unknown as HexacoVector;
 }
@@ -140,7 +188,7 @@ function addEvidence(person: PersonState, next: PersonalityEvidence): void {
 
 function projectContext(state: SimulationState, fact: ActionFact): string | undefined {
   if (!fact.intentId) return undefined;
-  const intent = state.intents.find((candidate) => candidate.id === fact.intentId);
+  const intent = intentById(state, fact.intentId);
   if (!intent?.projectId) return undefined;
   return `project:${intent.projectId}`;
 }
@@ -153,7 +201,7 @@ function projectContext(state: SimulationState, fact: ActionFact): string | unde
 export function recordPersonalityEvidence(state: SimulationState, fact: ActionFact): void {
   const resistedTaking = fact.action.kind === 'transfer' && fact.diff.attempted === true && fact.diff.authorized === false;
   if (fact.cause !== 'intent' || fact.status === 'failed' || (fact.status === 'blocked' && !resistedTaking)) return;
-  const person = state.people.find((candidate) => candidate.id === fact.who);
+  const person = personById(state, fact.who);
   if (!person) return;
   const urgent = person.body.health < 25 || person.body.hydration < 22 || person.body.nutrition < 24;
   const action = fact.action;
@@ -189,8 +237,8 @@ export function recordPersonalityEvidence(state: SimulationState, fact: ActionFa
   const projectKey = projectContext(state, fact);
   if (projectKey && (fact.status === 'completed' || fact.status === 'progressed')) {
     addEvidence(person, evidence(person, fact, 'conscientiousness', 1, 34, projectKey));
-    const intent = state.intents.find((candidate) => candidate.id === fact.intentId);
-    const project = intent?.projectId ? state.projects.find((candidate) => candidate.id === intent.projectId) : undefined;
+    const intent = fact.intentId ? intentById(state, fact.intentId) : undefined;
+    const project = intent?.projectId ? projectById(state, intent.projectId) : undefined;
     if (project?.kind === 'inquiry') addEvidence(person, evidence(person, fact, 'openness', 1, 42, projectKey));
   }
 

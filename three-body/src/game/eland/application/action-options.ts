@@ -44,6 +44,7 @@ import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
 import { separationToolFits, voxelSeparationRuleFor } from '../domain/separation-rules';
+import { hasTrait, reproductiveUpperAgeMonths } from '../domain/trait';
 import { buildContainerOptions, findContainerAccess } from './container-options';
 import { canAccessContainer, containerById, containerQuantity } from '../domain/container';
 import {
@@ -64,21 +65,20 @@ import {
 import {
   buildRelationshipCausalBasis,
   canOfferRelationshipProposal,
-  hasCultivatedReproductiveRelationship,
 } from '../domain/relationship-evidence';
-import { humanReproductionCapacityFactor } from '../domain/population-capacity';
 import { cloneProjectForPlanning } from '../domain/project';
 import { lifePlanningStage } from '../domain/life-stage';
 import { optionAllowedForLearningChildCareRadius, optionAllowedForLifeStage } from './age-planning';
 import { followUpSemanticallyMatches, isGroundedConversationOpening } from '../domain/intent-follow-up';
 import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
-import { reproductionAttemptedBetweenInMonth } from '../domain/agreement';
+import { agreementById, agreementsForPerson, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
 import {
   isActionableChaosPrediction,
   MAX_ERA_PREDICTION_HORIZON_MONTHS,
   personTrustsEraPrediction,
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
+import { intentById, personById } from '../domain/state-index';
 import { buildWaterCurrentObservationOptions } from './mechanical-power-options';
 import {
   bestHuntingToolStack,
@@ -88,6 +88,9 @@ import {
   recentPersonalProductionLaborEvents,
 } from '../domain/production-tool';
 import { perceivedKinshipRisk } from './reproductive-risk';
+import { knowsDeath, remainsForPerson, type HumanRemainsState } from '../domain/mortuary';
+import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-options';
+import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -162,6 +165,10 @@ function dropStandingZ(state: SimulationState, drop: DropState): number {
 
 function actionForDrop(state: SimulationState, person: PersonState, drop: DropState): PrimitiveAction {
   const dropZ = dropStandingZ(state, drop);
+  const estateRemains = drop.estateOfPersonId ? remainsForPerson(state, drop.estateOfPersonId) : undefined;
+  const estateCarePersonId = drop.estateOfPersonId && estateRemains && knowsDeath(person, estateRemains.id)
+    ? drop.estateOfPersonId
+    : undefined;
   if (person.position.cellId === drop.cellId && person.position.z === dropZ) {
     return {
       kind: 'transfer',
@@ -170,6 +177,7 @@ function actionForDrop(state: SimulationState, person: PersonState, drop: DropSt
       from: { kind: 'ground', cellId: drop.cellId, z: dropZ },
       to: { kind: 'person', personId: person.id },
       dropId: drop.id,
+      ...(estateCarePersonId ? { estateCarePersonId } : {}),
     };
   }
   return { kind: 'move', toCellId: drop.cellId, toZ: dropZ };
@@ -179,10 +187,13 @@ function optionForDrop(state: SimulationState, person: PersonState, drop: DropSt
   const material = materialDefinition(drop.materialId);
   const current = inventoryQuantity(person, drop.materialId);
   const dropZ = dropStandingZ(state, drop);
+  const estateOwner = drop.estateOfPersonId ? personById(state, drop.estateOfPersonId) : undefined;
+  const estateRemains = estateOwner ? remainsForPerson(state, estateOwner.id) : undefined;
+  const awareEstate = Boolean(estateOwner && estateRemains && knowsDeath(person, estateRemains.id));
   return {
-    id: `collect:${drop.id}`,
-    summary: `取得${material.name}`,
-    reason: `看见地上的${material.name}`,
+    id: `${awareEstate ? 'estate' : 'collect'}:${drop.id}`,
+    summary: awareEstate ? `收拢${estateOwner?.name}留下的${material.name}` : `取得${material.name}`,
+    reason: awareEstate ? `本人知道${estateOwner?.name}已经死亡，并看见其有来源的遗物` : `看见地上的${material.name}`,
     goal: { kind: 'inventory-at-least', materialId: drop.materialId, quantity: current + Math.min(3, drop.quantity) },
     nextAction: actionForDrop(state, person, drop),
     target: { kind: 'drop', dropId: drop.id },
@@ -339,14 +350,10 @@ function buildFailureRetryContext(
     return parsed ? [parsed] : [];
   });
   if (!recent.length) return { entries: [] };
-  const requestedIntentIds = new Set(recent.map((item) => item.intentId));
-  const intentsById = new Map(state.intents
-    .filter((intent) => intent.ownerId === person.id && requestedIntentIds.has(intent.id))
-    .map((intent) => [intent.id, intent] as const));
   const entries: FailureRetryEntry[] = [];
   for (const item of recent) {
-    const intent = intentsById.get(item.intentId);
-    if (!intent) continue;
+    const intent = intentById(state, item.intentId);
+    if (!intent || intent.ownerId !== person.id) continue;
     const openingFailure = item.prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
     entries.push({
       openingFailure,
@@ -476,11 +483,13 @@ function toolUpgradeTradeCandidate(state: SimulationState, person: PersonState, 
       return other.inventory
         .filter((their) => their.quantity > 0 && productionToolRank(their.materialId) > currentRank)
         .filter((their) => {
-          const retainedRank = Math.max(holderHighestRank, productionToolRank(their.materialId));
-          return their.quantity >= 2 || other.inventory.some((backup) => backup.id !== their.id
-            && backup.quantity > 0
-            && isProductionToolMaterial(backup.materialId)
-            && productionToolRank(backup.materialId) >= retainedRank);
+          const retainedRank = other.inventory.reduce((highest, backup) => backup.id !== their.id && backup.quantity > 0
+            ? Math.max(highest, productionToolRank(backup.materialId))
+            : highest, 0);
+          return their.quantity >= 2
+            || retainedRank >= Math.max(holderHighestRank, productionToolRank(their.materialId))
+            || (their.materialId === Material.BronzeTool
+              && retainedRank >= productionToolRank(Material.StoneTool));
         })
         .flatMap((their) => {
           const own = ownGoods.find((stack) => stack.materialId !== their.materialId);
@@ -497,7 +506,7 @@ function acceptedExchangeAt(state: SimulationState, person: PersonState, atMonth
   const agreementId = exchange?.offer.action.kind === 'communicate'
     ? exchange.offer.action.content.id
     : undefined;
-  const agreement = agreementId ? state.agreements.find((candidate) => candidate.id === agreementId) : undefined;
+  const agreement = agreementId ? agreementById(state, agreementId) : undefined;
   return exchange
     && agreement
     && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth
@@ -527,13 +536,23 @@ function reproductivePairEligible(first: PersonState, second: PersonState, atMon
   const female = first.sex === 'female' ? first : second;
   const male = first.sex === 'male' ? first : second;
   if (ageMonths(female, atMonth) < 16 * 12
-    || ageMonths(female, atMonth) > 45 * 12
+    || ageMonths(female, atMonth) > reproductiveUpperAgeMonths(female)
     || ageMonths(male, atMonth) < 16 * 12) return false;
   if (hasReproductiveRecoveryCondition(female)) return false;
   return Math.min(
     first.body.health, first.body.hydration, first.body.nutrition,
     second.body.health, second.body.hydration, second.body.nutrition,
   ) >= 55;
+}
+
+function succubusPairEligible(actor: PersonState, partner: PersonState, atMonth: number): boolean {
+  if (!isAlive(actor) || !isAlive(partner)
+    || actor.id === partner.id
+    || actor.sex !== 'female'
+    || partner.sex !== 'male'
+    || !hasTrait(actor, 'succubus')) return false;
+  if (ageMonths(actor, atMonth) < 16 * 12 || ageMonths(partner, atMonth) < 16 * 12) return false;
+  return !actor.conditions.some((condition) => condition.kind === 'pregnancy');
 }
 
 function buildOptions(
@@ -543,9 +562,11 @@ function buildOptions(
   visibleDrops: DropState[],
   visiblePeople: PersonState[],
   visibleAnimals: AnimalState[],
+  visibleRemains: HumanRemainsState[],
   atMonth: number,
 ): ActionOption[] {
   const options: ActionOption[] = [];
+  options.push(...buildMortuaryOptions(state, person, visibleRemains));
   const planningStage = lifePlanningStage(person, atMonth);
   if (planningStage === 'learning-child') {
     const visibleParent = visiblePeople.find((candidate) => person.geneticParents.includes(candidate.id));
@@ -1087,7 +1108,7 @@ function buildOptions(
   const incomingExchange = openExchangeOfferFor(state, person.id);
   if (incomingExchange) {
     const proposal = incomingExchange.content.proposal;
-    const offerer = state.people.find((other) => other.id === incomingExchange.fact.who);
+    const offerer = personById(state, incomingExchange.fact.who);
     if (proposal?.kind === 'exchange' && offerer) {
       const representationId = `accept:${incomingExchange.content.id}:${person.id}`;
       const together = sameLocation(offerer, person);
@@ -1124,12 +1145,12 @@ function buildOptions(
     const quantity = proposal.offererId === person.id ? proposal.offererQuantity : proposal.partnerQuantity;
     const receiverId = proposal.offererId === person.id ? proposal.partnerId : proposal.offererId;
     const stack = person.inventory.find((item) => item.materialId === materialId && item.quantity >= quantity);
-    const receiver = state.people.find((other) => other.id === receiverId);
+    const receiver = personById(state, receiverId);
     if (stack && receiver) options.push({
       id: `settle-exchange:${acceptedExchange.offer.id}:${person.id}`,
       summary: `交付交换中的${materialDefinition(materialId).name}`,
       reason: '双方已经接受报价，本人尚未履行自己的交付',
-      goal: { kind: 'inventory-at-least', materialId, quantity: inventoryQuantity(state.people.find((other) => other.id === receiverId) ?? person, materialId) + quantity, personId: receiverId },
+      goal: { kind: 'inventory-at-least', materialId, quantity: inventoryQuantity(personById(state, receiverId) ?? person, materialId) + quantity, personId: receiverId },
       nextAction: sameLocation(receiver, person)
         ? { kind: 'transfer', materialId, quantity, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: receiverId }, stackId: stack.id, authorizationRef: acceptedExchange.offer.action.kind === 'communicate' ? acceptedExchange.offer.action.content.id : undefined }
         : { kind: 'move', toCellId: receiver.position.cellId, toZ: receiver.position.z },
@@ -1220,23 +1241,20 @@ function buildOptions(
     sourceFactIds: [...fiber.sourceEventIds, ...injured.conditions.flatMap((condition) => condition.sourceEventIds)],
   });
 
-  const activeReproductionAgreement = [...state.agreements].reverse().find((agreement) => agreement.status === 'active'
+  const activeReproductionAgreement = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'reproduce'
     && agreement.partyIds.includes(person.id)
     && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth
     && (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) >= atMonth);
   const activeReproductionPartnerId = activeReproductionAgreement?.partyIds.find((personId) => personId !== person.id);
-  const activeReproductionPartner = activeReproductionPartnerId
-    ? state.people.find((candidate) => candidate.id === activeReproductionPartnerId && isAlive(candidate))
+  const activeReproductionPartnerCandidate = activeReproductionPartnerId
+    ? personById(state, activeReproductionPartnerId)
+    : undefined;
+  const activeReproductionPartner = activeReproductionPartnerCandidate && isAlive(activeReproductionPartnerCandidate)
+    ? activeReproductionPartnerCandidate
     : undefined;
   if (activeReproductionAgreement?.proposal.kind === 'reproduce' && activeReproductionPartner) {
     const together = sameLocation(activeReproductionPartner, person);
-    const relationshipReady = hasCultivatedReproductiveRelationship(
-      state,
-      person,
-      activeReproductionPartner,
-      buildRelationshipCausalBasis(state, person, activeReproductionPartner, 'reproduce', atMonth),
-    );
     const revokeId = `revoke-reproduce:${activeReproductionAgreement.id}:${person.id}:${atMonth}`;
     const revokeAction = {
       kind: 'communicate' as const,
@@ -1263,7 +1281,6 @@ function buildOptions(
       sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
     });
     if (!reproductionAttemptedBetweenInMonth(state, person.id, activeReproductionPartner.id, atMonth)
-      && relationshipReady
       && reproductivePairEligible(person, activeReproductionPartner, atMonth)) {
       const female = person.sex === 'female' ? person : activeReproductionPartner;
       options.push({
@@ -1284,49 +1301,82 @@ function buildOptions(
 
   const incomingOffer = openReproductionOfferFor(state, person.id);
   if (incomingOffer) {
-    const proposer = state.people.find((other) => other.id === incomingOffer.fact.who);
+    const proposer = personById(state, incomingOffer.fact.who);
     if (proposer) {
       const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'reproduce', atMonth);
-      const relationshipReady = hasCultivatedReproductiveRelationship(state, person, proposer, responseBasis);
       const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
       const together = sameLocation(proposer, person);
       const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
-      const learnedRisk = perceivedKinshipRisk(state, person, proposer).cost > 0;
-      if (relationshipReady && reproductivePairEligible(person, proposer, atMonth)) options.push({
+      const perceivedRisk = perceivedKinshipRisk(state, person, proposer);
+      const learnedRisk = perceivedRisk.cost > 0;
+      const responseSourceFactIds = [...new Set([
+        incomingOffer.fact.id,
+        ...responseBasis.sourceFactIds,
+        ...perceivedRisk.sourceFactIds,
+      ])];
+      if (reproductivePairEligible(person, proposer, atMonth)) options.push({
         id: `accept-reproduce:${incomingOffer.content.id}`,
         summary: `接受${proposer.name}的共同生殖提议`,
-        reason: learnedRisk ? '过去的后代体弱或疾病记忆使这项选择具有已知风险' : '彼此已有可追溯的共同经历，并建立了最低程度的信任与亲近',
+        reason: learnedRisk ? '过去的后代体弱或疾病记忆会进入本人的同意判断' : '本人将依据关系、人格和当前责任自行判断是否接受',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: acceptAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [incomingOffer.fact.id],
+        sourceFactIds: responseSourceFactIds,
+        relationshipBasis: responseBasis,
       });
       const rejectId = `reject:${incomingOffer.content.id}:${person.id}`;
       const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
       options.push({
         id: `reject-reproduce:${incomingOffer.content.id}`,
         summary: '拒绝共同生殖提议',
-        reason: !relationshipReady
-          ? '彼此尚未通过共同经历建立足够的信任与亲近'
-          : learnedRisk
-            ? '记忆中已有近亲后代体弱或疾病的可追溯经验'
-            : '存在一项需要本人明确回应的生殖提议',
+        reason: learnedRisk
+          ? '记忆中已有近亲后代体弱或疾病的可追溯经验'
+          : responseBasis.relationshipKeys.length
+            ? '本人将依据这段有来源关系和当前责任自行判断是否拒绝'
+            : '本人没有自己的共同经历，但仍须明确回应对方的提议',
         goal: { kind: 'representation-made', representationId: rejectId },
         nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
         target: { kind: 'person', personId: proposer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [incomingOffer.fact.id],
+        sourceFactIds: responseSourceFactIds,
+        relationshipBasis: responseBasis,
       });
     }
   }
 
-  const livingPopulation = state.people.filter(isAlive).length;
-  const reproductionCapacity = humanReproductionCapacityFactor(livingPopulation);
+  const succubusTrait = person.traits?.find((trait) => trait.id === 'succubus');
+  if (succubusTrait) {
+    const unilateralCandidates = visiblePeople
+      .filter((other) => succubusPairEligible(person, other, atMonth))
+      .filter((other) => !reproductionAttemptedBetweenInMonth(state, person.id, other.id, atMonth))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    for (const reproductivePartner of unilateralCandidates) {
+      const together = sameLocation(reproductivePartner, person);
+      const reproduceAction = {
+        kind: 'act' as const,
+        operation: 'reproduce' as const,
+        targets: [{ kind: 'person' as const, personId: reproductivePartner.id }],
+      };
+      options.push({
+        id: `reproduce:succubus:${person.id}:${reproductivePartner.id}`,
+        summary: `以魅魔特质与${reproductivePartner.name}进行单方生殖尝试`,
+        reason: '魅魔特质让本人能够以单方同意越过关系、协议、家庭准备度与身体储备门槛',
+        goal: { kind: 'condition', personId: person.id, condition: 'pregnancy', present: true },
+        nextAction: together
+          ? reproduceAction
+          : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
+        ...(!together ? { completionAction: reproduceAction } : {}),
+        target: { kind: 'person', personId: reproductivePartner.id },
+        estimatedDuration: together ? 'one-month' : 'several-months',
+        sourceFactIds: [...succubusTrait.sourceEventIds],
+      });
+    }
+  }
+
   const reproductiveCandidates = visiblePeople.filter((other) => {
-    if (reproductionCapacity <= 0) return false;
     if (activeReproductionAgreement) return false;
     return reproductivePairEligible(person, other, atMonth);
   }).map((other) => ({
@@ -1343,10 +1393,10 @@ function buildOptions(
         id: representationId,
         summary: `向${reproductivePartner.name}提出共同生殖`,
         reason: perceivedRisk.cost > 0
-          ? '彼此满足关系与身体条件，但本人记得这段亲缘可能增加后代风险'
+          ? '本人记得这段亲缘可能增加后代风险，是否提议仍由本人权衡'
           : together
-            ? '彼此已有可追溯的共同经历和最低信任、亲近，且身体条件允许生殖'
-            : '彼此已有可追溯的共同经历和最低信任、亲近，对方可见且身体条件允许生殖',
+            ? '彼此已有可追溯的共同经历，且身体条件允许本人考虑生殖'
+            : '彼此已有可追溯的共同经历，对方可见且身体条件允许本人考虑生殖',
         goal: { kind: 'representation-made', representationId },
         nextAction: together ? {
           kind: 'communicate',
@@ -1436,17 +1486,40 @@ function buildOptions(
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
-  const teachableFacts = person.knowledge
+  const usefulToolTeaching = person.knowledge
+    .filter((fact) => fact.kind === 'technique' && fact.confidence >= 55)
+    .flatMap((fact) => localPeople.flatMap((learner) => {
+      if (ageMonths(learner, atMonth) < MIN_TEACHING_AGE_MONTHS
+        || learner.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)) return [];
+      const outputMaterialId = techniqueOutputMaterialId(fact.id);
+      const learnerLabor = recentPersonalProductionLaborEvents(state, learner.id, atMonth);
+      return outputMaterialId === Material.BronzeTool
+        && productionToolRank(outputMaterialId) > productionToolRank(bestProductionToolStack(learner)?.materialId ?? Material.Air)
+        && learnerLabor.length > 0
+        ? [{ fact, learner, learnerLabor }]
+        : [];
+    }))
+    .sort((a, b) => b.fact.confidence - a.fact.confidence
+      || a.fact.id.localeCompare(b.fact.id)
+      || a.learner.id.localeCompare(b.learner.id))[0];
+  const ordinaryTeachableFacts = person.knowledge
     .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
       && fact.confidence >= 55
       && localPeople.some((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
         && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
-    .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id))
-    .slice(0, 3);
+    .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id));
+  const teachableFacts = [
+    ...(usefulToolTeaching ? [usefulToolTeaching.fact] : []),
+    ...ordinaryTeachableFacts.filter((fact) => fact.id !== usefulToolTeaching?.fact.id),
+  ].slice(0, 3);
   for (const teachable of teachableFacts) {
     const learnedThreshold = 55;
-    const learner = localPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-      && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
+    const prioritizedToolTeaching = usefulToolTeaching?.fact.id === teachable.id ? usefulToolTeaching : undefined;
+    const usefulToolUpgrade = Boolean(prioritizedToolTeaching);
+    const learner = prioritizedToolTeaching
+      ? prioritizedToolTeaching.learner
+      : localPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
+        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
     if (!learner) continue;
     const representationId = `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}`;
     const communicate = { kind: 'communicate' as const, content: { id: representationId, kind: 'claim' as const, summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' as const };
@@ -1457,12 +1530,17 @@ function buildOptions(
         : `把“${teachable.summary}”教给${learner.name}`,
       reason: teachable.kind === 'codebook'
         ? '自己可靠掌握这组符号，而身边达到学习年龄的人还不理解'
-        : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
+        : usefulToolUpgrade
+          ? '自己可靠掌握更高效生产工具的制作技术，而身边刚完成过真实劳动的人还不会'
+          : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
       goal: { kind: 'knowledge', factId: teachable.id, minConfidence: learnedThreshold, personId: learner.id },
       nextAction: communicate,
       target: { kind: 'person', personId: learner.id },
       estimatedDuration: 'one-month',
-      sourceFactIds: teachable.sourceEventIds,
+      sourceFactIds: [...new Set([
+        ...teachable.sourceEventIds,
+        ...(prioritizedToolTeaching ? prioritizedToolTeaching.learnerLabor.map((event) => event.id) : []),
+      ])],
     });
   }
 
@@ -1548,12 +1626,14 @@ export function buildDecisionContext(
   const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal)
     && visibleSet.has(animal.position.cellId)
     && Math.abs(animal.position.z - person.position.z) <= visibleRadius);
+  const visibleRemains = (state.world.remains ?? []).filter((remains) => visibleSet.has(remains.position.cellId)
+    && Math.abs(remains.position.z - person.position.z) <= visibleRadius);
   // Project options own a copy of the one project they may route; unrelated
   // projects and all terminal evidence are read-only in this context.
   const planningState = state;
   const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
   const stage = lifePlanningStage(person, atMonth);
-  const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, atMonth)
+  const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, visibleRemains, atMonth)
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
     .filter((option) => optionAllowedForLifeStage(stage, option))
     .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
@@ -1576,11 +1656,14 @@ export function buildDecisionContext(
     visiblePeople,
     visibleDrops,
     visibleAnimals,
+    visibleRemains,
     options: requiredSocialResponses.length
       ? [...observedEmergencyHibernation, ...requiredSocialResponses]
       : options,
     followUpOptions,
-    activeIntent: person.activeIntentId ? state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active') : undefined,
+    activeIntent: person.activeIntentId && intentById(state, person.activeIntentId)?.status === 'active'
+      ? intentById(state, person.activeIntentId)
+      : undefined,
   };
 }
 
@@ -1607,6 +1690,9 @@ export function recompileNextAction(
 ): PrimitiveAction | null {
   if (reproductionIntentAttemptedThisMonth(state, person, intent, atMonth)) return null;
   if (intent.recordUseBasis) return recompileRecordUseNextAction(state, person, intent);
+  if (intent.goal.kind === 'death-mourned'
+    || intent.goal.kind === 'remains-interred'
+    || intent.goal.kind === 'memorial-marked') return recompileMortuaryNextAction(state, person, intent);
   if ((intent.nextAction.kind === 'communicate'
       && intent.nextAction.content.kind === 'request'
       && intent.nextAction.content.techniqueDemonstration)
@@ -1627,7 +1713,8 @@ export function recompileNextAction(
       && mandateAction.from.personId === person.id
       && mandateAction.to.kind === 'person') {
       const receiverId = mandateAction.to.personId;
-      const receiver = state.people.find((candidate) => candidate.id === receiverId && isAlive(candidate));
+      const receiverCandidate = personById(state, receiverId);
+      const receiver = receiverCandidate && isAlive(receiverCandidate) ? receiverCandidate : undefined;
       const stack = person.inventory.find((candidate) => candidate.materialId === mandateAction.materialId && candidate.quantity > 0);
       if (!receiver || !stack) return null;
       return sameLocation(receiver, person)
@@ -1639,7 +1726,8 @@ export function recompileNextAction(
       && permission.granteeId === person.id
       && atMonth >= permission.validFromMonth
       && atMonth <= permission.validUntilMonth) {
-      const grantor = state.people.find((candidate) => candidate.id === permission.grantorId && isAlive(candidate));
+      const grantorCandidate = personById(state, permission.grantorId);
+      const grantor = grantorCandidate && isAlive(grantorCandidate) ? grantorCandidate : undefined;
       const stack = grantor?.inventory.find((candidate) => candidate.materialId === permission.materialId && candidate.quantity > 0);
       if (!grantor || !stack) return null;
       return sameLocation(grantor, person)
@@ -1650,20 +1738,21 @@ export function recompileNextAction(
   }
   if (intent.completionAction && intent.target?.kind === 'person') {
     const targetPersonId = intent.target.personId;
-    const target = state.people.find((candidate) => candidate.id === targetPersonId);
+    const target = personById(state, targetPersonId);
     if (!target || !isAlive(target)) return null;
     return sameLocation(target, person) ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'near-person') {
     const targetPersonId = intent.goal.personId;
-    const target = state.people.find((candidate) => candidate.id === targetPersonId && isAlive(candidate));
+    const targetCandidate = personById(state, targetPersonId);
+    const target = targetCandidate && isAlive(targetCandidate) ? targetCandidate : undefined;
     if (!target) return null;
     return sameLocation(target, person) ? null : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'inventory-at-least' && intent.goal.personId && intent.target?.kind === 'person') {
     const goal = intent.goal;
     const receiverId = intent.target.personId;
-    const receiver = state.people.find((candidate) => candidate.id === receiverId);
+    const receiver = personById(state, receiverId);
     const exchange = acceptedExchangeAt(state, person, atMonth);
     const stack = person.inventory.find((candidate) => candidate.materialId === goal.materialId && candidate.quantity > 0);
     const offerId = exchange?.offer.action.kind === 'communicate' ? exchange.offer.action.content.id : undefined;

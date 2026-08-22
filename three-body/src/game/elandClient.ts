@@ -11,6 +11,7 @@ import type {
   SkySample,
 } from './societyContract';
 import type { ModelProvider } from './llm';
+import type { CivilizationRequiem } from './civilizationRequiem';
 import { applyStepPayload, type ElandStepPayload } from './eland/society-patch';
 
 export type Frame = GameFrame;
@@ -498,6 +499,35 @@ export const elandClient = {
       historyTotalCount: loaded.historyTotalCount ?? loaded.history.length,
     };
   },
+  settleCivilization: async (runId: string, requestOptions?: ElandRequestOptions) => {
+    const latest = latestFrames.get(runId);
+    if (!latest) throw new ElandSessionMissingError('结算文明前必须先读取权威状态');
+    const { frame } = await post<{ frame: Frame }>('settle-civilization', {
+      runId,
+      leaseId: PAGE_LEASE_ID,
+      expectedCivilizationId: latest.civilizationId,
+      expectedBranchId: latest.branchId,
+      expectedElapsedMonths: latest.elapsedMonths,
+    }, requestOptions);
+    latestFrames.set(runId, frame);
+    pendingSteps.delete(runId);
+    return frame;
+  },
+  civilizationRequiem: (
+    runId: string,
+    input: {
+      civilizationId: number;
+      branchId: string;
+      endedAtMonth: number;
+    },
+    requestOptions?: ElandRequestOptions,
+  ) => post<{ requiem: CivilizationRequiem }>('civilization-requiem', {
+    runId,
+    leaseId: PAGE_LEASE_ID,
+    expectedCivilizationId: input.civilizationId,
+    expectedBranchId: input.branchId,
+    expectedEndedAtMonth: input.endedAtMonth,
+  }, requestOptions).then(({ requiem }) => requiem),
   checkpoint: (runId: string, requestOptions?: ElandRequestOptions) => {
     const body = JSON.stringify({ runId, leaseId: PAGE_LEASE_ID });
     if (typeof navigator !== 'undefined' && navigator.sendBeacon?.('/api/eland/checkpoint', body)) {

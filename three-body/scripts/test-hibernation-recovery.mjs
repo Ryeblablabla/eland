@@ -1288,6 +1288,8 @@ try {
   const terminalLeafAfterExit = afterTerminalLeafExit.intents.find((intent) => intent.id === socialEntryIntentId);
   const terminalReturnParentAfterExit = afterTerminalLeafExit.intents.find((intent) => intent.id === terminalReturnParentId);
   assert.equal(terminalLeafAfterExit.status, 'completed', '安全退出时已 terminal 的 leaf project 必须映射为 completed');
+  assert.equal(terminalLeafAfterExit.goalOutcome?.kind, 'achieved',
+    '休眠退出旁路映射已完成项目时必须同步结算 Intent 目标结果');
   assert.equal(terminalLeafAfterExit.returnOutcome, 'resumed',
     '建立普通 context 前必须沿原 returnTo 边解析 terminal exact leaf');
   assert.equal(terminalReturnParentAfterExit.status, 'active',
@@ -1553,14 +1555,80 @@ try {
   const parentAfterDeathBeforeSync = deathBeforeSyncState.intents.find((intent) => intent.id === deathBeforeSyncParentId);
   assert.equal(postDeathSuspensionFacts.length, 0, 'post-body hibernation sync 必须跳过当月已死亡人物');
   assert.equal(intentAfterDeathBeforeSync.status, 'failed', '死亡结算必须先把原 active intent 置为 failed');
+  assert.equal(intentAfterDeathBeforeSync.goalOutcome?.kind, 'not-evaluated',
+    '死亡前没有实际行动样本时，active intent 必须结算为未评估而不是污染目标失败后验');
+  assert.ok(intentAfterDeathBeforeSync.goalOutcome?.sourceEventIds.some((eventId) => eventId.includes('-environment-death-')),
+    '死亡旁路的 goalOutcome 必须引用真实死亡事实');
   assert.equal(intentAfterDeathBeforeSync.suspendedForHibernationConditionId, undefined,
     '当月死亡不得留下 hibernation-suspended orphan intent');
   assert.equal(intentAfterDeathBeforeSync.returnOutcome, 'parent-unavailable',
     '当月死亡必须终结 active leaf 的 return 边');
   assert.equal(parentAfterDeathBeforeSync.status, 'failed', '当月死亡必须同时终结尚未加 marker 的 suspended ancestor');
+  assert.equal(parentAfterDeathBeforeSync.goalOutcome?.kind, 'not-evaluated',
+    '死亡时没有行动样本的 suspended ancestor 也必须显式结算为未评估');
   assert.equal(parentAfterDeathBeforeSync.suspendedByIntentId, undefined,
     '当月死亡不得留下指向已死亡 leaf 的 suspendedBy orphan');
   assert.equal(deathBeforeSyncPerson.activeIntentId, undefined);
+
+  const ordinaryInterruptedDeathState = createInitialState(359, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
+  ordinaryInterruptedDeathState.people = [ordinaryInterruptedDeathState.people[0]];
+  const ordinaryInterruptedDeathPerson = ordinaryInterruptedDeathState.people[0];
+  ordinaryInterruptedDeathPerson.body = { health: 0, hydration: 60, nutrition: 60 };
+  ordinaryInterruptedDeathPerson.conditions = [];
+  const ordinaryInterruptedParentId = 'test-ordinary-interrupted-parent-before-death';
+  const ordinaryInterruptedChildId = 'test-ordinary-interruption-child-before-death';
+  ordinaryInterruptedDeathState.intents.push({
+    id: ordinaryInterruptedParentId,
+    ownerId: ordinaryInterruptedDeathPerson.id,
+    summary: '普通中断期间暂停的 parent',
+    domain: 'strategic',
+    goal: { kind: 'at-cell', cellId: ordinaryInterruptedDeathPerson.position.cellId },
+    nextAction: { kind: 'move', toCellId: ordinaryInterruptedDeathPerson.position.cellId },
+    status: 'suspended',
+    createdAtMonth: 0,
+    lastProgressAtMonth: 0,
+    progress: 0,
+    sourceDecisionEventId: 'test-ordinary-interrupted-parent-decision',
+    suspendedByIntentId: ordinaryInterruptedChildId,
+    suspendedAtMonth: 1,
+    actionEventIds: [],
+    replanCount: 0,
+  }, {
+    id: ordinaryInterruptedChildId,
+    ownerId: ordinaryInterruptedDeathPerson.id,
+    summary: '普通 required-response 中断 child',
+    domain: 'social',
+    goal: { kind: 'at-cell', cellId: ordinaryInterruptedDeathPerson.position.cellId },
+    nextAction: { kind: 'move', toCellId: ordinaryInterruptedDeathPerson.position.cellId },
+    status: 'active',
+    createdAtMonth: 1,
+    lastProgressAtMonth: 1,
+    progress: 0,
+    sourceDecisionEventId: 'test-ordinary-interruption-child-decision',
+    returnToIntentId: ordinaryInterruptedParentId,
+    interruptionKind: 'required-response',
+    actionEventIds: [],
+    replanCount: 0,
+  });
+  ordinaryInterruptedDeathPerson.activeIntentId = ordinaryInterruptedChildId;
+  const ordinaryInterruptedDeathFacts = advanceBodies(ordinaryInterruptedDeathState, 2);
+  const ordinaryInterruptedChild = ordinaryInterruptedDeathState.intents
+    .find((intent) => intent.id === ordinaryInterruptedChildId);
+  const ordinaryInterruptedParent = ordinaryInterruptedDeathState.intents
+    .find((intent) => intent.id === ordinaryInterruptedParentId);
+  assert.ok(ordinaryInterruptedDeathFacts.some((event) => event.change === 'death'),
+    '普通中断夹具必须完成真实死亡结算');
+  assert.equal(ordinaryInterruptedChild.status, 'failed');
+  assert.equal(ordinaryInterruptedChild.goalOutcome?.kind, 'not-evaluated');
+  assert.equal(ordinaryInterruptedChild.returnOutcome, 'parent-unavailable',
+    '普通中断 child 死亡也必须显式终结 return 边');
+  assert.equal(ordinaryInterruptedChild.returnResolvedAtMonth, 2);
+  assert.equal(ordinaryInterruptedParent.status, 'failed',
+    'owner 死亡必须终结所有普通 suspended parent，而不只处理休眠链');
+  assert.equal(ordinaryInterruptedParent.goalOutcome?.kind, 'not-evaluated');
+  assert.equal(ordinaryInterruptedParent.suspendedByIntentId, undefined,
+    '普通中断 parent 不得留下指向死亡 child 的孤儿边');
+  assert.equal(ordinaryInterruptedDeathPerson.activeIntentId, undefined);
 
   const deathDuringSuspensionState = createInitialState(357, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
   deathDuringSuspensionState.people = [deathDuringSuspensionState.people[0]];
@@ -1596,6 +1664,8 @@ try {
   const failedSuspendedIntent = deathDuringSuspensionState.intents
     .find((intent) => intent.id === deathDuringSuspensionIntentId);
   assert.equal(failedSuspendedIntent.status, 'failed', 'episode 中死亡必须把已暂停意图终结为 failed');
+  assert.equal(failedSuspendedIntent.goalOutcome?.kind, 'not-evaluated',
+    '休眠中死亡且没有行动样本时必须留下未评估的目标结果');
   assert.equal(failedSuspendedIntent.suspendedForHibernationConditionId, undefined,
     'episode 中死亡必须清除 condition marker，不能留下 suspended orphan');
   assert.ok(deathDuringSuspensionFacts.some((event) => event.change === 'death'

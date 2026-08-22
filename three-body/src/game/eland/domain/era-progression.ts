@@ -9,9 +9,9 @@ import type {
   SimulationState,
 } from './model';
 import { isAlive } from './person';
-import { cellId, voxelAt } from '../world/grid';
+import { cellId, cellsInRadius, voxelAt } from '../world/grid';
 
-export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v1' as const;
+export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v2' as const;
 
 const ERA_ORDER: DevelopmentEraKey[] = [
   'primitive-tribe',
@@ -247,18 +247,77 @@ function nextEra(era: DevelopmentEraKey): DevelopmentEraKey | null {
   return ERA_ORDER[eraRank(era) + 1] ?? null;
 }
 
+interface EstablishedCultivationEvidence {
+  projectId: string;
+  plantingEventIds: string[];
+  harvestEventIds: string[];
+}
+
+/**
+ * Retain cultivation as a learned production capability after harvested plots
+ * recover to ordinary wet soil. A qualifying cycle must still be replayable
+ * inside one completed settled-cultivation project; unrelated scattering never
+ * becomes an era gate merely by accumulating action counts.
+ */
+function establishedCultivationEvidence(state: SimulationState): EstablishedCultivationEvidence | null {
+  const factsById = new Map(actionFacts(state).map((event) => [event.id, event]));
+  const projects = state.projects
+    .filter((project) => project.status === 'completed'
+      && project.desiredFunction === 'settled-cultivation'
+      && project.completionEventIds.length > 0)
+    .sort((left, right) => (left.completedAtMonth ?? Number.MAX_SAFE_INTEGER)
+      - (right.completedAtMonth ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id));
+  for (const project of projects) {
+    if (!project.site) continue;
+    const projectCells = new Set(cellsInRadius(project.site.cellId, 2));
+    const projectActionIds = new Set(project.actionEventIds);
+    const facts = [...new Set(project.completionEventIds)]
+      .filter((eventId) => projectActionIds.has(eventId))
+      .map((eventId) => factsById.get(eventId))
+      .filter((event): event is ActionFact => event !== undefined);
+    const plantingByPosition = new Map<string, ActionFact>();
+    for (const event of facts) {
+      if (event.status !== 'completed'
+        || event.action.kind !== 'act'
+        || event.action.operation !== 'combine'
+        || Number(event.diff.outputMaterialId) !== Material.CropSprout) continue;
+      const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+      if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(Number(value)))) continue;
+      const x = Number(position?.x);
+      const y = Number(position?.y);
+      const z = Number(position?.z);
+      if (!projectCells.has(cellId(x, y))) continue;
+      const positionKey = `${x}:${y}:${z}`;
+      if (!plantingByPosition.has(positionKey)) plantingByPosition.set(positionKey, event);
+    }
+    const harvests = facts.filter((event) => {
+      if (event.status !== 'completed'
+        || event.action.kind !== 'act'
+        || event.action.operation !== 'separate'
+        || Number(event.diff.sourceMaterialId) !== Material.CropMature) return false;
+      const target = event.action.targets.find((candidate) => candidate.kind === 'voxel');
+      if (!target) return false;
+      const { x, y, z } = target.position;
+      return projectCells.has(cellId(x, y)) && plantingByPosition.has(`${x}:${y}:${z}`);
+    });
+    if (plantingByPosition.size < 6 || harvests.length < 2) continue;
+    return {
+      projectId: project.id,
+      plantingEventIds: [...plantingByPosition.values()].map((event) => event.id),
+      harvestEventIds: harvests.map((event) => event.id),
+    };
+  }
+  return null;
+}
+
 function eraGateState(
   state: SimulationState,
   indexTotal: number,
   capabilities: MaterialCapabilityObservation[],
   facilities: FunctionalBuildingObservation[],
 ) {
-  const cultivation = state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0;
-  const cultivationHarvests = state.world.past.filter((event) => event.kind === 'action'
-    && event.status === 'completed'
-    && event.action.kind === 'act'
-    && event.action.operation === 'separate'
-    && Number(event.diff.sourceMaterialId) === Material.CropMature).length;
+  const establishedCultivation = establishedCultivationEvidence(state);
   const storedFood = state.containers.reduce((sum, container) => sum + container.inventory.reduce((inner, stack) => (
     materialHas(stack.materialId, 'edible') ? inner + stack.quantity : inner
   ), 0), 0);
@@ -275,8 +334,7 @@ function eraGateState(
     'agrarian-settlement': [
       ['index:120', indexTotal >= 120],
       ['material:masonry-stone:distributed', materialCapabilityAtLeast(capability('masonry-stone'), 'distributed')],
-      ['food:cultivated-cells:6', cultivation >= 6],
-      ['food:cultivation-harvests:2', cultivationHarvests >= 2],
+      ['food:settled-cultivation-cycle', establishedCultivation !== null],
       ['food:stored-units:10', storedFood >= 10],
       ['facility:granary-used', activeUsed(Material.Granary, 2)],
       ['facility:early-core-used', activeUsed(Material.CouncilHearth, 1)],
@@ -307,6 +365,7 @@ export function observeCivilizationDevelopment(
 ): CivilizationDevelopmentObservation {
   const facilities = observeFunctionalBuildings(state);
   const materialCapabilities = observeMaterialCapabilities(state);
+  const establishedCultivation = establishedCultivationEvidence(state);
   const gates = eraGateState(state, indexTotal, materialCapabilities, facilities);
   let candidateEra: DevelopmentEraKey = 'primitive-tribe';
   for (const era of ERA_ORDER.slice(1)) {
@@ -316,7 +375,8 @@ export function observeCivilizationDevelopment(
   }
   const previous = state.civilization.development;
   const previousCurrent = previous?.currentEra ?? 'primitive-tribe';
-  const candidateSinceMonth = previous?.candidateEra === candidateEra
+  const candidateSinceMonth = previous?.observerVersion === DEVELOPMENT_OBSERVER_VERSION
+    && previous.candidateEra === candidateEra
     ? previous.candidateSinceMonth
     : state.clock.elapsedMonths;
   const upward = eraRank(candidateEra) > eraRank(previousCurrent);
@@ -335,6 +395,9 @@ export function observeCivilizationDevelopment(
   const supportingEventIds = [...new Set([
     ...materialCapabilities.flatMap((capability) => capability.successfulBatchEventIds),
     ...facilities.flatMap((facility) => [...facility.installationEventIds, ...facility.useEventIds]),
+    ...(establishedCultivation
+      ? [...establishedCultivation.plantingEventIds, ...establishedCultivation.harvestEventIds]
+      : []),
     ...state.derived.institutions.flatMap((institution) => institution.evidenceEventIds),
   ])];
   const gateProgress = targetGates.length ? satisfiedGateIds.length / targetGates.length : 1;

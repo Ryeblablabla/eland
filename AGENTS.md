@@ -23,6 +23,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `three-body/src/game/eland/README.md`：当前模块边界。
 - `docs/rule-first-agent-architecture-v1.md`：人物、规则与模型的设计边界。
 - `docs/evolution-iteration-loop-v1.md`：文明规则的实验方法。
+- `docs/agent-cli-v1.md`：Agent 调试、领域检查、实时会话与实验矩阵 CLI。
 - `docs/sqlite-persistence-v1.md`：当前唯一持久化事实源、表与 codec、备份恢复和切换审计。
 - `docs/three-body-era-ecology-v1.md`：恒乱纪元、天气、预言、脱水休眠与生态。
 - `docs/civilization-index-v1.md`：文明指数与时代观察规则。
@@ -32,6 +33,7 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `three-body/` 是主应用目录；前端入口为 `src/App.tsx`，当前产品只保留三体宇宙与人间体素世界两个全屏 3D 场景。
 - 宇宙与人间通过连续缩放进入和退出。页面打开后由本地规则自动推进文明；前端读取权威状态，不自行生成第二套演进结果。
 - `three-body/server/` 是独立演化服务，默认监听 `http://127.0.0.1:3220`；Vite 前端默认监听 `http://127.0.0.1:3217` 并代理 `/api`。`npm run dev` 同时启动 Vite 与带热重载的后端；`npm run dev:frontend` 只启动前端。
+- `three-body/scripts/eland.mjs` 是面向 Agent 和开发者的 HTTP CLI 适配器；从 `three-body/` 使用 `npm run --silent eland -- <command>`，保持 stdout 为可解析 JSON。CLI 不拥有领域规则，也不直接写 SQLite。
 - `three-body/data/eland.sqlite3` 是后端唯一持久化事实源。长程运行、检查点、报告旁车、玩家手动存档、实时会话、文明编号高水位和内容块都在同一 SQLite WAL 数据库中；实时会话默认可在 24 小时内恢复当前权威状态与分支时间线。
 - `knowledge-base/` 是素材实验、规则导览与核心文档入口，默认通过 `npm run dev` 启动。
 
@@ -44,6 +46,8 @@ ELAND 是规则优先的涌现式文明模拟，体验灵感来自《三体》�
 - `GET /api/runs/<id>/evolution` 与 `/report`：读取演化路径与事实报告。
 - `GET|PUT /api/runs/<id>/state`、`POST /api/runs/import`：导出、覆盖或导入可迁移状态。
 - `POST /api/runs/<id>/enhancements`：在事实提交后生成非权威叙事增强。
+
+Agent 调试优先通过 CLI 调用这些接口。常见入口为 `eland doctor`、`eland run`、`eland inspect`、`eland session`、`eland agent`、`eland experiment`、`eland narrative` 与 `eland model`；完整参数和写操作边界见 `docs/agent-cli-v1.md`。`run replace-state`、实时会话推进、结算和模型设置仍是显式写操作，不得在只读诊断中隐式执行。
 
 数据库父目录可用 `THREEBODY_DATA_DIR` 覆盖，数据库文件名固定为 `eland.sqlite3`。监听地址可用 `THREEBODY_HOST` 与 `THREEBODY_PORT` 覆盖。模型密钥是可选项；无密钥、网络失败或返回非法建议时，规则主链仍须完整运行。示例配置见 `three-body/.env.example`。
 
@@ -136,6 +140,8 @@ cd three-body
 npm run dev
 npm run backend:build
 npm run backend:start
+npm run --silent eland -- --help
+npm run test:cli
 npm run build
 npm run test:simulation
 

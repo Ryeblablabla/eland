@@ -9,9 +9,11 @@ import {
 import { reproductiveResponsibility } from './dependent-care';
 import {
   COMPANION_RELATION_THRESHOLD,
-  REPRODUCTION_RELATION_THRESHOLD,
   relationshipPairKey,
 } from './relation';
+import { reproductiveUpperAgeMonths } from './trait';
+import { agreementsForPerson } from './agreement';
+import { intentsOwnedBy } from './state-index';
 
 export type RelationshipProposalKind = RelationshipCausalBasis['kind'];
 
@@ -27,7 +29,11 @@ function femaleAgeBand(person: PersonState, partner: PersonState, atMonth: numbe
         ? '35-37'
         : years < 41
           ? '38-40'
-          : '41-45';
+          : years <= 45
+            ? '41-45'
+            : years <= reproductiveUpperAgeMonths(female) / 12
+              ? '46-67'
+              : 'over-limit';
 }
 
 function qualifiesAsRelationshipEvidence(
@@ -102,27 +108,22 @@ export function buildRelationshipCausalBasis(
     partnerId: partner.id,
     relationshipKeys,
     bodyKeys,
-    sourceFactIds: [...new Set([...relationshipKeys, ...(responsibility?.sourceFactIds ?? [])])],
+    sourceFactIds: [...new Set([
+      ...relationshipKeys,
+      ...(responsibility?.sourceFactIds ?? []),
+    ])],
   };
 }
 
-export function hasCultivatedReproductiveRelationship(
+/** A person may consider reproduction only with someone in their sourced relationship history. */
+export function hasSourcedReproductiveRelationship(
   state: SimulationState,
   person: PersonState,
   partner: PersonState,
   basis = buildRelationshipCausalBasis(state, person, partner, 'reproduce'),
 ): boolean {
   if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  const relation = person.relations.find((candidate) => candidate.personId === partner.id);
-  const reciprocalRelation = partner.relations.find((candidate) => candidate.personId === person.id);
-  return Boolean(relation
-    && reciprocalRelation
-    && relation.trust >= REPRODUCTION_RELATION_THRESHOLD
-    && relation.bond >= REPRODUCTION_RELATION_THRESHOLD
-    && reciprocalRelation.trust >= REPRODUCTION_RELATION_THRESHOLD
-    && reciprocalRelation.bond >= REPRODUCTION_RELATION_THRESHOLD
-    && basis.relationshipKeys.length > 0
-    && relationshipEvidenceIds(state, partner, person).length > 0);
+  return basis.relationshipKeys.length > 0;
 }
 
 export function hasCultivatedCompanionRelationship(
@@ -169,13 +170,13 @@ export function canOfferRelationshipProposal(
   basis: RelationshipCausalBasis,
 ): boolean {
   if (basis.kind === 'companion' && !hasCultivatedCompanionRelationship(state, proposer, partner, basis)) return false;
-  if (basis.kind === 'reproduce' && !hasCultivatedReproductiveRelationship(state, proposer, partner, basis)) return false;
-  const inFlight = state.intents.some((intent) => intent.ownerId === proposer.id
+  if (basis.kind === 'reproduce' && !hasSourcedReproductiveRelationship(state, proposer, partner, basis)) return false;
+  const inFlight = intentsOwnedBy(state, proposer.id).some((intent) => intent.ownerId === proposer.id
     && (intent.status === 'active' || intent.status === 'suspended')
     && intent.relationshipBasis?.subjectKey === basis.subjectKey
     && intent.relationshipBasis.partnerId === partner.id);
   if (inFlight) return false;
-  const previous = [...state.agreements].reverse().find((agreement) => agreement.proposal.kind === basis.kind
+  const previous = [...agreementsForPerson(state, proposer.id)].reverse().find((agreement) => agreement.proposal.kind === basis.kind
     && agreement.proposerId === proposer.id
     && agreement.responderId === partner.id);
   if (!previous) return true;

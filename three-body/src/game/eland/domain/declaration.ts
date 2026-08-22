@@ -2,6 +2,7 @@ import type { ActionFact, SimulationState } from './model';
 import { remember } from './memory';
 import { sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
+import { intentById, personById } from './state-index';
 
 /**
  * A model utterance is not trust evidence by itself. When an audience member
@@ -10,12 +11,12 @@ import { applyRelationEvidence } from './relation';
  */
 export function recordWitnessedDeclarationFulfillment(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed' || fact.action.kind === 'communicate' || !fact.intentId) return;
-  const intent = state.intents.find((candidate) => candidate.id === fact.intentId);
+  const intent = intentById(state, fact.intentId);
   if (!intent?.openingActionCompleted
     || intent.declarationFulfilledAtEventId
     || intent.openingAction?.kind !== 'communicate'
     || intent.openingAction.content.kind !== 'claim') return;
-  const speaker = state.people.find((person) => person.id === fact.who);
+  const speaker = personById(state, fact.who);
   if (!speaker) return;
   const witnesses = state.people.filter((person) => intent.openingAction?.kind === 'communicate'
     && intent.openingAction.audience.includes(person.id)

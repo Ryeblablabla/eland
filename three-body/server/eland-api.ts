@@ -203,6 +203,37 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
 
   const session = elandSessions.get(runId, route === 'step' && method === 'POST' ? 'step' : 'read');
   if (!session) return { status: 404, body: { error: `运行 ${runId} 不存在` } };
+  if (route === 'settle-civilization' && method === 'POST') {
+    const latest = session.latest();
+    if (!latest) return { status: 409, body: { error: '当前文明还没有可结算的权威状态' } };
+    if (body.expectedCivilizationId !== latest.civilizationId
+      || body.expectedBranchId !== latest.branchId
+      || body.expectedElapsedMonths !== latest.elapsedMonths) {
+      return { status: 409, body: { error: '文明已经推进或切换，请按当前状态重新确认结算' } };
+    }
+    try {
+      const frame = session.settleCivilization();
+      const persistence = elandSessions.persistIfCurrent(runId, session);
+      if (!persistence.current) return { status: 409, body: { error: '结算完成时会话已经被替换，请重新读取当前文明' } };
+      return { status: 200, body: { frame } };
+    } catch (error) {
+      if (error instanceof ElandSessionBusyError) return { status: 409, body: { error: error.message } };
+      throw error;
+    }
+  }
+  if (route === 'civilization-requiem' && method === 'POST') {
+    const latest = session.latest();
+    if (!latest?.civilizationEnd) return { status: 409, body: { error: '当前文明尚未结算' } };
+    if (body.expectedCivilizationId !== latest.civilizationId
+      || body.expectedBranchId !== latest.branchId
+      || body.expectedEndedAtMonth !== latest.elapsedMonths) {
+      return { status: 409, body: { error: '终章所依据的文明结局已经变化' } };
+    }
+    const requiem = await session.civilizationRequiem();
+    const persistence = elandSessions.persistIfCurrent(runId, session);
+    if (!persistence.current) return { status: 409, body: { error: '终章生成时会话已经被替换，请重新读取当前文明' } };
+    return { status: 200, body: { requiem } };
+  }
   if (route === 'save' && method === 'POST') {
     const saved = elandSessions.save(runId, typeof body.label === 'string' ? body.label : undefined);
     return saved

@@ -1,5 +1,7 @@
 import { executeIntentAction, executePrimitiveAction, goalSatisfied } from '../../domain/action-executor';
 import type { ActionOption } from '../../domain/action';
+import { agreementById, agreementsForPerson } from '../../domain/agreement';
+import { recordIntentGoalOutcome } from '../../domain/cognition';
 import { composeIntentChoice } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
@@ -19,9 +21,11 @@ import {
   type PersonId,
   type PersonState,
 } from '../../domain/person';
+import { intentById, intentsOwnedBy, personById, projectById } from '../../domain/state-index';
 import { recompileNextAction, reproductionIntentAttemptedThisMonth } from '../action-options';
 import { ordinaryLearningChildActionAllowed } from '../age-planning';
 import { compileAgreementContinuations, type AgreementContinuation } from '../agreement-continuation';
+import { evaluateCognitiveOption } from '../cognition/option-appraisal';
 import {
   ensureProject,
   recordProjectAction,
@@ -29,6 +33,71 @@ import {
 } from '../project-options';
 import { isMaintainableStateGoal } from '../rule-planner';
 import { clamp } from './state-utils';
+
+function intentGoalSourceIds(
+  state: SimulationState,
+  intent: Intent,
+  extra: string[] = [],
+): string[] {
+  const project = intent.projectId ? projectById(state, intent.projectId) : undefined;
+  return [...new Set([
+    ...extra,
+    ...intent.actionEventIds,
+    ...(project?.completionEventIds ?? []),
+    ...(extra.length || intent.actionEventIds.length || project?.completionEventIds.length
+      ? []
+      : [intent.sourceDecisionEventId]),
+  ])];
+}
+
+function reproductionAttemptFactForIntent(
+  state: SimulationState,
+  intent: Intent,
+  atMonth: number,
+  currentMonthEvents: WorldEvent[] = [],
+): ActionFact | undefined {
+  const agreement = intent.agreementId ? agreementById(state, intent.agreementId) : undefined;
+  const attemptIds = new Set(agreement?.reproductionAttemptEventIds ?? []);
+  return [...state.world.past, ...currentMonthEvents].reverse().find((event): event is ActionFact => (
+    event.kind === 'action'
+    && event.atMonth === atMonth
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce'
+    && (attemptIds.size === 0 || attemptIds.has(event.id))
+    && (event.who === intent.ownerId
+      || event.action.targets.some((target) => target.kind === 'person' && target.personId === intent.ownerId))
+  ));
+}
+
+function reproductionConceptionFactForIntent(
+  state: SimulationState,
+  intent: Intent,
+  currentMonthEvents: WorldEvent[] = [],
+): ActionFact | undefined {
+  const goal = intent.goal;
+  if (goal.kind !== 'condition'
+    || goal.condition !== 'pregnancy'
+    || !goal.present) return undefined;
+  const agreement = intent.agreementId ? agreementById(state, intent.agreementId) : undefined;
+  const attemptIds = new Set(agreement?.reproductionAttemptEventIds ?? []);
+  return [...state.world.past, ...currentMonthEvents].reverse().find((event): event is ActionFact => (
+    event.kind === 'action'
+    && event.atMonth >= intent.createdAtMonth
+    && event.action.kind === 'act'
+    && event.action.operation === 'reproduce'
+    && event.diff.conceived === true
+    && event.diff.femaleId === goal.personId
+    && (attemptIds.size === 0 || attemptIds.has(event.id))
+  ));
+}
+
+function failedActionGoalOutcomeKind(fact: ActionFact): 'attempted-unmet' | 'not-evaluated' {
+  return fact.action.kind === 'act'
+    && fact.action.operation === 'reproduce'
+    && fact.diff.conceived !== false
+    ? 'not-evaluated'
+    : 'attempted-unmet';
+}
 
 function stateGoalDurationMonths(duration: ActionOption['estimatedDuration'], estimatedMonths?: number): number {
   const base = duration === 'long'
@@ -87,12 +156,21 @@ export function startIntent(
       atMonth,
     })
     : choice.projectId
-      ? state.projects.find((project) => project.id === choice.projectId && project.status === 'active')
+      ? projectById(state, choice.projectId)
       : undefined;
-  if (choice.projectId && !linkedProject) return null;
+  if (choice.projectId && linkedProject?.status !== 'active') return null;
   const projectTarget = bindIntentProjectTarget(choice.goal, linkedProject);
   const previous = activeIntent(state, person);
-  if (previous) previous.status = 'abandoned';
+  if (previous) {
+    previous.status = 'abandoned';
+    recordIntentGoalOutcome(
+      state,
+      previous,
+      'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, previous, [decisionEventId]),
+    );
+  }
   const plannedDurationMonths = choice.domain === 'strategic'
     && choice.goal.kind !== 'project-completed'
     && isMaintainableStateGoal(choice.goal)
@@ -130,7 +208,9 @@ export function startIntent(
 }
 
 export function activeIntent(state: SimulationState, person: PersonState): Intent | undefined {
-  return state.intents.find((intent) => intent.id === person.activeIntentId && intent.status === 'active');
+  if (!person.activeIntentId) return undefined;
+  const intent = intentById(state, person.activeIntentId);
+  return intent?.status === 'active' ? intent : undefined;
 }
 
 export function startInterruptIntent(
@@ -150,15 +230,15 @@ export function startInterruptIntent(
     || !selected
     || selected.projectProposal) return null;
   const project = parent.projectId
-    ? state.projects.find((candidate) => candidate.id === parent.projectId && candidate.status === 'active')
+    ? projectById(state, parent.projectId)
     : undefined;
-  if (parent.projectId && !project) return null;
+  if (parent.projectId && project?.status !== 'active') return null;
   const selectedProject = selected.projectId
-    ? state.projects.find((candidate) => candidate.id === selected.projectId && candidate.status === 'active')
+    ? projectById(state, selected.projectId)
     : undefined;
-  if (selected.projectId && !selectedProject) return null;
+  if (selected.projectId && selectedProject?.status !== 'active') return null;
   const childId = `intent-${atMonth}-${person.id}-interrupt-${state.intents.length}`;
-  const sourceAgreement = [...state.agreements].reverse().find((agreement) => (
+  const sourceAgreement = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => (
     agreement.partyIds.includes(person.id)
     && (agreement.status === 'proposed' || agreement.status === 'active')
     && selected.sourceFactIds.includes(agreement.proposalEventId)
@@ -198,13 +278,17 @@ export function startInterruptIntent(
 
 export function resolveInterruptedIntentReturn(state: SimulationState, person: PersonState, atMonth: number): void {
   if (person.activeIntentId) return;
-  const child = [...state.intents].reverse().find((intent) => intent.ownerId === person.id
-    && intent.returnToIntentId
+  const child = [...intentsOwnedBy(state, person.id)].reverse().find((intent) => intent.returnToIntentId
     && intent.returnOutcome === undefined
     && (intent.status === 'completed' || intent.status === 'blocked' || intent.status === 'failed' || intent.status === 'abandoned'));
   if (!child?.returnToIntentId) return;
-  const parent = state.intents.find((intent) => intent.id === child.returnToIntentId && intent.ownerId === person.id);
-  const project = parent?.projectId ? state.projects.find((candidate) => candidate.id === parent.projectId) : undefined;
+  const parent = intentById(state, child.returnToIntentId);
+  const project = parent?.projectId ? projectById(state, parent.projectId) : undefined;
+  if (parent?.ownerId !== person.id) {
+    child.returnResolvedAtMonth = atMonth;
+    child.returnOutcome = 'parent-unavailable';
+    return;
+  }
   child.returnResolvedAtMonth = atMonth;
   if (!parent || parent.status !== 'suspended' || (parent.projectId && !project)) {
     child.returnOutcome = 'parent-unavailable';
@@ -213,6 +297,13 @@ export function resolveInterruptedIntentReturn(state: SimulationState, person: P
   if (project?.status === 'completed') {
     parent.status = 'completed';
     parent.progress = 1;
+    recordIntentGoalOutcome(
+      state,
+      parent,
+      'achieved',
+      atMonth,
+      intentGoalSourceIds(state, parent, project.completionEventIds),
+    );
     delete parent.suspendedByIntentId;
     delete parent.suspendedAtMonth;
     child.returnOutcome = 'parent-completed';
@@ -221,6 +312,13 @@ export function resolveInterruptedIntentReturn(state: SimulationState, person: P
   if (project?.status === 'blocked') {
     parent.status = 'blocked';
     parent.blockedReason = project.blockedReason ?? '中断期间项目已无法继续';
+    recordIntentGoalOutcome(
+      state,
+      parent,
+      'attempted-unmet',
+      atMonth,
+      intentGoalSourceIds(state, parent, project.failureEventIds),
+    );
     delete parent.suspendedByIntentId;
     delete parent.suspendedAtMonth;
     child.returnOutcome = 'parent-blocked';
@@ -228,6 +326,13 @@ export function resolveInterruptedIntentReturn(state: SimulationState, person: P
   }
   if (project && project.status !== 'active') {
     parent.status = 'abandoned';
+    recordIntentGoalOutcome(
+      state,
+      parent,
+      'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, parent),
+    );
     delete parent.suspendedByIntentId;
     delete parent.suspendedAtMonth;
     child.returnOutcome = 'parent-unavailable';
@@ -244,8 +349,7 @@ export function resolveInterruptedIntentReturn(state: SimulationState, person: P
 
 export function drainInterruptedIntentReturns(state: SimulationState, person: PersonState, atMonth: number): void {
   for (let index = 0; index < state.intents.length && !person.activeIntentId; index += 1) {
-    const child = [...state.intents].reverse().find((intent) => intent.ownerId === person.id
-      && intent.returnToIntentId
+    const child = [...intentsOwnedBy(state, person.id)].reverse().find((intent) => intent.returnToIntentId
       && intent.returnOutcome === undefined
       && (intent.status === 'completed' || intent.status === 'blocked' || intent.status === 'failed' || intent.status === 'abandoned'));
     if (!child) return;
@@ -255,8 +359,8 @@ export function drainInterruptedIntentReturns(state: SimulationState, person: Pe
 }
 
 export function installAgreementContinuation(state: SimulationState, currentIntent: Intent, continuation: AgreementContinuation, atMonth: number): Intent | null {
-  const owner = state.people.find((person) => person.id === continuation.personId && isAlive(person));
-  if (!owner) return null;
+  const owner = personById(state, continuation.personId);
+  if (!owner || !isAlive(owner)) return null;
   const existing = activeIntent(state, owner);
   const continuingCurrentIntent = existing?.id === currentIntent.id;
   const interrupted = continuingCurrentIntent ? undefined : existing;
@@ -322,8 +426,22 @@ export function applyDecision(
   let result = decision.reason;
   let domain: Intent['domain'] | undefined;
   const current = activeIntent(state, person);
+  const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
+    ? context.options.find((option) => option.id === decision.optionId)
+    : undefined;
+  const selectedCognitiveSources = selectedOption && (
+    selectedOption.id.startsWith('offer-reproduce:')
+      || selectedOption.id.startsWith('accept-reproduce:')
+      || selectedOption.id.startsWith('reject-reproduce:')
+      || selectedOption.id.startsWith('reproduce:')
+      || selectedOption.id.startsWith('withdraw-reproduce:')
+  )
+    ? evaluateCognitiveOption(context, selectedOption, { atMonth, planningTick }).sourceFactIds
+    : [];
   const attachLifeReview = (intent: Intent | null): void => {
-    if (!intent || (decision.kind !== 'start' && decision.kind !== 'revise') || !decision.lifeReview) return;
+    if (!intent || (decision.kind !== 'start' && decision.kind !== 'revise')) return;
+    intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...selectedCognitiveSources])];
+    if (!decision.lifeReview) return;
     intent.lifeReview = structuredClone(decision.lifeReview);
     intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...decision.lifeReview.sourceFactIds])];
   };
@@ -351,10 +469,12 @@ export function applyDecision(
     intentId = current.id;
     result = `${person.name}暂停：${current.summary}`;
   } else if (decision.kind === 'resume') {
-    const resumed = state.intents.find((intent) => intent.id === decision.intentId
-      && intent.ownerId === person.id
-      && intent.status === 'suspended'
-      && !intent.suspendedByIntentId);
+    const candidate = intentById(state, decision.intentId);
+    const resumed = candidate?.ownerId === person.id
+      && candidate.status === 'suspended'
+      && !candidate.suspendedByIntentId
+      ? candidate
+      : undefined;
     if (resumed) {
       if (current) current.status = 'suspended';
       resumed.status = 'active';
@@ -364,6 +484,13 @@ export function applyDecision(
     }
   } else if (decision.kind === 'abandon' && current?.id === decision.intentId) {
     current.status = 'abandoned';
+    recordIntentGoalOutcome(
+      state,
+      current,
+      'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, current, [id]),
+    );
     delete person.activeIntentId;
     intentId = current.id;
     result = `${person.name}放弃：${current.summary}`;
@@ -408,19 +535,51 @@ export function executeActiveIntent(
       state.world.past = committedPast;
     }
   };
-  const project = intent.projectId ? state.projects.find((candidate) => candidate.id === intent.projectId) : undefined;
+  const project = intent.projectId ? projectById(state, intent.projectId) : undefined;
   if (project) executeWithCurrentEvidence(() => synchronizeProject(state, project, atMonth));
   if (project && project.status === 'blocked') {
     intent.status = 'blocked';
     intent.blockedReason = project.blockedReason ?? '持续项目已经无法推进';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'attempted-unmet',
+      atMonth,
+      intentGoalSourceIds(state, intent, project.failureEventIds),
+    );
     delete person.activeIntentId;
     person.currentActionText = `项目需要重评：${intent.summary}`;
     return null;
   }
-  const sourceAgreement = intent.agreementId ? state.agreements.find((agreement) => agreement.id === intent.agreementId) : undefined;
+  const sourceAgreement = intent.agreementId ? agreementById(state, intent.agreementId) : undefined;
   if (sourceAgreement && sourceAgreement.status !== 'proposed' && sourceAgreement.status !== 'active') {
     intent.status = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 'completed' : 'failed';
     intent.progress = sourceAgreement.status === 'fulfilled' || sourceAgreement.status === 'rejected' ? 1 : intent.progress;
+    const terminalGoalAchieved = goalSatisfied(state, person, intent.goal);
+    const terminalConceptionFact = terminalGoalAchieved
+      ? reproductionConceptionFactForIntent(state, intent, currentMonthEvents)
+      : undefined;
+    const reproductionGoal = intent.goal.kind === 'condition'
+      && intent.goal.condition === 'pregnancy'
+      && intent.goal.present;
+    const terminalAttemptSources = [
+      ...sourceAgreement.fulfillmentEventIds,
+      ...(sourceAgreement.reproductionAttemptEventIds ?? []),
+      ...(sourceAgreement.responseEventId ? [sourceAgreement.responseEventId] : []),
+      ...(terminalConceptionFact ? [terminalConceptionFact.id] : []),
+    ];
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      terminalGoalAchieved && (!reproductionGoal || terminalConceptionFact)
+        ? 'achieved'
+        : sourceAgreement.reproductionAttemptEventIds?.length
+          ? 'attempted-unmet'
+          : 'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, intent, terminalAttemptSources),
+      terminalConceptionFact?.action ?? intent.completionAction ?? intent.nextAction,
+    );
     delete person.activeIntentId;
     person.currentActionText = sourceAgreement.status === 'fulfilled' ? `约定已经履行：${intent.summary}` : `约定已经结束：${intent.summary}`;
     return null;
@@ -429,6 +588,13 @@ export function executeActiveIntent(
     && !ordinaryLearningChildActionAllowed(state, person, intent.nextAction)) {
     intent.status = 'abandoned';
     intent.blockedReason = '普通任务的下一步已经越出当前可见亲代的本地照护半径';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, intent),
+    );
     delete person.activeIntentId;
     person.currentActionText = '停止继续远离当前可见的亲代照护范围';
     return null;
@@ -449,6 +615,7 @@ export function executeActiveIntent(
     if (fact.status === 'blocked' || fact.status === 'failed') {
       intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
       intent.blockedReason = fact.result;
+      recordIntentGoalOutcome(state, intent, failedActionGoalOutcomeKind(fact), atMonth, [fact.id], fact.action);
       intent.replanCount += 1;
       remember(person, {
         id: `memory:intent-opening-failed:${intent.id}:${atMonth}`,
@@ -475,6 +642,18 @@ export function executeActiveIntent(
     }
     intent.status = 'completed';
     intent.progress = 1;
+    const conceptionFact = reproductionConceptionFactForIntent(state, intent, currentMonthEvents);
+    const reproductionGoal = intent.goal.kind === 'condition'
+      && intent.goal.condition === 'pregnancy'
+      && intent.goal.present;
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      !reproductionGoal || conceptionFact ? 'achieved' : 'not-evaluated',
+      atMonth,
+      intentGoalSourceIds(state, intent, conceptionFact ? [conceptionFact.id] : []),
+      conceptionFact?.action ?? intent.completionAction ?? intent.nextAction,
+    );
     delete person.activeIntentId;
     person.currentActionText = `已经完成：${intent.summary}`;
     return null;
@@ -482,6 +661,13 @@ export function executeActiveIntent(
   if (intent.stateGoalUntilMonth !== undefined && atMonth > intent.stateGoalUntilMonth) {
     intent.status = 'blocked';
     intent.blockedReason = `第 ${intent.stateGoalUntilMonth} 月状态复核时目标仍未满足`;
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'attempted-unmet',
+      atMonth,
+      intentGoalSourceIds(state, intent),
+    );
     intent.replanCount += 1;
     remember(person, {
       id: `memory:intent-review-due:${intent.id}:${atMonth}`,
@@ -516,12 +702,28 @@ export function executeActiveIntent(
       intent.status = 'completed';
       intent.progress = 1;
       intent.lastReproductionAttemptAtMonth = atMonth;
+      const attemptFact = reproductionAttemptFactForIntent(state, intent, atMonth, currentMonthEvents);
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        attemptFact?.diff.conceived === true ? 'achieved' : 'attempted-unmet',
+        atMonth,
+        intentGoalSourceIds(state, intent, attemptFact ? [attemptFact.id] : []),
+        attemptFact?.action ?? intent.completionAction ?? intent.nextAction,
+      );
       delete person.activeIntentId;
       person.currentActionText = `双方本月已经完成一次生殖尝试，等待下月重新评估：${intent.summary}`;
       return null;
     }
     intent.status = 'blocked';
     intent.blockedReason = '目标未满足，但无法编译出下一原子动作';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'attempted-unmet',
+      atMonth,
+      intentGoalSourceIds(state, intent),
+    );
     intent.replanCount += 1;
     remember(person, {
       id: `memory:intent-blocked:${intent.id}:${atMonth}`,
@@ -616,6 +818,7 @@ export function executeActiveIntent(
   if (fact.status === 'blocked' || fact.status === 'failed') {
     intent.status = fact.status === 'failed' ? 'failed' : 'blocked';
     intent.blockedReason = fact.result;
+    recordIntentGoalOutcome(state, intent, failedActionGoalOutcomeKind(fact), atMonth, [fact.id], fact.action);
     intent.replanCount += 1;
     remember(person, {
       id: `memory:intent-action-failed:${intent.id}:${atMonth}`,
@@ -656,6 +859,24 @@ export function executeActiveIntent(
     if (!currentContinues && (stateGoalCompleted || ordinaryIntentCompleted)) {
       intent.status = 'completed';
       intent.progress = 1;
+      const conceptionFact = satisfiedAfterAction
+        ? reproductionConceptionFactForIntent(state, intent, [...currentMonthEvents, fact])
+        : undefined;
+      const reproductionGoal = intent.goal.kind === 'condition'
+        && intent.goal.condition === 'pregnancy'
+        && intent.goal.present;
+      recordIntentGoalOutcome(
+        state,
+        intent,
+        satisfiedAfterAction || representationCompleted
+          ? !reproductionGoal || conceptionFact
+            ? 'achieved'
+            : 'not-evaluated'
+          : 'attempted-unmet',
+        atMonth,
+        [...new Set([fact.id, ...(conceptionFact ? [conceptionFact.id] : [])])],
+        conceptionFact?.action ?? fact.action,
+      );
       delete person.activeIntentId;
     } else {
       const compiled = executeWithCurrentEvidence(() => recompileNextAction(state, person, intent, atMonth));
@@ -744,6 +965,14 @@ export function executeProtectiveInterruption(
     child.actionEventIds.push(fact.id);
     child.status = fact.status === 'failed' ? 'failed' : fact.status === 'blocked' ? 'blocked' : 'completed';
     child.progress = child.status === 'completed' ? 1 : child.progress;
+    recordIntentGoalOutcome(
+      state,
+      child,
+      child.status === 'completed' && goalSatisfied(state, person, child.goal) ? 'achieved' : 'attempted-unmet',
+      atMonth,
+      [fact.id],
+      fact.action,
+    );
     if (child.status !== 'completed') child.blockedReason = fact.result;
     delete person.activeIntentId;
   }
@@ -822,6 +1051,13 @@ export function recordShelterMaintenanceInterruption(
   if (!child || child.interruptionKind !== 'shelter-maintenance') return;
   child.status = 'completed';
   child.progress = 1;
+  recordIntentGoalOutcome(
+    state,
+    child,
+    goalSatisfied(state, person, child.goal) ? 'achieved' : 'attempted-unmet',
+    atMonth,
+    [decisionFact.id],
+  );
   delete person.activeIntentId;
   resolveInterruptedIntentReturn(state, person, atMonth);
 }

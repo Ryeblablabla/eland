@@ -1,0 +1,1111 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "project-family-readiness-audit-v2",
+  "generatedAt": "2026-08-22T08:41:18.774Z",
+  "source": {
+    "authority": "Terminal SimulationState loaded from the existing SQLite database through sqlite-run-reader.mjs in read-only mode; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-bdi-family-readiness-v4-20260822-sqlite",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-bdi-family-readiness-v4-20260822-sqlite/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-bdi-family-readiness-v4-20260822-s185-y30-r1",
+        "candidate-bdi-family-readiness-v4-20260822-s20260815-y30-r1",
+        "candidate-bdi-family-readiness-v4-20260822-s20260816-y30-r1"
+      ]
+    }
+  },
+  "method": {
+    "ordering": "Events are ordered only by atMonth, orderInMonth, planningTick, then id.",
+    "projectResolution": "Each person-local needResolutionEpisode must resolve to one completed project with matching need/function and exact trigger/completion sources; its latest completion ActionFact must be completed by that person.",
+    "goalOutcome": "Intent lifecycle completion is audited separately from goal achievement. Reproduction attempted-unmet requires only conceived=false reproduce sources; achieved requires at least one conceived=true reproduce source, including a partner action for mirror intents.",
+    "postResolutionWindow": "Each reproduction DecisionFact is attributed once to the same person's most recent earlier family-relevant need-resolution episode within 12 months. Family-relevant functions exactly match the authoritative readiness rule: settled-cultivation, reserve-storage, reliable-water, weather-shelter, and crop-processing. A sourced link exists only when that decision's persisted intent.sourceFactIds directly intersects the episode trigger/outcome/source fact IDs.",
+    "evidencePolicy": "Only structured state fields and state.world.past references are causal evidence; result/reason/summary text and observer projections are ignored."
+  },
+  "aggregate": {
+    "runs": 3,
+    "sums": {
+      "needResolutionEpisodes": 133,
+      "holders": 34,
+      "validEpisodes": 133,
+      "episodeUnresolvedSourceFacts": 0,
+      "episodeMismatches": 0,
+      "intentsWithoutGoalOutcome": 26,
+      "terminalIntentsWithoutGoalOutcome": 3,
+      "goalOutcomeSourceReferences": 18248,
+      "resolvedGoalOutcomeSourceReferences": 18248,
+      "goalOutcomeUnresolvedSourceFacts": 0,
+      "goalOutcomeSourceMismatches": 0,
+      "reproductionSemanticMismatches": 0,
+      "reproductionDecisions": 22,
+      "sourcedReproductionDecisions": 21,
+      "episodesWithAnyReproductionDecision": 12,
+      "episodesWithSourcedReproductionDecision": 11,
+      "familyRelevantNeedResolutionEpisodes": 46,
+      "goalOutcomes": {
+        "achieved": 5932,
+        "attempted-unmet": 2693,
+        "not-evaluated": 272
+      },
+      "reproductionGoalOutcomes": {
+        "achieved": 39,
+        "attempted-unmet": 158,
+        "not-evaluated": 3
+      },
+      "reproductionDecisionsByType": {
+        "offer-reproduce": 12,
+        "accept-reproduce": 7,
+        "reproduce": 3
+      },
+      "linkedReproductionDecisionsByType": {
+        "offer-reproduce": 12,
+        "accept-reproduce": 6,
+        "reproduce": 3
+      }
+    },
+    "ratios": {
+      "episodeIntegrity": 1,
+      "goalOutcomeSourceResolution": 1,
+      "reproductionGoalSemanticIntegrity": 1,
+      "reproductionDecisionSourceLink": 0.9545,
+      "episodesWithAnyReproductionDecision": 0.2609,
+      "episodesWithSourcedReproductionDecision": 0.2391
+    }
+  },
+  "runs": [
+    {
+      "runId": "candidate-bdi-family-readiness-v4-20260822-s185-y30-r1",
+      "seed": 185,
+      "elapsedMonths": 360,
+      "status": "ended",
+      "needResolutionAudit": {
+        "needResolutionEpisodes": 32,
+        "holders": 10,
+        "validEpisodes": 32,
+        "unresolvedSourceFacts": [],
+        "mismatches": [],
+        "integrityRatio": 1
+      },
+      "goalOutcomeAudit": {
+        "counts": {
+          "achieved": 1516,
+          "attempted-unmet": 891,
+          "not-evaluated": 81
+        },
+        "intentsWithoutGoalOutcome": 7,
+        "terminalIntentsWithoutGoalOutcome": 1,
+        "sourceReferences": 5038,
+        "resolvedSourceReferences": 5038,
+        "unresolvedSourceFacts": [],
+        "sourceMismatches": [],
+        "sourceResolutionRatio": 1,
+        "reproduction": {
+          "counts": {
+            "achieved": 11,
+            "attempted-unmet": 48,
+            "not-evaluated": 1
+          },
+          "evaluated": 59,
+          "semanticMismatches": 0,
+          "semanticIntegrityRatio": 1
+        },
+        "reproductionSemanticMismatches": []
+      },
+      "postResolutionReproduction": {
+        "summary": {
+          "windowMonths": 12,
+          "eligibleEpisodes": 15,
+          "reproductionDecisions": 3,
+          "sourcedReproductionDecisions": 3,
+          "sourceLinkRatio": 1,
+          "decisionsByType": {
+            "offer-reproduce": 2,
+            "accept-reproduce": 0,
+            "reproduce": 1
+          },
+          "linkedDecisionsByType": {
+            "offer-reproduce": 2,
+            "accept-reproduce": 0,
+            "reproduce": 1
+          },
+          "episodesWithAnyReproductionDecision": 1,
+          "episodesWithSourcedReproductionDecision": 1,
+          "episodeDecisionRatio": 0.0667,
+          "episodeSourcedDecisionRatio": 0.0667
+        },
+        "episodeStats": [
+          {
+            "personId": "socrates",
+            "episodeId": "need-resolution:project-211-socrates-shelter-capacity:socrates",
+            "projectId": "project-211-socrates-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 3,
+            "sourcedDecisions": 3,
+            "decisionsByType": {
+              "offer-reproduce": 2,
+              "accept-reproduce": 0,
+              "reproduce": 1
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 2,
+              "accept-reproduce": 0,
+              "reproduce": 1
+            }
+          }
+        ],
+        "attributedDecisions": [
+          {
+            "decisionEventId": "e-220-decision-socrates-1-1",
+            "atMonth": 220,
+            "personId": "socrates",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:220:socrates:usagi-tsukino",
+            "intentId": "intent-220-socrates-1446",
+            "episodeId": "need-resolution:project-211-socrates-shelter-capacity:socrates",
+            "projectId": "project-211-socrates-shelter-capacity",
+            "monthsAfterResolution": 5,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-207-environment-condition-3",
+              "e-208-environment-condition-1",
+              "e-209-environment-condition-1",
+              "e-210-environment-condition-1",
+              "e-211-action-socrates-3",
+              "e-212-action-socrates-3",
+              "e-213-action-socrates-11",
+              "e-214-action-socrates-11",
+              "e-214-action-socrates-18",
+              "e-214-action-socrates-30",
+              "e-214-action-socrates-34",
+              "e-214-action-socrates-40",
+              "e-214-action-socrates-48",
+              "e-214-action-socrates-52",
+              "e-214-action-socrates-54",
+              "e-214-action-socrates-57"
+            ]
+          },
+          {
+            "decisionEventId": "e-221-decision-socrates-1-5",
+            "atMonth": 221,
+            "personId": "socrates",
+            "optionType": "reproduce",
+            "optionId": "reproduce:offer-reproduce:220:socrates:usagi-tsukino:usagi-tsukino",
+            "intentId": "intent-221-socrates-1456",
+            "episodeId": "need-resolution:project-211-socrates-shelter-capacity:socrates",
+            "projectId": "project-211-socrates-shelter-capacity",
+            "monthsAfterResolution": 6,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-207-environment-condition-3",
+              "e-208-environment-condition-1",
+              "e-209-environment-condition-1",
+              "e-210-environment-condition-1",
+              "e-211-action-socrates-3",
+              "e-212-action-socrates-3",
+              "e-213-action-socrates-11",
+              "e-214-action-socrates-11",
+              "e-214-action-socrates-18",
+              "e-214-action-socrates-30",
+              "e-214-action-socrates-34",
+              "e-214-action-socrates-40",
+              "e-214-action-socrates-48",
+              "e-214-action-socrates-52",
+              "e-214-action-socrates-54",
+              "e-214-action-socrates-57",
+              "e-214-action-socrates-61",
+              "e-214-action-socrates-67",
+              "e-214-action-socrates-69",
+              "e-214-action-socrates-74",
+              "e-214-action-socrates-79",
+              "e-214-action-socrates-84",
+              "e-215-action-socrates-22",
+              "e-215-action-socrates-35"
+            ]
+          },
+          {
+            "decisionEventId": "e-227-decision-socrates-2-21",
+            "atMonth": 227,
+            "personId": "socrates",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:227:socrates:persephone",
+            "intentId": "intent-227-socrates-1514",
+            "episodeId": "need-resolution:project-211-socrates-shelter-capacity:socrates",
+            "projectId": "project-211-socrates-shelter-capacity",
+            "monthsAfterResolution": 12,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-207-environment-condition-3",
+              "e-208-environment-condition-1",
+              "e-209-environment-condition-1",
+              "e-210-environment-condition-1",
+              "e-211-action-socrates-3",
+              "e-212-action-socrates-3",
+              "e-213-action-socrates-11",
+              "e-214-action-socrates-11",
+              "e-214-action-socrates-18",
+              "e-214-action-socrates-30",
+              "e-214-action-socrates-34",
+              "e-214-action-socrates-40",
+              "e-214-action-socrates-48",
+              "e-214-action-socrates-52",
+              "e-214-action-socrates-54",
+              "e-214-action-socrates-57"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "candidate-bdi-family-readiness-v4-20260822-s20260815-y30-r1",
+      "seed": 20260815,
+      "elapsedMonths": 360,
+      "status": "ended",
+      "needResolutionAudit": {
+        "needResolutionEpisodes": 57,
+        "holders": 14,
+        "validEpisodes": 57,
+        "unresolvedSourceFacts": [],
+        "mismatches": [],
+        "integrityRatio": 1
+      },
+      "goalOutcomeAudit": {
+        "counts": {
+          "achieved": 2595,
+          "attempted-unmet": 1104,
+          "not-evaluated": 97
+        },
+        "intentsWithoutGoalOutcome": 8,
+        "terminalIntentsWithoutGoalOutcome": 0,
+        "sourceReferences": 7898,
+        "resolvedSourceReferences": 7898,
+        "unresolvedSourceFacts": [],
+        "sourceMismatches": [],
+        "sourceResolutionRatio": 1,
+        "reproduction": {
+          "counts": {
+            "achieved": 15,
+            "attempted-unmet": 73,
+            "not-evaluated": 0
+          },
+          "evaluated": 88,
+          "semanticMismatches": 0,
+          "semanticIntegrityRatio": 1
+        },
+        "reproductionSemanticMismatches": []
+      },
+      "postResolutionReproduction": {
+        "summary": {
+          "windowMonths": 12,
+          "eligibleEpisodes": 16,
+          "reproductionDecisions": 10,
+          "sourcedReproductionDecisions": 9,
+          "sourceLinkRatio": 0.9,
+          "decisionsByType": {
+            "offer-reproduce": 5,
+            "accept-reproduce": 3,
+            "reproduce": 2
+          },
+          "linkedDecisionsByType": {
+            "offer-reproduce": 5,
+            "accept-reproduce": 2,
+            "reproduce": 2
+          },
+          "episodesWithAnyReproductionDecision": 5,
+          "episodesWithSourcedReproductionDecision": 4,
+          "episodeDecisionRatio": 0.3125,
+          "episodeSourcedDecisionRatio": 0.25
+        },
+        "episodeStats": [
+          {
+            "personId": "bai-suzhen",
+            "episodeId": "need-resolution:project-9-bai-suzhen-reserve-security:bai-suzhen",
+            "projectId": "project-9-bai-suzhen-reserve-security",
+            "desiredFunction": "reserve-storage",
+            "decisions": 4,
+            "sourcedDecisions": 4,
+            "decisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 1,
+              "reproduce": 2
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 1,
+              "reproduce": 2
+            }
+          },
+          {
+            "personId": "bai-suzhen",
+            "episodeId": "need-resolution:project-87-bai-suzhen-shelter-capacity:bai-suzhen",
+            "projectId": "project-87-bai-suzhen-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 1,
+            "sourcedDecisions": 0,
+            "decisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "tesla",
+            "episodeId": "need-resolution:project-9-tesla-shelter-capacity:tesla",
+            "projectId": "project-9-tesla-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "sunwukong",
+            "episodeId": "need-resolution:project-2-zhugeliang-reserve-security:sunwukong",
+            "projectId": "project-2-zhugeliang-reserve-security",
+            "desiredFunction": "reserve-storage",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "born-69-bai-suzhen-8",
+            "episodeId": "need-resolution:project-282-born-69-bai-suzhen-8-reserve-security:born-69-bai-suzhen-8",
+            "projectId": "project-282-born-69-bai-suzhen-8-reserve-security",
+            "desiredFunction": "reserve-storage",
+            "decisions": 3,
+            "sourcedDecisions": 3,
+            "decisionsByType": {
+              "offer-reproduce": 3,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 3,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            }
+          }
+        ],
+        "attributedDecisions": [
+          {
+            "decisionEventId": "e-13-decision-sunwukong-1-8",
+            "atMonth": 13,
+            "personId": "sunwukong",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:13:sunwukong:cangtianying",
+            "intentId": "intent-13-sunwukong-157",
+            "episodeId": "need-resolution:project-2-zhugeliang-reserve-security:sunwukong",
+            "projectId": "project-2-zhugeliang-reserve-security",
+            "monthsAfterResolution": 11,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-0-environment-founding-0",
+              "e-1-action-tesla-10",
+              "e-1-action-zhugeliang-18",
+              "e-1-action-zhugeliang-24",
+              "e-1-action-zhugeliang-35",
+              "e-1-action-zhugeliang-41",
+              "e-1-action-zhugeliang-46",
+              "e-1-action-zhugeliang-55",
+              "e-1-action-zhugeliang-6",
+              "e-1-action-zhugeliang-61",
+              "e-1-action-zhugeliang-66",
+              "e-1-action-zhugeliang-68",
+              "e-2-action-sunwukong-32",
+              "e-2-action-zhugeliang-31"
+            ]
+          },
+          {
+            "decisionEventId": "e-18-decision-bai-suzhen-1-2",
+            "atMonth": 18,
+            "personId": "bai-suzhen",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:18:bai-suzhen:tesla",
+            "intentId": "intent-18-bai-suzhen-206",
+            "episodeId": "need-resolution:project-9-bai-suzhen-reserve-security:bai-suzhen",
+            "projectId": "project-9-bai-suzhen-reserve-security",
+            "monthsAfterResolution": 8,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-1-action-bai-suzhen-21",
+              "e-1-action-bai-suzhen-62",
+              "e-1-action-bai-suzhen-63",
+              "e-1-action-bai-suzhen-70",
+              "e-1-action-sunwukong-16",
+              "e-10-action-bai-suzhen-49",
+              "e-10-action-bai-suzhen-54",
+              "e-2-action-bai-suzhen-37",
+              "e-3-action-bai-suzhen-20",
+              "e-3-action-bai-suzhen-23",
+              "e-3-action-bai-suzhen-27",
+              "e-3-action-bai-suzhen-7",
+              "e-4-action-bai-suzhen-13",
+              "e-4-action-bai-suzhen-19",
+              "e-4-action-bai-suzhen-38",
+              "e-4-action-bai-suzhen-54",
+              "e-5-action-bai-suzhen-42",
+              "e-5-action-bai-suzhen-45",
+              "e-7-action-bai-suzhen-37",
+              "e-7-action-bai-suzhen-46"
+            ]
+          },
+          {
+            "decisionEventId": "e-18-decision-tesla-1-7",
+            "atMonth": 18,
+            "personId": "tesla",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:18:bai-suzhen:tesla",
+            "intentId": "intent-18-tesla-208",
+            "episodeId": "need-resolution:project-9-tesla-shelter-capacity:tesla",
+            "projectId": "project-9-tesla-shelter-capacity",
+            "monthsAfterResolution": 9,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-9-action-tesla-14",
+              "e-9-action-tesla-17",
+              "e-9-action-tesla-21",
+              "e-9-action-tesla-8"
+            ]
+          },
+          {
+            "decisionEventId": "e-20-decision-bai-suzhen-1-3",
+            "atMonth": 20,
+            "personId": "bai-suzhen",
+            "optionType": "reproduce",
+            "optionId": "reproduce:offer-reproduce:18:bai-suzhen:tesla:tesla",
+            "intentId": "intent-20-bai-suzhen-216",
+            "episodeId": "need-resolution:project-9-bai-suzhen-reserve-security:bai-suzhen",
+            "projectId": "project-9-bai-suzhen-reserve-security",
+            "monthsAfterResolution": 10,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-1-action-bai-suzhen-21",
+              "e-1-action-bai-suzhen-62",
+              "e-1-action-bai-suzhen-63",
+              "e-1-action-bai-suzhen-70",
+              "e-1-action-sunwukong-16",
+              "e-10-action-bai-suzhen-43",
+              "e-10-action-bai-suzhen-49",
+              "e-10-action-bai-suzhen-54",
+              "e-2-action-bai-suzhen-37",
+              "e-3-action-bai-suzhen-20",
+              "e-3-action-bai-suzhen-23",
+              "e-3-action-bai-suzhen-27",
+              "e-3-action-bai-suzhen-7",
+              "e-4-action-bai-suzhen-13",
+              "e-4-action-bai-suzhen-19",
+              "e-4-action-bai-suzhen-38",
+              "e-4-action-bai-suzhen-54",
+              "e-5-action-bai-suzhen-42",
+              "e-5-action-bai-suzhen-45",
+              "e-7-action-bai-suzhen-37",
+              "e-7-action-bai-suzhen-46"
+            ]
+          },
+          {
+            "decisionEventId": "e-21-decision-bai-suzhen-1-1",
+            "atMonth": 21,
+            "personId": "bai-suzhen",
+            "optionType": "reproduce",
+            "optionId": "reproduce:offer-reproduce:18:bai-suzhen:tesla:tesla",
+            "intentId": "intent-21-bai-suzhen-220",
+            "episodeId": "need-resolution:project-9-bai-suzhen-reserve-security:bai-suzhen",
+            "projectId": "project-9-bai-suzhen-reserve-security",
+            "monthsAfterResolution": 11,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-1-action-bai-suzhen-21",
+              "e-1-action-bai-suzhen-62",
+              "e-1-action-bai-suzhen-63",
+              "e-1-action-bai-suzhen-70",
+              "e-1-action-sunwukong-16",
+              "e-10-action-bai-suzhen-43",
+              "e-10-action-bai-suzhen-49",
+              "e-10-action-bai-suzhen-54",
+              "e-2-action-bai-suzhen-37",
+              "e-3-action-bai-suzhen-20",
+              "e-3-action-bai-suzhen-23",
+              "e-3-action-bai-suzhen-27",
+              "e-3-action-bai-suzhen-7",
+              "e-4-action-bai-suzhen-13",
+              "e-4-action-bai-suzhen-19",
+              "e-4-action-bai-suzhen-38",
+              "e-4-action-bai-suzhen-54",
+              "e-5-action-bai-suzhen-42",
+              "e-5-action-bai-suzhen-45",
+              "e-7-action-bai-suzhen-37",
+              "e-7-action-bai-suzhen-46"
+            ]
+          },
+          {
+            "decisionEventId": "e-22-decision-bai-suzhen-1-6",
+            "atMonth": 22,
+            "personId": "bai-suzhen",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:22:tesla:bai-suzhen",
+            "intentId": "intent-22-bai-suzhen-226",
+            "episodeId": "need-resolution:project-9-bai-suzhen-reserve-security:bai-suzhen",
+            "projectId": "project-9-bai-suzhen-reserve-security",
+            "monthsAfterResolution": 12,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-1-action-sunwukong-16",
+              "e-10-action-bai-suzhen-43",
+              "e-10-action-bai-suzhen-49",
+              "e-10-action-bai-suzhen-54",
+              "e-2-action-bai-suzhen-37",
+              "e-3-action-bai-suzhen-20",
+              "e-3-action-bai-suzhen-23",
+              "e-3-action-bai-suzhen-27",
+              "e-3-action-bai-suzhen-7",
+              "e-4-action-bai-suzhen-13",
+              "e-4-action-bai-suzhen-19",
+              "e-4-action-bai-suzhen-38",
+              "e-4-action-bai-suzhen-54",
+              "e-5-action-bai-suzhen-42",
+              "e-5-action-bai-suzhen-45",
+              "e-7-action-bai-suzhen-37",
+              "e-7-action-bai-suzhen-46"
+            ]
+          },
+          {
+            "decisionEventId": "e-93-decision-bai-suzhen-14-60",
+            "atMonth": 93,
+            "personId": "bai-suzhen",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:93:armstrong:bai-suzhen",
+            "intentId": "intent-93-bai-suzhen-884",
+            "episodeId": "need-resolution:project-87-bai-suzhen-shelter-capacity:bai-suzhen",
+            "projectId": "project-87-bai-suzhen-shelter-capacity",
+            "monthsAfterResolution": 5,
+            "intentResolved": true,
+            "linked": false,
+            "linkedSourceFactIds": []
+          },
+          {
+            "decisionEventId": "e-285-decision-born-69-bai-suzhen-8-1-3",
+            "atMonth": 285,
+            "personId": "born-69-bai-suzhen-8",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:285:born-69-bai-suzhen-8:tesla",
+            "intentId": "intent-285-born-69-bai-suzhen-8-2911",
+            "episodeId": "need-resolution:project-282-born-69-bai-suzhen-8-reserve-security:born-69-bai-suzhen-8",
+            "projectId": "project-282-born-69-bai-suzhen-8-reserve-security",
+            "monthsAfterResolution": 2,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-241-action-born-69-bai-suzhen-8-26",
+              "e-241-action-born-69-bai-suzhen-8-8",
+              "e-242-action-armstrong-8",
+              "e-242-action-born-69-bai-suzhen-8-5",
+              "e-249-action-born-69-bai-suzhen-8-20"
+            ]
+          },
+          {
+            "decisionEventId": "e-287-decision-born-69-bai-suzhen-8-1-8",
+            "atMonth": 287,
+            "personId": "born-69-bai-suzhen-8",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:287:born-69-bai-suzhen-8:zhugeliang",
+            "intentId": "intent-287-born-69-bai-suzhen-8-2943",
+            "episodeId": "need-resolution:project-282-born-69-bai-suzhen-8-reserve-security:born-69-bai-suzhen-8",
+            "projectId": "project-282-born-69-bai-suzhen-8-reserve-security",
+            "monthsAfterResolution": 4,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-241-action-born-69-bai-suzhen-8-26",
+              "e-241-action-born-69-bai-suzhen-8-8",
+              "e-242-action-armstrong-8",
+              "e-242-action-born-69-bai-suzhen-8-5",
+              "e-246-action-zhugeliang-11"
+            ]
+          },
+          {
+            "decisionEventId": "e-292-decision-born-69-bai-suzhen-8-11-62",
+            "atMonth": 292,
+            "personId": "born-69-bai-suzhen-8",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:292:born-69-bai-suzhen-8:armstrong",
+            "intentId": "intent-292-born-69-bai-suzhen-8-3007",
+            "episodeId": "need-resolution:project-282-born-69-bai-suzhen-8-reserve-security:born-69-bai-suzhen-8",
+            "projectId": "project-282-born-69-bai-suzhen-8-reserve-security",
+            "monthsAfterResolution": 9,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-241-action-born-69-bai-suzhen-8-26",
+              "e-244-action-born-69-bai-suzhen-8-15",
+              "e-244-action-zhugeliang-21",
+              "e-246-action-born-69-bai-suzhen-8-6",
+              "e-246-action-zhugeliang-11",
+              "e-249-action-born-69-bai-suzhen-8-20",
+              "e-249-action-zhaotianli-23",
+              "e-277-action-born-69-bai-suzhen-8-22",
+              "e-277-action-born-69-bai-suzhen-8-31",
+              "e-277-action-zhaotianli-17",
+              "e-278-action-born-69-bai-suzhen-8-23",
+              "e-280-action-born-69-bai-suzhen-8-63",
+              "e-280-action-born-69-bai-suzhen-8-64",
+              "e-281-action-born-69-bai-suzhen-8-17",
+              "e-281-action-born-69-bai-suzhen-8-6",
+              "e-282-action-born-69-bai-suzhen-8-76",
+              "e-283-action-born-69-bai-suzhen-8-4"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "runId": "candidate-bdi-family-readiness-v4-20260822-s20260816-y30-r1",
+      "seed": 20260816,
+      "elapsedMonths": 360,
+      "status": "ended",
+      "needResolutionAudit": {
+        "needResolutionEpisodes": 44,
+        "holders": 10,
+        "validEpisodes": 44,
+        "unresolvedSourceFacts": [],
+        "mismatches": [],
+        "integrityRatio": 1
+      },
+      "goalOutcomeAudit": {
+        "counts": {
+          "achieved": 1821,
+          "attempted-unmet": 698,
+          "not-evaluated": 94
+        },
+        "intentsWithoutGoalOutcome": 11,
+        "terminalIntentsWithoutGoalOutcome": 2,
+        "sourceReferences": 5312,
+        "resolvedSourceReferences": 5312,
+        "unresolvedSourceFacts": [],
+        "sourceMismatches": [],
+        "sourceResolutionRatio": 1,
+        "reproduction": {
+          "counts": {
+            "achieved": 13,
+            "attempted-unmet": 37,
+            "not-evaluated": 2
+          },
+          "evaluated": 50,
+          "semanticMismatches": 0,
+          "semanticIntegrityRatio": 1
+        },
+        "reproductionSemanticMismatches": []
+      },
+      "postResolutionReproduction": {
+        "summary": {
+          "windowMonths": 12,
+          "eligibleEpisodes": 15,
+          "reproductionDecisions": 9,
+          "sourcedReproductionDecisions": 9,
+          "sourceLinkRatio": 1,
+          "decisionsByType": {
+            "offer-reproduce": 5,
+            "accept-reproduce": 4,
+            "reproduce": 0
+          },
+          "linkedDecisionsByType": {
+            "offer-reproduce": 5,
+            "accept-reproduce": 4,
+            "reproduce": 0
+          },
+          "episodesWithAnyReproductionDecision": 6,
+          "episodesWithSourcedReproductionDecision": 6,
+          "episodeDecisionRatio": 0.4,
+          "episodeSourcedDecisionRatio": 0.4
+        },
+        "episodeStats": [
+          {
+            "personId": "bai-suzhen",
+            "episodeId": "need-resolution:project-91-libai-shelter-capacity:bai-suzhen",
+            "projectId": "project-91-libai-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 2,
+            "sourcedDecisions": 2,
+            "decisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "bai-suzhen",
+            "episodeId": "need-resolution:project-118-bai-suzhen-shelter-capacity:bai-suzhen",
+            "projectId": "project-118-bai-suzhen-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "sima-qian",
+            "episodeId": "need-resolution:project-3-sima-qian-shelter-capacity:sima-qian",
+            "projectId": "project-3-sima-qian-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "sima-qian",
+            "episodeId": "need-resolution:project-92-sima-qian-production-efficiency:sima-qian",
+            "projectId": "project-92-sima-qian-production-efficiency",
+            "desiredFunction": "crop-processing",
+            "decisions": 3,
+            "sourcedDecisions": 3,
+            "decisionsByType": {
+              "offer-reproduce": 2,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 2,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "washington",
+            "episodeId": "need-resolution:project-6-washington-reserve-security:washington",
+            "projectId": "project-6-washington-reserve-security",
+            "desiredFunction": "reserve-storage",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 1,
+              "accept-reproduce": 0,
+              "reproduce": 0
+            }
+          },
+          {
+            "personId": "heidi",
+            "episodeId": "need-resolution:project-3-washington-shelter-capacity:heidi",
+            "projectId": "project-3-washington-shelter-capacity",
+            "desiredFunction": "weather-shelter",
+            "decisions": 1,
+            "sourcedDecisions": 1,
+            "decisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            },
+            "linkedDecisionsByType": {
+              "offer-reproduce": 0,
+              "accept-reproduce": 1,
+              "reproduce": 0
+            }
+          }
+        ],
+        "attributedDecisions": [
+          {
+            "decisionEventId": "e-14-decision-washington-1-6",
+            "atMonth": 14,
+            "personId": "washington",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:14:washington:heidi",
+            "intentId": "intent-14-washington-61",
+            "episodeId": "need-resolution:project-6-washington-reserve-security:washington",
+            "projectId": "project-6-washington-reserve-security",
+            "monthsAfterResolution": 7,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-1-action-washington-31",
+              "e-1-action-washington-37",
+              "e-2-action-washington-13",
+              "e-2-action-washington-18",
+              "e-2-action-washington-21",
+              "e-2-action-washington-24",
+              "e-2-action-washington-26",
+              "e-2-action-washington-29",
+              "e-2-action-washington-7",
+              "e-3-action-heidi-13",
+              "e-3-action-heidi-36",
+              "e-5-action-washington-8",
+              "e-7-action-washington-26",
+              "e-7-action-washington-36",
+              "e-7-action-washington-38"
+            ]
+          },
+          {
+            "decisionEventId": "e-14-decision-heidi-1-8",
+            "atMonth": 14,
+            "personId": "heidi",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:14:washington:heidi",
+            "intentId": "intent-14-heidi-62",
+            "episodeId": "need-resolution:project-3-washington-shelter-capacity:heidi",
+            "projectId": "project-3-washington-shelter-capacity",
+            "monthsAfterResolution": 11,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-3-action-heidi-13",
+              "e-3-action-heidi-20",
+              "e-3-action-heidi-25",
+              "e-3-action-heidi-27",
+              "e-3-action-heidi-36",
+              "e-3-action-washington-18",
+              "e-3-action-washington-22",
+              "e-3-action-washington-29",
+              "e-3-action-washington-34",
+              "e-3-action-washington-5"
+            ]
+          },
+          {
+            "decisionEventId": "e-15-decision-sima-qian-2-9",
+            "atMonth": 15,
+            "personId": "sima-qian",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:15:sima-qian:heidi",
+            "intentId": "intent-15-sima-qian-65",
+            "episodeId": "need-resolution:project-3-sima-qian-shelter-capacity:sima-qian",
+            "projectId": "project-3-sima-qian-shelter-capacity",
+            "monthsAfterResolution": 11,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-3-action-sima-qian-21",
+              "e-3-action-sima-qian-23",
+              "e-3-action-sima-qian-28",
+              "e-3-action-sima-qian-35",
+              "e-3-action-sima-qian-37",
+              "e-3-action-sima-qian-40",
+              "e-3-action-sima-qian-43",
+              "e-3-action-sima-qian-46",
+              "e-3-action-sima-qian-48",
+              "e-3-action-sima-qian-51",
+              "e-3-action-sima-qian-52",
+              "e-3-action-sima-qian-55",
+              "e-3-action-sima-qian-56",
+              "e-3-action-sima-qian-57",
+              "e-3-action-sima-qian-9",
+              "e-4-action-sima-qian-10",
+              "e-4-action-sima-qian-15"
+            ]
+          },
+          {
+            "decisionEventId": "e-93-decision-sima-qian-1-10",
+            "atMonth": 93,
+            "personId": "sima-qian",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:93:sima-qian:wuzetian",
+            "intentId": "intent-93-sima-qian-1092",
+            "episodeId": "need-resolution:project-92-sima-qian-production-efficiency:sima-qian",
+            "projectId": "project-92-sima-qian-production-efficiency",
+            "monthsAfterResolution": 1,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-75-action-bai-suzhen-31",
+              "e-75-action-cailun-35",
+              "e-75-action-sima-qian-40",
+              "e-75-action-sima-qian-49",
+              "e-76-action-cailun-20",
+              "e-76-action-sima-qian-13",
+              "e-77-action-cailun-24",
+              "e-77-action-libai-9",
+              "e-77-action-sima-qian-19",
+              "e-77-action-sima-qian-7",
+              "e-92-action-sima-qian-6"
+            ]
+          },
+          {
+            "decisionEventId": "e-94-decision-sima-qian-1-5",
+            "atMonth": 94,
+            "personId": "sima-qian",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:94:sima-qian:bai-suzhen",
+            "intentId": "intent-94-sima-qian-1097",
+            "episodeId": "need-resolution:project-92-sima-qian-production-efficiency:sima-qian",
+            "projectId": "project-92-sima-qian-production-efficiency",
+            "monthsAfterResolution": 2,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-65-action-wuzetian-4",
+              "e-75-action-cailun-35",
+              "e-75-action-sima-qian-40",
+              "e-75-action-sima-qian-51",
+              "e-76-action-cailun-20",
+              "e-76-action-sima-qian-13",
+              "e-77-action-cailun-24",
+              "e-77-action-libai-9",
+              "e-77-action-sima-qian-19",
+              "e-77-action-sima-qian-7",
+              "e-92-action-sima-qian-6"
+            ]
+          },
+          {
+            "decisionEventId": "e-94-decision-bai-suzhen-10-35",
+            "atMonth": 94,
+            "personId": "bai-suzhen",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:94:sima-qian:bai-suzhen",
+            "intentId": "intent-94-bai-suzhen-interrupt-1102",
+            "episodeId": "need-resolution:project-91-libai-shelter-capacity:bai-suzhen",
+            "projectId": "project-91-libai-shelter-capacity",
+            "monthsAfterResolution": 3,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-83-environment-condition-2",
+              "e-84-environment-condition-2",
+              "e-91-action-bai-suzhen-27",
+              "e-91-action-cailun-25",
+              "e-91-action-libai-23"
+            ]
+          },
+          {
+            "decisionEventId": "e-99-decision-bai-suzhen-1-11",
+            "atMonth": 99,
+            "personId": "bai-suzhen",
+            "optionType": "offer-reproduce",
+            "optionId": "offer-reproduce:99:bai-suzhen:libai",
+            "intentId": "intent-99-bai-suzhen-1162",
+            "episodeId": "need-resolution:project-91-libai-shelter-capacity:bai-suzhen",
+            "projectId": "project-91-libai-shelter-capacity",
+            "monthsAfterResolution": 8,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-83-environment-condition-2",
+              "e-84-environment-condition-2",
+              "e-91-action-bai-suzhen-27",
+              "e-91-action-cailun-25",
+              "e-91-action-libai-23"
+            ]
+          },
+          {
+            "decisionEventId": "e-102-decision-sima-qian-6-48",
+            "atMonth": 102,
+            "personId": "sima-qian",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:102:heidi:sima-qian",
+            "intentId": "intent-102-sima-qian-1201",
+            "episodeId": "need-resolution:project-92-sima-qian-production-efficiency:sima-qian",
+            "projectId": "project-92-sima-qian-production-efficiency",
+            "monthsAfterResolution": 10,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-40-action-cailun-24",
+              "e-41-action-sima-qian-5",
+              "e-42-action-cailun-14",
+              "e-42-action-cailun-20",
+              "e-42-action-sima-qian-11",
+              "e-43-action-cailun-3",
+              "e-43-action-sima-qian-5",
+              "e-48-action-bai-suzhen-11",
+              "e-48-action-sima-qian-9",
+              "e-48-environment-prediction-0",
+              "e-49-action-libai-13",
+              "e-49-action-sima-qian-7",
+              "e-65-action-wuzetian-4",
+              "e-75-action-bai-suzhen-31",
+              "e-75-action-cailun-35",
+              "e-75-action-sima-qian-40",
+              "e-75-action-sima-qian-49",
+              "e-75-action-sima-qian-51",
+              "e-76-action-cailun-20",
+              "e-76-action-sima-qian-13",
+              "e-77-action-cailun-24",
+              "e-77-action-libai-9",
+              "e-77-action-sima-qian-19",
+              "e-77-action-sima-qian-7",
+              "e-92-action-sima-qian-6"
+            ]
+          },
+          {
+            "decisionEventId": "e-128-decision-bai-suzhen-2-17",
+            "atMonth": 128,
+            "personId": "bai-suzhen",
+            "optionType": "accept-reproduce",
+            "optionId": "accept-reproduce:offer-reproduce:128:libai:bai-suzhen",
+            "intentId": "intent-128-bai-suzhen-1343",
+            "episodeId": "need-resolution:project-118-bai-suzhen-shelter-capacity:bai-suzhen",
+            "projectId": "project-118-bai-suzhen-shelter-capacity",
+            "monthsAfterResolution": 7,
+            "intentResolved": true,
+            "linked": true,
+            "linkedSourceFactIds": [
+              "e-109-environment-condition-0",
+              "e-110-environment-condition-0",
+              "e-114-environment-condition-0",
+              "e-117-environment-condition-0",
+              "e-118-action-bai-suzhen-5",
+              "e-121-action-bai-suzhen-15",
+              "e-121-action-bai-suzhen-20",
+              "e-121-action-bai-suzhen-24",
+              "e-121-action-bai-suzhen-27",
+              "e-121-action-bai-suzhen-35",
+              "e-121-action-bai-suzhen-38",
+              "e-121-action-bai-suzhen-40",
+              "e-121-action-bai-suzhen-44"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

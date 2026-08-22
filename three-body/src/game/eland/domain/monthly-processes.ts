@@ -1,6 +1,6 @@
 import { createBiologicalSex, createLifespanMonths, deterministicFraction } from '../population';
 import { Material, materialHas } from './material';
-import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, WeatherKind, WorldEvent } from './model';
+import type { ActionFact, EnvironmentFact, EraSchedule, Intent, SimulationState, WeatherKind, WorldEvent } from './model';
 import type { ConditionInstance, PersonState } from './person';
 import {
   HIBERNATION_RECOVERY_SAFE_RESERVE,
@@ -9,8 +9,14 @@ import {
   isAlive,
   sameLocation,
 } from './person';
-import { createMotiveSensitivity, createPersonality } from './personality';
-import { createCognitionState } from './cognition';
+import {
+  createMotiveSensitivity,
+  createPersonality,
+  newbornInitialTrust,
+  sharedActivityTickThreshold,
+  youthfulSharedActivityTrustBonus,
+} from './personality';
+import { createCognitionState, recordIntentGoalOutcome } from './cognition';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
@@ -21,13 +27,35 @@ import { remember } from './memory';
 import { applyRelationEvidence, relationshipPairKey } from './relation';
 import { createNewbornName } from '../naming';
 import {
+  applyTraitCapacityModifiers,
+  applyTraitLifespanModifier,
+  bindTraitSource,
+  coldHarmMultiplier,
+  grantProphetKnowledge,
+  hasTrait,
+  heatHarmMultiplier,
+  heatHydrationMultiplier,
+  injuryRecoveryMultiplier,
+  injuryWorseningRiskMultiplier,
+  nutritionMetabolicMultiplier,
+  personTraitsAtBirth,
+  traitDefinition,
+  type TraitBirthResult,
+} from './trait';
+import {
   animalAgeMonths,
   animalSpecies,
   isAnimalAlive,
   type AnimalState,
 } from './animal';
 import { humanResourceCompetitionMultiplier } from './population-capacity';
-import { companionLivingAnchor, positionWithinLivingArea } from './shared-living';
+import {
+  companionLivingAnchor,
+  companionSharesLivingArea,
+  positionWithinLivingArea,
+  REQUIRED_SHARED_LIVING_MONTHS,
+  SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS,
+} from './shared-living';
 import {
   HERBIVORE_DANGER_RADIUS,
   PACK_CUE_SHARE_RADIUS,
@@ -45,6 +73,7 @@ import {
   type WildlifeAnimalSnapshot,
   type WildlifeIntent,
 } from './wildlife-ecology';
+import { intentById, intentsOwnedBy, projectById } from './state-index';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -932,7 +961,7 @@ function learnFromInheritedOutcome(observer: PersonState, child: PersonState, at
 function advanceInheritedSusceptibility(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
   const load = person.geneticLoad ?? 0;
   if (load < 0.15 || condition(state, person, 'illness')) return;
-  const risk = load * 0.012;
+  const risk = load * 0.012 * injuryWorseningRiskMultiplier(person);
   if (seededFraction(state.seed, `inherited-illness:${atMonth}:${person.id}`) >= risk) return;
   const illness: ConditionInstance = {
     id: `condition-illness-inherited-${person.id}-${atMonth}`,
@@ -1008,7 +1037,7 @@ function recoverInjuries(state: SimulationState, person: PersonState, atMonth: n
   for (const current of [...person.conditions]) {
     if (current.kind !== 'wound' && current.kind !== 'illness') continue;
     const nourished = person.body.nutrition >= 55 && person.body.hydration >= 55;
-    const recovery = 0.08 + (nourished ? 0.17 : 0) + (sheltered ? 0.12 : 0);
+    const recovery = Math.min(1, (0.08 + (nourished ? 0.17 : 0) + (sheltered ? 0.12 : 0)) * injuryRecoveryMultiplier(person));
     if (seededFraction(state.seed, `condition-recover:${atMonth}:${person.id}:${current.id}`) < recovery) {
       if (current.stage > 1) current.stage = (current.stage - 1) as 1 | 2;
       else person.conditions = person.conditions.filter((item) => item.id !== current.id);
@@ -1017,7 +1046,7 @@ function recoverInjuries(state: SimulationState, person: PersonState, atMonth: n
   }
   const wound = condition(state, person, 'wound');
   if (wound && !condition(state, person, 'illness')) {
-    const infectionRisk = 0.018 * wound.stage * (person.body.nutrition < 35 ? 2 : 1);
+    const infectionRisk = 0.018 * wound.stage * (person.body.nutrition < 35 ? 2 : 1) * injuryWorseningRiskMultiplier(person);
     if (seededFraction(state.seed, `wound-infection:${atMonth}:${person.id}`) < infectionRisk) {
       const illness: ConditionInstance = { id: `condition-illness-${person.id}-${atMonth}`, kind: 'illness', stage: 1, sinceMonth: atMonth, sourceEventIds: [...wound.sourceEventIds] };
       person.conditions.push(illness);
@@ -1053,28 +1082,35 @@ function advanceAging(state: SimulationState, person: PersonState, atMonth: numb
   current.sourceEventIds.push(fact.id);
 }
 
-function newborn(state: SimulationState, mother: PersonState, fatherId: string, atMonth: number): PersonState {
+function newborn(state: SimulationState, mother: PersonState, fatherId: string, atMonth: number): { child: PersonState; inheritance: TraitBirthResult } {
   const id = `born-${atMonth}-${mother.id}-${state.people.length}`;
   const father = state.people.find((person) => person.id === fatherId);
   const sex = createBiologicalSex(state.seed, id);
-  const naming = createNewbornName(state.seed, id, sex, father ?? mother, state.people.map((person) => person.name));
+  const inheritance = personTraitsAtBirth(state.seed, id, sex, mother, father);
+  const namingSource = inheritance.matrilinealBirth ? mother : father ?? mother;
+  const naming = createNewbornName(state.seed, id, sex, namingSource, state.people.map((person) => person.name));
   const geneticLoad = inheritedGeneticLoad(state, mother, father);
   const average = (field: keyof PersonState['baselineCapacities']) => Math.round((mother.baselineCapacities[field] + (father?.baselineCapacities[field] ?? mother.baselineCapacities[field])) / 2);
   const inheritedCapacity = (field: keyof PersonState['baselineCapacities']) => Math.max(20, average(field) - Math.round(geneticLoad * (5 + deterministicFraction(state.seed, `${id}:genetic:${field}`) * 7)));
   const baselineLifespan = createLifespanMonths(state.seed, id);
-  return {
+  const capacities = applyTraitCapacityModifiers({
+    locomotion: inheritedCapacity('locomotion'), manipulation: inheritedCapacity('manipulation'), perception: inheritedCapacity('perception'),
+    communication: inheritedCapacity('communication'), cognition: inheritedCapacity('cognition'),
+  }, inheritance.traits);
+  const child: PersonState = {
     id,
     name: naming.name,
     color: mother.color,
     profile: { description: `${mother.name}与${father?.name ?? '未知者'}的后代` },
     bornAtMonth: atMonth,
-    lifespanMonths: Math.max(36 * 12, Math.round(baselineLifespan * (1 - geneticLoad * 0.18))),
+    lifespanMonths: applyTraitLifespanModifier(Math.max(36 * 12, Math.round(baselineLifespan * (1 - geneticLoad * 0.18))), inheritance.traits),
     sex,
     familyName: naming.familyName,
     namingTradition: naming.namingTradition,
     geneticParents: [mother.id, fatherId],
     generation: Math.max(mother.generation, father?.generation ?? 0) + 1,
     geneticLoad,
+    traits: inheritance.traits,
     position: {
       cellId: mother.position.cellId,
       z: mother.position.z,
@@ -1084,10 +1120,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
       tickPath: [mother.position.cellId],
     },
     body: { health: Math.max(48, 72 - Math.round(geneticLoad * 11)), hydration: 74, nutrition: 76 },
-    baselineCapacities: {
-      locomotion: inheritedCapacity('locomotion'), manipulation: inheritedCapacity('manipulation'), perception: inheritedCapacity('perception'),
-      communication: inheritedCapacity('communication'), cognition: inheritedCapacity('cognition'),
-    },
+    baselineCapacities: capacities,
     personality: createPersonality(
       state.seed,
       id,
@@ -1096,33 +1129,42 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     motiveSensitivity: createMotiveSensitivity(state.seed, id),
     cognition: createCognitionState(),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
+    bereavements: [],
     relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
   };
+  return { child, inheritance };
 }
 
-function advancePregnancies(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
-  const pregnancy = condition(state, person, 'pregnancy');
-  if (!pregnancy?.dueAtMonth) return;
-  const remaining = pregnancy.dueAtMonth - atMonth;
-  pregnancy.stage = remaining <= 2 ? 3 : remaining <= 5 ? 2 : 1;
-  if (person.body.health < 18 || person.body.nutrition < 10) {
-    if (seededFraction(state.seed, `pregnancy-loss:${atMonth}:${person.id}`) < 0.28) {
-      person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
-      event(state, atMonth, events, 'condition', `${person.name}的妊娠过程因身体恶化而中止`, { pregnancyEnded: true }, person);
-    }
-    return;
-  }
-  if (atMonth < pregnancy.dueAtMonth) return;
-  const child = newborn(state, person, pregnancy.otherPersonId ?? 'unknown', atMonth);
-  const father = state.people.find((candidate) => candidate.id === pregnancy.otherPersonId);
+export function pregnancyLossChance(person: Pick<PersonState, 'body'>, twinPregnancy: boolean): number {
+  const severeBodyDeterioration = person.body.health < 18 || person.body.nutrition < 10;
+  if (!severeBodyDeterioration && !twinPregnancy) return 0;
+  return Math.min(0.75, (severeBodyDeterioration ? 0.28 : 0) * (twinPregnancy ? 1.5 : 1) + (twinPregnancy ? 0.015 : 0));
+}
+
+function recordNewborn(
+  state: SimulationState,
+  person: PersonState,
+  father: PersonState | undefined,
+  child: PersonState,
+  inheritance: TraitBirthResult,
+  atMonth: number,
+  events: EnvironmentFact[],
+  birth: {
+    count: number;
+    index: number;
+    multipleBirthId?: string;
+    twinTraitPersonIds: string[];
+    recoveryMonths: number;
+    recoveryUntilMonth?: number;
+    postpartumSkippedByTrait: boolean;
+  },
+): EnvironmentFact {
   const parentalKinshipRisk = father ? geneticKinshipRisk(state, person, father) : 0;
   state.people.push(child);
-  person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
-  const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
-  const recoveryMonths = minimumReserve >= 70 ? 9 : minimumReserve >= 50 ? 12 : 15;
-  const recoveryUntilMonth = atMonth + recoveryMonths;
-  const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}，进入产后恢复期`, {
+  const multipleLabel = birth.count > 1 ? `（双胞胎第 ${birth.index} 个）` : '';
+  const recoveryResult = birth.postpartumSkippedByTrait ? '，魅魔特质使其无需产后恢复' : '，进入产后恢复期';
+  const fact = event(state, atMonth, events, 'body', `${person.name}生下了${child.name}${multipleLabel}${recoveryResult}`, {
     bornPersonId: child.id,
     bornPersonName: child.name,
     sex: child.sex,
@@ -1134,32 +1176,133 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
     geneticLoad: child.geneticLoad,
     inheritedHealth: child.body.health,
     inheritedCapacities: child.baselineCapacities,
-    postpartumRecoveryMonths: recoveryMonths,
-    postpartumRecoveryUntilMonth: recoveryUntilMonth,
+    matrilinealBirth: inheritance.matrilinealBirth,
+    namingParentId: inheritance.matrilinealBirth ? person.id : father?.id ?? person.id,
+    inheritedTraits: child.traits?.filter((trait) => trait.origin === 'inherited').map((trait) => ({
+      id: trait.id,
+      name: traitDefinition(trait.id).name,
+      inheritedFromPersonIds: trait.inheritedFromPersonIds,
+      chance: trait.inheritanceChance,
+      sample: trait.inheritanceSample,
+    })) ?? [],
+    spontaneousTraits: child.traits?.filter((trait) => trait.origin === 'spontaneous').map((trait) => ({
+      id: trait.id,
+      name: traitDefinition(trait.id).name,
+      chance: trait.spontaneousChance,
+      sample: trait.spontaneousSample,
+    })) ?? [],
+    traitInheritanceAttempts: inheritance.attempts,
+    traitSpontaneousAttempts: inheritance.spontaneousAttempts,
+    twinBirth: birth.count > 1,
+    twinTraitPersonIds: birth.twinTraitPersonIds,
+    ...(birth.multipleBirthId ? {
+      multipleBirthId: birth.multipleBirthId,
+      multipleBirthIndex: birth.index,
+      multipleBirthCount: birth.count,
+    } : {}),
+    postpartumRecoveryMonths: birth.recoveryMonths,
+    ...(birth.recoveryUntilMonth !== undefined ? { postpartumRecoveryUntilMonth: birth.recoveryUntilMonth } : {}),
+    postpartumSkippedByTrait: birth.postpartumSkippedByTrait,
   }, person);
-  person.conditions.push({
-    id: `condition-postpartum-recovery-${person.id}-${atMonth}`,
-    kind: 'postpartum-recovery',
-    stage: 3,
-    sinceMonth: atMonth,
-    endsAtMonth: recoveryUntilMonth,
-    sourceEventIds: [fact.id],
-    otherPersonId: child.id,
-  });
+  bindTraitSource(child, fact.id);
+  grantProphetKnowledge(child, atMonth, fact.id);
   if (child.geneticLoad >= 0.3) {
     for (const parent of state.people.filter((candidate) => child.geneticParents.includes(candidate.id) && sameLocation(candidate, child))) {
       learnFromInheritedOutcome(parent, child, atMonth, fact.id, 'birth');
     }
   }
+  const locallyPerceivedPersonIds = state.people
+    .filter((candidate) => candidate.id !== child.id && isAlive(candidate) && sameLocation(candidate, child))
+    .map((candidate) => candidate.id)
+    .sort();
+  const locallyPerceivedPeople = new Set(locallyPerceivedPersonIds);
+  const initialTrust = newbornInitialTrust(child);
+  for (const relation of child.relations) {
+    if (!locallyPerceivedPeople.has(relation.personId)) continue;
+    relation.trust = initialTrust;
+    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, fact.id])];
+  }
+  fact.diff.initialSocialTrust = initialTrust;
+  fact.diff.initialSocialTrustPersonIds = locallyPerceivedPersonIds;
   child.relations.forEach((relation) => {
     if (!child.geneticParents.includes(relation.personId)) return;
-    relation.bond = 12;
-    relation.sourceEventIds = [fact.id];
+    relation.bond = inheritance.matrilinealBirth && relation.personId === person.id ? 18 : 12;
+    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, fact.id])];
   });
   for (const existing of state.people) {
     if (existing.id === child.id || existing.relations.some((relation) => relation.personId === child.id)) continue;
     const closeKin = child.geneticParents.includes(existing.id);
-    existing.relations.push({ personId: child.id, trust: 0, bond: closeKin ? 12 : 0, fear: 0, sourceEventIds: closeKin ? [fact.id] : [] });
+    existing.relations.push({
+      personId: child.id,
+      trust: 0,
+      bond: closeKin ? (inheritance.matrilinealBirth && existing.id === person.id ? 18 : 12) : 0,
+      fear: 0,
+      sourceEventIds: closeKin ? [fact.id] : [],
+    });
+  }
+  return fact;
+}
+
+function advancePregnancies(state: SimulationState, person: PersonState, atMonth: number, events: EnvironmentFact[]): void {
+  const pregnancy = condition(state, person, 'pregnancy');
+  if (!pregnancy?.dueAtMonth) return;
+  const remaining = pregnancy.dueAtMonth - atMonth;
+  pregnancy.stage = remaining <= 2 ? 3 : remaining <= 5 ? 2 : 1;
+  const father = state.people.find((candidate) => candidate.id === pregnancy.otherPersonId);
+  const twinTraitPersonIds = [person, ...(father ? [father] : [])]
+    .filter((candidate) => hasTrait(candidate, 'twin-bearer'))
+    .map((candidate) => candidate.id);
+  const twinPregnancy = twinTraitPersonIds.length > 0;
+  const lossChance = pregnancyLossChance(person, twinPregnancy);
+  if (lossChance > 0) {
+    const lossSample = seededFraction(state.seed, `pregnancy-loss:${atMonth}:${person.id}`);
+    if (lossSample < lossChance) {
+      person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
+      event(state, atMonth, events, 'condition', `${person.name}的妊娠过程${twinPregnancy ? '因双生负担与身体风险' : '因身体恶化'}而中止`, {
+        pregnancyEnded: true,
+        lossChance,
+        lossSample,
+        twinPregnancy,
+        twinTraitPersonIds,
+      }, person);
+    }
+  }
+  if (person.body.health < 18 || person.body.nutrition < 10 || !person.conditions.includes(pregnancy)) {
+    return;
+  }
+  if (atMonth < pregnancy.dueAtMonth) return;
+  person.conditions = person.conditions.filter((item) => item.id !== pregnancy.id);
+  const postpartumSkippedByTrait = hasTrait(person, 'succubus');
+  const minimumReserve = Math.min(person.body.health, person.body.hydration, person.body.nutrition);
+  const recoveryMonths = postpartumSkippedByTrait ? 0 : minimumReserve >= 70 ? 9 : minimumReserve >= 50 ? 12 : 15;
+  const recoveryUntilMonth = postpartumSkippedByTrait ? undefined : atMonth + recoveryMonths;
+  const birthCount = twinPregnancy ? 2 : 1;
+  const multipleBirthId = twinPregnancy ? `multiple-birth:${pregnancy.id}:${atMonth}` : undefined;
+  const birthFacts: EnvironmentFact[] = [];
+  const bornChildren: PersonState[] = [];
+  for (let index = 1; index <= birthCount; index += 1) {
+    const { child, inheritance } = newborn(state, person, pregnancy.otherPersonId ?? 'unknown', atMonth);
+    bornChildren.push(child);
+    birthFacts.push(recordNewborn(state, person, father, child, inheritance, atMonth, events, {
+      count: birthCount,
+      index,
+      multipleBirthId,
+      twinTraitPersonIds,
+      recoveryMonths,
+      recoveryUntilMonth,
+      postpartumSkippedByTrait,
+    }));
+  }
+  if (!postpartumSkippedByTrait) {
+    person.conditions.push({
+      id: `condition-postpartum-recovery-${person.id}-${atMonth}`,
+      kind: 'postpartum-recovery',
+      stage: 3,
+      sinceMonth: atMonth,
+      endsAtMonth: recoveryUntilMonth,
+      sourceEventIds: birthFacts.map((fact) => fact.id),
+      otherPersonId: bornChildren[0]?.id,
+    });
   }
 }
 
@@ -1183,6 +1326,13 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   const healthBeforeDeath = person.body.health;
   person.diedAtMonth = atMonth;
   person.body.health = 0;
+  const deathEventId = `e-${atMonth}-environment-death-${events.length}`;
+  state.world.remains ??= [];
+  for (const carried of state.world.remains.filter((remains) => remains.carriedByPersonId === person.id)) {
+    carried.status = 'exposed';
+    carried.position = { cellId: person.position.cellId, z: person.position.z };
+    delete carried.carriedByPersonId;
+  }
   for (const stack of person.inventory) {
     addDrop(
       state,
@@ -1190,25 +1340,35 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
       stack.quantity,
       person.position.cellId,
       atMonth,
-      [...stack.sourceEventIds],
+      [...new Set([...stack.sourceEventIds, deathEventId])],
       `${person.id}-death`,
       stack.recordPayloadId,
       person.position.z,
       [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
+      person.id,
     );
   }
   person.inventory = [];
+  if (!state.world.remains.some((remains) => remains.personId === person.id)) state.world.remains.push({
+    id: `remains:${person.id}`,
+    personId: person.id,
+    position: { cellId: person.position.cellId, z: person.position.z },
+    status: 'exposed',
+    createdAtMonth: atMonth,
+    deathEventId,
+    sourceEventIds: [deathEventId],
+  });
   const dyingDuringHibernation = person.conditions.some((condition) => condition.kind === 'dehydrated-hibernation');
   const hibernationFailedIntentIds: string[] = [];
-  const intent = state.intents.find((candidate) => candidate.id === person.activeIntentId);
+  const intent = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
   const justRestoredAncestorIds = new Set<string>();
   let returnToIntentId = intent?.lastHibernationResumedAtMonth === atMonth ? intent.returnToIntentId : undefined;
   while (returnToIntentId && !justRestoredAncestorIds.has(returnToIntentId)) {
-    const ancestor = state.intents.find((candidate) => candidate.id === returnToIntentId
-      && candidate.ownerId === person.id
-      && candidate.status === 'suspended'
-      && candidate.lastHibernationResumedAtMonth === atMonth);
-    if (!ancestor) break;
+    const ancestor = intentById(state, returnToIntentId);
+    if (!ancestor
+      || ancestor.ownerId !== person.id
+      || ancestor.status !== 'suspended'
+      || ancestor.lastHibernationResumedAtMonth !== atMonth) break;
     justRestoredAncestorIds.add(ancestor.id);
     returnToIntentId = ancestor.returnToIntentId;
   }
@@ -1216,21 +1376,37 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
   if (intent) {
     intent.status = 'failed';
     intent.blockedReason = '人物已经死亡，无法继续原意图';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      intent.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
+      atMonth,
+      [...new Set([...intent.actionEventIds, deathEventId])],
+    );
+    if (intent.returnToIntentId) {
+      intent.returnOutcome = 'parent-unavailable';
+      intent.returnResolvedAtMonth = atMonth;
+    }
     if (dyingDuringHibernation || dyingImmediatelyAfterHibernationRestore) {
-      if (intent.returnToIntentId) {
-        intent.returnOutcome = 'parent-unavailable';
-        intent.returnResolvedAtMonth = atMonth;
-      }
       hibernationFailedIntentIds.push(intent.id);
     }
   }
-  for (const suspended of state.intents.filter((candidate) => candidate.ownerId === person.id
-    && candidate.status === 'suspended'
-    && (dyingDuringHibernation
-      || candidate.suspendedForHibernationConditionId
-      || justRestoredAncestorIds.has(candidate.id)))) {
+  for (const suspended of intentsOwnedBy(state, person.id).filter((candidate) => candidate.ownerId === person.id
+    && candidate.status === 'suspended')) {
+    const hibernationRelated = dyingDuringHibernation
+      || Boolean(suspended.suspendedForHibernationConditionId)
+      || justRestoredAncestorIds.has(suspended.id);
     suspended.status = 'failed';
-    suspended.blockedReason = '人物在休眠 episode 完成恢复前已经死亡';
+    suspended.blockedReason = hibernationRelated
+      ? '人物在休眠 episode 完成恢复前已经死亡'
+      : '人物已经死亡，无法继续暂停意图';
+    recordIntentGoalOutcome(
+      state,
+      suspended,
+      suspended.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
+      atMonth,
+      [...new Set([...suspended.actionEventIds, deathEventId])],
+    );
     if (suspended.returnToIntentId) {
       suspended.returnOutcome = 'parent-unavailable';
       suspended.returnResolvedAtMonth = atMonth;
@@ -1238,11 +1414,11 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
     delete suspended.suspendedForHibernationConditionId;
     delete suspended.suspendedAtMonth;
     delete suspended.suspendedByIntentId;
-    hibernationFailedIntentIds.push(suspended.id);
+    if (hibernationRelated) hibernationFailedIntentIds.push(suspended.id);
   }
   delete person.activeIntentId;
   const causalConditions = person.conditions.flatMap((current) => current.sourceEventIds);
-  event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，私有背包遗留在原地`, {
+  const deathFact = event(state, atMonth, events, 'death', `${person.name}在第 ${atMonth} 月死亡，遗体和私有背包留在原地`, {
     personId: person.id,
     ageMonths: atMonth - person.bornAtMonth,
     cause,
@@ -1252,6 +1428,7 @@ function die(state: SimulationState, person: PersonState, atMonth: number, event
       ? { hibernationFailedIntentIds: [...new Set(hibernationFailedIntentIds)] }
       : {}),
   }, person);
+  if (deathFact.id !== deathEventId) throw new Error('死亡事实与遗体来源事件顺序不一致');
 }
 
 function maintainHibernationIntentSuspension(
@@ -1260,7 +1437,7 @@ function maintainHibernationIntentSuspension(
   hibernationConditionId: string,
   atMonth: number,
 ): { intentId?: string; intentChainIds: string[]; newlySuspended: boolean } {
-  const alreadySuspended = state.intents.filter((intent) => intent.ownerId === person.id
+  const alreadySuspended = intentsOwnedBy(state, person.id).filter((intent) => intent.ownerId === person.id
     && intent.status === 'suspended'
     && intent.suspendedForHibernationConditionId === hibernationConditionId);
   if (alreadySuspended.length) {
@@ -1273,9 +1450,10 @@ function maintainHibernationIntentSuspension(
       newlySuspended: false,
     };
   }
-  const active = state.intents.find((intent) => intent.id === person.activeIntentId
-    && intent.ownerId === person.id
-    && intent.status === 'active');
+  const activeCandidate = person.activeIntentId ? intentById(state, person.activeIntentId) : undefined;
+  const active = activeCandidate?.ownerId === person.id && activeCandidate.status === 'active'
+    ? activeCandidate
+    : undefined;
   if (!active) return { intentChainIds: [], newlySuspended: false };
   active.status = 'suspended';
   const chain = [];
@@ -1286,11 +1464,10 @@ function maintainHibernationIntentSuspension(
     current.suspendedForHibernationConditionId = hibernationConditionId;
     if (current.id === active.id) current.suspendedAtMonth = atMonth;
     chain.push(current);
-    current = current.returnToIntentId
-      ? state.intents.find((intent) => intent.id === current?.returnToIntentId
-        && intent.ownerId === person.id
-        && intent.status === 'suspended')
+    const parent: Intent | undefined = current.returnToIntentId
+      ? intentById(state, current.returnToIntentId)
       : undefined;
+    current = parent?.ownerId === person.id && parent.status === 'suspended' ? parent : undefined;
   }
   delete person.activeIntentId;
   return { intentId: active.id, intentChainIds: chain.map((intent) => intent.id), newlySuspended: true };
@@ -1302,7 +1479,7 @@ function restoreHibernationSuspendedIntent(
   hibernationConditionId: string,
   atMonth: number,
 ): { intentId?: string; status?: string } {
-  const suspendedChain = state.intents.filter((candidate) => candidate.ownerId === person.id
+  const suspendedChain = intentsOwnedBy(state, person.id).filter((candidate) => candidate.ownerId === person.id
     && candidate.status === 'suspended'
     && candidate.suspendedForHibernationConditionId === hibernationConditionId);
   const intent = suspendedChain.find((candidate) => !candidate.suspendedByIntentId)
@@ -1314,24 +1491,58 @@ function restoreHibernationSuspendedIntent(
     suspended.lastHibernationResumedAtMonth = atMonth;
     if (suspended.id === intent.id) delete suspended.suspendedAtMonth;
   }
-  const project = intent.projectId
-    ? state.projects.find((candidate) => candidate.id === intent.projectId)
-    : undefined;
+  const project = intent.projectId ? projectById(state, intent.projectId) : undefined;
   if (!isAlive(person)) {
     intent.status = 'failed';
     intent.blockedReason = '人物在休眠恢复完成前已经死亡';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      intent.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
+      atMonth,
+      [...new Set(intent.actionEventIds.length ? intent.actionEventIds : [intent.sourceDecisionEventId])],
+    );
   } else if (project?.status === 'completed') {
     intent.status = 'completed';
     intent.progress = 1;
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'achieved',
+      atMonth,
+      [...new Set(project.completionEventIds.length ? project.completionEventIds : [intent.sourceDecisionEventId])],
+    );
   } else if (project?.status === 'blocked') {
     intent.status = 'blocked';
     intent.blockedReason = project.blockedReason ?? '休眠期间项目已经阻塞';
+    const sources = [...new Set([...intent.actionEventIds, ...project.failureEventIds])];
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      sources.length ? 'attempted-unmet' : 'not-evaluated',
+      atMonth,
+      sources.length ? sources : [intent.sourceDecisionEventId],
+    );
   } else if (project?.status === 'abandoned') {
     intent.status = 'abandoned';
     intent.blockedReason = project.blockedReason ?? '休眠期间项目已经放弃';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      intent.actionEventIds.length ? 'attempted-unmet' : 'not-evaluated',
+      atMonth,
+      [...new Set(intent.actionEventIds.length ? intent.actionEventIds : [intent.sourceDecisionEventId])],
+    );
   } else if (intent.projectId && !project) {
     intent.status = 'abandoned';
     intent.blockedReason = '休眠期间项目已经不存在';
+    recordIntentGoalOutcome(
+      state,
+      intent,
+      'not-evaluated',
+      atMonth,
+      [intent.sourceDecisionEventId],
+    );
   } else {
     intent.status = 'active';
     intent.lastResumedAtMonth = atMonth;
@@ -1510,11 +1721,13 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const weatherCold = weather.kind === 'snow' ? weather.intensity * 0.45 : weather.kind === 'storm' && climate.kind === 'cold' ? weather.intensity * 0.18 : 0;
     const weatherHeat = weather.kind === 'drought' ? weather.intensity * 0.38 : 0;
     const hibernationRelief = hibernating ? 0.08 : 1;
+    const coldTraitMultiplier = coldHarmMultiplier(person);
+    const heatTraitMultiplier = heatHarmMultiplier(person);
     const coldLoad = climate.kind === 'cold'
-      ? Math.max(0, climate.severity + weatherCold - shelterColdRelief - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) * hibernationRelief
+      ? Math.max(0, climate.severity + weatherCold - shelterColdRelief - (fireProtected ? 2.2 : 0) - (clothed ? 0.9 : 0)) * hibernationRelief * coldTraitMultiplier
       : 0;
     const heatLoad = climate.kind === 'heat' || climate.kind === 'fire'
-      ? Math.max(0, climate.severity + weatherHeat - heatReliefFromShelter + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) * hibernationRelief
+      ? Math.max(0, climate.severity + weatherHeat - heatReliefFromShelter + (fireProtected ? 0.6 : 0) + (clothed ? 0.25 : 0)) * hibernationRelief * heatTraitMultiplier
       : 0;
     if (coldLoad > 0) clearOppositeExposure(state, person, atMonth, 'cold', events);
     else if (heatLoad > 0) clearOppositeExposure(state, person, atMonth, 'heat', events);
@@ -1531,12 +1744,17 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const postpartum = condition(state, person, 'postpartum-recovery')?.stage ?? 0;
     advanceAging(state, person, atMonth, events);
     const aging = condition(state, person, 'aging')?.stage ?? 0;
+    const heatHydrationExtra = (heat ? 1.35 * ([1, 1.3, 1.7, 2.2][heat] - 1) : 0)
+      + (weather.kind === 'drought' ? weather.intensity * 0.18 : 0);
+    const coldNutritionExtra = cold ? 1.25 * ([1, 1.25, 1.5, 1.8][cold] - 1) * coldTraitMultiplier : 0;
     const hydrationCost = (hibernating
       ? HIBERNATION_HYDRATION_COST
-      : 1.35 * (heat ? [1, 1.3, 1.7, 2.2][heat] : 1) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12 + (weather.kind === 'drought' ? weather.intensity * 0.18 : 0)) * resourceCompetition;
+      : 1.35 + heatHydrationExtra * heatHydrationMultiplier(person) + illness * 0.35 + pregnancy * 0.22 + postpartum * 0.12) * resourceCompetition;
     const nutritionCost = (hibernating
       ? HIBERNATION_NUTRITION_COST
-      : 1.25 * (cold ? [1, 1.25, 1.5, 1.8][cold] : 1) + illness * 0.38 + pregnancy * 0.28 + postpartum * 0.18) * resourceCompetition;
+      : 1.25 + coldNutritionExtra + illness * 0.38 + pregnancy * 0.28 + postpartum * 0.18)
+      * resourceCompetition
+      * nutritionMetabolicMultiplier(person);
     person.body.hydration = clamp(person.body.hydration - hydrationCost);
     person.body.nutrition = clamp(person.body.nutrition - nutritionCost);
     let healthDelta = 0;
@@ -1548,8 +1766,8 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       else if (person.body.hydration < 25) healthDelta -= 2;
       if (person.body.nutrition < 10) healthDelta -= 6;
       else if (person.body.nutrition < 25) healthDelta -= 2;
-      if (cold >= 3) healthDelta -= 2;
-      if (heat >= 3) healthDelta -= 3;
+      if (cold >= 3) healthDelta -= 2 * coldTraitMultiplier;
+      if (heat >= 3) healthDelta -= 3 * heatTraitMultiplier;
       healthDelta -= Math.max(0, wound - 1) * 1.5 + Math.max(0, illness - 1) * 1.5;
       if (aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45)) healthDelta -= aging === 3 ? 1.5 : 0.5;
       if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || fireProtected || climate.kind === 'temperate') && !wound && !illness) {
@@ -1578,7 +1796,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         }, person);
         hibernationCondition.sourceEventIds = [...new Set([...hibernationCondition.sourceEventIds, deterioration.id])].slice(-24);
       }
-      const suspendedIntents = state.intents.filter((intent) => intent.ownerId === person.id
+      const suspendedIntents = intentsOwnedBy(state, person.id).filter((intent) => intent.ownerId === person.id
         && intent.status === 'suspended'
         && intent.suspendedForHibernationConditionId === hibernationCondition.id);
       const suspendedIntent = suspendedIntents.find((intent) => !intent.suspendedByIntentId)
@@ -1635,7 +1853,7 @@ function adverseRelationshipPair(event: WorldEvent): string | undefined {
   return undefined;
 }
 
-/** Five nearby action ticks form one replayable unit of shared experience. */
+/** Personality turns 3..5 nearby action ticks into replayable relationship evidence. */
 export function advanceSharedRelationshipExperience(
   state: SimulationState,
   currentMonthEvents: readonly WorldEvent[],
@@ -1704,9 +1922,27 @@ export function advanceSharedRelationshipExperience(
   for (const [pairKey, activity] of [...pairActivity.entries()].sort(([left], [right]) => left.localeCompare(right))) {
     if (adversePairs.has(pairKey)) continue;
     const qualifyingTicks = [...activity.ticks].sort((left, right) => left - right);
-    const relationshipDelta = Math.floor(qualifyingTicks.length / 5);
-    if (relationshipDelta <= 0) continue;
     const participants = [activity.first, activity.second].sort((left, right) => left.id.localeCompare(right.id));
+    const relationshipDeltas = participants.map((observer) => {
+      const other = participants.find((person) => person.id !== observer.id)!;
+      const tickThreshold = sharedActivityTickThreshold(observer);
+      const baseDelta = Math.floor(qualifyingTicks.length / tickThreshold);
+      const youthTrustBonus = baseDelta > 0
+        ? youthfulSharedActivityTrustBonus(ageMonths(observer, atMonth))
+        : 0;
+      return {
+        observerId: observer.id,
+        otherPersonId: other.id,
+        tickThreshold,
+        baseDelta,
+        youthTrustBonus,
+        trustDelta: baseDelta + youthTrustBonus,
+        bondDelta: baseDelta,
+      };
+    });
+    if (relationshipDeltas.every((delta) => delta.baseDelta <= 0)) continue;
+    const mutualTrustDelta = Math.min(...relationshipDeltas.map((delta) => delta.trustDelta));
+    const mutualBondDelta = Math.min(...relationshipDeltas.map((delta) => delta.bondDelta));
     const fact: EnvironmentFact = {
       id: `e-${atMonth}-environment-relationship-${facts.length}`,
       kind: 'environment',
@@ -1714,19 +1950,73 @@ export function advanceSharedRelationshipExperience(
       orderInMonth: facts.length,
       cellId: activity.cellId,
       change: 'relationship',
-      result: `${participants.map((person) => person.name).join('、')}本月共同活动 ${qualifyingTicks.length} 个规划刻度，形成可追溯的共同经历`,
+      result: `${participants.map((person) => person.name).join('、')}本月共同活动 ${qualifyingTicks.length} 个规划刻度，按各自性格与年龄形成可追溯的共同经历`,
       diff: {
         process: 'shared-action-ticks',
         participantIds: participants.map((person) => person.id),
         qualifyingTicks,
         sharedActionTicks: qualifyingTicks.length,
         sourceEventIds: [...activity.sourceEventIds].sort(),
+        relationshipDeltas,
+        trustDelta: mutualTrustDelta,
+        bondDelta: mutualBondDelta,
+      },
+    };
+    for (const delta of relationshipDeltas) {
+      if (delta.baseDelta <= 0) continue;
+      const observer = participants.find((person) => person.id === delta.observerId)!;
+      applyRelationEvidence(observer, delta.otherPersonId, fact.id, {
+        trust: delta.trustDelta,
+        bond: delta.bondDelta,
+      });
+    }
+    facts.push(fact);
+  }
+  const establishedCompanions = state.agreements
+    .filter((agreement) => agreement.status === 'active'
+      && agreement.proposal.kind === 'companion'
+      && agreement.companionEstablishedAtMonth !== undefined)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  for (const agreement of establishedCompanions) {
+    const pairKey = relationshipPairKey(agreement.partyIds[0]!, agreement.partyIds[1]!);
+    if (adversePairs.has(pairKey) || !companionSharesLivingArea(state, agreement)) continue;
+    const lastCredited = Math.max(
+      REQUIRED_SHARED_LIVING_MONTHS,
+      agreement.lastCompanionRelationshipAtCoLocatedMonth ?? REQUIRED_SHARED_LIVING_MONTHS,
+    );
+    const uncreditedMonths = Math.max(0, agreement.coLocatedMonths - lastCredited);
+    const relationshipDelta = Math.floor(uncreditedMonths / SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS);
+    if (relationshipDelta <= 0) continue;
+    const participants = agreement.partyIds
+      .map((personId) => peopleById.get(personId))
+      .filter((person): person is PersonState => Boolean(person))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    if (participants.length !== 2) continue;
+    const creditedThrough = lastCredited + relationshipDelta * SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS;
+    const sourceEventIds = [...agreement.sourceEventIds].slice(-24);
+    const fact: EnvironmentFact = {
+      id: `e-${atMonth}-environment-relationship-${facts.length}`,
+      kind: 'environment',
+      atMonth,
+      orderInMonth: facts.length,
+      cellId: companionLivingAnchor(state, agreement)?.cellId ?? participants[0].position.cellId,
+      change: 'relationship',
+      result: `${participants.map((person) => person.name).join('、')}继续履行共同生活约定，累计 ${agreement.coLocatedMonths} 个真实共同生活月`,
+      diff: {
+        process: 'persistent-shared-living',
+        agreementId: agreement.id,
+        participantIds: participants.map((person) => person.id),
+        sharedLivingMonths: agreement.coLocatedMonths,
+        creditedThroughSharedLivingMonth: creditedThrough,
+        sourceEventIds,
         trustDelta: relationshipDelta,
         bondDelta: relationshipDelta,
       },
     };
-    applyRelationEvidence(activity.first, activity.second.id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
-    applyRelationEvidence(activity.second, activity.first.id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
+    agreement.lastCompanionRelationshipAtCoLocatedMonth = creditedThrough;
+    agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
+    applyRelationEvidence(participants[0], participants[1].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
+    applyRelationEvidence(participants[1], participants[0].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
     facts.push(fact);
   }
   return facts;

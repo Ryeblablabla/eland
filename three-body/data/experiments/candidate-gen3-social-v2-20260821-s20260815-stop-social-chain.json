@@ -1,0 +1,2807 @@
+{
+  "schemaVersion": 2,
+  "auditVersion": "generational-social-chain-audit-v2",
+  "generatedAt": "2026-08-20T18:36:47.900Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-gen3-social-v2-20260821-s20260815-y100-r1"
+      ]
+    }
+  },
+  "method": {
+    "target": "Every person with generation >= 2.",
+    "coreChain": "person state parents -> exact birth fact -> conceived reproduce ActionFact -> authorized reproduce agreement -> proposal/acceptance/fulfillment source integrity",
+    "socialChain": "company assist fulfillment -> companion establishment -> persistent shared-living fact -> reproduction relationship basis",
+    "sliceBias": "At observed proposal ActionFacts, reconstruct co-location and preserve SimulationState.people insertion order to audit the localPeople first-three cap; generation-one insertion order is checked against birth order.",
+    "missingEvidencePolicy": "Missing or unresolved source facts are reported explicitly and never inferred from generation or observer milestones."
+  },
+  "aggregate": {
+    "runs": 1,
+    "runsWithGeneration2": 0,
+    "runsWithGeneration3": 0,
+    "maxGeneration": 1,
+    "targetPeople": 0,
+    "coreCompleteChains": 0,
+    "hypothesisCompleteChains": 0,
+    "missingLinkCounts": {}
+  },
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v2-20260821-s20260815-y100-r1",
+      "seed": 20260815,
+      "status": "running",
+      "elapsedMonths": 384,
+      "people": 17,
+      "peopleByGeneration": {
+        "0": 7,
+        "1": 10
+      },
+      "maxGeneration": 1,
+      "targetPeople": 0,
+      "coreCompleteChains": 0,
+      "hypothesisCompleteChains": 0,
+      "support": "no-generation-2",
+      "socialFunnel": {
+        "company": {
+          "totals": {
+            "proposed": 12,
+            "accepted": 6,
+            "fulfilled": 6,
+            "rejected": 0,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "byGenerationPair": {
+            "g0|g1": {
+              "proposed": 9,
+              "accepted": 3,
+              "fulfilled": 3,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            },
+            "g1|g1": {
+              "proposed": 3,
+              "accepted": 3,
+              "fulfilled": 3,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            }
+          }
+        },
+        "companion": {
+          "totals": {
+            "proposed": 50,
+            "accepted": 50,
+            "established": 7,
+            "active": 9,
+            "cancelled": 0,
+            "breached": 41
+          },
+          "byGenerationPair": {
+            "g0|g0": {
+              "proposed": 50,
+              "accepted": 50,
+              "established": 7,
+              "active": 9,
+              "cancelled": 0,
+              "breached": 41
+            }
+          }
+        },
+        "persistentSharedLiving": {
+          "events": 38,
+          "byGenerationPair": {
+            "g0|g0": 38
+          },
+          "firstAtMonth": 86,
+          "lastAtMonth": 354
+        }
+      },
+      "relationshipFrontier": {
+        "atMonth": 384,
+        "livingGenerationOneAdults": 5,
+        "highestBilateralMinimum": 18,
+        "adultFrontier": [
+          {
+            "person": {
+              "personId": "born-105-zhaotianli-7",
+              "name": "劳拉·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 279,
+              "bodyMinimum": 52.08000000000008
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "zhugeliang",
+                "name": "诸葛亮",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 49.34000000000013
+              },
+              "minimumTrustBond": 14,
+              "firstToSecond": {
+                "trust": 14,
+                "bond": 26,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-105-zhaotianli-7-48",
+                  "e-373-action-zhugeliang-53",
+                  "e-374-action-born-105-zhaotianli-7-45",
+                  "e-374-action-born-105-zhaotianli-7-50",
+                  "e-377-action-born-105-zhaotianli-7-49",
+                  "e-377-action-zhugeliang-51",
+                  "e-378-action-born-105-zhaotianli-7-15",
+                  "e-378-action-born-105-zhaotianli-7-23",
+                  "e-378-action-zhugeliang-9",
+                  "e-379-action-born-105-zhaotianli-7-3",
+                  "e-379-action-zhugeliang-13",
+                  "e-380-action-born-105-zhaotianli-7-13",
+                  "e-380-action-zhugeliang-8",
+                  "e-381-action-born-105-zhaotianli-7-17",
+                  "e-381-action-zhugeliang-21",
+                  "e-382-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 14,
+                "bond": 26,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-105-zhaotianli-7-48",
+                  "e-373-action-zhugeliang-53",
+                  "e-374-action-born-105-zhaotianli-7-45",
+                  "e-374-action-born-105-zhaotianli-7-50",
+                  "e-377-action-born-105-zhaotianli-7-49",
+                  "e-377-action-zhugeliang-51",
+                  "e-378-action-born-105-zhaotianli-7-15",
+                  "e-378-action-born-105-zhaotianli-7-23",
+                  "e-378-action-zhugeliang-9",
+                  "e-379-action-born-105-zhaotianli-7-3",
+                  "e-379-action-zhugeliang-13",
+                  "e-380-action-born-105-zhaotianli-7-13",
+                  "e-380-action-zhugeliang-8",
+                  "e-381-action-born-105-zhaotianli-7-17",
+                  "e-381-action-zhugeliang-21",
+                  "e-382-environment-relationship-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-143-bai-suzhen-8",
+              "name": "诸葛安歌",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 241,
+              "bodyMinimum": 57.08000000000008
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 78.13000000000005
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-242-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-242-environment-relationship-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-157-cangtianying-9",
+              "name": "诸葛南星",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 227,
+              "bodyMinimum": 31.64999999999995
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "born-143-bai-suzhen-8",
+                "name": "诸葛安歌",
+                "generation": 1,
+                "sex": "female",
+                "ageMonths": 241,
+                "bodyMinimum": 57.08000000000008
+              },
+              "minimumTrustBond": 1,
+              "firstToSecond": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-181-environment-relationship-1"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-181-environment-relationship-1"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-189-bai-suzhen-10",
+              "name": "弗洛拉·阿姆斯特朗",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 195,
+              "bodyMinimum": 87.70000000000002
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 78.13000000000005
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 12,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-189-environment-body-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 12,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-189-environment-body-0"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-190-cangtianying-11",
+              "name": "奥利弗·阿姆斯特朗",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 194,
+              "bodyMinimum": 57.53000000000013
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 78.13000000000005
+              },
+              "minimumTrustBond": 18,
+              "firstToSecond": {
+                "trust": 18,
+                "bond": 29,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-190-environment-body-0",
+                  "e-356-action-armstrong-30",
+                  "e-356-action-armstrong-33",
+                  "e-356-action-born-190-cangtianying-11-25",
+                  "e-359-action-armstrong-63",
+                  "e-359-action-born-190-cangtianying-11-71",
+                  "e-363-action-armstrong-26",
+                  "e-363-action-armstrong-6",
+                  "e-363-action-born-190-cangtianying-11-4",
+                  "e-364-action-armstrong-11",
+                  "e-364-action-born-190-cangtianying-11-9"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 18,
+                "bond": 29,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-190-environment-body-0",
+                  "e-356-action-armstrong-30",
+                  "e-356-action-armstrong-33",
+                  "e-356-action-born-190-cangtianying-11-25",
+                  "e-359-action-armstrong-63",
+                  "e-359-action-born-190-cangtianying-11-71",
+                  "e-363-action-armstrong-26",
+                  "e-363-action-armstrong-6",
+                  "e-363-action-born-190-cangtianying-11-4",
+                  "e-364-action-armstrong-11",
+                  "e-364-action-born-190-cangtianying-11-9"
+                ]
+              }
+            }
+          }
+        ],
+        "fertileGenerationOneFemales": 4,
+        "fertileFemaleCandidates": [
+          {
+            "female": {
+              "personId": "born-105-zhaotianli-7",
+              "name": "劳拉·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 279,
+              "bodyMinimum": 52.08000000000008,
+              "bodyEligible": false
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "zhugeliang",
+                "name": "诸葛亮",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 49.34000000000013,
+                "bodyEligible": false
+              },
+              "minimumTrustBond": 14,
+              "firstToSecond": {
+                "trust": 14,
+                "bond": 26,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-105-zhaotianli-7-48",
+                  "e-373-action-zhugeliang-53",
+                  "e-374-action-born-105-zhaotianli-7-45",
+                  "e-374-action-born-105-zhaotianli-7-50",
+                  "e-377-action-born-105-zhaotianli-7-49",
+                  "e-377-action-zhugeliang-51",
+                  "e-378-action-born-105-zhaotianli-7-15",
+                  "e-378-action-born-105-zhaotianli-7-23",
+                  "e-378-action-zhugeliang-9",
+                  "e-379-action-born-105-zhaotianli-7-3",
+                  "e-379-action-zhugeliang-13",
+                  "e-380-action-born-105-zhaotianli-7-13",
+                  "e-380-action-zhugeliang-8",
+                  "e-381-action-born-105-zhaotianli-7-17",
+                  "e-381-action-zhugeliang-21",
+                  "e-382-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 14,
+                "bond": 26,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-373-action-born-105-zhaotianli-7-48",
+                  "e-373-action-zhugeliang-53",
+                  "e-374-action-born-105-zhaotianli-7-45",
+                  "e-374-action-born-105-zhaotianli-7-50",
+                  "e-377-action-born-105-zhaotianli-7-49",
+                  "e-377-action-zhugeliang-51",
+                  "e-378-action-born-105-zhaotianli-7-15",
+                  "e-378-action-born-105-zhaotianli-7-23",
+                  "e-378-action-zhugeliang-9",
+                  "e-379-action-born-105-zhaotianli-7-3",
+                  "e-379-action-zhugeliang-13",
+                  "e-380-action-born-105-zhaotianli-7-13",
+                  "e-380-action-zhugeliang-8",
+                  "e-381-action-born-105-zhaotianli-7-17",
+                  "e-381-action-zhugeliang-21",
+                  "e-382-environment-relationship-0"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-143-bai-suzhen-8",
+              "name": "诸葛安歌",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 241,
+              "bodyMinimum": 57.08000000000008,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 78.13000000000005,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 2,
+              "firstToSecond": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-242-environment-relationship-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 2,
+                "bond": 2,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-242-environment-relationship-0"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-157-cangtianying-9",
+              "name": "诸葛南星",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 227,
+              "bodyMinimum": 31.64999999999995,
+              "bodyEligible": false
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "armstrong",
+                "name": "尼尔·阿姆斯特朗",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 732,
+                "bodyMinimum": 78.13000000000005,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          },
+          {
+            "female": {
+              "personId": "born-189-bai-suzhen-10",
+              "name": "弗洛拉·阿姆斯特朗",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 195,
+              "bodyMinimum": 87.70000000000002,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "sunwukong",
+                "name": "孙悟空",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 564,
+                "bodyMinimum": 74.88000000000005,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-202-action-sunwukong-4",
+                  "e-208-environment-prediction-0"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-202-action-sunwukong-4"
+                ]
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          }
+        ]
+      },
+      "birthOrderSliceAudit": {
+        "atMonth": 384,
+        "method": {
+          "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+          "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+        },
+        "proposals": 62,
+        "reconstructedProposals": 58,
+        "reconstructionFailures": 4,
+        "targetCandidateRankCounts": {
+          "1": 41,
+          "2": 12,
+          "3": 5
+        },
+        "targetBeyondSliceCap": 0,
+        "crowdedProposalMoments": 3,
+        "byKind": {
+          "company": {
+            "proposals": 12,
+            "reconstructed": 8,
+            "crowded": 0,
+            "targetBeyondSliceCap": 0,
+            "generationPair": {
+              "g0|g1": 9,
+              "g1|g1": 3
+            }
+          },
+          "companion": {
+            "proposals": 50,
+            "reconstructed": 50,
+            "crowded": 3,
+            "targetBeyondSliceCap": 0,
+            "generationPair": {
+              "g0|g0": 50
+            }
+          }
+        },
+        "generationOne": {
+          "people": 10,
+          "insertionOrderMatchesBirthOrder": true,
+          "hardExcludedAppearances": 3,
+          "laterBornRankFourOrGreaterExclusions": 1,
+          "peopleByBirthOrder": [
+            {
+              "personId": "born-105-zhaotianli-7",
+              "name": "劳拉·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 105,
+              "stateInsertionIndex": 7,
+              "generationBirthRank": 1,
+              "targeted": 3,
+              "includedInFirstThreeAtObservedProposalMoments": 2,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-143-bai-suzhen-8",
+              "name": "诸葛安歌",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 143,
+              "stateInsertionIndex": 8,
+              "generationBirthRank": 2,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 2,
+              "hardExcludedBySliceAtObservedProposalMoments": 2
+            },
+            {
+              "personId": "born-157-cangtianying-9",
+              "name": "诸葛南星",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 157,
+              "stateInsertionIndex": 9,
+              "generationBirthRank": 3,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-189-bai-suzhen-10",
+              "name": "弗洛拉·阿姆斯特朗",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 189,
+              "stateInsertionIndex": 10,
+              "generationBirthRank": 4,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-190-cangtianying-11",
+              "name": "奥利弗·阿姆斯特朗",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 190,
+              "stateInsertionIndex": 11,
+              "generationBirthRank": 5,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-201-zhaotianli-12",
+              "name": "黛安娜·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 201,
+              "stateInsertionIndex": 12,
+              "generationBirthRank": 6,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-212-bai-suzhen-13",
+              "name": "亚历山大·阿姆斯特朗",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 212,
+              "stateInsertionIndex": 13,
+              "generationBirthRank": 7,
+              "targeted": 2,
+              "includedInFirstThreeAtObservedProposalMoments": 3,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-212-cangtianying-14",
+              "name": "卢卡斯·阿姆斯特朗",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 212,
+              "stateInsertionIndex": 14,
+              "generationBirthRank": 8,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 2,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-297-zhaotianli-15",
+              "name": "伊莎贝尔·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 297,
+              "stateInsertionIndex": 15,
+              "generationBirthRank": 9,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-349-zhaotianli-16",
+              "name": "塞西莉亚·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 349,
+              "stateInsertionIndex": 16,
+              "generationBirthRank": 10,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            }
+          ]
+        },
+        "assessment": {
+          "allReconstructedTargetsWithinFirstThree": true,
+          "supportsBirthOrderExclusionAtObservedMoments": true
+        },
+        "targetedPeople": [
+          {
+            "personId": "zhugeliang",
+            "name": "诸葛亮",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 1,
+            "count": 11
+          },
+          {
+            "personId": "zhaotianli",
+            "name": "照天离",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -120,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 7,
+            "count": 4
+          },
+          {
+            "personId": "bai-suzhen",
+            "name": "白素贞",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -204,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 5,
+            "count": 8
+          },
+          {
+            "personId": "cangtianying",
+            "name": "苍天影",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -300,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 3,
+            "count": 11
+          },
+          {
+            "personId": "tesla",
+            "name": "尼古拉·特斯拉",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -240,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 4,
+            "count": 5
+          },
+          {
+            "personId": "armstrong",
+            "name": "尼尔·阿姆斯特朗",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 2,
+            "count": 7
+          },
+          {
+            "personId": "sunwukong",
+            "name": "孙悟空",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -180,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 6,
+            "count": 6
+          },
+          {
+            "personId": "born-105-zhaotianli-7",
+            "name": "劳拉·特斯拉",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 105,
+            "stateInsertionIndex": 7,
+            "generationBirthRank": 1,
+            "count": 3
+          },
+          {
+            "personId": "born-157-cangtianying-9",
+            "name": "诸葛南星",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 157,
+            "stateInsertionIndex": 9,
+            "generationBirthRank": 3,
+            "count": 1
+          },
+          {
+            "personId": "born-189-bai-suzhen-10",
+            "name": "弗洛拉·阿姆斯特朗",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 189,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 4,
+            "count": 1
+          },
+          {
+            "personId": "born-201-zhaotianli-12",
+            "name": "黛安娜·特斯拉",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 201,
+            "stateInsertionIndex": 12,
+            "generationBirthRank": 6,
+            "count": 1
+          },
+          {
+            "personId": "born-212-bai-suzhen-13",
+            "name": "亚历山大·阿姆斯特朗",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 212,
+            "stateInsertionIndex": 13,
+            "generationBirthRank": 7,
+            "count": 2
+          },
+          {
+            "personId": "born-212-cangtianying-14",
+            "name": "卢卡斯·阿姆斯特朗",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 212,
+            "stateInsertionIndex": 14,
+            "generationBirthRank": 8,
+            "count": 1
+          },
+          {
+            "personId": "born-349-zhaotianli-16",
+            "name": "塞西莉亚·特斯拉",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 349,
+            "stateInsertionIndex": 16,
+            "generationBirthRank": 10,
+            "count": 1
+          }
+        ],
+        "includedSlotAppearances": [
+          {
+            "personId": "zhugeliang",
+            "name": "诸葛亮",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 1,
+            "count": 17
+          },
+          {
+            "personId": "zhaotianli",
+            "name": "照天离",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -120,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 7,
+            "count": 8
+          },
+          {
+            "personId": "bai-suzhen",
+            "name": "白素贞",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -204,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 5,
+            "count": 15
+          },
+          {
+            "personId": "cangtianying",
+            "name": "苍天影",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -300,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 3,
+            "count": 19
+          },
+          {
+            "personId": "tesla",
+            "name": "尼古拉·特斯拉",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -240,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 4,
+            "count": 12
+          },
+          {
+            "personId": "armstrong",
+            "name": "尼尔·阿姆斯特朗",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 2,
+            "count": 15
+          },
+          {
+            "personId": "sunwukong",
+            "name": "孙悟空",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -180,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 6,
+            "count": 7
+          },
+          {
+            "personId": "born-105-zhaotianli-7",
+            "name": "劳拉·特斯拉",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 105,
+            "stateInsertionIndex": 7,
+            "generationBirthRank": 1,
+            "count": 2
+          },
+          {
+            "personId": "born-143-bai-suzhen-8",
+            "name": "诸葛安歌",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 143,
+            "stateInsertionIndex": 8,
+            "generationBirthRank": 2,
+            "count": 2
+          },
+          {
+            "personId": "born-157-cangtianying-9",
+            "name": "诸葛南星",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 157,
+            "stateInsertionIndex": 9,
+            "generationBirthRank": 3,
+            "count": 1
+          },
+          {
+            "personId": "born-189-bai-suzhen-10",
+            "name": "弗洛拉·阿姆斯特朗",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 189,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 4,
+            "count": 1
+          },
+          {
+            "personId": "born-212-bai-suzhen-13",
+            "name": "亚历山大·阿姆斯特朗",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 212,
+            "stateInsertionIndex": 13,
+            "generationBirthRank": 7,
+            "count": 3
+          },
+          {
+            "personId": "born-212-cangtianying-14",
+            "name": "卢卡斯·阿姆斯特朗",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 212,
+            "stateInsertionIndex": 14,
+            "generationBirthRank": 8,
+            "count": 2
+          }
+        ],
+        "hardExcludedAppearances": [
+          {
+            "personId": "born-143-bai-suzhen-8",
+            "name": "诸葛安歌",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 143,
+            "stateInsertionIndex": 8,
+            "generationBirthRank": 2,
+            "count": 2
+          },
+          {
+            "personId": "born-190-cangtianying-11",
+            "name": "奥利弗·阿姆斯特朗",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 190,
+            "stateInsertionIndex": 11,
+            "generationBirthRank": 5,
+            "count": 1
+          }
+        ],
+        "crowdedEvidence": [
+          {
+            "agreementId": "offer-companion:143:bai-suzhen:armstrong",
+            "eventId": "e-143-action-bai-suzhen-2",
+            "atMonth": 143,
+            "orderInMonth": 2,
+            "kind": "companion",
+            "proposer": {
+              "personId": "bai-suzhen",
+              "name": "白素贞",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -204,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "armstrong",
+              "name": "尼尔·阿姆斯特朗",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 2
+            },
+            "position": {
+              "cellId": 1696,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "zhugeliang",
+              "cangtianying",
+              "armstrong"
+            ],
+            "excludedCandidateIds": [
+              "born-143-bai-suzhen-8"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:155:bai-suzhen:zhugeliang",
+            "eventId": "e-155-action-bai-suzhen-14",
+            "atMonth": 155,
+            "orderInMonth": 14,
+            "kind": "companion",
+            "proposer": {
+              "personId": "bai-suzhen",
+              "name": "白素贞",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -204,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "zhugeliang",
+              "name": "诸葛亮",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 1696,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "zhugeliang",
+              "cangtianying",
+              "armstrong"
+            ],
+            "excludedCandidateIds": [
+              "born-143-bai-suzhen-8"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:237:bai-suzhen:sunwukong",
+            "eventId": "e-237-action-bai-suzhen-12",
+            "atMonth": 237,
+            "orderInMonth": 12,
+            "kind": "companion",
+            "proposer": {
+              "personId": "bai-suzhen",
+              "name": "白素贞",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -204,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "sunwukong",
+              "name": "孙悟空",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -180,
+              "stateInsertionIndex": 6,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 1107,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 2,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "cangtianying",
+              "sunwukong",
+              "born-143-bai-suzhen-8"
+            ],
+            "excludedCandidateIds": [
+              "born-190-cangtianying-11"
+            ]
+          }
+        ],
+        "reconstructionFailureEvidence": [
+          {
+            "agreementId": "request-assist:106:zhaotianli:born-105-zhaotianli-7:company",
+            "eventId": "e-106-action-zhaotianli-19",
+            "atMonth": 106,
+            "orderInMonth": 19,
+            "kind": "company",
+            "proposer": {
+              "personId": "zhaotianli",
+              "name": "照天离",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -120,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 7
+            },
+            "target": {
+              "personId": "born-105-zhaotianli-7",
+              "name": "劳拉·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 105,
+              "stateInsertionIndex": 7,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 2955,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 0,
+            "includedCandidateIds": [],
+            "excludedCandidateIds": []
+          },
+          {
+            "agreementId": "request-assist:199:bai-suzhen:born-189-bai-suzhen-10:company",
+            "eventId": "e-199-action-bai-suzhen-43",
+            "atMonth": 199,
+            "orderInMonth": 43,
+            "kind": "company",
+            "proposer": {
+              "personId": "bai-suzhen",
+              "name": "白素贞",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -204,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "born-189-bai-suzhen-10",
+              "name": "弗洛拉·阿姆斯特朗",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 189,
+              "stateInsertionIndex": 10,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 1444,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 1,
+            "includedCandidateIds": [
+              "cangtianying"
+            ],
+            "excludedCandidateIds": []
+          },
+          {
+            "agreementId": "request-assist:207:tesla:born-201-zhaotianli-12:company",
+            "eventId": "e-207-action-tesla-12",
+            "atMonth": 207,
+            "orderInMonth": 12,
+            "kind": "company",
+            "proposer": {
+              "personId": "tesla",
+              "name": "尼古拉·特斯拉",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -240,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "target": {
+              "personId": "born-201-zhaotianli-12",
+              "name": "黛安娜·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 201,
+              "stateInsertionIndex": 12,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 2865,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 1,
+            "includedCandidateIds": [
+              "zhaotianli"
+            ],
+            "excludedCandidateIds": []
+          },
+          {
+            "agreementId": "request-assist:356:tesla:born-349-zhaotianli-16:company",
+            "eventId": "e-356-action-tesla-28",
+            "atMonth": 356,
+            "orderInMonth": 28,
+            "kind": "company",
+            "proposer": {
+              "personId": "tesla",
+              "name": "尼古拉·特斯拉",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -240,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 4
+            },
+            "target": {
+              "personId": "born-349-zhaotianli-16",
+              "name": "塞西莉亚·特斯拉",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 349,
+              "stateInsertionIndex": 16,
+              "generationBirthRank": 10
+            },
+            "position": {
+              "cellId": 2201,
+              "z": 5
+            },
+            "reconstructable": false,
+            "reason": "target-not-in-reconstructed-local-candidates",
+            "targetCandidateRank": null,
+            "targetWithinSliceCap": null,
+            "localCandidateCount": 0,
+            "includedCandidateIds": [],
+            "excludedCandidateIds": []
+          }
+        ]
+      },
+      "checkpointAudits": {
+        "requested": [
+          240,
+          360,
+          480
+        ],
+        "reached": [
+          240,
+          360
+        ],
+        "unreached": [
+          480
+        ],
+        "stages": [
+          {
+            "atMonth": 240,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 5,
+                  "accepted": 0,
+                  "fulfilled": 0,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {
+                  "g0|g1": {
+                    "proposed": 5,
+                    "accepted": 0,
+                    "fulfilled": 0,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  }
+                }
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 44,
+                  "accepted": 44,
+                  "established": 7,
+                  "active": 9,
+                  "cancelled": 0,
+                  "breached": 35
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 44,
+                    "accepted": 44,
+                    "established": 7,
+                    "active": 9,
+                    "cancelled": 0,
+                    "breached": 35
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 37,
+                "byGenerationPair": {
+                  "g0|g0": 37
+                },
+                "firstAtMonth": 86,
+                "lastAtMonth": 232
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 240,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 49,
+              "reconstructedProposals": 46,
+              "reconstructionFailures": 3,
+              "targetCandidateRankCounts": {
+                "1": 31,
+                "2": 10,
+                "3": 5
+              },
+              "targetBeyondSliceCap": 0,
+              "crowdedProposalMoments": 3,
+              "byKind": {
+                "company": {
+                  "proposals": 5,
+                  "reconstructed": 2,
+                  "crowded": 0,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g1": 5
+                  }
+                },
+                "companion": {
+                  "proposals": 44,
+                  "reconstructed": 44,
+                  "crowded": 3,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g0": 44
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 8,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 3,
+                "laterBornRankFourOrGreaterExclusions": 1,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-105-zhaotianli-7",
+                    "name": "劳拉·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 105,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 1,
+                    "targeted": 2,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-143-bai-suzhen-8",
+                    "name": "诸葛安歌",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 143,
+                    "stateInsertionIndex": 8,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 2,
+                    "hardExcludedBySliceAtObservedProposalMoments": 2
+                  },
+                  {
+                    "personId": "born-157-cangtianying-9",
+                    "name": "诸葛南星",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 157,
+                    "stateInsertionIndex": 9,
+                    "generationBirthRank": 3,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-189-bai-suzhen-10",
+                    "name": "弗洛拉·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 189,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 4,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-190-cangtianying-11",
+                    "name": "奥利弗·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 190,
+                    "stateInsertionIndex": 11,
+                    "generationBirthRank": 5,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-201-zhaotianli-12",
+                    "name": "黛安娜·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 201,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 6,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-212-bai-suzhen-13",
+                    "name": "亚历山大·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 212,
+                    "stateInsertionIndex": 13,
+                    "generationBirthRank": 7,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-212-cangtianying-14",
+                    "name": "卢卡斯·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 212,
+                    "stateInsertionIndex": 14,
+                    "generationBirthRank": 8,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": true,
+                "supportsBirthOrderExclusionAtObservedMoments": true
+              },
+              "targetedPeople": [
+                {
+                  "personId": "zhugeliang",
+                  "name": "诸葛亮",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 10
+                },
+                {
+                  "personId": "zhaotianli",
+                  "name": "照天离",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -120,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 7,
+                  "count": 3
+                },
+                {
+                  "personId": "bai-suzhen",
+                  "name": "白素贞",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -204,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 6
+                },
+                {
+                  "personId": "cangtianying",
+                  "name": "苍天影",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -300,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 3,
+                  "count": 10
+                },
+                {
+                  "personId": "tesla",
+                  "name": "尼古拉·特斯拉",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -240,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 4
+                },
+                {
+                  "personId": "armstrong",
+                  "name": "尼尔·阿姆斯特朗",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 5
+                },
+                {
+                  "personId": "sunwukong",
+                  "name": "孙悟空",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -180,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 6,
+                  "count": 6
+                },
+                {
+                  "personId": "born-105-zhaotianli-7",
+                  "name": "劳拉·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 105,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 1,
+                  "count": 2
+                },
+                {
+                  "personId": "born-157-cangtianying-9",
+                  "name": "诸葛南星",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 157,
+                  "stateInsertionIndex": 9,
+                  "generationBirthRank": 3,
+                  "count": 1
+                },
+                {
+                  "personId": "born-189-bai-suzhen-10",
+                  "name": "弗洛拉·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 189,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 4,
+                  "count": 1
+                },
+                {
+                  "personId": "born-201-zhaotianli-12",
+                  "name": "黛安娜·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 201,
+                  "stateInsertionIndex": 12,
+                  "generationBirthRank": 6,
+                  "count": 1
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "zhugeliang",
+                  "name": "诸葛亮",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 16
+                },
+                {
+                  "personId": "zhaotianli",
+                  "name": "照天离",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -120,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 7,
+                  "count": 5
+                },
+                {
+                  "personId": "bai-suzhen",
+                  "name": "白素贞",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -204,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 13
+                },
+                {
+                  "personId": "cangtianying",
+                  "name": "苍天影",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -300,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 3,
+                  "count": 18
+                },
+                {
+                  "personId": "tesla",
+                  "name": "尼古拉·特斯拉",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -240,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 9
+                },
+                {
+                  "personId": "armstrong",
+                  "name": "尼尔·阿姆斯特朗",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 13
+                },
+                {
+                  "personId": "sunwukong",
+                  "name": "孙悟空",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -180,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 6,
+                  "count": 7
+                },
+                {
+                  "personId": "born-105-zhaotianli-7",
+                  "name": "劳拉·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 105,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-143-bai-suzhen-8",
+                  "name": "诸葛安歌",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 143,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 2,
+                  "count": 2
+                },
+                {
+                  "personId": "born-157-cangtianying-9",
+                  "name": "诸葛南星",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 157,
+                  "stateInsertionIndex": 9,
+                  "generationBirthRank": 3,
+                  "count": 1
+                },
+                {
+                  "personId": "born-189-bai-suzhen-10",
+                  "name": "弗洛拉·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 189,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 4,
+                  "count": 1
+                },
+                {
+                  "personId": "born-212-bai-suzhen-13",
+                  "name": "亚历山大·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 212,
+                  "stateInsertionIndex": 13,
+                  "generationBirthRank": 7,
+                  "count": 1
+                },
+                {
+                  "personId": "born-212-cangtianying-14",
+                  "name": "卢卡斯·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 212,
+                  "stateInsertionIndex": 14,
+                  "generationBirthRank": 8,
+                  "count": 1
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "born-143-bai-suzhen-8",
+                  "name": "诸葛安歌",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 143,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 2,
+                  "count": 2
+                },
+                {
+                  "personId": "born-190-cangtianying-11",
+                  "name": "奥利弗·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 190,
+                  "stateInsertionIndex": 11,
+                  "generationBirthRank": 5,
+                  "count": 1
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:143:bai-suzhen:armstrong",
+                  "eventId": "e-143-action-bai-suzhen-2",
+                  "atMonth": 143,
+                  "orderInMonth": 2,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "armstrong",
+                    "name": "尼尔·阿姆斯特朗",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 1696,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "zhugeliang",
+                    "cangtianying",
+                    "armstrong"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-143-bai-suzhen-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:155:bai-suzhen:zhugeliang",
+                  "eventId": "e-155-action-bai-suzhen-14",
+                  "atMonth": 155,
+                  "orderInMonth": 14,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "zhugeliang",
+                    "name": "诸葛亮",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 1696,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "zhugeliang",
+                    "cangtianying",
+                    "armstrong"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-143-bai-suzhen-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:237:bai-suzhen:sunwukong",
+                  "eventId": "e-237-action-bai-suzhen-12",
+                  "atMonth": 237,
+                  "orderInMonth": 12,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "sunwukong",
+                    "name": "孙悟空",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -180,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 1107,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 2,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "cangtianying",
+                    "sunwukong",
+                    "born-143-bai-suzhen-8"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-190-cangtianying-11"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": [
+                {
+                  "agreementId": "request-assist:106:zhaotianli:born-105-zhaotianli-7:company",
+                  "eventId": "e-106-action-zhaotianli-19",
+                  "atMonth": 106,
+                  "orderInMonth": 19,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "zhaotianli",
+                    "name": "照天离",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -120,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 7
+                  },
+                  "target": {
+                    "personId": "born-105-zhaotianli-7",
+                    "name": "劳拉·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 105,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2955,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 0,
+                  "includedCandidateIds": [],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:199:bai-suzhen:born-189-bai-suzhen-10:company",
+                  "eventId": "e-199-action-bai-suzhen-43",
+                  "atMonth": 199,
+                  "orderInMonth": 43,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "born-189-bai-suzhen-10",
+                    "name": "弗洛拉·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 189,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 1444,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 1,
+                  "includedCandidateIds": [
+                    "cangtianying"
+                  ],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:207:tesla:born-201-zhaotianli-12:company",
+                  "eventId": "e-207-action-tesla-12",
+                  "atMonth": 207,
+                  "orderInMonth": 12,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "tesla",
+                    "name": "尼古拉·特斯拉",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -240,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "born-201-zhaotianli-12",
+                    "name": "黛安娜·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 201,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 2865,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 1,
+                  "includedCandidateIds": [
+                    "zhaotianli"
+                  ],
+                  "excludedCandidateIds": []
+                }
+              ]
+            }
+          },
+          {
+            "atMonth": 360,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 8,
+                  "accepted": 2,
+                  "fulfilled": 2,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {
+                  "g0|g1": {
+                    "proposed": 7,
+                    "accepted": 1,
+                    "fulfilled": 1,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  },
+                  "g1|g1": {
+                    "proposed": 1,
+                    "accepted": 1,
+                    "fulfilled": 1,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  }
+                }
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 48,
+                  "accepted": 48,
+                  "established": 7,
+                  "active": 9,
+                  "cancelled": 0,
+                  "breached": 39
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 48,
+                    "accepted": 48,
+                    "established": 7,
+                    "active": 9,
+                    "cancelled": 0,
+                    "breached": 39
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 38,
+                "byGenerationPair": {
+                  "g0|g0": 38
+                },
+                "firstAtMonth": 86,
+                "lastAtMonth": 354
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 360,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 56,
+              "reconstructedProposals": 52,
+              "reconstructionFailures": 4,
+              "targetCandidateRankCounts": {
+                "1": 36,
+                "2": 11,
+                "3": 5
+              },
+              "targetBeyondSliceCap": 0,
+              "crowdedProposalMoments": 3,
+              "byKind": {
+                "company": {
+                  "proposals": 8,
+                  "reconstructed": 4,
+                  "crowded": 0,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g1": 7,
+                    "g1|g1": 1
+                  }
+                },
+                "companion": {
+                  "proposals": 48,
+                  "reconstructed": 48,
+                  "crowded": 3,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g0": 48
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 10,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 3,
+                "laterBornRankFourOrGreaterExclusions": 1,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-105-zhaotianli-7",
+                    "name": "劳拉·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 105,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 1,
+                    "targeted": 2,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-143-bai-suzhen-8",
+                    "name": "诸葛安歌",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 143,
+                    "stateInsertionIndex": 8,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 2,
+                    "hardExcludedBySliceAtObservedProposalMoments": 2
+                  },
+                  {
+                    "personId": "born-157-cangtianying-9",
+                    "name": "诸葛南星",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 157,
+                    "stateInsertionIndex": 9,
+                    "generationBirthRank": 3,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-189-bai-suzhen-10",
+                    "name": "弗洛拉·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 189,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 4,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-190-cangtianying-11",
+                    "name": "奥利弗·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 190,
+                    "stateInsertionIndex": 11,
+                    "generationBirthRank": 5,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-201-zhaotianli-12",
+                    "name": "黛安娜·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 201,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 6,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-212-bai-suzhen-13",
+                    "name": "亚历山大·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 212,
+                    "stateInsertionIndex": 13,
+                    "generationBirthRank": 7,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 2,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-212-cangtianying-14",
+                    "name": "卢卡斯·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 212,
+                    "stateInsertionIndex": 14,
+                    "generationBirthRank": 8,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-297-zhaotianli-15",
+                    "name": "伊莎贝尔·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 297,
+                    "stateInsertionIndex": 15,
+                    "generationBirthRank": 9,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-349-zhaotianli-16",
+                    "name": "塞西莉亚·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 349,
+                    "stateInsertionIndex": 16,
+                    "generationBirthRank": 10,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": true,
+                "supportsBirthOrderExclusionAtObservedMoments": true
+              },
+              "targetedPeople": [
+                {
+                  "personId": "zhugeliang",
+                  "name": "诸葛亮",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 11
+                },
+                {
+                  "personId": "zhaotianli",
+                  "name": "照天离",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -120,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 7,
+                  "count": 4
+                },
+                {
+                  "personId": "bai-suzhen",
+                  "name": "白素贞",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -204,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 8
+                },
+                {
+                  "personId": "cangtianying",
+                  "name": "苍天影",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -300,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 3,
+                  "count": 10
+                },
+                {
+                  "personId": "tesla",
+                  "name": "尼古拉·特斯拉",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -240,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 4
+                },
+                {
+                  "personId": "armstrong",
+                  "name": "尼尔·阿姆斯特朗",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 6
+                },
+                {
+                  "personId": "sunwukong",
+                  "name": "孙悟空",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -180,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 6,
+                  "count": 6
+                },
+                {
+                  "personId": "born-105-zhaotianli-7",
+                  "name": "劳拉·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 105,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 1,
+                  "count": 2
+                },
+                {
+                  "personId": "born-157-cangtianying-9",
+                  "name": "诸葛南星",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 157,
+                  "stateInsertionIndex": 9,
+                  "generationBirthRank": 3,
+                  "count": 1
+                },
+                {
+                  "personId": "born-189-bai-suzhen-10",
+                  "name": "弗洛拉·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 189,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 4,
+                  "count": 1
+                },
+                {
+                  "personId": "born-201-zhaotianli-12",
+                  "name": "黛安娜·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 201,
+                  "stateInsertionIndex": 12,
+                  "generationBirthRank": 6,
+                  "count": 1
+                },
+                {
+                  "personId": "born-212-bai-suzhen-13",
+                  "name": "亚历山大·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 212,
+                  "stateInsertionIndex": 13,
+                  "generationBirthRank": 7,
+                  "count": 1
+                },
+                {
+                  "personId": "born-349-zhaotianli-16",
+                  "name": "塞西莉亚·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 349,
+                  "stateInsertionIndex": 16,
+                  "generationBirthRank": 10,
+                  "count": 1
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "zhugeliang",
+                  "name": "诸葛亮",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 1,
+                  "count": 17
+                },
+                {
+                  "personId": "zhaotianli",
+                  "name": "照天离",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -120,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 7,
+                  "count": 7
+                },
+                {
+                  "personId": "bai-suzhen",
+                  "name": "白素贞",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -204,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 15
+                },
+                {
+                  "personId": "cangtianying",
+                  "name": "苍天影",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -300,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 3,
+                  "count": 18
+                },
+                {
+                  "personId": "tesla",
+                  "name": "尼古拉·特斯拉",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -240,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 4,
+                  "count": 10
+                },
+                {
+                  "personId": "armstrong",
+                  "name": "尼尔·阿姆斯特朗",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 14
+                },
+                {
+                  "personId": "sunwukong",
+                  "name": "孙悟空",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -180,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 6,
+                  "count": 7
+                },
+                {
+                  "personId": "born-105-zhaotianli-7",
+                  "name": "劳拉·特斯拉",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 105,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-143-bai-suzhen-8",
+                  "name": "诸葛安歌",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 143,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 2,
+                  "count": 2
+                },
+                {
+                  "personId": "born-157-cangtianying-9",
+                  "name": "诸葛南星",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 157,
+                  "stateInsertionIndex": 9,
+                  "generationBirthRank": 3,
+                  "count": 1
+                },
+                {
+                  "personId": "born-189-bai-suzhen-10",
+                  "name": "弗洛拉·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 189,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 4,
+                  "count": 1
+                },
+                {
+                  "personId": "born-212-bai-suzhen-13",
+                  "name": "亚历山大·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 212,
+                  "stateInsertionIndex": 13,
+                  "generationBirthRank": 7,
+                  "count": 2
+                },
+                {
+                  "personId": "born-212-cangtianying-14",
+                  "name": "卢卡斯·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 212,
+                  "stateInsertionIndex": 14,
+                  "generationBirthRank": 8,
+                  "count": 1
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "born-143-bai-suzhen-8",
+                  "name": "诸葛安歌",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 143,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 2,
+                  "count": 2
+                },
+                {
+                  "personId": "born-190-cangtianying-11",
+                  "name": "奥利弗·阿姆斯特朗",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 190,
+                  "stateInsertionIndex": 11,
+                  "generationBirthRank": 5,
+                  "count": 1
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:143:bai-suzhen:armstrong",
+                  "eventId": "e-143-action-bai-suzhen-2",
+                  "atMonth": 143,
+                  "orderInMonth": 2,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "armstrong",
+                    "name": "尼尔·阿姆斯特朗",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 1696,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "zhugeliang",
+                    "cangtianying",
+                    "armstrong"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-143-bai-suzhen-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:155:bai-suzhen:zhugeliang",
+                  "eventId": "e-155-action-bai-suzhen-14",
+                  "atMonth": 155,
+                  "orderInMonth": 14,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "zhugeliang",
+                    "name": "诸葛亮",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 1696,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "zhugeliang",
+                    "cangtianying",
+                    "armstrong"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-143-bai-suzhen-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:237:bai-suzhen:sunwukong",
+                  "eventId": "e-237-action-bai-suzhen-12",
+                  "atMonth": 237,
+                  "orderInMonth": 12,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "sunwukong",
+                    "name": "孙悟空",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -180,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 1107,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 2,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "cangtianying",
+                    "sunwukong",
+                    "born-143-bai-suzhen-8"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-190-cangtianying-11"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": [
+                {
+                  "agreementId": "request-assist:106:zhaotianli:born-105-zhaotianli-7:company",
+                  "eventId": "e-106-action-zhaotianli-19",
+                  "atMonth": 106,
+                  "orderInMonth": 19,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "zhaotianli",
+                    "name": "照天离",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -120,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 7
+                  },
+                  "target": {
+                    "personId": "born-105-zhaotianli-7",
+                    "name": "劳拉·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 105,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 2955,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 0,
+                  "includedCandidateIds": [],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:199:bai-suzhen:born-189-bai-suzhen-10:company",
+                  "eventId": "e-199-action-bai-suzhen-43",
+                  "atMonth": 199,
+                  "orderInMonth": 43,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "bai-suzhen",
+                    "name": "白素贞",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -204,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "born-189-bai-suzhen-10",
+                    "name": "弗洛拉·阿姆斯特朗",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 189,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 1444,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 1,
+                  "includedCandidateIds": [
+                    "cangtianying"
+                  ],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:207:tesla:born-201-zhaotianli-12:company",
+                  "eventId": "e-207-action-tesla-12",
+                  "atMonth": 207,
+                  "orderInMonth": 12,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "tesla",
+                    "name": "尼古拉·特斯拉",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -240,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "born-201-zhaotianli-12",
+                    "name": "黛安娜·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 201,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 2865,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 1,
+                  "includedCandidateIds": [
+                    "zhaotianli"
+                  ],
+                  "excludedCandidateIds": []
+                },
+                {
+                  "agreementId": "request-assist:356:tesla:born-349-zhaotianli-16:company",
+                  "eventId": "e-356-action-tesla-28",
+                  "atMonth": 356,
+                  "orderInMonth": 28,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "tesla",
+                    "name": "尼古拉·特斯拉",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -240,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 4
+                  },
+                  "target": {
+                    "personId": "born-349-zhaotianli-16",
+                    "name": "塞西莉亚·特斯拉",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 349,
+                    "stateInsertionIndex": 16,
+                    "generationBirthRank": 10
+                  },
+                  "position": {
+                    "cellId": 2201,
+                    "z": 5
+                  },
+                  "reconstructable": false,
+                  "reason": "target-not-in-reconstructed-local-candidates",
+                  "targetCandidateRank": null,
+                  "targetWithinSliceCap": null,
+                  "localCandidateCount": 0,
+                  "includedCandidateIds": [],
+                  "excludedCandidateIds": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "missingLinkCounts": {},
+      "chains": []
+    }
+  ]
+}

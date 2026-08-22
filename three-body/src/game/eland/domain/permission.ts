@@ -5,6 +5,7 @@ import type { ActionFact, PermissionFact, SimulationState } from './model';
 import type { MaterialId } from './material';
 import type { PersonId } from './person';
 import { isAlive } from './person';
+import { personById } from './state-index';
 
 export type ResourcePermissionStatus = 'active' | 'revoked' | 'expired' | 'ended';
 
@@ -24,12 +25,44 @@ export interface ResourcePermission {
   endedAtMonth?: number;
 }
 
+interface PermissionIndex {
+  indexedLength: number;
+  lastIndexedPermission?: ResourcePermission;
+  byId: Map<string, ResourcePermission>;
+  byPersonId: Map<PersonId, ResourcePermission[]>;
+}
+
+const permissionIndexes = new WeakMap<SimulationState['permissions'], PermissionIndex>();
+
+function permissionIndex(state: SimulationState): PermissionIndex {
+  const permissions = state.permissions;
+  let index = permissionIndexes.get(permissions);
+  if (!index
+    || index.indexedLength > permissions.length
+    || (index.indexedLength > 0 && permissions[index.indexedLength - 1] !== index.lastIndexedPermission)) {
+    index = { indexedLength: 0, byId: new Map(), byPersonId: new Map() };
+    permissionIndexes.set(permissions, index);
+  }
+  for (let offset = index.indexedLength; offset < permissions.length; offset += 1) {
+    const permission = permissions[offset];
+    if (!index.byId.has(permission.id)) index.byId.set(permission.id, permission);
+    for (const personId of new Set([permission.grantorId, permission.granteeId])) {
+      const personal = index.byPersonId.get(personId) ?? [];
+      personal.push(permission);
+      index.byPersonId.set(personId, personal);
+    }
+  }
+  index.indexedLength = permissions.length;
+  index.lastIndexedPermission = permissions.at(-1);
+  return index;
+}
+
 export function permissionById(state: SimulationState, id: string): ResourcePermission | undefined {
-  return state.permissions.find((permission) => permission.id === id);
+  return permissionIndex(state).byId.get(id);
 }
 
 export function activePermissionsFor(state: SimulationState, personId: PersonId): ResourcePermission[] {
-  return state.permissions.filter((permission) => permission.status === 'active'
+  return (permissionIndex(state).byPersonId.get(personId) ?? []).filter((permission) => permission.status === 'active'
     && state.clock.elapsedMonths <= permission.validUntilMonth
     && (permission.grantorId === personId || permission.granteeId === personId));
 }
@@ -71,7 +104,7 @@ export function recordPermissionAction(state: SimulationState, fact: ActionFact)
     if (fact.who !== proposal.granteeId
       || !membersStillShareCollective(state, proposal.collectiveId, proposal.grantorId, proposal.granteeId)) return;
     const id = `permission:${agreement.id}`;
-    if (!state.permissions.some((permission) => permission.id === id)) state.permissions.push({
+    if (!permissionById(state, id)) state.permissions.push({
       id,
       collectiveId: proposal.collectiveId,
       grantorId: proposal.grantorId,
@@ -110,7 +143,7 @@ export function advancePermissionLifecycle(state: SimulationState, atMonth: numb
   const events: PermissionFact[] = [];
   for (const permission of state.permissions.filter((candidate) => candidate.status === 'active')) {
     const partiesAlive = [permission.grantorId, permission.granteeId].every((id) => {
-      const person = state.people.find((candidate) => candidate.id === id);
+      const person = personById(state, id);
       return Boolean(person && isAlive(person));
     });
     const expired = atMonth > permission.validUntilMonth;

@@ -304,6 +304,103 @@ try {
   assert.equal(development.currentEra, 'primitive-tribe', '人口和指数本身不能跳过材料、建筑与制度门槛');
   assert.ok(development.missingGateIds.includes('material:masonry-stone:distributed'));
 
+  const cultivationObserverState = createInitialState(818, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  cultivationObserverState.clock.elapsedMonths = 24;
+  cultivationObserverState.world.past = [];
+  cultivationObserverState.derived.regions = cultivationObserverState.derived.regions
+    .filter((region) => region.kind !== 'cultivated');
+  const cultivator = cultivationObserverState.people[0];
+  const cultivationProject = ensureProject(cultivationObserverState, {
+    id: 'completed-settled-cultivation', kind: 'production', need: 'production-efficiency',
+    desiredFunction: 'settled-cultivation', summary: '完成固定耕地的播种、成熟、收获与留种闭环',
+    ownerId: cultivator.id, beneficiaryIds: [cultivator.id], triggerFactIds: ['food-pressure'],
+    pressure: 72, createdAtMonth: 1, reviewAtMonth: 36, site: { cellId: cultivator.position.cellId, z: cultivator.position.z },
+  });
+  const cultivationCells = [...new Set([
+    cultivationProject.site.cellId,
+    ...neighbors4(cultivationProject.site.cellId),
+    ...neighbors4(neighbors4(cultivationProject.site.cellId)[0]),
+  ])].slice(0, 6);
+  assert.equal(cultivationCells.length, 6, '测试工地半径内必须能取到六个不同地块');
+  const cultivationPositions = cultivationCells.map((cellId) => ({
+    x: cellX(cellId), y: cellY(cellId), z: Math.max(0, cultivationProject.site.z - 1),
+  }));
+  const cultivationFacts = [];
+  for (let index = 0; index < 6; index += 1) {
+    const position = cultivationPositions[index];
+    cultivationFacts.push({
+      id: `project-plant-${index}`, kind: 'action', actionTick: index + 1, atMonth: 2 + index,
+      orderInMonth: 0, cellId: cultivationCells[index], who: cultivator.id, cause: 'intent',
+      action: { kind: 'act', operation: 'combine', targets: [] },
+      fromCellId: cultivationCells[index], toCellId: cultivationCells[index], fromZ: 1, toZ: 1, pathSegment: [cultivationCells[index]],
+      status: 'completed', result: '种子与湿土结合为作物幼苗',
+      diff: { outputMaterialId: Material.CropSprout, position },
+    });
+  }
+  for (let index = 0; index < 2; index += 1) {
+    const position = cultivationPositions[index];
+    cultivationFacts.push({
+      id: `project-harvest-${index}`, kind: 'action', actionTick: index + 7, atMonth: 12 + index,
+      orderInMonth: 0, cellId: cultivationCells[index], who: cultivator.id, cause: 'intent',
+      action: { kind: 'act', operation: 'separate', targets: [{ kind: 'voxel', position }] },
+      fromCellId: cultivationCells[index], toCellId: cultivationCells[index], fromZ: 1, toZ: 1, pathSegment: [cultivationCells[index]],
+      status: 'completed', result: '收获成熟作物并留下种子',
+      diff: { sourceMaterialId: Material.CropMature, outputs: [{ materialId: Material.Food, quantity: 2 }] },
+    });
+  }
+  cultivationObserverState.world.past.push(...cultivationFacts);
+  cultivationProject.actionEventIds = cultivationFacts.map((event) => event.id);
+  cultivationProject.completionEventIds = cultivationFacts.map((event) => event.id);
+  cultivationProject.status = 'completed';
+  cultivationProject.completedAtMonth = 14;
+  assert.equal(
+    cultivationObserverState.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0,
+    0,
+    '观察器回归必须从当前零耕作格开始',
+  );
+  const retainedCultivation = observeCivilizationDevelopment(cultivationObserverState, 0);
+  assert.equal(retainedCultivation.observerVersion, 'material-institution-era-v2');
+  assert.ok(retainedCultivation.satisfiedGateIds.includes('food:settled-cultivation-cycle'),
+    '当前作物格恢复为湿土后，完整项目闭环仍应保留既成耕作能力');
+  assert.ok(cultivationFacts.every((event) => retainedCultivation.supportingEventIds.includes(event.id)),
+    '既成耕作能力必须公开其可回放 ActionFact 证据');
+  cultivationObserverState.civilization.development = {
+    ...retainedCultivation,
+    observerVersion: 'material-institution-era-v1',
+    candidateSinceMonth: 3,
+  };
+  const migratedCultivationObservation = observeCivilizationDevelopment(cultivationObserverState, 0);
+  assert.equal(migratedCultivationObservation.observerVersion, 'material-institution-era-v2');
+  assert.equal(migratedCultivationObservation.candidateSinceMonth, cultivationObserverState.clock.elapsedMonths,
+    '观察语义从 v1 升到 v2 时必须重计候选稳定期，不能继承旧门槛的计时');
+  cultivationObserverState.civilization.development = undefined;
+
+  const incompleteCultivation = structuredClone(cultivationObserverState);
+  incompleteCultivation.projects[0].actionEventIds = cultivationFacts.slice(1).map((event) => event.id);
+  incompleteCultivation.projects[0].completionEventIds = cultivationFacts.slice(1).map((event) => event.id);
+  const incompleteObservation = observeCivilizationDevelopment(incompleteCultivation, 0);
+  assert.ok(incompleteObservation.missingGateIds.includes('food:settled-cultivation-cycle'),
+    '同一项目少于六个不同播种格时，即使累计收获足够也不能形成闭环');
+
+  const scatteredCultivation = structuredClone(cultivationObserverState);
+  scatteredCultivation.projects = [];
+  const scatteredObservation = observeCivilizationDevelopment(scatteredCultivation, 0);
+  assert.ok(scatteredObservation.missingGateIds.includes('food:settled-cultivation-cycle'),
+    '未归属于真实定居耕作项目的累计播种和收获不能通过时代门槛');
+
+  const offsiteCultivation = structuredClone(cultivationObserverState);
+  const offsiteCell = Array.from(
+    { length: offsiteCultivation.world.grid.width * offsiteCultivation.world.grid.depth },
+    (_, cellId) => cellId,
+  ).find((cellId) => Math.abs(cellX(cellId) - cellX(cultivationProject.site.cellId))
+    + Math.abs(cellY(cellId) - cellY(cultivationProject.site.cellId)) > 2);
+  assert.notEqual(offsiteCell, undefined, '测试世界必须存在工地半径之外的地块');
+  const offsitePlant = offsiteCultivation.world.past.find((event) => event.id === 'project-plant-0');
+  offsitePlant.diff.position = { x: cellX(offsiteCell), y: cellY(offsiteCell), z: cultivationPositions[0].z };
+  const offsiteObservation = observeCivilizationDevelopment(offsiteCultivation, 0);
+  assert.ok(offsiteObservation.missingGateIds.includes('food:settled-cultivation-cycle'),
+    '工地外播种即使被错误绑定到项目 actionEventIds，也不能补足定居耕作闭环');
+
   const replenishment = createInitialState(817, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   const metalworker = replenishment.people[0];
   replenishment.people = [metalworker];

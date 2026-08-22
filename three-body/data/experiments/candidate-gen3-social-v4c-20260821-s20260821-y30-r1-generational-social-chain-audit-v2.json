@@ -1,0 +1,3795 @@
+{
+  "schemaVersion": 2,
+  "auditVersion": "generational-social-chain-audit-v2",
+  "generatedAt": "2026-08-20T20:10:25.517Z",
+  "source": {
+    "authority": "SQLite terminal SimulationState loaded read-only through sqlite-run-reader.mjs; no run is advanced or mutated.",
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3",
+    "selector": {
+      "runIds": [
+        "candidate-gen3-social-v4c-20260821-s20260821-y30-r1"
+      ]
+    }
+  },
+  "method": {
+    "target": "Every person with generation >= 2.",
+    "coreChain": "person state parents -> exact birth fact -> conceived reproduce ActionFact -> authorized reproduce agreement -> proposal/acceptance/fulfillment source integrity",
+    "socialChain": "company assist fulfillment -> companion establishment -> persistent shared-living fact -> reproduction relationship basis",
+    "sliceBias": "At observed proposal ActionFacts, reconstruct co-location and preserve SimulationState.people insertion order to audit the localPeople first-three cap; generation-one insertion order is checked against birth order.",
+    "missingEvidencePolicy": "Missing or unresolved source facts are reported explicitly and never inferred from generation or observer milestones."
+  },
+  "aggregate": {
+    "runs": 1,
+    "runsWithGeneration2": 0,
+    "runsWithGeneration3": 0,
+    "maxGeneration": 1,
+    "targetPeople": 0,
+    "coreCompleteChains": 0,
+    "hypothesisCompleteChains": 0,
+    "missingLinkCounts": {}
+  },
+  "runs": [
+    {
+      "runId": "candidate-gen3-social-v4c-20260821-s20260821-y30-r1",
+      "seed": 20260821,
+      "status": "ended",
+      "elapsedMonths": 360,
+      "people": 14,
+      "peopleByGeneration": {
+        "0": 6,
+        "1": 8
+      },
+      "maxGeneration": 1,
+      "targetPeople": 0,
+      "coreCompleteChains": 0,
+      "hypothesisCompleteChains": 0,
+      "support": "no-generation-2",
+      "socialFunnel": {
+        "company": {
+          "totals": {
+            "proposed": 4,
+            "accepted": 3,
+            "fulfilled": 3,
+            "rejected": 0,
+            "cancelled": 0,
+            "breached": 0
+          },
+          "byGenerationPair": {
+            "g0|g1": {
+              "proposed": 4,
+              "accepted": 3,
+              "fulfilled": 3,
+              "rejected": 0,
+              "cancelled": 0,
+              "breached": 0
+            }
+          }
+        },
+        "companion": {
+          "totals": {
+            "proposed": 46,
+            "accepted": 44,
+            "established": 15,
+            "active": 15,
+            "cancelled": 0,
+            "breached": 29
+          },
+          "byGenerationPair": {
+            "g0|g0": {
+              "proposed": 46,
+              "accepted": 44,
+              "established": 15,
+              "active": 15,
+              "cancelled": 0,
+              "breached": 29
+            }
+          }
+        },
+        "persistentSharedLiving": {
+          "events": 752,
+          "byGenerationPair": {
+            "g0|g0": 752
+          },
+          "firstAtMonth": 83,
+          "lastAtMonth": 360
+        }
+      },
+      "relationshipFrontier": {
+        "atMonth": 360,
+        "livingGenerationOneAdults": 2,
+        "highestBilateralMinimum": 1,
+        "adultFrontier": [
+          {
+            "person": {
+              "personId": "born-95-joan-of-arc-6",
+              "name": "本杰明·凯撒",
+              "generation": 1,
+              "sex": "male",
+              "ageMonths": 265,
+              "bodyMinimum": 65.61000000000041
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "darwin",
+                "name": "达尔文",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 492,
+                "bodyMinimum": 81.10000000000008
+              },
+              "minimumTrustBond": 1,
+              "firstToSecond": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-170-environment-relationship-2"
+                ]
+              },
+              "secondToFirst": {
+                "trust": 1,
+                "bond": 1,
+                "fear": 0,
+                "sourceEventIds": [
+                  "e-170-environment-relationship-2"
+                ]
+              }
+            }
+          },
+          {
+            "person": {
+              "personId": "born-98-dorothy-gale-7",
+              "name": "塞西莉亚·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 262,
+              "bodyMinimum": 67.70500000000068
+            },
+            "bestCurrentAdultRelationship": {
+              "candidate": {
+                "personId": "archimedes",
+                "name": "阿基米德",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 636,
+                "bodyMinimum": 67.82750000000144
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              }
+            }
+          }
+        ],
+        "fertileGenerationOneFemales": 1,
+        "fertileFemaleCandidates": [
+          {
+            "female": {
+              "personId": "born-98-dorothy-gale-7",
+              "name": "塞西莉亚·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "ageMonths": 262,
+              "bodyMinimum": 67.70500000000068,
+              "bodyEligible": true
+            },
+            "bestUnrelatedCandidate": {
+              "male": {
+                "personId": "archimedes",
+                "name": "阿基米德",
+                "generation": 0,
+                "sex": "male",
+                "ageMonths": 636,
+                "bodyMinimum": 67.82750000000144,
+                "bodyEligible": true
+              },
+              "minimumTrustBond": 0,
+              "firstToSecond": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "secondToFirst": {
+                "trust": 0,
+                "bond": 0,
+                "fear": 0,
+                "sourceEventIds": []
+              },
+              "reachesCompanionThreshold20": false,
+              "reachesReproductionThreshold60": false
+            }
+          }
+        ]
+      },
+      "birthOrderSliceAudit": {
+        "atMonth": 360,
+        "method": {
+          "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+          "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+        },
+        "proposals": 50,
+        "reconstructedProposals": 50,
+        "reconstructionFailures": 0,
+        "targetCandidateRankCounts": {
+          "1": 29,
+          "2": 9,
+          "3": 6,
+          "4": 5,
+          "5": 1
+        },
+        "targetBeyondSliceCap": 6,
+        "crowdedProposalMoments": 14,
+        "byKind": {
+          "company": {
+            "proposals": 4,
+            "reconstructed": 4,
+            "crowded": 1,
+            "targetBeyondSliceCap": 0,
+            "generationPair": {
+              "g0|g1": 4
+            }
+          },
+          "companion": {
+            "proposals": 46,
+            "reconstructed": 46,
+            "crowded": 13,
+            "targetBeyondSliceCap": 6,
+            "generationPair": {
+              "g0|g0": 46
+            }
+          }
+        },
+        "generationOne": {
+          "people": 8,
+          "insertionOrderMatchesBirthOrder": true,
+          "hardExcludedAppearances": 5,
+          "laterBornRankFourOrGreaterExclusions": 0,
+          "peopleByBirthOrder": [
+            {
+              "personId": "born-95-joan-of-arc-6",
+              "name": "本杰明·凯撒",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 95,
+              "stateInsertionIndex": 6,
+              "generationBirthRank": 1,
+              "targeted": 1,
+              "includedInFirstThreeAtObservedProposalMoments": 1,
+              "hardExcludedBySliceAtObservedProposalMoments": 3
+            },
+            {
+              "personId": "born-98-dorothy-gale-7",
+              "name": "塞西莉亚·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 98,
+              "stateInsertionIndex": 7,
+              "generationBirthRank": 2,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-150-joan-of-arc-8",
+              "name": "娜塔莉·达尔文",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 150,
+              "stateInsertionIndex": 8,
+              "generationBirthRank": 3,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 1
+            },
+            {
+              "personId": "born-159-dorothy-gale-9",
+              "name": "亚历山大·凯撒",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 159,
+              "stateInsertionIndex": 9,
+              "generationBirthRank": 4,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-183-joan-of-arc-10",
+              "name": "乔纳森·达尔文",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 183,
+              "stateInsertionIndex": 10,
+              "generationBirthRank": 5,
+              "targeted": 2,
+              "includedInFirstThreeAtObservedProposalMoments": 3,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-233-joan-of-arc-11",
+              "name": "贝娅特丽丝·托尔",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 233,
+              "stateInsertionIndex": 11,
+              "generationBirthRank": 6,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-282-joan-of-arc-12",
+              "name": "薇拉·凯撒",
+              "generation": 1,
+              "sex": "female",
+              "bornAtMonth": 282,
+              "stateInsertionIndex": 12,
+              "generationBirthRank": 7,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            },
+            {
+              "personId": "born-307-joan-of-arc-13",
+              "name": "罗兰·阿基米德",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 307,
+              "stateInsertionIndex": 13,
+              "generationBirthRank": 8,
+              "targeted": 0,
+              "includedInFirstThreeAtObservedProposalMoments": 0,
+              "hardExcludedBySliceAtObservedProposalMoments": 0
+            }
+          ]
+        },
+        "assessment": {
+          "allReconstructedTargetsWithinFirstThree": false,
+          "supportsBirthOrderExclusionAtObservedMoments": false
+        },
+        "targetedPeople": [
+          {
+            "personId": "joan-of-arc",
+            "name": "圣女贞德",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -216,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 4,
+            "count": 11
+          },
+          {
+            "personId": "thor",
+            "name": "托尔",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -252,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 3,
+            "count": 7
+          },
+          {
+            "personId": "caesar",
+            "name": "凯撒",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -144,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 5,
+            "count": 8
+          },
+          {
+            "personId": "dorothy-gale",
+            "name": "多萝西·盖尔",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 1,
+            "count": 8
+          },
+          {
+            "personId": "darwin",
+            "name": "达尔文",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -132,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 6,
+            "count": 7
+          },
+          {
+            "personId": "archimedes",
+            "name": "阿基米德",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -276,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 2,
+            "count": 6
+          },
+          {
+            "personId": "born-95-joan-of-arc-6",
+            "name": "本杰明·凯撒",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 95,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 1
+          },
+          {
+            "personId": "born-183-joan-of-arc-10",
+            "name": "乔纳森·达尔文",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 183,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 5,
+            "count": 2
+          }
+        ],
+        "includedSlotAppearances": [
+          {
+            "personId": "joan-of-arc",
+            "name": "圣女贞德",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -216,
+            "stateInsertionIndex": 0,
+            "generationBirthRank": 4,
+            "count": 25
+          },
+          {
+            "personId": "thor",
+            "name": "托尔",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -252,
+            "stateInsertionIndex": 1,
+            "generationBirthRank": 3,
+            "count": 19
+          },
+          {
+            "personId": "caesar",
+            "name": "凯撒",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -144,
+            "stateInsertionIndex": 2,
+            "generationBirthRank": 5,
+            "count": 29
+          },
+          {
+            "personId": "dorothy-gale",
+            "name": "多萝西·盖尔",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 1,
+            "count": 16
+          },
+          {
+            "personId": "darwin",
+            "name": "达尔文",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -132,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 6,
+            "count": 15
+          },
+          {
+            "personId": "archimedes",
+            "name": "阿基米德",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -276,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 2,
+            "count": 6
+          },
+          {
+            "personId": "born-95-joan-of-arc-6",
+            "name": "本杰明·凯撒",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 95,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 1
+          },
+          {
+            "personId": "born-183-joan-of-arc-10",
+            "name": "乔纳森·达尔文",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 183,
+            "stateInsertionIndex": 10,
+            "generationBirthRank": 5,
+            "count": 3
+          }
+        ],
+        "hardExcludedAppearances": [
+          {
+            "personId": "dorothy-gale",
+            "name": "多萝西·盖尔",
+            "generation": 0,
+            "sex": "female",
+            "bornAtMonth": -348,
+            "stateInsertionIndex": 3,
+            "generationBirthRank": 1,
+            "count": 3
+          },
+          {
+            "personId": "darwin",
+            "name": "达尔文",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -132,
+            "stateInsertionIndex": 4,
+            "generationBirthRank": 6,
+            "count": 6
+          },
+          {
+            "personId": "archimedes",
+            "name": "阿基米德",
+            "generation": 0,
+            "sex": "male",
+            "bornAtMonth": -276,
+            "stateInsertionIndex": 5,
+            "generationBirthRank": 2,
+            "count": 8
+          },
+          {
+            "personId": "born-95-joan-of-arc-6",
+            "name": "本杰明·凯撒",
+            "generation": 1,
+            "sex": "male",
+            "bornAtMonth": 95,
+            "stateInsertionIndex": 6,
+            "generationBirthRank": 1,
+            "count": 3
+          },
+          {
+            "personId": "born-98-dorothy-gale-7",
+            "name": "塞西莉亚·达尔文",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 98,
+            "stateInsertionIndex": 7,
+            "generationBirthRank": 2,
+            "count": 1
+          },
+          {
+            "personId": "born-150-joan-of-arc-8",
+            "name": "娜塔莉·达尔文",
+            "generation": 1,
+            "sex": "female",
+            "bornAtMonth": 150,
+            "stateInsertionIndex": 8,
+            "generationBirthRank": 3,
+            "count": 1
+          }
+        ],
+        "crowdedEvidence": [
+          {
+            "agreementId": "offer-companion:68:dorothy-gale:archimedes",
+            "eventId": "e-68-action-dorothy-gale-5",
+            "atMonth": 68,
+            "orderInMonth": 5,
+            "kind": "companion",
+            "proposer": {
+              "personId": "dorothy-gale",
+              "name": "多萝西·盖尔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 1
+            },
+            "target": {
+              "personId": "archimedes",
+              "name": "阿基米德",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -276,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 2
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 5,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "darwin",
+              "archimedes"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:68:darwin:joan-of-arc",
+            "eventId": "e-68-action-darwin-7",
+            "atMonth": 68,
+            "orderInMonth": 7,
+            "kind": "companion",
+            "proposer": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "joan-of-arc",
+              "name": "圣女贞德",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "dorothy-gale",
+              "archimedes"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:68:caesar:joan-of-arc",
+            "eventId": "e-68-action-caesar-9",
+            "atMonth": 68,
+            "orderInMonth": 9,
+            "kind": "companion",
+            "proposer": {
+              "personId": "caesar",
+              "name": "凯撒",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -144,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "joan-of-arc",
+              "name": "圣女贞德",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "dorothy-gale"
+            ],
+            "excludedCandidateIds": [
+              "darwin",
+              "archimedes"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:85:caesar:dorothy-gale",
+            "eventId": "e-85-action-caesar-28",
+            "atMonth": 85,
+            "orderInMonth": 28,
+            "kind": "companion",
+            "proposer": {
+              "personId": "caesar",
+              "name": "凯撒",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -144,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "dorothy-gale",
+              "name": "多萝西·盖尔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "dorothy-gale"
+            ],
+            "excludedCandidateIds": [
+              "darwin"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:86:dorothy-gale:joan-of-arc",
+            "eventId": "e-86-action-dorothy-gale-7",
+            "atMonth": 86,
+            "orderInMonth": 7,
+            "kind": "companion",
+            "proposer": {
+              "personId": "dorothy-gale",
+              "name": "多萝西·盖尔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 1
+            },
+            "target": {
+              "personId": "joan-of-arc",
+              "name": "圣女贞德",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "darwin"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:86:darwin:dorothy-gale",
+            "eventId": "e-86-action-darwin-9",
+            "atMonth": 86,
+            "orderInMonth": 9,
+            "kind": "companion",
+            "proposer": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "dorothy-gale",
+              "name": "多萝西·盖尔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "dorothy-gale"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:86:thor:darwin",
+            "eventId": "e-86-action-thor-11",
+            "atMonth": 86,
+            "orderInMonth": 11,
+            "kind": "companion",
+            "proposer": {
+              "personId": "thor",
+              "name": "托尔",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 3
+            },
+            "target": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "caesar",
+              "dorothy-gale"
+            ],
+            "excludedCandidateIds": [
+              "darwin"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:120:darwin:dorothy-gale",
+            "eventId": "e-120-action-darwin-10",
+            "atMonth": 120,
+            "orderInMonth": 10,
+            "kind": "companion",
+            "proposer": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "dorothy-gale",
+              "name": "多萝西·盖尔",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -348,
+              "stateInsertionIndex": 3,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "dorothy-gale",
+              "archimedes"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:138:darwin:archimedes",
+            "eventId": "e-138-action-darwin-10",
+            "atMonth": 138,
+            "orderInMonth": 10,
+            "kind": "companion",
+            "proposer": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "archimedes",
+              "name": "阿基米德",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -276,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 2
+            },
+            "position": {
+              "cellId": 3124,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "archimedes",
+              "born-95-joan-of-arc-6"
+            ]
+          },
+          {
+            "agreementId": "request-assist:139:caesar:born-95-joan-of-arc-6:company",
+            "eventId": "e-139-action-caesar-5",
+            "atMonth": 139,
+            "orderInMonth": 5,
+            "kind": "company",
+            "proposer": {
+              "personId": "caesar",
+              "name": "凯撒",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -144,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "born-95-joan-of-arc-6",
+              "name": "本杰明·凯撒",
+              "generation": 1,
+              "sex": "male",
+              "bornAtMonth": 95,
+              "stateInsertionIndex": 6,
+              "generationBirthRank": 1
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "thor",
+              "dorothy-gale",
+              "born-95-joan-of-arc-6"
+            ],
+            "excludedCandidateIds": [
+              "born-98-dorothy-gale-7"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:171:archimedes:darwin",
+            "eventId": "e-171-action-archimedes-11",
+            "atMonth": 171,
+            "orderInMonth": 11,
+            "kind": "companion",
+            "proposer": {
+              "personId": "archimedes",
+              "name": "阿基米德",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -276,
+              "stateInsertionIndex": 5,
+              "generationBirthRank": 2
+            },
+            "target": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 3,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "caesar",
+              "darwin"
+            ],
+            "excludedCandidateIds": [
+              "born-95-joan-of-arc-6",
+              "born-150-joan-of-arc-8"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:173:darwin:thor",
+            "eventId": "e-173-action-darwin-4",
+            "atMonth": 173,
+            "orderInMonth": 4,
+            "kind": "companion",
+            "proposer": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "target": {
+              "personId": "thor",
+              "name": "托尔",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 3
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 2,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "caesar"
+            ],
+            "excludedCandidateIds": [
+              "archimedes",
+              "born-95-joan-of-arc-6"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:174:thor:joan-of-arc",
+            "eventId": "e-174-action-thor-2",
+            "atMonth": 174,
+            "orderInMonth": 2,
+            "kind": "companion",
+            "proposer": {
+              "personId": "thor",
+              "name": "托尔",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -252,
+              "stateInsertionIndex": 1,
+              "generationBirthRank": 3
+            },
+            "target": {
+              "personId": "joan-of-arc",
+              "name": "圣女贞德",
+              "generation": 0,
+              "sex": "female",
+              "bornAtMonth": -216,
+              "stateInsertionIndex": 0,
+              "generationBirthRank": 4
+            },
+            "position": {
+              "cellId": 3210,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 1,
+            "targetWithinSliceCap": true,
+            "localCandidateCount": 4,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "caesar",
+              "darwin"
+            ],
+            "excludedCandidateIds": [
+              "archimedes"
+            ]
+          },
+          {
+            "agreementId": "offer-companion:277:caesar:darwin",
+            "eventId": "e-277-action-caesar-17",
+            "atMonth": 277,
+            "orderInMonth": 17,
+            "kind": "companion",
+            "proposer": {
+              "personId": "caesar",
+              "name": "凯撒",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -144,
+              "stateInsertionIndex": 2,
+              "generationBirthRank": 5
+            },
+            "target": {
+              "personId": "darwin",
+              "name": "达尔文",
+              "generation": 0,
+              "sex": "male",
+              "bornAtMonth": -132,
+              "stateInsertionIndex": 4,
+              "generationBirthRank": 6
+            },
+            "position": {
+              "cellId": 3125,
+              "z": 5
+            },
+            "reconstructable": true,
+            "reason": null,
+            "targetCandidateRank": 4,
+            "targetWithinSliceCap": false,
+            "localCandidateCount": 5,
+            "includedCandidateIds": [
+              "joan-of-arc",
+              "thor",
+              "dorothy-gale"
+            ],
+            "excludedCandidateIds": [
+              "darwin",
+              "archimedes"
+            ]
+          }
+        ],
+        "reconstructionFailureEvidence": []
+      },
+      "checkpointAudits": {
+        "requested": [
+          120,
+          240,
+          360
+        ],
+        "reached": [
+          120,
+          240,
+          360
+        ],
+        "unreached": [],
+        "stages": [
+          {
+            "atMonth": 120,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 0,
+                  "accepted": 0,
+                  "fulfilled": 0,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {}
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 35,
+                  "accepted": 33,
+                  "established": 8,
+                  "active": 8,
+                  "cancelled": 0,
+                  "breached": 25
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 35,
+                    "accepted": 33,
+                    "established": 8,
+                    "active": 8,
+                    "cancelled": 0,
+                    "breached": 25
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 28,
+                "byGenerationPair": {
+                  "g0|g0": 28
+                },
+                "firstAtMonth": 83,
+                "lastAtMonth": 120
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 120,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 35,
+              "reconstructedProposals": 35,
+              "reconstructionFailures": 0,
+              "targetCandidateRankCounts": {
+                "1": 23,
+                "2": 5,
+                "3": 3,
+                "4": 3,
+                "5": 1
+              },
+              "targetBeyondSliceCap": 4,
+              "crowdedProposalMoments": 8,
+              "byKind": {
+                "company": {
+                  "proposals": 0,
+                  "reconstructed": 0,
+                  "crowded": 0,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {}
+                },
+                "companion": {
+                  "proposals": 35,
+                  "reconstructed": 35,
+                  "crowded": 8,
+                  "targetBeyondSliceCap": 4,
+                  "generationPair": {
+                    "g0|g0": 35
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 2,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 0,
+                "laterBornRankFourOrGreaterExclusions": 0,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-95-joan-of-arc-6",
+                    "name": "本杰明·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 95,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-98-dorothy-gale-7",
+                    "name": "塞西莉亚·达尔文",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 98,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": false,
+                "supportsBirthOrderExclusionAtObservedMoments": false
+              },
+              "targetedPeople": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 8
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 5
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 7
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 7
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 4
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 4
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 17
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 14
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 19
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 13
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 9
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 4
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 3
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 5
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 4
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:68:dorothy-gale:archimedes",
+                  "eventId": "e-68-action-dorothy-gale-5",
+                  "atMonth": 68,
+                  "orderInMonth": 5,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 5,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:darwin:joan-of-arc",
+                  "eventId": "e-68-action-darwin-7",
+                  "atMonth": 68,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:caesar:joan-of-arc",
+                  "eventId": "e-68-action-caesar-9",
+                  "atMonth": 68,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:85:caesar:dorothy-gale",
+                  "eventId": "e-85-action-caesar-28",
+                  "atMonth": 85,
+                  "orderInMonth": 28,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:dorothy-gale:joan-of-arc",
+                  "eventId": "e-86-action-dorothy-gale-7",
+                  "atMonth": 86,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:darwin:dorothy-gale",
+                  "eventId": "e-86-action-darwin-9",
+                  "atMonth": 86,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:thor:darwin",
+                  "eventId": "e-86-action-thor-11",
+                  "atMonth": 86,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:120:darwin:dorothy-gale",
+                  "eventId": "e-120-action-darwin-10",
+                  "atMonth": 120,
+                  "orderInMonth": 10,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": []
+            }
+          },
+          {
+            "atMonth": 240,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 1,
+                  "accepted": 0,
+                  "fulfilled": 0,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {
+                  "g0|g1": {
+                    "proposed": 1,
+                    "accepted": 0,
+                    "fulfilled": 0,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  }
+                }
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 45,
+                  "accepted": 43,
+                  "established": 14,
+                  "active": 15,
+                  "cancelled": 0,
+                  "breached": 28
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 45,
+                    "accepted": 43,
+                    "established": 14,
+                    "active": 15,
+                    "cancelled": 0,
+                    "breached": 28
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 325,
+                "byGenerationPair": {
+                  "g0|g0": 325
+                },
+                "firstAtMonth": 83,
+                "lastAtMonth": 240
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 240,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 46,
+              "reconstructedProposals": 46,
+              "reconstructionFailures": 0,
+              "targetCandidateRankCounts": {
+                "1": 27,
+                "2": 8,
+                "3": 6,
+                "4": 4,
+                "5": 1
+              },
+              "targetBeyondSliceCap": 5,
+              "crowdedProposalMoments": 13,
+              "byKind": {
+                "company": {
+                  "proposals": 1,
+                  "reconstructed": 1,
+                  "crowded": 1,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g1": 1
+                  }
+                },
+                "companion": {
+                  "proposals": 45,
+                  "reconstructed": 45,
+                  "crowded": 12,
+                  "targetBeyondSliceCap": 5,
+                  "generationPair": {
+                    "g0|g0": 45
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 6,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 5,
+                "laterBornRankFourOrGreaterExclusions": 0,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-95-joan-of-arc-6",
+                    "name": "本杰明·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 95,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 3
+                  },
+                  {
+                    "personId": "born-98-dorothy-gale-7",
+                    "name": "塞西莉亚·达尔文",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 98,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-150-joan-of-arc-8",
+                    "name": "娜塔莉·达尔文",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 150,
+                    "stateInsertionIndex": 8,
+                    "generationBirthRank": 3,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-159-dorothy-gale-9",
+                    "name": "亚历山大·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 159,
+                    "stateInsertionIndex": 9,
+                    "generationBirthRank": 4,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-183-joan-of-arc-10",
+                    "name": "乔纳森·达尔文",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 183,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 5,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-233-joan-of-arc-11",
+                    "name": "贝娅特丽丝·托尔",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 233,
+                    "stateInsertionIndex": 11,
+                    "generationBirthRank": 6,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": false,
+                "supportsBirthOrderExclusionAtObservedMoments": false
+              },
+              "targetedPeople": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 10
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 7
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 8
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 8
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 6
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 6
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 23
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 18
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 28
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 15
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 15
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 6
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-183-joan-of-arc-10",
+                  "name": "乔纳森·达尔文",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 183,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 1
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 3
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 5
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 7
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 3
+                },
+                {
+                  "personId": "born-98-dorothy-gale-7",
+                  "name": "塞西莉亚·达尔文",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 98,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 2,
+                  "count": 1
+                },
+                {
+                  "personId": "born-150-joan-of-arc-8",
+                  "name": "娜塔莉·达尔文",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 150,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 3,
+                  "count": 1
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:68:dorothy-gale:archimedes",
+                  "eventId": "e-68-action-dorothy-gale-5",
+                  "atMonth": 68,
+                  "orderInMonth": 5,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 5,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:darwin:joan-of-arc",
+                  "eventId": "e-68-action-darwin-7",
+                  "atMonth": 68,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:caesar:joan-of-arc",
+                  "eventId": "e-68-action-caesar-9",
+                  "atMonth": 68,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:85:caesar:dorothy-gale",
+                  "eventId": "e-85-action-caesar-28",
+                  "atMonth": 85,
+                  "orderInMonth": 28,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:dorothy-gale:joan-of-arc",
+                  "eventId": "e-86-action-dorothy-gale-7",
+                  "atMonth": 86,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:darwin:dorothy-gale",
+                  "eventId": "e-86-action-darwin-9",
+                  "atMonth": 86,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:thor:darwin",
+                  "eventId": "e-86-action-thor-11",
+                  "atMonth": 86,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:120:darwin:dorothy-gale",
+                  "eventId": "e-120-action-darwin-10",
+                  "atMonth": 120,
+                  "orderInMonth": 10,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:138:darwin:archimedes",
+                  "eventId": "e-138-action-darwin-10",
+                  "atMonth": 138,
+                  "orderInMonth": 10,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 3124,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes",
+                    "born-95-joan-of-arc-6"
+                  ]
+                },
+                {
+                  "agreementId": "request-assist:139:caesar:born-95-joan-of-arc-6:company",
+                  "eventId": "e-139-action-caesar-5",
+                  "atMonth": 139,
+                  "orderInMonth": 5,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "born-95-joan-of-arc-6",
+                    "name": "本杰明·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 95,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "thor",
+                    "dorothy-gale",
+                    "born-95-joan-of-arc-6"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-98-dorothy-gale-7"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:171:archimedes:darwin",
+                  "eventId": "e-171-action-archimedes-11",
+                  "atMonth": 171,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "darwin"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-95-joan-of-arc-6",
+                    "born-150-joan-of-arc-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:173:darwin:thor",
+                  "eventId": "e-173-action-darwin-4",
+                  "atMonth": 173,
+                  "orderInMonth": 4,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 2,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes",
+                    "born-95-joan-of-arc-6"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:174:thor:joan-of-arc",
+                  "eventId": "e-174-action-thor-2",
+                  "atMonth": 174,
+                  "orderInMonth": 2,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "darwin"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": []
+            }
+          },
+          {
+            "atMonth": 360,
+            "socialFunnel": {
+              "company": {
+                "totals": {
+                  "proposed": 4,
+                  "accepted": 3,
+                  "fulfilled": 3,
+                  "rejected": 0,
+                  "cancelled": 0,
+                  "breached": 0
+                },
+                "byGenerationPair": {
+                  "g0|g1": {
+                    "proposed": 4,
+                    "accepted": 3,
+                    "fulfilled": 3,
+                    "rejected": 0,
+                    "cancelled": 0,
+                    "breached": 0
+                  }
+                }
+              },
+              "companion": {
+                "totals": {
+                  "proposed": 46,
+                  "accepted": 44,
+                  "established": 15,
+                  "active": 15,
+                  "cancelled": 0,
+                  "breached": 29
+                },
+                "byGenerationPair": {
+                  "g0|g0": {
+                    "proposed": 46,
+                    "accepted": 44,
+                    "established": 15,
+                    "active": 15,
+                    "cancelled": 0,
+                    "breached": 29
+                  }
+                }
+              },
+              "persistentSharedLiving": {
+                "events": 752,
+                "byGenerationPair": {
+                  "g0|g0": 752
+                },
+                "firstAtMonth": 83,
+                "lastAtMonth": 360
+              }
+            },
+            "birthOrderSliceAudit": {
+              "atMonth": 360,
+              "method": {
+                "candidateOrder": "Reconstruct each real company/companion proposal location from ordered ActionFacts; enumerate co-located living people in SimulationState.people insertion order; the application inspects only positions 1-3.",
+                "limitation": "A beyond-cap appearance proves structural option suppression at that observed moment, but does not assert that the excluded person would have passed every later relationship or body prerequisite."
+              },
+              "proposals": 50,
+              "reconstructedProposals": 50,
+              "reconstructionFailures": 0,
+              "targetCandidateRankCounts": {
+                "1": 29,
+                "2": 9,
+                "3": 6,
+                "4": 5,
+                "5": 1
+              },
+              "targetBeyondSliceCap": 6,
+              "crowdedProposalMoments": 14,
+              "byKind": {
+                "company": {
+                  "proposals": 4,
+                  "reconstructed": 4,
+                  "crowded": 1,
+                  "targetBeyondSliceCap": 0,
+                  "generationPair": {
+                    "g0|g1": 4
+                  }
+                },
+                "companion": {
+                  "proposals": 46,
+                  "reconstructed": 46,
+                  "crowded": 13,
+                  "targetBeyondSliceCap": 6,
+                  "generationPair": {
+                    "g0|g0": 46
+                  }
+                }
+              },
+              "generationOne": {
+                "people": 8,
+                "insertionOrderMatchesBirthOrder": true,
+                "hardExcludedAppearances": 5,
+                "laterBornRankFourOrGreaterExclusions": 0,
+                "peopleByBirthOrder": [
+                  {
+                    "personId": "born-95-joan-of-arc-6",
+                    "name": "本杰明·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 95,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1,
+                    "targeted": 1,
+                    "includedInFirstThreeAtObservedProposalMoments": 1,
+                    "hardExcludedBySliceAtObservedProposalMoments": 3
+                  },
+                  {
+                    "personId": "born-98-dorothy-gale-7",
+                    "name": "塞西莉亚·达尔文",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 98,
+                    "stateInsertionIndex": 7,
+                    "generationBirthRank": 2,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-150-joan-of-arc-8",
+                    "name": "娜塔莉·达尔文",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 150,
+                    "stateInsertionIndex": 8,
+                    "generationBirthRank": 3,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 1
+                  },
+                  {
+                    "personId": "born-159-dorothy-gale-9",
+                    "name": "亚历山大·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 159,
+                    "stateInsertionIndex": 9,
+                    "generationBirthRank": 4,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-183-joan-of-arc-10",
+                    "name": "乔纳森·达尔文",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 183,
+                    "stateInsertionIndex": 10,
+                    "generationBirthRank": 5,
+                    "targeted": 2,
+                    "includedInFirstThreeAtObservedProposalMoments": 3,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-233-joan-of-arc-11",
+                    "name": "贝娅特丽丝·托尔",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 233,
+                    "stateInsertionIndex": 11,
+                    "generationBirthRank": 6,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-282-joan-of-arc-12",
+                    "name": "薇拉·凯撒",
+                    "generation": 1,
+                    "sex": "female",
+                    "bornAtMonth": 282,
+                    "stateInsertionIndex": 12,
+                    "generationBirthRank": 7,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  },
+                  {
+                    "personId": "born-307-joan-of-arc-13",
+                    "name": "罗兰·阿基米德",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 307,
+                    "stateInsertionIndex": 13,
+                    "generationBirthRank": 8,
+                    "targeted": 0,
+                    "includedInFirstThreeAtObservedProposalMoments": 0,
+                    "hardExcludedBySliceAtObservedProposalMoments": 0
+                  }
+                ]
+              },
+              "assessment": {
+                "allReconstructedTargetsWithinFirstThree": false,
+                "supportsBirthOrderExclusionAtObservedMoments": false
+              },
+              "targetedPeople": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 11
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 7
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 8
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 8
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 7
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 6
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-183-joan-of-arc-10",
+                  "name": "乔纳森·达尔文",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 183,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 2
+                }
+              ],
+              "includedSlotAppearances": [
+                {
+                  "personId": "joan-of-arc",
+                  "name": "圣女贞德",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -216,
+                  "stateInsertionIndex": 0,
+                  "generationBirthRank": 4,
+                  "count": 25
+                },
+                {
+                  "personId": "thor",
+                  "name": "托尔",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -252,
+                  "stateInsertionIndex": 1,
+                  "generationBirthRank": 3,
+                  "count": 19
+                },
+                {
+                  "personId": "caesar",
+                  "name": "凯撒",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -144,
+                  "stateInsertionIndex": 2,
+                  "generationBirthRank": 5,
+                  "count": 29
+                },
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 16
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 15
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 6
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 1
+                },
+                {
+                  "personId": "born-183-joan-of-arc-10",
+                  "name": "乔纳森·达尔文",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 183,
+                  "stateInsertionIndex": 10,
+                  "generationBirthRank": 5,
+                  "count": 3
+                }
+              ],
+              "hardExcludedAppearances": [
+                {
+                  "personId": "dorothy-gale",
+                  "name": "多萝西·盖尔",
+                  "generation": 0,
+                  "sex": "female",
+                  "bornAtMonth": -348,
+                  "stateInsertionIndex": 3,
+                  "generationBirthRank": 1,
+                  "count": 3
+                },
+                {
+                  "personId": "darwin",
+                  "name": "达尔文",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -132,
+                  "stateInsertionIndex": 4,
+                  "generationBirthRank": 6,
+                  "count": 6
+                },
+                {
+                  "personId": "archimedes",
+                  "name": "阿基米德",
+                  "generation": 0,
+                  "sex": "male",
+                  "bornAtMonth": -276,
+                  "stateInsertionIndex": 5,
+                  "generationBirthRank": 2,
+                  "count": 8
+                },
+                {
+                  "personId": "born-95-joan-of-arc-6",
+                  "name": "本杰明·凯撒",
+                  "generation": 1,
+                  "sex": "male",
+                  "bornAtMonth": 95,
+                  "stateInsertionIndex": 6,
+                  "generationBirthRank": 1,
+                  "count": 3
+                },
+                {
+                  "personId": "born-98-dorothy-gale-7",
+                  "name": "塞西莉亚·达尔文",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 98,
+                  "stateInsertionIndex": 7,
+                  "generationBirthRank": 2,
+                  "count": 1
+                },
+                {
+                  "personId": "born-150-joan-of-arc-8",
+                  "name": "娜塔莉·达尔文",
+                  "generation": 1,
+                  "sex": "female",
+                  "bornAtMonth": 150,
+                  "stateInsertionIndex": 8,
+                  "generationBirthRank": 3,
+                  "count": 1
+                }
+              ],
+              "crowdedEvidence": [
+                {
+                  "agreementId": "offer-companion:68:dorothy-gale:archimedes",
+                  "eventId": "e-68-action-dorothy-gale-5",
+                  "atMonth": 68,
+                  "orderInMonth": 5,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 5,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:darwin:joan-of-arc",
+                  "eventId": "e-68-action-darwin-7",
+                  "atMonth": 68,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:68:caesar:joan-of-arc",
+                  "eventId": "e-68-action-caesar-9",
+                  "atMonth": 68,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:85:caesar:dorothy-gale",
+                  "eventId": "e-85-action-caesar-28",
+                  "atMonth": 85,
+                  "orderInMonth": 28,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:dorothy-gale:joan-of-arc",
+                  "eventId": "e-86-action-dorothy-gale-7",
+                  "atMonth": 86,
+                  "orderInMonth": 7,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:darwin:dorothy-gale",
+                  "eventId": "e-86-action-darwin-9",
+                  "atMonth": 86,
+                  "orderInMonth": 9,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:86:thor:darwin",
+                  "eventId": "e-86-action-thor-11",
+                  "atMonth": 86,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:120:darwin:dorothy-gale",
+                  "eventId": "e-120-action-darwin-10",
+                  "atMonth": 120,
+                  "orderInMonth": 10,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "dorothy-gale",
+                    "name": "多萝西·盖尔",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -348,
+                    "stateInsertionIndex": 3,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "dorothy-gale",
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:138:darwin:archimedes",
+                  "eventId": "e-138-action-darwin-10",
+                  "atMonth": 138,
+                  "orderInMonth": 10,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "position": {
+                    "cellId": 3124,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes",
+                    "born-95-joan-of-arc-6"
+                  ]
+                },
+                {
+                  "agreementId": "request-assist:139:caesar:born-95-joan-of-arc-6:company",
+                  "eventId": "e-139-action-caesar-5",
+                  "atMonth": 139,
+                  "orderInMonth": 5,
+                  "kind": "company",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "born-95-joan-of-arc-6",
+                    "name": "本杰明·凯撒",
+                    "generation": 1,
+                    "sex": "male",
+                    "bornAtMonth": 95,
+                    "stateInsertionIndex": 6,
+                    "generationBirthRank": 1
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "thor",
+                    "dorothy-gale",
+                    "born-95-joan-of-arc-6"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-98-dorothy-gale-7"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:171:archimedes:darwin",
+                  "eventId": "e-171-action-archimedes-11",
+                  "atMonth": 171,
+                  "orderInMonth": 11,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "archimedes",
+                    "name": "阿基米德",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -276,
+                    "stateInsertionIndex": 5,
+                    "generationBirthRank": 2
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 3,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "darwin"
+                  ],
+                  "excludedCandidateIds": [
+                    "born-95-joan-of-arc-6",
+                    "born-150-joan-of-arc-8"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:173:darwin:thor",
+                  "eventId": "e-173-action-darwin-4",
+                  "atMonth": 173,
+                  "orderInMonth": 4,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "target": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 2,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "caesar"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes",
+                    "born-95-joan-of-arc-6"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:174:thor:joan-of-arc",
+                  "eventId": "e-174-action-thor-2",
+                  "atMonth": 174,
+                  "orderInMonth": 2,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "thor",
+                    "name": "托尔",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -252,
+                    "stateInsertionIndex": 1,
+                    "generationBirthRank": 3
+                  },
+                  "target": {
+                    "personId": "joan-of-arc",
+                    "name": "圣女贞德",
+                    "generation": 0,
+                    "sex": "female",
+                    "bornAtMonth": -216,
+                    "stateInsertionIndex": 0,
+                    "generationBirthRank": 4
+                  },
+                  "position": {
+                    "cellId": 3210,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 1,
+                  "targetWithinSliceCap": true,
+                  "localCandidateCount": 4,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "caesar",
+                    "darwin"
+                  ],
+                  "excludedCandidateIds": [
+                    "archimedes"
+                  ]
+                },
+                {
+                  "agreementId": "offer-companion:277:caesar:darwin",
+                  "eventId": "e-277-action-caesar-17",
+                  "atMonth": 277,
+                  "orderInMonth": 17,
+                  "kind": "companion",
+                  "proposer": {
+                    "personId": "caesar",
+                    "name": "凯撒",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -144,
+                    "stateInsertionIndex": 2,
+                    "generationBirthRank": 5
+                  },
+                  "target": {
+                    "personId": "darwin",
+                    "name": "达尔文",
+                    "generation": 0,
+                    "sex": "male",
+                    "bornAtMonth": -132,
+                    "stateInsertionIndex": 4,
+                    "generationBirthRank": 6
+                  },
+                  "position": {
+                    "cellId": 3125,
+                    "z": 5
+                  },
+                  "reconstructable": true,
+                  "reason": null,
+                  "targetCandidateRank": 4,
+                  "targetWithinSliceCap": false,
+                  "localCandidateCount": 5,
+                  "includedCandidateIds": [
+                    "joan-of-arc",
+                    "thor",
+                    "dorothy-gale"
+                  ],
+                  "excludedCandidateIds": [
+                    "darwin",
+                    "archimedes"
+                  ]
+                }
+              ],
+              "reconstructionFailureEvidence": []
+            }
+          }
+        ]
+      },
+      "missingLinkCounts": {},
+      "chains": []
+    }
+  ]
+}

@@ -331,7 +331,9 @@ try {
   const jointAttemptFacts = afterJointAttempt.world.past.filter((event) => event.kind === 'action'
     && event.atMonth === 13
     && event.action.kind === 'act'
-    && event.action.operation === 'reproduce');
+    && event.action.operation === 'reproduce'
+    && event.action.authorizationRef === offerId
+    && [jointFemale.id, jointMale.id].includes(event.who));
   assert.equal(jointAttemptFacts.length, 1,
     'two mirrored intents in the same consent window must create only one reproduction ActionFact per month');
   assert.equal(afterJointAttempt.intents.filter((intent) => intent.id === femaleIntent.id || intent.id === maleIntent.id)

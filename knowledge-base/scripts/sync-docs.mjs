@@ -21,6 +21,13 @@ const sources = [
     summary: '人物决策频率、规划刻度、模型边界、失败修复与本地规则权威。',
   },
   {
+    id: 'person-traits',
+    path: 'docs/person-traits-v1.md',
+    eyebrow: 'PERSON RULES',
+    title: '人物特质',
+    summary: '十种永久特质、固定先民配置、确定性遗传和寿命、配方、母脉等领域效果。',
+  },
+  {
     id: 'evolution-loop',
     path: 'docs/evolution-iteration-loop-v1.md',
     eyebrow: 'EXPERIMENT PROTOCOL',

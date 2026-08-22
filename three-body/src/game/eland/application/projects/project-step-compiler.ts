@@ -8,7 +8,7 @@ import {
 } from '../../domain/interaction-rules';
 import { Material, materialDefinition, materialHas, type MaterialId } from '../../domain/material';
 import { bestProductionToolStack, productionToolRank } from '../../domain/production-tool';
-import type { DropState, SimulationState } from '../../domain/model';
+import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import {
   inventoryQuantity,
   isAlive,
@@ -19,12 +19,16 @@ import {
 import type {
   ProjectFunction,
   ProjectHypothesisQuestionKind,
+  ProjectMaterialContributionRequestBasis,
   ProjectMaterialDemand,
   ProjectProposal,
   ProjectState,
 } from '../../domain/project';
 import { shelterGeometryAt } from '../../domain/structure';
-import { inspectProjectMaterialContributionRequest } from '../../domain/project-material-request';
+import {
+  inspectProjectMaterialContributionRequest,
+  transferMatchesProjectMaterialRequest,
+} from '../../domain/project-material-request';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from '../../domain/stored-food-access';
 import {
   cellX,
@@ -97,6 +101,32 @@ import {
 } from './project-spatial-planning';
 import type { ProjectStep } from './project-step';
 import { fixedFacilityWorkplace } from './project-workplace';
+
+const IRON_WORKPLACE_MATERIALS = [Material.Smithy] as const;
+
+export function projectSupportsMaterialContribution(project: Pick<ProjectState, 'need' | 'desiredFunction'>): boolean {
+  return project.need === 'alloy-capability'
+    || project.need === 'iron-capability'
+    || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
+}
+
+function projectUsesFixedMetallurgyWorkplace(project: Pick<ProjectState, 'need' | 'desiredFunction'>): boolean {
+  return project.need === 'alloy-capability'
+    || (project.need === 'iron-capability' && project.desiredFunction !== 'iron-workshop');
+}
+
+function fixedProjectWorkplace(
+  state: SimulationState,
+  person: PersonState,
+  project: Pick<ProjectState, 'need' | 'desiredFunction' | 'site'>,
+) {
+  return fixedFacilityWorkplace(
+    state,
+    person,
+    project.site,
+    project.need === 'iron-capability' ? IRON_WORKPLACE_MATERIALS : undefined,
+  );
+}
 function knownRecipe(person: PersonState, outputMaterialId: MaterialId): { rule: InventoryCombinationRule; knowledgeId: string } | null {
   const rule = inventoryCombinationForOutput(outputMaterialId);
   if (!rule) return null;
@@ -190,6 +220,17 @@ interface ProjectMaterialRequirement {
   sourceEventIds: string[];
   planKnowledgeId?: string;
 }
+
+type ProjectMaterialHandoff = {
+  kind: 'open';
+  request: ProjectMaterialContributionRequestBasis;
+  demand: ProjectMaterialDemand;
+} | {
+  kind: 'delivered';
+  request: ProjectMaterialContributionRequestBasis;
+  demand: ProjectMaterialDemand;
+  deliveryFact: ActionFact;
+};
 
 function knownOutputRequirement(
   person: PersonState,
@@ -299,7 +340,9 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
     if (consumableInventoryQuantity(person, Material.Rope) === 0) requireRaw(Material.Fiber, 2);
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    requireRaw(Material.Seed, 1);
+    const cultivatedCells = projectCultivationCells(project)
+      .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId)));
+    if (cultivatedCells.length < 6) requireRaw(Material.Seed, 1);
   }
   if (project.desiredFunction === 'community-coordination') {
     if (consumableInventoryQuantity(person, Material.Plank) === 0) requireRaw(Material.Wood, 2);
@@ -346,6 +389,38 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   if (project.desiredFunction === 'bronze-workshop') {
     requireRaw(Material.Bronze, 1);
     requireRaw(Material.Stone, 1);
+  }
+  if (project.desiredFunction === 'iron-workshop') {
+    requireRaw(Material.Bronze, 1);
+    requireRaw(Material.FiredBrick, 1);
+  }
+  if (project.desiredFunction === 'iron-charge') {
+    requireRaw(Material.IronOre, 1);
+    requireRaw(Material.Charcoal, 1);
+  }
+  if (project.desiredFunction === 'iron-reduction') requireRaw(Material.IronCharge, 1);
+  if (project.desiredFunction === 'iron-working') {
+    requireRaw(Material.IronBloom, 1);
+    requireRaw(Material.Charcoal, 1);
+  }
+  if (project.desiredFunction === 'iron-tooling') {
+    requireRaw(Material.Iron, 1);
+    requireRaw(Material.Wood, 1);
+  }
+  if (project.desiredFunction === 'civic-coordination') {
+    requireRaw(Material.FiredBrick, 1);
+    if (consumableInventoryQuantity(person, Material.WoodTablet) === 0) {
+      const visible = new Set(visibleCellsFor(person));
+      const visibleTabletHolder = state.people.some((candidate) => candidate.id !== person.id
+        && isAlive(candidate)
+        && visible.has(candidate.position.cellId)
+        && consumableInventoryQuantity(candidate, Material.WoodTablet) > 0);
+      if (visibleTabletHolder) requireRaw(Material.WoodTablet, 1);
+      else {
+        requireRaw(Material.Wood, 1);
+        requireRaw(Material.StoneTool, 1);
+      }
+    }
   }
   const rawDemands = [...rawRequirements].map(([materialId, quantity]) => materialDemand(
     person, materialId, quantity, `development-subassembly:${project.desiredFunction}:${materialId}`,
@@ -749,9 +824,10 @@ function metallurgyWorkStep(
   const metallurgyFunctions = new Set<ProjectFunction>([
     'copper-charge', 'copper-smelting', 'tin-charge', 'tin-smelting',
     'bronze-alloying', 'bronze-tooling', 'bronze-workshop',
+    'iron-charge', 'iron-reduction', 'iron-working', 'iron-tooling',
   ]);
   if (!metallurgyFunctions.has(project.desiredFunction)) return null;
-  const workplace = fixedFacilityWorkplace(state, person, project.site);
+  const workplace = fixedProjectWorkplace(state, person, project);
   if (!workplace) return null;
   const atWorkplace = person.position.cellId === workplace.workingPosition.cellId
     && person.position.z === workplace.workingPosition.z;
@@ -804,6 +880,8 @@ function metallurgyWorkStep(
     ? Material.CopperCharge
     : project.desiredFunction === 'tin-smelting'
       ? Material.TinCharge
+      : project.desiredFunction === 'iron-reduction'
+        ? Material.IronCharge
       : undefined;
   if (smeltingInput !== undefined) {
     const subject = person.inventory.find((stack) => stack.materialId === smeltingInput && isConsumableProjectStack(stack));
@@ -1347,7 +1425,8 @@ function compileProjectWorkStep(
     'efficient-production', 'community-coordination', 'reserve-storage',
     'reliable-water', 'crop-processing', 'high-heat-processing',
     'copper-charge', 'copper-smelting', 'tin-charge', 'tin-smelting',
-    'bronze-alloying', 'bronze-tooling', 'bronze-workshop',
+    'bronze-alloying', 'bronze-tooling', 'bronze-workshop', 'civic-coordination',
+    'iron-workshop', 'iron-charge', 'iron-reduction', 'iron-working', 'iron-tooling',
   ].includes(project.desiredFunction)
     && Boolean(projectMaterialRequirement(state, person, project)?.demands.length);
   if (pendingSubassembly) return null;
@@ -1360,7 +1439,9 @@ function materialContributionRequestStep(
   project: ProjectState,
   requirement: ProjectMaterialRequirement,
 ): ProjectStep | null {
-  if (project.ownerId !== person.id || project.need !== 'alloy-capability' || !project.site) return null;
+  if (project.ownerId !== person.id
+    || !projectSupportsMaterialContribution(project)
+    || !project.site) return null;
   const visible = new Set(visibleCellsFor(person));
   const possibleContributors = state.people.filter((candidate) => candidate.id !== person.id
     && isAlive(candidate)
@@ -1375,20 +1456,27 @@ function materialContributionRequestStep(
           state.clock.elapsedMonths + 1,
           demand,
         ).status === 'open')) return [];
-    const holders = possibleContributors.filter((candidate) => inventoryQuantity(candidate, demand.materialId) > 0);
+    const holders = possibleContributors.filter((candidate) => (
+      consumableInventoryQuantity(candidate, demand.materialId) > 0
+    ));
     return holders.length ? [{ demand, holders }] : [];
   }).sort((left, right) => left.demand.materialId - right.demand.materialId)[0];
   if (!selected) return null;
   const quantity = Math.min(
     selected.demand.outstandingQuantity,
-    selected.holders.reduce((sum, holder) => sum + inventoryQuantity(holder, selected.demand.materialId), 0),
+    selected.holders.reduce((sum, holder) => (
+      sum + consumableInventoryQuantity(holder, selected.demand.materialId)
+    ), 0),
   );
   if (quantity <= 0) return null;
   const materialName = materialDefinition(selected.demand.materialId).name;
+  const metallurgyRequest = projectUsesFixedMetallurgyWorkplace(project);
   return {
     key: `request-project-material-${project.id}-${selected.demand.materialId}`,
-    summary: `请求附近持料者把${materialName}送到固定冶炼工地`,
-    reason: '项目已经记录具体缺口和固定设施；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标',
+    summary: `请求附近持料者把${materialName}送到${metallurgyRequest ? '固定冶炼工地' : '固定项目工地'}`,
+    reason: metallurgyRequest
+      ? '项目已经记录具体缺口和固定设施；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标'
+      : '项目已经记录具体缺口和固定地点；请求只发给眼前确实持有该材料的人，不会读取远处背包或追逐移动目标',
     action: {
       kind: 'communicate',
       content: {
@@ -1412,7 +1500,7 @@ function materialContributionRequestStep(
       ...project.triggerFactIds,
       ...selected.demand.sourceFactIds,
       ...selected.holders.flatMap((holder) => holder.inventory
-        .filter((stack) => stack.materialId === selected.demand.materialId && stack.quantity > 0)
+        .filter((stack) => stack.materialId === selected.demand.materialId && isConsumableProjectStack(stack))
         .flatMap((stack) => stack.sourceEventIds)),
     ])],
     missingMaterialIds: [selected.demand.materialId],
@@ -1468,7 +1556,9 @@ export function projectContributionStep(
   person: PersonState,
   project: ProjectState,
 ): ProjectStep | null {
-  if (project.ownerId === person.id || project.need !== 'alloy-capability' || !project.site) return null;
+  if (project.ownerId === person.id
+    || !projectSupportsMaterialContribution(project)
+    || !project.site) return null;
   const owner = state.people.find((candidate) => candidate.id === project.ownerId && isAlive(candidate));
   if (!owner) return null;
   const selected = (project.materialContributionRequests ?? [])
@@ -1490,21 +1580,28 @@ export function projectContributionStep(
       || left.request.materialId - right.request.materialId)[0];
   if (!selected) return null;
   const { request, view } = selected;
-  const stack = person.inventory.find((candidate) => candidate.materialId === request.materialId && candidate.quantity > 0);
+  const stack = person.inventory.find((candidate) => candidate.materialId === request.materialId
+    && isConsumableProjectStack(candidate));
   if (!stack) return null;
   const remaining = view.deliverableQuantity;
   if (!remaining) return null;
-  const workplace = fixedFacilityWorkplace(state, person, request.site);
-  if (!workplace) return null;
-  const atWorkplace = person.position.cellId === workplace.workingPosition.cellId
-    && person.position.z === workplace.workingPosition.z;
+  const usesFixedWorkplace = projectUsesFixedMetallurgyWorkplace(project);
+  const metallurgyWorkplace = usesFixedWorkplace
+    ? fixedProjectWorkplace(state, person, { ...project, site: request.site })
+    : null;
+  if (usesFixedWorkplace && !metallurgyWorkplace) return null;
+  const destination = metallurgyWorkplace?.workingPosition ?? request.site;
+  const atWorkplace = person.position.cellId === destination.cellId
+    && person.position.z === destination.z;
   const materialName = materialDefinition(request.materialId).name;
   if (!atWorkplace) return {
     key: `carry-project-material-${project.id}-${request.requestEventId}`,
-    summary: `把${materialName}运往固定冶炼工地`,
-    reason: '本人收到与真实项目缺口绑定的请求；运输目标是固定设施，不追逐正在移动的项目所有者',
-    action: { kind: 'move', toCellId: workplace.workingPosition.cellId, toZ: workplace.workingPosition.z },
-    target: { kind: 'voxel', position: workplace.target.position },
+    summary: `把${materialName}运往${usesFixedWorkplace ? '固定冶炼工地' : '固定项目工地'}`,
+    reason: usesFixedWorkplace
+      ? '本人收到与真实项目缺口绑定的请求；运输目标是固定设施，不追逐正在移动的项目所有者'
+      : '本人收到与真实项目缺口绑定的请求；运输目标是固定地点，不追逐正在移动的项目所有者',
+    action: { kind: 'move', toCellId: destination.cellId, toZ: destination.z },
+    ...(metallurgyWorkplace ? { target: { kind: 'voxel' as const, position: metallurgyWorkplace.target.position } } : {}),
     sourceFactIds: [...new Set([request.requestEventId, ...stack.sourceEventIds])],
     missingMaterialIds: [],
     reservations: reservation(person, stack.id, Math.min(remaining, stack.quantity)),
@@ -1527,7 +1624,7 @@ export function projectContributionStep(
       stackId: stack.id,
       authorizationRef: request.requestEventId,
     },
-    target: { kind: 'voxel', position: workplace.target.position },
+    ...(metallurgyWorkplace ? { target: { kind: 'voxel' as const, position: metallurgyWorkplace.target.position } } : {}),
     sourceFactIds: [...new Set([request.requestEventId, ...stack.sourceEventIds])],
     missingMaterialIds: [],
     reservations: reservation(person, stack.id, quantity),
@@ -1540,7 +1637,8 @@ export function compileProjectStep(
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
-  if (project.ownerId !== person.id && project.need === 'alloy-capability') {
+  if (project.ownerId !== person.id
+    && projectSupportsMaterialContribution(project)) {
     return projectContributionStep(state, person, project);
   }
   // A project-bound written carrier is already the final private intermediate.
@@ -1590,7 +1688,101 @@ export function compileProjectStep(
 
   const requirement = projectMaterialRequirement(state, person, project);
   if (!requirement?.materialIds.length) return null;
+  // Keep the exact current branch on the authoritative project even when the
+  // finite source search has no next step. Lifecycle release can then compare
+  // an exhausted campaign with the demand that actually produced it instead
+  // of treating any historical search failure as terminal.
+  project.missingMaterialIds = [...new Set(requirement.materialIds)];
+  project.materialDemands = structuredClone(requirement.demands);
   if (requirement.planKnowledgeId) project.planKnowledgeId = requirement.planKnowledgeId;
+  const usesFixedWorkplace = projectUsesFixedMetallurgyWorkplace(project);
+  const workplace = usesFixedWorkplace ? fixedProjectWorkplace(state, person, project) : null;
+  if (usesFixedWorkplace && !workplace) return null;
+  const destination = workplace?.workingPosition ?? project.site;
+  const projectFacts = projectActionFacts(state, project);
+  const materialHandoff = (project.materialContributionRequests ?? []).flatMap<ProjectMaterialHandoff>((request) => {
+    const demand = requirement.demands.find((candidate) => candidate.materialId === request.materialId);
+    if (!demand || !destination) return [];
+    const view = inspectProjectMaterialContributionRequest(
+      state,
+      project,
+      request,
+      state.clock.elapsedMonths + 1,
+      demand,
+    );
+    const reversedDeliveryIndex = [...projectFacts].reverse().findIndex((event) => (
+      transferMatchesProjectMaterialRequest(request, event)
+      && event.action.kind === 'transfer'
+      && event.action.to.kind === 'ground'
+    ));
+    const deliveryIndex = reversedDeliveryIndex < 0
+      ? -1
+      : projectFacts.length - 1 - reversedDeliveryIndex;
+    const deliveryFact = deliveryIndex >= 0 ? projectFacts[deliveryIndex] : undefined;
+    const ownerInspectedAfterDelivery = deliveryIndex >= 0 && projectFacts.slice(deliveryIndex + 1)
+      .some((event) => event.who === project.ownerId
+        && event.cellId === destination.cellId
+        && event.toZ === destination.z);
+    const deliveredDropVisible = Boolean(deliveryFact && visibleDrops.some((drop) => (
+      drop.materialId === request.materialId
+      && drop.cellId === destination.cellId
+      && drop.z === destination.z
+      && drop.sourceEventIds.includes(deliveryFact.id)
+    )));
+    const deliveredForInspection = view.outstandingQuantity > 0
+      && Boolean(deliveryFact)
+      && (!ownerInspectedAfterDelivery || deliveredDropVisible);
+    if (view.status === 'open') return [{ kind: 'open' as const, request, demand }];
+    return deliveredForInspection && deliveryFact
+      ? [{ kind: 'delivered' as const, request, demand, deliveryFact }]
+      : [];
+  }).sort((left, right) => Number(right.kind === 'delivered') - Number(left.kind === 'delivered')
+    || left.request.atMonth - right.request.atMonth
+    || left.request.materialId - right.request.materialId)[0];
+  if (materialHandoff && destination) {
+    const atDestination = person.position.cellId === destination.cellId
+      && person.position.z === destination.z;
+    if (!atDestination) return {
+      key: `return-for-project-material-${project.id}-${materialHandoff.request.requestEventId}`,
+      summary: `返回固定${usesFixedWorkplace ? '冶炼工位' : '项目工地'}${materialHandoff.kind === 'delivered' ? '查收' : '接收'}${materialDefinition(materialHandoff.request.materialId).name}`,
+      reason: materialHandoff.kind === 'delivered'
+        ? '贡献事件已经记录材料留在请求绑定的固定地点；所有者必须先返场查收，不能把 fulfilled 误当成自己已经持有'
+        : '本人已经向眼前持料者发出有期限的真实贡献请求；先回到请求绑定的固定地点，避免追逐材料或让交付物脱离项目视野',
+      action: { kind: 'move', toCellId: destination.cellId, toZ: destination.z },
+      ...(workplace ? { target: { kind: 'voxel' as const, position: workplace.target.position } } : {}),
+      sourceFactIds: [...new Set([
+        materialHandoff.request.requestEventId,
+        ...(materialHandoff.kind === 'delivered' ? [materialHandoff.deliveryFact.id] : []),
+        ...materialHandoff.demand.sourceFactIds,
+      ])],
+      missingMaterialIds: [...requirement.materialIds],
+      materialDemands: structuredClone(requirement.demands),
+      reservations: [],
+    };
+    if (materialHandoff.kind === 'delivered') {
+      const deliveredDrop = nearestDrop(
+        state,
+        person,
+        visibleDrops.filter((drop) => drop.sourceEventIds.includes(materialHandoff.deliveryFact.id)),
+        [materialHandoff.request.materialId],
+      );
+      if (deliveredDrop) {
+        const episode = startDropLogisticsEpisode(
+          project,
+          person,
+          deliveredDrop,
+          [...requirement.sourceEventIds, materialHandoff.deliveryFact.id],
+          state.clock.elapsedMonths + 1,
+          materialHandoff.demand,
+        );
+        return activeEpisodeStep(state, person, visibleDrops, project, episode);
+      }
+    }
+    // At the fixed hand-off point there is no additional primitive action to
+    // invent. Keeping the demand and request open lets the addressed holder's
+    // request-bound transfer become the next causal event.
+    if (materialHandoff.kind === 'open') return null;
+  }
   const storedMaterial = storedProjectMaterialStep(state, person, project, requirement);
   if (storedMaterial) return storedMaterial;
   const contributionRequest = materialContributionRequestStep(state, person, project, requirement);
@@ -1628,13 +1820,13 @@ export function compileProjectStep(
       return activeEpisodeStep(state, person, visibleDrops, project, episode);
     }
   }
-  const destination = visibleReachableSearchDestination(state, person, project, requirement.materialIds);
-  if (!destination) return null;
+  const searchDestination = visibleReachableSearchDestination(state, person, project, requirement.materialIds);
+  if (!searchDestination) return null;
   const episode = startSearchLogisticsEpisode(
     project,
     person,
     requirement.materialIds,
-    destination,
+    searchDestination,
     requirement.sourceEventIds,
     state.clock.elapsedMonths + 1,
     requirement.demands,

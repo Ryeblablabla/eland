@@ -1,16 +1,22 @@
-import type { FactPredicate, PrimitiveAction } from './action';
+import type { FactPredicate, Intent, IntentGoalOutcomeKind, PrimitiveAction } from './action';
 import type { ActionFact, SimulationState } from './model';
 import type {
   CausalMemoryTrace,
   CognitionState,
   CognitiveOutcome,
+  GoalOutcomeBelief,
+  NeedResolutionEpisode,
   OutcomeBelief,
   PersonState,
 } from './person';
+import type { ProjectState } from './project';
+import { intentById } from './state-index';
 
 export const COGNITION_VERSION = 'causal-bdi-v1' as const;
 const MAX_OUTCOME_BELIEFS = 48;
+const MAX_GOAL_OUTCOME_BELIEFS = 48;
 const MAX_BELIEF_SOURCES = 24;
+const MAX_NEED_RESOLUTION_EPISODES = 24;
 
 function clamp(value: number, minimum = 0, maximum = 1): number {
   return Math.max(minimum, Math.min(maximum, value));
@@ -22,20 +28,31 @@ function finite(value: unknown, fallback = 0): number {
 }
 
 export function createCognitionState(): CognitionState {
-  return { version: COGNITION_VERSION, outcomeBeliefs: [] };
+  return {
+    version: COGNITION_VERSION,
+    outcomeBeliefs: [],
+    goalOutcomeBeliefs: [],
+    needResolutionEpisodes: [],
+  };
 }
 
 /** Read-only callers get an empty prior without mutating a legacy state. */
 export function cognitionStateOf(person: PersonState): CognitionState {
-  return person.cognition?.version === COGNITION_VERSION
-    ? person.cognition
-    : createCognitionState();
+  if (person.cognition?.version !== COGNITION_VERSION) return createCognitionState();
+  return {
+    ...person.cognition,
+    outcomeBeliefs: person.cognition.outcomeBeliefs ?? [],
+    goalOutcomeBeliefs: person.cognition.goalOutcomeBeliefs ?? [],
+    needResolutionEpisodes: person.cognition.needResolutionEpisodes ?? [],
+  };
 }
 
 /** Mutation is reserved for actual experienced outcomes and state hydration. */
 export function ensureCognitionState(person: PersonState): CognitionState {
   if (person.cognition?.version !== COGNITION_VERSION) person.cognition = createCognitionState();
   person.cognition.outcomeBeliefs ??= [];
+  person.cognition.goalOutcomeBeliefs ??= [];
+  person.cognition.needResolutionEpisodes ??= [];
   return person.cognition;
 }
 
@@ -55,6 +72,10 @@ function goalFamilyKey(goal?: FactPredicate): string {
     case 'condition': return `${goal.kind}:${goal.condition}:${goal.present ? 'present' : 'absent'}`;
     case 'project-completed': return goal.kind;
     case 'technique-demonstrated': return goal.kind;
+    case 'agreement-fulfilled': return goal.kind;
+    case 'death-mourned': return goal.kind;
+    case 'remains-interred': return goal.kind;
+    case 'memorial-marked': return goal.kind;
     case 'representation-made': return goal.kind;
   }
 }
@@ -93,7 +114,7 @@ export function cognitiveOutcomeBasisKey(action: PrimitiveAction, goal?: FactPre
 }
 
 export function actionFactOutcomeBasisKey(state: SimulationState, fact: ActionFact): string {
-  const intent = fact.intentId ? state.intents.find((candidate) => candidate.id === fact.intentId) : undefined;
+  const intent = fact.intentId ? intentById(state, fact.intentId) : undefined;
   return cognitiveOutcomeBasisKey(fact.action, intent?.goal);
 }
 
@@ -164,6 +185,117 @@ export function outcomeBeliefUncertainty(belief?: OutcomeBelief): number {
   return clamp(Math.sqrt(variance) / Math.sqrt(0.05));
 }
 
+function freshGoalOutcomeBelief(basisKey: string, atMonth: number): GoalOutcomeBelief {
+  return {
+    basisKey,
+    attempts: 0,
+    achieved: 0,
+    attemptedUnmet: 0,
+    successAlpha: 2,
+    successBeta: 2,
+    lastUpdatedAtMonth: atMonth,
+    sourceEventIds: [],
+  };
+}
+
+export function goalOutcomeBeliefFor(person: PersonState, basisKey: string): GoalOutcomeBelief | undefined {
+  return cognitionStateOf(person).goalOutcomeBeliefs?.find((belief) => belief.basisKey === basisKey);
+}
+
+export function goalOutcomeBeliefSuccess(belief?: GoalOutcomeBelief): number {
+  if (!belief) return 0.5;
+  return belief.successAlpha / Math.max(0.0001, belief.successAlpha + belief.successBeta);
+}
+
+export function goalOutcomeBeliefUncertainty(belief?: GoalOutcomeBelief): number {
+  if (!belief) return 1;
+  const alpha = belief.successAlpha;
+  const beta = belief.successBeta;
+  const total = alpha + beta;
+  const variance = alpha * beta / Math.max(0.0001, total * total * (total + 1));
+  return clamp(Math.sqrt(variance) / Math.sqrt(0.05));
+}
+
+/**
+ * Resolve an intent's desired state independently from whether its last atom
+ * executed legally. A completed reproduction attempt can therefore remain an
+ * unmet pregnancy goal without changing ActionFact semantics.
+ */
+export function recordIntentGoalOutcome(
+  state: SimulationState,
+  intent: Intent,
+  kind: IntentGoalOutcomeKind,
+  atMonth: number,
+  sourceEventIds: string[],
+  action: PrimitiveAction = intent.completionAction ?? intent.nextAction,
+): void {
+  if (intent.goalOutcome && intent.goalOutcome.kind !== 'not-evaluated') return;
+  const basisKey = cognitiveOutcomeBasisKey(action, intent.goal);
+  const sources = [...new Set(sourceEventIds)].slice(-MAX_BELIEF_SOURCES);
+  intent.goalOutcome = {
+    version: 'intent-goal-outcome-v1',
+    kind,
+    basisKey,
+    resolvedAtMonth: atMonth,
+    sourceEventIds: sources,
+  };
+  if (kind === 'not-evaluated') return;
+  const person = state.people.find((candidate) => candidate.id === intent.ownerId);
+  if (!person) return;
+  const cognition = ensureCognitionState(person);
+  let belief = cognition.goalOutcomeBeliefs?.find((candidate) => candidate.basisKey === basisKey);
+  if (!belief) {
+    belief = freshGoalOutcomeBelief(basisKey, atMonth);
+    cognition.goalOutcomeBeliefs?.push(belief);
+  }
+  belief.attempts += 1;
+  if (kind === 'achieved') {
+    belief.achieved += 1;
+    belief.successAlpha += 1;
+  } else {
+    belief.attemptedUnmet += 1;
+    belief.successBeta += 1;
+  }
+  belief.lastUpdatedAtMonth = atMonth;
+  belief.sourceEventIds = [...new Set([...belief.sourceEventIds, ...sources])].slice(-MAX_BELIEF_SOURCES);
+  cognition.goalOutcomeBeliefs = cognition.goalOutcomeBeliefs
+    ?.sort((left, right) => right.lastUpdatedAtMonth - left.lastUpdatedAtMonth
+      || right.attempts - left.attempts
+      || left.basisKey.localeCompare(right.basisKey))
+    .slice(0, MAX_GOAL_OUTCOME_BELIEFS);
+}
+
+/** Record only the person who produced the final functional project evidence. */
+export function recordProjectNeedResolution(
+  person: PersonState,
+  project: Pick<ProjectState, 'id' | 'need' | 'desiredFunction' | 'triggerFactIds' | 'completionEventIds'>,
+  atMonth: number,
+): NeedResolutionEpisode | undefined {
+  if (!project.completionEventIds.length) return undefined;
+  const cognition = ensureCognitionState(person);
+  const existing = cognition.needResolutionEpisodes?.find((episode) => episode.projectId === project.id);
+  if (existing) return existing;
+  const triggerFactIds = [...new Set(project.triggerFactIds)];
+  const outcomeEventIds = [...new Set(project.completionEventIds)];
+  const episode: NeedResolutionEpisode = {
+    version: 'need-resolution-episode-v1',
+    id: `need-resolution:${project.id}:${person.id}`,
+    projectId: project.id,
+    projectNeed: project.need,
+    desiredFunction: project.desiredFunction,
+    basisKey: `need-resolution:${project.need}:${project.desiredFunction}`,
+    observedAtMonth: atMonth,
+    observationKind: 'completion-action',
+    triggerFactIds,
+    outcomeEventIds,
+    sourceFactIds: [...new Set([...triggerFactIds, ...outcomeEventIds])],
+  };
+  cognition.needResolutionEpisodes = [...(cognition.needResolutionEpisodes ?? []), episode]
+    .sort((left, right) => left.observedAtMonth - right.observedAtMonth || left.id.localeCompare(right.id))
+    .slice(-MAX_NEED_RESOLUTION_EPISODES);
+  return episode;
+}
+
 /** Engine bookkeeping that leaves the actor in place is not an experience. */
 export function isMeaningfulCognitiveOutcome(fact: ActionFact): boolean {
   return fact.action.kind !== 'move'
@@ -202,8 +334,12 @@ export function recordActionOutcomeBelief(state: SimulationState, fact: ActionFa
 
 export function causalMemoryTraceForAction(state: SimulationState, fact: ActionFact): CausalMemoryTrace {
   const evidence = outcomeEvidence(fact);
-  const intent = fact.intentId ? state.intents.find((candidate) => candidate.id === fact.intentId) : undefined;
+  const intent = fact.intentId ? intentById(state, fact.intentId) : undefined;
   const consequenceTags = new Set<string>([evidence.outcome]);
+  const explicitGoalUnmet = fact.action.kind === 'act'
+    && fact.action.operation === 'reproduce'
+    && fact.diff.conceived === false;
+  if (explicitGoalUnmet) consequenceTags.add('goal-unmet');
   if (fact.action.kind === 'communicate') consequenceTags.add('social');
   if (fact.action.kind === 'transfer') consequenceTags.add('resource-transfer');
   if (intent?.projectId) consequenceTags.add('project');
@@ -222,7 +358,9 @@ export function causalMemoryTraceForAction(state: SimulationState, fact: ActionF
     ...(operation ? { operation } : {}),
     ...(intent ? { goalKind: intent.goal.kind } : {}),
     outcome: evidence.outcome,
-    valence: evidence.valence,
+    // Completing the biological process is valid action experience, but a
+    // non-conception must not become a positive memory of achieving pregnancy.
+    valence: explicitGoalUnmet ? 0 : evidence.valence,
     consequenceTags: [...consequenceTags].sort(),
   };
 }

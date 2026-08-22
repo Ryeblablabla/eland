@@ -8,6 +8,8 @@ interface Props {
   view: MusicView;
   era: EraKey;
   audible: boolean;
+  /** Keep the current cue playing quietly beneath dialogue or a cinematic overlay. */
+  ducked?: boolean;
 }
 
 interface MusicTrack {
@@ -35,6 +37,7 @@ const TRACKS: ReadonlyArray<{ role: TrackRole; file: string }> = [
 ];
 
 const NORMAL_MASTER_GAIN = 0.56;
+const DUCKED_MASTER_GAIN = 0.16;
 const CHAOS_BOOST_GAIN = 0.88;
 const CROSSFADE_SECONDS = 2.6;
 const CHAOS_BOOST_ATTACK_SECONDS = 0.22;
@@ -112,10 +115,13 @@ function applyMix(runtime: MusicRuntime, view: MusicView, era: EraKey, duration 
   runtime.activeTrack = nextTrack;
 }
 
-function setMasterAudible(runtime: MusicRuntime, audible: boolean, duration = 0.45): void {
+function setMasterAudible(runtime: MusicRuntime, audible: boolean, ducked = false, duration = 0.45): void {
   const now = runtime.context.currentTime;
   holdParameter(runtime.master.gain, now);
-  runtime.master.gain.linearRampToValueAtTime(audible ? NORMAL_MASTER_GAIN : 0.0001, now + duration);
+  runtime.master.gain.linearRampToValueAtTime(
+    audible ? ducked ? DUCKED_MASTER_GAIN : NORMAL_MASTER_GAIN : 0.0001,
+    now + duration,
+  );
 }
 
 function boostForChaoticArrival(runtime: MusicRuntime): void {
@@ -132,16 +138,18 @@ function boostForChaoticArrival(runtime: MusicRuntime): void {
  * Keeps all three 176-second cues running on the same timeline and changes only their gains.
  * Playback starts after the first user gesture to satisfy browser autoplay policies.
  */
-export default function AdaptiveMusic({ view, era, audible }: Props) {
+export default function AdaptiveMusic({ view, era, audible, ducked = false }: Props) {
   const runtimeRef = useRef<MusicRuntime | null>(null);
   const viewRef = useRef(view);
   const eraRef = useRef(era);
   const audibleRef = useRef(audible);
+  const duckedRef = useRef(ducked);
   const previousChaoticRef = useRef(isChaoticEra(era));
 
   viewRef.current = view;
   eraRef.current = era;
   audibleRef.current = audible;
+  duckedRef.current = ducked;
 
   useEffect(() => {
     const context = new AudioContext();
@@ -195,7 +203,7 @@ export default function AdaptiveMusic({ view, era, audible }: Props) {
         runtime.activeTrack = targetTrack(viewRef.current, eraRef.current);
         synchronizeMutedTracks(runtime, runtime.activeTrack, true);
         applyMix(runtime, viewRef.current, eraRef.current, 0.12);
-        setMasterAudible(runtime, audibleRef.current, 1.2);
+        setMasterAudible(runtime, audibleRef.current, duckedRef.current, 1.2);
         runtime.syncTimer = setInterval(() => {
           synchronizeMutedTracks(runtime, runtime.activeTrack);
         }, 4_000);
@@ -239,8 +247,8 @@ export default function AdaptiveMusic({ view, era, audible }: Props) {
 
     const nextTrack = targetTrack(view, era);
     if (nextTrack !== runtime.activeTrack) applyMix(runtime, view, era);
-    if (enteringChaos && audible) boostForChaoticArrival(runtime);
-  }, [audible, era, view]);
+    if (enteringChaos && audible && !ducked) boostForChaoticArrival(runtime);
+  }, [audible, ducked, era, view]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -251,8 +259,8 @@ export default function AdaptiveMusic({ view, era, audible }: Props) {
         synchronizeMutedTracks(runtime, runtime.activeTrack);
       });
     }
-    setMasterAudible(runtime, audible);
-  }, [audible]);
+    setMasterAudible(runtime, audible, ducked);
+  }, [audible, ducked]);
 
   return null;
 }

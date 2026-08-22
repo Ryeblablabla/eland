@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-player-narrative-'));
 const bundlePath = path.join(temporaryDirectory, 'player-narrative.mjs');
 const enhancementBundlePath = path.join(temporaryDirectory, 'narrative-enhancements.mjs');
+const projectionBundlePath = path.join(temporaryDirectory, 'society-projection.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -16,8 +17,85 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'server/narrative-enhancements.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${enhancementBundlePath}`,
   ], { stdio: 'pipe' });
+  const projectionTestEntry = `
+    export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
+    export { toSocietyState } from ${JSON.stringify(path.resolve('src/game/eland/adapter.ts'))};
+    export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
+    export { setVoxel } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
+  `;
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    '--bundle', '--platform=node', '--format=esm', '--loader=ts',
+    '--sourcefile=society-projection-test-entry.ts', `--outfile=${projectionBundlePath}`,
+  ], { input: projectionTestEntry, stdio: ['pipe', 'pipe', 'pipe'] });
   const { playerTextForEvent, projectPlayerNarrative } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { summarizePlayerNarrativeEntries } = await import(`${pathToFileURL(enhancementBundlePath).href}?test=${Date.now()}`);
+  const { createInitialState, Material, setVoxel, toSocietyState } = await import(`${pathToFileURL(projectionBundlePath).href}?test=${Date.now()}`);
+
+  const visualProjectionState = createInitialState(20260822, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  const berryGatherer = visualProjectionState.people[0];
+  const cropHarvester = visualProjectionState.people[1];
+  const blockedGatherer = visualProjectionState.people[2];
+  const separateFact = (id, actor, sourceMaterialId, replacementMaterialId, outputs, orderInMonth) => {
+    const x = actor.position.cellId % visualProjectionState.world.grid.width;
+    const y = Math.floor(actor.position.cellId / visualProjectionState.world.grid.width);
+    const z = Math.max(0, actor.position.z - 1);
+    setVoxel(visualProjectionState.world.grid, x, y, z, replacementMaterialId);
+    return {
+      id, kind: 'action', atMonth: visualProjectionState.clock.elapsedMonths, orderInMonth,
+      actionTick: orderInMonth, cellId: actor.position.cellId, who: actor.id, cause: 'intent',
+      action: {
+        kind: 'act', operation: 'separate',
+        targets: [{ kind: 'voxel', position: { x, y, z } }], toolStackId: `consumed-tool-${id}`,
+      },
+      fromCellId: actor.position.cellId, toCellId: actor.position.cellId,
+      fromZ: actor.position.z, toZ: actor.position.z, pathSegment: [actor.position.cellId],
+      status: 'completed', result: '分离动作已完成',
+      diff: { sourceMaterialId, toolMaterialId: Material.StoneHoe, outputs },
+    };
+  };
+  const berryGatherFact = separateFact(
+    'visual-berry-gather', berryGatherer, Material.BerryBush, Material.Shrub,
+    [{ materialId: Material.Food, quantity: 2 }, { materialId: Material.Seed, quantity: 1 }], 1,
+  );
+  const cropHarvestFact = separateFact(
+    'visual-crop-harvest', cropHarvester, Material.CropMature, Material.ExhaustedSoil,
+    [{ materialId: Material.Food, quantity: 5 }, { materialId: Material.Seed, quantity: 2 }], 2,
+  );
+  const blockedGatherFact = separateFact(
+    'visual-blocked-berry-gather', blockedGatherer, Material.BerryBush, Material.CropMature, [], 3,
+  );
+  blockedGatherFact.status = 'blocked';
+  blockedGatherFact.result = '野果丛目前无法徒手分离';
+  blockedGatherFact.diff = { materialId: Material.BerryBush };
+  berryGatherer.currentActionText = '建立固定耕地';
+  cropHarvester.currentActionText = '处理眼前植物';
+  blockedGatherer.currentActionText = '处理眼前植物';
+  visualProjectionState.world.past.push(berryGatherFact, cropHarvestFact, blockedGatherFact);
+  const projectedSociety = toSocietyState(visualProjectionState);
+  const berryVisual = projectedSociety.agents.find((agent) => agent.id === berryGatherer.id);
+  const cropVisual = projectedSociety.agents.find((agent) => agent.id === cropHarvester.id);
+  const blockedVisual = projectedSociety.agents.find((agent) => agent.id === blockedGatherer.id);
+  assert.equal(berryVisual?.visualAction?.sourceMaterialId, Material.BerryBush,
+    '野果采集后体素即使已经变成灌木，视觉投影仍须读取 ActionFact 源材质');
+  assert.equal(berryVisual?.visualAction?.materialId, Material.BerryBush);
+  assert.equal(berryVisual?.visualAction?.toolMaterialId, Material.StoneHoe,
+    '动作后工具栈不在背包时，视觉投影仍须读取 ActionFact 的工具事实');
+  assert.equal(berryVisual?.doing, '采集野果', '有工具的野果采集不能显示为建立耕地');
+  assert.equal(cropVisual?.visualAction?.sourceMaterialId, Material.CropMature,
+    '收割后体素即使已经变成贫瘠土，视觉投影仍须保留成熟作物来源');
+  assert.equal(cropVisual?.doing, '收割成熟作物');
+  assert.equal(blockedVisual?.visualAction?.sourceMaterialId, Material.BerryBush,
+    '旧受阻事实只有 diff.materialId 时仍须冻结当时来源，不能回读后来变化的体素');
+  assert.deepEqual(blockedVisual?.visualAction?.materialIds, [Material.BerryBush]);
+  assert.equal(blockedVisual?.doing, '采集野果');
+  assert.equal(
+    playerTextForEvent(visualProjectionState, berryGatherFact),
+    `${berryGatherer.name}采集了野果，得到2份食物和1份种子。`,
+  );
+  assert.equal(
+    playerTextForEvent(visualProjectionState, cropHarvestFact),
+    `${cropHarvester.name}收割了成熟作物，得到5份食物和2份种子。`,
+  );
 
   const state = {
     branchId: 'main',

@@ -269,6 +269,13 @@ function actText(state: SimulationState, event: ActionEvent, actor: string): str
   if (operation === 'separate') {
     if (typeof event.diff.releasedPersonId === 'string') return `${actor}帮${personName(state, event.diff.releasedPersonId)}解开了绳索`;
     const outputs = materialAmounts(event.diff.outputs);
+    const sourceMaterialId = Number(event.diff.sourceMaterialId);
+    if (sourceMaterialId === Material.BerryBush) {
+      return `${actor}采集了野果${outputs ? `，得到${outputs}` : ''}`;
+    }
+    if (sourceMaterialId === Material.CropMature) {
+      return `${actor}收割了成熟作物${outputs ? `，得到${outputs}` : ''}`;
+    }
     if (outputs) return `${actor}处理了${materialName(event.diff.sourceMaterialId)}，得到${outputs}`;
   }
   if (operation === 'dehydrate' && event.diff.entered === true) {

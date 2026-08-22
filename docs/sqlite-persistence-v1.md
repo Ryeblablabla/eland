@@ -26,12 +26,12 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 
 长程状态使用增量历史 codec，artifact 继续使用 `v8-br-v1`。一个当前状态由四类内容块组成：
 
-- `eland-run-state-root-v1` 保存 shell hash、历史 head、lineage、事件数与末事件摘要；
+- `eland-run-state-root-v1` 保存 shell hash、历史 head、lineage、事件数与末事件摘要；当前根元数据为 schema v2，末事件摘要使用递归键排序的规范 JSON 和独立 domain 计算，不能依赖 V8 私有序列化字节；
 - `eland-run-state-shell-v1` 保存不含 `world.past` 的当前状态；
 - `eland-run-history-node-v1` 只连接上一个 head 与本批新增事件段；
 - `eland-run-state-events-v1` 每段最多保存 2048 条不可变事件。
 
-正常年度检查点只编码新增事件和新的 shell/root，不再把完整 `world.past` 重复压缩。append 会校验旧事件数量、lineage 与边界事件摘要；截断或改写历史必须显式选择 replace，并生成新的随机 lineage。写入在事务外编码，提交时再用 run 的 `revision + state_hash` 做 CAS；陈旧并发写会失败，不能把两个旧 head 静默串成一条历史。旧 `v8-br-v1` run 仍可读取，第一次保存时升级为新根，不修改其既有 checkpoint 证据。
+正常年度检查点只编码新增事件和新的 shell/root，不再把完整 `world.past` 重复压缩。append 会校验旧事件数量、lineage 与边界事件摘要；截断或改写历史必须显式选择 replace，并生成新的随机 lineage。写入在事务外编码，提交时再用 run 的 `revision + state_hash` 做 CAS；陈旧并发写会失败，不能把两个旧 head 静默串成一条历史。旧根 schema v1 的事件段仍逐块校验 codec、长度、SHA-256、lineage 和累计事件数，但不再用跨进程不稳定的旧 V8 末事件摘要拒绝读取；下一次保存走 replace，升级为 schema v2 稳定摘要。更早的 `v8-br-v1` run 也仍可读取，第一次保存时升级为新根，不修改其既有 checkpoint 证据。
 
 手动存档与实时会话使用三类内容寻址 codec：
 

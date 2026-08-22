@@ -1,0 +1,5279 @@
+{
+  "schemaVersion": 1,
+  "auditVersion": "gen5-social-chain-checkpoint-v1",
+  "generatedAt": "2026-08-20T21:09:52.451Z",
+  "runId": "candidate-gen5-social-v5f-20260821-s20260815-y100-r1",
+  "status": "running",
+  "availableMonth": 948,
+  "slices": [
+    {
+      "throughMonth": 120,
+      "population": {
+        "people": 12,
+        "living": 12,
+        "maxGeneration": 1,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 5
+        },
+        "livingByGeneration": {
+          "g0": 7,
+          "g1": 5
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 0,
+          "byGenerationPair": {}
+        },
+        "accepted": {
+          "total": 0,
+          "byGenerationPair": {}
+        },
+        "fulfilled": {
+          "total": 0,
+          "byGenerationPair": {}
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 21,
+          "byGenerationPair": {
+            "g0-g0": 21
+          }
+        },
+        "accepted": {
+          "total": 21,
+          "byGenerationPair": {
+            "g0-g0": 21
+          }
+        },
+        "established": {
+          "total": 5,
+          "byGenerationPair": {
+            "g0-g0": 5
+          }
+        },
+        "activeEstablished": {
+          "total": 5,
+          "byGenerationPair": {
+            "g0-g0": 5
+          }
+        },
+        "persistent": {
+          "total": 81,
+          "byGenerationPair": {
+            "g0-g0": 81
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 13,
+          "byGenerationPair": {
+            "g0-g0": 13
+          }
+        },
+        "accepted": {
+          "total": 13,
+          "byGenerationPair": {
+            "g0-g0": 13
+          }
+        },
+        "attempts": {
+          "total": 29,
+          "byGenerationPair": {
+            "g0-g0": 29
+          }
+        },
+        "conceptions": {
+          "total": 5,
+          "byGenerationPair": {
+            "g0-g0": 5
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 5
+        }
+      }
+    },
+    {
+      "throughMonth": 240,
+      "population": {
+        "people": 19,
+        "living": 19,
+        "maxGeneration": 1,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 12
+        },
+        "livingByGeneration": {
+          "g0": 7,
+          "g1": 12
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 0,
+          "byGenerationPair": {}
+        },
+        "accepted": {
+          "total": 0,
+          "byGenerationPair": {}
+        },
+        "fulfilled": {
+          "total": 0,
+          "byGenerationPair": {}
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 27,
+          "byGenerationPair": {
+            "g0-g0": 27
+          }
+        },
+        "accepted": {
+          "total": 27,
+          "byGenerationPair": {
+            "g0-g0": 27
+          }
+        },
+        "established": {
+          "total": 8,
+          "byGenerationPair": {
+            "g0-g0": 8
+          }
+        },
+        "activeEstablished": {
+          "total": 8,
+          "byGenerationPair": {
+            "g0-g0": 8
+          }
+        },
+        "persistent": {
+          "total": 252,
+          "byGenerationPair": {
+            "g0-g0": 252
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 32,
+          "byGenerationPair": {
+            "g0-g0": 32
+          }
+        },
+        "accepted": {
+          "total": 27,
+          "byGenerationPair": {
+            "g0-g0": 27
+          }
+        },
+        "attempts": {
+          "total": 50,
+          "byGenerationPair": {
+            "g0-g0": 50
+          }
+        },
+        "conceptions": {
+          "total": 14,
+          "byGenerationPair": {
+            "g0-g0": 14
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 12
+        }
+      }
+    },
+    {
+      "throughMonth": 360,
+      "population": {
+        "people": 25,
+        "living": 25,
+        "maxGeneration": 1,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 18
+        },
+        "livingByGeneration": {
+          "g0": 7,
+          "g1": 18
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 47,
+          "byGenerationPair": {
+            "g0-g1": 22,
+            "g1-g1": 25
+          }
+        },
+        "accepted": {
+          "total": 42,
+          "byGenerationPair": {
+            "g0-g1": 21,
+            "g1-g1": 21
+          }
+        },
+        "fulfilled": {
+          "total": 42,
+          "byGenerationPair": {
+            "g0-g1": 21,
+            "g1-g1": 21
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 42,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 10,
+            "g1-g1": 5
+          }
+        },
+        "accepted": {
+          "total": 34,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 2,
+            "g1-g1": 5
+          }
+        },
+        "established": {
+          "total": 10,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g1-g1": 1
+          }
+        },
+        "activeEstablished": {
+          "total": 10,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g1-g1": 1
+          }
+        },
+        "persistent": {
+          "total": 482,
+          "byGenerationPair": {
+            "g0-g0": 480,
+            "g1-g1": 2
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 46,
+          "byGenerationPair": {
+            "g0-g0": 46
+          }
+        },
+        "accepted": {
+          "total": 39,
+          "byGenerationPair": {
+            "g0-g0": 39
+          }
+        },
+        "attempts": {
+          "total": 78,
+          "byGenerationPair": {
+            "g0-g0": 78
+          }
+        },
+        "conceptions": {
+          "total": 18,
+          "byGenerationPair": {
+            "g0-g0": 18
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 18
+        }
+      }
+    },
+    {
+      "throughMonth": 480,
+      "population": {
+        "people": 26,
+        "living": 26,
+        "maxGeneration": 1,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 19
+        },
+        "livingByGeneration": {
+          "g0": 7,
+          "g1": 19
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        },
+        {
+          "childId": "born-386-zhaotianli-25",
+          "name": "孙思齐",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 386,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-386-environment-body-3"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 123,
+          "byGenerationPair": {
+            "g0-g1": 62,
+            "g1-g1": 61
+          }
+        },
+        "accepted": {
+          "total": 117,
+          "byGenerationPair": {
+            "g0-g1": 61,
+            "g1-g1": 56
+          }
+        },
+        "fulfilled": {
+          "total": 117,
+          "byGenerationPair": {
+            "g0-g1": 61,
+            "g1-g1": 56
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 85,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 41,
+            "g1-g1": 17
+          }
+        },
+        "accepted": {
+          "total": 68,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 24,
+            "g1-g1": 17
+          }
+        },
+        "established": {
+          "total": 20,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 7,
+            "g1-g1": 4
+          }
+        },
+        "activeEstablished": {
+          "total": 20,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 7,
+            "g1-g1": 4
+          }
+        },
+        "persistent": {
+          "total": 712,
+          "byGenerationPair": {
+            "g0-g0": 630,
+            "g0-g1": 46,
+            "g1-g1": 36
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 49,
+          "byGenerationPair": {
+            "g0-g0": 49
+          }
+        },
+        "accepted": {
+          "total": 42,
+          "byGenerationPair": {
+            "g0-g0": 42
+          }
+        },
+        "attempts": {
+          "total": 86,
+          "byGenerationPair": {
+            "g0-g0": 86
+          }
+        },
+        "conceptions": {
+          "total": 19,
+          "byGenerationPair": {
+            "g0-g0": 19
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 19
+        }
+      }
+    },
+    {
+      "throughMonth": 600,
+      "population": {
+        "people": 29,
+        "living": 28,
+        "maxGeneration": 2,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 19,
+          "g2": 3
+        },
+        "livingByGeneration": {
+          "g0": 7,
+          "g1": 18,
+          "g2": 3
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        },
+        {
+          "childId": "born-386-zhaotianli-25",
+          "name": "孙思齐",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 386,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-386-environment-body-3"
+        },
+        {
+          "childId": "born-551-born-142-zhaotianli-14-26",
+          "name": "孙清禾",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 551,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-551-environment-body-15"
+        },
+        {
+          "childId": "born-576-born-190-cangtianying-15-27",
+          "name": "莉迪亚·阿姆斯特朗",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 576,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-576-environment-body-0"
+        },
+        {
+          "childId": "born-578-born-142-zhaotianli-14-28",
+          "name": "孙知夏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 578,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-578-environment-body-0"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 205,
+          "byGenerationPair": {
+            "g0-g1": 96,
+            "g1-g1": 109
+          }
+        },
+        "accepted": {
+          "total": 199,
+          "byGenerationPair": {
+            "g0-g1": 95,
+            "g1-g1": 104
+          }
+        },
+        "fulfilled": {
+          "total": 199,
+          "byGenerationPair": {
+            "g0-g1": 95,
+            "g1-g1": 104
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 136,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 71,
+            "g1-g1": 38
+          }
+        },
+        "accepted": {
+          "total": 110,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 45,
+            "g1-g1": 38
+          }
+        },
+        "established": {
+          "total": 48,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 25,
+            "g1-g1": 14
+          }
+        },
+        "activeEstablished": {
+          "total": 48,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 25,
+            "g1-g1": 14
+          }
+        },
+        "persistent": {
+          "total": 1459,
+          "byGenerationPair": {
+            "g0-g0": 848,
+            "g0-g1": 413,
+            "g1-g1": 198
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 58,
+          "byGenerationPair": {
+            "g0-g0": 49,
+            "g1-g1": 9
+          }
+        },
+        "accepted": {
+          "total": 51,
+          "byGenerationPair": {
+            "g0-g0": 42,
+            "g1-g1": 9
+          }
+        },
+        "attempts": {
+          "total": 107,
+          "byGenerationPair": {
+            "g0-g0": 86,
+            "g1-g1": 21
+          }
+        },
+        "conceptions": {
+          "total": 22,
+          "byGenerationPair": {
+            "g0-g0": 19,
+            "g1-g1": 3
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 19,
+          "g1-g1": 3
+        }
+      }
+    },
+    {
+      "throughMonth": 720,
+      "population": {
+        "people": 37,
+        "living": 33,
+        "maxGeneration": 2,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 19,
+          "g2": 11
+        },
+        "livingByGeneration": {
+          "g0": 5,
+          "g1": 17,
+          "g2": 11
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        },
+        {
+          "childId": "born-386-zhaotianli-25",
+          "name": "孙思齐",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 386,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-386-environment-body-3"
+        },
+        {
+          "childId": "born-551-born-142-zhaotianli-14-26",
+          "name": "孙清禾",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 551,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-551-environment-body-15"
+        },
+        {
+          "childId": "born-576-born-190-cangtianying-15-27",
+          "name": "莉迪亚·阿姆斯特朗",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 576,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-576-environment-body-0"
+        },
+        {
+          "childId": "born-578-born-142-zhaotianli-14-28",
+          "name": "孙知夏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 578,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-578-environment-body-0"
+        },
+        {
+          "childId": "born-628-born-142-zhaotianli-14-29",
+          "name": "孙含章",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 628,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-628-environment-body-26"
+        },
+        {
+          "childId": "born-629-born-190-cangtianying-15-30",
+          "name": "乔治·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 629,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-629-environment-body-25"
+        },
+        {
+          "childId": "born-647-born-98-bai-suzhen-10-31",
+          "name": "孙兰因",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 647,
+          "parentIds": [
+            "born-98-bai-suzhen-10",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙令仪",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-647-environment-body-0"
+        },
+        {
+          "childId": "born-654-born-142-zhaotianli-14-32",
+          "name": "孙云舒",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 654,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-654-environment-body-17"
+        },
+        {
+          "childId": "born-677-born-142-zhaotianli-14-33",
+          "name": "孙书昀",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 677,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-677-environment-body-0"
+        },
+        {
+          "childId": "born-678-born-190-cangtianying-15-34",
+          "name": "维克多·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 678,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-678-environment-body-0"
+        },
+        {
+          "childId": "born-704-born-190-cangtianying-15-35",
+          "name": "诸葛伯言",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 704,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-704-environment-body-0"
+        },
+        {
+          "childId": "born-706-born-301-zhaotianli-23-36",
+          "name": "孙疏影",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 706,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-706-environment-body-0"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 277,
+          "byGenerationPair": {
+            "g0-g1": 109,
+            "g0-g2": 8,
+            "g1-g1": 137,
+            "g1-g2": 23
+          }
+        },
+        "accepted": {
+          "total": 262,
+          "byGenerationPair": {
+            "g0-g1": 106,
+            "g0-g2": 6,
+            "g1-g1": 131,
+            "g1-g2": 19
+          }
+        },
+        "fulfilled": {
+          "total": 262,
+          "byGenerationPair": {
+            "g0-g1": 106,
+            "g0-g2": 6,
+            "g1-g1": 131,
+            "g1-g2": 19
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 175,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 88,
+            "g1-g1": 59,
+            "g1-g2": 1
+          }
+        },
+        "accepted": {
+          "total": 144,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 57,
+            "g1-g1": 59,
+            "g1-g2": 1
+          }
+        },
+        "established": {
+          "total": 68,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 32,
+            "g1-g1": 27
+          }
+        },
+        "activeEstablished": {
+          "total": 58,
+          "byGenerationPair": {
+            "g0-g0": 6,
+            "g0-g1": 27,
+            "g1-g1": 25
+          }
+        },
+        "persistent": {
+          "total": 3055,
+          "byGenerationPair": {
+            "g0-g0": 1079,
+            "g0-g1": 1189,
+            "g1-g1": 787
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 77,
+          "byGenerationPair": {
+            "g0-g0": 49,
+            "g0-g1": 9,
+            "g1-g1": 19
+          }
+        },
+        "accepted": {
+          "total": 67,
+          "byGenerationPair": {
+            "g0-g0": 42,
+            "g0-g1": 7,
+            "g1-g1": 18
+          }
+        },
+        "attempts": {
+          "total": 140,
+          "byGenerationPair": {
+            "g0-g0": 86,
+            "g0-g1": 11,
+            "g1-g1": 43
+          }
+        },
+        "conceptions": {
+          "total": 31,
+          "byGenerationPair": {
+            "g0-g0": 19,
+            "g0-g1": 2,
+            "g1-g1": 10
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 19,
+          "g0-g1": 2,
+          "g1-g1": 9
+        }
+      }
+    },
+    {
+      "throughMonth": 840,
+      "population": {
+        "people": 48,
+        "living": 43,
+        "maxGeneration": 2,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 19,
+          "g2": 22
+        },
+        "livingByGeneration": {
+          "g0": 5,
+          "g1": 17,
+          "g2": 21
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        },
+        {
+          "childId": "born-386-zhaotianli-25",
+          "name": "孙思齐",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 386,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-386-environment-body-3"
+        },
+        {
+          "childId": "born-551-born-142-zhaotianli-14-26",
+          "name": "孙清禾",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 551,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-551-environment-body-15"
+        },
+        {
+          "childId": "born-576-born-190-cangtianying-15-27",
+          "name": "莉迪亚·阿姆斯特朗",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 576,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-576-environment-body-0"
+        },
+        {
+          "childId": "born-578-born-142-zhaotianli-14-28",
+          "name": "孙知夏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 578,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-578-environment-body-0"
+        },
+        {
+          "childId": "born-628-born-142-zhaotianli-14-29",
+          "name": "孙含章",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 628,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-628-environment-body-26"
+        },
+        {
+          "childId": "born-629-born-190-cangtianying-15-30",
+          "name": "乔治·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 629,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-629-environment-body-25"
+        },
+        {
+          "childId": "born-647-born-98-bai-suzhen-10-31",
+          "name": "孙兰因",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 647,
+          "parentIds": [
+            "born-98-bai-suzhen-10",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙令仪",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-647-environment-body-0"
+        },
+        {
+          "childId": "born-654-born-142-zhaotianli-14-32",
+          "name": "孙云舒",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 654,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-654-environment-body-17"
+        },
+        {
+          "childId": "born-677-born-142-zhaotianli-14-33",
+          "name": "孙书昀",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 677,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-677-environment-body-0"
+        },
+        {
+          "childId": "born-678-born-190-cangtianying-15-34",
+          "name": "维克多·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 678,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-678-environment-body-0"
+        },
+        {
+          "childId": "born-704-born-190-cangtianying-15-35",
+          "name": "诸葛伯言",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 704,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-704-environment-body-0"
+        },
+        {
+          "childId": "born-706-born-301-zhaotianli-23-36",
+          "name": "孙疏影",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 706,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-706-environment-body-0"
+        },
+        {
+          "childId": "born-728-born-190-cangtianying-15-37",
+          "name": "阿德里安·特斯拉",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 728,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-140-cangtianying-12"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "埃德蒙·特斯拉"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-728-environment-body-0"
+        },
+        {
+          "childId": "born-730-born-301-zhaotianli-23-38",
+          "name": "孙玉衡",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 730,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-730-environment-body-0"
+        },
+        {
+          "childId": "born-740-born-386-zhaotianli-25-39",
+          "name": "孙昭明",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 740,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-740-environment-body-1"
+        },
+        {
+          "childId": "born-770-born-386-zhaotianli-25-40",
+          "name": "孙修远",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 770,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-770-environment-body-0"
+        },
+        {
+          "childId": "born-772-born-311-bai-suzhen-24-41",
+          "name": "孙明哲",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 772,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-258-zhaotianli-21"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙弘毅"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-772-environment-body-24"
+        },
+        {
+          "childId": "born-782-born-301-zhaotianli-23-42",
+          "name": "孙灵犀",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 782,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-782-environment-body-1"
+        },
+        {
+          "childId": "born-795-born-311-bai-suzhen-24-43",
+          "name": "孙清晏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 795,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-195-bai-suzhen-17"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙安澜"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-795-environment-body-21"
+        },
+        {
+          "childId": "born-795-born-386-zhaotianli-25-44",
+          "name": "孙少衡",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 795,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-795-environment-body-23"
+        },
+        {
+          "childId": "born-811-born-301-zhaotianli-23-45",
+          "name": "孙安歌",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 811,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-811-environment-body-21"
+        },
+        {
+          "childId": "born-827-born-311-bai-suzhen-24-46",
+          "name": "孙青梧",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 827,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-258-zhaotianli-21"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙弘毅"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-827-environment-body-0"
+        },
+        {
+          "childId": "born-829-born-386-zhaotianli-25-47",
+          "name": "孙叙白",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 829,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-829-environment-body-0"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 353,
+          "byGenerationPair": {
+            "g0-g1": 110,
+            "g0-g2": 20,
+            "g1-g1": 147,
+            "g1-g2": 64,
+            "g2-g2": 12
+          }
+        },
+        "accepted": {
+          "total": 318,
+          "byGenerationPair": {
+            "g0-g1": 108,
+            "g0-g2": 18,
+            "g1-g1": 141,
+            "g1-g2": 46,
+            "g2-g2": 5
+          }
+        },
+        "fulfilled": {
+          "total": 316,
+          "byGenerationPair": {
+            "g0-g1": 107,
+            "g0-g2": 18,
+            "g1-g1": 141,
+            "g1-g2": 45,
+            "g2-g2": 5
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 194,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 90,
+            "g0-g2": 5,
+            "g1-g1": 62,
+            "g1-g2": 9,
+            "g2-g2": 1
+          }
+        },
+        "accepted": {
+          "total": 160,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 58,
+            "g0-g2": 5,
+            "g1-g1": 62,
+            "g1-g2": 7,
+            "g2-g2": 1
+          }
+        },
+        "established": {
+          "total": 80,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 33,
+            "g0-g2": 3,
+            "g1-g1": 30,
+            "g1-g2": 5
+          }
+        },
+        "activeEstablished": {
+          "total": 63,
+          "byGenerationPair": {
+            "g0-g0": 4,
+            "g0-g1": 23,
+            "g0-g2": 3,
+            "g1-g1": 28,
+            "g1-g2": 5
+          }
+        },
+        "persistent": {
+          "total": 4839,
+          "byGenerationPair": {
+            "g0-g0": 1216,
+            "g0-g1": 1935,
+            "g0-g2": 35,
+            "g1-g1": 1597,
+            "g1-g2": 56
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 89,
+          "byGenerationPair": {
+            "g0-g0": 49,
+            "g0-g1": 9,
+            "g1-g1": 31
+          }
+        },
+        "accepted": {
+          "total": 79,
+          "byGenerationPair": {
+            "g0-g0": 42,
+            "g0-g1": 7,
+            "g1-g1": 30
+          }
+        },
+        "attempts": {
+          "total": 164,
+          "byGenerationPair": {
+            "g0-g0": 86,
+            "g0-g1": 11,
+            "g1-g1": 67
+          }
+        },
+        "conceptions": {
+          "total": 41,
+          "byGenerationPair": {
+            "g0-g0": 19,
+            "g0-g1": 2,
+            "g1-g1": 20
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 19,
+          "g0-g1": 2,
+          "g1-g1": 20
+        }
+      }
+    },
+    {
+      "throughMonth": 936,
+      "population": {
+        "people": 50,
+        "living": 41,
+        "maxGeneration": 2,
+        "byGeneration": {
+          "g0": 7,
+          "g1": 19,
+          "g2": 24
+        },
+        "livingByGeneration": {
+          "g0": 2,
+          "g1": 16,
+          "g2": 23
+        }
+      },
+      "births": [
+        {
+          "childId": "born-65-bai-suzhen-7",
+          "name": "孙亦辰",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 65,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-65-environment-body-0"
+        },
+        {
+          "childId": "born-69-cangtianying-8",
+          "name": "奥黛丽·阿姆斯特朗",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 69,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-69-environment-body-0"
+        },
+        {
+          "childId": "born-98-bai-suzhen-10",
+          "name": "孙令仪",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-1"
+        },
+        {
+          "childId": "born-98-cangtianying-11",
+          "name": "西蒙·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-2"
+        },
+        {
+          "childId": "born-98-zhaotianli-9",
+          "name": "孙守一",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 98,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-98-environment-body-0"
+        },
+        {
+          "childId": "born-140-cangtianying-12",
+          "name": "埃德蒙·特斯拉",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 140,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-140-environment-body-0"
+        },
+        {
+          "childId": "born-141-bai-suzhen-13",
+          "name": "孙允和",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 141,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-141-environment-body-0"
+        },
+        {
+          "childId": "born-142-zhaotianli-14",
+          "name": "孙明昭",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 142,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-142-environment-body-0"
+        },
+        {
+          "childId": "born-190-cangtianying-15",
+          "name": "诸葛知夏",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 190,
+          "parentIds": [
+            "cangtianying",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "苍天影",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-190-environment-body-0"
+        },
+        {
+          "childId": "born-191-zhaotianli-16",
+          "name": "孙凌川",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 191,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-191-environment-body-0"
+        },
+        {
+          "childId": "born-195-bai-suzhen-17",
+          "name": "孙安澜",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 195,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-195-environment-body-0"
+        },
+        {
+          "childId": "born-213-cangtianying-18",
+          "name": "威廉·阿姆斯特朗",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 213,
+          "parentIds": [
+            "cangtianying",
+            "armstrong"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼尔·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-213-environment-body-3"
+        },
+        {
+          "childId": "born-246-bai-suzhen-19",
+          "name": "孙玄同",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-0"
+        },
+        {
+          "childId": "born-246-cangtianying-20",
+          "name": "朱莉娅·特斯拉",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 246,
+          "parentIds": [
+            "cangtianying",
+            "tesla"
+          ],
+          "parentNames": [
+            "苍天影",
+            "尼古拉·特斯拉"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-246-environment-body-1"
+        },
+        {
+          "childId": "born-258-zhaotianli-21",
+          "name": "孙弘毅",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 258,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-258-environment-body-2"
+        },
+        {
+          "childId": "born-284-bai-suzhen-22",
+          "name": "孙庭轩",
+          "sex": "male",
+          "generation": 1,
+          "bornAtMonth": 284,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-284-environment-body-0"
+        },
+        {
+          "childId": "born-301-zhaotianli-23",
+          "name": "孙朝云",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 301,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-301-environment-body-0"
+        },
+        {
+          "childId": "born-311-bai-suzhen-24",
+          "name": "孙婉宁",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 311,
+          "parentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "白素贞",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-311-environment-body-2"
+        },
+        {
+          "childId": "born-386-zhaotianli-25",
+          "name": "孙思齐",
+          "sex": "female",
+          "generation": 1,
+          "bornAtMonth": 386,
+          "parentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "照天离",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            0,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 0,
+          "birthFactId": "e-386-environment-body-3"
+        },
+        {
+          "childId": "born-551-born-142-zhaotianli-14-26",
+          "name": "孙清禾",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 551,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-551-environment-body-15"
+        },
+        {
+          "childId": "born-576-born-190-cangtianying-15-27",
+          "name": "莉迪亚·阿姆斯特朗",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 576,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-576-environment-body-0"
+        },
+        {
+          "childId": "born-578-born-142-zhaotianli-14-28",
+          "name": "孙知夏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 578,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-578-environment-body-0"
+        },
+        {
+          "childId": "born-628-born-142-zhaotianli-14-29",
+          "name": "孙含章",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 628,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-628-environment-body-26"
+        },
+        {
+          "childId": "born-629-born-190-cangtianying-15-30",
+          "name": "乔治·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 629,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-629-environment-body-25"
+        },
+        {
+          "childId": "born-647-born-98-bai-suzhen-10-31",
+          "name": "孙兰因",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 647,
+          "parentIds": [
+            "born-98-bai-suzhen-10",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙令仪",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-647-environment-body-0"
+        },
+        {
+          "childId": "born-654-born-142-zhaotianli-14-32",
+          "name": "孙云舒",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 654,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "born-65-bai-suzhen-7"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙亦辰"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-654-environment-body-17"
+        },
+        {
+          "childId": "born-677-born-142-zhaotianli-14-33",
+          "name": "孙书昀",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 677,
+          "parentIds": [
+            "born-142-zhaotianli-14",
+            "sunwukong"
+          ],
+          "parentNames": [
+            "孙明昭",
+            "孙悟空"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-677-environment-body-0"
+        },
+        {
+          "childId": "born-678-born-190-cangtianying-15-34",
+          "name": "维克多·阿姆斯特朗",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 678,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-213-cangtianying-18"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "威廉·阿姆斯特朗"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-678-environment-body-0"
+        },
+        {
+          "childId": "born-704-born-190-cangtianying-15-35",
+          "name": "诸葛伯言",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 704,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "zhugeliang"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "诸葛亮"
+          ],
+          "parentGenerations": [
+            1,
+            0
+          ],
+          "sharedParentIds": [],
+          "parentalKinshipRisk": 1,
+          "birthFactId": "e-704-environment-body-0"
+        },
+        {
+          "childId": "born-706-born-301-zhaotianli-23-36",
+          "name": "孙疏影",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 706,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-706-environment-body-0"
+        },
+        {
+          "childId": "born-728-born-190-cangtianying-15-37",
+          "name": "阿德里安·特斯拉",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 728,
+          "parentIds": [
+            "born-190-cangtianying-15",
+            "born-140-cangtianying-12"
+          ],
+          "parentNames": [
+            "诸葛知夏",
+            "埃德蒙·特斯拉"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "cangtianying"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-728-environment-body-0"
+        },
+        {
+          "childId": "born-730-born-301-zhaotianli-23-38",
+          "name": "孙玉衡",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 730,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-730-environment-body-0"
+        },
+        {
+          "childId": "born-740-born-386-zhaotianli-25-39",
+          "name": "孙昭明",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 740,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-740-environment-body-1"
+        },
+        {
+          "childId": "born-770-born-386-zhaotianli-25-40",
+          "name": "孙修远",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 770,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-770-environment-body-0"
+        },
+        {
+          "childId": "born-772-born-311-bai-suzhen-24-41",
+          "name": "孙明哲",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 772,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-258-zhaotianli-21"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙弘毅"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-772-environment-body-24"
+        },
+        {
+          "childId": "born-782-born-301-zhaotianli-23-42",
+          "name": "孙灵犀",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 782,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-782-environment-body-1"
+        },
+        {
+          "childId": "born-795-born-311-bai-suzhen-24-43",
+          "name": "孙清晏",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 795,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-195-bai-suzhen-17"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙安澜"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "bai-suzhen",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-795-environment-body-21"
+        },
+        {
+          "childId": "born-795-born-386-zhaotianli-25-44",
+          "name": "孙少衡",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 795,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-795-environment-body-23"
+        },
+        {
+          "childId": "born-811-born-301-zhaotianli-23-45",
+          "name": "孙安歌",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 811,
+          "parentIds": [
+            "born-301-zhaotianli-23",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙朝云",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-811-environment-body-21"
+        },
+        {
+          "childId": "born-827-born-311-bai-suzhen-24-46",
+          "name": "孙青梧",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 827,
+          "parentIds": [
+            "born-311-bai-suzhen-24",
+            "born-258-zhaotianli-21"
+          ],
+          "parentNames": [
+            "孙婉宁",
+            "孙弘毅"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-827-environment-body-0"
+        },
+        {
+          "childId": "born-829-born-386-zhaotianli-25-47",
+          "name": "孙叙白",
+          "sex": "male",
+          "generation": 2,
+          "bornAtMonth": 829,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-829-environment-body-0"
+        },
+        {
+          "childId": "born-851-born-386-zhaotianli-25-48",
+          "name": "孙采薇",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 851,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-851-environment-body-0"
+        },
+        {
+          "childId": "born-890-born-386-zhaotianli-25-49",
+          "name": "孙月白",
+          "sex": "female",
+          "generation": 2,
+          "bornAtMonth": 890,
+          "parentIds": [
+            "born-386-zhaotianli-25",
+            "born-98-zhaotianli-9"
+          ],
+          "parentNames": [
+            "孙思齐",
+            "孙守一"
+          ],
+          "parentGenerations": [
+            1,
+            1
+          ],
+          "sharedParentIds": [
+            "zhaotianli",
+            "sunwukong"
+          ],
+          "parentalKinshipRisk": 0.9,
+          "birthFactId": "e-890-environment-body-0"
+        }
+      ],
+      "company": {
+        "proposed": {
+          "total": 490,
+          "byGenerationPair": {
+            "g0-g1": 111,
+            "g0-g2": 39,
+            "g1-g1": 151,
+            "g1-g2": 106,
+            "g2-g2": 83
+          }
+        },
+        "accepted": {
+          "total": 417,
+          "byGenerationPair": {
+            "g0-g1": 109,
+            "g0-g2": 37,
+            "g1-g1": 145,
+            "g1-g2": 85,
+            "g2-g2": 41
+          }
+        },
+        "fulfilled": {
+          "total": 413,
+          "byGenerationPair": {
+            "g0-g1": 108,
+            "g0-g2": 37,
+            "g1-g1": 145,
+            "g1-g2": 82,
+            "g2-g2": 41
+          }
+        }
+      },
+      "companion": {
+        "proposed": {
+          "total": 239,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 93,
+            "g0-g2": 11,
+            "g1-g1": 69,
+            "g1-g2": 27,
+            "g2-g2": 12
+          }
+        },
+        "accepted": {
+          "total": 194,
+          "byGenerationPair": {
+            "g0-g0": 27,
+            "g0-g1": 60,
+            "g0-g2": 10,
+            "g1-g1": 69,
+            "g1-g2": 16,
+            "g2-g2": 12
+          }
+        },
+        "established": {
+          "total": 102,
+          "byGenerationPair": {
+            "g0-g0": 9,
+            "g0-g1": 34,
+            "g0-g2": 8,
+            "g1-g1": 35,
+            "g1-g2": 12,
+            "g2-g2": 4
+          }
+        },
+        "activeEstablished": {
+          "total": 54,
+          "byGenerationPair": {
+            "g0-g1": 9,
+            "g0-g2": 4,
+            "g1-g1": 27,
+            "g1-g2": 12,
+            "g2-g2": 2
+          }
+        },
+        "persistent": {
+          "total": 6118,
+          "byGenerationPair": {
+            "g0-g0": 1279,
+            "g0-g1": 2293,
+            "g0-g2": 129,
+            "g1-g1": 2171,
+            "g1-g2": 221,
+            "g2-g2": 25
+          }
+        }
+      },
+      "reproduction": {
+        "proposed": {
+          "total": 98,
+          "byGenerationPair": {
+            "g0-g0": 49,
+            "g0-g1": 9,
+            "g0-g2": 3,
+            "g1-g1": 36,
+            "g1-g2": 1
+          }
+        },
+        "accepted": {
+          "total": 88,
+          "byGenerationPair": {
+            "g0-g0": 42,
+            "g0-g1": 7,
+            "g0-g2": 3,
+            "g1-g1": 35,
+            "g1-g2": 1
+          }
+        },
+        "attempts": {
+          "total": 188,
+          "byGenerationPair": {
+            "g0-g0": 86,
+            "g0-g1": 11,
+            "g0-g2": 6,
+            "g1-g1": 82,
+            "g1-g2": 3
+          }
+        },
+        "conceptions": {
+          "total": 44,
+          "byGenerationPair": {
+            "g0-g0": 19,
+            "g0-g1": 2,
+            "g0-g2": 1,
+            "g1-g1": 22
+          }
+        },
+        "birthsByParentGenerationPair": {
+          "g0-g0": 19,
+          "g0-g1": 2,
+          "g1-g1": 22
+        }
+      }
+    }
+  ]
+}

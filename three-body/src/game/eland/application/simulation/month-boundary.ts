@@ -21,7 +21,7 @@ import {
   resolveWeather,
 } from '../../domain/monthly-processes';
 import { advancePermissionLifecycle } from '../../domain/permission';
-import { isAlive, isDehydratedHibernating, type PersonId, type PersonState } from '../../domain/person';
+import { isAlive, type PersonId, type PersonState } from '../../domain/person';
 import { consolidatePersonality } from '../../domain/personality';
 import { deriveObservations, deriveStructures, updateDevelopmentObservation } from '../../projection/derived-observations';
 import { seededFraction } from '../../world/generator';
@@ -232,15 +232,13 @@ export function finishMonth(
   state.lastStep = events;
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
   const living = state.people.filter(isAlive);
-  const allLivingHibernating = living.length > 0 && living.every(isDehydratedHibernating);
   const endpointReached = state.civilization.conditions.endpoint.kind === 'months'
     && atMonth >= state.civilization.conditions.endpoint.value;
   const fullProjection = projectionCadence === 'monthly'
     || state.civilization.conditions.endpoint.kind === 'milestones'
     || atMonth % MONTHS_PER_YEAR === 0
     || endpointReached
-    || living.length === 0
-    || allLivingHibernating;
+    || living.length === 0;
   state.derived = fullProjection
     ? deriveObservations(state)
     : { ...state.derived, structures: deriveStructures(state) };

@@ -12,6 +12,7 @@ import { playerTextForEvent } from './projection/player-narrative';
 import { projectSocietyWorld } from './projection/society-world-cache';
 import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
+import { traitDefinition, traitStatesOf } from './domain/trait';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 
@@ -162,7 +163,11 @@ function worldRefLocation(state: SimulationState, lookup: StateLookup, target: W
     const animal = lookup.animalsById.get(target.animalId);
     return animal ? { targetCellId: animal.position.cellId, targetZ: animal.position.z } : {};
   }
-  const targetPersonId = target.kind === 'person' ? target.personId : target.personId;
+  if (target.kind === 'remains') {
+    const remains = state.world.remains?.find((candidate) => candidate.id === target.remainsId);
+    return remains ? { targetCellId: remains.position.cellId, targetZ: remains.position.z } : {};
+  }
+  const targetPersonId = target.personId;
   const targetPerson = lookup.peopleById.get(targetPersonId);
   return targetPerson ? { targetCellId: targetPerson.position.cellId, targetZ: targetPerson.position.z } : {};
 }
@@ -217,20 +222,36 @@ function actionVisual(
     };
   }
   if (action.kind === 'act') {
-    const materialIds = action.targets
+    const targetMaterialIds = action.targets
       .map((target) => materialForTarget(state, lookup, target))
       .filter((materialId): materialId is number => materialId !== undefined);
+    const diffSourceMaterialId = action.operation === 'separate'
+      ? Number(fact?.diff.sourceMaterialId ?? fact?.diff.materialId)
+      : Number.NaN;
+    const sourceMaterialId = Number.isInteger(diffSourceMaterialId)
+      ? diffSourceMaterialId
+      : undefined;
+    const materialIds = fact && action.operation === 'separate'
+      ? (sourceMaterialId === undefined ? [] : [sourceMaterialId])
+      : sourceMaterialId === undefined
+        ? targetMaterialIds
+        : [sourceMaterialId, ...targetMaterialIds.filter((materialId) => materialId !== sourceMaterialId)];
     const facilityTarget = action.targets.find((target) => {
       const materialId = materialForTarget(state, lookup, target);
       return materialId !== undefined && materialDefinition(materialId).tags.includes('facility');
     });
     const visualTarget = facilityTarget ?? action.targets[0];
-    const toolMaterialId = action.toolStackId
-      ? lookup.inventoryByPersonId.get(person.id)?.get(action.toolStackId)?.materialId
-      : undefined;
+    const diffToolMaterialId = Number(fact?.diff.toolMaterialId);
+    const toolMaterialId = Number.isInteger(diffToolMaterialId)
+      ? diffToolMaterialId
+      : action.toolStackId
+        ? lookup.inventoryByPersonId.get(person.id)?.get(action.toolStackId)?.materialId
+        : undefined;
     return {
       actionKind: 'act', operation: action.operation,
+      ...(action.mortuaryPhase ? { mortuaryPhase: action.mortuaryPhase } : {}),
       ...factLocation, ...targetIdentity(visualTarget), ...worldRefLocation(state, lookup, visualTarget),
+      ...(sourceMaterialId !== undefined ? { sourceMaterialId } : {}),
       ...(materialIds[0] !== undefined ? { materialId: materialIds[0] } : {}),
       ...(materialIds.length ? { materialIds } : {}),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
@@ -299,6 +320,11 @@ function historyWorldRefLabel(state: SimulationState, lookup: StateLookup, targe
     const cellId = container ? container.position.x + container.position.y * state.world.grid.width : -1;
     return container ? `${materialDefinition(Material.Container).name} · ${historyCellLabel(state, cellId, container.position.z)}` : '未知容器';
   }
+  if (target.kind === 'remains') {
+    const remains = state.world.remains?.find((candidate) => candidate.id === target.remainsId);
+    const deceased = remains ? lookup.peopleById.get(remains.personId) : undefined;
+    return deceased ? `${deceased.name}的遗体` : '未知遗体';
+  }
   const owner = lookup.peopleById.get(target.personId);
   const stack = lookup.inventoryByPersonId.get(target.personId)?.get(target.stackId);
   return `${owner?.name ?? '未知人物'}持有的${stack ? materialDefinition(stack.materialId).name : '物品'}`;
@@ -342,22 +368,38 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
   const active = activeIntent?.status === 'active' ? activeIntent : undefined;
   const currentNeed = needs.find((need) => need.dominant)?.label ?? '维持生活';
   const visualAction = recentActionFor(state, lookup, person);
+  const visualSourceMaterialId = visualAction?.sourceMaterialId ?? visualAction?.materialId;
+  const currentActionText = visualAction?.operation === 'separate' && visualSourceMaterialId === Material.BerryBush
+    ? '采集野果'
+    : visualAction?.operation === 'separate' && visualSourceMaterialId === Material.CropMature
+      ? '收割成熟作物'
+      : person.currentActionText;
+  const remains = state.world.remains?.find((candidate) => candidate.personId === person.id);
+  const projectedPosition = remains?.status === 'interred' && remains.grave
+    ? { cellId: remains.position.cellId, z: remains.grave.position.z + 1 }
+    : remains?.position ?? person.position;
+  const remainsPath = [projectedPosition.cellId];
   return {
     id: person.id,
     name: person.name,
     portrait: portraitForPerson(person),
     title: person.profile.description,
-    cellId: person.position.cellId,
-    z: person.position.z,
-    previousCellId: person.position.previousCellId,
-    lastPath: [...person.position.lastPath],
-    tickPath: [...person.position.tickPath],
+    cellId: projectedPosition.cellId,
+    z: projectedPosition.z,
+    previousCellId: remains ? projectedPosition.cellId : person.position.previousCellId,
+    lastPath: remains ? remainsPath : [...person.position.lastPath],
+    tickPath: remains ? remainsPath : [...person.position.tickPath],
     state: personStateOf(person),
-    doing: person.currentActionText,
+    ...(remains ? { bodyDisposition: remains.status } : {}),
+    doing: currentActionText,
     ...(active ? { activeIntentId: active.id } : {}),
     sex: person.sex,
     lifespanMonths: person.lifespanMonths,
     generation: person.generation,
+    traits: traitStatesOf(person).map((trait) => {
+      const definition = traitDefinition(trait.id);
+      return { id: definition.id, name: definition.name, description: definition.description };
+    }),
     respect: Math.round(person.relations.reduce((sum, relation) => sum + relation.trust, 0) / Math.max(1, person.relations.length)),
     mind: {
       want: `当前最迫切的是${currentNeed}`,
@@ -438,7 +480,17 @@ export function toSocietyState(state: SimulationState): SocietyState {
       ageBand,
       activity: animalActivity(state, lookup, animal),
     }; }),
-    drops: state.world.drops.map((drop) => ({ id: drop.id, materialId: drop.materialId, name: materialDefinition(drop.materialId).name, cellId: drop.cellId, z: drop.z, quantity: drop.quantity })),
+    drops: state.world.drops.map((drop) => {
+      const estateOwner = drop.estateOfPersonId ? lookup.peopleById.get(drop.estateOfPersonId) : undefined;
+      return {
+        id: drop.id,
+        materialId: drop.materialId,
+        name: estateOwner ? `${estateOwner.name}遗留的${materialDefinition(drop.materialId).name}` : materialDefinition(drop.materialId).name,
+        cellId: drop.cellId,
+        z: drop.z,
+        quantity: drop.quantity,
+      };
+    }),
     containers: state.containers.map((container) => {
       const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);
       return {
@@ -451,6 +503,21 @@ export function toSocietyState(state: SimulationState): SocietyState {
         usedCapacity: container.inventory.reduce((sum, stack) => sum + stack.quantity, 0),
         contents: container.inventory.map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
       };
+    }),
+    graves: (state.world.remains ?? []).flatMap((remains) => {
+      if (remains.status !== 'interred' || !remains.grave) return [];
+      const deceased = lookup.peopleById.get(remains.personId);
+      const marker = state.world.memorials?.find((candidate) => candidate.remainsId === remains.id);
+      return [{
+        id: `grave:${remains.id}`,
+        remainsId: remains.id,
+        personId: remains.personId,
+        personName: deceased?.name ?? '无名死者',
+        cellId: remains.position.cellId,
+        z: remains.grave.position.z + 1,
+        marked: Boolean(marker),
+        ...(marker ? { markerMaterialId: marker.materialId, inscription: marker.inscription } : {}),
+      }];
     }),
     structures: state.derived.structures.map((structure) => ({
       id: structure.id,

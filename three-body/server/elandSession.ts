@@ -8,8 +8,13 @@ import {
   type WorldEvent,
 } from '../src/game/eland/simulation';
 import { createSimulationFromOwnedState } from '../src/game/eland/application/simulation/controller';
+import { concludeOwnedCivilization } from '../src/game/eland/application/civilization-settlement';
 import { calendarDate } from '../src/game/eland/domain/calendar';
 import { isAlive } from '../src/game/eland/domain/person';
+import {
+  civilizationRequiemKey,
+  type CivilizationRequiem,
+} from '../src/game/civilizationRequiem';
 import { toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
 import {
   validatePlayerInteractionChoice,
@@ -32,6 +37,10 @@ import {
 } from './agent-interaction-gateway';
 import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode } from './model-config';
 import { perfElapsed, perfNow } from './perf';
+import {
+  generateCivilizationRequiem,
+  requiemFactsFromState,
+} from './civilization-requiem-service';
 import type { SessionTimelineChunkResolver } from './session-snapshot-codec';
 import {
   AgentConversationConflictError,
@@ -79,6 +88,7 @@ import {
   DEFAULT_MAX_SESSIONS,
   DEFAULT_SESSION_RECOVERY_TTL_MS,
   DEFAULT_SESSION_TTL_MS,
+  ElandSessionBusyError,
   ElandSessionManagerCore,
   type ElandSessionManagerOptions,
 } from './eland-session/session-manager';
@@ -170,6 +180,8 @@ export class ElandSession {
   private interactionRequestCount = 0;
   private readonly agentConversationTails = new Map<string, Promise<void>>();
   private readonly pendingAgentConversations = new Map<string, PendingAgentConversation>();
+  private readonly requiems = new Map<string, CivilizationRequiem>();
+  private readonly pendingRequiems = new Map<string, Promise<CivilizationRequiem>>();
   private snapshotBaseline: SnapshotBaseline | null = null;
   private lastRecordPerf = { projectionMs: 0, snapshotMs: 0 };
   private branches = new Map<string, BranchTimeline>();
@@ -247,6 +259,9 @@ export class ElandSession {
     session.activeBranchId = snapshot.activeBranchId;
     session.forkSequence = snapshot.forkSequence;
     session.cosmosSnapshot = cosmosSnapshot;
+    for (const requiem of snapshot.requiems ?? []) {
+      if (requiem.schemaVersion === 4) session.requiems.set(requiem.id, requiem);
+    }
     const restoredTimeline = session.branches.get(session.activeBranchId);
     if (!restoredTimeline) throw new Error('实时演化会话缺少活动分支');
     // Legacy schema-17 snapshots could contain a present but incomplete head
@@ -273,6 +288,7 @@ export class ElandSession {
       forkSequence: this.forkSequence,
       skySample: this.skySample,
       ...(this.cosmosSnapshot ? { cosmosSnapshot: this.cosmosSnapshot } : {}),
+      requiems: [...this.requiems.values()],
     });
   }
 
@@ -292,6 +308,8 @@ export class ElandSession {
     const state = beginning.state;
     this.activeBranchId = state.branchId;
     this.branches = new Map([[state.branchId, createBranchTimeline(state.branchId, 0)]]);
+    this.requiems.clear();
+    this.pendingRequiems.clear();
     this.forkSequence = 0;
     const foundingEvents = foundingEventsFor(state);
     return this.record(state, foundingEvents, entriesFor(state, foundingEvents));
@@ -449,7 +467,9 @@ export class ElandSession {
   }
 
   isBusy(): boolean {
-    return this.stepCoordinator.isStepping() || this.interactionRequestCount > 0;
+    return this.stepCoordinator.isStepping()
+      || this.interactionRequestCount > 0
+      || this.pendingRequiems.size > 0;
   }
 
   private committedStateForConversation(): SimulationState | null {
@@ -528,6 +548,39 @@ export class ElandSession {
    */
   async step(options: ElandStepOptions): Promise<Frame | null> {
     return this.stepCoordinator.step(options);
+  }
+
+  settleCivilization(): Frame {
+    if (this.stepCoordinator.isStepping() || this.interactionRequestCount > 0) {
+      throw new ElandSessionBusyError(this.runId, '结算文明');
+    }
+    if (!this.controller || !this.latestState || !this.latestFrame) throw new Error('当前没有可以结算的文明');
+    if (this.latestState.civilization.status === 'ended') return this.latestFrame;
+    const state = this.controller.ownedState();
+    const events = concludeOwnedCivilization(state);
+    return this.record(state, events, entriesFor(state, events));
+  }
+
+  async civilizationRequiem(): Promise<CivilizationRequiem> {
+    if (!this.latestState || !this.latestFrame) throw new Error('当前没有可以生成终章的文明');
+    const facts = requiemFactsFromState(this.latestState, this.chronicle());
+    const key = civilizationRequiemKey({
+      civilizationId: facts.civilizationId,
+      branchId: facts.branchId,
+      endedAtMonth: facts.endedAtMonth,
+    });
+    const existing = this.requiems.get(key);
+    if (existing) return existing;
+    const pending = this.pendingRequiems.get(key);
+    if (pending) return pending;
+    const generation = generateCivilizationRequiem(facts).then((requiem) => {
+      this.requiems.set(key, requiem);
+      return requiem;
+    }).finally(() => {
+      if (this.pendingRequiems.get(key) === generation) this.pendingRequiems.delete(key);
+    });
+    this.pendingRequiems.set(key, generation);
+    return generation;
   }
 
   historyList(): { month: number; label: string; summary: string }[] {

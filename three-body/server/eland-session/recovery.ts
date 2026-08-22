@@ -1,4 +1,5 @@
 import type { SimulationState } from '../../src/game/eland/simulation';
+import type { CivilizationRequiem } from '../../src/game/civilizationRequiem';
 import type { CosmosSnapshot, GameFrame, SkySample } from '../../src/game/societyContract';
 import { normalizeConversationTurn } from './conversation-coordinator';
 import type { BranchTimeline } from './timeline';
@@ -17,6 +18,8 @@ export interface ElandSessionRecoverySnapshot {
   forkSequence: number;
   skySample: SkySample;
   cosmosSnapshot?: CosmosSnapshot;
+  /** Projection-only ending poems, keyed by civilization/branch/end month. */
+  requiems?: CivilizationRequiem[];
 }
 
 export function validateRecoverySnapshot(snapshot: ElandSessionRecoverySnapshot): {
@@ -85,6 +88,7 @@ export function createRecoverySnapshot(input: {
   forkSequence: number;
   skySample: SkySample;
   cosmosSnapshot?: CosmosSnapshot;
+  requiems?: CivilizationRequiem[];
 }): ElandSessionRecoverySnapshot {
   return {
     schemaVersion: 1,
@@ -99,5 +103,6 @@ export function createRecoverySnapshot(input: {
     forkSequence: input.forkSequence,
     skySample: input.skySample,
     ...(input.cosmosSnapshot ? { cosmosSnapshot: input.cosmosSnapshot } : {}),
+    ...(input.requiems?.length ? { requiems: input.requiems } : {}),
   };
 }

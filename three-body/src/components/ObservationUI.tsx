@@ -21,6 +21,7 @@ import {
   UserRound,
   Utensils,
   Users,
+  X,
 } from 'lucide-react';
 import type { SimStats } from '@/components/ThreeBodyCanvas';
 import type { AgentHistoryView, SocietyAgent, SocietyState, StructureView } from '@/game/societyContract';
@@ -47,13 +48,6 @@ export interface ObservationEvent {
   status?: true;
 }
 
-export interface CivilizationEndingView {
-  civilizationId: number;
-  elapsedMonths: number;
-  cause: string;
-  summary: string;
-}
-
 interface FocusInspectorProps {
   target: FocusTarget | null;
   society: SocietyState | null;
@@ -70,14 +64,7 @@ interface FocusInspectorProps {
   onAgentSubtabChange: (subtab: AgentSubtab) => void;
 }
 
-interface CivilizationEndingProps {
-  ending: CivilizationEndingView;
-  onContinue: () => void;
-  onOpenHistory: () => void;
-}
-
 const FOCUS_EXIT_MS = 135;
-const END_EXIT_MS = 240;
 
 const AGENT_SUBTABS = [
   { key: 'overview', label: '概况', icon: UserRound },
@@ -91,11 +78,6 @@ const AGENT_SUBTABS = [
   icon: typeof UserRound;
 }>;
 
-function conciseEndingSummary(ending: CivilizationEndingView): string {
-  const terminalLives = ending.summary.match(/^文明最后的\s*(\d+)\s*个生命在第\s*\d+\s*月因.+终止，没有留下生还者。$/u)?.[1];
-  return terminalLives ? `最后 ${terminalLives} 人死亡，无人生还。` : ending.summary;
-}
-
 const FATE_LABELS: Record<SimStats['planetFate'], string> = {
   stable: '恒纪元',
   chaotic: '乱纪元',
@@ -107,14 +89,6 @@ const FATE_LABELS: Record<SimStats['planetFate'], string> = {
 function monthLabel(month: number): string {
   if (month <= 0) return '月初';
   return `第${Math.floor((month - 1) / 12) + 1}年 · ${((month - 1) % 12) + 1}月`;
-}
-
-function durationLabel(months: number): string {
-  const years = Math.floor(months / 12);
-  const remainder = months % 12;
-  if (years === 0) return `${remainder} 个月`;
-  if (remainder === 0) return `${years} 年`;
-  return `${years} 年 ${remainder} 个月`;
 }
 
 function agentStateLabel(agent: SocietyAgent): string {
@@ -497,6 +471,21 @@ export function FocusInspector({
   const materialNames = structure?.materialIds
     ?.map((id) => society?.world.palette[id]?.name)
     .filter((value): value is string => Boolean(value)) ?? [];
+  const materialSummary = [...materialNames.reduce((counts, material) => {
+    counts.set(material, (counts.get(material) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>())].map(([material, count]) => count > 1 ? `${material} × ${count}` : material).join(' · ');
+  const structureEffectText = structure && (
+    structure.effects.weatherProtection > 0
+    || structure.effects.thermalInsulation > 0
+    || structure.effects.capacity > 0
+  )
+    ? [
+        structure.effects.weatherProtection > 0 ? `天气防护 ${Math.round(structure.effects.weatherProtection)}` : '',
+        structure.effects.thermalInsulation > 0 ? `隔热 ${Math.round(structure.effects.thermalInsulation)}` : '',
+        structure.effects.capacity > 0 ? `容量 ${structure.effects.capacity}` : '',
+      ].filter(Boolean).join(' · ')
+    : '尚未形成有效防护';
   const celestialOffset = renderedTarget.kind === 'celestial'
     ? renderedTarget.body === 'planet' ? 6 : renderedTarget.index * 2
     : -1;
@@ -523,7 +512,7 @@ export function FocusInspector({
   return (
     <aside
       aria-label={`${name}聚焦信息`}
-      className={`focus-inspector${agent ? ` focus-inspector--person focus-inspector--person-${agentSubtab}` : ''}${closing ? ' focus-inspector--closing' : ''}`}
+      className={`focus-inspector${agent ? ` focus-inspector--person focus-inspector--person-${agentSubtab}` : ''}${structure ? ' focus-inspector--structure' : ''}${closing ? ' focus-inspector--closing' : ''}`}
       key={targetKey(renderedTarget)}
     >
       <div className="focus-inspector__scroll">
@@ -555,9 +544,19 @@ export function FocusInspector({
                       {condition.label}
                     </span>
                   ))}
+                  {(agent.traits ?? []).map((trait) => (
+                    <span className="person-header__trait" key={trait.id} title={trait.description}>
+                      {trait.name}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
+          </header>
+        ) : structure ? (
+          <header className="structure-inspector__header">
+            <div><p className="focus-inspector__eyebrow">{eyebrow}</p><h2>{name}</h2></div>
+            <button aria-label="收起结构信息" onClick={onClose} type="button"><X size={17} /></button>
           </header>
         ) : (
           <>
@@ -681,6 +680,15 @@ export function FocusInspector({
               )}
             </dl>
               </>
+            ) : structure ? (
+              <div className="structure-inspector__summary">
+                <p>{activity}</p>
+                <div aria-label="结构状态">
+                  <span>{structure.complete ? '完整' : '形成中'}</span>
+                  <span>{structure.occupiedCells.length} 格</span>
+                  <span>{structure.componentCount} 个构件</span>
+                </div>
+              </div>
             ) : (
               <dl className="focus-inspector__summary">
                 <div><dt>当前</dt><dd>{activity}</dd></div>
@@ -692,7 +700,15 @@ export function FocusInspector({
               </dl>
             )}
 
-            <div className="focus-inspector__details">
+            {structure && (
+              <div className="structure-inspector__details">
+                <section><h3>结构效果</h3><p>{structureEffectText}</p></section>
+                <section><h3>构件</h3><p>{materialSummary || '暂无材质信息'}</p></section>
+                <section><h3>最近记录</h3>{latestEvent ? <p className="focus-inspector__event"><time>{monthLabel(latestEvent.month)}</time>{latestEvent.text}</p> : <p>暂无关联事件</p>}</section>
+              </div>
+            )}
+
+            {!structure && <div className="focus-inspector__details">
             {agent && (
               <>
                 <section className="person-relations-section">
@@ -702,19 +718,6 @@ export function FocusInspector({
                 <section>
                   <h3><Package aria-hidden="true" size={14} strokeWidth={1.7} />随身物</h3>
                   <p>{agent.inventory.length ? agent.inventory.map((item) => `${item.name} × ${item.quantity}`).join(' · ') : '空'}</p>
-                </section>
-              </>
-            )}
-
-            {structure && (
-              <>
-                <section>
-                  <h3>结构效果</h3>
-                  <p>天气防护 {Math.round(structure.effects.weatherProtection)} · 隔热 {Math.round(structure.effects.thermalInsulation)} · 容量 {structure.effects.capacity}</p>
-                </section>
-                <section>
-                  <h3>构件</h3>
-                  <p>{materialNames.length ? materialNames.join('、') : '暂无材质信息'}</p>
                 </section>
               </>
             )}
@@ -735,72 +738,17 @@ export function FocusInspector({
                 </p>
               )) : <p>暂无关联事件</p>}
             </section>
-          </div>
+          </div>}
           </>
           )}
         </div>
       </div>
 
-      <div className="focus-inspector__actions">
+      {!structure && <div className="focus-inspector__actions">
         <button className="observation-button observation-button--outline" onClick={onClose} type="button">
           收起 · Esc
         </button>
-      </div>
+      </div>}
     </aside>
-  );
-}
-
-export function CivilizationEnding({ ending, onContinue, onOpenHistory }: CivilizationEndingProps) {
-  const continueRef = useRef<HTMLButtonElement | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    continueRef.current?.focus({ preventScroll: true });
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const leave = () => {
-    if (leaving) return;
-    setLeaving(true);
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    timerRef.current = setTimeout(onContinue, reduceMotion ? 0 : END_EXIT_MS);
-  };
-
-  return (
-    <section
-      aria-labelledby="civilization-ending-title"
-      aria-modal="true"
-      className={`civilization-ending${leaving ? ' civilization-ending--leaving' : ''}`}
-      role="dialog"
-    >
-      <div className="civilization-ending__content">
-        <p className="civilization-ending__eyebrow">第 {ending.civilizationId} 号文明</p>
-        <h1 id="civilization-ending-title">毁灭于{ending.cause}</h1>
-        <p className="civilization-ending__duration">延续 {durationLabel(ending.elapsedMonths)}</p>
-        <p className="civilization-ending__summary">{conciseEndingSummary(ending)}</p>
-        <div className="civilization-ending__actions">
-          <button
-            className="observation-button observation-button--large observation-button--secondary"
-            disabled={leaving}
-            onClick={onOpenHistory}
-            type="button"
-          >
-            查看历史
-          </button>
-          <button
-            ref={continueRef}
-            className="observation-button observation-button--large observation-button--primary"
-            disabled={leaving}
-            onClick={leave}
-            type="button"
-          >
-            {leaving ? '正在远离' : '观察下一文明'}
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }

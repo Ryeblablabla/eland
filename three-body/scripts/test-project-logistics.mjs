@@ -159,15 +159,26 @@ try {
   const episodeCountAtBudget = budgetProject.logisticsEpisodes.length;
   assert.equal(recompileProjectNextAction(budgetState, budgetSearcher, budgetProject.id), null, 'campaign 耗尽后不得编译第 17 个搜索动作');
   assert.equal(budgetProject.logisticsEpisodes.length, episodeCountAtBudget, '第 17 步不得偷偷开启新搜索 episode');
+  assert.equal(budgetProject.status, 'blocked', '当前有限搜索已明确穷尽时，原项目应立即释放所有者');
 
   budgetState.world.drops.push({
     id: 'post-budget-visible-rope', materialId: 23, quantity: 1,
     cellId: budgetSearcher.position.cellId, z: budgetSearcher.position.z,
     createdAtMonth: 1, sourceEventIds: ['post-budget-visible-rope-source'],
   });
-  const postBudgetSourceAction = recompileProjectNextAction(budgetState, budgetSearcher, budgetProject.id);
-  assert.equal(postBudgetSourceAction?.kind, 'transfer', '搜索预算耗尽后，新出现的真实可见来源仍应正常推进项目');
-  assert.equal(budgetProject.logisticsEpisodes.at(-1)?.kind, 'drop', '真实来源应建立普通 drop episode，而不是重开搜索 campaign');
+  assert.equal(recompileProjectNextAction(budgetState, budgetSearcher, budgetProject.id), null,
+    '新证据不得改写原项目已穷尽的失败历史');
+  const renewedBudgetProject = projectFor(budgetSearcher.id, 'test-post-budget-new-evidence-project');
+  renewedBudgetProject.reviewAtMonth = 100;
+  budgetState.projects.push(renewedBudgetProject);
+  const postBudgetSourceAction = recompileProjectNextAction(
+    budgetState,
+    budgetSearcher,
+    renewedBudgetProject.id,
+  );
+  assert.equal(postBudgetSourceAction?.kind, 'transfer', '搜索穷尽后，新出现的真实可见来源仍应让新项目直接行动');
+  assert.equal(renewedBudgetProject.logisticsEpisodes.at(-1)?.kind, 'drop', '新项目应锁定真实 drop，而不是重开旧 search campaign');
+  assert.equal(budgetProject.searchCampaigns.length, 1, '新证据不得在原失败项目上追加搜索 campaign');
 
   const dropState = createInitialState(491, { endpoint: { kind: 'months', value: 3 }, chaosIntensity: 0 });
   const collector = isolate(dropState);

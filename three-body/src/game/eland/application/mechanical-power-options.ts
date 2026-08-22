@@ -5,7 +5,7 @@ import {
   type VoxelPosition,
   type WorldRef,
 } from '../domain/action';
-import { completedActionFacts, worldEventById } from '../domain/event-index';
+import { completedActionFactsForPerson, worldEventById } from '../domain/event-index';
 import {
   inventoryCombinationForOutput,
   inventoryCombinationTechniqueId,
@@ -83,7 +83,7 @@ function projectFacts(state: SimulationState, project: ProjectState): ActionFact
 }
 
 export function ownMillLaborFacts(state: SimulationState, person: PersonState): ActionFact[] {
-  return completedActionFacts(state).filter((fact) => fact.who === person.id
+  return completedActionFactsForPerson(state, person.id).filter((fact) => fact.who === person.id
     && fact.action.kind === 'act'
     && fact.action.operation === 'separate'
     && Number(fact.diff.sourceMaterialId) === Material.CropMature

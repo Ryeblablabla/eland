@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-21T04:39:45+08:00",
+  "purpose": "Fresh three-seed 100-year V5f experiment launched from the isolated candidate against the main authoritative SQLite data directory.",
+  "candidate": {
+    "projectDirectory": "/tmp/eland-gen3-candidate.1ejlGu/three-body",
+    "gitHead": "2344213875bbe79225c68a5f1d8d9e3421771061",
+    "trackedSourceAndServerSha256": "a78e9a0b78f733ed3eecf120f72e31dfec768c2574a86dae9337c0b76a94bef9",
+    "distServerMainSha256": "8ebb22f36434b86fe92c74c6d46b090925f8cc38e72ab902f0c03cb0df00786a",
+    "distServerWorkerSha256": "24bb8aa54c15dfb923c9d77d8de8d1c73a0f4eb7b8c6e3f895a9700d4671a331"
+  },
+  "authority": {
+    "dataDirectory": "/Users/wangyu.rye/Desktop/eland/three-body/data",
+    "databaseFile": "/Users/wangyu.rye/Desktop/eland/three-body/data/eland.sqlite3"
+  },
+  "prefix": "candidate-gen5-social-v5f-20260821",
+  "horizonMonths": 1200,
+  "runs": [
+    {
+      "seed": 185,
+      "runId": "candidate-gen5-social-v5f-20260821-s185-y100-r1",
+      "port": 3235,
+      "serverPid": 85629,
+      "serverSessionId": 83204,
+      "runnerPid": 85687,
+      "runnerSessionId": 46000,
+      "serverLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s185-y100-r1-server-p3235.log",
+      "runnerLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s185-y100-r1-runner-p3235.log",
+      "matrixOutput": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s185-y100-r1-matrix.json"
+    },
+    {
+      "seed": 20260815,
+      "runId": "candidate-gen5-social-v5f-20260821-s20260815-y100-r1",
+      "port": 3236,
+      "serverPid": 85635,
+      "serverSessionId": 99747,
+      "runnerPid": 85693,
+      "runnerSessionId": 59286,
+      "serverLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260815-y100-r1-server-p3236.log",
+      "runnerLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260815-y100-r1-runner-p3236.log",
+      "matrixOutput": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260815-y100-r1-matrix.json"
+    },
+    {
+      "seed": 20260821,
+      "runId": "candidate-gen5-social-v5f-20260821-s20260821-y100-r1",
+      "port": 3237,
+      "serverPid": 85630,
+      "serverSessionId": 75248,
+      "runnerPid": 85688,
+      "runnerSessionId": 57593,
+      "serverLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260821-y100-r1-server-p3237.log",
+      "runnerLog": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260821-y100-r1-runner-p3237.log",
+      "matrixOutput": "/Users/wangyu.rye/Desktop/eland/three-body/data/experiments/candidate-gen5-social-v5f-20260821-s20260821-y100-r1-matrix.json"
+    }
+  ],
+  "notes": [
+    "The exact run IDs were absent from SQLite immediately before the create POSTs.",
+    "Older candidate-gen5-social-v5-20260821 runs are deliberately not resumed or removed.",
+    "The seed 20260821 runner and server must be stopped after gen5 is first observed, preserving the latest committed snapshot."
+  ]
+}

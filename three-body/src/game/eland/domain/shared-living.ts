@@ -14,6 +14,15 @@ import {
 
 export const SHARED_LIVING_RADIUS = 2;
 export const REQUIRED_SHARED_LIVING_MONTHS = 12;
+/** Established companions may travel independently for two full calendar months. */
+export const ESTABLISHED_COMPANION_RETURN_AFTER_AWAY_MONTHS = 3;
+/**
+ * Once a companionship is established, every three additional months that
+ * both parties actually spend in their agreed living area provide one small,
+ * replayable unit of relationship evidence.  This is deliberately slower
+ * than joint work, while still letting a kept long-term commitment matter.
+ */
+export const SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS = 3;
 
 function validAnchor(value: SharedLivingAnchor | undefined): value is SharedLivingAnchor {
   return value?.version === 'shared-living-anchor-v1'
@@ -60,12 +69,16 @@ export function companionSharesLivingArea(state: SimulationState, agreement: Agr
     && parties.every((person) => personWithinLivingArea(person, anchor));
 }
 
-/**
- * Return pressure appears only after the agreement has used all schedule slack.
- * Ordinary work and travel therefore remain independent for the rest of the window.
- */
+/** Return to the fixed anchor only when a bounded or established commitment is due. */
 export function companionReturnRequired(agreement: Agreement, atMonth: number): boolean {
   if (agreement.status !== 'active' || agreement.proposal.kind !== 'companion') return false;
+  if (agreement.companionEstablishedAtMonth !== undefined) {
+    // Older active saves do not have the optional calendar field. Establishment
+    // is a truthful lower bound because it required twelve real shared-living months.
+    const lastCoLocatedAtMonth = agreement.lastCompanionCoLocatedAtMonth
+      ?? agreement.companionEstablishedAtMonth;
+    return atMonth - lastCoLocatedAtMonth >= ESTABLISHED_COMPANION_RETURN_AFTER_AWAY_MONTHS;
+  }
   const missingMonths = Math.max(0, REQUIRED_SHARED_LIVING_MONTHS - (agreement.coLocatedMonths ?? 0));
   const monthsLeft = Math.max(0, (agreement.dueAtMonth ?? atMonth) - atMonth + 1);
   return missingMonths > 0 && missingMonths >= monthsLeft;

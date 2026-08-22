@@ -42,11 +42,15 @@ export interface SocietyAgent {
   lastPath: number[];
   tickPath: number[];
   state: 'active' | 'dehydrated' | 'hibernating' | 'dead';
+  /** Read-only disposition of this dead person's authoritative remains. */
+  bodyDisposition?: 'exposed' | 'carried' | 'placed' | 'interred';
   doing: string;
   activeIntentId?: string;
   sex: 'female' | 'male';
   lifespanMonths: number;
   generation: number;
+  /** 新投影始终提供；可选仅用于读取特质系统上线前的历史帧。 */
+  traits?: { id: string; name: string; description: string }[];
   respect: number;
   mind: { want: string; choice: string; ought: string };
   needs: { level: string; label: string; intensity: number; dominant: boolean }[];
@@ -194,6 +198,19 @@ export interface ContainerView {
   contents: { materialId: number; name: string; quantity: number }[];
 }
 
+export interface GraveView {
+  id: string;
+  remainsId: string;
+  personId: string;
+  personName: string;
+  cellId: number;
+  /** Top of the restored grave surface, in standing-height coordinates. */
+  z: number;
+  marked: boolean;
+  markerMaterialId?: number;
+  inscription?: string;
+}
+
 export interface StructureView {
   id: string;
   name: string;
@@ -221,10 +238,13 @@ export interface ActionVisualView {
   facilityMaterialId?: number;
   mechanicalPowerOperation?: boolean;
   linkedFacilityCellIds?: number[];
-  operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate';
-  targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'person';
+  operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate' | 'inter';
+  mortuaryPhase?: 'mourn' | 'lift' | 'prepare-grave' | 'place-in-grave' | 'cover-grave' | 'mark';
+  targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
   targetPersonId?: string;
   targetAnimalId?: string;
+  /** 已完成分离动作的权威来源材质；动作后目标体素可能已经改变。 */
+  sourceMaterialId?: number;
   materialId?: number;
   materialIds?: number[];
   toolMaterialId?: number;
@@ -271,6 +291,7 @@ export interface SocietyState {
   animals: AnimalView[];
   drops: DropView[];
   containers: ContainerView[];
+  graves?: GraveView[];
   structures: StructureView[];
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];
@@ -338,7 +359,7 @@ export interface GameFrame {
   skySample: SkySample;
   cosmosSnapshot?: CosmosSnapshot;
   society: SocietyState;
-  civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones'; cause: string; summary: string } | null;
+  civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; summary: string } | null;
   entries: NarrativeEntryView[];
   /**
    * 已发生沟通的表层台词。它绑定权威 ActionFact，但只用于表现，

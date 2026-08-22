@@ -352,6 +352,10 @@ export function buildAgentInteractionContext(
       soul: projected.person.soul,
       personaFrame,
       communication: communicationProfile(projected.person.capacities.communication, projected.person.ageMonths),
+      traits: projected.person.traits.map((trait, index) => source(`self-trait:${index + 1}`, {
+        name: trait.name,
+        description: trait.description,
+      })),
       currentChoice: source('self:current-choice', { summary: sanitizeEngineText(projected.person.currentChoice) }),
       currentAction: source('self:current-action', { summary: sanitizeEngineText(projected.person.currentAction) }),
       inventory: projected.person.inventory.map((stack, index) => source(`inventory:${index + 1}`, {

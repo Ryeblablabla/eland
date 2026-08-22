@@ -106,6 +106,10 @@ export interface EvolutionReport {
   inquiryOpportunityRenewalHypothesisCandidateCoverage: number;
   inquiryOpportunityRenewalHypothesisAttemptProjects: number;
   inquiryOpportunityRenewalHypothesisFirstAttemptCoverage: number;
+  inquiryOpportunityConstructionRenewalHypothesisProjects: number;
+  inquiryOpportunityConstructionRenewalHypothesisCandidateCoverage: number;
+  inquiryOpportunityConstructionRenewalHypothesisAttemptProjects: number;
+  inquiryOpportunityConstructionRenewalHypothesisFirstAttemptCoverage: number;
   inquiryOpportunitySourceBasisProjects: number;
   inquiryOpportunitySourceBasisCoverage: number;
   inquiryOpportunityRenewalCommitmentProjects: number;
@@ -119,6 +123,10 @@ export interface EvolutionReport {
   inquiryOpportunityRenewalFirstAttemptExactSourceCoverage: number;
   inquiryOpportunityRenewalFallbackBeforeCommitmentViolations: number;
   inquiryOpportunityMaterialOnlyCommitmentAttributionViolations: number;
+  inquiryOpportunityConstructionRenewalFirstCandidateExactSourceCoverage: number;
+  inquiryOpportunityConstructionRenewalFirstAttemptExactSourceCoverage: number;
+  inquiryOpportunityConstructionRenewalFallbackBeforeCommitmentViolations: number;
+  inquiryOpportunityConstructionMaterialOnlyCommitmentAttributionViolations: number;
   techniqueDemonstrationRequestAttempts: number;
   techniqueDemonstrationRequests: number;
   techniqueDemonstrationUniqueProjectTeachers: number;
@@ -809,6 +817,10 @@ interface InquiryOpportunityMetrics {
   inquiryOpportunityRenewalHypothesisCandidateCoverage: number;
   inquiryOpportunityRenewalHypothesisAttemptProjects: number;
   inquiryOpportunityRenewalHypothesisFirstAttemptCoverage: number;
+  inquiryOpportunityConstructionRenewalHypothesisProjects: number;
+  inquiryOpportunityConstructionRenewalHypothesisCandidateCoverage: number;
+  inquiryOpportunityConstructionRenewalHypothesisAttemptProjects: number;
+  inquiryOpportunityConstructionRenewalHypothesisFirstAttemptCoverage: number;
   inquiryOpportunitySourceBasisProjects: number;
   inquiryOpportunitySourceBasisCoverage: number;
   inquiryOpportunityRenewalCommitmentProjects: number;
@@ -822,6 +834,10 @@ interface InquiryOpportunityMetrics {
   inquiryOpportunityRenewalFirstAttemptExactSourceCoverage: number;
   inquiryOpportunityRenewalFallbackBeforeCommitmentViolations: number;
   inquiryOpportunityMaterialOnlyCommitmentAttributionViolations: number;
+  inquiryOpportunityConstructionRenewalFirstCandidateExactSourceCoverage: number;
+  inquiryOpportunityConstructionRenewalFirstAttemptExactSourceCoverage: number;
+  inquiryOpportunityConstructionRenewalFallbackBeforeCommitmentViolations: number;
+  inquiryOpportunityConstructionMaterialOnlyCommitmentAttributionViolations: number;
 }
 
 function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMetrics {
@@ -831,10 +847,12 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     opportunityKey: string;
     kind: OpportunityKind;
     materialId: number | null;
+    currentSourceKey: string | null;
     sourceKeys: string[];
     sourceFactIds: string[];
   };
   const rawState = state as unknown as {
+    people?: unknown;
     projects?: unknown;
     world?: { past?: unknown };
   };
@@ -890,9 +908,26 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
   const inquiryProjects = projects.filter(({ project }) => (
     project.kind === 'production' || project.kind === 'inquiry'
   ));
-  const failedProjects = inquiryProjects.filter(({ project }) => (
+  const exhaustedSearchCampaigns = (project: Record<string, unknown>): Record<string, unknown>[] => (
+    records(project.searchCampaigns).filter((campaign) => campaign.status === 'exhausted')
+  );
+  const hasHypothesisAttempts = (project: Record<string, unknown>): boolean => (
+    records(objectRecord(project.hypothesisCampaign)?.attempts).length > 0
+  );
+  const isReopenConstraint = (project: Record<string, unknown>): boolean => (
     project.status === 'blocked'
-      && records(objectRecord(project.hypothesisCampaign)?.attempts).length > 0
+      && (exhaustedSearchCampaigns(project).length > 0
+        || hasHypothesisAttempts(project))
+  );
+  const failedProjects = projects.filter(({ project }) => isReopenConstraint(project));
+  const reopenConstraintProjects = failedProjects;
+  // A construction project joins the opportunity-source audit only after the
+  // opportunity-memory/renewal gate has attached a basis. Ordinary first-attempt
+  // constructions remain outside the production/inquiry opening-basis denominator.
+  const sourceAuditProjects = projects.filter(({ project }) => (
+    project.kind === 'production'
+      || project.kind === 'inquiry'
+      || objectRecord(project.inquiryOpportunityBasis) !== null
   ));
   const projectEntriesById = new Map<string, typeof projects>();
   for (const entry of projects) {
@@ -925,9 +960,19 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     if (!source || !opportunityKey || !kind || !sourceKeys?.length || sourceFactIds === null
       || !opportunityKeys.has(opportunityKey)
       || sourceFactIds.some((eventId) => !actionById.has(eventId))) return null;
+    const currentMaterialSourceKey = sourceKeys[0] ?? null;
+    const tangibleCurrentMaterialSource = currentMaterialSourceKey !== null
+      && (currentMaterialSourceKey.startsWith('inventory:') || currentMaterialSourceKey.startsWith('drop:'));
+    const searchSourcePrefix = materialId === null ? null : `search-source:${materialId}:`;
+    const exactSearchSourceKey = searchSourcePrefix && opportunityKey.startsWith(searchSourcePrefix)
+      ? opportunityKey.slice(searchSourcePrefix.length)
+      : null;
     const valid = kind === 'material'
-      ? materialId !== null && opportunityKey === `material:${materialId}`
-        && sourceKeys.every((key) => key.startsWith('inventory:') || key.startsWith('drop:'))
+      ? materialId !== null
+        && ((opportunityKey === `material:${materialId}` && tangibleCurrentMaterialSource)
+          || (exactSearchSourceKey !== null
+            && (exactSearchSourceKey.startsWith('inventory:') || exactSearchSourceKey.startsWith('drop:'))
+            && exactSearchSourceKey === currentMaterialSourceKey))
       : kind === 'knowledge'
         ? opportunityKey.startsWith('knowledge:') && sourceKeys.includes(opportunityKey)
         : kind === 'target'
@@ -939,7 +984,14 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
             : materialId !== null && opportunityKey.startsWith('ready-record-carrier:')
               && sourceKeys.some((key) => opportunityKey === `ready-record-carrier:${key}`
                 && key.startsWith('inventory:'));
-    return valid ? { opportunityKey, kind, materialId, sourceKeys, sourceFactIds } : null;
+    return valid ? {
+      opportunityKey,
+      kind,
+      materialId,
+      currentSourceKey: kind === 'material' ? currentMaterialSourceKey : null,
+      sourceKeys,
+      sourceFactIds,
+    } : null;
   };
   const inventorySourceActor = (sourceKey: string): string | null => {
     const match = /^inventory:([^:]+):.+$/.exec(sourceKey);
@@ -969,13 +1021,87 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     if (source.kind === 'target' && source.materialId !== null
       && integerValue(evidence.targetMaterialId) !== source.materialId) return false;
     const exactSource = source.sourceKeys.some((sourceKey) => stringKeys(evidence.sourceKeys).includes(sourceKey));
-    if (source.kind === 'material') return sourceLineageMatches(source, evidence);
+    if (source.kind === 'material') {
+      if (source.opportunityKey.startsWith('search-source:')) {
+        return source.currentSourceKey !== null
+          && stringKeys(evidence.sourceKeys).includes(source.currentSourceKey);
+      }
+      return sourceLineageMatches(source, evidence);
+    }
     if (source.kind === 'target') return exactSource;
     return exactSource
       && source.sourceFactIds.some((eventId) => stringKeys(evidence.sourceFactIds).includes(eventId));
   };
   const hasCommitmentReason = (value: unknown): boolean => (
     stringKeys(value).includes('cross-project-renewal-opportunity')
+  );
+  const techniqueOutputMaterialId = (techniqueId: string): number | null => {
+    const numeric = (value: string | undefined): number | null => (
+      value && /^\d+$/.test(value) ? Number(value) : null
+    );
+    const inventoryPrefix = 'technique:combine-inventory:';
+    if (techniqueId.startsWith(inventoryPrefix)) {
+      const [, output, ...rest] = techniqueId.slice(inventoryPrefix.length).split(':');
+      return rest.length === 0 ? numeric(output) : null;
+    }
+    const parts = techniqueId.split(':');
+    if (parts[0] !== 'technique') return null;
+    if (parts[1] === 'combine' && parts.length === 5) return numeric(parts[4]);
+    if (parts[1] === 'exert' && parts.length === 6) return numeric(parts[5]);
+    if (parts[1] === 'expose' && parts.length === 5) return numeric(parts[4]);
+    return null;
+  };
+  const materialSupportsFunction = (desiredFunction: string, materialId: number): boolean => {
+    if (desiredFunction === 'insulation') return materialHas(materialId, 'insulating');
+    if (desiredFunction === 'safer-hunting') return materialHas(materialId, 'tool');
+    if (desiredFunction === 'healing') return (materialDefinition(materialId).consume?.health ?? 0) > 0;
+    if (desiredFunction === 'prepared-food') {
+      return materialId === Material.CookedFood || materialHas(materialId, 'hot');
+    }
+    if (desiredFunction === 'durable-record') return materialHas(materialId, 'recordable');
+    const exactOutputs = new Map<string, number[]>([
+      ['efficient-production', [Material.StoneHoe, Material.WoodTool]],
+      ['workshop-production', [Material.Workshop]],
+      ['reserve-storage', [Material.Granary]],
+      ['reliable-water', [Material.Cistern]],
+      ['crop-processing', [Material.Mill]],
+      ['community-coordination', [Material.CouncilHearth]],
+      ['high-heat-processing', [Material.Kiln]],
+      ['brick-firing', [Material.FiredBrick]],
+      ['copper-charge', [Material.CopperCharge]],
+      ['copper-smelting', [Material.Copper]],
+      ['tin-charge', [Material.TinCharge]],
+      ['tin-smelting', [Material.Tin]],
+      ['bronze-alloying', [Material.Bronze]],
+      ['bronze-tooling', [Material.BronzeTool]],
+      ['bronze-workshop', [Material.Foundry]],
+      ['civic-coordination', [Material.CivicHall]],
+      ['iron-workshop', [Material.Smithy]],
+      ['iron-charge', [Material.IronCharge]],
+      ['iron-reduction', [Material.IronBloom]],
+      ['iron-working', [Material.Iron]],
+      ['iron-tooling', [Material.IronTool]],
+      ['fortified-coordination', [Material.KeepCore]],
+    ]);
+    return exactOutputs.get(desiredFunction)?.includes(materialId) ?? false;
+  };
+  const personHasReliableFunctionalTechnique = (
+    personId: string,
+    desiredFunction: string,
+    techniqueId: string,
+  ): boolean => {
+    const person = records(rawState.people).find((candidate) => candidate.id === personId);
+    const fact = records(person?.knowledge).find((candidate) => candidate.id === techniqueId
+      && candidate.kind === 'technique'
+      && typeof candidate.confidence === 'number'
+      && candidate.confidence >= 55);
+    const outputMaterialId = techniqueOutputMaterialId(techniqueId);
+    return Boolean(fact && outputMaterialId !== null
+      && materialSupportsFunction(desiredFunction, outputMaterialId));
+  };
+  const terminalOpportunityBasis = (project: Record<string, unknown>): Record<string, unknown> | null => (
+    objectRecord(project.terminalInquiryOpportunityBasis)
+      ?? objectRecord(project.inquiryOpportunityBasis)
   );
 
   let basisProjects = 0;
@@ -998,9 +1124,10 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
   const sourceAuditByProjectIndex = new Map<number, {
     renewalKeys: string[];
     renewalSources: OpportunitySource[];
+    coveredRenewalKeys: string[];
   }>();
 
-  for (const { project, projectIndex } of inquiryProjects) {
+  for (const { project, projectIndex } of sourceAuditProjects) {
     const projectId = stringValue(project.id) ?? `#${projectIndex}`;
     const basis = objectRecord(project.inquiryOpportunityBasis);
     if (basis) basisProjects += 1;
@@ -1018,13 +1145,17 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
       else parsedSources.push(source);
     }
     const renewalSources = parsedSources.filter((source) => projectRenewalKeys.includes(source.opportunityKey));
-    sourceAuditByProjectIndex.set(projectIndex, { renewalKeys: projectRenewalKeys, renewalSources });
+    const coveredKeys = projectRenewalKeys.filter((renewalKey) => (
+      renewalSources.some((source) => source.opportunityKey === renewalKey)
+    ));
+    sourceAuditByProjectIndex.set(projectIndex, {
+      renewalKeys: projectRenewalKeys,
+      renewalSources,
+      coveredRenewalKeys: coveredKeys,
+    });
     if (projectRenewalKeys.length > 0) {
       renewalProjects += 1;
       renewalKeys += projectRenewalKeys.length;
-      const coveredKeys = projectRenewalKeys.filter((renewalKey) => (
-        renewalSources.some((source) => source.opportunityKey === renewalKey)
-      ));
       renewalCommitmentCoveredKeys += coveredKeys.length;
       if (coveredKeys.length === projectRenewalKeys.length) renewalCommitmentProjects += 1;
       for (const renewalKey of projectRenewalKeys) {
@@ -1037,28 +1168,16 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
         renewalCommitmentActorMismatches.add(`${projectId}\u0000campaign`);
       }
       for (const source of renewalSources) {
-        for (const sourceKey of source.sourceKeys) {
-          const sourceActor = inventorySourceActor(sourceKey);
-          if (sourceActor && sourceActor !== project.ownerId) {
-            renewalCommitmentActorMismatches.add(`${projectId}\u0000${sourceKey}`);
-          }
+        const sourceActor = source.currentSourceKey
+          ? inventorySourceActor(source.currentSourceKey)
+          : null;
+        if (sourceActor && sourceActor !== project.ownerId) {
+          renewalCommitmentActorMismatches.add(`${projectId}\u0000${source.currentSourceKey}`);
         }
       }
     }
     for (const renewalKey of projectRenewalKeys) {
       if (!opportunityKeys.has(renewalKey)) renewalKeyMismatches.add(`${projectId}\u0000${renewalKey}`);
-    }
-
-    const createdAtMonth = integerValue(project.createdAtMonth);
-    const hasPriorFailure = createdAtMonth !== null && failedProjects.some((prior) => (
-      prior.projectIndex < projectIndex
-        && prior.project.ownerId === project.ownerId
-        && prior.project.desiredFunction === project.desiredFunction
-        && integerValue(prior.project.blockedAtMonth) !== null
-        && integerValue(prior.project.blockedAtMonth)! <= createdAtMonth
-    ));
-    if ((hasPriorFailure || inheritedProjectIds.length > 0) && projectRenewalKeys.length === 0) {
-      reopenWithoutRenewal.add(projectId);
     }
 
     for (const inheritedProjectId of inheritedProjectIds) {
@@ -1084,38 +1203,150 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     }
   }
 
+  // Search exhaustion is shared by production, inquiry, and construction
+  // projects. Audit the complete project stream rather than the narrower
+  // hypothesis-metric subset above.
+  for (const { project, projectIndex } of projects) {
+    const projectId = stringValue(project.id) ?? `#${projectIndex}`;
+    const basis = objectRecord(project.inquiryOpportunityBasis);
+    const inheritedProjectIds = stringKeys(basis?.inheritedProjectIds);
+    const createdAtMonth = integerValue(project.createdAtMonth);
+    const priorFailures = createdAtMonth === null ? [] : reopenConstraintProjects.filter((prior) => (
+      prior.projectIndex < projectIndex
+        && prior.project.ownerId === project.ownerId
+        && prior.project.desiredFunction === project.desiredFunction
+        && integerValue(prior.project.blockedAtMonth) !== null
+        && integerValue(prior.project.blockedAtMonth)! <= createdAtMonth
+    ));
+    const priorSearchCampaigns = priorFailures.flatMap(({ project: prior }) => (
+      exhaustedSearchCampaigns(prior)
+    ));
+    const sourceAudit = sourceAuditByProjectIndex.get(projectIndex);
+    const basisIdentityMatches = basis?.actorId === project.ownerId
+      && basis?.desiredFunction === project.desiredFunction;
+    const priorOpportunityKeys = new Set(priorFailures.flatMap(({ project: prior }) => (
+      stringKeys(terminalOpportunityBasis(prior)?.opportunityKeys)
+    )));
+    const priorSearchMaterialIds = new Set(priorSearchCampaigns.flatMap((campaign) => (
+      Array.isArray(campaign.materialIds)
+        ? campaign.materialIds.map(integerValue).filter((value): value is number => value !== null)
+        : []
+    )));
+    const priorMaterialSources = priorFailures.flatMap(({ project: prior }) => (
+      records(terminalOpportunityBasis(prior)?.opportunitySources).filter((source) => (
+        source.kind === 'material' && integerValue(source.materialId) !== null
+      ))
+    ));
+    const priorSearchSourceFactIdsByMaterial = new Map<number, Set<string>>();
+    for (const campaign of priorSearchCampaigns) {
+      const sourceFactIds = stringKeys(campaign.sourceFactIds);
+      for (const materialId of (Array.isArray(campaign.materialIds)
+        ? campaign.materialIds.map(integerValue).filter((value): value is number => value !== null)
+        : [])) {
+        const known = priorSearchSourceFactIdsByMaterial.get(materialId) ?? new Set<string>();
+        for (const eventId of sourceFactIds) known.add(eventId);
+        priorSearchSourceFactIdsByMaterial.set(materialId, known);
+      }
+    }
+    const priorTerminalSourceFactIds = new Set(priorFailures.flatMap(({ project: prior }) => (
+      stringKeys(terminalOpportunityBasis(prior)?.sourceFactIds)
+    )));
+    const sourceIsNew = (source: OpportunitySource): boolean => {
+      const matchesStoredSource = priorMaterialSources.some((prior) => {
+        if (integerValue(prior.materialId) !== source.materialId) return false;
+        const priorSourceKeys = stringKeys(prior.sourceKeys);
+        if (source.sourceKeys.some((sourceKey) => priorSourceKeys.includes(sourceKey))) return true;
+        const priorFactIds = new Set(stringKeys(prior.sourceFactIds));
+        return source.sourceFactIds.length > 0
+          && source.sourceFactIds.some((eventId) => priorFactIds.has(eventId));
+      });
+      if (matchesStoredSource) return false;
+      if (source.materialId === null || !priorSearchMaterialIds.has(source.materialId)) return true;
+      const campaignSourceFactIds = priorSearchSourceFactIdsByMaterial.get(source.materialId)
+        ?? new Set<string>();
+      return !source.sourceFactIds.some((eventId) => (
+        campaignSourceFactIds.has(eventId) || priorTerminalSourceFactIds.has(eventId)
+      ));
+    };
+    const priorHypothesisFailures = priorFailures.filter(({ project: prior }) => (
+      hasHypothesisAttempts(prior)
+    ));
+    const sourceActorMatches = (source: OpportunitySource): boolean => {
+      if (!source.currentSourceKey) return true;
+      const actorId = inventorySourceActor(source.currentSourceKey);
+      return actorId === null || actorId === project.ownerId;
+    };
+    const declaredRenewalIsNew = (source: OpportunitySource): boolean => {
+      if (priorFailures.length === 0 || !basisIdentityMatches || !sourceActorMatches(source)
+        || typeof project.ownerId !== 'string' || typeof project.desiredFunction !== 'string') return false;
+      if (source.opportunityKey.startsWith('search-source:')) {
+        return source.kind === 'material'
+          && source.materialId !== null
+          && priorSearchMaterialIds.has(source.materialId)
+          && sourceIsNew(source);
+      }
+      if (source.kind === 'knowledge' && source.opportunityKey.startsWith('knowledge:')) {
+        const techniqueId = source.opportunityKey.slice('knowledge:'.length);
+        return !priorOpportunityKeys.has(source.opportunityKey)
+          && personHasReliableFunctionalTechnique(
+            project.ownerId,
+            project.desiredFunction,
+            techniqueId,
+          );
+      }
+      return priorHypothesisFailures.length > 0
+        && !priorOpportunityKeys.has(source.opportunityKey);
+    };
+    const hasValidDeclaredRenewal = Boolean(sourceAudit?.renewalSources.some(declaredRenewalIsNew));
+    if ((priorFailures.length > 0 || inheritedProjectIds.length > 0) && !hasValidDeclaredRenewal) {
+      reopenWithoutRenewal.add(projectId);
+    }
+  }
+
   for (const { project } of failedProjects) {
     if (objectRecord(project.terminalInquiryOpportunityBasis)) terminalBasisProjects += 1;
   }
 
-  const renewalHypothesisProjects = inquiryProjects.flatMap((entry) => {
+  type RenewalHypothesisProject = (typeof projects)[number] & {
+    campaign: Record<string, unknown>;
+  };
+  const renewalHypothesisProjectsFor = (
+    entries: typeof projects,
+  ): RenewalHypothesisProject[] => entries.flatMap((entry) => {
     const basis = objectRecord(entry.project.inquiryOpportunityBasis);
     const campaign = objectRecord(entry.project.hypothesisCampaign);
     return campaign && stringKeys(basis?.renewalKeys).length > 0 ? [{ ...entry, campaign }] : [];
   });
-  const renewalHypothesisCandidateProjects = renewalHypothesisProjects.filter(({ campaign }) => (
-    records(campaign.candidates).some((candidate) => (
-      stringKeys(candidate.reasonKeys).includes('cross-project-renewal-opportunity')
-    ))
-  )).length;
-  const renewalHypothesisAttemptProjects = renewalHypothesisProjects.filter(({ campaign }) => (
-    records(campaign.attempts).length > 0
-  ));
-  const renewalHypothesisFirstAttempts = renewalHypothesisAttemptProjects.filter(({ campaign }) => {
-    const firstAttempt = records(campaign.attempts)[0];
-    const eventId = stringValue(firstAttempt?.eventId);
-    const diff = eventId ? objectRecord(actionById.get(eventId)?.diff) : null;
-    return stringKeys(diff?.projectHypothesisReasonKeys)
-      .includes('cross-project-renewal-opportunity');
-  }).length;
+  const summarizeRenewalHypothesisScope = (entries: RenewalHypothesisProject[]) => {
+    const candidateProjects = entries.filter(({ campaign }) => (
+      records(campaign.candidates).some((candidate) => (
+        stringKeys(candidate.reasonKeys).includes('cross-project-renewal-opportunity')
+      ))
+    )).length;
+    const attemptProjects = entries.filter(({ campaign }) => (
+      records(campaign.attempts).length > 0
+    ));
+    const firstAttempts = attemptProjects.filter(({ campaign }) => {
+      const firstAttempt = records(campaign.attempts)[0];
+      const eventId = stringValue(firstAttempt?.eventId);
+      const diff = eventId ? objectRecord(actionById.get(eventId)?.diff) : null;
+      return stringKeys(diff?.projectHypothesisReasonKeys)
+        .includes('cross-project-renewal-opportunity');
+    }).length;
+    return { candidateProjects, attemptProjects, firstAttempts };
+  };
+  // Preserve the established production/inquiry denominator. Construction
+  // renewal hypotheses are reported separately so their new audit cannot hide
+  // a regression in the legacy scope.
+  const renewalHypothesisProjects = renewalHypothesisProjectsFor(inquiryProjects);
+  const constructionRenewalHypothesisProjects = renewalHypothesisProjectsFor(
+    projects.filter(({ project }) => project.kind === 'construction'),
+  );
+  const renewalHypothesisSummary = summarizeRenewalHypothesisScope(renewalHypothesisProjects);
+  const constructionRenewalHypothesisSummary = summarizeRenewalHypothesisScope(
+    constructionRenewalHypothesisProjects,
+  );
 
-  const exactSourceHypothesisProjects = renewalHypothesisProjects.filter(({ projectIndex }) => (
-    sourceAuditByProjectIndex.get(projectIndex)?.renewalKeys.some((renewalKey) => (
-      renewalKey.startsWith('material:')
-        || renewalKey.startsWith('target:')
-        || renewalKey.startsWith('response:')
-    ))
-  ));
   const exactCommitmentCandidate = (
     candidate: Record<string, unknown>,
     sources: OpportunitySource[],
@@ -1157,54 +1388,76 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     return sameMaterial && !sources.some((source) => evidenceUsesOpportunitySource(source, evidence));
   };
 
-  let renewalFirstCandidateExactSourceProjects = 0;
-  let renewalFirstAttemptExactSourceProjects = 0;
-  let renewalFirstAttemptProjects = 0;
-  const fallbackBeforeCommitmentViolations = new Set<string>();
-  const materialOnlyCommitmentAttributionViolations = new Set<string>();
-  for (const { project, projectIndex, campaign } of exactSourceHypothesisProjects) {
-    const projectId = stringValue(project.id) ?? `#${projectIndex}`;
-    const sources = sourceAuditByProjectIndex.get(projectIndex)?.renewalSources
-      .filter((source) => source.kind === 'material'
-        || source.kind === 'target'
-        || source.kind === 'verified-response') ?? [];
-    const candidates = records(campaign.candidates);
-    const firstCommitmentCandidate = candidates.find((candidate) => hasCommitmentReason(candidate.reasonKeys));
-    if (firstCommitmentCandidate && exactCommitmentCandidate(firstCommitmentCandidate, sources)) {
-      renewalFirstCandidateExactSourceProjects += 1;
-    }
-    for (const [candidateIndex, candidate] of candidates.entries()) {
-      if (materialOnlyAttribution(candidate, candidate.reasonKeys, sources)) {
-        materialOnlyCommitmentAttributionViolations.add(`${projectId}\u0000candidate:${candidateIndex}`);
+  const auditExactSourceCommitments = (entries: RenewalHypothesisProject[]) => {
+    const exactSourceProjects = entries.filter(({ projectIndex }) => (
+      sourceAuditByProjectIndex.get(projectIndex)?.renewalKeys.some((renewalKey) => (
+        renewalKey.startsWith('material:')
+          || renewalKey.startsWith('search-source:')
+          || renewalKey.startsWith('target:')
+          || renewalKey.startsWith('response:')
+      ))
+    ));
+    let firstCandidateExactSourceProjects = 0;
+    let firstAttemptExactSourceProjects = 0;
+    let firstAttemptProjects = 0;
+    const fallbackBeforeCommitmentViolations = new Set<string>();
+    const materialOnlyCommitmentAttributionViolations = new Set<string>();
+    for (const { project, projectIndex, campaign } of exactSourceProjects) {
+      const projectId = stringValue(project.id) ?? `#${projectIndex}`;
+      const sources = sourceAuditByProjectIndex.get(projectIndex)?.renewalSources
+        .filter((source) => source.kind === 'material'
+          || source.kind === 'target'
+          || source.kind === 'verified-response') ?? [];
+      const candidates = records(campaign.candidates);
+      const firstCommitmentCandidate = candidates.find((candidate) => hasCommitmentReason(candidate.reasonKeys));
+      if (firstCommitmentCandidate && exactCommitmentCandidate(firstCommitmentCandidate, sources)) {
+        firstCandidateExactSourceProjects += 1;
       }
-    }
+      for (const [candidateIndex, candidate] of candidates.entries()) {
+        if (materialOnlyAttribution(candidate, candidate.reasonKeys, sources)) {
+          materialOnlyCommitmentAttributionViolations.add(`${projectId}\u0000candidate:${candidateIndex}`);
+        }
+      }
 
-    const attempts = records(campaign.attempts);
-    if (attempts.length > 0) {
-      renewalFirstAttemptProjects += 1;
-      if (exactCommitmentAttempt(campaign, attempts[0], sources)) {
-        renewalFirstAttemptExactSourceProjects += 1;
+      const attempts = records(campaign.attempts);
+      if (attempts.length > 0) {
+        firstAttemptProjects += 1;
+        if (exactCommitmentAttempt(campaign, attempts[0], sources)) {
+          firstAttemptExactSourceProjects += 1;
+        }
+      }
+      let commitmentAttempted = false;
+      for (const [attemptIndex, attempt] of attempts.entries()) {
+        const exactAttempt = exactCommitmentAttempt(campaign, attempt, sources);
+        if (!commitmentAttempted && !exactAttempt) {
+          fallbackBeforeCommitmentViolations.add(`${projectId}\u0000attempt:${attemptIndex}`);
+        }
+        if (exactAttempt) commitmentAttempted = true;
+        const eventId = stringValue(attempt.eventId);
+        const diff = eventId ? objectRecord(actionById.get(eventId)?.diff) : null;
+        if (materialOnlyAttribution(attempt, diff?.projectHypothesisReasonKeys, sources)
+          || (diff && materialOnlyAttribution(
+            diffEvidence(diff),
+            diff.projectHypothesisReasonKeys,
+            sources,
+          ))) {
+          materialOnlyCommitmentAttributionViolations.add(`${projectId}\u0000attempt:${attemptIndex}`);
+        }
       }
     }
-    let commitmentAttempted = false;
-    for (const [attemptIndex, attempt] of attempts.entries()) {
-      const exactAttempt = exactCommitmentAttempt(campaign, attempt, sources);
-      if (!commitmentAttempted && !exactAttempt) {
-        fallbackBeforeCommitmentViolations.add(`${projectId}\u0000attempt:${attemptIndex}`);
-      }
-      if (exactAttempt) commitmentAttempted = true;
-      const eventId = stringValue(attempt.eventId);
-      const diff = eventId ? objectRecord(actionById.get(eventId)?.diff) : null;
-      if (materialOnlyAttribution(attempt, diff?.projectHypothesisReasonKeys, sources)
-        || (diff && materialOnlyAttribution(
-          diffEvidence(diff),
-          diff.projectHypothesisReasonKeys,
-          sources,
-        ))) {
-        materialOnlyCommitmentAttributionViolations.add(`${projectId}\u0000attempt:${attemptIndex}`);
-      }
-    }
-  }
+    return {
+      exactSourceProjects,
+      firstCandidateExactSourceProjects,
+      firstAttemptExactSourceProjects,
+      firstAttemptProjects,
+      fallbackBeforeCommitmentViolations,
+      materialOnlyCommitmentAttributionViolations,
+    };
+  };
+  const exactSourceCommitmentAudit = auditExactSourceCommitments(renewalHypothesisProjects);
+  const constructionExactSourceCommitmentAudit = auditExactSourceCommitments(
+    constructionRenewalHypothesisProjects,
+  );
 
   const noResponseCounts = new Map<string, number>();
   for (const { project } of inquiryProjects) {
@@ -1226,7 +1479,7 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
 
   return {
     inquiryOpportunityBasisProjects: basisProjects,
-    inquiryOpportunityBasisCoverage: coverage(basisProjects, inquiryProjects.length),
+    inquiryOpportunityBasisCoverage: coverage(basisProjects, sourceAuditProjects.length),
     inquiryOpportunityFailedProjects: failedProjects.length,
     inquiryOpportunityTerminalBasisProjects: terminalBasisProjects,
     inquiryOpportunityTerminalBasisCoverage: coverage(terminalBasisProjects, failedProjects.length),
@@ -1241,13 +1494,26 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     hypothesisReliableNoResponseExcessAttempts: reliableNoResponseExcessAttempts,
     inquiryOpportunityRenewalHypothesisProjects: renewalHypothesisProjects.length,
     inquiryOpportunityRenewalHypothesisCandidateCoverage: coverage(
-      renewalHypothesisCandidateProjects,
+      renewalHypothesisSummary.candidateProjects,
       renewalHypothesisProjects.length,
     ),
-    inquiryOpportunityRenewalHypothesisAttemptProjects: renewalHypothesisAttemptProjects.length,
+    inquiryOpportunityRenewalHypothesisAttemptProjects:
+      renewalHypothesisSummary.attemptProjects.length,
     inquiryOpportunityRenewalHypothesisFirstAttemptCoverage: coverage(
-      renewalHypothesisFirstAttempts,
-      renewalHypothesisAttemptProjects.length,
+      renewalHypothesisSummary.firstAttempts,
+      renewalHypothesisSummary.attemptProjects.length,
+    ),
+    inquiryOpportunityConstructionRenewalHypothesisProjects:
+      constructionRenewalHypothesisProjects.length,
+    inquiryOpportunityConstructionRenewalHypothesisCandidateCoverage: coverage(
+      constructionRenewalHypothesisSummary.candidateProjects,
+      constructionRenewalHypothesisProjects.length,
+    ),
+    inquiryOpportunityConstructionRenewalHypothesisAttemptProjects:
+      constructionRenewalHypothesisSummary.attemptProjects.length,
+    inquiryOpportunityConstructionRenewalHypothesisFirstAttemptCoverage: coverage(
+      constructionRenewalHypothesisSummary.firstAttempts,
+      constructionRenewalHypothesisSummary.attemptProjects.length,
     ),
     inquiryOpportunitySourceBasisProjects: sourceBasisProjects,
     inquiryOpportunitySourceBasisCoverage: coverage(sourceBasisProjects, basisProjects),
@@ -1266,17 +1532,29 @@ function inquiryOpportunityMetrics(state: SimulationState): InquiryOpportunityMe
     inquiryOpportunityRenewalCommitmentInheritedStatusMismatches:
       renewalCommitmentInheritedStatusMismatches.size,
     inquiryOpportunityRenewalFirstCandidateExactSourceCoverage: coverage(
-      renewalFirstCandidateExactSourceProjects,
-      exactSourceHypothesisProjects.length,
+      exactSourceCommitmentAudit.firstCandidateExactSourceProjects,
+      exactSourceCommitmentAudit.exactSourceProjects.length,
     ),
     inquiryOpportunityRenewalFirstAttemptExactSourceCoverage: coverage(
-      renewalFirstAttemptExactSourceProjects,
-      renewalFirstAttemptProjects,
+      exactSourceCommitmentAudit.firstAttemptExactSourceProjects,
+      exactSourceCommitmentAudit.firstAttemptProjects,
     ),
     inquiryOpportunityRenewalFallbackBeforeCommitmentViolations:
-      fallbackBeforeCommitmentViolations.size,
+      exactSourceCommitmentAudit.fallbackBeforeCommitmentViolations.size,
     inquiryOpportunityMaterialOnlyCommitmentAttributionViolations:
-      materialOnlyCommitmentAttributionViolations.size,
+      exactSourceCommitmentAudit.materialOnlyCommitmentAttributionViolations.size,
+    inquiryOpportunityConstructionRenewalFirstCandidateExactSourceCoverage: coverage(
+      constructionExactSourceCommitmentAudit.firstCandidateExactSourceProjects,
+      constructionExactSourceCommitmentAudit.exactSourceProjects.length,
+    ),
+    inquiryOpportunityConstructionRenewalFirstAttemptExactSourceCoverage: coverage(
+      constructionExactSourceCommitmentAudit.firstAttemptExactSourceProjects,
+      constructionExactSourceCommitmentAudit.firstAttemptProjects,
+    ),
+    inquiryOpportunityConstructionRenewalFallbackBeforeCommitmentViolations:
+      constructionExactSourceCommitmentAudit.fallbackBeforeCommitmentViolations.size,
+    inquiryOpportunityConstructionMaterialOnlyCommitmentAttributionViolations:
+      constructionExactSourceCommitmentAudit.materialOnlyCommitmentAttributionViolations.size,
   };
 }
 

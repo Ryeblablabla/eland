@@ -96,6 +96,7 @@ projection / report / UI read models
 - 如果只接入素材的一部分，应明确标出差异，不能让网页原型冒充已实现能力。
 - 游戏规则、月度主循环、人物规划优先级、项目链路、模型边界或观察器边界发生变化时，必须同步更新 `knowledge-base/rules-page.js` 中的规则树与决策树静态导览；导览以当前可执行代码为准，不能保留与实现冲突的旧说明。
 - Knowledge Base 导入的核心文档清单维护在 `knowledge-base/scripts/sync-docs.mjs`；修改这些源文档后运行 `npm run sync:docs`，同步提交生成的 `knowledge-base/knowledge-docs.js`，不要直接编辑生成文件。
+- Knowledge Base 配方页由 `material.ts`、`interaction-rules.ts` 和 `separation-rules.ts` 生成；修改物质操作规则后运行 `npm run sync:recipes`，同步提交 `knowledge-base/recipes-data.js`，不要直接编辑生成文件。
 
 ## 前端体验
 

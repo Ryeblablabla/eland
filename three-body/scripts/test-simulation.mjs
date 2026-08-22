@@ -47,7 +47,7 @@ try {
   const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
   const { findReachableWater } = await import(`${pathToFileURL(waterAccessBundlePath).href}?test=${Date.now()}`);
   const { buildConstructionOptions } = await import(`${pathToFileURL(constructionBundlePath).href}?test=${Date.now()}`);
-  const { resolveWeather } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
+  const { resolveClimate, resolveWeather } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
   const placeWith = (person, other) => {
     person.position.cellId = other.position.cellId;
     person.position.z = other.position.z;
@@ -84,6 +84,20 @@ try {
   assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 55 && relation.bond === 55 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民应有中等且可追溯的相互熟悉关系');
   const cappedLongRun = createInitialState(311_000, { endpoint: { kind: 'months', value: 99_999 } });
   assert.equal(cappedLongRun.civilization.conditions.endpoint.value, 12_000, '长期演化可持续到全员死亡，但时间硬上限暂定为一千年');
+
+  const externalClimateState = createInitialState(20260822, { endpoint: { kind: 'months', value: 12 } });
+  externalClimateState.civilization.externalClimate = { epoch: 'chaotic', kind: 'heat', severity: 7 };
+  const externalEpochFacts = resolveClimate(externalClimateState, 1);
+  assert.equal(externalEpochFacts[0]?.diff.epochChanged, true, '外部天象造成的恒乱纪元变化必须保留事实标记');
+  assert.equal(externalEpochFacts[0]?.diff.previousEpoch, 'stable');
+  assert.equal(externalEpochFacts[0]?.diff.previousKind, 'temperate');
+  assert.equal(externalEpochFacts[0]?.diff.climateKindChanged, true);
+  assert.equal(externalEpochFacts[0]?.diff.eraTransition, undefined, '外部天象变化不得冒充本地纪元排程转换');
+  externalClimateState.civilization.externalClimate = { epoch: 'chaotic', kind: 'cold', severity: 6 };
+  const externalClimateShiftFacts = resolveClimate(externalClimateState, 2);
+  assert.equal(externalClimateShiftFacts[0]?.diff.epochChanged, undefined);
+  assert.equal(externalClimateShiftFacts[0]?.diff.climateKindChanged, true, '同一乱纪元内的冷热切换必须保留前后态');
+  assert.equal(externalClimateShiftFacts[0]?.diff.previousKind, 'heat');
 
   const weatherTrace = (seed) => {
     const state = {

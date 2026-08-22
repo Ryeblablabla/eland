@@ -17,7 +17,7 @@ import {
 } from './cognition/bdi-deliberation';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
+const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|return-shared-living|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
 
 export interface PlanningMoment {
   atMonth: number;

@@ -14,6 +14,7 @@ try {
     export { buildSocialOptions } from ${JSON.stringify(path.resolve('src/game/eland/application/social-options.ts'))};
     export { deriveNeedAgenda } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/need-agenda.ts'))};
     export { compileAgreementContinuations } from ${JSON.stringify(path.resolve('src/game/eland/application/agreement-continuation.ts'))};
+    export { advanceAgreementLifecycle } from ${JSON.stringify(path.resolve('src/game/eland/domain/agreement.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
     export { cellX, cellY, cellsInRadius, findStandingPath, standingPositions } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
@@ -23,6 +24,7 @@ try {
   ], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
 
   const {
+    advanceAgreementLifecycle,
     buildSocialOptions,
     buildDecisionContexts,
     cellX,
@@ -369,6 +371,60 @@ try {
   assert.equal(returnChoice.optionId, returnOption.id,
     'a conscientious person should choose the sourced fixed-anchor return when maintenance is due');
 
+  // An accepted but not-yet-established companionship must enter the same
+  // commitment agenda once the remaining calendar window is exactly the
+  // number of shared-living months still required. Otherwise the return
+  // affordance exists but routine work can repeatedly starve the promise.
+  const pendingReturnState = structuredClone(companionFixture.state);
+  const pendingReturnPerson = pendingReturnState.people.find((person) => person.id === companionFixture.requester.id);
+  const pendingReturnAgreement = pendingReturnState.agreements.find((agreement) => agreement.id === companionAgreement.id);
+  assert.ok(pendingReturnPerson && pendingReturnAgreement, 'pending return fixture requires the proposer and agreement');
+  delete pendingReturnAgreement.companionEstablishedAtMonth;
+  delete pendingReturnAgreement.lastCompanionCoLocatedAtMonth;
+  delete pendingReturnAgreement.lastCompanionRelationshipAtCoLocatedMonth;
+  pendingReturnAgreement.coLocatedMonths = 8;
+  pendingReturnAgreement.dueAtMonth = atMonth + 3;
+  pendingReturnPerson.position = { ...pendingReturnPerson.position, ...awayPosition };
+  pendingReturnPerson.personality.baseline.conscientiousness = 90;
+  Object.assign(pendingReturnPerson.body, { health: 100, hydration: 100, nutrition: 100 });
+  const pendingReturnOption = buildSocialOptions(pendingReturnState, pendingReturnPerson, [], atMonth)
+    .find((option) => option.id === `return-shared-living:${pendingReturnAgreement.id}:${pendingReturnPerson.id}`);
+  assert.ok(pendingReturnOption, 'the last feasible establishment window must expose a fixed-anchor return option');
+  const pendingReturnContext = {
+    state: pendingReturnState, person: pendingReturnPerson,
+    visibleCells: [pendingReturnPerson.position.cellId], visiblePeople: [],
+    visibleDrops: [], visibleAnimals: [], options: [pendingReturnOption], followUpOptions: [],
+  };
+  const pendingCommitment = deriveNeedAgenda(pendingReturnContext, atMonth)
+    .find((need) => need.kind === 'commitment');
+  assert.ok(pendingCommitment, 'the last feasible establishment window must create a commitment need before breach');
+  assert.ok(pendingCommitment.sourceFactIds.includes('e-0-environment-founding-0'),
+    'the pre-establishment commitment need must retain the accepted agreement source');
+  const pendingReturnChoice = new RulePlanner().decideAt(pendingReturnContext, { atMonth, planningTick: 3 });
+  assert.equal(pendingReturnChoice.kind, 'start');
+  assert.equal(pendingReturnChoice.optionId, pendingReturnOption.id,
+    'a conscientious person should be able to act on the due pre-establishment commitment');
+  const routineIntent = {
+    id: 'intent-pending-companion-routine-work',
+    ownerId: pendingReturnPerson.id,
+    summary: '继续日常生产', domain: 'strategic',
+    goal: { kind: 'inventory-at-least', materialId: 13, quantity: 99 },
+    nextAction: { kind: 'move', toCellId: pendingReturnPerson.position.cellId, toZ: pendingReturnPerson.position.z },
+    status: 'active', createdAtMonth: atMonth - 2, lastProgressAtMonth: atMonth,
+    progress: 0.6, sourceDecisionEventId: 'decision-routine-work',
+    sourceFactIds: ['e-0-environment-founding-0'], actionEventIds: [], replanCount: 0,
+  };
+  pendingReturnState.intents.push(routineIntent);
+  pendingReturnPerson.activeIntentId = routineIntent.id;
+  const interruptedReturnChoice = new RulePlanner().decideAt({
+    ...pendingReturnContext,
+    activeIntent: routineIntent,
+  }, { atMonth, planningTick: 4 });
+  assert.equal(interruptedReturnChoice.kind, 'revise');
+  assert.equal(interruptedReturnChoice.optionId, pendingReturnOption.id);
+  assert.match(interruptedReturnChoice.reason, /先履行已经生效的承诺或职责/u,
+    'a due accepted companionship must preempt routine work through the existing fulfillment protocol');
+
   Object.assign(companionFixture.relation, { trust: 20, bond: 20, fear: 70 });
   const adverseCompanionChoice = new RulePlanner().decideAt({ ...companionContext, options: [companionWithdrawal] }, {
     atMonth, planningTick: 2,
@@ -407,6 +463,90 @@ try {
   assert.equal(buildSocialOptions(distantCompanionState, distantCompanionRequester, [], atMonth)
     .some((option) => option.id.startsWith('withdraw-companion:')), false,
   'ending companionship must not track a distant partner in real time');
+
+  // A collective with one living member is dormant rather than dissolved.
+  // Unanimous admission of a new member must revive it; otherwise the accepted
+  // agreement can only wait one month, breach, and be proposed again forever.
+  const dormantFixture = preparePair(26082137);
+  const dormantFounder = dormantFixture.requester;
+  const dormantCandidate = dormantFixture.helper;
+  const departedMember = dormantFixture.state.people.find((person) => person.id !== dormantFounder.id
+    && person.id !== dormantCandidate.id);
+  assert.ok(departedMember, 'dormant collective fixture requires a historical second member');
+  dormantCandidate.position = structuredClone(dormantFounder.position);
+  dormantCandidate.bornAtMonth = atMonth - 25 * 12;
+  Object.assign(dormantFixture.relation, { trust: 12, bond: 8, fear: 0 });
+  const cooperationAgreementId = 'test-dormant-collective-cooperation';
+  dormantFixture.state.agreements.push({
+    id: cooperationAgreementId,
+    proposal: {
+      kind: 'assist', requesterId: dormantCandidate.id, helperId: dormantFounder.id,
+      need: 'company', expiresAtMonth: atMonth - 2,
+    },
+    proposerId: dormantCandidate.id,
+    responderId: dormantFounder.id,
+    partyIds: [dormantCandidate.id, dormantFounder.id],
+    requiredResponderIds: [dormantFounder.id],
+    acceptedByPersonIds: [dormantCandidate.id, dormantFounder.id],
+    rejectedByPersonIds: [], status: 'fulfilled', proposedAtMonth: atMonth - 6,
+    acceptByMonth: atMonth - 2, acceptedAtMonth: atMonth - 5, dueAtMonth: atMonth - 1,
+    resolvedAtMonth: atMonth - 4,
+    proposalEventId: 'e-0-environment-founding-0',
+    fulfillmentEventIds: ['e-0-environment-founding-0'],
+    fulfilledByPersonIds: [dormantCandidate.id, dormantFounder.id],
+    coLocatedMonths: 0,
+    sourceEventIds: ['e-0-environment-founding-0'],
+  });
+  const dormantCollectiveId = 'collective:test-dormant-revival';
+  dormantFixture.state.collectives.push({
+    id: dormantCollectiveId,
+    purposeSummary: '延续已有合作与共同生活',
+    status: 'dormant',
+    foundedAtMonth: atMonth - 12,
+    formationAgreementId: 'test-dormant-formation',
+    memberships: [
+      {
+        id: `membership:${dormantCollectiveId}:${dormantFounder.id}:12`,
+        collectiveId: dormantCollectiveId,
+        personId: dormantFounder.id,
+        status: 'active', joinedAtMonth: atMonth - 12,
+        sourceEventIds: ['e-0-environment-founding-0'],
+      },
+      {
+        id: `membership:${dormantCollectiveId}:${departedMember.id}:12`,
+        collectiveId: dormantCollectiveId,
+        personId: departedMember.id,
+        status: 'ended', joinedAtMonth: atMonth - 12, endedAtMonth: atMonth - 1,
+        sourceEventIds: ['e-0-environment-founding-0'],
+      },
+    ],
+    decisionRules: [], mandates: [], sourceEventIds: ['e-0-environment-founding-0'],
+  });
+  const dormantOffer = buildSocialOptions(dormantFixture.state, dormantFounder, [dormantCandidate], atMonth)
+    .find((option) => option.id.startsWith('offer-membership:')
+      && option.nextAction.kind === 'communicate'
+      && option.nextAction.content.proposal?.kind === 'membership'
+      && option.nextAction.content.proposal.collectiveId === dormantCollectiveId
+      && option.nextAction.content.proposal.candidateId === dormantCandidate.id);
+  assert.ok(dormantOffer, 'the sole living member must be able to invite a proven collaborator into a dormant collective');
+  const dormantOfferFact = commitAction(dormantFixture.state, dormantFounder, dormantOffer.nextAction, 10);
+  const dormantAdmission = dormantFixture.state.agreements.find((agreement) => agreement.proposalEventId === dormantOfferFact.id);
+  assert.equal(dormantAdmission?.status, 'proposed');
+  assert.deepEqual(dormantAdmission?.requiredResponderIds, [dormantCandidate.id],
+    'reviving a one-member collective requires the candidate response but no dead member response');
+  const dormantAcceptance = buildSocialOptions(dormantFixture.state, dormantCandidate, [dormantFounder], atMonth)
+    .find((option) => option.id === `accept-membership:${dormantAdmission.id}`);
+  assert.ok(dormantAcceptance, 'the invited collaborator must receive an explicit admission response');
+  commitAction(dormantFixture.state, dormantCandidate, dormantAcceptance.nextAction, 11);
+  assert.equal(dormantAdmission.status, 'fulfilled',
+    'unanimous admission must fulfill instead of leaving a dormant collective agreement to breach');
+  assert.equal(dormantFixture.state.collectives.find((collective) => collective.id === dormantCollectiveId)?.status, 'active',
+    'adding the second living member must reactivate the dormant collective');
+  assert.equal(dormantFixture.state.collectives.find((collective) => collective.id === dormantCollectiveId)
+    ?.memberships.find((membership) => membership.personId === dormantCandidate.id)?.status, 'active');
+  const laterAgreementFacts = advanceAgreementLifecycle(dormantFixture.state, atMonth + 2);
+  assert.equal(laterAgreementFacts.some((fact) => fact.agreementId === dormantAdmission.id && fact.change === 'breached'), false,
+    'the revived admission must not produce a delayed breach fact');
 
   // Adverse sourced relationship evidence exposes an explicit local revoke.
   const revokeFixture = preparePair(26082134);

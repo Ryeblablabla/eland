@@ -64,6 +64,13 @@ function saturating(value: number, scale: number): number {
   return positive / Math.max(0.0001, positive + scale);
 }
 
+function combinedSatisfaction(values: number[]): number {
+  return clamp(1 - values.reduce(
+    (remaining, value) => remaining * (1 - clamp(value)),
+    1,
+  ));
+}
+
 function trait(person: DecisionContext['person'], key: Parameters<typeof personalityScore>[1]): number {
   return personalityScore(person, key) / 100;
 }
@@ -290,7 +297,15 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
         : oldestFemaleAge < 38
           ? 0.2
           : 0.3;
-    const readinessUrgency = (0.18 + ageWindow * 0.6) * Math.pow(familyReadiness.readiness, 1.5);
+    // A real, sourced relationship and a finite reproductive window can make
+    // somebody consider family formation before every material condition is
+    // already solved. Readiness still changes the strength continuously, and
+    // is appraised again as the practical gate on the concrete option, but it
+    // must not erase the generativity need itself.
+    const relationshipSources = positiveReproductionOptions.flatMap((option) => option.sourceFactIds);
+    const generativityConsideration = 0.34 + ageWindow * 0.6;
+    const readinessModulation = 0.78 + Math.sqrt(familyReadiness.readiness) * 0.22;
+    const readinessUrgency = generativityConsideration * readinessModulation;
     const urgency = succubusReproductionOptions.length
       ? Math.max(0.48 + ageWindow * 0.2, readinessUrgency)
       : readinessUrgency;
@@ -300,12 +315,13 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
       succubusReproductionOptions.length
         ? ['魅魔特质产生了不依赖关系、双方协议或家庭准备度的单方生殖机会']
         : [
+            '本人眼前存在一段可追溯关系，因而开始考虑是否共同形成下一代',
             `本人当前可感知的食物、水源、住所、照护余量与气候共同形成${Math.round(familyReadiness.readiness * 100)}%的家庭准备度`,
             ...familyReadiness.reasons,
           ],
       succubusReproductionOptions.length
         ? [...new Set(succubusReproductionOptions.flatMap((option) => option.sourceFactIds))]
-        : familyReadiness.sourceFactIds,
+        : [...new Set([...relationshipSources, ...familyReadiness.sourceFactIds])],
     ));
   }
 
@@ -329,7 +345,6 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
   const dueCompanionCommitments = agreementsForPerson(context.state, person.id).filter((agreement) => {
     if (agreement.status !== 'active'
       || agreement.proposal.kind !== 'companion'
-      || agreement.companionEstablishedAtMonth === undefined
       || !agreement.partyIds.includes(person.id)) return false;
     const anchor = companionLivingAnchor(context.state, agreement);
     if (!anchor) return false;
@@ -368,6 +383,26 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
   const activeCompanions = agreementsForPerson(context.state, person.id).filter((agreement) => agreement.status === 'active'
     && agreement.proposal.kind === 'companion'
     && agreement.partyIds.includes(person.id));
+  const companionSatisfaction = combinedSatisfaction(activeCompanions.flatMap((agreement) => {
+    const otherId = agreement.partyIds.find((candidate) => candidate !== person.id);
+    const other = otherId ? personById(context.state, otherId) : undefined;
+    const relation = otherId
+      ? person.relations.find((candidate) => candidate.personId === otherId)
+      : undefined;
+    if (!other || !relation) return [];
+    const relationalSecurity = clamp(
+      (Math.max(0, relation.trust) + Math.max(0, relation.bond) - Math.max(0, relation.fear)) / 100,
+    );
+    const anchor = companionLivingAnchor(context.state, agreement);
+    const currentlyShared = Boolean(anchor && personWithinLivingArea(person, anchor));
+    return [clamp(
+      (agreement.companionEstablishedAtMonth !== undefined ? 0.72 : 0.46)
+      + relationalSecurity * 0.18
+      + (currentlyShared ? 0.12 : 0),
+      0,
+      0.92,
+    )];
+  }));
   const availableRelationshipOpportunities = visibleRelationshipOpportunities.filter((other) => !activeCompanions
     .some((agreement) => agreement.partyIds.includes(other.id)));
   const visibleSourcedRelations = person.relations.flatMap((relation) => {
@@ -382,15 +417,22 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
       maximum,
       clamp((Math.max(0, relation.bond) + Math.max(0, relation.trust) - Math.max(0, relation.fear)) / 100),
     ), 0);
+    const opportunityUrgency = 0.42 + strongestRelation * 0.38;
     needs.push(signal(
       'belonging',
-      (activeCompanions.length ? 0.28 : 0.42) + strongestRelation * 0.38,
-      [affiliationRelations.length
-        ? '本人眼前出现了曾与自己形成可追溯经历的人，可以主动延续这段关系'
-        : activeCompanions.length
-          ? '本人已有共同生活关系，但眼前还有尚未形成稳定关系的人；共同生活并不自动排除其他真实社会关系'
-          : '本人眼前有可以沟通的人，但尚未形成稳定陪伴关系；当前局部相遇本身构成一次低风险接近机会'],
-      affiliationRelations.flatMap(({ sourceFactIds }) => sourceFactIds),
+      opportunityUrgency * (1 - companionSatisfaction),
+      [
+        ...(activeCompanions.length
+          ? [`本人已有${activeCompanions.length}项仍在生效的共同生活承诺；已接受或已建立的关系会连续缓解归属缺口，只有未满足部分推动新关系`]
+          : []),
+        affiliationRelations.length
+          ? '本人眼前出现了曾与自己形成可追溯经历的人，可以主动延续这段关系'
+          : '本人眼前有可以沟通的人，但尚未形成稳定陪伴关系；当前局部相遇本身构成一次低风险接近机会',
+      ],
+      [
+        ...affiliationRelations.flatMap(({ sourceFactIds }) => sourceFactIds),
+        ...activeCompanions.flatMap((agreement) => agreement.sourceEventIds),
+      ],
     ));
   }
 

@@ -9,6 +9,7 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-player-narrati
 const bundlePath = path.join(temporaryDirectory, 'player-narrative.mjs');
 const enhancementBundlePath = path.join(temporaryDirectory, 'narrative-enhancements.mjs');
 const projectionBundlePath = path.join(temporaryDirectory, 'society-projection.mjs');
+const frameProjectorBundlePath = path.join(temporaryDirectory, 'frame-history-projector.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -17,9 +18,12 @@ try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'server/narrative-enhancements.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${enhancementBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'server/eland-session/frame-history-projector.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${frameProjectorBundlePath}`,
+  ], { stdio: 'pipe' });
   const projectionTestEntry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
-    export { toSocietyState } from ${JSON.stringify(path.resolve('src/game/eland/adapter.ts'))};
+    export { toAgentHistory, toSocietyState } from ${JSON.stringify(path.resolve('src/game/eland/adapter.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
     export { setVoxel } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
@@ -29,7 +33,8 @@ try {
   ], { input: projectionTestEntry, stdio: ['pipe', 'pipe', 'pipe'] });
   const { playerTextForEvent, projectPlayerNarrative } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { summarizePlayerNarrativeEntries } = await import(`${pathToFileURL(enhancementBundlePath).href}?test=${Date.now()}`);
-  const { createInitialState, Material, setVoxel, toSocietyState } = await import(`${pathToFileURL(projectionBundlePath).href}?test=${Date.now()}`);
+  const { projectChronicle, withCivilizationEntries } = await import(`${pathToFileURL(frameProjectorBundlePath).href}?test=${Date.now()}`);
+  const { createInitialState, Material, setVoxel, toAgentHistory, toSocietyState } = await import(`${pathToFileURL(projectionBundlePath).href}?test=${Date.now()}`);
 
   const visualProjectionState = createInitialState(20260822, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   const berryGatherer = visualProjectionState.people[0];
@@ -96,6 +101,22 @@ try {
     playerTextForEvent(visualProjectionState, cropHarvestFact),
     `${cropHarvester.name}收割了成熟作物，得到5份食物和2份种子。`,
   );
+  const personalAttackFact = {
+    id: 'visual-wolf-attack', kind: 'environment', change: 'animal',
+    atMonth: visualProjectionState.clock.elapsedMonths, orderInMonth: 4,
+    cellId: berryGatherer.position.cellId, who: berryGatherer.id,
+    result: `狼袭击${berryGatherer.name}并造成伤害`,
+    diff: {
+      process: 'attack-human', animalId: 'animal-wolf-history', animalSpeciesId: 'wolf',
+      victimId: berryGatherer.id, damage: 12, healthBefore: 72, healthAfter: 60,
+      woundStageBefore: 0, woundStageAfter: 2,
+    },
+  };
+  visualProjectionState.world.past.push(personalAttackFact);
+  const personalAttackHistory = toAgentHistory(visualProjectionState, berryGatherer.id)?.events
+    .find((event) => event.id === personalAttackFact.id);
+  assert.equal(personalAttackHistory?.label, '遭遇野兽袭击', '真实 attack-human 事实必须进入人物历史');
+  assert.equal(personalAttackHistory?.summary, `狼袭击了${berryGatherer.name}，使其受伤。`);
 
   const state = {
     branchId: 'main',
@@ -179,11 +200,99 @@ try {
   assert.deepEqual(entries, [], '赶路、搬运、吃饭、普通对话和失败尝试不得进入文明历史');
   assert.deepEqual(events, originalEvents, '玩家叙事只能投影事件，不能改写权威事实');
 
-  const quiet = projectPlayerNarrative(state, [{
+  const legacyWeatherWithoutTransitionEvidence = projectPlayerNarrative(state, [{
     id: 'weather-7', kind: 'environment', change: 'weather', atMonth: 7, orderInMonth: 0, cellId: 0,
     result: '本月天气转为晴朗', diff: { kind: 'clear' },
   }], 4);
-  assert.deepEqual(quiet, [], '没有重大事件的月份不应生成文明历史，也不需要调用模型');
+  assert.deepEqual(
+    legacyWeatherWithoutTransitionEvidence,
+    [],
+    '缺少前态与 episode 来源的旧天气日志不能冒充可证实的天气转换',
+  );
+
+  const stormTransition = {
+    id: 'weather-storm-8', kind: 'environment', change: 'weather', atMonth: 8, orderInMonth: 0, cellId: 0,
+    result: '本月天气转为风暴',
+    diff: { kind: 'storm', intensity: 3, previousKind: 'clear', previousIntensity: 1, episodeStarted: true },
+  };
+  const stormHistory = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [stormTransition] } },
+    [stormTransition],
+    4,
+  );
+  assert.equal(stormHistory[0].text, '天气由晴朗转为风暴。', '真实天气过程转换必须进入自然历史');
+  assert.match(stormHistory[0].detail, /强度 1→3/u);
+  const initialStorm = {
+    ...stormTransition,
+    id: 'weather-initial-storm', atMonth: 1,
+  };
+  assert.equal(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [initialStorm] } },
+      [initialStorm],
+      4,
+    )[0].text,
+    '文明开端天气为风暴。',
+    '首月天气只能记录文明开端的天气，不能把初始化晴朗写成真实前史',
+  );
+  const lowImpactRainTransition = {
+    ...stormTransition,
+    id: 'weather-low-impact-rain',
+    diff: { kind: 'rain', intensity: 1, previousKind: 'clear', previousIntensity: 1, episodeStarted: true },
+  };
+  assert.deepEqual(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [lowImpactRainTransition] } },
+      [lowImpactRainTransition],
+      4,
+    ),
+    [],
+    '普通低强度降雨与雾气转换不应每几个月刷入文明历史',
+  );
+  const ordinaryIntensityDrift = {
+    ...stormTransition,
+    id: 'weather-storm-drift-9', atMonth: 9,
+    result: '本月风暴强度升至3',
+    diff: { kind: 'storm', intensity: 3, previousIntensity: 2, episodeStarted: false },
+  };
+  assert.deepEqual(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [ordinaryIntensityDrift] } },
+      [ordinaryIntensityDrift],
+      4,
+    ),
+    [],
+    '同一天气过程的普通一级强度漂移不应逐次刷入历史',
+  );
+  const highImpactStorm = {
+    ...ordinaryIntensityDrift,
+    id: 'weather-storm-severe-10', atMonth: 10,
+    result: '本月风暴强度升至2',
+    diff: { kind: 'storm', intensity: 2, previousIntensity: 1, episodeStarted: false },
+  };
+  assert.equal(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [highImpactStorm] } },
+      [highImpactStorm],
+      4,
+    )[0].text,
+    '风暴强度升至 2。',
+    '天气跨入领域已有的高影响强度时必须形成自然历史转折',
+  );
+  const originalWeatherFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('自然历史不应调用模型'); };
+  try {
+    assert.deepEqual(
+      await summarizePlayerNarrativeEntries(
+        { ...state, world: { ...state.world, past: [stormTransition] } },
+        stormHistory,
+      ),
+      stormHistory,
+      '天气转换的规则事实与强度详情必须原样保留',
+    );
+  } finally {
+    globalThis.fetch = originalWeatherFetch;
+  }
 
   const birth = projectPlayerNarrative(state, [{
     id: 'birth-52', kind: 'environment', change: 'body', atMonth: 52, orderInMonth: 9, cellId: 12,
@@ -191,6 +300,135 @@ try {
   }], 4);
   assert.equal(birth.length, 1);
   assert.equal(birth[0].text, '芙蕾雅生下了艾拉。');
+
+  const nonFatalWolfAttack = {
+    id: 'wolf-attack-survived', kind: 'environment', change: 'animal', atMonth: 49, orderInMonth: 3, cellId: 4,
+    who: 'galileo', result: '狼袭击伽利略并造成伤害',
+    diff: {
+      process: 'attack-human', animalId: 'wolf-history', animalSpeciesId: 'wolf', victimId: 'galileo', damage: 12,
+      healthBefore: 52, healthAfter: 40, woundStageBefore: 0, woundStageAfter: 2,
+    },
+  };
+  const attackEntries = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [nonFatalWolfAttack] } },
+    [nonFatalWolfAttack],
+    4,
+  );
+  assert.equal(attackEntries.length, 1, '真实野兽袭击必须进入文明历史');
+  assert.equal(attackEntries[0].text, '狼袭击了伽利略，使其受伤。');
+  assert.match(attackEntries[0].detail, /伤害/u);
+  assert.match(attackEntries[0].detail, /健康值 52→40/u);
+
+  const fatalWolfAttack = {
+    ...nonFatalWolfAttack,
+    id: 'wolf-attack-fatal', atMonth: 51, orderInMonth: 20,
+    result: '狼袭击伽利略并造成致命伤害',
+    diff: { ...nonFatalWolfAttack.diff, healthBefore: 10, healthAfter: 0 },
+  };
+  const wolfDeath = {
+    id: 'death-after-wolf-attack', kind: 'environment', change: 'death', atMonth: 51, orderInMonth: 21, cellId: 4,
+    who: 'galileo', result: '伽利略在第 51 月死亡，遗体和私有背包留在原地',
+    diff: {
+      personId: 'galileo', cause: 'body-failure', healthBeforeDeath: 0,
+      sourceEventIds: ['unresolved-condition-evidence', fatalWolfAttack.id],
+    },
+  };
+  const fatalEntries = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [fatalWolfAttack, wolfDeath] } },
+    [fatalWolfAttack, wolfDeath],
+    4,
+  );
+  assert.equal(fatalEntries.length, 1, '同月袭击与其导致的死亡必须合并为一条历史');
+  assert.equal(fatalEntries[0].text, '伽利略被狼袭击致死，随身物品留在原地。');
+  assert.deepEqual(
+    fatalEntries[0].sourceEventIds,
+    ['unresolved-condition-evidence', fatalWolfAttack.id, wolfDeath.id],
+    '合并后的死亡历史必须保留死亡事实和全部因果来源 ID',
+  );
+  assert.match(fatalEntries[0].detail, /狼袭击伽利略并造成致命伤害/u);
+  assert.match(fatalEntries[0].detail, /健康值 10→0/u);
+  const originalCausalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('生死因果纪事不应调用模型'); };
+  try {
+    assert.deepEqual(
+      await summarizePlayerNarrativeEntries(
+        { ...state, world: { ...state.world, past: [fatalWolfAttack, wolfDeath] } },
+        fatalEntries,
+      ),
+      fatalEntries,
+      '死亡与袭击的规则因果文案必须原样保留，不得交给模型改写',
+    );
+  } finally {
+    globalThis.fetch = originalCausalFetch;
+  }
+
+  const crowdedFatalEvents = [fatalWolfAttack, wolfDeath, ...Array.from({ length: 5 }, (_, index) => ({
+    id: `crowded-birth-${index}`, kind: 'environment', change: 'body', atMonth: 51, orderInMonth: 22 + index, cellId: 4,
+    who: 'freyja', result: `芙蕾雅生下了孩子${index + 1}`,
+    diff: { bornPersonId: `crowded-child-${index}`, bornPersonName: `孩子${index + 1}` },
+  }))];
+  const crowdedFatalEntries = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: crowdedFatalEvents } },
+    crowdedFatalEvents,
+    4,
+  );
+  assert.ok(
+    crowdedFatalEntries.some((entry) => entry.sourceEventIds.includes(wolfDeath.id)),
+    '同月有 5 条以上候选纪事时，死亡仍必须进入有限的文明历史名额',
+  );
+
+  const laterDeath = {
+    ...wolfDeath,
+    id: 'death-after-earlier-wolf-attack', atMonth: 55, orderInMonth: 9,
+    result: '伽利略在第 55 月死亡，遗体和私有背包留在原地',
+    diff: { ...wolfDeath.diff, healthBeforeDeath: 4, sourceEventIds: [nonFatalWolfAttack.id] },
+  };
+  const laterDeathEntries = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [nonFatalWolfAttack, laterDeath] } },
+    [laterDeath],
+    4,
+  );
+  assert.equal(
+    laterDeathEntries[0].text,
+    '伽利略去世了；生前曾遭狼袭击，随身物品留在原地。',
+    '袭击后健康值仍大于零时只能保守陈述关联，不能把袭击写成直接死因',
+  );
+  const refreshedChronicle = projectChronicle([{
+    entries: [{
+      id: `narrative:${laterDeath.id}`,
+      month: laterDeath.atMonth,
+      text: '伽利略去世了，随身物品留在原地。',
+      detail: laterDeath.result,
+      tone: 'bad',
+      kind: 'epoch',
+      importance: 124,
+      sourceEventIds: [laterDeath.id],
+      actorIds: ['galileo'],
+    }],
+  }], {
+    ...state,
+    lastStep: [laterDeath],
+    world: { ...state.world, past: [nonFatalWolfAttack, laterDeath] },
+  });
+  assert.equal(
+    refreshedChronicle[0].text,
+    laterDeathEntries[0].text,
+    '旧会话中可精确识别的单条死亡纪事应在读取时刷新因果表述',
+  );
+  assert.deepEqual(refreshedChronicle[0].sourceEventIds, [nonFatalWolfAttack.id, laterDeath.id]);
+
+  const destroyedState = {
+    ...state,
+    civilization: {
+      ...state.civilization,
+      status: 'ended',
+      outcome: { kind: 'destroyed', cause: '伤病', atMonth: 51, summary: '所有人物死亡，文明毁灭于伤病。' },
+    },
+    world: { ...state.world, past: [fatalWolfAttack, wolfDeath] },
+  };
+  const endingEntries = withCivilizationEntries(destroyedState, [fatalWolfAttack, wolfDeath], fatalEntries);
+  assert.equal(endingEntries.length, 1, '文明终局必须吸收带袭击证据的个人死亡纪事');
+  assert.equal(endingEntries[0].text, '文明毁灭于伤病。');
 
   const eraTransition = projectPlayerNarrative(state, [{
     id: 'era-53', kind: 'environment', change: 'climate', atMonth: 53, orderInMonth: 1, cellId: 0,
@@ -202,6 +440,88 @@ try {
   }], 1);
   assert.equal(eraTransition.length, 1);
   assert.equal(eraTransition[0].text, '恒纪元结束，乱纪元开始，地表转为寒冷。', '纪元更迭必须优先于同月其他重大事件');
+  const stableEraTransition = projectPlayerNarrative(state, [{
+    id: 'era-54', kind: 'environment', change: 'climate', atMonth: 54, orderInMonth: 1, cellId: 0,
+    result: '恒纪元开始；本月地表处于温和环境',
+    diff: { eraTransition: true, epoch: 'stable', kind: 'temperate', severity: 1 },
+  }], 4);
+  assert.equal(stableEraTransition[0].text, '乱纪元结束，恒纪元开始，地表恢复温和。');
+  const externalEraTransition = {
+    id: 'era-external-55', kind: 'environment', change: 'climate', atMonth: 55, orderInMonth: 1, cellId: 0,
+    result: '本月地表处于炎热环境',
+    diff: {
+      epochChanged: true, previousEpoch: 'stable', epoch: 'chaotic',
+      climateKindChanged: true, previousKind: 'temperate', kind: 'heat',
+      previousSeverity: 1, severity: 7,
+    },
+  };
+  const externalEraHistory = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [externalEraTransition] } },
+    [externalEraTransition],
+    4,
+  );
+  assert.equal(externalEraHistory[0].text, '恒纪元结束，乱纪元开始，地表转为炎热。', '外部天象驱动的纪元转换也必须进入历史');
+  const chaoticClimateShift = {
+    ...externalEraTransition,
+    id: 'climate-shift-56', atMonth: 56,
+    result: '本月地表处于寒冷环境',
+    diff: {
+      previousEpoch: 'chaotic', epoch: 'chaotic',
+      climateKindChanged: true, previousKind: 'heat', kind: 'cold',
+      previousSeverity: 7, severity: 6,
+    },
+  };
+  const chaoticClimateHistory = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [chaoticClimateShift] } },
+    [chaoticClimateShift],
+    4,
+  );
+  assert.equal(chaoticClimateHistory[0].text, '乱纪元中，地表气候由炎热转为寒冷。');
+  const severityOnlyClimate = {
+    ...chaoticClimateShift,
+    id: 'climate-severity-57', atMonth: 57,
+    result: '本月地表处于寒冷环境',
+    diff: {
+      previousEpoch: 'chaotic', epoch: 'chaotic', previousKind: 'cold', kind: 'cold',
+      climateSeverityChanged: true, previousSeverity: 6, severity: 7,
+    },
+  };
+  assert.deepEqual(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [severityOnlyClimate] } },
+      [severityOnlyClimate],
+      4,
+    ),
+    [],
+    '只有严酷度逐月波动时不应刷入文明历史',
+  );
+  const initialChaoticClimate = {
+    ...externalEraTransition,
+    id: 'climate-initial-chaotic', atMonth: 1,
+  };
+  assert.equal(
+    projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: [initialChaoticClimate] } },
+      [initialChaoticClimate],
+      4,
+    )[0].text,
+    '文明开端处于乱纪元，地表为炎热。',
+    '首月天象只能记录文明开端所处纪元，不能虚构一个已经结束的纪元',
+  );
+  const originalClimateFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('气候自然历史不应调用模型'); };
+  try {
+    assert.deepEqual(
+      await summarizePlayerNarrativeEntries(
+        { ...state, world: { ...state.world, past: [chaoticClimateShift] } },
+        chaoticClimateHistory,
+      ),
+      chaoticClimateHistory,
+      '气候转换的规则事实与前后态必须原样保留',
+    );
+  } finally {
+    globalThis.fetch = originalClimateFetch;
+  }
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('纪元更迭不应调用模型'); };
   try {

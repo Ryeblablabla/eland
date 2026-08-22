@@ -18,6 +18,7 @@
     "test:project-pressure": "node scripts/test-project-pressure.mjs",
     "test:granary-dedup": "node scripts/test-granary-project-dedup.mjs",
     "test:four-era": "node scripts/test-four-era-evolution.mjs",
+    "test:triple-sun-collapse": "node scripts/test-triple-sun-collapse.mjs",
     "test:fire-surface-height": "node scripts/test-fire-surface-height.mjs",
     "test:project-progress": "node scripts/test-project-progress.mjs",
     "test:search-campaign": "node scripts/test-search-campaign.mjs",

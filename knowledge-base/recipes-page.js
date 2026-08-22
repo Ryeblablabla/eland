@@ -1,9 +1,10 @@
-import { RECIPE_KNOWLEDGE } from './recipes-data.js';
+import { RECIPE_KNOWLEDGE } from './recipes-data.js?v=recipes-v2';
 
 const TYPE_META = {
   combine: { label: '组合制作', eyebrow: 'COMBINE', description: '持有材料按数量组合，产物进入人物库存。' },
   exert: { label: '施力制作', eyebrow: 'EXERT', description: '使用特定工具，对材料与目标位置施力。' },
   expose: { label: '暴露转化', eyebrow: 'EXPOSE', description: '让材料接触火或设施，产生温度与冶炼转化。' },
+  separate: { label: '分离采收', eyebrow: 'SEPARATE', description: '从世界体素分离材料，并在原位置留下规则指定的替换物。' },
 };
 
 function escapeHtml(value) {
@@ -33,15 +34,21 @@ function formulaMarkup(recipe) {
     ? `<div class="recipe-context"><span>工具</span>${recipe.tools.map((material) => materialToken(material, 'tool')).join('')}<span>作用于</span>${recipe.targets.map((material) => materialToken(material, 'target')).join('')}</div>`
     : recipe.type === 'expose'
       ? `<div class="recipe-context"><span>暴露于</span>${recipe.targets.map((material) => materialToken(material, 'target')).join('')}</div>`
+      : recipe.type === 'separate'
+        ? `<div class="recipe-context">${recipe.tools.length > 0 ? `<span>工具</span>${recipe.tools.map((material) => materialToken(material, 'tool')).join('')}` : '<span>徒手采收</span>'}<span>原位变为</span>${materialToken(recipe.replacement, 'target')}</div>`
       : '';
-  return `${context}<div class="recipe-equation"><div class="recipe-inputs">${inputs}</div><span class="recipe-arrow" aria-hidden="true">→</span>${materialToken(recipe.output, 'output')}</div>`;
+  const outputs = (recipe.outputs ?? [recipe.output]).map((material) => materialToken(material, 'output')).join('<span class="recipe-plus">＋</span>');
+  return `${context}<div class="recipe-equation"><div class="recipe-inputs">${inputs}</div><span class="recipe-arrow" aria-hidden="true">→</span><div class="recipe-inputs">${outputs}</div></div>`;
 }
 
 function summaryFor(recipe) {
   const inputs = recipe.inputs.map((item) => `${item.name}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('与');
   if (recipe.type === 'combine') return `${inputs}可结合为${recipe.output.name}${recipe.output.quantity > 1 ? ` × ${recipe.output.quantity}` : ''}`;
   if (recipe.type === 'exert') return `用${recipe.tools[0].name}向${recipe.inputs[0].name}施力，在${recipe.targets[0].name}处产生${recipe.output.name}`;
-  return `让${recipe.inputs[0].name}暴露于${recipe.targets[0].name}，可得到${recipe.output.name}`;
+  if (recipe.type === 'expose') return `让${recipe.inputs[0].name}暴露于${recipe.targets[0].name}，可得到${recipe.output.name}`;
+  const tool = recipe.tools.length > 0 ? `用${recipe.tools[0].name}` : '徒手';
+  const outputs = (recipe.outputs ?? [recipe.output]).map((item) => `${item.name}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('、');
+  return `${tool}从${recipe.inputs[0].name}中分离出${outputs}，原位置换为${recipe.replacement.name}`;
 }
 
 function searchableText(recipe) {
@@ -53,6 +60,8 @@ function searchableText(recipe) {
     ...recipe.inputs.flatMap((item) => [item.name, item.key, ...item.tags]),
     ...recipe.tools.flatMap((item) => [item.name, item.key, ...item.tags]),
     ...recipe.targets.flatMap((item) => [item.name, item.key, ...item.tags]),
+    ...(recipe.outputs ?? []).flatMap((item) => [item.name, item.key, ...item.tags]),
+    ...(recipe.replacement ? [recipe.replacement.name, recipe.replacement.key, ...recipe.replacement.tags] : []),
     summaryFor(recipe),
   ].join(' ').toLocaleLowerCase('zh-CN');
 }
@@ -64,12 +73,12 @@ const RECIPE_PAGE_MARKUP = `
       <div class="recipes-hero-copy">
         <div>
           <h2>材料怎样变成<br>文明的下一件工具</h2>
-          <p>这里直接展示领域层当前承认的组合、施力与暴露规则。它是代码生成的只读导览，不会向人物泄露隐藏配方；人物仍须通过可感知试验、学习或记录获得技术知识。</p>
+          <p>这里直接展示领域层当前承认的组合、施力、暴露与分离规则。它是代码生成的只读导览，不会向人物泄露隐藏配方；人物仍须通过可感知试验、学习或记录获得技术知识。</p>
         </div>
         <aside class="authority-note" aria-label="配方权威说明">
           <span class="authority-note-label">GENERATED VIEW</span>
           <strong>领域源码是唯一配方权威</strong>
-          <p><code>material.ts</code> 定义物质，<code>interaction-rules.ts</code> 定义合法转化；运行同步脚本后，本页才更新。</p>
+          <p><code>material.ts</code> 定义物质，<code>interaction-rules.ts</code> 与 <code>separation-rules.ts</code> 定义合法转化；运行同步脚本后，本页才更新。</p>
         </aside>
       </div>
       <div class="recipe-facts" aria-label="配方统计">
@@ -77,6 +86,7 @@ const RECIPE_PAGE_MARKUP = `
         <div><strong>${RECIPE_KNOWLEDGE.counts.combine}</strong><span>组合制作</span></div>
         <div><strong>${RECIPE_KNOWLEDGE.counts.exert}</strong><span>施力制作</span></div>
         <div><strong>${RECIPE_KNOWLEDGE.counts.expose}</strong><span>暴露转化</span></div>
+        <div><strong>${RECIPE_KNOWLEDGE.counts.separate}</strong><span>分离采收</span></div>
       </div>
     </header>
 

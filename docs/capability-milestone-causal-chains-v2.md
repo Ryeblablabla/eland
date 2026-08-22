@@ -50,7 +50,7 @@
 | 地图坐标（原标签） | 当前定义 ID | 效价 · 阶段/分支 | 当前支持与证据口径 |
 | --- | --- | --- | --- |
 | `1 诞生` | `capability:1:emergence:birth:v2` | `ambivalent · emergence` | `strict · birth`：出生结算保存新生儿与父母，人物状态中的 `geneticParents` 必须一致。 |
-| `2 繁衍后代` | `capability:2:emergence:conception:v2` | `ambivalent · emergence` | `strict · conception`：先有双方有效生殖同意约定，后有完成的 `reproduce` 且 `conceived=true`。 |
+| `2 繁衍后代` | `capability:2:emergence:conception:v2` | `ambivalent · emergence` | `strict · conception`：普通路径先有双方有效生殖协议，魅魔路径保存 `succubus-unilateral` 单方授权；随后均要求完成的 `reproduce` 且 `conceived=true`。 |
 | `3 养育幼儿` | `capability:3:stable:dependent-care:v2` | `constructive · stable` | `strict · dependent-care`：未独立儿童与照护者有亲子/照护关系，并有携带、物资转移或脱水协助；再过稳定门槛。 |
 | `4 结成家庭与亲族` | `capability:4:emergence:guarded:v2` | `ambivalent* · emergence*` | `guarded`：出生亲缘事实还不足以证明家庭组织已经形成。 |
 | `8 衰老` | `capability:8:decline:aging:v2` | `ambivalent · decline` | `strict · aging`：人物进入衰老压力年龄，月度结算写入有来源 `aging` 条件。 |

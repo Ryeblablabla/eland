@@ -101,6 +101,7 @@
     <button type="button" data-recipe-nav="combine">组合制作<small>COMBINE</small></button>
     <button type="button" data-recipe-nav="exert">施力制作<small>EXERT</small></button>
     <button type="button" data-recipe-nav="expose">暴露转化<small>EXPOSE</small></button>
+    <button type="button" data-recipe-nav="separate">分离采收<small>SEPARATE</small></button>
   </nav>
   <nav id="ruleNav" aria-label="规则页章节" hidden>
     <span class="rule-nav-kicker">RULE MAP</span>
@@ -143,7 +144,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-import { mountRulesPage } from './rules-page.js?v=architecture-v4';
+import { mountRulesPage } from './rules-page.js?v=architecture-v6';
 
 /* ================= 确定性随机 ================= */
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
@@ -2581,7 +2582,7 @@ const STYLES = [
 // 这里描述的是当前生产代码的接入状态，而不是素材完成度。
 const LIVE_ASSET_KEYS = new Set([
   'adult-man','adult-woman','child','elder','dehydrated','walking','gathering','attacking','ingesting','crafting','working','tend-fire','attending',
-  'handoff','communicate','care','companion','body-states','shared-cell','thatched','logcabin','stone',
+  'handoff','communicate','care','companion','body-states','shared-cell','tribe','windmill','thatched','logcabin','temple','stone','castle',
   'councilhearth','granary','well','workshop','kiln','handmill','waterpower','foundry','civichall','smithy','keepcore','construction-progress',
   'woodpile','stonepile','foodpile','seedpile','bundles','meatpile','hidepile','bonepile','stonetools','bonetools','spearrack','tablet','fiber','leather','rope','container','cookedfood','herbs','charcoal','clay','copperore','tinore','ironore','woodtool','stonehoe','bronzetool','irontool',
   'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath',

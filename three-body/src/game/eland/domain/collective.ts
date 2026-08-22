@@ -102,7 +102,7 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
       const proposedApprovers = new Set(proposal.requiredApproverIds);
       const candidate = state.people.find((person) => person.id === proposal.candidateId && isAlive(person));
       const valid = Boolean(collective
-        && collective.status === 'active'
+        && collective.status !== 'dissolved'
         && activeMembership(collective, proposal.proposerId)
         && !activeMembership(collective, proposal.candidateId)
         && candidate

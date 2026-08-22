@@ -234,6 +234,27 @@ try {
   assert.ok(storageAppraisal.addressedNeeds.some((need) => need.projectId === reserveStorageOption.projectProposal.id),
     '只有同一项目候选可以认领项目来源的储备压力');
 
+  const sourcedConversationOption = {
+    id: 'conversation:source-without-need',
+    summary: '复述一个有来源但当前没有对应需要的事实',
+    reason: '测试来源只证明候选有依据，不能凭空制造欲望',
+    goal: { kind: 'representation-made', representationId: 'source-without-need' },
+    nextAction: {
+      kind: 'communicate',
+      content: { id: 'source-without-need', kind: 'claim', summary: '我记得这件事' },
+      audience: [], channel: 'voice',
+    },
+    estimatedDuration: 'one-month',
+    sourceFactIds: ['e-0-environment-founding-0'],
+    domain: 'social',
+  };
+  const sourceOnlyContext = makeContext(reserveState, reservePerson, [sourcedConversationOption]);
+  const sourceOnlyAppraisal = evaluateCognitiveOption(sourceOnlyContext, sourcedConversationOption, moment);
+  assert.equal(sourceOnlyAppraisal.needActivation, 0,
+    '一个来源事实只能证明候选有依据，不能在没有归属、照护、探索或承诺需要时制造通用动机');
+  assert.equal(sourceOnlyAppraisal.motivation, 0,
+    '没有对应需要的有来源聊天不得仅凭 sourceFactIds 越过行动阈值');
+
   const mixedBodyState = structuredClone(reserveState);
   const mixedBodyPerson = mixedBodyState.people[0];
   mixedBodyPerson.body = { health: 90, hydration: 10, nutrition: 54 };
@@ -604,10 +625,18 @@ try {
   const lowFamilyAppraisal = evaluateCognitiveOption(lowFamilyContext, lowReproductionOption, moment);
   assert.ok(highFamilyAppraisal.readinessGate > lowFamilyAppraisal.readinessGate,
     '高准备度应提高正向生殖候选门控，低准备度不应被项目完成记录强推');
-  assert.equal(deriveNeedAgenda(highFamilyContext, moment.atMonth).some((need) => need.kind === 'generativity'), false,
-    '有食水但没有真实空余住所时，不应仅凭有来源关系获得生成性需要');
-  assert.ok(highFamilyAppraisal.motivation < highFamilyAppraisal.aspiration,
-    '正向生殖不得绕过生成性需要，通用 grounded opportunity 不能单独推过行动阈值');
+  const highGenerativity = deriveNeedAgenda(highFamilyContext, moment.atMonth)
+    .find((need) => need.kind === 'generativity');
+  const lowGenerativity = deriveNeedAgenda(lowFamilyContext, moment.atMonth)
+    .find((need) => need.kind === 'generativity');
+  assert.ok(highGenerativity && lowGenerativity,
+    '可追溯关系应产生非零的家庭形成考虑，不能要求先把全部物质条件解决才出现动机');
+  assert.ok(highGenerativity.urgency > lowGenerativity.urgency,
+    '家庭准备度仍应连续调节生成性需要强弱');
+  assert.ok(highGenerativity.sourceFactIds.includes(noConceptionFact.id),
+    '生成性需要必须保留正向生殖候选自身的关系或协议来源');
+  assert.equal(highFamilyAppraisal.familyReadiness?.readiness, highFamily.readiness,
+    'BDI 审计必须暴露组成生殖判断的原始家庭准备度');
   const belongingOnlyState = structuredClone(readinessState);
   const belongingOnlyPerson = belongingOnlyState.people.find((person) => person.id === readyPerson.id);
   const belongingOnlyPartner = belongingOnlyState.people.find((person) => person.id === uninvolvedPerson.id);
@@ -647,15 +676,78 @@ try {
   const belongingOnlyAgenda = deriveNeedAgenda(belongingOnlyContext, moment.atMonth);
   assert.ok(belongingOnlyAgenda.some((need) => need.kind === 'belonging'),
     '夹具必须存在强关系带来的归属需要');
-  assert.equal(belongingOnlyAgenda.some((need) => need.kind === 'generativity'), false,
-    '没有真实住所余量时夹具不得形成生成性需要');
+  assert.ok(belongingOnlyAgenda.some((need) => need.kind === 'generativity'),
+    '强关系可以让人物在住所尚未完全解决时开始考虑家庭形成');
   const belongingOnlyAppraisal = evaluateCognitiveOption(belongingOnlyContext, belongingOnlyOffer, moment);
-  assert.equal(belongingOnlyAppraisal.needActivation, 0,
-    '正向生殖只能由 generativity 激活，belonging 只能作为关系门控而不能独立驱动');
+  assert.ok(belongingOnlyAppraisal.needActivation > 0,
+    '正向生殖仍只能由 generativity 激活，但有来源关系不再被物质准备度抹成零');
   assert.equal(belongingOnlyAppraisal.addressedNeeds.some((need) => need.kind === 'belonging'), false,
     '生殖解释不得把未参与激活的 belonging 伪装成当前驱动需要');
-  assert.ok(belongingOnlyAppraisal.motivation < belongingOnlyAppraisal.aspiration,
-    '强关系也不得在无生成性需要时推动正向生殖越过阈值');
+  assert.equal(belongingOnlyAppraisal.generativityUrgency,
+    belongingOnlyAgenda.find((need) => need.kind === 'generativity')?.urgency,
+    '生殖判断必须记录实际参与激活的生成性需要强度');
+
+  const committedBelongingState = structuredClone(belongingOnlyState);
+  const sociallyCommittedPerson = committedBelongingState.people.find((person) => person.id === belongingOnlyPerson.id);
+  const committedReproductionPartner = committedBelongingState.people.find((person) => person.id === belongingOnlyPartner.id);
+  const companion = committedBelongingState.people[2];
+  companion.position = structuredClone(sociallyCommittedPerson.position);
+  sociallyCommittedPerson.relations.push({
+    personId: companion.id,
+    trust: 45,
+    bond: 35,
+    fear: 0,
+    sourceEventIds: [cultivationFact.id],
+  });
+  committedBelongingState.agreements.push({
+    id: 'cognition-established-companion-agreement',
+    proposal: {
+      kind: 'companion',
+      proposerId: sociallyCommittedPerson.id,
+      partnerId: companion.id,
+      expiresAtMonth: moment.atMonth + 6,
+      sharedLivingAnchor: {
+        version: 'shared-living-anchor-v1',
+        cellId: sociallyCommittedPerson.position.cellId,
+        z: sociallyCommittedPerson.position.z,
+        radius: 2,
+      },
+    },
+    proposerId: sociallyCommittedPerson.id,
+    responderId: companion.id,
+    partyIds: [sociallyCommittedPerson.id, companion.id],
+    requiredResponderIds: [companion.id],
+    acceptedByPersonIds: [companion.id],
+    rejectedByPersonIds: [],
+    fulfilledByPersonIds: [sociallyCommittedPerson.id, companion.id],
+    fulfillmentEventIds: [cultivationFact.id],
+    proposedAtMonth: moment.atMonth - 15,
+    acceptByMonth: moment.atMonth - 14,
+    acceptedAtMonth: moment.atMonth - 14,
+    dueAtMonth: moment.atMonth + 10,
+    coLocatedMonths: 12,
+    companionEstablishedAtMonth: moment.atMonth - 2,
+    lastCompanionCoLocatedAtMonth: moment.atMonth,
+    status: 'active',
+    proposalEventId: cultivationFact.id,
+    sourceEventIds: [cultivationFact.id],
+  });
+  const committedContext = makeContext(
+    committedBelongingState,
+    sociallyCommittedPerson,
+    [structuredClone(belongingOnlyOffer)],
+    undefined,
+    [committedReproductionPartner, companion],
+  );
+  const committedAgenda = deriveNeedAgenda(committedContext, moment.atMonth);
+  const unmetBelonging = committedAgenda.find((need) => need.kind === 'belonging');
+  const committedGenerativity = committedAgenda.find((need) => need.kind === 'generativity');
+  assert.ok(committedGenerativity,
+    '已有共同生活关系不能抹去另一段真实关系产生的家庭形成考虑');
+  assert.ok(unmetBelonging && unmetBelonging.urgency < committedGenerativity.urgency,
+    '真实建立且当月共同生活的关系应缓解归属缺口，不能继续让新增结伴长期压过生成性需要');
+  assert.ok(unmetBelonging.sourceFactIds.includes(cultivationFact.id),
+    '归属满足若仍留下未满足部分，必须保留共同生活承诺的事实来源');
 
   const shelteredState = structuredClone(readinessState);
   shelteredState.derived.structures = [];
@@ -702,7 +794,7 @@ try {
     '真实可达、仍有空位且具备分层冷热防护的住所才应提供高家庭住所准备度');
   assert.ok(shelteredFamily.readiness > highFamily.readiness);
   assert.ok(deriveNeedAgenda(shelteredContext, moment.atMonth).some((need) => need.kind === 'generativity'),
-    '食水、照护余量与空余住所同时成立时才形成生成性需要');
+    '食水、照护余量与空余住所同时成立时应进一步增强生成性需要');
   const shelteredAppraisal = evaluateCognitiveOption(shelteredContext, shelteredContext.options[0], moment);
   assert.ok(shelteredAppraisal.motivation > highFamilyAppraisal.motivation
     && shelteredAppraisal.motivation > lowFamilyAppraisal.motivation,

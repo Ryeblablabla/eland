@@ -246,7 +246,7 @@ function historyCandidates(state: SimulationState, eventMap: Map<string, WorldEv
     if (event.kind === 'environment') {
       const isBirth = typeof event.diff.bornPersonId === 'string';
       const isDeath = event.change === 'death';
-      const isEraTransition = event.diff.eraTransition === true;
+      const isEraTransition = event.diff.eraTransition === true || event.diff.epochChanged === true;
       if (!isBirth && !isDeath && !isEraTransition) continue;
       candidates.push({
         stableKey: `event:${event.id}`,
@@ -402,8 +402,21 @@ export async function summarizePlayerNarrativeEntries(
   entries: NarrativeEntryView[],
 ): Promise<NarrativeEntryView[]> {
   if (!entries.length) return entries;
-  const fixedEntries = entries.filter((entry) => entry.tone === 'era');
-  const selectedEntries = entries.filter((entry) => entry.tone !== 'era');
+  const sourceEventIds = new Set(entries.flatMap((entry) => entry.sourceEventIds));
+  const groundedNaturalEventIds = new Set(state.world.past.flatMap((event) => (
+    sourceEventIds.has(event.id)
+      && event.kind === 'environment'
+      && (event.change === 'death' || event.change === 'weather' || event.change === 'climate'
+        || (event.change === 'animal' && event.diff.process === 'attack-human'))
+      ? [event.id]
+      : []
+  )));
+  // Natural-history entries carry structured changes or causal chains in their
+  // details/source ids. A one-line model summary would discard that evidence.
+  const fixedEntries = entries.filter((entry) => entry.tone === 'era'
+    || entry.sourceEventIds.some((eventId) => groundedNaturalEventIds.has(eventId)));
+  const fixedEntryIds = new Set(fixedEntries.map((entry) => entry.id));
+  const selectedEntries = entries.filter((entry) => !fixedEntryIds.has(entry.id));
   if (!selectedEntries.length) return fixedEntries;
   const endpoint = resolveModelEndpoint('narrative');
   const personNames = new Map(state.people.map((person) => [person.id, person.name]));

@@ -20,7 +20,7 @@ try {
       shouldRemainShelteredFromWildlifeThreat,
       visibleWildlifeThreats,
     } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/wildlife-threat.ts'))};
-    export { cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
+    export { cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel, voxelWorldRevision } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.join(projectRoot, 'node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -41,6 +41,7 @@ try {
     shelterGeometryAt,
     shouldRemainShelteredFromWildlifeThreat,
     visibleWildlifeThreats,
+    voxelWorldRevision,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   function flatten(state, center, radius = 10) {
@@ -200,6 +201,12 @@ try {
       complete: true,
       sourceEventIds: [],
     }];
+    state.world.physicalStructureIndex = {
+      calculatedAtMonth: state.clock.elapsedMonths,
+      voxelRevision: voxelWorldRevision(state.world.grid),
+      constructionEventCount: state.world.physicalStructureIndex.constructionEventCount,
+      structures: structuredClone(state.derived.structures),
+    };
     state.world.animals = [wolf('wolf-shelter', center + 2, atMonth, actor.id)];
     const response = compileWildlifeThreatResponse(state, actor, atMonth);
     assert.ok(response);
@@ -223,6 +230,12 @@ try {
       interiorCells: [staleShelterCell], interiorPositions: [stalePosition], materialIds: [Material.Stone],
       weatherProtection: 50, thermalInsulation: 50, capacity: 1, complete: true, sourceEventIds: [],
     }];
+    stale.state.world.physicalStructureIndex = {
+      calculatedAtMonth: stale.state.clock.elapsedMonths,
+      voxelRevision: voxelWorldRevision(stale.state.world.grid),
+      constructionEventCount: stale.state.world.physicalStructureIndex.constructionEventCount,
+      structures: structuredClone(stale.state.derived.structures),
+    };
     stale.state.world.animals = [wolf('wolf-stale-shelter', stale.center + 2, stale.atMonth, stale.actor.id)];
     const staleResponse = compileWildlifeThreatResponse(stale.state, stale.actor, stale.atMonth);
     assert.equal(staleResponse?.basis.response, 'shelter-step');

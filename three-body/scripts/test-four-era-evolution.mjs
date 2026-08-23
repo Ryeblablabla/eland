@@ -359,7 +359,7 @@ try {
     '观察器回归必须从当前零耕作格开始',
   );
   const retainedCultivation = observeCivilizationDevelopment(cultivationObserverState, 0);
-  assert.equal(retainedCultivation.observerVersion, 'material-institution-era-v2');
+  assert.equal(retainedCultivation.observerVersion, 'material-institution-era-v6');
   assert.ok(retainedCultivation.satisfiedGateIds.includes('food:settled-cultivation-cycle'),
     '当前作物格恢复为湿土后，完整项目闭环仍应保留既成耕作能力');
   assert.ok(cultivationFacts.every((event) => retainedCultivation.supportingEventIds.includes(event.id)),
@@ -370,9 +370,9 @@ try {
     candidateSinceMonth: 3,
   };
   const migratedCultivationObservation = observeCivilizationDevelopment(cultivationObserverState, 0);
-  assert.equal(migratedCultivationObservation.observerVersion, 'material-institution-era-v2');
+  assert.equal(migratedCultivationObservation.observerVersion, 'material-institution-era-v6');
   assert.equal(migratedCultivationObservation.candidateSinceMonth, cultivationObserverState.clock.elapsedMonths,
-    '观察语义从 v1 升到 v2 时必须重计候选稳定期，不能继承旧门槛的计时');
+    '观察语义升级时必须重计候选稳定期，不能继承旧门槛的计时');
   cultivationObserverState.civilization.development = undefined;
 
   const incompleteCultivation = structuredClone(cultivationObserverState);

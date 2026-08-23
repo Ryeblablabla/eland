@@ -25,6 +25,7 @@ try {
     } from ${JSON.stringify(path.resolve('src/game/eland/domain/cognition.ts'))};
     export { evaluateCognitiveOption } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/option-appraisal.ts'))};
     export { assessFamilyReadiness } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/family-readiness.ts'))};
+    export { applyDecision } from ${JSON.stringify(path.resolve('src/game/eland/application/simulation/intent-execution.ts'))};
     export { findReachableShelter } from ${JSON.stringify(path.resolve('src/game/eland/domain/shelter-access.ts'))};
     export { deriveNeedAgenda } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/need-agenda.ts'))};
     export { completeProject } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-lifecycle.ts'))};
@@ -35,7 +36,7 @@ try {
       rankCognitiveOptions,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/bdi-deliberation.ts'))};
     export { validateModelDecision } from ${JSON.stringify(path.resolve('src/game/eland/application/simulation/model-review.ts'))};
-    export { cellX, cellY, neighbors4, setVoxel } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
+    export { cellX, cellY, neighbors4, setVoxel, voxelWorldRevision } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -44,6 +45,7 @@ try {
 
   const {
     actionFactOutcomeBasisKey,
+    applyDecision,
     assessFamilyReadiness,
     assessIntentionPersistence,
     causalMemoryTraceForAction,
@@ -68,6 +70,7 @@ try {
     recordIntentGoalOutcome,
     setVoxel,
     validateModelDecision,
+    voxelWorldRevision,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const moment = { atMonth: 12, planningTick: 4 };
@@ -84,6 +87,12 @@ try {
       followUpOptions: [],
       ...(activeIntent ? { activeIntent } : {}),
     };
+  }
+
+  function rebaseSyntheticPhysicalIndex(state) {
+    if (state.world.physicalStructureIndex) {
+      state.world.physicalStructureIndex.voxelRevision = voxelWorldRevision(state.world.grid);
+    }
   }
 
   function makeIntent(person, overrides = {}) {
@@ -781,6 +790,12 @@ try {
     capacity: 2,
     sourceEventIds: [cultivationFact.id],
   });
+  shelteredState.world.physicalStructureIndex = {
+    calculatedAtMonth: shelteredState.clock.elapsedMonths,
+    voxelRevision: voxelWorldRevision(shelteredState.world.grid),
+    constructionEventCount: shelteredState.world.physicalStructureIndex.constructionEventCount,
+    structures: structuredClone(shelteredState.derived.structures),
+  };
   const shelteredContext = makeContext(
     shelteredState,
     shelteredPerson,
@@ -799,7 +814,43 @@ try {
   assert.ok(shelteredAppraisal.motivation > highFamilyAppraisal.motivation
     && shelteredAppraisal.motivation > lowFamilyAppraisal.motivation,
     '真实家庭准备度差异应进入 BDI motivation');
+  const boundedAuditState = structuredClone(shelteredState);
+  rebaseSyntheticPhysicalIndex(boundedAuditState);
+  const boundedAuditPerson = boundedAuditState.people.find((person) => person.id === shelteredPerson.id);
+  const boundedAuditPartner = boundedAuditState.people.find((person) => person.id === shelteredPartner.id);
+  const fullAuditSources = Array.from({ length: 96 }, (_, index) => `family-readiness-audit-source-${index}`);
+  boundedAuditState.world.physicalStructureIndex.structures[0].sourceEventIds = fullAuditSources;
+  const boundedAuditContext = makeContext(
+    boundedAuditState,
+    boundedAuditPerson,
+    [structuredClone(shelteredContext.options[0])],
+    undefined,
+    [boundedAuditPartner],
+  );
+  boundedAuditContext.visibleCells = [...shelteredContext.visibleCells];
+  const fullAuditAppraisal = evaluateCognitiveOption(boundedAuditContext, boundedAuditContext.options[0], moment);
+  assert.ok(fullAuditAppraisal.familyReadiness.sourceFactIds.length > 32,
+    '测试夹具必须形成超过事件审计上限的完整家庭准备度来源');
+  const reproductionDecisionFact = applyDecision(
+    boundedAuditState,
+    boundedAuditPerson,
+    boundedAuditContext,
+    { kind: 'start', optionId: boundedAuditContext.options[0].id, reason: '检查生殖决策证据有界化' },
+    false,
+    moment.atMonth,
+    boundedAuditState.world.past.length,
+    moment.planningTick,
+  );
+  assert.equal(reproductionDecisionFact.reproductionEvidence.familyReadiness.sourceFactCount,
+    fullAuditAppraisal.familyReadiness.sourceFactIds.length,
+    '有界事件审计仍须记录完整来源数量');
+  assert.equal(reproductionDecisionFact.reproductionEvidence.familyReadiness.sourceFactIds.length, 32,
+    '单条生殖决策不得再次嵌入无界家庭准备度来源');
+  assert.ok(reproductionDecisionFact.reproductionEvidence.familyReadiness.sourceFactIds
+    .every((sourceId) => fullAuditAppraisal.familyReadiness.sourceFactIds.includes(sourceId)),
+  '有界审计样本必须全部来自当时真实 appraisal 来源');
   const rememberedShelterState = structuredClone(shelteredState);
+  rebaseSyntheticPhysicalIndex(rememberedShelterState);
   const rememberedShelterPerson = rememberedShelterState.people.find((person) => person.id === shelteredPerson.id);
   const rememberedShelterPartner = rememberedShelterState.people.find((person) => person.id === shelteredPartner.id);
   const rememberedStructure = rememberedShelterState.derived.structures
@@ -829,6 +880,7 @@ try {
   assert.ok(rememberedFamily.reasons.some((reason) => reason.includes('当前看不见其空余位置')),
     '人物可以记得住所存在，但家庭判断必须解释为什么尚未确认当前容量');
   const livingRemoteChildState = structuredClone(shelteredState);
+  rebaseSyntheticPhysicalIndex(livingRemoteChildState);
   const livingRemoteParent = livingRemoteChildState.people.find((person) => person.id === shelteredPerson.id);
   const livingRemotePartner = livingRemoteChildState.people.find((person) => person.id === shelteredPartner.id);
   const livingRemoteChild = structuredClone(livingRemoteChildState.people[2]);
@@ -850,6 +902,7 @@ try {
   livingRemoteContext.visibleCells = [center, spareCell];
   const livingRemoteFamily = assessFamilyReadiness(livingRemoteContext, moment.atMonth);
   const unknownRemoteDeathState = structuredClone(livingRemoteChildState);
+  rebaseSyntheticPhysicalIndex(unknownRemoteDeathState);
   const unknownRemoteParent = unknownRemoteDeathState.people.find((person) => person.id === livingRemoteParent.id);
   const unknownRemotePartner = unknownRemoteDeathState.people.find((person) => person.id === livingRemotePartner.id);
   const unknownRemoteChild = unknownRemoteDeathState.people.find((person) => person.id === livingRemoteChild.id);
@@ -867,6 +920,7 @@ try {
   assert.equal(unknownRemoteFamily.careCapacity, livingRemoteFamily.careCapacity,
     '异地子女客观死亡但父母尚未知情时，照护责任不得通过全局状态瞬间消失');
   const knownRemoteDeathState = structuredClone(unknownRemoteDeathState);
+  rebaseSyntheticPhysicalIndex(knownRemoteDeathState);
   const knownRemoteParent = knownRemoteDeathState.people.find((person) => person.id === livingRemoteParent.id);
   const knownRemotePartner = knownRemoteDeathState.people.find((person) => person.id === livingRemotePartner.id);
   const remoteDeathFactId = 'family-readiness-known-remote-child-death';
@@ -904,6 +958,7 @@ try {
   assert.ok(knownRemoteFamily.sourceFactIds.includes(remoteDeathFactId),
     '责任释放必须引用本人实际获知的死亡事实');
   const crowdedState = structuredClone(shelteredState);
+  rebaseSyntheticPhysicalIndex(crowdedState);
   const crowdedPerson = crowdedState.people.find((person) => person.id === shelteredPerson.id);
   const crowdedPartner = crowdedState.people.find((person) => person.id === shelteredPartner.id);
   const visibleOccupant = structuredClone(crowdedState.people[2]);

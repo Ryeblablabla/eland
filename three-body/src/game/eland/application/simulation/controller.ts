@@ -12,6 +12,7 @@ import type {
 } from '../../domain/model';
 import { cellX, cellY, isCellId } from '../../world/grid';
 import { adoptSimulationState, createInitialState, restoreSimulationState } from './state-lifecycle';
+import type { ObservationProjector } from './observation-projector';
 import { clamp, copyState } from './state-utils';
 import { stepOwnedSimulation, stepOwnedSimulationAsync } from './tick-executor';
 
@@ -46,7 +47,7 @@ export interface SimulationController {
   injectEvent(input: EnvironmentEventInput): SimulationState;
 }
 
-type SimulationOptions = { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState };
+export type SimulationOptions = { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState };
 
 function applyExternalClimate(state: SimulationState, climate: ExternalClimateInput): void {
   state.civilization.externalClimate = {
@@ -58,6 +59,7 @@ function applyExternalClimate(state: SimulationState, climate: ExternalClimateIn
 }
 
 function createSimulationController(
+  observationProjector: ObservationProjector,
   state: SimulationState,
   options: SimulationOptions,
 ): SimulationController {
@@ -72,7 +74,7 @@ function createSimulationController(
     let working = copyState(state);
     if (climate) applyExternalClimate(working, climate);
     for (let index = 0; index < count; index += 1) {
-      working = await stepOwnedSimulationAsync(working, batch);
+      working = await stepOwnedSimulationAsync(observationProjector, working, batch);
     }
     state = working;
     return state;
@@ -82,11 +84,11 @@ function createSimulationController(
     getState: () => copyState(state),
     ownedState: () => state,
     step(count = 1) {
-      for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(state);
+      for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(observationProjector, state);
       return copyState(state);
     },
     stepOwned(count = 1) {
-      for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(state);
+      for (let index = 0; index < count; index += 1) state = stepOwnedSimulation(observationProjector, state);
       return state;
     },
     async stepAsync(batch, count = 1) {
@@ -96,14 +98,14 @@ function createSimulationController(
     stepAsyncOwned: (batch, count = 1) => stepAsyncTransaction(batch, count),
     stepAsyncOwnedWithClimate: (batch, climate, count = 1) => stepAsyncTransaction(batch, count, climate),
     reset() {
-      state = createInitialState(options.seed ?? state.seed, state.civilization.conditions);
+      state = createInitialState(observationProjector, options.seed ?? state.seed, state.civilization.conditions);
       return copyState(state);
     },
     restore(saved) {
-      state = restoreSimulationState(saved);
+      state = restoreSimulationState(observationProjector, saved);
     },
     adoptOwnedState(saved) {
-      state = adoptSimulationState(saved);
+      state = adoptSimulationState(observationProjector, saved);
       return state;
     },
     setExternalClimate(epoch, kind, severity, terminalCatastrophe) {
@@ -134,14 +136,24 @@ function createSimulationController(
   };
 }
 
-export function createSimulation(options: SimulationOptions = {}): SimulationController {
+export function createSimulation(
+  observationProjector: ObservationProjector,
+  options: SimulationOptions = {},
+): SimulationController {
   const state = options.state
-    ? restoreSimulationState(options.state)
-    : createInitialState(options.seed, options.config);
-  return createSimulationController(state, options);
+    ? restoreSimulationState(observationProjector, options.state)
+    : createInitialState(observationProjector, options.seed, options.config);
+  return createSimulationController(observationProjector, state, options);
 }
 
 /** Trusted restore path: ownership of `state` moves into the controller. */
-export function createSimulationFromOwnedState(state: SimulationState): SimulationController {
-  return createSimulationController(adoptSimulationState(state), {});
+export function createSimulationFromOwnedState(
+  observationProjector: ObservationProjector,
+  state: SimulationState,
+): SimulationController {
+  return createSimulationController(
+    observationProjector,
+    adoptSimulationState(observationProjector, state),
+    {},
+  );
 }

@@ -15,7 +15,7 @@ try {
     export { advanceWorldProcesses } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/monthly-processes.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-executor.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
-    export { cellX, cellY, surfaceMaterial, surfaceStandingPosition, topZ } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
+    export { cellId, cellX, cellY, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.join(projectRoot, 'node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -25,13 +25,17 @@ try {
   const {
     Material,
     advanceWorldProcesses,
+    cellId,
     cellX,
     cellY,
     createInitialState,
     executePrimitiveAction,
+    neighbors4,
+    setVoxel,
     surfaceMaterial,
     surfaceStandingPosition,
     topZ,
+    voxelAt,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const initial = createInitialState(185, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
@@ -57,6 +61,63 @@ try {
     0,
     '无人行动的月度生态过程不得凭空投放 Food/Seed',
   );
+
+  const hydrology = createInitialState(20260815, { endpoint: { kind: 'months', value: 1200 }, chaosIntensity: 0 });
+  hydrology.world.animals = [];
+  hydrology.civilization.climate = { kind: 'temperate', severity: 1, sinceMonth: 0 };
+  hydrology.civilization.weather = { kind: 'drought', intensity: 4, sinceMonth: 0 };
+  const riverPositions = [...new Map(hydrology.world.mechanicalPower.sources
+    .flatMap((segment) => segment.requiredWaterVoxels)
+    .map((position) => [`${position.x}:${position.y}:${position.z}`, position])).values()];
+  const riverCellIds = new Set(riverPositions.map((position) => cellId(position.x, position.y)));
+  const rechargeTarget = riverPositions.find((position) => neighbors4(cellId(position.x, position.y))
+    .some((neighbor) => riverPositions.some((candidate) => cellId(candidate.x, candidate.y) === neighbor)));
+  assert.ok(rechargeTarget, '水文夹具需要一个邻接其他河道格的真实河道体素');
+  const rechargeNeighbor = riverPositions.find((position) => neighbors4(cellId(rechargeTarget.x, rechargeTarget.y))
+    .includes(cellId(position.x, position.y)));
+  assert.ok(rechargeNeighbor);
+  const ordinarySandCell = Array.from(
+    { length: hydrology.world.grid.width * hydrology.world.grid.depth },
+    (_, candidateCellId) => candidateCellId,
+  ).find((candidateCellId) => !riverCellIds.has(candidateCellId)
+    && surfaceMaterial(hydrology.world.grid, candidateCellId) !== Material.Air
+    && surfaceMaterial(hydrology.world.grid, candidateCellId) !== Material.Water);
+  assert.notEqual(ordinarySandCell, undefined);
+  setVoxel(
+    hydrology.world.grid,
+    cellX(ordinarySandCell),
+    cellY(ordinarySandCell),
+    topZ(hydrology.world.grid, ordinarySandCell),
+    Material.Sand,
+  );
+  let evaporationEvent;
+  for (let month = 1; month <= 600 && !evaporationEvent; month += 1) {
+    evaporationEvent = advanceWorldProcesses(hydrology, month).find((fact) => fact.diff.changes?.some((change) => (
+      change.cellId === cellId(rechargeTarget.x, rechargeTarget.y)
+        && change.process === 'evaporation'
+    )));
+  }
+  assert.ok(evaporationEvent, '真实干旱仍应能把生成河道 Water 蒸发为 Sand');
+  assert.equal(voxelAt(hydrology.world.grid, rechargeTarget.x, rechargeTarget.y, rechargeTarget.z), Material.Sand);
+  setVoxel(
+    hydrology.world.grid,
+    rechargeNeighbor.x,
+    rechargeNeighbor.y,
+    rechargeNeighbor.z,
+    Material.Water,
+  );
+  hydrology.civilization.weather = { kind: 'rain', intensity: 4, sinceMonth: 601 };
+  let rechargeEvent;
+  for (let month = 601; month <= 1200 && !rechargeEvent; month += 1) {
+    rechargeEvent = advanceWorldProcesses(hydrology, month).find((fact) => fact.diff.changes?.some((change) => (
+      change.cellId === cellId(rechargeTarget.x, rechargeTarget.y)
+        && change.process === 'river-recharge'
+    )));
+  }
+  assert.ok(rechargeEvent, '后续真实降雨应能从邻接 Water 逐格补给干涸河道');
+  assert.equal(voxelAt(hydrology.world.grid, rechargeTarget.x, rechargeTarget.y, rechargeTarget.z), Material.Water);
+  assert.equal(surfaceMaterial(hydrology.world.grid, ordinarySandCell), Material.Sand,
+    '不属于生成河道的普通 Sand 不得因降雨凭空变成 Water');
 
   const harvested = createInitialState(185, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const berryCell = Array.from(

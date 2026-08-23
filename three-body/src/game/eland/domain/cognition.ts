@@ -134,7 +134,9 @@ function outcomeEvidence(fact: ActionFact): {
 }
 
 function experiencedEffort(fact: ActionFact): number {
-  const pathEffort = Math.max(0, fact.pathSegment.length - 1);
+  const pathEffort = fact.action.kind === 'move' && Number.isFinite(Number(fact.diff.movementCost))
+    ? Math.max(0, finite(fact.diff.movementCost)) / 2
+    : Math.max(0, fact.pathSegment.length - 1);
   const work = Math.max(0, finite(fact.diff.spentWork));
   return clamp(1 - Math.exp(-(pathEffort + work / 25) / 4));
 }

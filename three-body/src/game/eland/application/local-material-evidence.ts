@@ -1,6 +1,7 @@
 import { materialHas, type MaterialId } from '../domain/material';
 import type { DropState, SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
+import { canPersonPlanToCollectProjectMaterialDrop } from '../domain/project-material-request';
 import { findStandingPath, surfaceMaterial, voxelAt } from '../world/grid';
 
 export interface LocalMaterialEvidenceView {
@@ -37,6 +38,7 @@ export function buildLocalMaterialEvidence(
     .map((drop) => drop.materialId);
   const accessibleDropMaterialIds = view.visibleDrops
     .filter((drop) => drop.quantity > 0
+      && canPersonPlanToCollectProjectMaterialDrop(state, observer.id, drop, state.clock.elapsedMonths + 1)
       && findStandingPath(state.world.grid, observer.position, { cellId: drop.cellId, z: drop.z }).length > 0)
     .map((drop) => drop.materialId);
   const visibleSurfaceMaterialIds = view.visibleCells

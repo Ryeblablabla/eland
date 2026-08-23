@@ -23,6 +23,116 @@ export interface ProjectMaterialContributionRequestView {
   availableContributorIds: string[];
 }
 
+/** A material wait exists only when its stored basis projects a completed request action. */
+export function projectMaterialContributionRequestHasAuthoritativeSource(
+  state: SimulationState,
+  project: ProjectState,
+  request: ProjectMaterialContributionRequestBasis,
+): boolean {
+  const event = worldEventById(state, request.requestEventId);
+  if (!event
+    || event.kind !== 'action'
+    || event.status !== 'completed'
+    || event.who !== request.requesterId
+    || event.atMonth !== request.atMonth
+    || event.action.kind !== 'communicate'
+    || event.action.content.kind !== 'request') return false;
+  const audience = event.action.audience;
+  const payload = event.action.content.projectMaterialContribution;
+  return Boolean(payload
+    && request.version === 'project-material-contribution-request-v1'
+    && request.projectId === project.id
+    && request.requesterId === project.ownerId
+    && project.actionEventIds.includes(request.requestEventId)
+    && request.contributorIds.length > 0
+    && new Set(request.contributorIds).size === request.contributorIds.length
+    && request.contributorIds.every((personId) => audience.includes(personId))
+    && payload.version === request.version
+    && payload.projectId === request.projectId
+    && payload.requesterId === request.requesterId
+    && payload.materialId === request.materialId
+    && payload.quantity === request.requestedQuantity
+    && payload.site.cellId === request.site.cellId
+    && payload.site.z === request.site.z
+    && payload.expiresAtMonth === request.expiresAtMonth
+    && project.site?.cellId === request.site.cellId
+    && project.site.z === request.site.z);
+}
+
+export function activeProjectMaterialDeliveryRequest(
+  state: SimulationState,
+  drop: SimulationState['world']['drops'][number],
+  atMonth: number,
+): ProjectMaterialContributionRequestBasis | null {
+  const delivery = drop.projectMaterialDelivery;
+  if (!delivery || delivery.version !== 'project-material-delivery-v1' || delivery.expiresAtMonth < atMonth) return null;
+  const project = state.projects.find((candidate) => candidate.id === delivery.projectId);
+  if (!project || project.status !== 'active' || project.ownerId !== delivery.requesterId) return null;
+  const requester = state.people.find((person) => person.id === delivery.requesterId && isAlive(person));
+  const request = project.materialContributionRequests?.find((candidate) => (
+    candidate.requestEventId === delivery.requestEventId
+    && candidate.requesterId === delivery.requesterId
+    && candidate.materialId === drop.materialId
+    && candidate.expiresAtMonth === delivery.expiresAtMonth
+  ));
+  const demand = project.materialDemands?.find((candidate) => candidate.materialId === drop.materialId);
+  if (!request || !requester || !demand
+    || consumableInventoryQuantity(requester, drop.materialId) >= demand.requiredQuantity) return null;
+  return request;
+}
+
+export function canPersonCollectProjectMaterialDrop(
+  state: SimulationState,
+  personId: string,
+  drop: SimulationState['world']['drops'][number],
+  atMonth: number,
+): boolean {
+  const activeRequest = activeProjectMaterialDeliveryRequest(state, drop, atMonth);
+  return !activeRequest || activeRequest.requesterId === personId;
+}
+
+/**
+ * A restricted delivery remains ordinary visual evidence. Only the person who
+ * actually attempted this exact drop/request and remembers the blocked fact
+ * can treat it as a source that is not presently collectible. The predicate
+ * stops applying as soon as the binding itself is no longer active.
+ */
+export function personRemembersProjectMaterialDeliveryRestriction(
+  state: SimulationState,
+  personId: string,
+  drop: SimulationState['world']['drops'][number],
+  atMonth: number,
+): boolean {
+  const delivery = drop.projectMaterialDelivery;
+  const activeRequest = activeProjectMaterialDeliveryRequest(state, drop, atMonth);
+  if (!delivery || !activeRequest || activeRequest.requesterId === personId) return false;
+  const person = state.people.find((candidate) => candidate.id === personId);
+  if (!person) return false;
+  return person.memories.some((memory) => memory.kind === 'failure'
+    && memory.sourceEventIds.some((eventId) => {
+      const event = worldEventById(state, eventId);
+      return event?.kind === 'action'
+        && event.who === personId
+        && event.status === 'blocked'
+        && event.action.kind === 'transfer'
+        && event.action.from.kind === 'ground'
+        && event.action.dropId === drop.id
+        && event.diff.projectMaterialDeliveryRestricted === true
+        && event.diff.projectId === delivery.projectId
+        && event.diff.requestEventId === delivery.requestEventId;
+    }));
+}
+
+/** First attempts remain natural; only personally learned failures cool down. */
+export function canPersonPlanToCollectProjectMaterialDrop(
+  state: SimulationState,
+  personId: string,
+  drop: SimulationState['world']['drops'][number],
+  atMonth: number,
+): boolean {
+  return !personRemembersProjectMaterialDeliveryRestriction(state, personId, drop, atMonth);
+}
+
 /** Written carriers are preserved records, not blank project feedstock. */
 function consumableInventoryQuantity(person: PersonState, materialId: MaterialId): number {
   return person.inventory.reduce((sum, stack) => (

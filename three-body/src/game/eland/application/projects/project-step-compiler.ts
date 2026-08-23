@@ -1,19 +1,15 @@
-import type { ActionOption, WorldRef } from '../../domain/action';
+import type { ActionOption } from '../../domain/action';
 import {
-  inventoryCombinationForOutput,
-  inventoryCombinationRules,
-  inventoryCombinationTechniqueId,
   type ExertionRule,
   type InventoryCombinationRule,
 } from '../../domain/interaction-rules';
 import { Material, materialDefinition, materialHas, type MaterialId } from '../../domain/material';
-import { bestProductionToolStack, productionToolRank } from '../../domain/production-tool';
+import { productionToolRank } from '../../domain/production-tool';
 import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import {
   inventoryQuantity,
   isAlive,
   sameLocation,
-  type ItemStack,
   type PersonState,
 } from '../../domain/person';
 import type {
@@ -24,11 +20,15 @@ import type {
   ProjectProposal,
   ProjectState,
 } from '../../domain/project';
-import { shelterGeometryAt } from '../../domain/structure';
 import {
   inspectProjectMaterialContributionRequest,
   transferMatchesProjectMaterialRequest,
 } from '../../domain/project-material-request';
+import {
+  inspectProjectKnowledgeRequest,
+  pendingProjectKnowledgeGap,
+} from '../../domain/project-knowledge-request';
+import { resolvePersonKnownProcess } from '../../domain/person-known-process';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from '../../domain/stored-food-access';
 import {
   cellX,
@@ -37,13 +37,12 @@ import {
   neighbors4,
   standingPositions,
   surfaceMaterial,
-  topPosition,
-  voxelAt,
 } from '../../world/grid';
-import { seededFraction } from '../../world/generator';
 import { closeProjectHypothesisCampaign } from '../project-hypotheses';
 import {
-  mechanicalPowerMissingMaterials,
+  mechanicalPowerMaintenanceMaterialRequirement,
+  mechanicalPowerMaintenanceProjectStep,
+  mechanicalPowerMaterialRequirement,
   mechanicalPowerProjectStep,
 } from '../mechanical-power-options';
 import {
@@ -52,10 +51,8 @@ import {
   durableRecordWriteEvidence,
   placedFunctionEvidence,
   placedFunctionMaterialIds,
-  plantableCultivationMaterials,
   projectActionFacts,
   projectCultivationCells,
-  projectCultivationHarvests,
   projectProductionToolBaselineRank,
   verifiedProductionToolFunctions,
 } from './project-completion';
@@ -85,7 +82,6 @@ import {
   inventorySourceKey,
   questionAllowsAnotherExert,
   reliableExertionTechniques,
-  reliableExposureTechniques,
   sourceEventIdsForTarget,
   stacksForCandidateSlots,
   tentativeTechniqueStep,
@@ -97,21 +93,35 @@ import {
   localOpenExertionTarget,
   localTargetForKnownExertion,
   visiblePlacementApproach,
-  type LocalVoxelTarget,
 } from './project-spatial-planning';
 import type { ProjectStep } from './project-step';
 import { fixedFacilityWorkplace } from './project-workplace';
+import { careApplicationProjectStep } from './steps/care';
+import { constructionProjectStep, shelterBuildingStack } from './steps/construction';
+import { settledCultivationProjectStep } from './steps/cultivation';
+import {
+  compileKnownExposureStep,
+  compileKnownOutput,
+  knownExposurePlan,
+  knownRecipe,
+  localFinishedOutputAccess,
+  reliableKnownRecipe,
+  type KnownOutputAccessOptions,
+} from './steps/known-material-production';
 
 const IRON_WORKPLACE_MATERIALS = [Material.Smithy] as const;
+const IRON_WORKSHOP_DIRECT_OUTPUTS = [Material.Bronze, Material.FiredBrick] as const;
 
 export function projectSupportsMaterialContribution(project: Pick<ProjectState, 'need' | 'desiredFunction'>): boolean {
   return project.need === 'alloy-capability'
     || project.need === 'iron-capability'
+    || project.need === 'mechanical-power-capability'
     || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
 }
 
 function projectUsesFixedMetallurgyWorkplace(project: Pick<ProjectState, 'need' | 'desiredFunction'>): boolean {
   return project.need === 'alloy-capability'
+    || project.desiredFunction === 'brick-firing'
     || (project.need === 'iron-capability' && project.desiredFunction !== 'iron-workshop');
 }
 
@@ -127,91 +137,19 @@ function fixedProjectWorkplace(
     project.need === 'iron-capability' ? IRON_WORKPLACE_MATERIALS : undefined,
   );
 }
-function knownRecipe(person: PersonState, outputMaterialId: MaterialId): { rule: InventoryCombinationRule; knowledgeId: string } | null {
-  const rule = inventoryCombinationForOutput(outputMaterialId);
-  if (!rule) return null;
-  const knowledgeId = inventoryCombinationTechniqueId(rule);
-  return person.knowledge.some((fact) => fact.id === knowledgeId && fact.confidence >= 55)
-    ? { rule, knowledgeId }
-    : null;
-}
-
-function reliableKnownRecipe(
-  person: PersonState,
-  outputFits: (materialId: MaterialId) => boolean,
-): { rule: InventoryCombinationRule; knowledgeId: string } | null {
-  for (const fact of person.knowledge) {
-    if (fact.kind !== 'technique' || fact.confidence < 55) continue;
-    const rule = inventoryCombinationRules().find((candidate) => inventoryCombinationTechniqueId(candidate) === fact.id);
-    if (rule && outputFits(rule.output.materialId)) return { rule, knowledgeId: fact.id };
-  }
-  return null;
-}
-
-function stackRefsForRule(person: PersonState, rule: InventoryCombinationRule): Extract<WorldRef, { kind: 'inventory-stack' }>[] | null {
-  const refs: Extract<WorldRef, { kind: 'inventory-stack' }>[] = [];
-  for (const input of rule.inputs) {
-    const stack = person.inventory.find((candidate) => candidate.materialId === input.materialId
-      && isConsumableProjectStack(candidate)
-      && candidate.quantity >= input.quantity);
-    if (!stack) return null;
-    for (let count = 0; count < input.quantity; count += 1) refs.push({ kind: 'inventory-stack', personId: person.id, stackId: stack.id });
-  }
-  return refs;
-}
-
-function compileKnownOutput(
+function localFinishedIronWorkshopOutputs(
   state: SimulationState,
   person: PersonState,
-  visibleDrops: DropState[],
-  outputMaterialId: MaterialId,
-  purpose: string,
-  visited = new Set<MaterialId>(),
-): ProjectStep | null {
-  if (visited.has(outputMaterialId)) return null;
-  visited.add(outputMaterialId);
-  const known = knownRecipe(person, outputMaterialId);
-  if (!known) return null;
-  const knowledge = person.knowledge.find((fact) => fact.id === known.knowledgeId);
-  const deficits = known.rule.inputs
-    .filter((input) => consumableInventoryQuantity(person, input.materialId) < input.quantity);
-  const missing = deficits.map((input) => input.materialId);
-  if (missing.length) {
-    const drop = nearestDrop(state, person, visibleDrops, missing);
-    if (drop) {
-      const input = deficits.find((candidate) => candidate.materialId === drop.materialId);
-      const demand = materialDemand(
-        person,
-        drop.materialId,
-        input?.quantity ?? 1,
-        `known-recipe:${known.rule.id}:${drop.materialId}`,
-        knowledge?.sourceEventIds ?? [],
-      );
-      const step = dropStep(person, drop, purpose, demand);
-      if (step) return { ...step, planKnowledgeId: known.knowledgeId, missingMaterialIds: missing };
-    }
-    for (const materialId of missing) {
-      const nested = compileKnownOutput(state, person, visibleDrops, materialId, purpose, new Set(visited));
-      if (nested) return { ...nested, missingMaterialIds: missing };
-    }
-    return null;
-  }
-  const refs = stackRefsForRule(person, known.rule);
-  if (!refs) return null;
-  const reservations = refs.flatMap((ref) => reservation(person, ref.stackId));
-  return {
-    key: `known-recipe-${known.rule.id}`,
-    summary: `按已核验经验制作${materialDefinition(outputMaterialId).name}`,
-    reason: '本人已经核验这项制作经验，并已持有所有前置材料',
-    action: { kind: 'act', operation: 'combine', targets: refs },
-    sourceFactIds: [...new Set([
-      ...(knowledge?.sourceEventIds ?? []),
-      ...refs.flatMap((ref) => person.inventory.find((stack) => stack.id === ref.stackId)?.sourceEventIds ?? []),
-    ])],
-    missingMaterialIds: [],
-    reservations,
-    planKnowledgeId: known.knowledgeId,
-  };
+  project: ProjectState,
+): MaterialId[] {
+  if (project.desiredFunction !== 'iron-workshop') return [];
+  return IRON_WORKSHOP_DIRECT_OUTPUTS.filter((materialId) => (
+    consumableInventoryQuantity(person, materialId) === 0
+    && localFinishedOutputAccess(state, person, materialId, {
+      preferLocalFinishedOutput: true,
+      allowVisibleHolder: projectSupportsMaterialContribution(project),
+    }) !== null
+  ));
 }
 
 interface ProjectMaterialRequirement {
@@ -219,6 +157,40 @@ interface ProjectMaterialRequirement {
   demands: ProjectMaterialDemand[];
   sourceEventIds: string[];
   planKnowledgeId?: string;
+}
+
+function personallyKnownProcessRequirement(
+  state: SimulationState,
+  person: PersonState,
+  outputMaterialId: MaterialId,
+  accessOptions: KnownOutputAccessOptions = {},
+): ProjectMaterialRequirement {
+  const resolution = resolvePersonKnownProcess(state, person, outputMaterialId, {
+    directAccess: (materialId, quantity) => quantity <= 1
+      ? localFinishedOutputAccess(state, person, materialId, accessOptions)
+      : null,
+  });
+  const grouped = new Map<MaterialId, { quantity: number; sourceFactIds: string[]; branchKeys: string[] }>();
+  for (const leaf of resolution.leaves) {
+    const current = grouped.get(leaf.materialId) ?? { quantity: 0, sourceFactIds: [], branchKeys: [] };
+    current.quantity += leaf.quantity;
+    current.sourceFactIds.push(...leaf.sourceFactIds);
+    current.branchKeys.push(`${leaf.kind}:${leaf.techniquePath.join('>') || 'root'}`);
+    grouped.set(leaf.materialId, current);
+  }
+  const demands = [...grouped].map(([materialId, basis]) => materialDemand(
+    person,
+    materialId,
+    basis.quantity,
+    `person-known-process:${outputMaterialId}:${materialId}:${basis.branchKeys.sort().join('+')}`,
+    [...new Set(basis.sourceFactIds)],
+  )).filter((demand) => demand.outstandingQuantity > 0);
+  return {
+    materialIds: [...new Set(demands.map((demand) => demand.materialId))],
+    demands,
+    sourceEventIds: [...resolution.sourceFactIds],
+    ...(resolution.techniqueIds[0] ? { planKnowledgeId: resolution.techniqueIds[0] } : {}),
+  };
 }
 
 type ProjectMaterialHandoff = {
@@ -233,38 +205,94 @@ type ProjectMaterialHandoff = {
 };
 
 function knownOutputRequirement(
+  state: SimulationState,
   person: PersonState,
   outputMaterialId: MaterialId,
+  accessOptions: KnownOutputAccessOptions = {},
   visited = new Set<MaterialId>(),
 ): ProjectMaterialRequirement | null {
   if (visited.has(outputMaterialId)) return null;
   visited.add(outputMaterialId);
+  const direct = localFinishedOutputAccess(state, person, outputMaterialId, accessOptions);
+  if (direct) {
+    const demand = materialDemand(
+      person,
+      outputMaterialId,
+      1,
+      `known-direct-output:${direct.kind}:${outputMaterialId}`,
+      direct.sourceFactIds,
+    );
+    return {
+      materialIds: demand.outstandingQuantity > 0 ? [outputMaterialId] : [],
+      demands: demand.outstandingQuantity > 0 ? [demand] : [],
+      sourceEventIds: [...direct.sourceFactIds],
+    };
+  }
   const known = knownRecipe(person, outputMaterialId);
-  if (!known) return null;
-  const knowledge = person.knowledge.find((fact) => fact.id === known.knowledgeId);
+  if (known) {
+    const knowledge = person.knowledge.find((fact) => fact.id === known.knowledgeId);
+    const demands: ProjectMaterialDemand[] = [];
+    const sourceEventIds = [...(knowledge?.sourceEventIds ?? [])];
+    for (const input of known.rule.inputs) {
+      if (consumableInventoryQuantity(person, input.materialId) >= input.quantity) continue;
+      const nested = knownOutputRequirement(
+        state,
+        person,
+        input.materialId,
+        accessOptions,
+        new Set(visited),
+      );
+      if (nested?.demands.length) {
+        demands.push(...nested.demands);
+        sourceEventIds.push(...nested.sourceEventIds);
+      } else {
+        demands.push(materialDemand(
+          person,
+          input.materialId,
+          input.quantity,
+          `known-requirement:${known.rule.id}:${input.materialId}`,
+          knowledge?.sourceEventIds ?? [],
+        ));
+      }
+    }
+    return {
+      materialIds: [...new Set(demands.filter((demand) => demand.outstandingQuantity > 0).map((demand) => demand.materialId))],
+      demands: demands.filter((demand) => demand.outstandingQuantity > 0),
+      sourceEventIds: [...new Set(sourceEventIds)],
+      planKnowledgeId: known.knowledgeId,
+    };
+  }
+
+  const exposure = knownExposurePlan(state, person, outputMaterialId);
+  if (!exposure) return null;
+  const { technique } = exposure;
+  const inputMaterialId = technique.rule.inputMaterialId;
   const demands: ProjectMaterialDemand[] = [];
-  const sourceEventIds = [...(knowledge?.sourceEventIds ?? [])];
-  for (const input of known.rule.inputs) {
-    if (consumableInventoryQuantity(person, input.materialId) >= input.quantity) continue;
-    const nested = knownOutputRequirement(person, input.materialId, new Set(visited));
+  const sourceEventIds = [...technique.sourceEventIds];
+  if (consumableInventoryQuantity(person, inputMaterialId) === 0) {
+    const nested = knownOutputRequirement(
+      state,
+      person,
+      inputMaterialId,
+      accessOptions,
+      new Set(visited),
+    );
     if (nested?.demands.length) {
       demands.push(...nested.demands);
       sourceEventIds.push(...nested.sourceEventIds);
-    } else {
-      demands.push(materialDemand(
-        person,
-        input.materialId,
-        input.quantity,
-        `known-requirement:${known.rule.id}:${input.materialId}`,
-        knowledge?.sourceEventIds ?? [],
-      ));
-    }
+    } else demands.push(materialDemand(
+      person,
+      inputMaterialId,
+      1,
+      `known-exposure-requirement:${technique.rule.id}:${inputMaterialId}`,
+      technique.sourceEventIds,
+    ));
   }
   return {
     materialIds: [...new Set(demands.filter((demand) => demand.outstandingQuantity > 0).map((demand) => demand.materialId))],
     demands: demands.filter((demand) => demand.outstandingQuantity > 0),
     sourceEventIds: [...new Set(sourceEventIds)],
-    planKnowledgeId: known.knowledgeId,
+    planKnowledgeId: technique.knowledgeId,
   };
 }
 
@@ -276,6 +304,7 @@ function exertionInputQuantities(rule: ExertionRule): Map<MaterialId, number> {
 }
 
 function knownExertionRequirement(
+  state: SimulationState,
   person: PersonState,
   technique: ReliableExertionTechnique,
 ): ProjectMaterialRequirement | null {
@@ -283,7 +312,7 @@ function knownExertionRequirement(
   const sourceEventIds = [...technique.sourceEventIds];
   for (const [materialId, quantity] of exertionInputQuantities(technique.rule)) {
     if (consumableInventoryQuantity(person, materialId) >= quantity) continue;
-    const nested = knownOutputRequirement(person, materialId);
+    const nested = knownOutputRequirement(state, person, materialId);
     if (nested?.demands.length) {
       demands.push(...nested.demands);
       sourceEventIds.push(...nested.sourceEventIds);
@@ -327,13 +356,45 @@ function reliableMissingManipulatorRecipe(person: PersonState): { rule: Inventor
 
 function projectMaterialRequirement(state: SimulationState, person: PersonState, project: ProjectState): ProjectMaterialRequirement | null {
   const rawRequirements = new Map<MaterialId, number>();
+  const knownIntermediateRequirements: ProjectMaterialRequirement[] = [];
+  const knownOutputAccess = {
+    preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop'
+      || project.desiredFunction === 'water-powered-crop-processing'
+      || project.desiredFunction === 'restore-water-powered-crop-processing',
+    allowVisibleHolder: projectSupportsMaterialContribution(project),
+  };
+  let explicitRequirementPlanKnowledgeId: string | undefined;
+  let explicitRequirementSourceFactIds: string[] = [];
   const requireRaw = (materialId: MaterialId, quantity: number) => {
     if (consumableInventoryQuantity(person, materialId) < quantity) rawRequirements.set(materialId, Math.max(
       rawRequirements.get(materialId) ?? 0, quantity,
     ));
   };
+  const requireKnownOutputOrRaw = (materialId: MaterialId, quantity = 1) => {
+    if (consumableInventoryQuantity(person, materialId) >= quantity) return;
+    const known = knownOutputRequirement(state, person, materialId, knownOutputAccess);
+    if (known) knownIntermediateRequirements.push(known);
+    else requireRaw(materialId, quantity);
+  };
   if (project.desiredFunction === 'water-powered-crop-processing') {
-    for (const materialId of mechanicalPowerMissingMaterials(state, person, project)) requireRaw(materialId, 1);
+    const mechanicalRequirement = mechanicalPowerMaterialRequirement(state, person, project);
+    for (const materialId of mechanicalRequirement.materialIds) {
+      const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
+      if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+      else requireRaw(materialId, 1);
+    }
+    explicitRequirementPlanKnowledgeId = mechanicalRequirement.planKnowledgeId;
+    explicitRequirementSourceFactIds = mechanicalRequirement.sourceFactIds;
+  }
+  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+    const mechanicalRequirement = mechanicalPowerMaintenanceMaterialRequirement(state, person, project);
+    for (const materialId of mechanicalRequirement.materialIds) {
+      const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
+      if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+      else requireRaw(materialId, 1);
+    }
+    explicitRequirementPlanKnowledgeId = mechanicalRequirement.planKnowledgeId;
+    explicitRequirementSourceFactIds = mechanicalRequirement.sourceFactIds;
   }
   if (project.desiredFunction === 'efficient-production') {
     requireRaw(Material.Wood, 1);
@@ -367,6 +428,7 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
     requireRaw(Material.Clay, 1);
     requireRaw(Material.Stone, 1);
   }
+  if (project.desiredFunction === 'brick-firing') requireRaw(Material.Clay, 1);
   if (project.desiredFunction === 'copper-charge' || project.desiredFunction === 'tin-charge') {
     requireRaw(project.desiredFunction === 'copper-charge' ? Material.CopperOre : Material.TinOre, 1);
     if (consumableInventoryQuantity(person, Material.Charcoal) === 0) {
@@ -391,8 +453,11 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
     requireRaw(Material.Stone, 1);
   }
   if (project.desiredFunction === 'iron-workshop') {
-    requireRaw(Material.Bronze, 1);
-    requireRaw(Material.FiredBrick, 1);
+    // Both inputs are already explicit consequences of the observed workshop
+    // hypothesis. Resolve each through the same personal known-output graph;
+    // this does not infer any hidden Smithy recipe or remote material source.
+    requireKnownOutputOrRaw(Material.Bronze);
+    requireKnownOutputOrRaw(Material.FiredBrick);
   }
   if (project.desiredFunction === 'iron-charge') {
     requireRaw(Material.IronOre, 1);
@@ -425,13 +490,26 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   const rawDemands = [...rawRequirements].map(([materialId, quantity]) => materialDemand(
     person, materialId, quantity, `development-subassembly:${project.desiredFunction}:${materialId}`,
   )).filter((demand) => demand.outstandingQuantity > 0);
-  if (rawDemands.length) return {
-    materialIds: rawDemands.map((demand) => demand.materialId),
-    demands: rawDemands,
-    sourceEventIds: [...new Set(project.triggerFactIds)],
+  const materialDemands = [
+    ...knownIntermediateRequirements.flatMap((requirement) => requirement.demands),
+    ...rawDemands,
+  ].filter((demand) => demand.outstandingQuantity > 0);
+  if (materialDemands.length) return {
+    materialIds: [...new Set(materialDemands.map((demand) => demand.materialId))],
+    demands: materialDemands,
+    sourceEventIds: [...new Set([
+      ...project.triggerFactIds,
+      ...knownIntermediateRequirements.flatMap((requirement) => requirement.sourceEventIds),
+      ...explicitRequirementSourceFactIds,
+    ])],
+    ...((knownIntermediateRequirements.find((requirement) => requirement.planKnowledgeId)?.planKnowledgeId
+      ?? explicitRequirementPlanKnowledgeId)
+      ? { planKnowledgeId: knownIntermediateRequirements.find((requirement) => requirement.planKnowledgeId)?.planKnowledgeId
+        ?? explicitRequirementPlanKnowledgeId }
+      : {}),
   };
   if (project.desiredFunction === 'weather-shelter') {
-    if (buildingStack(person)) return null;
+    if (shelterBuildingStack(person)) return null;
     return {
       materialIds: [Material.Stone, Material.Wood, Material.Plank],
       demands: [Material.Stone, Material.Wood, Material.Plank].map((materialId) => materialDemand(
@@ -451,26 +529,45 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
       sourceEventIds: [],
     };
     const knownHeat = reliableHeatTechnique(person);
-    if (knownHeat) return knownExertionRequirement(person, knownHeat);
+    if (knownHeat) return knownExertionRequirement(state, person, knownHeat);
     const knownManipulator = reliableMissingManipulatorRecipe(person);
-    if (knownManipulator) return knownOutputRequirement(person, knownManipulator.rule.output.materialId);
+    if (knownManipulator) return knownOutputRequirement(
+      state, person, knownManipulator.rule.output.materialId, knownOutputAccess,
+    );
     return null;
   }
   if (project.desiredFunction === 'durable-record') {
     if (blankRecordCarrier(person)) return null;
     const knownCarrierRecipe = reliableRecordCarrierRecipe(person);
-    if (knownCarrierRecipe) return knownOutputRequirement(person, knownCarrierRecipe.rule.output.materialId);
+    if (knownCarrierRecipe) return knownOutputRequirement(
+      state, person, knownCarrierRecipe.rule.output.materialId, knownOutputAccess,
+    );
     const knownCarrierTechnique = reliableRecordCarrierTechnique(person);
-    if (knownCarrierTechnique) return knownExertionRequirement(person, knownCarrierTechnique);
+    if (knownCarrierTechnique) return knownExertionRequirement(state, person, knownCarrierTechnique);
     const knownManipulator = reliableMissingManipulatorRecipe(person);
-    if (knownManipulator) return knownOutputRequirement(person, knownManipulator.rule.output.materialId);
+    if (knownManipulator) return knownOutputRequirement(
+      state, person, knownManipulator.rule.output.materialId, knownOutputAccess,
+    );
     return null;
   }
   for (const output of completedFunctionMaterialIds(project)) {
-    const known = knownOutputRequirement(person, output);
+    const known = knownOutputRequirement(state, person, output, knownOutputAccess);
     if (known?.materialIds.length) return known;
   }
   return null;
+}
+
+function activeProjectMaterialDemands(
+  project: ProjectState,
+  requirement: ProjectMaterialRequirement,
+): ProjectMaterialDemand[] {
+  if (project.desiredFunction !== 'iron-workshop') return requirement.demands;
+  const directRootDemands = requirement.demands.filter((demand) => (
+    demand.outstandingQuantity > 0
+    && IRON_WORKSHOP_DIRECT_OUTPUTS.includes(demand.materialId as typeof IRON_WORKSHOP_DIRECT_OUTPUTS[number])
+    && demand.branchKey.startsWith('known-direct-output:')
+  ));
+  return directRootDemands.length ? directRootDemands : requirement.demands;
 }
 
 function combineSubassemblyStep(
@@ -749,7 +846,17 @@ function compileKnownExertionStep(
       if (step) return { ...step, missingMaterialIds: missing, planKnowledgeId: technique.knowledgeId };
     }
     for (const materialId of missing) {
-      const nested = compileKnownOutput(state, person, visibleDrops, materialId, project.summary);
+      const nested = compileKnownOutput(
+        state,
+        person,
+        visibleDrops,
+        materialId,
+        project.summary,
+        {
+          preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop',
+          allowVisibleHolder: projectSupportsMaterialContribution(project),
+        },
+      );
       if (nested) return { ...nested, missingMaterialIds: missing };
     }
     return null;
@@ -780,41 +887,6 @@ function compileKnownExertionStep(
   };
 }
 
-function compileKnownExposureStep(
-  person: PersonState,
-  project: ProjectState,
-  subject: ItemStack,
-  target: LocalVoxelTarget,
-  allowedOutputMaterialIds = completedFunctionMaterialIds(project),
-): ProjectStep | null {
-  if (!isConsumableProjectStack(subject)) return null;
-  const desiredOutputs = new Set(allowedOutputMaterialIds);
-  const technique = reliableExposureTechniques(person).find((candidate) => (
-    candidate.rule.inputMaterialId === subject.materialId
-      && candidate.rule.targetMaterialId === target.materialId
-      && desiredOutputs.has(candidate.rule.outputMaterialId)
-  ));
-  if (!technique) return null;
-  return {
-    key: `known-exposure-${technique.rule.id}-${subject.id}`,
-    summary: `按已核验经验得到${materialDefinition(technique.rule.outputMaterialId).name}`,
-    reason: '本人已经核验这项完整接触经验；当前 subject 与眼前目标都和经验中的实体条件一致',
-    action: {
-      kind: 'act',
-      operation: 'expose',
-      targets: [
-        { kind: 'inventory-stack', personId: person.id, stackId: subject.id },
-        { kind: 'voxel', position: target.position },
-      ],
-    },
-    target: { kind: 'voxel', position: target.position },
-    sourceFactIds: [...new Set([...technique.sourceEventIds, ...subject.sourceEventIds])],
-    missingMaterialIds: [],
-    reservations: reservation(person, subject.id),
-    planKnowledgeId: technique.knowledgeId,
-  };
-}
-
 function metallurgyWorkStep(
   state: SimulationState,
   person: PersonState,
@@ -822,6 +894,7 @@ function metallurgyWorkStep(
   project: ProjectState,
 ): ProjectStep | null {
   const metallurgyFunctions = new Set<ProjectFunction>([
+    'brick-firing',
     'copper-charge', 'copper-smelting', 'tin-charge', 'tin-smelting',
     'bronze-alloying', 'bronze-tooling', 'bronze-workshop',
     'iron-charge', 'iron-reduction', 'iron-working', 'iron-tooling',
@@ -859,7 +932,7 @@ function metallurgyWorkStep(
     && consumableInventoryQuantity(person, Material.Charcoal) === 0) {
     const wood = person.inventory.find((stack) => stack.materialId === Material.Wood && isConsumableProjectStack(stack));
     if (!wood) return null;
-    const known = compileKnownExposureStep(person, project, wood, workplace.target, [Material.Charcoal]);
+    const known = compileKnownExposureStep(person, wood, workplace.target, [Material.Charcoal]);
     if (known) return known;
     return hypothesisStep(state, person, visibleDrops, project, {
       operation: 'expose-local',
@@ -876,8 +949,10 @@ function metallurgyWorkStep(
     }, workplace.target.position);
   }
 
-  const smeltingInput = project.desiredFunction === 'copper-smelting'
-    ? Material.CopperCharge
+  const smeltingInput = project.desiredFunction === 'brick-firing'
+    ? Material.Clay
+    : project.desiredFunction === 'copper-smelting'
+      ? Material.CopperCharge
     : project.desiredFunction === 'tin-smelting'
       ? Material.TinCharge
       : project.desiredFunction === 'iron-reduction'
@@ -886,7 +961,12 @@ function metallurgyWorkStep(
   if (smeltingInput !== undefined) {
     const subject = person.inventory.find((stack) => stack.materialId === smeltingInput && isConsumableProjectStack(stack));
     if (!subject) return null;
-    const known = compileKnownExposureStep(person, project, subject, workplace.target);
+    const known = compileKnownExposureStep(
+      person,
+      subject,
+      workplace.target,
+      completedFunctionMaterialIds(project),
+    );
     if (known) return known;
     return hypothesisStep(state, person, visibleDrops, project, {
       operation: 'expose-local',
@@ -951,7 +1031,12 @@ function foodPreparationStep(state: SimulationState, person: PersonState, visibl
   }
   const hotTarget = localHotTarget(state, person);
   if (hotTarget) {
-    const knownExposure = compileKnownExposureStep(person, project, raw, hotTarget);
+    const knownExposure = compileKnownExposureStep(
+      person,
+      raw,
+      hotTarget,
+      completedFunctionMaterialIds(project),
+    );
     if (knownExposure) return knownExposure;
     return hypothesisStep(state, person, visibleDrops, project, {
       operation: 'expose-local',
@@ -982,144 +1067,6 @@ function foodPreparationStep(state: SimulationState, person: PersonState, visibl
     'seek-local-heat',
     [inventorySourceKey(person, raw)],
   );
-}
-
-function isShelterComponentMaterial(materialId: MaterialId): boolean {
-  // placeable 表示已经组装好的容器、设施或机械构件；它们可以独立落地，
-  // 但不能再被住所项目当作一块通用墙材消费。
-  return materialHas(materialId, 'solid')
-    && materialHas(materialId, 'building')
-    && !materialHas(materialId, 'placeable');
-}
-
-function buildingStack(person: PersonState) {
-  return person.inventory
-    .filter((stack) => isConsumableProjectStack(stack)
-      && isShelterComponentMaterial(stack.materialId))
-    .sort((a, b) => b.quantity - a.quantity || a.materialId - b.materialId)[0];
-}
-
-function solidBuildingAt(state: SimulationState, position: { x: number; y: number; z: number }): boolean {
-  const materialId = voxelAt(state.world.grid, position.x, position.y, position.z);
-  return materialHas(materialId, 'solid') && (materialHas(materialId, 'building') || materialHas(materialId, 'ground'));
-}
-
-function constructionPosition(state: SimulationState, project: ProjectState): { x: number; y: number; z: number } | null {
-  if (!project.site) return null;
-  const site = project.site;
-  const requirement = project.shelterRequirement;
-  const currentShelter = shelterGeometryAt(state.world.grid, site);
-  if (requirement) {
-    // An adaptation project is bound to the enclosure that produced its
-    // exposure evidence. If that geometry disappears, or already satisfies
-    // the requirement before project status is synchronized, it must not
-    // fall through into the generic shelter blueprint and place an unrelated
-    // upper wall or roof.
-    if (!currentShelter || currentShelter.enclosedSides >= requirement.minimumEnclosedSides) return null;
-    const openSide = neighbors4(site.cellId)
-      .map((neighbor) => ({
-        cellId: neighbor,
-        lower: { x: cellX(neighbor), y: cellY(neighbor), z: site.z },
-        upper: { x: cellX(neighbor), y: cellY(neighbor), z: site.z + 1 },
-      }))
-      .filter((candidate) => {
-        const support = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z - 1);
-        const wasTraversableOpening = standingPositions(state.world.grid, candidate.cellId)
-          .some((position) => Math.abs(position.z - site.z) <= 1);
-        return support !== Material.Air
-          && support !== Material.Water
-          && voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z) === Material.Air
-          && !solidBuildingAt(state, candidate.upper)
-          && currentShelter.openSides - Number(wasTraversableOpening) >= 1;
-      })
-      .sort((left, right) => seededFraction(state.seed, `project-adapt-wall:${project.id}:${left.cellId}`)
-        - seededFraction(state.seed, `project-adapt-wall:${project.id}:${right.cellId}`)
-        || left.cellId - right.cellId)[0];
-    return openSide?.lower ?? null;
-  }
-  const sides = neighbors4(site.cellId).map((neighbor) => ({
-    cellId: neighbor,
-    lower: { x: cellX(neighbor), y: cellY(neighbor), z: site.z },
-    upper: { x: cellX(neighbor), y: cellY(neighbor), z: site.z + 1 },
-  })).sort((a, b) => seededFraction(state.seed, `project-wall:${project.id}:${a.cellId}`)
-    - seededFraction(state.seed, `project-wall:${project.id}:${b.cellId}`));
-  const side = sides.find((candidate) => {
-    const support = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z - 1);
-    const lower = voxelAt(state.world.grid, candidate.lower.x, candidate.lower.y, candidate.lower.z);
-    return support !== Material.Air
-      && support !== Material.Water
-      && (lower === Material.Air || solidBuildingAt(state, candidate.lower));
-  });
-  if (!side) return null;
-  {
-    const support = voxelAt(state.world.grid, side.lower.x, side.lower.y, side.lower.z - 1);
-    if (support !== Material.Air && support !== Material.Water && voxelAt(state.world.grid, side.lower.x, side.lower.y, side.lower.z) === Material.Air) return side.lower;
-  }
-  if (solidBuildingAt(state, side.lower) && voxelAt(state.world.grid, side.upper.x, side.upper.y, side.upper.z) === Material.Air) return side.upper;
-  const roof = { x: cellX(site.cellId), y: cellY(site.cellId), z: site.z + 2 };
-  if (voxelAt(state.world.grid, roof.x, roof.y, roof.z) === Material.Air && solidBuildingAt(state, side.upper)) return roof;
-  return null;
-}
-
-function constructionStep(state: SimulationState, person: PersonState, visibleDrops: DropState[], project: ProjectState): ProjectStep | null {
-  if (!project.site) return null;
-  const stack = buildingStack(person);
-  if (!stack) {
-    const candidates = visibleDrops
-      .filter((candidate) => isShelterComponentMaterial(candidate.materialId));
-    const drop = nearestDrop(state, person, candidates, candidates.map((candidate) => candidate.materialId));
-    if (!drop) return null;
-    const step = dropStep(person, drop, project.summary, materialDemand(
-      person, drop.materialId, 1, `construction-next-placement:${drop.materialId}`, drop.sourceEventIds,
-    ));
-    return step ? { ...step, missingMaterialIds: [drop.materialId] } : null;
-  }
-  if (person.position.cellId !== project.site.cellId || person.position.z !== project.site.z) return {
-    key: `return-site-${project.site.cellId}-${project.site.z}`,
-    summary: `带着材料回到未完成遮蔽项目的工作位置`,
-    reason: '已经取得项目所需材料，回到原址继续连接比另开碎片化地点更有用',
-    action: { kind: 'move', toCellId: project.site.cellId, toZ: project.site.z },
-    sourceFactIds: [...new Set([...project.actionEventIds, ...stack.sourceEventIds])],
-    missingMaterialIds: [],
-    reservations: reservation(person, stack.id),
-  };
-  const position = constructionPosition(state, project);
-  if (!position) return null;
-  const target: WorldRef = { kind: 'voxel', position };
-  return {
-    key: `place-${position.x}-${position.y}-${position.z}-${stack.id}`,
-    summary: `继续${project.summary}的下一处实体连接`,
-    reason: '目标位置是同一功能结构当前最早缺失的支撑、侧向连接或顶盖，不会另开碎片化地点',
-    action: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: stack.id }, target] },
-    target,
-    sourceFactIds: [...new Set([...project.actionEventIds, ...stack.sourceEventIds])],
-    missingMaterialIds: [],
-    reservations: reservation(person, stack.id),
-  };
-}
-
-function careApplicationStep(state: SimulationState, person: PersonState, project: ProjectState): ProjectStep | null {
-  if (project.desiredFunction !== 'healing') return null;
-  const medicine = person.inventory.find((stack) => stack.materialId === Material.HerbalMedicine
-    && isConsumableProjectStack(stack));
-  if (!medicine) return null;
-  const beneficiary = project.beneficiaryIds
-    .map((personId) => state.people.find((candidate) => candidate.id === personId && isAlive(candidate)))
-    .find((candidate) => candidate?.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'));
-  if (!beneficiary) return null;
-  const target: WorldRef = { kind: 'person', personId: beneficiary.id };
-  return {
-    key: `apply-care-${medicine.id}-${beneficiary.id}`,
-    summary: `把项目制得的草药用于${beneficiary.name}的具体伤病`,
-    reason: '项目的功能结果是改变伤病，而不是仅把材料留在背包里',
-    action: sameLocation(person, beneficiary)
-      ? { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: medicine.id }, target] }
-      : { kind: 'move', toCellId: beneficiary.position.cellId, toZ: beneficiary.position.z },
-    target,
-    sourceFactIds: [...medicine.sourceEventIds, ...beneficiary.conditions.flatMap((condition) => condition.sourceEventIds)],
-    missingMaterialIds: [],
-    reservations: reservation(person, medicine.id),
-  };
 }
 
 function durableRecordPublicationStep(
@@ -1240,114 +1187,57 @@ function durableRecordStep(state: SimulationState, person: PersonState, visibleD
   );
 }
 
-function settledCultivationStep(
-  state: SimulationState,
-  person: PersonState,
-  project: ProjectState,
-): ProjectStep | null {
-  if (project.desiredFunction !== 'settled-cultivation') return null;
-  const visible = new Set(visibleCellsFor(person));
-  if (!project.site) {
-    const anchor = [...visible]
-      .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId))
-        || plantableCultivationMaterials.has(surfaceMaterial(state.world.grid, cellId)))
-      .map((cellId) => ({
-        cellId,
-        position: topPosition(state.world.grid, cellId),
-        path: findStandingPath(state.world.grid, person.position, { cellId }),
-      }))
-      .filter((candidate) => candidate.path.length > 0)
-      .sort((left, right) => left.path.length - right.path.length || left.cellId - right.cellId)[0];
-    if (anchor) project.site = { cellId: anchor.cellId, z: anchor.position.z };
-  }
-  const cultivatedCells = projectCultivationCells(project)
-    .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId)));
-  const harvests = projectCultivationHarvests(state, project);
-  const matureCell = cultivatedCells
-    .filter((cellId) => visible.has(cellId) && surfaceMaterial(state.world.grid, cellId) === Material.CropMature)
-    .map((cellId) => ({
-      cellId,
-      position: topPosition(state.world.grid, cellId),
-      path: findStandingPath(state.world.grid, person.position, { cellId }),
-    }))
-    .filter((candidate) => candidate.path.length > 0)
-    .sort((left, right) => left.path.length - right.path.length || left.cellId - right.cellId)[0];
-  if (matureCell && (harvests.length < 2 || inventoryQuantity(person, Material.Seed) === 0)) {
-    const tool = bestProductionToolStack(person);
-    const closeEnough = Math.abs(cellX(person.position.cellId) - matureCell.position.x)
-      + Math.abs(cellY(person.position.cellId) - matureCell.position.y) <= 1;
-    return {
-      key: `settled-cultivation-harvest-${matureCell.cellId}`,
-      summary: closeEnough ? '收获定居耕地中的成熟作物并留下下一轮种子' : '前往已经成熟的定居耕地',
-      reason: '农耕定居不仅需要播种，还必须完成真实生长、收获与留种循环',
-      action: closeEnough
-        ? {
-          kind: 'act', operation: 'separate',
-          targets: [{ kind: 'voxel', position: matureCell.position }],
-          ...(tool ? { toolStackId: tool.id } : {}),
-        }
-        : { kind: 'move', toCellId: matureCell.path.at(-1)!.cellId, toZ: matureCell.path.at(-1)!.z },
-      target: { kind: 'voxel', position: matureCell.position },
-      sourceFactIds: [...new Set([...project.triggerFactIds, ...harvests.slice(-2).map((event) => event.id)])],
-      missingMaterialIds: [],
-      reservations: tool ? reservation(person, tool.id) : [],
-    };
-  }
-  if (cultivatedCells.length >= 6) return null;
-  const seed = person.inventory.find((stack) => stack.materialId === Material.Seed && isConsumableProjectStack(stack));
-  if (!seed) return null;
-  const target = projectCultivationCells(project)
-    .filter((cellId) => visible.has(cellId)
-      && plantableCultivationMaterials.has(surfaceMaterial(state.world.grid, cellId)))
-    .map((cellId) => ({
-      cellId,
-      position: topPosition(state.world.grid, cellId),
-      path: findStandingPath(state.world.grid, person.position, { cellId }),
-    }))
-    .filter((candidate) => candidate.path.length > 0)
-    .sort((left, right) => left.path.length - right.path.length || left.cellId - right.cellId)[0];
-  if (!target) return null;
-  const closeEnough = Math.abs(cellX(person.position.cellId) - target.position.x)
-    + Math.abs(cellY(person.position.cellId) - target.position.y) <= 1;
-  return {
-    key: `settled-cultivation-plant-${target.cellId}-${seed.id}`,
-    summary: closeEnough ? '把留存种子播入适合耕作的湿润土壤' : '带着种子前往适合耕作的湿润土壤',
-    reason: '本人感知到食物压力，并把偶然采集转变成固定地点上的可重复生产',
-    action: closeEnough
-      ? {
-        kind: 'act', operation: 'combine',
-        targets: [
-          { kind: 'inventory-stack', personId: person.id, stackId: seed.id },
-          { kind: 'voxel', position: target.position },
-        ],
-      }
-      : { kind: 'move', toCellId: target.path.at(-1)!.cellId, toZ: target.path.at(-1)!.z },
-    target: { kind: 'voxel', position: target.position },
-    sourceFactIds: [...new Set([...project.triggerFactIds, ...seed.sourceEventIds])],
-    missingMaterialIds: [],
-    reservations: reservation(person, seed.id),
-  };
-}
-
 function compileProjectWorkStep(
   state: SimulationState,
   person: PersonState,
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
+  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+    const mechanicalStep = mechanicalPowerMaintenanceProjectStep(state, person, project);
+    if (mechanicalStep) return mechanicalStep;
+    const requirement = mechanicalPowerMaintenanceMaterialRequirement(state, person, project);
+    for (const outputMaterialId of requirement.materialIds) {
+      const known = compileKnownOutput(
+        state,
+        person,
+        visibleDrops,
+        outputMaterialId,
+        project.summary,
+        {
+          preferLocalFinishedOutput: true,
+          allowVisibleHolder: projectSupportsMaterialContribution(project),
+        },
+      );
+      if (known) return known;
+    }
+    return null;
+  }
   if (project.desiredFunction === 'water-powered-crop-processing') {
     const mechanicalStep = mechanicalPowerProjectStep(state, person, project);
     if (mechanicalStep) return mechanicalStep;
-    if (mechanicalPowerMissingMaterials(state, person, project).length) return null;
-    // An unknown component recipe stays inside the existing bounded local
-    // hypothesis loop; the mechanical chain never reads that hidden recipe.
-    return hypothesisStep(state, person, visibleDrops, project);
+    const requirement = mechanicalPowerMaterialRequirement(state, person, project);
+    for (const outputMaterialId of requirement.materialIds) {
+      const known = compileKnownOutput(
+        state,
+        person,
+        visibleDrops,
+        outputMaterialId,
+        project.summary,
+        {
+          preferLocalFinishedOutput: true,
+          allowVisibleHolder: projectSupportsMaterialContribution(project),
+        },
+      );
+      if (known) return known;
+    }
+    return null;
   }
   const verification = tentativeTechniqueStep(state, person, project);
   if (verification) return verification;
-  const cultivation = settledCultivationStep(state, person, project);
+  const cultivation = settledCultivationProjectStep(state, person, project);
   if (cultivation) return cultivation;
-  if (project.desiredFunction === 'weather-shelter') return constructionStep(state, person, visibleDrops, project);
+  if (project.desiredFunction === 'weather-shelter') return constructionProjectStep(state, person, visibleDrops, project);
   if (project.desiredFunction === 'prepared-food') return foodPreparationStep(state, person, visibleDrops, project);
   if (project.desiredFunction === 'durable-record') return durableRecordStep(state, person, visibleDrops, project);
   if (project.desiredFunction === 'reserve-storage' && placedFunctionEvidence(state, project).length) {
@@ -1400,13 +1290,35 @@ function compileProjectWorkStep(
     // placement step before anybody spends a second set of materials.
     return null;
   }
+  if (project.desiredFunction === 'iron-workshop') {
+    // A direct root object already in local reach outranks manufacturing any
+    // sibling precursor. The full AND requirement is still compiled below;
+    // only this month's executable branch is deferred to ordinary logistics.
+    if (!localFinishedIronWorkshopOutputs(state, person, project).length) {
+      for (const output of IRON_WORKSHOP_DIRECT_OUTPUTS) {
+        if (consumableInventoryQuantity(person, output) > 0) continue;
+        const known = compileKnownOutput(
+          state,
+          person,
+          visibleDrops,
+          output,
+          project.summary,
+          {
+            preferLocalFinishedOutput: true,
+            allowVisibleHolder: projectSupportsMaterialContribution(project),
+          },
+        );
+        if (known) return known;
+      }
+    }
+  }
   const metallurgy = metallurgyWorkStep(state, person, visibleDrops, project);
   if (metallurgy) return metallurgy;
   const subassembly = developmentSubassemblyStep(state, person, project);
   if (subassembly) return subassembly;
   const upgrade = containerUpgradeStep(state, person, project);
   if (upgrade) return upgrade;
-  const care = careApplicationStep(state, person, project);
+  const care = careApplicationProjectStep(state, person, project);
   if (care) return care;
   const baselineProductionToolRank = projectProductionToolBaselineRank(project);
   const candidateOutputs = completedFunctionMaterialIds(project)
@@ -1414,7 +1326,17 @@ function compileProjectWorkStep(
   for (const output of candidateOutputs) {
     if (verifiedProductionToolFunctions.has(project.desiredFunction)
       && productionToolRank(output) <= baselineProductionToolRank) continue;
-    const known = compileKnownOutput(state, person, visibleDrops, output, project.summary);
+    const known = compileKnownOutput(
+      state,
+      person,
+      visibleDrops,
+      output,
+      project.summary,
+      {
+        preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop',
+        allowVisibleHolder: projectSupportsMaterialContribution(project),
+      },
+    );
     if (known) return known;
   }
   // Cultivation already has a complete physical loop. When the anchored field
@@ -1423,7 +1345,7 @@ function compileProjectWorkStep(
   if (project.desiredFunction === 'settled-cultivation') return null;
   const pendingSubassembly = [
     'efficient-production', 'community-coordination', 'reserve-storage',
-    'reliable-water', 'crop-processing', 'high-heat-processing',
+    'reliable-water', 'crop-processing', 'high-heat-processing', 'brick-firing',
     'copper-charge', 'copper-smelting', 'tin-charge', 'tin-smelting',
     'bronze-alloying', 'bronze-tooling', 'bronze-workshop', 'civic-coordination',
     'iron-workshop', 'iron-charge', 'iron-reduction', 'iron-working', 'iron-tooling',
@@ -1433,11 +1355,75 @@ function compileProjectWorkStep(
   return hypothesisStep(state, person, visibleDrops, project);
 }
 
+type ProjectKnowledgeRequestCompilation =
+  | { status: 'action'; step: ProjectStep }
+  | { status: 'waiting' }
+  | { status: 'unavailable' };
+
+function mechanicalProjectKnowledgeRequestStep(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+  outputMaterialId: MaterialId,
+  prerequisiteSourceFactIds: string[] = [],
+): ProjectKnowledgeRequestCompilation {
+  const previous = (project.knowledgeRequests ?? [])
+    .filter((request) => request.outputMaterialId === outputMaterialId)
+    .sort((left, right) => right.atMonth - left.atMonth
+      || right.requestEventId.localeCompare(left.requestEventId))[0];
+  if (previous) {
+    return inspectProjectKnowledgeRequest(
+      state,
+      project,
+      previous,
+      state.clock.elapsedMonths + 1,
+    ) === 'open' ? { status: 'waiting' } : { status: 'unavailable' };
+  }
+  const visible = new Set(visibleCellsFor(person));
+  const listeners = state.people.filter((candidate) => candidate.id !== person.id
+    && isAlive(candidate)
+    && visible.has(candidate.position.cellId)
+    && Math.abs(candidate.position.z - person.position.z) <= 2)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  if (!listeners.length) return { status: 'unavailable' };
+  const materialName = materialDefinition(outputMaterialId).name;
+  const representationId = `project-knowledge-request:${project.id}:${outputMaterialId}`;
+  return {
+    status: 'action',
+    step: {
+      key: representationId,
+      summary: `向眼前的人询问怎样制作项目下一步所需的${materialName}`,
+      reason: '本人能够从亲身劳动与冻结计划辨认下一部件，但尚无可靠制作经验；请求只说明部件，不包含本人未知的配方输入，也不预判谁会回答',
+      action: {
+        kind: 'communicate',
+        content: {
+          id: representationId,
+          kind: 'request',
+          summary: `“${project.summary}”下一步需要${materialName}，我还不知道怎样制作，谁能教我？`,
+          projectKnowledgeRequest: {
+            version: 'project-knowledge-request-v1',
+            projectId: project.id,
+            requesterId: person.id,
+            outputMaterialId,
+            expiresAtMonth: state.clock.elapsedMonths + 12,
+          },
+        },
+        audience: listeners.map((listener) => listener.id),
+        channel: 'gesture',
+      },
+      sourceFactIds: [...new Set([...project.triggerFactIds, ...prerequisiteSourceFactIds])],
+      missingMaterialIds: [],
+      reservations: [],
+    },
+  };
+}
+
 function materialContributionRequestStep(
   state: SimulationState,
   person: PersonState,
   project: ProjectState,
   requirement: ProjectMaterialRequirement,
+  activeDemands: ProjectMaterialDemand[] = requirement.demands,
 ): ProjectStep | null {
   if (project.ownerId !== person.id
     || !projectSupportsMaterialContribution(project)
@@ -1446,7 +1432,7 @@ function materialContributionRequestStep(
   const possibleContributors = state.people.filter((candidate) => candidate.id !== person.id
     && isAlive(candidate)
     && visible.has(candidate.position.cellId));
-  const selected = requirement.demands.flatMap((demand) => {
+  const selected = activeDemands.flatMap((demand) => {
     if (demand.outstandingQuantity <= 0
       || project.materialContributionRequests?.some((request) => request.materialId === demand.materialId
         && inspectProjectMaterialContributionRequest(
@@ -1514,8 +1500,9 @@ function storedProjectMaterialStep(
   person: PersonState,
   project: ProjectState,
   requirement: ProjectMaterialRequirement,
+  activeDemands: ProjectMaterialDemand[] = requirement.demands,
 ): ProjectStep | null {
-  const demands = new Map(requirement.demands
+  const demands = new Map(activeDemands
     .filter((demand) => demand.outstandingQuantity > 0)
     .map((demand) => [demand.materialId, demand]));
   if (!demands.size) return null;
@@ -1686,6 +1673,28 @@ export function compileProjectStep(
   }
   if (workStep) return workStep;
 
+  if (project.desiredFunction === 'water-powered-crop-processing') {
+    const mechanicalRequirement = mechanicalPowerMaterialRequirement(state, person, project);
+    if (mechanicalRequirement.unknownRecipeOutputMaterialId !== undefined) {
+      const knowledgeGap = pendingProjectKnowledgeGap(state, project);
+      const knowledgeRequest = mechanicalProjectKnowledgeRequestStep(
+        state,
+        person,
+        project,
+        mechanicalRequirement.unknownRecipeOutputMaterialId,
+        knowledgeGap?.outputMaterialId === mechanicalRequirement.unknownRecipeOutputMaterialId
+          ? knowledgeGap.sourceFactIds
+          : [],
+      );
+      if (knowledgeRequest.status === 'action') return knowledgeRequest.step;
+      if (knowledgeRequest.status === 'waiting') return null;
+      // One unanswered bounded request does not become an unlimited social
+      // retry. The existing finite, local and fallible inquiry remains the
+      // only fallback once no request can currently advance the project.
+      return hypothesisStep(state, person, visibleDrops, project);
+    }
+  }
+
   const requirement = projectMaterialRequirement(state, person, project);
   if (!requirement?.materialIds.length) return null;
   // Keep the exact current branch on the authoritative project even when the
@@ -1695,13 +1704,18 @@ export function compileProjectStep(
   project.missingMaterialIds = [...new Set(requirement.materialIds)];
   project.materialDemands = structuredClone(requirement.demands);
   if (requirement.planKnowledgeId) project.planKnowledgeId = requirement.planKnowledgeId;
+  // Keep the authoritative AND requirement intact. When a local direct root
+  // exists, only narrow the candidates considered for this immediate action;
+  // after it is acquired, recompilation naturally exposes the sibling branch.
+  const activeDemands = activeProjectMaterialDemands(project, requirement);
+  const activeMaterialIds = [...new Set(activeDemands.map((demand) => demand.materialId))];
   const usesFixedWorkplace = projectUsesFixedMetallurgyWorkplace(project);
   const workplace = usesFixedWorkplace ? fixedProjectWorkplace(state, person, project) : null;
   if (usesFixedWorkplace && !workplace) return null;
   const destination = workplace?.workingPosition ?? project.site;
   const projectFacts = projectActionFacts(state, project);
   const materialHandoff = (project.materialContributionRequests ?? []).flatMap<ProjectMaterialHandoff>((request) => {
-    const demand = requirement.demands.find((candidate) => candidate.materialId === request.materialId);
+    const demand = activeDemands.find((candidate) => candidate.materialId === request.materialId);
     if (!demand || !destination) return [];
     const view = inspectProjectMaterialContributionRequest(
       state,
@@ -1783,14 +1797,20 @@ export function compileProjectStep(
     // request-bound transfer become the next causal event.
     if (materialHandoff.kind === 'open') return null;
   }
-  const storedMaterial = storedProjectMaterialStep(state, person, project, requirement);
+  const storedMaterial = storedProjectMaterialStep(state, person, project, requirement, activeDemands);
   if (storedMaterial) return storedMaterial;
-  const contributionRequest = materialContributionRequestStep(state, person, project, requirement);
+  const contributionRequest = materialContributionRequestStep(
+    state,
+    person,
+    project,
+    requirement,
+    activeDemands,
+  );
   if (contributionRequest) return contributionRequest;
-  const availableDrop = nearestDrop(state, person, visibleDrops, requirement.materialIds)
-    ?? nearestRememberedDrop(state, person, requirement.materialIds);
+  const availableDrop = nearestDrop(state, person, visibleDrops, activeMaterialIds)
+    ?? nearestRememberedDrop(state, person, activeMaterialIds);
   if (availableDrop) {
-    const demand = requirement.demands.find((candidate) => candidate.materialId === availableDrop.materialId);
+    const demand = activeDemands.find((candidate) => candidate.materialId === availableDrop.materialId);
     if (demand) {
       const episode = startDropLogisticsEpisode(
         project,
@@ -1803,7 +1823,7 @@ export function compileProjectStep(
       return activeEpisodeStep(state, person, visibleDrops, project, episode);
     }
   }
-  const renewableSourceDemand = requirement.demands.find((demand) => (
+  const renewableSourceDemand = activeDemands.find((demand) => (
     demand.materialId === Material.Wood || demand.materialId === Material.Fiber || demand.materialId === Material.Seed
   ) && demand.outstandingQuantity > 0);
   if (renewableSourceDemand) {
@@ -1820,16 +1840,33 @@ export function compileProjectStep(
       return activeEpisodeStep(state, person, visibleDrops, project, episode);
     }
   }
-  const searchDestination = visibleReachableSearchDestination(state, person, project, requirement.materialIds);
+  if (project.desiredFunction === 'water-powered-crop-processing') {
+    const knowledgeGap = pendingProjectKnowledgeGap(state, project);
+    if (knowledgeGap && activeDemands.some((demand) => (
+      demand.materialId === knowledgeGap.outputMaterialId
+        && demand.outstandingQuantity > 0
+    ))) {
+      const knowledgeRequest = mechanicalProjectKnowledgeRequestStep(
+        state,
+        person,
+        project,
+        knowledgeGap.outputMaterialId,
+        knowledgeGap.sourceFactIds,
+      );
+      if (knowledgeRequest.status === 'action') return knowledgeRequest.step;
+      if (knowledgeRequest.status === 'waiting') return null;
+    }
+  }
+  const searchDestination = visibleReachableSearchDestination(state, person, project, activeMaterialIds);
   if (!searchDestination) return null;
   const episode = startSearchLogisticsEpisode(
     project,
     person,
-    requirement.materialIds,
+    activeMaterialIds,
     searchDestination,
     requirement.sourceEventIds,
     state.clock.elapsedMonths + 1,
-    requirement.demands,
+    activeDemands,
     renewableSourceDemand ? 0 : undefined,
   );
   return activeEpisodeStep(state, person, visibleDrops, project, episode);

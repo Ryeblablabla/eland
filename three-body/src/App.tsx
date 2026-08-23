@@ -1,7 +1,11 @@
+import { lazy, Suspense } from 'react'
 import ImmersiveGame from './pages/ImmersiveGame'
-import DebugPlanet from './pages/DebugPlanet'
+
+const DebugPlanet = lazy(() => import('./pages/DebugPlanet'))
 
 export default function App() {
-  if (window.location.pathname === '/debug-planet') return <DebugPlanet />
+  if (window.location.pathname === '/debug-planet') {
+    return <Suspense fallback={null}><DebugPlanet /></Suspense>
+  }
   return <ImmersiveGame />
 }

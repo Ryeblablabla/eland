@@ -12,6 +12,7 @@ import type {
   ProjectState,
 } from '../../domain/project';
 import { worldEventById } from '../../domain/event-index';
+import { canPersonPlanToCollectProjectMaterialDrop } from '../../domain/project-material-request';
 import {
   cellX,
   cellY,
@@ -132,11 +133,17 @@ function searchCampaignBasisKey(
   person: PersonState,
   materialIds: MaterialId[],
 ): string {
+  const wanted = new Set(materialIds);
+  const demandBranches = (project.materialDemands ?? [])
+    .filter((demand) => wanted.has(demand.materialId))
+    .map((demand) => `${demand.materialId}:${demand.requiredQuantity}:${demand.branchKey}`)
+    .sort();
   return [
-    'project-search-campaign-v1',
+    'project-search-campaign-v2',
     `project=${project.id}`,
     `actor=${person.id}`,
     `materials=${[...new Set(materialIds)].sort((a, b) => a - b).join(',')}`,
+    `branches=${demandBranches.join(',')}`,
     `plan=${project.planKnowledgeId ?? 'none'}`,
   ].join('|');
 }
@@ -221,6 +228,82 @@ function campaignPlanKnowledgeId(campaign: ProjectSearchCampaign): string | unde
   return match?.[1] && match[1] !== 'none' ? match[1] : undefined;
 }
 
+interface SearchCampaignActorCandidate {
+  project: ProjectState;
+  campaign: ProjectSearchCampaign;
+  projectOrder: number;
+  campaignOrder: number;
+}
+
+interface SearchCampaignActorIndex {
+  projectsLength: number;
+  tailProject: ProjectState | undefined;
+  projectOrders: Map<ProjectState, number>;
+  indexedCampaigns: WeakSet<ProjectSearchCampaign>;
+  candidatesByActorId: Map<string, SearchCampaignActorCandidate[]>;
+}
+
+const searchCampaignActorIndexes = new WeakMap<ProjectState[], SearchCampaignActorIndex>();
+
+function buildSearchCampaignActorIndex(projects: ProjectState[]): SearchCampaignActorIndex {
+  const index: SearchCampaignActorIndex = {
+    projectsLength: projects.length,
+    tailProject: projects.at(-1),
+    projectOrders: new Map(),
+    indexedCampaigns: new WeakSet(),
+    candidatesByActorId: new Map(),
+  };
+  projects.forEach((project, projectOrder) => {
+    index.projectOrders.set(project, projectOrder);
+    (project.searchCampaigns ?? []).forEach((campaign, campaignOrder) => {
+      index.indexedCampaigns.add(campaign);
+      const candidates = index.candidatesByActorId.get(campaign.actorId) ?? [];
+      candidates.push({ project, campaign, projectOrder, campaignOrder });
+      index.candidatesByActorId.set(campaign.actorId, candidates);
+    });
+  });
+  return index;
+}
+
+function searchCampaignActorIndex(state: SimulationState): SearchCampaignActorIndex {
+  const projects = state.projects;
+  const existing = searchCampaignActorIndexes.get(projects);
+  if (existing
+    && existing.projectsLength === projects.length
+    && existing.tailProject === projects.at(-1)) return existing;
+  const rebuilt = buildSearchCampaignActorIndex(projects);
+  searchCampaignActorIndexes.set(projects, rebuilt);
+  return rebuilt;
+}
+
+function registerSearchCampaignActor(
+  state: SimulationState,
+  project: ProjectState,
+  campaign: ProjectSearchCampaign,
+): void {
+  const projects = state.projects;
+  const existing = searchCampaignActorIndexes.get(projects);
+  if (!existing) return;
+  if (existing.projectsLength !== projects.length || existing.tailProject !== projects.at(-1)) {
+    searchCampaignActorIndexes.set(projects, buildSearchCampaignActorIndex(projects));
+    return;
+  }
+  const projectOrder = existing.projectOrders.get(project);
+  if (projectOrder === undefined || existing.indexedCampaigns.has(campaign)) return;
+  const campaignOrder = project.searchCampaigns?.indexOf(campaign) ?? -1;
+  if (campaignOrder < 0) return;
+  existing.indexedCampaigns.add(campaign);
+  const candidates = existing.candidatesByActorId.get(campaign.actorId) ?? [];
+  const insertionIndex = candidates.findIndex((candidate) => (
+    candidate.projectOrder > projectOrder
+    || (candidate.projectOrder === projectOrder && candidate.campaignOrder > campaignOrder)
+  ));
+  const candidate = { project, campaign, projectOrder, campaignOrder };
+  if (insertionIndex < 0) candidates.push(candidate);
+  else candidates.splice(insertionIndex, 0, candidate);
+  existing.candidatesByActorId.set(campaign.actorId, candidates);
+}
+
 function inheritedSearchExperience(
   state: SimulationState,
   person: PersonState,
@@ -231,23 +314,25 @@ function inheritedSearchExperience(
   const visible = new Set(cellIds);
   const campaignIds = new Set<string>();
   const targetKeys = new Set<string>();
-  for (const priorProject of state.projects) {
+  const index = searchCampaignActorIndex(state);
+  for (const candidate of index.candidatesByActorId.get(person.id) ?? []) {
+    const { project: priorProject, campaign, projectOrder, campaignOrder } = candidate;
+    if (state.projects[projectOrder] !== priorProject
+      || priorProject.searchCampaigns?.[campaignOrder] !== campaign) continue;
     if (priorProject.id === project.id) continue;
-    for (const campaign of priorProject.searchCampaigns ?? []) {
-      if (campaign.actorId !== person.id
-        || campaignPlanKnowledgeId(campaign) !== project.planKnowledgeId
-        || !sameMaterialBasis(campaign.materialIds, materialIds)) continue;
-      const overlapping = [
-        ...(campaign.inheritedTargetKeys ?? []),
-        ...campaign.attemptedTargetKeys,
-      ].filter((key) => {
-        const cellId = targetCellId(key);
-        return cellId !== null && visible.has(cellId);
-      });
-      if (!overlapping.length) continue;
-      campaignIds.add(campaign.id);
-      for (const key of overlapping) targetKeys.add(key);
-    }
+    if (campaign.actorId !== person.id
+      || campaignPlanKnowledgeId(campaign) !== project.planKnowledgeId
+      || !sameMaterialBasis(campaign.materialIds, materialIds)) continue;
+    const overlapping = [
+      ...(campaign.inheritedTargetKeys ?? []),
+      ...campaign.attemptedTargetKeys,
+    ].filter((key) => {
+      const cellId = targetCellId(key);
+      return cellId !== null && visible.has(cellId);
+    });
+    if (!overlapping.length) continue;
+    campaignIds.add(campaign.id);
+    for (const key of overlapping) targetKeys.add(key);
   }
   return {
     campaignIds: [...campaignIds].sort(),
@@ -309,6 +394,7 @@ function searchCampaignFor(
     status: 'active',
   };
   campaigns.push(campaign);
+  registerSearchCampaignActor(state, project, campaign);
   return campaign;
 }
 
@@ -599,6 +685,15 @@ function dropEpisodeStep(
     && drop.materialId === materialId
     && drop.cellId === episode.target.cellId
     && drop.z === episode.target.z);
+  if (source && !canPersonPlanToCollectProjectMaterialDrop(
+    state,
+    person.id,
+    source,
+    state.clock.elapsedMonths + 1,
+  )) {
+    endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');
+    return null;
+  }
   const targetVisible = visibleCellsFor(person).includes(episode.target.cellId);
   if (targetVisible && !source) {
     endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');

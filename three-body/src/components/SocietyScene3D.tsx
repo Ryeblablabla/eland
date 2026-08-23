@@ -3005,21 +3005,98 @@ void main() {`,
         roughness: 0.74, metalness: 0.02, clearcoat: 0.1, clearcoatRoughness: 0.7, envMapIntensity: 0.82,
       }),
     };
+    type DecorRenderLayer = 'stable' | 'settlement-era';
+    type DecorMaterialSet = Record<string, THREE.MeshStandardMaterial>;
+    const SETTLEMENT_ERA_TRANSITION_MS = 1_000;
+    const cloneDecorMaterials = (opacity = 1, fading = false): DecorMaterialSet => Object.fromEntries(
+      Object.entries(DECOR_MATS).map(([key, source]) => {
+        const material = source.clone();
+        material.opacity = opacity;
+        material.transparent = fading;
+        material.depthWrite = !fading;
+        material.needsUpdate = true;
+        return [key, material];
+      }),
+    );
+    const setDecorMaterialOpacity = (materials: DecorMaterialSet, opacity: number, fading: boolean) => {
+      for (const material of Object.values(materials)) {
+        const nextTransparent = fading;
+        const nextDepthWrite = !fading;
+        if (material.transparent !== nextTransparent || material.depthWrite !== nextDepthWrite) {
+          material.transparent = nextTransparent;
+          material.depthWrite = nextDepthWrite;
+          material.needsUpdate = true;
+        }
+        material.opacity = opacity;
+      }
+    };
     const decorGroup = new THREE.Group();
     interface DecorBatch {
       mesh: THREE.InstancedMesh;
+      bucket: DecorBucket;
+      layer: DecorRenderLayer;
       capacity: number;
       keys: Array<string | null>;
       instances: Array<DecorInstance | null>;
       signatures: Array<string | null>;
       slotByKey: Map<string, number>;
     }
-    const decorBatches = new Map<DecorBucket, DecorBatch>();
+    const decorBatches = new Map<string, DecorBatch>();
+    let settlementDecorMaterials = cloneDecorMaterials();
+    let renderedDevelopmentStage: string | undefined;
+    let settlementEraTransition: {
+      startedAt: number;
+      outgoingGroup: THREE.Group;
+      outgoingMaterials: DecorMaterialSet;
+    } | null = null;
     let animatedDecorBatches: Array<{
       mesh: THREE.InstancedMesh;
       instances: Array<{ index: number; instance: DecorInstance }>;
     }> = [];
     scene.add(decorGroup);
+
+    const decorBatchKey = (bucket: DecorBucket, layer: DecorRenderLayer): string => `${layer}:${bucket}`;
+    const disposeOutgoingSettlementDecor = (group: THREE.Group, materials: DecorMaterialSet) => {
+      scene.remove(group);
+      for (const child of [...group.children]) (child as THREE.InstancedMesh).dispose();
+      for (const material of Object.values(materials)) material.dispose();
+    };
+    const finishSettlementEraTransition = () => {
+      if (!settlementEraTransition) return;
+      setDecorMaterialOpacity(settlementDecorMaterials, 1, false);
+      disposeOutgoingSettlementDecor(
+        settlementEraTransition.outgoingGroup,
+        settlementEraTransition.outgoingMaterials,
+      );
+      settlementEraTransition = null;
+    };
+    const beginSettlementEraTransition = (startedAt: number) => {
+      finishSettlementEraTransition();
+      const outgoingGroup = new THREE.Group();
+      const outgoingMaterials = settlementDecorMaterials;
+      setDecorMaterialOpacity(outgoingMaterials, 1, true);
+      for (const [key, batch] of [...decorBatches]) {
+        if (batch.layer !== 'settlement-era') continue;
+        decorGroup.remove(batch.mesh);
+        outgoingGroup.add(batch.mesh);
+        decorBatches.delete(key);
+      }
+      scene.add(outgoingGroup);
+      settlementDecorMaterials = cloneDecorMaterials(0, true);
+      settlementEraTransition = { startedAt, outgoingGroup, outgoingMaterials };
+    };
+    const updateSettlementEraTransition = (now: number) => {
+      if (!settlementEraTransition) return;
+      const progress = THREE.MathUtils.clamp(
+        (now - settlementEraTransition.startedAt) / SETTLEMENT_ERA_TRANSITION_MS,
+        0,
+        1,
+      );
+      const eased = progress * progress * (3 - 2 * progress);
+      setDecorMaterialOpacity(settlementEraTransition.outgoingMaterials, 1 - eased, true);
+      setDecorMaterialOpacity(settlementDecorMaterials, eased, true);
+      if (progress >= 1) finishSettlementEraTransition();
+    };
 
     const decorInstanceBaseKey = (instance: DecorInstance): string => {
       const entityAnchored = instance.entityId !== undefined;
@@ -3054,14 +3131,16 @@ void main() {`,
       instance.entityId ?? '',
       instance.entityX ?? '', instance.entityY ?? '', instance.entityZ ?? '',
       instance.entityRotation ?? '', instance.part ?? '', instance.animation ?? '',
+      instance.visualLayer ?? '',
     ].join('|');
     const decorCapacityFor = (required: number): number => {
       let capacity = 16;
       while (capacity < required) capacity *= 2;
       return capacity;
     };
-    const createDecorBatch = (bucket: DecorBucket, capacity: number): DecorBatch => {
-      const material = DECOR_MATS[bucket] ?? DECOR_MATS.plaster;
+    const createDecorBatch = (bucket: DecorBucket, layer: DecorRenderLayer, capacity: number): DecorBatch => {
+      const materials = layer === 'settlement-era' ? settlementDecorMaterials : DECOR_MATS;
+      const material = materials[bucket] ?? materials.plaster;
       const mesh = new THREE.InstancedMesh(boxGeo, material, capacity);
       mesh.count = 0;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -3073,6 +3152,8 @@ void main() {`,
       decorGroup.add(mesh);
       return {
         mesh,
+        bucket,
+        layer,
         capacity,
         keys: new Array<string | null>(capacity).fill(null),
         instances: new Array<DecorInstance | null>(capacity).fill(null),
@@ -3080,15 +3161,16 @@ void main() {`,
         slotByKey: new Map<string, number>(),
       };
     };
-    const ensureDecorBatch = (bucket: DecorBucket, required: number): DecorBatch => {
-      const current = decorBatches.get(bucket);
+    const ensureDecorBatch = (bucket: DecorBucket, layer: DecorRenderLayer, required: number): DecorBatch => {
+      const key = decorBatchKey(bucket, layer);
+      const current = decorBatches.get(key);
       if (current && current.capacity >= required) return current;
-      const replacement = createDecorBatch(bucket, decorCapacityFor(required));
+      const replacement = createDecorBatch(bucket, layer, decorCapacityFor(required));
       if (current) {
         decorGroup.remove(current.mesh);
         current.mesh.dispose();
       }
-      decorBatches.set(bucket, replacement);
+      decorBatches.set(key, replacement);
       return replacement;
     };
     const writeDecorInstance = (mesh: THREE.InstancedMesh, index: number, instance: DecorInstance, bucket: DecorBucket) => {
@@ -3110,19 +3192,35 @@ void main() {`,
     };
 
     decorApiRef.current = (s, era) => {
+      const nextDevelopmentStage = s.observations.civilizationIndex?.stage ?? '原始部落';
+      if (renderedDevelopmentStage !== undefined && renderedDevelopmentStage !== nextDevelopmentStage)
+        beginSettlementEraTransition(performance.now());
+      renderedDevelopmentStage = nextDevelopmentStage;
       const instances = collectDecor(s, era);
       animatedDecorBatches = [];
-      const byBucket = new Map<DecorBucket, DecorInstance[]>();
+      const byBatch = new Map<string, {
+        bucket: DecorBucket;
+        layer: DecorRenderLayer;
+        instances: DecorInstance[];
+      }>();
       for (const inst of instances) {
-        const list = byBucket.get(inst.b);
-        if (list) list.push(inst); else byBucket.set(inst.b, [inst]);
+        const layer: DecorRenderLayer = inst.visualLayer ?? 'stable';
+        const key = decorBatchKey(inst.b, layer);
+        const batch = byBatch.get(key);
+        if (batch) batch.instances.push(inst);
+        else byBatch.set(key, { bucket: inst.b, layer, instances: [inst] });
       }
-      const activeBuckets = new Set<DecorBucket>([...decorBatches.keys(), ...byBucket.keys()]);
-      for (const bucket of activeBuckets) {
-        const list = byBucket.get(bucket) ?? [];
+      const activeBatchKeys = new Set<string>([...decorBatches.keys(), ...byBatch.keys()]);
+      for (const batchKey of activeBatchKeys) {
+        const definition = byBatch.get(batchKey);
+        const current = decorBatches.get(batchKey);
+        const bucket = definition?.bucket ?? current?.bucket;
+        const layer = definition?.layer ?? current?.layer;
+        if (!bucket || !layer) continue;
+        const list = definition?.instances ?? [];
         const batch = list.length > 0
-          ? ensureDecorBatch(bucket, list.length)
-          : decorBatches.get(bucket);
+          ? ensureDecorBatch(bucket, layer, list.length)
+          : current;
         if (!batch) continue;
 
         const keyed = keyedDecorInstances(list);
@@ -4183,8 +4281,18 @@ void main() {`,
       humanMeteors.update(deltaSeconds, camera, skyStarVisibility);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
-      DECOR_MATS.glowWarm.emissiveIntensity = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
-      DECOR_MATS.glowRed.emissiveIntensity = 1.35 + 0.2 * Math.sin(now * 0.014 + 1) + 0.08 * Math.sin(now * 0.031);
+      const warmGlow = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
+      const redGlow = 1.35 + 0.2 * Math.sin(now * 0.014 + 1) + 0.08 * Math.sin(now * 0.031);
+      const decorMaterialSets = new Set<DecorMaterialSet>([
+        DECOR_MATS,
+        settlementDecorMaterials,
+        ...(settlementEraTransition ? [settlementEraTransition.outgoingMaterials] : []),
+      ]);
+      for (const materials of decorMaterialSets) {
+        materials.glowWarm.emissiveIntensity = warmGlow;
+        materials.glowRed.emissiveIntensity = redGlow;
+      }
+      updateSettlementEraTransition(now);
       // 入场：从太空高位丝滑下降（easeOutCubic），结束后开放相机控制
       const entryT = Math.min(1, (now - mountedAt) / 1100);
       const entryE = 1 - Math.pow(1 - entryT, 3);
@@ -4245,6 +4353,13 @@ void main() {`,
       skyApiRef.current = null;
       selectionApiRef.current = null;
       animatedDecorBatches = [];
+      if (settlementEraTransition) {
+        disposeOutgoingSettlementDecor(
+          settlementEraTransition.outgoingGroup,
+          settlementEraTransition.outgoingMaterials,
+        );
+        settlementEraTransition = null;
+      }
       for (const f of figures.values()) disposeFigure(f);
       figures.clear();
       for (const child of [...decorGroup.children]) (child as THREE.InstancedMesh).dispose(); // 释放装饰层实例缓冲

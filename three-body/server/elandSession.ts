@@ -3,11 +3,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
   buildDecisionContextForPerson,
+  createSimulationFromOwnedState,
   type SimulationController,
   type SimulationState,
   type WorldEvent,
 } from '../src/game/eland/simulation';
-import { createSimulationFromOwnedState } from '../src/game/eland/application/simulation/controller';
 import { concludeOwnedCivilization } from '../src/game/eland/application/civilization-settlement';
 import { calendarDate } from '../src/game/eland/domain/calendar';
 import { isAlive } from '../src/game/eland/domain/person';

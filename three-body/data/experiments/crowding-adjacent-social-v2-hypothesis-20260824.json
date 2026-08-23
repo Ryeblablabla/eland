@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "registeredAt": "2026-08-24",
+  "hypothesis": "Exact-position crowding is amplified by ordinary voice interactions requiring identical cell and z. Allowing adjacent voice reach, choosing low-occupancy rendezvous positions, and adding a non-acute spatial-comfort need above two exact-position occupants should reduce crowding without reducing physical-action validity or social development.",
+  "earliestCausalBreak": "legal action and plan compilation",
+  "candidateFingerprint": {
+    "gitHead": "1d2647e8728ac6267ae66f5bfa0a776f87b34bfc",
+    "files": {
+      "src/game/eland/domain/social-space.ts": "a82909845d0f6d74c476b4364b1cca044d659c211d558fca362e7d381ef8d608",
+      "src/game/eland/domain/actions/communication-actions.ts": "3d8de3b364300efe9d3f8eeb2a126d9a57399c25ddee0dd41862dec33150fc3f",
+      "src/game/eland/application/action-options.ts": "76f7ea1c74a20f73947d82becaf8e7f3654c7482a161843f2ee0f3de2608a922",
+      "src/game/eland/application/social-options.ts": "bf74f9a76a9e117c9d581f113b41e3a6f98d4bde95d06da673d0591d5931c091",
+      "src/game/eland/application/conversation-options.ts": "d967fdfca232047b826c0605b10c3b6331f6233570cd95325d585e9727952ba7",
+      "src/game/eland/application/cognition/need-agenda.ts": "98bf6b6350d1892cb843a2c4ae93e713a2d3467e62a4c914166ed870c8820878",
+      "src/game/eland/application/cognition/option-appraisal.ts": "eb6c74af9a411f02163e0686ceabc1c17741677c90744265fd8cdf4435088ea5"
+    }
+  },
+  "pairedMatrix": {
+    "baselineArtifact": "data/experiments/crowding-adjacent-base-v1-20260823.json",
+    "candidatePrefix": "crowding-adjacent-candidate-v2-20260824",
+    "seeds": [185, 20260815, 20260816],
+    "years": [10, 30],
+    "chaosIntensity": 0,
+    "climateBias": "balanced"
+  },
+  "acceptance": [
+    "Most paired endpoints reduce maximum exact-position occupancy or occupancy excess.",
+    "Adjacent teaching and exchange acceptance complete while adjacent person-to-person transfer remains blocked.",
+    "Living population, teaching, fulfilled agreements, and completed joint projects show no systematic collapse across paired seeds."
+  ],
+  "revision": [
+    "Crowding remains materially unchanged in most paired endpoints while relocation actions rarely occur.",
+    "Social outcomes regress consistently even when survival is stable."
+  ],
+  "rejection": [
+    "Physical person interactions become legal without exact co-location.",
+    "Any run gains impossible communication, state corruption, or a new deterministic deadlock."
+  ],
+  "note": "A prior candidate matrix was invalidated because an unrelated concurrent action-executor refactor changed module boundaries during execution; candidate v2 begins only after the refactor compiled and targeted runtime tests passed."
+}

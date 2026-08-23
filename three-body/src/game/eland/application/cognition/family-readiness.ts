@@ -2,6 +2,7 @@ import type { DecisionContext } from '../../domain/model';
 import { reproductiveResponsibility } from '../../domain/dependent-care';
 import { personTrustsEraPrediction, isActionableChaosPrediction } from '../../domain/era-prediction';
 import { materialHas } from '../../domain/material';
+import { physicalStructuresOf } from '../../domain/physical-structure-index';
 import { findReachableShelter } from '../../domain/shelter-access';
 import { findCurrentVisibleStoredMaterialAccess } from '../../domain/stored-food-access';
 import { shelterGeometryAt } from '../../domain/structure';
@@ -128,12 +129,13 @@ export function assessFamilyReadiness(
   const currentlyConfirmedReachableShelter = reachableShelter && !reachableShelter.remembered
     ? reachableShelter
     : null;
+  const physicalStructures = physicalStructuresOf(state);
   const shelterStructure = currentShelter
-    ? state.derived.structures.find((structure) => structure.complete
+    ? physicalStructures.find((structure) => structure.complete
       && structure.interiorPositions.some((position) => position.cellId === person.position.cellId
         && position.z === person.position.z))
     : currentlyConfirmedReachableShelter
-      ? state.derived.structures.find((structure) => structure.id === currentlyConfirmedReachableShelter.structureId && structure.complete)
+      ? physicalStructures.find((structure) => structure.id === currentlyConfirmedReachableShelter.structureId && structure.complete)
       : undefined;
   const visibleCells = new Set([...context.visibleCells, person.position.cellId]);
   const validShelterSlots = shelterStructure?.interiorPositions.flatMap((position) => {

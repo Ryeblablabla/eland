@@ -2,6 +2,7 @@ import { executeIntentAction, executePrimitiveAction, goalSatisfied } from '../.
 import type { ActionOption } from '../../domain/action';
 import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
+import { clearPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
 import { composeIntentChoice } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
@@ -31,8 +32,27 @@ import {
   recordProjectAction,
   synchronizeProject,
 } from '../project-options';
-import { isMaintainableStateGoal } from '../rule-planner';
+import { isFulfillmentOption, isMaintainableStateGoal, isRequiredSocialOption } from '../rule-planner';
 import { clamp } from './state-utils';
+
+const MAX_REPRODUCTION_AUDIT_SOURCE_FACTS = 32;
+
+function boundedAuditSourceFacts(sourceFactIds: readonly string[]): {
+  sourceFactCount: number;
+  sourceFactIds: string[];
+} {
+  const unique = [...new Set(sourceFactIds)];
+  if (unique.length <= MAX_REPRODUCTION_AUDIT_SOURCE_FACTS) {
+    return { sourceFactCount: unique.length, sourceFactIds: unique };
+  }
+  // Preserve a deterministic sample across the complete evidence set instead
+  // of keeping only one late category such as shelter construction.
+  const sourceFactIdsSample = Array.from(
+    { length: MAX_REPRODUCTION_AUDIT_SOURCE_FACTS },
+    (_, index) => unique[Math.round(index * (unique.length - 1) / (MAX_REPRODUCTION_AUDIT_SOURCE_FACTS - 1))],
+  );
+  return { sourceFactCount: unique.length, sourceFactIds: sourceFactIdsSample };
+}
 
 function intentGoalSourceIds(
   state: SimulationState,
@@ -147,8 +167,17 @@ export function startIntent(
   decisionEventId: string,
   atMonth: number,
 ): Intent | null {
+  const selectedOption = context.options.find((option) => option.id === optionId);
+  const followUpOption = followUpOptionId
+    ? context.followUpOptions.find((option) => option.id === followUpOptionId)
+    : undefined;
   const choice = composeIntentChoice(context.options, context.followUpOptions, optionId, followUpOptionId);
   if (!choice) return null;
+  const obligationOption = [selectedOption, followUpOption].find((option) => option
+    && (isFulfillmentOption(option) || isRequiredSocialOption(option)));
+  const sourceAgreement = obligationOption
+    ? sourceAgreementForIntent(state, person.id, obligationOption.sourceFactIds)
+    : undefined;
   const linkedProject = choice.projectProposal
     ? ensureProject(state, choice.projectProposal, {
       person,
@@ -195,6 +224,7 @@ export function startIntent(
       stateGoalUntilMonth: atMonth + plannedDurationMonths - 1,
     } : {}),
     sourceDecisionEventId: decisionEventId,
+    ...(sourceAgreement ? { agreementId: sourceAgreement.id } : {}),
     ...(choice.relationshipBasis ? { relationshipBasis: structuredClone(choice.relationshipBasis) } : {}),
     ...(choice.recordUseBasis ? { recordUseBasis: structuredClone(choice.recordUseBasis) } : {}),
     ...(choice.recordUseStage ? { recordUseStage: choice.recordUseStage } : {}),
@@ -211,6 +241,49 @@ export function activeIntent(state: SimulationState, person: PersonState): Inten
   if (!person.activeIntentId) return undefined;
   const intent = intentById(state, person.activeIntentId);
   return intent?.status === 'active' ? intent : undefined;
+}
+
+function sourceAgreementForIntent(
+  state: SimulationState,
+  personId: PersonId,
+  sourceFactIds: readonly string[],
+) {
+  return [...agreementsForPerson(state, personId)].reverse().find((agreement) => (
+    agreement.partyIds.includes(personId)
+    && (agreement.status === 'proposed' || agreement.status === 'active')
+    && sourceFactIds.includes(agreement.proposalEventId)
+  ));
+}
+
+interface CurrentEvidenceHistory {
+  committedPast: WorldEvent[];
+  committedEventCount: number;
+  evidenceHistory: WorldEvent[];
+  indexedEventCount: number;
+}
+
+const currentEvidenceHistories = new WeakMap<WorldEvent[], CurrentEvidenceHistory>();
+
+/** Keep one full-history view per month and append only newly produced facts. */
+function currentEvidenceHistory(currentMonthEvents: WorldEvent[], committedPast: WorldEvent[]): WorldEvent[] {
+  let current = currentEvidenceHistories.get(currentMonthEvents);
+  if (!current
+    || current.committedPast !== committedPast
+    || current.committedEventCount !== committedPast.length
+    || current.indexedEventCount > currentMonthEvents.length) {
+    current = {
+      committedPast,
+      committedEventCount: committedPast.length,
+      evidenceHistory: [...committedPast],
+      indexedEventCount: 0,
+    };
+    currentEvidenceHistories.set(currentMonthEvents, current);
+  }
+  if (current.indexedEventCount < currentMonthEvents.length) {
+    current.evidenceHistory.push(...currentMonthEvents.slice(current.indexedEventCount));
+    current.indexedEventCount = currentMonthEvents.length;
+  }
+  return current.evidenceHistory;
 }
 
 export function startInterruptIntent(
@@ -238,11 +311,7 @@ export function startInterruptIntent(
     : undefined;
   if (selected.projectId && selectedProject?.status !== 'active') return null;
   const childId = `intent-${atMonth}-${person.id}-interrupt-${state.intents.length}`;
-  const sourceAgreement = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => (
-    agreement.partyIds.includes(person.id)
-    && (agreement.status === 'proposed' || agreement.status === 'active')
-    && selected.sourceFactIds.includes(agreement.proposalEventId)
-  ));
+  const sourceAgreement = sourceAgreementForIntent(state, person.id, selected.sourceFactIds);
   const child: Intent = {
     id: childId,
     ownerId: person.id,
@@ -535,7 +604,7 @@ export function applyDecision(
             careCapacity: selectedCognitiveAppraisal.familyReadiness.careCapacity,
             climateSafety: selectedCognitiveAppraisal.familyReadiness.climateSafety,
             basisKeys: [...selectedCognitiveAppraisal.familyReadiness.basisKeys],
-            sourceFactIds: [...selectedCognitiveAppraisal.familyReadiness.sourceFactIds],
+            ...boundedAuditSourceFacts(selectedCognitiveAppraisal.familyReadiness.sourceFactIds),
           },
         } : {}),
         sourceFactIds: [...selectedCognitiveAppraisal.sourceFactIds],
@@ -559,10 +628,12 @@ export function executeActiveIntent(
   const executeWithCurrentEvidence = <T>(operation: () => T): T => {
     if (!currentMonthEvents.length) return operation();
     const committedPast = state.world.past;
-    state.world.past = [...committedPast, ...currentMonthEvents];
+    state.world.past = currentEvidenceHistory(currentMonthEvents, committedPast);
+    registerPlanningEventOverlay(state, currentMonthEvents, committedPast);
     try {
       return operation();
     } finally {
+      clearPlanningEventOverlay(state);
       state.world.past = committedPast;
     }
   };
@@ -843,6 +914,9 @@ export function executeActiveIntent(
   if (intent.projectId) recordProjectAction(state, intent.projectId, fact);
   else if (intent.recordUseBasis && fact.diff.recordUseStage === 'experiment') {
     recordProjectAction(state, intent.recordUseBasis.projectId, fact);
+  } else if (fact.diff.projectKnowledgeResponse === true
+    && typeof fact.diff.projectKnowledgeProjectId === 'string') {
+    recordProjectAction(state, fact.diff.projectKnowledgeProjectId, fact);
   }
   if (fact.action.kind === 'act' && fact.action.operation === 'reproduce') intent.lastReproductionAttemptAtMonth = atMonth;
   person.currentActionText = fact.result;

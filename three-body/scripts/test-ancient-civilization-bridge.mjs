@@ -12,14 +12,17 @@ try {
   const entry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildDecisionContexts } from ${JSON.stringify(path.resolve('src/game/eland/simulation.ts'))};
+    export { buildLocalMaterialEvidence } from ${JSON.stringify(path.resolve('src/game/eland/application/local-material-evidence.ts'))};
     export { deriveProjectProposals } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-proposals.ts'))};
     export { visibleCellsFor } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-perception.ts'))};
     export { fixedFacilityWorkplace, knownFacilitySite } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-workplace.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.resolve('src/game/eland/domain/project.ts'))};
     export { recordProjectAction, recompileProjectNextAction } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
     export { projectContributionStep } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-step-compiler.ts'))};
-    export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export { addDrop, executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export { maintainMemories, rememberAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/memory.ts'))};
     export { inspectProjectMaterialContributionRequest } from ${JSON.stringify(path.resolve('src/game/eland/domain/project-material-request.ts'))};
+    export { exposureRuleFor, exposureTechniqueId, inventoryCombinationForOutput, inventoryCombinationTechniqueId } from ${JSON.stringify(path.resolve('src/game/eland/domain/interaction-rules.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
     export { cellX, cellY, neighbors4, setVoxel, standingPositions, voxelAt } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
@@ -30,18 +33,26 @@ try {
   const simulation = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const {
     Material,
+    addDrop,
     buildDecisionContexts,
+    buildLocalMaterialEvidence,
     cellX,
     cellY,
     createInitialState,
     deriveProjectProposals,
     executePrimitiveAction,
+    exposureRuleFor,
+    exposureTechniqueId,
     fixedFacilityWorkplace,
     instantiateProject,
     inspectProjectMaterialContributionRequest,
+    inventoryCombinationForOutput,
+    inventoryCombinationTechniqueId,
     knownFacilitySite,
+    maintainMemories,
     neighbors4,
     projectContributionStep,
+    rememberAction,
     recordProjectAction,
     recompileProjectNextAction,
     setVoxel,
@@ -78,6 +89,414 @@ try {
     result: '完成了一次真实生产劳动',
     diff: { sourceMaterialId: Material.Wood, outputs: [{ materialId: Material.Wood, quantity: 2 }] },
   });
+
+  const brickState = [9211, 9212, 9213]
+    .map((seed) => createInitialState(seed, { endpoint: { kind: 'months', value: 60 }, chaosIntensity: 0 }))
+    .find((state) => state.people.length >= 7);
+  assert.ok(brickState, '定向场景需要至少七名局部可见人物形成高温生产压力');
+  brickState.clock.elapsedMonths = 24;
+  brickState.projects = [];
+  const brickOwner = brickState.people[0];
+  for (const person of brickState.people) placeWith(person, brickOwner);
+  const brickKilnCell = neighbors4(brickOwner.position.cellId)[0];
+  setVoxel(
+    brickState.world.grid,
+    cellX(brickKilnCell),
+    cellY(brickKilnCell),
+    brickOwner.position.z,
+    Material.Kiln,
+  );
+  const kilnSite = knownFacilitySite(brickState, brickOwner, [Material.Kiln]);
+  const kilnWorkplace = kilnSite
+    ? fixedFacilityWorkplace(brickState, brickOwner, kilnSite, [Material.Kiln])
+    : null;
+  assert.ok(kilnSite && kilnWorkplace);
+  brickOwner.position.cellId = kilnWorkplace.workingPosition.cellId;
+  brickOwner.position.z = kilnWorkplace.workingPosition.z;
+  for (const person of brickState.people.slice(1)) placeWith(person, brickOwner);
+  brickOwner.inventory = [stack('brick-clay', Material.Clay)];
+  const brickProposal = deriveProjectProposals(
+    brickState,
+    brickOwner,
+    visibleCellsFor(brickOwner),
+    [],
+    brickState.people,
+  ).find((proposal) => proposal.desiredFunction === 'brick-firing');
+  assert.ok(brickProposal, '本人持有黏土并看见可达窑炉时应能提出烧砖项目');
+  assert.deepEqual(brickProposal.site, kilnSite, '烧砖项目必须冻结真实高温设施位置');
+  const brickProject = instantiateProject(brickProposal);
+  brickState.projects.push(brickProject);
+  const brickAction = recompileProjectNextAction(brickState, brickOwner, brickProject.id);
+  assert.equal(brickAction?.kind, 'act');
+  assert.equal(brickAction?.operation, 'expose', '未知烧砖配方应先尝试黏土与眼前高温设施的接触实验');
+  assert.ok(brickAction?.targets.some((target) => target.kind === 'inventory-stack'
+    && target.stackId === 'brick-clay'));
+  assert.ok(brickAction?.targets.some((target) => target.kind === 'voxel'
+    && target.position.x === cellX(brickKilnCell)
+    && target.position.y === cellY(brickKilnCell)));
+  const brickEvent = executePrimitiveAction(
+    brickState,
+    brickOwner,
+    brickAction,
+    25,
+    0,
+    { cause: 'project', projectId: brickProject.id, actionTick: 1 },
+  );
+  brickState.world.past.push(brickEvent);
+  recordProjectAction(brickState, brickProject.id, brickEvent);
+  assert.equal(brickEvent.status, 'completed');
+  assert.equal(brickEvent.diff.outputMaterialId, Material.FiredBrick,
+    '产物仍必须由黏土接触窑炉的权威物质规则产生');
+
+  const knownIntermediateState = createInitialState(9206, { endpoint: { kind: 'months', value: 60 }, chaosIntensity: 0 });
+  knownIntermediateState.clock.elapsedMonths = 24;
+  knownIntermediateState.projects = [];
+  const knownIntermediateOwner = knownIntermediateState.people[0];
+  const knownIntermediateHolder = knownIntermediateState.people[1];
+  for (const person of knownIntermediateState.people) placeWith(person, knownIntermediateOwner);
+  knownIntermediateOwner.inventory = [
+    stack('known-copper', Material.Copper),
+    stack('known-owner-fired-brick', Material.FiredBrick),
+  ];
+  knownIntermediateHolder.inventory = [
+    stack('known-tin', Material.Tin),
+    stack('known-bronze-tool', Material.BronzeTool),
+    stack('known-iron-ore', Material.IronOre),
+  ];
+  const bronzeRule = inventoryCombinationForOutput(Material.Bronze);
+  assert.ok(bronzeRule);
+  const bronzeTechniqueId = inventoryCombinationTechniqueId(bronzeRule);
+  knownIntermediateOwner.knowledge = knownIntermediateOwner.knowledge
+    .filter((fact) => fact.id !== bronzeTechniqueId);
+  const proposeKnownIntermediateWorkshop = () => deriveProjectProposals(
+    knownIntermediateState,
+    knownIntermediateOwner,
+    visibleCellsFor(knownIntermediateOwner),
+    [],
+    knownIntermediateState.people,
+  ).find((proposal) => proposal.desiredFunction === 'iron-workshop');
+  const unknownIntermediateProposal = proposeKnownIntermediateWorkshop();
+  assert.ok(unknownIntermediateProposal);
+  const unknownIntermediateProject = instantiateProject(unknownIntermediateProposal);
+  knownIntermediateState.projects.push(unknownIntermediateProject);
+  recompileProjectNextAction(knownIntermediateState, knownIntermediateOwner, unknownIntermediateProject.id);
+  assert.ok(unknownIntermediateProject.materialDemands.some((demand) => demand.materialId === Material.Bronze),
+    '没有可靠配方知识时，铁匠铺项目仍只能把青铜本身作为缺口');
+  assert.equal(unknownIntermediateProject.materialDemands.some((demand) => demand.materialId === Material.Tin), false,
+    '人物不得因为时代目标或隐藏配方而预知锡是青铜输入');
+  knownIntermediateState.projects = [];
+  knownIntermediateOwner.knowledge.push({
+    id: bronzeTechniqueId,
+    kind: 'technique',
+    summary: '铜与锡可结合为青铜',
+    confidence: 70,
+    learnedAtMonth: 20,
+    sourceEventIds: ['directed-fixture:bronze-made', 'directed-fixture:bronze-verified'],
+  });
+  const knownIntermediateProposal = proposeKnownIntermediateWorkshop();
+  assert.ok(knownIntermediateProposal);
+  const knownIntermediateProject = instantiateProject(knownIntermediateProposal);
+  knownIntermediateState.projects.push(knownIntermediateProject);
+  const tinRequest = recompileProjectNextAction(
+    knownIntermediateState,
+    knownIntermediateOwner,
+    knownIntermediateProject.id,
+  );
+  assert.equal(tinRequest?.kind, 'communicate');
+  assert.equal(tinRequest?.content.projectMaterialContribution?.materialId, Material.Tin,
+    '本人可靠掌握青铜配方且持有铜时，项目只能把实际缺少的锡变成贡献请求');
+  assert.equal(knownIntermediateProject.materialDemands.some((demand) => demand.materialId === Material.Bronze), false,
+    '可靠已知配方已把加工品缺口展开后，不应继续搜索不存在的青铜物件');
+  const tinRequestEvent = executePrimitiveAction(
+    knownIntermediateState,
+    knownIntermediateOwner,
+    tinRequest,
+    25,
+    0,
+    { cause: 'project', projectId: knownIntermediateProject.id, actionTick: 1 },
+  );
+  knownIntermediateState.world.past.push(tinRequestEvent);
+  recordProjectAction(knownIntermediateState, knownIntermediateProject.id, tinRequestEvent);
+  const tinContribution = recompileProjectNextAction(
+    knownIntermediateState,
+    knownIntermediateHolder,
+    knownIntermediateProject.id,
+  );
+  assert.equal(tinContribution?.kind, 'transfer');
+  assert.equal(tinContribution?.materialId, Material.Tin);
+  const tinContributionEvent = executePrimitiveAction(
+    knownIntermediateState,
+    knownIntermediateHolder,
+    tinContribution,
+    25,
+    1,
+    { cause: 'project', projectId: knownIntermediateProject.id, actionTick: 2 },
+  );
+  knownIntermediateState.world.past.push(tinContributionEvent);
+  recordProjectAction(knownIntermediateState, knownIntermediateProject.id, tinContributionEvent);
+  assert.equal(tinContributionEvent.status, 'completed');
+  const bronzeAssembly = recompileProjectNextAction(
+    knownIntermediateState,
+    knownIntermediateOwner,
+    knownIntermediateProject.id,
+  );
+  assert.equal(bronzeAssembly?.kind, 'act');
+  assert.equal(bronzeAssembly?.operation, 'combine');
+  assert.equal(knownIntermediateProject.planKnowledgeId, bronzeTechniqueId,
+    '青铜中间件只能引用本人已有的可靠配方知识');
+  const bronzeAssemblyEvent = executePrimitiveAction(
+    knownIntermediateState,
+    knownIntermediateOwner,
+    bronzeAssembly,
+    25,
+    2,
+    { cause: 'project', projectId: knownIntermediateProject.id, actionTick: 3 },
+  );
+  knownIntermediateState.world.past.push(bronzeAssemblyEvent);
+  recordProjectAction(knownIntermediateState, knownIntermediateProject.id, bronzeAssemblyEvent);
+  assert.equal(bronzeAssemblyEvent.status, 'completed');
+  assert.equal(bronzeAssemblyEvent.diff.outputMaterialId, Material.Bronze,
+    '青铜仍必须由真实铜锡输入和权威 combine 规则产生');
+
+  {
+    const processState = createInitialState(9206, { endpoint: { kind: 'months', value: 60 }, chaosIntensity: 0 });
+    processState.clock.elapsedMonths = 24;
+    processState.projects = [];
+    const processOwner = processState.people[0];
+    const processWitness = processState.people[1];
+    for (const person of processState.people) placeWith(person, processOwner);
+    const processKilnCell = neighbors4(processOwner.position.cellId)[0];
+    setVoxel(
+      processState.world.grid,
+      cellX(processKilnCell),
+      cellY(processKilnCell),
+      processOwner.position.z,
+      Material.Kiln,
+    );
+    const processKilnSite = knownFacilitySite(processState, processOwner, [Material.Kiln]);
+    const processKilnWorkplace = processKilnSite
+      ? fixedFacilityWorkplace(processState, processOwner, processKilnSite, [Material.Kiln])
+      : null;
+    assert.ok(processKilnSite && processKilnWorkplace);
+    processOwner.position.cellId = processKilnWorkplace.workingPosition.cellId;
+    processOwner.position.z = processKilnWorkplace.workingPosition.z;
+    for (const person of processState.people.slice(1)) placeWith(person, processOwner);
+    processOwner.inventory = [
+      stack('process-copper', Material.Copper),
+      stack('process-tin-ore', Material.TinOre),
+      stack('process-charcoal', Material.Charcoal),
+      stack('process-clay', Material.Clay),
+    ];
+    processWitness.inventory = [
+      stack('process-visible-bronze-tool', Material.BronzeTool),
+      stack('process-visible-iron-ore', Material.IronOre),
+      stack('process-visible-fired-brick', Material.FiredBrick),
+    ];
+    const processBronzeRule = inventoryCombinationForOutput(Material.Bronze);
+    const processTinChargeRule = inventoryCombinationForOutput(Material.TinCharge);
+    const processTinExposureRule = exposureRuleFor(Material.TinCharge, Material.Kiln);
+    const processBrickExposureRule = exposureRuleFor(Material.Clay, Material.Kiln);
+    assert.ok(processBronzeRule && processTinChargeRule && processTinExposureRule && processBrickExposureRule);
+    const processKnowledge = [
+      {
+        id: inventoryCombinationTechniqueId(processBronzeRule),
+        summary: '已核验铜锡合金经验',
+        source: 'process-known-bronze',
+      },
+      {
+        id: inventoryCombinationTechniqueId(processTinChargeRule),
+        summary: '已核验锡矿炭料经验',
+        source: 'process-known-tin-charge',
+      },
+      {
+        id: exposureTechniqueId(processTinExposureRule),
+        summary: '已核验锡矿炭料窑炉暴露经验',
+        source: 'process-known-tin-exposure',
+      },
+      {
+        id: exposureTechniqueId(processBrickExposureRule),
+        summary: '已核验黏土烧制耐火砖经验',
+        source: 'process-known-fired-brick-exposure',
+      },
+    ];
+    processOwner.knowledge = processKnowledge.map((fact) => ({
+      id: fact.id,
+      kind: 'technique',
+      summary: fact.summary,
+      confidence: 70,
+      learnedAtMonth: 20,
+      sourceEventIds: [fact.source],
+    }));
+
+    const processProposal = deriveProjectProposals(
+      processState,
+      processOwner,
+      visibleCellsFor(processOwner),
+      [],
+      processState.people,
+    ).find((proposal) => proposal.desiredFunction === 'iron-workshop');
+    assert.ok(processProposal, '已看见铁矿压力、青铜工具与耐火砖时应能提出铁匠铺项目');
+
+    const noFacilityState = structuredClone(processState);
+    setVoxel(
+      noFacilityState.world.grid,
+      cellX(processKilnCell),
+      cellY(processKilnCell),
+      processOwner.position.z,
+      Material.Air,
+    );
+    const noFacilityOwner = noFacilityState.people.find((person) => person.id === processOwner.id);
+    const noFacilityWitness = noFacilityState.people.find((person) => person.id === processWitness.id);
+    assert.ok(noFacilityOwner && noFacilityWitness);
+    const noFacilityProposal = deriveProjectProposals(
+      noFacilityState,
+      noFacilityOwner,
+      visibleCellsFor(noFacilityOwner),
+      [],
+      noFacilityState.people,
+    ).find((proposal) => proposal.desiredFunction === 'iron-workshop');
+    assert.ok(noFacilityProposal);
+    noFacilityWitness.inventory = noFacilityWitness.inventory
+      .filter((item) => item.materialId !== Material.FiredBrick);
+    const noFacilityProject = instantiateProject(noFacilityProposal);
+    noFacilityState.projects.push(noFacilityProject);
+    recompileProjectNextAction(noFacilityState, noFacilityOwner, noFacilityProject.id);
+    assert.ok(noFacilityProject.materialDemands.some((demand) => demand.materialId === Material.Tin),
+      '可靠 exposure 技术没有本人已知且当前可达的工位时，不能把成品锡缺口展开为隐藏输入');
+    assert.equal(noFacilityProject.materialDemands.some((demand) => demand.materialId === Material.TinOre), false);
+    assert.ok(noFacilityProject.materialDemands.some((demand) => demand.materialId === Material.FiredBrick),
+      '可靠烧砖技术没有本人已知且当前可达的工位时，耐火砖仍是直接缺口');
+    assert.equal(noFacilityProject.materialDemands.some((demand) => demand.materialId === Material.Clay), false);
+
+    const directFinishedState = structuredClone(processState);
+    const directFinishedOwner = directFinishedState.people.find((person) => person.id === processOwner.id);
+    assert.ok(directFinishedOwner);
+    directFinishedOwner.inventory = [stack('process-ready-bronze-direct-finished', Material.Bronze)];
+    const directFinishedProject = instantiateProject(processProposal);
+    directFinishedState.projects.push(directFinishedProject);
+    const directFinishedAction = recompileProjectNextAction(
+      directFinishedState,
+      directFinishedOwner,
+      directFinishedProject.id,
+    );
+    assert.equal(directFinishedAction?.kind, 'communicate');
+    assert.equal(
+      directFinishedAction?.content.projectMaterialContribution?.materialId,
+      Material.FiredBrick,
+      '眼前持料者已有真实成品时，项目必须先复用既有贡献物流',
+    );
+    assert.ok(directFinishedProject.materialDemands.some((demand) => demand.materialId === Material.FiredBrick
+      && demand.branchKey === `known-direct-output:holder:${Material.FiredBrick}`));
+    assert.equal(directFinishedProject.materialDemands.some((demand) => demand.materialId === Material.Clay), false);
+
+    const siblingFinishedState = structuredClone(processState);
+    const siblingFinishedOwner = siblingFinishedState.people.find((person) => person.id === processOwner.id);
+    const siblingFinishedWitness = siblingFinishedState.people.find((person) => person.id === processWitness.id);
+    const siblingFinishedCopperHolder = siblingFinishedState.people[2];
+    assert.ok(siblingFinishedOwner && siblingFinishedWitness && siblingFinishedCopperHolder);
+    siblingFinishedOwner.inventory = [];
+    siblingFinishedCopperHolder.inventory = [stack('process-visible-copper-sibling', Material.Copper)];
+    const siblingFinishedProject = instantiateProject(processProposal);
+    siblingFinishedState.projects.push(siblingFinishedProject);
+    const siblingFinishedAction = recompileProjectNextAction(
+      siblingFinishedState,
+      siblingFinishedOwner,
+      siblingFinishedProject.id,
+    );
+    assert.equal(siblingFinishedAction?.kind, 'communicate');
+    assert.equal(
+      siblingFinishedAction?.content.projectMaterialContribution?.materialId,
+      Material.FiredBrick,
+      '兄弟 Bronze 分支即使已有 Copper 前体，也必须先取得眼前的直接根成品 FiredBrick',
+    );
+    assert.ok(siblingFinishedProject.materialDemands.some((demand) => demand.materialId === Material.FiredBrick
+      && demand.branchKey === `known-direct-output:holder:${Material.FiredBrick}`));
+    assert.ok(siblingFinishedProject.materialDemands.some((demand) => demand.materialId === Material.Copper
+      && demand.branchKey === `known-direct-output:holder:${Material.Copper}`),
+    '本轮物流优先级不能删除完整 AND requirement 中的 Bronze 前体与来源');
+    assert.equal(siblingFinishedProject.materialDemands.some((demand) => demand.materialId === Material.Clay), false);
+
+    const noClayState = structuredClone(processState);
+    const noClayOwner = noClayState.people.find((person) => person.id === processOwner.id);
+    const noClayWitness = noClayState.people.find((person) => person.id === processWitness.id);
+    assert.ok(noClayOwner && noClayWitness);
+    noClayOwner.inventory = [stack('process-ready-bronze', Material.Bronze)];
+    noClayWitness.inventory = noClayWitness.inventory
+      .filter((item) => item.materialId !== Material.FiredBrick);
+    const noClayProject = instantiateProject(processProposal);
+    noClayState.projects.push(noClayProject);
+    recompileProjectNextAction(noClayState, noClayOwner, noClayProject.id);
+    assert.ok(noClayProject.materialDemands.some((demand) => demand.materialId === Material.Clay
+      && demand.branchKey.startsWith('known-exposure-requirement:')),
+    '可靠烧砖技术与真实可达窑炉同时存在时，耐火砖缺口必须展开为带工艺分支的黏土缺口');
+    assert.equal(noClayProject.materialDemands.some((demand) => demand.materialId === Material.FiredBrick), false);
+
+    const noBrickKnowledgeState = structuredClone(processState);
+    const noBrickKnowledgeOwner = noBrickKnowledgeState.people.find((person) => person.id === processOwner.id);
+    const noBrickKnowledgeWitness = noBrickKnowledgeState.people.find((person) => person.id === processWitness.id);
+    assert.ok(noBrickKnowledgeOwner && noBrickKnowledgeWitness);
+    noBrickKnowledgeOwner.inventory = [stack('process-ready-bronze-no-brick-knowledge', Material.Bronze)];
+    noBrickKnowledgeWitness.inventory = noBrickKnowledgeWitness.inventory
+      .filter((item) => item.materialId !== Material.FiredBrick);
+    noBrickKnowledgeOwner.knowledge = noBrickKnowledgeOwner.knowledge
+      .filter((fact) => fact.id !== exposureTechniqueId(processBrickExposureRule));
+    const noBrickKnowledgeProject = instantiateProject(processProposal);
+    noBrickKnowledgeState.projects.push(noBrickKnowledgeProject);
+    recompileProjectNextAction(noBrickKnowledgeState, noBrickKnowledgeOwner, noBrickKnowledgeProject.id);
+    assert.ok(noBrickKnowledgeProject.materialDemands.some((demand) => demand.materialId === Material.FiredBrick));
+    assert.equal(noBrickKnowledgeProject.materialDemands.some((demand) => demand.materialId === Material.Clay), false,
+      '窑炉存在但本人没有可靠烧砖技术时，不得从耐火砖推断黏土');
+
+    processWitness.inventory = processWitness.inventory
+      .filter((item) => item.materialId !== Material.FiredBrick);
+
+    const processProject = instantiateProject(processProposal);
+    processState.projects.push(processProject);
+    let processOrder = 0;
+    const executeProcessStep = (action) => {
+      processOrder += 1;
+      const fact = executePrimitiveAction(
+        processState,
+        processOwner,
+        action,
+        25,
+        processOrder,
+        { cause: 'project', projectId: processProject.id, actionTick: processOrder },
+      );
+      processState.world.past.push(fact);
+      recordProjectAction(processState, processProject.id, fact);
+      assert.equal(fact.status, 'completed', fact.result);
+      return fact;
+    };
+    const expectedOutputs = [
+      Material.TinCharge,
+      Material.Tin,
+      Material.Bronze,
+      Material.FiredBrick,
+      Material.Smithy,
+    ];
+    const processFacts = [];
+    for (const expectedOutput of expectedOutputs) {
+      const action = recompileProjectNextAction(processState, processOwner, processProject.id);
+      assert.ok(action, `已知生产图必须继续编译到 ${expectedOutput}`);
+      if (expectedOutput === Material.TinCharge) assert.equal(
+        processProject.materialDemands.some((demand) => (
+          demand.materialId === Material.TinCharge || demand.materialId === Material.Tin
+        )),
+        false,
+        '本人已掌握完整工艺且持有原料时，可当场制作的中间件不是外部物资缺口',
+      );
+      const fact = executeProcessStep(action);
+      assert.equal(fact.diff.outputMaterialId, expectedOutput,
+        '已知生产图只能按真实 TinCharge → Tin → Bronze → FiredBrick → Smithy 顺序产生权威产物');
+      processFacts.push(fact);
+    }
+    const tinStack = processOwner.inventory.find((item) => item.materialId === Material.Tin);
+    assert.equal(tinStack, undefined, '锡已经作为后续青铜的真实输入被消耗，不能复制残留');
+    assert.ok(processOwner.inventory.some((item) => item.materialId === Material.Smithy),
+      '末级产物仍是待放置的真实 Smithy 背包实体，不由项目状态凭空完成');
+    assert.ok(processFacts.every((fact) => fact.id && fact.status === 'completed'));
+  }
 
   const civicState = createInitialState(9201, { endpoint: { kind: 'months', value: 60 }, chaosIntensity: 0 });
   civicState.clock.elapsedMonths = 24;
@@ -177,7 +596,8 @@ try {
   const awayFromWorkshop = visibleCellsFor(ironWorkshopOwner)
     .filter((cellId) => cellId !== workshopSite.cellId)
     .flatMap((cellId) => standingPositions(ironWorkshopState.world.grid, cellId))
-    .find((position) => position.cellId !== workshopSite.cellId);
+    .find((position) => position.cellId !== workshopSite.cellId
+      || position.z !== workshopSite.z);
   assert.ok(awayFromWorkshop);
   ironWorkshopOwner.position.cellId = awayFromWorkshop.cellId;
   ironWorkshopOwner.position.z = awayFromWorkshop.z;
@@ -210,6 +630,169 @@ try {
     && drop.z === workshopSite.z
     && drop.sourceEventIds.includes(firstWorkshopContributionEvent.id)
   )), '贡献完成但所有者不在场时，材料必须保留为工地上可拾取的实体');
+  const boundWorkshopDrop = ironWorkshopState.world.drops.find((drop) => (
+    drop.sourceEventIds.includes(firstWorkshopContributionEvent.id)
+  ));
+  assert.deepEqual(boundWorkshopDrop?.projectMaterialDelivery, {
+    version: 'project-material-delivery-v1',
+    projectId: ironWorkshopProject.id,
+    requestEventId: ironWorkshopRequestEvent.id,
+    requesterId: ironWorkshopOwner.id,
+    expiresAtMonth: ironWorkshopRequest.content.projectMaterialContribution.expiresAtMonth,
+  }, '授权落地的材料必须保存 request、project、requester 与有效期');
+
+  const learnedRestrictionState = structuredClone(ironWorkshopState);
+  const learnedIntruder = learnedRestrictionState.people[2];
+  const learnedBoundDrop = learnedRestrictionState.world.drops.find((drop) => drop.id === boundWorkshopDrop.id);
+  assert.ok(learnedIntruder && learnedBoundDrop?.projectMaterialDelivery);
+  const learnedExpiryMonth = learnedBoundDrop.projectMaterialDelivery.expiresAtMonth;
+  learnedRestrictionState.clock.elapsedMonths = learnedExpiryMonth - 1;
+  learnedIntruder.position.cellId = learnedBoundDrop.cellId;
+  learnedIntruder.position.z = learnedBoundDrop.z;
+  const beforeLearningContext = buildDecisionContexts(learnedRestrictionState, learnedExpiryMonth)
+    .find((context) => context.person.id === learnedIntruder.id);
+  assert.ok(beforeLearningContext?.visibleDrops.some((drop) => drop.id === learnedBoundDrop.id));
+  assert.ok(beforeLearningContext?.options.some((option) => option.target?.kind === 'drop'
+    && option.target.dropId === learnedBoundDrop.id),
+  '不知道交付资格的无关人物仍可从可见事实形成第一次真实领取尝试');
+  learnedIntruder.memories = Array.from({ length: 24 }, (_, index) => ({
+    id: `memory:test-capacity:${index}`,
+    kind: 'commitment',
+    summary: `既有约定 ${index}`,
+    importance: 64,
+    createdAtMonth: index,
+    lastRecalledAtMonth: index,
+    personIds: [],
+    sourceEventIds: [],
+  }));
+  const learnedBlockedPickup = executePrimitiveAction(
+    learnedRestrictionState,
+    learnedIntruder,
+    {
+      kind: 'transfer',
+      materialId: learnedBoundDrop.materialId,
+      quantity: 1,
+      from: { kind: 'ground', cellId: learnedBoundDrop.cellId, z: learnedBoundDrop.z },
+      to: { kind: 'person', personId: learnedIntruder.id },
+      dropId: learnedBoundDrop.id,
+    },
+    learnedExpiryMonth,
+    2,
+    { cause: 'intent', intentId: 'intent-test-project-delivery-restriction', actionTick: 3 },
+  );
+  assert.equal(learnedBlockedPickup.diff.projectMaterialDeliveryRestricted, true);
+  learnedRestrictionState.world.past.push(learnedBlockedPickup);
+  rememberAction(learnedRestrictionState, learnedBlockedPickup);
+  assert.equal(learnedIntruder.memories.find((memory) => memory.sourceEventIds.includes(learnedBlockedPickup.id))?.expiresAtMonth,
+    learnedExpiryMonth,
+  '受限领取失败记忆只需稳定保留到当前请求绑定的到期月');
+  maintainMemories(learnedRestrictionState, learnedExpiryMonth);
+  assert.ok(learnedIntruder.memories.some((memory) => memory.sourceEventIds.includes(learnedBlockedPickup.id)),
+    '即使记忆已满，绑定仍有效时的月度维护也必须保留本人刚学到的领取失败');
+  const afterLearningContext = buildDecisionContexts(learnedRestrictionState, learnedExpiryMonth)
+    .find((context) => context.person.id === learnedIntruder.id);
+  assert.ok(afterLearningContext?.visibleDrops.some((drop) => drop.id === learnedBoundDrop.id),
+    '失败记忆不能删除仍然可见的地面事实');
+  assert.equal(afterLearningContext?.options.some((option) => option.target?.kind === 'drop'
+    && option.target.dropId === learnedBoundDrop.id), false,
+  '同一绑定未变化时，本人不应在已知失败后再次锁定同一领取候选');
+  const learnedEvidence = buildLocalMaterialEvidence(learnedRestrictionState, learnedIntruder, {
+    visibleCells: afterLearningContext.visibleCells,
+    visibleDrops: afterLearningContext.visibleDrops,
+    visiblePeople: afterLearningContext.visiblePeople,
+  });
+  assert.ok(learnedEvidence.observedMaterialIds.has(learnedBoundDrop.materialId));
+  assert.equal(learnedEvidence.accessiblePortableMaterialIds.has(learnedBoundDrop.materialId), false,
+    '亲自失败后仍可观察该物料，但不能再把同一绑定物当成可取得证据');
+  learnedRestrictionState.clock.elapsedMonths = learnedExpiryMonth;
+  maintainMemories(learnedRestrictionState, learnedExpiryMonth + 1);
+  const afterReleaseContext = buildDecisionContexts(learnedRestrictionState, learnedExpiryMonth + 1)
+    .find((context) => context.person.id === learnedIntruder.id);
+  assert.ok(afterReleaseContext?.options.some((option) => option.target?.kind === 'drop'
+    && option.target.dropId === learnedBoundDrop.id),
+  '绑定到期次月，旧失败记忆不能阻止已经恢复公共语义的地面物');
+
+  const guardedDeliveryState = structuredClone(ironWorkshopState);
+  const guardedIntruder = guardedDeliveryState.people[2];
+  const guardedBoundDrop = guardedDeliveryState.world.drops.find((drop) => drop.id === boundWorkshopDrop.id);
+  assert.ok(guardedIntruder && guardedBoundDrop);
+  guardedIntruder.position.cellId = guardedBoundDrop.cellId;
+  guardedIntruder.position.z = guardedBoundDrop.z;
+  const ordinaryDrop = addDrop(
+    guardedDeliveryState,
+    guardedBoundDrop.materialId,
+    1,
+    guardedBoundDrop.cellId,
+    25,
+    ['ordinary-public-source'],
+    'ordinary-public',
+    undefined,
+    guardedBoundDrop.z,
+  );
+  assert.notEqual(ordinaryDrop.id, guardedBoundDrop.id,
+    '同地同材的普通资源不能与 request-bound 交付物合并后继承错误资格');
+  const guardedExpiryMonth = guardedBoundDrop.projectMaterialDelivery.expiresAtMonth;
+  const intruderContext = buildDecisionContexts(guardedDeliveryState, guardedExpiryMonth)
+    .find((context) => context.person.id === guardedIntruder.id);
+  assert.ok(intruderContext?.visibleDrops.some((drop) => drop.id === ordinaryDrop.id));
+  assert.equal(intruderContext?.visibleDrops.some((drop) => drop.id === guardedBoundDrop.id), true,
+    'request-bound 交付物仍是可感知的地面事实，领取资格只能在真实转移时校验');
+  const blockedCompetingPickup = executePrimitiveAction(
+    guardedDeliveryState,
+    guardedIntruder,
+    {
+      kind: 'transfer',
+      materialId: guardedBoundDrop.materialId,
+      quantity: 1,
+      from: { kind: 'ground', cellId: guardedBoundDrop.cellId, z: guardedBoundDrop.z },
+      to: { kind: 'person', personId: guardedIntruder.id },
+      dropId: guardedBoundDrop.id,
+    },
+    guardedExpiryMonth,
+    2,
+    { cause: 'project', actionTick: 3 },
+  );
+  assert.equal(blockedCompetingPickup.status, 'blocked');
+  assert.equal(blockedCompetingPickup.diff.projectMaterialDeliveryRestricted, true);
+  const ordinaryPickup = executePrimitiveAction(
+    guardedDeliveryState,
+    guardedIntruder,
+    {
+      kind: 'transfer',
+      materialId: ordinaryDrop.materialId,
+      quantity: 1,
+      from: { kind: 'ground', cellId: ordinaryDrop.cellId, z: ordinaryDrop.z },
+      to: { kind: 'person', personId: guardedIntruder.id },
+      dropId: ordinaryDrop.id,
+    },
+    25,
+    3,
+    { cause: 'project', actionTick: 4 },
+  );
+  assert.equal(ordinaryPickup.status, 'completed', '普通公共 drop 仍须保持原有可取得语义');
+
+  const expiredDeliveryState = structuredClone(ironWorkshopState);
+  const expiredIntruder = expiredDeliveryState.people[2];
+  const expiredDrop = expiredDeliveryState.world.drops.find((drop) => drop.id === boundWorkshopDrop.id);
+  assert.ok(expiredIntruder && expiredDrop);
+  expiredIntruder.position.cellId = expiredDrop.cellId;
+  expiredIntruder.position.z = expiredDrop.z;
+  const expiredPickup = executePrimitiveAction(
+    expiredDeliveryState,
+    expiredIntruder,
+    {
+      kind: 'transfer',
+      materialId: expiredDrop.materialId,
+      quantity: 1,
+      from: { kind: 'ground', cellId: expiredDrop.cellId, z: expiredDrop.z },
+      to: { kind: 'person', personId: expiredIntruder.id },
+      dropId: expiredDrop.id,
+    },
+    expiredDrop.projectMaterialDelivery.expiresAtMonth + 1,
+    2,
+    { cause: 'project', actionTick: 3 },
+  );
+  assert.equal(expiredPickup.status, 'completed', '请求过期后交付物必须重新成为公共资源');
 
   let returnForContribution = recompileProjectNextAction(
     ironWorkshopState,

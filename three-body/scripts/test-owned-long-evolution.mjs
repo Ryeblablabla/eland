@@ -55,11 +55,11 @@ function assertEquivalent(legacy, owned, label) {
 try {
   const esbuild = path.resolve('node_modules/.bin/esbuild');
   execFileSync(esbuild, [
-    'src/game/eland/application/simulation/controller.ts',
+    'src/game/eland/simulation-runtime.ts',
     '--bundle', '--platform=node', '--format=esm', `--outfile=${controllerBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(esbuild, [
-    'src/game/eland/application/simulation/state-lifecycle.ts',
+    'src/game/eland/simulation-runtime.ts',
     '--bundle', '--platform=node', '--format=esm', `--outfile=${lifecycleBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(esbuild, [

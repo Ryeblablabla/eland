@@ -1,5 +1,7 @@
-import { createSimulationFromOwnedState } from '../src/game/eland/application/simulation/controller';
-import type { SimulationState } from '../src/game/eland/simulation';
+import {
+  createSimulationFromOwnedState,
+  type SimulationState,
+} from '../src/game/eland/simulation';
 import {
   buildEvolutionFactsReport,
   checkpointFor,

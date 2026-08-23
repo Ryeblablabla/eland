@@ -38,7 +38,7 @@ try {
   const { advanceSharedRelationshipExperience } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
   const { newbornInitialTrust } = await import(`${pathToFileURL(personalityBundlePath).href}?test=${Date.now()}`);
   const { Material } = await import(`${pathToFileURL(materialBundlePath).href}?test=${Date.now()}`);
-  const { cellX, cellY, neighbors4, setVoxel } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
+  const { cellX, cellY, neighbors4, setVoxel, voxelWorldRevision } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(319, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const founding = state.world.past.find((event) => event.kind === 'environment' && event.change === 'founding');
@@ -334,6 +334,12 @@ try {
     capacity: 2,
     sourceEventIds: [founding.id],
   });
+  responseState.world.physicalStructureIndex = {
+    calculatedAtMonth: responseState.clock.elapsedMonths,
+    voxelRevision: voxelWorldRevision(responseState.world.grid),
+    constructionEventCount: responseState.world.physicalStructureIndex.constructionEventCount,
+    structures: structuredClone(responseState.derived.structures),
+  };
   responseContext = buildDecisionContexts(responseState, 6).find((candidate) => candidate.person.id === responseMale.id);
   acceptResponse = responseContext?.options.find((option) => option.id.startsWith('accept-reproduce:'));
   rejectResponse = responseContext?.options.find((option) => option.id.startsWith('reject-reproduce:'));

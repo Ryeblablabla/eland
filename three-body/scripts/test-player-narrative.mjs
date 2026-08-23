@@ -118,6 +118,43 @@ try {
   assert.equal(personalAttackHistory?.label, '遭遇野兽袭击', '真实 attack-human 事实必须进入人物历史');
   assert.equal(personalAttackHistory?.summary, `狼袭击了${berryGatherer.name}，使其受伤。`);
 
+  const detailedBodyFact = {
+    id: 'visual-detailed-body-change', kind: 'environment', change: 'body',
+    atMonth: visualProjectionState.clock.elapsedMonths, orderInMonth: 5,
+    cellId: berryGatherer.position.cellId, who: berryGatherer.id,
+    result: `${berryGatherer.name}的身体储备发生显著变化`,
+    diff: {
+      health: 73, hydration: 23.5, nutrition: 46.8, healthDelta: -3,
+      bodyBefore: { health: 76, hydration: 27, nutrition: 48 },
+      bodyAfter: { health: 73, hydration: 23.5, nutrition: 46.8 },
+      bodyCauseCodes: ['dehydration', 'heat-exposure'],
+    },
+  };
+  const legacyBodyFact = {
+    id: 'visual-legacy-body-change', kind: 'environment', change: 'body',
+    atMonth: visualProjectionState.clock.elapsedMonths, orderInMonth: 6,
+    cellId: berryGatherer.position.cellId, who: berryGatherer.id,
+    result: `${berryGatherer.name}的身体储备发生显著变化`,
+    diff: { health: 71, hydration: 22, nutrition: 41, healthDelta: -2 },
+  };
+  visualProjectionState.world.past.push(detailedBodyFact, legacyBodyFact);
+  const detailedBodyHistory = toAgentHistory(visualProjectionState, berryGatherer.id)?.events
+    .find((event) => event.id === detailedBodyFact.id);
+  const legacyBodyHistory = toAgentHistory(visualProjectionState, berryGatherer.id)?.events
+    .find((event) => event.id === legacyBodyFact.id);
+  assert.equal(detailedBodyHistory?.label, '身体恶化');
+  assert.equal(
+    detailedBodyHistory?.summary,
+    `${berryGatherer.name}身体储备下降：健康 76→73，水分 27→23.5，营养 48→46.8；原因：缺水、炎热暴露。`,
+    '新身体事实应展示前后数值和权威原因',
+  );
+  assert.equal(legacyBodyHistory?.label, '身体恶化');
+  assert.equal(
+    legacyBodyHistory?.summary,
+    `${berryGatherer.name}当前身体储备：健康 71，水分 22，营养 41；健康变化 -2；原因：缺水。`,
+    '旧存档没有身体前值时仍应展示已有终值和可推断警戒项',
+  );
+
   const state = {
     branchId: 'main',
     clock: { elapsedMonths: 51 },

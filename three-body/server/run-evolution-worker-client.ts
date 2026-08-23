@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { totalmem } from 'node:os';
 
 import { loadServerEnvValue } from './env';
 
@@ -11,7 +12,7 @@ function workerHeapLimitMb(): number {
   const configured = Number(loadServerEnvValue('ELAND_RUN_WORKER_OLD_SPACE_MB'));
   return Number.isFinite(configured) && configured >= 512
     ? Math.round(configured)
-    : 4_096;
+    : Math.min(8_192, Math.max(4_096, Math.floor(totalmem() / 1024 / 1024 * 0.4)));
 }
 
 export function executeLongEvolutionInWorker(

@@ -25,3 +25,6 @@
 # Local research/render intermediates and large audio working exports.
 /tmp/
 /three-body/exports/audio-variations/
+/three-body/data/frozen-runtime-*/
+/three-body/data/frozen-source-*/
+/three-body/scripts/.tmp-*

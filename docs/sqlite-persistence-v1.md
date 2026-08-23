@@ -33,6 +33,8 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 
 正常年度检查点只编码新增事件和新的 shell/root，不再把完整 `world.past` 重复压缩。append 会校验旧事件数量、lineage 与边界事件摘要；截断或改写历史必须显式选择 replace，并生成新的随机 lineage。写入在事务外编码，提交时再用 run 的 `revision + state_hash` 做 CAS；陈旧并发写会失败，不能把两个旧 head 静默串成一条历史。旧根 schema v1 的事件段仍逐块校验 codec、长度、SHA-256、lineage 和累计事件数，但不再用跨进程不稳定的旧 V8 末事件摘要拒绝读取；下一次保存走 replace，升级为 schema v2 稳定摘要。更早的 `v8-br-v1` run 也仍可读取，第一次保存时升级为新根，不修改其既有 checkpoint 证据。
 
+实时会话 Worker 与长程演化 Worker 都需要持有当前权威状态；两者的默认 old-space 上限都取物理内存的 40%，并限制在 4096–8192 MB，分别可用 `ELAND_WORKER_OLD_SPACE_MB` 与 `ELAND_RUN_WORKER_OLD_SPACE_MB` 覆盖。这个值只是上限，不会预分配整块内存。分段恢复会让跨 segment 重复出现的事件 ID 与生殖审计字符串共享同一份内存，`lastStep` 也只倒查末月事实，不再为完整历史建立一次性重连 Map。运行时事件索引不再为每条事实额外保存可由 `atMonth + orderInMonth` 重建的 ordinal Map；高频生殖决策中的家庭准备度来源也使用“完整来源数量 + 最多 32 个代表样本”的有界审计格式，SQLite 中的客观事件史和被引用事实仍完整保留。
+
 手动存档与实时会话使用三类内容寻址 codec：
 
 - `eland-session-manifest-v2` 指向 shell 和有序时间线块；
@@ -86,4 +88,4 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 | 外键违规 | 0 |
 | `orphanChunks`（不可达内容块） | 0 |
 
-迁移前文件位于本机 `three-body/data/archive/pre-sqlite-cutover-20260820/`，并由 gitignore 排除。它只是切换时的本机恢复点，不是第二事实源，运行时不会扫描或读取；不得以它为由恢复文件存储代码。历史实验报告中的 `three-body/data/runs/`、`state.json` 等路径仍表示当时真实产物，不代表当前协议。
+迁移审计清单和报告保留在本机 `three-body/data/archive/pre-sqlite-cutover-20260820/`，并由 gitignore 排除；占用 7.1 GB 的旧文件存储已在确认 SQLite 切换完成后删除。该目录不是第二事实源，运行时不会扫描或读取；不得以它为由恢复文件存储代码。历史实验报告中的 `three-body/data/runs/`、`state.json` 等路径仍表示当时真实产物，不代表当前协议。

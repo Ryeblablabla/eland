@@ -1,4 +1,4 @@
-import { waterCurrentObservationFactId, type FactPredicate, type GroundedConversationRef, type Intent, type PrimitiveAction, type VoxelPosition, type WorldRef } from './action';
+import { waterCurrentObservationFactId, type FactPredicate, type Intent, type PrimitiveAction, type VoxelPosition, type WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
 import {
   ageMonths,
@@ -12,13 +12,12 @@ import {
   isAlive,
   isDormantDehydratedHibernating,
   isRecoveringFromDehydratedHibernation,
-  MIN_TEACHING_AGE_MONTHS,
   sameLocation,
   type ItemStack,
   type PersonState,
 } from './person';
 import type { ActionFact, DropState, SimulationState } from './model';
-import { cellId, cellX, cellY, cellsInRadius, findStandingPath, setVoxel, standingMovementCost, surfaceMaterial, surfaceStandingPosition, voxelAt, type StandingPosition } from '../world/grid';
+import { cellId, cellX, cellY, cellsInRadius, findStandingPath, setVoxel, standingPathMovementCost, standingPathSegmentForTick, surfaceMaterial, voxelAt, type StandingPosition } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
@@ -47,395 +46,92 @@ import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
 import { separationTechniqueId, separationTechniqueSummary, separationToolFits, voxelSeparationRuleFor } from './separation-rules';
 import { canAccessContainer, containerById, containerIdAt, containerQuantity, containerRemainingCapacity, GRANARY_CAPACITY, type ContainerState } from './container';
-import {
-  hasGroundedConversationOpeningBasis,
-  hasGroundedConversationResponse,
-  worldEventById,
-} from './event-index';
+import { worldEventById } from './event-index';
 import { animalSpecies, isAnimalAlive } from './animal';
 import {
-  describeTechniqueAction,
-  techniqueSupportsProjectFunction,
-  type TechniqueActionDescriptor,
-} from './technique-demonstration';
-import type { ProjectState, ProjectTechniqueDemonstrationBasis } from './project';
-import { inspectProjectMaterialContributionRequest } from './project-material-request';
+  canPersonCollectProjectMaterialDrop,
+  inspectProjectMaterialContributionRequest,
+} from './project-material-request';
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
 import { hasReproductiveRecoveryCondition } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import { personById, projectById } from './state-index';
 import {
   isActionableChaosPrediction,
-  MAX_ERA_PREDICTION_HORIZON_MONTHS,
   personTrustsEraPrediction,
 } from './era-prediction';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { validateWildlifeThreatResponse, wildlifeThreatResponseDiff } from './wildlife-threat';
-import { huntingToolBonus, isProductionToolMaterial, productionToolMultiplier, productionToolRank } from './production-tool';
+import { huntingToolBonus, isProductionToolMaterial, productionToolMultiplier } from './production-tool';
 import {
   bereavementFor,
-  learnOfDeath,
   memorialForRemains,
   remainsById,
 } from './mortuary';
 import {
-  maternalFirstTeachingConfidence,
   movementMetabolicMultiplier,
   reproductiveUpperAgeMonths,
   traitStatesOf,
 } from './trait';
 import {
-  MECHANICAL_POWER_ACTION_BASIS_VERSION,
-  MECHANICAL_POWER_PLAN_VERSION,
   MECHANICAL_POWER_WORLD_VERSION,
-  ensureMechanicalPowerNetwork,
-  mechanicalPowerNetworkId,
+  mechanicalPowerFaultObservationFactId,
   mechanicalPowerPlanKey,
-  plannedMechanicalPowerComponents,
-  recordMechanicalPowerFault,
-  recordMechanicalPowerInstallation,
-  recordMechanicalPowerOperation,
-  recordMechanicalPowerRepair,
-  validateMechanicalPowerTopology,
   waterCurrentAvailabilityFor,
-  type MechanicalPowerActionBasis,
-  type MechanicalPowerNetworkState,
-  type MechanicalPowerProjectPlan,
-  type MechanicalPowerWorldState,
 } from './mechanical-power';
+import { addContainerInventory, addDrop, addInventory, removeEmptyStacks } from './actions/inventory';
+import {
+  bodyOccupies,
+  bodyStandsOn,
+  clamp,
+  distanceToPosition,
+  nearbyFacilityMaterial,
+  nearbyFacilityMaterialAtCell,
+  samePosition,
+} from './actions/execution-helpers';
+import { executeMechanicalPowerAction } from './actions/mechanical-power-actions';
+import { executeMortuary } from './actions/mortuary-actions';
+import { rememberMineralDeposit } from './actions/material-observations';
+import {
+  applyTechniqueLearning,
+  validateTechniqueLearningAction,
+} from './actions/technique-learning-actions';
+import { executeCommunicate } from './actions/communication-actions';
 
-function clamp(value: number, min = 0, max = 100): number {
-  return Math.max(min, Math.min(max, value));
-}
+export { addDrop, addInventory } from './actions/inventory';
 
-function projectSupportsMaterialContribution(
-  project: Pick<ProjectState, 'need' | 'desiredFunction'>,
-): boolean {
-  return project.need === 'alloy-capability'
-    || project.need === 'iron-capability'
-    || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
-}
-
-function distanceToPosition(person: PersonState, position: VoxelPosition): number {
-  const horizontal = Math.abs(cellX(person.position.cellId) - position.x) + Math.abs(cellY(person.position.cellId) - position.y);
-  // 双脚以上两格是身体与手臂可及范围；相邻列的头部高度体素仍可被操作。
-  const vertical = Math.max(0, Math.abs(person.position.z - position.z) - 1);
-  return Math.max(horizontal, vertical);
-}
-
-function nearbyFacilityMaterial(
+function projectMaterialDeliveryForTransfer(
   state: SimulationState,
   person: PersonState,
-  materialIds: readonly MaterialId[],
-  radius = 1,
-): MaterialId | undefined {
-  const accepted = new Set(materialIds);
-  return cellsInRadius(person.position.cellId, radius)
-    .map((cell) => surfaceMaterial(state.world.grid, cell))
-    .find((materialId) => accepted.has(materialId));
-}
-
-function mineralObservationId(
-  materialId: MaterialId,
-  position: { x: number; y: number; z: number },
-): string {
-  return `observation:mineral-deposit:${materialId}:${position.x}:${position.y}:${position.z}`;
-}
-
-function parsedMineralObservation(factId: string): { materialId: MaterialId; position: VoxelPosition } | null {
-  const match = factId.match(/^observation:mineral-deposit:(\d+):(\d+):(\d+):(\d+)$/);
-  if (!match) return null;
-  const [materialId, x, y, z] = match.slice(1).map(Number);
-  const mineralIds = new Set<MaterialId>([Material.CopperOre, Material.TinOre, Material.IronOre]);
-  if (![materialId, x, y, z].every(Number.isSafeInteger) || !mineralIds.has(materialId)) return null;
-  return { materialId, position: { x, y, z } };
-}
-
-function rememberMineralDeposit(
-  person: PersonState,
-  materialId: MaterialId,
-  position: VoxelPosition,
+  action: Extract<PrimitiveAction, { kind: 'transfer' }>,
   atMonth: number,
-  eventId: string,
-): void {
-  const mineralIds = new Set<MaterialId>([Material.CopperOre, Material.TinOre, Material.IronOre]);
-  if (!mineralIds.has(materialId)) return;
-  rememberMaterialPlace(person, materialId, position, atMonth, eventId);
-  const factId = mineralObservationId(materialId, position);
-  const summary = `在格 ${position.x}, ${position.y} 观察到${materialDefinition(materialId).name}来源`;
-  const known = person.knowledge.find((fact) => fact.id === factId);
-  if (known) {
-    known.confidence = clamp(known.confidence + 12);
-    known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
-  } else person.knowledge.push({
-    id: factId,
-    kind: 'observation',
-    summary,
-    confidence: 64,
-    learnedAtMonth: atMonth,
-    sourceEventIds: [eventId],
-  });
-}
-
-function canObserveTechniqueDemonstration(observer: PersonState, actor: PersonState): boolean {
-  const radius = 4 + Math.floor(observer.baselineCapacities.perception / 25);
-  const horizontal = Math.abs(cellX(observer.position.cellId) - cellX(actor.position.cellId))
-    + Math.abs(cellY(observer.position.cellId) - cellY(actor.position.cellId));
-  return horizontal <= radius && Math.abs(observer.position.z - actor.position.z) <= 2;
-}
-
-type GroundedConversationValidation =
-  | { kind: 'none' }
-  | { kind: 'blocked'; reason: string }
-  | {
-      kind: 'valid';
-      conversation: GroundedConversationRef;
-      trustDelta: number;
-      bondDelta: number;
+): DropState['projectMaterialDelivery'] | undefined {
+  if (action.to.kind !== 'ground'
+    || action.from.kind !== 'person'
+    || action.from.personId !== person.id
+    || !action.authorizationRef) return undefined;
+  for (const project of state.projects) {
+    if (project.status !== 'active' || project.ownerId === person.id) continue;
+    const request = project.materialContributionRequests?.find((candidate) => (
+      candidate.requestEventId === action.authorizationRef
+      && candidate.contributorIds.includes(person.id)
+      && candidate.materialId === action.materialId
+      && candidate.expiresAtMonth >= atMonth
+    ));
+    const demand = request
+      ? project.materialDemands?.find((candidate) => candidate.materialId === request.materialId)
+      : undefined;
+    if (!request || !demand
+      || inspectProjectMaterialContributionRequest(state, project, request, atMonth, demand).status !== 'open') continue;
+    return {
+      version: 'project-material-delivery-v1',
+      projectId: project.id,
+      requestEventId: request.requestEventId,
+      requesterId: request.requesterId,
+      expiresAtMonth: request.expiresAtMonth,
     };
-
-function sameIds(first: string[], second: string[]): boolean {
-  return [...new Set(first)].sort().join(',') === [...new Set(second)].sort().join(',');
-}
-
-function groundedConversationSourceMatches(
-  state: SimulationState,
-  person: PersonState,
-  listener: PersonState,
-  content: Extract<PrimitiveAction, { kind: 'communicate' }>['content'] & { kind: 'claim' },
-  conversation: GroundedConversationRef,
-): boolean {
-  const sources = conversation.sourceFactIds.map((sourceId) => worldEventById(state, sourceId));
-  if (!sources.length || sources.some((source) => !source)) return false;
-  if (conversation.topic === 'care') {
-    const conditionSources = new Set(listener.conditions.flatMap((condition) => condition.sourceEventIds));
-    return conversation.sourceFactIds.every((sourceId) => conditionSources.has(sourceId));
   }
-  if (conversation.topic === 'hardship') {
-    const conditionSources = new Set(person.conditions.flatMap((condition) => condition.sourceEventIds));
-    return conversation.sourceFactIds.every((sourceId) => conditionSources.has(sourceId));
-  }
-  if (conversation.topic === 'gratitude') return sources.every((source) => {
-    if (source?.kind === 'agreement') {
-      return source.change === 'fulfilled'
-        && source.partyIds.includes(person.id)
-        && source.partyIds.includes(listener.id);
-    }
-    if (source?.kind !== 'action' || source.status !== 'completed' || source.who !== listener.id) return false;
-    if (source.diff.caredPersonId === person.id) return true;
-    return source.action.kind === 'transfer'
-      && source.action.to.kind === 'person'
-      && source.action.to.personId === person.id;
-  });
-  if (conversation.topic === 'shared-work') return state.projects.some((project) => {
-    const participantIds = new Set([project.ownerId, ...project.contributorIds]);
-    const projectSources = new Set([...project.actionEventIds, ...project.completionEventIds]);
-    return participantIds.has(person.id)
-      && participantIds.has(listener.id)
-      && conversation.sourceFactIds.every((sourceId) => projectSources.has(sourceId));
-  });
-  if (conversation.topic === 'failure') {
-    const failureSources = new Set(person.memories
-      .filter((memory) => memory.kind === 'failure')
-      .flatMap((memory) => memory.sourceEventIds));
-    return conversation.sourceFactIds.every((sourceId) => failureSources.has(sourceId));
-  }
-  if (conversation.topic === 'discovery') {
-    const knowledge = content.factId ? person.knowledge.find((fact) => fact.id === content.factId) : undefined;
-    return Boolean(knowledge
-      && (knowledge.kind === 'observation' || knowledge.kind === 'claim')
-      && knowledge.confidence >= 55
-      && conversation.sourceFactIds.every((sourceId) => knowledge.sourceEventIds.includes(sourceId)));
-  }
-  if (conversation.topic === 'loss') {
-    const knownDeathIds = new Set((person.bereavements ?? []).map((bereavement) => bereavement.deathEventId));
-    return sources.every((source) => source?.kind === 'environment'
-      && source.change === 'death'
-      && knownDeathIds.has(source.id));
-  }
-  return sources.every((source) => source?.kind === 'environment'
-    && source.change === 'body'
-    && typeof source.diff.bornPersonId === 'string'
-    && state.people.some((child) => child.id === source.diff.bornPersonId
-      && isAlive(child)
-      && child.geneticParents.includes(person.id)
-      && child.geneticParents.includes(listener.id)));
-}
-
-function validateGroundedConversation(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'communicate' }>,
-  reached: PersonState[],
-): GroundedConversationValidation {
-  if (action.content.kind !== 'claim' || !action.content.conversation) return { kind: 'none' };
-  const conversation = action.content.conversation;
-  const listener = reached.find((candidate) => candidate.id === conversation.listenerId);
-  if (conversation.version !== 'grounded-conversation-v1'
-    || conversation.speakerId !== person.id
-    || action.audience.length !== 1
-    || action.audience[0] !== conversation.listenerId
-    || !listener
-    || conversation.sourceFactIds.length === 0) {
-    return { kind: 'blocked', reason: '生活对话的说话者、听者或事实来源不匹配' };
-  }
-  if (conversation.turn === 'opening') {
-    if (conversation.referenceEventId || conversation.stance) {
-      return { kind: 'blocked', reason: '生活对话开场不能伪装成回应' };
-    }
-    const duplicate = hasGroundedConversationOpeningBasis(state, conversation.basisKey);
-    if (duplicate || !groundedConversationSourceMatches(state, person, listener, action.content, conversation)) {
-      return { kind: 'blocked', reason: duplicate ? '同一段生活经历已经谈过' : '生活对话没有可解析且属于双方的真实来源' };
-    }
-    const warmTopic = ['care', 'gratitude', 'shared-work', 'family', 'loss'].includes(conversation.topic);
-    return { kind: 'valid', conversation, trustDelta: warmTopic ? 1 : 0, bondDelta: conversation.topic === 'discovery' ? 1 : 2 };
-  }
-  const referenceId = conversation.referenceEventId;
-  const opening = referenceId ? worldEventById(state, referenceId) : undefined;
-  const openingConversation = opening?.kind === 'action'
-    && opening.status === 'completed'
-    && opening.action.kind === 'communicate'
-    && opening.action.content.kind === 'claim'
-    ? opening.action.content.conversation
-    : undefined;
-  const duplicateResponse = Boolean(referenceId && hasGroundedConversationResponse(state, referenceId));
-  if (!openingConversation
-    || openingConversation.turn !== 'opening'
-    || openingConversation.speakerId !== listener.id
-    || openingConversation.listenerId !== person.id
-    || openingConversation.topic !== conversation.topic
-    || openingConversation.basisKey !== conversation.basisKey
-    || !sameIds(openingConversation.sourceFactIds, conversation.sourceFactIds)
-    || duplicateResponse) {
-    return { kind: 'blocked', reason: duplicateResponse ? '这段生活对话已经回应过' : '回应没有引用人员与来源一致的生活对话开场' };
-  }
-  const supportive = conversation.stance !== 'guarded';
-  return { kind: 'valid', conversation, trustDelta: supportive ? 1 : 0, bondDelta: supportive ? 2 : 1 };
-}
-
-function bodyOccupies(state: SimulationState, position: VoxelPosition): boolean {
-  const targetCell = cellId(position.x, position.y);
-  return state.people.some((candidate) => isAlive(candidate)
-    && candidate.position.cellId === targetCell
-    && (candidate.position.z === position.z || candidate.position.z + 1 === position.z));
-}
-
-function bodyStandsOn(state: SimulationState, position: VoxelPosition): boolean {
-  const targetCell = cellId(position.x, position.y);
-  return state.people.some((candidate) => isAlive(candidate)
-    && candidate.position.cellId === targetCell
-    && candidate.position.z === position.z + 1);
-}
-
-function removeEmptyStacks(person: PersonState): void {
-  person.inventory = person.inventory.filter((stack) => stack.quantity > 0);
-}
-
-export function addInventory(
-  person: PersonState,
-  materialId: MaterialId,
-  quantity: number,
-  sourceEventIds: string[],
-  stackId = `stack-${person.id}-${materialId}`,
-  recordPayloadId?: string,
-  sourceLineageKeys: string[] = [],
-): ItemStack {
-  const existing = person.inventory.find((stack) => stack.materialId === materialId && stack.recordPayloadId === recordPayloadId);
-  if (existing) {
-    existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
-    existing.sourceLineageKeys = [...new Set([
-      ...(existing.sourceLineageKeys ?? []),
-      ...sourceLineageKeys,
-    ])].slice(-32);
-    return existing;
-  }
-  const stack = {
-    id: stackId,
-    materialId,
-    quantity,
-    sourceEventIds: [...sourceEventIds],
-    ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
-    ...(recordPayloadId ? { recordPayloadId } : {}),
-  };
-  person.inventory.push(stack);
-  return stack;
-}
-
-function addContainerInventory(
-  container: ContainerState,
-  materialId: MaterialId,
-  quantity: number,
-  sourceEventIds: string[],
-  stackId: string,
-  recordPayloadId?: string,
-  sourceLineageKeys: string[] = [],
-): ItemStack {
-  const existing = container.inventory.find((stack) => stack.materialId === materialId && stack.recordPayloadId === recordPayloadId);
-  if (existing) {
-    existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
-    existing.sourceLineageKeys = [...new Set([
-      ...(existing.sourceLineageKeys ?? []),
-      ...sourceLineageKeys,
-    ])].slice(-32);
-    return existing;
-  }
-  const stack = {
-    id: stackId,
-    materialId,
-    quantity,
-    sourceEventIds: [...sourceEventIds],
-    ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
-    ...(recordPayloadId ? { recordPayloadId } : {}),
-  };
-  container.inventory.push(stack);
-  return stack;
-}
-
-export function addDrop(
-  state: SimulationState,
-  materialId: MaterialId,
-  quantity: number,
-  cell: number,
-  atMonth: number,
-  sourceEventIds: string[],
-  idHint: string,
-  recordPayloadId?: string,
-  z?: number,
-  sourceLineageKeys: string[] = [],
-  estateOfPersonId?: string,
-): DropState {
-  const resolvedZ = z ?? surfaceStandingPosition(state.world.grid, cell)?.z ?? 1;
-  const existing = state.world.drops.find((drop) => drop.cellId === cell
-    && drop.z === resolvedZ
-    && drop.materialId === materialId
-    && drop.recordPayloadId === recordPayloadId
-    && drop.estateOfPersonId === estateOfPersonId
-    && drop.quantity > 0);
-  if (existing) {
-    existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
-    existing.sourceLineageKeys = [...new Set([
-      ...(existing.sourceLineageKeys ?? []),
-      ...sourceLineageKeys,
-    ])].slice(-32);
-    return existing;
-  }
-  const drop: DropState = {
-    id: `drop-${atMonth}-${idHint}-${state.world.drops.length}`,
-    materialId,
-    cellId: cell,
-    z: resolvedZ,
-    quantity,
-    createdAtMonth: atMonth,
-    sourceEventIds: [...sourceEventIds],
-    ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
-    ...(recordPayloadId ? { recordPayloadId } : {}),
-    ...(estateOfPersonId ? { estateOfPersonId } : {}),
-  };
-  state.world.drops.push(drop);
-  return drop;
+  return undefined;
 }
 
 function conditionWorkMultiplier(person: PersonState): number {
@@ -555,15 +251,16 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   };
   const fullPath = findStandingPath(state.world.grid, person.position, { cellId: action.toCellId, ...(action.toZ === undefined ? {} : { z: action.toZ }) });
   if (!fullPath.length) return { status: 'blocked' as const, path: [person.position.cellId], result: '目标地表当前不可达', diff: {} };
-  // 一个规则刻度最多跨越一条相邻边。能力和身体状态改变代价，不改变空间连续性。
-  const segment = fullPath.length > 1 ? fullPath.slice(0, 2) : [fullPath[0]];
+  // 一个 move 仍沿逐格连续路径执行；低成本道路可在同一规则刻度继续跨过下一条边。
+  const segment = standingPathSegmentForTick(state.world.grid, fullPath);
   const from = { cellId: person.position.cellId, z: person.position.z };
   const to = segment.at(-1) ?? from;
   const moved = to.cellId !== from.cellId || to.z !== from.z;
-  const spent = moved ? standingMovementCost(state.world.grid, from, to) / conditionWorkMultiplier(person) : 0;
+  const movementCost = moved ? standingPathMovementCost(state.world.grid, segment) : 0;
+  const spent = movementCost / conditionWorkMultiplier(person);
   person.position.cellId = to.cellId;
   person.position.z = to.z;
-  if (moved) person.position.lastPath.push(to.cellId);
+  if (moved) person.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
   const carried = !moved ? [] : state.people.filter((candidate) => isAlive(candidate)
     && candidate.position.cellId === from.cellId
     && candidate.position.z === from.z
@@ -573,15 +270,15 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   for (const dependent of carried) {
     dependent.position.cellId = to.cellId;
     dependent.position.z = to.z;
-    dependent.position.lastPath.push(to.cellId);
+    dependent.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
   }
   const carriedRemains = moved
     ? (state.world.remains ?? []).filter((remains) => remains.carriedByPersonId === person.id)
     : [];
   for (const remains of carriedRemains) remains.position = { cellId: to.cellId, z: to.z };
   const movementMetabolism = movementMetabolicMultiplier(person);
-  person.body.hydration = clamp(person.body.hydration - Math.max(0, segment.length - 1) * 0.25 * movementMetabolism);
-  person.body.nutrition = clamp(person.body.nutrition - Math.max(0, segment.length - 1) * 0.16 * movementMetabolism);
+  person.body.hydration = clamp(person.body.hydration - movementCost * 0.125 * movementMetabolism);
+  person.body.nutrition = clamp(person.body.nutrition - movementCost * 0.08 * movementMetabolism);
   const materialChanges = compactTraversedSurface(state, segment, eventId);
   const reached = to.cellId === action.toCellId && (action.toZ === undefined || to.z === action.toZ);
   const threatDiff = action.wildlifeThreatBasis
@@ -596,9 +293,10 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
         : action.wildlifeThreatBasis.response === 'flee-step'
           ? `${person.name}与可见野兽拉开距离`
           : `${person.name}无安全退路，原地警戒野兽`
-      : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${moved ? 1 : 0} 步`,
+      : reached ? `沿可容身空间到达格 ${cellX(to.cellId)}, ${cellY(to.cellId)} 的高度 ${to.z}` : `沿可容身空间推进了 ${Math.max(0, segment.length - 1)} 步`,
     diff: {
       spentWork: spent,
+      movementCost,
       movementMetabolism,
       verticalPath: segment.map((position) => position.z),
       materialChanges,
@@ -634,6 +332,19 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
     available = sourceStack?.quantity ?? 0;
   }
   if (available <= 0) return { status: 'blocked' as const, result: '来源中已经没有这种物质', diff: {} };
+  if (sourceDrop && !canPersonCollectProjectMaterialDrop(state, person.id, sourceDrop, atMonth)) {
+    return {
+      status: 'blocked' as const,
+      result: '这份地面物料仍在等待原项目请求者查收',
+      diff: {
+        authorized: false,
+        projectMaterialDeliveryRestricted: true,
+        projectId: sourceDrop.projectMaterialDelivery?.projectId,
+        requestEventId: sourceDrop.projectMaterialDelivery?.requestEventId,
+        expiresAtMonth: sourceDrop.projectMaterialDelivery?.expiresAtMonth,
+      },
+    };
+  }
   const estateCareRemains = action.estateCarePersonId
     ? (state.world.remains ?? []).find((remains) => remains.personId === action.estateCarePersonId)
     : undefined;
@@ -662,6 +373,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const containerCapacity = destinationContainer ? containerRemainingCapacity(destinationContainer) : Number.POSITIVE_INFINITY;
   if (containerCapacity <= 0) return { status: 'blocked' as const, result: '目标容器已经没有可用容量', diff: { containerId: destinationContainer?.id } };
   const quantity = Math.max(1, Math.min(action.quantity, available, containerCapacity));
+  const projectMaterialDelivery = projectMaterialDeliveryForTransfer(state, person, action, atMonth);
   const possibleAgreement = action.authorizationRef ? agreementById(state, action.authorizationRef) : undefined;
   const agreementAuthorized = agreementAuthorizesTransfer(possibleAgreement, person.id, action, quantity);
   const possiblePermission = action.authorizationRef ? permissionById(state, action.authorizationRef) : undefined;
@@ -755,6 +467,8 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
       action.to.z ?? person.position.z,
       sourceLineageKeys,
+      undefined,
+      projectMaterialDelivery,
     );
   }
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
@@ -777,6 +491,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}),
       ...(sourceDrop?.estateOfPersonId ? { estateOfPersonId: sourceDrop.estateOfPersonId } : {}),
       ...(action.estateCarePersonId ? { estateCare: true, estateCarePersonId: action.estateCarePersonId } : {}),
+      ...(projectMaterialDelivery ? { projectMaterialDelivery } : {}),
     },
   };
 }
@@ -853,8 +568,13 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
   const productionTool = selectedTool && isProductionToolMaterial(selectedTool.materialId) ? selectedTool : undefined;
   let effectiveTool = productionTool;
   const toolMultiplier = productionToolMultiplier(productionTool?.materialId);
-  const mill = nearbyFacilityMaterial(state, person, [Material.Mill]);
   let replacement: MaterialId = Material.Air;
+  // A mill processes the crop at its work target. The worker can legally stand
+  // on the crop's far side, so body-centered lookup would erase the same real
+  // crop-mill contact merely because of approach direction.
+  const mill = materialId === Material.CropMature
+    ? nearbyFacilityMaterialAtCell(state, cellId(x, y), [Material.Mill])
+    : undefined;
   if (materialId === Material.Leaves || materialId === Material.Wood) {
     setVoxel(state.world.grid, x, y, z, Material.Air);
     for (let below = z - 1; below >= 0; below -= 1) {
@@ -1622,709 +1342,6 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
   };
 }
 
-interface MechanicalActionContext {
-  project: ProjectState;
-  plan: MechanicalPowerProjectPlan;
-  mechanicalPower: MechanicalPowerWorldState;
-  network?: MechanicalPowerNetworkState;
-  observationEvent: ActionFact;
-  supportingSegmentIds: string[];
-}
-
-function samePosition(left: VoxelPosition, right: VoxelPosition): boolean {
-  return left.x === right.x && left.y === right.y && left.z === right.z;
-}
-
-function actionHappenedAfter(candidate: ActionFact, basis: ActionFact): boolean {
-  return candidate.atMonth > basis.atMonth
-    || (candidate.atMonth === basis.atMonth && candidate.orderInMonth > basis.orderInMonth)
-    || (candidate.atMonth === basis.atMonth
-      && candidate.orderInMonth === basis.orderInMonth
-      && candidate.id.localeCompare(basis.id) > 0);
-}
-
-function personalWaterCurrentObservationEvent(
-  state: SimulationState,
-  person: PersonState,
-  segmentId: string,
-  allowedEventIds?: ReadonlySet<string>,
-): ActionFact | null {
-  const known = person.knowledge.find((fact) => fact.id === waterCurrentObservationFactId(segmentId)
-    && fact.kind === 'observation'
-    && fact.confidence >= 55);
-  if (!known) return null;
-  return known.sourceEventIds.flatMap((eventId) => {
-    const event = worldEventById(state, eventId);
-    return event?.kind === 'action' ? [event] : [];
-  }).filter((event) => event.status === 'completed'
-    && (!allowedEventIds || allowedEventIds.has(event.id))
-    && event.who === person.id
-    && event.action.kind === 'attend'
-    && event.action.waterCurrentSegmentId === segmentId
-    && event.diff.mechanicalPowerObservation === true
-    && event.diff.waterCurrentSegmentId === segmentId)
-    .sort((left, right) => left.atMonth - right.atMonth
-      || left.orderInMonth - right.orderInMonth
-      || left.id.localeCompare(right.id))
-    .at(-1) ?? null;
-}
-
-function mechanicalActionContext(
-  state: SimulationState,
-  person: PersonState,
-  basis: MechanicalPowerActionBasis,
-  requireFlow: boolean,
-): MechanicalActionContext | { blocked: string } {
-  if (basis.version !== MECHANICAL_POWER_ACTION_BASIS_VERSION || basis.mode === 'observe-source') {
-    return { blocked: '机械动作依据版本或模式无效' };
-  }
-  const projectCandidate = projectById(state, basis.projectId);
-  const project = projectCandidate?.status === 'active'
-    && projectCandidate.ownerId === person.id
-    && projectCandidate.desiredFunction === 'water-powered-crop-processing'
-    ? projectCandidate
-    : undefined;
-  const plan = project?.mechanicalPowerPlan;
-  if (!project || !plan
-    || plan.version !== MECHANICAL_POWER_PLAN_VERSION
-    || plan.projectId !== project.id
-    || project.mechanicalPowerPlanKey !== mechanicalPowerPlanKey(plan)
-    || project.mechanicalPowerNetworkId !== mechanicalPowerNetworkId(plan)
-    || basis.planKey !== project.mechanicalPowerPlanKey
-    || basis.networkId !== project.mechanicalPowerNetworkId
-    || basis.sourceSegmentId !== plan.sourceSegmentId
-    || !sameIds(basis.sourceKeys, plan.sourceKeys)) {
-    return { blocked: '机械动作与本人冻结的项目计划不一致' };
-  }
-  const mechanicalPower = state.world.mechanicalPower;
-  const source = mechanicalPower?.version === MECHANICAL_POWER_WORLD_VERSION
-    ? mechanicalPower.sources.find((candidate) => candidate.id === plan.sourceSegmentId)
-    : undefined;
-  if (!mechanicalPower || !source || !sameIds(source.sourceKeys, plan.sourceKeys)) {
-    return { blocked: '冻结计划的水流来源已经不匹配' };
-  }
-  const observationEvent = personalWaterCurrentObservationEvent(
-    state, person, source.id, new Set(project.triggerFactIds),
-  );
-  if (!observationEvent) {
-    return { blocked: '机械动作缺少项目发起者本人对该水流的可靠观察' };
-  }
-  const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id);
-  if (requireFlow && !availability.available) return { blocked: '冻结计划所绑定的水流当前已经失效' };
-  const network = mechanicalPower.networks.find((candidate) => candidate.id === basis.networkId);
-  if (network && (network.planKey !== basis.planKey
-    || network.installationProjectId !== project.id
-    || network.sourceSegmentId !== source.id)) {
-    return { blocked: '机械网络身份与冻结计划冲突' };
-  }
-  return {
-    project,
-    plan,
-    mechanicalPower,
-    ...(network ? { network } : {}),
-    observationEvent,
-    supportingSegmentIds: availability.supportingSegmentIds,
-  };
-}
-
-function projectActionFactsForMechanical(state: SimulationState, project: ProjectState): ActionFact[] {
-  return project.actionEventIds.flatMap((eventId) => {
-    const event = worldEventById(state, eventId);
-    return event?.kind === 'action' ? [event] : [];
-  });
-}
-
-function verifiedComponentEvidence(
-  state: SimulationState,
-  person: PersonState,
-  project: ProjectState,
-  stackId: string,
-  materialId: MaterialId,
-  after?: ActionFact,
-): { manufacture: ActionFact; verification: ActionFact; stack: ItemStack } | null {
-  const stack = person.inventory.find((candidate) => candidate.id === stackId
-    && candidate.materialId === materialId
-    && candidate.quantity > 0
-    && !candidate.recordPayloadId);
-  if (!stack) return null;
-  const actions = projectActionFactsForMechanical(state, project);
-  for (const manufacture of actions.filter((event) => event.status === 'completed'
-    && event.who === person.id
-    && event.action.kind === 'act'
-    && event.action.operation === 'combine'
-    && Number(event.diff.outputMaterialId) === materialId
-    && event.diff.outputStackId === stack.id
-    && stack.sourceEventIds.includes(event.id)
-    && (!after || actionHappenedAfter(event, after))).reverse()) {
-    const verification = actions.find((event) => event.status === 'completed'
-      && event.who === person.id
-      && event.action.kind === 'attend'
-      && event.diff.verifiedSourceEventId === manufacture.id
-      && event.diff.verifiedStackId === stack.id
-      && Number(event.diff.verifiedMaterialId) === materialId
-      && actionHappenedAfter(event, manufacture));
-    if (verification) return { manufacture, verification, stack };
-  }
-  return null;
-}
-
-function mechanicalInstall(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  basis: Extract<MechanicalPowerActionBasis, { mode: 'install' }>,
-  atMonth: number,
-  eventId: string,
-) {
-  const context = mechanicalActionContext(state, person, basis, true);
-  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
-  const planned = plannedMechanicalPowerComponents(context.plan).find((component) => component.role === basis.componentRole
-    && component.materialId === basis.componentMaterialId
-    && samePosition(component.position, basis.componentPosition));
-  const voxelRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
-  const stackRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
-  const interactionRange = basis.componentRole === 'converter' ? 2 : 1;
-  if (!planned || !voxelRef || !samePosition(voxelRef.position, basis.componentPosition)
-    || !stackRef || stackRef.personId !== person.id
-    || distanceToPosition(person, basis.componentPosition) > interactionRange) {
-    return { status: 'blocked' as const, result: '机械构件、材料或冻结安装位置不在近身范围', diff: {} };
-  }
-  if (context.network?.components.some((component) => component.role === planned.role
-    && samePosition(component.position, planned.position))) {
-    return { status: 'blocked' as const, result: '这个冻结位置已经登记过机械构件', diff: {} };
-  }
-  if (voxelAt(state.world.grid, planned.position.x, planned.position.y, planned.position.z) !== Material.Air
-    || bodyOccupies(state, planned.position)) {
-    return { status: 'blocked' as const, result: '冻结安装位置不再是可用空气体素', diff: {} };
-  }
-  const evidence = verifiedComponentEvidence(
-    state, person, context.project, stackRef.stackId, planned.materialId,
-  );
-  if (!evidence) return { status: 'blocked' as const, result: '构件不是本项目中由本人真实制造并源绑定核验的成品', diff: {} };
-  const supportMaterialId = voxelAt(
-    state.world.grid, planned.position.x, planned.position.y, planned.position.z - 1,
-  );
-  const wheelAboveBoundCurrent = planned.role === 'converter'
-    && supportMaterialId === Material.Water
-    && context.plan.wheelPosition.z === planned.position.z
-    && context.mechanicalPower.sources.find((source) => source.id === context.plan.sourceSegmentId)
-      ?.requiredWaterVoxels.some((position) => position.x === planned.position.x
-        && position.y === planned.position.y
-        && position.z + 1 === planned.position.z);
-  if (!wheelAboveBoundCurrent && materialDefinition(supportMaterialId).phase !== 'solid') {
-    return { status: 'blocked' as const, result: '机械构件位置缺少实体承托', diff: {} };
-  }
-  const installationSourceEventIds = [
-    evidence.manufacture.id,
-    evidence.verification.id,
-    context.observationEvent.id,
-  ];
-  const network = ensureMechanicalPowerNetwork(context.mechanicalPower, context.plan);
-  evidence.stack.quantity -= 1;
-  removeEmptyStacks(person);
-  setVoxel(state.world.grid, planned.position.x, planned.position.y, planned.position.z, planned.materialId);
-  recordMechanicalPowerInstallation(network, {
-    role: planned.role,
-    materialId: planned.materialId,
-    position: { ...planned.position },
-    projectId: context.project.id,
-    installedAtMonth: atMonth,
-    installationEventId: eventId,
-    sourceEventIds: installationSourceEventIds,
-  });
-  return {
-    status: 'completed' as const,
-    result: `在冻结位置安装了${materialDefinition(planned.materialId).name}`,
-    diff: {
-      mechanicalPowerInstallation: true,
-      mode: 'install',
-      projectId: context.project.id,
-      planKey: basis.planKey,
-      networkId: network.id,
-      sourceSegmentId: basis.sourceSegmentId,
-      componentRole: planned.role,
-      componentMaterialId: planned.materialId,
-      componentPosition: { ...planned.position },
-      installationSourceEventIds,
-      mechanicalPowerBasis: structuredClone(basis),
-    },
-  };
-}
-
-function exactNetworkComponentsInstalled(
-  network: MechanicalPowerNetworkState,
-  plan: MechanicalPowerProjectPlan,
-): boolean {
-  const planned = plannedMechanicalPowerComponents(plan);
-  return planned.every((candidate) => network.components.some((component) => component.role === candidate.role
-    && component.materialId === candidate.materialId
-    && component.projectId === plan.projectId
-    && samePosition(component.position, candidate.position)));
-}
-
-function mechanicalOperate(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  basis: Extract<MechanicalPowerActionBasis, { mode: 'operate' }>,
-  atMonth: number,
-  eventId: string,
-) {
-  const context = mechanicalActionContext(state, person, basis, true);
-  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
-  const network = context.network;
-  const inputRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
-  const loadRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
-  const input = inputRef?.personId === person.id
-    ? person.inventory.find((stack) => stack.id === inputRef.stackId
-      && stack.materialId === Material.Seed
-      && stack.quantity > 0
-      && !stack.recordPayloadId)
-    : undefined;
-  if (basis.inputMaterialId !== Material.Seed || basis.outputMaterialId !== Material.Food
-    || !loadRef || !samePosition(loadRef.position, context.plan.loadPosition)
-    || distanceToPosition(person, context.plan.loadPosition) > 1
-    || !input) {
-    return { status: 'blocked' as const, result: '动力磨坊缺少精确负载位置或真实种子输入', diff: {} };
-  }
-  if (!network || !exactNetworkComponentsInstalled(network, context.plan)) {
-    return { status: 'blocked' as const, result: '机械网络尚未完整安装', diff: {} };
-  }
-  if (network.fault) return { status: 'blocked' as const, result: '机械网络仍有未修复故障', diff: {} };
-  const topology = validateMechanicalPowerTopology(state.world.grid, context.mechanicalPower, context.plan);
-  if (!topology.valid) return {
-    status: 'blocked' as const,
-    result: `机械拓扑实时复核失败：${topology.reason ?? 'unknown'}`,
-    diff: { topologyReason: topology.reason },
-  };
-  if (network.faultEventIds.length === 0 && network.operationEventIds.length === 0) {
-    const brokenPosition = context.plan.shaftPositions[0];
-    if (!brokenPosition || voxelAt(
-      state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z,
-    ) !== Material.DriveShaft) return { status: 'blocked' as const, result: '试运转故障目标传动轴不存在', diff: {} };
-    setVoxel(state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z, Material.BrokenDriveShaft);
-    recordMechanicalPowerFault(network, {
-      kind: 'commissioning-misalignment',
-      componentRole: 'connector',
-      componentPosition: { ...brokenPosition },
-      atMonth,
-      faultEventId: eventId,
-      sourceEventIds: [...network.installationEventIds, context.observationEvent.id],
-    });
-    return {
-      status: 'progressed' as const,
-      result: '首次试运转暴露出传动轴校准故障，种子尚未投入',
-      diff: {
-        mechanicalPowerFault: true,
-        mode: 'operate',
-        projectId: context.project.id,
-        planKey: basis.planKey,
-        networkId: network.id,
-        sourceSegmentId: basis.sourceSegmentId,
-        faultKind: 'commissioning-misalignment',
-        faultEventId: eventId,
-        componentRole: 'connector',
-        componentPosition: { ...brokenPosition },
-        inputPreserved: true,
-        inputMaterialId: input.materialId,
-        inputStackId: input.id,
-        inputQuantityBefore: input.quantity,
-        inputQuantityAfter: input.quantity,
-        mechanicalPowerBasis: structuredClone(basis),
-      },
-    };
-  }
-  if (!network.repairEventIds.length) {
-    return { status: 'blocked' as const, result: '机械网络没有可回放的修复事实', diff: {} };
-  }
-  const inputStackId = input.id;
-  const inputSourceEventIds = [...input.sourceEventIds];
-  const inputSourceLineageKeys = [...(input.sourceLineageKeys ?? [])];
-  input.quantity -= 1;
-  removeEmptyStacks(person);
-  const outputQuantity = 3;
-  const output = addInventory(
-    person,
-    Material.Food,
-    outputQuantity,
-    [eventId, ...network.repairEventIds, ...inputSourceEventIds],
-    `stack-${person.id}-${Material.Food}-${eventId}`,
-    undefined,
-    [`mechanical-network:${network.id}`, `input-stack:${inputStackId}`, ...inputSourceLineageKeys],
-  );
-  recordMechanicalPowerOperation(network, eventId);
-  return {
-    status: 'completed' as const,
-    result: `流水驱动磨坊把种子处理为食物 × ${outputQuantity}`,
-    diff: {
-      mechanicalPowerOperation: true,
-      mode: 'operate',
-      projectId: context.project.id,
-      planKey: basis.planKey,
-      networkId: network.id,
-      sourceSegmentId: basis.sourceSegmentId,
-      inputMaterialId: Material.Seed,
-      inputStackId,
-      inputSourceEventIds,
-      inputSourceLineageKeys,
-      outputMaterialId: Material.Food,
-      outputStackId: output.id,
-      outputQuantity,
-      repairEventIds: [...network.repairEventIds],
-      supportingSegmentIds: [...context.supportingSegmentIds],
-      mechanicalPowerBasis: structuredClone(basis),
-    },
-  };
-}
-
-function repairTopologyMatchesFault(
-  state: SimulationState,
-  plan: MechanicalPowerProjectPlan,
-  network: MechanicalPowerNetworkState,
-): boolean {
-  if (!network.fault || !exactNetworkComponentsInstalled(network, plan)) return false;
-  if (voxelAt(state.world.grid, plan.wheelPosition.x, plan.wheelPosition.y, plan.wheelPosition.z) !== Material.WaterWheel
-    || voxelAt(state.world.grid, plan.loadPosition.x, plan.loadPosition.y, plan.loadPosition.z) !== Material.Mill) return false;
-  return plan.shaftPositions.every((position) => samePosition(position, network.fault!.componentPosition)
-    ? voxelAt(state.world.grid, position.x, position.y, position.z) === Material.BrokenDriveShaft
-    : voxelAt(state.world.grid, position.x, position.y, position.z) === Material.DriveShaft);
-}
-
-function mechanicalRepair(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  basis: Extract<MechanicalPowerActionBasis, { mode: 'repair' }>,
-  eventId: string,
-) {
-  const context = mechanicalActionContext(state, person, basis, false);
-  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
-  const network = context.network;
-  const fault = network?.fault;
-  const faultEvent = fault ? worldEventById(state, fault.faultEventId) : undefined;
-  const replacementRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
-  const faultRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
-  const tool = action.toolStackId ? person.inventory.find((stack) => stack.id === action.toolStackId
-    && stack.materialId === Material.BronzeTool
-    && stack.quantity > 0
-    && !stack.recordPayloadId) : undefined;
-  if (!network || !fault || fault.faultEventId !== basis.faultEventId
-    || faultEvent?.kind !== 'action'
-    || basis.replacementMaterialId !== Material.DriveShaft
-    || basis.toolMaterialId !== Material.BronzeTool
-    || !faultRef || !samePosition(faultRef.position, fault.componentPosition)
-    || distanceToPosition(person, fault.componentPosition) > 1
-    || !replacementRef || replacementRef.personId !== person.id
-    || !tool
-    || voxelAt(state.world.grid, fault.componentPosition.x, fault.componentPosition.y, fault.componentPosition.z) !== Material.BrokenDriveShaft
-    || !repairTopologyMatchesFault(state, context.plan, network)) {
-    return { status: 'blocked' as const, result: '修复所需的故障、替换件、工具或精确位置不再一致', diff: {} };
-  }
-  const evidence = verifiedComponentEvidence(
-    state,
-    person,
-    context.project,
-    replacementRef.stackId,
-    Material.DriveShaft,
-    faultEvent,
-  );
-  if (!evidence) return { status: 'blocked' as const, result: '替换传动轴不是故障之后由本人制造并核验的构件', diff: {} };
-  const repairSourceEventIds = [fault.faultEventId, evidence.manufacture.id, evidence.verification.id, ...tool.sourceEventIds];
-  evidence.stack.quantity -= 1;
-  removeEmptyStacks(person);
-  setVoxel(
-    state.world.grid,
-    fault.componentPosition.x,
-    fault.componentPosition.y,
-    fault.componentPosition.z,
-    Material.DriveShaft,
-  );
-  recordMechanicalPowerRepair(network, eventId, repairSourceEventIds);
-  return {
-    status: 'completed' as const,
-    result: '用新传动轴和青铜工具修复了机械网络',
-    diff: {
-      mechanicalPowerRepair: true,
-      mode: 'repair',
-      projectId: context.project.id,
-      planKey: basis.planKey,
-      networkId: network.id,
-      sourceSegmentId: basis.sourceSegmentId,
-      faultEventId: basis.faultEventId,
-      replacementMaterialId: Material.DriveShaft,
-      replacementStackId: replacementRef.stackId,
-      toolMaterialId: Material.BronzeTool,
-      toolStackId: tool.id,
-      repairSourceEventIds,
-      repairEventIds: [...network.repairEventIds],
-      mechanicalPowerBasis: structuredClone(basis),
-    },
-  };
-}
-
-function executeMechanicalPowerAction(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  atMonth: number,
-  eventId: string,
-) {
-  const basis = action.mechanicalPowerBasis;
-  if (!basis || action.operation !== 'exert') {
-    return { status: 'blocked' as const, result: '机械动力只能通过带版本依据的通用施力动作执行', diff: {} };
-  }
-  if (basis.mode === 'install') return mechanicalInstall(state, person, action, basis, atMonth, eventId);
-  if (basis.mode === 'operate') return mechanicalOperate(state, person, action, basis, atMonth, eventId);
-  if (basis.mode === 'repair') return mechanicalRepair(state, person, action, basis, eventId);
-  return { status: 'blocked' as const, result: '观察水流必须使用指向当前水体的观察动作', diff: {} };
-}
-
-function executeMortuary(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  atMonth: number,
-  eventId: string,
-) {
-  const phase = action.mortuaryPhase;
-  const remainsRef = action.targets.find((target) => target.kind === 'remains');
-  const remains = remainsRef?.kind === 'remains' ? remainsById(state, remainsRef.remainsId) : undefined;
-  const deceased = remains ? personById(state, remains.personId) : undefined;
-  const bereavement = remains ? bereavementFor(person, remains.id) : undefined;
-  if (!phase || !remains || !deceased || !bereavement) {
-    return { status: 'blocked' as const, result: '丧葬行动没有绑定本人知晓的真实死亡与遗体', diff: {} };
-  }
-  const access = remains.grave?.accessPosition ?? remains.position;
-  const atAccess = person.position.cellId === access.cellId && person.position.z === access.z;
-  const spendWork = (heavy = false) => {
-    person.body.hydration = clamp(person.body.hydration - (heavy ? 0.55 : 0.2));
-    person.body.nutrition = clamp(person.body.nutrition - (heavy ? 0.45 : 0.15));
-  };
-
-  if (phase === 'mourn') {
-    if (!atAccess || bereavement.lastMournedAtMonth !== undefined) {
-      return { status: 'blocked' as const, result: '本人不在遗体或墓记近旁，或已经完成过这次悼念', diff: {} };
-    }
-    bereavement.lastMournedAtMonth = atMonth;
-    return {
-      status: 'completed' as const,
-      result: remains.status === 'interred'
-        ? `${person.name}在${deceased.name}的墓前停留悼念`
-        : `${person.name}在${deceased.name}的遗体旁停留哀悼`,
-      diff: {
-        mortuaryPhase: phase,
-        remainsId: remains.id,
-        deceasedPersonId: deceased.id,
-        deathEventId: remains.deathEventId,
-        griefIntensity: bereavement.intensity,
-        sourceEventIds: [...bereavement.sourceEventIds],
-      },
-    };
-  }
-
-  if (phase === 'lift') {
-    if (remains.status !== 'exposed'
-      || person.position.cellId !== remains.position.cellId
-      || person.position.z !== remains.position.z
-      || (state.world.remains ?? []).some((candidate) => candidate.carriedByPersonId === person.id)) {
-      return { status: 'blocked' as const, result: '遗体不在本人近身位置，或本人已经搬运另一具遗体', diff: {} };
-    }
-    remains.status = 'carried';
-    remains.carriedByPersonId = person.id;
-    remains.sourceEventIds = [...new Set([...remains.sourceEventIds, eventId])].slice(-24);
-    spendWork(true);
-    return {
-      status: 'completed' as const,
-      result: `${person.name}近身抬起${deceased.name}的遗体`,
-      diff: { mortuaryPhase: phase, remainsId: remains.id, deceasedPersonId: deceased.id, deathEventId: remains.deathEventId },
-    };
-  }
-
-  if (phase === 'prepare-grave') {
-    const voxelRef = action.targets.find((target) => target.kind === 'voxel');
-    const position = voxelRef?.kind === 'voxel' ? voxelRef.position : undefined;
-    if (!position
-      || remains.status !== 'carried'
-      || remains.carriedByPersonId !== person.id
-      || remains.grave
-      || distanceToPosition(person, position) > 1) {
-      return { status: 'blocked' as const, result: '挖墓没有绑定本人搬运的遗体或近身地表', diff: {} };
-    }
-    const graveCellId = cellId(position.x, position.y);
-    const originalMaterialId = voxelAt(state.world.grid, position.x, position.y, position.z);
-    const validSurface = materialHas(originalMaterialId, 'ground')
-      && surfaceMaterial(state.world.grid, graveCellId) === originalMaterialId
-      && voxelAt(state.world.grid, position.x, position.y, position.z + 1) === Material.Air;
-    const occupied = bodyStandsOn(state, position)
-      || (state.world.remains ?? []).some((candidate) => candidate.grave
-        && candidate.grave.position.x === position.x
-        && candidate.grave.position.y === position.y
-        && candidate.grave.position.z === position.z);
-    if (!validSurface || occupied) return { status: 'blocked' as const, result: '所指位置不再是可挖掘且无人占用的真实地表', diff: {} };
-    setVoxel(state.world.grid, position.x, position.y, position.z, Material.Air);
-    const coverMaterialStackId = `stack:${person.id}:grave-cover:${remains.id}`;
-    person.inventory.push({
-      id: coverMaterialStackId,
-      materialId: originalMaterialId,
-      quantity: 1,
-      sourceEventIds: [eventId],
-      sourceLineageKeys: [`voxel:${position.x}:${position.y}:${position.z}:${originalMaterialId}`],
-    });
-    remains.grave = {
-      position: { ...position },
-      accessPosition: { cellId: person.position.cellId, z: person.position.z },
-      originalMaterialId,
-      preparedByPersonId: person.id,
-      preparedAtMonth: atMonth,
-      excavationEventId: eventId,
-      coverMaterialStackId,
-    };
-    remains.sourceEventIds = [...new Set([...remains.sourceEventIds, eventId])].slice(-24);
-    spendWork(true);
-    return {
-      status: 'completed' as const,
-      result: `${person.name}在近身地表挖出一处可放置遗体的墓穴，并保留覆土`,
-      diff: {
-        mortuaryPhase: phase,
-        remainsId: remains.id,
-        deceasedPersonId: deceased.id,
-        deathEventId: remains.deathEventId,
-        gravePosition: { ...position },
-        excavatedMaterialId: originalMaterialId,
-        coverMaterialStackId,
-        sourceEventIds: [remains.deathEventId],
-      },
-    };
-  }
-
-  if (phase === 'place-in-grave') {
-    const grave = remains.grave;
-    if (!grave || !atAccess || remains.status !== 'carried' || remains.carriedByPersonId !== person.id
-      || voxelAt(state.world.grid, grave.position.x, grave.position.y, grave.position.z) !== Material.Air) {
-      return { status: 'blocked' as const, result: '遗体、墓穴或近身位置已经不满足放置条件', diff: {} };
-    }
-    remains.status = 'placed';
-    remains.position = { cellId: cellId(grave.position.x, grave.position.y), z: grave.position.z };
-    delete remains.carriedByPersonId;
-    grave.placementEventId = eventId;
-    remains.sourceEventIds = [...new Set([...remains.sourceEventIds, eventId])].slice(-24);
-    spendWork(true);
-    return {
-      status: 'completed' as const,
-      result: `${person.name}把${deceased.name}的遗体放入已经挖好的墓穴`,
-      diff: {
-        mortuaryPhase: phase, remainsId: remains.id, deceasedPersonId: deceased.id,
-        deathEventId: remains.deathEventId, gravePosition: { ...grave.position }, excavationEventId: grave.excavationEventId,
-      },
-    };
-  }
-
-  if (phase === 'cover-grave') {
-    const grave = remains.grave;
-    const coverRef = action.targets.find((target) => target.kind === 'inventory-stack');
-    const cover = coverRef?.kind === 'inventory-stack' && coverRef.personId === person.id
-      ? person.inventory.find((stack) => stack.id === coverRef.stackId && stack.quantity > 0)
-      : undefined;
-    if (!grave || !atAccess || remains.status !== 'placed'
-      || !cover
-      || cover.id !== grave.coverMaterialStackId
-      || cover.materialId !== grave.originalMaterialId
-      || !cover.sourceEventIds.includes(grave.excavationEventId)
-      || voxelAt(state.world.grid, grave.position.x, grave.position.y, grave.position.z) !== Material.Air) {
-      return { status: 'blocked' as const, result: '覆土没有来自这座墓穴的真实挖掘物，或墓穴状态已经变化', diff: {} };
-    }
-    cover.quantity -= 1;
-    removeEmptyStacks(person);
-    setVoxel(state.world.grid, grave.position.x, grave.position.y, grave.position.z, grave.originalMaterialId);
-    remains.status = 'interred';
-    remains.interredAtMonth = atMonth;
-    remains.interredByPersonId = person.id;
-    remains.position = { cellId: cellId(grave.position.x, grave.position.y), z: grave.position.z };
-    grave.burialEventId = eventId;
-    remains.sourceEventIds = [...new Set([...remains.sourceEventIds, eventId])].slice(-24);
-    for (const observer of state.people) {
-      const grief = bereavementFor(observer, remains.id);
-      if (grief) grief.careResolvedAtMonth = atMonth;
-    }
-    spendWork(true);
-    return {
-      status: 'completed' as const,
-      result: `${person.name}用原墓穴覆土安葬了${deceased.name}`,
-      diff: {
-        mortuaryPhase: phase,
-        remainsInterred: true,
-        remainsId: remains.id,
-        deceasedPersonId: deceased.id,
-        deathEventId: remains.deathEventId,
-        gravePosition: { ...grave.position },
-        excavationEventId: grave.excavationEventId,
-        placementEventId: grave.placementEventId,
-        coverMaterialStackId: grave.coverMaterialStackId,
-        coverMaterialId: grave.originalMaterialId,
-        sourceEventIds: [...new Set([remains.deathEventId, grave.excavationEventId, grave.placementEventId ?? ''])].filter(Boolean),
-      },
-    };
-  }
-
-  if (phase === 'mark') {
-    state.world.memorials ??= [];
-    const grave = remains.grave;
-    const tabletRef = action.targets.find((target) => target.kind === 'inventory-stack');
-    const tablet = tabletRef?.kind === 'inventory-stack' && tabletRef.personId === person.id
-      ? person.inventory.find((stack) => stack.id === tabletRef.stackId && stack.quantity > 0)
-      : undefined;
-    const tool = action.toolStackId
-      ? person.inventory.find((stack) => stack.id === action.toolStackId && stack.quantity > 0)
-      : undefined;
-    if (!grave || !atAccess || remains.status !== 'interred' || memorialForRemains(state, remains.id)
-      || !tablet || tablet.materialId !== Material.WoodTablet || tablet.recordPayloadId
-      || !tool || productionToolRank(tool.materialId) < productionToolRank(Material.StoneTool)) {
-      return { status: 'blocked' as const, result: '墓记需要已安葬遗体、近身空白木板和足以刻写的真实工具', diff: {} };
-    }
-    const tabletSourceEventIds = [...tablet.sourceEventIds];
-    tablet.quantity -= 1;
-    removeEmptyStacks(person);
-    const marker = {
-      id: `memorial:${remains.id}`,
-      remainsId: remains.id,
-      personId: deceased.id,
-      position: { ...grave.position, z: grave.position.z + 1 },
-      materialId: Material.WoodTablet,
-      inscription: deceased.name,
-      madeByPersonId: person.id,
-      createdAtMonth: atMonth,
-      sourceEventIds: [...new Set([
-        ...tabletSourceEventIds.slice(-21),
-        remains.deathEventId,
-        grave.burialEventId ?? '',
-        eventId,
-      ])].filter(Boolean).slice(-24),
-    };
-    state.world.memorials.push(marker);
-    spendWork();
-    return {
-      status: 'completed' as const,
-      result: `${person.name}消耗一块木制记录板，为${deceased.name}刻下墓记`,
-      diff: {
-        mortuaryPhase: phase,
-        memorialMarked: true,
-        memorialId: marker.id,
-        remainsId: remains.id,
-        deceasedPersonId: deceased.id,
-        deathEventId: remains.deathEventId,
-        burialEventId: grave.burialEventId,
-        markerMaterialId: marker.materialId,
-        tabletStackId: tablet.id,
-        toolStackId: tool.id,
-        inscription: marker.inscription,
-        sourceEventIds: marker.sourceEventIds,
-      },
-    };
-  }
-
-  return { status: 'blocked' as const, result: '未知的丧葬动作阶段', diff: {} };
-}
-
 function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   if (action.operation === 'inter') return executeMortuary(state, person, action, atMonth, eventId);
   if (action.mechanicalPowerBasis) return executeMechanicalPowerAction(state, person, action, atMonth, eventId);
@@ -2404,6 +1421,66 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
         supportingSegmentIds: [...availability.supportingSegmentIds],
         sourceKeys: [...segment.sourceKeys],
         observedPosition: { ...position },
+      },
+    };
+  }
+  if (action.mechanicalPowerFaultObservation) {
+    const ref = action.mechanicalPowerFaultObservation;
+    const installationProject = projectById(state, ref.installationProjectId);
+    const plan = installationProject?.mechanicalPowerPlan;
+    const network = state.world.mechanicalPower?.networks.find((candidate) => candidate.id === ref.networkId
+      && candidate.planKey === ref.planKey
+      && candidate.installationProjectId === ref.installationProjectId);
+    const fault = network?.fault;
+    const position = action.target.kind === 'voxel' ? action.target.position : undefined;
+    const faultEvent = fault ? worldEventById(state, fault.faultEventId) : undefined;
+    const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+    if (ref.version !== 'mechanical-power-fault-observation-v1'
+      || installationProject?.status !== 'completed'
+      || installationProject.desiredFunction !== 'water-powered-crop-processing'
+      || !plan
+      || plan.projectId !== installationProject.id
+      || installationProject.mechanicalPowerPlanKey !== mechanicalPowerPlanKey(plan)
+      || installationProject.mechanicalPowerNetworkId !== ref.networkId
+      || !network
+      || !fault
+      || fault.faultEventId !== ref.faultEventId
+      || fault.kind !== 'worn-drive-shaft'
+      || faultEvent?.kind !== 'action'
+      || faultEvent.diff.mechanicalPowerFault !== true
+      || faultEvent.diff.networkId !== network.id
+      || !position
+      || !samePosition(position, fault.componentPosition)
+      || distanceToPosition(person, position) > perceptionRadius
+      || voxelAt(state.world.grid, position.x, position.y, position.z) !== Material.BrokenDriveShaft) {
+      return { status: 'blocked' as const, result: '眼前实体断轴与所指完成网络的当前磨损故障不一致', diff: {} };
+    }
+    const factId = mechanicalPowerFaultObservationFactId(network.id, fault.faultEventId);
+    const summary = '观察并诊断出负载磨损导致传动轴断裂，网络因此停转';
+    const existing = person.knowledge.find((fact) => fact.id === factId && fact.kind === 'observation');
+    if (existing) {
+      existing.confidence = clamp(Math.max(existing.confidence, 60) + 10);
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, fault.faultEventId, eventId])].slice(-24);
+    } else person.knowledge.push({
+      id: factId,
+      kind: 'observation',
+      summary,
+      confidence: 68,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [fault.faultEventId, eventId],
+    });
+    return {
+      status: 'completed' as const,
+      result: summary,
+      diff: {
+        factId,
+        mechanicalPowerFaultDiagnosis: true,
+        installationProjectId: installationProject.id,
+        networkId: network.id,
+        planKey: network.planKey,
+        faultEventId: fault.faultEventId,
+        faultKind: fault.kind,
+        componentPosition: { ...fault.componentPosition },
       },
     };
   }
@@ -2540,582 +1617,6 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
     person.knowledge.push({ id: factId, kind: 'observation', summary, confidence: 58, learnedAtMonth: atMonth, sourceEventIds: [eventId] });
   }
   return { status: 'completed' as const, result: summary, diff: { factId } };
-}
-
-function executeCommunicate(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'communicate' }>, atMonth: number, eventId: string) {
-  const coordinationFacilityMaterialId = nearbyFacilityMaterial(
-    state,
-    person,
-    [Material.CouncilHearth, Material.CivicHall, Material.KeepCore],
-    3,
-  );
-  if (action.channel === 'record') {
-    const stack = action.carrierStackId ? person.inventory.find((candidate) => candidate.id === action.carrierStackId && candidate.quantity > 0) : undefined;
-    if (!stack || !materialHas(stack.materialId, 'recordable') || stack.recordPayloadId) return { status: 'blocked' as const, result: '没有可写且尚未承载内容的记录材料', diff: {} };
-    if (action.content.kind !== 'claim' || !action.content.factId) return { status: 'blocked' as const, result: '当前只能把有来源的知识陈述写入记录', diff: {} };
-    const knowledgeId = action.content.factId;
-    const knowledge = person.knowledge.find((fact) => fact.id === knowledgeId);
-    if (!knowledge) return { status: 'blocked' as const, result: '本人并不知道要记录的内容', diff: {} };
-    if (knowledge.kind === 'codebook') return { status: 'blocked' as const, result: '编码约定不能作为自己的记录内容再次刻写', diff: {} };
-    const priorVersion = state.records.filter((record) => record.knowledgeId === knowledge.id && record.authorId === person.id).reduce((max, record) => Math.max(max, record.version), 0);
-    const codebookId = `codebook:record:${person.id}:${knowledge.id}`;
-    const payload = {
-      id: `record:${atMonth}:${person.id}:${state.records.length}`,
-      authorId: person.id,
-      knowledgeId: knowledge.id,
-      codebookId,
-      kind: knowledge.kind,
-      summary: knowledge.summary,
-      version: priorVersion + 1,
-      createdAtMonth: atMonth,
-      sourceEventIds: [...new Set([...knowledge.sourceEventIds, eventId])],
-    };
-    state.records.push(payload);
-    const knownCodebook = person.knowledge.find((fact) => fact.id === codebookId);
-    if (knownCodebook) {
-      knownCodebook.confidence = clamp(knownCodebook.confidence + 16);
-      knownCodebook.sourceEventIds = [...new Set([...knownCodebook.sourceEventIds, eventId, payload.id])].slice(-24);
-    } else person.knowledge.push({
-      id: codebookId,
-      kind: 'codebook',
-      summary: `这组刻痕表示“${knowledge.summary}”`,
-      confidence: 100,
-      learnedAtMonth: atMonth,
-      sourceEventIds: [eventId, payload.id],
-    });
-    let carrier = stack;
-    if (stack.quantity > 1) {
-      stack.quantity -= 1;
-      carrier = addInventory(person, stack.materialId, 1, [eventId], `stack-${person.id}-${stack.materialId}-${atMonth}-record-${state.records.length}`, payload.id);
-    } else {
-      stack.recordPayloadId = payload.id;
-      stack.sourceEventIds = [...new Set([...stack.sourceEventIds, eventId])].slice(-24);
-    }
-    return { status: 'completed' as const, result: `${person.name}把“${knowledge.summary}”刻写到木制记录板`, diff: { recordPayloadId: payload.id, carrierStackId: carrier.id, knowledgeId: knowledge.id, version: payload.version } };
-  }
-  const content = action.content;
-  if (content.kind === 'prediction') {
-    const horizon = content.prediction.predictedStartMonth - atMonth;
-    if (horizon < 1
-      || horizon > MAX_ERA_PREDICTION_HORIZON_MONTHS
-      || content.prediction.expiresAtMonth !== content.prediction.predictedStartMonth + content.prediction.toleranceMonths) {
-      return {
-        status: 'blocked' as const,
-        result: '纪元预言只能指向未来六个月内的可验证时间窗',
-        diff: { predictionHorizonMonths: horizon },
-      };
-    }
-  }
-  if (content.kind === 'request' && content.techniqueDemonstration) {
-    const request = content.techniqueDemonstration;
-    const projectCandidate = projectById(state, request.projectId);
-    const project = projectCandidate?.status === 'active'
-      && projectCandidate.kind === 'inquiry'
-      && projectCandidate.ownerId === person.id
-      && projectCandidate.desiredFunction === request.desiredFunction
-      ? projectCandidate
-      : undefined;
-    const repeated = state.world.past.some((event) => event.kind === 'action'
-      && event.status === 'completed'
-      && event.who === person.id
-      && event.action.kind === 'communicate'
-      && event.action.content.kind === 'request'
-      && event.action.content.techniqueDemonstration?.projectId === request.projectId
-      && event.action.audience.some((listenerId) => action.audience.includes(listenerId)))
-      || Boolean(project?.techniqueDemonstrationRequests?.some((basis) => (
-        basis.requesterId === person.id
-          && basis.teacherIds.some((listenerId) => action.audience.includes(listenerId))
-      )));
-    if (!project || request.requesterId !== person.id || request.expiresAtMonth < atMonth || repeated) {
-      return { status: 'blocked' as const, result: '技术示范请求没有绑定本人当前项目，或已向同一人提出过', diff: {} };
-    }
-  }
-  if (content.kind === 'request' && content.projectMaterialContribution) {
-    const request = content.projectMaterialContribution;
-    const projectCandidate = projectById(state, request.projectId);
-    const project = projectCandidate?.status === 'active'
-      && projectCandidate.ownerId === person.id
-      && projectSupportsMaterialContribution(projectCandidate)
-      && Boolean(projectCandidate.site)
-      ? projectCandidate
-      : undefined;
-    const demand = project?.materialDemands?.find((candidate) => candidate.materialId === request.materialId
-      && candidate.outstandingQuantity > 0);
-    const repeated = Boolean(project && demand && project.materialContributionRequests?.some((basis) => (
-      basis.materialId === request.materialId
-        && inspectProjectMaterialContributionRequest(
-          state,
-          project,
-          basis,
-          atMonth,
-          demand,
-        ).status === 'open'
-    )));
-    if (!project
-      || !demand
-      || request.version !== 'project-material-contribution-request-v1'
-      || request.requesterId !== person.id
-      || request.quantity <= 0
-      || request.quantity > demand.outstandingQuantity
-      || request.site.cellId !== project.site?.cellId
-      || request.site.z !== project.site?.z
-      || request.expiresAtMonth < atMonth
-      || repeated) {
-      return { status: 'blocked' as const, result: '材料贡献请求没有绑定当前项目缺口、固定工地，或已经提出过', diff: {} };
-    }
-  }
-  const predictionRange = content.kind === 'prediction'
-    ? new Set(cellsInRadius(person.position.cellId, 4))
-    : null;
-  const techniqueRequestRange = content.kind === 'request'
-    && content.techniqueDemonstration
-    && action.channel === 'gesture'
-    ? new Set(cellsInRadius(person.position.cellId, 4 + Math.floor(person.baselineCapacities.perception / 25)))
-    : null;
-  const materialRequestRange = content.kind === 'request'
-    && content.projectMaterialContribution
-    && action.channel === 'gesture'
-    ? new Set(cellsInRadius(person.position.cellId, 4 + Math.floor(person.baselineCapacities.perception / 25)))
-    : null;
-  const coordinationRange = coordinationFacilityMaterialId ? new Set(cellsInRadius(person.position.cellId, 2)) : null;
-  const reached = state.people.filter((candidate) => action.audience.includes(candidate.id)
-    && (predictionRange
-      ? predictionRange.has(candidate.position.cellId)
-      : techniqueRequestRange
-        ? techniqueRequestRange.has(candidate.position.cellId) && Math.abs(candidate.position.z - person.position.z) <= 2
-        : materialRequestRange
-          ? materialRequestRange.has(candidate.position.cellId) && Math.abs(candidate.position.z - person.position.z) <= 2
-        : coordinationRange
-          ? coordinationRange.has(candidate.position.cellId) && Math.abs(candidate.position.z - person.position.z) <= 2
-          : sameLocation(candidate, person)));
-  if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
-  const groundedConversation = validateGroundedConversation(state, person, action, reached);
-  if (groundedConversation.kind === 'blocked') {
-    return { status: 'blocked' as const, result: groundedConversation.reason, diff: { groundedConversationBlocked: true } };
-  }
-  const explicitTeaching = content.kind === 'claim'
-    && Boolean(content.factId)
-    && content.id.startsWith('teach:');
-  const teachingKnowledge = explicitTeaching
-    ? person.knowledge.find((fact) => fact.id === content.factId)
-    : undefined;
-  if (explicitTeaching
-    && (!teachingKnowledge
-      || (teachingKnowledge.kind !== 'technique' && teachingKnowledge.kind !== 'codebook')
-      || teachingKnowledge.confidence < 55)) {
-    return { status: 'blocked' as const, result: '本人尚未可靠掌握这项知识，不能作为教导传授', diff: {} };
-  }
-  if (explicitTeaching && reached.some((listener) => ageMonths(listener, atMonth) < MIN_TEACHING_AGE_MONTHS)) {
-    return { status: 'blocked' as const, result: '受教者尚未达到能够可靠学习技术的年龄', diff: {} };
-  }
-  if (content.kind === 'request' && content.techniqueDemonstration) {
-    const request = content.techniqueDemonstration;
-    const project = projectById(state, request.projectId);
-    if (project) {
-      project.techniqueDemonstrationRequests ??= [];
-      project.techniqueDemonstrationRequests.push({
-        version: 'project-technique-demonstration-request-v1',
-        requestEventId: eventId,
-        projectId: project.id,
-        requesterId: person.id,
-        teacherIds: reached.map((listener) => listener.id),
-        desiredFunction: request.desiredFunction,
-        expiresAtMonth: request.expiresAtMonth,
-        atMonth,
-      });
-    }
-  }
-  if (content.kind === 'request' && content.projectMaterialContribution) {
-    const request = content.projectMaterialContribution;
-    const project = projectById(state, request.projectId);
-    if (project) {
-      project.materialContributionRequests ??= [];
-      project.materialContributionRequests.push({
-        version: 'project-material-contribution-request-v1',
-        requestEventId: eventId,
-        projectId: project.id,
-        requesterId: person.id,
-        contributorIds: reached
-          .filter((listener) => inventoryQuantity(listener, request.materialId) > 0)
-          .map((listener) => listener.id),
-        materialId: request.materialId,
-        requestedQuantity: request.quantity,
-        site: { ...request.site },
-        expiresAtMonth: request.expiresAtMonth,
-        atMonth,
-      });
-    }
-  }
-  if (content.kind === 'prediction') {
-    if (state.eraPredictions.some((prediction) => prediction.id === content.id)) {
-      return { status: 'completed' as const, result: '这项纪元预言已经留下可验证记录', diff: { predictionId: content.id, duplicate: true } };
-    }
-    state.eraPredictions.push({
-      id: content.id,
-      predictorId: person.id,
-      audienceIds: reached.map((listener) => listener.id),
-      madeAtMonth: atMonth,
-      targetEpoch: content.prediction.targetEpoch,
-      predictedStartMonth: content.prediction.predictedStartMonth,
-      toleranceMonths: content.prediction.toleranceMonths,
-      expiresAtMonth: content.prediction.expiresAtMonth,
-      status: 'pending',
-      sourceEventIds: [eventId],
-    });
-    const forecastKnowledge = person.knowledge.find((fact) => fact.id === 'technique:era-forecast');
-    if (forecastKnowledge) {
-      forecastKnowledge.sourceEventIds = [...new Set([...forecastKnowledge.sourceEventIds, eventId])].slice(-24);
-    } else person.knowledge.push({
-      id: 'technique:era-forecast',
-      kind: 'technique',
-      summary: '综合天象、气温与纪元节律预测下一次纪元变化',
-      confidence: clamp(26 + (person.baselineCapacities.cognition + person.baselineCapacities.perception) / 6),
-      learnedAtMonth: atMonth,
-      sourceEventIds: [eventId],
-    });
-  }
-  const taughtAudienceIds: string[] = [];
-  const teachingConfidenceByAudience: Record<string, number> = {};
-  if (content.kind === 'claim' && content.factId) {
-    const speakerKnowledge = person.knowledge.find((fact) => fact.id === content.factId);
-    if (speakerKnowledge) {
-      for (const listener of reached) {
-        const reliableTeachingConfidence = explicitTeaching
-          ? Math.max(
-              coordinationFacilityMaterialId ? 66 : 60,
-              maternalFirstTeachingConfidence(state, person, listener),
-            )
-          : 0;
-        const known = listener.knowledge.find((fact) => fact.id === content.factId);
-        if (known) {
-          const nextConfidence = known.confidence + 6;
-          known.confidence = explicitTeaching
-            ? Math.max(reliableTeachingConfidence, known.confidence)
-            : speakerKnowledge.kind === 'technique' || speakerKnowledge.kind === 'codebook'
-              ? Math.min(54, nextConfidence)
-              : clamp(nextConfidence);
-          known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
-        } else listener.knowledge.push({
-          id: content.factId,
-          kind: speakerKnowledge.kind,
-          summary: speakerKnowledge.summary,
-          confidence: explicitTeaching
-            ? reliableTeachingConfidence
-            : speakerKnowledge.kind === 'technique' || speakerKnowledge.kind === 'codebook'
-              ? 46
-              : 36,
-          learnedAtMonth: atMonth,
-          sourceEventIds: [eventId],
-        });
-        const mineralObservation = parsedMineralObservation(content.factId);
-        if (mineralObservation && person.knownPlaces.some((place) => place.materialId === mineralObservation.materialId
-          && place.position.x === mineralObservation.position.x
-          && place.position.y === mineralObservation.position.y
-          && place.position.z === mineralObservation.position.z)) {
-          rememberMaterialPlace(
-            listener,
-            mineralObservation.materialId,
-            mineralObservation.position,
-            atMonth,
-            eventId,
-          );
-        }
-        if (explicitTeaching) {
-          taughtAudienceIds.push(listener.id);
-          teachingConfidenceByAudience[listener.id] = reliableTeachingConfidence;
-          if (reliableTeachingConfidence === 72) {
-            listener.maternalTeachingSourceEventIds = [...new Set([
-              ...(listener.maternalTeachingSourceEventIds ?? []),
-              eventId,
-            ])];
-          }
-        }
-      }
-    }
-  }
-  for (const listener of reached) {
-    // Grounded dialogue changes relationships through its actual turn; teaching only transfers knowledge.
-    const familiarity = groundedConversation.kind === 'valid'
-      ? groundedConversation.bondDelta
-      : explicitTeaching || action.content.kind === 'reject' || action.content.kind === 'withdraw' || action.content.kind === 'revoke' || action.content.kind === 'revoke-agreement'
-        ? 0
-        : 1;
-    const trust = groundedConversation.kind === 'valid' ? groundedConversation.trustDelta : 0;
-    if (familiarity !== 0 || trust !== 0) {
-      applyRelationEvidence(listener, person.id, eventId, { bond: familiarity, trust });
-      applyRelationEvidence(person, listener.id, eventId, { bond: familiarity, trust });
-    }
-  }
-  const deathNewsPersonIds: string[] = [];
-  if (groundedConversation.kind === 'valid'
-    && groundedConversation.conversation.topic === 'loss'
-    && groundedConversation.conversation.turn === 'opening') {
-    const deathSource = groundedConversation.conversation.sourceFactIds
-      .map((sourceId) => worldEventById(state, sourceId))
-      .find((source) => source?.kind === 'environment' && source.change === 'death');
-    const remains = deathSource
-      ? (state.world.remains ?? []).find((candidate) => candidate.deathEventId === deathSource.id)
-      : undefined;
-    if (remains) {
-      for (const listener of reached) {
-        if (learnOfDeath(state, listener, remains, atMonth, 'told', eventId)) deathNewsPersonIds.push(listener.id);
-      }
-    }
-  }
-  const assertedKnowledge = content.kind === 'claim' && content.factId ? person.knowledge.find((fact) => fact.id === content.factId) : undefined;
-  return {
-    status: 'completed' as const,
-    result: `${person.name}向${reached.map((item) => item.name).join('、')}表达：${'summary' in action.content ? action.content.summary : action.content.kind}`,
-    diff: {
-      audience: reached.map((item) => item.id),
-      content: action.content,
-      ...(assertedKnowledge ? { assertedFactId: assertedKnowledge.id, assertedFactSourceEventIds: assertedKnowledge.sourceEventIds } : {}),
-      ...(explicitTeaching && teachingKnowledge ? {
-        explicitTeaching: true,
-        teachingFactId: teachingKnowledge.id,
-        teachingKnowledgeKind: teachingKnowledge.kind,
-        teachingTeacherConfidence: teachingKnowledge.confidence,
-        taughtAudienceIds,
-        teachingReliableConfidence: Math.max(0, ...Object.values(teachingConfidenceByAudience)),
-        teachingConfidenceByAudience,
-      } : {}),
-      ...(coordinationFacilityMaterialId ? {
-        facilityMaterialId: coordinationFacilityMaterialId,
-        coordinationAudienceCapacity: reached.length,
-      } : {}),
-      ...(groundedConversation.kind === 'valid' ? {
-        groundedConversationBasisKey: groundedConversation.conversation.basisKey,
-        groundedConversationTopic: groundedConversation.conversation.topic,
-        groundedConversationTurn: groundedConversation.conversation.turn,
-        groundedConversationSourceFactIds: groundedConversation.conversation.sourceFactIds,
-        groundedConversationReferenceEventId: groundedConversation.conversation.referenceEventId,
-        groundedConversationStance: groundedConversation.conversation.stance,
-        relationTrustDelta: groundedConversation.trustDelta,
-        relationBondDelta: groundedConversation.bondDelta,
-      } : {}),
-      ...(deathNewsPersonIds.length ? {
-        deathNewsPersonIds,
-        deathNewsSourceEventIds: groundedConversation.kind === 'valid'
-          ? groundedConversation.conversation.sourceFactIds
-          : [],
-      } : {}),
-    },
-  };
-}
-
-type TechniqueLearningValidation =
-  | { kind: 'none' }
-  | { kind: 'blocked'; reason: string }
-  | {
-      kind: 'demonstration';
-      descriptor: TechniqueActionDescriptor;
-      project: ProjectState;
-      learner: PersonState;
-      demonstratorId: string;
-      requestEventId: string;
-    }
-  | {
-      kind: 'imitation';
-      descriptor: TechniqueActionDescriptor;
-      project: ProjectState;
-      basis: ProjectTechniqueDemonstrationBasis;
-      learner: PersonState;
-      confidenceBefore: number;
-    };
-
-function sameMaterials(first: MaterialId[], second: MaterialId[]): boolean {
-  return [...first].sort((left, right) => left - right).join(',')
-    === [...second].sort((left, right) => left - right).join(',');
-}
-
-function validateTechniqueLearningAction(
-  state: SimulationState,
-  person: PersonState,
-  action: Extract<PrimitiveAction, { kind: 'act' }>,
-  atMonth: number,
-): TechniqueLearningValidation {
-  if (!action.techniqueDemonstration && !action.techniqueImitation) return { kind: 'none' };
-  if (action.techniqueDemonstration && action.techniqueImitation) {
-    return { kind: 'blocked', reason: '同一操作不能同时作为示范和模仿' };
-  }
-  const descriptor = describeTechniqueAction(state, person, action);
-  if (!descriptor) return { kind: 'blocked', reason: '示范或模仿没有绑定当前可执行的权威物质操作' };
-
-  if (action.techniqueDemonstration) {
-    const ref = action.techniqueDemonstration;
-    if (descriptor.techniqueId !== ref.techniqueId) {
-      return { kind: 'blocked', reason: '实际操作与请求绑定的技术不一致' };
-    }
-    const requestEvent = worldEventById(state, ref.requestEventId);
-    const historicalRequest = requestEvent?.kind === 'action'
-      && requestEvent.status === 'completed'
-      && requestEvent.action.kind === 'communicate'
-      && requestEvent.action.content.kind === 'request'
-      && requestEvent.action.content.techniqueDemonstration
-      ? requestEvent.action.content.techniqueDemonstration
-      : null;
-    const requestProject = projectById(state, ref.projectId);
-    const pendingRequest = requestProject?.techniqueDemonstrationRequests?.find((candidate) => (
-      candidate.requestEventId === ref.requestEventId
-    ));
-    const request = historicalRequest ?? pendingRequest;
-    if (!request) {
-      return { kind: 'blocked', reason: '找不到已完成且有明确项目的技术示范请求' };
-    }
-    const requesterId = historicalRequest && requestEvent?.kind === 'action'
-      ? requestEvent.who
-      : pendingRequest?.requesterId;
-    const addressedTeacherIds = historicalRequest && requestEvent?.kind === 'action'
-      && requestEvent.action.kind === 'communicate'
-      ? requestEvent.action.audience
-      : pendingRequest?.teacherIds ?? [];
-    if (requesterId !== request.requesterId
-      || !addressedTeacherIds.includes(person.id)
-      || request.projectId !== ref.projectId
-      || request.requesterId !== ref.learnerId
-      || request.expiresAtMonth < atMonth) {
-      return { kind: 'blocked', reason: '技术示范请求的人员、项目或有效期不匹配' };
-    }
-    const projectCandidate = projectById(state, ref.projectId);
-    const project = projectCandidate?.status === 'active'
-      && projectCandidate.kind === 'inquiry'
-      && projectCandidate.ownerId === ref.learnerId
-      && projectCandidate.desiredFunction === request.desiredFunction
-      ? projectCandidate
-      : undefined;
-    const learnerCandidate = personById(state, ref.learnerId);
-    const learner = learnerCandidate && isAlive(learnerCandidate) ? learnerCandidate : undefined;
-    if (!project || !learner || !canObserveTechniqueDemonstration(learner, person)) {
-      return { kind: 'blocked', reason: '项目、学习者或可观察范围已经失效' };
-    }
-    if (project.techniqueDemonstrations?.some((basis) => basis.requestEventId === ref.requestEventId)) {
-      return { kind: 'blocked', reason: '这项请求已经得到一次真实示范' };
-    }
-    const teacherKnowledge = person.knowledge.find((fact) => fact.id === ref.techniqueId
-      && fact.kind === 'technique'
-      && fact.confidence >= 55);
-    if (!teacherKnowledge || !techniqueSupportsProjectFunction(ref.techniqueId, request.desiredFunction)) {
-      return { kind: 'blocked', reason: '示范者没有与项目功能匹配的可靠技术' };
-    }
-    return {
-      kind: 'demonstration',
-      descriptor,
-      project,
-      learner,
-      demonstratorId: person.id,
-      requestEventId: ref.requestEventId,
-    };
-  }
-
-  const ref = action.techniqueImitation!;
-  const projectCandidate = projectById(state, ref.projectId);
-  const project = projectCandidate?.status === 'active' && projectCandidate.ownerId === person.id
-    ? projectCandidate
-    : undefined;
-  const basis = project?.techniqueDemonstrations?.find((candidate) => (
-    candidate.demonstrationEventId === ref.demonstrationEventId
-      && candidate.techniqueId === ref.techniqueId
-      && candidate.learnerId === person.id
-  ));
-  if (!project || !basis) return { kind: 'blocked', reason: '模仿没有绑定本人项目中的真实示范' };
-  const tentative = person.knowledge.find((fact) => fact.id === ref.techniqueId
-    && fact.kind === 'technique'
-    && fact.sourceEventIds.includes(ref.demonstrationEventId));
-  if (!tentative || tentative.confidence >= 55) {
-    return { kind: 'blocked', reason: tentative ? '这项技术已经可靠，不再需要冒充首次模仿' : '本人尚未从该示范形成暂定经验' };
-  }
-  if (descriptor.techniqueId !== ref.techniqueId
-    || descriptor.operation !== basis.operation
-    || descriptor.outputMaterialId !== basis.outputMaterialId
-    || descriptor.toolMaterialId !== basis.toolMaterialId
-    || descriptor.targetMaterialId !== basis.targetMaterialId
-    || !sameMaterials(descriptor.inputMaterialIds, basis.inputMaterialIds)) {
-    return { kind: 'blocked', reason: '本人的复现没有保持示范中的输入、工具、目标与响应关系' };
-  }
-  return { kind: 'imitation', descriptor, project, basis, learner: person, confidenceBefore: tentative.confidence };
-}
-
-function applyTechniqueLearning(
-  validation: TechniqueLearningValidation,
-  outcome: { status: 'progressed' | 'completed' | 'blocked' | 'failed'; result: string; diff: Record<string, unknown> },
-  eventId: string,
-  atMonth: number,
-): void {
-  if (outcome.status !== 'completed') return;
-  if (validation.kind === 'demonstration') {
-    // Entity identity is carried by sourceKeys. Event lineage stays resolvable:
-    // the request and this real response are both committed to world.past.
-    const sourceFactIds = [validation.requestEventId, eventId];
-    let learned = validation.learner.knowledge.find((fact) => fact.id === validation.descriptor.techniqueId);
-    const confidenceBefore = learned?.confidence ?? 0;
-    if (learned) {
-      learned.confidence = Math.min(54, Math.max(46, learned.confidence));
-      learned.sourceEventIds = [...new Set([...learned.sourceEventIds, ...sourceFactIds])].slice(-24);
-    } else {
-      learned = {
-        id: validation.descriptor.techniqueId,
-        kind: 'technique',
-        summary: validation.descriptor.summary,
-        confidence: 46,
-        learnedAtMonth: atMonth,
-        sourceEventIds: sourceFactIds.slice(-24),
-      };
-      validation.learner.knowledge.push(learned);
-    }
-    const basis: ProjectTechniqueDemonstrationBasis = {
-      version: 'project-technique-demonstration-basis-v1',
-      projectId: validation.project.id,
-      desiredFunction: validation.project.desiredFunction,
-      learnerId: validation.learner.id,
-      demonstratorId: validation.demonstratorId,
-      requestEventId: validation.requestEventId,
-      demonstrationEventId: eventId,
-      techniqueId: validation.descriptor.techniqueId,
-      operation: validation.descriptor.operation,
-      inputMaterialIds: [...validation.descriptor.inputMaterialIds],
-      ...(validation.descriptor.toolMaterialId !== undefined
-        ? { toolMaterialId: validation.descriptor.toolMaterialId }
-        : {}),
-      ...(validation.descriptor.targetMaterialId !== undefined
-        ? { targetMaterialId: validation.descriptor.targetMaterialId }
-        : {}),
-      outputMaterialId: validation.descriptor.outputMaterialId,
-      sourceKeys: [...validation.descriptor.sourceKeys],
-      sourceFactIds,
-      initialConfidence: learned.confidence,
-      atMonth,
-    };
-    validation.project.techniqueDemonstrations ??= [];
-    validation.project.techniqueDemonstrations.push(basis);
-    outcome.diff = {
-      ...outcome.diff,
-      techniqueLearningStage: 'demonstration',
-      techniqueId: validation.descriptor.techniqueId,
-      techniqueProjectId: validation.project.id,
-      techniqueLearnerId: validation.learner.id,
-      techniqueRequestEventId: validation.requestEventId,
-      techniqueDemonstratorId: basis.demonstratorId,
-      techniqueSourceKeys: [...validation.descriptor.sourceKeys],
-      techniqueConfidenceBefore: confidenceBefore,
-      techniqueConfidenceAfter: learned.confidence,
-    };
-    return;
-  }
-  if (validation.kind === 'imitation') {
-    const confidenceAfter = validation.learner.knowledge
-      .find((fact) => fact.id === validation.descriptor.techniqueId)?.confidence ?? 0;
-    outcome.diff = {
-      ...outcome.diff,
-      techniqueLearningStage: 'imitation',
-      techniqueId: validation.descriptor.techniqueId,
-      techniqueProjectId: validation.project.id,
-      techniqueLearnerId: validation.basis.learnerId,
-      techniqueDemonstrationEventId: validation.basis.demonstrationEventId,
-      techniqueImitationSourceKeys: [...validation.descriptor.sourceKeys],
-      techniqueConfidenceBefore: validation.confidenceBefore,
-      techniqueConfidenceAfter: confidenceAfter,
-    };
-  }
 }
 
 export function executeIntentAction(

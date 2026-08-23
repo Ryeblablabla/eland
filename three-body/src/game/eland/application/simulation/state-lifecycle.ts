@@ -15,6 +15,10 @@ import {
   emptyMechanicalPowerWorldState,
 } from '../../domain/mechanical-power';
 import { initialEraSchedule } from '../../domain/monthly-processes';
+import {
+  copyPhysicalStructures,
+  derivePhysicalStructureIndex,
+} from '../../domain/physical-structure-index';
 import type {
   EnvironmentFact,
   EvolutionReport,
@@ -35,7 +39,6 @@ import {
 } from '../../domain/trait';
 import { normalizeAnimalEcologies } from '../../domain/wildlife-ecology';
 import { inferNamingIdentity } from '../../naming';
-import { deriveObservations, updateDevelopmentObservation } from '../../projection/derived-observations';
 import {
   hydrateWorld,
   surfaceStandingPosition,
@@ -46,6 +49,7 @@ import {
   generateVoxelWorld,
   mechanicalPowerWorldForSeed,
 } from '../../world/generator';
+import type { ObservationProjector } from './observation-projector';
 import { clamp, copyState } from './state-utils';
 
 export const MAX_SIMULATION_YEARS = 1_000;
@@ -147,7 +151,11 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
   return person;
 }
 
-export function createInitialState(seed = 17, inputConfig: Partial<SimulationConfig> = {}): SimulationState {
+export function createInitialState(
+  observationProjector: ObservationProjector,
+  seed = 17,
+  inputConfig: Partial<SimulationConfig> = {},
+): SimulationState {
   const config = createDefaultSimulationConfig(inputConfig);
   const generated = generateVoxelWorld(seed);
   const profiles = chooseProfiles(seed, config.civilizationNo, config.characterIds);
@@ -210,7 +218,10 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
     derived: { practices: [], institutions: [], milestones: [], regions: [], structures: [] },
     lastStep: [],
   };
-  updateDevelopmentObservation(state);
+  const physicalStructureIndex = derivePhysicalStructureIndex(state);
+  state.world.physicalStructureIndex = physicalStructureIndex;
+  state.derived.structures = copyPhysicalStructures(physicalStructureIndex);
+  observationProjector.project(state, 'development-only');
   return state;
 }
 
@@ -221,7 +232,10 @@ export function createInitialState(seed = 17, inputConfig: Partial<SimulationCon
  * independently mutable snapshot after the call. Public restore paths use
  * `restoreSimulationState`, which preserves their copy-in isolation.
  */
-export function adoptSimulationState(input: SimulationState): SimulationState {
+export function adoptSimulationState(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+): SimulationState {
   const version = Number((input as { schemaVersion?: number }).schemaVersion);
   if (version !== 17) throw new Error('当前开发版本只接受 schemaVersion 17；请新建文明运行');
   const state = input;
@@ -324,25 +338,52 @@ export function adoptSimulationState(input: SimulationState): SimulationState {
       ? event.toZ
       : surfaceStandingPosition(state.world.grid, event.toCellId)?.z ?? event.fromZ;
   }
+  // Legacy intents may lack agreementId. Resolve their two source facts through
+  // an active-agreement index instead of scanning every agreement per intent.
+  const activeAgreementsByProposalEventId = new Map<string, typeof state.agreements>();
+  for (const agreement of state.agreements) {
+    if (agreement.status !== 'active' || !agreement.responseEventId) continue;
+    const agreements = activeAgreementsByProposalEventId.get(agreement.proposalEventId) ?? [];
+    agreements.push(agreement);
+    activeAgreementsByProposalEventId.set(agreement.proposalEventId, agreements);
+  }
   for (const intent of state.intents) {
-    if (intent.agreementId) continue;
-    const agreement = state.agreements.find((candidate) => candidate.status === 'active'
-      && (intent.sourceFactIds ?? []).includes(candidate.proposalEventId)
-      && Boolean(candidate.responseEventId && (intent.sourceFactIds ?? []).includes(candidate.responseEventId)));
+    // Completed historical intents may accumulate the same proposal/response
+    // evidence through later decisions without ever having been an obligation.
+    // Only a still-executable legacy intent needs migration; newly created
+    // obligation intents persist agreementId at creation time.
+    if (intent.agreementId || (intent.status !== 'active' && intent.status !== 'suspended')) continue;
+    const sourceFactIds = intent.sourceFactIds ?? [];
+    let agreement: SimulationState['agreements'][number] | undefined;
+    for (const sourceFactId of sourceFactIds) {
+      agreement = activeAgreementsByProposalEventId.get(sourceFactId)
+        ?.find((candidate) => candidate.responseEventId !== undefined
+          && sourceFactIds.includes(candidate.responseEventId));
+      if (agreement) break;
+    }
     if (agreement) intent.agreementId = agreement.id;
   }
-  state.derived = deriveObservations(state);
-  updateDevelopmentObservation(state);
+  const physicalStructureIndex = derivePhysicalStructureIndex(state);
+  state.world.physicalStructureIndex = physicalStructureIndex;
+  state.derived = { ...state.derived, structures: copyPhysicalStructures(physicalStructureIndex) };
+  observationProjector.project(state, 'full');
   primeEventIndex(state);
   return state;
 }
 
-export function restoreSimulationState(input: SimulationState): SimulationState {
-  return adoptSimulationState(structuredClone(input));
+export function restoreSimulationState(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+): SimulationState {
+  return adoptSimulationState(observationProjector, structuredClone(input));
 }
 
-export function resetSimulation(seed = 17, config: Partial<SimulationConfig> = {}): SimulationState {
-  return createInitialState(seed, config);
+export function resetSimulation(
+  observationProjector: ObservationProjector,
+  seed = 17,
+  config: Partial<SimulationConfig> = {},
+): SimulationState {
+  return createInitialState(observationProjector, seed, config);
 }
 
 export function buildEvolutionReport(finalState: SimulationState, checkpoints: SimulationState[] = []): EvolutionReport {

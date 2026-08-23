@@ -29,6 +29,9 @@ function proposalSubject(content: Extract<RepresentationInput, { kind: 'request'
   if (content.kind === 'request' && content.techniqueDemonstration) {
     return `request:technique:${content.techniqueDemonstration.projectId}:${content.techniqueDemonstration.desiredFunction}`;
   }
+  if (content.kind === 'request' && content.projectKnowledgeRequest) {
+    return `request:project-knowledge:${content.projectKnowledgeRequest.projectId}:${content.projectKnowledgeRequest.outputMaterialId}`;
+  }
   if (content.kind === 'request' && content.projectMaterialContribution) {
     const request = content.projectMaterialContribution;
     return `request:project-material:${request.projectId}:${request.materialId}`;

@@ -5,6 +5,7 @@ import type {
   ProjectMaterialDemand,
   ProjectReservation,
 } from '../../domain/project';
+import { canPersonPlanToCollectProjectMaterialDrop } from '../../domain/project-material-request';
 import { cellX, cellY, findStandingPath } from '../../world/grid';
 import type { ProjectStep } from './project-step';
 
@@ -83,7 +84,8 @@ export function nearestDrop(
 ): DropState | undefined {
   const wanted = new Set(materialIds);
   return drops
-    .filter((drop) => wanted.has(drop.materialId))
+    .filter((drop) => wanted.has(drop.materialId)
+      && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, state.clock.elapsedMonths + 1))
     .flatMap((drop) => {
       const path = findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: drop.z });
       return path.length ? [{ drop, pathLength: path.length }] : [];
@@ -99,7 +101,9 @@ export function nearestRememberedDrop(
   const wanted = new Set(materialIds);
   const remembered = person.knownPlaces.filter((place) => wanted.has(place.materialId));
   return state.world.drops
-    .filter((drop) => drop.quantity > 0 && wanted.has(drop.materialId))
+    .filter((drop) => drop.quantity > 0
+      && wanted.has(drop.materialId)
+      && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, state.clock.elapsedMonths + 1))
     .filter((drop) => remembered.some((place) => place.materialId === drop.materialId
       && place.position.x === cellX(drop.cellId)
       && place.position.y === cellY(drop.cellId)

@@ -6,7 +6,10 @@ import type { ProjectFunction, ProjectState } from '../../domain/project';
 import { shelterGeometryAt } from '../../domain/structure';
 import { worldEventById } from '../../domain/event-index';
 import { cellsInRadius, voxelAt } from '../../world/grid';
-import { mechanicalPowerCompletionEvidence } from '../mechanical-power-options';
+import {
+  mechanicalPowerCompletionEvidence,
+  mechanicalPowerMaintenanceCompletionEvidence,
+} from '../mechanical-power-options';
 
 export function completedFunctionMaterialIds(
   project: Pick<ProjectState, 'desiredFunction'>,
@@ -214,6 +217,9 @@ function verifiedProductionToolEvidenceIds(state: SimulationState, project: Proj
 }
 
 export function projectFunctionSatisfied(state: SimulationState, project: ProjectState): boolean {
+  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+    return mechanicalPowerMaintenanceCompletionEvidence(state, project).length > 0;
+  }
   if (project.desiredFunction === 'water-powered-crop-processing') {
     return mechanicalPowerCompletionEvidence(state, project).length > 0;
   }
@@ -270,6 +276,9 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
 }
 
 export function projectCompletionEvidence(state: SimulationState, project: ProjectState): string[] {
+  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+    return mechanicalPowerMaintenanceCompletionEvidence(state, project);
+  }
   if (project.desiredFunction === 'water-powered-crop-processing') {
     return mechanicalPowerCompletionEvidence(state, project);
   }

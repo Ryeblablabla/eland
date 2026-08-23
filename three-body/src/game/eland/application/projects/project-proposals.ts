@@ -12,8 +12,8 @@ import type {
 import { shelterGeometryAt } from '../../domain/structure';
 import { worldEventById } from '../../domain/event-index';
 import { inspectProjectMaterialContributionRequest } from '../../domain/project-material-request';
+import { inspectProjectKnowledgeRequest } from '../../domain/project-knowledge-request';
 import {
-  cellId,
   cellX,
   cellY,
   findStandingPath,
@@ -30,7 +30,10 @@ import {
   type ProjectPressureView,
 } from '../project-pressure';
 import { buildLocalMaterialEvidence } from '../local-material-evidence';
-import { mechanicalPowerProposalCandidate } from '../mechanical-power-options';
+import {
+  mechanicalPowerMaintenanceProposalCandidate,
+  mechanicalPowerProposalCandidate,
+} from '../mechanical-power-options';
 import {
   completedFunctionMaterialIds,
   cultivationSurfaceMaterials,
@@ -110,7 +113,11 @@ function projectHasValidRequestForPerson(
       && request.expiresAtMonth >= atMonth
       && !project.techniqueDemonstrations?.some((basis) => basis.requestEventId === request.requestEventId)
   ));
-  return Boolean(materialRequest || techniqueRequest);
+  const knowledgeRequest = project.knowledgeRequests?.some((request) => (
+    request.listenerIds.includes(person.id)
+      && inspectProjectKnowledgeRequest(state, project, request, atMonth) === 'open'
+  ));
+  return Boolean(materialRequest || techniqueRequest || knowledgeRequest);
 }
 
 export function personHasProjectLink(
@@ -333,6 +340,41 @@ export function deriveProjectProposals(
     targetKnowledgeId: durableKnowledge.id,
   }, pressureView, knowledgeBasis));
 
+  const maintenanceCandidate = mechanicalPowerMaintenanceProposalCandidate(state, person, visibleCells);
+  if (maintenanceCandidate && !projectsOwnedBy(state, person.id).some((project) => (
+    project.status === 'active' || project.status === 'completed'
+  ) && project.desiredFunction === 'restore-water-powered-crop-processing'
+    && project.mechanicalPowerNetworkId === maintenanceCandidate.network.id
+    && project.mechanicalPowerFaultEventId === maintenanceCandidate.faultEvent.id)) {
+    const subject = {
+      need: 'mechanical-power-capability' as const,
+      desiredFunction: 'restore-water-powered-crop-processing' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+    };
+    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'mechanical-power-capability', {
+      kind: 'production',
+      desiredFunction: 'restore-water-powered-crop-processing',
+      summary: '诊断停转机械网络并用故障后新制备件恢复真实负载作业',
+      beneficiaryIds: [person.id],
+      site: {
+        cellId: maintenanceCandidate.contributionSite.cellId,
+        z: maintenanceCandidate.contributionSite.z,
+      },
+      mechanicalPowerPlan: structuredClone(maintenanceCandidate.plan),
+      mechanicalPowerPlanKey: maintenanceCandidate.planKey,
+      mechanicalPowerNetworkId: maintenanceCandidate.network.id,
+      mechanicalPowerFaultEventId: maintenanceCandidate.faultEvent.id,
+    }, pressureView, {
+      ...basis,
+      sourceFactIds: [...new Set([
+        maintenanceCandidate.faultEvent.id,
+        ...maintenanceCandidate.diagnosisSourceEventIds,
+      ])],
+    }));
+  }
+
   if (!projectsOwnedBy(state, person.id).some((project) => project.ownerId === person.id
     && project.status === 'completed'
     && project.desiredFunction === 'water-powered-crop-processing')) {
@@ -351,8 +393,8 @@ export function deriveProjectProposals(
         summary: '在本人观察的流水旁，以三处可见、可达且有承托的空位试建最短动力磨坊',
         beneficiaryIds: [person.id],
         site: {
-          cellId: cellId(mechanicalCandidate.plan.loadPosition.x, mechanicalCandidate.plan.loadPosition.y),
-          z: mechanicalCandidate.plan.loadPosition.z,
+          cellId: mechanicalCandidate.contributionSite.cellId,
+          z: mechanicalCandidate.contributionSite.z,
         },
         mechanicalPowerPlan: structuredClone(mechanicalCandidate.plan),
         mechanicalPowerPlanKey: mechanicalCandidate.planKey,
@@ -550,13 +592,15 @@ export function deriveProjectProposals(
       && !hasFacility(Material.Kiln, Material.Foundry, Material.Smithy),
     'construction',
   );
+  const metallurgySite = knownFacilitySite(state, person);
   pushDevelopmentProposal(
     'high-heat-capability',
     'brick-firing',
     '在固定窑炉中反复烧制砖料，为更复杂建筑准备耐火材料',
-    hasOwn(Material.Clay) && hasFacility(Material.Kiln, Material.Foundry),
+    Boolean(metallurgySite && hasOwn(Material.Clay) && hasFacility(Material.Kiln, Material.Foundry)),
+    'production',
+    metallurgySite,
   );
-  const metallurgySite = knownFacilitySite(state, person);
   pushDevelopmentProposal('alloy-capability', 'copper-charge', '在固定窑炉汇合铜矿与木炭，配成可冶炼的铜料',
     Boolean(metallurgySite && hasObserved(Material.CopperOre)), 'production', metallurgySite);
   pushDevelopmentProposal('alloy-capability', 'copper-smelting', '在固定高温设施中从铜料得到金属铜',

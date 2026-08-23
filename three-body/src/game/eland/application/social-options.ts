@@ -42,6 +42,11 @@ import {
   sharedLivingReturnTarget,
   SHARED_LIVING_RADIUS,
 } from '../domain/shared-living';
+import {
+  conversationalRendezvous,
+  peopleWithinVoiceRange,
+  positionsWithinVoiceRange,
+} from '../domain/social-space';
 
 function relationTo(person: PersonState, otherId: string) {
   return person.relations.find((relation) => relation.personId === otherId);
@@ -129,14 +134,16 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const response = { kind: 'communicate' as const, content: accept
     ? { id: representationId, kind: 'accept' as const, referenceId }
     : { id: representationId, kind: 'reject' as const, referenceId }, audience: [other.id], channel: 'voice' as const };
-  const together = sameLocation(person, other);
-  const distance = Math.max(0, findStandingPath(state.world.grid, person.position, other.position).length - 1);
+  const together = positionsWithinVoiceRange(person.position, other.position);
+  const rendezvous = conversationalRendezvous(state, person, other);
+  const target = rendezvous?.position ?? other.position;
+  const distance = Math.max(0, (rendezvous?.path.length ?? 1) - 1);
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
     summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : kind === 'permission' ? '物质取用许可' : kind === 'decision-rule' ? '共同决策规则' : '临时协调授权提议'}`,
     reason: '对方刚刚提出了一项需要回应的社会请求',
     goal: { kind: 'representation-made', representationId },
-    nextAction: together ? response : { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
+    nextAction: together ? response : { kind: 'move', toCellId: target.cellId, toZ: target.z },
     ...(!together ? { completionAction: response } : {}),
     target: { kind: 'person', personId: other.id },
     estimatedDuration: together ? 'one-month' : 'several-months',
@@ -157,20 +164,23 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
   const summary = joining
     ? `${accept ? '接受' : '拒绝'}加入“${state.collectives.find((collective) => collective.id === proposal.collectiveId)?.purposeSummary ?? '这个共同体'}”`
     : `${accept ? '同意' : '反对'}${candidate?.name ?? '候选人'}加入共同体`;
+  const together = positionsWithinVoiceRange(person.position, proposer.position);
+  const rendezvous = conversationalRendezvous(state, person, proposer);
+  const target = rendezvous?.position ?? proposer.position;
   return {
     id: `${accept ? 'accept' : 'reject'}-membership:${referenceId}`,
     summary,
     reason: '共同体成员扩张需要候选人与所有现有成员分别作出有来源的回应',
     goal: { kind: 'representation-made', representationId },
-    nextAction: sameLocation(person, proposer) ? {
+    nextAction: together ? {
       kind: 'communicate',
       content: accept
         ? { id: representationId, kind: 'accept', referenceId, summary }
         : { id: representationId, kind: 'reject', referenceId, summary },
       audience: [proposer.id],
       channel: 'voice',
-    } : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
-    ...(!sameLocation(person, proposer) ? {
+    } : { kind: 'move', toCellId: target.cellId, toZ: target.z },
+    ...(!together ? {
       completionAction: {
         kind: 'communicate' as const,
         content: accept
@@ -180,8 +190,8 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
       },
     } : {}),
     target: { kind: 'person', personId: proposer.id },
-    estimatedDuration: sameLocation(person, proposer) ? 'one-month' : 'several-months',
-    estimatedMonths: sameLocation(person, proposer) ? 1 : 2, risks: [], domain: 'social',
+    estimatedDuration: together ? 'one-month' : 'several-months',
+    estimatedMonths: together ? 1 : Math.max(1, Math.ceil(((rendezvous?.path.length ?? 1) - 1) / RULE_ACTION_TICKS_PER_MONTH)), risks: [], domain: 'social',
     sourceFactIds: [...agreement.sourceEventIds],
   };
 }
@@ -194,6 +204,7 @@ export function buildSocialOptions(
 ): ActionOption[] {
   const options: ActionOption[] = [];
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
+  const conversationalPeople = peopleWithinVoiceRange(person, visiblePeople);
   options.push(...buildGroundedConversationOptions(state, person, visiblePeople, atMonth));
   const personCollectives = activeCollectivesFor(state, person.id);
   const recentJointProject = [...state.projects].reverse().find((project) => {
@@ -339,7 +350,7 @@ export function buildSocialOptions(
     && agreement.partyIds.includes(person.id))) {
     const partnerId = companionship.partyIds.find((candidate) => candidate !== person.id);
     const partner = partnerId ? personById(state, partnerId) : undefined;
-    if (partner && sameLocation(person, partner)) {
+    if (partner && positionsWithinVoiceRange(person.position, partner.position)) {
       const representationId = `withdraw-companion:${atMonth}:${companionship.id}:${person.id}`;
       options.push({
         id: representationId,
@@ -506,7 +517,7 @@ export function buildSocialOptions(
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
-    const localMember = localPeople.find((other) => memberIds.has(other.id));
+    const localMember = conversationalPeople.find((other) => memberIds.has(other.id));
     const relations = activeMemberIds(state, collective)
       .filter((id) => id !== person.id)
       .map((id) => relationTo(person, id));
@@ -559,7 +570,7 @@ export function buildSocialOptions(
     }
     const allMembersHere = activeMemberIds(state, collective).every((id) => {
       const member = personById(state, id);
-      return Boolean(member && sameLocation(member, person));
+      return Boolean(member && positionsWithinVoiceRange(member.position, person.position));
     });
     const activeMembers = activeMemberIds(state, collective)
       .flatMap((id) => personById(state, id) ?? []);
@@ -655,7 +666,7 @@ export function buildSocialOptions(
         });
       }
     }
-    const candidate = allMembersHere ? localPeople.find((other) => {
+    const candidate = allMembersHere ? conversationalPeople.find((other) => {
       if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
       const relation = relationTo(person, other.id);
       const fulfilledTogether = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'fulfilled'
@@ -739,7 +750,7 @@ export function buildSocialOptions(
         risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
       });
     }
-    if (person.id === permission.grantorId && grantee && sameLocation(grantee, person)) {
+    if (person.id === permission.grantorId && grantee && positionsWithinVoiceRange(grantee.position, person.position)) {
       const representationId = `revoke-permission:${atMonth}:${permission.id}`;
       options.push({
         id: representationId,
@@ -766,7 +777,7 @@ export function buildSocialOptions(
     const acuteConditionSources = person.conditions
       .filter((condition) => condition.stage >= 3)
       .flatMap((condition) => condition.sourceEventIds);
-    if (!other || !sameLocation(person, other) || (!adverseRelationship && !severeBodyState && !acuteConditionSources.length)) continue;
+    if (!other || !positionsWithinVoiceRange(person.position, other.position) || (!adverseRelationship && !severeBodyState && !acuteConditionSources.length)) continue;
     const representationId = `withdraw-company-assist:${atMonth}:${agreement.id}:${person.id}`;
     options.push({
       id: representationId,
@@ -791,7 +802,7 @@ export function buildSocialOptions(
     });
   }
 
-  for (const other of localSocialAttention(person, localPeople, atMonth)) {
+  for (const other of localSocialAttention(person, conversationalPeople, atMonth)) {
     const relation = relationTo(person, other.id);
     const relationshipSourceFactIds = groundedRelationSourceIds(state, person, other.id);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);

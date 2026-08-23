@@ -11,7 +11,7 @@ import {
   type PersonState,
 } from '../domain/person';
 import { ageMonths, MIN_TEACHING_AGE_MONTHS } from '../domain/person';
-import type { DecisionContext, DropState, EnvironmentFact, SimulationState } from '../domain/model';
+import type { DecisionContext, DropState, SimulationState } from '../domain/model';
 import {
   acceptedExchangeFor,
   exchangeTermFulfilled,
@@ -29,6 +29,7 @@ import {
   neighbors4,
   surfaceStandingPosition,
   surfaceMaterial,
+  standingPathMovementTicks,
   topPosition,
   topZ,
   voxelAt,
@@ -52,7 +53,11 @@ import {
   knowsReliableNoResponse,
   voxelNoResponseFactId,
 } from '../domain/interaction-knowledge';
-import { worldEventById } from '../domain/event-index';
+import {
+  eraForecastTransitionFacts,
+  recentEraForecastEnvironmentFacts,
+  worldEventById,
+} from '../domain/event-index';
 import { animalSpecies, isAnimalAlive, type AnimalState } from '../domain/animal';
 import {
   buildProjectOptions,
@@ -79,7 +84,11 @@ import {
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
 import { intentById, personById } from '../domain/state-index';
-import { buildWaterCurrentObservationOptions } from './mechanical-power-options';
+import {
+  buildMechanicalPowerServiceOptions,
+  buildWaterCurrentObservationOptions,
+} from './mechanical-power-options';
+import { MECHANICAL_POWER_OPERATION_TECHNIQUE_ID } from '../domain/mechanical-power';
 import {
   bestHuntingToolStack,
   bestProductionToolStack,
@@ -91,12 +100,37 @@ import { perceivedKinshipRisk } from './reproductive-risk';
 import { knowsDeath, remainsForPerson, type HumanRemainsState } from '../domain/mortuary';
 import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-options';
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
+import { canPersonPlanToCollectProjectMaterialDrop } from '../domain/project-material-request';
+import { openProjectKnowledgeRequestsFor } from '../domain/project-knowledge-request';
+import {
+  conversationalRendezvous,
+  crowdingReliefTarget,
+  peopleWithinVoiceRange,
+  positionsWithinVoiceRange,
+} from '../domain/social-space';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
 }
 
 const MAX_LOCAL_INTERACTION_OPTIONS = 3;
+
+export function projectKnowledgeTeachingOpportunity(
+  state: SimulationState,
+  teacher: PersonState,
+  atMonth: number,
+) {
+  return openProjectKnowledgeRequestsFor(state, teacher, atMonth).flatMap((requested) => {
+    if (!positionsWithinVoiceRange(teacher.position, requested.requester.position)
+      || ageMonths(requested.requester, atMonth) < MIN_TEACHING_AGE_MONTHS) return [];
+    return teacher.knowledge
+      .filter((fact) => fact.kind === 'technique'
+        && fact.confidence >= 55
+        && techniqueOutputMaterialId(fact.id) === requested.request.outputMaterialId)
+      .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))
+      .map((fact) => ({ ...requested, fact, learner: requested.requester }));
+  })[0];
+}
 
 function tangibleInventoryStacks(person: PersonState, excludedStackId?: string): PersonState['inventory'] {
   return person.inventory
@@ -263,6 +297,8 @@ function semanticAction(action: PrimitiveAction): unknown {
   if (techniqueDemonstration) delete techniqueDemonstration.expiresAtMonth;
   const projectContribution = content.projectMaterialContribution as Record<string, unknown> | undefined;
   if (projectContribution) delete projectContribution.expiresAtMonth;
+  const projectKnowledgeRequest = content.projectKnowledgeRequest as Record<string, unknown> | undefined;
+  if (projectKnowledgeRequest) delete projectKnowledgeRequest.expiresAtMonth;
   return normalized;
 }
 
@@ -396,19 +432,58 @@ function withPlanning(
   pathCache: Map<string, ReturnType<typeof findStandingPath>>,
 ): ActionOption | null {
   if (isFailureRetryCoolingDown(state, person, option, atMonth, failureRetryContext)) return null;
+  let plannedOption = option;
+  if (option.nextAction.kind === 'communicate'
+    && option.nextAction.channel === 'voice'
+    && option.nextAction.content.kind !== 'prediction'
+    && option.target?.kind === 'person') {
+    const target = personById(state, option.target.personId);
+    if (!target || !isAlive(target)) return null;
+    if (!positionsWithinVoiceRange(person.position, target.position)) {
+      const rendezvous = conversationalRendezvous(state, person, target);
+      if (!rendezvous) return null;
+      plannedOption = {
+        ...option,
+        nextAction: {
+          kind: 'move',
+          toCellId: rendezvous.position.cellId,
+          toZ: rendezvous.position.z,
+        },
+        completionAction: option.nextAction,
+      };
+    }
+  } else if (option.nextAction.kind === 'move'
+    && option.completionAction?.kind === 'communicate'
+    && option.target?.kind === 'person') {
+    const target = personById(state, option.target.personId);
+    if (!target || !isAlive(target)) return null;
+    const rendezvous = conversationalRendezvous(state, person, target);
+    if (!rendezvous) return null;
+    if (positionsWithinVoiceRange(person.position, target.position)) {
+      const { completionAction, ...withoutCompletion } = option;
+      plannedOption = { ...withoutCompletion, nextAction: completionAction };
+    } else plannedOption = {
+      ...option,
+      nextAction: {
+        kind: 'move',
+        toCellId: rendezvous.position.cellId,
+        toZ: rendezvous.position.z,
+      },
+    };
+  }
   let estimatedMonths = 1;
-  if (option.nextAction.kind === 'move') {
-    const cacheKey = `${option.nextAction.toCellId}:${option.nextAction.toZ ?? ''}`;
+  if (plannedOption.nextAction.kind === 'move') {
+    const cacheKey = `${plannedOption.nextAction.toCellId}:${plannedOption.nextAction.toZ ?? ''}`;
     let path = pathCache.get(cacheKey);
     if (!path) {
       path = findStandingPath(state.world.grid, person.position, {
-        cellId: option.nextAction.toCellId,
-        ...(option.nextAction.toZ !== undefined ? { z: option.nextAction.toZ } : {}),
+        cellId: plannedOption.nextAction.toCellId,
+        ...(plannedOption.nextAction.toZ !== undefined ? { z: plannedOption.nextAction.toZ } : {}),
       });
       pathCache.set(cacheKey, path);
     }
     if (!path.length) return null;
-    estimatedMonths = Math.max(1, Math.ceil((path.length - 1) / PLANNING_TICKS_PER_MONTH));
+    estimatedMonths = Math.max(1, Math.ceil(standingPathMovementTicks(state.world.grid, path) / PLANNING_TICKS_PER_MONTH));
   }
   const risks: string[] = [];
   if (person.body.hydration - estimatedMonths * 1.6 < 18) risks.push('途中可能脱水');
@@ -416,7 +491,15 @@ function withPlanning(
   const inferredDomain = option.nextAction.kind === 'communicate' || option.target?.kind === 'person' || option.goal.kind === 'near-person'
     ? 'social'
     : 'strategic';
-  return { ...option, domain: option.domain ?? inferredDomain, estimatedMonths, risks };
+  return {
+    ...plannedOption,
+    domain: plannedOption.domain ?? inferredDomain,
+    estimatedDuration: plannedOption.nextAction.kind === 'move'
+      ? estimatedMonths <= 1 ? 'one-month' : 'several-months'
+      : plannedOption.estimatedDuration,
+    estimatedMonths,
+    risks,
+  };
 }
 
 function decisionOptionPriority(option: ActionOption): number {
@@ -583,6 +666,21 @@ function buildOptions(
   }
   const visible = new Set(visibleCells);
   const localPeople = visiblePeople.filter((other) => sameLocation(other, person));
+  const conversationalPeople = peopleWithinVoiceRange(person, visiblePeople);
+  const crowdingRelief = planningStage === 'adult' ? crowdingReliefTarget(state, person) : null;
+  if (crowdingRelief) options.push({
+    id: `relieve-crowding:${crowdingRelief.position.cellId}:${crowdingRelief.position.z}`,
+    summary: '挪到旁边较空的位置',
+    reason: '当前位置挤着太多人，附近有能够站立且更宽松的空位',
+    goal: { kind: 'at-cell', cellId: crowdingRelief.position.cellId },
+    nextAction: {
+      kind: 'move',
+      toCellId: crowdingRelief.position.cellId,
+      toZ: crowdingRelief.position.z,
+    },
+    estimatedDuration: 'one-month',
+    sourceFactIds: [],
+  });
   const foodStack = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
   if (foodStack && person.body.nutrition < 88) options.push({
     id: `eat:${foodStack.id}`,
@@ -718,10 +816,7 @@ function buildOptions(
     const skill = forecastCapacity / 2;
     const uncertainty = Math.max(3, Math.round(17 - (skill - 42) * 0.22));
     const noise = Math.round((seededFraction(state.seed, `era-forecast:${atMonth}:${person.id}:${state.civilization.era.sequence}`) * 2 - 1) * uncertainty);
-    const transitions = state.world.past
-      .filter((event): event is EnvironmentFact => event.kind === 'environment'
-        && event.change === 'climate'
-        && event.diff.eraTransition === true)
+    const transitions = eraForecastTransitionFacts(state)
       .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
     const completedDurations = transitions.slice(1).flatMap((event, index) => {
       const previous = transitions[index];
@@ -757,9 +852,7 @@ function buildOptions(
         channel: 'voice',
       },
       estimatedDuration: 'one-month',
-      sourceFactIds: state.world.past
-        .filter((event) => event.kind === 'environment' && (event.change === 'climate' || event.change === 'weather'))
-        .slice(-8)
+      sourceFactIds: recentEraForecastEnvironmentFacts(state, 8)
         .map((event) => event.id),
       domain: 'strategic',
     });
@@ -788,7 +881,11 @@ function buildOptions(
 
   const recentProductionLabor = recentPersonalProductionLaborEvents(state, person.id, atMonth);
   const groundToolUpgrade = recentProductionLabor.length
-    ? betterGroundProductionTool(state, person, visibleDrops)
+    ? betterGroundProductionTool(
+        state,
+        person,
+        visibleDrops.filter((drop) => canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth)),
+      )
     : undefined;
   if (groundToolUpgrade) {
     const drop = groundToolUpgrade.drop;
@@ -813,6 +910,7 @@ function buildOptions(
   const nearestDropsByMaterial = new Map<number, DropState>();
   for (const drop of [...visibleDrops].sort((a, b) => distance(person.position.cellId, a.cellId) - distance(person.position.cellId, b.cellId) || a.id.localeCompare(b.id))) {
     if (drop.id === groundToolUpgrade?.drop.id) continue;
+    if (!canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth)) continue;
     if (!nearestDropsByMaterial.has(drop.materialId)) nearestDropsByMaterial.set(drop.materialId, drop);
   }
   for (const drop of [...nearestDropsByMaterial.values()].slice(0, 8)) {
@@ -1086,6 +1184,7 @@ function buildOptions(
   options.push(...buildConstructionOptions(state, person)
     .filter((option) => option.goal.kind === 'voxel-is' && option.goal.materialId === Material.Container));
   options.push(...buildWaterCurrentObservationOptions(state, person, visibleCells));
+  options.push(...buildMechanicalPowerServiceOptions(state, person, visibleCells));
   const projectOptions = buildProjectOptions(state, person, visibleCells, visibleDrops, visiblePeople);
   options.push(...projectOptions);
   options.push(...buildDemandBoundRecordUseOptions(state, person, visibleDrops));
@@ -1486,9 +1585,27 @@ function buildOptions(
     sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
+  const projectTeaching = projectKnowledgeTeachingOpportunity(state, person, atMonth);
+  const visibleCompletedMechanicalNetwork = state.world.mechanicalPower?.networks.some((network) => {
+    const project = state.projects.find((candidate) => candidate.id === network.installationProjectId
+      && candidate.status === 'completed'
+      && candidate.desiredFunction === 'water-powered-crop-processing');
+    const load = project?.mechanicalPowerPlan?.loadPosition;
+    return Boolean(load && visible.has(load.x + load.y * state.world.grid.width));
+  }) ?? false;
+  const mechanicalOperationTeaching = visibleCompletedMechanicalNetwork
+    ? person.knowledge.flatMap((fact) => {
+      if (fact.id !== MECHANICAL_POWER_OPERATION_TECHNIQUE_ID
+        || fact.kind !== 'technique'
+        || fact.confidence < 55) return [];
+      const learner = conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
+        && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55));
+      return learner ? [{ fact, learner }] : [];
+    })[0]
+    : undefined;
   const usefulToolTeaching = person.knowledge
     .filter((fact) => fact.kind === 'technique' && fact.confidence >= 55)
-    .flatMap((fact) => localPeople.flatMap((learner) => {
+    .flatMap((fact) => conversationalPeople.flatMap((learner) => {
       if (ageMonths(learner, atMonth) < MIN_TEACHING_AGE_MONTHS
         || learner.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)) return [];
       const outputMaterialId = techniqueOutputMaterialId(fact.id);
@@ -1505,24 +1622,53 @@ function buildOptions(
   const ordinaryTeachableFacts = person.knowledge
     .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
       && fact.confidence >= 55
-      && localPeople.some((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
+      && conversationalPeople.some((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
         && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
     .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id));
   const teachableFacts = [
+    ...(projectTeaching ? [projectTeaching.fact] : []),
+    ...(mechanicalOperationTeaching ? [mechanicalOperationTeaching.fact] : []),
     ...(usefulToolTeaching ? [usefulToolTeaching.fact] : []),
-    ...ordinaryTeachableFacts.filter((fact) => fact.id !== usefulToolTeaching?.fact.id),
+    ...ordinaryTeachableFacts.filter((fact) => fact.id !== usefulToolTeaching?.fact.id
+      && fact.id !== projectTeaching?.fact.id
+      && fact.id !== mechanicalOperationTeaching?.fact.id),
   ].slice(0, 3);
   for (const teachable of teachableFacts) {
     const learnedThreshold = 55;
+    const prioritizedProjectTeaching = projectTeaching?.fact.id === teachable.id ? projectTeaching : undefined;
+    const prioritizedMechanicalTeaching = mechanicalOperationTeaching?.fact.id === teachable.id
+      ? mechanicalOperationTeaching
+      : undefined;
     const prioritizedToolTeaching = usefulToolTeaching?.fact.id === teachable.id ? usefulToolTeaching : undefined;
     const usefulToolUpgrade = Boolean(prioritizedToolTeaching);
-    const learner = prioritizedToolTeaching
+    const learner = prioritizedProjectTeaching?.learner ?? prioritizedMechanicalTeaching?.learner ?? (prioritizedToolTeaching
       ? prioritizedToolTeaching.learner
-      : localPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
+      : conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
+        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold)));
     if (!learner) continue;
-    const representationId = `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}`;
-    const communicate = { kind: 'communicate' as const, content: { id: representationId, kind: 'claim' as const, summary: teachable.summary, factId: teachable.id }, audience: [learner.id], channel: 'voice' as const };
+    const representationId = prioritizedProjectTeaching
+      ? `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}:${prioritizedProjectTeaching.request.requestEventId}`
+      : `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}`;
+    const communicate = {
+      kind: 'communicate' as const,
+      content: {
+        id: representationId,
+        kind: 'claim' as const,
+        summary: teachable.summary,
+        factId: teachable.id,
+        ...(prioritizedProjectTeaching ? {
+          projectKnowledgeResponse: {
+            version: 'project-knowledge-response-v1' as const,
+            projectId: prioritizedProjectTeaching.project.id,
+            requestEventId: prioritizedProjectTeaching.request.requestEventId,
+            requesterId: prioritizedProjectTeaching.request.requesterId,
+            outputMaterialId: prioritizedProjectTeaching.request.outputMaterialId,
+          },
+        } : {}),
+      },
+      audience: [learner.id],
+      channel: 'voice' as const,
+    };
     options.push({
       id: representationId,
       summary: teachable.kind === 'codebook'
@@ -1530,6 +1676,10 @@ function buildOptions(
         : `把“${teachable.summary}”教给${learner.name}`,
       reason: teachable.kind === 'codebook'
         ? '自己可靠掌握这组符号，而身边达到学习年龄的人还不理解'
+        : prioritizedProjectTeaching
+          ? `本人实际收到“${prioritizedProjectTeaching.project.summary}”对${materialDefinition(prioritizedProjectTeaching.request.outputMaterialId).name}制作知识的请求，并可靠掌握匹配技术`
+        : prioritizedMechanicalTeaching
+          ? '本人在眼前完成网络上做成过真实负载作业，身边成年人还不会独立操作这类网络'
         : usefulToolUpgrade
           ? '自己可靠掌握更高效生产工具的制作技术，而身边刚完成过真实劳动的人还不会'
           : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
@@ -1539,6 +1689,7 @@ function buildOptions(
       estimatedDuration: 'one-month',
       sourceFactIds: [...new Set([
         ...teachable.sourceEventIds,
+        ...(prioritizedProjectTeaching ? [prioritizedProjectTeaching.request.requestEventId] : []),
         ...(prioritizedToolTeaching ? prioritizedToolTeaching.learnerLabor.map((event) => event.id) : []),
       ])],
     });
@@ -1698,6 +1849,22 @@ export function recompileNextAction(
       && intent.nextAction.content.techniqueDemonstration)
     || (intent.nextAction.kind === 'act'
       && (intent.nextAction.techniqueDemonstration || intent.nextAction.techniqueImitation))) return null;
+  const mechanicalCompletion = intent.completionAction?.kind === 'act'
+    && (intent.completionAction.mechanicalPowerBasis?.mode === 'operate-service'
+      || intent.completionAction.mechanicalPowerBasis?.mode === 'repair-service')
+    ? intent.completionAction
+    : undefined;
+  if (mechanicalCompletion && intent.target?.kind === 'voxel') {
+    const target = intent.target.position;
+    const horizontal = Math.abs(cellX(person.position.cellId) - target.x)
+      + Math.abs(cellY(person.position.cellId) - target.y);
+    const vertical = Math.max(0, Math.abs(person.position.z - target.z) - 1);
+    const actorOccupiesTarget = person.position.cellId === target.x + target.y * state.world.grid.width
+      && (person.position.z === target.z || person.position.z + 1 === target.z);
+    return Math.max(horizontal, vertical) <= 1 && !actorOccupiesTarget
+      ? mechanicalCompletion
+      : intent.nextAction;
+  }
   if (intent.projectId) return recompileProjectNextAction(state, person, intent.projectId);
   const agreementContinuation = intent.agreementId
     ? compileAgreementContinuations(state, intent.agreementId, atMonth).find((continuation) => continuation.personId === person.id)
@@ -1740,6 +1907,13 @@ export function recompileNextAction(
     const targetPersonId = intent.target.personId;
     const target = personById(state, targetPersonId);
     if (!target || !isAlive(target)) return null;
+    if (intent.completionAction.kind === 'communicate') {
+      if (positionsWithinVoiceRange(target.position, person.position)) return intent.completionAction;
+      const rendezvous = conversationalRendezvous(state, person, target);
+      return rendezvous
+        ? { kind: 'move', toCellId: rendezvous.position.cellId, toZ: rendezvous.position.z }
+        : null;
+    }
     return sameLocation(target, person) ? intent.completionAction : { kind: 'move', toCellId: target.position.cellId, toZ: target.position.z };
   }
   if (intent.goal.kind === 'near-person') {
@@ -1797,7 +1971,8 @@ export function recompileNextAction(
       const targetDropId = intent.target.dropId;
       const drop = state.world.drops.find((candidate) => candidate.id === targetDropId
         && candidate.materialId === materialId
-        && candidate.quantity > 0);
+        && candidate.quantity > 0
+        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, candidate, atMonth));
       if (!drop || drop.materialId !== materialId || drop.quantity <= 0) return null;
       const dropZ = dropStandingZ(state, drop);
       const path = findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: dropZ });
@@ -1861,11 +2036,15 @@ export function recompileNextAction(
     const local = state.world.drops.find((drop) => drop.cellId === person.position.cellId
       && dropStandingZ(state, drop) === person.position.z
       && drop.materialId === materialId
-      && drop.quantity > 0);
+      && drop.quantity > 0
+      && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth));
     if (local) return actionForDrop(state, person, local);
     const visible = new Set(visibleCellsFor(person));
     const reachable = state.world.drops
-      .filter((drop) => visible.has(drop.cellId) && drop.materialId === materialId && drop.quantity > 0)
+      .filter((drop) => visible.has(drop.cellId)
+        && drop.materialId === materialId
+        && drop.quantity > 0
+        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth))
       .map((drop) => ({
         drop,
         path: findStandingPath(state.world.grid, person.position, {
@@ -1878,7 +2057,10 @@ export function recompileNextAction(
     if (reachable) return actionForDrop(state, person, reachable.drop);
     if (intent.nextAction.kind === 'move') {
       const toCellId = intent.nextAction.toCellId;
-      const atTarget = state.world.drops.find((drop) => drop.cellId === toCellId && drop.materialId === materialId && drop.quantity > 0);
+      const atTarget = state.world.drops.find((drop) => drop.cellId === toCellId
+        && drop.materialId === materialId
+        && drop.quantity > 0
+        && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, atMonth));
       if (atTarget) return actionForDrop(state, person, atTarget);
     }
   }

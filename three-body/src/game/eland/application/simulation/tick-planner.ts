@@ -24,6 +24,7 @@ import { personById } from '../../domain/state-index';
 import {
   buildDecisionContext,
   cloneMutableProjectsForPlanning,
+  projectKnowledgeTeachingOpportunity,
   visibleCellsFor,
 } from '../action-options';
 import { optionAllowedForLifeStage } from '../age-planning';
@@ -257,6 +258,7 @@ export function planLocallyForTick(
     && project.techniqueDemonstrationRequests?.some((request) => request.teacherIds.includes(person.id)
       && request.expiresAtMonth >= atMonth
       && !project.techniqueDemonstrations?.some((basis) => basis.requestEventId === request.requestEventId)));
+  const checkProjectKnowledgeRequest = Boolean(projectKnowledgeTeachingOpportunity(state, person, atMonth));
   const currentMonthGroundedOpenings = planningIndex.groundedOpeningsByListener.get(person.id) ?? [];
   const currentMonthSocialProposals = planningIndex.socialProposalsByAudience.get(person.id) ?? [];
   const planningEvidence = [
@@ -279,12 +281,14 @@ export function planLocallyForTick(
   if (alreadyReviewed
     && !hasRecordUseOpportunity()
     && !checkTechniqueRequest
+    && !checkProjectKnowledgeRequest
     && !checkGroundedConversationResponse
     && !checkCurrentMonthRequiredResponse) return;
   if (!fullReview
     && !checkLifeOpportunity
     && !recordUsePreflight
     && !checkTechniqueRequest
+    && !checkProjectKnowledgeRequest
     && !checkGroundedConversationResponse
     && !checkCurrentMonthRequiredResponse) return;
   if (!fullReview) {
@@ -295,9 +299,14 @@ export function planLocallyForTick(
     const hasTechniqueDemonstration = checkTechniqueRequest
       && contextForPlanning().options
         .some((option) => option.id.startsWith('demonstrate-technique:'));
+    const hasProjectKnowledgeResponse = checkProjectKnowledgeRequest
+      && contextForPlanning().options.some((option) => option.nextAction.kind === 'communicate'
+        && option.nextAction.content.kind === 'claim'
+        && Boolean(option.nextAction.content.projectKnowledgeResponse));
     if (!hasLifeOpportunity
       && !recordUseOpportunity
       && !hasTechniqueDemonstration
+      && !hasProjectKnowledgeResponse
       && !checkGroundedConversationResponse
       && !checkCurrentMonthRequiredResponse) return;
   }

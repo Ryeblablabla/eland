@@ -47,6 +47,14 @@ export interface DropState {
   recordPayloadId?: string;
   /** The deceased owner whose private inventory produced this exact drop. */
   estateOfPersonId?: PersonId;
+  /** A request-bound project delivery remains reserved only while its demand is still live. */
+  projectMaterialDelivery?: {
+    version: 'project-material-delivery-v1';
+    projectId: string;
+    requestEventId: string;
+    requesterId: PersonId;
+    expiresAtMonth: number;
+  };
 }
 
 export interface DecisionContext {
@@ -121,6 +129,8 @@ export interface ReproductionDecisionEvidence {
     careCapacity: number;
     climateSafety: number;
     basisKeys: string[];
+    /** Total unique sources before the event keeps a bounded audit sample. */
+    sourceFactCount?: number;
     sourceFactIds: string[];
   };
   sourceFactIds: string[];
@@ -231,7 +241,8 @@ export interface EmergentRegion {
   label?: string;
 }
 
-export interface DerivedStructure {
+/** A physical index entry reconstructed from committed construction facts and voxels. */
+export interface PhysicalStructure {
   id: string;
   name: string;
   occupiedCells: number[];
@@ -244,6 +255,18 @@ export interface DerivedStructure {
   complete: boolean;
   sourceEventIds: string[];
 }
+
+export interface PhysicalStructureIndex {
+  calculatedAtMonth: number;
+  /** Optional only for schema-17 states written before freshness tracking. */
+  voxelRevision?: number;
+  /** Optional only for schema-17 states written before freshness tracking. */
+  constructionEventCount?: number;
+  structures: PhysicalStructure[];
+}
+
+/** @deprecated Use PhysicalStructure. Kept for schema-17 and public type compatibility. */
+export type DerivedStructure = PhysicalStructure;
 
 export interface DecisionMonthLedger {
   atMonth: number;
@@ -304,6 +327,7 @@ export interface CivilizationIndex {
   };
 }
 
+/** `medieval` remains readable only for persisted observer snapshots from v1-v4. */
 export type DevelopmentEraKey = 'primitive-tribe' | 'agrarian-settlement' | 'ancient-civilization' | 'medieval';
 export type MaterialCapabilityStage = 'hypothesis' | 'sample' | 'repeatable' | 'distributed' | 'institutional';
 
@@ -333,8 +357,8 @@ export interface FunctionalBuildingObservation {
 }
 
 export interface CivilizationDevelopmentObservation {
-  /** v1 remains readable for persisted snapshots; new observations are emitted as v2. */
-  observerVersion: 'material-institution-era-v1' | 'material-institution-era-v2';
+  /** v1-v5 remain readable for persisted snapshots; new observations are emitted as v6. */
+  observerVersion: 'material-institution-era-v1' | 'material-institution-era-v2' | 'material-institution-era-v3' | 'material-institution-era-v4' | 'material-institution-era-v5' | 'material-institution-era-v6';
   currentEra: DevelopmentEraKey;
   historicalPeakEra: DevelopmentEraKey;
   candidateEra: DevelopmentEraKey;
@@ -344,6 +368,24 @@ export interface CivilizationDevelopmentObservation {
   missingGateIds: string[];
   supportingEventIds: string[];
   materialCapabilities: MaterialCapabilityObservation[];
+}
+
+/** Pure observer output. It contains no gameplay-readable physical index. */
+export interface SimulationObservations {
+  practices: PracticeObservation[];
+  institutions: InstitutionObservation[];
+  milestones: MilestoneObservation[];
+  regions: EmergentRegion[];
+  functionalBuildings?: FunctionalBuildingObservation[];
+}
+
+/** Schema-17 serialized observer shape with its historical structures mirror. */
+export interface PersistedSimulationObservations extends SimulationObservations {
+  /**
+   * Compatibility mirror of world.physicalStructureIndex.structures.
+   * Gameplay rules must read the physical index through physicalStructuresOf.
+   */
+  structures: PhysicalStructure[];
 }
 
 export interface SimulationState {
@@ -364,6 +406,12 @@ export interface SimulationState {
     traffic?: Record<string, number>;
     /** Optional on schema v17 for compatibility; new and restored states initialize v1 explicitly. */
     mechanicalPower?: MechanicalPowerWorldState;
+    /**
+     * Physical cache rebuilt from committed construction facts and voxels.
+     * Optional because persisted schema-17 states and hand-built fixtures can
+     * omit it; creation, state adoption and month commit reconstruct it.
+     */
+    physicalStructureIndex?: PhysicalStructureIndex;
   };
   people: PersonState[];
   intents: Intent[];
@@ -395,14 +443,7 @@ export interface SimulationState {
     outcome?: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; atMonth: number; summary: string };
   };
   decisionBudget: { credits: number; tokensPerContext: number; ledgers: DecisionMonthLedger[] };
-  derived: {
-    practices: PracticeObservation[];
-    institutions: InstitutionObservation[];
-    milestones: MilestoneObservation[];
-    regions: EmergentRegion[];
-    structures: DerivedStructure[];
-    functionalBuildings?: FunctionalBuildingObservation[];
-  };
+  derived: PersistedSimulationObservations;
   lastStep: WorldEvent[];
 }
 

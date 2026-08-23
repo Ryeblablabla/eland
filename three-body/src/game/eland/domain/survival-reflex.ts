@@ -19,7 +19,7 @@ import { shelterGeometryAt } from './structure';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
 import { compileWildlifeThreatResponse, wildlifeThreatUrgency } from './wildlife-threat';
-import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, surfaceMaterial, topPosition } from '../world/grid';
+import { cellsInRadius, findStandingPath, isPassable, nearestCell, neighbors4, standingPathMovementTicks, surfaceMaterial, topPosition } from '../world/grid';
 
 function visibleRadius(person: PersonState): number {
   return 4 + Math.floor(person.baselineCapacities.perception / 25);
@@ -209,7 +209,10 @@ export function chooseSurvivalReflex(
   if (person.body.hydration < 58) {
     const visible = cellsInRadius(person.position.cellId, visibleRadius(person));
     const water = findReachableWater(state, person, visible);
-    const waterTravelMonths = water ? Math.max(0, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)) : Number.POSITIVE_INFINITY;
+    const waterPath = water ? findStandingPath(state.world.grid, person.position, water.bankPosition) : [];
+    const waterTravelMonths = water
+      ? Math.max(0, Math.ceil(standingPathMovementTicks(state.world.grid, waterPath) / RULE_ACTION_TICKS_PER_MONTH))
+      : Number.POSITIVE_INFINITY;
     const dehydrationMonths = Math.max(0, Math.floor(person.body.hydration / 1.6) - 6);
     const atBank = water && person.position.cellId === water.bankPosition.cellId && person.position.z === water.bankPosition.z;
     if (water && (atBank || (!cannotTravelAlone && (waterTravelMonths <= dehydrationMonths || person.body.hydration < 32)))) {

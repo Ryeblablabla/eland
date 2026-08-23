@@ -8,6 +8,7 @@ import {
 } from 'node:zlib';
 
 import type { SimulationState, WorldEvent } from '../src/game/eland/simulation';
+import { internEventHistoryAuditStrings } from './event-history-memory';
 
 export const RUN_STATE_ROOT_CODEC = 'eland-run-state-root-v1';
 export const RUN_STATE_SHELL_CODEC = 'eland-run-state-shell-v1';
@@ -411,6 +412,7 @@ export async function decodeSegmentedRunState(
   }
 
   const events: WorldEvent[] = [];
+  const auditStringPool = new Map<string, string>();
   for (const { node } of orderedHistoryNodes(root, readChunk)) {
     for (const reference of node.segments) {
       const segment = await decodeCompressedV8<unknown>(
@@ -421,7 +423,9 @@ export async function decodeSegmentedRunState(
       if (!Array.isArray(segment) || segment.length !== reference.eventCount) {
         throw new Error(`运行状态事件分段 ${reference.hash} 的事件数量与历史节点不一致`);
       }
-      events.push(...segment as WorldEvent[]);
+      const segmentEvents = segment as WorldEvent[];
+      internEventHistoryAuditStrings(segmentEvents, auditStringPool);
+      events.push(...segmentEvents);
     }
   }
   if (events.length !== root.eventCount
@@ -429,8 +433,13 @@ export async function decodeSegmentedRunState(
     throw new Error('运行状态事件历史与状态根不一致');
   }
 
-  const eventsById = new Map(events.map((event) => [event.id, event]));
-  const lastStep = shell.lastStep.map((event) => eventsById.get(event.id) ?? event);
+  const lastStepIds = new Set(shell.lastStep.map((event) => event.id));
+  const lastStepEventsById = new Map<string, WorldEvent>();
+  for (let index = events.length - 1; index >= 0 && lastStepEventsById.size < lastStepIds.size; index -= 1) {
+    const event = events[index];
+    if (lastStepIds.has(event.id)) lastStepEventsById.set(event.id, event);
+  }
+  const lastStep = shell.lastStep.map((event) => lastStepEventsById.get(event.id) ?? event);
   return {
     state: {
       ...shell,

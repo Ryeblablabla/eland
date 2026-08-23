@@ -10,7 +10,10 @@ import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
 import { productionToolRank } from '../domain/production-tool';
 import { buildLocalMaterialEvidence } from './local-material-evidence';
-import { mechanicalPowerPressureEvidence } from './mechanical-power-options';
+import {
+  mechanicalPowerMaintenancePressureEvidence,
+  mechanicalPowerPressureEvidence,
+} from './mechanical-power-options';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
@@ -416,6 +419,21 @@ function developmentBasis(
   ];
 
   if (subject.need === 'mechanical-power-capability') {
+    if (subject.desiredFunction === 'restore-water-powered-crop-processing') {
+      const evidence = mechanicalPowerMaintenancePressureEvidence(state, owner);
+      return makeBasis(subject, owner, atMonth,
+        12 + (evidence.faultEventIds.length ? 38 : 0) + (evidence.diagnosisFactIds.length ? 48 : 0),
+        [
+          `state:experienced-mechanical-fault:${evidence.faultEventIds.join('.') || 'none'}`,
+          `state:personal-mechanical-diagnosis:${evidence.diagnosisFactIds.join('.') || 'none'}`,
+          `project:function:${subject.desiredFunction}`,
+        ],
+        [
+          ...(evidence.faultEventIds.length ? ['experienced-mechanical-fault'] : ['experienced-mechanical-fault-missing']),
+          ...(evidence.diagnosisFactIds.length ? ['personal-mechanical-diagnosis'] : ['personal-mechanical-diagnosis-missing']),
+        ],
+        evidence.sourceFactIds);
+    }
     const evidence = mechanicalPowerPressureEvidence(state, owner);
     const millLaborFactIds = evidence.millLaborFactIds.slice(-3);
     const observationFactIds = evidence.observationFactIds.slice(-3);

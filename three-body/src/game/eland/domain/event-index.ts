@@ -14,12 +14,14 @@ interface CachedEventIndex {
   indexedLength: number;
   lastIndexedEvent?: WorldEvent;
   byId: Map<string, WorldEvent>;
-  ordinalById: Map<string, number>;
   actions: ActionFact[];
   actionsByPersonId: Map<PersonId, ActionFact[]>;
   completedActions: ActionFact[];
   completedActionsByPersonId: Map<PersonId, ActionFact[]>;
+  completedSupportActionsByActorAndRecipient: Map<PersonId, Map<PersonId, ActionFact[]>>;
   environmentEvents: EnvironmentFact[];
+  eraForecastTransitionEvents: EnvironmentFact[];
+  eraForecastClimateWeatherEvents: EnvironmentFact[];
   agreementEventsByPersonId: Map<PersonId, AgreementFact[]>;
   completedCommunications: ActionFact[];
   groundedCommunications: ActionFact[];
@@ -42,7 +44,10 @@ interface PlanningEventOverlay {
   actionsByPersonId: Map<PersonId, ActionFact[]>;
   completedActions: ActionFact[];
   completedActionsByPersonId: Map<PersonId, ActionFact[]>;
+  completedSupportActionsByActorAndRecipient: Map<PersonId, Map<PersonId, ActionFact[]>>;
   environmentEvents: EnvironmentFact[];
+  eraForecastTransitionEvents: EnvironmentFact[];
+  eraForecastClimateWeatherEvents: EnvironmentFact[];
   agreementEventsByPersonId: Map<PersonId, AgreementFact[]>;
   completedCommunications: ActionFact[];
   groundedCommunications: ActionFact[];
@@ -55,6 +60,10 @@ interface PlanningEventOverlay {
 }
 
 const planningOverlays = new WeakMap<SimulationState, PlanningEventOverlay>();
+// Some execution paths expose committed facts plus the current-month suffix as
+// one temporary history array for legacy direct readers. Index the stable
+// committed prefix and merge the suffix through the overlay instead.
+const indexedHistoryBases = new WeakMap<WorldEvent[], WorldEvent[]>();
 
 function appendForPerson<T>(index: Map<PersonId, T[]>, personId: PersonId, item: T): void {
   const items = index.get(personId) ?? [];
@@ -62,11 +71,42 @@ function appendForPerson<T>(index: Map<PersonId, T[]>, personId: PersonId, item:
   index.set(personId, items);
 }
 
-export function registerPlanningEventOverlay(state: SimulationState, events: WorldEvent[]): void {
+function appendSupportAction(
+  index: Map<PersonId, Map<PersonId, ActionFact[]>>,
+  actorId: PersonId,
+  recipientId: PersonId,
+  event: ActionFact,
+): void {
+  const byRecipient = index.get(actorId) ?? new Map<PersonId, ActionFact[]>();
+  const events = byRecipient.get(recipientId) ?? [];
+  events.push(event);
+  byRecipient.set(recipientId, events);
+  index.set(actorId, byRecipient);
+}
+
+function supportRecipientIds(event: ActionFact): PersonId[] {
+  const recipientIds = new Set<PersonId>();
+  if (typeof event.diff.caredPersonId === 'string') recipientIds.add(event.diff.caredPersonId);
+  if (event.action.kind === 'transfer' && event.action.to.kind === 'person') {
+    recipientIds.add(event.action.to.personId);
+  }
+  return [...recipientIds];
+}
+
+export function registerPlanningEventOverlay(
+  state: SimulationState,
+  events: WorldEvent[],
+  indexedHistoryBase?: WorldEvent[],
+): void {
+  if (indexedHistoryBase && indexedHistoryBase !== state.world.past) {
+    indexedHistoryBases.set(state.world.past, indexedHistoryBase);
+  }
   const overlay: PlanningEventOverlay = {
     events,
     byId: new Map(), indexById: new Map(), actions: [], actionsByPersonId: new Map(),
     completedActions: [], completedActionsByPersonId: new Map(), environmentEvents: [],
+    completedSupportActionsByActorAndRecipient: new Map(),
+    eraForecastTransitionEvents: [], eraForecastClimateWeatherEvents: [],
     agreementEventsByPersonId: new Map(),
     completedCommunications: [], groundedCommunications: [], groundedOpeningBasisKeys: new Set(),
     groundedOpeningsByListener: new Map(), groundedResponseOpeningIds: new Set(), matureCropHarvests: [],
@@ -75,7 +115,15 @@ export function registerPlanningEventOverlay(state: SimulationState, events: Wor
   events.forEach((event, index) => {
     overlay.byId.set(event.id, event);
     overlay.indexById.set(event.id, index);
-    if (event.kind === 'environment') overlay.environmentEvents.push(event);
+    if (event.kind === 'environment') {
+      overlay.environmentEvents.push(event);
+      if (event.change === 'climate' && event.diff.eraTransition === true) {
+        overlay.eraForecastTransitionEvents.push(event);
+      }
+      if (event.change === 'climate' || event.change === 'weather') {
+        overlay.eraForecastClimateWeatherEvents.push(event);
+      }
+    }
     if (event.kind === 'agreement') {
       for (const personId of new Set(event.partyIds)) appendForPerson(overlay.agreementEventsByPersonId, personId, event);
     }
@@ -85,6 +133,9 @@ export function registerPlanningEventOverlay(state: SimulationState, events: Wor
     if (event.status !== 'completed') return;
     overlay.completedActions.push(event);
     appendForPerson(overlay.completedActionsByPersonId, event.who, event);
+    for (const recipientId of supportRecipientIds(event)) {
+      appendSupportAction(overlay.completedSupportActionsByActorAndRecipient, event.who, recipientId, event);
+    }
     if (event.action.kind === 'communicate') {
       overlay.completedCommunications.push(event);
       overlay.communicationByRepresentationId.set(event.action.content.id, event);
@@ -107,6 +158,10 @@ export function registerPlanningEventOverlay(state: SimulationState, events: Wor
   planningOverlays.set(state, overlay);
 }
 
+export function clearPlanningEventOverlay(state: SimulationState): void {
+  planningOverlays.delete(state);
+}
+
 export function planningOverlayEvents(state: SimulationState): readonly WorldEvent[] {
   return planningOverlays.get(state)?.events ?? [];
 }
@@ -122,12 +177,14 @@ function emptyIndex(): CachedEventIndex {
   return {
     indexedLength: 0,
     byId: new Map(),
-    ordinalById: new Map(),
     actions: [],
     actionsByPersonId: new Map(),
     completedActions: [],
     completedActionsByPersonId: new Map(),
+    completedSupportActionsByActorAndRecipient: new Map(),
     environmentEvents: [],
+    eraForecastTransitionEvents: [],
+    eraForecastClimateWeatherEvents: [],
     agreementEventsByPersonId: new Map(),
     completedCommunications: [],
     groundedCommunications: [],
@@ -164,7 +221,7 @@ function appendActivity(activity: ActionActivityIndex, event: ActionFact): void 
 }
 
 function indexFor(state: SimulationState): CachedEventIndex {
-  const history = state.world.past;
+  const history = indexedHistoryBases.get(state.world.past) ?? state.world.past;
   let index = indexes.get(history);
   if (!index
     || index.indexedLength > history.length
@@ -176,8 +233,15 @@ function indexFor(state: SimulationState): CachedEventIndex {
   for (let offset = index.indexedLength; offset < history.length; offset += 1) {
     const event = history[offset];
     index.byId.set(event.id, event);
-    index.ordinalById.set(event.id, offset);
-    if (event.kind === 'environment') index.environmentEvents.push(event);
+    if (event.kind === 'environment') {
+      index.environmentEvents.push(event);
+      if (event.change === 'climate' && event.diff.eraTransition === true) {
+        index.eraForecastTransitionEvents.push(event);
+      }
+      if (event.change === 'climate' || event.change === 'weather') {
+        index.eraForecastClimateWeatherEvents.push(event);
+      }
+    }
     if (event.kind === 'agreement') {
       for (const personId of new Set(event.partyIds)) appendForPerson(index.agreementEventsByPersonId, personId, event);
     }
@@ -195,6 +259,9 @@ function indexFor(state: SimulationState): CachedEventIndex {
     if (event.status !== 'completed') continue;
     index.completedActions.push(event);
     appendForPerson(index.completedActionsByPersonId, event.who, event);
+    for (const recipientId of supportRecipientIds(event)) {
+      appendSupportAction(index.completedSupportActionsByActorAndRecipient, event.who, recipientId, event);
+    }
     if (event.action.kind === 'communicate') {
       index.completedCommunications.push(event);
       index.communicationByRepresentationId.set(event.action.content.id, event);
@@ -247,15 +314,12 @@ export function worldEventsByIdsInHistoryOrder(
   const index = indexFor(state);
   const overlay = planningOverlays.get(state);
   return [...new Set(eventIds)]
-    .flatMap((eventId) => {
-      const overlayEvent = overlay?.byId.get(eventId);
-      const overlayIndex = overlay?.indexById.get(eventId);
-      const event = overlayEvent ?? index.byId.get(eventId);
-      const ordinal = overlayEvent && overlayIndex !== undefined ? state.world.past.length + overlayIndex : index.ordinalById.get(eventId);
-      return event && ordinal !== undefined ? [{ event, ordinal }] : [];
-    })
-    .sort((left, right) => left.ordinal - right.ordinal)
-    .map(({ event }) => event);
+    .flatMap((eventId) => overlay?.byId.get(eventId) ?? index.byId.get(eventId) ?? [])
+    .sort((left, right) => left.atMonth - right.atMonth
+      || left.orderInMonth - right.orderInMonth
+      || (left.planningTick ?? 0) - (right.planningTick ?? 0)
+      || (left.orderInTick ?? 0) - (right.orderInTick ?? 0)
+      || left.id.localeCompare(right.id));
 }
 
 export function completedCommunications(state: SimulationState): readonly ActionFact[] {
@@ -297,6 +361,16 @@ export function completedActionFactsForPerson(state: SimulationState, personId: 
   return extra.length ? [...base, ...extra] : base;
 }
 
+export function completedSupportActionFactsBetween(
+  state: SimulationState,
+  actorId: PersonId,
+  recipientId: PersonId,
+): readonly ActionFact[] {
+  const base = indexFor(state).completedSupportActionsByActorAndRecipient.get(actorId)?.get(recipientId) ?? [];
+  return withOverlay(state, base,
+    (overlay) => overlay.completedSupportActionsByActorAndRecipient.get(actorId)?.get(recipientId) ?? []);
+}
+
 export function actionFacts(state: SimulationState): readonly ActionFact[] {
   return withOverlay(state, indexFor(state).actions, (overlay) => overlay.actions);
 }
@@ -315,6 +389,23 @@ export function agreementFactsForPerson(state: SimulationState, personId: Person
 
 export function environmentFacts(state: SimulationState): readonly EnvironmentFact[] {
   return withOverlay(state, indexFor(state).environmentEvents, (overlay) => overlay.environmentEvents);
+}
+
+export function eraForecastTransitionFacts(state: SimulationState): EnvironmentFact[] {
+  const base = indexFor(state).eraForecastTransitionEvents;
+  return [...withOverlay(state, base, (overlay) => overlay.eraForecastTransitionEvents)];
+}
+
+export function recentEraForecastEnvironmentFacts(
+  state: SimulationState,
+  limit: number,
+): EnvironmentFact[] {
+  if (limit <= 0) return [];
+  const base = indexFor(state).eraForecastClimateWeatherEvents;
+  const extra = planningOverlays.get(state)?.eraForecastClimateWeatherEvents ?? [];
+  const recentExtra = extra.length > limit ? extra.slice(-limit) : extra;
+  const remaining = limit - recentExtra.length;
+  return [...(remaining > 0 ? base.slice(-remaining) : []), ...recentExtra];
 }
 
 export function communicationByRepresentationId(state: SimulationState, representationId: string): ActionFact | undefined {

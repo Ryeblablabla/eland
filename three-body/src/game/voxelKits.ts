@@ -34,6 +34,8 @@ export interface DecorInstance {
   entityRotation?: number;              // Kit 的 90° 朝向；设施部件动画据此选择转轴
   part?: string;                        // body / head / tail / leg-N
   animation?: 'fire' | 'wind' | 'facility-smoke' | 'facility-lift' | 'wheel-spin' | 'mill-turn';
+  /** 时代切换时单独交叉渐变的聚落装饰；不参与领域状态与观察器计算。 */
+  visualLayer?: 'settlement-era';
 }
 
 /** 格内确定性强散列 */
@@ -611,7 +613,7 @@ function previewBox(
 }
 
 /** 文明阶段卡片使用的部落营地：三顶兽皮帐、篝火与图腾。 */
-function kitTribalCampPreview(k: Kit): void {
+function kitTribalCampPreview(k: Kit, active = true): void {
   for (const [tentX, tentZ] of [[-4, -2], [3, -3], [0, 3]] as const) {
     for (let y = 1; y <= 4; y++) {
       const radius = 2.6 - y * 0.55;
@@ -632,11 +634,13 @@ function kitTribalCampPreview(k: Kit): void {
   k.v('wood', 0, 1, 0, 0x5f422a);
   k.v('wood', 1, 1, 0, 0x54402a);
   k.v('wood', 0, 1, 1, 0x5f422a);
-  k.v('glowRed', 0, 1, -1, 0xff6a55);
-  k.v('glowWarm', 0, 2, 0, 0xffc37a);
-  k.v('glowWarm', 0, 3, 0, 0xff9a4a);
-  k.v('plaster', 0, 4, 0, 0xb9bec4);
-  k.v('plaster', 1, 5, 0, 0xc9ced4);
+  if (active) {
+    k.v('glowRed', 0, 1, -1, 0xff6a55, 'fire-core', 'fire');
+    k.v('glowWarm', 0, 2, 0, 0xffc37a, 'fire-mid', 'fire');
+    k.v('glowWarm', 0, 3, 0, 0xff9a4a, 'fire-tip', 'fire');
+    k.v('plaster', 0, 4, 0, 0xb9bec4, 'facility-smoke', 'facility-smoke');
+    k.v('plaster', 1, 5, 0, 0xc9ced4, 'facility-smoke', 'facility-smoke');
+  } else k.v('organicDark', 0, 1, -1, 0x49372b);
   const totemColors = [0xc0392b, 0xd8a03a, 0x3a7a8c, 0xc0392b, 0xd8a03a];
   for (let y = 1; y <= 5; y++) k.v('accent', 6, y, 3, totemColors[y - 1]);
   k.v('accent', 5, 5, 3, 0x3a7a8c);
@@ -686,7 +690,7 @@ function kitWindmillPreview(k: Kit): void {
 }
 
 /** 古代文明阶段的阶梯神庙：台基、正面阶梯、祭坛与方尖碑。 */
-function kitTemplePreview(k: Kit): void {
+function kitTemplePreview(k: Kit, active = true): void {
   for (const [halfWidth, y] of [[6, 1], [5, 2], [4, 3], [3, 4], [2, 5]] as const) {
     for (let x = -halfWidth; x <= halfWidth; x++) for (let z = -halfWidth; z <= halfWidth; z++) {
       const edge = Math.abs(x) === halfWidth || Math.abs(z) === halfWidth;
@@ -703,16 +707,18 @@ function kitTemplePreview(k: Kit): void {
   for (const x of [-1, 1]) for (const z of [-1, 1]) previewBox(k, 'accent', x, 6, z, x, 7, z, 0xa63a2e, 147);
   previewBox(k, 'stone', -2, 8, -2, 2, 8, 2, 0x8a7652, 148);
   k.v('dark', 0, 9, 0, 0x2e3236);
-  k.v('glowWarm', 0, 10, 0, 0xffc37a);
-  k.v('glowRed', 0, 11, 0, 0xff6a55);
+  if (active) {
+    k.v('glowWarm', 0, 10, 0, 0xffc37a, 'fire-mid', 'fire');
+    k.v('glowRed', 0, 11, 0, 0xff6a55, 'fire-tip', 'fire');
+  }
   for (const x of [-4, 4]) {
     previewBox(k, 'stone', x, 1, 8, x, 4, 8, 0xc9b28a, 149);
     k.v('roofTile', x, 5, 8, 0x8a7652);
   }
 }
 
-/** 中世纪阶段的城堡：城墙、四座角楼、城门与主堡。 */
-function kitCastlePreview(k: Kit): void {
+/** 西方中世纪城堡原型：并入古代文明后的铁器与防御建筑语汇。 */
+function kitCastlePreview(k: Kit, active = true): void {
   const width = 7;
   const depth = 5;
   const wallHeight = 4;
@@ -736,7 +742,7 @@ function kitCastlePreview(k: Kit): void {
   previewBox(k, 'organicDark', 0, 1, 0, 0, 2, 0, 0x4e3822, 154);
   k.v('dark', -2, 5, -2, 0x2c3844);
   k.v('dark', 2, 5, -2, 0x2c3844);
-  k.v('glowWarm', 0, 6, -4, 0xffc37a);
+  if (active) k.v('glowWarm', 0, 6, -4, 0xffc37a);
   for (let x = -2; x <= 2; x++) for (let z = -4; z <= 0; z++) {
     if ((Math.abs(x) === 2 || z === -4 || z === 0) && (x + z) % 2 === 0) k.v('stone', x, 8, z, 0x7d8288);
   }
@@ -946,6 +952,212 @@ function kitHouse(
         k.v('roofTile', x, 3 + layer, z, jit(0x7a4a3a, hash01(x + z + layer, 451)));
   }
   addStructureEffectDetails(k, profile, 'house');
+}
+
+/**
+ * 农耕定居时代住宅：与素材网站同构的宽体木骨灰泥房、高坡茅草顶、门廊和侧棚。
+ * 轮廓由文明观察阶段选择，窗光、炊烟和基础材质仍读取真实结构事实。
+ */
+function kitAgrarianHouse(
+  k: Kit,
+  material: StructureMaterialKind,
+  profile: StructureVisualProfile,
+  seed = 0,
+): void {
+  const window = structureWindow(profile);
+  const x0 = -6, x1 = 5, z0 = -4, z1 = 3, height = 6;
+  const color = (hex: number, x: number, y: number, z: number, salt: number): number =>
+    jit(hex, hash01(x * 31 + y * 17 + z * 13 + Math.floor(seed * 97), salt));
+  const foundationBucket: DecorBucket = material === 'wood' ? 'organicDark' : 'stone';
+  const foundationColor = material === 'wood' ? 0x543a28 : 0x817b70;
+
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
+    if (x === x0 || x === x1 || z === z0 || z === z1)
+      k.v(foundationBucket, x, 0, z, color(foundationColor, x, 0, z, 471));
+  }
+
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = 1; y <= height; y++) {
+    const edge = x === x0 || x === x1 || z === z0 || z === z1;
+    if (!edge) continue;
+    const front = z === z1;
+    const side = x === x0 || x === x1;
+    const door = front && (x === -1 || x === 0) && y <= 3;
+    const frontWindow = front && (x === -4 || x === 3) && (y === 2 || y === 3);
+    const sideWindow = side && (z === -1 || z === 1) && (y === 2 || y === 3);
+    if (door || frontWindow || sideWindow) continue;
+    const post = ((x === x0 || x === x1) && (z === z0 || z === z1))
+      || (front && [-6, -3, 2, 5].includes(x))
+      || (z === z0 && [-6, -3, 0, 3, 5].includes(x));
+    const beam = y === 1 || y === height;
+    if (material === 'stone' && !post && !beam)
+      k.v('stone', x, y, z, structureStoneColor(x, y, z, 472 + Math.floor(seed * 19)));
+    else k.v(post || beam ? 'organicDark' : 'plaster', x, y, z,
+      color(post || beam ? 0x5b402b : 0xc7b58f, x, y, z, 473));
+  }
+
+  for (let x = -1; x <= 0; x++) for (let y = 1; y <= 3; y++)
+    k.v('organicDark', x, y, z1, color(0x4e3822, x, y, z1, 474));
+  for (let x = x0; x <= x1; x++) k.v('organicDark', x, height - 1, z1, color(0x62462f, x, height, z1, 475));
+  for (const x of [-4, 3]) for (const y of [2, 3]) k.v(window.bucket, x, y, z1, window.color);
+  for (const x of [x0, x1]) for (const z of [-1, 1]) for (const y of [2, 3])
+    k.v('dark', x, y, z, 0x2c3844);
+
+  for (let x = -2; x <= 1; x++) for (let z = z1 + 1; z <= z1 + 2; z++)
+    k.v('stone', x, 0, z, color(0x8a857b, x, 0, z, 476));
+  for (let y = 1; y <= 4; y++) {
+    k.v('wood', -2, y, z1 + 2, color(0x68482e, -2, y, z1 + 2, 477));
+    k.v('wood', 1, y, z1 + 2, color(0x68482e, 1, y, z1 + 2, 477));
+  }
+  for (let x = -3; x <= 2; x++) for (let z = z1; z <= z1 + 3; z++)
+    k.v('thatch', x, 5, z, color(0xc99f4e, x, 5, z, 478));
+
+  const shedX0 = x1 + 1, shedX1 = x1 + 4, shedZ0 = -2, shedZ1 = 2;
+  for (let x = shedX0; x <= shedX1; x++) for (let z = shedZ0; z <= shedZ1; z++) for (let y = 0; y <= 2; y++) {
+    const edge = x === shedX0 || x === shedX1 || z === shedZ0 || z === shedZ1;
+    if (!edge || (z === shedZ1 && x >= shedX0 + 1 && x <= shedX1 - 1 && y <= 1)) continue;
+    const frame = x === shedX0 || x === shedX1 || ((z === shedZ0 || z === shedZ1) && y === 2);
+    k.v(frame ? 'organicDark' : 'wood', x, y, z,
+      color(frame ? 0x543a28 : 0x82603c, x, y, z, 479));
+  }
+  for (let layer = 0; layer < 3; layer++) {
+    for (let x = shedX0 - 1 + layer; x <= shedX1 + 1 - layer; x++)
+      for (let z = shedZ0 - 1 + layer; z <= shedZ1 + 1 - layer; z++)
+        k.v('thatch', x, 3 + layer, z, color(0xb98d43, x, 3 + layer, z, 480));
+  }
+  for (let x = shedX0 + 1; x <= shedX1; x++)
+    k.v('wood', x, 0, shedZ0 + 1, color(0x91683d, x, 0, shedZ0 + 1, 481));
+
+  addStructureChimney(k, 3, -1, height + 1, 5, profile);
+  for (let layer = 0; layer < 5; layer++) {
+    const minZ = z0 - 1 + layer;
+    const maxZ = z1 + 1 - layer;
+    for (let x = x0 - 1; x <= x1 + 1; x++) for (let z = minZ; z <= maxZ; z++) {
+      if (x === 3 && z === -1) continue;
+      k.v('thatch', x, height + 1 + layer, z, color(0xd0aa58, x, height + 1 + layer, z, 482));
+    }
+  }
+  for (let x = x0 - 1; x <= x1 + 1; x++)
+    for (const z of [-1, 0]) k.v('organicDark', x, height + 5, z, color(0x5b402b, x, height + 5, z, 483));
+  addStructureEffectDetails(k, profile, 'hall');
+}
+
+/** 古代文明住宅：台基、红柱、槛窗、斗拱与翘角灰瓦顶。 */
+function kitAncientHouse(
+  k: Kit,
+  material: StructureMaterialKind,
+  profile: StructureVisualProfile,
+  seed = 0,
+): void {
+  const x0 = -4, x1 = 4, z0 = -3, z1 = 3;
+  const window = structureWindow(profile);
+  const color = (hex: number, x: number, y: number, z: number, salt: number): number =>
+    jit(hex, hash01(x * 29 + y * 19 + z * 11 + Math.floor(seed * 101), salt));
+  const foundationBucket: DecorBucket = material === 'wood' ? 'organicDark' : 'stone';
+  const foundationColor = material === 'wood' ? 0x5a4430 : 0x92979d;
+
+  for (let x = x0 - 2; x <= x1 + 2; x++) for (let z = z0 - 2; z <= z1 + 2; z++)
+    k.v(foundationBucket, x, 0, z, color(
+      x === x0 - 2 || x === x1 + 2 || z === z0 - 2 || z === z1 + 2 ? foundationColor : 0xa2a7ac,
+      x, 0, z, 491,
+    ));
+  for (let x = -1; x <= 1; x++) k.v('stone', x, 0, z1 + 3, color(0x8b9096, x, 0, z1 + 3, 492));
+
+  const isColumn = (x: number, z: number): boolean => (
+    ((z === z0 || z === z1) && (x - x0) % 2 === 0 && x !== 0)
+    || ((x === x0 || x === x1) && (z - z0) % 2 === 0)
+  );
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = 1; y <= 4; y++) {
+    const edge = x === x0 || x === x1 || z === z0 || z === z1;
+    if (!edge) continue;
+    if (z === z1 && (x === -1 || x === 0)) continue;
+    if (isColumn(x, z)) {
+      k.v('accent', x, y, z, color(0xa63a2e, x, y, z, 493));
+      continue;
+    }
+    if ((z === z0 || z === z1) && (y === 2 || y === 3) && x % 2 !== 0) {
+      k.v(window.bucket, x, y, z, window.color);
+      continue;
+    }
+    const lower = y === 1;
+    if (material === 'stone' && !lower) k.v('stone', x, y, z, structureStoneColor(x, y, z, 494));
+    else k.v(lower ? 'wood' : 'plaster', x, y, z,
+      color(lower ? 0x7a5a3a : 0xefe9dc, x, y, z, 495));
+  }
+  for (let x = -1; x <= 0; x++) for (let y = 1; y <= 3; y++)
+    k.v('organicDark', x, y, z1, color(0x6e2a20, x, y, z1, 496));
+  for (const x of [-1, 0]) k.v(window.bucket, x, 4, z1, window.color);
+
+  for (let x = x0 - 1; x <= x1 + 1; x++) for (let z = z0 - 1; z <= z1 + 1; z++) {
+    if (x === x0 - 1 || x === x1 + 1 || z === z0 - 1 || z === z1 + 1)
+      k.v('organicDark', x, 5, z, color(0x4e3822, x, 5, z, 497));
+  }
+  const roofLayers = [[6, 5, 6], [5, 4, 7], [4, 3, 8], [2, 1, 9]] as const;
+  for (const [halfX, halfZ, y] of roofLayers) {
+    for (let x = -halfX; x <= halfX; x++) for (let z = -halfZ; z <= halfZ; z++) {
+      const edge = x === -halfX || x === halfX || z === -halfZ || z === halfZ;
+      k.v('roofTile', x, y, z, color(edge ? 0x464c54 : 0x5a6068, x, y, z, 498));
+    }
+    if (halfX >= 5) for (const sideX of [-1, 1]) for (const sideZ of [-1, 1])
+      k.v('roofTile', sideX * halfX, y + 1, sideZ * halfZ, color(0x464c54, sideX, y, sideZ, 499));
+  }
+  for (let x = -2; x <= 2; x++) k.v('roofTile', x, 10, 0, color(0x3a4048, x, 10, 0, 500));
+  k.v('roofTile', -2, 11, 0, 0x33383f); k.v('roofTile', 2, 11, 0, 0x33383f);
+  for (const x of [-3, 3]) for (const z of [z0 - 2, z1 + 2])
+    k.v('glowRed', x, 5, z, 0xff6a55);
+}
+
+/** 古代文明的西方中世纪风住宅：下层石墙、外挑木骨上层、陡坡瓦顶与穿顶烟囱。 */
+function kitMedievalHouse(
+  k: Kit,
+  material: StructureMaterialKind,
+  profile: StructureVisualProfile,
+  seed = 0,
+): void {
+  const x0 = -4, x1 = 4, z0 = -3, z1 = 3;
+  const window = structureWindow(profile);
+  const color = (hex: number, x: number, y: number, z: number, salt: number): number =>
+    jit(hex, hash01(x * 37 + y * 13 + z * 23 + Math.floor(seed * 107), salt));
+  const lowerBucket: DecorBucket = material === 'wood' ? 'wood' : 'stone';
+  const lowerColor = material === 'wood' ? 0x765033 : 0x9a958c;
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = 0; y <= 2; y++) {
+    const edge = x === x0 || x === x1 || z === z0 || z === z1;
+    if (!edge) continue;
+    if (z === z1 && x === 0 && y <= 1) continue;
+    if (z === z1 && (x === -2 || x === 2) && y === 1) continue;
+    k.v(lowerBucket, x, y, z, lowerBucket === 'stone'
+      ? structureStoneColor(x, y, z, 501 + Math.floor(seed * 31))
+      : color(lowerColor, x, y, z, 501));
+  }
+  for (let y = 0; y <= 1; y++) k.v('wood', 0, y, z1, color(0x5f422a, 0, y, z1, 502));
+  k.v('dark', -2, 1, z1, 0x33404e); k.v(window.bucket, 2, 1, z1, window.color);
+
+  const upperX0 = -5, upperX1 = 5, upperZ0 = -4, upperZ1 = 4;
+  for (let x = upperX0; x <= upperX1; x++) for (let z = upperZ0; z <= upperZ1; z++) for (let y = 3; y <= 5; y++) {
+    const edge = x === upperX0 || x === upperX1 || z === upperZ0 || z === upperZ1;
+    if (!edge) continue;
+    const windowOpening = (z === upperZ1 || z === upperZ0) && [-2, 0, 2].includes(x) && y === 4;
+    if (windowOpening) continue;
+    const corner = (x === upperX0 || x === upperX1) && (z === upperZ0 || z === upperZ1);
+    const beam = y === 3 || y === 5;
+    const stud = (z === upperZ0 || z === upperZ1) && (x + upperX0) % 2 === 0;
+    k.v(corner || beam || stud ? 'organicDark' : 'plaster', x, y, z,
+      color(corner || beam || stud ? 0x4a3626 : 0xe8e2d4, x, y, z, 503));
+  }
+  k.v(window.bucket, 0, 4, upperZ1, window.color);
+  for (const x of [-2, 2]) k.v('dark', x, 4, upperZ1, 0x33404e);
+  for (const x of [-2, 0, 2]) k.v('dark', x, 4, upperZ0, 0x33404e);
+
+  addStructureChimney(k, 4, -1, 6, 5, profile);
+  for (let layer = 0; layer < 5; layer++) {
+    const minZ = upperZ0 - 1 + layer;
+    const maxZ = upperZ1 + 1 - layer;
+    for (let x = upperX0 - 1; x <= upperX1 + 1; x++) for (let z = minZ; z <= maxZ; z++) {
+      if (x === 4 && z === -1) continue;
+      k.v('roofTile', x, 6 + layer, z, color(0x7a4a3a, x, 6 + layer, z, 504));
+    }
+  }
+  for (let x = upperX0 - 1; x <= upperX1 + 1; x++)
+    k.v('roofTile', x, 11, 0, color(0x5e382c, x, 11, 0, 505));
 }
 
 function kitHall(
@@ -1271,8 +1483,9 @@ function placeStructureStamp(
   const targetDepth = bounds.maxY - bounds.minY + 1 + decorativeOverhang * 2 - gap * 2;
   const scaleX = targetWidth / (maxX - minX);
   const scaleZ = targetDepth / (maxZ - minZ);
-  // 水平可按真实矩形成为长屋；高度仅适度收缩，不再随占地无限放大。
-  const scaleY = Math.max(0.72, Math.min(1, Math.min(scaleX, scaleZ)));
+  // 水平可按真实矩形成为长屋；高度跟随较窄方向等比收缩，避免小占地房屋被拉成塔楼。
+  // 仍限制为最多原始高度，较大的权威占地只会让住宅变宽、不会凭空增加楼层。
+  const scaleY = Math.min(1, scaleX, scaleZ);
   for (const inst of stamp) {
     out.push({
       ...inst,
@@ -1563,18 +1776,10 @@ function distanceToDirtPathSegment(point: DirtPathPoint, from: DirtPathPoint, to
   return Math.hypot(point.x - (from.x + lineX * t), point.z - (from.z + lineZ * t));
 }
 
-/**
- * 向一个道路格追加 8×8 微体素夯土带。
- *
- * 素材库和生产场景都以“一地图格八微体素”为基准：方向决定格内中心线，微体素只负责
- * 把中心线栅格化为连续泥面。这样斜路仍保留体素阶梯感，不再出现旋转薄片的接缝和板材感。
- */
-export function appendDirtPathCell(
-  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
-  connections: readonly DirtPathDirection[], r: number,
-  filledCorners: readonly DirtPathDirection[] = [],
-): void {
-  const seed = Math.floor(r * 0x7fffffff);
+function pathCenterGeometry(
+  connections: readonly DirtPathDirection[],
+  r: number,
+): { centerLines: DirtPathPoint[][]; junction: boolean } {
   const edge = (direction: DirtPathDirection): DirtPathPoint => ({
     x: direction.dx * 0.53,
     z: direction.dz * 0.53,
@@ -1597,9 +1802,8 @@ export function appendDirtPathCell(
   } else if (connections.length === 2) {
     const [a, b] = connections;
     const opposite = a.dx === -b.dx && a.dz === -b.dz;
-    if (opposite) {
-      centerLines.push([edge(a), edge(b)]);
-    } else {
+    if (opposite) centerLines.push([edge(a), edge(b)]);
+    else {
       const start = edge(a);
       const end = edge(b);
       const curve: DirtPathPoint[] = [];
@@ -1617,6 +1821,23 @@ export function appendDirtPathCell(
     junction = true;
     connections.forEach((direction) => centerLines.push([{ x: 0, z: 0 }, edge(direction)]));
   }
+
+  return { centerLines, junction };
+}
+
+/**
+ * 向一个道路格追加 8×8 微体素夯土带。
+ *
+ * 素材库和生产场景都以“一地图格八微体素”为基准：方向决定格内中心线，微体素只负责
+ * 把中心线栅格化为连续泥面。这样斜路仍保留体素阶梯感，不再出现旋转薄片的接缝和板材感。
+ */
+export function appendDirtPathCell(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[] = [],
+): void {
+  const seed = Math.floor(r * 0x7fffffff);
+  const { centerLines, junction } = pathCenterGeometry(connections, r);
 
   const roadMicros: DirtPathPoint[] = [];
   for (let microZ = 0; microZ < MICRO_PER_CELL; microZ++) {
@@ -1652,6 +1873,7 @@ export function appendDirtPathCell(
         sy: 0.004,
         sz: MICRO + 0.002,
         c: scuffed ? jit(0x705439, tone) : jit(0x806143, tone),
+        visualLayer: 'settlement-era',
       });
     }
   }
@@ -1671,14 +1893,310 @@ export function appendDirtPathCell(
       z: centerZ + local.z + (hash01(seed + pebble, 130) - 0.5) * 0.025,
       sx, sy, sz,
       c: jit(0x8d8980, 0.35 + hash01(seed + pebble, 131) * 0.3),
+      visualLayer: 'settlement-era',
     });
   }
+}
+
+type PavedPathStyle = 'agrarian-stone' | 'ancient-brick' | 'medieval-cobble';
+
+const PAVED_PATH_PROFILE: Record<PavedPathStyle, {
+  width: number;
+  junctionRadius: number;
+  edgeThreshold: number;
+  center: number;
+  alternate: number;
+  curb: number;
+  moss: number;
+  mossChance: number;
+  inset: number;
+  height: number;
+}> = {
+  'agrarian-stone': {
+    width: 0.305, junctionRadius: 0.36, edgeThreshold: 0.225,
+    center: 0x9a9da2, alternate: 0x8d9095, curb: 0x7d8288, moss: 0x6f7a5f,
+    mossChance: 0.06, inset: 0.009, height: 0.025,
+  },
+  'ancient-brick': {
+    width: 0.34, junctionRadius: 0.39, edgeThreshold: 0.27,
+    center: 0xa9825d, alternate: 0xbd9569, curb: 0x796756, moss: 0x6f795d,
+    mossChance: 0.035, inset: 0.011, height: 0.027,
+  },
+  'medieval-cobble': {
+    width: 0.325, junctionRadius: 0.38, edgeThreshold: 0.25,
+    center: 0x85817a, alternate: 0x6f6c66, curb: 0x5f5d58, moss: 0x63705b,
+    mossChance: 0.085, inset: 0.017, height: 0.034,
+  },
+};
+
+/** 铺装道路的共用八向几何；各阶段只替换石板、砖块或鹅卵石的视觉语汇。 */
+function appendPavedPathCell(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[], style: PavedPathStyle,
+): void {
+  const seed = Math.floor(r * 0x7fffffff);
+  const { centerLines, junction } = pathCenterGeometry(connections, r);
+  const profile = PAVED_PATH_PROFILE[style];
+  for (let microZ = 0; microZ < MICRO_PER_CELL; microZ++) {
+    for (let microX = 0; microX < MICRO_PER_CELL; microX++) {
+      const local: DirtPathPoint = {
+        x: (microX + 0.5) * MICRO - 0.5,
+        z: (microZ + 0.5) * MICRO - 0.5,
+      };
+      let distance = Number.POSITIVE_INFINITY;
+      for (const line of centerLines) {
+        for (let pointIndex = 1; pointIndex < line.length; pointIndex++)
+          distance = Math.min(distance, distanceToDirtPathSegment(local, line[pointIndex - 1], line[pointIndex]));
+      }
+      const microId = microZ * MICRO_PER_CELL + microX;
+      const edgeNoise = (hash01(seed ^ microId, 221) - 0.5) * 0.025;
+      const insideRibbon = distance <= profile.width + edgeNoise;
+      const insideJunction = junction && Math.hypot(local.x, local.z) <= profile.junctionRadius + edgeNoise;
+      const insideFilledCorner = filledCorners.some((corner) =>
+        corner.dx !== 0 && corner.dz !== 0
+        && local.x * corner.dx > 0.18 && local.z * corner.dz > 0.18);
+      if (!insideRibbon && !insideJunction && !insideFilledCorner) continue;
+
+      const moss = hash01(seed ^ microId, 222) > 1 - profile.mossChance;
+      const curb = !insideFilledCorner && !insideJunction && distance > profile.edgeThreshold;
+      const alternating = style === 'ancient-brick'
+        ? (microX + Math.floor(microZ / 2)) % 2 === 0
+        : hash01(seed ^ microId, 226) > 0.55;
+      const baseColor = moss ? profile.moss : curb ? profile.curb : alternating ? profile.alternate : profile.center;
+      const slabInset = profile.inset + hash01(seed ^ microId, 223) * (style === 'medieval-cobble' ? 0.009 : 0.004);
+      const slabHeight = profile.height + hash01(seed ^ microId, 224) * (style === 'medieval-cobble' ? 0.014 : 0.007);
+      const jitterX = style === 'medieval-cobble' ? (hash01(seed ^ microId, 227) - 0.5) * 0.014 : 0;
+      const jitterZ = style === 'medieval-cobble' ? (hash01(seed ^ microId, 228) - 0.5) * 0.014 : 0;
+      out.push({
+        b: moss ? 'groundMark' : 'stone',
+        x: centerX + local.x + jitterX,
+        y: groundY + 0.003 + slabHeight / 2,
+        z: centerZ + local.z + jitterZ,
+        sx: MICRO - slabInset * (style === 'ancient-brick' ? 0.65 : 1),
+        sy: slabHeight,
+        sz: MICRO - slabInset * (style === 'ancient-brick' ? 1.35 : 1),
+        c: jit(baseColor, 0.36 + hash01(seed ^ microId, 225) * 0.3),
+        visualLayer: 'settlement-era',
+      });
+    }
+  }
+}
+
+/** 农耕定居的切石板路。 */
+export function appendStonePathCell(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[] = [],
+): void {
+  appendPavedPathCell(out, centerX, groundY, centerZ, connections, r, filledCorners, 'agrarian-stone');
+}
+
+/** 古代文明的青灰砖石大道。 */
+export function appendAncientPathCell(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[] = [],
+): void {
+  appendPavedPathCell(out, centerX, groundY, centerZ, connections, r, filledCorners, 'ancient-brick');
+}
+
+/** 西方中世纪风的高低错落鹅卵石路原型。 */
+export function appendMedievalPathCell(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  connections: readonly DirtPathDirection[], r: number,
+  filledCorners: readonly DirtPathDirection[] = [],
+): void {
+  appendPavedPathCell(out, centerX, groundY, centerZ, connections, r, filledCorners, 'medieval-cobble');
+}
+
+export type SettlementVisualStage = 'primitive' | 'agrarian' | 'ancient';
+
+export function settlementVisualStage(stage: string | undefined): SettlementVisualStage {
+  if (stage === '农耕定居') return 'agrarian';
+  if (stage === '古代文明' || stage === '中世纪') return 'ancient';
+  return 'primitive';
+}
+
+export type AncientHouseVisualStyle = 'chinese' | 'western-medieval';
+
+/** Stable decoration-only choice; it never changes the authoritative shelter. */
+export function ancientHouseVisualStyle(structureCellId: number, worldSeed: number): AncientHouseVisualStyle {
+  return hash01(structureCellId ^ worldSeed, 211) < 0.5 ? 'chinese' : 'western-medieval';
+}
+
+export function usesAgrarianSettlementDecor(stage: string | undefined): boolean {
+  return settlementVisualStage(stage) !== 'primitive';
+}
+
+export type SettlementWonderKind = 'tribal-camp' | 'windmill' | 'stepped-temple' | 'castle';
+
+export interface SettlementWonderProjection {
+  kind: SettlementWonderKind;
+  label: '部落营地' | '风车磨坊' | '阶梯神庙' | '城堡';
+  anchorCellId: number;
+  anchorMaterialKey: 'council_hearth' | 'mill' | 'civic_hall' | 'keep_core';
+  evidenceKeys: string[];
+}
+
+interface WonderCandidate extends SettlementWonderProjection {
+  priority: number;
+}
+
+function facilityInstitutionAnchors(
+  society: SocietyState,
+  institutionPrefix: 'coordination-core' | 'land-processing',
+  materialKey: SettlementWonderProjection['anchorMaterialKey'],
+): Array<{ cellId: number; evidenceKey: string }> {
+  const { world } = society;
+  const materialId = world.palette.find((material) => material.key === materialKey)?.id;
+  if (materialId === undefined) return [];
+  const marker = `${institutionPrefix}:facility:${materialId}:`;
+  return society.observations.institutions.flatMap((institution) => {
+    if (!institution.key.startsWith(marker)) return [];
+    const coordinates = institution.key.slice(marker.length).split(':').map(Number);
+    if (coordinates.length < 2 || !coordinates.slice(0, 2).every(Number.isInteger)) return [];
+    const [x, y] = coordinates;
+    if (x < 0 || y < 0 || x >= world.width || y >= world.height) return [];
+    const cellId = y * world.width + x;
+    // 制度证据可以保留历史，但奇观外观只能锚定当前仍真实存在的设施。
+    if (world.surface[cellId] !== materialId) return [];
+    return [{ cellId, evidenceKey: institution.key }];
+  });
+}
+
+function wonderAnchorScore(society: SocietyState, anchorCellId: number): number {
+  const { world } = society;
+  const distance = (cellId: number): number => Math.abs(cellId % world.width - anchorCellId % world.width)
+    + Math.abs(Math.floor(cellId / world.width) - Math.floor(anchorCellId / world.width));
+  const nearbyCompletedStructures = society.structures.filter((structure) => (
+    structure.complete && structure.occupiedCells.some((cellId) => distance(cellId) <= 7)
+  )).length;
+  const nearbyFacilities = world.surface.filter((materialId, cellId) => (
+    distance(cellId) <= 5
+      && world.palette[materialId]?.tags.includes('facility')
+  )).length;
+  return nearbyCompletedStructures * 4 + nearbyFacilities * 2;
+}
+
+function strongestWonderAnchor(
+  society: SocietyState,
+  anchors: Array<{ cellId: number; evidenceKey: string }>,
+): { cellId: number; evidenceKey: string } | undefined {
+  return [...anchors].sort((left, right) => (
+    wonderAnchorScore(society, right.cellId) - wonderAnchorScore(society, left.cellId)
+      || left.cellId - right.cellId
+  ))[0];
+}
+
+/**
+ * 从权威设施与已形成制度中选择一个主奇观外观。时代只控制视觉语汇，不能单独生成奇观；
+ * 返回值不写回领域状态，也不进入文明指数或人物可感知事实。
+ */
+export function settlementWonderProjection(society: SocietyState): SettlementWonderProjection | null {
+  const stage = settlementVisualStage(society.observations.civilizationIndex?.stage);
+  const culturalMemoryEvidence = society.observations.practices.some((practice) => (
+    practice.key === 'mortuary-care' && practice.count >= 2
+  )) || society.observations.milestones.some((milestone) => (
+    milestone.id.includes('physical-record')
+      || milestone.id.includes('burial-memorial')
+      || milestone.id.includes('prediction-practice')
+  ));
+  const jointWorkEvidence = society.observations.milestones.some((milestone) => (
+    milestone.id.includes('joint-project')
+  ));
+  const candidates: WonderCandidate[] = [];
+  const addCandidate = (
+    kind: SettlementWonderKind,
+    label: SettlementWonderProjection['label'],
+    anchorMaterialKey: SettlementWonderProjection['anchorMaterialKey'],
+    priority: number,
+    anchors: Array<{ cellId: number; evidenceKey: string }>,
+    extraEvidenceKeys: string[] = [],
+  ) => {
+    const anchor = strongestWonderAnchor(society, anchors);
+    if (!anchor) return;
+    candidates.push({
+      kind,
+      label,
+      anchorCellId: anchor.cellId,
+      anchorMaterialKey,
+      priority,
+      evidenceKeys: [anchor.evidenceKey, ...extraEvidenceKeys].sort(),
+    });
+  };
+
+  if (stage === 'ancient') addCandidate(
+    'castle',
+    '城堡',
+    'keep_core',
+    4,
+    facilityInstitutionAnchors(society, 'coordination-core', 'keep_core'),
+  );
+  if (stage === 'ancient' && culturalMemoryEvidence) addCandidate(
+    'stepped-temple',
+    '阶梯神庙',
+    'civic_hall',
+    3,
+    facilityInstitutionAnchors(society, 'coordination-core', 'civic_hall'),
+    society.observations.milestones.filter((milestone) => (
+      milestone.id.includes('physical-record')
+        || milestone.id.includes('burial-memorial')
+        || milestone.id.includes('prediction-practice')
+    )).map((milestone) => milestone.id),
+  );
+  if (stage !== 'primitive') addCandidate(
+    'windmill',
+    '风车磨坊',
+    'mill',
+    2,
+    facilityInstitutionAnchors(society, 'land-processing', 'mill'),
+  );
+  if (jointWorkEvidence) addCandidate(
+    'tribal-camp',
+    '部落营地',
+    'council_hearth',
+    1,
+    facilityInstitutionAnchors(society, 'coordination-core', 'council_hearth'),
+  );
+
+  const selected = candidates.sort((left, right) => right.priority - left.priority
+    || wonderAnchorScore(society, right.anchorCellId) - wonderAnchorScore(society, left.anchorCellId)
+    || left.anchorCellId - right.anchorCellId)[0];
+  if (!selected) return null;
+  return {
+    kind: selected.kind,
+    label: selected.label,
+    anchorCellId: selected.anchorCellId,
+    anchorMaterialKey: selected.anchorMaterialKey,
+    evidenceKeys: selected.evidenceKeys,
+  };
+}
+
+function wonderBuilderFor(kind: SettlementWonderKind, active: boolean): KitBuilder {
+  if (kind === 'tribal-camp') return (k) => kitTribalCampPreview(k, active);
+  if (kind === 'windmill') return (k) => kitWindmillPreview(k);
+  if (kind === 'stepped-temple') return (k) => kitTemplePreview(k, active);
+  return (k) => kitCastlePreview(k, active);
+}
+
+function wonderScale(kind: SettlementWonderKind): number {
+  if (kind === 'tribal-camp') return 1.12;
+  if (kind === 'windmill') return 1.22;
+  if (kind === 'stepped-temple') return 1.36;
+  return 1.3;
+}
+
+function markSettlementEraLayer(out: DecorInstance[], start: number): void {
+  for (let index = start; index < out.length; index++) out[index].visualLayer = 'settlement-era';
 }
 
 /** 扫描权威状态，产出全部装饰实例（每月状态刷新时调用一次） */
 export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[] {
   const w = society.world;
   const out: DecorInstance[] = [];
+  const settlementStage = settlementVisualStage(society.observations.civilizationIndex?.stage);
+  const wonder = settlementWonderProjection(society);
   const cold = era === 'frozen' || era === 'chaotic-cold' || society.weather?.kind === 'snow';
   const scorched = era === 'burned' || era === 'extinct';
   const COUNT = w.width * w.height;
@@ -1831,15 +2349,22 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
           active: activeFacilityCells.has(id),
           fillRatio: container ? Math.min(1, container.usedCapacity / Math.max(1, container.capacity)) : 0,
         };
-        const build = key ? facilityBuilderFor(key, facilityState) : undefined;
+        const wonderAtCell = wonder?.anchorCellId === id && wonder.anchorMaterialKey === key;
+        const build = wonderAtCell
+          ? wonderBuilderFor(wonder.kind, facilityState.active)
+          : key ? facilityBuilderFor(key, facilityState) : undefined;
         if (build) {
           const start = out.length;
-          const rot = key === 'water_wheel' || key === 'drive_shaft' || key === 'broken_drive_shaft'
+          const rot = wonderAtCell
+            ? Math.floor(r * 4)
+            : key === 'water_wheel' || key === 'drive_shaft' || key === 'broken_drive_shaft'
             ? facilityRotationFor(id)
             : Math.floor(r * 4);
-          const scale = key === 'granary' ? 0.72 : 1;
-          build(new Kit(out, wx, gt, wz, scale, rot, `facility:${id}`), r);
+          const scale = wonderAtCell ? wonderScale(wonder.kind) : key === 'granary' ? 0.72 : 1;
+          const entityId = wonderAtCell ? `wonder:${wonder.kind}:${id}` : `facility:${id}`;
+          build(new Kit(out, wx, gt, wz, scale, rot, entityId), r);
           markWind(start);
+          if (wonderAtCell) markSettlementEraLayer(out, start);
         }
         break;
       }
@@ -1860,15 +2385,13 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const filledCorners = dirtPathFilledCorners(mergeablePackedSoilCells, w.width, w.height, w.elevation, id);
     const depth = featureDepth(w, id, constructionCells);
     const groundY = (w.elevation[id] - depth + 1) * CELL_H;
-    appendDirtPathCell(
-      out,
-      x - w.width / 2 + 0.5,
-      groundY,
-      y - w.height / 2 + 0.5,
-      connections,
-      hash01(id ^ w.generator.seed, 5),
-      filledCorners,
-    );
+    const appendPath = settlementStage === 'ancient'
+      ? appendAncientPathCell
+      : settlementStage === 'agrarian'
+        ? appendStonePathCell
+        : appendDirtPathCell;
+    appendPath(out, x - w.width / 2 + 0.5, groundY, y - w.height / 2 + 0.5,
+      connections, hash01(id ^ w.generator.seed, 5), filledCorners);
   }
 
   // 墓葬只由权威 interred 遗体投影。土冢是同一安葬事实的稳定视觉细节；
@@ -1990,6 +2513,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   // 建筑 → 文明印章（规模决定形制）
   for (const st of renderedStructures) {
     if (!st.occupiedCells.length) continue;
+    const settlementStart = out.length;
     const cells = st.occupiedCells.length;
     const bounds = structureBounds(st.occupiedCells, w.width);
     if (!st.complete || !st.interiorPositions.length) {
@@ -2018,6 +2542,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
         hash01(st.occupiedCells[0], 91) < 0.5 ? 0 : 2,
         hash01(st.occupiedCells[0], 13),
       );
+      markSettlementEraLayer(out, settlementStart);
       continue;
     }
     // interiorPositions.z 是真实可站立空间的脚底高度，也是房屋应贴合的地面。
@@ -2033,17 +2558,26 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     ));
     const profile: StructureVisualProfile = { ...st.effects, hearthActive };
     const usableScale = Math.max(cells, st.effects.capacity);
-    const build: KitBuilder = usableScale <= 1
-      ? (k, random) => kitHut(k, material, profile, random)
-      : usableScale <= 4
-        ? (k, random) => kitHouse(k, material, profile, random)
-        : (k, random) => kitHall(k, material, profile, random);
-    const r = hash01(st.occupiedCells[0], 13);
+    const anchorCellId = Math.min(...st.occupiedCells);
+    const ancientStyle = ancientHouseVisualStyle(anchorCellId, w.generator.seed);
+    const build: KitBuilder = settlementStage === 'ancient'
+      ? ancientStyle === 'western-medieval'
+        ? (k, random) => kitMedievalHouse(k, material, profile, random)
+        : (k, random) => kitAncientHouse(k, material, profile, random)
+      : settlementStage === 'agrarian'
+        ? (k, random) => kitAgrarianHouse(k, material, profile, random)
+        : usableScale <= 1
+          ? (k, random) => kitHut(k, material, profile, random)
+          : usableScale <= 4
+            ? (k, random) => kitHouse(k, material, profile, random)
+            : (k, random) => kitHall(k, material, profile, random);
+    const r = hash01(anchorCellId, 13);
     const width = bounds.maxX - bounds.minX + 1;
     const depth = bounds.maxY - bounds.minY + 1;
     const flip = r < 0.5 ? 0 : 2;
     const rot = ((depth > width ? 1 : 0) + flip) % 4;
     placeStructureStamp(out, build, bounds, w.width, w.height, groundY, rot, r, 0.16);
+    markSettlementEraLayer(out, settlementStart);
   }
 
   // 动物

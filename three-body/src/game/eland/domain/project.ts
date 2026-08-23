@@ -50,7 +50,8 @@ export type ProjectFunction =
   | 'iron-working'
   | 'iron-tooling'
   | 'fortified-coordination'
-  | 'water-powered-crop-processing';
+  | 'water-powered-crop-processing'
+  | 'restore-water-powered-crop-processing';
 
 /**
  * A person's positive, locally observable reasons for reopening a functional
@@ -167,6 +168,8 @@ export interface ProjectProposal {
   /** Frozen derived identities let persisted projects reject a geometrically different action basis. */
   mechanicalPowerPlanKey?: string;
   mechanicalPowerNetworkId?: string;
+  /** Present only for a maintenance project bound to one still-current physical fault. */
+  mechanicalPowerFaultEventId?: string;
 }
 
 export interface ProjectReservation {
@@ -185,7 +188,7 @@ export interface ProjectMaterialDemand {
   sourceFactIds: string[];
 }
 
-export type ProjectProgressKind = 'material-contribution' | 'logistics-advance';
+export type ProjectProgressKind = 'material-contribution' | 'knowledge-contribution' | 'logistics-advance';
 
 export interface ProjectProgressEvidence {
   eventId: string;
@@ -242,6 +245,20 @@ export interface ProjectMaterialContributionRequestBasis {
   site: ProjectSite;
   expiresAtMonth: number;
   atMonth: number;
+}
+
+export interface ProjectKnowledgeRequestBasis {
+  version: 'project-knowledge-request-v1';
+  requestEventId: string;
+  projectId: string;
+  requesterId: PersonId;
+  listenerIds: PersonId[];
+  outputMaterialId: MaterialId;
+  expiresAtMonth: number;
+  atMonth: number;
+  responseEventId?: string;
+  responderId?: PersonId;
+  techniqueId?: string;
 }
 
 export type ProjectLogisticsEpisodeKind = 'search' | 'drop' | 'source';
@@ -465,6 +482,8 @@ export interface ProjectState extends ProjectProposal {
   techniqueDemonstrationRequests?: ProjectTechniqueDemonstrationRequestBasis[];
   /** Project-bound requests let nearby holders stage exact missing materials at a fixed site. */
   materialContributionRequests?: ProjectMaterialContributionRequestBasis[];
+  /** A one-shot request names a planned output but never exposes the requester's unknown recipe inputs. */
+  knowledgeRequests?: ProjectKnowledgeRequestBasis[];
   /** v28 request-bound, physically executed demonstrations available for personal imitation. */
   techniqueDemonstrations?: ProjectTechniqueDemonstrationBasis[];
   /** Frozen when a failed inquiry terminates; later proposals compare against it. */

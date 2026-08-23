@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { totalmem } from 'node:os';
 
 import { loadServerEnvValue } from './env';
 
@@ -20,6 +21,12 @@ interface PendingRequest {
   reject: (reason: Error) => void;
 }
 
+function workerHeapLimitMb(): number {
+  const configured = Number(loadServerEnvValue('ELAND_WORKER_OLD_SPACE_MB'));
+  if (Number.isFinite(configured) && configured > 0) return Math.round(configured);
+  return Math.min(8_192, Math.max(4_096, Math.floor(totalmem() / 1024 / 1024 * 0.4)));
+}
+
 export class ElandWorkerClient {
   private worker: Worker | null = null;
   private readonly pending = new Map<number, PendingRequest>();
@@ -33,9 +40,9 @@ export class ElandWorkerClient {
   private startWorker(): Worker {
     if (this.closed) throw new Error('文明演化 Worker 已关闭');
     const worker = new Worker(new URL('./eland-worker.mjs', import.meta.url), {
-      // 长程推进、按需历史回放和响应投影仍需要堆余量；环境变量可按部署机器容量调整。
+      // 实时恢复、按需历史回放和响应投影需要堆余量；环境变量可按部署机器容量调整。
       resourceLimits: {
-        maxOldGenerationSizeMb: Number(loadServerEnvValue('ELAND_WORKER_OLD_SPACE_MB')) || 1_024,
+        maxOldGenerationSizeMb: workerHeapLimitMb(),
         maxYoungGenerationSizeMb: Number(loadServerEnvValue('ELAND_WORKER_YOUNG_SPACE_MB')) || 64,
       },
     });

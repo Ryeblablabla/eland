@@ -3,6 +3,7 @@ import { inventoryCombinationRules, inventoryCombinationTechniqueId } from '../d
 import { Material, type MaterialId } from '../domain/material';
 import type { ActionFact, DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
+import { worldEventById } from '../domain/event-index';
 import { intentsOwnedBy, personById, projectById, projectsOwnedBy } from '../domain/state-index';
 import {
   cloneProjectForPlanning,
@@ -12,8 +13,16 @@ import {
 } from '../domain/project';
 import {
   inspectProjectMaterialContributionRequest,
+  projectMaterialContributionRequestHasAuthoritativeSource,
   transferMatchesProjectMaterialRequest,
 } from '../domain/project-material-request';
+import {
+  inspectProjectKnowledgeRequest,
+  pendingProjectKnowledgeOutput,
+  projectKnowledgeRequestHasAuthoritativeSource,
+} from '../domain/project-knowledge-request';
+import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
+import { registerProjectParticipantMembership } from '../domain/project-participant-index';
 import type { ProjectPressureView } from './project-pressure';
 import { surfaceMaterial } from '../world/grid';
 import {
@@ -69,6 +78,51 @@ export {
   refreshProjectPressure,
   visibleReachableSearchDestination,
 };
+
+function projectPlanBasisTransitionAtMonth(
+  state: SimulationState,
+  project: ProjectState,
+  owner: PersonState,
+): number | undefined {
+  let latestTransitionAtMonth: number | undefined;
+  for (const request of project.knowledgeRequests ?? []) {
+    if (request.version !== 'project-knowledge-request-v1'
+      || request.projectId !== project.id
+      || request.requesterId !== project.ownerId
+      || !request.responseEventId
+      || !request.responderId
+      || !request.techniqueId) continue;
+    const response = worldEventById(state, request.responseEventId);
+    if (!response
+      || response.kind !== 'action'
+      || response.status !== 'completed'
+      || response.who !== request.responderId
+      || response.action.kind !== 'communicate'
+      || response.action.content.kind !== 'claim'
+      || response.action.content.factId !== request.techniqueId
+      || response.action.content.projectKnowledgeResponse?.version !== 'project-knowledge-response-v1'
+      || response.action.content.projectKnowledgeResponse.projectId !== project.id
+      || response.action.content.projectKnowledgeResponse.requestEventId !== request.requestEventId
+      || response.action.content.projectKnowledgeResponse.requesterId !== owner.id
+      || response.action.content.projectKnowledgeResponse.outputMaterialId !== request.outputMaterialId
+      || response.diff.projectKnowledgeResponse !== true
+      || response.diff.projectKnowledgeProjectId !== project.id
+      || response.diff.projectKnowledgeRequestEventId !== request.requestEventId
+      || response.diff.projectKnowledgeOutputMaterialId !== request.outputMaterialId
+      || response.diff.projectKnowledgeTechniqueId !== request.techniqueId
+      || !Array.isArray(response.diff.audience)
+      || !response.diff.audience.includes(owner.id)) continue;
+    const learnedTechnique = owner.knowledge.find((fact) => fact.id === request.techniqueId
+      && fact.kind === 'technique'
+      && fact.confidence >= 55
+      && fact.sourceEventIds.includes(response.id));
+    if (!learnedTechnique
+      || techniqueOutputMaterialId(learnedTechnique.id) !== request.outputMaterialId
+      || pendingProjectKnowledgeOutput(state, project) === request.outputMaterialId) continue;
+    latestTransitionAtMonth = Math.max(latestTransitionAtMonth ?? response.atMonth, response.atMonth);
+  }
+  return latestTransitionAtMonth;
+}
 
 function sameMaterialBasis(left: readonly MaterialId[], right: readonly MaterialId[]): boolean {
   const normalizedLeft = [...new Set(left)].sort((a, b) => a - b);
@@ -139,11 +193,40 @@ function projectHasLegitimateWait(
     ).status === 'open');
   });
   if (openContribution) return true;
+  const openKnowledgeRequest = project.knowledgeRequests?.some((request) => (
+    inspectProjectKnowledgeRequest(state, project, request, atMonth) === 'open'
+  ));
+  if (openKnowledgeRequest) return true;
   const pendingOutputs = new Set(completedFunctionMaterialIds(project));
   return projectActionFacts(state, project).some((event) => event.status === 'completed'
     && event.atMonth === atMonth
     && pendingOutputs.has(Number(event.diff.outputMaterialId))
     && !event.diff.position);
+}
+
+function projectHasOpenBoundedExternalRequest(
+  state: SimulationState,
+  project: ProjectState,
+  atMonth: number,
+): boolean {
+  const openContribution = project.materialContributionRequests?.some((request) => {
+    const demand = project.materialDemands?.find((candidate) => candidate.materialId === request.materialId);
+    return Boolean(demand
+      && projectMaterialContributionRequestHasAuthoritativeSource(state, project, request)
+      && inspectProjectMaterialContributionRequest(
+      state,
+      project,
+      request,
+      atMonth,
+      demand,
+    ).status === 'open');
+  });
+  if (openContribution) return true;
+  const openKnowledgeRequest = project.knowledgeRequests?.some((request) => (
+    projectKnowledgeRequestHasAuthoritativeSource(state, project, request)
+      && inspectProjectKnowledgeRequest(state, project, request, atMonth) === 'open'
+  ));
+  return Boolean(openKnowledgeRequest);
 }
 
 function blockExplicitlyExhaustedProject(
@@ -226,11 +309,23 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     ownerProjectIntent?.suspendedAtMonth ?? 0,
     hibernationSuspensionActive ? atMonth : 0,
   );
-  if (atMonth > project.reviewAtMonth && atMonth - progressAnchor >= 4) {
+  const reviewWindowMonths = Math.max(1, project.reviewAtMonth - project.createdAtMonth);
+  const planBasisTransitionAtMonth = projectPlanBasisTransitionAtMonth(state, project, owner);
+  const reviewDeadline = Math.max(
+    project.reviewAtMonth,
+    planBasisTransitionAtMonth !== undefined
+      ? planBasisTransitionAtMonth + reviewWindowMonths
+      : project.reviewAtMonth,
+  );
+  if (atMonth > reviewDeadline
+    && atMonth - progressAnchor >= 4
+    && !projectHasOpenBoundedExternalRequest(state, project, atMonth)) {
     freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
     project.status = 'blocked';
     project.blockedAtMonth = atMonth;
-    project.blockedReason = '复核期内持续缺少可执行的材料、知识或空间步骤';
+    project.blockedReason = planBasisTransitionAtMonth !== undefined
+      ? '取得新的项目计划基础后，有界阶段内仍未提交下一阶段进展'
+      : '复核期内持续缺少可执行的材料、知识或空间步骤';
     project.reservations = [];
     project.materialDemands = [];
     endActiveLogisticsEpisode(project, atMonth, 'exhausted', 'project-blocked');
@@ -261,6 +356,14 @@ export function recordProjectAction(state: SimulationState, projectId: string, f
       || fact.action.kind === 'transfer'
       || fact.action.kind === 'attend'
       || (fact.action.kind === 'communicate' && fact.action.channel === 'record'));
+  const knowledgeContribution = fact.status === 'completed'
+    && fact.action.kind === 'communicate'
+    && fact.action.content.kind === 'claim'
+    && Boolean(fact.action.content.projectKnowledgeResponse)
+    && fact.diff.projectKnowledgeResponse === true
+    && fact.diff.projectKnowledgeProjectId === project.id
+    && fact.diff.projectKnowledgeRequestEventId
+      === fact.action.content.projectKnowledgeResponse?.requestEventId;
   if (fact.status === 'completed'
     && fact.action.kind === 'transfer'
     && fact.action.from.kind === 'person'
@@ -285,7 +388,16 @@ export function recordProjectAction(state: SimulationState, projectId: string, f
     actorId: fact.who,
     ...(episode ? { episodeId: episode.id, target: structuredClone(episode.target) } : {}),
   });
-  if (materialContribution && !project.contributorIds.includes(fact.who)) project.contributorIds.push(fact.who);
+  if (knowledgeContribution) recordProjectProgress(project, {
+    eventId: fact.id,
+    atMonth: fact.atMonth,
+    kind: 'knowledge-contribution',
+    actorId: fact.who,
+  });
+  if ((materialContribution || knowledgeContribution) && !project.contributorIds.includes(fact.who)) {
+    project.contributorIds.push(fact.who);
+    registerProjectParticipantMembership(state, project);
+  }
   if (project.desiredFunction === 'healing'
     && typeof fact.diff.caredPersonId === 'string'
     && project.beneficiaryIds.includes(fact.diff.caredPersonId)) {
@@ -570,6 +682,7 @@ export function ensureProject(
   }
   const created = instantiateProject(proposal);
   state.projects.push(created);
+  registerProjectParticipantMembership(state, created);
   return created;
 }
 

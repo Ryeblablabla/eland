@@ -5,7 +5,7 @@ import type {
 } from '../domain/action';
 import {
   agreementFactsForPerson,
-  completedActionFactsForPerson,
+  completedSupportActionFactsBetween,
   groundedConversationOpeningsForListener,
   hasGroundedConversationOpeningBasis,
   hasGroundedConversationResponse,
@@ -14,10 +14,12 @@ import {
   worldEventsByIdsInHistoryOrder,
 } from '../domain/event-index';
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
-import { ageMonths, isAlive, isDehydratedHibernating, sameLocation, type PersonState } from '../domain/person';
+import { ageMonths, isAlive, isDehydratedHibernating, type PersonState } from '../domain/person';
 import { intentsOwnedBy, personById } from '../domain/state-index';
-import { cellsInRadius, findStandingPath } from '../world/grid';
+import { cellsInRadius } from '../world/grid';
 import { knowsDeath, remainsById } from '../domain/mortuary';
+import { latestSharedProjectBetween } from '../domain/project-participant-index';
+import { conversationalRendezvous, positionsWithinVoiceRange } from '../domain/social-space';
 
 interface ConversationCandidate {
   topic: GroundedConversationTopic;
@@ -101,21 +103,13 @@ function gratitudeEvent(state: SimulationState, person: PersonState, other: Pers
   const agreementIds = agreementFactsForPerson(state, person.id)
     .filter((event) => event.change === 'fulfilled' && event.partyIds.includes(other.id))
     .map((event) => event.id);
-  const actionIds = completedActionFactsForPerson(state, other.id)
-    .filter((event) => event.diff.caredPersonId === person.id
-      || (event.action.kind === 'transfer'
-        && event.action.to.kind === 'person'
-        && event.action.to.personId === person.id))
+  const actionIds = completedSupportActionFactsBetween(state, other.id, person.id)
     .map((event) => event.id);
   return worldEventsByIdsInHistoryOrder(state, [...agreementIds, ...actionIds]).at(-1);
 }
 
 function sharedProject(state: SimulationState, person: PersonState, other: PersonState) {
-  return [...state.projects].reverse().find((project) => {
-    const participantIds = new Set([project.ownerId, ...project.contributorIds]);
-    const sources = [...project.completionEventIds, ...project.actionEventIds];
-    return participantIds.has(person.id) && participantIds.has(other.id) && sources.length > 0;
-  });
+  return latestSharedProjectBetween(state, person.id, other.id);
 }
 
 function birthEventForSharedChild(state: SimulationState, person: PersonState, other: PersonState): EnvironmentFact | undefined {
@@ -269,9 +263,10 @@ function openingOption(
     audience: [other.id],
     channel: 'voice' as const,
   };
-  const together = sameLocation(person, other);
-  const path = together ? [] : findStandingPath(state.world.grid, person.position, other.position);
-  if (!together && !path.length) return null;
+  const together = positionsWithinVoiceRange(person.position, other.position);
+  const rendezvous = conversationalRendezvous(state, person, other);
+  if (!rendezvous) return null;
+  const path = rendezvous.path;
   return {
     id: representationId,
     summary: together
@@ -281,7 +276,7 @@ function openingOption(
     goal: { kind: 'representation-made', representationId },
     nextAction: together
       ? conversationAction
-      : { kind: 'move', toCellId: other.position.cellId, toZ: other.position.z },
+      : { kind: 'move', toCellId: rendezvous.position.cellId, toZ: rendezvous.position.z },
     ...(!together ? { completionAction: conversationAction } : {}),
     target: { kind: 'person', personId: other.id },
     estimatedDuration: together ? 'one-month' : 'several-months',
@@ -345,7 +340,8 @@ function responseOptionForOpening(
   if (!openingConversation) return null;
   const speakerCandidate = personById(state, openingConversation.speakerId);
   const speaker = speakerCandidate && isAlive(speakerCandidate) ? speakerCandidate : undefined;
-  if (!speaker || (!sameLocation(person, speaker) && !visiblePeople.some((candidate) => candidate.id === speaker.id))) return null;
+  if (!speaker || (!positionsWithinVoiceRange(person.position, speaker.position)
+    && !visiblePeople.some((candidate) => candidate.id === speaker.id))) return null;
   const relation = person.relations.find((candidate) => candidate.personId === speaker.id);
   const guarded = (relation?.fear ?? 0) >= 35 && (relation?.trust ?? 0) < 8;
   const summary = responseMeaning(openingConversation.topic, guarded);
@@ -364,7 +360,7 @@ function responseOptionForOpening(
     audience: [speaker.id],
     channel: 'voice' as const,
   };
-  if (sameLocation(person, speaker)) return {
+  if (positionsWithinVoiceRange(person.position, speaker.position)) return {
     id: representationId,
     summary: `回应${speaker.name}关于${TOPIC_LABEL[openingConversation.topic]}的话：${summary}`,
     reason: '对方刚向自己说了一件有真实生活来源的事，需要给出明确回应',
@@ -374,14 +370,15 @@ function responseOptionForOpening(
     estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social',
     sourceFactIds: [opening.id, ...openingConversation.sourceFactIds],
   };
-  const path = findStandingPath(state.world.grid, person.position, speaker.position);
-  if (!path.length) return null;
+  const rendezvous = conversationalRendezvous(state, person, speaker);
+  if (!rendezvous) return null;
+  const path = rendezvous.path;
   return {
     id: representationId,
     summary: `去找${speaker.name}，回应关于${TOPIC_LABEL[openingConversation.topic]}的话`,
     reason: '对方刚向自己说了一件有真实生活来源的事，靠近后给出明确回应',
     goal: { kind: 'representation-made', representationId },
-    nextAction: { kind: 'move', toCellId: speaker.position.cellId, toZ: speaker.position.z },
+    nextAction: { kind: 'move', toCellId: rendezvous.position.cellId, toZ: rendezvous.position.z },
     completionAction: responseAction,
     target: { kind: 'person', personId: speaker.id },
     estimatedDuration: 'several-months', estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / 15)),

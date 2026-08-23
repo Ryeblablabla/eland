@@ -77,10 +77,16 @@ export function recentPersonalProductionLaborEvents(
   atMonth = state.clock.elapsedMonths,
   maxAgeMonths = RECENT_PERSONAL_PRODUCTION_MONTHS,
 ): ActionFact[] {
-  return completedActionFactsForPerson(state, personId)
-    .filter((event): event is ActionFact => isCompletedPersonalProduction(event, personId)
-      && event.atMonth <= atMonth
-      && atMonth - event.atMonth <= maxAgeMonths)
+  const events = completedActionFactsForPerson(state, personId);
+  const recent: ActionFact[] = [];
+  const earliestMonth = atMonth - maxAgeMonths;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.atMonth > atMonth) continue;
+    if (event.atMonth < earliestMonth) break;
+    if (isCompletedPersonalProduction(event, personId)) recent.push(event);
+  }
+  return recent
     .sort((left, right) => right.atMonth - left.atMonth
       || right.orderInMonth - left.orderInMonth
       || left.id.localeCompare(right.id));

@@ -1660,9 +1660,10 @@ try {
   assert.ok(lastMonthActions.every((event) => event.actionTick >= 1 && event.actionTick <= 15), '原子行动必须归属 1–15 的月内规则刻度');
   assert.ok(state.people.filter((person) => person.bornAtMonth < state.clock.elapsedMonths).every((person) => person.position.tickPath.length === 16), '每位人物每月必须留下月初加 15 刻度的位置轨迹');
   for (const event of state.world.past.filter((fact) => fact.kind === 'action' && fact.action.kind === 'move')) {
-    assert.ok(event.pathSegment.length <= 2, '单个行动刻度不允许跨越多个格子');
-    if (event.pathSegment.length === 2) {
-      const [from, to] = event.pathSegment;
+    assert.ok(event.pathSegment.length <= 3, '单个行动刻度最多沿连续低成本路面跨越两条边');
+    for (let index = 1; index < event.pathSegment.length; index += 1) {
+      const from = event.pathSegment[index - 1];
+      const to = event.pathSegment[index];
       const distance = Math.abs(from % 84 - to % 84) + Math.abs(Math.floor(from / 84) - Math.floor(to / 84));
       assert.equal(distance, 1, '每个空间路径步必须连接四邻格');
     }

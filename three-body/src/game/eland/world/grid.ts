@@ -257,6 +257,53 @@ export function standingMovementCost(world: VoxelWorld, from: StandingPosition, 
   return Math.max(1, 2 + Math.max(0, to.z - from.z) + plantPenalty - roadRelief);
 }
 
+/** 普通平地恰好消耗一个刻度；连续低成本路面可以在同一刻度继续前进。 */
+export const STANDING_MOVEMENT_BUDGET_PER_TICK = 2 as const;
+
+export function standingPathMovementCost(world: VoxelWorld, path: readonly StandingPosition[]): number {
+  let cost = 0;
+  for (let index = 1; index < path.length; index += 1) {
+    cost += standingMovementCost(world, path[index - 1], path[index]);
+  }
+  return cost;
+}
+
+export function standingPathSegmentForTick(
+  world: VoxelWorld,
+  path: readonly StandingPosition[],
+): StandingPosition[] {
+  if (path.length <= 1) return path.map((position) => ({ ...position }));
+  const segment = [{ ...path[0] }];
+  let spent = 0;
+  for (let index = 1; index < path.length; index += 1) {
+    const edgeCost = standingMovementCost(world, path[index - 1], path[index]);
+    // 高成本地形仍允许人物至少跨过一条相邻边，不能因预算不足永久卡死。
+    if (segment.length > 1 && spent + edgeCost > STANDING_MOVEMENT_BUDGET_PER_TICK) break;
+    segment.push({ ...path[index] });
+    spent += edgeCost;
+  }
+  return segment;
+}
+
+/** 用与执行器相同的预算规则估算整条站立路径需要多少规划刻度。 */
+export function standingPathMovementTicks(world: VoxelWorld, path: readonly StandingPosition[]): number {
+  let ticks = 0;
+  let index = 0;
+  while (index < path.length - 1) {
+    let spent = 0;
+    let moved = false;
+    while (index < path.length - 1) {
+      const edgeCost = standingMovementCost(world, path[index], path[index + 1]);
+      if (moved && spent + edgeCost > STANDING_MOVEMENT_BUDGET_PER_TICK) break;
+      spent += edgeCost;
+      moved = true;
+      index += 1;
+    }
+    ticks += 1;
+  }
+  return ticks;
+}
+
 function manhattan(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
 }

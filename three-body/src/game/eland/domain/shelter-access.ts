@@ -1,4 +1,5 @@
-import type { DerivedStructure, SimulationState } from './model';
+import type { PhysicalStructure, SimulationState } from './model';
+import { physicalStructuresOf } from './physical-structure-index';
 import type { PersonState } from './person';
 import { shelterGeometryAt } from './structure';
 import { worldEventById } from './event-index';
@@ -22,7 +23,7 @@ function defaultVisibleCells(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, radius);
 }
 
-function rememberedEvidence(state: SimulationState, person: PersonState, structure: DerivedStructure): string[] {
+function rememberedEvidence(state: SimulationState, person: PersonState, structure: PhysicalStructure): string[] {
   const placeEvidence = person.knownPlaces.flatMap((place) => {
     const placeCell = cellId(place.position.x, place.position.y);
     if (!structure.occupiedCells.includes(placeCell) || !structure.materialIds.includes(place.materialId)) return [];
@@ -54,7 +55,7 @@ export function findReachableShelter(
   if (shelterGeometryAt(state.world.grid, person.position)) return null;
   const visible = new Set(visibleCellIds);
   const candidates: ShelterAccess[] = [];
-  for (const structure of state.derived.structures) {
+  for (const structure of physicalStructuresOf(state)) {
     if (!structure.complete) continue;
     const seenNow = structure.occupiedCells.some((cell) => visible.has(cell))
       || structure.interiorPositions.some((position) => visible.has(position.cellId));

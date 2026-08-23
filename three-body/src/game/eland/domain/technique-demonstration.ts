@@ -357,3 +357,45 @@ export function techniqueInputMaterials(techniqueId: string): Array<{ materialId
   }
   return [{ materialId: parsed.rule.inputMaterialId, quantity: 1 }];
 }
+
+export interface PersonallyKnownTechniquePrerequisite {
+  techniqueId: string;
+  operation: 'combine' | 'exert' | 'expose';
+  outputMaterialId: MaterialId;
+  outputQuantity: number;
+  portableInputs: Array<{ materialId: MaterialId; quantity: number }>;
+  targetMaterialId?: MaterialId;
+  sourceFactIds: string[];
+}
+
+/**
+ * Reads prerequisite roles only through reliable technique facts owned by the
+ * person. The global rule tables merely validate the exact technique id; they
+ * are never searched to reveal an output the person has not named themselves.
+ */
+export function personallyKnownTechniquePrerequisitesForOutput(
+  person: PersonState,
+  outputMaterialId: MaterialId,
+): PersonallyKnownTechniquePrerequisite[] {
+  return person.knowledge.flatMap((fact) => {
+    if (fact.kind !== 'technique' || fact.confidence < 55) return [];
+    const parsed = techniqueRule(fact.id);
+    if (!parsed) return [];
+    const output = parsed.operation === 'combine'
+      ? parsed.rule.output.materialId
+      : parsed.rule.outputMaterialId;
+    if (output !== outputMaterialId) return [];
+    return [{
+      techniqueId: fact.id,
+      operation: parsed.operation,
+      outputMaterialId: output,
+      outputQuantity: parsed.operation === 'combine' ? parsed.rule.output.quantity : 1,
+      portableInputs: techniqueInputMaterials(fact.id),
+      ...(parsed.operation === 'combine' ? {} : { targetMaterialId: parsed.rule.targetMaterialId }),
+      sourceFactIds: [...fact.sourceEventIds],
+      confidence: fact.confidence,
+    }];
+  }).sort((left, right) => right.confidence - left.confidence
+    || left.techniqueId.localeCompare(right.techniqueId))
+    .map(({ confidence: _confidence, ...prerequisite }) => prerequisite);
+}

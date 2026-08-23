@@ -22,13 +22,17 @@ import {
   resolveWeather,
 } from '../../domain/monthly-processes';
 import { advancePermissionLifecycle } from '../../domain/permission';
+import {
+  copyPhysicalStructures,
+  derivePhysicalStructureIndex,
+} from '../../domain/physical-structure-index';
 import { isAlive, type PersonId, type PersonState } from '../../domain/person';
 import { consolidatePersonality } from '../../domain/personality';
-import { deriveObservations, deriveStructures, updateDevelopmentObservation } from '../../projection/derived-observations';
 import { seededFraction } from '../../world/generator';
 import { advanceProjects } from '../project-options';
 import { decisionBudgetExemption, decisionProbability } from './model-review';
 import { drainInterruptedIntentReturns } from './intent-execution';
+import type { ObservationProjector } from './observation-projector';
 import { copyState } from './state-utils';
 import { buildDecisionContexts } from './tick-planner';
 
@@ -232,6 +236,7 @@ export function finishMonth(
   events: WorldEvent[],
   atMonth: number,
   projectionCadence: 'monthly' | 'annual',
+  observationProjector: ObservationProjector,
 ): SimulationState {
   const orderByTick = new Map<number, number>();
   events.forEach((event, index) => {
@@ -258,10 +263,10 @@ export function finishMonth(
     || atMonth % MONTHS_PER_YEAR === 0
     || endpointReached
     || living.length === 0;
-  state.derived = fullProjection
-    ? deriveObservations(state)
-    : { ...state.derived, structures: deriveStructures(state) };
-  if (fullProjection) updateDevelopmentObservation(state);
+  const physicalStructureIndex = derivePhysicalStructureIndex(state);
+  state.world.physicalStructureIndex = physicalStructureIndex;
+  state.derived = { ...state.derived, structures: copyPhysicalStructures(physicalStructureIndex) };
+  if (fullProjection) observationProjector.project(state, 'full');
   if (!living.length) {
     const ending = destructionOutcome(state, atMonth, events);
     state.civilization.status = 'ended';

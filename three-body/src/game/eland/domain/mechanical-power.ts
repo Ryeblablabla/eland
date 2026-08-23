@@ -7,6 +7,11 @@ import {
 export const MECHANICAL_POWER_WORLD_VERSION = 'mechanical-power-world-v1' as const;
 export const MECHANICAL_POWER_PLAN_VERSION = 'mechanical-power-plan-v1' as const;
 export const MECHANICAL_POWER_ACTION_BASIS_VERSION = 'mechanical-power-action-basis-v1' as const;
+export const MECHANICAL_POWER_OPERATION_TECHNIQUE_ID = 'technique:mechanical-power:water-wheel-shaft-mill-operation' as const;
+/** Successful loaded work is the only source of ordinary wear. */
+export const MECHANICAL_POWER_OPERATION_WEAR = 20;
+/** A later loaded attempt exposes accumulated shaft wear before consuming its input. */
+export const MECHANICAL_POWER_WORN_FAULT_THRESHOLD = 40;
 
 export interface MechanicalVoxelPosition {
   x: number;
@@ -91,6 +96,15 @@ interface MechanicalPowerActionBasisBase {
   sourceKeys: string[];
 }
 
+/** A person-local attend action may diagnose only this currently visible physical fault. */
+export interface MechanicalPowerFaultObservationRef {
+  version: 'mechanical-power-fault-observation-v1';
+  installationProjectId: string;
+  planKey: string;
+  networkId: string;
+  faultEventId: string;
+}
+
 export type MechanicalPowerActionBasis =
   | MechanicalPowerActionBasisBase & {
     mode: 'observe-source';
@@ -113,6 +127,17 @@ export type MechanicalPowerActionBasis =
     outputMaterialId: MaterialId;
   }
   | MechanicalPowerActionBasisBase & {
+    mode: 'operate-service';
+    installationProjectId: string;
+    maintenanceProjectId?: string;
+    recoveryRepairEventId?: string;
+    planKey: string;
+    networkId: string;
+    operationKnowledgeId: typeof MECHANICAL_POWER_OPERATION_TECHNIQUE_ID;
+    inputMaterialId: MaterialId;
+    outputMaterialId: MaterialId;
+  }
+  | MechanicalPowerActionBasisBase & {
     mode: 'repair';
     projectId: string;
     planKey: string;
@@ -120,7 +145,22 @@ export type MechanicalPowerActionBasis =
     faultEventId: string;
     replacementMaterialId: MaterialId;
     toolMaterialId: MaterialId;
+  }
+  | MechanicalPowerActionBasisBase & {
+    mode: 'repair-service';
+    installationProjectId: string;
+    maintenanceProjectId: string;
+    planKey: string;
+    networkId: string;
+    faultEventId: string;
+    diagnosisFactId: string;
+    replacementMaterialId: MaterialId;
+    toolMaterialId: MaterialId;
   };
+
+export function mechanicalPowerFaultObservationFactId(networkId: string, faultEventId: string): string {
+  return `observation:mechanical-power-fault:${networkId}:${faultEventId}`;
+}
 
 export interface WaterCurrentAvailability {
   segmentId: string;
@@ -349,6 +389,37 @@ export function mechanicalPowerPlanKey(plan: MechanicalPowerProjectPlan): string
   ].join('|');
 }
 
+/**
+ * The next physical component named by a frozen plan. This exposes only the
+ * planned output identity, never its recipe or input bill of materials.
+ */
+export function pendingMechanicalPowerComponentMaterialId(
+  mechanicalPower: MechanicalPowerWorldState | undefined,
+  plan: MechanicalPowerProjectPlan,
+): MaterialId | undefined {
+  const network = mechanicalPower?.networks.find((candidate) => (
+    candidate.installationProjectId === plan.projectId
+      && candidate.planKey === mechanicalPowerPlanKey(plan)
+      && candidate.sourceSegmentId === plan.sourceSegmentId
+  ));
+  const installed = (
+    role: MechanicalPowerComponentInstallation['role'],
+    materialId: MaterialId,
+    position: MechanicalVoxelPosition,
+  ) => Boolean(network?.components.some((component) => (
+    component.role === role
+      && component.materialId === materialId
+      && samePosition(component.position, position)
+  )));
+  if (!installed('load', Material.Mill, plan.loadPosition)) return Material.Mill;
+  if (plan.shaftPositions.some((position) => !installed('connector', Material.DriveShaft, position))) {
+    return Material.DriveShaft;
+  }
+  if (!installed('converter', Material.WaterWheel, plan.wheelPosition)) return Material.WaterWheel;
+  if (network?.fault) return Material.DriveShaft;
+  return undefined;
+}
+
 function stableKeyHash(value: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -449,6 +520,7 @@ export function recordMechanicalPowerOperation(
 ): void {
   appendUnique(network.operationEventIds, [eventId]);
   appendUnique(network.sourceEventIds, [eventId]);
+  network.condition = Math.max(0, network.condition - MECHANICAL_POWER_OPERATION_WEAR);
 }
 
 export function plannedMechanicalPowerComponents(plan: MechanicalPowerProjectPlan): Array<{

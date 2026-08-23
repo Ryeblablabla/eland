@@ -1,6 +1,9 @@
 import { deserialize, serialize } from 'node:v8';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 
+import type { WorldEvent } from '../src/game/eland/simulation';
+import { internEventHistoryAuditStrings } from './event-history-memory';
+
 export const SESSION_TIMELINE_CHUNK_REFERENCE_KEY = '__elandSessionChunkV2' as const;
 const SHA256_HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const BROTLI_OPTIONS = {
@@ -207,5 +210,14 @@ export function encodeSessionSnapshotParts<T>(value: T): SessionSnapshotParts {
 /** Hydrate a shell with either eager Buffers (legacy/tests) or lazy hash references. */
 export function decodeSessionSnapshotParts<T>(parts: SessionSnapshotParts): T {
   const shell = deserialize(brotliDecompressSync(parts.compressedShell)) as unknown;
-  return attachTimelineChunks(shell, parts.chunks) as T;
+  const hydrated = attachTimelineChunks(shell, parts.chunks);
+  if (isRecord(hydrated)) {
+    const session = isRecord(hydrated.session) ? hydrated.session : hydrated;
+    const latestState = isRecord(session.latestState) ? session.latestState : undefined;
+    const world = latestState && isRecord(latestState.world) ? latestState.world : undefined;
+    if (world && Array.isArray(world.past)) {
+      internEventHistoryAuditStrings(world.past as WorldEvent[]);
+    }
+  }
+  return hydrated as T;
 }

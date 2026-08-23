@@ -11,21 +11,25 @@ import type {
 import { isAlive } from './person';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
 
-export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v2' as const;
+export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v6' as const;
 
 const ERA_ORDER: DevelopmentEraKey[] = [
   'primitive-tribe',
   'agrarian-settlement',
   'ancient-civilization',
-  'medieval',
 ];
 
 export const DEVELOPMENT_ERA_LABELS: Record<DevelopmentEraKey, string> = {
   'primitive-tribe': '原始部落',
   'agrarian-settlement': '农耕定居',
   'ancient-civilization': '古代文明',
-  medieval: '中世纪',
+  medieval: '古代文明',
 };
+
+/** Persisted v1-v4 snapshots may still contain the former standalone medieval era. */
+export function normalizeDevelopmentEra(era: DevelopmentEraKey): DevelopmentEraKey {
+  return era === 'medieval' ? 'ancient-civilization' : era;
+}
 
 const FACILITIES: ReadonlyMap<MaterialId, {
   kind: FunctionalBuildingObservation['kind'];
@@ -74,40 +78,84 @@ function currentInstallation(state: SimulationState, event: ActionFact) {
 
 export function observeFunctionalBuildings(state: SimulationState): FunctionalBuildingObservation[] {
   const actions = actionFacts(state);
-  const installations = new Map<string, NonNullable<ReturnType<typeof currentInstallation>> & { installationEventIds: string[] }>();
+  type InstallationBasis = NonNullable<ReturnType<typeof currentInstallation>> & {
+    installationEventIds: string[];
+    installationIds: Set<string>;
+    installedAtMonth: number;
+    uses: ActionFact[];
+  };
+  const installations = new Map<string, InstallationBasis>();
+  const firstActionMonthById = new Map<string, number>();
   for (const event of actions) {
+    if (!firstActionMonthById.has(event.id)) firstActionMonthById.set(event.id, event.atMonth);
     const installation = currentInstallation(state, event);
     if (!installation) continue;
     const { materialId, x, y, z } = installation;
     const id = `facility:${materialId}:${x}:${y}:${z}`;
     const existing = installations.get(id);
-    if (existing) existing.installationEventIds.push(event.id);
-    else installations.set(id, { ...installation, installationEventIds: [event.id] });
+    const installedAtMonth = firstActionMonthById.get(event.id) ?? state.clock.elapsedMonths;
+    if (existing) {
+      existing.installationEventIds.push(event.id);
+      existing.installationIds.add(event.id);
+      existing.installedAtMonth = Math.min(existing.installedAtMonth, installedAtMonth);
+    } else installations.set(id, {
+      ...installation,
+      installationEventIds: [event.id],
+      installationIds: new Set([event.id]),
+      installedAtMonth,
+      uses: [],
+    });
   }
+
+  const byMaterialId = new Map<MaterialId, InstallationBasis[]>();
+  const storageByContainerId = new Map<string, InstallationBasis[]>();
+  const waterByPosition = new Map<string, InstallationBasis[]>();
+  const coreByCellId = new Map<number, InstallationBasis[]>();
+  const append = <Key>(index: Map<Key, InstallationBasis[]>, key: Key, installation: InstallationBasis): void => {
+    const indexed = index.get(key) ?? [];
+    indexed.push(installation);
+    index.set(key, indexed);
+  };
+  for (const installation of installations.values()) {
+    const { materialId, definition, x, y, z } = installation;
+    append(byMaterialId, materialId, installation);
+    if (definition.kind === 'storage') append(storageByContainerId, `container:${x}:${y}:${z}`, installation);
+    if (definition.kind === 'water') append(waterByPosition, `${x}:${y}:${z}`, installation);
+    if (definition.kind === 'core') append(coreByCellId, cellId(x, y), installation);
+  }
+
+  for (const candidate of actions) {
+    if (candidate.status !== 'completed') continue;
+    const matching = new Set<InstallationBasis>();
+    byMaterialId.get(Number(candidate.diff.facilityMaterialId))?.forEach((installation) => matching.add(installation));
+    if (candidate.action.kind === 'transfer') {
+      const containerId = candidate.action.from.kind === 'container'
+        ? candidate.action.from.containerId
+        : candidate.action.to.kind === 'container' ? candidate.action.to.containerId : '';
+      storageByContainerId.get(containerId)?.forEach((installation) => matching.add(installation));
+    }
+    if (candidate.action.kind === 'act' && candidate.action.operation === 'ingest') {
+      for (const target of candidate.action.targets) {
+        if (target.kind !== 'voxel') continue;
+        const { x, y, z } = target.position;
+        waterByPosition.get(`${x}:${y}:${z}`)?.forEach((installation) => matching.add(installation));
+      }
+    }
+    if (candidate.action.kind === 'communicate') {
+      coreByCellId.get(candidate.cellId)?.forEach((installation) => matching.add(installation));
+    }
+    for (const installation of matching) {
+      if (candidate.atMonth < installation.installedAtMonth
+        || installation.installationIds.has(candidate.id)) continue;
+      installation.uses.push(candidate);
+    }
+  }
+
   return [...installations.entries()].map(([id, installation]) => {
-    const { materialId, definition, x, y, z, installationEventIds } = installation;
+    const {
+      materialId, definition, x, y, z, installationEventIds, installedAtMonth, uses,
+    } = installation;
     const installedCell = cellId(x, y);
-    const containerId = `container:${x}:${y}:${z}`;
-    const installedAtMonth = Math.min(...installationEventIds.map((eventId) => actions.find((event) => event.id === eventId)?.atMonth ?? state.clock.elapsedMonths));
-    const installationIds = new Set(installationEventIds);
-    const uses = actions.filter((candidate) => candidate.status === 'completed'
-      && candidate.atMonth >= installedAtMonth
-      && !installationIds.has(candidate.id)
-      && (
-        Number(candidate.diff.facilityMaterialId) === materialId
-        || (definition.kind === 'storage'
-          && candidate.action.kind === 'transfer'
-          && (candidate.action.from.kind === 'container' || candidate.action.to.kind === 'container')
-          && (candidate.action.from.kind === 'container' ? candidate.action.from.containerId : candidate.action.to.kind === 'container' ? candidate.action.to.containerId : '') === containerId)
-        || (definition.kind === 'water'
-          && candidate.action.kind === 'act'
-          && candidate.action.operation === 'ingest'
-          && candidate.action.targets.some((target) => target.kind === 'voxel'
-            && target.position.x === x && target.position.y === y && target.position.z === z))
-        || (definition.kind === 'core'
-          && candidate.action.kind === 'communicate'
-          && candidate.cellId === installedCell)
-      ));
     return {
       id,
       kind: definition.kind,
@@ -192,6 +240,44 @@ export function materialCapabilityAtLeast(
   return Boolean(capability && STAGE_ORDER.indexOf(capability.stage) >= STAGE_ORDER.indexOf(stage));
 }
 
+/**
+ * Era observation follows demonstrated capability rather than requiring a
+ * civilization to replay one fixed material chronology. Institutional iron
+ * is stronger evidence for the ancient metalworking dimension than
+ * institutional bronze.
+ */
+export function ancientMetalworkingCapabilitySatisfied(
+  capabilities: MaterialCapabilityObservation[],
+): boolean {
+  const capability = (key: MaterialCapabilityObservation['key']) => (
+    capabilities.find((candidate) => candidate.key === key)
+  );
+  return materialCapabilityAtLeast(capability('bronze'), 'institutional')
+    || materialCapabilityAtLeast(capability('iron'), 'institutional');
+}
+
+/**
+ * The ancient metalworking facility gate accepts either the bronze casting
+ * path or a demonstrated higher-tier ironworking path. The iron alternative
+ * remains coupled to institutional capability, so merely installing or using
+ * a smithy cannot skip the underlying production, adoption and transmission
+ * evidence.
+ */
+export function ancientMetalworkingFacilitySatisfied(
+  capabilities: MaterialCapabilityObservation[],
+  facilities: FunctionalBuildingObservation[],
+): boolean {
+  const activeUsed = (materialId: MaterialId, minimumUses: number) => facilities.some((facility) => (
+    facility.materialId === materialId
+      && facility.active
+      && facility.useEventIds.length >= minimumUses
+  ));
+  const bronze = capabilities.find((candidate) => candidate.key === 'bronze');
+  const iron = capabilities.find((candidate) => candidate.key === 'iron');
+  return (materialCapabilityAtLeast(bronze, 'institutional') && activeUsed(Material.Foundry, 3))
+    || (materialCapabilityAtLeast(iron, 'institutional') && activeUsed(Material.Smithy, 4));
+}
+
 export function observeMaterialCapabilities(state: SimulationState): MaterialCapabilityObservation[] {
   const actions = actionFacts(state);
   const institutions = state.derived.institutions ?? [];
@@ -240,11 +326,27 @@ export function observeMaterialCapabilities(state: SimulationState): MaterialCap
 }
 
 function eraRank(era: DevelopmentEraKey): number {
-  return ERA_ORDER.indexOf(era);
+  return ERA_ORDER.indexOf(normalizeDevelopmentEra(era));
 }
 
 function nextEra(era: DevelopmentEraKey): DevelopmentEraKey | null {
-  return ERA_ORDER[eraRank(era) + 1] ?? null;
+  return ERA_ORDER[eraRank(normalizeDevelopmentEra(era)) + 1] ?? null;
+}
+
+type EraGateResults = Partial<Record<DevelopmentEraKey, readonly (readonly [string, unknown])[]>>;
+
+/**
+ * Development eras are observations of fact bundles, not steps that society
+ * must execute in order. Select the highest independently satisfied bundle so
+ * a complete higher-era history is not hidden by a missing lower-era trace.
+ */
+export function highestSatisfiedDevelopmentEra(gates: EraGateResults): DevelopmentEraKey {
+  let candidateEra: DevelopmentEraKey = 'primitive-tribe';
+  for (const era of ERA_ORDER.slice(1)) {
+    const eraGates = gates[era];
+    if (eraGates?.every(([, satisfied]) => Boolean(satisfied))) candidateEra = era;
+  }
+  return candidateEra;
 }
 
 interface EstablishedCultivationEvidence {
@@ -326,10 +428,6 @@ function eraGateState(
   const capability = (key: MaterialCapabilityObservation['key']) => capabilities.find((candidate) => candidate.key === key);
   const activeUsed = (materialId: MaterialId, minimumUses = 1) => facilities.some((facility) => facility.materialId === materialId
     && facility.active && facility.useEventIds.length >= minimumUses);
-  const crossGenerationTechniques = new Set(state.people.flatMap((person) => person.knowledge
-    .filter((fact) => fact.kind === 'technique' && fact.confidence >= 55)
-    .map((fact) => fact.id))).size && state.people.some((person) => person.generation > 0
-      && person.knowledge.some((fact) => fact.kind === 'technique' && fact.confidence >= 55));
   return {
     'agrarian-settlement': [
       ['index:120', indexTotal >= 120],
@@ -342,19 +440,11 @@ function eraGateState(
     ],
     'ancient-civilization': [
       ['index:300', indexTotal >= 300],
-      ['material:bronze:institutional', materialCapabilityAtLeast(capability('bronze'), 'institutional')],
-      ['facility:foundry-used', activeUsed(Material.Foundry, 3)],
+      ['material:bronze-or-iron:institutional', ancientMetalworkingCapabilitySatisfied(capabilities)],
+      ['facility:foundry-or-institutional-iron-smithy-used', ancientMetalworkingFacilitySatisfied(capabilities, facilities)],
       ['facility:civic-hall-used', activeUsed(Material.CivicHall, 2)],
       ['institution:functional:2', institutions >= 2],
       ['history:records:2', records >= 2],
-    ],
-    medieval: [
-      ['index:520', indexTotal >= 520],
-      ['material:iron:institutional', materialCapabilityAtLeast(capability('iron'), 'institutional')],
-      ['facility:smithy-used', activeUsed(Material.Smithy, 4)],
-      ['facility:keep-core-used', activeUsed(Material.KeepCore, 2)],
-      ['institution:functional:3', institutions >= 3],
-      ['history:cross-generation-technique', crossGenerationTechniques],
     ],
   } as const;
 }
@@ -367,25 +457,22 @@ export function observeCivilizationDevelopment(
   const materialCapabilities = observeMaterialCapabilities(state);
   const establishedCultivation = establishedCultivationEvidence(state);
   const gates = eraGateState(state, indexTotal, materialCapabilities, facilities);
-  let candidateEra: DevelopmentEraKey = 'primitive-tribe';
-  for (const era of ERA_ORDER.slice(1)) {
-    const eraGates = gates[era as keyof typeof gates];
-    if (!eraGates?.every(([, satisfied]) => satisfied)) break;
-    candidateEra = era;
-  }
+  const candidateEra = highestSatisfiedDevelopmentEra(gates);
   const previous = state.civilization.development;
-  const previousCurrent = previous?.currentEra ?? 'primitive-tribe';
+  const previousCurrent = normalizeDevelopmentEra(previous?.currentEra ?? 'primitive-tribe');
+  const previousCandidate = normalizeDevelopmentEra(previous?.candidateEra ?? 'primitive-tribe');
   const candidateSinceMonth = previous?.observerVersion === DEVELOPMENT_OBSERVER_VERSION
-    && previous.candidateEra === candidateEra
+    && previousCandidate === candidateEra
     ? previous.candidateSinceMonth
     : state.clock.elapsedMonths;
   const upward = eraRank(candidateEra) > eraRank(previousCurrent);
   const requiredStableMonths = eraRank(candidateEra) >= eraRank('ancient-civilization') ? 24 : 12;
   const stableMonths = Math.max(0, state.clock.elapsedMonths - candidateSinceMonth);
   const currentEra = upward && stableMonths < requiredStableMonths ? previousCurrent : candidateEra;
-  const historicalPeakEra = eraRank(currentEra) > eraRank(previous?.historicalPeakEra ?? 'primitive-tribe')
+  const previousHistoricalPeak = normalizeDevelopmentEra(previous?.historicalPeakEra ?? 'primitive-tribe');
+  const historicalPeakEra = eraRank(currentEra) > eraRank(previousHistoricalPeak)
     ? currentEra
-    : previous?.historicalPeakEra ?? 'primitive-tribe';
+    : previousHistoricalPeak;
   const targetEra = upward ? candidateEra : nextEra(currentEra);
   const targetGates = targetEra && targetEra !== 'primitive-tribe'
     ? gates[targetEra as keyof typeof gates] ?? []

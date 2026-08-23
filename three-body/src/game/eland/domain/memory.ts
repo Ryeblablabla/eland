@@ -32,8 +32,12 @@ export function remember(person: PersonState, memory: MemoryRecord): void {
   person.memories.push(memory);
   person.memories = person.memories
     .sort((a, b) => {
-      const aDurable = a.kind === 'commitment' ? 30 : a.kind === 'failure' ? 12 : 0;
-      const bDurable = b.kind === 'commitment' ? 30 : b.kind === 'failure' ? 12 : 0;
+      const aDurable = a.kind === 'commitment'
+        ? 30
+        : a.kind === 'failure' ? a.expiresAtMonth !== undefined && a.expiresAtMonth >= a.createdAtMonth ? 47 : 12 : 0;
+      const bDurable = b.kind === 'commitment'
+        ? 30
+        : b.kind === 'failure' ? b.expiresAtMonth !== undefined && b.expiresAtMonth >= b.createdAtMonth ? 47 : 12 : 0;
       return b.importance + bDurable - (a.importance + aDurable) || b.createdAtMonth - a.createdAtMonth;
     })
     .slice(0, personMemoryCapacity(person));
@@ -43,21 +47,47 @@ function score(person: Pick<PersonState, 'traits'>, memory: MemoryRecord, atMont
   const age = Math.max(0, atMonth - memory.createdAtMonth) / memoryDurationMultiplier(person);
   const durable = memory.kind === 'commitment' ? 28 : memory.kind === 'failure' ? 12 : memory.kind === 'summary' ? 10 : 0;
   const activeCommitment = memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth ? 35 : 0;
-  return memory.importance + durable + activeCommitment - Math.min(55, age * 1.4);
+  const activeBoundedFailure = memory.kind === 'failure'
+    && memory.expiresAtMonth !== undefined
+    && memory.expiresAtMonth >= atMonth
+    ? 35
+    : 0;
+  return memory.importance + durable + activeCommitment + activeBoundedFailure - Math.min(55, age * 1.4);
+}
+
+function boundedFailureRetentionPriority(memory: MemoryRecord, atMonth: number): number {
+  return memory.kind === 'failure'
+    && memory.expiresAtMonth !== undefined
+    && memory.expiresAtMonth >= atMonth
+    ? 1
+    : 0;
+}
+
+function compareForRetention(
+  person: Pick<PersonState, 'traits'>,
+  atMonth: number,
+  left: MemoryRecord,
+  right: MemoryRecord,
+): number {
+  return boundedFailureRetentionPriority(right, atMonth) - boundedFailureRetentionPriority(left, atMonth)
+    || score(person, right, atMonth) - score(person, left, atMonth)
+    || right.createdAtMonth - left.createdAtMonth;
 }
 
 export function maintainMemories(state: SimulationState, atMonth: number): void {
   for (const person of state.people) {
-    const retained = person.memories.filter((memory) => memory.kind === 'commitment' && (memory.expiresAtMonth ?? atMonth) >= atMonth);
+    const retained = person.memories.filter((memory) => (
+      memory.kind === 'commitment' || memory.kind === 'failure' && memory.expiresAtMonth !== undefined
+    ) && (memory.expiresAtMonth ?? atMonth) >= atMonth);
     const candidates = person.memories
       .filter((memory) => !retained.includes(memory))
       .map((memory) => ({ memory, score: score(person, memory, atMonth) }))
       .filter(({ memory, score: value }) => value >= 12 || atMonth - memory.createdAtMonth <= 6 * memoryDurationMultiplier(person))
-      .sort((a, b) => b.score - a.score || b.memory.createdAtMonth - a.memory.createdAtMonth);
+      .sort((a, b) => compareForRetention(person, atMonth, a.memory, b.memory));
     const forgotten = person.memories.filter((memory) => !retained.includes(memory) && !candidates.some((item) => item.memory === memory));
     const summaries = forgotten.filter((memory) => memory.kind !== 'summary').slice(-6);
     const next = [...retained, ...candidates.map((item) => item.memory)]
-      .sort((a, b) => score(person, b, atMonth) - score(person, a, atMonth))
+      .sort((a, b) => compareForRetention(person, atMonth, a, b))
       .slice(0, personMemoryCapacity(person));
     if (summaries.length && !next.some((memory) => memory.id === `memory-summary-${person.id}-${Math.floor(atMonth / 12)}`)) {
       next.push({
@@ -72,7 +102,7 @@ export function maintainMemories(state: SimulationState, atMonth: number): void 
       });
     }
     person.memories = next
-      .sort((a, b) => score(person, b, atMonth) - score(person, a, atMonth))
+      .sort((a, b) => compareForRetention(person, atMonth, a, b))
       .slice(0, personMemoryCapacity(person));
   }
 }
@@ -113,6 +143,11 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
       return person ? [person] : [];
     });
   const failed = fact.status === 'blocked' || fact.status === 'failed';
+  const boundedFailureExpiresAt = failed
+    && fact.diff.projectMaterialDeliveryRestricted === true
+    && Number.isFinite(Number(fact.diff.expiresAtMonth))
+    ? Number(fact.diff.expiresAtMonth)
+    : undefined;
   const groundedCommunication = fact.action.kind === 'communicate'
     && fact.action.content.kind === 'claim'
     && Boolean(fact.action.content.conversation);
@@ -129,6 +164,7 @@ export function rememberAction(state: SimulationState, fact: ActionFact): void {
     personIds: others.map((person) => person.id),
     sourceEventIds: [fact.id],
     ...(causal ? { causal } : {}),
+    ...(boundedFailureExpiresAt !== undefined ? { expiresAtMonth: boundedFailureExpiresAt } : {}),
     ...(fact.action.kind === 'communicate' && (fact.action.content.kind === 'request' || fact.action.content.kind === 'offer')
       ? { expiresAtMonth: fact.action.content.proposal?.expiresAtMonth ?? fact.atMonth + 6 }
       : {}),

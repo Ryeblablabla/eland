@@ -52,7 +52,7 @@ try {
     '--bundle', '--platform=node', '--format=esm', `--outfile=${codecBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(esbuild, [
-    'src/game/eland/application/simulation/tick-executor.ts',
+    'src/game/eland/simulation-runtime.ts',
     '--bundle', '--platform=node', '--format=esm', `--outfile=${executorBundlePath}`,
   ], { stdio: 'pipe' });
 

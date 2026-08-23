@@ -57,6 +57,7 @@ import {
   validateModelDecision,
 } from './model-review';
 import { currentRollingLedgers, finishMonth, prepareMonth, type PreparedMonth } from './month-boundary';
+import type { ObservationProjector } from './observation-projector';
 import { clamp } from './state-utils';
 import { hasCoLocatedLivingParent, planLocallyForTick } from './tick-planner';
 
@@ -69,6 +70,7 @@ interface ModelAttemptSummary {
 const authoritativeRulePlanner = new RulePlanner();
 
 function executePrepared(
+  observationProjector: ObservationProjector,
   prepared: PreparedMonth,
   decisions: Map<PersonId, { decision: Decision; usedModel: boolean }>,
   usage: TokenUsage,
@@ -213,17 +215,32 @@ function executePrepared(
     0,
     Math.max(1, livingAgents),
   );
-  return finishMonth(state, events, atMonth, projectionCadence);
+  return finishMonth(state, events, atMonth, projectionCadence, observationProjector);
 }
 
-export function stepSimulation(input: SimulationState, decider: AgentDecider = authoritativeRulePlanner): SimulationState {
+export function stepSimulation(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+  decider: AgentDecider = authoritativeRulePlanner,
+): SimulationState {
   const prepared = prepareMonth(input);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
   for (const context of prepared.candidates) decisions.set(context.person.id, { decision: decider.decide(context), usedModel: false });
-  return executePrepared(prepared, decisions, { inputTokens: 0, outputTokens: 0 }, { total: 0, ordinary: 0, exempt: 0 }, decider);
+  return executePrepared(
+    observationProjector,
+    prepared,
+    decisions,
+    { inputTokens: 0, outputTokens: 0 },
+    { total: 0, ordinary: 0, exempt: 0 },
+    decider,
+    'monthly',
+  );
 }
 
-export function stepOwnedSimulation(input: SimulationState): SimulationState {
+export function stepOwnedSimulation(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+): SimulationState {
   const prepared = prepareMonth(input, false, false);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
   for (const context of prepared.candidates) {
@@ -233,6 +250,7 @@ export function stepOwnedSimulation(input: SimulationState): SimulationState {
     });
   }
   return executePrepared(
+    observationProjector,
     prepared,
     decisions,
     { inputTokens: 0, outputTokens: 0 },
@@ -243,6 +261,7 @@ export function stepOwnedSimulation(input: SimulationState): SimulationState {
 }
 
 async function executeSimulationAsync(
+  observationProjector: ObservationProjector,
   input: SimulationState,
   batch: BatchDecider,
   cloneInput: boolean,
@@ -320,10 +339,13 @@ async function executeSimulationAsync(
   });
   const metadata = batch.takeMetadata?.() ?? null;
   const result = executePrepared(
+    observationProjector,
     prepared,
     decisions,
     batch.takeUsage?.() ?? { inputTokens: 0, outputTokens: 0 },
     { total: modelContexts.length, ordinary: ordinaryContexts.length, exempt: exemptContexts.length },
+    authoritativeRulePlanner,
+    'monthly',
   );
   const ledger = result.decisionBudget.ledgers.at(-1);
   if (metadata && ledger?.modelContexts) {
@@ -334,11 +356,19 @@ async function executeSimulationAsync(
   return result;
 }
 
-export function stepSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
-  return executeSimulationAsync(input, batch, true);
+export function stepSimulationAsync(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+  batch: BatchDecider,
+): Promise<SimulationState> {
+  return executeSimulationAsync(observationProjector, input, batch, true);
 }
 
 /** Trusted controller path: `input` is already an isolated working copy. */
-export function stepOwnedSimulationAsync(input: SimulationState, batch: BatchDecider): Promise<SimulationState> {
-  return executeSimulationAsync(input, batch, false);
+export function stepOwnedSimulationAsync(
+  observationProjector: ObservationProjector,
+  input: SimulationState,
+  batch: BatchDecider,
+): Promise<SimulationState> {
+  return executeSimulationAsync(observationProjector, input, batch, false);
 }

@@ -31,6 +31,7 @@
 
 这些文档可以同时含有已实现机制和未来目标，必须在开头明确两者，不得让目标设计冒充运行时事实：
 
+- [有限化身与逐刻度建造技术设计 v1](./limited-embodiment-technical-design-v1.md)：第一人称局部操控、15 tick 暂存月份、真实移动 / 建造、恢复与交还自主的目标架构；当前尚未实现。
 - [涌现能力底座](./emergent-capability-substrate-v1.md)：规则扩展原则；冲突时以 `domain/` 和应用用例为准。
 - [物质时代演进](./material-era-progression-v1.md)：已实现阶段与工业以后目标设计。
 - [一千项能力地图](./human-society-capability-map-1000.md)：观察坐标，不是科技树或人物目标。
@@ -47,6 +48,7 @@
 - [年轻信任与共同活动实验](./evolution-young-trust-ticks-experiment-2026-08-22.md)：按人格采用 3–5 刻度的定向关系积累和年轻信任加成。
 - [生殖自主同意实验](./evolution-autonomous-reproduction-consent-experiment-2026-08-22.md)：移除固定生殖关系分数，以有来源候选、个人 appraisal 和明确可撤回协议取代。
 - [BDI 项目满足与家庭准备度实验](./evolution-bdi-family-readiness-experiment-2026-08-22.md)：项目完成 episode、需要缓解、家庭准备度与生殖目标结果的三种子初步审计；结论为 `revise/preliminary`。
+- [共同生活归属满足与十代连续性实验](./evolution-social-satiation-generation-10-experiment-2026-08-23.md)：已有共同生活连续满足归属需要、四种子 10/30/50/100 年矩阵与第 10 代权威出生链；十代可达性通过，跨种子稳定性结论为 `revise`。
 - [文明高粮食停滞与时代断层修复实验](./evolution-civ61-stagnation-fixes-experiment-2026-08-22.md)：储备动机、动作投影、历史耕作门槛与铁器项目链的四项机制修复，以及三种子 10/30 年初步配对；群体结论为 `revise/preliminary`。
 - [搜索耗尽项目重复重开实验](./evolution-project-reopen-churn-experiment-2026-08-22.md)：跨项目终局机会记忆、精确来源续证和建造假说重开约束的三种子 10/30 年配对；结论为 `accept/preliminary`。
 - 所有 `evolution-*-experiment-YYYY-MM-DD.md`、`evolution-*-audit-YYYY-MM-DD.md`、带日期的长程报告与端到端复盘。

@@ -6,30 +6,35 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-life-review-test-'));
-const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
-const plannerBundlePath = path.join(temporaryDirectory, 'rule-planner.mjs');
-const relationshipEvidenceBundlePath = path.join(temporaryDirectory, 'relationship-evidence.mjs');
-const materialBundlePath = path.join(temporaryDirectory, 'material.mjs');
-const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
+const bundlePath = path.join(temporaryDirectory, 'life-review.mjs');
 
 try {
-  for (const [entryPoint, outputPath] of [
-    ['src/game/eland/simulation.ts', simulationBundlePath],
-    ['src/game/eland/application/rule-planner.ts', plannerBundlePath],
-    ['src/game/eland/domain/relationship-evidence.ts', relationshipEvidenceBundlePath],
-    ['src/game/eland/domain/material.ts', materialBundlePath],
-    ['src/game/eland/world/grid.ts', gridBundlePath],
-  ]) {
-    execFileSync(path.resolve('node_modules/.bin/esbuild'), [
-      entryPoint, '--bundle', '--platform=node', '--format=esm', `--outfile=${outputPath}`,
-    ], { stdio: 'pipe' });
-  }
+  const testEntry = `
+    export { createInitialState, previewGroundedLifeReviewOpportunity } from ${JSON.stringify(path.resolve('src/game/eland/simulation.ts'))};
+    export { groundedLifeReviewOpportunity, RulePlanner } from ${JSON.stringify(path.resolve('src/game/eland/application/rule-planner.ts'))};
+    export { buildRelationshipCausalBasis, canOfferRelationshipProposal } from ${JSON.stringify(path.resolve('src/game/eland/domain/relationship-evidence.ts'))};
+    export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
+    export { cellX, cellY, neighbors4, setVoxel, voxelWorldRevision } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
+  `;
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    '--bundle', '--platform=node', '--format=esm', '--loader=ts',
+    '--sourcefile=grounded-life-review-test-entry.ts', `--outfile=${bundlePath}`,
+  ], { input: testEntry, stdio: ['pipe', 'pipe', 'pipe'] });
 
-  const { createInitialState, previewGroundedLifeReviewOpportunity } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
-  const { groundedLifeReviewOpportunity, RulePlanner } = await import(`${pathToFileURL(plannerBundlePath).href}?test=${Date.now()}`);
-  const { buildRelationshipCausalBasis, canOfferRelationshipProposal } = await import(`${pathToFileURL(relationshipEvidenceBundlePath).href}?test=${Date.now()}`);
-  const { Material } = await import(`${pathToFileURL(materialBundlePath).href}?test=${Date.now()}`);
-  const { cellX, cellY, neighbors4, setVoxel } = await import(`${pathToFileURL(gridBundlePath).href}?test=${Date.now()}`);
+  const {
+    Material,
+    RulePlanner,
+    buildRelationshipCausalBasis,
+    canOfferRelationshipProposal,
+    cellX,
+    cellY,
+    createInitialState,
+    groundedLifeReviewOpportunity,
+    neighbors4,
+    previewGroundedLifeReviewOpportunity,
+    setVoxel,
+    voxelWorldRevision,
+  } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const state = createInitialState(710, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   state.clock.elapsedMonths = 120;
@@ -127,6 +132,12 @@ try {
     capacity: 2,
     sourceEventIds: ['relationship-evidence'],
   });
+  state.world.physicalStructureIndex = {
+    calculatedAtMonth: state.clock.elapsedMonths,
+    voxelRevision: voxelWorldRevision(state.world.grid),
+    constructionEventCount: state.world.physicalStructureIndex.constructionEventCount,
+    structures: structuredClone(state.derived.structures),
+  };
   const context = {
     state, person: actor, visibleCells: [actor.position.cellId, spareCell], visiblePeople: [partner], visibleDrops: [], visibleAnimals: [],
     options: [projectOption, lifeOption], followUpOptions: [projectOption], activeIntent,

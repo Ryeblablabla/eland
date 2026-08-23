@@ -8,25 +8,25 @@ import {
 } from '../domain/era-progression';
 import {
   actionFacts,
-  completedConstructionActions,
   worldEventById,
 } from '../domain/event-index';
-import { Material, materialDefinition, materialHas, type MaterialId } from '../domain/material';
+import { Material } from '../domain/material';
 import type {
-  DerivedStructure,
   EmergentRegion,
   InstitutionObservation,
+  PhysicalStructureIndex,
   PracticeObservation,
+  SimulationObservations,
   SimulationState,
 } from '../domain/model';
-import { shelterGeometryAt } from '../domain/structure';
+import {
+  copyPhysicalStructures,
+  derivePhysicalStructureIndex,
+  derivePhysicalStructures,
+} from '../domain/physical-structure-index';
 import {
   WORLD_CELL_COUNT,
-  cellX,
-  cellY,
-  standingPositions,
   surfaceMaterial,
-  voxelAt,
 } from '../world/grid';
 import { observeCapabilityMilestones } from './capability-milestones';
 
@@ -41,78 +41,14 @@ export function updateDevelopmentObservation(state: SimulationState): void {
   state.civilization.stage = DEVELOPMENT_ERA_LABELS[development.currentEra];
 }
 
-function structureComponents(state: SimulationState): Array<{ x: number; y: number; z: number; materialId: MaterialId; sourceEventId: string }> {
-  const byPosition = new Map<string, { x: number; y: number; z: number; materialId: MaterialId; sourceEventId: string }>();
-  for (const event of completedConstructionActions(state)) {
-    const materialId = Number(event.diff.outputMaterialId);
-    const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
-    if (!materialHas(materialId, 'solid') || !materialHas(materialId, 'building') || materialHas(materialId, 'placeable')
-      || ![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) continue;
-    const component = { x: Number(position?.x), y: Number(position?.y), z: Number(position?.z), materialId, sourceEventId: event.id };
-    if (voxelAt(state.world.grid, component.x, component.y, component.z) !== materialId) continue;
-    byPosition.set(`${component.x}:${component.y}:${component.z}`, component);
-  }
-  return [...byPosition.values()];
-}
-
-export function deriveStructures(state: SimulationState): DerivedStructure[] {
-  const all = structureComponents(state);
-  const byKey = new Map(all.map((position) => [`${position.x}:${position.y}:${position.z}`, position]));
-  const visited = new Set<string>();
-  const structures: DerivedStructure[] = [];
-  for (const origin of all) {
-    const originKey = `${origin.x}:${origin.y}:${origin.z}`;
-    if (visited.has(originKey)) continue;
-    const queue = [origin];
-    const group: typeof all = [];
-    visited.add(originKey);
-    while (queue.length) {
-      const current = queue.shift();
-      if (!current) break;
-      group.push(current);
-      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
-        const key = `${current.x + dx}:${current.y + dy}:${current.z + dz}`;
-        const next = byKey.get(key);
-        if (next && !visited.has(key)) { visited.add(key); queue.push(next); }
-      }
-    }
-    const occupiedCells = [...new Set(group.map((position) => position.x + position.y * state.world.grid.width))];
-    const sourceEventIds = group.map((component) => component.sourceEventId);
-    const groupKeys = new Set(group.map((position) => `${position.x}:${position.y}:${position.z}`));
-    const interiorPositions = occupiedCells.flatMap((cell) => standingPositions(state.world.grid, cell))
-      .flatMap((position) => {
-        const geometry = shelterGeometryAt(state.world.grid, position);
-        if (!geometry) return [];
-        const overheadKey = `${cellX(position.cellId)}:${cellY(position.cellId)}:${position.z + 2}`;
-        return groupKeys.has(overheadKey) ? [geometry] : [];
-      });
-    const complete = interiorPositions.length > 0;
-    const weatherProtection = interiorPositions.length
-      ? Math.round(interiorPositions.reduce((sum, interior) => sum + interior.weatherProtection, 0) / interiorPositions.length)
-      : 0;
-    const thermalInsulation = interiorPositions.length
-      ? Math.round(interiorPositions.reduce((sum, interior) => sum + interior.thermalInsulation, 0) / interiorPositions.length)
-      : 0;
-    const materialIds = [...new Set(group.map((component) => component.materialId))];
-    const materialLabel = materialIds.map((materialId) => materialDefinition(materialId).name).join('、');
-    structures.push({
-      id: `structure-${originKey}`,
-      name: complete ? `${materialLabel}遮蔽结构` : `未完成${materialLabel}结构`,
-      occupiedCells,
-      interiorCells: [...new Set(interiorPositions.map((interior) => interior.position.cellId))],
-      interiorPositions: interiorPositions.map((interior) => interior.position),
-      materialIds,
-      weatherProtection,
-      thermalInsulation,
-      capacity: interiorPositions.length,
-      complete,
-      sourceEventIds,
-    });
-  }
-  return structures;
-}
-
-export function deriveObservations(state: SimulationState): SimulationState['derived'] {
+/**
+ * Pure observer projection. The physical structure index is an explicit input,
+ * so this projection cannot become the source of gameplay-readable structures.
+ */
+export function observeSimulation(
+  state: SimulationState,
+  physicalStructureIndex: PhysicalStructureIndex,
+): SimulationObservations {
   const actions = [...actionFacts(state)];
   const transfers = actions.filter((event) => event.action.kind === 'transfer' && event.status === 'completed');
   const containerTransfers = transfers.filter((event) => event.action.kind === 'transfer'
@@ -133,7 +69,7 @@ export function deriveObservations(state: SimulationState): SimulationState['der
     && event.action.kind === 'act'
     && event.action.operation === 'inter'
     && event.diff.remainsInterred === true);
-  const structures = deriveStructures(state);
+  const structures = physicalStructureIndex.structures;
   const functionalBuildings = observeFunctionalBuildings(state);
   const trailCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.PackedSoil);
   const cultivatedCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.CropSprout || surfaceMaterial(state.world.grid, cell) === Material.CropMature || surfaceMaterial(state.world.grid, cell) === Material.ExhaustedSoil);
@@ -230,5 +166,30 @@ export function deriveObservations(state: SimulationState): SimulationState['der
   if (trailCells.length) regions.push({ id: 'travel-trail', kind: 'trail', cells: trailCells, confidence: clamp(trailCells.length / 20), evidenceEventIds: trailFormation.map(({ event }) => event.id), firstObservedMonth: trailFormation[0]?.event.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '夯土通行带' });
   if (cultivatedCells.length) regions.push({ id: 'cultivated', kind: 'cultivated', cells: cultivatedCells, confidence: clamp(cultivatedCells.length / 12), evidenceEventIds: [...cultivation, ...harvests].map((event) => event.id), firstObservedMonth: cultivation[0]?.atMonth ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '耕作区' });
   for (const structure of structures.filter((item) => item.complete)) regions.push({ id: `residential-${structure.id}`, kind: 'residential', cells: structure.occupiedCells, confidence: structure.weatherProtection / 100, evidenceEventIds: structure.sourceEventIds, firstObservedMonth: structure.sourceEventIds.map((id) => worldEventById(state, id)?.atMonth).find((month) => month !== undefined) ?? state.clock.elapsedMonths, lastObservedMonth: state.clock.elapsedMonths, label: '建造活动区' });
-  return { practices, institutions, milestones, regions, structures, functionalBuildings };
+  return { practices, institutions, milestones, regions, functionalBuildings };
 }
+
+/**
+ * Preserve the schema-17 `derived.structures` field as a serialized mirror.
+ * New gameplay code must not read that observer-shaped compatibility field.
+ */
+export function withStructureCompatibilityMirror(
+  observations: SimulationObservations,
+  physicalStructureIndex: PhysicalStructureIndex,
+): SimulationState['derived'] {
+  return { ...observations, structures: copyPhysicalStructures(physicalStructureIndex) };
+}
+
+/** Compatibility API retained for callers that expect the schema-17 shape. */
+export function deriveObservations(
+  state: SimulationState,
+  physicalStructureIndex = derivePhysicalStructureIndex(state),
+): SimulationState['derived'] {
+  return withStructureCompatibilityMirror(
+    observeSimulation(state, physicalStructureIndex),
+    physicalStructureIndex,
+  );
+}
+
+/** @deprecated Import derivePhysicalStructures from domain/physical-structure-index. */
+export const deriveStructures = derivePhysicalStructures;

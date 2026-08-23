@@ -25,6 +25,12 @@ interface DeathAttackEvidence {
   directAttacks: AnimalAttackEvent[];
 }
 
+interface BodySnapshot {
+  health: number;
+  hydration: number;
+  nutrition: number;
+}
+
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
@@ -49,6 +55,101 @@ function finiteNumber(value: unknown): number | null {
 
 function displayNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/u, '');
+}
+
+function bodySnapshot(value: unknown): BodySnapshot | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const health = finiteNumber(record.health);
+  const hydration = finiteNumber(record.hydration);
+  const nutrition = finiteNumber(record.nutrition);
+  return health === null || hydration === null || nutrition === null
+    ? null
+    : { health, hydration, nutrition };
+}
+
+const BODY_FIELD_LABELS: Record<keyof BodySnapshot, string> = {
+  health: '健康',
+  hydration: '水分',
+  nutrition: '营养',
+};
+
+const BODY_CAUSE_LABELS: Record<string, string> = {
+  dehydration: '缺水',
+  malnutrition: '营养不足',
+  'heat-exposure': '炎热暴露',
+  drought: '干旱',
+  'cold-exposure': '寒冷暴露',
+  illness: '疾病',
+  wound: '伤势',
+  'dehydrated-hibernation': '脱水休眠消耗',
+  aging: '衰老与低储备叠加',
+  pregnancy: '妊娠负担',
+  'postpartum-recovery': '产后恢复负担',
+  'resource-competition': '人口资源竞争',
+  'favorable-recovery': '食水充足且获得环境保护',
+};
+
+function bodyEventSnapshots(event: EnvironmentEvent): { before: BodySnapshot | null; after: BodySnapshot | null } {
+  const before = bodySnapshot(event.diff.bodyBefore);
+  const after = bodySnapshot(event.diff.bodyAfter) ?? bodySnapshot({
+    health: event.diff.health,
+    hydration: event.diff.hydration,
+    nutrition: event.diff.nutrition,
+  });
+  return { before, after };
+}
+
+function bodyCauseLabels(event: EnvironmentEvent, after: BodySnapshot | null): string[] {
+  const stored = stringIds(event.diff.bodyCauseCodes);
+  const inferred = [
+    ...(event.diff.hibernationMonthlySettlement === true ? ['dehydrated-hibernation'] : []),
+    ...(after && after.hydration < 25 ? ['dehydration'] : []),
+    ...(after && after.nutrition < 25 ? ['malnutrition'] : []),
+  ];
+  return unique([...stored, ...inferred]).map((code) => BODY_CAUSE_LABELS[code] ?? code);
+}
+
+function bodyEventPlayerText(state: SimulationState, event: EnvironmentEvent): string {
+  const name = personName(state, event.who);
+  const { before, after } = bodyEventSnapshots(event);
+  const causes = bodyCauseLabels(event, after);
+  if (before && after) {
+    const changes = (Object.keys(BODY_FIELD_LABELS) as (keyof BodySnapshot)[])
+      .filter((field) => Math.abs(after[field] - before[field]) >= 0.05)
+      .map((field) => `${BODY_FIELD_LABELS[field]} ${displayNumber(before[field])}→${displayNumber(after[field])}`);
+    const deltas = (Object.keys(BODY_FIELD_LABELS) as (keyof BodySnapshot)[])
+      .map((field) => after[field] - before[field]);
+    const stateLabel = deltas.some((delta) => delta < -0.05)
+      ? '身体储备下降'
+      : deltas.some((delta) => delta > 0.05)
+        ? '身体有所恢复'
+        : '身体储备处于警戒状态';
+    return finishSentence(`${name}${stateLabel}${changes.length ? `：${changes.join('，')}` : ''}${causes.length ? `；原因：${causes.join('、')}` : ''}`);
+  }
+  if (after) {
+    const healthDelta = finiteNumber(event.diff.healthDelta);
+    const current = (Object.keys(BODY_FIELD_LABELS) as (keyof BodySnapshot)[])
+      .map((field) => `${BODY_FIELD_LABELS[field]} ${displayNumber(after[field])}`)
+      .join('，');
+    return finishSentence(`${name}当前身体储备：${current}${healthDelta !== null && Math.abs(healthDelta) >= 0.05 ? `；健康变化 ${healthDelta > 0 ? '+' : ''}${displayNumber(healthDelta)}` : ''}${causes.length ? `；原因：${causes.join('、')}` : ''}`);
+  }
+  return finishSentence(event.result);
+}
+
+export function bodyHistoryLabel(event: WorldEvent): string {
+  if (event.kind !== 'environment' || event.change !== 'body') return '身体变化';
+  const { before, after } = bodyEventSnapshots(event);
+  if (before && after) {
+    const deltas = (Object.keys(BODY_FIELD_LABELS) as (keyof BodySnapshot)[])
+      .map((field) => after[field] - before[field]);
+    if (deltas.some((delta) => delta < -0.05)) return '身体恶化';
+    if (deltas.some((delta) => delta > 0.05)) return '身体恢复';
+  }
+  const healthDelta = finiteNumber(event.diff.healthDelta);
+  if (healthDelta !== null && healthDelta < -0.05) return '身体恶化';
+  if (after && (after.hydration < 25 || after.nutrition < 25)) return '身体警戒';
+  return healthDelta !== null && healthDelta > 0.05 ? '身体恢复' : '身体变化';
 }
 
 function isAnimalSpeciesId(value: unknown): value is AnimalSpeciesId {
@@ -837,7 +938,10 @@ function mergeCandidatesBy(candidates: NarrativeCandidate[], keyFor: (candidate:
 
 export function playerTextForEvent(state: SimulationState, event: WorldEvent): string {
   if (event.kind === 'action' || event.kind === 'decision') return standaloneCandidate(state, event).text;
-  if (event.kind === 'environment') return environmentCandidate(state, event, eventLookup(state, [event]))?.text ?? finishSentence(event.result);
+  if (event.kind === 'environment') {
+    if (event.change === 'body') return bodyEventPlayerText(state, event);
+    return environmentCandidate(state, event, eventLookup(state, [event]))?.text ?? finishSentence(event.result);
+  }
   if (event.kind === 'agreement') return agreementCandidate(state, event)?.text ?? finishSentence(event.result);
   return finishSentence(event.result);
 }

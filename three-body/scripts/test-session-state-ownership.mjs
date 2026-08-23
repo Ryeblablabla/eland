@@ -40,7 +40,7 @@ function deferred() {
 try {
   const esbuild = path.join(projectRoot, 'node_modules/.bin/esbuild');
   execFileSync(esbuild, [
-    path.join(projectRoot, 'src/game/eland/application/simulation/controller.ts'),
+    path.join(projectRoot, 'src/game/eland/simulation-runtime.ts'),
     '--bundle',
     '--platform=node',
     '--format=esm',

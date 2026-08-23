@@ -673,6 +673,5 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
 export function civilizationStageFor(index: CivilizationIndex): string {
   if (index.total < 120) return '原始部落';
   if (index.total < 300) return '农耕定居';
-  if (index.total < 520) return '古代文明';
-  return '中世纪';
+  return '古代文明';
 }

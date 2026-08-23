@@ -10,7 +10,7 @@ const bundlePath = path.join(temporaryDirectory, 'company-affiliation.mjs');
 
 try {
   const entry = `
-    export { buildDecisionContexts, createInitialState, executeActiveIntent, RulePlanner } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
+    export { buildDecisionContexts, createInitialState, executeActiveIntent, restoreSimulationState, RulePlanner, startIntent } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildSocialOptions } from ${JSON.stringify(path.resolve('src/game/eland/application/social-options.ts'))};
     export { deriveNeedAgenda } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/need-agenda.ts'))};
     export { compileAgreementContinuations } from ${JSON.stringify(path.resolve('src/game/eland/application/agreement-continuation.ts'))};
@@ -36,7 +36,9 @@ try {
     executeActiveIntent,
     executePrimitiveAction,
     findStandingPath,
+    restoreSimulationState,
     RulePlanner,
+    startIntent,
     standingPositions,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
@@ -370,6 +372,124 @@ try {
   assert.equal(returnChoice.kind, 'start');
   assert.equal(returnChoice.optionId, returnOption.id,
     'a conscientious person should choose the sourced fixed-anchor return when maintenance is due');
+  const returnIntent = startIntent(
+    returnState,
+    returnPerson,
+    returnContext,
+    returnChoice.optionId,
+    undefined,
+    'decision-return-shared-living',
+    atMonth,
+  );
+  assert.equal(returnIntent?.agreementId, returnAgreement.id,
+    'a fulfillment intent must bind its authoritative agreement when it is created');
+  const restoredReturnState = restoreSimulationState(returnState);
+  assert.equal(
+    restoredReturnState.intents.find((intent) => intent.id === returnIntent?.id)?.agreementId,
+    returnAgreement.id,
+    'checkpoint adoption must not change the agreement identity of a current fulfillment intent',
+  );
+  const multiResponseState = structuredClone(returnState);
+  const multiResponder = multiResponseState.people.find((person) => person.id === returnPartner.id);
+  assert.ok(multiResponder, 'multi-response fixture requires the later responder');
+  delete multiResponder.activeIntentId;
+  const multiProposalEventId = 'test-multi-response-proposal';
+  const multiAgreementId = 'test-multi-response-agreement';
+  multiResponseState.agreements.push({
+    id: multiAgreementId,
+    proposal: {
+      kind: 'membership', proposerId: returnPerson.id, partnerId: multiResponder.id,
+      collectiveId: 'collective:test-multi-response', candidateId: multiResponder.id,
+      requiredApproverIds: [returnPerson.id, multiResponder.id], expiresAtMonth: atMonth + 3,
+    },
+    proposerId: returnPerson.id,
+    responderId: multiResponder.id,
+    partyIds: [returnPerson.id, multiResponder.id],
+    requiredResponderIds: [returnPerson.id, multiResponder.id],
+    acceptedByPersonIds: [returnPerson.id], rejectedByPersonIds: [], status: 'proposed',
+    proposedAtMonth: atMonth - 1, acceptByMonth: atMonth + 3, dueAtMonth: atMonth + 4,
+    proposalEventId: multiProposalEventId,
+    responseEventId: 'test-earlier-responder-acceptance',
+    fulfillmentEventIds: [], fulfilledByPersonIds: [], sourceEventIds: [
+      multiProposalEventId,
+      'test-earlier-responder-acceptance',
+    ],
+  });
+  const laterRequiredOption = {
+    id: `accept-membership:${multiAgreementId}`,
+    summary: '回应多人加入提议', reason: '本人仍是尚未回应的必要参与者',
+    goal: { kind: 'representation-made', representationId: `accept:${multiAgreementId}:${multiResponder.id}` },
+    nextAction: {
+      kind: 'communicate',
+      content: { id: `accept:${multiAgreementId}:${multiResponder.id}`, kind: 'accept', referenceId: multiAgreementId },
+      audience: [returnPerson.id], channel: 'voice',
+    },
+    target: { kind: 'person', personId: returnPerson.id },
+    estimatedDuration: 'one-month', estimatedMonths: 1,
+    risks: [], domain: 'social', sourceFactIds: [multiProposalEventId],
+  };
+  const laterRequiredContext = {
+    state: multiResponseState, person: multiResponder,
+    visibleCells: [multiResponder.position.cellId], visiblePeople: [returnPerson],
+    visibleDrops: [], visibleAnimals: [], options: [laterRequiredOption], followUpOptions: [],
+  };
+  const laterRequiredIntent = startIntent(
+    multiResponseState,
+    multiResponder,
+    laterRequiredContext,
+    laterRequiredOption.id,
+    undefined,
+    'decision-later-required-response',
+    atMonth,
+  );
+  assert.equal(laterRequiredIntent?.agreementId, multiAgreementId,
+    'a later required responder must bind the proposed agreement even after another response exists');
+  delete multiResponder.activeIntentId;
+  const unrelatedOption = {
+    ...laterRequiredOption,
+    id: 'collect:unrelated-option-with-proposal-evidence',
+    summary: '执行与协议无关的普通行动',
+    nextAction: { kind: 'move', toCellId: multiResponder.position.cellId, toZ: multiResponder.position.z },
+    sourceFactIds: [returnAgreement.proposalEventId, returnAgreement.responseEventId],
+  };
+  const unrelatedIntent = startIntent(
+    multiResponseState,
+    multiResponder,
+    { ...laterRequiredContext, options: [unrelatedOption] },
+    unrelatedOption.id,
+    undefined,
+    'decision-unrelated-proposal-evidence',
+    atMonth,
+  );
+  assert.equal(unrelatedIntent?.agreementId, undefined,
+    'an ordinary option must not bind an agreement merely because it cites the proposal fact');
+  unrelatedIntent.status = 'completed';
+  delete multiResponder.activeIntentId;
+  const restoredCompletedOrdinaryState = restoreSimulationState(multiResponseState);
+  assert.equal(
+    restoredCompletedOrdinaryState.intents.find((intent) => intent.id === unrelatedIntent.id)?.agreementId,
+    undefined,
+    'checkpoint adoption must not rewrite completed ordinary history as agreement fulfillment',
+  );
+  const legacyActiveReturnState = structuredClone(returnState);
+  const legacyActiveReturnIntent = legacyActiveReturnState.intents.find((intent) => intent.id === returnIntent?.id);
+  const legacyActiveReturnAgreement = legacyActiveReturnState.agreements
+    .find((agreement) => agreement.id === returnAgreement.id);
+  assert.ok(legacyActiveReturnIntent, 'legacy migration fixture requires the active return intent');
+  assert.ok(legacyActiveReturnAgreement, 'legacy migration fixture requires the active agreement');
+  legacyActiveReturnAgreement.responseEventId = 'test-active-companion-response';
+  delete legacyActiveReturnIntent.agreementId;
+  legacyActiveReturnIntent.sourceFactIds = [...new Set([
+    ...legacyActiveReturnIntent.sourceFactIds,
+    returnAgreement.proposalEventId,
+    legacyActiveReturnAgreement.responseEventId,
+  ])];
+  assert.equal(
+    restoreSimulationState(legacyActiveReturnState).intents
+      .find((intent) => intent.id === legacyActiveReturnIntent.id)?.agreementId,
+    returnAgreement.id,
+    'checkpoint adoption must still migrate a live legacy fulfillment intent',
+  );
 
   // An accepted but not-yet-established companionship must enter the same
   // commitment agenda once the remaining calendar window is exactly the

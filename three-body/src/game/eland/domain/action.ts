@@ -1,5 +1,8 @@
 import type { MaterialId } from './material';
-import type { MechanicalPowerActionBasis } from './mechanical-power';
+import type {
+  MechanicalPowerActionBasis,
+  MechanicalPowerFaultObservationRef,
+} from './mechanical-power';
 import type { ConditionKind, HibernationPhase, PersonId } from './person';
 import type { ProjectFunction, ProjectProposal } from './project';
 import type { WildlifeThreatBasis } from './wildlife-threat';
@@ -60,6 +63,24 @@ export interface TechniqueDemonstrationRequest {
   expiresAtMonth: number;
 }
 
+/** A bounded request for knowledge of one project component the requester can already name. */
+export interface ProjectKnowledgeRequest {
+  version: 'project-knowledge-request-v1';
+  projectId: string;
+  requesterId: PersonId;
+  outputMaterialId: MaterialId;
+  expiresAtMonth: number;
+}
+
+/** A direct teaching claim tied to one actually received project knowledge request. */
+export interface ProjectKnowledgeResponse {
+  version: 'project-knowledge-response-v1';
+  projectId: string;
+  requestEventId: string;
+  requesterId: PersonId;
+  outputMaterialId: MaterialId;
+}
+
 export interface TechniqueDemonstrationRef {
   requestEventId: string;
   projectId: string;
@@ -108,7 +129,14 @@ export interface GroundedConversationRef {
 }
 
 export type RepresentationInput =
-  | { id: string; kind: 'claim'; summary: string; factId?: string; conversation?: GroundedConversationRef }
+  | {
+      id: string;
+      kind: 'claim';
+      summary: string;
+      factId?: string;
+      conversation?: GroundedConversationRef;
+      projectKnowledgeResponse?: ProjectKnowledgeResponse;
+    }
   | {
       id: string;
       kind: 'prediction';
@@ -127,6 +155,7 @@ export type RepresentationInput =
       proposal?: SocialProposal;
       techniqueDemonstration?: TechniqueDemonstrationRequest;
       projectMaterialContribution?: ProjectMaterialContributionRequest;
+      projectKnowledgeRequest?: ProjectKnowledgeRequest;
     }
   | { id: string; kind: 'offer'; summary: string; proposal?: SocialProposal }
   | { id: string; kind: 'accept'; referenceId: string; summary?: string }
@@ -221,6 +250,8 @@ export type PrimitiveAction =
       instrumentStackId?: string;
       /** A visible current segment selected for source-bound observation. */
       waterCurrentSegmentId?: string;
+      /** A visible broken component selected for source-bound personal diagnosis. */
+      mechanicalPowerFaultObservation?: MechanicalPowerFaultObservationRef;
       /** Optional source-bound verification compiled from an authoritative material response. */
       verification?: {
         techniqueId: string;

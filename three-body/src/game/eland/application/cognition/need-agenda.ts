@@ -14,10 +14,12 @@ import {
   personWithinLivingArea,
 } from '../../domain/shared-living';
 import { assessFamilyReadiness } from './family-readiness';
+import { crowdingUrgency } from '../../domain/social-space';
 
 export type NeedKind =
   | 'homeostasis'
   | 'safety'
+  | 'spatial-comfort'
   | 'care'
   | 'bereavement'
   | 'reserve'
@@ -158,6 +160,13 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
       ...(visibleThreat > 0 ? ['局部感知中存在有攻击性的动物'] : []),
     ],
     hazardousConditions.flatMap((condition) => condition.sourceEventIds),
+  ));
+
+  const spatialPressure = crowdingUrgency(context.state, person);
+  if (spatialPressure > 0) needs.push(signal(
+    'spatial-comfort',
+    spatialPressure,
+    ['本人能够直接感到同一站立位置过于拥挤，附近较空位置会更舒适'],
   ));
 
   const grief = (person.bereavements ?? []).map((bereavement) => ({

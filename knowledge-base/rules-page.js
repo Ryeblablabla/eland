@@ -253,7 +253,7 @@ const RULES_PAGE_MARKUP = `
           <ul>
             <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；天气按月结算但以跨月过程叠加在纪元之上，类型具有不改变长程占比的延续惯性，强度只偶发逐级变化。实时宇宙的 burned 明确携带三日凌空终局语义，普通 fire 即使达到强度 10 也不能冒充。</span></li>
             <li><strong>空间与物质</strong><span>84 × 52 × 12 体素、通行、可达位置、掉落物和材料响应。</span></li>
-            <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；普通 Water 不能被猜成动力源。这只是受限机械网络，不代表电力、信号、计算或信息时代。</span></li>
+            <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；干旱可把河水蒸发成 Sand，后续 rain / storm 只会从相邻真实 Water 向生成河道的干涸格逐格补给，普通沙地和孤立干河格不会凭空进水。普通 Water 不能被猜成动力源。完成网络仍须现场复核水流、拓扑、输入与操作者知识；只有成功负载造成磨损。这只是受限机械网络，不代表电力、信号、计算或信息时代。</span></li>
             <li><strong>身体与人口</strong><span>健康、水分、营养、冷热、伤病、衰老、妊娠、普通分娩后的 9–15 个月产后恢复、出生与死亡；魅魔分娩不创建恢复期。普通死亡生成一人一遗体，并把背包变成标记原主人及死亡来源的地面遗物，不向全世界广播。三日凌空是终局例外：第一个规划刻度内全部汽化，随身库存销毁且不生成遗体或遗物。人口接近 50 时受孕机会递减，超过承载能力后资源消耗继续上升。出生同时确定最多三个遗传 / 先民特质和一个随机异变，保存两类完整抽样；双生妊娠提高中止风险并产生两个独立孩子与出生事实，饕餮令月度营养消耗乘 1.5。默认父系命名，任一亲代携带母脉时随母姓并采用母亲命名传统。模型演进可在提交前提议 givenName，但特质、姓氏、顺序、字符、重名与失败回退由本地规则控制。</span></li>
             <li><strong>文明终局</strong><span>三日凌空在 tick 1 先于人物行动清空全部存活者，并于同月结算毁灭；其他路径只有月末无存活者或运行达到显式 endpoint 时结束。全员脱水休眠不是终局；环境、身体代价、纪元切换与恢复仍继续推进。</span></li>
             <li><strong>生态</strong><span>植物生长、动物迁移 / 捕猎 / 繁殖，以及风暴、干旱、冰雪和火。</span></li>
@@ -300,10 +300,12 @@ const RULES_PAGE_MARKUP = `
           <summary><span>动作与后果</span><small>世界规则裁决眼前动作是否合法</small></summary>
           <ul>
             <li><strong>五种原子动作</strong><span>move · transfer · act · attend · communicate。</span></li>
+            <li><strong>移动成本</strong><span>每个规划刻度有 2 点地形成本预算：普通平地每边成本 2，连续夯土 / 木板道路每边成本 1，因此道路上可连续前进两格。高成本地形至少允许跨过一条相邻边；路径事件保留全部中间格，体力、代谢、踩踏与规划耗时使用同一累计成本。</span></li>
             <li><strong>十种领域操作</strong><span>exert · separate · combine · expose · ingest · reproduce · hunt · dehydrate · rehydrate · inter。</span></li>
             <li><strong>提交前预演</strong><span>检查目标、路径、材料、工具、授权、身体和空间；person→ground 只能投放到人物当前 cell / z，不能远程落物。</span></li>
+            <li><strong>语音与近身</strong><span>普通 voice 沟通允许水平相邻一格且站立高度相差不超过一级；接受 / 拒绝、交换与许可协商、教学和谈话都可隔着这一个相邻站位完成。更远的会合优先选择听者附近占用更低的可达位置。物品交付、照护、生殖、施力和携带仍要求精确同一站位。</span></li>
             <li><strong>载体守恒</strong><span>带 recordPayloadId 的本人库存栈不会进入普通 combine / exert / expose 消耗候选，领域层也在扣减前拒绝；空白载体仍可写入或用于其他合法动作。</span></li>
-            <li><strong>机械链裁决</strong><span>工地必须保持 Water 端点 → 正上方 WaterWheel → 水平 DriveShaft → 新 Mill。首次 commissioning misalignment 记为 progressed、Seed 输入守恒；随后必须用故障后新造的新轴与 BronzeTool 维修，维修后的 Seed → Food 作业才完成项目。失流、错源、错计划、错站点或拓扑变化都在扣减前拒绝。</span></li>
+            <li><strong>机械链裁决</strong><span>工地必须保持 Water 端点 → 正上方 WaterWheel → 水平 DriveShaft → 新 Mill。首次 commissioning misalignment 记为 progressed、Seed 输入守恒；随后必须用故障后新造的新轴与 BronzeTool 维修，维修后的 Seed → Food 作业才完成安装。完成网络只在真实 loaded use 时磨损；阈值后的下一次投入前生成 worn-drive-shaft 实体故障且 Seed 守恒。本人近身诊断后才能发起维护，故障后新制并核验备件、修理和再次带载运行共同证明恢复。可靠操作者只能经明确教导把操作传给相邻语音范围内达到学习年龄的人。失流、错源、错计划、错站点或拓扑变化都在扣减前拒绝。</span></li>
             <li><strong>客观事件</strong><span>成功或阻塞都写入 ActionFact；库存、位置和身体不可凭叙事改动。</span></li>
           </ul>
           <code>domain/action.ts · domain/action-executor.ts</code>
@@ -313,7 +315,8 @@ const RULES_PAGE_MARKUP = `
           <summary><span>社会与学习</span><small>重复的真实协作才可能形成社会结构</small></summary>
           <ul>
             <li><strong>互动</strong><span>先民双向关系从 55 开始。新生儿只对出生时仍存活且精确同地的人形成由本人宜人性与外向性决定的单向弱信任 3..9；来源绑定出生事实，不增加 bond、不反向补信任，异地或后来到场者不追授。“双方都行动且行动后同地”的共同活动按每个人的有效外向性 60% + 宜人性 40% 分别换算：高、中、低社会接近度每 3、4、5 个规划刻度形成一份定向 trust / bond +1，因此双方可以不同步增长；已生效的结伴双方在同一稳定生活区的不同格行动也可累计。当月已有基础增量时，未满 16 岁额外 trust +2，16–29 岁额外 trust +1，30 岁起不加；年龄加成不增加 bond，也不凭空创造关系。事实保存双方各自门槛与增量。单纯同处、空闲、休眠和失败动作不计。结伴门槛为本人有来源的 20 / 20；普通生殖不设关系分数门槛，提议者只需拥有可追溯关系，后续由双方分别判断。魅魔是显式特质例外：成年女性可对同地成年男性形成单方生殖候选，不读取关系或对方同意，但事实不得冒充双方协议。</span></li>
-            <li><strong>共同生活</strong><span>结伴提议保存双方共知的稳定生活地点；生活区内可以各站不同格。日常取水、劳动、学习可各自行动；只在 24 个月约定的时间余量用尽、若不返回就无法累计 12 个月共同生活时，才以空闲生活槽位为目标返回，让待建立关系的已接受约定形成有来源的承诺需要，并按既有 fulfillment 优先协议打断普通工作。结伴、共同体身份或仅仅看见别人都不会自动追踪实时坐标；跨地交谈必须绑定一个有真实来源的话题和后续沟通。</span></li>
+            <li><strong>柔性拥挤</strong><span>精确站位超过两名存活人物时，本人产生有界 spatial-comfort 需要，并可自愿一步挪到附近占用更低的站位。它不扣健康、不强制弹开人物、不打断必须回应或生存任务；两人同位、住所容量、人口承载与资源竞争仍按各自规则处理。</span></li>
+            <li><strong>共同生活</strong><span>结伴提议保存双方共知的稳定生活地点；生活区内可以各站不同格。日常取水、劳动、学习可各自行动；只在 24 个月约定的时间余量用尽、若不返回就无法累计 12 个月共同生活时，才以空闲生活槽位为目标返回，让待建立关系的已接受约定形成有来源的承诺需要，并按既有 fulfillment 优先协议打断普通工作。仍生效的共同生活关系按已接受 / 已建立、本人对对方的 trust / bond / fear 与当前是否处于共同生活区，连续满足一部分 belonging；多项关系按剩余缺口组合，只削减未满足压力，不删除新关系候选，也不会激活 generativity。结伴、共同体身份或仅仅看见别人都不会自动追踪实时坐标；超出相邻语音范围的生活交谈必须绑定一个有真实来源的话题和后续沟通。</span></li>
             <li><strong>承诺</strong><span>提议必须回应；生效协议要通过后续行动履约。正向生殖的 needActivation 只能由 NeedAgenda 的 generativity need 产生；魅魔的单方候选由本人的出生特质提供有来源的 generativity 机会，并跳过关系、双方协议和家庭准备度门控。普通生殖中 belonging 与 autonomy 不能激活正向选项，关系、恐惧、人格、同意与风险只在激活后连续门控，拒绝或撤回仍可由 autonomy 驱动。准备度只取本人可感知的当前食物、水、当前可见且确认未占用的真实住所内部位置、照护余量与气候安全，住所质量来自 weatherProtection / thermalInsulation；记忆中的远处住所只保留未验证来源，对 shelter 分量贡献 0。项目记忆不能替代资源，也不能单独重开被拒绝的配对。普通接受形成最长四个月的可撤回窗口；普通和魅魔单方路径都限制同一伴侣每月最多一次真实尝试。普通动作精确绑定有效协议并保存当时关系快照，魅魔动作则记录本人、目标、特质来源与 <code>succubus-unilateral</code>，不能形成虚假的 agreement。</span></li>
             <li><strong>近亲风险认识</strong><span>亲缘不改变动作合法性，而是提高后代遗传负荷、出生偏差、寿命压力与后续疾病概率。人物观察或学到这些后果后，风险知识从第一次有源证据起按置信度连续形成软成本；满置信度也不再近似否决。每个关系与身体条件合格的伴侣都保留独立候选，再由同一认知 appraisal 比较关系、责任与亲缘风险。</span></li>
             <li><strong>再次开口</strong><span>没有固定两月冷却：可选社交仍生成候选，再由人物自己的记忆评估同受众、同主题是否有新事实。无新证据且上次未回应 / 拒绝 / 保留会降权；新事实，或与求助 / 照护 / 困境直接相关的显著生存危险，可提高再次开口价值。协议幂等、每人一次回应、同一事实 basis 与开场回应去重仍是硬门禁。</span></li>
@@ -322,7 +325,7 @@ const RULES_PAGE_MARKUP = `
             <li><strong>记录复用</strong><span>新候选只服务读者本人活跃项目的真实技术缺口，只看本人背包与可见公共地面记录，并冻结 exact source。地面正常链为 move → acquire → read → experiment：move 不计取得，只有精确 drop 成功转入本人背包才算 acquire，来源消失或替换时不换源。</span></li>
             <li><strong>制度</strong><span>多人项目、重复角色、授权与分配闭环改变未来行为时才成立。共同体只剩一名在世成员时进入 dormant；该成员邀请有真实合作来源的候选人，并由全部在世参与者明确接受后可恢复 active，已经 dissolved 的共同体不能复活。</span></li>
           </ul>
-          <code>application/social-options.ts · application/record-use-options.ts · domain/social-repetition.ts · domain/agreement.ts · domain/shared-living.ts · domain/governance.ts</code>
+          <code>application/social-options.ts · application/record-use-options.ts · domain/social-space.ts · domain/social-repetition.ts · domain/agreement.ts · domain/shared-living.ts · domain/governance.ts</code>
         </details>
 
         <details class="rule-branch observer-branch" data-tone="observer" open>
@@ -330,7 +333,9 @@ const RULES_PAGE_MARKUP = `
           <ul>
             <li><strong>文明指数</strong><span>人口、疆域 / 设施、科技、社会与历史的事后投影。</span></li>
             <li><strong>能力里程碑</strong><span>从事件证据链识别实践、阶段与复杂性，不向人物发奖励。</span></li>
-            <li><strong>耕作能力与当前土地</strong><span>当前耕作区只表示眼下仍存在的幼苗、成熟作物或贫瘠地，继续服务疆域与容量；时代观察器 v2 只用同一已完成项目场址附近六个不同播种格，以及发生在这些播种格上的两次成熟收获证明既成能力。土地恢复不会抹掉闭环，零散、场外播种或项目外收获也不能冒充闭环。</span></li>
+            <li><strong>时代归并与材料替代</strong><span>各时代事实包独立核验，观察器选择已经完整闭合的最高层，不要求文明按标签顺序执行或逐级停留；原中世纪已并入古代文明，铁器、铁匠铺、城堡核心与专业工匠继续作为古代内部能力增长，不再触发独立阶段名。古代冶金门槛可由“制度化青铜 + 重复使用铸造场”或“制度化铁器 + 重复使用铁匠铺”闭合；其他行政、记录和制度事实仍须独立满足，也不向人物提供时代目标。</span></li>
+            <li><strong>住宅文化风格</strong><span>古代文明的已完工真实住所按世界种子与结构锚点稳定选择中国古建或西方中世纪形制；只更换台基、柱墙、木骨与屋顶等装饰语汇，不改变权威占地、材料、容量、防护、窗光或炉火事实。</span></li>
+            <li><strong>耕作能力与当前土地</strong><span>当前耕作区只表示眼下仍存在的幼苗、成熟作物或贫瘠地，继续服务疆域与容量；时代观察器 v6 仍只用同一已完成项目场址附近六个不同播种格，以及发生在这些播种格上的两次成熟收获证明既成能力。土地恢复不会抹掉闭环，零散、场外播种或项目外收获也不能冒充闭环。</span></li>
             <li><strong>死亡照料观察</strong><span>只有真实死亡、完整安葬与物质墓记来源闭合才识别对应能力；多人跨时段重复安葬才可能派生制度。</span></li>
             <li><strong>事实报告</strong><span>运行摘要、转折点、毁灭原因和文明编号都来自真实历史。记录完整链还必须通过同一 basis 的身份、项目、payload / codebook、精确取得、可靠阅读、实验产物与 +18、顺序及项目进度守卫；外部 exact-lineage 交付或既有已读可按真实状态继续，但不补造阶段、不计完整链。</span></li>
             <li><strong>文明纪事</strong><span>规则投影筛选文明开端、纪元切换、重要天气、野兽袭击、死亡、出生、协议、关键技术与项目完成；死亡只在来源链确实包含袭击且对象一致时归因给动物。同源原子动作在表达层归并，但纪事仍保留全部 sourceEventIds、涉及人物和可展开事实详情；模型只能压缩这组已筛事实。</span></li>
@@ -415,7 +420,7 @@ const RULES_PAGE_MARKUP = `
                     <article class="logic-node" data-kind="process"><span>P2</span><h4>在只读快照中编译候选</h4><p>输入只有可见格 / 人 / 动物 / 掉落物、本人记忆与知识、项目、协议、权限和当前意图。记录使用只检查本人拥有的活跃项目及真实技术缺口，载体来源限于本人背包与调用方已过滤的可见公共地面掉落物；不读他人背包、知识或意图，也不进入通用对话 follow-up。预览搜索路线和物流步骤不会打开真实 campaign 或改写项目；年龄门禁在每次编译时执行。相同结构失败 basis 在失败月起 0–6 月冷却，第 7 月恢复；新来源或目标、数量、人物、项目、记录、关系改变立即重开，required / fulfillment 绕过，旧自由文本无法还原 basis 时 fail-open。相似的可选社交不按固定月份删除，而在后续认知 appraisal 中评估重复成本。</p></article>
                     <ol>
                       <li><span class="edge-label">候选已生成</span>
-                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>Belief → Desire → Intention</h4><ul><li><b>硬优先级先行</b>：可感知的紧急休眠先于 required response，required response 又先于 fulfillment；若当前已经在执行回应或履约，新义务保留排队，不无条件打断。</li><li><b>B · Belief</b>：DecisionContext 只含局部感知、有来源记忆 / 知识、当前项目与承诺。Action 结果后验与 Intent goalOutcome 后验分离；后者决定目标成功预期。</li><li><b>D · Desire</b>：NeedAgenda 从身体、安全、照护、储备、能力、承诺、归属、generativity、自主与探究压力派生有界需要；正向生殖只能由 generativity 激活，belonging / autonomy 不能旁路激活。普通生殖的关系、人格、双方同意与准备度只在激活后连续门控；魅魔由特质来源形成 generativity 并跳过这些社会门控，但不能跳过成年、异性、同地、在世和未妊娠等物理事实。</li><li><b>I · Intention</b>：候选先跨过本人 aspiration，再与当前 Intent 的进度、尽责性、项目压力、停滞和切换边际比较；每人只有一个执行焦点，急性任务保存可返回父意图。</li><li><b>因果排序</b>：需要使用概率并集，其他因素使用有明确语义的乘法门控；不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>计划与行动</b>：Project / HTN 从 Intention 编译下一步，领域执行器重验；提交的 ActionFact 更新动作 Belief，Intent 结算再独立更新 goalOutcome Belief，直接死亡与休眠恢复终局也不能旁路这一步。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>可选模型重选</b>：实时模型只看合法候选和同一只读 cognition 投影，只能引用输入 ID；开局、危险和既定履约不进入重选，返回后仍再次校验 option、follow-up 与结构化立场。</li></ul></article>
+                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>Belief → Desire → Intention</h4><ul><li><b>硬优先级先行</b>：可感知的紧急休眠先于 required response，required response 又先于 fulfillment；若当前已经在执行回应或履约，新义务保留排队，不无条件打断。</li><li><b>B · Belief</b>：DecisionContext 只含局部感知、有来源记忆 / 知识、当前项目与承诺。Action 结果后验与 Intent goalOutcome 后验分离；后者决定目标成功预期。</li><li><b>D · Desire</b>：NeedAgenda 从身体、安全、照护、储备、能力、承诺、归属、generativity、自主与探究压力派生有界需要；仍生效的共同生活按关系质量与实际同居连续满足一部分 belonging，只削减未满足缺口。正向生殖只能由 generativity 激活，belonging / autonomy 不能旁路激活。普通生殖的关系、人格、双方同意与准备度只在激活后连续门控；魅魔由特质来源形成 generativity 并跳过这些社会门控，但不能跳过成年、异性、同地、在世和未妊娠等物理事实。</li><li><b>I · Intention</b>：候选先跨过本人 aspiration，再与当前 Intent 的进度、尽责性、项目压力、停滞和切换边际比较；每人只有一个执行焦点，急性任务保存可返回父意图。</li><li><b>因果排序</b>：需要使用概率并集，其他因素使用有明确语义的乘法门控；不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>计划与行动</b>：Project / HTN 从 Intention 编译下一步，领域执行器重验；提交的 ActionFact 更新动作 Belief，Intent 结算再独立更新 goalOutcome Belief，直接死亡与休眠恢复终局也不能旁路这一步。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>可选模型重选</b>：实时模型只看合法候选和同一只读 cognition 投影，只能引用输入 ID；开局、危险和既定履约不进入重选，返回后仍再次校验 option、follow-up 与结构化立场。</li></ul></article>
                         <ol>
                           <li><span class="edge-label">检查意图</span>
                             <article class="logic-node" data-kind="condition"><span>P3</span><h4>已有当前意图？</h4><p>每人只有一个执行焦点；中断会保存可返回的父意图。</p></article>
@@ -528,7 +533,7 @@ const RULES_PAGE_MARKUP = `
         <article><strong>后代取名</strong><code>naming.ts · server/newborn-naming-service.ts</code><span>确定性保底姓名、父母与处境提名上下文、本地 givenName 验收、出生事实来源与失败回退</span></article>
         <article><strong>共同生活</strong><code>domain/shared-living.ts · domain/agreement.ts · application/social-options.ts</code><span>稳定生活锚点、12 / 24 月履约窗口、独立行动和不追踪成员实时位置</span></article>
         <article><strong>持续项目</strong><code>application/project-options.ts · application/local-material-evidence.ts · domain/project-material-request.ts</code><span>压力、能力证据、局部去重、材料请求、物流、试验、协作与完成</span></article>
-        <article><strong>水流机械链</strong><code>domain/mechanical-power.ts · application/mechanical-power-options.ts · domain/action-executor.ts</code><span>显式有向水流、本人观察、冻结工地、严格拓扑、commissioning 故障、来源绑定维修与维修后运行</span></article>
+        <article><strong>水流机械链</strong><code>domain/mechanical-power.ts · application/mechanical-power-options.ts · domain/action-executor.ts</code><span>显式有向水流、本人观察、冻结工地、严格拓扑、commissioning、持续负载磨损、实体断轴、个人诊断、故障后备件、修后运行与明确教导</span></article>
         <article><strong>耐久记录</strong><code>application/record-use-options.ts · domain/action-executor.ts · server/evolution-artifacts.ts</code><span>写入发布、载体守恒、读者自有项目、精确来源复用与严格完整链审计</span></article>
         <article><strong>动作裁决</strong><code>domain/action-executor.ts</code><span>五种原子动作与九种物质操作的后果</span></article>
         <article><strong>自然过程</strong><code>domain/monthly-processes.ts</code><span>纪元、天气、生态、身体、出生与死亡</span></article>

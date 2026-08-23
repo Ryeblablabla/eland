@@ -8,7 +8,7 @@ import { CONTAINER_CAPACITY } from './domain/container';
 import { animalAgeMonths, animalSpecies, isAnimalAlive, type AnimalState } from './domain/animal';
 import type { PrimitiveAction, WorldRef } from './domain/action';
 import { actionActivityIndex } from './domain/event-index';
-import { playerTextForEvent } from './projection/player-narrative';
+import { bodyHistoryLabel, playerTextForEvent } from './projection/player-narrative';
 import { projectSocietyWorld } from './projection/society-world-cache';
 import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
@@ -613,7 +613,7 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
       }];
     }
     if (event.kind === 'environment' && event.who === agentId && (event.change === 'death' || event.change === 'condition' || event.change === 'body')) {
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : '身体变化', summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), status: event.change }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'life', label: event.change === 'death' ? '生命终止' : event.change === 'condition' ? '状态变化' : bodyHistoryLabel(event), summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), status: event.change }];
     }
     return [];
   });

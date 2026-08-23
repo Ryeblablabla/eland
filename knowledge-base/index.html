@@ -325,6 +325,74 @@ function genLogCabin(B){
   box(B,'woodDark', x0-1,H+4,-1, x1+1,H+4,0, ()=>vary(0x4e3822,0,0.08,0.06));
 }
 
+/** 农耕定居时代住宅：宽体木骨灰泥墙 + 石质基脚 + 高坡茅草顶 + 门廊侧棚 */
+function genAgrarianHouse(B){
+  const x0=-6, x1=5, z0=-4, z1=3, H=6;
+
+  // 石质基脚托起更大的定居住宅；墙体仍以木骨、夯土灰泥和茅草为主。
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++){
+    const edge=x===x0||x===x1||z===z0||z===z1;
+    if (edge) B.vox('stone',x,1,z,vary(0x817b70,0,0.06,0.08));
+  }
+
+  for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) for(let y=2;y<=H;y++){
+    const edge=x===x0||x===x1||z===z0||z===z1;
+    if (!edge) continue;
+    const front=z===z1;
+    const side=x===x0||x===x1;
+    const door=front&&(x===-1||x===0)&&y<=4;
+    const frontWindow=front&&(x===-4||x===3)&&(y===3||y===4);
+    const sideWindow=side&&(z===-1||z===1)&&(y===3||y===4);
+    if (door||frontWindow||sideWindow) continue;
+    const post=(x===x0||x===x1)&&(z===z0||z===z1)
+      ||front&&[-6,-3,2,5].includes(x)
+      ||(z===z0&&[-6,-3,0,3,5].includes(x));
+    const beam=y===2||y===H;
+    B.vox(post||beam?'woodDark':'plaster',x,y,z,
+      post||beam?vary(0x5b402b,0,0.09,0.07):vary(0xc7b58f,0.02,0.08,0.08));
+  }
+
+  // 门、横梁和暖窗让较大的正立面在远景仍保持可读。
+  box(B,'woodDark',-1,2,z1,0,4,z1,()=>vary(0x4e3822,0,0.08,0.06));
+  box(B,'woodDark',x0,H-1,z1,x1,H-1,z1,()=>vary(0x62462f,0,0.08,0.06));
+  for(const x of [-4,3]) for(const y of [3,4]) B.vox('glowWarm',x,y,z1,0xffc37a);
+  for(const x of [x0,x1]) for(const z of [-1,1]) for(const y of [3,4])
+    B.vox('glassDark',x,y,z,0x2c3844);
+
+  // 门廊从主屋向院落伸出，石阶、木柱和短檐共同强调固定定居感。
+  box(B,'stone',-2,1,z1+1,1,1,z1+2,()=>vary(0x8a857b,0,0.05,0.07));
+  box(B,'wood',-2,2,z1+2,-2,5,z1+2,()=>vary(0x68482e,0,0.08,0.06));
+  box(B,'wood',1,2,z1+2,1,5,z1+2,()=>vary(0x68482e,0,0.08,0.06));
+  box(B,'thatch',-3,6,z1,2,6,z1+3,()=>vary(0xc99f4e,0.02,0.13,0.10));
+
+  // 侧棚为农具、柴草和收成提供带顶空间，使轮廓比原始棚屋更宽。
+  const sx0=x1+1, sx1=x1+4, sz0=-2, sz1=2;
+  for(let x=sx0;x<=sx1;x++) for(let z=sz0;z<=sz1;z++) for(let y=1;y<=3;y++){
+    const edge=x===sx0||x===sx1||z===sz0||z===sz1;
+    if (!edge||z===sz1&&x>=sx0+1&&x<=sx1-1&&y<=2) continue;
+    const frame=x===sx0||x===sx1||z===sz0||z===sz1&&y===3;
+    B.vox(frame?'woodDark':'wood',x,y,z,
+      vary(frame?0x543a28:0x82603c,0.01,0.10,0.08));
+  }
+  for(let r=0;r<3;r++)
+    box(B,'thatch',sx0-1+r,4+r,sz0-1+r,sx1+1-r,4+r,sz1+1-r,
+      ()=>vary(0xb98d43,0.02,0.14,0.10));
+  box(B,'wood',sx0+1,1,sz0+1,sx1,1,sz0+1,()=>vary(0x91683d,0,0.10,0.08));
+
+  // 烟囱先于屋顶占位，茅草顶自然在其周围让出孔洞。
+  box(B,'stone',3,H+1,-1,3,H+5,-1,()=>vary(0x77756f,0,0.05,0.08));
+  B.vox('plaster',3,H+6,-1,0xb9bec4);
+  B.vox('plaster',4,H+7,-1,0xc9ced4);
+
+  // 沿长轴展开的高坡屋顶：整体更高，但仍保持农耕定居的茅草材料语义。
+  for(let r=0;r<5;r++){
+    const za=z0-1+r, zb=z1+1-r;
+    box(B,'thatch',x0-1,H+1+r,za,x1+1,H+1+r,zb,
+      ()=>vary(0xd0aa58,0.02,0.15,0.12));
+  }
+  box(B,'woodDark',x0-1,H+5,-1,x1+1,H+5,0,()=>vary(0x5b402b,0,0.09,0.07));
+}
+
 /** 石头屋：乱石墙 + 苔藓 + 石板瓦 */
 function genStone(B){
   const x0=-3, x1=3, z0=-3, z1=3, H=4;
@@ -1291,7 +1359,26 @@ function genStoneRoad(B){
   }
 }
 
-/** 碎石路：四宽碎石 + 大车辙 */
+/** 古代青砖大道：错缝长砖 + 连续路缘，颜色与农耕切石板明确区分。 */
+function genAncientRoad(B){
+  for(let row=-2;row<=2;row++){
+    const offset=Math.abs(row)%2===0?0:2;
+    for(let x=-18;x<=18;x+=4){
+      const moss=dirtHash(x+row*41,322)>0.965;
+      const color=moss?0x66705d:((x/4+row)&1)?0x69747c:0x7d878e;
+      B.microCuboid('stone',x+offset,2.02,row*2,3.82,0.58,1.82,
+        dirtColor(color,0.36+dirtHash(x+row*17,323)*0.30));
+    }
+  }
+  for(const z of [-5.8,5.8])
+    B.microCuboid('stone',0,2.02,z,40,0.72,1.25,dirtColor(0x505a62,0.52));
+  for(const x of [-16,-8,0,8,16]){
+    B.microCuboid('stone',x,2.75,-5.8,1.5,0.45,1.25,0x3f4850);
+    B.microCuboid('stone',x,2.75,5.8,1.5,0.45,1.25,0x3f4850);
+  }
+}
+
+/** 中世纪鹅卵石路：四宽石面 + 大车辙 */
 function genGravelRoad(B){
   for(let x=-9;x<=9;x++) for(let z=-1;z<=2;z++){
     const rut = (z===0||z===2)&&rand()<0.4;                // 车辙处颜色更深
@@ -2440,7 +2527,7 @@ function genHumanPalettes(B){
 
 /* ================= 素材注册表（建筑按文明等级 / 环境按类别分组） ================= */
 const LV_NAMES = {
-  1:'原始部落 · 木', 2:'农耕定居 · 石', 3:'古代文明 · 青铜', 4:'中世纪 · 铁',
+  1:'原始部落 · 木', 2:'农耕定居 · 石', 3:'古代文明 · 青铜', 4:'古代文明 · 铁器/城堡形态',
   5:'工业时代 · 钢', 6:'现代城市 · 水泥', 7:'信息时代 · 碳纤维', 8:'太空时代 · 纳米材料',
 };
 const CAT_NAMES = { p:'人物 · 生命与动作', b:'建筑 · 文明历程', s:'聚落 · 生存设施', n:'野外 · 植被与动物', r:'道路 · 桥梁', e:'环境 · 纪元状态' };
@@ -2471,15 +2558,16 @@ const STYLES = [
   { key:'body-states', cat:'p', group:'生命状态', name:'身体与环境状态', en:'Body States', gen:genBodyStates, tags:'怀孕 · 包扎 · 寒冷 · 疾病', note:'状态直接改变轮廓、服装或姿态；炎热状态另由轻装和动作节奏表达。' },
   { key:'shared-cell', cat:'p', group:'交互', name:'同格六人编组', en:'Six In One Cell', gen:genSharedCell, base:'none', tags:'同格 · 6 槽位 · 确定性环阵', note:'一格内不再都压在格心：1–4 人用中心/对称位，5–6 人使用确定性环形槽位；位置可由格号与人物 id 稳定排序。' },
   // 建筑（文明历程 Lv.1–8）
-  { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe, tags:'原始部落 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该营地。' },
-  { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill, tags:'农耕定居 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该磨坊。' },
-  { key:'thatched',   cat:'b', lv:2, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched, tags:'游戏已接入 · 混合材质住所', note:'生产装饰层在真实木石混合住所上使用木骨架、灰泥填充与暖色屋面；规模、防护细节和容量仍读取真实结构。' },
-  { key:'logcabin',   cat:'b', lv:2, name:'木屋',           en:'Log Cabin',       gen:genLogCabin, tags:'游戏已接入 · 木质住所', note:'生产装饰层按真实木材构件生成逐层圆木、门廊、山墙木瓦和石烟囱；只有住所内部存在真实火源时才显示炊烟与暖窗。' },
-  { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple, tags:'古代文明 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该神庙。' },
-  { key:'chinese',    cat:'b', lv:3, name:'中国王朝古代房子', en:'Chinese Dynasty', gen:genChinese },
-  { key:'stone',      cat:'b', lv:3, name:'石头屋',         en:'Stone House',     gen:genStone, tags:'游戏已接入 · 石质住所', note:'生产装饰层按真实石材构件生成乱石色差、稳定苔痕、厚门槛、窄窗和四坡石板顶；不会改变权威防护效果。' },
-  { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle, tags:'中世纪 · 观察层代表建筑', note:'游戏已接入：文明指数卡片的旋转阶段素材；只表达观察阶段，不代表世界中已经建成该城堡。' },
-  { key:'medieval',   cat:'b', lv:4, name:'中世纪房子',     en:'Medieval',        gen:genMedieval },
+  { key:'tribe',      cat:'b', lv:1, name:'部落营地',       en:'Tribal Camp',     gen:genTribe, tags:'原始部落 · 观察层代表建筑 · 聚落奇观投影', note:'游戏已接入：除文明指数卡片外，只有当前仍存在的议事火塘已经形成固定协调制度，并有真实共同项目证据时，人间场景才会用它作为主奇观外观；不增加住所、容量或领域事实。' },
+  { key:'thatched',   cat:'b', lv:1, name:'茅草屋',         en:'Thatched Hut',    gen:genThatched, tags:'游戏已接入 · 原始部落 · 混合材质住所', note:'原始部落阶段在真实木石混合住所上使用木骨架、灰泥填充与暖色屋面；规模、防护细节和容量仍读取真实结构。' },
+  { key:'logcabin',   cat:'b', lv:1, name:'木屋',           en:'Log Cabin',       gen:genLogCabin, tags:'游戏已接入 · 原始部落 · 木质住所', note:'原始部落阶段按真实木材构件生成逐层圆木、门廊和木瓦；只有住所内部存在真实火源时才显示炊烟与暖窗。' },
+  { key:'stone',      cat:'b', lv:1, name:'石头屋',         en:'Stone House',     gen:genStone, tags:'游戏已接入 · 原始部落 · 石质住所', note:'原始部落阶段的真实石材住所使用乱石色差、稳定苔痕、厚门槛、窄窗和四坡石板顶；不会改变权威防护效果。' },
+  { key:'windmill',   cat:'b', lv:2, name:'风车磨坊',       en:'Windmill',        gen:genWindmill, tags:'农耕定居 · 观察层代表建筑 · 聚落奇观投影', note:'游戏已接入：当前仍存在的真实 Mill 形成多人稳定作物加工制度后可成为主奇观外观；风叶只是视觉语汇，不提供风能或额外产能。' },
+  { key:'agrarian-house',cat:'b',lv:2,name:'农耕定居时代住宅',en:'Agrarian Homestead',gen:genAgrarianHouse,tags:'游戏已接入 · 农耕定居 · 宽体住宅 · 高坡茅草顶',note:'文明观察阶段进入农耕定居后，已完成的真实住所改用石质基脚、木骨灰泥墙、门廊与侧棚构成的时代装饰；占地、材料、防护、窗光与炊烟仍读取权威结构事实。' },
+  { key:'temple',     cat:'b', lv:3, name:'阶梯神庙',       en:'Stepped Temple',  gen:genTemple, tags:'古代文明 · 观察层代表建筑 · 聚落奇观投影', note:'游戏已接入：古代文明中当前仍存在的城邦公共厅堂形成固定协调制度，并已有记录、纪念或跨次预言检验历史时，可地标化为主奇观外观；不新增宗教能力或建筑事实。' },
+  { key:'chinese',    cat:'b', lv:3, name:'中国王朝古代房子', en:'Chinese Dynasty', gen:genChinese, tags:'游戏已接入 · 古代文明 · 中国风 · 台基 · 红柱 · 翘角灰瓦', note:'古代文明的已完成真实住所按世界种子与结构锚点稳定选择此中国古建形制或西方中世纪形制；结构占地、材料、容量与炉火状态仍来自权威投影。' },
+  { key:'castle',     cat:'b', lv:4, name:'城堡',           en:'Castle',          gen:genCastle, tags:'游戏已接入 · 古代文明 · 铁器高阶形态 · 聚落奇观投影', note:'当前仍存在的城堡核心形成固定协调制度后，可覆盖较低等级地标并成为主奇观外观；时代观察器不会因它出现而生成独立中世纪阶段，装饰也不增加防御、容量或城墙事实。' },
+  { key:'medieval',   cat:'b', lv:4, name:'西方中世纪风古代房子', en:'Western Medieval House', gen:genMedieval, tags:'游戏已接入 · 古代文明 · 西方中世纪风 · 石墙 · 木骨上层 · 陡坡瓦顶', note:'古代文明的已完成真实住所按世界种子与结构锚点稳定选择此西方中世纪形制或中国古建形制；窗光、炊烟、占地、材料与防护仍读取真实结构事实。' },
   { key:'factory',    cat:'b', lv:5, name:'烟囱工厂',       en:'Factory',         gen:genFactory },
   { key:'modern',     cat:'b', lv:6, name:'现代房子',       en:'Modern House',    gen:genModern },
   { key:'skyscraper', cat:'b', lv:6, name:'高楼大厦',       en:'Skyscraper',      gen:genSkyscraper },
@@ -2498,8 +2586,8 @@ const STYLES = [
   { key:'waterpower', cat:'s', group:'材料设施', name:'水力传动组', en:'Water Wheel & Drive Shaft', gen:genWaterPower, tags:'游戏已接入 · 水轮 → 传动轴 → 磨坊', note:'三个外形分别绑定真实 WaterWheel、DriveShaft 与 Mill 体素；只有已提交机械动力作业才沿真实相邻构件同步转动，断轴显示为分离残件。' },
   { key:'foundry',    cat:'s', group:'材料设施', name:'青铜铸造场', en:'Bronze Foundry', gen:(B)=>genMetalWorkshop(B,'foundry'), tags:'古代文明 · 铜锡与青铜批量生产', note:'游戏已接入：作为铜锡冶炼目标，并提高青铜工具制作产量；炉火与烟由真实使用事实驱动。' },
   { key:'civichall',  cat:'s', group:'时代核心', name:'城邦公共厅堂', en:'Civic Hall Core', gen:genChinese, tags:'古代文明 · 记录、度量与协调核心', note:'游戏已接入规则；只有实际沟通、记录和多人使用才进入时代观察。' },
-  { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'中世纪 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量；炉火与烟由真实使用事实驱动。' },
-  { key:'keepcore',   cat:'s', group:'时代核心', name:'城堡协调核心', en:'Keep Core', gen:genCastle, tags:'中世纪 · 防护、维护与工匠协调', note:'游戏已接入规则；这是功能核心，不代表整座城堡会因时代名称自动生成。' },
+  { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'古代文明 · 铁器高阶形态 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量；炉火与烟由真实使用事实驱动。' },
+  { key:'keepcore',   cat:'s', group:'时代核心', name:'城堡协调核心', en:'Keep Core', gen:genCastle, tags:'古代文明 · 铁器高阶形态 · 防护、维护与工匠协调', note:'游戏已接入规则；这是古代文明内部的功能核心，不代表整座城堡会因时代名称自动生成。' },
   { key:'construction-progress',cat:'s',group:'建造阶段',name:'施工进度',en:'Construction Progress',gen:genConstructionProgress,tags:'游戏已接入 · 备料 → 框架 → 局部屋面',note:'直接读取未完成结构的真实 componentCount；即使接近完成也保留敞口和脚手架，只有结构 complete 后才切换为功能建筑。' },
   { key:'woodpile',   cat:'s', group:'物资堆',   name:'木料堆', en:'Wood Pile',     gen:genWoodPile },
   { key:'stonepile',  cat:'s', group:'物资堆',   name:'石料堆', en:'Stone Pile',    gen:genStonePile },
@@ -2527,7 +2615,7 @@ const STYLES = [
   { key:'woodtool',   cat:'s', group:'时代工具', name:'木制生产工具', en:'Wood Tool', gen:(B)=>genEraMaterial(B,'woodtool'), tags:'原始部落 · 1.25× 采集效率' },
   { key:'stonehoe',   cat:'s', group:'时代工具', name:'石锄', en:'Stone Hoe', gen:(B)=>genEraMaterial(B,'stonehoe'), tags:'农耕定居 · 1.50× 生产效率' },
   { key:'bronzetool', cat:'s', group:'时代工具', name:'青铜工具', en:'Bronze Tool', gen:(B)=>genEraMaterial(B,'bronzetool'), tags:'古代文明 · 2.05× 生产效率' },
-  { key:'irontool',   cat:'s', group:'时代工具', name:'铁制工具', en:'Iron Tool', gen:(B)=>genEraMaterial(B,'irontool'), tags:'中世纪 · 2.60× 生产效率' },
+  { key:'irontool',   cat:'s', group:'时代工具', name:'铁制工具', en:'Iron Tool', gen:(B)=>genEraMaterial(B,'irontool'), tags:'古代文明 · 铁器高阶形态 · 2.60× 生产效率' },
   // 野外 · 植被与动物
   { key:'deer',       cat:'n', group:'动 物', name:'成年雄鹿', en:'Adult Male Deer', gen:genDeer, tags:'雄性 · 成年 · 鹿角 · 行走' },
   { key:'deer-family',cat:'n', group:'动 物', name:'雌鹿与幼鹿', en:'Doe & Fawn',    gen:genDeerFamily, tags:'雌性/幼年 · 无鹿角 · 年龄缩放' },
@@ -2555,9 +2643,10 @@ const STYLES = [
   { key:'mushrooms',  cat:'n', group:'生态点缀', name:'蘑菇', en:'Mushrooms',       gen:(B)=>genGroundDetail(B,'mushrooms') },
   { key:'branch',     cat:'n', group:'生态点缀', name:'倒木枝', en:'Fallen Branch',  gen:(B)=>genGroundDetail(B,'branch') },
   // 道路与桥梁
-  { key:'dirtpath',   cat:'r', group:'道路演进', lv:2, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 八向邻接 · PackedSoil / Trail', note:'生产场景读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；只有同高的真实夯土 2×2 会合并共享缝，四格内角组成连续中心泥面，不会填入被道路围住但实际仍属草地、农田或庭院的地块。碎土与嵌入石子只做表现，不改变通行规则。' },
-  { key:'stoneroad',  cat:'r', group:'道路演进', lv:3, name:'石板路',   en:'Stone Road',   gen:genStoneRoad },
-  { key:'gravelroad', cat:'r', group:'道路演进', lv:5, name:'碎石路',   en:'Gravel Road',  gen:genGravelRoad },
+  { key:'dirtpath',   cat:'r', group:'道路演进', lv:1, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 原始部落 · 八向邻接 · PackedSoil / Trail', note:'原始部落阶段读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；只有同高的真实夯土 2×2 会合并共享缝，不改变通行规则。' },
+  { key:'stoneroad',  cat:'r', group:'道路演进', lv:2, name:'石板路',   en:'Stone Road',   gen:genStoneRoad, tags:'游戏已接入 · 农耕定居 · 时代装饰层', note:'文明观察阶段进入农耕定居后，真实 PackedSoil / Trail 道路格改用石板时代皮肤；不会增加道路格、消耗石材、改变通行能力或形成文明观察证据。' },
+  { key:'ancientroad',cat:'r', group:'道路演进', lv:3, name:'古代青砖大道',en:'Ancient Brick Road',gen:genAncientRoad,tags:'游戏已接入 · 古代文明 · 错缝长砖 · 连续路缘',note:'古代文明阶段用青灰长砖和连续路缘重绘真实道路格；只替换装饰语汇，不改变道路事实、库存和通行能力。' },
+  { key:'medievalroad',cat:'r',group:'道路演进', lv:4, name:'西方鹅卵石路',en:'Western Cobblestone',gen:genGravelRoad,tags:'视觉原型 · 古代文明 · 西方中世纪风 · 鹅卵石 · 车辙',note:'原中世纪道路皮肤保留为古代文明的西方风格原型；当前主游戏的古代道路仍统一使用青砖大道，不形成新的铺路事实。' },
   { key:'highway',    cat:'r', group:'道路演进', lv:6, name:'公路',     en:'Highway',      gen:genHighway },
   { key:'neonaute',   cat:'r', group:'道路演进', lv:8, name:'光能大道', en:'Neon Avenue',  gen:genNeonAvenue },
   { key:'woodbridge', cat:'r', group:'桥 梁', lv:2, name:'木桥',        en:'Wood Bridge',  gen:genWoodBridge },
@@ -2582,10 +2671,10 @@ const STYLES = [
 // 这里描述的是当前生产代码的接入状态，而不是素材完成度。
 const LIVE_ASSET_KEYS = new Set([
   'adult-man','adult-woman','child','elder','dehydrated','walking','gathering','attacking','ingesting','crafting','working','tend-fire','attending',
-  'handoff','communicate','care','companion','body-states','shared-cell','tribe','windmill','thatched','logcabin','temple','stone','castle',
+  'handoff','communicate','care','companion','body-states','shared-cell','tribe','windmill','thatched','logcabin','agrarian-house','temple','chinese','stone','castle','medieval',
   'councilhearth','granary','well','workshop','kiln','handmill','waterpower','foundry','civichall','smithy','keepcore','construction-progress',
   'woodpile','stonepile','foodpile','seedpile','bundles','meatpile','hidepile','bonepile','stonetools','bonetools','spearrack','tablet','fiber','leather','rope','container','cookedfood','herbs','charcoal','clay','copperore','tinore','ironore','woodtool','stonehoe','bronzetool','irontool',
-  'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath',
+  'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath','stoneroad','ancientroad','medievalroad',
   'surface-transition','shoreline-transition','fire','scorched','snowdrift','icespikes','snowspruce','riverflow','rain','snowfall','fog','storm','drought'
 ]);
 const assetStatus = (s) => LIVE_ASSET_KEYS.has(s.key) ? 'live' : 'prototype';

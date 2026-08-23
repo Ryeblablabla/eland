@@ -1,6 +1,6 @@
 import { createBiologicalSex, createLifespanMonths, deterministicFraction } from '../population';
 import { Material, materialHas } from './material';
-import type { ActionFact, EnvironmentFact, EraSchedule, Intent, SimulationState, WeatherKind, WorldEvent } from './model';
+import type { EnvironmentFact, Intent, SimulationState } from './model';
 import type { ConditionInstance, PersonState } from './person';
 import {
   HIBERNATION_RECOVERY_SAFE_RESERVE,
@@ -13,18 +13,15 @@ import {
   createMotiveSensitivity,
   createPersonality,
   newbornInitialTrust,
-  sharedActivityTickThreshold,
-  youthfulSharedActivityTrustBonus,
 } from './personality';
 import { createCognitionState, recordIntentGoalOutcome } from './cognition';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
-import { WORLD_CELL_COUNT, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
+import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
 import { seededFraction } from '../world/generator';
 import { shelterGeometryAt, shelterHeatRelief } from './structure';
 import { geneticKinshipRisk, inheritedGeneticLoad, KINSHIP_RISK_KNOWLEDGE_ID } from './kinship';
 import { remember } from './memory';
-import { applyRelationEvidence, relationshipPairKey } from './relation';
 import { createNewbornName } from '../naming';
 import {
   applyTraitCapacityModifiers,
@@ -42,38 +39,25 @@ import {
   traitDefinition,
   type TraitBirthResult,
 } from './trait';
-import {
-  animalAgeMonths,
-  animalSpecies,
-  isAnimalAlive,
-  type AnimalState,
-} from './animal';
 import { humanResourceCompetitionMultiplier } from './population-capacity';
-import {
-  companionLivingAnchor,
-  companionSharesLivingArea,
-  positionWithinLivingArea,
-  REQUIRED_SHARED_LIVING_MONTHS,
-  SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS,
-} from './shared-living';
-import {
-  HERBIVORE_DANGER_RADIUS,
-  PACK_CUE_SHARE_RADIUS,
-  WOLF_PERCEPTION_RADIUS,
-  behaviorFromIntent,
-  createInitialAnimalEcology,
-  normalizeAnimalEcologies,
-  planWildlifeIntents,
-  reachableWildlifeCells,
-  synchronizeWolfPackCues,
-  wildlifeAnimalSnapshot,
-  wildlifeEdiblePlant,
-  wildlifePersonSnapshot,
-  wolfMovementAllowed,
-  type WildlifeAnimalSnapshot,
-  type WildlifeIntent,
-} from './wildlife-ecology';
 import { intentById, intentsOwnedBy, projectById } from './state-index';
+import {
+  advanceEraPredictions,
+  initialEraSchedule,
+  resolveClimate,
+  resolveWeather,
+} from './monthly/climate';
+import { advanceSharedRelationshipExperience } from './monthly/relationship-experience';
+import { advanceAnimals } from './monthly/wildlife';
+
+export {
+  advanceEraPredictions,
+  initialEraSchedule,
+  resolveClimate,
+  resolveWeather,
+  advanceSharedRelationshipExperience,
+  advanceAnimals,
+};
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -93,95 +77,6 @@ function event(state: SimulationState, atMonth: number, events: EnvironmentFact[
   };
   events.push(fact);
   return fact;
-}
-
-function eraDuration(seed: number, sequence: number, kind: EraSchedule['kind'], chaosIntensity: number): number {
-  const chaos = Math.max(0, Math.min(10, chaosIntensity));
-  const sample = seededFraction(seed, `era-duration:${sequence}:${kind}`);
-  if (kind === 'stable') {
-    const maximum = Math.max(18, 48 - chaos * 2);
-    return 6 + Math.floor(sample * (maximum - 5));
-  }
-  const maximum = Math.min(42, 24 + chaos * 2);
-  return 3 + Math.floor(sample * (maximum - 2));
-}
-
-function chaoticClimate(seed: number, sequence: number, bias: SimulationState['civilization']['conditions']['climateBias']): EraSchedule['dominantClimate'] {
-  const sample = seededFraction(seed, `era-climate:${sequence}`);
-  const coldBias = bias === 'cold' ? 0.18 : 0;
-  const heatBias = bias === 'hot' ? 0.18 : 0;
-  if (sample < 0.42 + coldBias) return 'cold';
-  if (sample > 0.88 - heatBias) return 'fire';
-  return 'heat';
-}
-
-export function initialEraSchedule(seed: number, chaosIntensity: number): EraSchedule {
-  const duration = eraDuration(seed, 0, 'stable', chaosIntensity);
-  return { sequence: 0, kind: 'stable', sinceMonth: 0, endsAtMonth: duration, dominantClimate: 'temperate' };
-}
-
-function nextEra(state: SimulationState, atMonth: number): EraSchedule {
-  const sequence = state.civilization.era.sequence + 1;
-  const kind = state.civilization.era.kind === 'stable' ? 'chaotic' : 'stable';
-  const duration = eraDuration(state.seed, sequence, kind, state.civilization.conditions.chaosIntensity);
-  return {
-    sequence,
-    kind,
-    sinceMonth: atMonth,
-    endsAtMonth: atMonth + duration - 1,
-    dominantClimate: kind === 'stable'
-      ? 'temperate'
-      : chaoticClimate(state.seed, sequence, state.civilization.conditions.climateBias),
-  };
-}
-
-export function resolveClimate(state: SimulationState, atMonth: number): EnvironmentFact[] {
-  const events: EnvironmentFact[] = [];
-  const external = state.civilization.externalClimate;
-  const previousEpoch = state.civilization.epoch;
-  const previousClimate = state.civilization.climate;
-  let eraTransition = false;
-  if (!external && atMonth > state.civilization.era.endsAtMonth) {
-    state.civilization.era = nextEra(state, atMonth);
-    eraTransition = true;
-  }
-  const scheduled = state.civilization.era;
-  const epoch = external?.epoch ?? scheduled.kind;
-  let kind = external?.kind ?? scheduled.dominantClimate;
-  if (!external && epoch === 'chaotic') {
-    const shift = seededFraction(state.seed, `era-climate-shift:${scheduled.sequence}:${Math.floor((atMonth - scheduled.sinceMonth) / 3)}`);
-    if (shift > 0.82) kind = kind === 'cold' ? 'heat' : kind === 'heat' ? 'cold' : 'heat';
-  }
-  const chaos = state.civilization.conditions.chaosIntensity / 10;
-  const severity = external?.severity
-    ?? (epoch === 'stable' ? 1 : Math.min(10, 3 + Math.floor(seededFraction(state.seed, `climate-severity:${scheduled.sequence}:${atMonth}`) * (5 + chaos * 3))));
-  // Observed external epoch changes are historical facts. Keep eraTransition
-  // reserved for the local schedule because prediction rules consume it.
-  const epochChanged = previousEpoch !== epoch;
-  const climateKindChanged = previousClimate.kind !== kind;
-  const climateSeverityChanged = previousClimate.severity !== severity;
-  const changed = climateKindChanged || climateSeverityChanged || epochChanged;
-  state.civilization.epoch = epoch;
-  state.civilization.climate = { kind, severity, sinceMonth: changed ? atMonth : previousClimate.sinceMonth };
-  if (changed || atMonth === 1 || eraTransition) event(
-    state,
-    atMonth,
-    events,
-    'climate',
-    `${eraTransition ? `${epoch === 'stable' ? '恒纪元' : '乱纪元'}开始；` : ''}本月地表处于${kind === 'temperate' ? '温和' : kind === 'cold' ? '寒冷' : kind === 'heat' ? '炎热' : '烈火'}环境`,
-    {
-      epoch, kind, severity, eraSequence: scheduled.sequence,
-      eraSinceMonth: scheduled.sinceMonth,
-      previousEpoch,
-      previousKind: previousClimate.kind,
-      previousSeverity: previousClimate.severity,
-      ...(epochChanged ? { epochChanged: true } : {}),
-      ...(climateKindChanged ? { climateKindChanged: true } : {}),
-      ...(climateSeverityChanged ? { climateSeverityChanged: true } : {}),
-      ...(eraTransition ? { eraTransition: true } : {}),
-    },
-  );
-  return events;
 }
 
 /**
@@ -223,192 +118,26 @@ export function resolveTerminalCatastrophe(
   return true;
 }
 
-const WEATHER_LABEL: Record<WeatherKind, string> = {
-  clear: '晴朗',
-  rain: '降雨',
-  storm: '风暴',
-  drought: '干旱',
-  snow: '降雪',
-  fog: '浓雾',
-};
-
-const WEATHER_CONTINUATION_PROBABILITY = 0.55;
-
-function sampledWeatherKind(state: SimulationState, atMonth: number): WeatherKind {
-  const climate = state.civilization.climate;
-  const sample = seededFraction(state.seed, `weather:${state.civilization.era.sequence}:${atMonth}`);
-  if (climate.kind === 'cold') return sample < 0.48 ? 'snow' : sample < 0.62 ? 'storm' : sample < 0.76 ? 'fog' : 'clear';
-  if (climate.kind === 'heat' || climate.kind === 'fire') return sample < 0.46 ? 'drought' : sample < 0.58 ? 'storm' : 'clear';
-  return sample < 0.27 ? 'rain' : sample < 0.34 ? 'storm' : sample < 0.46 ? 'fog' : sample < 0.51 ? 'drought' : 'clear';
-}
-
-function sampledWeatherIntensity(state: SimulationState, atMonth: number, kind: WeatherKind): number {
-  if (kind === 'clear') return 1;
-  const maximum = state.civilization.epoch === 'chaotic' ? 5 : 3;
-  return 1 + Math.floor(seededFraction(
-    state.seed,
-    `weather-intensity:${state.civilization.era.sequence}:${atMonth}:${kind}`,
-  ) * maximum);
-}
-
-function weatherFitsClimate(kind: WeatherKind, climate: SimulationState['civilization']['climate']['kind']): boolean {
-  if (kind === 'snow') return climate === 'cold';
-  if (kind === 'rain') return climate === 'temperate';
-  if (kind === 'drought') return climate !== 'cold';
-  return true;
-}
-
-function driftedWeatherIntensity(state: SimulationState, atMonth: number): number {
-  const weather = state.civilization.weather;
-  if (weather.kind === 'clear') return 1;
-  const maximum = state.civilization.epoch === 'chaotic' ? 5 : 3;
-  if (weather.intensity > maximum) return weather.intensity - 1;
-  if (seededFraction(state.seed, `weather-intensity-drift:${weather.sinceMonth}:${atMonth}`) >= 0.12) {
-    return weather.intensity;
-  }
-  const direction = seededFraction(state.seed, `weather-intensity-direction:${weather.sinceMonth}:${atMonth}`) < 0.5 ? -1 : 1;
-  return Math.max(1, Math.min(maximum, weather.intensity + direction));
-}
-
-export function resolveWeather(state: SimulationState, atMonth: number): EnvironmentFact[] {
-  const events: EnvironmentFact[] = [];
-  const previous = state.civilization.weather;
-  const initialObservation = atMonth === 1 && previous.sinceMonth === 0;
-  const incompatibleWithClimate = !weatherFitsClimate(previous.kind, state.civilization.climate.kind);
-  const continuation = seededFraction(
-    state.seed,
-    `weather-continuation:${state.civilization.era.sequence}:${atMonth}`,
-  ) < WEATHER_CONTINUATION_PROBABILITY;
-  const candidateKind = initialObservation || incompatibleWithClimate || !continuation
-    ? sampledWeatherKind(state, atMonth)
-    : previous.kind;
-
-  if (initialObservation || incompatibleWithClimate || candidateKind !== previous.kind) {
-    const intensity = sampledWeatherIntensity(state, atMonth, candidateKind);
-    state.civilization.weather = { kind: candidateKind, intensity, sinceMonth: atMonth };
-    event(state, atMonth, events, 'weather', `本月天气转为${WEATHER_LABEL[candidateKind]}`, {
-      kind: candidateKind,
-      intensity,
-      previousKind: previous.kind,
-      previousIntensity: previous.intensity,
-      episodeStarted: true,
-    });
-    return events;
-  }
-
-  const intensity = driftedWeatherIntensity(state, atMonth);
-  if (intensity !== previous.intensity) {
-    state.civilization.weather = { ...previous, intensity };
-    event(
-      state,
-      atMonth,
-      events,
-      'weather',
-      `本月${WEATHER_LABEL[previous.kind]}强度${intensity > previous.intensity ? '升至' : '降至'}${intensity}`,
-      {
-        kind: previous.kind,
-        intensity,
-        previousIntensity: previous.intensity,
-        episodeStarted: false,
-      },
-    );
-  }
-  return events;
-}
-
-export function advanceEraPredictions(state: SimulationState, atMonth: number, eraTransition: boolean): EnvironmentFact[] {
-  const events: EnvironmentFact[] = [];
-  for (const prediction of state.eraPredictions.filter((candidate) => candidate.status === 'pending')) {
-    let correct: boolean | null = null;
-    let errorMonths: number | undefined;
-    if (eraTransition) {
-      errorMonths = Math.abs(prediction.predictedStartMonth - atMonth);
-      correct = prediction.targetEpoch === state.civilization.epoch && errorMonths <= prediction.toleranceMonths;
-    } else if (atMonth > prediction.expiresAtMonth) {
-      errorMonths = Math.abs(prediction.predictedStartMonth - atMonth);
-      correct = false;
-    }
-    if (correct === null) continue;
-    prediction.status = correct ? 'correct' : 'incorrect';
-    prediction.resolvedAtMonth = atMonth;
-    prediction.errorMonths = errorMonths;
-    const predictor = state.people.find((person) => person.id === prediction.predictorId);
-    const fact = event(
-      state,
-      atMonth,
-      events,
-      'prediction',
-      `${predictor?.name ?? '某人'}对${prediction.targetEpoch === 'chaotic' ? '乱纪元' : '恒纪元'}的预言${correct ? '命中' : '失误'}`,
-      { predictionId: prediction.id, correct, errorMonths, predictorId: prediction.predictorId },
-      predictor,
-    );
-    prediction.sourceEventIds.push(fact.id);
-    if (predictor) {
-      const known = predictor.knowledge.find((knowledge) => knowledge.id === 'technique:era-forecast');
-      if (known) {
-        known.confidence = clamp(known.confidence + (correct ? 14 : -6));
-        known.sourceEventIds = [...new Set([...known.sourceEventIds, fact.id])].slice(-24);
-      }
-    }
-    for (const listener of state.people.filter((person) => prediction.audienceIds.includes(person.id))) {
-      applyRelationEvidence(listener, prediction.predictorId, fact.id, { trust: correct ? 11 : -6, bond: correct ? 2 : 0 });
-      remember(listener, {
-        id: `memory:era-prediction:${prediction.id}:${listener.id}`,
-        kind: correct ? 'episode' : 'failure',
-        summary: `${predictor?.name ?? '某人'}对纪元变化的预言${correct ? '应验了' : '没有在预言时间窗内应验'}`,
-        importance: correct ? 82 : 68,
-        createdAtMonth: atMonth,
-        lastRecalledAtMonth: atMonth,
-        personIds: [prediction.predictorId],
-        sourceEventIds: [fact.id],
-      });
-    }
-    const disputedWakes = state.world.past.filter((candidate): candidate is ActionFact => (
-      candidate.kind === 'action'
-        && candidate.status === 'completed'
-        && candidate.action.kind === 'act'
-        && candidate.action.operation === 'rehydrate'
-        && candidate.diff.rehydrationBasis === 'disputed-pending-prediction'
-        && candidate.diff.hibernationPredictionId === prediction.id
-        && typeof candidate.diff.rehydratedPersonId === 'string'
-    ));
-    const chaosArrived = eraTransition
-      && prediction.targetEpoch === 'chaotic'
-      && state.civilization.epoch === 'chaotic';
-    for (const wake of disputedWakes) {
-      const sleeper = state.people.find((person) => person.id === wake.diff.rehydratedPersonId);
-      const helper = state.people.find((person) => person.id === wake.who);
-      if (!sleeper || !helper || sleeper.id === helper.id) continue;
-      applyRelationEvidence(sleeper, helper.id, fact.id, chaosArrived
-        ? { trust: -8, bond: -2 }
-        : { trust: 5, bond: 2 });
-      applyRelationEvidence(helper, sleeper.id, fact.id, chaosArrived
-        ? { trust: 2, bond: -1 }
-        : { trust: 1, bond: 1 });
-      remember(sleeper, {
-        id: `memory:hibernation-wake-outcome:${prediction.id}:${wake.id}:${sleeper.id}`,
-        kind: chaosArrived ? 'failure' : 'episode',
-        summary: chaosArrived
-          ? `${helper.name}提前唤醒自己后乱纪元仍然到来，这次干预打断了合理的休眠计划`
-          : `${helper.name}提前唤醒自己后预言窗口平稳过去，这次有争议的判断最终避免了无效休眠`,
-        importance: chaosArrived ? 90 : 76,
-        createdAtMonth: atMonth,
-        lastRecalledAtMonth: atMonth,
-        personIds: [helper.id, prediction.predictorId],
-        sourceEventIds: [wake.id, fact.id],
-      });
-    }
-    if (disputedWakes.length) fact.diff.disputedWakeOutcomes = disputedWakes.length;
-  }
-  return events;
-}
-
 export function advanceWorldProcesses(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
   const changes: Array<{ cellId: number; from: number; to: number; process: string }> = [];
   const climate = state.civilization.climate;
   const weather = state.civilization.weather;
   const pending: Array<{ cell: number; to: number; process: string }> = [];
+  const riverPositionsByCell = new Map<number, Array<{ x: number; y: number; z: number }>>();
+  for (const position of state.world.mechanicalPower?.sources.flatMap((segment) => segment.requiredWaterVoxels) ?? []) {
+    const key = cellId(position.x, position.y);
+    const positions = riverPositionsByCell.get(key) ?? [];
+    if (!positions.some((candidate) => candidate.z === position.z)) positions.push(position);
+    riverPositionsByCell.set(key, positions);
+  }
+  const riverCellHasWater = (cell: number): boolean => (riverPositionsByCell.get(cell) ?? [])
+    .some((position) => voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Water);
+  const riverRechargeRate = weather.kind === 'rain'
+    ? weather.intensity * 0.012
+    : weather.kind === 'storm'
+      ? weather.intensity * 0.008
+      : 0;
   for (let cell = 0; cell < WORLD_CELL_COUNT; cell += 1) {
     const surface = surfaceMaterial(state.world.grid, cell);
     const sample = seededFraction(state.seed, `world-process:${atMonth}:${cell}:${surface}`);
@@ -427,6 +156,12 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
       pending.push({ cell, to: Material.Sand, process: 'evaporation' });
     } else if (surface === Material.Ice && climate.kind !== 'cold' && sample < 0.35) {
       pending.push({ cell, to: Material.Water, process: 'thaw' });
+    } else if (surface === Material.Sand
+      && riverRechargeRate > 0
+      && riverPositionsByCell.has(cell)
+      && neighbors4(cell).some(riverCellHasWater)
+      && sample < riverRechargeRate) {
+      pending.push({ cell, to: Material.Water, process: 'river-recharge' });
     } else if (surface === Material.WetSoil && (climate.kind === 'heat' || climate.kind === 'fire') && sample < climate.severity * 0.045) {
       pending.push({ cell, to: Material.Soil, process: 'drying' });
     } else if (surface === Material.ExhaustedSoil && neighbors4(cell).some((neighbor) => surfaceMaterial(state.world.grid, neighbor) === Material.Water) && sample < 0.045) {
@@ -469,513 +204,6 @@ export function advanceWorldProcesses(state: SimulationState, atMonth: number): 
 
   advanceAnimals(state, atMonth, events);
   return events;
-}
-
-function animalDistance(firstCell: number, secondCell: number): number {
-  return Math.abs(cellX(firstCell) - cellX(secondCell)) + Math.abs(cellY(firstCell) - cellY(secondCell));
-}
-
-function moveAnimal(state: SimulationState, animal: AnimalState, targetCell: number | undefined, atMonth: number): void {
-  const species = animalSpecies(animal.speciesId);
-  animal.position.previousCellId = animal.position.cellId;
-  animal.position.previousZ = animal.position.z;
-  if (targetCell === animal.position.cellId) return;
-  for (let step = 0; step < species.movementPerMonth; step += 1) {
-    const candidates = neighbors4(animal.position.cellId)
-      .flatMap((cell) => {
-        const standing = surfaceStandingPosition(state.world.grid, cell);
-        return standing ? [standing] : [];
-      })
-      .filter((candidate) => Math.abs(candidate.z - animal.position.z) <= 1)
-      .filter((candidate) => animal.speciesId !== 'wolf' || wolfMovementAllowed(animal, candidate.cellId));
-    if (!candidates.length) break;
-    candidates.sort((a, b) => {
-      const targetDelta = targetCell === undefined ? 0 : animalDistance(a.cellId, targetCell) - animalDistance(b.cellId, targetCell);
-      return targetDelta
-        || seededFraction(state.seed, `animal-move:${atMonth}:${animal.id}:${step}:${a.cellId}`)
-          - seededFraction(state.seed, `animal-move:${atMonth}:${animal.id}:${step}:${b.cellId}`)
-        || a.cellId - b.cellId;
-    });
-    const next = candidates[0];
-    animal.position.cellId = next.cellId;
-    animal.position.z = next.z;
-    if (targetCell !== undefined && next.cellId === targetCell) break;
-  }
-}
-
-function animalEvent(
-  state: SimulationState,
-  atMonth: number,
-  events: EnvironmentFact[],
-  animal: AnimalState,
-  result: string,
-  diff: Record<string, unknown>,
-  person?: PersonState,
-): EnvironmentFact {
-  const fact = event(state, atMonth, events, 'animal', result, { animalId: animal.id, animalSpeciesId: animal.speciesId, ...diff }, person);
-  fact.cellId = animal.position.cellId;
-  return fact;
-}
-
-function dropAnimalProducts(state: SimulationState, animal: AnimalState, atMonth: number, sourceEventId: string): Array<{ materialId: number; quantity: number }> {
-  const species = animalSpecies(animal.speciesId);
-  return species.products.flatMap((product) => {
-    const span = Math.max(0, product.maxQuantity - product.minQuantity);
-    const quantity = product.minQuantity + Math.floor(seededFraction(state.seed, `animal-product:${animal.id}:${atMonth}:${product.materialId}`) * (span + 1));
-    if (quantity <= 0) return [];
-    addDrop(state, product.materialId, quantity, animal.position.cellId, atMonth, [sourceEventId], `${animal.id}-carcass`, undefined, animal.position.z);
-    return [{ materialId: product.materialId, quantity }];
-  });
-}
-
-function killAnimal(state: SimulationState, animal: AnimalState, atMonth: number, events: EnvironmentFact[], process: string, killerAnimalId?: string): void {
-  if (animal.diedAtMonth !== undefined) return;
-  animal.health = 0;
-  animal.diedAtMonth = atMonth;
-  const fact = animalEvent(state, atMonth, events, animal, `${animalSpecies(animal.speciesId).name}在生态过程中死亡`, {
-    process, outcome: 'death', ...(killerAnimalId ? { killerAnimalId } : {}),
-  });
-  fact.diff.products = dropAnimalProducts(state, animal, atMonth, fact.id);
-}
-
-function advanceAnimalBirths(state: SimulationState, atMonth: number, events: EnvironmentFact[]): void {
-  if (atMonth % 12 !== 3) return;
-  for (const speciesId of ['deer', 'rabbit', 'boar', 'wolf'] as const) {
-    const species = animalSpecies(speciesId);
-    const living = state.world.animals
-      .filter((animal) => animal.speciesId === speciesId && isAnimalAlive(animal))
-      .sort((first, second) => first.id.localeCompare(second.id));
-    if (living.length >= species.carryingCapacity) continue;
-    const mothers = living.filter((animal) => animal.sex === 'female' && animalAgeMonths(animal, atMonth) >= species.adultAtMonths && animal.hunger <= 62);
-    let births = 0;
-    for (const mother of mothers) {
-      if (living.length + births >= species.carryingCapacity || births >= 4) break;
-      const reachableMates = reachableWildlifeCells(
-        state.world.grid,
-        { cellId: mother.position.cellId, z: mother.position.z },
-        3,
-        mother.ecology.territory,
-      );
-      const father = living.find((candidate) => candidate.sex === 'male'
-        && animalAgeMonths(candidate, atMonth) >= species.adultAtMonths
-        && reachableMates.has(candidate.position.cellId)
-        && surfaceStandingPosition(state.world.grid, candidate.position.cellId)?.z === candidate.position.z);
-      if (!father) continue;
-      const chance = speciesId === 'rabbit' ? 0.48 : speciesId === 'boar' ? 0.25 : speciesId === 'deer' ? 0.2 : 0.16;
-      if (seededFraction(state.seed, `animal-birth:${atMonth}:${mother.id}:${father.id}`) >= chance) continue;
-      const id = `animal-${speciesId}-born-${atMonth}-${state.world.animals.length}`;
-      const childEcology = createInitialAnimalEcology(
-        speciesId,
-        id,
-        mother.ecology.territory?.anchorCellId ?? mother.position.cellId,
-        mother.ecology.packId,
-      );
-      if (mother.ecology.territory) childEcology.territory = { ...mother.ecology.territory };
-      const child: AnimalState = {
-        id,
-        speciesId,
-        sex: seededFraction(state.seed, `${id}:sex`) < 0.5 ? 'female' : 'male',
-        bornAtMonth: atMonth,
-        lifespanMonths: Math.round(species.lifespanMonths * (0.82 + seededFraction(state.seed, `${id}:lifespan`) * 0.36)),
-        geneticParents: [mother.id, father.id],
-        position: {
-          cellId: mother.position.cellId, z: mother.position.z,
-          previousCellId: mother.position.cellId, previousZ: mother.position.z,
-        },
-        health: 72,
-        hunger: 18,
-        lastAteAtMonth: atMonth,
-        ecology: childEcology,
-      };
-      state.world.animals.push(child);
-      births += 1;
-      animalEvent(state, atMonth, events, child, `一只${species.name}幼仔出生`, {
-        process: 'birth', outcome: 'birth', parentIds: [mother.id, father.id],
-      });
-    }
-  }
-}
-
-function behaviorEventDiff(
-  animal: AnimalState,
-  intent: WildlifeIntent,
-  opening: WildlifeAnimalSnapshot,
-): Record<string, unknown> {
-  return {
-    process: intent.mode === 'pursue-human' ? 'pursuit-human'
-      : intent.mode === 'flee' ? 'flee-threat'
-        : intent.mode === 'defend' ? 'defensive-charge'
-          : intent.mode === 'avoid-humans' ? 'avoid-armed-group'
-            : intent.mode === 'territory-return' ? 'territory-return'
-              : intent.mode === 'hunt-prey' ? 'hunt-prey'
-                : intent.mode,
-    intentPhase: 'month-opening-snapshot',
-    movementPhase: 'simultaneous-intent-resolution',
-    monthOpeningCellId: opening.cellId,
-    destinationCellId: animal.position.cellId,
-    plannedTargetCellId: intent.targetCellId,
-    targetAnimalId: intent.targetAnimalId,
-    targetPersonId: intent.targetPersonId,
-    perception: intent.mode === 'pursue-human' && intent.sourceCueObservedAtMonth !== undefined ? {
-      basis: 'pack-last-seen-cue',
-      currentTargetReachable: 'unknown',
-      radius: null,
-      sourceCueObservedAtMonth: intent.sourceCueObservedAtMonth,
-      perceivedThreatAnimalIds: [],
-      perceivedPreyIds: [],
-      perceivedPersonIds: [],
-    } : intent.mode === 'territory-return' ? {
-      basis: 'territory-state',
-      reachableOnly: false,
-      radius: null,
-      perceivedThreatAnimalIds: [],
-      perceivedPreyIds: [],
-      perceivedPersonIds: [],
-    } : {
-      basis: intent.mode === 'defend' ? 'month-opening-co-location' : 'local-reachable-perception',
-      reachableOnly: true,
-      radius: intent.mode === 'defend' ? 0
-        : intent.mode === 'flee' ? HERBIVORE_DANGER_RADIUS
-          : WOLF_PERCEPTION_RADIUS,
-      perceivedThreatAnimalIds: intent.perceivedThreatAnimalIds ?? [],
-      perceivedPreyIds: intent.perceivedPreyIds ?? [],
-      perceivedPersonIds: intent.perceivedPersonIds ?? [],
-    },
-    territory: animal.ecology.territory ? { ...animal.ecology.territory, enforced: true } : null,
-    pack: animal.ecology.packId ? {
-      packId: animal.ecology.packId,
-      cueSourceAnimalId: animal.ecology.lastSeenCue?.sourceAnimalId,
-      cueExpiresAtMonth: animal.ecology.lastSeenCue?.expiresAtMonth,
-      sharedWithinRadius: PACK_CUE_SHARE_RADIUS,
-      sharingRenewsCue: false,
-    } : null,
-    targetSelection: intent.targetSelectionBasis ? {
-      selectedPersonId: intent.targetPersonId,
-      ...intent.targetSelectionBasis,
-    } : intent.mode === 'hunt-prey' ? {
-      selectedAnimalId: intent.targetAnimalId,
-      candidateAnimalIds: intent.perceivedPreyIds ?? [],
-      order: 'reachable-distance-asc,id-asc',
-    } : intent.mode === 'pursue-human' && intent.sourceCueObservedAtMonth !== undefined ? {
-      selectedPersonId: intent.targetPersonId,
-      order: 'unexpired-pack-cue-observed-desc,source-id-asc,target-id-asc',
-    } : intent.mode === 'flee' || intent.mode === 'avoid-humans' ? {
-      selectedCellId: intent.targetCellId,
-      order: 'minimum-threat-distance-desc,reachable-distance-desc,cell-id-asc',
-    } : intent.mode === 'territory-return' ? {
-      selectedCellId: intent.targetCellId,
-      order: 'territory-anchor',
-    } : null,
-  };
-}
-
-function applyAnimalAttack(
-  state: SimulationState,
-  atMonth: number,
-  events: EnvironmentFact[],
-  animal: AnimalState,
-  victim: PersonState,
-  intent: WildlifeIntent,
-  opening: WildlifeAnimalSnapshot,
-): void {
-  const species = animalSpecies(animal.speciesId);
-  const chance = species.aggression / 180;
-  if (seededFraction(state.seed, `predator-attack:${atMonth}:${animal.id}:${victim.id}`) >= chance) return;
-  const damage = 6 + Math.floor(species.aggression / 11);
-  const healthBefore = victim.body.health;
-  victim.body.health = clamp(victim.body.health - damage);
-  const wound = victim.conditions.find((condition) => condition.kind === 'wound');
-  const woundStageBefore = wound?.stage ?? 0;
-  if (wound) wound.stage = Math.min(3, wound.stage + 1) as 1 | 2 | 3;
-  else victim.conditions.push({
-    id: `condition-wound-animal-${victim.id}-${atMonth}`,
-    kind: 'wound',
-    stage: 2,
-    sinceMonth: atMonth,
-    sourceEventIds: [],
-  });
-  const fact = animalEvent(state, atMonth, events, animal, `${species.name}袭击${victim.name}并造成伤害`, {
-    process: 'attack-human',
-    victimId: victim.id,
-    damage,
-    healthBefore,
-    healthAfter: victim.body.health,
-    woundStageBefore,
-    woundStageAfter: wound?.stage ?? 2,
-    monthOpeningCoLocated: opening.cellId === victim.position.cellId && opening.z === victim.position.z,
-    attackEligibility: 'month-opening-contact-only',
-    targetSelection: intent.targetSelectionBasis ? {
-      selectedPersonId: victim.id,
-      ...intent.targetSelectionBasis,
-    } : { selectedPersonId: victim.id, order: 'reachable-distance-asc,wound-desc,health-asc,visible-defense-asc,id-asc' },
-    perception: {
-      reachableOnly: true,
-      radius: WOLF_PERCEPTION_RADIUS,
-      perceivedPersonIds: intent.perceivedPersonIds ?? [],
-    },
-    territory: animal.ecology.territory ? { ...animal.ecology.territory, enforced: true } : null,
-    packId: animal.ecology.packId,
-  }, victim);
-  const affectedWound = wound ?? victim.conditions.find((candidate) => candidate.id === `condition-wound-animal-${victim.id}-${atMonth}`);
-  if (affectedWound) affectedWound.sourceEventIds = [...new Set([...affectedWound.sourceEventIds, fact.id])];
-}
-
-function applyBoarDefensiveAttack(
-  state: SimulationState,
-  atMonth: number,
-  events: EnvironmentFact[],
-  animal: AnimalState,
-  victim: PersonState,
-  intent: WildlifeIntent,
-  opening: WildlifeAnimalSnapshot,
-): void {
-  const species = animalSpecies(animal.speciesId);
-  const chance = species.aggression / 240;
-  if (seededFraction(state.seed, `animal-attack:${atMonth}:${animal.id}:${victim.id}`) >= chance) return;
-  const damage = 4 + Math.floor(species.aggression / 14);
-  const healthBefore = victim.body.health;
-  victim.body.health = clamp(victim.body.health - damage);
-  const wound = victim.conditions.find((condition) => condition.kind === 'wound');
-  const woundStageBefore = wound?.stage ?? 0;
-  if (wound) wound.stage = Math.min(3, wound.stage + 1) as 1 | 2 | 3;
-  else victim.conditions.push({
-    id: `condition-wound-animal-${victim.id}-${atMonth}`,
-    kind: 'wound',
-    stage: 1,
-    sinceMonth: atMonth,
-    sourceEventIds: [],
-  });
-  const fact = animalEvent(state, atMonth, events, animal, `${species.name}在被近身时冲撞${victim.name}并造成伤害`, {
-    process: 'attack-human',
-    behavior: 'defensive-charge',
-    victimId: victim.id,
-    damage,
-    healthBefore,
-    healthAfter: victim.body.health,
-    woundStageBefore,
-    woundStageAfter: wound?.stage ?? 1,
-    monthOpeningCoLocated: opening.cellId === victim.position.cellId && opening.z === victim.position.z,
-    attackEligibility: 'month-opening-contact-only',
-    pursuit: false,
-    targetSelection: intent.targetSelectionBasis ? {
-      selectedPersonId: victim.id,
-      ...intent.targetSelectionBasis,
-    } : { selectedPersonId: victim.id, order: 'reachable-distance-asc,wound-desc,health-asc,visible-defense-asc,id-asc' },
-    perception: {
-      reachableOnly: true,
-      radius: 0,
-      perceivedPersonIds: intent.perceivedPersonIds ?? [],
-    },
-  }, victim);
-  const affectedWound = wound ?? victim.conditions.find((candidate) => candidate.id === `condition-wound-animal-${victim.id}-${atMonth}`);
-  if (affectedWound) affectedWound.sourceEventIds = [...new Set([...affectedWound.sourceEventIds, fact.id])];
-}
-
-/**
- * Local threat ecology is resolved in phases: physiology, immutable opening
- * perception/intent, movement, then contacts and attacks. Stable ID ordering is
- * only a commit order and cannot change any animal's intent.
- */
-export function advanceAnimals(state: SimulationState, atMonth: number, events: EnvironmentFact[]): void {
-  normalizeAnimalEcologies(state.world.animals);
-  const physiologicalOrder = state.world.animals.filter(isAnimalAlive)
-    .sort((first, second) => first.id.localeCompare(second.id));
-  for (const animal of physiologicalOrder) {
-    const species = animalSpecies(animal.speciesId);
-    animal.hunger = Math.min(120, animal.hunger + species.hungerPerMonth + (state.civilization.weather.kind === 'drought' ? 2 : 0));
-    if (animalAgeMonths(animal, atMonth) > animal.lifespanMonths) {
-      const agePressure = (animalAgeMonths(animal, atMonth) - animal.lifespanMonths) / 24;
-      if (seededFraction(state.seed, `animal-aging:${atMonth}:${animal.id}`) < Math.min(0.7, 0.08 + agePressure)) {
-        killAnimal(state, animal, atMonth, events, 'aging');
-        continue;
-      }
-    }
-    if (animal.hunger >= 100) animal.health = Math.max(0, animal.health - 9);
-    if (animal.health <= 0) killAnimal(state, animal, atMonth, events, 'starvation');
-  }
-
-  const livingAtOpening = state.world.animals.filter(isAnimalAlive)
-    .sort((first, second) => first.id.localeCompare(second.id));
-  const animalSnapshots = livingAtOpening.map(wildlifeAnimalSnapshot);
-  const peopleAtOpening = state.people.filter(isAlive).sort((first, second) => first.id.localeCompare(second.id));
-  const personSnapshots = peopleAtOpening.map((person) => wildlifePersonSnapshot(
-    person,
-    Boolean(shelterGeometryAt(state.world.grid, person.position)),
-  ));
-  const openingAnimalById = new Map(animalSnapshots.map((animal) => [animal.id, animal]));
-  const openingPersonById = new Map(personSnapshots.map((person) => [person.id, person]));
-
-  const cues = synchronizeWolfPackCues(state, atMonth, animalSnapshots, personSnapshots);
-  for (const animal of livingAtOpening.filter((candidate) => candidate.speciesId === 'wolf')) {
-    const prior = animal.ecology.lastSeenCue;
-    const next = cues.get(animal.id);
-    if (next) animal.ecology.lastSeenCue = structuredClone(next);
-    else delete animal.ecology.lastSeenCue;
-    if (next && next.sourceAnimalId === animal.id
-      && (!prior || prior.observedAtMonth !== next.observedAtMonth
-        || prior.targetId !== next.targetId || prior.cellId !== next.cellId)) {
-      animalEvent(state, atMonth, events, animal, `狼在局部可达范围内留下了一条直接目击线索`, {
-        process: 'observe-last-seen-cue',
-        intentPhase: 'month-opening-snapshot',
-        targetKind: next.kind,
-        targetId: next.targetId,
-        targetCellId: next.cellId,
-        observedAtMonth: next.observedAtMonth,
-        expiresAtMonth: next.expiresAtMonth,
-        perception: { reachableOnly: true, radius: WOLF_PERCEPTION_RADIUS },
-        territory: animal.ecology.territory ? { ...animal.ecology.territory, enforced: true } : null,
-        pack: { packId: animal.ecology.packId, sourceAnimalId: animal.id },
-        targetSelection: {
-          selectedPersonId: next.targetId,
-          order: 'reachable-distance-asc,wound-desc,health-asc,visible-defense-asc,id-asc',
-        },
-      });
-    } else if (next && next.sourceAnimalId !== animal.id
-      && (!prior || prior.observedAtMonth !== next.observedAtMonth || prior.sourceAnimalId !== next.sourceAnimalId)) {
-      animalEvent(state, atMonth, events, animal, `狼群成员共享了未续期的近距目击线索`, {
-        process: 'share-pack-last-seen-cue',
-        intentPhase: 'month-opening-snapshot',
-        packId: animal.ecology.packId,
-        receiverAnimalId: animal.id,
-        sourceAnimalId: next.sourceAnimalId,
-        targetKind: next.kind,
-        targetId: next.targetId,
-        targetCellId: next.cellId,
-        observedAtMonth: next.observedAtMonth,
-        expiresAtMonth: next.expiresAtMonth,
-        shareRadius: PACK_CUE_SHARE_RADIUS,
-        renewedBySharing: false,
-        perception: { reachableOnly: true, radius: PACK_CUE_SHARE_RADIUS, sourceAnimalId: next.sourceAnimalId },
-        territory: animal.ecology.territory ? { ...animal.ecology.territory, enforced: true } : null,
-        targetSelection: {
-          selectedPersonId: next.targetId,
-          order: 'direct-source-only,cue-observed-desc,source-id-asc,target-id-asc',
-        },
-      });
-    } else if (prior && !next) {
-      animalEvent(state, atMonth, events, animal, `狼停止使用一条已经过期的最后目击线索`, {
-        process: 'expire-last-seen-cue',
-        expiredTargetKind: prior.kind,
-        expiredTargetId: prior.targetId,
-        expiredCellId: prior.cellId,
-        observedAtMonth: prior.observedAtMonth,
-        expiresAtMonth: prior.expiresAtMonth,
-        expiredWithoutRenewal: true,
-        packId: animal.ecology.packId,
-      });
-    }
-  }
-
-  const intents = planWildlifeIntents(state, atMonth, animalSnapshots, personSnapshots, cues);
-  const intentByAnimalId = new Map(intents.map((intent) => [intent.animalId, intent]));
-
-  // Movement phase: every target was frozen above, before any animal moved.
-  for (const animal of livingAtOpening) {
-    const intent = intentByAnimalId.get(animal.id);
-    const opening = openingAnimalById.get(animal.id);
-    if (!intent || !opening) continue;
-    animal.ecology.currentBehavior = behaviorFromIntent(atMonth, intent);
-    moveAnimal(state, animal, intent.targetCellId, atMonth);
-    if (intent.mode === 'pursue-human'
-      || intent.mode === 'flee'
-      || intent.mode === 'defend'
-      || intent.mode === 'avoid-humans'
-      || intent.mode === 'territory-return'
-      || intent.mode === 'hunt-prey') {
-      animalEvent(state, atMonth, events, animal, intent.mode === 'pursue-human'
-        ? intent.sourceCueObservedAtMonth !== undefined
-          ? `${animalSpecies(animal.speciesId).name}基于未续期的狼群最后目击线索追踪一名人类`
-          : `${animalSpecies(animal.speciesId).name}基于局部可达感知追踪一名人类`
-        : intent.mode === 'flee'
-          ? `${animalSpecies(animal.speciesId).name}从局部威胁旁逃离`
-          : intent.mode === 'defend'
-            ? `饥饿的野猪在被近身时作出防御性冲撞姿态`
-            : intent.mode === 'avoid-humans'
-              ? `低健康的狼避开了可见的持械人群`
-              : intent.mode === 'territory-return'
-                ? `狼转向自己的领地边界以内`
-                : `狼追踪局部可达的自然猎物`,
-      behaviorEventDiff(animal, intent, opening));
-    }
-  }
-
-  // Settlement phase: contacts use final positions, but attack permission was
-  // frozen from month-opening co-location and cannot be created by this move.
-  for (const animal of livingAtOpening) {
-    if (!isAnimalAlive(animal)) continue;
-    const intent = intentByAnimalId.get(animal.id);
-    const opening = openingAnimalById.get(animal.id);
-    if (!intent || !opening) continue;
-    const species = animalSpecies(animal.speciesId);
-    if (species.diet === 'herbivore') {
-      if (intent.mode === 'defend' && intent.attackEligiblePersonId) {
-        const victim = state.people.find((person) => person.id === intent.attackEligiblePersonId && isAlive(person));
-        const victimOpening = openingPersonById.get(intent.attackEligiblePersonId);
-        if (victim && victimOpening
-          && animal.position.cellId === victim.position.cellId
-          && animal.position.z === victim.position.z
-          && opening.cellId === victimOpening.cellId
-          && opening.z === victimOpening.z
-          && !shelterGeometryAt(state.world.grid, victim.position)) {
-          applyBoarDefensiveAttack(state, atMonth, events, animal, victim, intent, opening);
-        }
-        continue;
-      }
-      const food = surfaceMaterial(state.world.grid, animal.position.cellId);
-      if (wildlifeEdiblePlant(food) && animal.hunger >= 34) {
-        const replacement = food === Material.BerryBush ? Material.Shrub
-          : food === Material.CropMature || food === Material.CropSprout ? Material.ExhaustedSoil
-            : food === Material.Shrub ? Material.Soil : Material.Grass;
-        if (replacement !== food) setVoxel(state.world.grid, cellX(animal.position.cellId), cellY(animal.position.cellId), topZ(state.world.grid, animal.position.cellId), replacement);
-        animal.hunger = Math.max(0, animal.hunger - (food === Material.CropMature || food === Material.BerryBush ? 58 : 36));
-        animal.lastAteAtMonth = atMonth;
-        if (food === Material.CropMature || food === Material.CropSprout || food === Material.BerryBush) {
-          animalEvent(state, atMonth, events, animal, `${species.name}取食并改变了一处植物地表`, {
-            process: 'forage', fromMaterialId: food, toMaterialId: replacement,
-          });
-        }
-      }
-      continue;
-    }
-
-    if (intent.mode === 'hunt-prey' && intent.targetAnimalId) {
-      const prey = state.world.animals.find((candidate) => candidate.id === intent.targetAnimalId && isAnimalAlive(candidate));
-      if (prey && prey.position.cellId === animal.position.cellId && animal.hunger >= 45) {
-        const chance = Math.min(0.82, 0.38 + (species.aggression - animalSpecies(prey.speciesId).evasion) / 180);
-        if (seededFraction(state.seed, `animal-hunt:${atMonth}:${animal.id}:${prey.id}`) < chance) {
-          killAnimal(state, prey, atMonth, events, 'predation', animal.id);
-          animal.hunger = Math.max(0, animal.hunger - 72);
-          animal.lastAteAtMonth = atMonth;
-        }
-      }
-      continue;
-    }
-
-    if (intent.mode !== 'pursue-human' || !intent.targetPersonId) continue;
-    const victim = state.people.find((person) => person.id === intent.targetPersonId && isAlive(person));
-    const victimOpening = openingPersonById.get(intent.targetPersonId);
-    if (!victim || !victimOpening || shelterGeometryAt(state.world.grid, victim.position)) continue;
-    const reached = animal.position.cellId === victim.position.cellId && animal.position.z === victim.position.z;
-    if (reached && opening.cellId !== victimOpening.cellId) {
-      animal.ecology.pursuitContact = { targetPersonId: victim.id, atMonth, cellId: victim.position.cellId };
-      animalEvent(state, atMonth, events, animal, `狼追到${victim.name}的近身位置，但本月只形成接触`, {
-        process: 'pursuit-contact',
-        targetPersonId: victim.id,
-        intentPhase: 'month-opening-snapshot',
-        contactPhase: 'post-movement-settlement',
-        monthOpeningDistance: animalDistance(opening.cellId, victimOpening.cellId),
-        attackAuthorizedThisMonth: false,
-        nextMonthEscapeWindow: true,
-        packId: animal.ecology.packId,
-        territory: animal.ecology.territory ? { ...animal.ecology.territory, enforced: true } : null,
-      }, victim);
-    }
-    if (reached && intent.attackEligiblePersonId === victim.id
-      && opening.cellId === victimOpening.cellId && opening.z === victimOpening.z) {
-      applyAnimalAttack(state, atMonth, events, animal, victim, intent, opening);
-    }
-  }
-  advanceAnimalBirths(state, atMonth, events);
 }
 
 function nearbyFires(state: SimulationState, person: PersonState): number {
@@ -1803,10 +1031,10 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       die(state, person, atMonth, events, 'body-failure');
       continue;
     }
+    const bodyBefore = { ...person.body };
     advanceInheritedSusceptibility(state, person, atMonth, events);
     const hibernationCondition = person.conditions.find((current) => current.kind === 'dehydrated-hibernation');
     const hibernating = Boolean(hibernationCondition && hibernationPhase(hibernationCondition) === 'dormant');
-    const hibernationBodyBefore = hibernationCondition ? { ...person.body } : undefined;
     const shelter = shelterGeometryAt(state.world.grid, person.position);
     const sheltered = Boolean(shelter);
     const fires = nearbyFires(state, person);
@@ -1856,6 +1084,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     person.body.hydration = clamp(person.body.hydration - hydrationCost);
     person.body.nutrition = clamp(person.body.nutrition - nutritionCost);
     let healthDelta = 0;
+    let favorableRecoveryApplied = false;
     if (hibernating) {
       healthDelta -= HIBERNATION_HEALTH_COST;
       if (state.civilization.epoch === 'chaotic' && climate.severity >= 8) healthDelta -= 0.15;
@@ -1869,6 +1098,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
       healthDelta -= Math.max(0, wound - 1) * 1.5 + Math.max(0, illness - 1) * 1.5;
       if (aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45)) healthDelta -= aging === 3 ? 1.5 : 0.5;
       if (person.body.hydration >= 65 && person.body.nutrition >= 65 && (sheltered || fireProtected || climate.kind === 'temperate') && !wound && !illness) {
+        favorableRecoveryApplied = true;
         healthDelta += 1.4 * (aging === 1 ? 0.9 : aging === 2 ? 0.65 : aging === 3 ? 0.3 : 1);
       }
     }
@@ -1908,7 +1138,7 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
         hydrationCost,
         nutritionCost,
         healthDelta,
-        bodyBefore: hibernationBodyBefore,
+        bodyBefore,
         bodyAfter: { ...person.body },
         ...(suspendedIntent ? { suspendedIntentId: suspendedIntent.id } : {}),
       }, person);
@@ -1922,200 +1152,34 @@ export function advanceBodies(state: SimulationState, atMonth: number): Environm
     const terminal = terminalRisk > 0 && seededFraction(state.seed, `aging-terminal:${atMonth}:${person.id}`) < terminalRisk;
     if (person.body.health <= 0 || terminal) die(state, person, atMonth, events, terminal ? 'aging-terminal' : 'body-failure');
     else if (Math.abs(healthDelta) >= 2 || person.body.hydration < 25 || person.body.nutrition < 25) {
-      event(state, atMonth, events, 'body', `${person.name}的身体储备发生显著变化`, { health: person.body.health, hydration: person.body.hydration, nutrition: person.body.nutrition, healthDelta }, person);
+      const bodyAfter = { ...person.body };
+      const bodyCauseCodes = [
+        ...(person.body.hydration < 25 ? ['dehydration'] : []),
+        ...(person.body.nutrition < 25 ? ['malnutrition'] : []),
+        ...(heat >= 2 ? ['heat-exposure'] : []),
+        ...(weather.kind === 'drought' && weather.intensity > 0 ? ['drought'] : []),
+        ...(cold > 0 ? ['cold-exposure'] : []),
+        ...(illness > 0 ? ['illness'] : []),
+        ...(wound > 1 ? ['wound'] : []),
+        ...(hibernating ? ['dehydrated-hibernation'] : []),
+        ...(aging >= 2 && (person.body.hydration < 45 || person.body.nutrition < 45) ? ['aging'] : []),
+        ...(pregnancy > 0 ? ['pregnancy'] : []),
+        ...(postpartum > 0 ? ['postpartum-recovery'] : []),
+        ...(resourceCompetition > 1 ? ['resource-competition'] : []),
+        ...(favorableRecoveryApplied ? ['favorable-recovery'] : []),
+      ];
+      event(state, atMonth, events, 'body', `${person.name}的身体储备发生显著变化`, {
+        health: bodyAfter.health,
+        hydration: bodyAfter.hydration,
+        nutrition: bodyAfter.nutrition,
+        healthDelta,
+        hydrationDelta: bodyAfter.hydration - bodyBefore.hydration,
+        nutritionDelta: bodyAfter.nutrition - bodyBefore.nutrition,
+        bodyBefore,
+        bodyAfter,
+        bodyCauseCodes,
+      }, person);
     }
   }
   return events;
-}
-
-function adverseRelationshipPair(event: WorldEvent): string | undefined {
-  if (event.kind !== 'action') return undefined;
-  if (event.action.kind === 'act'
-    && event.action.operation === 'exert'
-    && event.status === 'completed'
-    && typeof event.diff.victimId === 'string') {
-    return relationshipPairKey(event.who, event.diff.victimId);
-  }
-  if (event.action.kind === 'act'
-    && event.action.operation === 'combine'
-    && event.status === 'completed'
-    && typeof event.diff.restrainedPersonId === 'string'
-    && typeof event.diff.conditionId === 'string') {
-    return relationshipPairKey(event.who, event.diff.restrainedPersonId);
-  }
-  if (event.action.kind === 'transfer'
-    && event.diff.authorized === false
-    && event.action.from.kind === 'person') {
-    return relationshipPairKey(event.who, event.action.from.personId);
-  }
-  return undefined;
-}
-
-/** Personality turns 3..5 nearby action ticks into replayable relationship evidence. */
-export function advanceSharedRelationshipExperience(
-  state: SimulationState,
-  currentMonthEvents: readonly WorldEvent[],
-  atMonth: number,
-): EnvironmentFact[] {
-  const adversePairs = new Set(currentMonthEvents.flatMap((fact) => {
-    const pair = adverseRelationshipPair(fact);
-    return pair ? [pair] : [];
-  }));
-  const peopleById = new Map(state.people.filter(isAlive).map((person) => [person.id, person]));
-  const sharedLivingAreaByPair = new Map(state.agreements
-    .filter((agreement) => agreement.status === 'active' && agreement.proposal.kind === 'companion')
-    .flatMap((agreement) => {
-      const anchor = companionLivingAnchor(state, agreement);
-      return anchor ? [[relationshipPairKey(agreement.partyIds[0]!, agreement.partyIds[1]!), anchor] as const] : [];
-    }));
-  const actionsByTick = new Map<number, ActionFact[]>();
-  for (const fact of currentMonthEvents) {
-    if (fact.kind !== 'action'
-      || (fact.status !== 'completed' && fact.status !== 'progressed')
-      || fact.action.kind === 'communicate'
-      || !peopleById.has(fact.who)) continue;
-    const actions = actionsByTick.get(fact.actionTick) ?? [];
-    actions.push(fact);
-    actionsByTick.set(fact.actionTick, actions);
-  }
-  const pairActivity = new Map<string, {
-    first: PersonState;
-    second: PersonState;
-    ticks: Set<number>;
-    sourceEventIds: Set<string>;
-    cellId: number;
-  }>();
-  for (const actions of actionsByTick.values()) {
-    const actorActions = [...new Map(actions.map((fact) => [fact.who, fact])).values()]
-      .sort((left, right) => left.who.localeCompare(right.who));
-    for (let left = 0; left < actorActions.length; left += 1) {
-      for (let right = left + 1; right < actorActions.length; right += 1) {
-        const leftAction = actorActions[left];
-        const rightAction = actorActions[right];
-        const first = peopleById.get(leftAction.who);
-        const second = peopleById.get(rightAction.who);
-        if (!first || !second) continue;
-        const pairKey = relationshipPairKey(first.id, second.id);
-        const exactPlace = leftAction.toCellId === rightAction.toCellId && leftAction.toZ === rightAction.toZ;
-        const livingAnchor = sharedLivingAreaByPair.get(pairKey);
-        const sharedLivingPlace = Boolean(livingAnchor
-          && positionWithinLivingArea({ cellId: leftAction.toCellId, z: leftAction.toZ }, livingAnchor)
-          && positionWithinLivingArea({ cellId: rightAction.toCellId, z: rightAction.toZ }, livingAnchor));
-        if (!exactPlace && !sharedLivingPlace) continue;
-        const activity = pairActivity.get(pairKey) ?? {
-          first,
-          second,
-          ticks: new Set<number>(),
-          sourceEventIds: new Set<string>(),
-          cellId: leftAction.toCellId,
-        };
-        activity.ticks.add(leftAction.actionTick);
-        activity.sourceEventIds.add(leftAction.id);
-        activity.sourceEventIds.add(rightAction.id);
-        pairActivity.set(pairKey, activity);
-      }
-    }
-  }
-  const facts: EnvironmentFact[] = [];
-  for (const [pairKey, activity] of [...pairActivity.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-    if (adversePairs.has(pairKey)) continue;
-    const qualifyingTicks = [...activity.ticks].sort((left, right) => left - right);
-    const participants = [activity.first, activity.second].sort((left, right) => left.id.localeCompare(right.id));
-    const relationshipDeltas = participants.map((observer) => {
-      const other = participants.find((person) => person.id !== observer.id)!;
-      const tickThreshold = sharedActivityTickThreshold(observer);
-      const baseDelta = Math.floor(qualifyingTicks.length / tickThreshold);
-      const youthTrustBonus = baseDelta > 0
-        ? youthfulSharedActivityTrustBonus(ageMonths(observer, atMonth))
-        : 0;
-      return {
-        observerId: observer.id,
-        otherPersonId: other.id,
-        tickThreshold,
-        baseDelta,
-        youthTrustBonus,
-        trustDelta: baseDelta + youthTrustBonus,
-        bondDelta: baseDelta,
-      };
-    });
-    if (relationshipDeltas.every((delta) => delta.baseDelta <= 0)) continue;
-    const mutualTrustDelta = Math.min(...relationshipDeltas.map((delta) => delta.trustDelta));
-    const mutualBondDelta = Math.min(...relationshipDeltas.map((delta) => delta.bondDelta));
-    const fact: EnvironmentFact = {
-      id: `e-${atMonth}-environment-relationship-${facts.length}`,
-      kind: 'environment',
-      atMonth,
-      orderInMonth: facts.length,
-      cellId: activity.cellId,
-      change: 'relationship',
-      result: `${participants.map((person) => person.name).join('、')}本月共同活动 ${qualifyingTicks.length} 个规划刻度，按各自性格与年龄形成可追溯的共同经历`,
-      diff: {
-        process: 'shared-action-ticks',
-        participantIds: participants.map((person) => person.id),
-        qualifyingTicks,
-        sharedActionTicks: qualifyingTicks.length,
-        sourceEventIds: [...activity.sourceEventIds].sort(),
-        relationshipDeltas,
-        trustDelta: mutualTrustDelta,
-        bondDelta: mutualBondDelta,
-      },
-    };
-    for (const delta of relationshipDeltas) {
-      if (delta.baseDelta <= 0) continue;
-      const observer = participants.find((person) => person.id === delta.observerId)!;
-      applyRelationEvidence(observer, delta.otherPersonId, fact.id, {
-        trust: delta.trustDelta,
-        bond: delta.bondDelta,
-      });
-    }
-    facts.push(fact);
-  }
-  const establishedCompanions = state.agreements
-    .filter((agreement) => agreement.status === 'active'
-      && agreement.proposal.kind === 'companion'
-      && agreement.companionEstablishedAtMonth !== undefined)
-    .sort((left, right) => left.id.localeCompare(right.id));
-  for (const agreement of establishedCompanions) {
-    const pairKey = relationshipPairKey(agreement.partyIds[0]!, agreement.partyIds[1]!);
-    if (adversePairs.has(pairKey) || !companionSharesLivingArea(state, agreement)) continue;
-    const lastCredited = Math.max(
-      REQUIRED_SHARED_LIVING_MONTHS,
-      agreement.lastCompanionRelationshipAtCoLocatedMonth ?? REQUIRED_SHARED_LIVING_MONTHS,
-    );
-    const uncreditedMonths = Math.max(0, agreement.coLocatedMonths - lastCredited);
-    const relationshipDelta = Math.floor(uncreditedMonths / SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS);
-    if (relationshipDelta <= 0) continue;
-    const participants = agreement.partyIds
-      .map((personId) => peopleById.get(personId))
-      .filter((person): person is PersonState => Boolean(person))
-      .sort((left, right) => left.id.localeCompare(right.id));
-    if (participants.length !== 2) continue;
-    const creditedThrough = lastCredited + relationshipDelta * SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS;
-    const sourceEventIds = [...agreement.sourceEventIds].slice(-24);
-    const fact: EnvironmentFact = {
-      id: `e-${atMonth}-environment-relationship-${facts.length}`,
-      kind: 'environment',
-      atMonth,
-      orderInMonth: facts.length,
-      cellId: companionLivingAnchor(state, agreement)?.cellId ?? participants[0].position.cellId,
-      change: 'relationship',
-      result: `${participants.map((person) => person.name).join('、')}继续履行共同生活约定，累计 ${agreement.coLocatedMonths} 个真实共同生活月`,
-      diff: {
-        process: 'persistent-shared-living',
-        agreementId: agreement.id,
-        participantIds: participants.map((person) => person.id),
-        sharedLivingMonths: agreement.coLocatedMonths,
-        creditedThroughSharedLivingMonth: creditedThrough,
-        sourceEventIds,
-        trustDelta: relationshipDelta,
-        bondDelta: relationshipDelta,
-      },
-    };
-    agreement.lastCompanionRelationshipAtCoLocatedMonth = creditedThrough;
-    agreement.sourceEventIds = [...new Set([...agreement.sourceEventIds, fact.id])];
-    applyRelationEvidence(participants[0], participants[1].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
-    applyRelationEvidence(participants[1], participants[0].id, fact.id, { trust: relationshipDelta, bond: relationshipDelta });
-    facts.push(fact);
-  }
-  return facts;
 }

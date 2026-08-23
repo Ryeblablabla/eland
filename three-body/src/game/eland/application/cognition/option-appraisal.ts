@@ -228,6 +228,7 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     );
   }
   if (goal.kind === 'near-person') add('belonging', 0.65, '候选接近一个当前可感知的人');
+  if (option.id.startsWith('relieve-crowding:')) add('spatial-comfort', 1, '候选会减少本人直接感受到的同格拥挤');
   if (goal.kind === 'representation-made') add('belonging', 0.55, '候选形成一次有来源的社会表达');
   if (goal.kind === 'death-mourned') add('bereavement', 0.82, '候选让本人对一项有来源的死亡作出悼念回应');
   if (goal.kind === 'remains-interred') add('bereavement', 1, '候选用实体行动照料本人知晓的遗体');
@@ -257,7 +258,9 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
       && ['companion', 'reproduce', 'collective', 'membership'].includes(content.proposal.kind)) {
       add('belonging', 0.9, '候选会改变一项具体社会关系');
     }
-    if (content.kind === 'request' && (content.techniqueDemonstration || content.projectMaterialContribution)) {
+    if (content.kind === 'request' && (content.techniqueDemonstration
+      || content.projectMaterialContribution
+      || content.projectKnowledgeRequest)) {
       add('commitment', 0.9, '沟通直接服务于一个真实项目缺口');
       add('capability', 0.75, '候选寻求材料或技术能力');
     }

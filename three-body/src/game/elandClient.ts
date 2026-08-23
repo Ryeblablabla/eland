@@ -13,6 +13,14 @@ import type {
 import type { ModelProvider } from './llm';
 import type { CivilizationRequiem } from './civilizationRequiem';
 import { applyStepPayload, type ElandStepPayload } from './eland/society-patch';
+import type {
+  BeginEmbodimentRequest,
+  EmbodimentReleaseResponse,
+  EmbodimentStepRequest,
+  EmbodimentStepResponse,
+  EmbodimentView,
+  ReleaseEmbodimentRequest,
+} from './embodimentContract';
 
 export type Frame = GameFrame;
 
@@ -27,6 +35,18 @@ export class ElandBackendUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ElandBackendUnavailableError';
+  }
+}
+
+export class ElandRequestConflictError extends Error {
+  readonly status: number;
+  readonly embodiment?: EmbodimentView;
+
+  constructor(status: number, message: string, embodiment?: EmbodimentView) {
+    super(message);
+    this.name = 'ElandRequestConflictError';
+    this.status = status;
+    this.embodiment = embodiment;
   }
 }
 
@@ -59,6 +79,7 @@ export class ElandRequestTimeoutError extends ElandBackendUnavailableError {
 const PAGE_LEASE_ID = `lease-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 let civilizationCreationSequence = 0;
 let stepRequestSequence = 0;
+let embodimentRequestSequence = 0;
 const latestFrames = new Map<string, Frame | null>();
 const authorityEpochs = new Map<string, number>();
 
@@ -103,6 +124,23 @@ export interface ElandStepResult {
 export function createCivilizationCreationId(): string {
   civilizationCreationSequence += 1;
   return `${PAGE_LEASE_ID}:civilization:${Date.now().toString(36)}:${civilizationCreationSequence.toString(36)}`;
+}
+
+function createEmbodimentRequestId(kind: 'embodiment' | 'command' | 'release'): string {
+  embodimentRequestSequence += 1;
+  return `${PAGE_LEASE_ID}:${kind}:${Date.now().toString(36)}:${embodimentRequestSequence.toString(36)}`;
+}
+
+export function createEmbodimentId(): string {
+  return createEmbodimentRequestId('embodiment');
+}
+
+export function createEmbodimentCommandId(): string {
+  return createEmbodimentRequestId('command');
+}
+
+export function createEmbodimentReleaseId(): string {
+  return createEmbodimentRequestId('release');
 }
 
 function createStepId(): string {
@@ -233,11 +271,11 @@ async function requestJson<T>(
   try {
     res = await fetch(`/api/eland/${route}`, { ...init, signal: abortScope.signal });
     if (!res.ok) {
-      const detail = await res.json().catch(() => ({})) as { error?: string };
+      const detail = await res.json().catch(() => ({})) as { error?: string; embodiment?: EmbodimentView };
       const message = detail.error ?? `${route} 返回 ${res.status}`;
       if (res.status === 404) throw new ElandSessionMissingError(message);
       if (res.status >= 500) throw new ElandBackendUnavailableError(message);
-      throw new Error(message);
+      throw new ElandRequestConflictError(res.status, message, detail.embodiment);
     }
     return await res.json() as T;
   } catch (error) {
@@ -420,6 +458,7 @@ export const elandClient = {
       history: NarrativeEntryView[];
       historyTotalCount?: number;
       civilizationIndexHistory: CivilizationIndexHistoryPoint[];
+      embodiment: EmbodimentView | null;
     }>(`state?runId=${encodeURIComponent(runId)}`, requestOptions);
     if (authorityEpoch(runId) === requestAuthorityEpoch) {
       if (previous && (!result.frame
@@ -433,6 +472,33 @@ export const elandClient = {
       ...result,
       historyTotalCount: result.historyTotalCount ?? result.history.length,
     };
+  },
+  embodimentState: (runId: string, requestOptions?: ElandRequestOptions) => get<{
+    embodiment: EmbodimentView | null;
+  }>(`embodiment-state?runId=${encodeURIComponent(runId)}`, requestOptions),
+  beginEmbodiment: (
+    input: BeginEmbodimentRequest,
+    requestOptions?: ElandRequestOptions,
+  ) => post<{ embodiment: EmbodimentView }>('embodiment-begin', input, requestOptions),
+  stepEmbodiment: async (
+    input: EmbodimentStepRequest,
+    requestOptions?: ElandRequestOptions,
+  ) => {
+    const result = await post<EmbodimentStepResponse>('embodiment-step', input, requestOptions);
+    if ('committedFrame' in result) {
+      latestFrames.set(input.runId, result.committedFrame);
+      pendingSteps.delete(input.runId);
+    }
+    return result;
+  },
+  releaseEmbodiment: async (
+    input: ReleaseEmbodimentRequest,
+    requestOptions?: ElandRequestOptions,
+  ) => {
+    const result = await post<EmbodimentReleaseResponse>('embodiment-release', input, requestOptions);
+    latestFrames.set(input.runId, result.committedFrame);
+    pendingSteps.delete(input.runId);
+    return result;
   },
   history: (runId: string, requestOptions?: ElandRequestOptions) => get<{
     civilizationId: number;

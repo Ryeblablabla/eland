@@ -4,18 +4,24 @@ import path from 'node:path';
 import {
   buildDecisionContextForPerson,
   createSimulationFromOwnedState,
+  RulePlanner,
+  type Decision,
   type SimulationController,
   type SimulationState,
   type WorldEvent,
 } from '../src/game/eland/simulation';
 import { concludeOwnedCivilization } from '../src/game/eland/application/civilization-settlement';
 import { calendarDate } from '../src/game/eland/domain/calendar';
-import { isAlive } from '../src/game/eland/domain/person';
+import { isAlive, type PersonId } from '../src/game/eland/domain/person';
 import {
   civilizationRequiemKey,
   type CivilizationRequiem,
 } from '../src/game/civilizationRequiem';
-import { toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
+import { ERA_TO_ENV, toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
+import { prepareMonth } from '../src/game/eland/application/simulation/month-boundary';
+import { createMonthExecution } from '../src/game/eland/application/simulation/month-execution';
+import { copyState } from '../src/game/eland/application/simulation/state-utils';
+import { simulationObservationProjector } from '../src/game/eland/projection/simulation-observation-projector';
 import {
   validatePlayerInteractionChoice,
 } from '../src/game/eland/application/player-interaction-choice';
@@ -27,6 +33,14 @@ import type {
   SpeechLineView,
 } from '../src/game/societyContract';
 import type { AgentHistoryView } from '../src/game/societyContract';
+import type {
+  BeginEmbodimentRequest,
+  EmbodimentReleaseResponse,
+  EmbodimentStepRequest,
+  EmbodimentStepResponse,
+  EmbodimentView,
+  ReleaseEmbodimentRequest,
+} from '../src/game/embodimentContract';
 import {
   type PendingPlayerInteraction,
   type PlayerInteractionDecisionAttempt,
@@ -82,7 +96,17 @@ import {
   normalizeRecoveredBranches,
   validateRecoverySnapshot,
   type ElandSessionRecoverySnapshot,
+  type CompletedEmbodimentSnapshot,
+  type FrozenEmbodimentDecision,
 } from './eland-session/recovery';
+import {
+  EmbodimentCommandRejectedError,
+  EmbodimentConflictError,
+  EmbodimentCoordinator,
+  embodimentCommandFingerprint,
+  embodimentReleaseFingerprint,
+  type EmbodimentCoordinatorHost,
+} from './eland-session/embodiment-coordinator';
 import {
   DEFAULT_ACTIVE_STEP_PROTECTION_MS,
   DEFAULT_MAX_SESSIONS,
@@ -94,6 +118,7 @@ import {
 } from './eland-session/session-manager';
 import {
   createSessionBeginning,
+  ElandStepConflictError,
   SessionStepCoordinator,
   type ElandStepOptions,
 } from './eland-session/session-step';
@@ -105,6 +130,7 @@ export type {
   AgentConversationView,
 } from './eland-session/conversation-coordinator';
 export { AgentConversationConflictError } from './eland-session/conversation-coordinator';
+export { EmbodimentCommandRejectedError, EmbodimentConflictError } from './eland-session/embodiment-coordinator';
 export type { ElandSessionRecoverySnapshot } from './eland-session/recovery';
 export {
   ElandSessionBusyError,
@@ -177,6 +203,8 @@ export class ElandSession {
   private latestState: SimulationState | null = null;
   private latestFrame: Frame | null = null;
   private readonly stepCoordinator: SessionStepCoordinator;
+  private embodimentCoordinator: EmbodimentCoordinator | null = null;
+  private completedEmbodiments: CompletedEmbodimentSnapshot[] = [];
   private interactionRequestCount = 0;
   private readonly agentConversationTails = new Map<string, Promise<void>>();
   private readonly pendingAgentConversations = new Map<string, PendingAgentConversation>();
@@ -236,12 +264,98 @@ export class ElandSession {
     return this.authorityRevision;
   }
 
+  private embodimentHost(): EmbodimentCoordinatorHost {
+    return {
+      authority: () => ({
+        revision: this.authorityRevision,
+        civilizationId: this.civilizationId,
+        branchId: this.activeBranchId,
+        elapsedMonths: this.latestState?.clock.elapsedMonths ?? 0,
+        ended: this.latestState?.civilization.status === 'ended',
+      }),
+      committedState: () => this.latestState,
+      prepareExecution: ({
+        state,
+        actorId,
+        skySample,
+        frozenInitialDecisions,
+      }) => {
+        const working = copyState(state);
+        const climate = ERA_TO_ENV[skySample.fate];
+        working.civilization.externalClimate = {
+          epoch: climate.epoch,
+          kind: climate.kind,
+          severity: Math.max(1, Math.min(10, climate.severity)),
+          ...(climate.terminalCatastrophe
+            ? { terminalCatastrophe: climate.terminalCatastrophe }
+            : {}),
+        };
+        const prepared = prepareMonth(working, false, true);
+        const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
+        const frozen: FrozenEmbodimentDecision[] = [];
+        if (frozenInitialDecisions) {
+          for (const item of frozenInitialDecisions) {
+            decisions.set(item.personId as PersonId, {
+              decision: structuredClone(item.decision),
+              usedModel: item.usedModel,
+            });
+            frozen.push(structuredClone(item));
+          }
+        } else {
+          const planner = new RulePlanner();
+          for (const context of prepared.candidates) {
+            if (context.person.id === actorId) continue;
+            const decision = planner.decideAt(context, {
+              atMonth: prepared.atMonth,
+              planningTick: 1,
+            });
+            decisions.set(context.person.id, { decision, usedModel: false });
+            frozen.push({ personId: context.person.id, decision, usedModel: false });
+          }
+        }
+        return {
+          execution: createMonthExecution({
+            observationProjector: simulationObservationProjector,
+            prepared,
+            decisions,
+            usage: { inputTokens: 0, outputTokens: 0 },
+            attempted: { total: 0, ordinary: 0, exempt: 0 },
+            controlledPersonId: actorId as PersonId,
+            projectionCadence: 'monthly',
+          }),
+          frozenInitialDecisions: frozen,
+        };
+      },
+      commitMonth: ({ state, skySample, cosmosSnapshot }) => {
+        if (!this.controller) throw new EmbodimentConflictError('当前没有可提交的文明');
+        this.skySample = skySample;
+        this.cosmosSnapshot = cosmosSnapshot
+          ? { ...cosmosSnapshot, civilizations: this.civilizationId }
+          : undefined;
+        const owned = this.controller.adoptOwnedState(state);
+        return this.record(owned, owned.lastStep, entriesFor(owned, owned.lastStep));
+      },
+    };
+  }
+
+  private rememberCompletedEmbodiment(completed: CompletedEmbodimentSnapshot): void {
+    this.completedEmbodiments = [
+      ...this.completedEmbodiments.filter((candidate) => candidate.id !== completed.id),
+      structuredClone(completed),
+    ].slice(-64);
+  }
+
   static restore(
     snapshot: ElandSessionRecoverySnapshot,
     runId = snapshot.runId,
     timelineChunkResolver?: SessionTimelineChunkResolver,
   ): ElandSession {
-    const { state, cosmosSnapshot } = validateRecoverySnapshot(snapshot);
+    const {
+      state,
+      cosmosSnapshot,
+      activeEmbodiment,
+      completedEmbodiments,
+    } = validateRecoverySnapshot(snapshot);
     const session = new ElandSession(runId, snapshot.skySample, timelineChunkResolver);
     session.civilizationId = snapshot.civilizationId;
     session.controller = createSimulationFromOwnedState(state);
@@ -272,6 +386,13 @@ export class ElandSession {
       restoredTimeline.snapshots.set(session.latestFrame.elapsedMonths, checkpoint(state));
     }
     session.snapshotBaseline = baselineFor(session.latestState);
+    session.completedEmbodiments = structuredClone(completedEmbodiments);
+    if (activeEmbodiment) {
+      session.embodimentCoordinator = EmbodimentCoordinator.restore(
+        session.embodimentHost(),
+        activeEmbodiment,
+      );
+    }
     return session;
   }
 
@@ -289,11 +410,19 @@ export class ElandSession {
       skySample: this.skySample,
       ...(this.cosmosSnapshot ? { cosmosSnapshot: this.cosmosSnapshot } : {}),
       requiems: [...this.requiems.values()],
+      ...(this.embodimentCoordinator && !this.embodimentCoordinator.isComplete()
+        ? { activeEmbodiment: this.embodimentCoordinator.snapshot() }
+        : {}),
+      ...(this.completedEmbodiments.length
+        ? { completedEmbodiments: this.completedEmbodiments }
+        : {}),
     });
   }
 
   begin(civilizationId: number, worldSeed: number, skySample: SkySample, characterIds?: string[], cosmosSnapshot?: CosmosSnapshot): Frame {
     this.rotateAuthorityRevision();
+    this.embodimentCoordinator = null;
+    this.completedEmbodiments = [];
     this.civilizationId = civilizationId;
     this.skySample = skySample;
     const beginning = createSessionBeginning({
@@ -469,10 +598,12 @@ export class ElandSession {
   isBusy(): boolean {
     return this.stepCoordinator.isStepping()
       || this.interactionRequestCount > 0
-      || this.pendingRequiems.size > 0;
+      || this.pendingRequiems.size > 0
+      || this.embodimentCoordinator !== null;
   }
 
   private committedStateForConversation(): SimulationState | null {
+    if (this.embodimentCoordinator) return null;
     if (!this.stepCoordinator.isStepping()) return this.latestState;
     if (!this.latestFrame || !this.branches.has(this.activeBranchId)) return this.latestState;
     return this.snapshotForRead(this.activeTimeline(), this.latestFrame.elapsedMonths) ?? this.latestState;
@@ -547,11 +678,80 @@ export class ElandSession {
    * month is an acknowledgement/read, never permission to advance again.
    */
   async step(options: ElandStepOptions): Promise<Frame | null> {
+    if (this.embodimentCoordinator) {
+      throw new ElandStepConflictError('有一个人物正处于逐刻化身月份，请先完成或交还自主');
+    }
     return this.stepCoordinator.step(options);
   }
 
-  settleCivilization(): Frame {
+  hasActiveEmbodiment(): boolean {
+    return this.embodimentCoordinator !== null;
+  }
+
+  embodimentView(): EmbodimentView | null {
+    return this.embodimentCoordinator?.view() ?? null;
+  }
+
+  beginEmbodiment(input: BeginEmbodimentRequest): EmbodimentView {
     if (this.stepCoordinator.isStepping() || this.interactionRequestCount > 0) {
+      throw new ElandSessionBusyError(this.runId, '进入人物化身');
+    }
+    if (this.embodimentCoordinator) {
+      if (this.embodimentCoordinator.matchesBegin(input)) return this.embodimentCoordinator.view();
+      throw new EmbodimentConflictError('当前已经有一个正在进行的化身月份');
+    }
+    this.embodimentCoordinator = EmbodimentCoordinator.begin(this.embodimentHost(), input);
+    return this.embodimentCoordinator.view();
+  }
+
+  async stepEmbodiment(input: EmbodimentStepRequest): Promise<EmbodimentStepResponse> {
+    const coordinator = this.embodimentCoordinator;
+    if (!coordinator) {
+      const completed = this.completedEmbodiments.find((candidate) => candidate.id === input.embodimentId);
+      const stored = completed?.commandReceipts.find((candidate) => candidate.receipt.commandId === input.commandId);
+      if (completed
+        && stored
+        && this.latestFrame?.branchId === completed.branchId
+        && this.latestFrame.elapsedMonths === completed.committedElapsedMonths) {
+        if (stored.fingerprint !== embodimentCommandFingerprint(input)) {
+          throw new EmbodimentConflictError('commandId 已用于不同的化身行动');
+        }
+        return { receipt: stored.receipt, committedFrame: this.latestFrame };
+      }
+      throw new EmbodimentConflictError('当前没有等待行动的化身月份');
+    }
+    const result = await coordinator.step(input);
+    if ('committedFrame' in result) {
+      const completed = coordinator.completedSnapshot();
+      if (completed) this.rememberCompletedEmbodiment(completed);
+      if (this.embodimentCoordinator === coordinator) this.embodimentCoordinator = null;
+    }
+    return result;
+  }
+
+  async releaseEmbodiment(input: ReleaseEmbodimentRequest): Promise<EmbodimentReleaseResponse> {
+    const coordinator = this.embodimentCoordinator;
+    if (!coordinator) {
+      const completed = this.completedEmbodiments.find((candidate) => candidate.id === input.embodimentId);
+      if (completed?.release
+        && this.latestFrame?.branchId === completed.branchId
+        && this.latestFrame.elapsedMonths === completed.committedElapsedMonths) {
+        if (completed.release.fingerprint !== embodimentReleaseFingerprint(input)) {
+          throw new EmbodimentConflictError('releaseId 已用于不同的交还请求');
+        }
+        return { receipt: completed.release.receipt, committedFrame: this.latestFrame };
+      }
+      throw new EmbodimentConflictError('当前没有可交还的化身月份');
+    }
+    const result = await coordinator.release(input);
+    const completed = coordinator.completedSnapshot();
+    if (completed) this.rememberCompletedEmbodiment(completed);
+    if (this.embodimentCoordinator === coordinator) this.embodimentCoordinator = null;
+    return result;
+  }
+
+  settleCivilization(): Frame {
+    if (this.stepCoordinator.isStepping() || this.interactionRequestCount > 0 || this.embodimentCoordinator) {
       throw new ElandSessionBusyError(this.runId, '结算文明');
     }
     if (!this.controller || !this.latestState || !this.latestFrame) throw new Error('当前没有可以结算的文明');
@@ -892,6 +1092,9 @@ export class ElandSession {
   seek(month: number): Frame | null {
     // 模型决策、台词和纪事仍属于同一个原子月。等待期间不能切换
     // controller / branch，否则旧月份会被写入新分支的 timeline。
+    if (this.embodimentCoordinator) {
+      throw new ElandSessionBusyError(this.runId, '切换化身月份所在的时间线');
+    }
     if (this.stepCoordinator.isStepping()) return this.latest();
     const source = this.activeTimeline();
     const frame = findStoredFrame(this.branches, source, month);

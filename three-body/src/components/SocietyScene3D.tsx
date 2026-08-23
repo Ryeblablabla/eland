@@ -15,6 +15,7 @@ import type {
   SocietyState,
   SpeechLineView,
 } from '@/game/societyContract';
+import type { EmbodimentOptionView, EmbodimentTargetView } from '@/game/embodimentContract';
 import { Material } from '@/game/eland/domain/material';
 import { createDistantSkyLayer } from '@/game/distantSky';
 import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
@@ -33,6 +34,10 @@ import {
 } from '@/game/surfaceTransitions';
 import { collectDecor, featureDepth, featureUnderlayMaterialId, type DecorBucket, type DecorInstance } from '@/game/voxelKits';
 import { N_STARS, STAR_STYLES } from '@/lib/threebody';
+import {
+  EmbodimentCameraController,
+  type EmbodimentMoveDirection,
+} from './society-scene/EmbodimentCameraController';
 
 /**
  * GTAO 内部用 overrideMaterial 重渲染场景取深度/法线，
@@ -136,6 +141,10 @@ export interface HumanSkySnapshot {
   bodies: readonly number[]; // [三颗恒星 x/y, 行星 x/y]，与 SimStats.bodies 一致
 }
 
+export type SocietyCameraMode =
+  | { kind: 'overview' }
+  | { kind: 'embodiment'; agentId: string };
+
 interface Props {
   society: SocietyState;
   era: EraKey;
@@ -147,6 +156,14 @@ interface Props {
   selectedObject?: SocietySceneSelection;
   onSelectObject?: (selection: SocietySceneSelection) => void;
   onZoomOutRequest?: () => void; // 滚轮、键盘或双指持续缩小越过阈值 → 请求升起返回宇宙
+  cameraMode?: SocietyCameraMode;
+  embodimentTargets?: readonly EmbodimentTargetView[];
+  previewEmbodimentOption?: EmbodimentOptionView | null;
+  embodimentCommandPending?: boolean;
+  onEmbodimentMove?: (direction: EmbodimentMoveDirection) => void;
+  onEmbodimentTargetChange?: (target: EmbodimentTargetView | null) => void;
+  onEmbodimentPointerLockChange?: (locked: boolean) => void;
+  onEmbodimentCameraSettled?: () => void;
 }
 
 export type SocietySceneSelection =
@@ -171,6 +188,17 @@ const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参
 const SOCIETY_MAX_PIXEL_RATIO = 1.5;
 const CAMERA_TARGET_INSET_X = 12;
 const CAMERA_TARGET_INSET_Z = 10;
+const EMBODIMENT_EYE_HEIGHT = 0.44;
+const EMBODIMENT_INTERACTION_DISTANCE = 5;
+
+function embodimentTargetKey(target: EmbodimentTargetView): string {
+  if (target.kind === 'person') return `person:${target.personId}`;
+  if (target.kind === 'structure') return `structure:${target.structureId}`;
+  if (target.kind === 'standing-position') return `standing:${target.cellId}:${target.z}`;
+  if (target.kind === 'voxel') return `voxel:${target.cellId}:${target.z}`;
+  if (target.kind === 'drop') return `drop:${target.dropId}`;
+  return `container:${target.containerId}`;
+}
 
 function visualSpatialHash(seed: number, x: number, z: number, salt: number): number {
   let value = (
@@ -622,6 +650,7 @@ type FigureAge = 'child' | 'adult' | 'elder';
 
 interface FigureParts {
   group: THREE.Group;
+  pickProxy: THREE.Mesh;
   upright: THREE.Group;
   upperBody: THREE.Group;
   dehydrated: THREE.Group;
@@ -933,7 +962,7 @@ function buildFigure(agent: SocietyAgent): FigureParts {
   pickProxy.userData.agentId = agent.id;
   group.add(pickProxy);
   return {
-    group, upright, upperBody, dehydrated, legL, legR, armL, armR,
+    group, pickProxy, upright, upperBody, dehydrated, legL, legR, armL, armR,
     spear, handTool, toolHead, heldLoad, heldLoadFill, tablet, heldFood, outerwear, bandage, belly, sprite,
     spriteKey: '', speechBubble, speechKey: '', speechTexture: null, speechAspect: 1,
     speechPixelWidth: 1, speechPixelHeight: 1, speechPlacement: 'center',
@@ -964,6 +993,14 @@ export default function SocietyScene3D({
   selectedObject,
   onSelectObject,
   onZoomOutRequest,
+  cameraMode = { kind: 'overview' },
+  embodimentTargets = [],
+  previewEmbodimentOption,
+  embodimentCommandPending = false,
+  onEmbodimentMove,
+  onEmbodimentTargetChange,
+  onEmbodimentPointerLockChange,
+  onEmbodimentCameraSettled,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -986,6 +1023,14 @@ export default function SocietyScene3D({
     selectedObject,
     onSelectObject,
     onZoomOutRequest,
+    cameraMode,
+    embodimentTargets,
+    previewEmbodimentOption,
+    embodimentCommandPending,
+    onEmbodimentMove,
+    onEmbodimentTargetChange,
+    onEmbodimentPointerLockChange,
+    onEmbodimentCameraSettled,
   });
   useEffect(() => {
     propsRef.current = {
@@ -999,6 +1044,14 @@ export default function SocietyScene3D({
       selectedObject,
       onSelectObject,
       onZoomOutRequest,
+      cameraMode,
+      embodimentTargets,
+      previewEmbodimentOption,
+      embodimentCommandPending,
+      onEmbodimentMove,
+      onEmbodimentTargetChange,
+      onEmbodimentPointerLockChange,
+      onEmbodimentCameraSettled,
     };
   });
 
@@ -1011,6 +1064,12 @@ export default function SocietyScene3D({
   const decorApiRef = useRef<((s: SocietyState, e: EraKey) => void) | null>(null);
   const skyApiRef = useRef<((snapshot?: HumanSkySnapshot) => void) | null>(null);
   const selectionApiRef = useRef<((s: SocietyState) => void) | null>(null);
+  const cameraModeApiRef = useRef<((s: SocietyState, mode: SocietyCameraMode) => void) | null>(null);
+  const embodimentTargetsApiRef = useRef<((
+    s: SocietyState,
+    targets: readonly EmbodimentTargetView[],
+    preview?: EmbodimentOptionView | null,
+  ) => void) | null>(null);
 
   // ---- 主场景（挂载一次）----
   useEffect(() => {
@@ -1082,6 +1141,61 @@ export default function SocietyScene3D({
     controls.minDistance = 7;
     controls.maxDistance = 245;
     controls.target.copy(cameraTarget);
+
+    const embodimentCamera = new EmbodimentCameraController({
+      camera,
+      canvas,
+      onPointerLockChange: (locked) => propsRef.current.onEmbodimentPointerLockChange?.(locked),
+      onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
+    });
+    let embodiedAgentId: string | null = null;
+    const actorCameraAnchor = (s: SocietyState, agentId: string) => {
+      const actor = s.agents.find((agent) => agent.id === agentId);
+      if (!actor || actor.state === 'dead') return null;
+      const occupants = s.agents
+        .filter((agent) => agent.cellId === actor.cellId && agent.bodyDisposition !== 'interred')
+        .sort((left, right) => left.id.localeCompare(right.id));
+      const occupantIndex = occupants.findIndex((agent) => agent.id === actor.id);
+      const offset = occupantIndex >= 0
+        ? sharedCellOffset(occupantIndex, occupants.length)
+        : { x: 0, z: 0 };
+      const ageScale = figureAgeOf(actor) === 'child' ? 0.72 : figureAgeOf(actor) === 'elder' ? 0.9 : 1;
+      return {
+        x: actor.cellId % s.world.width - s.world.width / 2 + 0.5 + offset.x,
+        y: actor.z * CELL_H + EMBODIMENT_EYE_HEIGHT * ageScale,
+        z: Math.floor(actor.cellId / s.world.width) - s.world.height / 2 + 0.5 + offset.z,
+      };
+    };
+    cameraModeApiRef.current = (s, mode) => {
+      embodimentCamera.setCallbacks({
+        onPointerLockChange: (locked) => propsRef.current.onEmbodimentPointerLockChange?.(locked),
+        onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
+      });
+      if (mode.kind === 'embodiment') {
+        const anchor = actorCameraAnchor(s, mode.agentId);
+        if (!anchor) return;
+        controls.enabled = false;
+        if (embodiedAgentId !== mode.agentId || !embodimentCamera.isActive()) {
+          embodiedAgentId = mode.agentId;
+          embodimentCamera.enter(anchor);
+        } else {
+          embodimentCamera.setAnchor(anchor, true);
+        }
+        return;
+      }
+      if (!embodimentCamera.isActive()) return;
+      embodiedAgentId = null;
+      embodimentCamera.leave();
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      if (width > 0 && height > 0) {
+        camera.setViewOffset(width, height, 0, height * 0.07, width, height);
+        camera.updateProjectionMatrix();
+      }
+      controls.enabled = true;
+      controls.update();
+      propsRef.current.onEmbodimentTargetChange?.(null);
+    };
 
     // 以实际世界包围盒求透视相机所需距离。横向使用 viewport aspect，纵向额外
     // 预留树冠/建筑高度；resize 时保留用户当前的缩放比例和旋转方位。
@@ -2228,6 +2342,97 @@ void main() {`,
     const structureSelectionGroup = new THREE.Group();
     structureSelectionGroup.name = 'structure-selection-proxies';
     scene.add(structureSelectionGroup);
+
+    // 化身准星只命中服务端投影过的目标。体素/掉落物目标用不可见代理表达，
+    // 代理仅用于呈现选择，不参与规则合法性、碰撞或世界修改。
+    const embodimentTargetGroup = new THREE.Group();
+    embodimentTargetGroup.name = 'embodiment-target-proxies';
+    scene.add(embodimentTargetGroup);
+    aoExcluded.push(structureSelectionGroup, embodimentTargetGroup);
+    const embodimentTargetGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const embodimentTargetMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    embodimentTargetMaterial.colorWrite = false;
+    const embodimentTargetByKey = new Map<string, EmbodimentTargetView>();
+    const embodimentPersonTargetById = new Map<string, EmbodimentTargetView>();
+    const embodimentStructureTargetById = new Map<string, EmbodimentTargetView>();
+    const embodimentPreviewMaterial = new THREE.MeshBasicMaterial({
+      color: '#6fd2a1',
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+    });
+    const embodimentPreview = new THREE.Mesh(
+      new THREE.BoxGeometry(0.94, CELL_H * 0.94, 0.94),
+      embodimentPreviewMaterial,
+    );
+    embodimentPreview.name = 'embodiment-build-preview';
+    embodimentPreview.visible = false;
+    embodimentPreview.renderOrder = 40;
+    scene.add(embodimentPreview);
+    aoExcluded.push(embodimentPreview);
+
+    embodimentTargetsApiRef.current = (s, targets, preview) => {
+      embodimentTargetGroup.clear();
+      embodimentTargetByKey.clear();
+      embodimentPersonTargetById.clear();
+      embodimentStructureTargetById.clear();
+      for (const target of targets) {
+        const key = embodimentTargetKey(target);
+        if (embodimentTargetByKey.has(key)) continue;
+        embodimentTargetByKey.set(key, target);
+        if (target.kind === 'person') {
+          embodimentPersonTargetById.set(target.personId, target);
+          continue;
+        }
+        if (target.kind === 'structure') {
+          embodimentStructureTargetById.set(target.structureId, target);
+          continue;
+        }
+        if (target.kind === 'standing-position') continue;
+        const x = target.cellId % s.world.width;
+        const y = Math.floor(target.cellId / s.world.width);
+        const proxy = new THREE.Mesh(embodimentTargetGeometry, embodimentTargetMaterial);
+        proxy.position.set(
+          x - s.world.width / 2 + 0.5,
+          target.z * CELL_H + CELL_H * 0.5,
+          y - s.world.height / 2 + 0.5,
+        );
+        if (target.kind === 'voxel') proxy.scale.set(0.94, CELL_H * 0.94, 0.94);
+        else proxy.scale.set(0.62, 0.52, 0.62);
+        proxy.userData.embodimentTargetKey = key;
+        embodimentTargetGroup.add(proxy);
+      }
+
+      const previewTarget = preview?.category === 'build' && preview.target?.kind === 'voxel'
+        ? preview.target
+        : null;
+      embodimentPreview.visible = Boolean(previewTarget);
+      if (previewTarget) {
+        const x = previewTarget.cellId % s.world.width;
+        const y = Math.floor(previewTarget.cellId / s.world.width);
+        embodimentPreview.position.set(
+          x - s.world.width / 2 + 0.5,
+          previewTarget.z * CELL_H + CELL_H * 0.5,
+          y - s.world.height / 2 + 0.5,
+        );
+        const materialId = previewTarget.materialId ?? preview?.materialCost?.[0]?.materialId;
+        const materialColor = materialId === undefined ? undefined : s.world.palette[materialId]?.color;
+        if (materialColor) {
+          embodimentPreviewMaterial.color.setRGB(
+            materialColor[0] / 255,
+            materialColor[1] / 255,
+            materialColor[2] / 255,
+            THREE.SRGBColorSpace,
+          );
+        } else {
+          embodimentPreviewMaterial.color.set('#6fd2a1');
+        }
+      }
+    };
 
     const clearStructureSelection = () => {
       for (const child of [...structureSelectionGroup.children]) {
@@ -3519,6 +3724,7 @@ void main() {`,
       const p = propsRef.current;
       const w = p.society.world;
       const agents = p.society.agents;
+      const embodiedAgent = p.cameraMode.kind === 'embodiment' ? p.cameraMode.agentId : null;
       const speechBySpeaker = p.speechBySpeaker;
       const motion = Math.min(1, (now - animStart.current) / MONTH_PLAYBACK_MS);
       const activeIntentByOwner = new Map(p.society.intents
@@ -3582,11 +3788,16 @@ void main() {`,
           figures.set(agent.id, f);
           aoExcluded.push(f.sprite, f.speechBubble); // 名牌和台词气泡都不参与 AO
         }
-        f.group.visible = agent.bodyDisposition !== 'interred';
+        f.group.visible = agent.bodyDisposition !== 'interred' && agent.id !== embodiedAgent;
+        f.sprite.visible = embodiedAgent === null;
         if (!f.group.visible) continue;
         const path = agent.tickPath.length === RULE_TICKS + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
-        const point = interpolatePath(path, w.width, motion);
-        const prev = interpolatePath(path, w.width, Math.max(0, motion - 0.08));
+        const point = embodiedAgent
+          ? { x: agent.cellId % w.width, y: Math.floor(agent.cellId / w.width) }
+          : interpolatePath(path, w.width, motion);
+        const prev = embodiedAgent
+          ? point
+          : interpolatePath(path, w.width, Math.max(0, motion - 0.08));
         const dx = point.x - prev.x;
         const dz = point.y - prev.y;
         const moving = Math.hypot(dx, dz) > 1e-4;
@@ -3647,7 +3858,7 @@ void main() {`,
             f.speechBubble.center.set(0.5, 0);
             f.speechPlacement = 'center';
           }
-          f.speechBubble.visible = Boolean(speechLine);
+          f.speechBubble.visible = Boolean(speechLine) && embodiedAgent === null;
           f.speechKey = speechKey;
         }
         if (speechLine) {
@@ -3994,9 +4205,17 @@ void main() {`,
       return null;
     };
     const onSelectionPointerDown = (event: PointerEvent) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') {
+        selectionPointerDown = null;
+        return;
+      }
       selectionPointerDown = { x: event.clientX, y: event.clientY };
     };
     const onSelectionPointerUp = (event: PointerEvent) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') {
+        selectionPointerDown = null;
+        return;
+      }
       if (event.pointerType === 'touch' && risePinch.consumeTapSuppression(event.pointerId)) {
         selectionPointerDown = null;
         return;
@@ -4022,16 +4241,74 @@ void main() {`,
       emitSelection(structureHits.length ? selectionFromHit(structureHits[0].object) : null);
     };
 
+    const reticlePointer = new THREE.Vector2(0, 0);
+    const embodimentRaycaster = new THREE.Raycaster();
+    embodimentRaycaster.far = EMBODIMENT_INTERACTION_DISTANCE;
+    let emittedEmbodimentTargetFingerprint = '';
+    const emitEmbodimentTarget = (target: EmbodimentTargetView | null) => {
+      const fingerprint = target ? JSON.stringify(target) : '';
+      if (fingerprint === emittedEmbodimentTargetFingerprint) return;
+      emittedEmbodimentTargetFingerprint = fingerprint;
+      propsRef.current.onEmbodimentTargetChange?.(target);
+    };
+    const targetFromEmbodimentHit = (object: THREE.Object3D): EmbodimentTargetView | null => {
+      let current: THREE.Object3D | null = object;
+      while (current && current !== scene) {
+        const targetKey = current.userData.embodimentTargetKey;
+        if (typeof targetKey === 'string') return embodimentTargetByKey.get(targetKey) ?? null;
+        const agentId = current.userData.agentId;
+        if (typeof agentId === 'string') return embodimentPersonTargetById.get(agentId) ?? null;
+        const structureId = current.userData.structureId;
+        if (typeof structureId === 'string') return embodimentStructureTargetById.get(structureId) ?? null;
+        current = current.parent;
+      }
+      return null;
+    };
+    const updateEmbodimentReticle = () => {
+      if (!embodimentCamera.isActive()) {
+        emitEmbodimentTarget(null);
+        return;
+      }
+      const candidates: THREE.Object3D[] = [];
+      for (const [agentId] of embodimentPersonTargetById) {
+        const figure = figures.get(agentId);
+        if (figure?.group.visible) candidates.push(figure.pickProxy);
+      }
+      for (const child of structureSelectionGroup.children) {
+        if (typeof child.userData.structureId === 'string'
+          && embodimentStructureTargetById.has(child.userData.structureId)) candidates.push(child);
+      }
+      candidates.push(...embodimentTargetGroup.children);
+      if (!candidates.length) {
+        emitEmbodimentTarget(null);
+        return;
+      }
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld();
+      embodimentRaycaster.setFromCamera(reticlePointer, camera);
+      const hits = embodimentRaycaster.intersectObjects(candidates, false);
+      for (const hit of hits) {
+        const target = targetFromEmbodimentHit(hit.object);
+        if (target) {
+          emitEmbodimentTarget(target);
+          return;
+        }
+      }
+      emitEmbodimentTarget(null);
+    };
+
     // ---- 滚轮 / 键盘 / 双指缩放持续越过阈值 → 请求升起返回宇宙 ----
     let zoomOutAcc = 0;
     let zoomOutAsked = false;
     const requestZoomOut = () => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') return;
       if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
       zoomOutAsked = true;
       controls.maxDistance = Math.max(600, controls.maxDistance * 1.8); // 过场期间允许继续升高
       propsRef.current.onZoomOutRequest();
     };
     const accumulateZoomOut = (deltaY: number) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') return;
       if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
       if (deltaY > 0 && camera.position.distanceTo(controls.target) >= controls.maxDistance - 0.6) {
         zoomOutAcc += deltaY;
@@ -4042,10 +4319,12 @@ void main() {`,
     };
     const onWheelOut = (ev: WheelEvent) => { accumulateZoomOut(ev.deltaY); };
     const onRisePinchPointerDown = (ev: PointerEvent) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') return;
       if (ev.pointerType !== 'touch') return;
       risePinch.pointerDown(ev.pointerId, ev.clientX, ev.clientY);
     };
     const onRisePinchPointerMove = (ev: PointerEvent) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') return;
       if (ev.pointerType !== 'touch') return;
       const update = risePinch.pointerMove(ev.pointerId, ev.clientX, ev.clientY);
       if (update.triggered) requestZoomOut();
@@ -4077,6 +4356,16 @@ void main() {`,
     const isEditableTarget = (target: EventTarget | null) => target instanceof HTMLElement
       && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
     const onKeyDown = (ev: KeyboardEvent) => {
+      if (propsRef.current.cameraMode.kind === 'embodiment') {
+        if (!['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(ev.code)
+          || ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
+        ev.preventDefault();
+        if (propsRef.current.embodimentCommandPending || embodimentCamera.isInterpolating()) return;
+        propsRef.current.onEmbodimentMove?.(embodimentCamera.directionForKey(
+          ev.code as 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD',
+        ));
+        return;
+      }
       if (!handledKeys.has(ev.code) || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
       ev.preventDefault();
       pressedKeys.add(ev.code);
@@ -4090,6 +4379,10 @@ void main() {`,
       if (!zoomOutAsked) zoomOutAcc = 0;
     };
     const updateKeyboardCamera = (deltaSeconds: number) => {
+      if (embodimentCamera.isActive()) {
+        pressedKeys.clear();
+        return;
+      }
       if (!controls.enabled || pressedKeys.size === 0) return;
 
       const forwardAxis = Number(pressedKeys.has('KeyW')) - Number(pressedKeys.has('KeyS'));
@@ -4159,11 +4452,14 @@ void main() {`,
     composer.addPass(fxaaPass);
 
     // 交互时优先保证镜头跟手；松手后恢复环境遮蔽和景深表现。
+    let overviewControlsActive = false;
     const onControlsStart = () => {
+      overviewControlsActive = true;
       gtaoPass.enabled = false;
       tiltShiftPass.enabled = false;
     };
     const onControlsEnd = () => {
+      overviewControlsActive = false;
       gtaoPass.enabled = true;
       tiltShiftPass.enabled = true;
     };
@@ -4249,9 +4545,14 @@ void main() {`,
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SOCIETY_MAX_PIXEL_RATIO));
       renderer.setSize(wpx, hpx, false);
       camera.aspect = wpx / hpx;
-      // 选择完整画幅下方 7% 的视窗，相当于把地表主体稳定上提 7%，且不改变旋转中心。
-      camera.setViewOffset(wpx, hpx, 0, hpx * 0.07, wpx, hpx);
-      updateCameraFit(wpx, hpx);
+      if (embodimentCamera.isActive()) {
+        camera.clearViewOffset();
+        camera.updateProjectionMatrix();
+      } else {
+        // 选择完整画幅下方 7% 的视窗，相当于把地表主体稳定上提 7%，且不改变旋转中心。
+        camera.setViewOffset(wpx, hpx, 0, hpx * 0.07, wpx, hpx);
+        updateCameraFit(wpx, hpx);
+      }
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(wpx, hpx); // 内部会把 GTAO 等 Pass 按 pixelRatio 换算
       const pr = renderer.getPixelRatio();
@@ -4296,18 +4597,27 @@ void main() {`,
       // 入场：从太空高位丝滑下降（easeOutCubic），结束后开放相机控制
       const entryT = Math.min(1, (now - mountedAt) / 1100);
       const entryE = 1 - Math.pow(1 - entryT, 3);
-      if (entryT < 1) {
-        camera.position.lerpVectors(cameraEntry, cameraFinal, entryE);
-        camera.lookAt(cameraTarget);
-      } else if (!controls.enabled) {
-        camera.position.copy(cameraFinal);
-        camera.lookAt(cameraTarget);
-        controls.enabled = true;
-        controls.saveState(); // “复位视角”落到入场后的机位
+      if (embodimentCamera.isActive()) {
+        controls.enabled = false;
+        embodimentCamera.update(now);
+        tiltShiftPass.enabled = false;
+        updateEmbodimentReticle();
+      } else {
+        if (entryT < 1) {
+          camera.position.lerpVectors(cameraEntry, cameraFinal, entryE);
+          camera.lookAt(cameraTarget);
+        } else if (!controls.enabled) {
+          camera.position.copy(cameraFinal);
+          camera.lookAt(cameraTarget);
+          controls.enabled = true;
+          controls.saveState(); // “复位视角”落到入场后的机位
+        }
+        updateKeyboardCamera(deltaSeconds);
+        controls.update();
+        tiltShiftPass.enabled = !overviewControlsActive;
+        updateTiltShift(deltaSeconds, entryT);
+        updateEmbodimentReticle();
       }
-      updateKeyboardCamera(deltaSeconds);
-      controls.update();
-      updateTiltShift(deltaSeconds, entryT);
       layoutSpeechBubbles();
       // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
       if (skyStars) {
@@ -4347,11 +4657,14 @@ void main() {`,
       controls.removeEventListener('start', onControlsStart);
       controls.removeEventListener('end', onControlsEnd);
       controls.dispose();
+      embodimentCamera.dispose();
       terrainApiRef.current = null;
       lightApiRef.current = null;
       decorApiRef.current = null;
       skyApiRef.current = null;
       selectionApiRef.current = null;
+      cameraModeApiRef.current = null;
+      embodimentTargetsApiRef.current = null;
       animatedDecorBatches = [];
       if (settlementEraTransition) {
         disposeOutgoingSettlementDecor(
@@ -4392,14 +4705,20 @@ void main() {`,
   useEffect(() => { decorApiRef.current?.(society, era); }, [society, era]);
   useEffect(() => { skyApiRef.current?.(sky); }, [sky]);
   useEffect(() => { selectionApiRef.current?.(society); }, [society]);
+  useEffect(() => { cameraModeApiRef.current?.(society, cameraMode); }, [cameraMode, society]);
+  useEffect(() => {
+    embodimentTargetsApiRef.current?.(society, embodimentTargets, previewEmbodimentOption);
+  }, [embodimentTargets, previewEmbodimentOption, society]);
 
   return (
     <div ref={mountRef} className="absolute inset-0 z-[5] overflow-hidden bg-[#0b1016]">
       <canvas
         ref={canvasRef}
         tabIndex={0}
-        aria-label="人间场景：点击人物或结构查看信息，WASD 移动镜头，方向键或双指上下缩放"
-        className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing"
+        aria-label={cameraMode.kind === 'embodiment'
+          ? '人物化身视角：点击捕获视角，WASD 请求移动，Escape 释放鼠标'
+          : '人间场景：点击人物或结构查看信息，WASD 移动镜头，方向键或双指上下缩放'}
+        className={`absolute inset-0 h-full w-full ${cameraMode.kind === 'embodiment' ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
         style={{ touchAction: 'none' }}
       />
       <div className="sr-only" aria-atomic="true" aria-live="polite" aria-relevant="additions text">

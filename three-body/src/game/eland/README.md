@@ -71,6 +71,8 @@ domain model and policies ↔ world grid / material primitives
 
 - `application/monthly-simulation.ts`：旧导入路径的兼容门面；真正的依赖组装位于外层 `simulation-runtime.ts`，创建、恢复、推进、报告与 controller API 保持不变。
 - `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；application 只依赖自己声明的 `ObservationProjector` 输出端口，由外层 composition root 注入 projection adapter，不再运行时导入 `projection/`。`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行，并把 Action 执行结果与 Intent `goalOutcome` 分开结算：未受孕仍是 completed 动作但妊娠目标为 attempted-unmet，无真实受孕样本的提前阻塞是 not-evaluated；`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
+- `application/simulation/month-execution.ts`：普通月度快进与有限化身共用的暂存月生命周期。它把月初准备、逐个完整 planning tick 和月末结算拆成可组合边界；一个 tick 仍让稳定顺序中的全部人物行动，受控人物入口位于休眠、恢复、生存、照护和必要避护之后。普通 `tick-executor.ts` 直接跑完 15 刻；有限化身逐命令调用同一执行器，提前交还时本地跑完剩余刻度，二者都只在 `finishMonthExecution` 后提交一次。
+- `application/player-embodiment.ts`：从受控人物当前身体、局部感知、相邻可站立格、真实 `DecisionContext`、Intent 与 Project 投影稳定 `optionId + choiceKey`；提供等待、继续意图、单条相邻边移动和现有建造 / 交互候选。命令在人物轮次重新编译并解析为 `TickActorControl`，最终仍由普通领域执行器校验材料、路径、场址、权限和动作后果。
 - `application/rule-planner.ts`：每个规划刻度始终可用的正式本地目标选择器；硬门禁后委托因果 BDI，自主候选由动态需要、人格、亲历后验和当前意图共同决定。
 - `application/player-interaction-choice.ts`：把人物在主动建议对话中选中的当月合法方向编译为稳定语义键，并在最新上下文中本地重配；临时月份 / 表达 ID 变化不造成假失败，必须回应、履约和 follow-up 仍由同一门禁约束。
 - `application/cognition/need-agenda.ts`、`family-readiness.ts`、`option-appraisal.ts`、`bdi-deliberation.ts`：从局部 `DecisionContext` 派生动态需要，其中食物储备与饮水储备是两个带资源维度的独立缺口，身体稳态再精确区分健康、营养与水分；候选只能缓解同资源储备或对应身体压力，取得型候选还必须确认本人没有对应可摄入库存。项目来源的 need 精确绑定 `projectId`，普通采食不能冒领公共储备项目压力。正向生殖的 `needActivation` 只接受 `generativity`；`belonging` 与 `autonomy` 不能激活正向选项，关系、人格、同意与风险只在激活后连续门控，拒绝或撤回仍可由 `autonomy` 驱动。家庭准备度只读本人当前可感知的食物、水、真实可达且有当前可见空余位置的住所、照护余量与气候安全，住所质量每次从 `weatherProtection / thermalInsulation` 重验；记忆中的远处住所对 shelter 分量贡献为 0。动作后验供预计努力与伤害，`goalOutcome` Beta 后验决定目标成功预期。唯一当前 `Intent` 实现持续、切换与急性中断；项目 / HTN 仍负责步骤展开，领域执行器仍负责硬合法性。
@@ -102,6 +104,7 @@ domain model and policies ↔ world grid / material primitives
 
 - `server/main.ts`：只负责依赖组装、通用 HTTP 边界和启动关闭；`run-api.ts` 承接文明运行接口，`run-evolution-service.ts` 承接每个 run 的串行推进、12 月检查点与报告提交，`model-api.ts` 承接模型决策与设置接口。
 - `server/elandSession.ts`：保留实时会话公共门面与兼容导出。`server/eland-session/session-step.ts` 编排 begin / step、幂等并发、权威月份、sky / cosmos 原子提交与模型回退；空闲时会话与 controller 共享唯一已提交 `SimulationState`，异步模型月份只在隔离工作副本中推进，成功后再原子提交。`timeline.ts` 负责 checkpoint / delta / seek / fork，恢复时历史块保留为 SQLite hash 引用，回放只按需读取最近年度 checkpoint 与其后 delta；`recovery.ts` 负责恢复校验；`frame-history-projector.ts`、`conversation-coordinator.ts` 分别负责帧历史与对话结果投影；`session-manager.ts` 负责 lease、TTL、LRU 与 SQLite 会话协调。实时分支真正提交到 12 的倍数月份时自动持久化，新时间线 Buffer 成功落盘后即替换为 hash 引用。
+- `server/eland-session/embodiment-coordinator.ts`：在 committed authority 之外持有一个可恢复、可确定性重放的暂存月份，编排 begin / step / release、命令幂等与修订冲突。自由观察只读取 `EmbodimentView`；每个 step 执行完整世界 tick，走完第 15 刻或 release 本地补完剩余刻度后才通过会话原子提交一个月。
 - `server/newborn-naming-service.ts`：在实时模型月份的出生事实对外提交前，按父母 Soul、有源近期经历和当前处境批量请求 `givenName`；本地验收后记录模型来源，失败保持确定性保底姓名，回放不再请求。
 
 ### scripts/ —— Agent 调试与实验入口
@@ -119,6 +122,12 @@ domain model and policies ↔ world grid / material primitives
 - `kimi-decider.ts`：实时关键决策发送给通用模型端点的局部事实 DTO；包含人物档案、有效人格、身体、有向关系与有源近期经历，但不暴露隐藏世界事实。历史文件名保留，但不再绑定 Kimi 供应商。
 - `simulation.ts`：供其他层依赖的稳定公共门面。
 - `simulation-runtime.ts`：外层 composition root，把 application 声明的观察端口连接到 projection adapter；兼容门面只转发，不把具体观察器重新引入应用层。
+
+### 前端有限化身
+
+- `src/pages/ImmersiveGame.tsx`：负责进入 / 逐刻命令 / 交还的体验状态机，始终以服务端 `EmbodimentView` 和已提交 `GameFrame` 为准，不在浏览器演算世界。
+- `src/components/LimitedEmbodimentHud.tsx`：克制显示当月 15 刻、当前人物、准星、情境主操作 / 更多操作和交还自主；转头、查看目标与展开提示不消耗刻度，只有提交服务端选项才推进。
+- `src/components/SocietyScene3D.tsx`、`src/components/society-scene/EmbodimentCameraController.ts`：把已投影人物锚点切换为第一人称镜头、Pointer Lock 和空间目标命中；WASD 只选择当前一条相邻移动候选，不能直接改写人物坐标或体素。
 
 人物页主动对话由 `server/agent-interaction-gateway.ts` 调用 `interaction` 模型。玩家不需要区分普通对话与建议：服务端先从当前玩家原话保守判定 `actionChoiceRequested`。第一阶段 `agent-interaction-reply-v1` 只生成自然回复与来源审计；模型即使误带旧版 stance / choice 字段，也不会再让合法回复整体失败。纯问答不暴露其他人物尚待回应的 required choice，也不触发意图调用。只有门禁确认玩家明确提出行动请求后，才用独立的隐藏 prompt 从“玩家原话 + 已生成回复 + 当前合法候选”提取 `answer / consider / accept / decline`；解析失败静默保留回复，只有回复明确承诺且唯一匹配的 `accept + choice` 才进入行动链。服务端当场校验紧急生存、必须回应、履约与 follow-up，并保存稳定语义键；下一次可行动月份只在最新候选中本地唯一重配，不再让模型重新决定。命中后才形成带 `sourceInteractionId` 的 DecisionFact / Intent；条件暂不允许时显示暂缓，候选消失或匹配不唯一时显示具体原因。人物卡继续读取真实 Intent 与 ActionFact，把后来定下、开始、被打断、做成或停下投影回原对话。
 

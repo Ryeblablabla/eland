@@ -289,6 +289,7 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
 
   save(runId: string, label?: string): ElandSaveSummary | null {
     const session = this.get(runId);
+    if (session?.isBusy()) throw new ElandSessionBusyError(runId, '保存未完成的化身月份');
     const snapshot = session?.recoverySnapshot();
     return snapshot?.cosmosSnapshot ? this.persistence.saveManual(snapshot, label) : null;
   }

@@ -1,8 +1,10 @@
 # ELAND 有限化身与逐刻度建造技术设计 v1
 
-状态：目标技术设计，尚未实现。本文描述未来实时游戏中的单玩家有限化身；其中“当前事实”以 2026-08-24 的可执行代码为准，“目标设计”不能当作已经存在的接口或行为。
+状态：2026-08-24 已实现 v1。本文以当前可执行代码为准记录已落地边界；其中标明“后续”的扩展不是已有能力。
 
 范围：人间体素世界、单个在世人物、单玩家实时会话、一个自然月内的 15 个规划刻度，以及移动、近身交互和真实体素建造。多人化身、战斗、自由飞行、全局文明指令和工业以后内容不在 v1 范围内。
+
+已落地的 v1 包括：第一人称相机与 15 刻 HUD、自动演化暂停、相邻移动、等待、当前合法建造 / 项目 / 转移 / 观察 / 结构化沟通候选、逐刻服务端执行、中途交还、幂等收据和 SQLite 实时会话恢复。当前化身月的 NPC 月初决策由本地 `RulePlanner` 一次生成并冻结，不发起模型请求；观察模式的自然自由文本对话也尚未并入化身行动。
 
 前置文档：[月度时间模型](./monthly-time-model-v1.md) · [空间行动契约](./spatial-action-contract-v1.md) · [规则优先人物架构](./rule-first-agent-architecture-v1.md) · [SQLite 持久化](./sqlite-persistence-v1.md)
 
@@ -12,7 +14,7 @@
 
 有限化身不创建一套独立的第一人称沙盒。它把玩家临时接到一个真实人物的局部感知和合法行动候选上：自由观察不推进世界；移动、建造、给予、等待和有事实意义的沟通各消耗一个规划刻度；其他人物仍由同一规则在同一刻度行动。
 
-目标体验是：
+当前体验主链是：
 
 ```text
 快速观察文明
@@ -20,7 +22,7 @@
 → 冻结自动月度推进并展开本月 15 刻
 → 观察、移动、搬运、交谈或建造
 → 第 15 刻提交现有月度权威帧
-→ 继续化身，或交还自主并恢复快速演化
+→ 回到观察视角并恢复快速演化；需要时可在新月边界再次进入
 → 从长期历史观察本月行动的真实回响
 ```
 
@@ -57,20 +59,20 @@
 
 ## 3. 当前实现基线
 
-以下是已经存在的事实，不是目标伪接口：
+以下是 2026-08-24 已经落地的事实：
 
-| 能力 | 当前实现 | 有限化身需要补充 |
+| 能力 | v1 实现 | 边界 / 后续 |
 | --- | --- | --- |
-| 月度演化 | `executePrepared` 在一次调用内依次执行 15 tick，再完成月末提交 | 把同一执行器拆成“准备月份 / 执行一刻 / 完成月份”，不复制规则 |
-| 实时会话 | `/api/eland/step` 以完整权威身份和 `stepId` 原子推进一个月 | 新增暂存月份协调器、逐刻命令收据和普通 step 互斥 |
-| 前端场景 | `SocietyScene3D` 使用 `OrbitControls`，已有 WASD 镜头平移和人物 / 结构射线选择 | 在同一 Three.js 场景增加化身相机控制器，不创建第二套世界 |
-| 月度播放 | `RULE_TICKS = 15`，人物 `tickPath` 在约 3 秒内回放 | 化身模式改读暂存 tick 投影；普通观察模式保留原回放 |
-| 玩家影响 | 主动人物对话只能把模型明确接受的方向绑定到最新合法候选 | 增加不依赖模型的直接候选命令；复用稳定语义重验原则 |
-| 建造 | `buildConstructionOptions` 从背包材料和近身合法空气生成候选 | 把候选目标投影成准星可选的体素虚影 |
-| 结构功能 | 住所由真实顶部覆盖、侧向围护、入口、材料和可站立空间重算 | 每刻提交后投影新结构或结构质量变化 |
-| 持久化 | `live_sessions` 保存内容寻址的实时会话恢复快照 | 在恢复快照中加入可重放的暂存月份，不增加第二个事实库 |
+| 月度演化 | `createMonthExecution / executePlanningTick / finishMonthExecution` 是普通快速演化和化身月共用的唯一执行器 | 每个已提交月仍恰好 15 tick |
+| 实时会话 | `EmbodimentCoordinator` 提供 begin / step / release，活动期间与普通 `/step`、seek、结算和会话替换互斥 | 单会话同时只能有一个化身月 |
+| 前端场景 | `SocietyScene3D` 保留唯一 Three.js world，`EmbodimentCameraController` 切换 Pointer Lock / 拖拽第一人称相机，HUD 展示 15 刻与情境候选 | 不是 FPS 物理或自由体素编辑器 |
+| 玩家行动 | `player-embodiment.ts` 每刻从当前状态生成 wait、continue-intent、相邻 move 和合法 `DecisionContext` 候选，并用 `choiceKey` 重验 | 不接受原始体素写入或文明升级指令 |
+| 建造 | 当前合法建造候选会投影体素目标、材料消耗和虚影，提交后仍走真实 `combine` / 领域动作 | 只能使用人物当前知识、近身空间和真实材料 |
+| 结构功能 | 住所仍由真实顶部覆盖、侧向围护、入口、材料和可站立空间重算 | 化身只暴露投影，不伪造完工事实 |
+| 持久化 | `activeEmbodiment` 和最多 64 条 `completedEmbodiments` 收据进入既有内容寻址会话 shell | 不增加 SQLite 表、独立 JSON 文件或第二个状态库 |
+| 模型与对话 | 化身月的 NPC 月初选择使用本地 `RulePlanner` 并冻结；tick 2..15 使用本地规则重规划 | 不调模型；自然自由文本对话未并入化身命令 |
 
-现有建造候选最多读取人物背包中两类可用材料，并在本人或四邻格内编译少量有支撑的目标；`combine` 成功后扣减堆栈并修改体素。结构索引只从已提交建造事实和当前体素重建。v1 应扩展候选投影与交互入口，不应绕开这些约束另写“建造模式”。
+建造候选最多读取人物背包中两类可用材料，并在本人或四邻格内编译少量有支撑的目标；`combine` 成功后扣减堆栈并修改体素。结构索引只从已提交建造事实和当前体素重建。已落地的候选投影和虚影没有放宽这些约束，也没有另写一套“建造模式”。
 
 ## 4. 权威边界
 
@@ -98,7 +100,7 @@ domain action executor ↔ voxel world / materials
 - 人物站立位置、背包、身体、意图、项目、体素和关系只属于服务器状态。
 - 前端可以平滑插值上一个和下一个权威站位，但插值位置不能用于下一次规则校验。
 - 绿色建造虚影只表示当前返回候选中存在该目标；它不是预放置体素。
-- `EmbodimentFrame` 是当前暂存月份的权威只读投影，但不是公开历史中的普通 `GameFrame`。
+- `EmbodimentView` 是当前暂存月份的权威只读投影，但不是公开历史中的普通 `GameFrame`。
 - 观察器、历史纪事、文明指数和模型台词在第 15 刻普通提交后更新；不得用暂存投影反向决定人物候选。
 
 ## 5. 产品流程
@@ -128,16 +130,13 @@ domain action executor ↔ voxel world / materials
 → 返回暂存投影、可见反馈和下一刻候选
 ```
 
-如果人物处于脱水休眠、严重求生反射或其他没有真实选择的强制状态，服务端不暴露虚假的自由候选。该刻可由规则自动执行，并返回“身体自行寻找水源”等来源明确的结果；UI 可以短暂停留展示，但不要求玩家选择一个必然被覆盖的按钮。
+如果人物处于脱水休眠、严重求生反射或其他强制状态，求生 / 照护 / 履约规则仍先于玩家控制执行。当前自动演化已暂停，因此服务端不会在无请求时自行跳过该刻；玩家可提交“等待一刻”或交还自主。若本刻由身体或规则接管，收据的 `controlApplied` 为 `false`，UI 展示本刻真实事件理由。
 
 ### 5.3 第 15 刻
 
-第 15 刻完成后继续执行现有月末身体、关系、项目、共同体、观察器、命名、台词和纪事流程，生成普通 `GameFrame`，写入分支 timeline，清除暂存月份，并持久化新的实时会话根。
+第 15 刻完成后，`finishMonthExecution` 继续执行月末身体、关系、项目、共同体和观察器等领域 / 投影流程，再生成普通 `GameFrame`、写入分支 timeline、清除活动暂存月份并持久化新会话根。当前化身提交路径不调用可选模型的新生儿命名、speech-only 台词或模型纪事增强；本地规则名称、沟通事实与规则纪事仍保留。
 
-前端随后提供两个选择：
-
-- **继续化身**：以刚提交的月份作为新边界，准备下一个月。
-- **交还自主**：返回观察视角并恢复之前的自动演化速度。
+当前 v1 在第 15 刻提交后直接返回观察视角，并按进入前的暂停设置恢复自动演化。玩家若要继续化身，可在新的已提交月边界再次进入；尚无“连续化身下一月”的一键操作。
 
 ### 5.4 中途交还自主
 
@@ -153,7 +152,7 @@ domain action executor ↔ voxel world / materials
 
 ### 5.5 断线与刷新
 
-- 浏览器关闭、网络中断或页面刷新不会自动交还自主；世界保持在同一待操作刻度。
+- 浏览器关闭、网络中断或页面刷新不会自动交还自主；在实时会话恢复窗口内，世界保持在同一待操作刻度。默认恢复窗口为 24 小时，可由 `ELAND_SESSION_RECOVERY_TTL_MS` 覆盖。
 - 每次成功的 tick 命令必须在响应前写入 `live_sessions` 恢复根。
 - 恢复时从最后已提交 `latestState`、冻结的月份输入、其他人物冻结选择和已完成玩家命令重放到 `completedTick`，并校验暂存哈希。
 - 哈希不一致时拒绝继续该暂存月份，保留上一个已提交月并给出恢复错误；不能静默采用不一致的半月状态。
@@ -163,7 +162,6 @@ domain action executor ↔ voxel world / materials
 ```text
 inactive
   └─ begin ─→ preparing
-                 ├─ forced terminal climate ─→ finalizing ─→ inactive
                  └─ prepared ─→ awaiting-command
                                     ├─ command ─→ executing-tick
                                     │                ├─ tick < 15 ─→ awaiting-command
@@ -171,18 +169,19 @@ inactive
                                     └─ release ─→ releasing ─→ finalizing ─→ inactive
 ```
 
-`preparing / executing-tick / releasing / finalizing` 都是服务端互斥临界区。客户端读到这些状态时只显示等待，不得再提交并发命令。
+`executing-tick / releasing / finalizing` 是运行时互斥临界区。客户端读到这些状态时只显示等待，不得再提交并发命令。持久化边界只写入已完整提交命令后的 `awaiting-command`；进程不会把半执行刻度序列化。
 
-目标恢复数据：
+已落地的恢复 DTO 核心字段如下（完整类型见 `server/eland-session/recovery.ts`）：
 
 ```ts
 interface ActiveEmbodimentSnapshot {
   schemaVersion: 1
   id: string
   actorId: PersonId
-  status: 'awaiting-command' | 'executing-tick' | 'releasing' | 'finalizing'
+  status: 'awaiting-command'
 
-  authorityRevision: string
+  beginFingerprint: string
+  baseAuthorityRevision: string
   civilizationId: number
   branchId: string
   baseElapsedMonths: number
@@ -191,37 +190,49 @@ interface ActiveEmbodimentSnapshot {
   skySample: SkySample
   cosmosSnapshot?: CosmosSnapshot
 
-  completedTick: number       // 0..15
-  nextTick: number            // 1..15；finalizing 时可省略
-  revision: number            // 每次成功 tick / release 单调递增
+  completedTick: number       // 0..14；第 15 刻成功后转为完成收据
+  revision: number            // 当前实现与 completedTick 一致
 
-  frozenInitialDecisions: FrozenDecisionInput[]
+  frozenInitialDecisions: FrozenEmbodimentDecision[]
   decisionUsage: TokenUsage
   decisionAttempts: ModelAttemptSummary
-  commands: EmbodimentCommandReceipt[]
-  completedCommandReceipts: EmbodimentRequestReceipt[]
+  commands: Array<{ fingerprint: string; receipt: EmbodimentCommandReceipt }>
   stagedStateHash: string
 
   createdAt: number
   updatedAt: number
 }
+
+interface CompletedEmbodimentSnapshot {
+  schemaVersion: 1
+  id: string
+  beginFingerprint: string
+  civilizationId: number
+  branchId: string
+  baseElapsedMonths: number
+  committedElapsedMonths: number
+  commandReceipts: Array<{ fingerprint: string; receipt: EmbodimentCommandReceipt }>
+  release?: { fingerprint: string; receipt: EmbodimentReleaseReceipt }
+  completedAt: number
+}
 ```
 
-不直接序列化 planner、函数闭包或 Three.js 对象。`frozenInitialDecisions` 保存本月开始时已经接受的非玩家候选选择和必要模型审计；tick 2..15 的本地重规划仍从逐刻重放状态确定性产生。
+不直接序列化 planner、函数闭包或 Three.js 对象。`frozenInitialDecisions` 保存本月开始时本地 `RulePlanner` 为非玩家人物选定的决策；tick 2..15 的本地重规划从逐刻重放状态确定性产生。DTO 保留 usage / attempts 审计位，但 v1 的化身 begin 不发起模型请求，当前值为本地路径用量。
 
-`ActiveEmbodimentSnapshot` 应作为 `ElandSessionRecoverySnapshot` 的可选字段进入现有内容寻址 session root。`live_sessions.elapsed_months` 仍表示最后已提交月份；暂存 tick 只存在于 snapshot 内容中，因此 v1 不要求新增 SQLite 表或第二个状态库。
+`activeEmbodiment` 已作为 `ElandSessionRecoverySnapshot` 的可选字段进入现有内容寻址 session root。完成后会转入最多 64 条的 `completedEmbodiments` ring，保留第 15 刻和 release 跨重启幂等收据。`live_sessions.elapsed_months` 仍表示最后已提交月份；暂存 tick 只存在 snapshot shell 中，v1 没有新增 SQLite 表或第二个状态库。
 
 ## 7. 月度执行器改造
 
-不能在服务器里复制一份“玩家月度循环”。先把当前 `executePrepared` 拆成共享生命周期：
+已将原子月内循环拆成共享生命周期，服务器没有复制一份“玩家月度循环”：
 
 ```ts
-prepareMonthExecution(state, inputs): MonthExecution
+prepareMonth(state, ...): PreparedMonth
+
+createMonthExecution(inputs): MonthExecution
 
 executePlanningTick(
   execution,
-  tick,
-  actorDecisionProvider,
+  actorController?,
 ): TickExecutionResult
 
 finishMonthExecution(execution): SimulationState
@@ -236,12 +247,12 @@ finishMonthExecution(execution): SimulationState
 - 当前完成 tick
 - 投影所需的本刻事实
 
-两条调用路径必须使用同一实现：
+两条调用路径已使用同一实现：
 
-- 普通快速演化：`prepare → for 1..15 execute → finish`，行为和历史保持不变。
+- 普通快速演化：`prepare → executeRemainingPlanningTicks → finish`。
 - 有限化身：`prepare → 每个 HTTP 命令 execute 一次 → finish`。
 
-重构阶段先做相同种子、相同输入的历史 hash 对照，确认普通路径没有行为变化，再接入玩家命令。该重构属于执行粒度调整，不应顺便修改文明规则或候选优先级。
+`TickActorController` 只是玩家人物本刻已验证控制的应用层接缝。求生、照护、履约等强制优先级仍在它之前由同一执行器处理，最终动作仍走领域执行器。
 
 ## 8. 玩家命令与候选
 
@@ -255,6 +266,7 @@ type EmbodimentCommand =
       kind: 'choose-option'
       optionId: string
       choiceKey: string
+      followUpOptionId?: string
     }
   | {
       kind: 'wait'
@@ -269,22 +281,23 @@ type EmbodimentCommand =
 interface EmbodimentOptionView {
   optionId: string
   choiceKey: string
+  source: 'wait' | 'continue-intent' | 'primitive-action' | 'decision'
   label: string
-  category: 'move' | 'build' | 'transfer' | 'attend' | 'communicate' | 'survival' | 'project'
+  category: 'move' | 'build' | 'transfer' | 'attend' | 'communicate' | 'survival' | 'project' | 'wait'
   tickCost: 1
   target?: EmbodimentTargetView
   materialCost?: Array<{ materialId: MaterialId; quantity: number }>
-  observableReason?: string
+  reason?: string
   risks?: string[]
   primary: boolean
 }
 ```
 
-`choiceKey` 复用当前玩家交互中的稳定语义原则，排除月份戳和临时 option ID，但应为化身命令建立独立验证入口，不能把直接操控伪装成一次模型对话。
+`choiceKey` 复用当前玩家交互中的稳定语义原则，排除月份戳和临时 option ID。化身命令已有独立的本地验证入口，不会把直接操控伪装成一次模型对话。
 
 ### 8.2 候选来源
 
-`buildEmbodimentOptions` 只组合现有应用层候选和一个新的相邻移动候选编译器：
+`buildPlayerEmbodimentOptions` 只组合现有应用层候选、继续当前意图、等待和相邻移动候选编译器：
 
 - 当前 `DecisionContext` 中对人物合法的建造、项目、转移、观察和沟通方向；
 - 当前体素网格上可站立的四向相邻位置；
@@ -295,14 +308,15 @@ interface EmbodimentOptionView {
 
 ### 8.3 失效与重验
 
-命令执行前使用当前暂存状态重新编译并匹配：
+命令执行使用当前暂存状态重新编译并匹配：
 
 - `revision` 陈旧：返回 `409` 和最新 `EmbodimentView`，不消耗 tick。
 - `optionId` 已失效但 `choiceKey` 唯一匹配同一语义：采用最新 option 并在收据中记录重配。
 - 语义候选消失或匹配不唯一：返回 `422`，附人物可观察的阻塞原因，不消耗 tick。
-- 动作在稳定人物顺序中被前一人物改变世界后阻塞：提交真实 blocked `ActionFact`，该刻已经发生并正常推进。
+- 本刻轮到玩家人物前，稳定顺序中更早的 NPC 会先在候选副本上行动；玩家命令此时才按当刻 state 重验。
+- 重验失败会放弃整个尚未提交的候选 tick 并返回 `422`；若已通过候选解析但领域最终执行产生 blocked `ActionFact`，该刻则正常推进。
 
-前两类发生在 tick 开始前；最后一类是世界内真实冲突，不能为了玩家体验回滚其他人物的合法行动。
+`revision / expectedTick` 在创建候选 tick 前校验；具体 option 在玩家人物的实际轮次校验。候选 tick 本身与 committed state 隔离，所以 `422` 放弃副本不是回滚已提交历史。
 
 ## 9. 移动与第一人称相机
 
@@ -390,11 +404,11 @@ type SocietyCameraMode =
 → 观察住所是否真实降低暴露并被共同体使用
 ```
 
-第一版不需要工坊和科技树。这个切片已经同时验证镜头、逐刻度、移动、材料、建造、结构功能、社交协作、退出和长期回响。
+第一版不需要工坊和科技树。v1 已提供完成该切片所需的镜头、逐刻度、移动、真实材料候选、建造和交还基础；住所在乱纪元中的长期回响是玩法验证目标，不应仅因 UI 和协议落地就宣称已验证。
 
-## 11. HTTP 协议目标
+## 11. 已实现 HTTP 协议
 
-沿用当前 `/api/eland/<route>` 风格，不引入第二个服务。
+协议沿用 `/api/eland/<route>` 风格，没有引入第二个服务。所有写请求在成功响应前通过 `persistIfCurrent` 替换同一实时会话根；持久化失败返回 `503`，客户端用原 ID 重试。
 
 ### 11.1 开始化身
 
@@ -416,7 +430,7 @@ interface BeginEmbodimentRequest {
 }
 ```
 
-相同 `embodimentId + fingerprint` 重试返回同一暂存月份；相同 ID 用于不同人物、分支、月份或天象时返回 `409`。
+活动化身期间，相同 `embodimentId + fingerprint` 重试返回同一暂存月份；相同 ID 用于不同人物、分支、月份或天象时返回 `409` 和当前最新化身视图。
 
 ### 11.2 读取 / 恢复
 
@@ -424,7 +438,7 @@ interface BeginEmbodimentRequest {
 GET /api/eland/embodiment-state?runId=<runId>
 ```
 
-无活动化身返回 `404`；有活动化身时返回当前修订、暂存投影、人物局部视图和下一刻合法候选。
+该路由始终返回 `200 { embodiment: EmbodimentView | null }`。`GET /api/eland/state` 也携带同一 `embodiment` 字段，前端首次恢复权威 frame 时可以同步得知自动演化必须保持暂停，避免启动竞态。
 
 ### 11.3 提交一刻
 
@@ -446,15 +460,12 @@ interface EmbodimentStepRequest {
 响应：
 
 ```ts
-interface EmbodimentStepResponse {
-  receipt: EmbodimentCommandReceipt
-  embodiment?: EmbodimentView   // tick 1..14
-  committedFrame?: GameFrame    // tick 15
-  history?: EvolutionEntry[]
-}
+type EmbodimentStepResponse =
+  | { receipt: EmbodimentCommandReceipt; embodiment: EmbodimentView }
+  | { receipt: EmbodimentCommandReceipt; committedFrame: GameFrame }
 ```
 
-`commandId` 必须幂等：同一 ID 和同一 fingerprint 返回原收据；同一 ID 用于不同命令返回 `409`。
+`commandId` 幂等：同一 ID 和同一 fingerprint 返回原收据；同一 ID 用于不同命令返回 `409`。修订或刻度陈旧也返回 `409 + 最新 EmbodimentView`；候选在当前刻已失效且无法稳定重配时返回 `422 + failure + 最新视图`，不消耗 tick。
 
 ### 11.4 交还自主
 
@@ -462,7 +473,7 @@ interface EmbodimentStepResponse {
 POST /api/eland/embodiment-release
 ```
 
-请求携带 `embodimentId / releaseId / expectedRevision`。成功后返回规则完成剩余 tick 所提交的普通 `GameFrame`。重复 release 返回同一最终帧；释放期间普通 `/step` 仍返回忙冲突。
+请求携带 `embodimentId / releaseId / expectedRevision`。服务器保留已完成刻度，由本地规则接管玩家人物并在同一请求内完成剩余 tick，再返回唯一普通 `GameFrame`。重复 `releaseId + fingerprint` 在内存中或跨重启后都返回同一收据与最终帧；释放期间普通 `/step` 仍返回忙冲突。
 
 ### 11.5 暂存投影
 
@@ -487,27 +498,29 @@ interface EmbodimentView {
 }
 ```
 
-v1 可以为正确性每刻返回完整 `SocietyState`；后续再复用 society patch 降低传输。无论使用全量还是 patch，客户端都不得把它写回服务端。
+v1 为正确性每刻返回完整 `SocietyState`；后续可复用 society patch 降低传输。无论使用全量还是 patch，客户端都不得把它写回服务端。
 
 ## 12. 会话互斥、持久化和分支
 
 ### 12.1 互斥
 
-活动暂存月份期间：
+活动暂存月份期间已实施以下互斥：
 
 - 普通 `/step`、`seek`、`load`、`settle-civilization` 和替换会话操作返回 `409`；
 - 手动存档只接受已提交月份，要求先完成或交还自主；
 - `checkpoint` 必须保存当前暂存月份恢复数据；
-- 历史和 frame 查询仍只返回已提交月份，可额外返回 `hasActiveEmbodiment: true`；
+- 历史和 frame 查询仍只返回已提交月份，`state` 额外返回当前 `embodiment`；
 - 旧人物对话写入口暂不与暂存月份并发，避免它依据上一个已提交月排队一个已经陈旧的行动选择。
 
-服务端应把普通月度 `SessionStepCoordinator` 和新的 `EmbodimentCoordinator` 放在同一会话写锁下，不能只依靠前端暂停按钮避免并发。
+`ElandSession` 同时检查普通月度 `SessionStepCoordinator` 和 `EmbodimentCoordinator`；这是服务端写互斥，不依赖前端暂停按钮保证正确性。化身内部也只允许一个 pending command 或 release，避免第 15 刻双提交。
 
 ### 12.2 持久化
 
 每个成功 begin、tick 和 release 都调用现有 `persistIfCurrent`，更新同一 `live_sessions` root。tick 只有在恢复根持久化成功后才向客户端确认；失败时不返回成功收据，客户端可用相同 `commandId` 重试。
 
-不为暂存状态添加独立 SQLite 事实表。已有 `chunks + live_sessions` 负责原子替换和内容校验；暂存命令日志作为会话恢复内容，最终动作事实仍只进入提交后的 `SimulationState.world.past` 与 timeline。
+没有为暂存状态添加独立 SQLite 事实表。已有 `chunks + live_sessions` 负责原子替换和内容校验；暂存命令日志和完成收据 ring 作为会话 shell 内容，最终动作事实仍只进入提交后的 `SimulationState.world.past` 与 timeline。
+
+恢复时，协调器从最后已提交 state 重建月份，注入冻结月初决策，再在每刻当前 state 上重新解析并执行已收据命令。重放会比对刻度、修订、控制是否应用、稳定语义重配和 staged state 规范 hash。该 hash 不把可重建观察投影、进程内体素 cache revision 或已受会话内容块保护的 committed history 重复当作暂存事实。
 
 ### 12.3 分支
 
@@ -521,24 +534,23 @@ v1 可以为正确性每刻返回完整 `SocietyState`；后续再复用 society
 有限化身的动作主链不依赖模型：
 
 - 玩家自己在本地合法候选中选择，玩家人物不需要模型替选。
-- 其他人物仍沿当前本地 / 可选模型月初决策边界；任何非确定模型选择在 begin 时冻结并进入恢复快照。
+- 当前化身 begin 为其他人物调用本地 `RulePlanner`，将月初决策冻结进恢复快照；这条路径不调用已配置的模型端点。
 - tick 2..15 的本地修复和重规划不新增逐刻模型调用。
-- 动作完成后的自然台词仍是投影，不能修改 `communicate` 的参与者、立场、来源或后果。
+- 当前化身月不发起 speech-only 自然台词请求；结构化 `communicate` 事实仍由规则提交。后续即使恢复台词投影，也不能修改其参与者、立场、来源或后果。
 
-v1 的 `E 交谈` 只展示当前合法的结构化沟通候选，例如询问、请求材料、回应协议或提出协作；确认后消耗一刻。现有自由文本人物对话可以保留在观察模式，但在逐刻暂存月份内先禁用。后续若把自由文本接入化身，仍须先映射并重验唯一合法 `communicate` 候选，模型失败时不能消耗 tick 或伪造对话事实。
+v1 的 `E 交谈` 只展示当前 `DecisionContext` 中的结构化合法沟通候选，确认后消耗一刻。现有自然自由文本人物对话仍只在观察模式工作，没有并入逐刻暂存月份。后续若接入，仍须先映射并重验唯一合法 `communicate` 候选，模型失败时不能消耗 tick 或伪造对话事实。
 
-## 14. 前端结构
+## 14. 已实现结构
 
-建议新增：
+新增的核心文件：
 
 ```text
 three-body/src/game/eland/application/simulation/month-execution.ts
-three-body/src/game/eland/application/embodiment-options.ts
-three-body/src/game/eland/application/player-embodiment-command.ts
-three-body/src/game/eland/projection/embodiment.ts
+three-body/src/game/eland/application/player-embodiment.ts
 three-body/server/eland-session/embodiment-coordinator.ts
 three-body/src/game/embodimentContract.ts
 three-body/src/components/LimitedEmbodimentHud.tsx
+three-body/src/components/LimitedEmbodimentHud.css
 three-body/src/components/society-scene/EmbodimentCameraController.ts
 ```
 
@@ -546,8 +558,12 @@ three-body/src/components/society-scene/EmbodimentCameraController.ts
 
 ```text
 three-body/src/pages/ImmersiveGame.tsx
+three-body/src/components/ObservationUI.tsx
 three-body/src/components/SocietyScene3D.tsx
 three-body/src/game/elandClient.ts
+three-body/server/elandSession.ts
+three-body/server/eland-api.ts
+three-body/server/eland-session/recovery.ts
 ```
 
 `ImmersiveGame` 负责产品模式和网络状态：
@@ -560,7 +576,7 @@ type ExperienceMode =
   | { kind: 'releasing-embodiment' }
 ```
 
-自动演化条件从当前 `uiPaused` 扩展为显式 `worldAdvancePaused`，活动化身期间绝不能调用普通 `stepOnce`。
+活动化身会使前端自动演化条件保持暂停，而服务端互斥是最终正确性边界；即使陈旧前端误调普通 `stepOnce`，也不能跨过活动化身月。
 
 `SocietyScene3D` 继续拥有唯一 Three.js world；它只根据 `cameraMode` 切换相机控制，并把准星命中的已有 `agentId / structureId / voxel position` 回传给 HUD。HUD 从服务器 option 列表中匹配目标，不在 React 中重新判断建造合法性。
 
@@ -587,64 +603,38 @@ type ExperienceMode =
 - 行动提交后按钮锁定，直到收到 tick 收据并完成镜头插值。
 - 规则覆盖玩家意图时，显示具体世界原因，不显示抽象的“操作失败”。
 
-## 16. 交付阶段
+## 16. 交付状态
 
-### 阶段 A：意图化身原型
-
-- 增加第一人称相机、暂停自动 step 和 v2 HUD。
-- 只在月初选择一个现有合法意图和空间目标。
-- 后端仍原子执行完整月份，前端第一人称回放真实 15 tick。
-- 时间条必须标注为回放，不能宣称逐刻操控。
-
-目的：低成本验证“进入人物—选择—看回响”是否好玩。
-
-### 阶段 B：无行为变化地拆分月度执行器
-
-- 提取 `prepareMonthExecution / executePlanningTick / finishMonthExecution`。
-- 普通演化仍一次循环 15 tick。
-- 用少量固定种子做前后完整历史 hash 对照，不跑无关长程实验。
-
-目的：建立逐刻执行基础，同时守住当前规则行为。
-
-### 阶段 C：暂存月份与移动
-
-- 增加恢复 snapshot、coordinator、begin/state/step/release API。
-- 支持自由观察、相邻移动、等待、刷新恢复和中途交还。
-- 普通 step 与暂存月份服务端互斥。
-
-目的：完成第一个真正可操控的 15 tick 月份。
-
-### 阶段 D：真实建造切片
-
-- 投影体素目标和建造材料候选。
-- 提交 `combine`，显示构件虚影和建造动画。
-- 逐刻重算结构，完成住所形成与乱纪元效果验证。
-
-目的：证明第一人称行动会改变长期文明生存事实。
-
-### 阶段 E：人物协作与项目
-
-- 接入给予、材料请求、结构化沟通和项目参与。
-- 保持自由文本模型对话非权威，并逐步评估是否接入 grounded `communicate`。
-
-目的：让一个人物的局部行动能够通过他人和制度扩散，而不是变成单人沙盒。
+| 切片 | 2026-08-24 状态 |
+| --- | --- |
+| 月度执行器 | 已完成；普通演化与化身共用逐刻执行器 |
+| 暂存月与会话 | 已完成；begin / state / step / release、服务端互斥、持久化恢复和幂等收据已接入 |
+| 镜头与 HUD | 已完成；第一人称、Pointer Lock / 拖拽替代、15 刻进度、准星情境操作和 Tab 交还已接入 |
+| 移动与等待 | 已完成；WASD 只匹配服务端返回的相邻合法 move |
+| 建造与其他候选 | 已接入当前 `DecisionContext` 能产生的真实建造、项目、转移、观察和结构化沟通选项；能力上限仍取决于当前规则候选 |
+| 自然自由文本对话 | 后续；当前没有并入化身 tick |
+| 化身月模型 NPC 决策 | 后续评估；v1 固定使用本地 `RulePlanner` |
+| 多人争用、战斗、自由体素编辑 | 不在 v1 范围 |
 
 ## 17. 最小验证
 
-只运行与改造风险直接相关的验证：
+只保留与改造风险直接相关的验证。当前两个定向回归入口是：
+
+- `scripts/test-player-embodiment.mjs`：候选稳定性、等待、相邻移动、建造重配、继续意图和人物不可用。
+- `scripts/test-limited-embodiment-session.mjs`：begin 幂等、committed state 隔离、活动快照恢复、命令重放、release 完成 15 刻、release 幂等和完成收据跨重启恢复。
+
+后续改动仍应按以下风险选取最小验证：
 
 1. **执行器等价测试**：相同种子与输入，旧原子路径和新 `1..15` 循环得到相同最终状态 hash 与事件顺序。
 2. **一步移动测试**：一次命令只跨一条相邻边；非法高度不消耗 tick。
 3. **建造事实测试**：放置消耗一份真实材料，产生一条带正确 tick 的 ActionFact，并修改目标体素。
 4. **住所拓扑测试**：只有真实屋顶、入口和围护形成后才投影可用住所；封死空间无效。
-5. **冲突测试**：NPC 先占用目标体素后，玩家动作产生真实 blocked 事实且 tick 正常推进。
+5. **冲突测试**：NPC 在玩家轮次前使候选失效时返回 `422` 且不提交候选 tick；已通过重验的领域动作若产生 blocked 事实，则 tick 正常推进。
 6. **幂等测试**：重复 `commandId` 不重复行动、扣料或推进 tick。
 7. **恢复测试**：第 6 刻持久化并恢复后，视图、候选和重放 hash 一致。
 8. **释放测试**：第 6 刻交还自主后恰好完成剩余 9 刻并提交一个月。
 9. **无模型测试**：没有端点时完整完成逐刻移动与建造。
 10. **前端模式测试**：活动化身期间不会触发普通自动 `/step`。
-
-文档阶段不需要运行构建或模拟实验。
 
 ## 18. 验收不变量
 
@@ -661,7 +651,7 @@ type ExperienceMode =
 - 模型缺席、失败或越界不阻止规则主链。
 - 第 15 刻以前没有普通月度 `GameFrame`；第 15 刻只提交一次。
 - 刷新恢复不重复行动；中途交还不回滚已经发生的刻度。
-- 相同种子、分支、天象、冻结模型选择和玩家命令日志得到相同最终规则历史。
+- 相同种子、分支、天象、冻结月初决策和玩家命令日志得到相同最终规则历史。
 
 ## 19. 主要风险与暂缓决策
 
@@ -676,7 +666,7 @@ type ExperienceMode =
 | 对话等待模型拖慢逐刻体验 | v1 使用结构化沟通候选；自然台词在事实后投影或回退 |
 | 暂存月份与 seek / save 冲突 | 服务端写锁互斥；先完成或 release，再执行分支与存档操作 |
 
-暂缓到实现原型后再决定：
+暂缓到 v1 后续迭代再决定：
 
 - 一次建造 action 是严格一体素，还是允许规则编译的“小构件”消耗一刻；v1 默认一体素。
 - 是否允许点击较远地面创建自动行走意图；v1 默认仅 WASD 相邻一步。

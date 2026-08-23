@@ -1,6 +1,8 @@
 import { randomInt } from 'node:crypto';
 import {
   AgentConversationConflictError,
+  EmbodimentCommandRejectedError,
+  EmbodimentConflictError,
   type ElandSession,
   ElandSessionBusyError,
   ElandSessionCapacityError,
@@ -201,8 +203,100 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     }
   }
 
-  const session = elandSessions.get(runId, route === 'step' && method === 'POST' ? 'step' : 'read');
+  const session = elandSessions.get(
+    runId,
+    method === 'POST' && (route === 'step'
+      || route === 'embodiment-begin'
+      || route === 'embodiment-step'
+      || route === 'embodiment-release')
+      ? 'step'
+      : 'read',
+  );
   if (!session) return { status: 404, body: { error: `运行 ${runId} 不存在` } };
+  if (route === 'embodiment-state' && method === 'GET') {
+    return { status: 200, body: { embodiment: session.embodimentView() } };
+  }
+  if (route === 'embodiment-begin' && method === 'POST') {
+    const sky = skySample(body.skySample);
+    const cosmos = cosmosSnapshot(body.cosmosSnapshot);
+    if (body.cosmosSnapshot !== undefined && !cosmos) {
+      return { status: 400, body: { error: '宇宙快照无效' } };
+    }
+    try {
+      const embodiment = session.beginEmbodiment({
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        agentId: String(body.agentId ?? ''),
+        expectedAuthorityRevision: String(body.expectedAuthorityRevision ?? ''),
+        expectedCivilizationId: Number(body.expectedCivilizationId),
+        expectedBranchId: String(body.expectedBranchId ?? ''),
+        expectedElapsedMonths: Number(body.expectedElapsedMonths),
+        skySample: sky,
+        ...(cosmos ? { cosmosSnapshot: cosmos } : {}),
+      });
+      const persistence = elandSessions.persistIfCurrent(runId, session);
+      if (!persistence.current) return { status: 409, body: { error: '进入化身时会话已被替换' } };
+      if (!persistence.persisted) return { status: 503, body: { error: '化身月份暂时无法持久化，请使用同一请求重试' } };
+      return { status: 200, body: { embodiment } };
+    } catch (error) {
+      if (error instanceof EmbodimentConflictError || error instanceof ElandSessionBusyError) {
+        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+      }
+      throw error;
+    }
+  }
+  if (route === 'embodiment-step' && method === 'POST') {
+    try {
+      const result = await session.stepEmbodiment({
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        commandId: String(body.commandId ?? ''),
+        expectedRevision: Number(body.expectedRevision),
+        expectedTick: Number(body.expectedTick),
+        command: asObject(body.command).kind === 'wait'
+          ? { kind: 'wait' }
+          : {
+              kind: 'choose-option',
+              optionId: String(asObject(body.command).optionId ?? ''),
+              choiceKey: String(asObject(body.command).choiceKey ?? ''),
+              ...(typeof asObject(body.command).followUpOptionId === 'string'
+                ? { followUpOptionId: String(asObject(body.command).followUpOptionId) }
+                : {}),
+            },
+      });
+      const persistence = elandSessions.persistIfCurrent(runId, session);
+      if (!persistence.current) return { status: 409, body: { error: '化身行动完成时会话已被替换' } };
+      if (!persistence.persisted) return { status: 503, body: { error: '化身行动暂时无法持久化，请使用同一 commandId 重试' } };
+      return { status: 200, body: result };
+    } catch (error) {
+      if (error instanceof EmbodimentCommandRejectedError) {
+        return { status: 422, body: { error: error.message, failure: error.failure, embodiment: session.embodimentView() } };
+      }
+      if (error instanceof EmbodimentConflictError) {
+        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+      }
+      throw error;
+    }
+  }
+  if (route === 'embodiment-release' && method === 'POST') {
+    try {
+      const result = await session.releaseEmbodiment({
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        releaseId: String(body.releaseId ?? ''),
+        expectedRevision: Number(body.expectedRevision),
+      });
+      const persistence = elandSessions.persistIfCurrent(runId, session);
+      if (!persistence.current) return { status: 409, body: { error: '交还自主时会话已被替换' } };
+      if (!persistence.persisted) return { status: 503, body: { error: '交还结果暂时无法持久化，请使用同一 releaseId 重试' } };
+      return { status: 200, body: result };
+    } catch (error) {
+      if (error instanceof EmbodimentConflictError) {
+        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+      }
+      throw error;
+    }
+  }
   if (route === 'settle-civilization' && method === 'POST') {
     const latest = session.latest();
     if (!latest) return { status: 409, body: { error: '当前文明还没有可结算的权威状态' } };
@@ -235,10 +329,15 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     return { status: 200, body: { requiem } };
   }
   if (route === 'save' && method === 'POST') {
-    const saved = elandSessions.save(runId, typeof body.label === 'string' ? body.label : undefined);
-    return saved
-      ? { status: 201, body: { save: saved } }
-      : { status: 409, body: { error: '当前文明还没有可保存的权威状态' } };
+    try {
+      const saved = elandSessions.save(runId, typeof body.label === 'string' ? body.label : undefined);
+      return saved
+        ? { status: 201, body: { save: saved } }
+        : { status: 409, body: { error: '当前文明还没有可保存的权威状态' } };
+    } catch (error) {
+      if (error instanceof ElandSessionBusyError) return { status: 409, body: { error: error.message } };
+      throw error;
+    }
   }
   if (route === 'step' && method === 'POST') {
     const sky = skySample(body.skySample);
@@ -329,6 +428,7 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         playing: false,
         model: session.model(),
         frame: session.latest(),
+        embodiment: session.embodimentView(),
         ...initialReadProjection(session),
       },
     };
@@ -383,6 +483,13 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
       throw error;
     }
   }
-  if (route === 'seek' && method === 'POST') return { status: 200, body: session.seek(finite(body.month, 0)) };
+  if (route === 'seek' && method === 'POST') {
+    try {
+      return { status: 200, body: session.seek(finite(body.month, 0)) };
+    } catch (error) {
+      if (error instanceof ElandSessionBusyError) return { status: 409, body: { error: error.message } };
+      throw error;
+    }
+  }
   return { status: 404, body: { error: `未知路由 ${route}` } };
 }

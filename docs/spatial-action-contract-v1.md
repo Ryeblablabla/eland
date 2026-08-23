@@ -4,7 +4,7 @@
 
 前置：[规则优先人物架构](./rule-first-agent-architecture-v1.md) · [体素世界](./pixel-world-v1.md) · [月度时间模型](./monthly-time-model-v1.md)
 
-代码入口：`application/monthly-simulation.ts`、`application/action-options.ts`、`application/rule-planner.ts`、`domain/action.ts`、`domain/action-executor.ts`、`domain/model.ts`。
+代码入口：`application/simulation/month-execution.ts`、`application/action-options.ts`、`application/player-embodiment.ts`、`application/rule-planner.ts`、`domain/action.ts`、`domain/action-executor.ts`、`domain/model.ts`。
 
 ## 1. 目标
 
@@ -20,7 +20,7 @@
 → 新事实立即进入本月后续人物和后续刻度
 ```
 
-一个规划刻度不是一个月，也不是一次长期任务。移动每刻度最多跨一条相邻边；建造、耕作、搬运、学习、照护和协商可以延续多个刻度、月份或项目阶段。
+一个规划刻度不是一个月，也不是一次长期任务。移动始终沿连续相邻边执行：普通人物受本刻地形成本预算约束，低成本道路可在一刻内连续跨两条边；有限化身的一次移动命令只允许跨一条合法相邻边。建造、耕作、搬运、学习、照护和协商可以延续多个刻度、月份或项目阶段。
 
 ## 2. 顺序与时间
 
@@ -78,7 +78,7 @@
 
 | 类型 | 当前语义 |
 | --- | --- |
-| `move` | 沿确定性可站立路径前进；每 tick 最多一条相邻边 |
+| `move` | 沿确定性可站立路径前进；普通执行受本刻地形成本预算约束，有限化身命令只取一条相邻边 |
 | `transfer` | 在人物、地面和容器之间移动精确物质数量 |
 | `act` | 执行物质作用、生殖、捕猎或休眠出入等领域操作 |
 | `attend` | 观察、阅读或验证一个真实目标 |
@@ -97,13 +97,21 @@
 ## 6. 移动与空间连续性
 
 - 寻路使用当前 `VoxelWorld` 上的确定性四向站立路径。
-- 每个动作 tick 最多取完整路径的下一条边，不能瞬移到目标。
+- 普通人物每个动作 tick 从完整路径取当前地形成本预算允许的连续段；低成本道路可包含两条边，高成本地形至少允许一条边，但不能瞬移到目标。
 - 无路、拘束或休眠时移动被阻塞。
 - 每次真实移动更新 `cellId / z`、身体消耗、`pathSegment` 和通行计数。
 - 反复通行可使草地变为土、再变为压实土；计划路径本身不构成道路。
 - 未满一岁的同处、清醒亲生婴儿可以随亲代真实移动；休眠者和更大儿童不会被隐式搬运。
 
 路径缓存只优化计算，体素发生变化后必须失效；缓存不是世界事实。
+
+### 6.1 有限化身的空间命令
+
+- 第一人称转头、瞄准、查看近旁人物 / 结构和展开操作提示是只读观察，不推进刻度。
+- 移动候选只从人物当前站位的四向邻格中投影；邻格必须存在长度恰为一条边的可站立路径。WASD 或场景点击选择的是这个候选，不是客户端直接写入坐标。
+- 客户端只提交候选的稳定 `optionId + choiceKey`。服务端在该人物的稳定顺序轮次重新生成局部候选；前序人物造成的占用、物质或路径变化会使命令被拒绝或由领域动作记录阻塞，不能沿用过期前端预览强制成功。
+- 被控制人物仍先经过休眠、恢复、生存反射、依赖照护、幼儿限制和必要避护；这些规则接管时，玩家移动或操作不会覆盖它们，但同一世界 tick 中其他人物仍完整行动。
+- 建造按钮只展示当前真实 `DecisionContext` 已有的建造 / 项目候选。选择后仍由同一 Intent / Project 步骤、`PrimitiveAction`、材料 / 工具 / 场址 / 权限校验和 ActionFact 后果执行；有限化身不拥有独立蓝图、无限材料或直接放置体素的权限。
 
 ## 7. 交互和结构
 
@@ -140,7 +148,7 @@ interface ActionFact extends BaseEvent {
   actionTick: number
   who: PersonId
   intentId?: string
-  cause: 'intent' | 'survival-reflex'
+  cause: 'intent' | 'survival-reflex' | 'player-embodiment'
   action: PrimitiveAction
   fromCellId: number
   toCellId: number
@@ -163,7 +171,7 @@ interface ActionFact extends BaseEvent {
 - 后续人物能看到同 tick 先提交人物造成的新事实。
 - 决策器不能合法引用不可见且无来源记忆的目标。
 - 人物不能在未到达时作用于远处对象。
-- 每 tick 移动最多跨一条相邻边，并保存实际路径和高度。
+- 普通移动不超过本刻地形成本预算；有限化身的一次移动命令恰好只选择一条合法相邻边，二者都保存实际路径和高度。
 - 没有新决定时，活动意图仍可继续推进。
 - 失败和阻塞留下真实位置、动作、原因与结构化差异。
 - 每个结构效果都能从物质体素与使用事实重算。

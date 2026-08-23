@@ -1,14 +1,8 @@
-import { executePrimitiveAction } from '../../domain/action-executor';
-import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
-import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
 import {
   availableModelContexts,
   availableModelTokens,
   ORDINARY_DECISION_PERSON_MONTHS,
 } from '../../domain/decision-budget';
-import { chooseDependentCareReflex, dependentCareUrgency, shouldRemainShelteredForDependent } from '../../domain/dependent-care';
-import { lifePlanningStage } from '../../domain/life-stage';
-import { synchronizeMortuaryPerceptions } from '../../domain/mortuary';
 import type {
   AgentDecider,
   BatchDecider,
@@ -17,38 +11,8 @@ import type {
   SimulationState,
   TokenUsage,
 } from '../../domain/model';
-import {
-  advanceBodies,
-  advanceSharedRelationshipExperience,
-  synchronizeHibernationIntentSuspensions,
-} from '../../domain/monthly-processes';
-import {
-  isAlive,
-  isDormantDehydratedHibernating,
-  isRecoveringFromDehydratedHibernation,
-  type PersonId,
-} from '../../domain/person';
-import { personById } from '../../domain/state-index';
-import {
-  chooseHibernationRecoveryReflex,
-  chooseSurvivalReflex,
-  shouldRemainSheltered,
-  survivalReflexUrgency,
-} from '../../domain/survival-reflex';
-import { shouldRemainShelteredFromWildlifeThreat } from '../../domain/wildlife-threat';
-import { seededFraction } from '../../world/generator';
-import { buildDecisionContext } from '../action-options';
-import { hasCausalShelterAdaptationNeed } from '../project-options';
+import type { PersonId } from '../../domain/person';
 import { isProductionOption, RulePlanner } from '../rule-planner';
-import {
-  activeIntent,
-  applyDecision,
-  executeActiveIntent,
-  executeDependentCareReflex,
-  executeProtectiveInterruption,
-  recordShelterMaintenanceInterruption,
-  resolveInterruptedIntentReturn,
-} from './intent-execution';
 import {
   decisionBudgetExemption,
   decisionUrgency,
@@ -56,16 +20,13 @@ import {
   lastModelDecisionMonth,
   validateModelDecision,
 } from './model-review';
-import { currentRollingLedgers, finishMonth, prepareMonth, type PreparedMonth } from './month-boundary';
+import {
+  createMonthExecution,
+  executeRemainingPlanningTicks,
+  type ModelAttemptSummary,
+} from './month-execution';
+import { currentRollingLedgers, prepareMonth, type PreparedMonth } from './month-boundary';
 import type { ObservationProjector } from './observation-projector';
-import { clamp } from './state-utils';
-import { hasCoLocatedLivingParent, planLocallyForTick } from './tick-planner';
-
-interface ModelAttemptSummary {
-  total: number;
-  ordinary: number;
-  exempt: number;
-}
 
 const authoritativeRulePlanner = new RulePlanner();
 
@@ -78,144 +39,15 @@ function executePrepared(
   tickPlanner: AgentDecider = authoritativeRulePlanner,
   projectionCadence: 'monthly' | 'annual' = 'monthly',
 ): SimulationState {
-  const { state, events, candidates, livingAgents, atMonth } = prepared;
-  if (state.civilization.status === 'ended') return state;
-  const reviewedPeople = new Set<PersonId>();
-  const plannedAtTickOne = new Set<PersonId>();
-  for (const candidate of candidates) {
-    const person = personById(state, candidate.person.id);
-    if (!person || !isAlive(person)) continue;
-    const freshContext = buildDecisionContext(state, person, atMonth);
-    const picked = decisions.get(person.id);
-    if (!picked || picked.decision.kind === 'idle') continue;
-    events.push(applyDecision(state, person, freshContext, picked.decision, picked.usedModel, atMonth, events.length, 1));
-    plannedAtTickOne.add(person.id);
-    reviewedPeople.add(person.id);
-  }
-  const participants = state.people.filter(isAlive);
-  for (let actionTick = 1; actionTick <= PLANNING_TICKS_PER_MONTH; actionTick += 1) {
-    const order = [...participants]
-      .filter(isAlive)
-      .sort((a, b) => seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${actionTick}:${a.id}`) - seededFraction(state.seed, `action-order:${state.branchId}:${atMonth}:${actionTick}:${b.id}`) || a.id.localeCompare(b.id));
-    for (const person of order) {
-      if (isDormantDehydratedHibernating(person)) {
-        person.currentActionText = '处于脱水休眠，以极低代谢等待环境稳定';
-        continue;
-      }
-      if (isRecoveringFromDehydratedHibernation(person)) {
-        const recovery = chooseHibernationRecoveryReflex(state, person);
-        if (recovery) {
-          const fact = executePrimitiveAction(state, person, recovery, atMonth, events.length, {
-            cause: 'survival-reflex',
-            actionTick,
-          });
-          events.push(fact);
-          person.currentActionText = fact.result;
-        } else {
-          person.currentActionText = '处于休眠恢复期，只等待或寻找真实水与食物';
-        }
-        continue;
-      }
-      const causalShelterWork = hasCausalShelterAdaptationNeed(state, person);
-      const reflex = chooseSurvivalReflex(state, person, { suppressThermalShelter: causalShelterWork });
-      const queuedIntent = activeIntent(state, person);
-      const queuedDehydrateTarget = queuedIntent?.nextAction.kind === 'act'
-        && queuedIntent.nextAction.operation === 'dehydrate'
-        ? queuedIntent.nextAction.targets.find((target) => target.kind === 'person')
-        : undefined;
-      const reflexDehydrateTarget = reflex?.kind === 'act' && reflex.operation === 'dehydrate'
-        ? reflex.targets.find((target) => target.kind === 'person')
-        : undefined;
-      const reflexDuplicatesQueuedDehydrate = queuedDehydrateTarget?.kind === 'person'
-        && queuedDehydrateTarget.personId === person.id
-        && reflexDehydrateTarget?.kind === 'person'
-        && reflexDehydrateTarget.personId === queuedDehydrateTarget.personId;
-      const dependentChild = lifePlanningStage(person, atMonth) === 'dependent-child';
-      const awaitingCaregiver = dependentChild && hasCoLocatedLivingParent(state, person);
-      const dependentCare = dependentChild
-        ? null
-        : chooseDependentCareReflex(state, person, { suppressThermalShelter: causalShelterWork });
-      const careIsMoreUrgent = Boolean(dependentCare)
-        && (!reflex || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
-      if (careIsMoreUrgent && dependentCare) {
-        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
-        person.currentActionText = fact.result;
-        continue;
-      }
-      if (reflexDuplicatesQueuedDehydrate) {
-        const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-        if (fact) events.push(fact);
-        resolveInterruptedIntentReturn(state, person, atMonth);
-        continue;
-      }
-      if (reflex && !(dependentChild && reflex.kind === 'move' && !reflex.wildlifeThreatBasis)) {
-        const fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
-        person.currentActionText = fact.result;
-        continue;
-      }
-      if (dependentChild) {
-        person.currentActionText = awaitingCaregiver
-          ? '留在亲代身边，随照料者取水、觅食或进入住所'
-          : '停留原地等待亲代照料，不能独自远行';
-        continue;
-      }
-      if (dependentCare) {
-        const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
-        person.currentActionText = fact.result;
-        continue;
-      }
-      const wildlifeShelter = shouldRemainShelteredFromWildlifeThreat(state, person, atMonth);
-      const maintainingShelter = wildlifeShelter
-        || shouldRemainSheltered(state, person)
-        || shouldRemainShelteredForDependent(state, person);
-      if (maintainingShelter && !causalShelterWork) {
-        recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events, wildlifeShelter
-          ? { reason: '可见猛兽仍在住所近旁，继续留在真实围护内' }
-          : {});
-        person.currentActionText = wildlifeShelter ? '留在住所内避开可见猛兽' : '留在住所内维持避护状态';
-        continue;
-      }
-      if (actionTick !== 1 || !plannedAtTickOne.has(person.id)) {
-        planLocallyForTick(state, person, atMonth, actionTick, events, tickPlanner, reviewedPeople);
-      }
-      const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-      if (fact) events.push(fact);
-      resolveInterruptedIntentReturn(state, person, atMonth);
-    }
-    for (const person of participants) person.position.tickPath.push(person.position.cellId);
-  }
-  events.push(...advanceBodies(state, atMonth));
-  events.push(...synchronizeMortuaryPerceptions(state, atMonth, events.length));
-  events.push(...synchronizeHibernationIntentSuspensions(state, atMonth));
-  events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
-  events.push(...advanceSharedRelationshipExperience(state, events, atMonth));
-  const modelContexts = attempted.total;
-  const actualTokens = usage.inputTokens + usage.outputTokens;
-  const chargedTokens = modelContexts ? Math.max(usage.inputTokens + usage.outputTokens, modelContexts * state.decisionBudget.tokensPerContext) : 0;
-  const ordinaryChargedTokens = attempted.ordinary
-    ? Math.max(
-      Math.ceil(actualTokens * attempted.ordinary / Math.max(1, modelContexts)),
-      attempted.ordinary * state.decisionBudget.tokensPerContext,
-    )
-    : 0;
-  state.decisionBudget.ledgers = [...currentRollingLedgers(state), {
-    atMonth,
-    livingAgents,
-    candidates: candidates.length,
-    modelContexts,
-    ordinaryModelContexts: attempted.ordinary,
-    exemptModelContexts: attempted.exempt,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    chargedTokens,
-    ordinaryChargedTokens,
-  }].slice(-24);
-  state.decisionBudget.credits = clamp(
-    state.decisionBudget.credits + livingAgents / ORDINARY_DECISION_PERSON_MONTHS - attempted.ordinary,
-    0,
-    Math.max(1, livingAgents),
-  );
-  return finishMonth(state, events, atMonth, projectionCadence, observationProjector);
+  return executeRemainingPlanningTicks(createMonthExecution({
+    observationProjector,
+    prepared,
+    decisions,
+    usage,
+    attempted,
+    tickPlanner,
+    projectionCadence,
+  }));
 }
 
 export function stepSimulation(

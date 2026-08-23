@@ -20,6 +20,17 @@ export interface IntentChoice {
   recordUseStage?: RecordUseStage;
 }
 
+/**
+ * Long-lived intent chains can be suspended for a short obligation and later
+ * resumed without losing their identity or progress.
+ */
+export function isResumableIntent(
+  intent: Pick<Intent, 'projectId' | 'returnToIntentId'>,
+): boolean {
+  return Boolean(intent.projectId
+    || intent.returnToIntentId);
+}
+
 function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {
   const action = selected.nextAction;
   const conversationalOpening = (selected.id.startsWith('talk:') || selected.id.startsWith('conversation:'))

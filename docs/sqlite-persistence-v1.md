@@ -41,6 +41,10 @@ run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携
 - `eland-session-shell-v2` 保存一次 V8 serialize + Brotli 的会话 shell；
 - `eland-session-timeline-chunk-v1` 原样保存已经压缩的月度 checkpoint / delta，避免嵌套压缩。
 
+自 2026-08-24 起，有限化身也直接复用这套 `live_sessions` 根、会话 shell 和内容块，没有新增化身表或独立 JSON 文件。`ElandSessionRecoverySnapshot` 的 `activeEmbodiment` 保存最后已提交月之上的待操作刻度、冻结月初决策、命令收据和暂存 hash；`completedEmbodiments` 以最多 64 条的有界 ring 保留第 15 刻与 release 完成收据，使相同 `commandId / releaseId + fingerprint` 在进程重启后仍不会重复提交。`live_sessions.elapsed_months` 和 timeline head 始终只表示最后完整月，不把半月状态写成可 seek 的 frame。
+
+begin、每个成功 tick 和 release 都在 HTTP 成功响应前通过 `persistIfCurrent` 替换同一会话根。活动快照只保存完整命令之间的 `awaiting-command` 边界；恢复时从 committed state 重建月份，注入冻结决策，重放已完成命令并校验收据与规范暂存 hash。release 保留玩家已完成刻度，由本地规则完成剩余刻度与月末流程后才转入 completed receipt。当前冻结的 NPC 月初决策来自本地 `RulePlanner`，化身恢复不重发模型请求；观察模式的自然自由文本对话也不是该暂存命令日志的一部分。
+
 会话块的 hash 同时包含 codec 和内容，防止相同字节在不同语义下错误复用。编码、压缩和 hash 计算在事务外完成；写入时以短 `BEGIN IMMEDIATE` 事务提交缺失块和引用行，失败则回滚。命中既有 hash 时仍比较 codec、长度和字节，不能只相信 hash。
 
 实时恢复只校验并读取根 manifest 与 shell，把有序时间线保存为轻量 hash 引用，不在启动时把全部 checkpoint / delta BLOB 常驻内存。`frame`、人物历史和 `seek` 回放时才同步解析最近年度 checkpoint 与其后最多 11 个 delta；单个块在读取时校验 codec、长度和 SHA-256，会话只缓存一个最近重建状态，回到当前 head 后立即释放该缓存。新快照携带 active head 完整性标记；缺少标记的旧 schema 17 快照会用 `latestState` 一次性修复可能不完整的旧 head delta。成功持久化后，新产生的内存 Buffer 会原位替换成 hash 引用；后续保存直接复用旧引用，只为新增块计算 hash 和写库。实时分支每到 12 的倍数月份自动持久化，因此正常推进时未释放的新增时间线块保持在一个年度窗口内。

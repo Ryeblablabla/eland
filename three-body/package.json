@@ -45,6 +45,7 @@
     "test:agent-cognition": "node scripts/test-agent-cognition.mjs",
     "test:person-soul": "node scripts/test-person-soul.mjs",
     "test:player-interaction": "node scripts/test-player-interaction-choice.mjs",
+    "test:limited-embodiment": "node scripts/test-player-embodiment.mjs && node scripts/test-limited-embodiment-session.mjs",
     "test:agent-interaction": "node scripts/test-agent-interaction-context.mjs",
     "test:live-speech": "node scripts/test-live-speech.mjs",
     "test:newborn-naming": "node scripts/test-newborn-naming.mjs",

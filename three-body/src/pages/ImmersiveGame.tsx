@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ThreeBodyCanvas, { type CelestialSelection, type SimStats } from '@/components/ThreeBodyCanvas';
 import SocietyScene3D, { type SocietySceneSelection } from '@/components/SocietyScene3D';
+import LimitedEmbodimentHud from '@/components/LimitedEmbodimentHud';
 import AtmosphereTransition, {
   type AtmosphereTransitionDirection,
 } from '@/components/AtmosphereTransition';
@@ -22,13 +23,24 @@ import {
 } from '@/components/ObservationUI';
 import {
   createCivilizationCreationId,
+  createEmbodimentCommandId,
+  createEmbodimentId,
+  createEmbodimentReleaseId,
   createWorldSeed,
   ElandBackendUnavailableError,
   ElandSessionMissingError,
+  ElandRequestConflictError,
   elandClient,
   getElandRunId,
   type Frame,
 } from '@/game/elandClient';
+import type {
+  BeginEmbodimentRequest,
+  EmbodimentCommand,
+  EmbodimentOptionView,
+  EmbodimentTargetView,
+  EmbodimentView,
+} from '@/game/embodimentContract';
 import {
   TransactionalSkySampler,
   type PreparedSkySample,
@@ -60,6 +72,12 @@ import {
 } from '@/game/evolutionSpeed';
 
 type ViewMode = 'cosmos' | 'society';
+
+type ExperienceMode =
+  | { kind: 'observing' }
+  | { kind: 'entering-embodiment'; agentId: string }
+  | { kind: 'embodied'; view: EmbodimentView }
+  | { kind: 'releasing-embodiment'; view: EmbodimentView };
 
 interface EvolutionEntry {
   id: string;
@@ -128,6 +146,14 @@ function storeEvolutionSpeed(speed: EvolutionSpeed): void {
   }
 }
 
+function sameEmbodimentCommand(left: EmbodimentCommand, right: EmbodimentCommand): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'wait' || right.kind === 'wait') return true;
+  return left.optionId === right.optionId
+    && left.choiceKey === right.choiceKey
+    && left.followUpOptionId === right.followUpOptionId;
+}
+
 export default function ImmersiveGame() {
   const pageVisible = useDocumentVisible();
   const [society, setSociety] = useState<SocietyState | null>(null);
@@ -166,6 +192,13 @@ export default function ImmersiveGame() {
   const [civilizationSettlementStatus, setCivilizationSettlementStatus] = useState<CivilizationSettlementStatus>('idle');
   const [civilizationSettlementMessage, setCivilizationSettlementMessage] = useState('');
   const [evolutionSpeed, setEvolutionSpeed] = useState<EvolutionSpeed>(readEvolutionSpeed);
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>({ kind: 'observing' });
+  const [embodimentTarget, setEmbodimentTarget] = useState<EmbodimentTargetView | null>(null);
+  const [previewEmbodimentOption, setPreviewEmbodimentOption] = useState<EmbodimentOptionView | null>(null);
+  const [embodimentCommandPending, setEmbodimentCommandPending] = useState(false);
+  const [embodimentCameraSettled, setEmbodimentCameraSettled] = useState(true);
+  const [embodimentPointerLocked, setEmbodimentPointerLocked] = useState(false);
+  const [embodimentFeedback, setEmbodimentFeedback] = useState('');
 
   const runIdRef = useRef(getElandRunId());
   const startedRef = useRef(false);
@@ -173,6 +206,7 @@ export default function ImmersiveGame() {
   const sessionReadyRef = useRef(false);
   const sessionStartingRef = useRef(false);
   const hasFrameRef = useRef(false);
+  const latestFrameRef = useRef<Frame | null>(null);
   const steppingRef = useRef(false);
   const sessionGenerationRef = useRef(0);
   const historySequenceRef = useRef(0);
@@ -190,11 +224,35 @@ export default function ImmersiveGame() {
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skySamplerRef = useRef(new TransactionalSkySampler());
   const pendingStepSkyRef = useRef<PreparedSkySample | null>(null);
+  const embodimentSkyAttemptRef = useRef<PreparedSkySample | null>(null);
+  const pendingEmbodimentBeginRef = useRef<{
+    input: BeginEmbodimentRequest;
+    skyAttempt: PreparedSkySample;
+  } | null>(null);
+  const embodimentBeginInFlightRef = useRef(false);
+  const pendingEmbodimentCommandRef = useRef<{
+    embodimentId: string;
+    commandId: string;
+    expectedRevision: number;
+    expectedTick: number;
+    command: EmbodimentCommand;
+  } | null>(null);
+  const pendingEmbodimentReleaseRef = useRef<{
+    embodimentId: string;
+    releaseId: string;
+    expectedRevision: number;
+  } | null>(null);
+  const embodimentMutationInFlightRef = useRef(false);
   const collapseHandledRef = useRef(false);
   const replacementRequestedRef = useRef(false);
   const transitionRef = useRef(false);
   const newWorldLaunchingRef = useRef(false);
   const uiPaused = overlayMode !== null || civilizationEnding !== null || atmosphereTransition !== null;
+  const worldAdvancePaused = uiPaused || experienceMode.kind !== 'observing';
+  const experienceModeRef = useRef(experienceMode);
+  const worldAdvancePausedRef = useRef(worldAdvancePaused);
+  experienceModeRef.current = experienceMode;
+  worldAdvancePausedRef.current = worldAdvancePaused;
 
   useEffect(() => {
     const checkpointSession = () => { void elandClient.checkpoint(runIdRef.current); };
@@ -279,6 +337,7 @@ export default function ImmersiveGame() {
   }, []);
 
   const applyFrame = useCallback((frame: Frame) => {
+    latestFrameRef.current = frame;
     hasFrameRef.current = true;
     const civilizationChanged = activeCivilizationRef.current !== frame.civilizationId;
     const branchChanged = Boolean(activeBranchRef.current) && activeBranchRef.current !== frame.branchId;
@@ -390,6 +449,7 @@ export default function ImmersiveGame() {
     entries: NarrativeEntryView[],
     historyTotalCount: number,
     indexHistory: CivilizationIndexHistoryPoint[],
+    embodiment?: EmbodimentView | null,
   ) => {
     pendingCreationRef.current = null;
     sessionGenerationRef.current += 1;
@@ -406,6 +466,16 @@ export default function ImmersiveGame() {
     activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
     pendingStepSkyRef.current = null;
+    embodimentSkyAttemptRef.current = null;
+    pendingEmbodimentBeginRef.current = null;
+    embodimentBeginInFlightRef.current = false;
+    pendingEmbodimentCommandRef.current = null;
+    pendingEmbodimentReleaseRef.current = null;
+    embodimentMutationInFlightRef.current = false;
+    setEmbodimentCommandPending(false);
+    setEmbodimentTarget(null);
+    setPreviewEmbodimentOption(null);
+    setEmbodimentPointerLocked(false);
     skySamplerRef.current.restore(frame.skySample);
     statsRef.current = null;
     transitionRef.current = false;
@@ -424,7 +494,272 @@ export default function ImmersiveGame() {
     applyFrame(frame);
     replaceHistory(frame, entries, historyTotalCount);
     setCivilizationIndexHistory(indexHistory.slice(-2_400));
+    if (embodiment) {
+      const embodied = { kind: 'embodied', view: embodiment } as const;
+      experienceModeRef.current = embodied;
+      worldAdvancePausedRef.current = true;
+      setExperienceMode(embodied);
+      setSociety(embodiment.society);
+      setView('society');
+      setEmbodimentCameraSettled(true);
+      setEmbodimentFeedback('已恢复上次未完成的化身月份');
+    } else {
+      experienceModeRef.current = { kind: 'observing' };
+      setExperienceMode({ kind: 'observing' });
+    }
   }, [applyFrame, replaceHistory, requestUniverseReset]);
+
+  const finishEmbodiment = useCallback((frame: Frame) => {
+    const skyAttempt = embodimentSkyAttemptRef.current;
+    if (skyAttempt) skySamplerRef.current.commit(skyAttempt);
+    else skySamplerRef.current.restore(frame.skySample);
+    embodimentSkyAttemptRef.current = null;
+    pendingEmbodimentBeginRef.current = null;
+    embodimentBeginInFlightRef.current = false;
+    pendingEmbodimentCommandRef.current = null;
+    pendingEmbodimentReleaseRef.current = null;
+    embodimentMutationInFlightRef.current = false;
+    setEmbodimentCommandPending(false);
+    setEmbodimentCameraSettled(true);
+    setEmbodimentTarget(null);
+    setPreviewEmbodimentOption(null);
+    setEmbodimentPointerLocked(false);
+    setEmbodimentFeedback('');
+    experienceModeRef.current = { kind: 'observing' };
+    worldAdvancePausedRef.current = uiPaused;
+    setExperienceMode({ kind: 'observing' });
+    eraKeyRef.current = frame.skySample.fate;
+    setEraKey(frame.skySample.fate);
+    applyFrame(frame);
+    setUniverseTarget((target) => Math.max(frame.skySample.toTime, target) + TU_PER_MONTH);
+  }, [applyFrame, uiPaused]);
+
+  const enterEmbodiment = useCallback(async (agentId: string) => {
+    const currentMode = experienceModeRef.current;
+    let pending = pendingEmbodimentBeginRef.current;
+    const retryingUnknownResult = currentMode.kind === 'entering-embodiment'
+      && pending?.input.agentId === agentId;
+    if (embodimentBeginInFlightRef.current
+      || (!retryingUnknownResult && currentMode.kind !== 'observing')
+      || (!retryingUnknownResult && (steppingRef.current || sessionStartingRef.current))) return;
+    if (!pending) {
+      const frame = latestFrameRef.current;
+      const cosmos = statsRef.current?.cosmosSnapshot;
+      if (!frame || !cosmos) {
+        setEmbodimentFeedback('当前天象还没有准备好，请稍后再试');
+        return;
+      }
+      const skyAttempt = skySamplerRef.current.prepare(eraKeyRef.current);
+      pending = {
+        input: {
+          runId: runIdRef.current,
+          embodimentId: createEmbodimentId(),
+          agentId,
+          expectedAuthorityRevision: frame.authorityRevision,
+          expectedCivilizationId: frame.civilizationId,
+          expectedBranchId: frame.branchId,
+          expectedElapsedMonths: frame.elapsedMonths,
+          skySample: skyAttempt.sample,
+          cosmosSnapshot: cosmos,
+        },
+        skyAttempt,
+      };
+      pendingEmbodimentBeginRef.current = pending;
+    }
+    const entering = { kind: 'entering-embodiment', agentId } as const;
+    experienceModeRef.current = entering;
+    worldAdvancePausedRef.current = true;
+    setExperienceMode(entering);
+    setFocusTarget(null);
+    setFocusAgentSubtab('overview');
+    setEmbodimentFeedback(retryingUnknownResult ? '正在用同一请求确认进入结果' : '正在进入人物的当前处境');
+    embodimentBeginInFlightRef.current = true;
+    try {
+      const { embodiment } = await elandClient.beginEmbodiment(pending.input);
+      pendingEmbodimentBeginRef.current = null;
+      embodimentSkyAttemptRef.current = pending.skyAttempt;
+      const embodied = { kind: 'embodied', view: embodiment } as const;
+      experienceModeRef.current = embodied;
+      setExperienceMode(embodied);
+      setSociety(embodiment.society);
+      setView('society');
+      setEmbodimentTarget(null);
+      setEmbodimentCameraSettled(true);
+      setEmbodimentFeedback('');
+    } catch (error) {
+      let reconciled: EmbodimentView | null | undefined;
+      let absenceConfirmed = false;
+      try {
+        const state = await elandClient.embodimentState(runIdRef.current);
+        reconciled = state.embodiment;
+        absenceConfirmed = state.embodiment === null;
+      } catch (stateError) {
+        if (stateError instanceof ElandSessionMissingError) {
+          absenceConfirmed = true;
+        } else if (error instanceof ElandRequestConflictError) {
+          reconciled = error.embodiment;
+          absenceConfirmed = !error.embodiment;
+        }
+      }
+
+      if (reconciled) {
+        pendingEmbodimentBeginRef.current = null;
+        if (reconciled.id === pending.input.embodimentId) {
+          embodimentSkyAttemptRef.current = pending.skyAttempt;
+        } else {
+          skySamplerRef.current.rollback(pending.skyAttempt);
+          embodimentSkyAttemptRef.current = null;
+        }
+        const embodied = { kind: 'embodied', view: reconciled } as const;
+        experienceModeRef.current = embodied;
+        setExperienceMode(embodied);
+        setSociety(reconciled.society);
+        setView('society');
+        setEmbodimentTarget(null);
+        setEmbodimentCameraSettled(true);
+        setEmbodimentFeedback(reconciled.id === pending.input.embodimentId
+          ? '已确认进入结果'
+          : '已接回服务端现有的化身月份');
+      } else if (absenceConfirmed) {
+        skySamplerRef.current.rollback(pending.skyAttempt);
+        pendingEmbodimentBeginRef.current = null;
+        experienceModeRef.current = { kind: 'observing' };
+        worldAdvancePausedRef.current = uiPaused;
+        setExperienceMode({ kind: 'observing' });
+        setEmbodimentFeedback(error instanceof Error ? error.message : '无法进入这个人物');
+      } else {
+        setEmbodimentFeedback('进入结果尚未确认；世界保持暂停，请重试同一次进入');
+      }
+    } finally {
+      embodimentBeginInFlightRef.current = false;
+    }
+  }, [uiPaused]);
+
+  const chooseEmbodimentOption = useCallback(async (option: EmbodimentOptionView) => {
+    const mode = experienceModeRef.current;
+    if (mode.kind !== 'embodied'
+      || embodimentMutationInFlightRef.current
+      || embodimentCommandPending
+      || !embodimentCameraSettled) return;
+    if (pendingEmbodimentReleaseRef.current) {
+      setEmbodimentFeedback('交还结果尚未确认，请再次按 Tab 重试交还');
+      return;
+    }
+    const command: EmbodimentCommand = option.source === 'wait'
+      ? { kind: 'wait' }
+      : { kind: 'choose-option', optionId: option.optionId, choiceKey: option.choiceKey };
+    const expectedTick = mode.view.nextTick ?? mode.view.completedTick + 1;
+    let pendingRequest = pendingEmbodimentCommandRef.current;
+    if (pendingRequest && (pendingRequest.embodimentId !== mode.view.id
+      || pendingRequest.expectedRevision !== mode.view.revision
+      || pendingRequest.expectedTick !== expectedTick)) {
+      pendingEmbodimentCommandRef.current = null;
+      pendingRequest = null;
+    }
+    if (pendingRequest && !sameEmbodimentCommand(pendingRequest.command, command)) {
+      setEmbodimentFeedback('上一行动结果尚未确认；请再次选择原行动重试，不能改发另一行动');
+      return;
+    }
+    const request = pendingRequest ?? {
+      embodimentId: mode.view.id,
+      commandId: createEmbodimentCommandId(),
+      expectedRevision: mode.view.revision,
+      expectedTick,
+      command,
+    };
+    pendingEmbodimentCommandRef.current = request;
+    embodimentMutationInFlightRef.current = true;
+    setEmbodimentCommandPending(true);
+    if (option.category === 'move') setEmbodimentCameraSettled(false);
+    setEmbodimentFeedback('本刻人物与世界正在同时行动');
+    try {
+      const result = await elandClient.stepEmbodiment({ runId: runIdRef.current, ...request });
+      pendingEmbodimentCommandRef.current = null;
+      setEmbodimentCommandPending(false);
+      if ('committedFrame' in result) {
+        finishEmbodiment(result.committedFrame);
+        return;
+      }
+      const embodied = { kind: 'embodied', view: result.embodiment } as const;
+      experienceModeRef.current = embodied;
+      setExperienceMode(embodied);
+      setSociety(result.embodiment.society);
+      setEmbodimentFeedback(result.receipt.controlApplied
+        ? result.embodiment.tickEvents.at(-1)?.summary ?? '本刻行动已完成'
+        : result.embodiment.tickEvents.at(-1)?.summary ?? '本刻由身体或规则接管');
+      if (option.category !== 'move') setEmbodimentCameraSettled(true);
+    } catch (error) {
+      setEmbodimentCommandPending(false);
+      setEmbodimentCameraSettled(true);
+      if (error instanceof ElandRequestConflictError) {
+        pendingEmbodimentCommandRef.current = null;
+        if (error.embodiment) {
+          const embodied = { kind: 'embodied', view: error.embodiment } as const;
+          experienceModeRef.current = embodied;
+          setExperienceMode(embodied);
+          setSociety(error.embodiment.society);
+        }
+      }
+      setEmbodimentFeedback(error instanceof Error ? error.message : '化身行动失败');
+    } finally {
+      embodimentMutationInFlightRef.current = false;
+    }
+  }, [embodimentCameraSettled, embodimentCommandPending, finishEmbodiment]);
+
+  const moveEmbodiment = useCallback((direction: 'north' | 'south' | 'east' | 'west') => {
+    const mode = experienceModeRef.current;
+    if (mode.kind !== 'embodied' || embodimentCommandPending || !embodimentCameraSettled) return;
+    const width = mode.view.society.world.width;
+    const delta = { north: -width, south: width, west: -1, east: 1 }[direction];
+    const destination = mode.view.actor.cellId + delta;
+    const option = mode.view.options.find((candidate) => candidate.category === 'move'
+      && candidate.target?.kind === 'standing-position'
+      && candidate.target.cellId === destination);
+    if (!option) {
+      setEmbodimentFeedback('这个方向没有可站立的相邻位置');
+      return;
+    }
+    void chooseEmbodimentOption(option);
+  }, [chooseEmbodimentOption, embodimentCameraSettled, embodimentCommandPending]);
+
+  const releaseEmbodiment = useCallback(async () => {
+    const mode = experienceModeRef.current;
+    if (mode.kind !== 'embodied' || embodimentMutationInFlightRef.current || embodimentCommandPending) return;
+    if (pendingEmbodimentCommandRef.current) {
+      setEmbodimentFeedback('上一行动结果尚未确认，请先再次选择原行动重试');
+      return;
+    }
+    const request = pendingEmbodimentReleaseRef.current ?? {
+      embodimentId: mode.view.id,
+      releaseId: createEmbodimentReleaseId(),
+      expectedRevision: mode.view.revision,
+    };
+    pendingEmbodimentReleaseRef.current = request;
+    embodimentMutationInFlightRef.current = true;
+    const releasing = { kind: 'releasing-embodiment', view: mode.view } as const;
+    experienceModeRef.current = releasing;
+    setExperienceMode(releasing);
+    setEmbodimentCommandPending(true);
+    setEmbodimentFeedback('正在交还自主并完成本月剩余刻度');
+    try {
+      const result = await elandClient.releaseEmbodiment({ runId: runIdRef.current, ...request });
+      finishEmbodiment(result.committedFrame);
+    } catch (error) {
+      setEmbodimentCommandPending(false);
+      const current = experienceModeRef.current;
+      const view = error instanceof ElandRequestConflictError && error.embodiment
+        ? error.embodiment
+        : current.kind === 'releasing-embodiment' ? current.view : mode.view;
+      if (error instanceof ElandRequestConflictError) pendingEmbodimentReleaseRef.current = null;
+      const embodied = { kind: 'embodied', view } as const;
+      experienceModeRef.current = embodied;
+      setExperienceMode(embodied);
+      setSociety(view.society);
+      setEmbodimentFeedback(error instanceof Error ? error.message : '交还自主失败');
+    } finally {
+      embodimentMutationInFlightRef.current = false;
+    }
+  }, [embodimentCommandPending, finishEmbodiment]);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -439,6 +774,7 @@ export default function ImmersiveGame() {
         history: savedHistory,
         historyTotalCount: savedHistoryTotalCount,
         civilizationIndexHistory: savedIndexHistory,
+        embodiment,
       }) => {
         if (cancelled || resumeCheckCompleteRef.current) return;
         resumeCheckCompleteRef.current = true;
@@ -447,6 +783,7 @@ export default function ImmersiveGame() {
           savedHistory,
           savedHistoryTotalCount ?? savedHistory.length,
           savedIndexHistory,
+          embodiment,
         );
         else void startCivilization();
       }).catch((error) => {
@@ -469,7 +806,7 @@ export default function ImmersiveGame() {
   }, [restoreLoadedSession, showRuntimeStatus, startCivilization]);
 
   const stepOnce = useCallback(async () => {
-    if (steppingRef.current || sessionStartingRef.current) return;
+    if (worldAdvancePausedRef.current || steppingRef.current || sessionStartingRef.current) return;
     if (!sessionReadyRef.current) {
       const pendingCreation = pendingCreationRef.current;
       if (resumeCheckCompleteRef.current && (!hasFrameRef.current || pendingCreation)) {
@@ -540,14 +877,14 @@ export default function ImmersiveGame() {
   }, [applyFrame, pushHistory, replaceHistory, showRuntimeStatus, startCivilization]);
 
   useEffect(() => {
-    if (!pageVisible || uiPaused) return;
+    if (!pageVisible || worldAdvancePaused) return;
     const firstStep = setTimeout(() => { void stepOnce(); }, 1_000);
     const interval = setInterval(() => { void stepOnce(); }, AUTO_STEP_BASE_MS / evolutionSpeed);
     return () => {
       clearTimeout(firstStep);
       clearInterval(interval);
     };
-  }, [evolutionSpeed, pageVisible, stepOnce, uiPaused]);
+  }, [evolutionSpeed, pageVisible, stepOnce, worldAdvancePaused]);
 
   const onStats = useCallback((stats: SimStats) => {
     // “重新开始”会先重置 ThreeBodyCanvas，再创建新的权威会话。重置提交前，
@@ -989,6 +1326,20 @@ export default function ImmersiveGame() {
         && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
       if (isEditing && event.key !== 'Escape') return;
 
+      if (experienceModeRef.current.kind !== 'observing') {
+        // PointerLockControls owns Escape. The embodiment HUD/scene own
+        // Tab/E/F/WASD; observation menus must not react to those keys.
+        if (event.key === 'Escape'
+          || event.code === 'Tab'
+          || event.code === 'KeyE'
+          || event.code === 'KeyF'
+          || event.code === 'KeyW'
+          || event.code === 'KeyA'
+          || event.code === 'KeyS'
+          || event.code === 'KeyD') event.preventDefault();
+        return;
+      }
+
       if (civilizationEnding) {
         if (event.key === 'Escape' && overlayMode) {
           event.preventDefault();
@@ -1101,6 +1452,11 @@ export default function ImmersiveGame() {
     };
     return [status];
   }, [history, society]);
+  const activeEmbodimentView = experienceMode.kind === 'embodied'
+    || experienceMode.kind === 'releasing-embodiment'
+    ? experienceMode.view
+    : null;
+  const embodimentExperienceActive = experienceMode.kind !== 'observing';
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#02030a] text-slate-200">
@@ -1119,7 +1475,7 @@ export default function ImmersiveGame() {
         style={{ opacity: view === 'cosmos' ? 1 : 0, pointerEvents: view === 'cosmos' ? 'auto' : 'none' }}
       >
         <ThreeBodyCanvas
-          running={!uiPaused}
+          running={!worldAdvancePaused}
           speed={3}
           trailLength={2200}
           showTwin={false}
@@ -1132,7 +1488,7 @@ export default function ImmersiveGame() {
           collapseHold
           respawnToken={respawnToken}
           onStats={onStats}
-          planetFocusEnabled={view === 'cosmos'}
+          planetFocusEnabled={view === 'cosmos' && !embodimentExperienceActive}
           onPlanetDive={diveToSociety}
           exitFocusToken={exitFocusToken}
           selectedCelestial={focusTarget?.kind === 'celestial'
@@ -1151,11 +1507,24 @@ export default function ImmersiveGame() {
           speaker={speaker}
           speechLines={speechLines}
           sky={statsRef.current ?? undefined}
-          selectedObject={focusTarget?.kind === 'agent' || focusTarget?.kind === 'structure'
+          selectedObject={!embodimentExperienceActive
+            && (focusTarget?.kind === 'agent' || focusTarget?.kind === 'structure')
             ? { kind: focusTarget.kind, id: focusTarget.id }
             : null}
-          onSelectObject={selectSocietyObject}
-          onZoomOutRequest={riseToCosmos}
+          onSelectObject={embodimentExperienceActive ? undefined : selectSocietyObject}
+          onZoomOutRequest={embodimentExperienceActive ? undefined : riseToCosmos}
+          cameraMode={activeEmbodimentView
+            ? { kind: 'embodiment', agentId: activeEmbodimentView.actorId }
+            : { kind: 'overview' }}
+          embodimentTargets={activeEmbodimentView?.options.flatMap((option) => (
+            option.target ? [option.target] : []
+          ))}
+          previewEmbodimentOption={previewEmbodimentOption}
+          embodimentCommandPending={embodimentCommandPending || !embodimentCameraSettled}
+          onEmbodimentMove={moveEmbodiment}
+          onEmbodimentTargetChange={setEmbodimentTarget}
+          onEmbodimentPointerLockChange={setEmbodimentPointerLocked}
+          onEmbodimentCameraSettled={() => setEmbodimentCameraSettled(true)}
         />
       )}
 
@@ -1164,7 +1533,37 @@ export default function ImmersiveGame() {
         style={{ background: 'radial-gradient(ellipse at center, transparent 48%, rgba(2,3,10,0.72) 100%)' }}
       />
 
-      {announce && (
+      {activeEmbodimentView && (
+        <LimitedEmbodimentHud
+          busy={embodimentCommandPending || experienceMode.kind === 'releasing-embodiment'}
+          feedback={embodimentFeedback}
+          onChooseOption={(option) => { void chooseEmbodimentOption(option); }}
+          onPreviewOptionChange={setPreviewEmbodimentOption}
+          onRelease={() => { void releaseEmbodiment(); }}
+          pointerLocked={embodimentPointerLocked}
+          target={embodimentTarget}
+          view={activeEmbodimentView}
+        />
+      )}
+
+      {experienceMode.kind === 'entering-embodiment' && (
+        <div className="pointer-events-none absolute inset-0 z-[110] flex items-center justify-center">
+          <div className="pointer-events-auto grid justify-items-center gap-3 rounded-xl border border-emerald-100/20 bg-slate-950/75 px-6 py-5 text-center shadow-2xl backdrop-blur-md">
+            <p className="m-0 text-sm text-slate-100">{embodimentFeedback || '正在确认进入人物的当前处境'}</p>
+            {!embodimentBeginInFlightRef.current && (
+              <button
+                className="rounded-md border border-emerald-100/25 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-50"
+                onClick={() => { void enterEmbodiment(experienceMode.agentId); }}
+                type="button"
+              >
+                重试同一次进入
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {announce && !embodimentExperienceActive && (
         <div
           key={announce.key}
           className="pointer-events-none absolute inset-0 z-[80] flex flex-col items-center justify-center"
@@ -1186,7 +1585,7 @@ export default function ImmersiveGame() {
         </div>
       )}
 
-      {!overlayMode && !civilizationEnding && (
+      {!embodimentExperienceActive && !overlayMode && !civilizationEnding && (
         <div className="ambient-history" aria-live="polite" aria-relevant="additions text">
           <div className="ambient-history__list">
             {visibleHistory.map((entry, index) => (
@@ -1204,7 +1603,7 @@ export default function ImmersiveGame() {
         </div>
       )}
 
-      {!overlayMode && !civilizationEnding && !focusTarget && (
+      {!embodimentExperienceActive && !overlayMode && !civilizationEnding && !focusTarget && (
         <button
           aria-label="打开观测菜单"
           className="immersive-touch-trigger"
@@ -1216,7 +1615,7 @@ export default function ImmersiveGame() {
       )}
 
       <FocusInspector
-        target={!overlayMode && !civilizationEnding ? focusTarget : null}
+        target={!embodimentExperienceActive && !overlayMode && !civilizationEnding ? focusTarget : null}
         society={society}
         stats={statsRef.current}
         history={history}
@@ -1227,6 +1626,7 @@ export default function ImmersiveGame() {
         agentSubtab={focusAgentSubtab}
         agentHistoryLoading={focusAgentHistoryLoading}
         agentHistoryError={focusAgentHistoryError}
+        onEnterEmbodiment={enterEmbodiment}
         onClose={closeFocus}
         onAgentSubtabChange={changeFocusAgentSubtab}
       />
@@ -1239,7 +1639,7 @@ export default function ImmersiveGame() {
         />
       )}
 
-      <ImmersiveInterface
+      {!embodimentExperienceActive && <ImmersiveInterface
         mode={overlayMode}
         civilizationId={activeCivilizationRef.current}
         civilizationIndex={society?.observations.civilizationIndex ?? null}
@@ -1282,7 +1682,7 @@ export default function ImmersiveGame() {
         onStartNewWorld={() => { void launchNewWorld(); }}
         onEndCivilization={() => { void endCivilization(); }}
         onTestModelEndpoint={testModelEndpoint}
-      />
+      />}
 
       {civilizationEnding && !overlayMode && (
         <CivilizationRequiem

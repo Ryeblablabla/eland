@@ -152,7 +152,8 @@ export interface ActionFact extends BaseEvent {
   actionTick: number;
   who: PersonId;
   intentId?: string;
-  cause: 'intent' | 'survival-reflex';
+  /** The rule path that authorized this action; provenance never relaxes validation. */
+  cause: 'intent' | 'survival-reflex' | 'player-embodiment';
   action: PrimitiveAction;
   fromCellId: number;
   toCellId: number;

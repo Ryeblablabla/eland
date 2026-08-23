@@ -60,6 +60,7 @@ interface FocusInspectorProps {
   agentSubtab: AgentSubtab;
   agentHistoryLoading: boolean;
   agentHistoryError: string;
+  onEnterEmbodiment?: (agentId: string) => void;
   onClose: () => void;
   onAgentSubtabChange: (subtab: AgentSubtab) => void;
 }
@@ -390,6 +391,7 @@ export function FocusInspector({
   agentSubtab,
   agentHistoryLoading,
   agentHistoryError,
+  onEnterEmbodiment,
   onClose,
   onAgentSubtabChange,
 }: FocusInspectorProps) {
@@ -745,6 +747,15 @@ export function FocusInspector({
       </div>
 
       {!structure && <div className="focus-inspector__actions">
+        {agent && agent.state === 'active' && onEnterEmbodiment && (
+          <button
+            className="observation-button"
+            onClick={() => onEnterEmbodiment(agent.id)}
+            type="button"
+          >
+            进入化身
+          </button>
+        )}
         <button className="observation-button observation-button--outline" onClick={onClose} type="button">
           收起 · Esc
         </button>

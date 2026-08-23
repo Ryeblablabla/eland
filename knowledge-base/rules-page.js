@@ -252,6 +252,7 @@ const RULES_PAGE_MARKUP = `
           <summary><span>世界过程</span><small>即使无人行动也会推进</small></summary>
           <ul>
             <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；天气按月结算但以跨月过程叠加在纪元之上，类型具有不改变长程占比的延续惯性，强度只偶发逐级变化。实时宇宙的 burned 明确携带三日凌空终局语义，普通 fire 即使达到强度 10 也不能冒充。</span></li>
+            <li><strong>有限化身时间</strong><span>普通快进与第一人称化身共用 month-execution：进入后暂存下一月，已提交 elapsedMonths 不变；自由观察不耗刻度，每个玩家命令让稳定顺序中的全部人物执行一个完整 tick。走完第 15 刻，或交还自主后由本地规则跑完余下刻度，才进行一次月末结算和原子提交。</span></li>
             <li><strong>空间与物质</strong><span>84 × 52 × 12 体素、通行、可达位置、掉落物和材料响应。</span></li>
             <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；干旱可把河水蒸发成 Sand，后续 rain / storm 只会从相邻真实 Water 向生成河道的干涸格逐格补给，普通沙地和孤立干河格不会凭空进水。普通 Water 不能被猜成动力源。完成网络仍须现场复核水流、拓扑、输入与操作者知识；只有成功负载造成磨损。这只是受限机械网络，不代表电力、信号、计算或信息时代。</span></li>
             <li><strong>身体与人口</strong><span>健康、水分、营养、冷热、伤病、衰老、妊娠、普通分娩后的 9–15 个月产后恢复、出生与死亡；魅魔分娩不创建恢复期。普通死亡生成一人一遗体，并把背包变成标记原主人及死亡来源的地面遗物，不向全世界广播。三日凌空是终局例外：第一个规划刻度内全部汽化，随身库存销毁且不生成遗体或遗物。人口接近 50 时受孕机会递减，超过承载能力后资源消耗继续上升。出生同时确定最多三个遗传 / 先民特质和一个随机异变，保存两类完整抽样；双生妊娠提高中止风险并产生两个独立孩子与出生事实，饕餮令月度营养消耗乘 1.5。默认父系命名，任一亲代携带母脉时随母姓并采用母亲命名传统。模型演进可在提交前提议 givenName，但特质、姓氏、顺序、字符、重名与失败回退由本地规则控制。</span></li>
@@ -301,6 +302,7 @@ const RULES_PAGE_MARKUP = `
           <ul>
             <li><strong>五种原子动作</strong><span>move · transfer · act · attend · communicate。</span></li>
             <li><strong>移动成本</strong><span>每个规划刻度有 2 点地形成本预算：普通平地每边成本 2，连续夯土 / 木板道路每边成本 1，因此道路上可连续前进两格。高成本地形至少允许跨过一条相邻边；路径事件保留全部中间格，体力、代谢、踩踏与规划耗时使用同一累计成本。</span></li>
+            <li><strong>有限化身操作</strong><span>第一人称转头、瞄准与查看提示只读；移动命令只从四向邻格中选一条当前合法站立边，即使在道路上也不跨两格。客户端只回传当前投影的 optionId + choiceKey，人物轮次重新编译并由领域层复核；生存、照护与必要避护仍可先接管。建造只展示真实 DecisionContext 中已有的项目 / 建造候选，沿同一材料、场址、Intent / Project 和 ActionFact 规则执行。</span></li>
             <li><strong>十种领域操作</strong><span>exert · separate · combine · expose · ingest · reproduce · hunt · dehydrate · rehydrate · inter。</span></li>
             <li><strong>提交前预演</strong><span>检查目标、路径、材料、工具、授权、身体和空间；person→ground 只能投放到人物当前 cell / z，不能远程落物。</span></li>
             <li><strong>语音与近身</strong><span>普通 voice 沟通允许水平相邻一格且站立高度相差不超过一级；接受 / 拒绝、交换与许可协商、教学和谈话都可隔着这一个相邻站位完成。更远的会合优先选择听者附近占用更低的可达位置。物品交付、照护、生殖、施力和携带仍要求精确同一站位。</span></li>
@@ -516,7 +518,8 @@ const RULES_PAGE_MARKUP = `
         <p>解释当前行为时以可执行代码为准；设计文档用于说明边界与意图。</p>
       </div>
       <div class="source-grid">
-        <article><strong>月度主循环</strong><code>application/simulation/month-boundary.ts · tick-planner.ts · tick-executor.ts</code><span>固定 atMonth、15 tick、执行顺序、月初 / 月末结算与文明终局判定</span></article>
+        <article><strong>月度主循环</strong><code>application/simulation/month-boundary.ts · month-execution.ts · tick-planner.ts · tick-executor.ts</code><span>固定 atMonth、共享暂存月生命周期、15 tick、执行顺序、月初 / 月末结算与文明终局判定</span></article>
+        <article><strong>有限化身</strong><code>application/player-embodiment.ts · server/eland-session/embodiment-coordinator.ts · LimitedEmbodimentHud.tsx · EmbodimentCameraController.ts</code><span>稳定合法选项、逐刻全世界执行、第一人称镜头与一次月提交；观察不耗 tick，建造不绕过领域规则</span></article>
         <article><strong>人物选项</strong><code>application/action-options.ts</code><span>局部感知、合法可供性与结构化失败重试 basis</span></article>
         <article><strong>因果 BDI</strong><code>application/cognition/** · domain/cognition.ts</code><span>动态需要、人格 / 记忆 / 结果后验门控与意图持续</span></article>
         <article><strong>人格学习</strong><code>domain/personality.ts</code><span>HEXACO 初始化、行动证据、跨情境整合与慢速变化</span></article>

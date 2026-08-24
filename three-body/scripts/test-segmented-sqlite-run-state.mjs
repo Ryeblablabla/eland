@@ -10,10 +10,19 @@ import { brotliCompressSync, brotliDecompressSync } from 'node:zlib';
 
 const ROOT_CODEC = 'eland-run-state-root-v1';
 const SHELL_CODEC = 'eland-run-state-shell-v1';
+const SHELL_MANIFEST_CODEC = 'eland-run-state-shell-manifest-v1';
+const SHELL_PART_CODEC = 'eland-run-state-shell-part-v1';
 const HISTORY_NODE_CODEC = 'eland-run-history-node-v1';
 const EVENT_CODEC = 'eland-run-state-events-v1';
 const LEGACY_CODEC = 'v8-br-v1';
-const STATE_CODECS = [ROOT_CODEC, SHELL_CODEC, HISTORY_NODE_CODEC, EVENT_CODEC];
+const STATE_CODECS = [
+  ROOT_CODEC,
+  SHELL_CODEC,
+  SHELL_MANIFEST_CODEC,
+  SHELL_PART_CODEC,
+  HISTORY_NODE_CODEC,
+  EVENT_CODEC,
+];
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-segmented-run-state-'));
 const storeBundlePath = path.join(temporaryDirectory, 'sqlite-run-store.mjs');
@@ -128,6 +137,14 @@ function unreachableSegmentedChunks(database) {
     if (rootRow.codec !== ROOT_CODEC) continue;
     const root = deserialize(buffer(rootRow.data));
     reachable.add(root.shellHash);
+    const shellRow = chunk(database, root.shellHash);
+    if (shellRow?.codec === SHELL_MANIFEST_CODEC) {
+      const manifest = deserialize(buffer(shellRow.data));
+      for (const field of [...manifest.fields, ...manifest.worldFields]) {
+        if (field.kind === 'value') reachable.add(field.hash);
+        else for (const segment of field.segments) reachable.add(segment.hash);
+      }
+    }
     let nodeHash = root.historyHeadHash;
     while (nodeHash && !visitedNodes.has(nodeHash)) {
       visitedNodes.add(nodeHash);
@@ -137,7 +154,8 @@ function unreachableSegmentedChunks(database) {
       nodeHash = node.parentHash;
     }
   }
-  return database.prepare(`SELECT hash FROM chunks WHERE codec IN (?, ?, ?, ?)`).all(...STATE_CODECS)
+  const placeholders = STATE_CODECS.map(() => '?').join(', ');
+  return database.prepare(`SELECT hash FROM chunks WHERE codec IN (${placeholders})`).all(...STATE_CODECS)
     .map((row) => String(row.hash))
     .filter((hash) => !reachable.has(hash));
 }
@@ -193,9 +211,17 @@ try {
   const firstSegmentHash = firstNode.segments[0].hash;
   const firstSegmentBytes = Buffer.from(chunk(database, firstSegmentHash).data);
   const shellRow = chunk(database, first.metadata.shellHash);
-  assert.equal(shellRow.codec, SHELL_CODEC);
-  const shell = deserialize(brotliDecompressSync(buffer(shellRow.data)));
-  assert.equal(Object.hasOwn(shell.world, 'past'), false, 'shell 不得保存 world.past');
+  assert.equal(shellRow.codec, SHELL_MANIFEST_CODEC);
+  const shellManifest = deserialize(buffer(shellRow.data));
+  assert.equal(shellManifest.schemaVersion, 1);
+  assert.equal(shellManifest.fields.some((field) => field.name === 'world'), false);
+  assert.equal(shellManifest.worldFields.some((field) => field.name === 'past'), false);
+  const peopleReference = shellManifest.fields.find((field) => field.name === 'people');
+  assert.equal(peopleReference.kind, 'array');
+  assert.equal(peopleReference.length, initialState.people.length);
+  for (const reference of peopleReference.segments) {
+    assert.equal(chunk(database, reference.hash).codec, SHELL_PART_CODEC);
+  }
 
   const extendedInput = structuredClone(created.state);
   appendEvent(extendedInput, 'e-appended-2050', 1);

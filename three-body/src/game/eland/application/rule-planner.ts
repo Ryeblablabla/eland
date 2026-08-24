@@ -2,6 +2,7 @@ import { goalSatisfied } from '../domain/action-executor';
 import type { ActionOption, FactPredicate, Intent, LifeReviewEvidence } from '../domain/action';
 import type { AgentDecider, Decision, DecisionContext } from '../domain/model';
 import { ageMonths } from '../domain/person';
+import { isResumableIntent } from '../domain/intent';
 import { followUpSemanticallyMatches } from '../domain/intent-follow-up';
 import { reproductiveResponsibility } from '../domain/dependent-care';
 import { personalityScore } from '../domain/personality';
@@ -305,7 +306,7 @@ export class RulePlanner implements AgentDecider {
         kind: 'revise',
         intentId: active.id,
         optionId: forced.id,
-        ...(active.projectId || active.returnToIntentId ? {
+        ...(isResumableIntent(active) ? {
           mode: 'interrupt' as const,
           interruptionKind: required.length ? 'required-response' as const : 'fulfillment' as const,
         } : {}),
@@ -344,7 +345,7 @@ export class RulePlanner implements AgentDecider {
 
     if (option?.recordUseBasis
       && !active.recordUseBasis
-      && (active.projectId || active.returnToIntentId)) {
+      && isResumableIntent(active)) {
       return {
         kind: 'revise',
         intentId: active.id,

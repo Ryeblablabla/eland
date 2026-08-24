@@ -4,7 +4,13 @@ import { Material, type MaterialId } from '../domain/material';
 import type { ActionFact, DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
 import { worldEventById } from '../domain/event-index';
-import { intentsOwnedBy, personById, projectById, projectsOwnedBy } from '../domain/state-index';
+import {
+  intentsOwnedBy,
+  personById,
+  projectById,
+  projectsOwnedBy,
+  projectsRequiringMonthlySynchronization,
+} from '../domain/state-index';
 import {
   cloneProjectForPlanning,
   instantiateProject,
@@ -335,7 +341,9 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
 }
 
 export function advanceProjects(state: SimulationState, atMonth = state.clock.elapsedMonths): void {
-  for (const project of state.projects) synchronizeProject(state, project, atMonth);
+  for (const project of projectsRequiringMonthlySynchronization(state)) {
+    synchronizeProject(state, project, atMonth);
+  }
 }
 
 export function recordProjectAction(state: SimulationState, projectId: string, fact: ActionFact): void {

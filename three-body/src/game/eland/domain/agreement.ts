@@ -7,7 +7,12 @@ import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 import { completedActionFactsForPerson, worldEventById } from './event-index';
-import { intentById, personById } from './state-index';
+import {
+  agreementsRequiringLifecycle,
+  agreementsRequiringResponseDeadlineSynchronization,
+  intentById,
+  personById,
+} from './state-index';
 import {
   companionSharesLivingArea,
   REQUIRED_SHARED_LIVING_MONTHS,
@@ -508,7 +513,7 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
   sourceEvents: readonly WorldEvent[] = [],
 ): AgreementFact[] {
   const events: AgreementFact[] = [];
-  for (const agreement of state.agreements) {
+  for (const agreement of agreementsRequiringResponseDeadlineSynchronization(state)) {
     for (const responderId of agreement.requiredResponderIds) {
       const responder = personById(state, responderId);
       if (!responder || !isAlive(responder)) continue;
@@ -565,7 +570,7 @@ export function synchronizeAgreementResponseDeadlineSuspensions(
 
 export function advanceAgreementLifecycle(state: SimulationState, atMonth: number, orderOffset = 0): AgreementFact[] {
   const events: AgreementFact[] = [];
-  for (const agreement of state.agreements) {
+  for (const agreement of agreementsRequiringLifecycle(state)) {
     // Older saves ended a successfully established companionship.  Recover it
     // as the same ongoing, revocable relationship instead of forcing a fresh
     // proposal with no new causal basis.

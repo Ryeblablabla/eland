@@ -25,10 +25,11 @@ export interface IntentChoice {
  * resumed without losing their identity or progress.
  */
 export function isResumableIntent(
-  intent: Pick<Intent, 'projectId' | 'returnToIntentId'>,
+  intent: Pick<Intent, 'projectId' | 'returnToIntentId' | 'stateGoalUntilMonth'>,
 ): boolean {
   return Boolean(intent.projectId
-    || intent.returnToIntentId);
+    || intent.returnToIntentId
+    || intent.stateGoalUntilMonth !== undefined);
 }
 
 function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {

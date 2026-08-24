@@ -1,5 +1,0 @@
-{"id":"e-128-environment-death-0","kind":"environment","atMonth":128,"orderInMonth":9,"cellId":2361,"change":"death","who":"prometheus","result":"普罗米修斯在第 128 月死亡，私有背包遗留在原地","diff":{"personId":"prometheus","ageMonths":320}}
-{"id":"e-229-environment-death-3","kind":"environment","atMonth":229,"orderInMonth":8,"cellId":2359,"change":"death","who":"marx","result":"卡尔·马克思在第 229 月死亡，私有背包遗留在原地","diff":{"personId":"marx","ageMonths":505}}
-{"id":"e-232-environment-death-4","kind":"environment","atMonth":232,"orderInMonth":8,"cellId":2359,"change":"death","who":"nuwa","result":"女娲在第 232 月死亡，私有背包遗留在原地","diff":{"personId":"nuwa","ageMonths":568}}
-{"id":"e-233-environment-death-0","kind":"environment","atMonth":233,"orderInMonth":5,"cellId":2359,"change":"death","who":"xuanzang","result":"唐玄奘在第 233 月死亡，私有背包遗留在原地","diff":{"personId":"xuanzang","ageMonths":569}}
-{"id":"e-233-environment-death-2","kind":"environment","atMonth":233,"orderInMonth":7,"cellId":2359,"change":"death","who":"galileo","result":"伽利略在第 233 月死亡，私有背包遗留在原地","diff":{"personId":"galileo","ageMonths":569}}

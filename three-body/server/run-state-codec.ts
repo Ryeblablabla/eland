@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { deserialize, serialize } from 'node:v8';
 import {
   brotliCompress,
-  brotliDecompress,
+  brotliDecompressSync,
   constants as zlibConstants,
 } from 'node:zlib';
 
@@ -12,21 +12,30 @@ import { internEventHistoryAuditStrings } from './event-history-memory';
 
 export const RUN_STATE_ROOT_CODEC = 'eland-run-state-root-v1';
 export const RUN_STATE_SHELL_CODEC = 'eland-run-state-shell-v1';
+export const RUN_STATE_SHELL_MANIFEST_CODEC = 'eland-run-state-shell-manifest-v1';
+export const RUN_STATE_SHELL_PART_CODEC = 'eland-run-state-shell-part-v1';
 export const RUN_HISTORY_NODE_CODEC = 'eland-run-history-node-v1';
 export const RUN_STATE_EVENT_SEGMENT_CODEC = 'eland-run-state-events-v1';
 export const RUN_STATE_CODECS = [
   RUN_STATE_ROOT_CODEC,
   RUN_STATE_SHELL_CODEC,
+  RUN_STATE_SHELL_MANIFEST_CODEC,
+  RUN_STATE_SHELL_PART_CODEC,
   RUN_HISTORY_NODE_CODEC,
   RUN_STATE_EVENT_SEGMENT_CODEC,
 ] as const;
 
 const EVENT_CONTENT_DOMAIN = 'eland-run-event-content-v2';
 const MAX_EVENTS_PER_SEGMENT = 2_048;
+/**
+ * A positional boundary is deliberately independent of values and evolution
+ * outcomes. Append-mostly historical arrays can therefore reuse every full
+ * prefix segment while small arrays still have useful member-level reuse.
+ */
+export const MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT = 64;
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const LINEAGE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const compress = promisify(brotliCompress);
-const decompress = promisify(brotliDecompress);
 
 export interface RunStateChunk {
   hash: string;
@@ -46,7 +55,7 @@ export interface RunStateSegmentReference {
  * Chunk hashes are the codec-scoped content/integrity hashes.
  */
 export interface RunStateRootMetadata {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   shellHash: string;
   historyHeadHash: string | null;
   lineageId: string;
@@ -64,6 +73,34 @@ export interface RunHistoryNodeMetadata {
   segments: RunStateSegmentReference[];
 }
 
+export interface RunStateShellPartReference {
+  hash: string;
+  itemCount: number;
+}
+
+export type RunStateShellFieldReference =
+  | {
+    name: string;
+    kind: 'value';
+    hash: string;
+  }
+  | {
+    name: string;
+    kind: 'array';
+    length: number;
+    segments: RunStateShellPartReference[];
+  };
+
+/**
+ * Field order is authoritative. It preserves the original object insertion
+ * order; array segment order preserves each SimulationState collection exactly.
+ */
+export interface RunStateShellManifestMetadata {
+  schemaVersion: 1;
+  fields: RunStateShellFieldReference[];
+  worldFields: RunStateShellFieldReference[];
+}
+
 export interface EncodedRunState {
   root: RunStateChunk;
   parts: RunStateChunk[];
@@ -75,9 +112,18 @@ export interface DecodedRunState {
   metadata: RunStateRootMetadata;
 }
 
+export interface RunStateDecodeOptions {
+  /** Benchmark escape hatch; authoritative restore always uses the default. */
+  canonicalizeEventIdReferences?: boolean;
+}
+
 export interface RunStateReachabilityMemo {
   chunks: Set<string>;
   historyNodes: Set<string>;
+  /** Optional for callers compiled against v14; initialized lazily by v15. */
+  shellManifests?: Set<string>;
+  /** Avoid re-reading/re-hashing one reused part through every retained manifest. */
+  shellParts?: Set<string>;
 }
 
 export type RunStateWritePlan =
@@ -140,12 +186,65 @@ function stateShell(state: SimulationState): SimulationStateShell {
   return { ...state, world };
 }
 
+function stateShellFieldGroups(state: SimulationState): {
+  fields: Record<string, unknown>;
+  worldFields: Record<string, unknown>;
+} {
+  const shell = stateShell(state);
+  const { world, ...fields } = shell;
+  return { fields, worldFields: world };
+}
+
 async function compressedV8Chunk(codec: string, value: unknown): Promise<RunStateChunk> {
   const raw = serialize(value);
   const data = await compress(raw, {
     params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
   });
   return storedChunk(codec, data);
+}
+
+async function encodeShellFieldReferences(fields: Record<string, unknown>): Promise<{
+  chunks: RunStateChunk[];
+  references: RunStateShellFieldReference[];
+}> {
+  const chunks: RunStateChunk[] = [];
+  const references: RunStateShellFieldReference[] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    if (!Array.isArray(value)) {
+      const chunk = await compressedV8Chunk(RUN_STATE_SHELL_PART_CODEC, value);
+      chunks.push(chunk);
+      references.push({ name, kind: 'value', hash: chunk.hash });
+      continue;
+    }
+
+    const segments: RunStateShellPartReference[] = [];
+    for (let offset = 0; offset < value.length; offset += MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT) {
+      const segment = value.slice(offset, offset + MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT);
+      const chunk = await compressedV8Chunk(RUN_STATE_SHELL_PART_CODEC, segment);
+      chunks.push(chunk);
+      segments.push({ hash: chunk.hash, itemCount: segment.length });
+    }
+    references.push({ name, kind: 'array', length: value.length, segments });
+  }
+  return { chunks, references };
+}
+
+async function encodeSegmentedShell(state: SimulationState): Promise<{
+  manifest: RunStateChunk;
+  parts: RunStateChunk[];
+}> {
+  const groups = stateShellFieldGroups(state);
+  const fields = await encodeShellFieldReferences(groups.fields);
+  const worldFields = await encodeShellFieldReferences(groups.worldFields);
+  const metadata: RunStateShellManifestMetadata = {
+    schemaVersion: 1,
+    fields: fields.references,
+    worldFields: worldFields.references,
+  };
+  return {
+    manifest: storedChunk(RUN_STATE_SHELL_MANIFEST_CODEC, serialize(metadata)),
+    parts: [...fields.chunks, ...worldFields.chunks],
+  };
 }
 
 async function encodeEventSegments(events: WorldEvent[]): Promise<{
@@ -196,6 +295,53 @@ function validSegmentReferences(value: unknown): value is RunStateSegmentReferen
     && Number((segment as Partial<RunStateSegmentReference>).eventCount) > 0);
 }
 
+function validShellPartReferences(value: unknown, expectedLength: number): value is RunStateShellPartReference[] {
+  if (!Array.isArray(value)) return false;
+  let itemCount = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const reference = value[index] as Partial<RunStateShellPartReference> | null;
+    if (!reference
+      || typeof reference !== 'object'
+      || !validHash(reference.hash)
+      || !Number.isSafeInteger(reference.itemCount)
+      || Number(reference.itemCount) <= 0
+      || Number(reference.itemCount) > MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT
+      || (index < value.length - 1
+        && Number(reference.itemCount) !== MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT)) {
+      return false;
+    }
+    itemCount += Number(reference.itemCount);
+  }
+  return itemCount === expectedLength
+    && (expectedLength === 0) === (value.length === 0);
+}
+
+function validShellFieldReferences(value: unknown): value is RunStateShellFieldReference[] {
+  if (!Array.isArray(value)) return false;
+  const names = new Set<string>();
+  for (const field of value) {
+    if (!field || typeof field !== 'object') return false;
+    const candidate = field as Partial<RunStateShellFieldReference>;
+    if (typeof candidate.name !== 'string'
+      || candidate.name.length === 0
+      || names.has(candidate.name)) {
+      return false;
+    }
+    names.add(candidate.name);
+    if (candidate.kind === 'value') {
+      if (!validHash(candidate.hash)) return false;
+      continue;
+    }
+    if (candidate.kind !== 'array'
+      || !Number.isSafeInteger(candidate.length)
+      || Number(candidate.length) < 0
+      || !validShellPartReferences(candidate.segments, Number(candidate.length))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function verifiedRunStateChunkData(
   chunk: RunStateChunk,
   expectedCodec: string,
@@ -216,7 +362,7 @@ export function verifiedRunStateChunkData(
 export function parseRunStateRoot(chunk: RunStateChunk): RunStateRootMetadata {
   const data = verifiedRunStateChunkData(chunk, RUN_STATE_ROOT_CODEC, '运行状态根');
   const root = parsedV8Object(data, '运行状态根');
-  if ((root.schemaVersion !== 1 && root.schemaVersion !== 2)
+  if ((root.schemaVersion !== 1 && root.schemaVersion !== 2 && root.schemaVersion !== 3)
     || !validHash(root.shellHash)
     || !validOptionalHash(root.historyHeadHash)
     || !validLineage(root.lineageId)
@@ -228,6 +374,23 @@ export function parseRunStateRoot(chunk: RunStateChunk): RunStateRootMetadata {
     throw new Error('运行状态根内容无效');
   }
   return root as unknown as RunStateRootMetadata;
+}
+
+export function parseRunStateShellManifest(chunk: RunStateChunk): RunStateShellManifestMetadata {
+  const data = verifiedRunStateChunkData(
+    chunk,
+    RUN_STATE_SHELL_MANIFEST_CODEC,
+    '运行状态 shell manifest',
+  );
+  const manifest = parsedV8Object(data, '运行状态 shell manifest');
+  if (manifest.schemaVersion !== 1
+    || !validShellFieldReferences(manifest.fields)
+    || !validShellFieldReferences(manifest.worldFields)
+    || manifest.fields.some((field) => field.name === 'world')
+    || manifest.worldFields.some((field) => field.name === 'past')) {
+    throw new Error('运行状态 shell manifest 内容无效');
+  }
+  return manifest as unknown as RunStateShellManifestMetadata;
 }
 
 export function parseRunHistoryNode(chunk: RunStateChunk): RunHistoryNodeMetadata {
@@ -249,11 +412,11 @@ export function parseRunHistoryNode(chunk: RunStateChunk): RunHistoryNodeMetadat
   return node as unknown as RunHistoryNodeMetadata;
 }
 
-async function decodeCompressedV8<T>(chunk: RunStateChunk, codec: string, label: string): Promise<T> {
+function decodeCompressedV8<T>(chunk: RunStateChunk, codec: string, label: string): T {
   const compressed = verifiedRunStateChunkData(chunk, codec, label);
   let raw: Buffer;
   try {
-    raw = await decompress(compressed);
+    raw = brotliDecompressSync(compressed);
   } catch (error) {
     throw new Error(`${label} ${chunk.hash} 无法解压`, { cause: error });
   }
@@ -265,7 +428,7 @@ async function decodeCompressedV8<T>(chunk: RunStateChunk, codec: string, label:
 }
 
 function assertAppendBoundary(state: SimulationState, previous: RunStateRootMetadata): void {
-  if (previous.schemaVersion !== 2) {
+  if (previous.schemaVersion !== 2 && previous.schemaVersion !== 3) {
     throw new Error('旧版运行状态根必须先通过 replace 模式升级，不能直接追加');
   }
   const events = state.world.past;
@@ -324,11 +487,11 @@ export async function encodeSegmentedRunState(
     historyHeadHash = nodeChunk.hash;
   }
 
-  const shell = await compressedV8Chunk(RUN_STATE_SHELL_CODEC, stateShell(state));
-  parts.unshift(shell);
+  const shell = await encodeSegmentedShell(state);
+  parts.unshift(...shell.parts, shell.manifest);
   const metadata: RunStateRootMetadata = {
-    schemaVersion: 2,
-    shellHash: shell.hash,
+    schemaVersion: 3,
+    shellHash: shell.manifest.hash,
     historyHeadHash,
     lineageId,
     eventCount: events.length,
@@ -364,6 +527,56 @@ function orderedHistoryNodes(
   return reversed.reverse();
 }
 
+function shellPartHashes(manifest: RunStateShellManifestMetadata): string[] {
+  const hashes: string[] = [];
+  for (const field of [...manifest.fields, ...manifest.worldFields]) {
+    if (field.kind === 'value') {
+      hashes.push(field.hash);
+    } else {
+      hashes.push(...field.segments.map((segment) => segment.hash));
+    }
+  }
+  return hashes;
+}
+
+function markReachableRunStateShellChunks(
+  root: RunStateRootMetadata,
+  readChunk: (hash: string) => RunStateChunk,
+  memo: RunStateReachabilityMemo,
+): void {
+  const shellHash = root.shellHash;
+  memo.chunks.add(shellHash);
+  const shellChunk = readChunk(shellHash);
+  if (shellChunk.codec === RUN_STATE_SHELL_CODEC) {
+    if (root.schemaVersion === 3) {
+      throw new Error('运行状态根 schemaVersion 3 必须引用 shell manifest');
+    }
+    verifiedRunStateChunkData(shellChunk, RUN_STATE_SHELL_CODEC, '运行状态 shell');
+    return;
+  }
+  if (shellChunk.codec !== RUN_STATE_SHELL_MANIFEST_CODEC) {
+    throw new Error(`运行状态 shell ${shellHash} 使用了不支持的编码 ${shellChunk.codec}`);
+  }
+  if (root.schemaVersion !== 3) {
+    throw new Error('旧版运行状态根不得引用 shell manifest');
+  }
+  memo.shellManifests ??= new Set<string>();
+  if (memo.shellManifests.has(shellHash)) return;
+  memo.shellManifests.add(shellHash);
+  const manifest = parseRunStateShellManifest(shellChunk);
+  memo.shellParts ??= new Set<string>();
+  for (const partHash of shellPartHashes(manifest)) {
+    memo.chunks.add(partHash);
+    if (memo.shellParts.has(partHash)) continue;
+    memo.shellParts.add(partHash);
+    verifiedRunStateChunkData(
+      readChunk(partHash),
+      RUN_STATE_SHELL_PART_CODEC,
+      '运行状态 shell 子块',
+    );
+  }
+}
+
 /** Return every codec-owned chunk reachable from one verified state root. */
 export function markReachableRunStateChunks(
   rootChunk: RunStateChunk,
@@ -372,7 +585,7 @@ export function markReachableRunStateChunks(
 ): RunStateReachabilityMemo {
   const root = parseRunStateRoot(rootChunk);
   memo.chunks.add(rootChunk.hash);
-  memo.chunks.add(root.shellHash);
+  markReachableRunStateShellChunks(root, readChunk, memo);
   let expectedTotal = root.eventCount;
   let nodeHash = root.historyHeadHash;
   while (nodeHash) {
@@ -393,24 +606,170 @@ export function markReachableRunStateChunks(
   return memo;
 }
 
+function decodeShellFieldReferences(
+  fields: RunStateShellFieldReference[],
+  readChunk: (hash: string) => RunStateChunk,
+  canonicalEventIds?: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  const decoded: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field.kind === 'value') {
+      const value = decodeCompressedV8<unknown>(
+        readChunk(field.hash),
+        RUN_STATE_SHELL_PART_CODEC,
+        `运行状态 shell 字段 ${field.name}`,
+      );
+      if (canonicalEventIds) canonicalizeEventIdReferences(value, canonicalEventIds);
+      decoded[field.name] = value;
+      continue;
+    }
+    const items: unknown[] = new Array(field.length);
+    let offset = 0;
+    for (const reference of field.segments) {
+      const segment = decodeCompressedV8<unknown>(
+        readChunk(reference.hash),
+        RUN_STATE_SHELL_PART_CODEC,
+        `运行状态 shell 数组 ${field.name}`,
+      );
+      if (!Array.isArray(segment) || segment.length !== reference.itemCount) {
+        throw new Error(`运行状态 shell 数组 ${field.name} 的子块 ${reference.hash} 数量不一致`);
+      }
+      if (canonicalEventIds) canonicalizeEventIdReferences(segment, canonicalEventIds);
+      for (let index = 0; index < segment.length; index += 1) {
+        if (Object.prototype.hasOwnProperty.call(segment, index)) {
+          items[offset + index] = segment[index];
+        }
+      }
+      offset += segment.length;
+    }
+    if (offset !== field.length) {
+      throw new Error(`运行状态 shell 数组 ${field.name} 的总长度不一致`);
+    }
+    decoded[field.name] = items;
+  }
+  return decoded;
+}
+
+function decodeRunStateShell(
+  root: RunStateRootMetadata,
+  readChunk: (hash: string) => RunStateChunk,
+  canonicalEventIds?: ReadonlyMap<string, string>,
+): SimulationStateShell {
+  const shellHash = root.shellHash;
+  const shellChunk = readChunk(shellHash);
+  if (shellChunk.codec === RUN_STATE_SHELL_CODEC) {
+    if (root.schemaVersion === 3) {
+      throw new Error('运行状态根 schemaVersion 3 必须引用 shell manifest');
+    }
+    const shell = decodeCompressedV8<SimulationStateShell>(
+      shellChunk,
+      RUN_STATE_SHELL_CODEC,
+      '运行状态 shell',
+    );
+    if (canonicalEventIds) canonicalizeEventIdReferences(shell, canonicalEventIds);
+    return shell;
+  }
+  if (shellChunk.codec !== RUN_STATE_SHELL_MANIFEST_CODEC) {
+    throw new Error(`运行状态 shell ${shellHash} 使用了不支持的编码 ${shellChunk.codec}`);
+  }
+  if (root.schemaVersion !== 3) {
+    throw new Error('旧版运行状态根不得引用 shell manifest');
+  }
+  const manifest = parseRunStateShellManifest(shellChunk);
+  return {
+    ...decodeShellFieldReferences(manifest.fields, readChunk, canonicalEventIds),
+    world: decodeShellFieldReferences(manifest.worldFields, readChunk, canonicalEventIds),
+  } as unknown as SimulationStateShell;
+}
+
+/**
+ * Replace strings that equal an authoritative event id with the exact string
+ * value held by that WorldEvent. Only decoded, mutable container values are
+ * changed; keys, prototypes, typed buffers and other opaque objects are kept.
+ */
+function canonicalizeEventIdReferences(
+  value: unknown,
+  canonicalEventIds: ReadonlyMap<string, string>,
+): void {
+  if (!value || typeof value !== 'object' || canonicalEventIds.size === 0) return;
+  const pending: object[] = [value];
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      for (let index = 0; index < current.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(current, index)) continue;
+        const child = current[index];
+        if (typeof child === 'string') {
+          const canonical = canonicalEventIds.get(child);
+          if (canonical !== undefined) current[index] = canonical;
+        } else if (child && typeof child === 'object') {
+          pending.push(child);
+        }
+      }
+      continue;
+    }
+
+    if (current instanceof Map) {
+      for (const [key, child] of current) {
+        if (typeof child === 'string') {
+          const canonical = canonicalEventIds.get(child);
+          if (canonical !== undefined) current.set(key, canonical);
+        } else if (child && typeof child === 'object') {
+          pending.push(child);
+        }
+        if (key && typeof key === 'object') pending.push(key);
+      }
+      continue;
+    }
+
+    if (current instanceof Set) {
+      const items = [...current];
+      let hasCanonicalString = false;
+      for (let index = 0; index < items.length; index += 1) {
+        const child = items[index];
+        if (typeof child === 'string') {
+          const canonical = canonicalEventIds.get(child);
+          if (canonical !== undefined) {
+            items[index] = canonical;
+            hasCanonicalString = true;
+          }
+        } else if (child && typeof child === 'object') {
+          pending.push(child);
+        }
+      }
+      if (hasCanonicalString) {
+        current.clear();
+        for (const item of items) current.add(item);
+      }
+      continue;
+    }
+
+    const prototype = Object.getPrototypeOf(current);
+    if (prototype !== Object.prototype && prototype !== null) continue;
+    for (const key of Object.keys(current)) {
+      const record = current as Record<string, unknown>;
+      const child = record[key];
+      if (typeof child === 'string') {
+        const canonical = canonicalEventIds.get(child);
+        if (canonical !== undefined) record[key] = canonical;
+      } else if (child && typeof child === 'object') {
+        pending.push(child);
+      }
+    }
+  }
+}
+
 /** Decode and verify every referenced shell/node/segment before hydration. */
 export async function decodeSegmentedRunState(
   rootChunk: RunStateChunk,
   readChunk: (hash: string) => RunStateChunk,
+  options: RunStateDecodeOptions = {},
 ): Promise<DecodedRunState> {
   const root = parseRunStateRoot(rootChunk);
-  const shell = await decodeCompressedV8<SimulationStateShell>(
-    readChunk(root.shellHash),
-    RUN_STATE_SHELL_CODEC,
-    '运行状态 shell',
-  );
-  if (!shell || typeof shell !== 'object' || !shell.world || typeof shell.world !== 'object') {
-    throw new Error('运行状态 shell 内容无效');
-  }
-  if (Object.prototype.hasOwnProperty.call(shell.world, 'past')) {
-    throw new Error('运行状态 shell 非法包含 world.past');
-  }
-
   const events: WorldEvent[] = [];
   const auditStringPool = new Map<string, string>();
   for (const { node } of orderedHistoryNodes(root, readChunk)) {
@@ -429,8 +788,21 @@ export async function decodeSegmentedRunState(
     }
   }
   if (events.length !== root.eventCount
-    || (root.schemaVersion === 2 && tailEventContentHash(events) !== root.tailEventContentHash)) {
+    || (root.schemaVersion >= 2 && tailEventContentHash(events) !== root.tailEventContentHash)) {
     throw new Error('运行状态事件历史与状态根不一致');
+  }
+
+  let canonicalEventIds: Map<string, string> | undefined;
+  if (options.canonicalizeEventIdReferences !== false) {
+    canonicalEventIds = new Map<string, string>();
+    for (const event of events) canonicalEventIds.set(event.id, event.id);
+  }
+  const shell = decodeRunStateShell(root, readChunk, canonicalEventIds);
+  if (!shell || typeof shell !== 'object' || !shell.world || typeof shell.world !== 'object') {
+    throw new Error('运行状态 shell 内容无效');
+  }
+  if (Object.prototype.hasOwnProperty.call(shell.world, 'past')) {
+    throw new Error('运行状态 shell 非法包含 world.past');
   }
 
   const lastStepIds = new Set(shell.lastStep.map((event) => event.id));

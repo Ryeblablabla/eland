@@ -16,13 +16,113 @@ interface IntentIndex extends AppendOnlyIdIndex<Intent> {
   byOwnerId: Map<PersonId, Intent[]>;
 }
 
+type AgreementState = SimulationState['agreements'][number];
+
+interface ProjectLifecycleIndex {
+  itemRefs: ProjectState[];
+  signatures: string[];
+  candidates: ProjectState[];
+}
+
+interface AgreementLifecycleIndex {
+  itemRefs: AgreementState[];
+  signatures: string[];
+  lifecycleCandidates: AgreementState[];
+  responseDeadlineCandidates: AgreementState[];
+}
+
 const personIndexes = new WeakMap<SimulationState['people'], AppendOnlyIdIndex<PersonState>>();
 const projectIndexes = new WeakMap<SimulationState['projects'], ProjectIndex>();
 const intentIndexes = new WeakMap<SimulationState['intents'], IntentIndex>();
+const projectLifecycleIndexes = new WeakMap<SimulationState['projects'], ProjectLifecycleIndex>();
+const agreementLifecycleIndexes = new WeakMap<SimulationState['agreements'], AgreementLifecycleIndex>();
 
 function indexInvalid<T extends { id: string }>(items: T[], index: AppendOnlyIdIndex<T>): boolean {
   return index.indexedLength > items.length
     || (index.indexedLength > 0 && items[index.indexedLength - 1] !== index.lastIndexedItem);
+}
+
+function mutableIndexMatches<T>(
+  items: T[],
+  itemRefs: readonly T[],
+  signatures: readonly string[],
+  signatureFor: (item: T) => string,
+): boolean {
+  if (items.length !== itemRefs.length || items.length !== signatures.length) return false;
+  for (let offset = 0; offset < items.length; offset += 1) {
+    if (items[offset] !== itemRefs[offset] || signatureFor(items[offset]) !== signatures[offset]) return false;
+  }
+  return true;
+}
+
+function projectLifecycleSignature(project: ProjectState): string {
+  return [
+    project.status,
+    project.activeLogisticsEpisodeId ?? '',
+    project.terminalInquiryOpportunityBasis ? 'terminal-basis' : '',
+    project.hypothesisCampaign?.status ?? '',
+    project.hypothesisCampaign?.attempts.length ?? 0,
+    ...(project.searchCampaigns ?? []).map((campaign) => campaign.status),
+  ].join('|');
+}
+
+function terminalProjectNeedsSynchronization(project: ProjectState): boolean {
+  if (project.activeLogisticsEpisodeId
+    || project.searchCampaigns?.some((campaign) => campaign.status === 'active')
+    || project.hypothesisCampaign?.status === 'active') return true;
+  return project.status === 'blocked'
+    && !project.terminalInquiryOpportunityBasis
+    && (Boolean(project.hypothesisCampaign?.attempts.length)
+      || Boolean(project.searchCampaigns?.some((campaign) => campaign.status === 'exhausted')));
+}
+
+function projectLifecycleIndex(state: SimulationState): ProjectLifecycleIndex {
+  const projects = state.projects;
+  const existing = projectLifecycleIndexes.get(projects);
+  if (existing && mutableIndexMatches(
+    projects,
+    existing.itemRefs,
+    existing.signatures,
+    projectLifecycleSignature,
+  )) return existing;
+  const index: ProjectLifecycleIndex = {
+    itemRefs: [...projects],
+    signatures: projects.map(projectLifecycleSignature),
+    candidates: projects.filter((project) => project.status === 'active'
+      || terminalProjectNeedsSynchronization(project)),
+  };
+  projectLifecycleIndexes.set(projects, index);
+  return index;
+}
+
+function agreementLifecycleSignature(agreement: AgreementState): string {
+  return [
+    agreement.status,
+    agreement.proposal.kind,
+    agreement.responseDeadlineSuspensions?.length ?? 0,
+  ].join('|');
+}
+
+function agreementLifecycleIndex(state: SimulationState): AgreementLifecycleIndex {
+  const agreements = state.agreements;
+  const existing = agreementLifecycleIndexes.get(agreements);
+  if (existing && mutableIndexMatches(
+    agreements,
+    existing.itemRefs,
+    existing.signatures,
+    agreementLifecycleSignature,
+  )) return existing;
+  const index: AgreementLifecycleIndex = {
+    itemRefs: [...agreements],
+    signatures: agreements.map(agreementLifecycleSignature),
+    lifecycleCandidates: agreements.filter((agreement) => agreement.status === 'proposed'
+      || agreement.status === 'active'
+      || (agreement.status === 'fulfilled' && agreement.proposal.kind === 'companion')),
+    responseDeadlineCandidates: agreements.filter((agreement) => agreement.status === 'proposed'
+      || Boolean(agreement.responseDeadlineSuspensions?.length)),
+  };
+  agreementLifecycleIndexes.set(agreements, index);
+  return index;
 }
 
 function personIndex(state: SimulationState): AppendOnlyIdIndex<PersonState> {
@@ -98,4 +198,21 @@ export function intentById(state: SimulationState, intentId: string): Intent | u
 
 export function intentsOwnedBy(state: SimulationState, ownerId: PersonId): readonly Intent[] {
   return intentIndex(state).byOwnerId.get(ownerId) ?? [];
+}
+
+/** Ordered conservative superset; synchronizeProject remains authoritative. */
+export function projectsRequiringMonthlySynchronization(state: SimulationState): readonly ProjectState[] {
+  return projectLifecycleIndex(state).candidates;
+}
+
+/** Ordered conservative superset; advanceAgreementLifecycle rechecks live status. */
+export function agreementsRequiringLifecycle(state: SimulationState): readonly AgreementState[] {
+  return agreementLifecycleIndex(state).lifecycleCandidates;
+}
+
+/** Ordered conservative superset; suspension open/closed state is still recomputed dynamically. */
+export function agreementsRequiringResponseDeadlineSynchronization(
+  state: SimulationState,
+): readonly AgreementState[] {
+  return agreementLifecycleIndex(state).responseDeadlineCandidates;
 }

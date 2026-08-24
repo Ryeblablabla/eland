@@ -70,7 +70,7 @@ domain model and policies ↔ world grid / material primitives
 ### application/ —— 用例
 
 - `application/monthly-simulation.ts`：旧导入路径的兼容门面；真正的依赖组装位于外层 `simulation-runtime.ts`，创建、恢复、推进、报告与 controller API 保持不变。
-- `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；application 只依赖自己声明的 `ObservationProjector` 输出端口，由外层 composition root 注入 projection adapter，不再运行时导入 `projection/`。`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行，并把 Action 执行结果与 Intent `goalOutcome` 分开结算：未受孕仍是 completed 动作但妊娠目标为 attempted-unmet，无真实受孕样本的提前阻塞是 not-evaluated；`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
+- `application/simulation/state-lifecycle.ts`、`controller.ts`：分别负责创世 / schema 恢复 / 报告和有状态控制器；application 只依赖自己声明的 `ObservationProjector` 输出端口，由外层 composition root 注入 projection adapter，不再运行时导入 `projection/`。`month-boundary.ts` 固定一次推进的 `atMonth = elapsedMonths + 1` 并编排月初、月末与生命周期结算；`tick-planner.ts`、`tick-executor.ts` 固定执行每月 15 个规划刻度；`intent-execution.ts` 承接意图生命周期与原子执行，并把 Action 执行结果与 Intent `goalOutcome` 分开结算：未受孕仍是 completed 动作但妊娠目标为 attempted-unmet，无真实受孕样本的提前阻塞是 not-evaluated。项目、已有返回链以及带 `stateGoalUntilMonth` 的 3–12 月状态目标统一视为可恢复父意图；必须回应、履约与保护性短任务通过 `suspend → child → resume` 返回同一意图 ID，规则、模型校验和玩家入口共享同一判定。`model-review.ts` 只管理可选模型复核与额度，本地规则回退始终先成立。候选、重编译、年龄门禁、协议生命周期与事件 ID 全程使用同一月份；只读查询仍读取最近已提交月，文明创世是显式的零月例外。
 - `application/simulation/month-execution.ts`：普通月度快进与有限化身共用的暂存月生命周期。它把月初准备、逐个完整 planning tick 和月末结算拆成可组合边界；一个 tick 仍让稳定顺序中的全部人物行动，受控人物入口位于休眠、恢复、生存、照护和必要避护之后。普通 `tick-executor.ts` 直接跑完 15 刻；有限化身逐命令调用同一执行器，提前交还时本地跑完剩余刻度，二者都只在 `finishMonthExecution` 后提交一次。
 - `application/player-embodiment.ts`：从受控人物当前身体、局部感知、相邻可站立格、真实 `DecisionContext`、Intent 与 Project 投影稳定 `optionId + choiceKey`；提供等待、继续意图、单条相邻边移动和现有建造 / 交互候选。命令在人物轮次重新编译并解析为 `TickActorControl`，最终仍由普通领域执行器校验材料、路径、场址、权限和动作后果。
 - `application/rule-planner.ts`：每个规划刻度始终可用的正式本地目标选择器；硬门禁后委托因果 BDI，自主候选由动态需要、人格、亲历后验和当前意图共同决定。
@@ -98,7 +98,7 @@ domain model and policies ↔ world grid / material primitives
 - `projection/live-speech.ts`：把每个已完成且具有可解析真实听者的口头沟通 ActionFact 投影为无显示文本的结构化 `speechAct` 草稿；只有已校验的模型台词才进入 `GameFrame.speechLines`，从不反写动作事实。
 - `projection/society-world-cache.ts`：只读 WeakMap 投影缓存；复用静态 palette / biome，无体素变化时复用世界几何，有变化时仅复制并重算受影响列。
 
-`server/evolution-artifacts.ts` 对记录使用保留原始阶段计数与独立违规项，但只有同时通过读者 / 项目 / payload / codebook、精确取得来源、阅读理解与可靠度、实验产物与 `+18`、动作顺序和项目进度守卫的 basis 才计入 `completeRecordUseChains`；普通移动和无记录语义的复合对话动作不会冒充记录阶段。
+`server/evolution-artifacts.ts` 保留演化路径、检查点与事实报告的公共门面；假说活动的候选、尝试、响应和来源一致性审计集中在 `server/evolution-artifacts/hypothesis-metrics.ts`，避免报告门面继续横向膨胀。记录使用仍保留原始阶段计数与独立违规项，但只有同时通过读者 / 项目 / payload / codebook、精确取得来源、阅读理解与可靠度、实验产物与 `+18`、动作顺序和项目进度守卫的 basis 才计入 `completeRecordUseChains`；普通移动和无记录语义的复合对话动作不会冒充记录阶段。
 
 ### server/ —— 接口与实时会话
 
@@ -110,6 +110,7 @@ domain model and policies ↔ world grid / material primitives
 ### scripts/ —— Agent 调试与实验入口
 
 - `scripts/eland.mjs`：现有 HTTP API 的零新增依赖 CLI 适配器。`run` 管理后台持久化演化，`session` 管理逐月实时会话，两者保持不同的身份与并发语义；`inspect` 只从权威状态提取人物、项目、事件和文明摘要，不写回观察结果。
+- `scripts/test-core.mjs`：默认 `npm test` 的精简工程门禁，依次运行架构边界、主模拟回归与共同生活回归；更窄的领域脚本仍按改动风险单独选择，不把 95 个历史实验全部塞进日常门禁。
 - `scripts/check-eland-boundaries.mjs`：基于 TypeScript AST 检查 domain / world / application / projection 的运行时依赖方向、内核对 React / Three / HTTP 的渗透以及运行时强连通循环；从 `three-body/` 运行 `npm run test:architecture`。
 - `experiment run`：按唯一前缀、种子和年数创建或恢复矩阵运行，使用绝对 `requestedEndMonth` 与完整 expected identity；默认单并发等待，矩阵 JSON 只用于离线交换和复核。
 - CLI 写操作仍经过 HTTP 层、应用用例和持久化事务。脚本不直接打开 SQLite 写连接，不复制领域规则；完整命令与退出码见 [`../../../../docs/agent-cli-v1.md`](../../../../docs/agent-cli-v1.md)。

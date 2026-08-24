@@ -372,9 +372,16 @@ try {
   endangered.body.hydration = 20;
   emergencyBudgetState.clock.elapsedMonths = 1;
   emergencyBudgetState.decisionBudget.credits = 0;
+  const exhaustedEmergencyContexts = Math.floor(emergencyBudgetState.people.length / 3);
   emergencyBudgetState.decisionBudget.ledgers = [{
-    atMonth: 1, livingAgents: 0, candidates: 0, modelContexts: 2, ordinaryModelContexts: 2, exemptModelContexts: 0,
-    inputTokens: 0, outputTokens: 0, chargedTokens: 16_000, ordinaryChargedTokens: 16_000,
+    atMonth: 1, livingAgents: 0, candidates: 0,
+    modelContexts: exhaustedEmergencyContexts,
+    ordinaryModelContexts: exhaustedEmergencyContexts,
+    exemptModelContexts: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    chargedTokens: exhaustedEmergencyContexts * emergencyBudgetState.decisionBudget.tokensPerContext,
+    ordinaryChargedTokens: exhaustedEmergencyContexts * emergencyBudgetState.decisionBudget.tokensPerContext,
   }];
   const emergencyBatch = [];
   const afterEmergencyBudget = await stepSimulationAsync(emergencyBudgetState, {
@@ -405,9 +412,16 @@ try {
   fulfillmentBudgetState.world.past.push(budgetExchangeAcceptance);
   fulfillmentBudgetState.clock.elapsedMonths = 1;
   fulfillmentBudgetState.decisionBudget.credits = 0;
+  const exhaustedFulfillmentContexts = Math.floor(fulfillmentBudgetState.people.length / 3);
   fulfillmentBudgetState.decisionBudget.ledgers = [{
-    atMonth: 1, livingAgents: 0, candidates: 0, modelContexts: 2, ordinaryModelContexts: 2, exemptModelContexts: 0,
-    inputTokens: 0, outputTokens: 0, chargedTokens: 16_000, ordinaryChargedTokens: 16_000,
+    atMonth: 1, livingAgents: 0, candidates: 0,
+    modelContexts: exhaustedFulfillmentContexts,
+    ordinaryModelContexts: exhaustedFulfillmentContexts,
+    exemptModelContexts: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    chargedTokens: exhaustedFulfillmentContexts * fulfillmentBudgetState.decisionBudget.tokensPerContext,
+    ordinaryChargedTokens: exhaustedFulfillmentContexts * fulfillmentBudgetState.decisionBudget.tokensPerContext,
   }];
   const fulfillmentBatch = [];
   const afterFulfillmentBudget = await stepSimulationAsync(fulfillmentBudgetState, {
@@ -884,6 +898,7 @@ try {
     id: verifyIntentId, ownerId: tentativeTechniqueState.people[0].id, summary: verifyOption.summary, domain: 'strategic',
     goal: verifyOption.goal, nextAction: verifyOption.nextAction, target: verifyOption.target, status: 'active',
     createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: 'test-verify-decision',
+    plannedDurationMonths: 3, stateGoalUntilMonth: 2,
     sourceFactIds: verifyOption.sourceFactIds, actionEventIds: [], replanCount: 0,
   });
   tentativeTechniqueState.people[0].activeIntentId = verifyIntentId;
@@ -911,6 +926,7 @@ try {
       goal: { kind: 'knowledge', factId: `attempt:${seed}` },
       nextAction: { kind: 'act', operation: 'combine', targets: targets(crafter) }, status: 'active',
       createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: `decision-test-craft-${seed}`,
+      plannedDurationMonths: 3, stateGoalUntilMonth: 2,
       sourceFactIds: [], actionEventIds: [], replanCount: 0,
     });
     crafter.activeIntentId = intentId;
@@ -952,6 +968,7 @@ try {
 
   let fireState = createInitialState(382, { endpoint: { kind: 'months', value: 4 }, chaosIntensity: 0 });
   const initialFireMaker = fireState.people[2];
+  fireState.people = [initialFireMaker];
   const fireMakerId = initialFireMaker.id;
   const fireTestPosition = structuredClone(initialFireMaker.position);
   initialFireMaker.bornAtMonth = -20 * 12;
@@ -1126,6 +1143,7 @@ try {
   const miner = miningState.people[0];
   miner.bornAtMonth = -20 * 12;
   miner.inventory = [];
+  miner.knowledge = [];
   const mineCell = [miner.position.cellId - miningState.world.grid.width, miner.position.cellId - 1, miner.position.cellId + 1, miner.position.cellId + miningState.world.grid.width]
     .find((cell) => cell >= 0 && cell < miningState.world.grid.width * miningState.world.grid.depth
       && Math.abs(cell % miningState.world.grid.width - miner.position.cellId % miningState.world.grid.width)
@@ -1282,6 +1300,7 @@ try {
     '没有合法交付目标时，实体记录应继续留在作者背包中');
 
   let collectiveState = createInitialState(385, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  collectiveState.clock.elapsedMonths = 1;
   const founder = collectiveState.people[0];
   const partner = collectiveState.people[1];
   founder.bornAtMonth = -20 * 12;
@@ -1290,13 +1309,13 @@ try {
   founder.personality.baseline.emotionality = 90;
   founder.personality.baseline.extraversion = 90;
   const priorAssistId = 'test-prior-fulfilled-assist';
-  const priorRequest = actionFact('test-prior-assist-request', 0, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
+  const priorRequest = actionFact('test-prior-assist-request', 1, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorRequest);
   collectiveState.world.past.push(priorRequest);
-  const priorAcceptance = actionFact('test-prior-assist-acceptance', 0, partner.id, { kind: 'communicate', content: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, audience: [founder.id], channel: 'voice' });
+  const priorAcceptance = actionFact('test-prior-assist-acceptance', 1, partner.id, { kind: 'communicate', content: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, audience: [founder.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorAcceptance);
   collectiveState.world.past.push(priorAcceptance);
-  const priorFulfillment = actionFact('test-prior-assist-fulfillment', 0, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: priorAssistId });
+  const priorFulfillment = actionFact('test-prior-assist-fulfillment', 1, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: priorAssistId });
   recordAgreementAction(collectiveState, priorFulfillment);
   collectiveState.world.past.push(priorFulfillment);
   const collectiveContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
@@ -1307,7 +1326,8 @@ try {
     id: collectiveIntentId, ownerId: founder.id, summary: collectiveOffer.summary, domain: 'social',
     goal: collectiveOffer.goal, nextAction: collectiveOffer.nextAction,
     ...(collectiveOffer.target ? { target: collectiveOffer.target } : {}),
-    status: 'active', createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0,
+    status: 'active', createdAtMonth: collectiveState.clock.elapsedMonths,
+    lastProgressAtMonth: collectiveState.clock.elapsedMonths, progress: 0,
     sourceDecisionEventId: 'decision-test-found-collective', sourceFactIds: [...collectiveOffer.sourceFactIds], actionEventIds: [], replanCount: 0,
   });
   founder.activeIntentId = collectiveIntentId;
@@ -1483,9 +1503,15 @@ try {
   const offerer = responseState.people[0];
   const responder = responseState.people[2];
   responder.bornAtMonth = -20 * 12;
-  const separatedPosition = responseState.people.find((person) => person.position.cellId !== offerer.position.cellId)?.position;
+  const separatedPosition = responseState.people.find((person) => {
+    const horizontalDistance = Math.abs(person.position.cellId % responseState.world.grid.width
+      - offerer.position.cellId % responseState.world.grid.width)
+      + Math.abs(Math.floor(person.position.cellId / responseState.world.grid.width)
+        - Math.floor(offerer.position.cellId / responseState.world.grid.width));
+    return horizontalDistance > 1;
+  })?.position;
   const separatedCell = separatedPosition?.cellId;
-  assert.ok(Number.isInteger(separatedCell), '测试世界应有一个与报价者分开的可达出生格');
+  assert.ok(Number.isInteger(separatedCell), '测试世界应有一个在普通语音范围外的可达出生格');
   placeWith(responder, offerer);
   offerer.inventory.push({ id: 'exchange-wood', materialId: 13, quantity: 2, sourceEventIds: [] });
   responder.inventory.push({ id: 'exchange-food', materialId: 21, quantity: 2, sourceEventIds: [] });

@@ -107,6 +107,64 @@ try {
   }, { atMonth: 14, planningTick: 2 });
   assert.equal(postReturnDecision.kind, 'idle', 'suspension time must not make a just-restored parent look stalled');
 
+  const stateGoalState = createInitialState(715, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  stateGoalState.clock.elapsedMonths = 12;
+  const stateGoalOwner = stateGoalState.people[0];
+  const stateGoalResponder = stateGoalState.people[1];
+  const stateGoalParent = {
+    id: 'parent-state-goal-intent', ownerId: stateGoalOwner.id, summary: '持续维持当前避护状态', domain: 'strategic',
+    goal: { kind: 'sheltered' },
+    nextAction: { kind: 'move', toCellId: stateGoalOwner.position.cellId, toZ: stateGoalOwner.position.z },
+    status: 'active', createdAtMonth: 8, lastProgressAtMonth: 12, progress: 0.55,
+    plannedDurationMonths: 8, stateGoalUntilMonth: 15,
+    sourceDecisionEventId: 'state-goal-parent-decision', sourceFactIds: ['shelter-pressure'],
+    actionEventIds: ['state-goal-action-before-interrupt'], replanCount: 0,
+  };
+  stateGoalState.intents = [stateGoalParent];
+  stateGoalOwner.activeIntentId = stateGoalParent.id;
+  const stateGoalResponseId = 'accept-companion:state-goal-fixture';
+  const stateGoalResponse = {
+    id: stateGoalResponseId, summary: '回应眼前的结伴提议', reason: '存在一项必须由本人回应的提议',
+    goal: { kind: 'representation-made', representationId: stateGoalResponseId },
+    nextAction: {
+      kind: 'communicate',
+      content: { id: stateGoalResponseId, kind: 'accept', referenceId: 'state-goal-companion-offer' },
+      audience: [stateGoalResponder.id], channel: 'voice',
+    },
+    target: { kind: 'person', personId: stateGoalResponder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+    sourceFactIds: ['state-goal-proposal-fact'], domain: 'social',
+  };
+  const stateGoalContext = {
+    state: stateGoalState, person: stateGoalOwner, visibleCells: [stateGoalOwner.position.cellId],
+    visiblePeople: [stateGoalResponder], visibleDrops: [], visibleAnimals: [],
+    options: [stateGoalResponse], followUpOptions: [], activeIntent: stateGoalParent,
+  };
+  const stateGoalDecision = new RulePlanner().decideAt(stateGoalContext, { atMonth: 13, planningTick: 1 });
+  assert.equal(stateGoalDecision.kind, 'revise');
+  assert.equal(stateGoalDecision.mode, 'interrupt', 'a required response must suspend a long-lived state goal');
+  assert.equal(stateGoalDecision.interruptionKind, 'required-response');
+  const stateGoalChild = startInterruptIntent(
+    stateGoalState,
+    stateGoalOwner,
+    stateGoalContext,
+    stateGoalResponse.id,
+    'state-goal-interrupt-decision',
+    13,
+    'required-response',
+  );
+  assert.ok(stateGoalChild, 'a state goal must accept a short required-response child');
+  assert.equal(stateGoalParent.status, 'suspended');
+  assert.equal(stateGoalChild.returnToIntentId, stateGoalParent.id);
+  stateGoalChild.status = 'completed';
+  stateGoalChild.progress = 1;
+  delete stateGoalOwner.activeIntentId;
+  resolveInterruptedIntentReturn(stateGoalState, stateGoalOwner, 14);
+  assert.equal(stateGoalChild.returnOutcome, 'resumed');
+  assert.equal(stateGoalParent.status, 'active');
+  assert.equal(stateGoalOwner.activeIntentId, stateGoalParent.id,
+    'the exact non-project state-goal parent must resume after the response');
+  assert.equal(stateGoalParent.stateGoalUntilMonth, 15, 'the state-goal horizon must survive the interruption');
+
   const agreementState = createInitialState(717, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
   agreementState.clock.elapsedMonths = 12;
   const offerer = agreementState.people[0];

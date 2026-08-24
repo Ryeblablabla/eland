@@ -22,9 +22,19 @@
 **/data/**/*.sqlite3-shm
 **/data/**/*.sqlite3-wal
 
+# Simulation state and raw experiment outputs are local artifacts. Keep only
+# the policy document and deliberately curated, small deterministic fixtures.
+/three-body/data/*
+!/three-body/data/README.md
+!/three-body/data/fixtures/
+!/three-body/data/fixtures/**
+/three-body/data/fixtures/**/*.sqlite3
+/three-body/data/fixtures/**/*.sqlite3-shm
+/three-body/data/fixtures/**/*.sqlite3-wal
+
 # Local research/render intermediates and large audio working exports.
 /tmp/
-/three-body/exports/audio-variations/
-/three-body/data/frozen-runtime-*/
-/three-body/data/frozen-source-*/
+/three-body/exports/*
+!/three-body/exports/README.md
 /three-body/scripts/.tmp-*
+/three-body/scripts/out/

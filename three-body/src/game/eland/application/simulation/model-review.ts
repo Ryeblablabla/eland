@@ -1,5 +1,5 @@
 import { goalSatisfied } from '../../domain/action-executor';
-import { composeIntentChoice } from '../../domain/intent';
+import { composeIntentChoice, isResumableIntent } from '../../domain/intent';
 import type {
   Decision,
   DecisionContext,
@@ -169,7 +169,7 @@ export function validateModelDecision(
   const survivalHibernationInterruption = localForSameOption?.interruptionKind === 'survival-reflex'
     && selected.nextAction.kind === 'act'
     && selected.nextAction.operation === 'dehydrate';
-  const canInterrupt = Boolean(active.projectId || active.returnToIntentId || survivalHibernationInterruption);
+  const canInterrupt = isResumableIntent(active) || survivalHibernationInterruption;
   return {
     kind: 'revise',
     intentId: active.id,

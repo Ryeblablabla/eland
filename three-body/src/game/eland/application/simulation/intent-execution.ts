@@ -3,7 +3,7 @@ import type { ActionOption } from '../../domain/action';
 import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
 import { clearPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
-import { composeIntentChoice } from '../../domain/intent';
+import { composeIntentChoice, isResumableIntent } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { remember } from '../../domain/memory';
 import { materialHas } from '../../domain/material';
@@ -299,7 +299,7 @@ export function startInterruptIntent(
   const selected = context.options.find((option) => option.id === optionId);
   const ordinarySurvivalInterruption = interruptionKind === 'survival-reflex';
   if (!parent
-    || (!ordinarySurvivalInterruption && !parent.projectId && !parent.returnToIntentId)
+    || (!ordinarySurvivalInterruption && !isResumableIntent(parent))
     || !selected
     || selected.projectProposal) return null;
   const project = parent.projectId
@@ -1025,7 +1025,7 @@ export function executeProtectiveInterruption(
   events: WorldEvent[],
 ): ActionFact {
   const parent = activeIntent(state, person);
-  const mayInterrupt = Boolean(parent && (parent.projectId || parent.returnToIntentId));
+  const mayInterrupt = Boolean(parent && isResumableIntent(parent));
   let child: Intent | undefined;
   if (parent && mayInterrupt) {
     const option: ActionOption = {
@@ -1121,7 +1121,7 @@ export function recordShelterMaintenanceInterruption(
   detail: { reason?: string; sourceFactIds?: string[] } = {},
 ): void {
   const parent = activeIntent(state, person);
-  if (!parent || (!parent.projectId && !parent.returnToIntentId)) return;
+  if (!parent || !isResumableIntent(parent)) return;
   const option: ActionOption = {
     id: `shelter-maintenance:${atMonth}:${actionTick}:${person.id}`,
     summary: '留在真实住所内维持避护',

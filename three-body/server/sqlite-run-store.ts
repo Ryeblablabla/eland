@@ -495,6 +495,7 @@ export class SqliteRunStore implements RunStore {
 
   private collectUnreferencedRunStateChunks(): void {
     const codecSet = new Set<string>(RUN_STATE_CODECS);
+    const codecPlaceholders = RUN_STATE_CODECS.map(() => "?").join(", ");
     const memo: RunStateReachabilityMemo = {
       chunks: new Set<string>(),
       historyNodes: new Set<string>(),
@@ -526,10 +527,10 @@ export class SqliteRunStore implements RunStore {
     }
 
     const deleteChunk = this.database.prepare(`
-      DELETE FROM chunks WHERE hash = ? AND codec IN (?, ?, ?, ?)
+      DELETE FROM chunks WHERE hash = ? AND codec IN (${codecPlaceholders})
     `);
     for (const row of this.database.prepare(`
-      SELECT hash FROM chunks WHERE codec IN (?, ?, ?, ?)
+      SELECT hash FROM chunks WHERE codec IN (${codecPlaceholders})
     `).all(...RUN_STATE_CODECS)) {
       const hash = String(row.hash);
       if (!memo.chunks.has(hash)) deleteChunk.run(hash, ...RUN_STATE_CODECS);
@@ -603,7 +604,7 @@ export class SqliteRunStore implements RunStore {
     const previousMetadata = this.runStateRootMetadata(encodedAgainst.stateHash);
     const snapshot = await encodeSegmentedRunState(
       state,
-      previousMetadata?.schemaVersion === 2 && options.historyMode !== "replace"
+      previousMetadata && previousMetadata.schemaVersion >= 2 && options.historyMode !== "replace"
         ? { mode: "append", previous: previousMetadata }
         : { mode: "replace" },
     );

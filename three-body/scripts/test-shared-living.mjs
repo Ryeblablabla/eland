@@ -118,6 +118,10 @@ try {
 
   first.position = { ...first.position, cellId: anchor.cellId, z: anchor.z };
   second.position = { ...second.position, ...nearby };
+  // This regression isolates shared-living spatial evidence from the separate
+  // youth trust bonus. Both people are adults at the month being resolved.
+  first.bornAtMonth = 2 - 30 * 12;
+  second.bornAtMonth = 2 - 30 * 12;
   const firstRelation = first.relations.find((relation) => relation.personId === second.id);
   const trustBefore = firstRelation.trust;
   const sharedDailyActions = Array.from({ length: 5 }, (_, index) => index + 1).flatMap((actionTick) => (

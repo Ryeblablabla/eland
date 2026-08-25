@@ -1,9 +1,5 @@
 # ELAND
 
-<p align="center">
-  <img src="docs/assets/eland-logo-v1.png" alt="ELAND 游戏 Logo：三颗太阳环绕体素文明" width="960">
-</p>
-
 > “第 183 号文明毁灭于三日凌空。该文明曾进化至中世纪。漫长岁月之后，生命与文明将再次启动……”
 
 ![ELAND：三颗太阳之下，河畔文明在劳作与灾变之间生长](docs/assets/eland-readme-promo-v1.png)

@@ -17,7 +17,12 @@ import {
   civilizationRequiemKey,
   type CivilizationRequiem,
 } from '../src/game/civilizationRequiem';
-import { ERA_TO_ENV, toAgentHistory, toSocietyState } from '../src/game/eland/adapter';
+import {
+  ERA_TO_ENV,
+  toAgentHistory,
+  toSocietyState,
+  type WorldEventLookup,
+} from '../src/game/eland/adapter';
 import { prepareMonth } from '../src/game/eland/application/simulation/month-boundary';
 import { createMonthExecution } from '../src/game/eland/application/simulation/month-execution';
 import { copyState } from '../src/game/eland/application/simulation/state-utils';
@@ -84,13 +89,20 @@ import {
 } from './eland-session/timeline';
 import {
   entriesFor,
+  projectChronicleFromProjection,
   foundingEventsFor,
-  projectChronicle,
   projectCivilizationIndexHistory,
   projectFrame,
   storeFrame,
   type FrameEntry,
 } from './eland-session/frame-history-projector';
+import {
+  advanceChronicleProjection,
+  createChronicleProjectionState,
+  pruneChronicleProjection,
+  rebuildChronicleProjection,
+  type ChronicleProjectionState,
+} from './eland-session/chronicle-projection';
 import {
   createRecoverySnapshot,
   normalizeRecoveredBranches,
@@ -214,6 +226,8 @@ export class ElandSession {
   private lastRecordPerf = { projectionMs: 0, snapshotMs: 0 };
   private branches = new Map<string, BranchTimeline>();
   private replayCache: { branchId: string; month: number; state: SimulationState } | null = null;
+  private eventById = new Map<string, WorldEvent>();
+  private chronicleProjections = new Map<string, ChronicleProjectionState>();
   private activeBranchId = '';
   private forkSequence = 0;
   private authorityRevision = createAuthorityRevision();
@@ -239,6 +253,7 @@ export class ElandSession {
         ended: this.latestState?.civilization.status === 'ended',
       }),
       pendingPlayerInteractions: () => this.pendingPlayerInteractions(),
+      projectEntries: (state, events) => this.narrativeEntriesFor(state, events),
       commitSky: (skySample, cosmosSnapshot) => {
         this.skySample = skySample;
         this.cosmosSnapshot = cosmosSnapshot
@@ -256,6 +271,33 @@ export class ElandSession {
       },
       recordPerf: () => this.lastRecordPerf,
     });
+  }
+
+  private replaceEventIndex(state: SimulationState): void {
+    this.eventById = new Map(state.world.past.map((event) => [event.id, event]));
+  }
+
+  private indexEvents(events: WorldEvent[]): void {
+    for (const event of events) this.eventById.set(event.id, event);
+  }
+
+  private eventLookupWith(events: WorldEvent[]): WorldEventLookup {
+    const current = new Map(events.map((event) => [event.id, event]));
+    return { get: (eventId: string) => current.get(eventId) ?? this.eventById.get(eventId) };
+  }
+
+  private narrativeEntriesFor(state: SimulationState, events: WorldEvent[]): FrameEntry[] {
+    return entriesFor(state, events, this.eventLookupWith(events));
+  }
+
+  private chronicleProjectionFor(timeline: BranchTimeline): ChronicleProjectionState {
+    const existing = this.chronicleProjections.get(timeline.id);
+    if (existing) return existing;
+    const rebuilt = this.latestState
+      ? rebuildChronicleProjection(this.inheritedFrames(timeline), this.eventById)
+      : createChronicleProjectionState();
+    this.chronicleProjections.set(timeline.id, rebuilt);
+    return rebuilt;
   }
 
   private rotateAuthorityRevision(): string {
@@ -333,7 +375,7 @@ export class ElandSession {
           ? { ...cosmosSnapshot, civilizations: this.civilizationId }
           : undefined;
         const owned = this.controller.adoptOwnedState(state);
-        return this.record(owned, owned.lastStep, entriesFor(owned, owned.lastStep));
+        return this.record(owned, owned.lastStep, this.narrativeEntriesFor(owned, owned.lastStep));
       },
     };
   }
@@ -360,6 +402,7 @@ export class ElandSession {
     session.civilizationId = snapshot.civilizationId;
     session.controller = createSimulationFromOwnedState(state);
     session.latestState = session.controller.ownedState();
+    session.replaceEventIndex(session.latestState);
     // latestFrame is the committed observer result for this exact month. The
     // controller may refresh annual derived state while hydrating, but recovery
     // must not silently rewrite an already shown/replayable frame.
@@ -371,6 +414,7 @@ export class ElandSession {
     }, session.latestState);
     session.branches = normalizeRecoveredBranches(snapshot.branches, runId, session.authorityRevision);
     session.activeBranchId = snapshot.activeBranchId;
+    session.chronicleProjections.clear();
     session.forkSequence = snapshot.forkSequence;
     session.cosmosSnapshot = cosmosSnapshot;
     for (const requiem of snapshot.requiems ?? []) {
@@ -437,11 +481,13 @@ export class ElandSession {
     const state = beginning.state;
     this.activeBranchId = state.branchId;
     this.branches = new Map([[state.branchId, createBranchTimeline(state.branchId, 0)]]);
+    this.replaceEventIndex(state);
+    this.chronicleProjections = new Map([[state.branchId, createChronicleProjectionState()]]);
     this.requiems.clear();
     this.pendingRequiems.clear();
     this.forkSequence = 0;
     const foundingEvents = foundingEventsFor(state);
-    return this.record(state, foundingEvents, entriesFor(state, foundingEvents));
+    return this.record(state, foundingEvents, this.narrativeEntriesFor(state, foundingEvents));
   }
 
   model(): string {
@@ -549,11 +595,14 @@ export class ElandSession {
   private record(
     state: SimulationState,
     events: WorldEvent[],
-    entries = events.length ? entriesFor(state, events) : [],
+    entries = events.length ? this.narrativeEntriesFor(state, events) : [],
     speechLines: SpeechLineView[] = [],
   ): Frame {
     const projectionStartedAt = perfNow();
-    const frame = projectFrame({
+    const timeline = this.activeTimeline();
+    const chronicleProjection = this.chronicleProjectionFor(timeline);
+    this.indexEvents(events);
+    const rawFrame = projectFrame({
       runId: this.runId,
       authorityRevision: this.authorityRevision,
       civilizationId: this.civilizationId,
@@ -564,8 +613,16 @@ export class ElandSession {
       skySample: this.skySample,
       ...(this.cosmosSnapshot ? { cosmosSnapshot: this.cosmosSnapshot } : {}),
     });
+    const frame = {
+      ...rawFrame,
+      entries: advanceChronicleProjection(
+        chronicleProjection,
+        rawFrame.elapsedMonths,
+        rawFrame.entries,
+        this.eventById,
+      ),
+    };
     const projectionMs = perfElapsed(projectionStartedAt);
-    const timeline = this.activeTimeline();
     const storedFrame = storeFrame(frame);
     timeline.history.push(storedFrame);
     timeline.frameByMonth.set(frame.elapsedMonths, storedFrame);
@@ -586,6 +643,8 @@ export class ElandSession {
       const dropped = timeline.history.shift();
       if (dropped) timeline.frameByMonth.delete(dropped.elapsedMonths);
       this.pruneSnapshots(timeline);
+      const earliestMonth = timeline.history[0]?.elapsedMonths;
+      if (earliestMonth !== undefined) pruneChronicleProjection(chronicleProjection, earliestMonth);
     }
     return frame;
   }
@@ -758,7 +817,7 @@ export class ElandSession {
     if (this.latestState.civilization.status === 'ended') return this.latestFrame;
     const state = this.controller.ownedState();
     const events = concludeOwnedCivilization(state);
-    return this.record(state, events, entriesFor(state, events));
+    return this.record(state, events, this.narrativeEntriesFor(state, events));
   }
 
   async civilizationRequiem(): Promise<CivilizationRequiem> {
@@ -795,7 +854,12 @@ export class ElandSession {
   }
 
   chronicle(): FrameEntry[] {
-    return projectChronicle(this.inheritedFrames(this.activeTimeline()), this.latestState);
+    const timeline = this.activeTimeline();
+    return projectChronicleFromProjection(
+      this.chronicleProjectionFor(timeline),
+      this.latestState,
+      this.eventById,
+    );
   }
 
   civilizationIndexHistory(): CivilizationIndexHistoryPoint[] {
@@ -1100,6 +1164,8 @@ export class ElandSession {
     const frame = findStoredFrame(this.branches, source, month);
     const snapshot = frame ? this.takeSnapshotForFork(source, frame.elapsedMonths) : undefined;
     if (!frame || !snapshot || !this.controller) return null;
+    const inheritedThroughFork = this.inheritedFrames(source)
+      .filter((candidate) => candidate.elapsedMonths <= frame.elapsedMonths);
     const sourceSociety = this.latestFrame?.elapsedMonths === frame.elapsedMonths
       ? this.latestFrame.society
       : toSocietyState(snapshot);
@@ -1107,6 +1173,7 @@ export class ElandSession {
     const branchState = snapshot;
     branchState.branchId = branchId;
     this.latestState = this.controller.adoptOwnedState(branchState);
+    this.replaceEventIndex(this.latestState);
     this.activeBranchId = branchId;
     this.rotateAuthorityRevision();
     const branchFrame: Frame = {
@@ -1124,6 +1191,10 @@ export class ElandSession {
       initialFrame: storedBranchFrame,
       initialState: branchState,
     }));
+    this.chronicleProjections.set(
+      branchId,
+      rebuildChronicleProjection(inheritedThroughFork, this.eventById),
+    );
     this.snapshotBaseline = baselineFor(branchState);
     return branchFrame;
   }

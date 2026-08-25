@@ -13,6 +13,8 @@ type AnimalAttackEvent = EnvironmentEvent & {
   diff: EnvironmentEvent['diff'] & { process: 'attack-human' };
 };
 
+export type WorldEventLookup = Pick<ReadonlyMap<string, WorldEvent>, 'get'>;
+
 interface NarrativeCandidate extends NarrativeEntryView {
   orderInMonth: number;
   dedupeKey?: string;
@@ -318,7 +320,7 @@ function eventLookup(state: SimulationState, events: WorldEvent[]): Map<string, 
   return new Map([...state.world.past, ...events].map((event) => [event.id, event]));
 }
 
-function deathAttackEvidence(event: EnvironmentEvent, eventsById: Map<string, WorldEvent>): DeathAttackEvidence {
+function deathAttackEvidence(event: EnvironmentEvent, eventsById: WorldEventLookup): DeathAttackEvidence {
   const personId = event.who ?? (typeof event.diff.personId === 'string' ? event.diff.personId : undefined);
   const sourceEventIds = unique(stringIds(event.diff.sourceEventIds));
   const sourceEvents = sourceEventIds.flatMap((eventId) => {
@@ -353,6 +355,8 @@ function concisePlayerText(value: string, max = 96): string {
     .replaceAll('体素', '位置')
     .replaceAll('近身范围', '身边')
     .replaceAll('施力', '加工')
+    .replace(/([\p{Script=Han}A-Za-z]+)\s*×\s*(\d+)/gu, '$2份$1')
+    .replaceAll('可结合为', '可以合成为')
     .replaceAll('是否愿意共同生育后代', '愿不愿意一起要个孩子')
     .trim();
   if (clean.length <= max) return clean;
@@ -524,7 +528,7 @@ function attendText(state: SimulationState, event: ActionEvent, actor: string): 
   const recognized = event.result.match(/^观察并辨认了(.+)$/u);
   if (recognized) return `${actor}仔细观察后，认出了${recognized[1]}`;
   const verified = event.result.match(/^核验了(.+)$/u);
-  if (verified) return `${actor}通过观察，确认了${verified[1]}`;
+  if (verified) return `${actor}通过观察，确认了${concisePlayerText(verified[1])}`;
   return event.result.startsWith(actor) ? event.result : `${actor}${event.result}`;
 }
 
@@ -721,7 +725,7 @@ function animalAttackCandidate(state: SimulationState, event: EnvironmentEvent):
 function environmentCandidate(
   state: SimulationState,
   event: EnvironmentEvent,
-  eventsById: Map<string, WorldEvent>,
+  eventsById: WorldEventLookup,
 ): NarrativeCandidate | null {
   if (isAnimalAttackEvent(event)) return animalAttackCandidate(state, event);
   if (event.change === 'weather') return weatherHistoryCandidate(event);
@@ -758,6 +762,10 @@ function environmentCandidate(
         : relatedAnimalNames.length
           ? `${personName(state, event.who)}去世了；生前曾遭${briefNameList(relatedAnimalNames)}袭击，随身物品留在原地`
           : `${personName(state, event.who)}去世了，随身物品留在原地`
+    : born
+      ? `${personName(state, event.who)}生下了${typeof event.diff.bornPersonName === 'string'
+        ? event.diff.bornPersonName
+        : personName(state, event.diff.bornPersonId as string)}`
     : era
       ? event.diff.epoch === 'chaotic'
         ? `恒纪元结束，乱纪元开始，地表转为${event.diff.kind === 'cold' ? '寒冷' : event.diff.kind === 'heat' ? '炎热' : '灼热'}`
@@ -887,28 +895,180 @@ function isMajorHistoricalAction(state: SimulationState, event: ActionEvent): bo
   )));
 }
 
-function completedProjectCandidates(state: SimulationState, events: WorldEvent[]): NarrativeCandidate[] {
-  const eventMap = new Map(events.map((event) => [event.id, event]));
+const PROJECT_COMPLETION_PHRASES: Record<string, string> = {
+  insulation: '制成了更可靠的保暖用品',
+  'safer-hunting': '完成了更安全的捕猎准备',
+  healing: '找到了一种更有效的照护办法',
+  'prepared-food': '掌握了更可靠的食物处理方法',
+  'weather-shelter': '建成了能够遮蔽天气的住所',
+  'durable-record': '完成了一份可长期保存的公共记录',
+  'efficient-production': '制成了专门的生产工具',
+  'workshop-production': '建立了专门工坊',
+  'reserve-storage': '建成了储备设施',
+  'reliable-water': '建成了蓄水设施',
+  'settled-cultivation': '建立了固定耕地',
+  'crop-processing': '建成了作物加工设施',
+  'community-coordination': '形成了共同体协作办法',
+  'high-heat-processing': '掌握了高温加工方法',
+  'brick-firing': '掌握了烧砖方法',
+  'copper-charge': '备好了炼铜炉料',
+  'copper-smelting': '炼出了铜',
+  'tin-charge': '备好了炼锡炉料',
+  'tin-smelting': '炼出了锡',
+  'bronze-alloying': '炼出了青铜',
+  'bronze-tooling': '制成了青铜工具',
+  'bronze-workshop': '建成了青铜工坊',
+  'civic-coordination': '形成了更稳定的公共协作办法',
+  'iron-workshop': '建成了炼铁工坊',
+  'iron-charge': '备好了炼铁炉料',
+  'iron-reduction': '炼出了铁料',
+  'iron-working': '掌握了铁料加工方法',
+  'iron-tooling': '制成了铁制工具',
+  'fortified-coordination': '建立了防御设施与协作安排',
+  'water-powered-crop-processing': '建成了水力作物加工设施',
+  'restore-water-powered-crop-processing': '修复了水力作物加工设施',
+};
+
+function projectCompletionDetail(
+  project: SimulationState['projects'][number],
+  sourceEvents: WorldEvent[],
+): string {
+  const phases: string[] = [];
+  const actions = sourceEvents.filter((event): event is ActionEvent => event.kind === 'action');
+  if (actions.some((event) => event.action.kind === 'move' || event.action.kind === 'transfer')) {
+    phases.push('寻找、搬运并集中所需材料');
+  }
+  if (actions.some((event) => event.action.kind === 'act')) {
+    phases.push(project.kind === 'construction' ? '完成加工与搭建' : '完成材料加工');
+  }
+  if (actions.some((event) => event.action.kind === 'attend' || event.diff.verifiedTechnique === true)) {
+    phases.push('观察并核验相关方法');
+  }
+  if (actions.some((event) => event.action.kind === 'communicate')) phases.push('协调参与者');
+  const observedStart = Math.min(...sourceEvents.map((event) => event.atMonth));
+  const startedAt = Math.min(project.createdAtMonth ?? observedStart, observedStart);
+  const endedAt = project.completedAtMonth ?? Math.max(...sourceEvents.map((event) => event.atMonth));
+  const period = startedAt === endedAt ? `第 ${endedAt} 月` : `第 ${startedAt} 至 ${endedAt} 月`;
+  const process = phases.length <= 1
+    ? phases[0] ?? ''
+    : phases.length === 2
+      ? `${phases[0]}，随后${phases[1]}`
+      : `${phases.slice(0, -1).join('，随后')}，最后${phases.at(-1)}`;
+  return phases.length
+    ? `${period}，参与者${phases.length > 1 ? '先后' : ''}${process}。`
+    : `${period}，这项工作形成了 ${sourceEvents.length} 条可回放的过程事实。`;
+}
+
+function completedProjectCandidates(
+  state: SimulationState,
+  events: WorldEvent[],
+  eventsById: WorldEventLookup,
+): NarrativeCandidate[] {
+  const currentEventIds = new Set(events.map((event) => event.id));
   return state.projects.flatMap((project): NarrativeCandidate[] => {
     if (project.status !== 'completed' || project.completedAtMonth !== state.clock.elapsedMonths) return [];
-    const sourceEventIds = project.completionEventIds.filter((eventId) => eventMap.has(eventId));
+    const sourceEventIds = unique([
+      ...(project.actionEventIds ?? []),
+      ...project.completionEventIds,
+    ]).filter((eventId) => eventsById.get(eventId));
     if (!sourceEventIds.length) return [];
-    const sourceEvents = sourceEventIds.map((eventId) => eventMap.get(eventId)!);
+    const sourceEvents = sourceEventIds.map((eventId) => eventsById.get(eventId)!);
+    const currentSourceEvents = sourceEvents.filter((event) => currentEventIds.has(event.id));
     const participantIds = [...new Set([project.ownerId, ...project.contributorIds])];
-    const names = participantIds.map((personId) => personName(state, personId)).join('、');
+    const names = briefNameList(participantIds.map((personId) => personName(state, personId)));
+    const completion = PROJECT_COMPLETION_PHRASES[project.desiredFunction]
+      ?? `完成了“${naturalIntent(project.summary)}”`;
     return [{
       id: `narrative:project:${project.id}:${project.completedAtMonth}`,
       month: project.completedAtMonth,
-      text: finishSentence(`${names || personName(state, project.ownerId)}完成了“${naturalIntent(project.summary)}”`),
-      detail: sourceEvents.map((event) => event.result).join('；'),
+      text: finishSentence(`${names || personName(state, project.ownerId)}${completion}`),
+      detail: projectCompletionDetail(project, sourceEvents),
       tone: 'good',
       kind: 'action',
       importance: 112,
       sourceEventIds,
       actorIds: participantIds,
-      orderInMonth: Math.min(...sourceEvents.map((event) => event.orderInMonth)),
+      orderInMonth: Math.min(
+        ...(currentSourceEvents.length ? currentSourceEvents : sourceEvents)
+          .map((event) => event.orderInMonth),
+      ),
     }];
   });
+}
+
+function techniqueOutputMaterialId(event: WorldEvent, eventsById: WorldEventLookup): number | null {
+  if (event.kind !== 'action') return null;
+  const direct = Number(event.diff.outputMaterialId);
+  if (Number.isInteger(direct)) return direct;
+  const sourceEventId = typeof event.diff.verifiedSourceEventId === 'string'
+    ? event.diff.verifiedSourceEventId
+    : event.action.kind === 'attend' ? event.action.verification?.sourceEventId : undefined;
+  const source = sourceEventId ? eventsById.get(sourceEventId) : undefined;
+  if (source?.kind === 'action') {
+    const sourced = Number(source.diff.outputMaterialId);
+    if (Number.isInteger(sourced)) return sourced;
+  }
+  const techniqueId = typeof event.diff.factId === 'string'
+    ? event.diff.factId
+    : event.action.kind === 'attend' ? event.action.verification?.techniqueId : undefined;
+  const encoded = Number(techniqueId?.split(':').at(-1));
+  return Number.isInteger(encoded) ? encoded : null;
+}
+
+function mergeTechniqueCandidates(
+  state: SimulationState,
+  candidates: NarrativeCandidate[],
+  eventsById: WorldEventLookup,
+): NarrativeCandidate[] {
+  const grouped = new Map<string, NarrativeCandidate[]>();
+  const ungrouped: NarrativeCandidate[] = [];
+  for (const candidate of candidates) {
+    if (candidate.id.startsWith('narrative:project:') || candidate.actorIds.length !== 1) {
+      ungrouped.push(candidate);
+      continue;
+    }
+    const sourceActions = candidate.sourceEventIds.flatMap((eventId) => {
+      const event = eventsById.get(eventId);
+      return event?.kind === 'action' ? [event] : [];
+    });
+    const outputIds = unique(sourceActions.flatMap((event) => {
+      const outputId = techniqueOutputMaterialId(event, eventsById);
+      return outputId === null ? [] : [outputId];
+    }));
+    // These candidates have already passed isMajorHistoricalAction. A concrete
+    // output therefore represents a newly learned or verified production fact
+    // even when an older event omitted the verifiedTechnique marker.
+    if (outputIds.length !== 1) {
+      ungrouped.push(candidate);
+      continue;
+    }
+    const key = `${candidate.month}:${candidate.actorIds[0]}:${outputIds[0]}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), candidate]);
+  }
+  const merged = [...grouped.values()].map((entries) => {
+    if (entries.length === 1) return entries[0];
+    const ordered = entries.slice().sort((left, right) => left.orderInMonth - right.orderInMonth);
+    const actor = personName(state, ordered[0].actorIds[0]);
+    const clauses = unique(ordered.map((entry) => {
+      const text = stripSentenceEnd(entry.text);
+      return text.startsWith(actor) ? text.slice(actor.length) : text;
+    }));
+    const joined = clauses.map((clause, index) => (
+      index === 0 ? clause : /^(?:通过观察|确认)/u.test(clause) ? `，并${clause}` : `，又${clause}`
+    )).join('');
+    const sourceEventIds = unique(ordered.flatMap((entry) => entry.sourceEventIds));
+    return {
+      ...ordered[0],
+      id: `narrative:technique-sequence:${sourceEventIds[0]}`,
+      text: finishSentence(`${actor}${joined}`),
+      detail: finishSentence(`相关过程包括：${clauses.join('；')}`),
+      importance: Math.max(...ordered.map((entry) => entry.importance)),
+      sourceEventIds,
+      actorIds: unique(ordered.flatMap((entry) => entry.actorIds)),
+      orderInMonth: Math.min(...ordered.map((entry) => entry.orderInMonth)),
+    };
+  });
+  return [...ungrouped, ...merged];
 }
 
 function mergeCandidate(primary: NarrativeCandidate, duplicate: NarrativeCandidate): NarrativeCandidate {
@@ -946,8 +1106,13 @@ export function playerTextForEvent(state: SimulationState, event: WorldEvent): s
   return finishSentence(event.result);
 }
 
-export function projectPlayerNarrative(state: SimulationState, events: WorldEvent[], limit = 4): NarrativeEntryView[] {
-  const eventsById = eventLookup(state, events);
+export function projectPlayerNarrative(
+  state: SimulationState,
+  events: WorldEvent[],
+  limit = 4,
+  suppliedEventsById?: WorldEventLookup,
+): NarrativeEntryView[] {
+  const eventsById = suppliedEventsById ?? eventLookup(state, events);
   const attacksAbsorbedByDeath = new Set(events.flatMap((event) => (
     event.kind === 'environment' && event.change === 'death'
       ? deathAttackEvidence(event, eventsById).attacks
@@ -955,7 +1120,7 @@ export function projectPlayerNarrative(state: SimulationState, events: WorldEven
         .map((attack) => attack.id)
       : []
   )));
-  const projectCandidates = completedProjectCandidates(state, events);
+  const projectCandidates = completedProjectCandidates(state, events, eventsById);
   const projectSourceEventIds = new Set(projectCandidates.flatMap((candidate) => candidate.sourceEventIds));
   const candidates: NarrativeCandidate[] = [];
   for (const event of events) {
@@ -974,7 +1139,7 @@ export function projectPlayerNarrative(state: SimulationState, events: WorldEven
   if (!candidates.length) return [];
   const semanticCandidates = mergeCandidatesBy(candidates, (candidate) => candidate.dedupeKey ?? candidate.id);
   const distinctCandidates = mergeCandidatesBy(semanticCandidates, (candidate) => candidate.dedupeKey ?? `${candidate.month}:${candidate.text}`);
-  return distinctCandidates
+  return mergeTechniqueCandidates(state, distinctCandidates, eventsById)
     .sort((first, second) => second.importance - first.importance || first.orderInMonth - second.orderInMonth)
     .slice(0, Math.max(1, limit))
     .sort((first, second) => first.orderInMonth - second.orderInMonth)

@@ -210,6 +210,8 @@ export default function ImmersiveGame() {
   const steppingRef = useRef(false);
   const sessionGenerationRef = useRef(0);
   const historySequenceRef = useRef(0);
+  const historyRef = useRef<EvolutionEntry[]>([]);
+  const historyTotalCountRef = useRef(0);
   const activeCivilizationRef = useRef(0);
   const activeBranchRef = useRef('');
   const activeWorldSeedRef = useRef<number | null>(null);
@@ -284,29 +286,38 @@ export default function ImmersiveGame() {
     text: string,
     tone: EvolutionEntry['tone'] = 'plain',
     detail?: string,
-    metadata?: Pick<EvolutionEntry, 'actorIds' | 'sourceEventIds'>,
+    metadata?: Pick<EvolutionEntry, 'actorIds' | 'sourceEventIds'> & { id?: string },
   ) => {
-    const id = `${runIdRef.current}:history:${historySequenceRef.current}`;
-    historySequenceRef.current += 1;
-    setHistoryTotalCount((count) => count + 1);
-    setHistory((current) => {
-      const events = current.filter((entry) => !entry.status);
-      return [...events.slice(-239), {
-        id,
-        civilizationId: activeCivilizationRef.current,
-        branchId: activeBranchRef.current,
-        month,
-        text,
-        tone,
-        ...(detail ? { detail } : {}),
-        ...(metadata?.actorIds?.length ? { actorIds: metadata.actorIds } : {}),
-        ...(metadata?.sourceEventIds?.length ? { sourceEventIds: metadata.sourceEventIds } : {}),
-      }];
-    });
+    const id = metadata?.id ?? `${runIdRef.current}:history:${historySequenceRef.current++}`;
+    const sources = new Set(metadata?.sourceEventIds ?? []);
+    const events = historyRef.current.filter((entry) => !entry.status);
+    const superseded = events.filter((entry) => entry.id === id || (
+      sources.size > 0
+        && Boolean(entry.sourceEventIds?.length)
+        && entry.sourceEventIds?.every((sourceEventId) => sources.has(sourceEventId)) === true
+    ));
+    const next = [...events.filter((entry) => !superseded.includes(entry)).slice(-239), {
+      id,
+      civilizationId: activeCivilizationRef.current,
+      branchId: activeBranchRef.current,
+      month,
+      text,
+      tone,
+      ...(detail ? { detail } : {}),
+      ...(metadata?.actorIds?.length ? { actorIds: metadata.actorIds } : {}),
+      ...(metadata?.sourceEventIds?.length ? { sourceEventIds: metadata.sourceEventIds } : {}),
+    }];
+    historyRef.current = next;
+    historyTotalCountRef.current = Math.max(
+      next.length,
+      historyTotalCountRef.current + 1 - superseded.length,
+    );
+    setHistoryTotalCount(historyTotalCountRef.current);
+    setHistory(next);
   }, []);
 
   const showRuntimeStatus = useCallback((text: string) => {
-    setHistory((current) => [...current.filter((entry) => !entry.status).slice(-239), {
+    const next = [...historyRef.current.filter((entry) => !entry.status).slice(-239), {
       id: `${runIdRef.current}:runtime-status`,
       civilizationId: activeCivilizationRef.current,
       branchId: activeBranchRef.current,
@@ -314,7 +325,9 @@ export default function ImmersiveGame() {
       text,
       tone: 'plain',
       status: true,
-    }]);
+    } satisfies EvolutionEntry];
+    historyRef.current = next;
+    setHistory(next);
   }, []);
 
   const replaceHistory = useCallback((frame: Frame, entries: NarrativeEntryView[], totalCount: number) => {
@@ -322,8 +335,9 @@ export default function ImmersiveGame() {
       ? Math.max(entries.length, Math.floor(totalCount))
       : entries.length;
     historySequenceRef.current = normalizedTotalCount;
+    historyTotalCountRef.current = normalizedTotalCount;
     setHistoryTotalCount(normalizedTotalCount);
-    setHistory(entries.slice(-240).map((entry) => ({
+    const next = entries.slice(-240).map((entry) => ({
       id: entry.id,
       civilizationId: frame.civilizationId,
       branchId: frame.branchId,
@@ -333,7 +347,9 @@ export default function ImmersiveGame() {
       detail: entry.detail,
       actorIds: entry.actorIds,
       sourceEventIds: entry.sourceEventIds,
-    })));
+    }));
+    historyRef.current = next;
+    setHistory(next);
   }, []);
 
   const applyFrame = useCallback((frame: Frame) => {
@@ -370,6 +386,7 @@ export default function ImmersiveGame() {
     }
     for (const entry of frame.entries) {
       pushHistory(entry.month, entry.text, entry.tone, entry.detail, {
+        id: entry.id,
         actorIds: entry.actorIds,
         sourceEventIds: entry.sourceEventIds,
       });
@@ -405,6 +422,8 @@ export default function ImmersiveGame() {
     activeWorldSeedRef.current = worldSeed;
     if (resetHistory) {
       historySequenceRef.current = 0;
+      historyRef.current = [];
+      historyTotalCountRef.current = 0;
       setHistoryTotalCount(0);
       setHistory([]);
       setCivilizationIndexHistory([]);

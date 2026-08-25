@@ -15,6 +15,7 @@ import { voxelAt } from './world/grid';
 import { traitDefinition, traitStatesOf } from './domain/trait';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
+export type { WorldEventLookup } from './projection/player-narrative';
 
 export const ERA_TO_ENV: Record<EraKey, {
   epoch: EpochKind;

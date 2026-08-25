@@ -76,6 +76,7 @@ try {
     assert.equal(frame.elapsedMonths, month, `本地规则必须完整提交第 ${month} 月`);
     frames.set(month, structuredClone(frame));
   }
+  const chronicleBeforeRecovery = structuredClone(session.chronicle());
 
   const liveSnapshot = session.recoverySnapshot();
   assert.ok(liveSnapshot, '已推进的实时会话必须可生成恢复快照');
@@ -117,6 +118,7 @@ try {
     },
   );
   assert.equal(resolvedChunkCount, 0, '普通恢复不得读取历史 checkpoint/delta BLOB');
+  assert.deepEqual(lazySession.chronicle(), chronicleBeforeRecovery, '纪事增量投影必须能只从已存帧重建');
   const lazyRecovery = lazySession.recoverySnapshot();
   const lazyTimeline = lazyRecovery?.branches.get(lazyRecovery.activeBranchId);
   assert.equal(lazyTimeline?.snapshots.get(25)?.kind, 'delta', '恢复不得把有效 head delta 改写为完整 checkpoint');
@@ -154,6 +156,7 @@ try {
   const restoredSession = restoredManager.get(runId);
   assert.ok(restoredSession, '新 manager 必须从持久化快照恢复实时会话');
   assert.equal(restoredSession.latest()?.elapsedMonths, 25, '恢复后的会话头必须位于第 25 月');
+  assert.deepEqual(restoredSession.chronicle(), chronicleBeforeRecovery, 'SQLite 恢复后纪事归并结果必须保持一致');
 
   for (const [month, expected] of frames) {
     assertReplayFrame(restoredSession.frameAt(month), expected, `持久化恢复后回放第 ${month} 月`);
@@ -169,6 +172,10 @@ try {
   assertReplayFrame(restoredSession.frameAt(forkMonth - 1), frames.get(forkMonth - 1), '新分支应继承分叉前一月');
   assertReplayFrame(restoredSession.frameAt(forkMonth), sourceFrame, '新分支应保留分叉月投影');
   assert.equal(restoredSession.frameAt(forkMonth + 1), null, '新分支不能泄漏原分支未来帧');
+  assert.ok(
+    restoredSession.chronicle().every((entry) => entry.month <= forkMonth),
+    '新分支的纪事投影不能继承分叉月之后的条目',
+  );
 
   const forkedNextFrame = await restoredSession.step({ skySample: skyAt(forkMonth + 1) });
   assert.ok(forkedNextFrame, '分叉后的本地会话必须可以继续推进');

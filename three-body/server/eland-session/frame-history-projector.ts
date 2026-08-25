@@ -4,6 +4,7 @@ import {
   monthSpeaker,
   projectPlayerNarrative,
   toSocietyState,
+  type WorldEventLookup,
 } from '../../src/game/eland/adapter';
 import type {
   CivilizationIndexHistoryPoint,
@@ -14,11 +15,20 @@ import type {
   SpeechLineView,
 } from '../../src/game/societyContract';
 import type { StoredFrame } from './timeline';
+import {
+  chronicleProjectionEntries,
+  rebuildChronicleProjection,
+  type ChronicleProjectionState,
+} from './chronicle-projection';
 
 export type FrameEntry = NarrativeEntryView;
 
-export function entriesFor(state: SimulationState, events: WorldEvent[]): FrameEntry[] {
-  return projectPlayerNarrative(state, events, 4);
+export function entriesFor(
+  state: SimulationState,
+  events: WorldEvent[],
+  eventsById?: WorldEventLookup,
+): FrameEntry[] {
+  return projectPlayerNarrative(state, events, 4, eventsById);
 }
 
 export function foundingEventsFor(state: SimulationState): WorldEvent[] {
@@ -138,39 +148,70 @@ export function storeFrame(frame: GameFrame): StoredFrame {
   };
 }
 
-function refreshStoredDeathEntries(entries: FrameEntry[], state: SimulationState): FrameEntry[] {
-  const deathsById = new Map(state.world.past.flatMap((event): Array<[string, WorldEvent]> => (
-    event.kind === 'environment' && event.change === 'death' ? [[event.id, event]] : []
-  )));
+function refreshStoredDeathEntries(
+  entries: FrameEntry[],
+  state: SimulationState,
+  eventsById: WorldEventLookup,
+): FrameEntry[] {
   const refreshed = new Map<string, FrameEntry>();
   return entries.map((entry) => {
     const narrativeDeathId = entry.id.startsWith('narrative:') ? entry.id.slice('narrative:'.length) : undefined;
     const soleSourceId = entry.sourceEventIds.length === 1 ? entry.sourceEventIds[0] : undefined;
-    const death = (narrativeDeathId ? deathsById.get(narrativeDeathId) : undefined)
-      ?? (soleSourceId ? deathsById.get(soleSourceId) : undefined);
-    if (!death) return entry;
+    const event = (narrativeDeathId ? eventsById.get(narrativeDeathId) : undefined)
+      ?? (soleSourceId ? eventsById.get(soleSourceId) : undefined);
+    if (event?.kind !== 'environment' || event.change !== 'death') return entry;
+    const death = event;
     const cached = refreshed.get(death.id);
     if (cached) return cached;
-    const projection = entriesFor(state, [death]).find((candidate) => candidate.id === `narrative:${death.id}`);
+    const projection = entriesFor(state, [death], eventsById)
+      .find((candidate) => candidate.id === `narrative:${death.id}`);
     if (!projection) return entry;
     refreshed.set(death.id, projection);
     return projection;
   });
 }
 
-export function projectChronicle(frames: StoredFrame[], state: SimulationState | null): FrameEntry[] {
-  const storedEntries = frames.flatMap((frame) => frame.entries);
-  if (!state) return storedEntries;
+export function finalizeChronicleEntries(
+  projectedEntries: FrameEntry[],
+  state: SimulationState | null,
+  suppliedEventsById?: WorldEventLookup,
+): FrameEntry[] {
+  if (!state) return projectedEntries;
+  const eventsById = suppliedEventsById
+    ?? new Map(state.world.past.map((event) => [event.id, event]));
   // Stored frames keep their original presentation, but simple one-death rule
   // entries can be safely refreshed to expose causal evidence added later.
   // Mixed model summaries remain untouched because their identity/source set is
   // not an exact death entry.
-  const entries = refreshStoredDeathEntries(storedEntries, state);
-  const foundingEntries = entriesFor(state, foundingEventsFor(state));
+  const entries = refreshStoredDeathEntries(projectedEntries, state, eventsById);
+  const hasFounding = entries.some((entry) => entry.sourceEventIds.some((eventId) => {
+    const event = eventsById.get(eventId);
+    return event?.kind === 'environment' && event.change === 'founding';
+  }));
+  const foundingEntries = hasFounding ? [] : entriesFor(state, foundingEventsFor(state), eventsById);
   const withFounding = foundingEntries.some((founding) => (
     !entries.some((entry) => entry.sourceEventIds.some((eventId) => founding.sourceEventIds.includes(eventId)))
   )) ? [...foundingEntries, ...entries] : entries;
   return withCivilizationEntries(state, state.lastStep, withFounding);
+}
+
+export function projectChronicleFromProjection(
+  projection: ChronicleProjectionState,
+  state: SimulationState | null,
+  eventsById?: WorldEventLookup,
+): FrameEntry[] {
+  return finalizeChronicleEntries(chronicleProjectionEntries(projection), state, eventsById);
+}
+
+export function projectChronicle(frames: StoredFrame[], state: SimulationState | null): FrameEntry[] {
+  if (!state) {
+    const latestById = new Map<string, FrameEntry>();
+    for (const entry of frames.flatMap((frame) => frame.entries)) latestById.set(entry.id, entry);
+    return [...latestById.values()].sort((left, right) => left.month - right.month);
+  }
+  const eventsById = new Map(state.world.past.map((event) => [event.id, event]));
+  const projection = rebuildChronicleProjection(frames, eventsById);
+  return projectChronicleFromProjection(projection, state, eventsById);
 }
 
 export function projectCivilizationIndexHistory(

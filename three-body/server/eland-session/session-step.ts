@@ -27,7 +27,6 @@ import { realizeLiveSpeechLines, retainDecisionSpeechLines } from '../live-speec
 import { hasExplicitModelRoute, modelEndpointStatus, readEvolutionMode, readSummaryMode } from '../model-config';
 import { realizeNewbornNames } from '../newborn-naming-service';
 import { logPerf, perfElapsed, perfNow } from '../perf';
-import { entriesFor } from './frame-history-projector';
 
 const MAX_COMPLETED_STEP_RECEIPTS = 64;
 
@@ -115,6 +114,7 @@ interface SessionStepHost {
     ended: boolean;
   };
   pendingPlayerInteractions(): PendingPlayerInteraction[];
+  projectEntries(state: SimulationState, events: SimulationState['lastStep']): NarrativeEntryView[];
   commitSky(skySample: SkySample, cosmosSnapshot?: CosmosSnapshot): void;
   record(
     state: SimulationState,
@@ -338,7 +338,7 @@ export class SessionStepCoordinator {
       const speechPromise = decisionEndpoint.configured && decisionEndpoint.endpointId && speechDrafts.length > 0
         ? realizeLiveSpeechLines(state, state.lastStep, speechDrafts, decisionEndpoint.endpointId)
         : Promise.resolve({ lines: retainedDecisionLines, generationErrors: [] });
-      const ruleEntries = entriesFor(state, state.lastStep);
+      const ruleEntries = this.host.projectEntries(state, state.lastStep);
       let entries = ruleEntries;
       if (readSummaryMode() === 'model' && state.civilization.status !== 'ended') {
         try {

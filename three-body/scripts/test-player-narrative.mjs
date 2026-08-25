@@ -10,6 +10,7 @@ const bundlePath = path.join(temporaryDirectory, 'player-narrative.mjs');
 const enhancementBundlePath = path.join(temporaryDirectory, 'narrative-enhancements.mjs');
 const projectionBundlePath = path.join(temporaryDirectory, 'society-projection.mjs');
 const frameProjectorBundlePath = path.join(temporaryDirectory, 'frame-history-projector.mjs');
+const chronicleProjectionBundlePath = path.join(temporaryDirectory, 'chronicle-projection.mjs');
 
 try {
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -20,6 +21,9 @@ try {
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'server/eland-session/frame-history-projector.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${frameProjectorBundlePath}`,
+  ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'server/eland-session/chronicle-projection.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${chronicleProjectionBundlePath}`,
   ], { stdio: 'pipe' });
   const projectionTestEntry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
@@ -34,6 +38,11 @@ try {
   const { playerTextForEvent, projectPlayerNarrative } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
   const { summarizePlayerNarrativeEntries } = await import(`${pathToFileURL(enhancementBundlePath).href}?test=${Date.now()}`);
   const { projectChronicle, withCivilizationEntries } = await import(`${pathToFileURL(frameProjectorBundlePath).href}?test=${Date.now()}`);
+  const {
+    advanceChronicleProjection,
+    chronicleProjectionEntries,
+    createChronicleProjectionState,
+  } = await import(`${pathToFileURL(chronicleProjectionBundlePath).href}?test=${Date.now()}`);
   const { createInitialState, Material, setVoxel, toAgentHistory, toSocietyState } = await import(`${pathToFileURL(projectionBundlePath).href}?test=${Date.now()}`);
 
   const visualProjectionState = createInitialState(20260822, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
@@ -330,6 +339,53 @@ try {
   } finally {
     globalThis.fetch = originalWeatherFetch;
   }
+
+  const droughtAfterStorm = {
+    ...stormTransition,
+    id: 'weather-drought-9', atMonth: 9,
+    result: '本月天气转为干旱',
+    diff: { kind: 'drought', intensity: 3, previousKind: 'storm', previousIntensity: 3, episodeStarted: true },
+  };
+  const clearAfterDrought = {
+    ...stormTransition,
+    id: 'weather-clear-10', atMonth: 10,
+    result: '本月天气转为晴朗',
+    diff: { kind: 'clear', intensity: 1, previousKind: 'drought', previousIntensity: 3, episodeStarted: true },
+  };
+  const weatherEvents = [stormTransition, droughtAfterStorm, clearAfterDrought];
+  const weatherEventIndex = new Map(weatherEvents.map((event) => [event.id, event]));
+  const incrementalChronicle = createChronicleProjectionState();
+  const emittedWeatherIds = weatherEvents.map((event) => {
+    const entriesForMonth = projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: weatherEvents } },
+      [event],
+      4,
+      weatherEventIndex,
+    );
+    return advanceChronicleProjection(
+      incrementalChronicle,
+      event.atMonth,
+      entriesForMonth,
+      weatherEventIndex,
+    )[0].id;
+  });
+  assert.equal(new Set(emittedWeatherIds).size, 1, '同一段连续天气必须以稳定 id 增量更新，而不是逐月追加');
+  const consolidatedWeather = chronicleProjectionEntries(incrementalChronicle);
+  assert.equal(consolidatedWeather.length, 1);
+  assert.equal(consolidatedWeather[0].text, '地表经历风暴和干旱，随后恢复晴朗。');
+  assert.deepEqual(consolidatedWeather[0].sourceEventIds, weatherEvents.map((event) => event.id));
+  assert.match(consolidatedWeather[0].detail, /第 8 至 10 月.*最高强度为 3/u);
+  const replayedWeather = projectChronicle(weatherEvents.map((event) => ({
+    elapsedMonths: event.atMonth,
+    entries: projectPlayerNarrative(
+      { ...state, world: { ...state.world, past: weatherEvents } },
+      [event],
+      4,
+      weatherEventIndex,
+    ),
+  })), { ...state, lastStep: [clearAfterDrought], world: { ...state.world, past: weatherEvents } });
+  assert.equal(replayedWeather.length, 1, '旧逐月天气帧在读取时也应重建为同一段历史');
+  assert.equal(replayedWeather[0].text, consolidatedWeather[0].text);
 
   const birth = projectPlayerNarrative(state, [{
     id: 'birth-52', kind: 'environment', change: 'body', atMonth: 52, orderInMonth: 9, cellId: 12,
@@ -659,18 +715,73 @@ try {
     playerTextForEvent({ ...state, world: { past: [woodToPlank, verifiedWoodToPlank] } }, verifiedWoodToPlank),
     '伽利略确认搭建时可以把木材加工成木板。',
   );
+  const techniqueSequence = projectPlayerNarrative(
+    { ...state, world: { ...state.world, past: [woodToPlank, verifiedWoodToPlank] } },
+    [woodToPlank, verifiedWoodToPlank],
+    4,
+  );
+  assert.equal(techniqueSequence.length, 1, '同一人物围绕同一产物的制作与核验应合成一段技术事实');
+  assert.equal(
+    techniqueSequence[0].text,
+    '伽利略把木材加工成木板，用于搭建，并确认搭建时可以把木材加工成木板。',
+  );
+  assert.deepEqual(techniqueSequence[0].sourceEventIds, ['wood-to-plank', 'verify-wood-to-plank']);
 
+  const earlierGranaryPreparation = {
+    ...woodToPlank,
+    id: 'prepare-granary-plank',
+    atMonth: 50,
+  };
   const projectState = {
     ...state,
+    world: { ...state.world, past: [earlierGranaryPreparation, placedGranary] },
     projects: [{
       id: 'project-granary', status: 'completed', completedAtMonth: 51, completionEventIds: ['place-granary'],
+      actionEventIds: ['prepare-granary-plank', 'place-granary'], createdAtMonth: 49,
+      kind: 'construction', desiredFunction: 'reserve-storage',
       ownerId: 'galileo', contributorIds: ['freyja'], summary: '建立公共谷仓',
     }],
   };
   const projectEntries = projectPlayerNarrative(projectState, [placedGranary], 4);
   assert.equal(projectEntries.length, 1, '同源的项目完成与原子行动只保留项目句');
-  assert.equal(projectEntries[0].text, '伽利略、芙蕾雅完成了“建立公共谷仓”。');
-  assert.deepEqual(projectEntries[0].sourceEventIds, ['place-granary']);
+  assert.equal(projectEntries[0].text, '伽利略和芙蕾雅建成了储备设施。');
+  assert.match(projectEntries[0].detail, /第 49 至 51 月/u);
+  assert.doesNotMatch(projectEntries[0].detail, /格|空气结合/u, '项目详情不应继续暴露坐标或原始物质日志');
+  assert.deepEqual(projectEntries[0].sourceEventIds, ['prepare-granary-plank', 'place-granary']);
+  const originalStructuredFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('结构化项目与技术纪事不应再调用模型'); };
+  try {
+    assert.deepEqual(
+      await summarizePlayerNarrativeEntries(projectState, [...techniqueSequence, ...projectEntries]),
+      [...techniqueSequence, ...projectEntries],
+      '项目与技术过程的稳定 id 和因果链必须由规则投影保留',
+    );
+  } finally {
+    globalThis.fetch = originalStructuredFetch;
+  }
+  const unrelatedBirthEvent = {
+    id: 'birth-unrelated-to-project', kind: 'environment', change: 'body', atMonth: 50, orderInMonth: 20, cellId: 4,
+    who: 'freyja', result: '芙蕾雅生下了一名孩子', diff: { bornPersonId: 'unrelated-child', bornPersonName: '孩子' },
+  };
+  const mixedProjection = createChronicleProjectionState();
+  const mixedEventIndex = new Map([
+    earlierGranaryPreparation,
+    placedGranary,
+    unrelatedBirthEvent,
+  ].map((event) => [event.id, event]));
+  advanceChronicleProjection(mixedProjection, 50, [{
+    id: 'narrative-summary:mixed-project-and-birth', month: 50,
+    text: '伽利略加工了木板，同时芙蕾雅生下了孩子。',
+    tone: 'good', kind: 'epoch', importance: 100,
+    sourceEventIds: ['prepare-granary-plank', unrelatedBirthEvent.id],
+    actorIds: ['galileo', 'freyja'],
+  }], mixedEventIndex);
+  advanceChronicleProjection(mixedProjection, 51, projectEntries, mixedEventIndex);
+  assert.equal(
+    chronicleProjectionEntries(mixedProjection).length,
+    2,
+    '项目完成不得因为一个重叠来源而吞掉混合条目中无关的出生事实',
+  );
 
   const companionState = {
     ...state,

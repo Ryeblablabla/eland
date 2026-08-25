@@ -411,9 +411,12 @@ export async function summarizePlayerNarrativeEntries(
       ? [event.id]
       : []
   )));
-  // Natural-history entries carry structured changes or causal chains in their
-  // details/source ids. A one-line model summary would discard that evidence.
+  // Natural-history and significant action entries carry structured details,
+  // stable identities or causal chains. A one-line model summary would discard
+  // that evidence and can prevent a later project/death from safely replacing
+  // or absorbing its earlier source action.
   const fixedEntries = entries.filter((entry) => entry.tone === 'era'
+    || entry.kind === 'action'
     || entry.sourceEventIds.some((eventId) => groundedNaturalEventIds.has(eventId)));
   const fixedEntryIds = new Set(fixedEntries.map((entry) => entry.id));
   const selectedEntries = entries.filter((entry) => !fixedEntryIds.has(entry.id));

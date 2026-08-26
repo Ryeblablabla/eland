@@ -299,6 +299,14 @@ export const HISTORY_RETENTION_MAX_REPRODUCTION_ATTEMPT_EVENT_IDS = REPRODUCTION
 export const HISTORY_RETENTION_MAX_PENDING_PREDICTION_WAKE_MATCHES = 4_096;
 /** Active mechanical projects above this exact action-source bound must close or compact first. */
 export const HISTORY_RETENTION_MAX_ACTIVE_PROJECT_ACTION_EVENT_IDS = 4_096;
+/** A live intent may carry the full action ledger plus its mandatory decision. */
+export const HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS =
+  MAX_LIVE_INTENT_ACTION_EVENT_IDS + 1;
+/** Supporting provenance remains separately bounded and never becomes executable core. */
+export const HISTORY_RETENTION_MAX_LIVE_INTENT_SUPPORTING_SOURCE_EVENT_IDS = 4_096;
+export const HISTORY_RETENTION_MAX_LIVE_INTENT_ANCHOR_EVENT_IDS =
+  HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS
+  + HISTORY_RETENTION_MAX_LIVE_INTENT_SUPPORTING_SOURCE_EVENT_IDS;
 export const HISTORY_RETENTION_MAX_ELECTRICAL_NETWORKS = 4_096;
 /** Corrupt shells cannot turn person/tool selectors into an unbounded sidecar. */
 export const HISTORY_RETENTION_MAX_LIVE_GAMEPLAY_SELECTOR_PERSONS = 4_096;
@@ -392,7 +400,7 @@ export const HISTORY_RETENTION_MAX_COMPLETED_PROJECT_SOURCE_EVENT_IDS = 4_096;
 const RECENT_PRODUCTION_WINDOW_LEASE = 'retention:recent-personal-production:window';
 const RECENT_PRODUCTION_WINDOW_GROUP_PREFIX = 'recent-personal-production-window:';
 const CALIBRATION_SOURCE_GROUP_SUFFIX = ':instrument-sources';
-const LIVE_AGREEMENT_SUPPORTING_SOURCE_GROUP_SUFFIX = ':supporting-sources';
+const LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX = ':supporting-sources';
 const GROUNDED_RESPONSE_SOURCE_GROUP_PREFIX =
   'gameplay:grounded-conversation-response:';
 const RECENT_TERMINAL_FAILURE_ACTION_GROUP_PREFIX =
@@ -637,6 +645,17 @@ function boundedCanonicalEventIds(
   if (!Array.isArray(values)
     || values.length > HISTORY_RETENTION_MAX_ACTIVE_PROJECT_ACTION_EVENT_IDS) {
     throw new Error(`${context} 超出有界续接上限 ${HISTORY_RETENTION_MAX_ACTIVE_PROJECT_ACTION_EVENT_IDS}`);
+  }
+  return [...new Set(values.map((value) => requiredEventId(value, context)))].sort();
+}
+
+function boundedCanonicalEventIdsAtMost(
+  values: readonly string[] | undefined,
+  context: string,
+  maximum: number,
+): string[] {
+  if (!Array.isArray(values) || values.length > maximum) {
+    throw new Error(`${context} 超出有界续接上限 ${maximum}`);
   }
   return [...new Set(values.map((value) => requiredEventId(value, context)))].sort();
 }
@@ -1501,15 +1520,27 @@ function collectDemand(state: SimulationState) {
       );
     }
     const leaseKey = liveIntentHistoryLeaseKey(intent.id);
+    const coreEventIds = boundedCanonicalEventIdsAtMost([
+      intent.sourceDecisionEventId,
+      ...intent.actionEventIds,
+    ], `live intent ${intent.id} core anchors`, HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS);
+    const coreEventIdSet = new Set(coreEventIds);
+    const supportingEventIds = boundedCanonicalEventIdsAtMost(
+      intent.sourceFactIds ?? [],
+      `live intent ${intent.id} supporting sources`,
+      HISTORY_RETENTION_MAX_LIVE_INTENT_SUPPORTING_SOURCE_EVENT_IDS,
+    ).filter((eventId) => !coreEventIdSet.has(eventId));
     addDemandGroup(demandGroupsByKey, directDemandEventIds, {
       groupKey: leaseKey,
       requirement: 'all',
       leaseKey,
-      eventIds: boundedCanonicalEventIds([
-        intent.sourceDecisionEventId,
-        ...(intent.sourceFactIds ?? []),
-        ...intent.actionEventIds,
-      ], `live intent ${intent.id} anchors`),
+      eventIds: coreEventIds,
+    });
+    addDemandGroup(demandGroupsByKey, directDemandEventIds, {
+      groupKey: `${leaseKey}${LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX}`,
+      requirement: 'audit-only',
+      leaseKey,
+      eventIds: supportingEventIds,
     });
   }
 
@@ -2082,7 +2113,7 @@ function compatibilityCanonicalDemandGroups(
 ): HistoryRetentionContinuationDemandGroup[] {
   const canonical = new Map<string, HistoryRetentionContinuationDemandGroup>();
   for (const group of groups) {
-    if (group.groupKey.endsWith(LIVE_AGREEMENT_SUPPORTING_SOURCE_GROUP_SUFFIX)
+    if (liveSupportingSourceCoreGroupKey(group.groupKey) !== null
       || group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
       || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
@@ -2098,9 +2129,8 @@ function compatibilityCanonicalDemandGroups(
     });
   }
   for (const group of groups) {
-    if (!group.groupKey.startsWith('live-agreement:')
-      || !group.groupKey.endsWith(LIVE_AGREEMENT_SUPPORTING_SOURCE_GROUP_SUFFIX)) continue;
-    const coreKey = group.groupKey.slice(0, -LIVE_AGREEMENT_SUPPORTING_SOURCE_GROUP_SUFFIX.length);
+    const coreKey = liveSupportingSourceCoreGroupKey(group.groupKey);
+    if (!coreKey) continue;
     const core = canonical.get(coreKey);
     if (!core || core.requirement !== 'all') {
       canonical.set(group.groupKey, {
@@ -2118,6 +2148,79 @@ function compatibilityCanonicalDemandGroups(
     });
   }
   return [...canonical.values()].sort((left, right) => left.groupKey.localeCompare(right.groupKey));
+}
+
+function liveSupportingSourceCoreGroupKey(groupKey: string): string | null {
+  if ((!groupKey.startsWith('live-agreement:') && !groupKey.startsWith('live-intent:'))
+    || !groupKey.endsWith(LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX)) return null;
+  const coreKey = groupKey.slice(0, -LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX.length);
+  return coreKey.endsWith(':anchors') ? coreKey : null;
+}
+
+export function assertLiveIntentHistoryRetentionDemandGroups(
+  groups: readonly Pick<HistoryRetentionContinuationDemandGroup, 'groupKey' | 'requirement' | 'leaseKeys' | 'eventIds'>[],
+  context: string,
+): void {
+  const groupsByKey = new Map(groups.map((group) => [group.groupKey, group]));
+  for (const group of groups) {
+    const isCore = group.groupKey.startsWith('live-intent:')
+      && group.groupKey.endsWith(':anchors');
+    const supportingCoreKey = group.groupKey.startsWith('live-intent:')
+      ? liveSupportingSourceCoreGroupKey(group.groupKey)
+      : null;
+    if (!isCore && !supportingCoreKey) continue;
+    if (supportingCoreKey) {
+      if (!groupsByKey.has(supportingCoreKey)) {
+        throw new Error(`${context} ${group.groupKey} 缺少 live intent core group`);
+      }
+      continue;
+    }
+    if (group.requirement !== 'all'
+      || group.leaseKeys.length !== 1
+      || group.leaseKeys[0] !== group.groupKey
+      || group.eventIds.length > HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS) {
+      throw new Error(`${context} ${group.groupKey} 的 live intent core 无效或超界`);
+    }
+    const supporting = groupsByKey.get(`${group.groupKey}${LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX}`);
+    if (!supporting) continue;
+    const coreEventIds = new Set(group.eventIds);
+    const combinedEventIds = new Set([...group.eventIds, ...supporting.eventIds]);
+    if (supporting.requirement !== 'audit-only'
+      || supporting.leaseKeys.length !== 1
+      || supporting.leaseKeys[0] !== group.groupKey
+      || supporting.eventIds.some((eventId) => coreEventIds.has(eventId))
+      || supporting.eventIds.length
+        > HISTORY_RETENTION_MAX_LIVE_INTENT_SUPPORTING_SOURCE_EVENT_IDS
+      || combinedEventIds.size > HISTORY_RETENTION_MAX_LIVE_INTENT_ANCHOR_EVENT_IDS) {
+      throw new Error(`${context} ${supporting.groupKey} 的 live intent supporting sources 无效或超界`);
+    }
+  }
+}
+
+function assertLiveIntentRawSplitMatchesCanonicalDemand(
+  projectedGroups: readonly Pick<HistoryRetentionContinuationDemandGroup, 'groupKey' | 'requirement' | 'leaseKeys' | 'eventIds'>[],
+  canonicalGroups: readonly Pick<HistoryRetentionContinuationDemandGroup, 'groupKey' | 'requirement' | 'leaseKeys' | 'eventIds'>[],
+): void {
+  const canonicalByKey = new Map(canonicalGroups.map((group) => [group.groupKey, group]));
+  const projectedByKey = new Map(projectedGroups.map((group) => [group.groupKey, group]));
+  for (const projectedSupport of projectedGroups) {
+    const coreKey = projectedSupport.groupKey.startsWith('live-intent:')
+      ? liveSupportingSourceCoreGroupKey(projectedSupport.groupKey)
+      : null;
+    if (!coreKey) continue;
+    const projectedCore = projectedByKey.get(coreKey);
+    const canonicalCore = canonicalByKey.get(coreKey);
+    const canonicalSupport = canonicalByKey.get(projectedSupport.groupKey);
+    if (!projectedCore || !canonicalCore || !canonicalSupport
+      || projectedCore.requirement !== canonicalCore.requirement
+      || projectedSupport.requirement !== canonicalSupport.requirement
+      || !sameStringSet(projectedCore.leaseKeys, canonicalCore.leaseKeys)
+      || !sameStringSet(projectedSupport.leaseKeys, canonicalSupport.leaseKeys)
+      || !sameStringSet(projectedCore.eventIds, canonicalCore.eventIds)
+      || !sameStringSet(projectedSupport.eventIds, canonicalSupport.eventIds)) {
+      throw new Error(`retention projection live intent ${coreKey} 的 core/support 分区不一致`);
+    }
+  }
 }
 
 function demandFingerprint(demand: ReturnType<typeof collectDemand>): string {
@@ -2201,6 +2304,7 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     || !sameStringSet(projection.millLaborPersonIds, demand.millLaborPersonIds)) {
     throw new Error('retention projection demand 与 bounded state 当前 shell 不一致');
   }
+  assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
   const canonicalDemandGroups = compatibilityCanonicalDemandGroups(demand.groups);
@@ -2857,7 +2961,7 @@ function validateHistoryRetentionContinuationBasis(
     }
     if (group.groupKey.startsWith('live-intent:')
       && group.groupKey.endsWith(':anchors')
-      && group.eventIds.length > MAX_LIVE_INTENT_ACTION_EVENT_IDS) {
+      && group.eventIds.length > HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS) {
       throw new Error(`retention continuation demand group ${group.groupKey} intent anchors 超出有界上限`);
     }
     if (parseGroundedConversationResponseSourceLeaseKey(group.groupKey)) {
@@ -2950,6 +3054,10 @@ function validateHistoryRetentionContinuationBasis(
       > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL) {
     throw new Error('retention continuation social learning source leases 超出有界上限');
   }
+  assertLiveIntentHistoryRetentionDemandGroups(
+    sourceDemand.groups,
+    'retention continuation demand group',
+  );
   const reproductionIntentIds = sourceDemand.reproductionFacts.map((item) => item.intentId);
   assertSortedUniqueStrings(reproductionIntentIds, 'retention continuation reproduction intents');
   for (const item of sourceDemand.reproductionFacts) {

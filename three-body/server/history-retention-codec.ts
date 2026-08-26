@@ -10,6 +10,7 @@ import {
   HISTORY_RETENTION_MAX_CALIBRATION_INSTRUMENTS,
   HISTORY_RETENTION_MAX_CALIBRATION_INSTRUMENTS_PER_PERSON,
   HISTORY_RETENTION_MAX_LIVE_GAMEPLAY_SELECTOR_PERSONS,
+  HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS,
   HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS,
   HISTORY_RETENTION_MAX_GROUNDED_RESPONSE_SOURCE_GROUPS,
   HISTORY_RETENTION_MAX_GROUNDED_RESPONSE_SOURCE_EVENT_IDS,
@@ -45,6 +46,7 @@ import {
   FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY,
   FUTURE_MATERIAL_AFFORDANCE_SOURCE_LEASE_KEY,
   calibrationLeaseKeysFromDemandGroups,
+  assertLiveIntentHistoryRetentionDemandGroups,
   historyRetentionDemandFingerprint,
   historyRetentionRequirementBlocks,
   historyRetentionRequirementPinsResolvedEvents,
@@ -55,7 +57,6 @@ import {
 } from './history-retention-projection';
 import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
-  MAX_LIVE_INTENT_ACTION_EVENT_IDS,
   parseGroundedConversationWindowLeaseKey,
 } from '../src/game/eland/domain/event-index';
 import {
@@ -604,7 +605,7 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
     }
     if (candidate.groupKey.startsWith('live-intent:')
       && candidate.groupKey.endsWith(':anchors')
-      && eventIds.length > MAX_LIVE_INTENT_ACTION_EVENT_IDS) {
+      && eventIds.length > HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS) {
       throw new Error(`${label}.eventIds 超出 live intent 有界上限`);
     }
     if (candidate.groupKey.startsWith('live-person-social:')
@@ -713,6 +714,10 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
       > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL) {
     throw new Error('retention continuation social learning source leases 超出有界上限');
   }
+  assertLiveIntentHistoryRetentionDemandGroups(
+    groups,
+    'retention continuation sourceDemand group',
+  );
   const millLaborPersonIds = assertStringArray(
     value.millLaborPersonIds,
     'retention continuation sourceDemand.millLaborPersonIds',
@@ -1464,6 +1469,10 @@ function normalizeProjection(value: unknown): HistoryRetentionProjectionResult {
   );
   const pins = normalizePins(value.pins, target);
   const demandGroups = normalizeDemandGroups(value.demandGroups);
+  assertLiveIntentHistoryRetentionDemandGroups(
+    demandGroups,
+    'retention projection demand group',
+  );
   const unresolvedDemands = normalizeUnresolvedDemands(value.unresolvedDemands, demandGroups);
   const minimalMechanicalTeachingWitness = normalizeWitness(
     value.minimalMechanicalTeachingWitness,

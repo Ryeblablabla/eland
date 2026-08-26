@@ -128,6 +128,13 @@ function stateShell(events, past = events) {
         kind: 'act', operation: 'reproduce', authorizationRef: 'agreement-1',
         targets: [{ kind: 'person', personId: 'parent-b' }],
       },
+    }, {
+      id: 'intent-demand-tier', ownerId: 'parent-a', status: 'active', createdAtMonth: 1,
+      sourceDecisionEventId: 'intent-tier-decision',
+      sourceFactIds: ['intent-tier-support-old'],
+      actionEventIds: ['intent-tier-action-old'],
+      goal: { kind: 'at-cell', cellId: 0, z: 1 },
+      nextAction: { kind: 'act', operation: 'wait', targets: [] },
     }],
     world: {
       past: [...past],
@@ -144,6 +151,7 @@ function stateShell(events, past = events) {
 
 try {
   const readerTestExports = new Map([
+    [serverProjectionPath, '\nexport { historyRetentionContinuationBasisHash as __testHistoryRetentionContinuationBasisHash };\n'],
     [climatePath, '\nexport { disputedWakeFactsForPendingPrediction as __testDisputedWakeFactsForPendingPrediction };\n'],
     [conversationPath, '\nexport { birthEventForSharedChild as __testBirthEventForSharedChild };\n'],
     [intentExecutionPath, '\nexport { reproductionAttemptFactForIntent as __testReproductionAttemptFactForIntent, reproductionConceptionFactForIntent as __testReproductionConceptionFactForIntent };\n'],
@@ -151,7 +159,7 @@ try {
   writeFileSync(entry, [
     `export * from ${JSON.stringify(serverProjectionPath)};`,
     `export { installVerifiedHistoryRetentionEvidence } from ${JSON.stringify(retainedEvidencePath)};`,
-    `export { registerRetainedColdWorldEventFacts, worldEventById } from ${JSON.stringify(eventIndexPath)};`,
+    `export { registerRetainedColdWorldEventFacts, worldEventById, MAX_LIVE_INTENT_ACTION_EVENT_IDS } from ${JSON.stringify(eventIndexPath)};`,
     `export { recentPersonalProductionLaborEvents } from ${JSON.stringify(productionToolPath)};`,
     `export { latestPersonalCalibrationFor } from ${JSON.stringify(measurementActionsPath)};`,
     `export { encodeHistoryRetentionSidecar, decodeHistoryRetentionSidecar, hashHistoryRetentionStoredContent, HISTORY_RETENTION_SIDECAR_CODEC, HISTORY_RETENTION_SIDECAR_LEGACY_CODEC } from ${JSON.stringify(retentionCodecPath)};`,
@@ -164,7 +172,7 @@ try {
     plugins: [{
       name: 'expose-bounded-gameplay-readers',
       setup(buildApi) {
-        buildApi.onLoad({ filter: /(?:climate|conversation-options|intent-execution)\.ts$/ }, (args) => {
+        buildApi.onLoad({ filter: /(?:history-retention-projection|climate|conversation-options|intent-execution)\.ts$/ }, (args) => {
           const suffix = readerTestExports.get(path.resolve(args.path));
           if (!suffix) return null;
           return {
@@ -200,14 +208,19 @@ try {
     environment('agreement-proposal', 0, 1),
     environment('agreement-response', 0, 2),
     environment('intent-source-old', 0, 3),
-    environment('project-trigger', 0, 4),
-    environment('project-pressure-source', 0, 5),
-    environment('project-remote-source', 0, 6),
-    environment('balance-made', 0, 7),
-    environment('weight-made', 0, 8),
+    environment('intent-tier-support-old', 0, 4),
+    environment('project-trigger', 0, 5),
+    environment('project-pressure-source', 0, 6),
+    environment('project-remote-source', 0, 7),
+    environment('balance-made', 0, 8),
+    environment('weight-made', 0, 9),
     environment('prediction-source', 1, 0),
     { id: 'intent-decision', kind: 'decision', atMonth: 1, orderInMonth: 1, cellId: 0, who: 'parent-a', usedModel: false },
-    production('production-old', 1, 2),
+    { id: 'intent-tier-decision', kind: 'decision', atMonth: 1, orderInMonth: 2, cellId: 0, who: 'parent-a', usedModel: false },
+    action('intent-tier-action-old', 1, 3, 'parent-a', {
+      kind: 'act', operation: 'wait', targets: [],
+    }),
+    production('production-old', 1, 4),
     ...disputedWakes,
     calibration('calibration-old', 2, 24),
     attempts[0],
@@ -321,6 +334,34 @@ try {
   assert.deepEqual(idsFor('live-intent:intent-1:anchors'), [
     'intent-source-old', 'intent-decision',
   ]);
+  const tierCoreGroup = projection.demandGroups.find(
+    (group) => group.groupKey === 'live-intent:intent-demand-tier:anchors',
+  );
+  const tierSupportGroup = projection.demandGroups.find(
+    (group) => group.groupKey
+      === 'live-intent:intent-demand-tier:anchors:supporting-sources',
+  );
+  assert.ok(tierCoreGroup && tierSupportGroup, 'live intent 必须拆分 executable core 与 supporting sources');
+  assert.equal(tierCoreGroup.requirement, 'all');
+  assert.deepEqual(tierCoreGroup.eventIds, ['intent-tier-action-old', 'intent-tier-decision']);
+  assert.equal(tierSupportGroup.requirement, 'audit-only');
+  assert.deepEqual(tierSupportGroup.eventIds, ['intent-tier-support-old']);
+  const disguisedSplit = structuredClone(projection);
+  const disguisedCore = disguisedSplit.demandGroups.find(
+    (group) => group.groupKey === tierCoreGroup.groupKey,
+  );
+  const disguisedSupport = disguisedSplit.demandGroups.find(
+    (group) => group.groupKey === tierSupportGroup.groupKey,
+  );
+  disguisedCore.eventIds = ['intent-tier-action-old', 'intent-tier-support-old'];
+  disguisedCore.resolvedEventIds = ['intent-tier-support-old', 'intent-tier-action-old'];
+  disguisedSupport.eventIds = ['intent-tier-decision'];
+  disguisedSupport.resolvedEventIds = ['intent-tier-decision'];
+  assert.throws(
+    () => api.assertHistoryRetentionProjectionMatchesShell(shell, disguisedSplit),
+    /core\/support 分区不一致/u,
+    '新 split sidecar 不得把 Decision/Action 伪装进 audit-only supporting sources',
+  );
   for (const eventId of [
     'project-trigger', 'project-pressure-source', 'project-remote-source',
     'project-action', 'project-completion-anchor',
@@ -332,6 +373,16 @@ try {
   assert.throws(
     () => api.beginHistoryRetentionProjection(oversized, { stateHash: 'b'.repeat(64) }),
     /超出 4 个月 consent window/u,
+  );
+
+  const maximumIntentCore = structuredClone(shell);
+  maximumIntentCore.intents.find((intent) => intent.id === 'intent-demand-tier').actionEventIds =
+    Array.from({ length: api.MAX_LIVE_INTENT_ACTION_EVENT_IDS }, (_, index) => (
+      `intent-boundary-action-${index}`
+    ));
+  assert.doesNotThrow(
+    () => api.beginHistoryRetentionProjection(maximumIntentCore, { stateHash: '2'.repeat(64) }),
+    '4096 action IDs 加 mandatory decision 必须落在明确的 live-intent core 上限内',
   );
 
   const sameMonthEvents = events.map((event) => event.id === attempts[1].id ? { ...event, atMonth: 2 } : event);
@@ -355,6 +406,76 @@ try {
     const candidateFold = api.beginHistoryRetentionProjection(candidateShell, { stateHash });
     api.foldHistoryRetentionSegment(candidateFold, candidateEvents, 0);
     return { candidateShell, result: api.finishHistoryRetentionProjection(candidateFold) };
+  }
+
+  function legacyCombinedIntentProjectionFor(candidateProjection) {
+    const legacy = structuredClone(candidateProjection);
+    const coreKey = 'live-intent:intent-demand-tier:anchors';
+    const supportKey = `${coreKey}:supporting-sources`;
+    const core = legacy.demandGroups.find((group) => group.groupKey === coreKey);
+    const support = legacy.demandGroups.find((group) => group.groupKey === supportKey);
+    assert.ok(core && support, 'legacy fixture 需要当前 split intent groups');
+    const eventIds = [...new Set([...core.eventIds, ...support.eventIds])].sort();
+    const resolvedSet = new Set([...core.resolvedEventIds, ...support.resolvedEventIds]);
+    const directOrdinals = new Map(legacy.continuationBasis.directMatches
+      .map((match) => [match.eventId, match.absoluteIndex]));
+    const resolvedEventIds = eventIds.filter((eventId) => resolvedSet.has(eventId))
+      .sort((left, right) => directOrdinals.get(left) - directOrdinals.get(right));
+    const unresolvedEventIds = eventIds.filter((eventId) => !resolvedSet.has(eventId));
+    legacy.demandGroups = legacy.demandGroups
+      .filter((group) => group.groupKey !== coreKey && group.groupKey !== supportKey)
+      .concat({
+        groupKey: coreKey,
+        requirement: 'all',
+        leaseKeys: [coreKey],
+        eventIds,
+        resolvedEventIds,
+        unresolvedEventIds,
+        satisfied: unresolvedEventIds.length === 0,
+        blocking: unresolvedEventIds.length > 0,
+      })
+      .sort((left, right) => left.groupKey.localeCompare(right.groupKey));
+    legacy.unresolvedDemands = legacy.unresolvedDemands
+      .map((demand) => demand.groupKey === supportKey ? {
+        ...demand,
+        groupKey: coreKey,
+        requirement: 'all',
+        blocking: true,
+      } : demand)
+      .sort((left, right) => left.groupKey.localeCompare(right.groupKey)
+        || left.eventId.localeCompare(right.eventId));
+
+    const sourceCore = legacy.continuationBasis.sourceDemand.groups.find(
+      (group) => group.groupKey === coreKey,
+    );
+    const sourceSupport = legacy.continuationBasis.sourceDemand.groups.find(
+      (group) => group.groupKey === supportKey,
+    );
+    assert.ok(sourceCore && sourceSupport);
+    legacy.continuationBasis.sourceDemand.groups = legacy.continuationBasis.sourceDemand.groups
+      .filter((group) => group.groupKey !== coreKey && group.groupKey !== supportKey)
+      .concat({
+        groupKey: coreKey,
+        requirement: 'all',
+        leaseKeys: [coreKey],
+        eventIds: [...new Set([...sourceCore.eventIds, ...sourceSupport.eventIds])].sort(),
+      })
+      .sort((left, right) => left.groupKey.localeCompare(right.groupKey));
+    assert.equal(
+      api.historyRetentionDemandFingerprint(legacy.continuationBasis.sourceDemand),
+      legacy.demandFingerprint,
+      'live intent split 必须保持旧 combined demand fingerprint',
+    );
+    const { basisHash: _basisHash, ...basisWithoutHash } = legacy.continuationBasis;
+    legacy.continuationBasis.basisHash =
+      api.__testHistoryRetentionContinuationBasisHash(basisWithoutHash);
+    return legacy;
+  }
+
+  function decodedColdPinsFor(candidateEvents, candidateShell, candidateProjection) {
+    return candidateProjection.pins
+      .filter((pin) => pin.absoluteIndex < candidateShell.world.historyCursor.hotStartIndex)
+      .map((pin) => ({ ...pin, event: candidateEvents[pin.absoluteIndex] }));
   }
 
   const missingPrediction = events.map((event) => event.id === 'prediction-source'
@@ -389,6 +510,101 @@ try {
   assert.equal(missingAgreementSupportGroup.blocking, false,
     '协议支持 provenance 缺口不得伪装成 proposal/response 核心缺口');
   assert.equal(missingAgreementProjection.result.demandGroups.some((group) => group.blocking), false);
+
+  const missingIntentSupport = events.map((event) => event.id === 'intent-tier-support-old'
+    ? environment('not-intent-tier-support', event.atMonth, event.orderInMonth) : event);
+  const missingIntentSupportProjection = completedProjectionFor(
+    missingIntentSupport,
+    '6'.repeat(64),
+  );
+  const missingIntentCoreGroup = missingIntentSupportProjection.result.demandGroups.find(
+    (group) => group.groupKey === 'live-intent:intent-demand-tier:anchors',
+  );
+  const missingIntentSupportGroup = missingIntentSupportProjection.result.demandGroups.find(
+    (group) => group.groupKey
+      === 'live-intent:intent-demand-tier:anchors:supporting-sources',
+  );
+  assert.ok(missingIntentCoreGroup && missingIntentSupportGroup);
+  assert.equal(missingIntentCoreGroup.satisfied, true);
+  assert.deepEqual(missingIntentCoreGroup.resolvedEventIds, [
+    'intent-tier-decision', 'intent-tier-action-old',
+  ]);
+  assert.equal(missingIntentSupportGroup.requirement, 'audit-only');
+  assert.deepEqual(missingIntentSupportGroup.unresolvedEventIds, ['intent-tier-support-old']);
+  assert.equal(missingIntentSupportGroup.blocking, false,
+    'intent supporting provenance 缺口不得升级为 executable core blocker');
+
+  const legacyIntentProjection = legacyCombinedIntentProjectionFor(
+    missingIntentSupportProjection.result,
+  );
+  assert.deepEqual(
+    legacyIntentProjection.demandGroups.filter((group) => group.blocking)
+      .map((group) => group.groupKey),
+    ['live-intent:intent-demand-tier:anchors'],
+    '旧 combined sidecar 只能留下 supporting provenance promotion blocker',
+  );
+  assert.doesNotThrow(() => api.installVerifiedHistoryRetentionEvidence(
+    missingIntentSupportProjection.candidateShell,
+    '6'.repeat(64),
+    legacyIntentProjection,
+    decodedColdPinsFor(
+      missingIntentSupport,
+      missingIntentSupportProjection.candidateShell,
+      legacyIntentProjection,
+    ),
+  ), '旧 combined live-intent sidecar 的 supporting-only blocker 应通过严格迁移 seam');
+
+  const suffixAfterLegacy = environment('suffix-after-legacy-intent', 6, 0);
+  const successorIntentEvents = [...missingIntentSupport, suffixAfterLegacy];
+  const successorIntentShell = stateShell(successorIntentEvents, [suffixAfterLegacy]);
+  successorIntentShell.clock.elapsedMonths = 6;
+  const successorIntentFold = api.resumeHistoryRetentionProjection(
+    legacyIntentProjection,
+    successorIntentShell,
+    { stateHash: '5'.repeat(64) },
+  );
+  api.foldHistoryRetentionSegment(
+    successorIntentFold,
+    [suffixAfterLegacy],
+    missingIntentSupport.length,
+  );
+  const successorIntentProjection = api.finishHistoryRetentionProjection(successorIntentFold);
+  const successorIntentSupportGroup = successorIntentProjection.demandGroups.find(
+    (group) => group.groupKey
+      === 'live-intent:intent-demand-tier:anchors:supporting-sources',
+  );
+  assert.ok(successorIntentSupportGroup);
+  assert.equal(successorIntentSupportGroup.blocking, false);
+  assert.deepEqual(successorIntentSupportGroup.unresolvedEventIds, ['intent-tier-support-old']);
+  assert.equal(successorIntentProjection.demandGroups.some((group) => group.blocking), false);
+  const encodedIntentSuccessor = api.encodeHistoryRetentionSidecar(successorIntentProjection);
+  assert.doesNotThrow(() => api.decodeHistoryRetentionSidecar(encodedIntentSuccessor.chunk, {
+    reference: encodedIntentSuccessor.reference,
+    boundary: {
+      authority: successorIntentProjection.authority,
+      target: successorIntentProjection.target,
+    },
+  }), '旧 combined sidecar 的下一 suffix 必须发布为严格可解码 split sidecar');
+
+  for (const missingCoreId of ['intent-tier-decision', 'intent-tier-action-old']) {
+    const missingCoreEvents = events.map((event) => event.id === missingCoreId
+      ? environment(`not-${missingCoreId}`, event.atMonth, event.orderInMonth) : event);
+    const missingCoreProjection = completedProjectionFor(
+      missingCoreEvents,
+      (missingCoreId === 'intent-tier-decision' ? '4' : '3').repeat(64),
+    );
+    const legacyMissingCore = legacyCombinedIntentProjectionFor(missingCoreProjection.result);
+    assert.throws(() => api.installVerifiedHistoryRetentionEvidence(
+      missingCoreProjection.candidateShell,
+      missingCoreProjection.result.authority.stateHash,
+      legacyMissingCore,
+      decodedColdPinsFor(
+        missingCoreEvents,
+        missingCoreProjection.candidateShell,
+        legacyMissingCore,
+      ),
+    ), /阻断证据组/u, `旧 combined seam 不得放行缺失 executable core ${missingCoreId}`);
+  }
 
   const legacyAgreementProjection = structuredClone(missingAgreementProjection.result);
   const legacyCoreGroup = legacyAgreementProjection.demandGroups.find(

@@ -1,5 +1,6 @@
 import {
   liveAgreementHistoryLeaseKey,
+  liveIntentHistoryLeaseKey,
   registerRetainedColdWorldEventFacts,
   type RetainedColdWorldEventFact,
 } from '../src/game/eland/domain/event-index';
@@ -116,6 +117,31 @@ function isLegacyAgreementSupportingSourceOnlyBlocker(
 }
 
 /**
+ * V1 checkpoints before the intent split likewise combined executable core
+ * anchors with audit provenance. Admit only a supporting-source promotion:
+ * the decision and every executed action must already be resolved, while each
+ * unresolved member must be explicitly named by this live intent's facts.
+ */
+function isLegacyIntentSupportingSourceOnlyBlocker(
+  state: SimulationState,
+  group: HistoryRetentionProjectionResult['demandGroups'][number],
+): boolean {
+  if (group.requirement !== 'all' || group.unresolvedEventIds.length === 0) return false;
+  const intent = (state.intents ?? []).find((candidate) => (
+    (candidate.status === 'active' || candidate.status === 'suspended')
+      && liveIntentHistoryLeaseKey(candidate.id) === group.groupKey
+  ));
+  if (!intent || !Array.isArray(intent.actionEventIds)) return false;
+  const coreEventIds = [intent.sourceDecisionEventId, ...intent.actionEventIds];
+  const core = new Set(coreEventIds);
+  const supporting = new Set((intent.sourceFactIds ?? [])
+    .filter((eventId) => !core.has(eventId)));
+  const resolved = new Set(group.resolvedEventIds);
+  return coreEventIds.every((eventId) => resolved.has(eventId))
+    && group.unresolvedEventIds.every((eventId) => supporting.has(eventId));
+}
+
+/**
  * Join a sealed retention projection to facts returned by the bounded decoder,
  * then install only the cold subset in the process-local domain lookup. Hot
  * leases are verified in place and continue through ordinary hot indexes.
@@ -139,7 +165,8 @@ export function installVerifiedHistoryRetentionEvidence(
   assertRetentionDemandSemantics(projection);
   assertRetentionGroupPins(projection);
   const blocking = projection.demandGroups.filter((group) => group.blocking
-    && !isLegacyAgreementSupportingSourceOnlyBlocker(state, group));
+    && !isLegacyAgreementSupportingSourceOnlyBlocker(state, group)
+    && !isLegacyIntentSupportingSourceOnlyBlocker(state, group));
   if (blocking.length) {
     throw new Error(`retention projection 仍有 ${blocking.length} 个阻断证据组`);
   }

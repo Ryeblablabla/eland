@@ -11,9 +11,11 @@ import {
   prepareHistoryRetentionDemandSnapshot,
   resumeHistoryRetentionProjection,
   seedVerifiedPrefixLogisticsIndexMatches,
+  seedVerifiedPrefixProjectPressureIndexMatches,
   seedVerifiedPrefixRecentTerminalFailureActionMatches,
   seedVerifiedPrefixSocialLearningSourceMatches,
   unresolvedVerifiedPrefixLogisticsIndexEventIds,
+  unresolvedVerifiedPrefixProjectPressureIndexEventIds,
   unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds,
   unresolvedVerifiedPrefixSocialLearningSourceEventIds,
   type HistoryRetentionDemandSnapshot,
@@ -158,8 +160,17 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds(fold);
   const unresolvedPrefixSocialLearningIds =
     unresolvedVerifiedPrefixSocialLearningSourceEventIds(fold);
+  const stricterPrefixIds = new Set([
+    ...unresolvedPrefixLogisticsIds,
+    ...unresolvedPrefixTerminalFailureIds,
+    ...unresolvedPrefixSocialLearningIds,
+  ]);
+  const unresolvedPrefixProjectPressureIds =
+    unresolvedVerifiedPrefixProjectPressureIndexEventIds(fold)
+      .filter((eventId) => !stricterPrefixIds.has(eventId));
   const unresolvedPrefixIds = [...new Set([
     ...unresolvedPrefixLogisticsIds,
+    ...unresolvedPrefixProjectPressureIds,
     ...unresolvedPrefixTerminalFailureIds,
     ...unresolvedPrefixSocialLearningIds,
   ])].sort();
@@ -189,6 +200,17 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       fold,
       verifiedPrefix.eventCount,
       unresolvedPrefixLogisticsIds.flatMap((eventId) => {
+        const match = matchesByEventId.get(eventId);
+        return match ? [match] : [];
+      }).sort((left, right) => (
+        left.eventId.localeCompare(right.eventId) || left.absoluteIndex - right.absoluteIndex
+      )),
+    );
+    seedVerifiedPrefixProjectPressureIndexMatches(
+      fold,
+      verifiedPrefix.eventCount,
+      unresolvedPrefixProjectPressureIds,
+      unresolvedPrefixProjectPressureIds.flatMap((eventId) => {
         const match = matchesByEventId.get(eventId);
         return match ? [match] : [];
       }).sort((left, right) => (

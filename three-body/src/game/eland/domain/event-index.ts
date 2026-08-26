@@ -1,6 +1,12 @@
 import type { ActionFact, AgreementFact, EnvironmentFact, SimulationState, WorldEvent } from './model';
 import { Material } from './material';
-import type { PersonId } from './person';
+import { isAlive, type PersonId, type PersonState } from './person';
+import {
+  cloneValidatedProjectPressureEvidenceDescriptor,
+  rememberedProjectPressureSourceEventIds,
+  type ProjectPressureEvidenceDescriptor,
+  type RetainedProjectPressureEvidenceDescriptor,
+} from './project-pressure-evidence';
 import { WORLD_CELL_COUNT } from '../world/grid';
 
 export interface ActionActivityIndex {
@@ -83,6 +89,14 @@ interface RetainedColdEventIndex {
 }
 
 const retainedColdIndexes = new WeakMap<WorldEvent[], RetainedColdEventIndex>();
+
+interface ProjectPressureEvidenceDescriptorIndex {
+  byId: Map<string, RetainedProjectPressureEvidenceDescriptor>;
+}
+
+/** Body-free project-pressure evidence; deliberately separate from generic cold facts. */
+const projectPressureEvidenceDescriptorIndexes =
+  new WeakMap<WorldEvent[], ProjectPressureEvidenceDescriptorIndex>();
 
 /** Current social obligations use exact leases rather than a synthetic full history. */
 export const GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS = 6;
@@ -208,6 +222,96 @@ export function retainedColdWorldEventsForLease(
   leaseKey: string,
 ): readonly WorldEvent[] {
   return retainedColdIndexFor(state)?.byLeaseKey.get(leaseKey)?.map((fact) => fact.event) ?? [];
+}
+
+/**
+ * Replace the process-local body-free descriptor index after exact-root
+ * verification. Descriptors never become generic by-id facts or cold pins.
+ */
+export function registerProjectPressureEvidenceDescriptors(
+  state: SimulationState,
+  retained: readonly RetainedProjectPressureEvidenceDescriptor[],
+): void {
+  const cursor = state.world.historyCursor;
+  if (!cursor
+    || cursor.version !== 1
+    || !Number.isSafeInteger(cursor.eventCount)
+    || cursor.eventCount < 0
+    || !Number.isSafeInteger(cursor.hotStartIndex)
+    || cursor.hotStartIndex < 0
+    || cursor.hotStartIndex > cursor.eventCount
+    || state.world.past.length !== cursor.eventCount - cursor.hotStartIndex) {
+    throw new Error('注册 project-pressure descriptor 前必须具备有效的 bounded history cursor');
+  }
+  const byId = new Map<string, RetainedProjectPressureEvidenceDescriptor>();
+  const ordinals = new Set<number>();
+  for (const item of retained) {
+    const descriptor = cloneValidatedProjectPressureEvidenceDescriptor(item.descriptor);
+    if (!Number.isSafeInteger(item.absoluteIndex)
+      || item.absoluteIndex < 0
+      || item.absoluteIndex >= cursor.eventCount
+      || !descriptor
+      || typeof descriptor.eventId !== 'string'
+      || descriptor.eventId.length === 0
+      || byId.has(descriptor.eventId)
+      || ordinals.has(item.absoluteIndex)) {
+      throw new Error('project-pressure descriptor identity/ordinal 非法或重复');
+    }
+    if (item.absoluteIndex >= cursor.hotStartIndex) {
+      const hot = state.world.past[item.absoluteIndex - cursor.hotStartIndex];
+      if (hot?.id !== descriptor.eventId) {
+        throw new Error(`project-pressure hot descriptor ${item.absoluteIndex}/${descriptor.eventId} 与热窗口不一致`);
+      }
+    }
+    ordinals.add(item.absoluteIndex);
+    byId.set(descriptor.eventId, Object.freeze({
+      absoluteIndex: item.absoluteIndex,
+      descriptor,
+    }));
+  }
+  projectPressureEvidenceDescriptorIndexes.set(authoritativeHistoryBase(state), { byId });
+}
+
+function projectPressureDescriptorIndexFor(
+  state: SimulationState,
+): ProjectPressureEvidenceDescriptorIndex | undefined {
+  return projectPressureEvidenceDescriptorIndexes.get(authoritativeHistoryBase(state));
+}
+
+/**
+ * Planner-facing read is intrinsically owner-scoped: callers cannot provide
+ * arbitrary IDs, and a detached/foreign PersonState is rejected.
+ */
+export function projectPressureEvidenceDescriptorsForPerson(
+  state: SimulationState,
+  person: PersonState,
+): readonly ProjectPressureEvidenceDescriptor[] {
+  const owner = state.people.find((candidate) => candidate.id === person.id);
+  if (owner !== person || !isAlive(owner)) {
+    throw new Error('project-pressure descriptor owner 不是当前存活人物');
+  }
+  const byId = projectPressureDescriptorIndexFor(state)?.byId;
+  if (!byId) return [];
+  return rememberedProjectPressureSourceEventIds(owner)
+    .flatMap((eventId) => {
+      const item = byId.get(eventId);
+      return item ? [item.descriptor] : [];
+    });
+}
+
+/** Storage-facing reuse of descriptors still named by the current living shell. */
+export function retainedProjectPressureEvidenceForLivingSources(
+  state: SimulationState,
+): readonly RetainedProjectPressureEvidenceDescriptor[] {
+  const byId = projectPressureDescriptorIndexFor(state)?.byId;
+  if (!byId) return [];
+  const currentIds = new Set(state.people
+    .filter(isAlive)
+    .flatMap(rememberedProjectPressureSourceEventIds));
+  return [...currentIds].flatMap((eventId) => {
+    const item = byId.get(eventId);
+    return item ? [item] : [];
+  }).sort((left, right) => left.absoluteIndex - right.absoluteIndex);
 }
 
 /** Resolve one exact ID, but admit cold storage only through the named lease. */

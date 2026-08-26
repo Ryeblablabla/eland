@@ -1,10 +1,16 @@
 import {
   liveAgreementHistoryLeaseKey,
   liveIntentHistoryLeaseKey,
+  registerProjectPressureEvidenceDescriptors,
   registerRetainedColdWorldEventFacts,
   type RetainedColdWorldEventFact,
 } from '../src/game/eland/domain/event-index';
 import type { SimulationState } from '../src/game/eland/domain/model';
+import {
+  LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  projectPressureEvidenceDescriptorFromWorldEvent,
+  type RetainedProjectPressureEvidenceDescriptor,
+} from '../src/game/eland/domain/project-pressure-evidence';
 import {
   HISTORY_RETENTION_REQUIREMENTS,
   assertHistoryRetentionProjectionMatchesShell,
@@ -18,6 +24,51 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
   const leftSet = new Set(left);
   const rightSet = new Set(right);
   return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
+}
+
+function projectPressureSourceGroup(projection: HistoryRetentionProjectionResult) {
+  const groups = projection.demandGroups.filter((group) => (
+    group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+  ));
+  if (groups.length > 1) throw new Error('retention projection project-pressure broad group 重复');
+  return groups[0];
+}
+
+/** Cold broad descriptors missing from already-decoded exact bundle pins. */
+export function projectPressureColdMaterializationOrdinals(
+  state: SimulationState,
+  projection: HistoryRetentionProjectionResult,
+  alreadyDecoded: readonly RunStatePinnedEvent[],
+  reusableDescriptors: readonly RetainedProjectPressureEvidenceDescriptor[] = [],
+  hotStartIndexOverride?: number,
+): number[] {
+  const cursor = state.world.historyCursor;
+  if (!cursor || cursor.version !== 1) {
+    throw new Error('计算 project-pressure descriptor 物化范围时缺少 history cursor');
+  }
+  const group = projectPressureSourceGroup(projection);
+  if (!group) return [];
+  const matches = new Map(
+    projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
+  );
+  const available = new Map(alreadyDecoded.map((item) => [item.absoluteIndex, item.event.id]));
+  for (const item of reusableDescriptors) {
+    available.set(item.absoluteIndex, item.descriptor.eventId);
+  }
+  const hotStartIndex = hotStartIndexOverride ?? cursor.hotStartIndex;
+  if (!Number.isSafeInteger(hotStartIndex)
+    || hotStartIndex < cursor.hotStartIndex
+    || hotStartIndex > cursor.eventCount) {
+    throw new Error('project-pressure descriptor 目标 hotStartIndex 无效');
+  }
+  return group.resolvedEventIds.flatMap((eventId) => {
+    const match = matches.get(eventId);
+    if (!match || match.eventId !== eventId) {
+      throw new Error(`project-pressure resolved source ${eventId} 缺少 direct match`);
+    }
+    if (match.absoluteIndex >= hotStartIndex) return [];
+    return available.get(match.absoluteIndex) === eventId ? [] : [match.absoluteIndex];
+  }).sort((left, right) => left - right);
 }
 
 function assertRetentionDemandSemantics(projection: HistoryRetentionProjectionResult): void {
@@ -151,6 +202,8 @@ export function installVerifiedHistoryRetentionEvidence(
   expectedStateHash: string,
   projection: HistoryRetentionProjectionResult,
   decodedColdPins: readonly RunStatePinnedEvent[],
+  decodedProjectPressureSources: readonly RunStatePinnedEvent[] = [],
+  reusableProjectPressureDescriptors: readonly RetainedProjectPressureEvidenceDescriptor[] = [],
 ): readonly RetainedColdWorldEventFact[] {
   const cursor = state.world.historyCursor;
   if (!cursor || cursor.version !== 1) throw new Error('安装 retention evidence 时缺少 history cursor');
@@ -209,11 +262,14 @@ export function installVerifiedHistoryRetentionEvidence(
     if (!decoded || decoded.event.id !== pin.eventId) {
       throw new Error(`retention cold pin ${pin.absoluteIndex}/${pin.eventId} 未被准确解码`);
     }
-    retained.push({
+    const gameplayLeaseKeys = pin.leaseKeys.filter(
+      (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+    );
+    if (gameplayLeaseKeys.length > 0) retained.push({
       absoluteIndex: pin.absoluteIndex,
       eventId: pin.eventId,
       event: decoded.event,
-      leaseKeys: pin.leaseKeys,
+      leaseKeys: gameplayLeaseKeys,
     });
   }
   for (const absoluteIndex of decodedByOrdinal.keys()) {
@@ -222,5 +278,58 @@ export function installVerifiedHistoryRetentionEvidence(
     }
   }
   registerRetainedColdWorldEventFacts(state, retained);
+
+  const expectedProjectPressureOrdinals = projectPressureColdMaterializationOrdinals(
+    state,
+    projection,
+    decodedColdPins,
+    reusableProjectPressureDescriptors,
+  );
+  const expectedProjectPressureOrdinalSet = new Set(expectedProjectPressureOrdinals);
+  const projectPressureByOrdinal = new Map<number, RunStatePinnedEvent>();
+  for (const decoded of decodedProjectPressureSources) {
+    if (!expectedProjectPressureOrdinalSet.has(decoded.absoluteIndex)
+      || projectPressureByOrdinal.has(decoded.absoluteIndex)) {
+      throw new Error(`project-pressure descriptor 返回未请求或重复 ordinal ${decoded.absoluteIndex}`);
+    }
+    projectPressureByOrdinal.set(decoded.absoluteIndex, decoded);
+  }
+  if (projectPressureByOrdinal.size !== expectedProjectPressureOrdinals.length) {
+    throw new Error('project-pressure descriptor 冷事实物化不完整');
+  }
+
+  const group = projectPressureSourceGroup(projection);
+  const directById = new Map(
+    projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
+  );
+  const reusableByOrdinal = new Map<number, RetainedProjectPressureEvidenceDescriptor>();
+  for (const item of reusableProjectPressureDescriptors) {
+    if (reusableByOrdinal.has(item.absoluteIndex)) {
+      throw new Error(`project-pressure reusable descriptor ordinal ${item.absoluteIndex} 重复`);
+    }
+    reusableByOrdinal.set(item.absoluteIndex, item);
+  }
+  const descriptorFacts = (group?.resolvedEventIds ?? []).map((eventId) => {
+    const match = directById.get(eventId);
+    if (!match) throw new Error(`project-pressure source ${eventId} 缺少 ordinal`);
+    const event = match.absoluteIndex >= cursor.hotStartIndex
+      ? state.world.past[match.absoluteIndex - cursor.hotStartIndex]
+      : decodedByOrdinal.get(match.absoluteIndex)?.event
+        ?? projectPressureByOrdinal.get(match.absoluteIndex)?.event;
+    const reusable = reusableByOrdinal.get(match.absoluteIndex);
+    if (event && event.id !== eventId) {
+      throw new Error(`project-pressure source ${match.absoluteIndex}/${eventId} 物化身份不一致`);
+    }
+    if (!event && reusable?.descriptor.eventId !== eventId) {
+      throw new Error(`project-pressure source ${match.absoluteIndex}/${eventId} 缺少已验证 descriptor`);
+    }
+    return Object.freeze({
+      absoluteIndex: match.absoluteIndex,
+      descriptor: event
+        ? projectPressureEvidenceDescriptorFromWorldEvent(event)
+        : reusable!.descriptor,
+    });
+  });
+  registerProjectPressureEvidenceDescriptors(state, descriptorFacts);
   return retained;
 }

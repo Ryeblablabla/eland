@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { deserialize } from 'node:v8';
+import { brotliCompressSync } from 'node:zlib';
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-run-continuation-open-'));
+const storeEntryPath = path.join(temporaryDirectory, 'store-entry.ts');
 const storeBundlePath = path.join(temporaryDirectory, 'sqlite-run-store.mjs');
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const continuationBundlePath = path.join(temporaryDirectory, 'run-continuation-bundle.mjs');
@@ -14,6 +17,44 @@ const sidecarEntryPath = path.join(temporaryDirectory, 'sidecar-entry.ts');
 const sidecarBundlePath = path.join(temporaryDirectory, 'sidecar-entry.mjs');
 const dataDirectory = path.join(temporaryDirectory, 'data');
 const childEnvironment = { ...process.env, NODE_OPTIONS: '--max-old-space-size=192' };
+
+function canonicalJsonValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort()
+    .map((key) => [key, canonicalJsonValue(value[key])]));
+}
+
+function legacyMissingProjectPressureSidecar(api, currentProjection) {
+  const legacy = structuredClone(currentProjection);
+  const leaseKey = api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY;
+  const current = legacy.demandGroups.filter((group) => group.groupKey === leaseKey);
+  assert.equal(current.length, 1);
+  assert.equal(current[0].requirement, 'index-only');
+  assert.deepEqual(current[0].leaseKeys, [leaseKey]);
+  assert.deepEqual(current[0].eventIds, []);
+  assert.equal(legacy.pins.some((pin) => pin.leaseKeys.includes(leaseKey)), false);
+  assert.equal(legacy.unresolvedDemands.some((item) => (
+    item.groupKey === leaseKey || item.leaseKeys.includes(leaseKey)
+  )), false);
+  legacy.demandGroups = legacy.demandGroups.filter((group) => group.groupKey !== leaseKey);
+  legacy.continuationBasis.sourceDemand.groups =
+    legacy.continuationBasis.sourceDemand.groups.filter((group) => group.groupKey !== leaseKey);
+  const { basisHash: _discardedBasisHash, ...basisWithoutHash } = legacy.continuationBasis;
+  legacy.continuationBasis.basisHash = createHash('sha256')
+    .update('eland-history-retention-continuation-v1\0')
+    .update(JSON.stringify(basisWithoutHash))
+    .digest('hex');
+  const canonical = Buffer.from(JSON.stringify(canonicalJsonValue(legacy)), 'utf8');
+  const data = brotliCompressSync(canonical);
+  const codec = api.HISTORY_RETENTION_SIDECAR_CODEC;
+  const hash = api.hashHistoryRetentionStoredContent(codec, data);
+  return {
+    projection: legacy,
+    chunk: { hash, codec, rawSize: data.byteLength, data },
+    reference: { kind: 'content-hash', codec, hash },
+  };
+}
 
 function appendSyntheticEvents(state, count, plankMaterialId) {
   const cursor = state.world.historyCursor;
@@ -68,9 +109,14 @@ function appendSyntheticEvents(state, count, plankMaterialId) {
 }
 
 try {
+  writeFileSync(storeEntryPath, [
+    `export * from ${JSON.stringify(path.resolve('server/sqlite-run-store.ts'))};`,
+    `export { projectPressureEvidenceDescriptorsForPerson, retainedColdWorldEventsForLease } from ${JSON.stringify(path.resolve('src/game/eland/domain/event-index.ts'))};`,
+  ].join('\n'));
   writeFileSync(sidecarEntryPath, [
     `export { beginHistoryRetentionProjection, foldHistoryRetentionSegment, finishHistoryRetentionProjection } from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
-    `export { encodeHistoryRetentionSidecar } from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
+    `export { HISTORY_RETENTION_SIDECAR_CODEC, encodeHistoryRetentionSidecar, hashHistoryRetentionStoredContent } from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
+    `export { LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY } from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
     `export { decodeBoundedRunStateWithPhysicalProjection } from ${JSON.stringify(path.resolve('server/physical-structure-ledger-projection.ts'))};`,
     `export { encodePhysicalStructureLedgerSidecar } from ${JSON.stringify(path.resolve('server/physical-structure-ledger-codec.ts'))};`,
     `export { projectObserverDerivedHistoryFromFullHistory } from ${JSON.stringify(path.resolve('server/observer-derived-history-projection.ts'))};`,
@@ -81,7 +127,7 @@ try {
     `export { Material, materialDefinition } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};`,
   ].join('\n'));
   for (const [entry, outfile] of [
-    ['server/sqlite-run-store.ts', storeBundlePath],
+    [storeEntryPath, storeBundlePath],
     ['src/game/eland/simulation.ts', simulationBundlePath],
     ['server/run-continuation-bundle.ts', continuationBundlePath],
     [sidecarEntryPath, sidecarBundlePath],
@@ -96,6 +142,8 @@ try {
   }
 
   const {
+    projectPressureEvidenceDescriptorsForPerson,
+    retainedColdWorldEventsForLease,
     RunWriteConflictError,
     SqliteRunStore,
   } = await import(`${pathToFileURL(storeBundlePath).href}?v=${Date.now()}`);
@@ -103,12 +151,19 @@ try {
     `${pathToFileURL(simulationBundlePath).href}?v=${Date.now()}`
   );
   const {
+    decodeRunContinuationBundle,
     encodeRunContinuationBundle,
   } = await import(`${pathToFileURL(continuationBundlePath).href}?v=${Date.now()}`);
   const sidecarApi = await import(`${pathToFileURL(sidecarBundlePath).href}?v=${Date.now()}`);
 
   const state = createInitialState(4301, { endpoint: { kind: 'months', value: 12_000 } });
   const events = appendSyntheticEvents(state, 8, sidecarApi.Material.Plank);
+  state.people[0].knowledge.push({
+    id: 'fixture-project-pressure-only-knowledge',
+    kind: 'technique',
+    confidence: 60,
+    sourceEventIds: [events[0].id],
+  });
   state.eraPredictions.push({
     id: 'fixture-pending-era-prediction',
     predictorId: state.people[0].id,
@@ -273,6 +328,59 @@ try {
   };
   const encodedBundle = encodeRunContinuationBundle(baseBundleInput);
   insertChunk(encodedBundle.chunk);
+  const legacyRetentionProjection = structuredClone(retentionProjection);
+  const legacyGlobalGroup = legacyRetentionProjection.demandGroups.find((group) => (
+    group.groupKey === 'gameplay:live-person-project-pressure:remembered-sources'
+  ));
+  assert.ok(legacyGlobalGroup, 'fixture 必须生成 project-pressure broad group');
+  legacyGlobalGroup.requirement = 'audit-only';
+  legacyRetentionProjection.unresolvedDemands = legacyRetentionProjection.unresolvedDemands
+    .map((item) => item.groupKey === legacyGlobalGroup.groupKey
+      ? { ...item, requirement: 'audit-only' }
+      : item);
+  const legacySourceGlobalGroup = legacyRetentionProjection.continuationBasis.sourceDemand.groups
+    .find((group) => group.groupKey === legacyGlobalGroup.groupKey);
+  assert.ok(legacySourceGlobalGroup);
+  legacySourceGlobalGroup.requirement = 'audit-only';
+  const directMatchById = new Map(
+    legacyRetentionProjection.continuationBasis.directMatches
+      .map((match) => [match.eventId, match]),
+  );
+  const legacyPinsByOrdinal = new Map(
+    legacyRetentionProjection.pins.map((pin) => [pin.absoluteIndex, { ...pin }]),
+  );
+  for (const eventId of legacyGlobalGroup.resolvedEventIds) {
+    const match = directMatchById.get(eventId);
+    assert.ok(match, `legacy broad resolved source ${eventId} 必须有 verified ordinal`);
+    const pin = legacyPinsByOrdinal.get(match.absoluteIndex) ?? { ...match, leaseKeys: [] };
+    pin.leaseKeys = [...new Set([...pin.leaseKeys, legacyGlobalGroup.groupKey])].sort();
+    legacyPinsByOrdinal.set(match.absoluteIndex, pin);
+  }
+  legacyRetentionProjection.pins = [...legacyPinsByOrdinal.values()]
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  const { basisHash: _legacyBasisHash, ...legacyBasisWithoutHash } =
+    legacyRetentionProjection.continuationBasis;
+  legacyRetentionProjection.continuationBasis.basisHash = createHash('sha256')
+    .update('eland-history-retention-continuation-v1\0')
+    .update(JSON.stringify(legacyBasisWithoutHash))
+    .digest('hex');
+  const encodedLegacyRetention = sidecarApi.encodeHistoryRetentionSidecar(
+    legacyRetentionProjection,
+  );
+  const legacyRetentionSidecar = insertSidecar('legacy-retention', encodedLegacyRetention);
+  const legacyColdPins = legacyRetentionProjection.pins
+    .filter((pin) => pin.absoluteIndex < hotStartIndex)
+    .map((pin) => ({
+      absoluteIndex: pin.absoluteIndex,
+      eventId: pin.eventId,
+      leaseKeys: [...pin.leaseKeys],
+    }));
+  const encodedLegacyBundle = encodeRunContinuationBundle({
+    ...baseBundleInput,
+    coldPins: legacyColdPins,
+    sidecars: { ...sidecars, retention: legacyRetentionSidecar.reference },
+  });
+  insertChunk(encodedLegacyBundle.chunk);
   const originalUpdatedAt = '2026-08-25T12:00:00.000Z';
   database.prepare(`
     INSERT INTO run_continuations(
@@ -293,10 +401,91 @@ try {
     events.at(-1).id,
     root.tailEventContentHash,
     3,
-    encodedBundle.chunk.hash,
+    encodedLegacyBundle.chunk.hash,
     originalUpdatedAt,
   );
 
+  const legacyOpened = await store.openBoundedEvolutionContinuation(created.meta.id);
+  assert.ok(projectPressureEvidenceDescriptorsForPerson(
+    legacyOpened.state,
+    legacyOpened.state.people[0],
+  ).some((descriptor) => descriptor.eventId === events[0].id),
+  '真实 legacy cold-open 必须从 audit body 安装 owner-scoped scalar descriptor');
+  assert.deepEqual(
+    retainedColdWorldEventsForLease(legacyOpened.state, legacyGlobalGroup.groupKey),
+    [],
+    '真实 legacy cold-open 不得把 project-pressure audit lease 注册进 generic cold index',
+  );
+
+  const emptyLegacyState = createInitialState(
+    4302,
+    { endpoint: { kind: 'months', value: 12_000 } },
+  );
+  appendSyntheticEvents(emptyLegacyState, 4, sidecarApi.Material.Plank);
+  for (const person of emptyLegacyState.people) {
+    person.memories = person.memories.map((memory) => ({ ...memory, sourceEventIds: [] }));
+    person.conditions = person.conditions.map((condition) => ({
+      ...condition,
+      sourceEventIds: [],
+    }));
+    person.knowledge = person.knowledge.map((fact) => ({ ...fact, sourceEventIds: [] }));
+    person.inventory = person.inventory.map((stack) => ({ ...stack, sourceEventIds: [] }));
+  }
+  const emptyLegacyCreated = await store.create({
+    id: 'trusted-empty-legacy-continuation',
+    state: emptyLegacyState,
+  });
+  await store.bootstrapBoundedEvolutionContinuation(emptyLegacyCreated.meta.id, 3);
+  const emptyRun = database.prepare(`
+    SELECT state_hash FROM runs WHERE id = ?
+  `).get(emptyLegacyCreated.meta.id);
+  const emptyContinuation = database.prepare(`
+    SELECT bundle_hash FROM run_continuations WHERE run_id = ?
+  `).get(emptyLegacyCreated.meta.id);
+  const emptyBundle = decodeRunContinuationBundle(
+    readStoredChunk(String(emptyContinuation.bundle_hash)),
+  );
+  const emptyRetentionFold = sidecarApi.beginHistoryRetentionProjection(
+    emptyLegacyCreated.state,
+    { stateHash: String(emptyRun.state_hash) },
+  );
+  sidecarApi.foldHistoryRetentionSegment(
+    emptyRetentionFold,
+    emptyLegacyCreated.state.world.past,
+    0,
+  );
+  const emptyRetentionProjection = sidecarApi.finishHistoryRetentionProjection(
+    emptyRetentionFold,
+  );
+  const missingLegacyRetention = legacyMissingProjectPressureSidecar(
+    sidecarApi,
+    emptyRetentionProjection,
+  );
+  insertChunk(missingLegacyRetention.chunk);
+  const missingLegacyBundle = encodeRunContinuationBundle({
+    ...emptyBundle,
+    sidecars: {
+      ...emptyBundle.sidecars,
+      retention: missingLegacyRetention.reference,
+    },
+  });
+  insertChunk(missingLegacyBundle.chunk);
+  database.prepare(`UPDATE run_continuations SET bundle_hash = ? WHERE run_id = ?`)
+    .run(missingLegacyBundle.chunk.hash, emptyLegacyCreated.meta.id);
+  const emptyLegacyOpened = await store.openBoundedEvolutionContinuation(
+    emptyLegacyCreated.meta.id,
+  );
+  assert.deepEqual(projectPressureEvidenceDescriptorsForPerson(
+    emptyLegacyOpened.state,
+    emptyLegacyOpened.state.people[0],
+  ), [], '真实 empty legacy no-group cold-open 必须安装规范空 descriptor registry');
+  assert.deepEqual(retainedColdWorldEventsForLease(
+    emptyLegacyOpened.state,
+    sidecarApi.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  ), [], 'empty legacy no-group 不得产生 project-pressure generic cold lease');
+
+  database.prepare(`UPDATE run_continuations SET bundle_hash = ? WHERE run_id = ?`)
+    .run(encodedBundle.chunk.hash, created.meta.id);
   const opened = await store.openBoundedEvolutionContinuation(created.meta.id);
   assert.equal(opened.continuationReady, false);
   assert.equal(opened.state.world.past.length, 3);

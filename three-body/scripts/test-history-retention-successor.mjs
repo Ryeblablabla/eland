@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { brotliCompressSync } from 'node:zlib';
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'eland-retention-successor-'));
 const entryPath = path.join(temporaryDirectory, 'entry.ts');
@@ -15,6 +17,60 @@ const electricalOperationTechniqueId =
   'technique:electrical-power:mechanical-dynamo-conductor-resistive-load';
 const electricalLoadTechniqueId =
   'technique:electrical-power:resistive-load-response:29:25';
+
+function canonicalJsonValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort()
+    .map((key) => [key, canonicalJsonValue(value[key])]));
+}
+
+function legacyMissingProjectPressureSidecar(api, currentProjection) {
+  const legacy = structuredClone(currentProjection);
+  const leaseKey = api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY;
+  const current = legacy.demandGroups.filter((group) => group.groupKey === leaseKey);
+  assert.equal(current.length, 1);
+  assert.equal(current[0].requirement, 'index-only');
+  assert.deepEqual(current[0].leaseKeys, [leaseKey]);
+  assert.deepEqual(current[0].eventIds, []);
+  assert.deepEqual(current[0].resolvedEventIds, []);
+  assert.deepEqual(current[0].unresolvedEventIds, []);
+  assert.equal(legacy.pins.some((pin) => pin.leaseKeys.includes(leaseKey)), false);
+  assert.equal(legacy.unresolvedDemands.some((item) => (
+    item.groupKey === leaseKey || item.leaseKeys.includes(leaseKey)
+  )), false);
+  legacy.demandGroups = legacy.demandGroups.filter((group) => group.groupKey !== leaseKey);
+  legacy.continuationBasis.sourceDemand.groups =
+    legacy.continuationBasis.sourceDemand.groups.filter((group) => group.groupKey !== leaseKey);
+  const { basisHash: _discardedBasisHash, ...basisWithoutHash } = legacy.continuationBasis;
+  legacy.continuationBasis.basisHash = createHash('sha256')
+    .update('eland-history-retention-continuation-v1\0')
+    .update(JSON.stringify(basisWithoutHash))
+    .digest('hex');
+  const canonical = Buffer.from(JSON.stringify(canonicalJsonValue(legacy)), 'utf8');
+  const data = brotliCompressSync(canonical);
+  const codec = api.HISTORY_RETENTION_SIDECAR_CODEC;
+  const hash = api.hashHistoryRetentionStoredContent(codec, data);
+  return {
+    projection: legacy,
+    chunk: { hash, codec, rawSize: data.byteLength, data },
+    reference: { kind: 'content-hash', codec, hash },
+  };
+}
+
+function withoutProjectPressureSources(input) {
+  const stateWithoutSources = structuredClone(input);
+  for (const person of stateWithoutSources.people) {
+    person.memories = person.memories.map((memory) => ({ ...memory, sourceEventIds: [] }));
+    person.conditions = person.conditions.map((condition) => ({
+      ...condition,
+      sourceEventIds: [],
+    }));
+    person.knowledge = person.knowledge.map((fact) => ({ ...fact, sourceEventIds: [] }));
+    person.inventory = person.inventory.map((stack) => ({ ...stack, sourceEventIds: [] }));
+  }
+  return stateWithoutSources;
+}
 
 function baseEvent(id, atMonth) {
   return {
@@ -52,6 +108,29 @@ function action(id, atMonth, diff = {}) {
     status: 'completed',
     result: id,
     diff,
+  };
+}
+
+function personalHuntFailure(id, atMonth, animalId, orderInMonth = 0) {
+  return {
+    ...action(id, atMonth, { animalId, killed: false }),
+    orderInMonth,
+    status: 'failed',
+    action: { kind: 'act', operation: 'hunt', targets: [] },
+  };
+}
+
+function personalDehydration(id, atMonth) {
+  return {
+    ...action(id, atMonth),
+    action: { kind: 'act', operation: 'dehydrate', targets: [] },
+  };
+}
+
+function animalAttack(id, atMonth, victimId) {
+  return {
+    ...baseEvent(id, atMonth), kind: 'environment', change: 'animal', result: id,
+    diff: { process: 'attack-human', victimId },
   };
 }
 
@@ -198,8 +277,13 @@ try {
     `export * from ${JSON.stringify(path.resolve('server/history-retention-successor.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('server/retained-history-evidence.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/run-state-codec.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('src/game/eland/domain/electrical-power.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('src/game/eland/domain/event-index.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('src/game/eland/domain/project-pressure-evidence.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('src/game/eland/application/project-pressure.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('src/game/eland/world/generator.ts'))};`,
   ].join('\n'));
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     entryPath,
@@ -209,6 +293,134 @@ try {
     `--outfile=${bundlePath}`,
   ], { env: childEnvironment, stdio: 'pipe' });
   const api = await import(`${pathToFileURL(bundlePath).href}?v=${Date.now()}`);
+
+  const huntEvidence = [
+    personalHuntFailure('hunt-1', 1, 'animal-1'),
+    personalHuntFailure('hunt-2', 2, 'animal-2'),
+    personalHuntFailure('hunt-3-old', 3, 'animal-3', 0),
+    personalHuntFailure('hunt-3-new', 3, 'animal-3', 1),
+    personalHuntFailure('hunt-4', 4, 'animal-4'),
+  ];
+  const attackEvidence = [
+    animalAttack('attack-1', 5, 'fixture-person'),
+    animalAttack('attack-2', 6, 'fixture-person'),
+    animalAttack('attack-3', 7, 'fixture-person'),
+  ];
+  const dehydrationEvidence = Array.from(
+    { length: 6 },
+    (_, index) => personalDehydration(`dehydrate-${index}`, 8 + index),
+  );
+  const developmentEvidence = Array.from(
+    { length: 26 },
+    (_, index) => environment(`development-${index}`, 20 + index),
+  );
+  const unrelatedEvidence = Array.from(
+    { length: 40 },
+    (_, index) => decision(`unrelated-${index}`, 50 + index),
+  );
+  const rememberedEvidence = [
+    ...huntEvidence,
+    ...attackEvidence,
+    ...dehydrationEvidence,
+    ...developmentEvidence,
+    ...unrelatedEvidence,
+  ];
+  const descriptors = rememberedEvidence.map(
+    api.projectPressureEvidenceDescriptorFromWorldEvent,
+  );
+  const selected = api.selectProjectPressureEvidenceDescriptors(
+    [...descriptors].reverse(),
+    'fixture-person',
+    100,
+  );
+  assert.deepEqual(selected.huntFailures.map((item) => item.eventId), [
+    'hunt-2', 'hunt-3-new', 'hunt-4',
+  ], 'hunt failure 必须按 canonical order 取最后三个 distinct month+animal edge');
+  assert.deepEqual(selected.animalAttacks.map((item) => item.eventId), ['attack-2', 'attack-3']);
+  assert.deepEqual(
+    selected.dehydrations.map((item) => item.eventId),
+    ['dehydrate-1', 'dehydrate-2', 'dehydrate-3', 'dehydrate-4', 'dehydrate-5'],
+  );
+  assert.deepEqual(
+    selected.developmentProvenance.map((item) => item.eventId),
+    Array.from({ length: 24 }, (_, index) => `development-${index + 2}`),
+  );
+  const attackDescriptor = api.projectPressureEvidenceDescriptorFromWorldEvent(attackEvidence[0]);
+  const dehydrationDescriptor = api.projectPressureEvidenceDescriptorFromWorldEvent(
+    dehydrationEvidence[0],
+  );
+  assert.equal(attackDescriptor.attackVictimId, 'fixture-person');
+  assert.equal(attackDescriptor.developmentEligible, true, 'attack 与 development flag 必须重叠');
+  assert.equal(dehydrationDescriptor.dehydrateOwnerId, 'fixture-person');
+  assert.equal(dehydrationDescriptor.developmentEligible, true,
+    'completed dehydrate 与 development flag 必须重叠');
+
+  const fourDistinctHunts = [
+    personalHuntFailure('backfill-1', 101, 'a'),
+    personalHuntFailure('backfill-2', 102, 'b'),
+    personalHuntFailure('backfill-3', 103, 'c'),
+    personalHuntFailure('backfill-4', 104, 'd'),
+  ].map(api.projectPressureEvidenceDescriptorFromWorldEvent);
+  assert.deepEqual(api.selectProjectPressureEvidenceDescriptors(
+    fourDistinctHunts,
+    'fixture-person',
+    104,
+  ).huntFailures.map((item) => item.eventId), ['backfill-2', 'backfill-3', 'backfill-4']);
+  assert.deepEqual(api.selectProjectPressureEvidenceDescriptors(
+    fourDistinctHunts.slice(0, 3),
+    'fixture-person',
+    104,
+  ).huntFailures.map((item) => item.eventId), ['backfill-1', 'backfill-2', 'backfill-3'],
+  '当前 source 删除第4条后，第1条必须回填，不能依赖旧 top-N body');
+
+  const fullHistory = [...rememberedEvidence];
+  const boundedEvidenceState = state(fullHistory, 'bounded-project-pressure-descriptors');
+  const rememberedIds = rememberedEvidence.map((event) => event.id);
+  boundedEvidenceState.people[0].knowledge = [];
+  boundedEvidenceState.people[0].memories = [{ id: 'pressure-memory', sourceEventIds: rememberedIds }];
+  const hotStartIndex = fullHistory.length - 2;
+  boundedEvidenceState.world.past = fullHistory.slice(hotStartIndex);
+  boundedEvidenceState.world.historyCursor.hotStartIndex = hotStartIndex;
+  api.registerProjectPressureEvidenceDescriptors(
+    boundedEvidenceState,
+    fullHistory.map((event, absoluteIndex) => ({
+      absoluteIndex,
+      descriptor: api.projectPressureEvidenceDescriptorFromWorldEvent(event),
+    })),
+  );
+  const boundedDescriptors = api.projectPressureEvidenceDescriptorsForPerson(
+    boundedEvidenceState,
+    boundedEvidenceState.people[0],
+  );
+  assert.deepEqual(
+    api.selectProjectPressureEvidenceDescriptors(
+      boundedDescriptors,
+      'fixture-person',
+      100,
+    ),
+    api.selectProjectPressureEvidenceDescriptors(descriptors, 'fixture-person', 100),
+    'full history 与 owner-scoped body-free bounded descriptor 必须选择相同 evidence',
+  );
+  assert.deepEqual(api.projectPressureEvidenceDescriptorsForPerson(
+    boundedEvidenceState,
+    boundedEvidenceState.people[1],
+  ), [], '人物 B 不得借人物 A 当前 source IDs 读取 descriptor');
+  assert.throws(
+    () => api.projectPressureEvidenceDescriptorsForPerson(
+      boundedEvidenceState,
+      { ...boundedEvidenceState.people[0] },
+    ),
+    /owner 不是当前存活人物/u,
+    'detached/foreign owner 不得读取另一人物 descriptor',
+  );
+  assert.throws(
+    () => api.registerProjectPressureEvidenceDescriptors(boundedEvidenceState, [{
+      absoluteIndex: hotStartIndex,
+      descriptor: api.projectPressureEvidenceDescriptorFromWorldEvent(fullHistory[hotStartIndex + 1]),
+    }]),
+    /hot descriptor|identity\/ordinal/u,
+    '错误 ordinal/eventId 必须拒绝',
+  );
 
   const chunks = new Map();
   const store = (snapshot) => {
@@ -260,6 +472,7 @@ try {
       electricalPowerFault: true,
       electricalNetworkId: 'fixture-electrical-network',
     }),
+    action('project-pressure-bridge-only-prefix', 1),
     environment('prefix-a', 1),
     decision('prefix-tail', 1),
   ];
@@ -371,6 +584,10 @@ try {
       }],
     });
   }
+  nextState.people[0].memories.push({
+    id: 'new-memory-of-old-prefix-pressure-source',
+    sourceEventIds: ['project-pressure-bridge-only-prefix'],
+  });
   nextState.agreements.push({
     id: dynamicAgreementId,
     proposal: {
@@ -503,6 +720,157 @@ try {
       target: prefixProjection.target,
     },
   });
+  const legacyPrefixProjection = structuredClone(prefixProjection);
+  const legacyGlobalGroup = legacyPrefixProjection.demandGroups.find(
+    (group) => group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  );
+  legacyGlobalGroup.requirement = 'audit-only';
+  legacyPrefixProjection.unresolvedDemands = legacyPrefixProjection.unresolvedDemands
+    .map((item) => item.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+      ? { ...item, requirement: 'audit-only' }
+      : item);
+  const legacySourceGlobalGroup = legacyPrefixProjection.continuationBasis.sourceDemand.groups
+    .find((group) => group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY);
+  legacySourceGlobalGroup.requirement = 'audit-only';
+  const legacyPinsByOrdinal = new Map(
+    legacyPrefixProjection.pins.map((pin) => [pin.absoluteIndex, { ...pin }]),
+  );
+  const directMatchById = new Map(
+    legacyPrefixProjection.continuationBasis.directMatches
+      .map((match) => [match.eventId, match]),
+  );
+  for (const eventId of legacyGlobalGroup.resolvedEventIds) {
+    const match = directMatchById.get(eventId);
+    assert.ok(match, `legacy global resolved event ${eventId} 必须有 direct match`);
+    const pin = legacyPinsByOrdinal.get(match.absoluteIndex) ?? {
+      ...match,
+      leaseKeys: [],
+    };
+    pin.leaseKeys = [...new Set([
+      ...pin.leaseKeys,
+      api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+    ])].sort();
+    legacyPinsByOrdinal.set(match.absoluteIndex, pin);
+  }
+  legacyPrefixProjection.pins = [...legacyPinsByOrdinal.values()]
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  const { basisHash: _discardedBasisHash, ...legacyBasisWithoutHash } =
+    legacyPrefixProjection.continuationBasis;
+  legacyPrefixProjection.continuationBasis.basisHash = createHash('sha256')
+    .update('eland-history-retention-continuation-v1\0')
+    .update(JSON.stringify(legacyBasisWithoutHash))
+    .digest('hex');
+  assert.equal(
+    api.historyRetentionDemandFingerprint(
+      legacyPrefixProjection.continuationBasis.sourceDemand,
+    ),
+    prefixProjection.demandFingerprint,
+    'index-only storage refinement 必须保持 legacy domain-demand fingerprint',
+  );
+  const encodedLegacyPrefix = api.encodeHistoryRetentionSidecar(legacyPrefixProjection);
+  const decodedLegacyPrefix = api.decodeHistoryRetentionSidecar(encodedLegacyPrefix.chunk, {
+    reference: encodedLegacyPrefix.reference,
+    boundary: {
+      authority: { stateHash: previousRoot.root.hash },
+      target: legacyPrefixProjection.target,
+    },
+  });
+  api.assertHistoryRetentionProjectionMatchesShell(previousState, decodedLegacyPrefix);
+  const legacyHotStartIndex = prefix.length - 2;
+  const legacyBoundedState = structuredClone(previousState);
+  legacyBoundedState.world.past = prefix.slice(legacyHotStartIndex);
+  legacyBoundedState.world.historyCursor.hotStartIndex = legacyHotStartIndex;
+  const legacyDecodedColdPins = decodedLegacyPrefix.pins
+    .filter((pin) => pin.absoluteIndex < legacyHotStartIndex)
+    .map((pin) => ({ absoluteIndex: pin.absoluteIndex, event: prefix[pin.absoluteIndex] }));
+  api.installVerifiedHistoryRetentionEvidence(
+    legacyBoundedState,
+    previousRoot.root.hash,
+    decodedLegacyPrefix,
+    legacyDecodedColdPins,
+  );
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      legacyBoundedState,
+      api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+    ),
+    [],
+    'legacy broad audit body 必须转 descriptor，不能保留 project-pressure generic cold lease',
+  );
+  assert.ok(api.projectPressureEvidenceDescriptorsForPerson(
+    legacyBoundedState,
+    legacyBoundedState.people[0],
+  ).some((descriptor) => descriptor.eventId === 'mechanical-service'),
+  'legacy cold-open 必须为当前 owner 安装 body-free descriptor');
+
+  const emptyLegacyPreviousState = withoutProjectPressureSources(previousState);
+  const emptyLegacyNextState = structuredClone(emptyLegacyPreviousState);
+  emptyLegacyNextState.clock.elapsedMonths = 2;
+  emptyLegacyNextState.world.past = [...prefix, ...suffix];
+  emptyLegacyNextState.world.historyCursor = {
+    version: 1,
+    eventCount: emptyLegacyNextState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: emptyLegacyNextState.world.past.at(-1).id,
+  };
+  emptyLegacyNextState.lastStep = [...suffix];
+  const emptyLegacyPreviousRoot = store(await api.encodeSegmentedRunState(
+    emptyLegacyPreviousState,
+    { mode: 'replace' },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  const emptyLegacyNextRoot = store(await api.encodeSegmentedRunState(
+    emptyLegacyNextState,
+    { mode: 'append', previous: emptyLegacyPreviousRoot.metadata },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  const emptyLegacyFold = api.beginHistoryRetentionProjection(
+    emptyLegacyPreviousState,
+    { stateHash: emptyLegacyPreviousRoot.root.hash },
+  );
+  api.foldHistoryRetentionSegment(emptyLegacyFold, prefix, 0);
+  const emptyCurrentProjection = api.finishHistoryRetentionProjection(emptyLegacyFold);
+  const missingLegacySidecar = legacyMissingProjectPressureSidecar(
+    api,
+    emptyCurrentProjection,
+  );
+  assert.throws(
+    () => api.encodeHistoryRetentionSidecar(missingLegacySidecar.projection),
+    /project-pressure global group/u,
+    '新 encoder 不得再次发布 missing project-pressure group',
+  );
+  const decodedMissingLegacy = api.decodeHistoryRetentionSidecar(
+    missingLegacySidecar.chunk,
+    {
+      reference: missingLegacySidecar.reference,
+      boundary: {
+        authority: { stateHash: emptyLegacyPreviousRoot.root.hash },
+        target: emptyCurrentProjection.target,
+      },
+    },
+  );
+  api.assertHistoryRetentionProjectionMatchesShell(
+    emptyLegacyPreviousState,
+    decodedMissingLegacy,
+  );
+  const emptyMigrated = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    decodedMissingLegacy,
+    emptyLegacyPreviousRoot.root,
+    emptyLegacyNextState,
+    emptyLegacyNextRoot.root,
+    readChunk,
+  );
+  const emptyMigratedGroup = emptyMigrated.projection.demandGroups.find(
+    (group) => group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  );
+  assert.ok(emptyMigratedGroup, 'legacy missing group 的下一 successor 必须写回 canonical empty group');
+  assert.equal(emptyMigratedGroup.requirement, 'index-only');
+  assert.deepEqual(emptyMigratedGroup.leaseKeys, [
+    api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  ]);
+  assert.deepEqual(emptyMigratedGroup.eventIds, []);
+  api.encodeHistoryRetentionSidecar(emptyMigrated.projection);
+
   const observerSelectorKeys = new Set(
     decodedPrefix.continuationBasis.selectiveMatches.map((item) => item.leaseKey),
   );
@@ -520,10 +888,27 @@ try {
     (group) => group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
   );
   assert.ok(rememberedSourceGroup, 'living project-pressure remembered sources 必须提前封存');
-  assert.equal(rememberedSourceGroup.requirement, 'audit-only');
+  assert.equal(rememberedSourceGroup.requirement, 'index-only');
   assert.ok(rememberedSourceGroup.resolvedEventIds.includes('mechanical-service'));
   assert.ok(rememberedSourceGroup.unresolvedEventIds.includes('fixture-codebook-source'),
-    'record/non-event source ID 可保留为非阻塞审计缺口');
+    'record/non-event source ID 可保留为非阻塞 identity 缺口');
+  assert.equal(
+    decodedPrefix.continuationBasis.directMatches.some(
+      (match) => match.eventId === 'project-pressure-bridge-only-prefix',
+    ),
+    false,
+    '独立 bridge 事件在 previous shell 没有任何 demand，不能被其他 selector 提前解析',
+  );
+  assert.equal(
+    decodedPrefix.pins.some((pin) => (
+      pin.leaseKeys.includes(api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY)
+    )),
+    false,
+    'project-pressure broad identity 不应常驻旧事件正文',
+  );
+  assert.equal(decodedPrefix.demandGroups.filter((group) => (
+    group.groupKey.startsWith('gameplay:live-person-project-pressure:')
+  )).length, 1, 'project-pressure 只能有唯一 broad group');
   const futureStoredFoodGroup = decodedPrefix.demandGroups.find(
     (group) => group.groupKey === api.FUTURE_FAMILY_STORED_FOOD_SOURCE_LEASE_KEY,
   );
@@ -631,6 +1016,43 @@ try {
     api.finishHistoryRetentionProjection(oracleFold),
   ).projection;
   assert.deepEqual(advanced.projection, oracle, 'exact-root incremental retention 必须等于 full oracle');
+  const bridgedPressureGroup = advanced.projection.demandGroups.find((group) => (
+    group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+  ));
+  assert.ok(
+    bridgedPressureGroup?.resolvedEventIds.includes('project-pressure-bridge-only-prefix'),
+    'next living owner 新记忆引用旧 prefix 事实时，PP broad bridge 必须解析该成员',
+  );
+  assert.deepEqual(
+    advanced.projection.continuationBasis.directMatches.find(
+      (match) => match.eventId === 'project-pressure-bridge-only-prefix',
+    ),
+    {
+      absoluteIndex: prefix.findIndex(
+        (event) => event.id === 'project-pressure-bridge-only-prefix',
+      ),
+      eventId: 'project-pressure-bridge-only-prefix',
+    },
+    'verified prefix bridge 必须保存独立事件的精确 ordinal/id',
+  );
+  const migratedPressureRetention = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    decodedLegacyPrefix,
+    previousRoot.root,
+    nextState,
+    nextRoot.root,
+    readChunk,
+  );
+  assert.deepEqual(
+    migratedPressureRetention.projection,
+    oracle,
+    '旧 global audit-only project-pressure sidecar 必须一次迁移为 index-only successor',
+  );
+  assert.equal(
+    migratedPressureRetention.projection.demandGroups.find((group) => (
+      group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+    ))?.requirement,
+    'index-only',
+  );
   assert.equal(advanced.suffixEventCount, suffix.length);
   assert.equal(advanced.nextRootHash, nextRoot.root.hash);
   assert.equal(

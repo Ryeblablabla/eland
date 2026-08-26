@@ -6,6 +6,7 @@ import {
   migrateMechanicalPowerWorldState,
 } from '../src/game/eland/domain/mechanical-power';
 import type { SimulationState } from '../src/game/eland/domain/model';
+import type { RetainedProjectPressureEvidenceDescriptor } from '../src/game/eland/domain/project-pressure-evidence';
 import { rematerializePhysicalStructureIndex } from '../src/game/eland/domain/physical-structure-index';
 import { WILDLIFE_ECOLOGY_VERSION } from '../src/game/eland/domain/wildlife-ecology';
 import { cloneValidatedSocialLearningState } from '../src/game/eland/application/simulation/social-learning-state';
@@ -23,9 +24,11 @@ import {
 } from './physical-structure-ledger-projection';
 import {
   installVerifiedHistoryRetentionEvidence,
+  projectPressureColdMaterializationOrdinals,
 } from './retained-history-evidence';
 import {
   decodeSegmentedRunStateBounded,
+  materializeVerifiedRunHistoryPinnedEvents,
   parseRunStateRoot,
   snapshotRunStateChunk,
   streamVerifiedRunHistorySegments,
@@ -63,6 +66,8 @@ function adoptDecodedBoundedSimulationState(
   expectedStateHash: string,
   projection: HistoryRetentionProjectionResult,
   decodedColdPins: readonly RunStatePinnedEvent[],
+  decodedProjectPressureSources: readonly RunStatePinnedEvent[],
+  reusableProjectPressureDescriptors: readonly RetainedProjectPressureEvidenceDescriptor[],
   physicalProjection: PhysicalStructureLedgerProjectionResult,
   physicalAuthority: 'verified-root-stream' | 'store-decoded-sidecar',
 ): BoundedSimulationAdoptionReceipt {
@@ -222,7 +227,14 @@ function adoptDecodedBoundedSimulationState(
   // process-local revision numbers must never cause persisted structures to be
   // reused without this explicit materialization.
   state.world.physicalStructureIndex = rematerializePhysicalStructureIndex(state, physical);
-  installVerifiedHistoryRetentionEvidence(state, expectedStateHash, projection, decodedColdPins);
+  installVerifiedHistoryRetentionEvidence(
+    state,
+    expectedStateHash,
+    projection,
+    decodedColdPins,
+    decodedProjectPressureSources,
+    reusableProjectPressureDescriptors,
+  );
   primeEventIndex(state);
   return Object.freeze({
     kind: 'bounded-simulation-adoption-receipt-v1',
@@ -246,6 +258,8 @@ export function adoptStoreDecodedBoundedSimulationState(
   expectedStateHash: string,
   projection: HistoryRetentionProjectionResult,
   decodedColdPins: readonly RunStatePinnedEvent[],
+  decodedProjectPressureSources: readonly RunStatePinnedEvent[],
+  reusableProjectPressureDescriptors: readonly RetainedProjectPressureEvidenceDescriptor[],
   physicalProjection: PhysicalStructureLedgerProjectionResult,
 ): BoundedSimulationAdoptionReceipt {
   return adoptDecodedBoundedSimulationState(
@@ -253,6 +267,8 @@ export function adoptStoreDecodedBoundedSimulationState(
     expectedStateHash,
     projection,
     decodedColdPins,
+    decodedProjectPressureSources,
+    reusableProjectPressureDescriptors,
     physicalProjection,
     'store-decoded-sidecar',
   );
@@ -304,11 +320,22 @@ export async function adoptBoundedSimulationState(
       pinnedEventIndexes: retentionProjection.pins.map((pin) => pin.absoluteIndex),
     },
   );
+  const projectPressureSources = materializeVerifiedRunHistoryPinnedEvents(
+    root,
+    readChunk,
+    projectPressureColdMaterializationOrdinals(
+      decoded.state,
+      retentionProjection,
+      decoded.pinnedEvents,
+    ),
+  );
   return adoptDecodedBoundedSimulationState(
     decoded.state,
     rootSnapshot.hash,
     retentionProjection,
     decoded.pinnedEvents,
+    projectPressureSources,
+    [],
     decoded.physicalProjection,
     'verified-root-stream',
   );

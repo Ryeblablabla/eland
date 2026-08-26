@@ -15,7 +15,10 @@ import {
   type SimulationState,
   type WorldEvent,
 } from "../src/game/eland/simulation";
-import { worldEventById } from "../src/game/eland/domain/event-index";
+import {
+  retainedProjectPressureEvidenceForLivingSources,
+  worldEventById,
+} from "../src/game/eland/domain/event-index";
 import { trimCommittedHistoryAfterPersistedCursor } from "../src/game/eland/domain/history";
 import { rematerializePhysicalStructureIndex } from "../src/game/eland/domain/physical-structure-index";
 import { livingPeople } from "../src/game/eland/domain/state-index";
@@ -81,6 +84,7 @@ import {
   assertVerifiedHistoryRetentionSuccessor,
   projectHistoryRetentionFromVerifiedSuccessor,
 } from "./history-retention-successor";
+import { projectPressureColdMaterializationOrdinals } from "./retained-history-evidence";
 import type { NarrativeEnhancementArtifact } from "./narrative-enhancements";
 import {
   decodeObserverDerivedHistorySidecar,
@@ -3239,6 +3243,12 @@ export class SqliteRunStore implements RunStore {
       }
       return Object.freeze({ absoluteIndex: pin.absoluteIndex, event });
     });
+    const reusableProjectPressureDescriptors =
+      retainedProjectPressureEvidenceForLivingSources(nextState);
+    const nextHotStartIndex = Math.max(
+      0,
+      nextRoot.eventCount - source.continuation.hotEventLimit,
+    );
 
     const nextCheckpoint: ExactRunCheckpointRow = Object.freeze({
       runId: successor.run.id,
@@ -3437,6 +3447,17 @@ export class SqliteRunStore implements RunStore {
     );
     this.discardWarmNonProjectionContinuation(registry, source.runId);
     try {
+      const warmProjectPressureSources = materializeVerifiedRunHistoryPinnedEvents(
+        nextRoot,
+        readPublicationChunk,
+        projectPressureColdMaterializationOrdinals(
+          nextState,
+          warmArtifacts.retention,
+          warmPinnedEvents,
+          reusableProjectPressureDescriptors,
+          nextHotStartIndex,
+        ),
+      );
       trimCommittedHistoryAfterPersistedCursor(
         nextState,
         {
@@ -3450,6 +3471,8 @@ export class SqliteRunStore implements RunStore {
         successor.root.hash,
         warmArtifacts.retention,
         warmPinnedEvents,
+        warmProjectPressureSources,
+        reusableProjectPressureDescriptors,
         warmArtifacts.physical,
       );
 
@@ -4519,11 +4542,22 @@ export class SqliteRunStore implements RunStore {
       );
     }
 
+    const projectPressureSources = materializeVerifiedRunHistoryPinnedEvents(
+      rootMetadata,
+      (chunkHash) => this.chunkRow(chunkHash),
+      projectPressureColdMaterializationOrdinals(
+        decoded.state,
+        retention,
+        decoded.pinnedEvents,
+      ),
+    );
     adoptStoreDecodedBoundedSimulationState(
       decoded.state,
       runSnapshot.stateHash,
       retention,
       decoded.pinnedEvents,
+      projectPressureSources,
+      [],
       physicalSidecar,
     );
 

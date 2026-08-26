@@ -46,6 +46,7 @@ import {
   FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY,
   FUTURE_MATERIAL_AFFORDANCE_SOURCE_LEASE_KEY,
   calibrationLeaseKeysFromDemandGroups,
+  assertProjectPressureHistoryRetentionDemandGroups,
   assertLiveIntentHistoryRetentionDemandGroups,
   historyRetentionDemandFingerprint,
   historyRetentionRequirementBlocks,
@@ -450,7 +451,9 @@ function normalizeDemandGroups(value: unknown): HistoryRetentionDemandGroupResul
       sorted: true,
       nonEmpty: true,
     });
-    const eventIds = assertStringArray(candidate.eventIds, `${label}.eventIds`, { nonEmpty: true });
+    const eventIds = assertStringArray(candidate.eventIds, `${label}.eventIds`, {
+      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+    });
     const resolvedEventIds = assertStringArray(
       candidate.resolvedEventIds,
       `${label}.resolvedEventIds`,
@@ -560,7 +563,10 @@ function normalizeUnresolvedDemands(
   return unresolved;
 }
 
-function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDemand {
+function normalizeSourceDemand(
+  value: unknown,
+  options: { allowLegacyMissingProjectPressure?: boolean } = {},
+): HistoryRetentionContinuationDemand {
   assertRecord(value, 'retention continuation sourceDemand');
   assertExactKeys(value, [
     'groups',
@@ -596,7 +602,7 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
     });
     const eventIds = assertStringArray(candidate.eventIds, `${label}.eventIds`, {
       sorted: true,
-      nonEmpty: true,
+      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
     });
     if ((candidate.groupKey.startsWith('active-mechanical-project:')
       || candidate.groupKey.startsWith('active-project:'))
@@ -649,7 +655,7 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
       socialLearningObserverIds.add(socialLearning.observerId);
     }
     if (candidate.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
-      && (candidate.requirement !== 'audit-only'
+      && ((candidate.requirement !== 'audit-only' && candidate.requirement !== 'index-only')
         || leaseKeys.length !== 1
         || leaseKeys[0] !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
         || eventIds.length > HISTORY_RETENTION_MAX_LIVE_PROJECT_PRESSURE_SOURCE_EVENT_IDS)) {
@@ -727,6 +733,11 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
     throw new Error('retention continuation sourceDemand living selector 人数超界');
   }
   const livingPersonIds = new Set(millLaborPersonIds);
+  assertProjectPressureHistoryRetentionDemandGroups(
+    groups,
+    'retention continuation sourceDemand',
+    { allowLegacyMissing: options.allowLegacyMissingProjectPressure },
+  );
   if ([...recentTerminalFailureOwnerIds].some((ownerId) => !livingPersonIds.has(ownerId))) {
     throw new Error('retention continuation recent terminal failure owner 不属于存活人物');
   }
@@ -948,6 +959,7 @@ function normalizeContinuationBasis(
     summary: HistoryRetentionSummary;
   },
   registry: MatchIdentityRegistry,
+  options: { allowLegacyMissingProjectPressure?: boolean } = {},
 ): HistoryRetentionProjectionResult['continuationBasis'] {
   assertRecord(value, 'retention projection.continuationBasis');
   assertExactKeys(value, [
@@ -989,7 +1001,7 @@ function normalizeContinuationBasis(
   if (value.sourceDemandFingerprint !== projection.demandFingerprint) {
     throw new Error('retention continuation basis 的 demand fingerprint 与 projection 不一致');
   }
-  const sourceDemand = normalizeSourceDemand(value.sourceDemand);
+  const sourceDemand = normalizeSourceDemand(value.sourceDemand, options);
   assertSourceDemandSelectorGroups(sourceDemand);
   if (historyRetentionDemandFingerprint(sourceDemand) !== value.sourceDemandFingerprint) {
     throw new Error('retention continuation basis 的 sourceDemand/fingerprint 不一致');
@@ -1439,7 +1451,10 @@ function assertProjectionDerivedSemantics(
   }
 }
 
-function normalizeProjection(value: unknown): HistoryRetentionProjectionResult {
+function normalizeProjection(
+  value: unknown,
+  options: { allowLegacyMissingProjectPressure?: boolean } = {},
+): HistoryRetentionProjectionResult {
   assertRecord(value, 'retention projection');
   assertExactKeys(value, [
     'schemaVersion',
@@ -1469,6 +1484,11 @@ function normalizeProjection(value: unknown): HistoryRetentionProjectionResult {
   );
   const pins = normalizePins(value.pins, target);
   const demandGroups = normalizeDemandGroups(value.demandGroups);
+  assertProjectPressureHistoryRetentionDemandGroups(
+    demandGroups,
+    'retention projection demand group',
+    { allowLegacyMissing: options.allowLegacyMissingProjectPressure },
+  );
   assertLiveIntentHistoryRetentionDemandGroups(
     demandGroups,
     'retention projection demand group',
@@ -1493,7 +1513,33 @@ function normalizeProjection(value: unknown): HistoryRetentionProjectionResult {
     demandGroups,
     minimalMechanicalTeachingWitness,
     summary,
-  }, registry);
+  }, registry, options);
+  const hasProjectPressureGroup = demandGroups.some((group) => (
+    group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+  ));
+  const sourceHasProjectPressureGroup = continuationBasis.sourceDemand.groups.some((group) => (
+    group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+  ));
+  if (hasProjectPressureGroup !== sourceHasProjectPressureGroup) {
+    throw new Error('retention legacy project-pressure 缺组必须同时缺于 projection/sourceDemand');
+  }
+  if (!hasProjectPressureGroup) {
+    const hasProjectPressurePin = pins.some((pin) => pin.leaseKeys.some((leaseKey) => (
+      leaseKey.startsWith('gameplay:live-person-project-pressure:')
+    )));
+    const hasProjectPressureUnresolved = unresolvedDemands.some((item) => (
+      item.groupKey.startsWith('gameplay:live-person-project-pressure:')
+      || item.leaseKeys.some((leaseKey) => (
+        leaseKey.startsWith('gameplay:live-person-project-pressure:')
+      ))
+    ));
+    const hasProjectPressureSelector = continuationBasis.selectiveMatches.some((item) => (
+      item.leaseKey.startsWith('gameplay:live-person-project-pressure:')
+    ));
+    if (hasProjectPressurePin || hasProjectPressureUnresolved || hasProjectPressureSelector) {
+      throw new Error('retention legacy project-pressure 缺组仍携带 lease/unresolved 残留');
+    }
+  }
   const projection: HistoryRetentionProjectionResult = {
     schemaVersion: 1,
     authority,
@@ -1563,7 +1609,12 @@ export function hashHistoryRetentionStoredContent(codec: string, data: Uint8Arra
  * resulting reference proves content integrity only; it is not a store token.
  */
 export function encodeHistoryRetentionSidecar(input: unknown): Readonly<EncodedHistoryRetentionSidecar> {
-  const projection = deepFreeze(normalizeProjection(input));
+  const normalized = normalizeProjection(input);
+  assertProjectPressureHistoryRetentionDemandGroups(
+    normalized.demandGroups,
+    'retention sidecar encoder demand group',
+  );
+  const projection = deepFreeze(normalized);
   const canonical = canonicalBytes(projection);
   if (canonical.byteLength > MAX_HISTORY_RETENTION_SIDECAR_CANONICAL_BYTES) {
     throw new Error(
@@ -1675,7 +1726,7 @@ export function decodeHistoryRetentionSidecar(
   } catch (error) {
     throw new Error(`retention sidecar chunk ${claimedHash} 无法解析`, { cause: error });
   }
-  const projection = normalizeProjection(parsed);
+  const projection = normalizeProjection(parsed, { allowLegacyMissingProjectPressure: true });
   if (!canonical.equals(canonicalBytes(projection))) {
     throw new Error('retention sidecar payload 不是 canonical 编码');
   }

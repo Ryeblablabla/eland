@@ -61,6 +61,10 @@ import {
   livePersonSocialEvidenceLeaseKey,
   parseGroundedConversationWindowLeaseKey,
 } from '../src/game/eland/domain/event-index';
+import {
+  LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  rememberedProjectPressureSourceEventIds,
+} from '../src/game/eland/domain/project-pressure-evidence';
 import { latestSharedProjectBetween } from '../src/game/eland/domain/project-participant-index';
 import {
   MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY,
@@ -337,15 +341,12 @@ export const HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_TOTAL = 16_
 export const HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON = 8_448;
 export const HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL = 32_768;
 /**
- * `project-pressure` may reuse any event still remembered through a living
- * person's memory, condition, knowledge, or inventory. Keep the union exact
- * enough for future projects without letting imported shells grow the sidecar
- * without bound. Some source IDs are record payload IDs rather than events,
- * so this selector is audit-only and pins every matching history fact.
+ * The broad living-person union is continuation identity only. A future
+ * pressure basis may promote one of these IDs to an exact active-project
+ * anchor. Ordinary pressure reads only a process-local body-free descriptor.
  */
 export const HISTORY_RETENTION_MAX_LIVE_PROJECT_PRESSURE_SOURCE_EVENT_IDS = 16_384;
-export const LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY =
-  'gameplay:live-person-project-pressure:remembered-sources' as const;
+export { LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY };
 /**
  * A currently placed container may become visible after an ordinary move in
  * the next month. Family-readiness then carries the container and edible-stack
@@ -478,6 +479,66 @@ export function parseSocialLearningSourceLeaseKey(
     return { observerId };
   } catch {
     return null;
+  }
+}
+
+type ProjectPressureDemandGroupShape = Pick<
+  HistoryRetentionContinuationDemandGroup,
+  'groupKey' | 'requirement' | 'leaseKeys' | 'eventIds'
+>;
+
+/** Accept one exact broad identity group: legacy body-pinning or current index-only. */
+export function assertProjectPressureHistoryRetentionDemandGroups(
+  groups: readonly ProjectPressureDemandGroupShape[],
+  context: string,
+  options: { allowLegacyMissing?: boolean } = {},
+): void {
+  const relevant = groups.filter((group) => (
+    group.groupKey.startsWith('gameplay:live-person-project-pressure:')
+  ));
+  if (relevant.length === 0 && options.allowLegacyMissing) return;
+  const globalGroup = relevant[0];
+  if (relevant.length !== 1
+    || globalGroup.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+    || ((globalGroup.requirement !== 'audit-only'
+      && globalGroup.requirement !== 'index-only')
+    || globalGroup.leaseKeys.length !== 1
+    || globalGroup.leaseKeys[0] !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+    || new Set(globalGroup.eventIds).size !== globalGroup.eventIds.length
+    || globalGroup.eventIds.length > HISTORY_RETENTION_MAX_LIVE_PROJECT_PRESSURE_SOURCE_EVENT_IDS)) {
+    throw new Error(`${context} living project-pressure global group 无效或超界`);
+  }
+}
+
+function projectPressureDemandGroup(
+  groups: readonly ProjectPressureDemandGroupShape[],
+): ProjectPressureDemandGroupShape | undefined {
+  return groups.find((group) => (
+    group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+  ));
+}
+
+/** The only admitted raw migration is exact legacy audit bodies to the same index identity. */
+function assertProjectPressureStorageRefinementMatches(
+  projected: readonly ProjectPressureDemandGroupShape[],
+  demanded: readonly ProjectPressureDemandGroupShape[],
+): void {
+  const previous = projectPressureDemandGroup(projected);
+  const current = projectPressureDemandGroup(demanded);
+  if (!current) {
+    throw new Error('retention shell 缺少当前 project-pressure broad identity');
+  }
+  if (!previous) {
+    if (current.requirement === 'index-only' && current.eventIds.length === 0) return;
+    throw new Error('retention legacy project-pressure 缺组只允许迁移到 empty index identity');
+  }
+  const requirementCompatible = previous.requirement === current.requirement
+    || (previous.requirement === 'audit-only' && current.requirement === 'index-only');
+  if (!requirementCompatible
+    || previous.groupKey !== current.groupKey
+    || !sameStringSet(previous.leaseKeys, current.leaseKeys)
+    || !sameStringSet(previous.eventIds, current.eventIds)) {
+    throw new Error('retention project-pressure storage refinement 与 bounded shell 不一致');
   }
 }
 
@@ -620,9 +681,15 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
 function addDemandGroup(
   groups: Map<string, DirectDemandGroup>,
   demandedIds: Set<string>,
-  input: { groupKey: string; requirement: HistoryRetentionRequirement; leaseKey: string; eventIds: readonly string[] },
+  input: {
+    groupKey: string;
+    requirement: HistoryRetentionRequirement;
+    leaseKey: string;
+    eventIds: readonly string[];
+    includeEmpty?: boolean;
+  },
 ): void {
-  if (input.eventIds.length === 0) return;
+  if (input.eventIds.length === 0 && !input.includeEmpty) return;
   let group = groups.get(input.groupKey);
   if (!group) {
     group = { groupKey: input.groupKey, requirement: input.requirement, leaseKeys: new Set(), eventIds: new Set() };
@@ -714,12 +781,7 @@ function boundedLivePersonSocialEventIds(
 function boundedLiveProjectPressureSourceEventIds(
   livingPeople: readonly SimulationState['people'][number][],
 ): string[] {
-  const values = livingPeople.flatMap((person) => [
-    ...person.memories.flatMap((memory) => memory.sourceEventIds),
-    ...person.conditions.flatMap((condition) => condition.sourceEventIds),
-    ...person.knowledge.flatMap((fact) => fact.sourceEventIds),
-    ...person.inventory.flatMap((stack) => stack.sourceEventIds),
-  ]);
+  const values = livingPeople.flatMap(rememberedProjectPressureSourceEventIds);
   const eventIds = [...new Set(values.map((value) => requiredEventId(
     value,
     'living person project-pressure remembered sources',
@@ -1307,11 +1369,13 @@ function collectDemand(state: SimulationState) {
     leaseKey: RECENT_PRODUCTION_WINDOW_LEASE,
     eventIds: [target.tailEventId],
   });
+  const liveProjectPressureSourceEventIds = boundedLiveProjectPressureSourceEventIds(livingPeople);
   addDemandGroup(demandGroupsByKey, directDemandEventIds, {
     groupKey: LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
-    requirement: 'audit-only',
+    requirement: 'index-only',
     leaseKey: LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
-    eventIds: boundedLiveProjectPressureSourceEventIds(livingPeople),
+    eventIds: liveProjectPressureSourceEventIds,
+    includeEmpty: true,
   });
   addDemandGroup(demandGroupsByKey, directDemandEventIds, {
     groupKey: FUTURE_FAMILY_STORED_FOOD_SOURCE_LEASE_KEY,
@@ -2057,7 +2121,7 @@ export function historyRetentionDemandCollectionStatsForTests(): Readonly<{
 function continuationDemandFromCollected(
   demand: ReturnType<typeof collectDemand>,
 ): HistoryRetentionContinuationDemand {
-  return {
+  const continuationDemand: HistoryRetentionContinuationDemand = {
     groups: [...demand.demandGroupsByKey.values()]
     .sort((left, right) => left.groupKey.localeCompare(right.groupKey))
     .map((group) => ({
@@ -2083,6 +2147,11 @@ function continuationDemandFromCollected(
         attemptEventIds: [...item.attemptEventIds].sort(),
       })),
   };
+  assertProjectPressureHistoryRetentionDemandGroups(
+    continuationDemand.groups,
+    'retention collected demand',
+  );
+  return continuationDemand;
 }
 
 export function historyRetentionDemandFingerprint(demand: HistoryRetentionContinuationDemand): string {
@@ -2118,9 +2187,12 @@ function compatibilityCanonicalDemandGroups(
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
       || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
       || parseSocialLearningSourceLeaseKey(group.groupKey)) continue;
+    if (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+      && group.eventIds.length === 0) continue;
     canonical.set(group.groupKey, {
       groupKey: group.groupKey,
-      requirement: group.groupKey === FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY
+      requirement: (group.groupKey === FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY
+          || group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY)
         && group.requirement === 'index-only'
         ? 'audit-only'
         : group.requirement,
@@ -2304,6 +2376,16 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     || !sameStringSet(projection.millLaborPersonIds, demand.millLaborPersonIds)) {
     throw new Error('retention projection demand 与 bounded state 当前 shell 不一致');
   }
+  assertProjectPressureHistoryRetentionDemandGroups(
+    projection.demandGroups,
+    'retention projection raw demand',
+    { allowLegacyMissing: true },
+  );
+  assertProjectPressureHistoryRetentionDemandGroups(
+    demand.groups,
+    'retention shell raw demand',
+  );
+  assertProjectPressureStorageRefinementMatches(projection.demandGroups, demand.groups);
   assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
@@ -2686,7 +2768,9 @@ export function foldHistoryRetentionSegment(
     for (let offset = 0; offset < segment.length; offset += 1) {
       const event = segment[offset];
       const absoluteIndex = startAbsoluteIndex + offset;
-      if (fold.directDemandEventIds.has(event.id)) fold.directMatchesByEventId.set(event.id, { absoluteIndex, eventId: event.id });
+      if (fold.directDemandEventIds.has(event.id)) {
+        fold.directMatchesByEventId.set(event.id, { absoluteIndex, eventId: event.id });
+      }
       if (isCompletedMillLabor(event) && fold.millLaborPersonIds.has(event.who)) {
         const ring = fold.millLaborRingsByPersonId.get(event.who) ?? [];
         ring.push({ absoluteIndex, eventId: event.id });
@@ -2930,6 +3014,11 @@ function validateHistoryRetentionContinuationBasis(
   let socialLearningGroupCount = 0;
   let socialLearningEventIdMembershipCount = 0;
   const livingPersonIdSet = new Set(sourceDemand.millLaborPersonIds);
+  assertProjectPressureHistoryRetentionDemandGroups(
+    sourceDemand.groups,
+    'retention continuation demand',
+    { allowLegacyMissing: true },
+  );
   for (const group of sourceDemand.groups) {
     if (!HISTORY_RETENTION_REQUIREMENTS.includes(group.requirement)) {
       throw new Error(`retention continuation demand group ${group.groupKey} requirement 无效`);
@@ -3355,7 +3444,12 @@ export function resumeHistoryRetentionProjection(
       // but is not blocking when no event exists.
       const groups = [...fold.demandGroupsByKey.values()]
         .filter((group) => group.eventIds.has(eventId));
-      if (groups.some((group) => historyRetentionRequirementBlocks(group.requirement))) {
+      const requiresVerifiedPrefixLookup = groups.some((group) => (
+        group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+          && group.requirement === 'index-only'
+      ));
+      if (requiresVerifiedPrefixLookup
+        || groups.some((group) => historyRetentionRequirementBlocks(group.requirement))) {
         fold.requiredSuffixDirectDemandEventIds.add(eventId);
       }
     }
@@ -3561,6 +3655,69 @@ export function seedVerifiedPrefixLogisticsIndexMatches(
     fold.directMatchesByEventId.set(match.eventId, { ...match });
     fold.requiredSuffixDirectDemandEventIds.delete(match.eventId);
   }
+}
+
+/**
+ * New broad project-pressure provenance may legitimately name an older event
+ * or a non-event record ID. A verified prefix scan distinguishes those cases:
+ * every matching event is seeded, while searched non-events remain unresolved
+ * index identity rather than becoming a false blocker.
+ */
+export function unresolvedVerifiedPrefixProjectPressureIndexEventIds(
+  fold: HistoryRetentionProjectionFold,
+): string[] {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix project-pressure bridge 只接受 open fold');
+  }
+  const group = fold.demandGroupsByKey.get(LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY);
+  if (!group || group.requirement !== 'index-only') return [];
+  return [...fold.requiredSuffixDirectDemandEventIds]
+    .filter((eventId) => group.eventIds.has(eventId)
+      && !fold.directMatchesByEventId.has(eventId))
+    .sort();
+}
+
+export function seedVerifiedPrefixProjectPressureIndexMatches(
+  fold: HistoryRetentionProjectionFold,
+  verifiedSourceEventCount: number,
+  searchedEventIds: readonly string[],
+  matches: readonly HistoryRetentionContinuationMatch[],
+): void {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix project-pressure bridge 只接受 open fold');
+  }
+  const sourceTarget = fold.continuationSourceTarget;
+  if (!sourceTarget || verifiedSourceEventCount !== sourceTarget.eventCount) {
+    throw new Error('retention prefix project-pressure bridge 与 continuation source seal 不一致');
+  }
+  const group = fold.demandGroupsByKey.get(LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY);
+  if (!group || group.requirement !== 'index-only') {
+    if (searchedEventIds.length === 0 && matches.length === 0) return;
+    throw new Error('retention prefix project-pressure bridge 缺少 index-only demand');
+  }
+  const searched = new Set<string>();
+  for (const eventId of searchedEventIds) {
+    if (searched.has(eventId)
+      || !group.eventIds.has(eventId)
+      || !fold.requiredSuffixDirectDemandEventIds.has(eventId)
+      || fold.directMatchesByEventId.has(eventId)) {
+      throw new Error(`retention prefix project-pressure searched ID ${eventId} 无效`);
+    }
+    searched.add(eventId);
+  }
+  const matched = new Set<string>();
+  for (const match of matches) {
+    if (matched.has(match.eventId)
+      || !searched.has(match.eventId)
+      || !Number.isSafeInteger(match.absoluteIndex)
+      || match.absoluteIndex < 0
+      || match.absoluteIndex >= sourceTarget.eventCount) {
+      throw new Error(`retention prefix project-pressure match ${match.eventId} 无效`);
+    }
+    matched.add(match.eventId);
+    fold.directMatchesByEventId.set(match.eventId, { ...match });
+  }
+  for (const eventId of searched) fold.requiredSuffixDirectDemandEventIds.delete(eventId);
 }
 
 /**

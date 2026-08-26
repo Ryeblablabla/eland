@@ -1,11 +1,19 @@
 import { animalSpecies, isAnimalAlive } from '../domain/animal';
 import { Material, materialHas, type MaterialId } from '../domain/material';
-import type { DropState, SimulationState, WorldEvent } from '../domain/model';
+import type { DropState, SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 import { ageMonths, inventoryQuantity, isAlive } from '../domain/person';
 import type { ProjectPressureBasis, ProjectProposal } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
-import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
+import {
+  projectPressureEvidenceDescriptorsForPerson,
+  worldEventsByIdsInHistoryOrder,
+} from '../domain/event-index';
+import {
+  projectPressureEvidenceDescriptorFromWorldEvent,
+  rememberedProjectPressureSourceEventIds,
+  selectProjectPressureEvidenceDescriptors,
+} from '../domain/project-pressure-evidence';
 import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
 import { productionToolRank } from '../domain/production-tool';
@@ -99,35 +107,38 @@ function resolvedView(state: SimulationState, owner: PersonState, input: Project
   };
 }
 
-function rememberedSourceIds(person: PersonState): Set<string> {
-  return new Set([
-    ...person.memories.flatMap((memory) => memory.sourceEventIds),
-    ...person.conditions.flatMap((condition) => condition.sourceEventIds),
-    ...person.knowledge.flatMap((fact) => fact.sourceEventIds),
-    ...person.inventory.flatMap((stack) => stack.sourceEventIds),
-  ]);
+function rememberedProjectPressureEvidence(
+  state: SimulationState,
+  owner: PersonState,
+) {
+  const hotAndExactlyPinned = worldEventsByIdsInHistoryOrder(
+    state,
+    rememberedProjectPressureSourceEventIds(owner),
+  ).map(projectPressureEvidenceDescriptorFromWorldEvent);
+  return [
+    ...projectPressureEvidenceDescriptorsForPerson(state, owner),
+    ...hotAndExactlyPinned,
+  ];
 }
 
-function priorPersistentEdges(subject: ProjectPressureSubject, prefix: string): string[] {
-  return subject.pressureBasis?.edgeKeys.filter((key) => key.startsWith(prefix)) ?? [];
-}
-
-function priorPersistentSources(state: SimulationState, subject: ProjectPressureSubject, predicate: (event: WorldEvent) => boolean): string[] {
-  return subject.pressureBasis?.sourceFactIds.filter((id) => {
-    const event = worldEventById(state, id);
-    return Boolean(event && predicate(event));
-  }) ?? [];
-}
-
-function retainedEvents(
+function projectPressureEvidence(
   state: SimulationState,
   owner: PersonState,
   subject: ProjectPressureSubject,
-): WorldEvent[] {
-  return worldEventsByIdsInHistoryOrder(state, [
-    ...rememberedSourceIds(owner),
-    ...(subject.pressureBasis?.sourceFactIds ?? []),
-  ]);
+  atMonth: number,
+) {
+  const remembered = rememberedProjectPressureEvidence(state, owner);
+  // An active project's prior basis is an independent exact retention anchor;
+  // do not require it to be reclassified as remembered person-local evidence.
+  const activeBasis = worldEventsByIdsInHistoryOrder(
+    state,
+    subject.pressureBasis?.sourceFactIds ?? [],
+  ).map(projectPressureEvidenceDescriptorFromWorldEvent);
+  return selectProjectPressureEvidenceDescriptors(
+    [...remembered, ...activeBasis],
+    owner.id,
+    atMonth,
+  );
 }
 
 function thermalBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number) {
@@ -153,25 +164,16 @@ function thermalBasis(state: SimulationState, owner: PersonState, subject: Proje
 function huntingBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number, view: Required<ProjectPressureView>) {
   const failureEdges = new Map<string, string>();
   const attackEdges = new Map<string, string>();
-  for (const event of retainedEvents(state, owner, subject)) {
-    if (event.atMonth > atMonth) continue;
-    if (event.kind === 'action'
-      && event.who === owner.id
-      && event.action.kind === 'act'
-      && event.action.operation === 'hunt'
-      && event.diff.killed !== true) {
-      const animalId = typeof event.diff.animalId === 'string' ? event.diff.animalId : 'unknown';
-      failureEdges.set(`event:hunt-failure:${event.atMonth}:${animalId}`, event.id);
-    }
-    if (event.kind === 'environment'
-      && event.change === 'animal'
-      && event.diff.process === 'attack-human'
-      && event.diff.victimId === owner.id) {
-      attackEdges.set(`event:animal-attack:${event.id}`, event.id);
-    }
+  const witnesses = projectPressureEvidence(state, owner, subject, atMonth);
+  for (const event of witnesses.huntFailures) {
+    failureEdges.set(
+      `event:hunt-failure:${event.atMonth}:${event.huntFailure!.animalId}`,
+      event.eventId,
+    );
   }
-  for (const key of priorPersistentEdges(subject, 'event:hunt-failure:')) if (!failureEdges.has(key)) failureEdges.set(key, '');
-  for (const key of priorPersistentEdges(subject, 'event:animal-attack:')) if (!attackEdges.has(key)) attackEdges.set(key, '');
+  for (const event of witnesses.animalAttacks) {
+    attackEdges.set(`event:animal-attack:${event.eventId}`, event.eventId);
+  }
   const visible = new Set(view.visibleCells);
   const threats = state.world.animals.filter((animal) => isAnimalAlive(animal)
     && visible.has(animal.position.cellId)
@@ -194,11 +196,8 @@ function huntingBasis(state: SimulationState, owner: PersonState, subject: Proje
     + Math.min(36, attackEdges.size * 18)
     + Math.min(24, threats.length * 12);
   return makeBasis(subject, owner, atMonth, pressure, edgeKeys, reasons, [
-    ...[...failureEdges.values()].filter(Boolean),
-    ...[...attackEdges.values()].filter(Boolean),
-    ...priorPersistentSources(state, subject, (event) => event.kind === 'action'
-      ? event.who === owner.id && event.action.kind === 'act' && event.action.operation === 'hunt'
-      : event.kind === 'environment' && event.change === 'animal' && event.diff.victimId === owner.id),
+    ...failureEdges.values(),
+    ...attackEdges.values(),
   ]);
 }
 
@@ -327,15 +326,9 @@ function knowledgeBasis(state: SimulationState, owner: PersonState, subject: Pro
     ? owner.knowledge.find((fact) => fact.id === subject.targetKnowledgeId)
     : undefined;
   const disruptions = new Map<string, string>();
-  for (const event of retainedEvents(state, owner, subject)) {
-    if (event.atMonth > atMonth) continue;
-    if (event.kind === 'action'
-      && event.who === owner.id
-      && event.status === 'completed'
-      && event.action.kind === 'act'
-      && event.action.operation === 'dehydrate') disruptions.set(`event:personal-dehydration:${event.id}`, event.id);
+  for (const event of projectPressureEvidence(state, owner, subject, atMonth).dehydrations) {
+    disruptions.set(`event:personal-dehydration:${event.eventId}`, event.eventId);
   }
-  for (const key of priorPersistentEdges(subject, 'event:personal-dehydration:')) if (!disruptions.has(key)) disruptions.set(key, '');
   const band = ageBand(owner, atMonth);
   const agePressure = band === '60-plus' ? 24 : band === '50-59' ? 16 : band === '40-49' ? 8 : 0;
   const continuity = band !== 'under-40' || disruptions.size >= 1;
@@ -352,11 +345,7 @@ function knowledgeBasis(state: SimulationState, owner: PersonState, subject: Pro
     ...(disruptions.size ? ['personal-memory-disruption'] : []),
   ], [
     ...(target?.sourceEventIds ?? []),
-    ...[...disruptions.values()].filter(Boolean),
-    ...priorPersistentSources(state, subject, (event) => event.kind === 'action'
-      && event.who === owner.id
-      && event.action.kind === 'act'
-      && event.action.operation === 'dehydrate'),
+    ...disruptions.values(),
   ]);
 }
 
@@ -490,13 +479,11 @@ function developmentBasis(
   const jointPartnerIds = new Set(completedJointProjects.flatMap((project) => (
     project.contributorIds.filter((personId) => personId !== owner.id)
   )));
-  const remembered = rememberedSourceIds(owner);
-  const sourceFactIds = worldEventsByIdsInHistoryOrder(state, remembered)
-    .filter((event) => event.atMonth <= atMonth
-      && (event.kind === 'environment'
-        || (event.kind === 'action' && event.status === 'completed')))
-    .slice(-24)
-    .map((event) => event.id);
+  const sourceFactIds = selectProjectPressureEvidenceDescriptors(
+    rememberedProjectPressureEvidence(state, owner),
+    owner.id,
+    atMonth,
+  ).developmentProvenance.map((event) => event.eventId);
   const commonEdges = [
     `project:function:${subject.desiredFunction ?? 'unspecified'}`,
     `state:visible-population:${visiblePopulation}`,

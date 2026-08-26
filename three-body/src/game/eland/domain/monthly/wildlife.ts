@@ -1,7 +1,7 @@
 import { Material } from '../material';
 import type { EnvironmentFact, SimulationState } from '../model';
 import type { PersonState } from '../person';
-import { isAlive } from '../person';
+import { livingPeople } from '../state-index';
 import { addDrop } from '../action-executor';
 import {
   animalAgeMonths,
@@ -393,7 +393,7 @@ export function advanceAnimals(state: SimulationState, atMonth: number, events: 
   const livingAtOpening = state.world.animals.filter(isAnimalAlive)
     .sort((first, second) => first.id.localeCompare(second.id));
   const animalSnapshots = livingAtOpening.map(wildlifeAnimalSnapshot);
-  const peopleAtOpening = state.people.filter(isAlive).sort((first, second) => first.id.localeCompare(second.id));
+  const peopleAtOpening = [...livingPeople(state)].sort((first, second) => first.id.localeCompare(second.id));
   const personSnapshots = peopleAtOpening.map((person) => wildlifePersonSnapshot(
     person,
     Boolean(shelterGeometryAt(state.world.grid, person.position)),
@@ -505,7 +505,7 @@ export function advanceAnimals(state: SimulationState, atMonth: number, events: 
     const species = animalSpecies(animal.speciesId);
     if (species.diet === 'herbivore') {
       if (intent.mode === 'defend' && intent.attackEligiblePersonId) {
-        const victim = state.people.find((person) => person.id === intent.attackEligiblePersonId && isAlive(person));
+        const victim = livingPeople(state).find((person) => person.id === intent.attackEligiblePersonId);
         const victimOpening = openingPersonById.get(intent.attackEligiblePersonId);
         if (victim && victimOpening
           && animal.position.cellId === victim.position.cellId
@@ -548,7 +548,7 @@ export function advanceAnimals(state: SimulationState, atMonth: number, events: 
     }
 
     if (intent.mode !== 'pursue-human' || !intent.targetPersonId) continue;
-    const victim = state.people.find((person) => person.id === intent.targetPersonId && isAlive(person));
+    const victim = livingPeople(state).find((person) => person.id === intent.targetPersonId);
     const victimOpening = openingPersonById.get(intent.targetPersonId);
     if (!victim || !victimOpening || shelterGeometryAt(state.world.grid, victim.position)) continue;
     const reached = animal.position.cellId === victim.position.cellId && animal.position.z === victim.position.z;

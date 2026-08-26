@@ -1,7 +1,10 @@
 import { executePrimitiveAction } from '../../domain/action-executor';
 import { synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
 import { PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
-import { ORDINARY_DECISION_PERSON_MONTHS } from '../../domain/decision-budget';
+import {
+  ORDINARY_DECISION_PERSON_MONTHS,
+  ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH,
+} from '../../domain/decision-budget';
 import {
   chooseDependentCareReflex,
   dependentCareUrgency,
@@ -13,6 +16,7 @@ import type {
   AgentDecider,
   Decision,
   DecisionContext,
+  Intent,
   PrimitiveAction,
   SimulationState,
   TokenUsage,
@@ -30,7 +34,7 @@ import {
   type PersonId,
   type PersonState,
 } from '../../domain/person';
-import { personById } from '../../domain/state-index';
+import { intentById, livingPeople, personById } from '../../domain/state-index';
 import {
   chooseHibernationRecoveryReflex,
   chooseSurvivalReflex,
@@ -45,11 +49,12 @@ import { RulePlanner } from '../rule-planner';
 import {
   activeIntent,
   applyDecision,
+  decisionPlanningChannel,
+  drainInterruptedIntentReturns,
   executeActiveIntent,
   executeDependentCareReflex,
   executeProtectiveInterruption,
   recordShelterMaintenanceInterruption,
-  resolveInterruptedIntentReturn,
 } from './intent-execution';
 import { currentRollingLedgers, finishMonth, type PreparedMonth } from './month-boundary';
 import type { ObservationProjector } from './observation-projector';
@@ -90,6 +95,8 @@ export interface MonthExecution {
   observationProjector: ObservationProjector;
   controlledPersonId?: PersonId;
   reviewedPeople: Set<PersonId>;
+  ordinaryDeliberationCounts: Map<PersonId, number>;
+  ordinaryReplanPermits: Set<PersonId>;
   plannedAtTickOne: Set<PersonId>;
   participantIds: PersonId[];
   completedTick: number;
@@ -121,6 +128,8 @@ export function createMonthExecution(input: {
     controlledPersonId,
   } = input;
   const reviewedPeople = new Set<PersonId>();
+  const ordinaryDeliberationCounts = new Map<PersonId, number>();
+  const ordinaryReplanPermits = new Set<PersonId>();
   const plannedAtTickOne = new Set<PersonId>();
   // `prepareMonth` preserves the old public no-op contract for an authority
   // head that had already ended: no new month, ledger, or history entry exists.
@@ -134,17 +143,22 @@ export function createMonthExecution(input: {
       if (!person || !isAlive(person) || person.id === controlledPersonId) continue;
       const freshContext = buildDecisionContext(prepared.state, person, prepared.atMonth);
       const picked = decisions.get(person.id);
-      if (!picked || picked.decision.kind === 'idle') continue;
-      prepared.events.push(applyDecision(
-        prepared.state,
-        person,
-        freshContext,
-        picked.decision,
-        picked.usedModel,
-        prepared.atMonth,
-        prepared.events.length,
-        1,
-      ));
+      if (!picked) continue;
+      const planningChannel = decisionPlanningChannel(freshContext, picked.decision);
+      if (planningChannel === 'ordinary') ordinaryDeliberationCounts.set(person.id, 1);
+      if (picked.decision.kind !== 'idle') {
+        prepared.events.push(applyDecision(
+          prepared.state,
+          person,
+          freshContext,
+          picked.decision,
+          picked.usedModel,
+          prepared.atMonth,
+          prepared.events.length,
+          1,
+          planningChannel,
+        ));
+      }
       plannedAtTickOne.add(person.id);
       reviewedPeople.add(person.id);
     }
@@ -159,11 +173,74 @@ export function createMonthExecution(input: {
     observationProjector: input.observationProjector,
     ...(controlledPersonId ? { controlledPersonId } : {}),
     reviewedPeople,
+    ordinaryDeliberationCounts,
+    ordinaryReplanPermits,
     plannedAtTickOne,
-    participantIds: prepared.state.people.filter(isAlive).map((person) => person.id),
+    participantIds: livingPeople(prepared.state).map((person) => person.id),
     completedTick: alreadyEnded ? PLANNING_TICKS_PER_MONTH : 0,
     finished: alreadyEnded,
   };
+}
+
+function isTerminalIntent(intent: Intent | undefined): intent is Intent {
+  return Boolean(intent && (intent.status === 'completed'
+    || intent.status === 'blocked'
+    || intent.status === 'failed'
+    || intent.status === 'abandoned'));
+}
+
+interface RootIntentTrace {
+  id: Intent['id'];
+  statusBefore: Intent['status'];
+}
+
+function rootIntentForPerson(state: SimulationState, person: PersonState): RootIntentTrace | undefined {
+  let current = activeIntent(state, person);
+  const visited = new Set<string>();
+  while (current) {
+    if (visited.has(current.id)) return undefined;
+    visited.add(current.id);
+    if (!current.returnToIntentId) return { id: current.id, statusBefore: current.status };
+    const parent = intentById(state, current.returnToIntentId);
+    if (!parent || parent.ownerId !== person.id) return undefined;
+    current = parent;
+  }
+  return undefined;
+}
+
+function grantTerminalReplanPermit(
+  execution: MonthExecution,
+  person: PersonState,
+  rootBeforeStep: RootIntentTrace | undefined,
+): void {
+  const rootAfterStep = rootBeforeStep
+    ? intentById(execution.prepared.state, rootBeforeStep.id)
+    : undefined;
+  if (!rootBeforeStep
+    || (rootBeforeStep.statusBefore !== 'active' && rootBeforeStep.statusBefore !== 'suspended')
+    || !isTerminalIntent(rootAfterStep)
+    || rootAfterStep.returnToIntentId
+    || person.activeIntentId
+    || activeIntent(execution.prepared.state, person)) return;
+  const ordinaryCount = execution.ordinaryDeliberationCounts.get(person.id) ?? 0;
+  if (ordinaryCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH) {
+    execution.ordinaryReplanPermits.add(person.id);
+  }
+}
+
+function executeIntentStep(
+  execution: MonthExecution,
+  person: PersonState,
+  actionTick: number,
+  fallbackRoot?: RootIntentTrace,
+): WorldEvent | null {
+  const { state, events, atMonth } = execution.prepared;
+  const rootBeforeStep = rootIntentForPerson(state, person) ?? fallbackRoot;
+  const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
+  if (fact) events.push(fact);
+  drainInterruptedIntentReturns(state, person, atMonth);
+  grantTerminalReplanPermit(execution, person, rootBeforeStep);
+  return fact;
 }
 
 function executeActorControl(
@@ -173,6 +250,7 @@ function executeActorControl(
   control: TickActorControl,
 ): void {
   const { state, events, atMonth } = execution.prepared;
+  const rootBeforeDecision = rootIntentForPerson(state, person);
   if (control.kind === 'wait') {
     person.currentActionText = control.text ?? '停留原地观察周围';
     return;
@@ -187,6 +265,16 @@ function executeActorControl(
     return;
   }
   if (control.kind === 'decision') {
+    const planningChannel = decisionPlanningChannel(control.context, control.decision);
+    if (planningChannel === 'ordinary') {
+      const ordinaryCount = execution.ordinaryDeliberationCounts.get(person.id) ?? 0;
+      execution.ordinaryDeliberationCounts.set(
+        person.id,
+        Math.min(ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH, ordinaryCount + 1),
+      );
+      execution.ordinaryReplanPermits.delete(person.id);
+    }
+    execution.reviewedPeople.add(person.id);
     if (control.decision.kind !== 'idle') {
       events.push(applyDecision(
         state,
@@ -197,6 +285,7 @@ function executeActorControl(
         atMonth,
         events.length,
         actionTick,
+        planningChannel,
       ));
     }
     if (control.decision.kind === 'idle') {
@@ -204,10 +293,10 @@ function executeActorControl(
       return;
     }
   }
-  const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-  if (fact) events.push(fact);
-  else if (control.kind === 'continue-intent') person.currentActionText = '当前意图暂时没有可执行的下一步';
-  resolveInterruptedIntentReturn(state, person, atMonth);
+  const fact = executeIntentStep(execution, person, actionTick, rootBeforeDecision);
+  if (!fact && control.kind === 'continue-intent') {
+    person.currentActionText = '当前意图暂时没有可执行的下一步';
+  }
 }
 
 export function executePlanningTick(
@@ -271,19 +360,23 @@ export function executePlanningTick(
       const careIsMoreUrgent = Boolean(dependentCare)
         && (!reflex || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
       if (careIsMoreUrgent && dependentCare) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
         const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
         person.currentActionText = fact.result;
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
       if (reflexDuplicatesQueuedDehydrate) {
-        const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-        if (fact) events.push(fact);
-        resolveInterruptedIntentReturn(state, person, atMonth);
+        executeIntentStep(execution, person, actionTick);
         continue;
       }
       if (reflex && !(dependentChild && reflex.kind === 'move' && !reflex.wildlifeThreatBasis)) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
         const fact = executeProtectiveInterruption(state, person, reflex, 'survival-reflex', atMonth, actionTick, events);
         person.currentActionText = fact.result;
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
       if (dependentChild) {
@@ -293,8 +386,11 @@ export function executePlanningTick(
         continue;
       }
       if (dependentCare) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
         const fact = executeDependentCareReflex(state, person, dependentCare, atMonth, actionTick, events);
         person.currentActionText = fact.result;
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
       const wildlifeShelter = shouldRemainShelteredFromWildlifeThreat(state, person, atMonth);
@@ -302,10 +398,13 @@ export function executePlanningTick(
         || shouldRemainSheltered(state, person)
         || shouldRemainShelteredForDependent(state, person);
       if (maintainingShelter && !causalShelterWork) {
+        const rootBeforeInterruption = rootIntentForPerson(state, person);
         recordShelterMaintenanceInterruption(state, person, atMonth, actionTick, events, wildlifeShelter
           ? { reason: '可见猛兽仍在住所近旁，继续留在真实围护内' }
           : {});
         person.currentActionText = wildlifeShelter ? '留在住所内避开可见猛兽' : '留在住所内维持避护状态';
+        drainInterruptedIntentReturns(state, person, atMonth);
+        grantTerminalReplanPermit(execution, person, rootBeforeInterruption);
         continue;
       }
 
@@ -319,6 +418,7 @@ export function executePlanningTick(
         }
       }
 
+      const rootBeforePlanning = rootIntentForPerson(state, person);
       if (actionTick !== 1 || !execution.plannedAtTickOne.has(person.id)) {
         planLocallyForTick(
           state,
@@ -328,11 +428,10 @@ export function executePlanningTick(
           events,
           execution.tickPlanner,
           execution.reviewedPeople,
+          execution,
         );
       }
-      const fact = executeActiveIntent(state, person, atMonth, events.length, actionTick, events);
-      if (fact) events.push(fact);
-      resolveInterruptedIntentReturn(state, person, atMonth);
+      executeIntentStep(execution, person, actionTick, rootBeforePlanning);
     }
   }
 

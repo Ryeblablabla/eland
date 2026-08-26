@@ -1,11 +1,16 @@
 import type { Intent, SimulationState } from './model';
-import type { PersonId, PersonState } from './person';
+import { isAlive, type PersonId, type PersonState } from './person';
 import type { ProjectState } from './project';
 
 interface AppendOnlyIdIndex<T extends { id: string }> {
   indexedLength: number;
   lastIndexedItem?: T;
   byId: Map<string, T>;
+}
+
+interface PersonIndex extends AppendOnlyIdIndex<PersonState> {
+  /** Ordered live candidates; health/death is rechecked on every public read. */
+  living: PersonState[];
 }
 
 interface ProjectIndex extends AppendOnlyIdIndex<ProjectState> {
@@ -31,7 +36,7 @@ interface AgreementLifecycleIndex {
   responseDeadlineCandidates: AgreementState[];
 }
 
-const personIndexes = new WeakMap<SimulationState['people'], AppendOnlyIdIndex<PersonState>>();
+const personIndexes = new WeakMap<SimulationState['people'], PersonIndex>();
 const projectIndexes = new WeakMap<SimulationState['projects'], ProjectIndex>();
 const intentIndexes = new WeakMap<SimulationState['intents'], IntentIndex>();
 const projectLifecycleIndexes = new WeakMap<SimulationState['projects'], ProjectLifecycleIndex>();
@@ -125,21 +130,34 @@ function agreementLifecycleIndex(state: SimulationState): AgreementLifecycleInde
   return index;
 }
 
-function personIndex(state: SimulationState): AppendOnlyIdIndex<PersonState> {
+function personIndex(state: SimulationState): PersonIndex {
   const people = state.people;
   let index = personIndexes.get(people);
   if (!index || indexInvalid(people, index)) {
-    index = { indexedLength: 0, byId: new Map() };
+    index = { indexedLength: 0, byId: new Map(), living: [] };
     personIndexes.set(people, index);
   }
   for (let offset = index.indexedLength; offset < people.length; offset += 1) {
     const person = people[offset];
     // Preserve Array.find semantics for malformed duplicate ids: first wins.
     if (!index.byId.has(person.id)) index.byId.set(person.id, person);
+    if (isAlive(person)) index.living.push(person);
   }
   index.indexedLength = people.length;
   index.lastIndexedItem = people.at(-1);
   return index;
+}
+
+/**
+ * Discard the runtime-only people sidecar after a same-array middle rewrite.
+ * Ordinary death is noticed by the O(L) live-ref recheck. Once a dead person
+ * has been removed, an exceptional resurrection must call this hook because
+ * no authoritative rule normally makes historical dead people live again.
+ * Whole-array replacement, truncation, and old-tail replacement rebuild
+ * automatically; no position or visibility result is cached here.
+ */
+export function invalidatePeopleIndex(state: SimulationState): void {
+  personIndexes.delete(state.people);
 }
 
 function projectIndex(state: SimulationState): ProjectIndex {
@@ -182,6 +200,17 @@ function intentIndex(state: SimulationState): IntentIndex {
 
 export function personById(state: SimulationState, personId: PersonId): PersonState | undefined {
   return personIndex(state).byId.get(personId);
+}
+
+/**
+ * Living people in authoritative array order. The candidate list contains at
+ * most refs previously observed alive, while every call rechecks current body
+ * and death fields so a death becomes visible within the same month.
+ */
+export function livingPeople(state: SimulationState): readonly PersonState[] {
+  const index = personIndex(state);
+  index.living = index.living.filter(isAlive);
+  return index.living;
 }
 
 export function projectById(state: SimulationState, projectId: string): ProjectState | undefined {

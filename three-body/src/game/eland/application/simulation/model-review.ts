@@ -16,9 +16,9 @@ import {
   hasFulfillmentOpportunity,
   hasRequiredSocialResponse,
   isFulfillmentOption,
-  isMaintainableStateGoal,
   isProductionOption,
   isRequiredSocialOption,
+  isStateAchievementGoal,
 } from '../rule-planner';
 import { clamp } from './state-utils';
 
@@ -40,7 +40,7 @@ export function decisionUrgency(context: DecisionContext): number {
 export function hasUnfinishedProductionIntent(context: DecisionContext): boolean {
   return Boolean(context.activeIntent
     && context.activeIntent.domain === 'strategic'
-    && isMaintainableStateGoal(context.activeIntent.goal)
+    && isStateAchievementGoal(context.activeIntent.goal)
     && !goalSatisfied(context.state, context.person, context.activeIntent.goal));
 }
 

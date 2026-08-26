@@ -10,10 +10,14 @@ import {
 import type { SimulationState } from '../model';
 import type { ProjectState } from '../project';
 import {
-  hasGroundedConversationOpeningBasis,
-  hasGroundedConversationResponse,
+  hasRecentGroundedConversationResponseForListener,
+  hasRememberedGroundedConversationOpeningBasis,
+  livePersonSocialEvidenceLeaseKey,
+  planningOverlayEvents,
   worldEventById,
+  worldEventByIdWithRetainedLease,
 } from '../event-index';
+import { agreementsForPerson } from '../agreement';
 import {
   techniqueOutputMaterialId,
 } from '../technique-demonstration';
@@ -42,6 +46,7 @@ function projectSupportsMaterialContribution(
   return project.need === 'alloy-capability'
     || project.need === 'iron-capability'
     || project.need === 'mechanical-power-capability'
+    || project.need === 'equipment-reliability'
     || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
 }
 
@@ -62,7 +67,13 @@ function groundedConversationSourceMatches(
   content: Extract<PrimitiveAction, { kind: 'communicate' }>['content'] & { kind: 'claim' },
   conversation: GroundedConversationRef,
 ): boolean {
-  const sources = conversation.sourceFactIds.map((sourceId) => worldEventById(state, sourceId));
+  const sources = conversation.sourceFactIds.map((sourceId) => conversation.topic === 'gratitude'
+    ? worldEventByIdWithRetainedLease(
+      state,
+      sourceId,
+      livePersonSocialEvidenceLeaseKey(person.id),
+    )
+    : worldEventById(state, sourceId));
   if (!sources.length || sources.some((source) => !source)) return false;
   if (conversation.topic === 'care') {
     const conditionSources = new Set(listener.conditions.flatMap((condition) => condition.sourceEventIds));
@@ -73,16 +84,20 @@ function groundedConversationSourceMatches(
     return conversation.sourceFactIds.every((sourceId) => conditionSources.has(sourceId));
   }
   if (conversation.topic === 'gratitude') return sources.every((source) => {
-    if (source?.kind === 'agreement') {
-      return source.change === 'fulfilled'
-        && source.partyIds.includes(person.id)
-        && source.partyIds.includes(listener.id);
-    }
-    if (source?.kind !== 'action' || source.status !== 'completed' || source.who !== listener.id) return false;
-    if (source.diff.caredPersonId === person.id) return true;
-    return source.action.kind === 'transfer'
-      && source.action.to.kind === 'person'
-      && source.action.to.personId === person.id;
+    if (source?.kind !== 'action' || source.status !== 'completed') return false;
+    const directSupport = source.who === listener.id && (
+      source.diff.caredPersonId === person.id
+      || source.action.kind === 'transfer'
+        && source.action.to.kind === 'person'
+        && source.action.to.personId === person.id
+    );
+    const fulfilledSupport = agreementsForPerson(state, person.id).some((agreement) => (
+      agreement.status === 'fulfilled'
+      && agreement.partyIds.includes(listener.id)
+      && agreement.fulfilledByPersonIds.includes(listener.id)
+      && agreement.fulfillmentEventIds.includes(source.id)
+    ));
+    return directSupport || fulfilledSupport;
   });
   if (conversation.topic === 'shared-work') return state.projects.some((project) => {
     const participantIds = new Set([project.ownerId, ...project.contributorIds]);
@@ -140,7 +155,12 @@ function validateGroundedConversation(
     if (conversation.referenceEventId || conversation.stance) {
       return { kind: 'blocked', reason: '生活对话开场不能伪装成回应' };
     }
-    const duplicate = hasGroundedConversationOpeningBasis(state, conversation.basisKey);
+    const duplicate = hasRememberedGroundedConversationOpeningBasis(
+      state,
+      conversation.basisKey,
+      person.id,
+      listener.id,
+    );
     if (duplicate || !groundedConversationSourceMatches(state, person, listener, action.content, conversation)) {
       return { kind: 'blocked', reason: duplicate ? '同一段生活经历已经谈过' : '生活对话没有可解析且属于双方的真实来源' };
     }
@@ -155,7 +175,11 @@ function validateGroundedConversation(
     && opening.action.content.kind === 'claim'
     ? opening.action.content.conversation
     : undefined;
-  const duplicateResponse = Boolean(referenceId && hasGroundedConversationResponse(state, referenceId));
+  const duplicateResponse = Boolean(referenceId && hasRecentGroundedConversationResponseForListener(
+    state,
+    person.id,
+    referenceId,
+  ));
   if (!openingConversation
     || openingConversation.turn !== 'opening'
     || openingConversation.speakerId !== listener.id
@@ -244,7 +268,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
       && projectCandidate.desiredFunction === request.desiredFunction
       ? projectCandidate
       : undefined;
-    const repeated = state.world.past.some((event) => event.kind === 'action'
+    const repeated = planningOverlayEvents(state).some((event) => event.kind === 'action'
       && event.status === 'completed'
       && event.who === person.id
       && event.action.kind === 'communicate'

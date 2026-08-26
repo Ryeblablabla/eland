@@ -40,7 +40,7 @@ import {
   type TraitBirthResult,
 } from './trait';
 import { humanResourceCompetitionMultiplier } from './population-capacity';
-import { intentById, intentsOwnedBy, projectById } from './state-index';
+import { intentById, intentsOwnedBy, livingPeople, personById, projectById } from './state-index';
 import {
   advanceEraPredictions,
   initialEraSchedule,
@@ -49,6 +49,7 @@ import {
 } from './monthly/climate';
 import { advanceSharedRelationshipExperience } from './monthly/relationship-experience';
 import { advanceAnimals } from './monthly/wildlife';
+import { applyRelationEvidence } from './relation';
 
 export {
   advanceEraPredictions,
@@ -109,7 +110,7 @@ export function resolveTerminalCatastrophe(
     },
   };
   events.push(catastropheFact);
-  for (const person of state.people.filter(isAlive)) {
+  for (const person of livingPeople(state)) {
     die(state, person, atMonth, events, 'triple-sun-vaporization', {
       sourceEventIds: [catastropheFact.id],
       vaporized: true,
@@ -267,8 +268,8 @@ function advanceInheritedSusceptibility(state: SimulationState, person: PersonSt
     condition: 'illness', stage: illness.stage, inheritedSusceptibility: true, geneticLoad: load, risk,
   }, person);
   illness.sourceEventIds.push(fact.id);
-  for (const observer of state.people.filter((candidate) => isAlive(candidate)
-    && sameLocation(candidate, person)
+  for (const observer of livingPeople(state).filter((candidate) =>
+    sameLocation(candidate, person)
     && (candidate.id === person.id || candidate.geneticParents.includes(person.id) || person.geneticParents.includes(candidate.id) || candidate.relations.some((relation) => relation.personId === person.id && relation.bond >= 10)))) {
     learnFromInheritedOutcome(observer, person, atMonth, fact.id, 'illness');
   }
@@ -376,7 +377,7 @@ function advanceAging(state: SimulationState, person: PersonState, atMonth: numb
 
 function newborn(state: SimulationState, mother: PersonState, fatherId: string, atMonth: number): { child: PersonState; inheritance: TraitBirthResult } {
   const id = `born-${atMonth}-${mother.id}-${state.people.length}`;
-  const father = state.people.find((person) => person.id === fatherId);
+  const father = personById(state, fatherId);
   const sex = createBiologicalSex(state.seed, id);
   const inheritance = personTraitsAtBirth(state.seed, id, sex, mother, father);
   const namingSource = inheritance.matrilinealBirth ? mother : father ?? mother;
@@ -422,7 +423,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     cognition: createCognitionState(),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
     bereavements: [],
-    relations: state.people.filter(isAlive).map((person) => ({ personId: person.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] })),
+    relations: [],
     currentActionText: '依赖身边人的照护', lastDecisionText: '尚不能独立决策',
   };
   return { child, inheritance };
@@ -503,33 +504,26 @@ function recordNewborn(
       learnFromInheritedOutcome(parent, child, atMonth, fact.id, 'birth');
     }
   }
-  const locallyPerceivedPersonIds = state.people
-    .filter((candidate) => candidate.id !== child.id && isAlive(candidate) && sameLocation(candidate, child))
+  const locallyPerceivedPersonIds = livingPeople(state)
+    .filter((candidate) => candidate.id !== child.id && sameLocation(candidate, child))
     .map((candidate) => candidate.id)
     .sort();
-  const locallyPerceivedPeople = new Set(locallyPerceivedPersonIds);
   const initialTrust = newbornInitialTrust(child);
-  for (const relation of child.relations) {
-    if (!locallyPerceivedPeople.has(relation.personId)) continue;
-    relation.trust = initialTrust;
-    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, fact.id])];
+  for (const personId of locallyPerceivedPersonIds) {
+    applyRelationEvidence(child, personId, fact.id, { trust: initialTrust });
   }
   fact.diff.initialSocialTrust = initialTrust;
   fact.diff.initialSocialTrustPersonIds = locallyPerceivedPersonIds;
-  child.relations.forEach((relation) => {
-    if (!child.geneticParents.includes(relation.personId)) return;
-    relation.bond = inheritance.matrilinealBirth && relation.personId === person.id ? 18 : 12;
-    relation.sourceEventIds = [...new Set([...relation.sourceEventIds, fact.id])];
-  });
-  for (const existing of state.people) {
-    if (existing.id === child.id || existing.relations.some((relation) => relation.personId === child.id)) continue;
-    const closeKin = child.geneticParents.includes(existing.id);
-    existing.relations.push({
-      personId: child.id,
-      trust: 0,
-      bond: closeKin ? (inheritance.matrilinealBirth && existing.id === person.id ? 18 : 12) : 0,
-      fear: 0,
-      sourceEventIds: closeKin ? [fact.id] : [],
+  const livingBirthParents = livingPeople(state).filter((candidate) => candidate.id !== child.id
+    && child.geneticParents.includes(candidate.id));
+  for (const parent of livingBirthParents) {
+    applyRelationEvidence(child, parent.id, fact.id, {
+      bond: inheritance.matrilinealBirth && parent.id === person.id ? 18 : 12,
+    });
+  }
+  for (const parent of livingBirthParents) {
+    applyRelationEvidence(parent, child.id, fact.id, {
+      bond: inheritance.matrilinealBirth && parent.id === person.id ? 18 : 12,
     });
   }
   return fact;
@@ -540,7 +534,7 @@ function advancePregnancies(state: SimulationState, person: PersonState, atMonth
   if (!pregnancy?.dueAtMonth) return;
   const remaining = pregnancy.dueAtMonth - atMonth;
   pregnancy.stage = remaining <= 2 ? 3 : remaining <= 5 ? 2 : 1;
-  const father = state.people.find((candidate) => candidate.id === pregnancy.otherPersonId);
+  const father = pregnancy.otherPersonId ? personById(state, pregnancy.otherPersonId) : undefined;
   const twinTraitPersonIds = [person, ...(father ? [father] : [])]
     .filter((candidate) => hasTrait(candidate, 'twin-bearer'))
     .map((candidate) => candidate.id);
@@ -887,7 +881,7 @@ export function advanceHibernationRecoveryPhases(
   atMonth: number,
 ): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
-  for (const person of state.people.filter(isAlive)) {
+  for (const person of livingPeople(state)) {
     const episode = person.conditions.find((current) => current.kind === 'dehydrated-hibernation');
     if (!episode) continue;
     const suspension = maintainHibernationIntentSuspension(state, person, episode.id, atMonth);
@@ -992,7 +986,7 @@ export function synchronizeHibernationIntentSuspensions(
   atMonth: number,
 ): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
-  for (const person of state.people.filter(isAlive)) {
+  for (const person of livingPeople(state)) {
     const episode = person.conditions.find((condition) => condition.kind === 'dehydrated-hibernation');
     if (!episode) continue;
     const suspension = maintainHibernationIntentSuspension(state, person, episode.id, atMonth);
@@ -1023,8 +1017,8 @@ export function synchronizeHibernationIntentSuspensions(
 
 export function advanceBodies(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
-  const peopleAtStart = [...state.people];
-  const resourceCompetition = humanResourceCompetitionMultiplier(peopleAtStart.filter(isAlive).length);
+  const peopleAtStart = [...livingPeople(state)];
+  const resourceCompetition = humanResourceCompetitionMultiplier(peopleAtStart.length);
   for (const person of peopleAtStart) {
     if (person.diedAtMonth !== undefined) continue;
     if (person.body.health <= 0) {

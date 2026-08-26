@@ -1191,7 +1191,7 @@ export const RECIPE_KNOWLEDGE = {
     {
       "id": 65,
       "key": "drive_shaft",
-      "name": "青铜传动轴",
+      "name": "金属传动轴",
       "phase": "solid",
       "tags": [
         "solid",
@@ -1223,6 +1223,171 @@ export const RECIPE_KNOWLEDGE = {
         104,
         78,
         50
+      ]
+    },
+    {
+      "id": 67,
+      "key": "steel_charge",
+      "name": "炼钢料",
+      "phase": "solid",
+      "tags": [
+        "solid"
+      ],
+      "hardness": 7,
+      "mass": 2.4,
+      "color": [
+        67,
+        70,
+        71
+      ]
+    },
+    {
+      "id": 68,
+      "key": "steel",
+      "name": "钢",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "metal",
+        "building",
+        "tool-material"
+      ],
+      "hardness": 10,
+      "mass": 2.5,
+      "color": [
+        111,
+        119,
+        123
+      ]
+    },
+    {
+      "id": 69,
+      "key": "steel_drive_shaft",
+      "name": "钢制传动轴",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "building",
+        "placeable",
+        "metal"
+      ],
+      "hardness": 10,
+      "mass": 1.9,
+      "color": [
+        118,
+        126,
+        130
+      ]
+    },
+    {
+      "id": 70,
+      "key": "beam_balance",
+      "name": "等臂秤",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "tool",
+        "instrument"
+      ],
+      "hardness": 6,
+      "mass": 1.1,
+      "color": [
+        146,
+        111,
+        67
+      ]
+    },
+    {
+      "id": 71,
+      "key": "standard_weight",
+      "name": "标准秤砣",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "metal",
+        "mass-reference"
+      ],
+      "hardness": 9,
+      "mass": 1,
+      "color": [
+        103,
+        106,
+        107
+      ]
+    },
+    {
+      "id": 72,
+      "key": "mechanical_dynamo",
+      "name": "机械发电机",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "placeable",
+        "metal",
+        "electrical-source"
+      ],
+      "hardness": 9,
+      "mass": 3.2,
+      "color": [
+        87,
+        103,
+        108
+      ]
+    },
+    {
+      "id": 73,
+      "key": "copper_conductor",
+      "name": "绝缘铜导体",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "placeable",
+        "metal",
+        "electrical-conductor"
+      ],
+      "hardness": 5,
+      "mass": 0.8,
+      "color": [
+        181,
+        96,
+        55
+      ]
+    },
+    {
+      "id": 74,
+      "key": "resistive_load",
+      "name": "电阻负载",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "placeable",
+        "metal",
+        "electrical-load"
+      ],
+      "hardness": 8,
+      "mass": 2.1,
+      "color": [
+        177,
+        133,
+        72
+      ]
+    },
+    {
+      "id": 75,
+      "key": "broken_copper_conductor",
+      "name": "熔断的铜导体",
+      "phase": "solid",
+      "tags": [
+        "solid",
+        "placeable",
+        "metal"
+      ],
+      "hardness": 3,
+      "mass": 0.7,
+      "color": [
+        77,
+        62,
+        54
       ]
     }
   ],
@@ -2659,6 +2824,60 @@ export const RECIPE_KNOWLEDGE = {
       }
     },
     {
+      "id": "prepare-steel-charge",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 50,
+          "key": "iron",
+          "name": "锻铁",
+          "quantity": 1,
+          "color": [
+            93,
+            99,
+            101
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 35,
+          "key": "charcoal",
+          "name": "木炭",
+          "quantity": 1,
+          "color": [
+            48,
+            47,
+            45
+          ],
+          "tags": [
+            "solid",
+            "fuel"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 67,
+        "key": "steel_charge",
+        "name": "炼钢料",
+        "quantity": 1,
+        "color": [
+          67,
+          70,
+          71
+        ],
+        "tags": [
+          "solid"
+        ]
+      }
+    },
+    {
       "id": "forge-iron-tool",
       "type": "combine",
       "inputs": [
@@ -2833,6 +3052,63 @@ export const RECIPE_KNOWLEDGE = {
       }
     },
     {
+      "id": "assemble-water-wheel-from-wood",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 13,
+          "key": "wood",
+          "name": "木材",
+          "quantity": 1,
+          "color": [
+            91,
+            61,
+            38
+          ],
+          "tags": [
+            "solid",
+            "fuel",
+            "building",
+            "tool-material",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 64,
+        "key": "water_wheel",
+        "name": "水轮",
+        "quantity": 1,
+        "color": [
+          126,
+          87,
+          48
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable"
+        ]
+      }
+    },
+    {
       "id": "cast-drive-shaft",
       "type": "combine",
       "inputs": [
@@ -2876,7 +3152,7 @@ export const RECIPE_KNOWLEDGE = {
       "output": {
         "materialId": 65,
         "key": "drive_shaft",
-        "name": "青铜传动轴",
+        "name": "金属传动轴",
         "quantity": 1,
         "color": [
           161,
@@ -2888,6 +3164,862 @@ export const RECIPE_KNOWLEDGE = {
           "building",
           "placeable",
           "metal"
+        ]
+      }
+    },
+    {
+      "id": "shape-copper-drive-shaft",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 46,
+          "key": "copper",
+          "name": "铜",
+          "quantity": 1,
+          "color": [
+            181,
+            101,
+            55
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 65,
+        "key": "drive_shaft",
+        "name": "金属传动轴",
+        "quantity": 1,
+        "color": [
+          161,
+          111,
+          50
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable",
+          "metal"
+        ]
+      }
+    },
+    {
+      "id": "forge-iron-drive-shaft",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 50,
+          "key": "iron",
+          "name": "锻铁",
+          "quantity": 1,
+          "color": [
+            93,
+            99,
+            101
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 65,
+        "key": "drive_shaft",
+        "name": "金属传动轴",
+        "quantity": 1,
+        "color": [
+          161,
+          111,
+          50
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable",
+          "metal"
+        ]
+      }
+    },
+    {
+      "id": "forge-steel-drive-shaft",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 68,
+          "key": "steel",
+          "name": "钢",
+          "quantity": 1,
+          "color": [
+            111,
+            119,
+            123
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 1,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 69,
+        "key": "steel_drive_shaft",
+        "name": "钢制传动轴",
+        "quantity": 1,
+        "color": [
+          118,
+          126,
+          130
+        ],
+        "tags": [
+          "solid",
+          "building",
+          "placeable",
+          "metal"
+        ]
+      }
+    },
+    {
+      "id": "assemble-beam-balance",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 2,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 23,
+          "key": "rope",
+          "name": "绳",
+          "quantity": 1,
+          "color": [
+            167,
+            139,
+            91
+          ],
+          "tags": [
+            "fiber",
+            "building",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 70,
+        "key": "beam_balance",
+        "name": "等臂秤",
+        "quantity": 1,
+        "color": [
+          146,
+          111,
+          67
+        ],
+        "tags": [
+          "solid",
+          "tool",
+          "instrument"
+        ]
+      }
+    },
+    {
+      "id": "assemble-beam-balance-from-wood",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 13,
+          "key": "wood",
+          "name": "木材",
+          "quantity": 2,
+          "color": [
+            91,
+            61,
+            38
+          ],
+          "tags": [
+            "solid",
+            "fuel",
+            "building",
+            "tool-material",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 23,
+          "key": "rope",
+          "name": "绳",
+          "quantity": 1,
+          "color": [
+            167,
+            139,
+            91
+          ],
+          "tags": [
+            "fiber",
+            "building",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 70,
+        "key": "beam_balance",
+        "name": "等臂秤",
+        "quantity": 1,
+        "color": [
+          146,
+          111,
+          67
+        ],
+        "tags": [
+          "solid",
+          "tool",
+          "instrument"
+        ]
+      }
+    },
+    {
+      "id": "assemble-beam-balance-with-fiber",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 19,
+          "key": "plank",
+          "name": "木板",
+          "quantity": 2,
+          "color": [
+            155,
+            111,
+            65
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "fuel",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 70,
+        "key": "beam_balance",
+        "name": "等臂秤",
+        "quantity": 1,
+        "color": [
+          146,
+          111,
+          67
+        ],
+        "tags": [
+          "solid",
+          "tool",
+          "instrument"
+        ]
+      }
+    },
+    {
+      "id": "assemble-beam-balance-from-wood-with-fiber",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 13,
+          "key": "wood",
+          "name": "木材",
+          "quantity": 2,
+          "color": [
+            91,
+            61,
+            38
+          ],
+          "tags": [
+            "solid",
+            "fuel",
+            "building",
+            "tool-material",
+            "flammable"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 70,
+        "key": "beam_balance",
+        "name": "等臂秤",
+        "quantity": 1,
+        "color": [
+          146,
+          111,
+          67
+        ],
+        "tags": [
+          "solid",
+          "tool",
+          "instrument"
+        ]
+      }
+    },
+    {
+      "id": "shape-standard-weight",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 48,
+          "key": "bronze",
+          "name": "青铜",
+          "quantity": 1,
+          "color": [
+            176,
+            121,
+            54
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 23,
+          "key": "rope",
+          "name": "绳",
+          "quantity": 1,
+          "color": [
+            167,
+            139,
+            91
+          ],
+          "tags": [
+            "fiber",
+            "building",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 71,
+        "key": "standard_weight",
+        "name": "标准秤砣",
+        "quantity": 1,
+        "color": [
+          103,
+          106,
+          107
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "mass-reference"
+        ]
+      }
+    },
+    {
+      "id": "shape-standard-weight-with-fiber",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 48,
+          "key": "bronze",
+          "name": "青铜",
+          "quantity": 1,
+          "color": [
+            176,
+            121,
+            54
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 71,
+        "key": "standard_weight",
+        "name": "标准秤砣",
+        "quantity": 1,
+        "color": [
+          103,
+          106,
+          107
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "mass-reference"
+        ]
+      }
+    },
+    {
+      "id": "shape-copper-standard-weight-with-fiber",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 46,
+          "key": "copper",
+          "name": "铜",
+          "quantity": 1,
+          "color": [
+            181,
+            101,
+            55
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 71,
+        "key": "standard_weight",
+        "name": "标准秤砣",
+        "quantity": 1,
+        "color": [
+          103,
+          106,
+          107
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "mass-reference"
+        ]
+      }
+    },
+    {
+      "id": "shape-iron-standard-weight-with-fiber",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 50,
+          "key": "iron",
+          "name": "锻铁",
+          "quantity": 1,
+          "color": [
+            93,
+            99,
+            101
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 20,
+          "key": "fiber",
+          "name": "纤维",
+          "quantity": 1,
+          "color": [
+            173,
+            158,
+            116
+          ],
+          "tags": [
+            "fiber",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 71,
+        "key": "standard_weight",
+        "name": "标准秤砣",
+        "quantity": 1,
+        "color": [
+          103,
+          106,
+          107
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "mass-reference"
+        ]
+      }
+    },
+    {
+      "id": "shape-iron-standard-weight",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 50,
+          "key": "iron",
+          "name": "锻铁",
+          "quantity": 1,
+          "color": [
+            93,
+            99,
+            101
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "building",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 23,
+          "key": "rope",
+          "name": "绳",
+          "quantity": 1,
+          "color": [
+            167,
+            139,
+            91
+          ],
+          "tags": [
+            "fiber",
+            "building",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 71,
+        "key": "standard_weight",
+        "name": "标准秤砣",
+        "quantity": 1,
+        "color": [
+          103,
+          106,
+          107
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "mass-reference"
+        ]
+      }
+    },
+    {
+      "id": "assemble-mechanical-dynamo",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 65,
+          "key": "drive_shaft",
+          "name": "金属传动轴",
+          "quantity": 1,
+          "color": [
+            161,
+            111,
+            50
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "placeable",
+            "metal"
+          ]
+        },
+        {
+          "materialId": 46,
+          "key": "copper",
+          "name": "铜",
+          "quantity": 1,
+          "color": [
+            181,
+            101,
+            55
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "tool-material"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 72,
+        "key": "mechanical_dynamo",
+        "name": "机械发电机",
+        "quantity": 1,
+        "color": [
+          87,
+          103,
+          108
+        ],
+        "tags": [
+          "solid",
+          "placeable",
+          "metal",
+          "electrical-source"
+        ]
+      }
+    },
+    {
+      "id": "insulate-copper-conductor",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 46,
+          "key": "copper",
+          "name": "铜",
+          "quantity": 1,
+          "color": [
+            181,
+            101,
+            55
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 23,
+          "key": "rope",
+          "name": "绳",
+          "quantity": 1,
+          "color": [
+            167,
+            139,
+            91
+          ],
+          "tags": [
+            "fiber",
+            "building",
+            "flammable"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 73,
+        "key": "copper_conductor",
+        "name": "绝缘铜导体",
+        "quantity": 1,
+        "color": [
+          181,
+          96,
+          55
+        ],
+        "tags": [
+          "solid",
+          "placeable",
+          "metal",
+          "electrical-conductor"
+        ]
+      }
+    },
+    {
+      "id": "assemble-resistive-load",
+      "type": "combine",
+      "inputs": [
+        {
+          "materialId": 46,
+          "key": "copper",
+          "name": "铜",
+          "quantity": 1,
+          "color": [
+            181,
+            101,
+            55
+          ],
+          "tags": [
+            "solid",
+            "metal",
+            "tool-material"
+          ]
+        },
+        {
+          "materialId": 53,
+          "key": "fired_brick",
+          "name": "烧结砖",
+          "quantity": 1,
+          "color": [
+            159,
+            78,
+            52
+          ],
+          "tags": [
+            "solid",
+            "building"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [],
+      "output": {
+        "materialId": 74,
+        "key": "resistive_load",
+        "name": "电阻负载",
+        "quantity": 1,
+        "color": [
+          177,
+          133,
+          72
+        ],
+        "tags": [
+          "solid",
+          "placeable",
+          "metal",
+          "electrical-load"
         ]
       }
     },
@@ -3723,6 +4855,65 @@ export const RECIPE_KNOWLEDGE = {
       }
     },
     {
+      "id": "refine-steel-charge-in-smithy",
+      "type": "expose",
+      "inputs": [
+        {
+          "materialId": 67,
+          "key": "steel_charge",
+          "name": "炼钢料",
+          "quantity": 1,
+          "color": [
+            67,
+            70,
+            71
+          ],
+          "tags": [
+            "solid"
+          ]
+        }
+      ],
+      "tools": [],
+      "targets": [
+        {
+          "materialId": 62,
+          "key": "smithy",
+          "name": "铁匠铺锻炉",
+          "quantity": 1,
+          "color": [
+            88,
+            78,
+            72
+          ],
+          "tags": [
+            "solid",
+            "building",
+            "placeable",
+            "facility",
+            "workstation",
+            "hot"
+          ]
+        }
+      ],
+      "output": {
+        "materialId": 68,
+        "key": "steel",
+        "name": "钢",
+        "quantity": 1,
+        "color": [
+          111,
+          119,
+          123
+        ],
+        "tags": [
+          "solid",
+          "metal",
+          "building",
+          "tool-material"
+        ]
+      }
+    },
+    {
       "id": "split-stone-with-stone-tool",
       "type": "separate",
       "inputs": [
@@ -3962,11 +5153,11 @@ export const RECIPE_KNOWLEDGE = {
     }
   ],
   "counts": {
-    "materials": 67,
-    "recipes": 47,
-    "combine": 30,
+    "materials": 76,
+    "recipes": 65,
+    "combine": 47,
     "exert": 2,
-    "expose": 12,
+    "expose": 13,
     "separate": 3
   }
 };

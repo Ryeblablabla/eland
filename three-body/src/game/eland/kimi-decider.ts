@@ -11,6 +11,7 @@ import { buildCognitiveFrame } from './application/cognition/option-appraisal';
 import { speechActFromRepresentation } from './projection/speech-act';
 import type { SpeechActView } from '../societyContract';
 import { traitDefinition, traitStatesOf } from './domain/trait';
+import { relationTo } from './domain/relation';
 
 export interface DecisionRequestContext {
   person: {
@@ -51,6 +52,11 @@ export interface DecisionRequestContext {
   activeIntent?: {
     id: string; summary: string; domain: 'strategic' | 'social'; progress: number; nextActionKind: string;
     stateGoalUntilMonth?: number;
+    lifecycle?: {
+      completion: 'on-achievement' | 'maintain-state';
+      reviewAtMonth: number;
+      maintainUntilMonth?: number;
+    };
   };
   activeProject?: {
     id: string;
@@ -264,6 +270,13 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       progress: context.activeIntent.progress,
       nextActionKind: context.activeIntent.nextAction.kind,
       ...(context.activeIntent.stateGoalUntilMonth !== undefined ? { stateGoalUntilMonth: context.activeIntent.stateGoalUntilMonth } : {}),
+      ...(context.activeIntent.lifecycle ? { lifecycle: {
+        completion: context.activeIntent.lifecycle.completion,
+        reviewAtMonth: context.activeIntent.lifecycle.reviewAtMonth,
+        ...(context.activeIntent.lifecycle.maintainUntilMonth !== undefined
+          ? { maintainUntilMonth: context.activeIntent.lifecycle.maintainUntilMonth }
+          : {}),
+      } } : {}),
     } } : {}),
     ...(activeProject ? { activeProject: {
       id: activeProject.id,
@@ -340,7 +353,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     }),
     followUpOptions: context.followUpOptions.map(({ id, summary, reason, domain, estimatedMonths, risks, target }) => ({ id, summary, reason, domain, estimatedMonths, risks, target })),
     visiblePeople: context.visiblePeople.map((other) => {
-      const relation = person.relations.find((item) => item.personId === other.id);
+      const relation = relationTo(person, other.id);
       return {
         id: other.id,
         name: other.name,

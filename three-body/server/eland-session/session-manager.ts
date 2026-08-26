@@ -185,20 +185,26 @@ export class ElandSessionManagerCore<Session extends ManagedSession> {
       session,
     };
     const persistenceStartedAt = perfNow();
-    this.persistence.saveLiveSession(snapshot);
-    this.persistedSessions.set(runId, {
-      civilizationId: session.civilizationId,
-      savedAt: session.savedAt,
-      lastStepAt: entry.lastStepAt,
-      leaseId: entry.leaseId,
-      creationId: entry.creationId,
-    });
-    logPerf('live-persist', {
-      runId,
-      month: session.latestFrame.elapsedMonths,
-      persistenceMs: perfElapsed(persistenceStartedAt),
-    });
-    return true;
+    let outcome = 'error';
+    try {
+      this.persistence.saveLiveSession(snapshot);
+      this.persistedSessions.set(runId, {
+        civilizationId: session.civilizationId,
+        savedAt: session.savedAt,
+        lastStepAt: entry.lastStepAt,
+        leaseId: entry.leaseId,
+        creationId: entry.creationId,
+      });
+      outcome = 'persisted';
+      return true;
+    } finally {
+      logPerf('live-persist', {
+        runId,
+        month: session.latestFrame.elapsedMonths,
+        outcome,
+        persistenceMs: perfElapsed(persistenceStartedAt),
+      });
+    }
   }
 
   persistAll(now = Date.now()): number {

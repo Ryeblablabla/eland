@@ -18,9 +18,11 @@ try {
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export { inventoryCombinationForOutput, inventoryCombinationTechniqueId } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/interaction-rules.ts'))};
     export { MECHANICAL_POWER_OPERATION_TECHNIQUE_ID, MECHANICAL_POWER_WORN_FAULT_THRESHOLD, mechanicalPowerNetworkId, mechanicalPowerPlanKey } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/mechanical-power.ts'))};
+    export { invalidatePeopleIndex } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/state-index.ts'))};
     export { buildProjectPressureBasis } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-pressure.ts'))};
     export { projectFunctionSatisfied, recordProjectAction, recompileProjectNextAction, synchronizeProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
     export { projectSupportsMaterialContribution } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-step-compiler.ts'))};
+    export { projectProposalWithFunctionIdentity } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-frontier.ts'))};
     export { buildMechanicalPowerServiceOptions, mechanicalPowerMaintenanceMaterialRequirement, mechanicalPowerMaterialRequirement, mechanicalPowerProposalCandidate } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/mechanical-power-options.ts'))};
     export { deriveProjectProposals } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-proposals.ts'))};
     export { buildDecisionContext } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/action-options.ts'))};
@@ -49,6 +51,7 @@ try {
     executePrimitiveAction,
     executeActiveIntent,
     instantiateProject,
+    invalidatePeopleIndex,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
     mechanicalPowerNetworkId,
@@ -59,6 +62,7 @@ try {
     pendingProjectKnowledgeOutput,
     planLocallyForTick,
     projectFunctionSatisfied,
+    projectProposalWithFunctionIdentity,
     projectSupportsMaterialContribution,
     recordProjectAction,
     recompileProjectNextAction,
@@ -201,6 +205,20 @@ try {
     cellId: cellId(candidate.plan.loadPosition.x, candidate.plan.loadPosition.y),
     z: candidate.plan.loadPosition.z,
   }, '机械项目贡献工位不能被首个 Mill 负载占据');
+
+  const acceptedMechanicalProposal = projectProposalWithFunctionIdentity(structuredClone(proposal));
+  const acceptedMechanicalProject = instantiateProject(acceptedMechanicalProposal);
+  assert.equal(acceptedMechanicalProject.mechanicalPowerPlan.projectId, acceptedMechanicalProject.id,
+    '功能级项目身份确定后，冻结安装计划必须同步指向接受后的项目');
+  assert.equal(acceptedMechanicalProject.mechanicalPowerPlanKey,
+    mechanicalPowerPlanKey(acceptedMechanicalProject.mechanicalPowerPlan));
+  assert.equal(acceptedMechanicalProject.mechanicalPowerNetworkId,
+    mechanicalPowerNetworkId(acceptedMechanicalProject.mechanicalPowerPlan));
+  assert.equal(
+    mechanicalPowerMaterialRequirement(state, actor, acceptedMechanicalProject).unknownRecipeOutputMaterialId,
+    Material.Mill,
+    '合法自然机械提案不能因功能级 ID 重写而失去冻结计划的首个真实部件需求',
+  );
 
   // Unknown component knowledge must become a bounded, output-only social
   // request. Only an addressed reliable holder may answer through the existing
@@ -946,6 +964,10 @@ try {
   for (let step = 0; step < 40 && !repair; step += 1) {
     const action = recompileProjectNextAction(state, actor, project.id);
     assert.ok(action, `机械正链第${step + 1}步必须可编译`);
+    if (!fault && action.mechanicalPowerBasis?.mode === 'operate') {
+      project.lastProgressAtMonth = -10;
+      project.reviewAtMonth = 0;
+    }
     const seedBefore = actor.inventory.find((stack) => stack.materialId === Material.Seed)?.quantity ?? 0;
     const fact = executeAndCommit(action);
     assert.notEqual(fact.status, 'blocked', `${fact.result}: ${JSON.stringify(action)}`);
@@ -956,6 +978,28 @@ try {
       assert.equal(fact.diff.inputPreserved, true);
       assert.equal(fact.diff.inputQuantityBefore, fact.diff.inputQuantityAfter);
       assert.equal(seedAfter, seedBefore, '首次commissioning故障不得扣除输入');
+      assert.equal(project.status, 'active', '真实 progressed 后果必须刷新项目复核锚点，不能同月封死恢复链');
+      assert.equal(project.lastProgressAtMonth, 2);
+      assert.equal(project.progressEvidence.filter((evidence) => evidence.eventId === fact.id
+        && evidence.kind === 'action-progress').length, 1);
+      recordProjectAction(state, project.id, fact);
+      assert.equal(project.progressEvidence.filter((evidence) => evidence.eventId === fact.id).length, 1,
+        '重复提交同一状态转换事实不能扩大项目进展历史');
+
+      const wrongBindingState = structuredClone(state);
+      const wrongBindingProject = wrongBindingState.projects.find((candidateProject) => candidateProject.id === project.id);
+      wrongBindingProject.status = 'active';
+      wrongBindingProject.lastProgressAtMonth = -10;
+      wrongBindingProject.reviewAtMonth = 0;
+      wrongBindingProject.actionEventIds = wrongBindingProject.actionEventIds.filter((eventId) => eventId !== fact.id);
+      wrongBindingProject.progressEvidence = wrongBindingProject.progressEvidence
+        .filter((evidence) => evidence.eventId !== fact.id);
+      const wrongBindingFact = structuredClone(fact);
+      wrongBindingFact.diff.projectId = 'wrong-installation-project';
+      recordProjectAction(wrongBindingState, wrongBindingProject.id, wrongBindingFact);
+      assert.equal(wrongBindingProject.lastProgressAtMonth, -10,
+        '错绑定的 progressed 事实不得刷新项目复核锚点');
+      assert.equal(wrongBindingProject.progressEvidence.some((evidence) => evidence.eventId === fact.id), false);
     }
     if (fact.diff.mechanicalPowerRepair) repair = fact;
   }
@@ -1056,6 +1100,7 @@ try {
   learner.knowledge = [];
   learner.memories = [];
   learner.knownPlaces = [];
+  invalidatePeopleIndex(state);
   const localCells = () => cellsInRadius(actor.position.cellId, 8);
   assert.equal(buildMechanicalPowerServiceOptions(state, learner, localCells())
     .some((option) => option.id.startsWith('operate-completed-mechanical-network:')), false,
@@ -1117,7 +1162,7 @@ try {
   assert.equal(wornFault.diff.inputPreserved, true);
   assert.equal(actor.inventory.find((stack) => stack.id === 'owner-service-seed').quantity, seedBeforeWornFault,
     '磨损断轴必须发生在吞输入之前');
-  assert.deepEqual(wornFault.diff.wearSourceEventIds, network.operationEventIds.slice(-3));
+  assert.deepEqual(wornFault.diff.wearSourceEventIds, network.serviceCycleOperationEventIds.slice(-3));
   assert.equal(network.condition, MECHANICAL_POWER_WORN_FAULT_THRESHOLD);
   assert.equal(voxelAt(state.world.grid,
     candidate.plan.shaftPositions[0].x,

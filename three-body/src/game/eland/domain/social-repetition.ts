@@ -3,7 +3,7 @@ import { worldEventById } from './event-index';
 import type { ActionFact, SimulationState } from './model';
 import type { PersonState } from './person';
 import { agreementByProposalEventId } from './agreement';
-import { intentById } from './state-index';
+import { intentById, personById } from './state-index';
 
 const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
 const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique|withdraw-reproduce):/;
@@ -195,7 +195,7 @@ function survivalUrgency(
   const content = action.content;
   if ((content.kind === 'request' || content.kind === 'offer') && content.proposal?.kind === 'assist') {
     const proposal = content.proposal;
-    const requester = state.people.find((candidate) => candidate.id === proposal.requesterId);
+    const requester = personById(state, proposal.requesterId);
     if (!requester) return 0;
     if (proposal.need === 'water') return Math.min(120, Math.max(0, 30 - requester.body.hydration) * 5);
     if (proposal.need === 'food') return Math.min(120, Math.max(0, 30 - requester.body.nutrition) * 5);
@@ -208,7 +208,7 @@ function survivalUrgency(
   }
   if (content.kind !== 'claim' || !content.conversation) return 0;
   const subject = content.conversation.topic === 'care'
-    ? state.people.find((candidate) => candidate.id === content.conversation?.listenerId)
+    ? personById(state, content.conversation.listenerId)
     : content.conversation.topic === 'hardship'
       ? person
       : undefined;

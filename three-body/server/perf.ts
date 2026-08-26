@@ -21,3 +21,13 @@ export function logPerf(
 export function isPerfLoggingEnabled(): boolean {
   return PERF_ENABLED;
 }
+
+/**
+ * Measure the exact UTF-8 JSON payload size only while performance logging is
+ * enabled. Keeping the guard here prevents ordinary requests from paying for a
+ * second serialization before the worker performs the real encode.
+ */
+export function perfJsonBytes(value: unknown): number | undefined {
+  if (!PERF_ENABLED) return undefined;
+  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}

@@ -1,4 +1,9 @@
 import { addDrop } from '../../domain/action-executor';
+import {
+  appendCommittedEvents,
+  assertCommittedHistoryAppendable,
+  historyEventCount,
+} from '../../domain/history';
 import { Material, materialDefinition } from '../../domain/material';
 import type {
   BatchDecider,
@@ -113,9 +118,10 @@ function createSimulationController(
     },
     injectEvent(input) {
       if (!isCellId(input.cellId)) throw new Error('环境事件 cellId 无效');
+      assertCommittedHistoryAppendable(state);
       const atMonth = state.clock.elapsedMonths;
       const event: EnvironmentFact = {
-        id: `e-${atMonth}-injected-${state.world.past.length}`,
+        id: `e-${atMonth}-injected-${historyEventCount(state)}`,
         kind: 'environment', atMonth, orderInMonth: 0, planningTick: 0, orderInTick: 0, cellId: input.cellId,
         change: input.kind,
         result: input.description ?? `格子 ${input.cellId} 的环境发生变化`,
@@ -129,7 +135,7 @@ function createSimulationController(
         addDrop(state, materialId, Math.round(input.delta ?? 1), input.cellId, atMonth, [event.id], 'injected');
         event.result = `格 ${cellX(input.cellId)}, ${cellY(input.cellId)} 出现${materialDefinition(materialId).name}`;
       }
-      state.world.past.push(event);
+      appendCommittedEvents(state, [event]);
       state.lastStep = [event];
       return copyState(state);
     },

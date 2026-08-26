@@ -3,7 +3,7 @@ import type {
   Intent,
   PrimitiveAction,
   RecordCarrierSource,
-  RecordUseBasisV2,
+  RecordUseBasisV3,
   VoxelPosition,
   WorldRef,
 } from '../domain/action';
@@ -18,9 +18,13 @@ import {
 import { Material, materialHas, type MaterialId } from '../domain/material';
 import type { DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
+import { inspectProjectKnowledgeRequest } from '../domain/project-knowledge-request';
+import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
+import { inheritPlanningEventOverlay } from '../domain/event-index';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
-import { recompileProjectNextAction } from './project-options';
-import { intentById, projectById } from '../domain/state-index';
+import { previewOwnedProjectStep, recompileProjectNextAction } from './project-options';
+import { projectById, projectsOwnedBy } from '../domain/state-index';
+import type { ProjectStep } from './projects/project-step';
 
 interface ResolvedTechniqueAction {
   action: Extract<PrimitiveAction, { kind: 'act' }>;
@@ -164,6 +168,7 @@ function previewProjectAction(
     people: state.people.map((person) => person.id === reader.id ? structuredClone(person) : person),
     projects: state.projects.map((project) => project.status === 'active' ? structuredClone(project) : project),
   };
+  inheritPlanningEventOverlay(state, previewState);
   const previewReader = previewState.people.find((candidate) => candidate.id === reader.id);
   if (previewReader && reliableTechniqueId) {
     const existing = previewReader.knowledge.find((fact) => fact.id === reliableTechniqueId && fact.kind === 'technique');
@@ -182,26 +187,63 @@ function previewProjectAction(
   return previewReader ? recompileProjectNextAction(previewState, previewReader, projectId) : null;
 }
 
-function activeOwnedProject(state: SimulationState, reader: PersonState) {
-  const activeIntent = reader.activeIntentId ? intentById(state, reader.activeIntentId) : undefined;
-  if (!activeIntent
-    || activeIntent.ownerId !== reader.id
-    || activeIntent.status !== 'active'
-    || !activeIntent.projectId) return null;
-  const project = projectById(state, activeIntent.projectId);
-  if (project?.ownerId !== reader.id || project.status !== 'active') return null;
-  return project ? { intent: activeIntent, project } : null;
+function previewProjectStepWithRecordKnowledge(
+  state: SimulationState,
+  reader: PersonState,
+  projectId: string,
+  knowledgeId: string,
+  sourceEventIds: string[],
+): ProjectStep | null {
+  const planningReader = structuredClone(reader);
+  const existing = planningReader.knowledge.find((fact) => fact.id === knowledgeId);
+  if (existing && existing.kind !== 'technique') return null;
+  if (existing) {
+    existing.confidence = Math.max(55, existing.confidence);
+    existing.sourceEventIds = unique([...existing.sourceEventIds, ...sourceEventIds]);
+  } else planningReader.knowledge.push({
+    id: knowledgeId,
+    kind: 'technique',
+    summary: '从实体记录中待核验的项目技术线索',
+    confidence: 55,
+    learnedAtMonth: state.clock.elapsedMonths + 1,
+    sourceEventIds: unique(sourceEventIds),
+  });
+  return previewOwnedProjectStep(state, planningReader, projectId);
+}
+
+function activeOwnedProjects(state: SimulationState, reader: PersonState) {
+  return projectsOwnedBy(state, reader.id)
+    .filter((project) => project.status === 'active')
+    .sort((left, right) => right.pressure - left.pressure
+      || left.createdAtMonth - right.createdAtMonth
+      || left.id.localeCompare(right.id));
+}
+
+function hasOpenMatchingKnowledgeRequest(
+  state: SimulationState,
+  project: SimulationState['projects'][number],
+  outputMaterialId: MaterialId,
+): boolean {
+  return Boolean(project.knowledgeRequests?.some((request) => (
+    request.outputMaterialId === outputMaterialId
+    && inspectProjectKnowledgeRequest(
+      state,
+      project,
+      request,
+      state.clock.elapsedMonths + 1,
+    ) === 'open'
+  )));
 }
 
 function buildBasis(
   state: SimulationState,
   reader: PersonState,
   record: SimulationState['records'][number],
-  action: ResolvedTechniqueAction,
   project: SimulationState['projects'][number],
+  expectedOutputMaterialId: MaterialId,
   carrierSource: RecordCarrierSource,
   carrierSourceEventIds: string[],
-): RecordUseBasisV2 {
+): RecordUseBasisV3 {
   const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
     && fact.kind === 'codebook'
     && fact.confidence >= 55);
@@ -213,7 +255,7 @@ function buildBasis(
   ]);
   const recordSourceEventIds = unique(record.sourceEventIds);
   const codebookSourceEventIds = unique(codebook?.sourceEventIds ?? []);
-  const inputSourceEventIds = unique(action.inputSourceEventIds);
+  const inputSourceEventIds: string[] = [];
   const sourceFactIds = unique([
     record.id,
     ...projectSourceEventIds,
@@ -223,8 +265,8 @@ function buildBasis(
     ...carrierSourceEventIds,
   ]);
   return {
-    version: 'record-use-basis-v2',
-    basisKey: `record-use:${reader.id}:${project.id}:${record.id}:${action.techniqueId}:${carrierSource.kind}:${carrierSource.kind === 'inventory' ? carrierSource.stackId : carrierSource.dropId}:${carrierSource.kind === 'ground' ? `${carrierSource.cellId}:${carrierSource.z}` : reader.id}:${carrierSource.kind === 'ground'}`,
+    version: 'record-use-basis-v3',
+    basisKey: `record-use:${reader.id}:${project.id}:${record.id}:${record.knowledgeId}:${carrierSource.kind}:${carrierSource.kind === 'inventory' ? carrierSource.stackId : carrierSource.dropId}:${carrierSource.kind === 'ground' ? `${carrierSource.cellId}:${carrierSource.z}` : reader.id}:${carrierSource.kind === 'ground'}`,
     projectId: project.id,
     projectOwnerId: project.ownerId,
     readerId: reader.id,
@@ -233,11 +275,10 @@ function buildBasis(
     recordId: record.id,
     knowledgeId: record.knowledgeId,
     codebookId: record.codebookId,
-    techniqueId: action.techniqueId,
-    ruleSignature: action.techniqueId,
+    techniqueId: record.knowledgeId,
+    ruleSignature: record.knowledgeId,
     projectPressure: project.pressure,
-    experimentAction: structuredClone(action.action),
-    expectedOutputMaterialId: action.expectedOutputMaterialId,
+    expectedOutputMaterialId,
     createdAtMonth: state.clock.elapsedMonths + 1,
     projectSourceEventIds,
     recordSourceEventIds,
@@ -255,8 +296,8 @@ export function buildDemandBoundRecordUseOptions(
   visibleDrops: DropState[],
 ): ActionOption[] {
   if (!isAlive(reader)) return [];
-  const anchored = activeOwnedProject(state, reader);
-  if (!anchored) return [];
+  const ownedProjects = activeOwnedProjects(state, reader);
+  if (!ownedProjects.length) return [];
   const sources = [
     ...reader.inventory
       .filter((stack) => stack.quantity > 0
@@ -296,25 +337,42 @@ export function buildDemandBoundRecordUseOptions(
     const codebook = reader.knowledge.find((fact) => fact.id === record.codebookId
       && fact.kind === 'codebook'
       && fact.confidence >= 55);
-    if (!codebook) continue;
     const technique = reader.knowledge.find((fact) => fact.id === record.knowledgeId && fact.kind === 'technique');
     if ((technique?.confidence ?? 0) >= 55) continue;
     const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));
-    const projectAction = previewProjectAction(
-      state,
-      reader,
-      anchored.project.id,
-      record.knowledgeId,
-      [record.id, ...record.sourceEventIds],
-    );
-    const resolved = projectAction ? resolveTechniqueAction(state, reader, projectAction) : null;
-    if (!resolved || resolved.techniqueId !== record.knowledgeId) continue;
+    const expectedOutputMaterialId = techniqueOutputMaterialId(record.knowledgeId);
+    if (expectedOutputMaterialId === undefined) continue;
+    const matches = ownedProjects.flatMap((project) => {
+      const step = previewProjectStepWithRecordKnowledge(
+        state,
+        reader,
+        project.id,
+        record.knowledgeId,
+        [record.id, ...record.sourceEventIds],
+      );
+      if (!step || step.planKnowledgeId !== record.knowledgeId) return [];
+      const resolved = resolveTechniqueAction(state, reader, step.action);
+      const experimentReady = Boolean(resolved
+        && resolved.techniqueId === record.knowledgeId
+        && resolved.expectedOutputMaterialId === expectedOutputMaterialId);
+      return [{
+        project,
+        step,
+        experimentReady,
+        hasOpenRequest: hasOpenMatchingKnowledgeRequest(state, project, expectedOutputMaterialId),
+      }];
+    }).sort((left, right) => Number(right.hasOpenRequest) - Number(left.hasOpenRequest)
+      || right.project.pressure - left.project.pressure
+      || left.project.createdAtMonth - right.project.createdAtMonth
+      || left.project.id.localeCompare(right.project.id));
+    const matched = matches[0];
+    if (!matched) continue;
     const basis = buildBasis(
       state,
       reader,
       record,
-      resolved,
-      anchored.project,
+      matched.project,
+      expectedOutputMaterialId,
       source.carrierSource,
       source.sourceEventIds,
     );
@@ -323,7 +381,7 @@ export function buildDemandBoundRecordUseOptions(
       && reader.position.z === source.carrierSource.z;
     const nextAction: PrimitiveAction = source.carrierSource.kind === 'inventory'
       ? alreadyRead
-        ? structuredClone(resolved.action)
+        ? structuredClone(matched.step.action)
         : { kind: 'attend', target: { kind: 'inventory-stack', personId: reader.id, stackId: source.carrierSource.stackId } }
       : atGroundSource
         ? {
@@ -336,17 +394,17 @@ export function buildDemandBoundRecordUseOptions(
         }
         : { kind: 'move', toCellId: source.carrierSource.cellId, toZ: source.carrierSource.z };
     options.push({
-      id: `use-demand-record:${record.id}:${anchored.project.id}:${source.carrierSource.kind === 'inventory' ? source.carrierSource.stackId : source.carrierSource.dropId}`,
+      id: `use-demand-record:${record.id}:${matched.project.id}:${source.carrierSource.kind === 'inventory' ? source.carrierSource.stackId : source.carrierSource.dropId}`,
       summary: source.carrierSource.kind === 'ground'
         ? `取得公共记录并亲自复现“${record.summary}”`
         : alreadyRead
           ? `按已读记录复现“${record.summary}”`
-          : `阅读记录并亲自复现“${record.summary}”`,
+          : `${codebook ? '阅读' : '辨认并阅读'}记录，再亲自复现“${record.summary}”`,
       reason: source.carrierSource.kind === 'ground'
-        ? `可见公共记录精确对应“${anchored.project.summary}”当前下一步，且本人已有解码知识和真实核验材料`
+        ? `可见公共记录精确对应“${matched.project.summary}”的当前知识缺口；本人可先取得、${codebook ? '读懂' : '辨认刻痕'}，再按普通项目步骤准备核验材料`
         : alreadyRead
-          ? `这项暂定知识仍低于可靠阈值，且手头材料正好能推进“${anchored.project.summary}”`
-          : `本人持有的实体记录精确对应“${anchored.project.summary}”当前下一步，且真实核验材料已经在手`,
+          ? `这项暂定知识仍低于可靠阈值，并精确控制“${matched.project.summary}”当前步骤；先准备缺失材料再亲自核验`
+          : `本人持有的实体记录精确对应“${matched.project.summary}”当前知识缺口，${codebook ? '可以先阅读' : '可先观察实体刻痕并辨认'}，不要求核验材料已经齐备`,
       goal: { kind: 'knowledge', factId: record.knowledgeId, minConfidence: 55 },
       nextAction,
       target: source.carrierSource.kind === 'inventory'
@@ -359,7 +417,9 @@ export function buildDemandBoundRecordUseOptions(
       recordUseStage: source.carrierSource.kind === 'ground'
         ? 'acquire'
         : alreadyRead
-          ? 'experiment'
+          ? matched.experimentReady
+            ? 'experiment'
+            : 'prepare-experiment'
           : 'read',
     });
   }
@@ -398,22 +458,10 @@ export function recompileRecordUseNextAction(
   const codebook = person.knowledge.find((fact) => fact.id === basis.codebookId
     && fact.kind === 'codebook'
     && fact.confidence >= 55);
-  if (!project || !record || !codebook) return null;
+  if (!project || !record) return null;
 
   const knowledge = person.knowledge.find((fact) => fact.id === basis.knowledgeId && fact.kind === 'technique');
   if ((knowledge?.confidence ?? 0) >= 55) return null;
-  const currentProjectAction = previewProjectAction(
-    state,
-    person,
-    project.id,
-    record.knowledgeId,
-    [record.id, ...record.sourceEventIds],
-  );
-  const resolved = currentProjectAction ? resolveTechniqueAction(state, person, currentProjectAction) : null;
-  if (!resolved
-    || resolved.techniqueId !== basis.techniqueId
-    || resolved.techniqueId !== record.knowledgeId
-    || resolved.expectedOutputMaterialId !== basis.expectedOutputMaterialId) return null;
 
   let carrier: PersonState['inventory'][number] | undefined;
   if (basis.version === 'record-use-basis-v1') {
@@ -430,7 +478,7 @@ export function recompileRecordUseNextAction(
       && stack.sourceLineageKeys?.includes(`drop:${sourceDropId}`));
   }
 
-  if (!carrier && basis.version === 'record-use-basis-v2') {
+  if (!carrier && basis.version !== 'record-use-basis-v1') {
     if (!basis.acquisitionRequired || basis.carrierSource.kind !== 'ground') return null;
     const groundSource = basis.carrierSource;
     const source = state.world.drops.find((drop) => drop.id === groundSource.dropId
@@ -454,7 +502,53 @@ export function recompileRecordUseNextAction(
   }
   if (!carrier) return null;
 
-  if (!knowledge?.sourceEventIds.includes(record.id)) {
+  if (basis.version === 'record-use-basis-v3') {
+    if (intent.recordUseStage === 'acquire') intent.recordUseStage = 'read';
+    if (intent.recordUseStage === 'read') {
+      if (!codebook || !knowledge?.sourceEventIds.includes(record.id)) {
+        return { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id } };
+      }
+      intent.recordUseStage = 'prepare-experiment';
+    }
+    if (!codebook || !knowledge?.sourceEventIds.includes(record.id)) {
+      intent.recordUseStage = 'read';
+      return { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id } };
+    }
+    if (intent.recordUseStage !== 'prepare-experiment'
+      && intent.recordUseStage !== 'experiment') return null;
+    const step = previewProjectStepWithRecordKnowledge(
+      state,
+      person,
+      project.id,
+      record.knowledgeId,
+      [record.id, ...record.sourceEventIds],
+    );
+    if (!step || step.planKnowledgeId !== record.knowledgeId) return null;
+    const resolved = resolveTechniqueAction(state, person, step.action);
+    if (resolved
+      && resolved.techniqueId === basis.techniqueId
+      && resolved.techniqueId === record.knowledgeId
+      && resolved.expectedOutputMaterialId === basis.expectedOutputMaterialId) {
+      intent.recordUseStage = 'experiment';
+      return structuredClone(resolved.action);
+    }
+    intent.recordUseStage = 'prepare-experiment';
+    return structuredClone(step.action);
+  }
+
+  const currentProjectAction = previewProjectAction(
+    state,
+    person,
+    project.id,
+    record.knowledgeId,
+    [record.id, ...record.sourceEventIds],
+  );
+  const resolved = currentProjectAction ? resolveTechniqueAction(state, person, currentProjectAction) : null;
+  if (!resolved
+    || resolved.techniqueId !== basis.techniqueId
+    || resolved.techniqueId !== record.knowledgeId
+    || resolved.expectedOutputMaterialId !== basis.expectedOutputMaterialId) return null;
+  if (!codebook || !knowledge?.sourceEventIds.includes(record.id)) {
     return { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id } };
   }
   return structuredClone(resolved.action);

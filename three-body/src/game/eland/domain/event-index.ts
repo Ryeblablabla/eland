@@ -65,6 +65,189 @@ const planningOverlays = new WeakMap<SimulationState, PlanningEventOverlay>();
 // committed prefix and merge the suffix through the overlay instead.
 const indexedHistoryBases = new WeakMap<WorldEvent[], WorldEvent[]>();
 
+/**
+ * A verified cold fact retained outside `SimulationState` for a specific live
+ * evidence lease. Absolute ordinals remain infrastructure metadata: planners
+ * can resolve the fact or an exact lease, but cannot inspect ledger position.
+ */
+export interface RetainedColdWorldEventFact {
+  absoluteIndex: number;
+  eventId: string;
+  event: WorldEvent;
+  leaseKeys: readonly string[];
+}
+
+interface RetainedColdEventIndex {
+  byId: Map<string, RetainedColdWorldEventFact>;
+  byLeaseKey: Map<string, RetainedColdWorldEventFact[]>;
+}
+
+const retainedColdIndexes = new WeakMap<WorldEvent[], RetainedColdEventIndex>();
+
+/** Current social obligations use exact leases rather than a synthetic full history. */
+export const GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS = 6;
+export const MAX_LIVE_INTENT_ACTION_EVENT_IDS = 4_096;
+
+export function liveAgreementHistoryLeaseKey(agreementId: string): string {
+  return `live-agreement:${agreementId}:anchors`;
+}
+
+export function liveIntentHistoryLeaseKey(intentId: string): string {
+  return `live-intent:${intentId}:anchors`;
+}
+
+export function livePersonSocialEvidenceLeaseKey(personId: string): string {
+  return `gameplay:live-person-social:${encodeURIComponent(personId)}:sources`;
+}
+
+export function groundedConversationWindowLeaseKey(listenerId: string, eventMonth: number): string {
+  if (!Number.isSafeInteger(eventMonth) || eventMonth < 0) {
+    throw new Error('grounded conversation window month 必须是非负安全整数');
+  }
+  return `gameplay:grounded-conversation:${encodeURIComponent(listenerId)}:month:${eventMonth}`;
+}
+
+export function parseGroundedConversationWindowLeaseKey(
+  leaseKey: string,
+): { listenerId: string; eventMonth: number } | null {
+  const match = /^gameplay:grounded-conversation:([^:]+):month:(\d+)$/u.exec(leaseKey);
+  if (!match) return null;
+  const eventMonth = Number(match[2]);
+  if (!Number.isSafeInteger(eventMonth)) return null;
+  try {
+    const listenerId = decodeURIComponent(match[1]);
+    return listenerId.length > 0 ? { listenerId, eventMonth } : null;
+  } catch {
+    return null;
+  }
+}
+
+function authoritativeHistoryBase(state: SimulationState): WorldEvent[] {
+  return indexedHistoryBases.get(state.world.past) ?? state.world.past;
+}
+
+function retainedColdIndexFor(state: SimulationState): RetainedColdEventIndex | undefined {
+  return retainedColdIndexes.get(authoritativeHistoryBase(state));
+}
+
+/**
+ * Install already decoded and ledger-verified cold facts on the stable hot
+ * history array. This registry is deliberately process-local and cannot alter
+ * serialized state or make a selective retention set look like full history.
+ */
+export function registerRetainedColdWorldEventFacts(
+  state: SimulationState,
+  retained: readonly RetainedColdWorldEventFact[],
+): void {
+  const cursor = state.world.historyCursor;
+  if (!cursor
+    || cursor.version !== 1
+    || !Number.isSafeInteger(cursor.eventCount)
+    || cursor.eventCount < 0
+    || !Number.isSafeInteger(cursor.hotStartIndex)
+    || cursor.hotStartIndex < 0
+    || cursor.hotStartIndex > cursor.eventCount) {
+    throw new Error('注册冷历史事实前必须具备有效的 history cursor');
+  }
+  const hotEventCount = cursor.eventCount - cursor.hotStartIndex;
+  if (state.world.past.length !== hotEventCount) {
+    throw new Error('注册冷历史事实时 world.past 必须恰好是已提交热窗口');
+  }
+  if (cursor.eventCount === 0
+    ? cursor.tailEventId !== null
+    : typeof cursor.tailEventId !== 'string'
+      || (hotEventCount > 0 && state.world.past.at(-1)?.id !== cursor.tailEventId)) {
+    throw new Error('注册冷历史事实时热窗口尾事实与 history cursor 不一致');
+  }
+
+  const seenOrdinals = new Set<number>();
+  const byId = new Map<string, RetainedColdWorldEventFact>();
+  const byLeaseKey = new Map<string, RetainedColdWorldEventFact[]>();
+  for (const input of retained) {
+    if (!Number.isSafeInteger(input.absoluteIndex)
+      || input.absoluteIndex < 0
+      || input.absoluteIndex >= cursor.hotStartIndex) {
+      throw new Error(`冷历史事实绝对序号 ${input.absoluteIndex} 不在冷区间`);
+    }
+    if (seenOrdinals.has(input.absoluteIndex)) {
+      throw new Error(`冷历史事实绝对序号 ${input.absoluteIndex} 重复`);
+    }
+    seenOrdinals.add(input.absoluteIndex);
+    if (typeof input.eventId !== 'string'
+      || input.eventId.length === 0
+      || input.event?.id !== input.eventId) {
+      throw new Error(`冷历史事实绝对序号 ${input.absoluteIndex} 的事件 ID 不一致`);
+    }
+    const leaseKeys = [...new Set(input.leaseKeys)];
+    if (!leaseKeys.length || leaseKeys.some((leaseKey) => typeof leaseKey !== 'string' || leaseKey.length === 0)) {
+      throw new Error(`冷历史事实 ${input.eventId} 缺少有效 lease`);
+    }
+    const fact: RetainedColdWorldEventFact = {
+      absoluteIndex: input.absoluteIndex,
+      eventId: input.eventId,
+      event: input.event,
+      leaseKeys: leaseKeys.sort(),
+    };
+    const previous = byId.get(fact.eventId);
+    if (!previous || previous.absoluteIndex < fact.absoluteIndex) byId.set(fact.eventId, fact);
+    for (const leaseKey of fact.leaseKeys) {
+      const facts = byLeaseKey.get(leaseKey) ?? [];
+      facts.push(fact);
+      byLeaseKey.set(leaseKey, facts);
+    }
+  }
+  for (const facts of byLeaseKey.values()) {
+    facts.sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  }
+  retainedColdIndexes.set(authoritativeHistoryBase(state), { byId, byLeaseKey });
+}
+
+/** Exact cold facts for one domain lease; never includes unrelated history. */
+export function retainedColdWorldEventsForLease(
+  state: SimulationState,
+  leaseKey: string,
+): readonly WorldEvent[] {
+  return retainedColdIndexFor(state)?.byLeaseKey.get(leaseKey)?.map((fact) => fact.event) ?? [];
+}
+
+/** Resolve one exact ID, but admit cold storage only through the named lease. */
+export function worldEventByIdWithRetainedLease(
+  state: SimulationState,
+  eventId: string,
+  leaseKey: string,
+): WorldEvent | undefined {
+  return planningOverlays.get(state)?.byId.get(eventId)
+    ?? indexFor(state).byId.get(eventId)
+    ?? retainedColdIndexFor(state)?.byLeaseKey.get(leaseKey)
+      ?.find((fact) => fact.eventId === eventId)?.event;
+}
+
+/** Canonical committed-event order shared by exact cold leases and the hot suffix. */
+export function compareWorldEventsInCanonicalOrder(left: WorldEvent, right: WorldEvent): number {
+  return left.atMonth - right.atMonth
+    || left.orderInMonth - right.orderInMonth
+    || (left.planningTick ?? 0) - (right.planningTick ?? 0)
+    || (left.orderInTick ?? 0) - (right.orderInTick ?? 0)
+    || left.id.localeCompare(right.id);
+}
+
+/**
+ * Person-local action facts plus one exact cold lease. The lease cannot expose
+ * unrelated cold history, and hot/overlay facts take precedence on duplicate IDs.
+ */
+export function actionFactsForPersonWithRetainedLease(
+  state: SimulationState,
+  personId: PersonId,
+  leaseKey: string,
+): ActionFact[] {
+  const merged = new Map<string, ActionFact>();
+  for (const event of retainedColdWorldEventsForLease(state, leaseKey)) {
+    if (event.kind === 'action' && event.who === personId) merged.set(event.id, event);
+  }
+  for (const event of actionFactsForPerson(state, personId)) merged.set(event.id, event);
+  return [...merged.values()].sort(compareWorldEventsInCanonicalOrder);
+}
+
 function appendForPerson<T>(index: Map<PersonId, T[]>, personId: PersonId, item: T): void {
   const items = index.get(personId) ?? [];
   items.push(item);
@@ -164,6 +347,46 @@ export function clearPlanningEventOverlay(state: SimulationState): void {
 
 export function planningOverlayEvents(state: SimulationState): readonly WorldEvent[] {
   return planningOverlays.get(state)?.events ?? [];
+}
+
+/**
+ * Preserve current-month evidence when a planner creates another shallow
+ * state view. The overlay is process-local and keyed by state identity, so it
+ * cannot follow object spread by itself. Planning clones share the same
+ * authoritative history array; only the isolated people/projects slices may
+ * differ.
+ */
+export function inheritPlanningEventOverlay(
+  source: SimulationState,
+  target: SimulationState,
+): void {
+  const overlay = planningOverlays.get(source);
+  if (!overlay) return;
+  if (source.world.past !== target.world.past) {
+    throw new Error('planning overlay 只能继承到共享同一权威历史的预览状态');
+  }
+  planningOverlays.set(target, overlay);
+}
+
+/** Exact runtime presence check used by destructive committed-history maintenance. */
+export function hasPlanningEventOverlay(state: SimulationState): boolean {
+  return planningOverlays.has(state);
+}
+
+/**
+ * Release hot-only derived structures immediately after an in-place committed
+ * history trim. The retained-cold registry deliberately remains keyed by the
+ * stable history array and is not touched here.
+ */
+export function invalidateHotEventIndexAfterCommittedHistoryTrim(
+  state: SimulationState,
+): void {
+  const history = state.world.past;
+  const indexedBase = indexedHistoryBases.get(history);
+  indexes.delete(history);
+  if (indexedBase) indexes.delete(indexedBase);
+  indexedHistoryBases.delete(history);
+  planningOverlays.delete(state);
 }
 
 function withOverlay<T>(state: SimulationState, base: readonly T[], select: (overlay: PlanningEventOverlay) => readonly T[]): readonly T[] {
@@ -304,7 +527,26 @@ export function actionActivityIndex(state: SimulationState): ActionActivityIndex
 }
 
 export function worldEventById(state: SimulationState, eventId: string): WorldEvent | undefined {
-  return planningOverlays.get(state)?.byId.get(eventId) ?? indexFor(state).byId.get(eventId);
+  return planningOverlays.get(state)?.byId.get(eventId)
+    ?? indexFor(state).byId.get(eventId)
+    ?? retainedColdIndexFor(state)?.byId.get(eventId)?.event;
+}
+
+/**
+ * Full replay history for observers. The ordinary path returns the authoritative
+ * history itself; planning paths append only their small current-tick overlay.
+ */
+export function worldEventFacts(state: SimulationState): readonly WorldEvent[] {
+  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
+    throw new Error('有界历史状态不能把热窗口与选择性冷事实冒充完整 replay 历史');
+  }
+  const indexedHistoryBase = indexedHistoryBases.get(state.world.past);
+  const history = indexedHistoryBase ?? state.world.past;
+  indexFor(state);
+  // Execution already exposes committed facts plus the current-month suffix in
+  // this temporary array. Reuse it instead of concatenating the full history.
+  if (indexedHistoryBase) return state.world.past;
+  return withOverlay(state, history, (overlay) => overlay.events);
 }
 
 export function worldEventsByIdsInHistoryOrder(
@@ -313,8 +555,12 @@ export function worldEventsByIdsInHistoryOrder(
 ): WorldEvent[] {
   const index = indexFor(state);
   const overlay = planningOverlays.get(state);
+  const retained = retainedColdIndexFor(state);
   return [...new Set(eventIds)]
-    .flatMap((eventId) => overlay?.byId.get(eventId) ?? index.byId.get(eventId) ?? [])
+    .flatMap((eventId) => overlay?.byId.get(eventId)
+      ?? index.byId.get(eventId)
+      ?? retained?.byId.get(eventId)?.event
+      ?? [])
     .sort((left, right) => left.atMonth - right.atMonth
       || left.orderInMonth - right.orderInMonth
       || (left.planningTick ?? 0) - (right.planningTick ?? 0)
@@ -334,17 +580,123 @@ export function hasGroundedConversationOpeningBasis(state: SimulationState, basi
   return Boolean(planningOverlays.get(state)?.groundedOpeningBasisKeys.has(basisKey)) || indexFor(state).groundedOpeningBasisKeys.has(basisKey);
 }
 
+type CommunicateAction = Extract<ActionFact['action'], { kind: 'communicate' }>;
+type ClaimRepresentation = Extract<CommunicateAction['content'], { kind: 'claim' }>;
+type GroundedConversationActionFact = ActionFact & {
+  action: CommunicateAction & {
+    content: ClaimRepresentation & {
+      conversation: NonNullable<ClaimRepresentation['conversation']>;
+    };
+  };
+};
+
+function isGroundedConversationAction(event: WorldEvent): event is GroundedConversationActionFact {
+  return event.kind === 'action'
+    && event.status === 'completed'
+    && event.action.kind === 'communicate'
+    && event.action.content.kind === 'claim'
+    && Boolean(event.action.content.conversation);
+}
+
+function currentPersonalSocialSourceIds(
+  state: SimulationState,
+  personId: PersonId,
+): Set<string> {
+  const person = state.people.find((candidate) => candidate.id === personId);
+  if (!person) return new Set();
+  return new Set([
+    ...person.memories.flatMap((memory) => memory.sourceEventIds),
+    ...person.relations.flatMap((relation) => relation.sourceEventIds),
+  ]);
+}
+
+/**
+ * Hard duplicate prevention follows facts the speaker or listener still
+ * carries in memory/relationship state. Forgotten, obligation-free ancient
+ * dialogue is deliberately not reconstructed from arbitrary cold pins.
+ */
+export function hasRememberedGroundedConversationOpeningBasis(
+  state: SimulationState,
+  basisKey: string,
+  speakerId: PersonId,
+  listenerId: PersonId,
+): boolean {
+  if (planningOverlays.get(state)?.groundedOpeningBasisKeys.has(basisKey)) return true;
+  for (const personId of [speakerId, listenerId]) {
+    const leaseKey = livePersonSocialEvidenceLeaseKey(personId);
+    for (const eventId of currentPersonalSocialSourceIds(state, personId)) {
+      const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+      if (!event || !isGroundedConversationAction(event)) continue;
+      const conversation = event.action.content.conversation;
+      if (conversation?.turn === 'opening'
+        && conversation.basisKey === basisKey
+        && conversation.speakerId === speakerId
+        && conversation.listenerId === listenerId) return true;
+    }
+  }
+  return false;
+}
+
 export function hasGroundedConversationResponse(state: SimulationState, openingEventId: string): boolean {
   return Boolean(planningOverlays.get(state)?.groundedResponseOpeningIds.has(openingEventId)) || indexFor(state).groundedResponseOpeningIds.has(openingEventId);
+}
+
+function recentGroundedConversationFactsForListener(
+  state: SimulationState,
+  listenerId: PersonId,
+): ActionFact[] {
+  const overlayFacts = planningOverlays.get(state)?.groundedCommunications ?? [];
+  const currentMonth = Math.max(
+    state.clock.elapsedMonths,
+    ...overlayFacts.map((event) => event.atMonth),
+  );
+  const earliestMonth = Math.max(0, currentMonth - GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS);
+  const merged = new Map<string, ActionFact>();
+  const add = (event: WorldEvent) => {
+    if (!isGroundedConversationAction(event)
+      || event.atMonth < earliestMonth
+      || event.atMonth > currentMonth) return;
+    const conversation = event.action.content.conversation;
+    const belongsToListener = conversation?.turn === 'opening'
+      ? conversation.listenerId === listenerId
+      : event.who === listenerId;
+    if (belongsToListener) merged.set(event.id, event);
+  };
+  for (const event of indexFor(state).groundedCommunications) add(event);
+  for (const event of overlayFacts) add(event);
+  for (let eventMonth = earliestMonth;
+    eventMonth <= Math.min(currentMonth, state.clock.elapsedMonths);
+    eventMonth += 1) {
+    for (const event of retainedColdWorldEventsForLease(
+      state,
+      groundedConversationWindowLeaseKey(listenerId, eventMonth),
+    )) add(event);
+  }
+  return [...merged.values()].sort(compareWorldEventsInCanonicalOrder);
+}
+
+export function hasRecentGroundedConversationResponseForListener(
+  state: SimulationState,
+  listenerId: PersonId,
+  openingEventId: string,
+): boolean {
+  return recentGroundedConversationFactsForListener(state, listenerId).some((event) => (
+    event.action.kind === 'communicate'
+      && event.action.content.kind === 'claim'
+      && event.action.content.conversation?.turn === 'response'
+      && event.action.content.conversation.referenceEventId === openingEventId
+  ));
 }
 
 export function groundedConversationOpeningsForListener(
   state: SimulationState,
   listenerId: string,
 ): readonly ActionFact[] {
-  const base = indexFor(state).groundedOpeningsByListener.get(listenerId) ?? [];
-  const extra = planningOverlays.get(state)?.groundedOpeningsByListener.get(listenerId) ?? [];
-  return extra.length ? [...base, ...extra] : base;
+  return recentGroundedConversationFactsForListener(state, listenerId)
+    .filter((event) => event.action.kind === 'communicate'
+      && event.action.content.kind === 'claim'
+      && event.action.content.conversation?.turn === 'opening'
+      && event.action.content.conversation.listenerId === listenerId);
 }
 
 export function matureCropHarvestActions(state: SimulationState): readonly ActionFact[] {
@@ -409,8 +761,45 @@ export function recentEraForecastEnvironmentFacts(
 }
 
 export function communicationByRepresentationId(state: SimulationState, representationId: string): ActionFact | undefined {
-  return planningOverlays.get(state)?.communicationByRepresentationId.get(representationId)
+  const hot = planningOverlays.get(state)?.communicationByRepresentationId.get(representationId)
     ?? indexFor(state).communicationByRepresentationId.get(representationId);
+  if (hot) return hot;
+
+  for (const agreement of state.agreements) {
+    if (agreement.status !== 'active' && agreement.status !== 'proposed') continue;
+    const leaseKey = liveAgreementHistoryLeaseKey(agreement.id);
+    for (const eventId of [agreement.proposalEventId, agreement.responseEventId]) {
+      if (!eventId) continue;
+      const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+      if (event?.kind === 'action'
+        && event.status === 'completed'
+        && event.action.kind === 'communicate'
+        && event.action.content.id === representationId) return event;
+    }
+  }
+
+  for (const intent of state.intents) {
+    if (intent.status !== 'active' && intent.status !== 'suspended') continue;
+    if (!Array.isArray(intent.actionEventIds)
+      || intent.actionEventIds.length > MAX_LIVE_INTENT_ACTION_EVENT_IDS) {
+      throw new Error(`live intent ${intent.id} actionEventIds 超出有界续接上限`);
+    }
+    const ownsRepresentation = intent.goal.kind === 'representation-made'
+      && intent.goal.representationId === representationId
+      || [intent.openingAction, intent.nextAction, intent.completionAction].some((action) => (
+        action?.kind === 'communicate' && action.content.id === representationId
+      ));
+    if (!ownsRepresentation) continue;
+    const leaseKey = liveIntentHistoryLeaseKey(intent.id);
+    for (const eventId of intent.actionEventIds) {
+      const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
+      if (event?.kind === 'action'
+        && event.status === 'completed'
+        && event.action.kind === 'communicate'
+        && event.action.content.id === representationId) return event;
+    }
+  }
+  return undefined;
 }
 
 export function completedConstructionActions(state: SimulationState): readonly ActionFact[] {

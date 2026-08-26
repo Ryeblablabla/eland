@@ -5,6 +5,7 @@ import {
   outcomeBeliefSuccess,
 } from '../../domain/cognition';
 import type { DecisionContext } from '../../domain/model';
+import { intentReviewAtMonth } from '../../domain/intent';
 import { personalityScore } from '../../domain/personality';
 import { seededFraction } from '../../world/generator';
 import { projectById } from '../../domain/state-index';
@@ -142,7 +143,8 @@ export function assessIntentionPersistence(
     .filter((need) => need.kind === 'homeostasis' || need.kind === 'safety' || need.kind === 'care' || need.kind === 'bereavement')
     .reduce((maximum, need) => Math.max(maximum, need.urgency), 0);
   const challengerStrength = challenger?.motivation ?? 0;
-  const overdue = active.stateGoalUntilMonth !== undefined && moment.atMonth > active.stateGoalUntilMonth;
+  const reviewAtMonth = intentReviewAtMonth(active);
+  const overdue = reviewAtMonth !== undefined && moment.atMonth > reviewAtMonth;
   const switchingMargin = 0.07
     + trait(context, 'conscientiousness') * 0.12
     - trait(context, 'openness') * 0.045;
@@ -157,7 +159,7 @@ export function assessIntentionPersistence(
     acuteNeed,
     stagnation,
     reason: overdue
-      ? '长期状态的复核期限已过'
+      ? '当前意图的有界复核期限已过'
       : acuteOverride
         ? '新的身体、安全、照护或强烈悲恸需要已经压过当前意图'
         : stalledOverride

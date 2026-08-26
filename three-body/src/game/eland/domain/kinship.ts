@@ -1,5 +1,6 @@
 import type { SimulationState } from './model';
 import type { PersonState } from './person';
+import { personById } from './state-index';
 
 export const KINSHIP_RISK_KNOWLEDGE_ID = 'claim:close-kin-offspring-risk';
 
@@ -10,7 +11,7 @@ function ancestorDepths(state: SimulationState, person: PersonState): Map<string
     const current = pending.shift();
     if (!current || (depths.get(current.personId) ?? Number.POSITIVE_INFINITY) <= current.depth) continue;
     depths.set(current.personId, current.depth);
-    const parent = state.people.find((candidate) => candidate.id === current.personId);
+    const parent = personById(state, current.personId);
     if (parent) pending.push(...parent.geneticParents.map((personId) => ({ personId, depth: current.depth + 1 })));
   }
   return depths;

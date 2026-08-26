@@ -1,5 +1,6 @@
 import type { EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
-import { isAlive } from '../domain/person';
+import { appendCommittedEvents, assertCommittedHistoryAppendable } from '../domain/history';
+import { livingPeople } from '../domain/state-index';
 
 /**
  * Commits the player's explicit stop as an authoritative civilization outcome.
@@ -8,8 +9,9 @@ import { isAlive } from '../domain/person';
  */
 export function concludeOwnedCivilization(state: SimulationState): WorldEvent[] {
   if (state.civilization.status === 'ended') return state.lastStep;
+  assertCommittedHistoryAppendable(state);
   const atMonth = state.clock.elapsedMonths;
-  const living = state.people.filter(isAlive);
+  const living = livingPeople(state);
   const event: EnvironmentFact = {
     id: `civilization-${state.civilization.number}-concluded-${state.branchId}-${atMonth}`,
     kind: 'environment',
@@ -33,7 +35,7 @@ export function concludeOwnedCivilization(state: SimulationState): WorldEvent[] 
     atMonth,
     summary: `观察者在第 ${atMonth} 月结束了这次演化；当时仍有 ${living.length} 人存活，所有已发生的历史被原样保留。`,
   };
-  state.world.past.push(event);
+  appendCommittedEvents(state, [event]);
   state.lastStep = [event];
   return state.lastStep;
 }

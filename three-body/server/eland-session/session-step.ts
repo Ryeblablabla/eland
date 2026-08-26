@@ -7,7 +7,7 @@ import {
   type SimulationController,
   type SimulationState,
 } from '../../src/game/eland/simulation';
-import { isAlive } from '../../src/game/eland/domain/person';
+import { livingPeople } from '../../src/game/eland/domain/state-index';
 import { ERA_TO_ENV } from '../../src/game/eland/adapter';
 import { projectLiveSpeechDrafts } from '../../src/game/eland/projection/live-speech';
 import type {
@@ -378,7 +378,7 @@ export class SessionStepCoordinator {
         branchId: frame.branchId,
         month: frame.elapsedMonths,
         people: state.people.length,
-        livingPeople: state.people.filter(isAlive).length,
+        livingPeople: livingPeople(state).length,
         eventsThisMonth: state.lastStep.length,
         totalEvents: state.world.past.length,
         simulationMs,

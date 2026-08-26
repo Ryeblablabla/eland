@@ -7,7 +7,16 @@ import {
   constants as zlibConstants,
 } from 'node:zlib';
 
-import type { SimulationState, WorldEvent } from '../src/game/eland/simulation';
+import type {
+  SimulationState,
+  WorldEvent,
+  WorldHistoryCursorV1,
+} from '../src/game/eland/simulation';
+import {
+  createBoundedGameplayShellAccumulator,
+  LAST_MATERIALIZED_OBSERVER_BASIS_FIELD,
+  type BoundedGameplayShellAuthority,
+} from './bounded-gameplay-shell';
 import { internEventHistoryAuditStrings } from './event-history-memory';
 
 export const RUN_STATE_ROOT_CODEC = 'eland-run-state-root-v1';
@@ -26,13 +35,23 @@ export const RUN_STATE_CODECS = [
 ] as const;
 
 const EVENT_CONTENT_DOMAIN = 'eland-run-event-content-v2';
+const SHELL_PART_RAW_CONTENT_DOMAIN = 'eland-run-state-shell-part-raw-v1';
 const MAX_EVENTS_PER_SEGMENT = 2_048;
+/**
+ * Successor streaming is intended for adjacent persisted checkpoints. It is
+ * deliberately bounded and does not promise to bridge an arbitrarily long
+ * checkpoint gap in one call. Limits fail closed; metadata is never truncated.
+ */
+export const MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_NODES = 4_096;
+export const MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_SEGMENT_REFERENCES = 16_384;
 /**
  * A positional boundary is deliberately independent of values and evolution
  * outcomes. Append-mostly historical arrays can therefore reuse every full
  * prefix segment while small arrays still have useful member-level reuse.
  */
 export const MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT = 64;
+export const DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_ENTRIES = 4_096;
+export const DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_BYTES = 128 * 1_024 * 1_024;
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const LINEAGE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const compress = promisify(brotliCompress);
@@ -42,6 +61,20 @@ export interface RunStateChunk {
   codec: string;
   rawSize: number;
   data: Buffer | Uint8Array;
+}
+
+/**
+ * Take an owned, synchronous copy before an authority flow crosses an await.
+ * The byte buffer is intentionally not shared with the caller, so later
+ * mutation of the input chunk cannot switch roots between decode phases.
+ */
+export function snapshotRunStateChunk(chunk: RunStateChunk): RunStateChunk {
+  return Object.freeze({
+    hash: chunk.hash,
+    codec: chunk.codec,
+    rawSize: chunk.rawSize,
+    data: Buffer.from(chunk.data),
+  });
 }
 
 export interface RunStateSegmentReference {
@@ -59,6 +92,18 @@ export interface RunStateRootMetadata {
   shellHash: string;
   historyHeadHash: string | null;
   lineageId: string;
+  eventCount: number;
+  tailEventContentHash: string | null;
+}
+
+/**
+ * Bounded continuation state for an authoritative append-only history. Unlike
+ * `RunStateRootMetadata`, it has no shell dependency and can therefore be kept
+ * beside a hot suffix while older event segments remain in the chunk ledger.
+ */
+export interface RunHistoryCursor {
+  lineageId: string;
+  historyHeadHash: string | null;
   eventCount: number;
   tailEventContentHash: string | null;
 }
@@ -101,10 +146,114 @@ export interface RunStateShellManifestMetadata {
   worldFields: RunStateShellFieldReference[];
 }
 
+export type RunStateShellFieldScope = 'state' | 'world';
+
+interface VerifiedRunStateShellFieldPositionBase {
+  /** `state` fields are visited first, followed by `world`, in manifest order. */
+  scope: RunStateShellFieldScope;
+  fieldName: string;
+  /** Zero-based within its own manifest field group. */
+  fieldIndex: number;
+  /** Zero-based across state fields followed by world fields. */
+  absoluteFieldIndex: number;
+}
+
+export interface VerifiedRunStateShellValuePosition
+  extends VerifiedRunStateShellFieldPositionBase {
+  kind: 'value';
+  chunkHash: string;
+}
+
+export interface VerifiedRunStateShellArraySegmentPosition
+  extends VerifiedRunStateShellFieldPositionBase {
+  kind: 'array-segment';
+  fieldLength: number;
+  segmentIndex: number;
+  segmentCount: number;
+  startItemIndex: number;
+  itemCount: number;
+  chunkHash: string;
+}
+
+export type VerifiedRunStateShellFieldPosition =
+  | (VerifiedRunStateShellFieldPositionBase & {
+    kind: 'value';
+    chunkHash: string;
+  })
+  | (VerifiedRunStateShellFieldPositionBase & {
+    kind: 'array';
+    fieldLength: number;
+    segmentCount: number;
+  });
+
+export interface VerifiedSchema3RunStateShellVisitor {
+  /** Manifest-order field boundary, including empty array fields. */
+  visitField?: (
+    position: Readonly<VerifiedRunStateShellFieldPosition>,
+  ) => void | Promise<void>;
+  /**
+   * The value chunk is hash/codec verified and decoded before this callback,
+   * but staged consumer output is not authoritative until the final receipt.
+   */
+  visitValue?: (
+    value: unknown,
+    position: Readonly<VerifiedRunStateShellValuePosition>,
+  ) => void | Promise<void>;
+  /**
+   * At most `MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT` decoded items are exposed per
+   * callback. The array is a private decoded segment, never a whole field.
+   */
+  visitArraySegment?: (
+    items: readonly unknown[],
+    position: Readonly<VerifiedRunStateShellArraySegmentPosition>,
+  ) => void | Promise<void>;
+}
+
+declare const verifiedSchema3RunStateShellReceiptBrand: unique symbol;
+
+export interface VerifiedSchema3RunStateShellReceipt {
+  readonly kind: 'verified-schema3-run-state-shell-receipt-v1';
+  readonly rootHash: string;
+  readonly manifestHash: string;
+  readonly stateFieldCount: number;
+  readonly worldFieldCount: number;
+  readonly valueFieldCount: number;
+  readonly arrayFieldCount: number;
+  readonly arraySegmentCount: number;
+  readonly arrayItemCount: number;
+  /** Non-zero only for the closed gameplay stream that carries observer blobs opaquely. */
+  readonly opaqueObserverValueFieldCount: number;
+  readonly [verifiedSchema3RunStateShellReceiptBrand]: true;
+}
+
 export interface EncodedRunState {
   root: RunStateChunk;
   parts: RunStateChunk[];
   metadata: RunStateRootMetadata;
+}
+
+export interface EncodedRunHistorySuffix {
+  cursor: RunHistoryCursor;
+  parts: RunStateChunk[];
+}
+
+export interface RunStateEncodeOptions {
+  /** Synthetic-test seam; authoritative persistence always uses 2,048. */
+  maxEventsPerSegmentForTests?: number;
+}
+
+export interface RunHistorySegmentPosition {
+  nodeHash: string;
+  segmentHash: string;
+  startEventIndex: number;
+}
+
+export interface VerifiedRunHistorySuccessor {
+  previousRootHash: string;
+  nextRootHash: string;
+  previous: Readonly<RunHistoryCursor>;
+  next: Readonly<RunHistoryCursor>;
+  suffixEventCount: number;
 }
 
 export interface DecodedRunState {
@@ -112,9 +261,78 @@ export interface DecodedRunState {
   metadata: RunStateRootMetadata;
 }
 
+export interface RunStatePinnedEvent {
+  /** Zero-based ordinal in the complete authoritative event ledger. */
+  absoluteIndex: number;
+  event: WorldEvent;
+}
+
+export interface RunStateBoundedDecodeOptions {
+  /** Number of contiguous authoritative tail events retained in `world.past`. */
+  hotEventLimit: number;
+  /** Additional cold facts selected by absolute ordinal, never by event id. */
+  pinnedEventIndexes?: readonly number[];
+}
+
+export interface RunStateGameplayBoundedDecodeOptions
+  extends RunStateBoundedDecodeOptions {
+  /** Store-selected exact run row plus its last materialized milestone count. */
+  observerAuthority: Readonly<BoundedGameplayShellAuthority>;
+}
+
+export interface DecodedBoundedRunState extends DecodedRunState {
+  /** Cold pinned facts only; requested ordinals inside the hot tail are omitted. */
+  pinnedEvents: RunStatePinnedEvent[];
+}
+
+export interface DecodedBoundedGameplayRunState extends DecodedBoundedRunState {
+  readonly gameplayShell: {
+    readonly sourceArrayLengths: Readonly<Record<string, number>>;
+    readonly retainedArrayLengths: Readonly<Record<string, number>>;
+  };
+}
+
 export interface RunStateDecodeOptions {
   /** Benchmark escape hatch; authoritative restore always uses the default. */
   canonicalizeEventIdReferences?: boolean;
+  /** Synthetic-test observation only; authoritative callers never set it. */
+  onBeforeShellDecodeForTests?: (temporaryPools: {
+    releasedAuditStringCount: number;
+    auditStringCount: number;
+    canonicalEventIdCount: number;
+    compactCanonicalEventIdCount: number;
+  }) => void;
+  /** Synthetic-test observation only; authoritative callers never set it. */
+  onAfterShellValidationForTests?: (temporaryPools: {
+    compactCanonicalEventIdCount: number;
+  }) => void;
+}
+
+export interface RunStateShellPartEncodeCacheControl {
+  enabled?: boolean;
+  maxEntries?: number;
+  maxBytes?: number;
+  clear?: boolean;
+  resetStatistics?: boolean;
+}
+
+export interface RunStateShellPartEncodeCacheStats {
+  enabled: boolean;
+  maxEntries: number;
+  maxBytes: number;
+  entries: number;
+  bytes: number;
+  peakEntries: number;
+  peakBytes: number;
+  requests: number;
+  hits: number;
+  misses: number;
+  brotliCalls: number;
+  evictions: number;
+  skippedOversize: number;
+  shellEncodes: number;
+  totalShellEncodeMilliseconds: number;
+  lastShellEncodeMilliseconds: number;
 }
 
 export interface RunStateReachabilityMemo {
@@ -134,6 +352,63 @@ type SimulationStateShell = Omit<SimulationState, 'world'> & {
   world: Omit<SimulationState['world'], 'past'>;
 };
 
+interface CanonicalEventIdLookup {
+  readonly size: number;
+  get(eventId: string): string | undefined;
+}
+
+class CompactCanonicalEventIdLookup implements CanonicalEventIdLookup {
+  readonly values: string[];
+
+  constructor(values: string[]) {
+    this.values = values;
+  }
+
+  get size(): number {
+    return this.values.length;
+  }
+
+  get(eventId: string): string | undefined {
+    let lower = 0;
+    let upper = this.values.length - 1;
+    while (lower <= upper) {
+      const middle = lower + Math.floor((upper - lower) / 2);
+      const canonical = this.values[middle];
+      if (canonical === eventId) return canonical;
+      if (canonical < eventId) lower = middle + 1;
+      else upper = middle - 1;
+    }
+    return undefined;
+  }
+
+  clear(): void {
+    this.values.length = 0;
+  }
+}
+
+interface ShellPartEncodeCacheEntry {
+  chunk: RunStateChunk;
+  bytes: number;
+}
+
+const shellPartEncodeCache = new Map<string, ShellPartEncodeCacheEntry>();
+const verifiedSchema3RunStateShellReceipts = new WeakSet<object>();
+let shellPartEncodeCacheEnabled = true;
+let shellPartEncodeCacheMaxEntries = DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_ENTRIES;
+let shellPartEncodeCacheMaxBytes = DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_BYTES;
+let shellPartEncodeCacheBytes = 0;
+let shellPartEncodeCachePeakEntries = 0;
+let shellPartEncodeCachePeakBytes = 0;
+let shellPartEncodeCacheRequests = 0;
+let shellPartEncodeCacheHits = 0;
+let shellPartEncodeCacheMisses = 0;
+let shellPartEncodeBrotliCalls = 0;
+let shellPartEncodeCacheEvictions = 0;
+let shellPartEncodeCacheSkippedOversize = 0;
+let shellPartEncodes = 0;
+let shellPartTotalEncodeMilliseconds = 0;
+let shellPartLastEncodeMilliseconds = 0;
+
 function asBuffer(data: Buffer | Uint8Array): Buffer {
   return Buffer.isBuffer(data)
     ? data
@@ -144,6 +419,16 @@ function hashStoredChunk(codec: string, data: Uint8Array): string {
   return createHash('sha256').update(codec).update('\0').update(data).digest('hex');
 }
 
+function hashRawV8Chunk(codec: string, raw: Uint8Array): string {
+  return createHash('sha256')
+    .update(SHELL_PART_RAW_CONTENT_DOMAIN)
+    .update('\0')
+    .update(codec)
+    .update('\0')
+    .update(raw)
+    .digest('hex');
+}
+
 function storedChunk(codec: string, data: Buffer): RunStateChunk {
   return {
     hash: hashStoredChunk(codec, data),
@@ -151,6 +436,87 @@ function storedChunk(codec: string, data: Buffer): RunStateChunk {
     rawSize: data.byteLength,
     data,
   };
+}
+
+function resetShellPartEncodeCacheStatistics(): void {
+  shellPartEncodeCachePeakEntries = shellPartEncodeCache.size;
+  shellPartEncodeCachePeakBytes = shellPartEncodeCacheBytes;
+  shellPartEncodeCacheRequests = 0;
+  shellPartEncodeCacheHits = 0;
+  shellPartEncodeCacheMisses = 0;
+  shellPartEncodeBrotliCalls = 0;
+  shellPartEncodeCacheEvictions = 0;
+  shellPartEncodeCacheSkippedOversize = 0;
+  shellPartEncodes = 0;
+  shellPartTotalEncodeMilliseconds = 0;
+  shellPartLastEncodeMilliseconds = 0;
+}
+
+function evictShellPartEncodeCacheToBounds(): void {
+  while (shellPartEncodeCache.size > shellPartEncodeCacheMaxEntries
+    || shellPartEncodeCacheBytes > shellPartEncodeCacheMaxBytes) {
+    const oldestKey = shellPartEncodeCache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) return;
+    const entry = shellPartEncodeCache.get(oldestKey);
+    shellPartEncodeCache.delete(oldestKey);
+    if (entry) shellPartEncodeCacheBytes -= entry.bytes;
+    shellPartEncodeCacheEvictions += 1;
+  }
+}
+
+/**
+ * Test/benchmark control only. Runtime persistence uses the bounded defaults;
+ * neither configuration nor statistics are serialized into authoritative state.
+ */
+export function configureRunStateShellPartEncodeCacheForTests(
+  control: RunStateShellPartEncodeCacheControl = {},
+): void {
+  if (control.maxEntries !== undefined) {
+    if (!Number.isSafeInteger(control.maxEntries) || control.maxEntries < 1) {
+      throw new Error('shell-part encode cache maxEntries 必须是正整数');
+    }
+    shellPartEncodeCacheMaxEntries = control.maxEntries;
+  }
+  if (control.maxBytes !== undefined) {
+    if (!Number.isSafeInteger(control.maxBytes) || control.maxBytes < 1) {
+      throw new Error('shell-part encode cache maxBytes 必须是正整数');
+    }
+    shellPartEncodeCacheMaxBytes = control.maxBytes;
+  }
+  if (control.enabled !== undefined) shellPartEncodeCacheEnabled = control.enabled;
+  if (control.clear) {
+    shellPartEncodeCache.clear();
+    shellPartEncodeCacheBytes = 0;
+  } else {
+    evictShellPartEncodeCacheToBounds();
+  }
+  if (control.resetStatistics) resetShellPartEncodeCacheStatistics();
+}
+
+export function runStateShellPartEncodeCacheStatsForTests(): RunStateShellPartEncodeCacheStats {
+  return {
+    enabled: shellPartEncodeCacheEnabled,
+    maxEntries: shellPartEncodeCacheMaxEntries,
+    maxBytes: shellPartEncodeCacheMaxBytes,
+    entries: shellPartEncodeCache.size,
+    bytes: shellPartEncodeCacheBytes,
+    peakEntries: shellPartEncodeCachePeakEntries,
+    peakBytes: shellPartEncodeCachePeakBytes,
+    requests: shellPartEncodeCacheRequests,
+    hits: shellPartEncodeCacheHits,
+    misses: shellPartEncodeCacheMisses,
+    brotliCalls: shellPartEncodeBrotliCalls,
+    evictions: shellPartEncodeCacheEvictions,
+    skippedOversize: shellPartEncodeCacheSkippedOversize,
+    shellEncodes: shellPartEncodes,
+    totalShellEncodeMilliseconds: shellPartTotalEncodeMilliseconds,
+    lastShellEncodeMilliseconds: shellPartLastEncodeMilliseconds,
+  };
+}
+
+/** Verify cache-domain separation without exposing or retaining raw buffers. */
+export function runStateRawV8CacheKeyForTests(codec: string, value: unknown): string {
+  return hashRawV8Chunk(codec, serialize(value));
 }
 
 function canonicalJsonValue(value: unknown): unknown {
@@ -176,9 +542,63 @@ function eventContentHash(event: WorldEvent): string {
     .digest('hex');
 }
 
-function tailEventContentHash(events: WorldEvent[]): string | null {
+/** Persistence boundary check shared by full-array and bounded suffix writers. */
+export function assertRunHistoryBoundaryEventContent(
+  event: WorldEvent,
+  expectedContentHash: string | null,
+): void {
+  if (expectedContentHash === null || eventContentHash(event) !== expectedContentHash) {
+    throw new Error('运行历史的既有边界已改写；历史改写必须使用 replace 模式');
+  }
+}
+
+function tailEventContentHash(events: readonly WorldEvent[]): string | null {
   const event = events.at(-1);
   return event ? eventContentHash(event) : null;
+}
+
+/** Freeze one codec-owned JSON-shaped value before sharing it with a visitor. */
+function deepFreezeOwnedValue<T>(value: T, visited = new WeakSet<object>()): T {
+  if (value === null || typeof value !== 'object') return value;
+  const owned = value as object;
+  if (visited.has(owned)) return value;
+  visited.add(owned);
+  for (const child of Object.values(owned as Record<string, unknown>)) {
+    deepFreezeOwnedValue(child, visited);
+  }
+  Object.freeze(owned);
+  return value;
+}
+
+function assertDomainHistoryCursorMatchesLedger(
+  cursor: WorldHistoryCursorV1,
+  expectedEventCount: number,
+  expectedTailEventId: string | null,
+  hotEventCount: number,
+  label: string,
+): void {
+  if (cursor.version !== 1
+    || !Number.isSafeInteger(cursor.eventCount)
+    || !Number.isSafeInteger(cursor.hotStartIndex)
+    || cursor.eventCount !== expectedEventCount
+    || cursor.hotStartIndex < 0
+    || cursor.hotStartIndex > cursor.eventCount
+    || cursor.eventCount - cursor.hotStartIndex !== hotEventCount
+    || cursor.tailEventId !== expectedTailEventId) {
+    throw new Error(`${label} history cursor 与权威历史根不一致`);
+  }
+}
+
+function assertFullDomainHistoryCursor(state: SimulationState): void {
+  const cursor = state.world.historyCursor;
+  if (!cursor) return;
+  assertDomainHistoryCursorMatchesLedger(
+    cursor,
+    state.world.past.length,
+    state.world.past.at(-1)?.id ?? null,
+    state.world.past.length,
+    '完整数组编码',
+  );
 }
 
 function stateShell(state: SimulationState): SimulationStateShell {
@@ -203,7 +623,73 @@ async function compressedV8Chunk(codec: string, value: unknown): Promise<RunStat
   return storedChunk(codec, data);
 }
 
-async function encodeShellFieldReferences(fields: Record<string, unknown>): Promise<{
+async function compressedShellPartV8Chunk(value: unknown): Promise<RunStateChunk> {
+  const raw = serialize(value);
+  shellPartEncodeCacheRequests += 1;
+  const cacheKey = shellPartEncodeCacheEnabled
+    ? hashRawV8Chunk(RUN_STATE_SHELL_PART_CODEC, raw)
+    : null;
+  if (shellPartEncodeCacheEnabled) {
+    const cached = shellPartEncodeCache.get(cacheKey!);
+    if (cached) {
+      shellPartEncodeCache.delete(cacheKey!);
+      shellPartEncodeCache.set(cacheKey!, cached);
+      shellPartEncodeCacheHits += 1;
+      return cached.chunk;
+    }
+  }
+
+  shellPartEncodeCacheMisses += 1;
+  shellPartEncodeBrotliCalls += 1;
+  const data = await compress(raw, {
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+  });
+  const chunk = storedChunk(RUN_STATE_SHELL_PART_CODEC, data);
+  if (!shellPartEncodeCacheEnabled || cacheKey === null) return chunk;
+  if (data.byteLength > shellPartEncodeCacheMaxBytes) {
+    shellPartEncodeCacheSkippedOversize += 1;
+    return chunk;
+  }
+
+  // Concurrent encodes may have populated the same content while Brotli was
+  // pending. Keep accounting bounded and return the already canonical chunk.
+  const concurrentlyCached = shellPartEncodeCache.get(cacheKey);
+  if (concurrentlyCached) {
+    shellPartEncodeCache.delete(cacheKey);
+    shellPartEncodeCache.set(cacheKey, concurrentlyCached);
+    return concurrentlyCached.chunk;
+  }
+  shellPartEncodeCache.set(cacheKey, { chunk, bytes: data.byteLength });
+  shellPartEncodeCacheBytes += data.byteLength;
+  evictShellPartEncodeCacheToBounds();
+  shellPartEncodeCachePeakEntries = Math.max(
+    shellPartEncodeCachePeakEntries,
+    shellPartEncodeCache.size,
+  );
+  shellPartEncodeCachePeakBytes = Math.max(
+    shellPartEncodeCachePeakBytes,
+    shellPartEncodeCacheBytes,
+  );
+  return chunk;
+}
+
+function shellArrayItemsPerSegment(
+  scope: RunStateShellFieldScope,
+  fieldName: string,
+): number {
+  // A completed project may carry substantially more closed planning history
+  // than other shell members. Keeping projects content-addressed one at a time
+  // prevents one changed/live project from forcing a 64-project decode peak,
+  // while every other collection retains the established positional layout.
+  return scope === 'state' && fieldName === 'projects'
+    ? 1
+    : MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT;
+}
+
+async function encodeShellFieldReferences(
+  fields: Record<string, unknown>,
+  scope: RunStateShellFieldScope,
+): Promise<{
   chunks: RunStateChunk[];
   references: RunStateShellFieldReference[];
 }> {
@@ -211,16 +697,17 @@ async function encodeShellFieldReferences(fields: Record<string, unknown>): Prom
   const references: RunStateShellFieldReference[] = [];
   for (const [name, value] of Object.entries(fields)) {
     if (!Array.isArray(value)) {
-      const chunk = await compressedV8Chunk(RUN_STATE_SHELL_PART_CODEC, value);
+      const chunk = await compressedShellPartV8Chunk(value);
       chunks.push(chunk);
       references.push({ name, kind: 'value', hash: chunk.hash });
       continue;
     }
 
     const segments: RunStateShellPartReference[] = [];
-    for (let offset = 0; offset < value.length; offset += MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT) {
-      const segment = value.slice(offset, offset + MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT);
-      const chunk = await compressedV8Chunk(RUN_STATE_SHELL_PART_CODEC, segment);
+    const segmentSize = shellArrayItemsPerSegment(scope, name);
+    for (let offset = 0; offset < value.length; offset += segmentSize) {
+      const segment = value.slice(offset, offset + segmentSize);
+      const chunk = await compressedShellPartV8Chunk(segment);
       chunks.push(chunk);
       segments.push({ hash: chunk.hash, itemCount: segment.length });
     }
@@ -233,28 +720,46 @@ async function encodeSegmentedShell(state: SimulationState): Promise<{
   manifest: RunStateChunk;
   parts: RunStateChunk[];
 }> {
+  const startedAt = performance.now();
   const groups = stateShellFieldGroups(state);
-  const fields = await encodeShellFieldReferences(groups.fields);
-  const worldFields = await encodeShellFieldReferences(groups.worldFields);
+  const fields = await encodeShellFieldReferences(groups.fields, 'state');
+  const worldFields = await encodeShellFieldReferences(groups.worldFields, 'world');
   const metadata: RunStateShellManifestMetadata = {
     schemaVersion: 1,
     fields: fields.references,
     worldFields: worldFields.references,
   };
-  return {
+  const encoded = {
     manifest: storedChunk(RUN_STATE_SHELL_MANIFEST_CODEC, serialize(metadata)),
     parts: [...fields.chunks, ...worldFields.chunks],
   };
+  shellPartLastEncodeMilliseconds = performance.now() - startedAt;
+  shellPartTotalEncodeMilliseconds += shellPartLastEncodeMilliseconds;
+  shellPartEncodes += 1;
+  return encoded;
 }
 
-async function encodeEventSegments(events: WorldEvent[]): Promise<{
+function maxEventsPerSegment(options: RunStateEncodeOptions): number {
+  const requested = options.maxEventsPerSegmentForTests;
+  if (requested === undefined) return MAX_EVENTS_PER_SEGMENT;
+  if (!Number.isSafeInteger(requested) || requested < 1) {
+    throw new Error('测试事件分段大小必须是正整数');
+  }
+  return requested;
+}
+
+async function encodeEventSegments(
+  events: readonly WorldEvent[],
+  options: RunStateEncodeOptions = {},
+): Promise<{
   chunks: RunStateChunk[];
   references: RunStateSegmentReference[];
 }> {
   const chunks: RunStateChunk[] = [];
   const references: RunStateSegmentReference[] = [];
-  for (let offset = 0; offset < events.length; offset += MAX_EVENTS_PER_SEGMENT) {
-    const segment = events.slice(offset, offset + MAX_EVENTS_PER_SEGMENT);
+  const segmentSize = maxEventsPerSegment(options);
+  for (let offset = 0; offset < events.length; offset += segmentSize) {
+    const segment = events.slice(offset, offset + segmentSize);
     const chunk = await compressedV8Chunk(RUN_STATE_EVENT_SEGMENT_CODEC, segment);
     chunks.push(chunk);
     references.push({ hash: chunk.hash, eventCount: segment.length });
@@ -287,6 +792,35 @@ function validLineage(value: unknown): value is string {
   return typeof value === 'string' && LINEAGE_PATTERN.test(value);
 }
 
+function assertValidRunHistoryCursor(cursor: RunHistoryCursor): void {
+  if (!validLineage(cursor.lineageId)
+    || !validOptionalHash(cursor.historyHeadHash)
+    || !Number.isSafeInteger(cursor.eventCount)
+    || cursor.eventCount < 0
+    || !validOptionalHash(cursor.tailEventContentHash)
+    || (cursor.eventCount === 0) !== (cursor.historyHeadHash === null)
+    || (cursor.eventCount === 0) !== (cursor.tailEventContentHash === null)) {
+    throw new Error('运行历史 cursor 内容无效');
+  }
+}
+
+/** Derive the shell-independent continuation cursor from a schema 2/3 root. */
+export function runHistoryCursorFromRootMetadata(
+  root: RunStateRootMetadata,
+): RunHistoryCursor {
+  if (root.schemaVersion !== 2 && root.schemaVersion !== 3) {
+    throw new Error('旧版运行状态根必须先升级，不能派生运行历史 cursor');
+  }
+  const cursor: RunHistoryCursor = {
+    lineageId: root.lineageId,
+    historyHeadHash: root.historyHeadHash,
+    eventCount: root.eventCount,
+    tailEventContentHash: root.tailEventContentHash,
+  };
+  assertValidRunHistoryCursor(cursor);
+  return cursor;
+}
+
 function validSegmentReferences(value: unknown): value is RunStateSegmentReference[] {
   return Array.isArray(value) && value.every((segment) => segment
     && typeof segment === 'object'
@@ -295,9 +829,15 @@ function validSegmentReferences(value: unknown): value is RunStateSegmentReferen
     && Number((segment as Partial<RunStateSegmentReference>).eventCount) > 0);
 }
 
-function validShellPartReferences(value: unknown, expectedLength: number): value is RunStateShellPartReference[] {
+function validShellPartReferences(
+  value: unknown,
+  expectedLength: number,
+  allowSingleItemSegments: boolean,
+): value is RunStateShellPartReference[] {
   if (!Array.isArray(value)) return false;
   let itemCount = 0;
+  let followsLegacyLayout = true;
+  let followsSingleItemLayout = allowSingleItemSegments;
   for (let index = 0; index < value.length; index += 1) {
     const reference = value[index] as Partial<RunStateShellPartReference> | null;
     if (!reference
@@ -305,18 +845,27 @@ function validShellPartReferences(value: unknown, expectedLength: number): value
       || !validHash(reference.hash)
       || !Number.isSafeInteger(reference.itemCount)
       || Number(reference.itemCount) <= 0
-      || Number(reference.itemCount) > MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT
-      || (index < value.length - 1
-        && Number(reference.itemCount) !== MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT)) {
+      || Number(reference.itemCount) > MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT) {
       return false;
     }
-    itemCount += Number(reference.itemCount);
+    const currentItemCount = Number(reference.itemCount);
+    if (index < value.length - 1
+      && currentItemCount !== MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT) {
+      followsLegacyLayout = false;
+    }
+    if (currentItemCount !== 1) followsSingleItemLayout = false;
+    itemCount += currentItemCount;
+    if (!Number.isSafeInteger(itemCount)) return false;
   }
   return itemCount === expectedLength
-    && (expectedLength === 0) === (value.length === 0);
+    && (expectedLength === 0) === (value.length === 0)
+    && (followsLegacyLayout || followsSingleItemLayout);
 }
 
-function validShellFieldReferences(value: unknown): value is RunStateShellFieldReference[] {
+function validShellFieldReferences(
+  value: unknown,
+  scope: RunStateShellFieldScope,
+): value is RunStateShellFieldReference[] {
   if (!Array.isArray(value)) return false;
   const names = new Set<string>();
   for (const field of value) {
@@ -335,7 +884,11 @@ function validShellFieldReferences(value: unknown): value is RunStateShellFieldR
     if (candidate.kind !== 'array'
       || !Number.isSafeInteger(candidate.length)
       || Number(candidate.length) < 0
-      || !validShellPartReferences(candidate.segments, Number(candidate.length))) {
+      || !validShellPartReferences(
+        candidate.segments,
+        Number(candidate.length),
+        scope === 'state' && candidate.name === 'projects',
+      )) {
       return false;
     }
   }
@@ -357,6 +910,18 @@ export function verifiedRunStateChunkData(
   const actualHash = hashStoredChunk(chunk.codec, data);
   if (actualHash !== chunk.hash) throw new Error(`${label} ${chunk.hash} 的 SHA-256 校验失败`);
   return data;
+}
+
+function readReferencedRunStateChunk(
+  readChunk: (hash: string) => RunStateChunk,
+  expectedHash: string,
+  label: string,
+): RunStateChunk {
+  const chunk = readChunk(expectedHash);
+  if (!chunk || chunk.hash !== expectedHash) {
+    throw new Error(`${label} 返回的数据块不属于请求引用 ${expectedHash}`);
+  }
+  return chunk;
 }
 
 export function parseRunStateRoot(chunk: RunStateChunk): RunStateRootMetadata {
@@ -384,8 +949,8 @@ export function parseRunStateShellManifest(chunk: RunStateChunk): RunStateShellM
   );
   const manifest = parsedV8Object(data, '运行状态 shell manifest');
   if (manifest.schemaVersion !== 1
-    || !validShellFieldReferences(manifest.fields)
-    || !validShellFieldReferences(manifest.worldFields)
+    || !validShellFieldReferences(manifest.fields, 'state')
+    || !validShellFieldReferences(manifest.worldFields, 'world')
     || manifest.fields.some((field) => field.name === 'world')
     || manifest.worldFields.some((field) => field.name === 'past')) {
     throw new Error('运行状态 shell manifest 内容无效');
@@ -445,6 +1010,89 @@ function assertAppendBoundary(state: SimulationState, previous: RunStateRootMeta
 }
 
 /**
+ * Encode only newly committed events against a bounded, already verified
+ * history cursor. The returned parts contain event segments followed by the
+ * new history node; an empty suffix leaves the cursor and ledger unchanged.
+ */
+export async function encodeRunHistorySuffix(
+  previous: RunHistoryCursor,
+  suffix: readonly WorldEvent[],
+  options: RunStateEncodeOptions = {},
+): Promise<EncodedRunHistorySuffix> {
+  assertValidRunHistoryCursor(previous);
+  const totalEventCount = previous.eventCount + suffix.length;
+  if (!Number.isSafeInteger(totalEventCount)) {
+    throw new Error('运行历史事件总数超出安全整数范围');
+  }
+  if (suffix.length === 0) {
+    return {
+      cursor: { ...previous },
+      parts: [],
+    };
+  }
+
+  const encodedSegments = await encodeEventSegments(suffix, options);
+  const node: RunHistoryNodeMetadata = {
+    schemaVersion: 1,
+    lineageId: previous.lineageId,
+    parentHash: previous.historyHeadHash,
+    startEventIndex: previous.eventCount,
+    eventCount: suffix.length,
+    totalEventCount,
+    segments: encodedSegments.references,
+  };
+  const nodeChunk = storedChunk(RUN_HISTORY_NODE_CODEC, serialize(node));
+  return {
+    cursor: {
+      lineageId: previous.lineageId,
+      historyHeadHash: nodeChunk.hash,
+      eventCount: totalEventCount,
+      tailEventContentHash: tailEventContentHash(suffix),
+    },
+    parts: [...encodedSegments.chunks, nodeChunk],
+  };
+}
+
+/**
+ * Encode a complete schema-3 root from a shell state, a cold-ledger cursor and
+ * only its new history suffix. `state.world.past` is intentionally ignored by
+ * shell encoding, so callers do not need to hydrate the historical prefix.
+ */
+export async function encodeSegmentedRunStateFromHistorySuffix(
+  state: SimulationState,
+  previous: RunHistoryCursor,
+  suffix: readonly WorldEvent[],
+  options: RunStateEncodeOptions = {},
+): Promise<EncodedRunState> {
+  const history = await encodeRunHistorySuffix(previous, suffix, options);
+  if (state.world.historyCursor) {
+    const expectedTailEventId = suffix.at(-1)?.id ?? state.world.historyCursor.tailEventId;
+    assertDomainHistoryCursorMatchesLedger(
+      state.world.historyCursor,
+      history.cursor.eventCount,
+      expectedTailEventId,
+      state.world.past.length,
+      'suffix 编码 shell',
+    );
+  }
+  const shell = await encodeSegmentedShell(state);
+  const metadata: RunStateRootMetadata = {
+    schemaVersion: 3,
+    shellHash: shell.manifest.hash,
+    historyHeadHash: history.cursor.historyHeadHash,
+    lineageId: history.cursor.lineageId,
+    eventCount: history.cursor.eventCount,
+    tailEventContentHash: history.cursor.tailEventContentHash,
+  };
+  const root = storedChunk(RUN_STATE_ROOT_CODEC, serialize(metadata));
+  return {
+    root,
+    parts: [...shell.parts, shell.manifest, ...history.parts],
+    metadata,
+  };
+}
+
+/**
  * Append reads only the preceding root metadata and encodes the new suffix.
  * Callers that intentionally truncate or rewrite older events must select the
  * replacement path, which starts an independent lineage and encodes all events.
@@ -452,53 +1100,28 @@ function assertAppendBoundary(state: SimulationState, previous: RunStateRootMeta
 export async function encodeSegmentedRunState(
   state: SimulationState,
   plan: RunStateWritePlan = { mode: 'replace' },
+  options: RunStateEncodeOptions = {},
 ): Promise<EncodedRunState> {
   const events = state.world.past;
-  let lineageId: string;
-  let previousHeadHash: string | null;
-  let startEventIndex: number;
+  assertFullDomainHistoryCursor(state);
   if (plan.mode === 'append') {
     assertAppendBoundary(state, plan.previous);
-    lineageId = plan.previous.lineageId;
-    previousHeadHash = plan.previous.historyHeadHash;
-    startEventIndex = plan.previous.eventCount;
-  } else {
-    lineageId = randomUUID();
-    previousHeadHash = null;
-    startEventIndex = 0;
+    const cursor = runHistoryCursorFromRootMetadata(plan.previous);
+    return encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      cursor,
+      events.slice(cursor.eventCount),
+      options,
+    );
   }
 
-  const suffix = events.slice(startEventIndex);
-  const encodedSegments = await encodeEventSegments(suffix);
-  const parts: RunStateChunk[] = [...encodedSegments.chunks];
-  let historyHeadHash = previousHeadHash;
-  if (suffix.length > 0) {
-    const node: RunHistoryNodeMetadata = {
-      schemaVersion: 1,
-      lineageId,
-      parentHash: previousHeadHash,
-      startEventIndex,
-      eventCount: suffix.length,
-      totalEventCount: events.length,
-      segments: encodedSegments.references,
-    };
-    const nodeChunk = storedChunk(RUN_HISTORY_NODE_CODEC, serialize(node));
-    parts.push(nodeChunk);
-    historyHeadHash = nodeChunk.hash;
-  }
-
-  const shell = await encodeSegmentedShell(state);
-  parts.unshift(...shell.parts, shell.manifest);
-  const metadata: RunStateRootMetadata = {
-    schemaVersion: 3,
-    shellHash: shell.manifest.hash,
-    historyHeadHash,
-    lineageId,
-    eventCount: events.length,
-    tailEventContentHash: tailEventContentHash(events),
+  const emptyCursor: RunHistoryCursor = {
+    lineageId: randomUUID(),
+    historyHeadHash: null,
+    eventCount: 0,
+    tailEventContentHash: null,
   };
-  const root = storedChunk(RUN_STATE_ROOT_CODEC, serialize(metadata));
-  return { root, parts, metadata };
+  return encodeSegmentedRunStateFromHistorySuffix(state, emptyCursor, events, options);
 }
 
 function orderedHistoryNodes(
@@ -512,7 +1135,7 @@ function orderedHistoryNodes(
   while (nodeHash) {
     if (seen.has(nodeHash)) throw new Error(`运行历史节点链在 ${nodeHash} 形成循环`);
     seen.add(nodeHash);
-    const node = parseRunHistoryNode(readChunk(nodeHash));
+    const node = parseRunHistoryNode(readReferencedRunStateChunk(readChunk, nodeHash, '运行历史节点'));
     if (node.lineageId !== root.lineageId) {
       throw new Error(`运行历史节点 ${nodeHash} 与状态根 lineage 不一致`);
     }
@@ -525,6 +1148,236 @@ function orderedHistoryNodes(
   }
   if (expectedTotal !== 0) throw new Error('运行历史节点链缺少前缀');
   return reversed.reverse();
+}
+
+/**
+ * Prove that two different schema-2/3 roots commit the exact same immutable
+ * history while allowing their shell manifests to differ. This is deliberately
+ * separate from `streamVerifiedRunHistorySuccessorSegments`: the ordinary
+ * append verifier continues to reject every different-root zero-event rewrite.
+ *
+ * The proof is read-only and grants no persistence authority. A store still
+ * has to keep both roots behind its private controller token/generation/CAS
+ * join before a same-history shell successor can be published.
+ */
+export function verifyRunStateSameHistoryShellSuccessor(
+  previousRootChunkInput: RunStateChunk,
+  nextRootChunkInput: RunStateChunk,
+): Readonly<VerifiedRunHistorySuccessor> {
+  const previousRootChunk = snapshotRunStateChunk(previousRootChunkInput);
+  const nextRootChunk = snapshotRunStateChunk(nextRootChunkInput);
+  const previousRoot = parseRunStateRoot(previousRootChunk);
+  const nextRoot = parseRunStateRoot(nextRootChunk);
+  if ((previousRoot.schemaVersion !== 2 && previousRoot.schemaVersion !== 3)
+    || (nextRoot.schemaVersion !== 2 && nextRoot.schemaVersion !== 3)) {
+    throw new Error('同历史 shell successor 只接受稳定尾校验的 schema 2/3 运行状态根');
+  }
+  if (previousRootChunk.hash === nextRootChunk.hash) {
+    throw new Error('同历史 shell successor 必须使用不同运行状态根');
+  }
+  if (previousRoot.shellHash === nextRoot.shellHash
+    || previousRoot.lineageId !== nextRoot.lineageId
+    || previousRoot.historyHeadHash !== nextRoot.historyHeadHash
+    || previousRoot.eventCount !== nextRoot.eventCount
+    || previousRoot.tailEventContentHash !== nextRoot.tailEventContentHash) {
+    throw new Error('同历史 shell successor 必须精确复用 lineage/head/count/tail 且只改写 shell');
+  }
+  const previous = Object.freeze({ ...runHistoryCursorFromRootMetadata(previousRoot) });
+  const next = Object.freeze({ ...runHistoryCursorFromRootMetadata(nextRoot) });
+  return Object.freeze({
+    previousRootHash: previousRootChunk.hash,
+    nextRootHash: nextRootChunk.hash,
+    previous,
+    next,
+    suffixEventCount: 0,
+  });
+}
+
+/**
+ * Verify that `nextRootChunk` extends the exact history head committed by
+ * `previousRootChunk`, then expose only the newly appended segments. Lineage,
+ * event counts and tail hashes are necessary checks, but the authoritative
+ * ancestry proof is the content-addressed parent chain reaching the previous
+ * head at exactly the previous absolute event count.
+ *
+ * Both roots are synchronously snapshotted before the first await. Segment
+ * effects remain caller-staged: a receipt is returned only after the complete
+ * suffix chain, segment contents, final event count and tail content hash pass.
+ * A visitor can run before a later segment fails, so it MUST write only to
+ * private staging and publish/swap that state after this Promise resolves. This
+ * function cannot roll back side effects that a visitor publishes directly.
+ *
+ * This proves ancestry relative to the supplied previous root only. It does not
+ * prove that previous root was selected by the authoritative store CAS; the
+ * enclosing server boundary must supply that trusted previous root and keep its
+ * continuation basis private.
+ */
+export async function streamVerifiedRunHistorySuccessorSegments(
+  previousRootChunk: RunStateChunk,
+  nextRootChunk: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  visit: (
+    events: readonly WorldEvent[],
+    position: Readonly<RunHistorySegmentPosition>,
+  ) => void | Promise<void>,
+): Promise<Readonly<VerifiedRunHistorySuccessor>> {
+  const previousRootSnapshot = snapshotRunStateChunk(previousRootChunk);
+  const nextRootSnapshot = snapshotRunStateChunk(nextRootChunk);
+  const previousRoot = parseRunStateRoot(previousRootSnapshot);
+  const nextRoot = parseRunStateRoot(nextRootSnapshot);
+  if ((previousRoot.schemaVersion !== 2 && previousRoot.schemaVersion !== 3)
+    || (nextRoot.schemaVersion !== 2 && nextRoot.schemaVersion !== 3)) {
+    throw new Error('运行历史 successor 只接受稳定尾校验的 schema 2/3 运行状态根');
+  }
+
+  const previous = runHistoryCursorFromRootMetadata(previousRoot);
+  const next = runHistoryCursorFromRootMetadata(nextRoot);
+  if (previousRootSnapshot.hash === nextRootSnapshot.hash) {
+    return Object.freeze({
+      previousRootHash: previousRootSnapshot.hash,
+      nextRootHash: nextRootSnapshot.hash,
+      previous: Object.freeze({ ...previous }),
+      next: Object.freeze({ ...next }),
+      suffixEventCount: 0,
+    });
+  }
+  if (next.eventCount === previous.eventCount) {
+    throw new Error('不同运行状态根不得以零事件 suffix 改写 shell 或历史');
+  }
+  if (next.eventCount < previous.eventCount) {
+    throw new Error('运行历史 successor 的事件总数早于 previous root');
+  }
+  if (next.lineageId !== previous.lineageId) {
+    throw new Error('运行历史 successor 与 previous root lineage 不一致');
+  }
+
+  const reversedSuffixNodes: Array<{ hash: string; node: RunHistoryNodeMetadata }> = [];
+  let suffixSegmentReferenceCount = 0;
+  let expectedTotal = next.eventCount;
+  let nodeHash = next.historyHeadHash;
+  while (expectedTotal > previous.eventCount) {
+    if (!nodeHash) throw new Error('运行历史 successor 节点链在 previous root 前中断');
+    const node = parseRunHistoryNode(
+      readReferencedRunStateChunk(readChunk, nodeHash, '运行历史 successor 节点'),
+    );
+    if (node.lineageId !== next.lineageId) {
+      throw new Error(`运行历史 successor 节点 ${nodeHash} 与 next root lineage 不一致`);
+    }
+    if (node.totalEventCount !== expectedTotal || node.startEventIndex >= expectedTotal) {
+      throw new Error(`运行历史 successor 节点 ${nodeHash} 的累计事件数不连续`);
+    }
+    if (node.startEventIndex < previous.eventCount) {
+      throw new Error(`运行历史 successor 节点 ${nodeHash} 跨过 previous root 绝对边界`);
+    }
+    if (reversedSuffixNodes.length >= MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_NODES) {
+      throw new Error(`运行历史 successor 超出 ${MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_NODES} 个相邻 checkpoint 节点上限`);
+    }
+    suffixSegmentReferenceCount += node.segments.length;
+    if (suffixSegmentReferenceCount > MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_SEGMENT_REFERENCES) {
+      throw new Error(`运行历史 successor 超出 ${MAX_VERIFIED_RUN_HISTORY_SUCCESSOR_SEGMENT_REFERENCES} 个 segment reference 上限`);
+    }
+    reversedSuffixNodes.push({ hash: nodeHash, node });
+    expectedTotal = node.startEventIndex;
+    nodeHash = node.parentHash;
+  }
+  if (expectedTotal !== previous.eventCount || nodeHash !== previous.historyHeadHash) {
+    throw new Error('运行历史 successor 未精确到达 previous root 的 history head');
+  }
+
+  let streamedEventCount = previous.eventCount;
+  let streamedTailEventContentHash: string | null = null;
+  for (let nodeOffset = reversedSuffixNodes.length - 1; nodeOffset >= 0; nodeOffset -= 1) {
+    const { hash: suffixNodeHash, node } = reversedSuffixNodes[nodeOffset];
+    if (node.startEventIndex !== streamedEventCount) {
+      throw new Error(`运行历史 successor 节点 ${suffixNodeHash} 的起始事件序号不连续`);
+    }
+    for (const reference of node.segments) {
+      const segment = decodeCompressedV8<unknown>(
+        readReferencedRunStateChunk(readChunk, reference.hash, '运行历史 successor 事件分段'),
+        RUN_STATE_EVENT_SEGMENT_CODEC,
+        '运行历史 successor 事件分段',
+      );
+      if (!Array.isArray(segment) || segment.length !== reference.eventCount) {
+        throw new Error(`运行历史 successor 事件分段 ${reference.hash} 的事件数量与历史节点不一致`);
+      }
+      const segmentEvents = deepFreezeOwnedValue(segment as WorldEvent[]);
+      const startEventIndex = streamedEventCount;
+      streamedEventCount += segmentEvents.length;
+      streamedTailEventContentHash = tailEventContentHash(segmentEvents);
+      await visit(segmentEvents, {
+        nodeHash: suffixNodeHash,
+        segmentHash: reference.hash,
+        startEventIndex,
+      });
+    }
+    if (streamedEventCount !== node.totalEventCount) {
+      throw new Error(`运行历史 successor 节点 ${suffixNodeHash} 的事件分段没有覆盖完整节点`);
+    }
+  }
+  if (streamedEventCount !== next.eventCount
+    || streamedTailEventContentHash !== next.tailEventContentHash) {
+    throw new Error('运行历史 successor suffix 与 next root 不一致');
+  }
+
+  return Object.freeze({
+    previousRootHash: previousRootSnapshot.hash,
+    nextRootHash: nextRootSnapshot.hash,
+    previous: Object.freeze({ ...previous }),
+    next: Object.freeze({ ...next }),
+    suffixEventCount: next.eventCount - previous.eventCount,
+  });
+}
+
+/**
+ * Verify and expose schema-2/3 history one decoded segment at a time in its
+ * authoritative event order. A segment's stored hash, codec and declared
+ * count are verified before its callback. The root event count and tail hash,
+ * however, are known valid only after this Promise resolves. Visitors must
+ * therefore stage work or be idempotent; commit staged work only after resolve
+ * and never perform an irreversible side effect inside the callback. The codec
+ * awaits each visitor before decoding the next segment and does not
+ * canonicalize or rewrite any event references.
+ */
+export async function streamVerifiedRunHistorySegments(
+  root: RunStateRootMetadata,
+  readChunk: (hash: string) => RunStateChunk,
+  visit: (
+    events: readonly WorldEvent[],
+    position: Readonly<RunHistorySegmentPosition>,
+  ) => void | Promise<void>,
+): Promise<RunHistoryCursor> {
+  const cursor = runHistoryCursorFromRootMetadata(root);
+  let streamedEventCount = 0;
+  let streamedTailEventContentHash: string | null = null;
+  for (const { hash: nodeHash, node } of orderedHistoryNodes(root, readChunk)) {
+    if (node.startEventIndex !== streamedEventCount) {
+      throw new Error(`运行历史节点 ${nodeHash} 的起始事件序号不连续`);
+    }
+    for (const reference of node.segments) {
+      const segment = decodeCompressedV8<unknown>(
+        readReferencedRunStateChunk(readChunk, reference.hash, '运行状态事件分段'),
+        RUN_STATE_EVENT_SEGMENT_CODEC,
+        '运行状态事件分段',
+      );
+      if (!Array.isArray(segment) || segment.length !== reference.eventCount) {
+        throw new Error(`运行状态事件分段 ${reference.hash} 的事件数量与历史节点不一致`);
+      }
+      const segmentEvents = segment as WorldEvent[];
+      const startEventIndex = streamedEventCount;
+      streamedEventCount += segmentEvents.length;
+      streamedTailEventContentHash = tailEventContentHash(segmentEvents);
+      await visit(segmentEvents, {
+        nodeHash,
+        segmentHash: reference.hash,
+        startEventIndex,
+      });
+    }
+  }
+  if (streamedEventCount !== cursor.eventCount
+    || streamedTailEventContentHash !== cursor.tailEventContentHash) {
+    throw new Error('运行状态事件历史与状态根不一致');
+  }
+  return cursor;
 }
 
 function shellPartHashes(manifest: RunStateShellManifestMetadata): string[] {
@@ -546,7 +1399,7 @@ function markReachableRunStateShellChunks(
 ): void {
   const shellHash = root.shellHash;
   memo.chunks.add(shellHash);
-  const shellChunk = readChunk(shellHash);
+  const shellChunk = readReferencedRunStateChunk(readChunk, shellHash, '运行状态 shell');
   if (shellChunk.codec === RUN_STATE_SHELL_CODEC) {
     if (root.schemaVersion === 3) {
       throw new Error('运行状态根 schemaVersion 3 必须引用 shell manifest');
@@ -570,11 +1423,258 @@ function markReachableRunStateShellChunks(
     if (memo.shellParts.has(partHash)) continue;
     memo.shellParts.add(partHash);
     verifiedRunStateChunkData(
-      readChunk(partHash),
+      readReferencedRunStateChunk(readChunk, partHash, '运行状态 shell 子块'),
       RUN_STATE_SHELL_PART_CODEC,
       '运行状态 shell 子块',
     );
   }
+}
+
+/**
+ * Prove that a receipt was minted only after this module verified every field
+ * and segment referenced by the exact schema-3 root.
+ */
+export function assertVerifiedSchema3RunStateShellReceipt(
+  value: unknown,
+  expectedRootHash: string,
+): asserts value is Readonly<VerifiedSchema3RunStateShellReceipt> {
+  if (!validHash(expectedRootHash)
+    || !value
+    || typeof value !== 'object'
+    || !verifiedSchema3RunStateShellReceipts.has(value)
+    || (value as VerifiedSchema3RunStateShellReceipt).rootHash !== expectedRootHash) {
+    throw new Error('schema3 shell receipt 未经过当前 exact root 的完整流式验证');
+  }
+}
+
+/**
+ * Stream one exact schema-3 shell without materializing any complete manifest
+ * array field. The root is synchronously snapshotted before the first await;
+ * its own `shellHash` is the only accepted manifest selection. Each referenced
+ * part is likewise copied, codec/hash checked and decoded before its callback.
+ *
+ * Callbacks are a staging seam, not an authority seam: an early callback may
+ * run before a later referenced chunk fails. Only the final module-branded
+ * receipt proves that the complete ordered manifest reached its exact seal.
+ * Schema 1/2 roots deliberately fail closed and keep their legacy full-shell
+ * decoder path unchanged.
+ */
+async function streamVerifiedSchema3RunStateShellInternal(
+  rootChunkInput: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  visitor: Readonly<VerifiedSchema3RunStateShellVisitor> = {},
+  carryDerivedObserverValueOpaque = false,
+): Promise<Readonly<VerifiedSchema3RunStateShellReceipt>> {
+  if (typeof readChunk !== 'function') {
+    throw new Error('schema3 shell stream 缺少 chunk reader');
+  }
+  if (!visitor || typeof visitor !== 'object') {
+    throw new Error('schema3 shell stream visitor 必须是对象');
+  }
+  const visitValue = visitor.visitValue;
+  const visitArraySegment = visitor.visitArraySegment;
+  const visitField = visitor.visitField;
+  if (visitField !== undefined && typeof visitField !== 'function') {
+    throw new Error('schema3 shell stream visitField 必须是函数');
+  }
+  if (visitValue !== undefined && typeof visitValue !== 'function') {
+    throw new Error('schema3 shell stream visitValue 必须是函数');
+  }
+  if (visitArraySegment !== undefined && typeof visitArraySegment !== 'function') {
+    throw new Error('schema3 shell stream visitArraySegment 必须是函数');
+  }
+
+  const rootChunk = snapshotRunStateChunk(rootChunkInput);
+  const root = parseRunStateRoot(rootChunk);
+  if (root.schemaVersion !== 3) {
+    throw new Error('流式 shell primitive 只接受 schemaVersion 3 root');
+  }
+  const manifestChunk = snapshotRunStateChunk(readReferencedRunStateChunk(
+    readChunk,
+    root.shellHash,
+    'schema3 shell manifest',
+  ));
+  const manifest = parseRunStateShellManifest(manifestChunk);
+
+  let absoluteFieldIndex = 0;
+  let valueFieldCount = 0;
+  let arrayFieldCount = 0;
+  let arraySegmentCount = 0;
+  let arrayItemCount = 0;
+  let opaqueObserverValueFieldCount = 0;
+  const visitFields = async (
+    scope: RunStateShellFieldScope,
+    fields: readonly RunStateShellFieldReference[],
+  ): Promise<void> => {
+    for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex += 1) {
+      const field = fields[fieldIndex];
+      const currentAbsoluteFieldIndex = absoluteFieldIndex;
+      absoluteFieldIndex += 1;
+      if (visitField) {
+        await visitField(Object.freeze(field.kind === 'value'
+          ? {
+            scope,
+            fieldName: field.name,
+            fieldIndex,
+            absoluteFieldIndex: currentAbsoluteFieldIndex,
+            kind: 'value' as const,
+            chunkHash: field.hash,
+          }
+          : {
+            scope,
+            fieldName: field.name,
+            fieldIndex,
+            absoluteFieldIndex: currentAbsoluteFieldIndex,
+            kind: 'array' as const,
+            fieldLength: field.length,
+            segmentCount: field.segments.length,
+          }));
+      }
+      if (field.kind === 'value') {
+        const part = snapshotRunStateChunk(readReferencedRunStateChunk(
+          readChunk,
+          field.hash,
+          `schema3 shell ${scope} value ${field.name}`,
+        ));
+        if (carryDerivedObserverValueOpaque
+          && scope === 'state'
+          && field.name === 'derived') {
+          verifiedRunStateChunkData(
+            part,
+            RUN_STATE_SHELL_PART_CODEC,
+            `schema3 shell ${scope} opaque observer value ${field.name}`,
+          );
+          valueFieldCount += 1;
+          opaqueObserverValueFieldCount += 1;
+          continue;
+        }
+        const value = decodeCompressedV8<unknown>(
+          part,
+          RUN_STATE_SHELL_PART_CODEC,
+          `schema3 shell ${scope} value ${field.name}`,
+        );
+        if (Array.isArray(value)) {
+          throw new Error(`schema3 shell ${scope} value ${field.name} 非法解码为数组`);
+        }
+        valueFieldCount += 1;
+        if (visitValue) {
+          await visitValue(value, Object.freeze({
+            scope,
+            fieldName: field.name,
+            fieldIndex,
+            absoluteFieldIndex: currentAbsoluteFieldIndex,
+            kind: 'value' as const,
+            chunkHash: field.hash,
+          }));
+        }
+        continue;
+      }
+
+      arrayFieldCount += 1;
+      let startItemIndex = 0;
+      for (let segmentIndex = 0; segmentIndex < field.segments.length; segmentIndex += 1) {
+        const reference = field.segments[segmentIndex];
+        const part = snapshotRunStateChunk(readReferencedRunStateChunk(
+          readChunk,
+          reference.hash,
+          `schema3 shell ${scope} array ${field.name} segment ${segmentIndex}`,
+        ));
+        const decoded = decodeCompressedV8<unknown>(
+          part,
+          RUN_STATE_SHELL_PART_CODEC,
+          `schema3 shell ${scope} array ${field.name} segment ${segmentIndex}`,
+        );
+        if (!Array.isArray(decoded) || decoded.length !== reference.itemCount) {
+          throw new Error(
+            `schema3 shell ${scope} array ${field.name} segment ${segmentIndex}`
+            + ' 的 itemCount 与 manifest 不一致',
+          );
+        }
+        const items = Object.freeze(decoded) as readonly unknown[];
+        const position = Object.freeze({
+          scope,
+          fieldName: field.name,
+          fieldIndex,
+          absoluteFieldIndex: currentAbsoluteFieldIndex,
+          kind: 'array-segment' as const,
+          fieldLength: field.length,
+          segmentIndex,
+          segmentCount: field.segments.length,
+          startItemIndex,
+          itemCount: reference.itemCount,
+          chunkHash: reference.hash,
+        });
+        if (visitArraySegment) await visitArraySegment(items, position);
+        startItemIndex += reference.itemCount;
+        arraySegmentCount += 1;
+        arrayItemCount += reference.itemCount;
+        if (!Number.isSafeInteger(startItemIndex)
+          || !Number.isSafeInteger(arraySegmentCount)
+          || !Number.isSafeInteger(arrayItemCount)) {
+          throw new Error('schema3 shell stream 计数超出安全整数范围');
+        }
+      }
+      if (startItemIndex !== field.length) {
+        throw new Error(`schema3 shell ${scope} array ${field.name} 未精确覆盖字段长度`);
+      }
+    }
+  };
+
+  await visitFields('state', manifest.fields);
+  await visitFields('world', manifest.worldFields);
+  if (absoluteFieldIndex !== manifest.fields.length + manifest.worldFields.length) {
+    throw new Error('schema3 shell stream 未精确覆盖 manifest 字段顺序');
+  }
+  if (carryDerivedObserverValueOpaque && opaqueObserverValueFieldCount !== 1) {
+    throw new Error('gameplay shell stream 必须精确 opaque carry 一个 state.derived value');
+  }
+
+  const receipt = Object.freeze({
+    kind: 'verified-schema3-run-state-shell-receipt-v1' as const,
+    rootHash: rootChunk.hash,
+    manifestHash: manifestChunk.hash,
+    stateFieldCount: manifest.fields.length,
+    worldFieldCount: manifest.worldFields.length,
+    valueFieldCount,
+    arrayFieldCount,
+    arraySegmentCount,
+    arrayItemCount,
+    opaqueObserverValueFieldCount,
+  }) as Readonly<VerifiedSchema3RunStateShellReceipt>;
+  verifiedSchema3RunStateShellReceipts.add(receipt);
+  return receipt;
+}
+
+/** Decode and visit every field in one exact schema-3 shell. */
+export async function streamVerifiedSchema3RunStateShell(
+  rootChunkInput: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  visitor: Readonly<VerifiedSchema3RunStateShellVisitor> = {},
+): Promise<Readonly<VerifiedSchema3RunStateShellReceipt>> {
+  return streamVerifiedSchema3RunStateShellInternal(
+    rootChunkInput,
+    readChunk,
+    visitor,
+    false,
+  );
+}
+
+/**
+ * Closed gameplay continuation profile. The exact `state.derived` part remains
+ * reference/hash/codec/length verified, but is not decompressed or deserialized.
+ * No caller-selectable skip predicate exists; every other field is decoded.
+ */
+export async function streamVerifiedSchema3GameplayShell(
+  rootChunkInput: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  visitor: Readonly<VerifiedSchema3RunStateShellVisitor> = {},
+): Promise<Readonly<VerifiedSchema3RunStateShellReceipt>> {
+  return streamVerifiedSchema3RunStateShellInternal(
+    rootChunkInput,
+    readChunk,
+    visitor,
+    true,
+  );
 }
 
 /** Return every codec-owned chunk reachable from one verified state root. */
@@ -589,7 +1689,7 @@ export function markReachableRunStateChunks(
   let expectedTotal = root.eventCount;
   let nodeHash = root.historyHeadHash;
   while (nodeHash) {
-    const node = parseRunHistoryNode(readChunk(nodeHash));
+    const node = parseRunHistoryNode(readReferencedRunStateChunk(readChunk, nodeHash, '运行历史节点'));
     if (node.lineageId !== root.lineageId || node.totalEventCount !== expectedTotal) {
       throw new Error(`运行历史节点 ${nodeHash} 与状态根不连续`);
     }
@@ -609,13 +1709,13 @@ export function markReachableRunStateChunks(
 function decodeShellFieldReferences(
   fields: RunStateShellFieldReference[],
   readChunk: (hash: string) => RunStateChunk,
-  canonicalEventIds?: ReadonlyMap<string, string>,
+  canonicalEventIds?: CanonicalEventIdLookup,
 ): Record<string, unknown> {
   const decoded: Record<string, unknown> = {};
   for (const field of fields) {
     if (field.kind === 'value') {
       const value = decodeCompressedV8<unknown>(
-        readChunk(field.hash),
+        readReferencedRunStateChunk(readChunk, field.hash, `运行状态 shell 字段 ${field.name}`),
         RUN_STATE_SHELL_PART_CODEC,
         `运行状态 shell 字段 ${field.name}`,
       );
@@ -627,7 +1727,7 @@ function decodeShellFieldReferences(
     let offset = 0;
     for (const reference of field.segments) {
       const segment = decodeCompressedV8<unknown>(
-        readChunk(reference.hash),
+        readReferencedRunStateChunk(readChunk, reference.hash, `运行状态 shell 数组 ${field.name}`),
         RUN_STATE_SHELL_PART_CODEC,
         `运行状态 shell 数组 ${field.name}`,
       );
@@ -653,33 +1753,38 @@ function decodeShellFieldReferences(
 function decodeRunStateShell(
   root: RunStateRootMetadata,
   readChunk: (hash: string) => RunStateChunk,
-  canonicalEventIds?: ReadonlyMap<string, string>,
+  canonicalEventIds?: CanonicalEventIdLookup,
 ): SimulationStateShell {
   const shellHash = root.shellHash;
-  const shellChunk = readChunk(shellHash);
+  const shellChunk = readReferencedRunStateChunk(readChunk, shellHash, '运行状态 shell');
+  let shell: SimulationStateShell;
   if (shellChunk.codec === RUN_STATE_SHELL_CODEC) {
     if (root.schemaVersion === 3) {
       throw new Error('运行状态根 schemaVersion 3 必须引用 shell manifest');
     }
-    const shell = decodeCompressedV8<SimulationStateShell>(
+    shell = decodeCompressedV8<SimulationStateShell>(
       shellChunk,
       RUN_STATE_SHELL_CODEC,
       '运行状态 shell',
     );
     if (canonicalEventIds) canonicalizeEventIdReferences(shell, canonicalEventIds);
-    return shell;
+  } else {
+    if (shellChunk.codec !== RUN_STATE_SHELL_MANIFEST_CODEC) {
+      throw new Error(`运行状态 shell ${shellHash} 使用了不支持的编码 ${shellChunk.codec}`);
+    }
+    if (root.schemaVersion !== 3) {
+      throw new Error('旧版运行状态根不得引用 shell manifest');
+    }
+    const manifest = parseRunStateShellManifest(shellChunk);
+    shell = {
+      ...decodeShellFieldReferences(manifest.fields, readChunk, canonicalEventIds),
+      world: decodeShellFieldReferences(manifest.worldFields, readChunk, canonicalEventIds),
+    } as unknown as SimulationStateShell;
   }
-  if (shellChunk.codec !== RUN_STATE_SHELL_MANIFEST_CODEC) {
-    throw new Error(`运行状态 shell ${shellHash} 使用了不支持的编码 ${shellChunk.codec}`);
+  if (Object.prototype.hasOwnProperty.call(shell, LAST_MATERIALIZED_OBSERVER_BASIS_FIELD)) {
+    throw new Error('bounded gameplay root 必须通过 closed gameplay decoder 恢复');
   }
-  if (root.schemaVersion !== 3) {
-    throw new Error('旧版运行状态根不得引用 shell manifest');
-  }
-  const manifest = parseRunStateShellManifest(shellChunk);
-  return {
-    ...decodeShellFieldReferences(manifest.fields, readChunk, canonicalEventIds),
-    world: decodeShellFieldReferences(manifest.worldFields, readChunk, canonicalEventIds),
-  } as unknown as SimulationStateShell;
+  return shell;
 }
 
 /**
@@ -687,9 +1792,30 @@ function decodeRunStateShell(
  * value held by that WorldEvent. Only decoded, mutable container values are
  * changed; keys, prototypes, typed buffers and other opaque objects are kept.
  */
+function canonicalEventIdFromLookup(
+  canonicalEventIds: CanonicalEventIdLookup,
+  eventId: string,
+): string | undefined {
+  return canonicalEventIds.get(eventId);
+}
+
+function compactCanonicalEventIdLookup(
+  canonicalEventIds: Map<string, string>,
+): CompactCanonicalEventIdLookup {
+  const compact = new Array<string>(canonicalEventIds.size);
+  let offset = 0;
+  for (const canonical of canonicalEventIds.values()) {
+    compact[offset] = canonical;
+    offset += 1;
+  }
+  canonicalEventIds.clear();
+  compact.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+  return new CompactCanonicalEventIdLookup(compact);
+}
+
 function canonicalizeEventIdReferences(
   value: unknown,
-  canonicalEventIds: ReadonlyMap<string, string>,
+  canonicalEventIds: CanonicalEventIdLookup,
 ): void {
   if (!value || typeof value !== 'object' || canonicalEventIds.size === 0) return;
   const pending: object[] = [value];
@@ -704,7 +1830,7 @@ function canonicalizeEventIdReferences(
         if (!Object.prototype.hasOwnProperty.call(current, index)) continue;
         const child = current[index];
         if (typeof child === 'string') {
-          const canonical = canonicalEventIds.get(child);
+          const canonical = canonicalEventIdFromLookup(canonicalEventIds, child);
           if (canonical !== undefined) current[index] = canonical;
         } else if (child && typeof child === 'object') {
           pending.push(child);
@@ -716,7 +1842,7 @@ function canonicalizeEventIdReferences(
     if (current instanceof Map) {
       for (const [key, child] of current) {
         if (typeof child === 'string') {
-          const canonical = canonicalEventIds.get(child);
+          const canonical = canonicalEventIdFromLookup(canonicalEventIds, child);
           if (canonical !== undefined) current.set(key, canonical);
         } else if (child && typeof child === 'object') {
           pending.push(child);
@@ -732,7 +1858,7 @@ function canonicalizeEventIdReferences(
       for (let index = 0; index < items.length; index += 1) {
         const child = items[index];
         if (typeof child === 'string') {
-          const canonical = canonicalEventIds.get(child);
+          const canonical = canonicalEventIdFromLookup(canonicalEventIds, child);
           if (canonical !== undefined) {
             items[index] = canonical;
             hasCanonicalString = true;
@@ -754,13 +1880,36 @@ function canonicalizeEventIdReferences(
       const record = current as Record<string, unknown>;
       const child = record[key];
       if (typeof child === 'string') {
-        const canonical = canonicalEventIds.get(child);
+        const canonical = canonicalEventIdFromLookup(canonicalEventIds, child);
         if (canonical !== undefined) record[key] = canonical;
       } else if (child && typeof child === 'object') {
         pending.push(child);
       }
     }
   }
+}
+
+/** Narrow container-safety seam for the persistence codec's synthetic tests. */
+export function canonicalizeEventIdReferencesForTests(
+  value: unknown,
+  canonicalEventIds: CanonicalEventIdLookup,
+): void {
+  canonicalizeEventIdReferences(value, canonicalEventIds);
+}
+
+/** Narrow release-boundary seam for the persistence codec's synthetic tests. */
+export function compactCanonicalEventIdLookupForTests(
+  canonicalEventIds: Map<string, string>,
+): CompactCanonicalEventIdLookup {
+  return compactCanonicalEventIdLookup(canonicalEventIds);
+}
+
+/** Narrow lookup-exactness seam for the persistence codec's synthetic tests. */
+export function canonicalEventIdFromCompactLookupForTests(
+  canonicalEventIds: CanonicalEventIdLookup,
+  eventId: string,
+): string | undefined {
+  return canonicalEventIdFromLookup(canonicalEventIds, eventId);
 }
 
 /** Decode and verify every referenced shell/node/segment before hydration. */
@@ -772,10 +1921,13 @@ export async function decodeSegmentedRunState(
   const root = parseRunStateRoot(rootChunk);
   const events: WorldEvent[] = [];
   const auditStringPool = new Map<string, string>();
+  const canonicalEventIds = options.canonicalizeEventIdReferences !== false
+    ? new Map<string, string>()
+    : undefined;
   for (const { node } of orderedHistoryNodes(root, readChunk)) {
     for (const reference of node.segments) {
       const segment = await decodeCompressedV8<unknown>(
-        readChunk(reference.hash),
+        readReferencedRunStateChunk(readChunk, reference.hash, '运行状态事件分段'),
         RUN_STATE_EVENT_SEGMENT_CODEC,
         '运行状态事件分段',
       );
@@ -783,7 +1935,7 @@ export async function decodeSegmentedRunState(
         throw new Error(`运行状态事件分段 ${reference.hash} 的事件数量与历史节点不一致`);
       }
       const segmentEvents = segment as WorldEvent[];
-      internEventHistoryAuditStrings(segmentEvents, auditStringPool);
+      internEventHistoryAuditStrings(segmentEvents, auditStringPool, canonicalEventIds);
       events.push(...segmentEvents);
     }
   }
@@ -792,24 +1944,51 @@ export async function decodeSegmentedRunState(
     throw new Error('运行状态事件历史与状态根不一致');
   }
 
-  let canonicalEventIds: Map<string, string> | undefined;
-  if (options.canonicalizeEventIdReferences !== false) {
-    canonicalEventIds = new Map<string, string>();
-    for (const event of events) canonicalEventIds.set(event.id, event.id);
-  }
-  const shell = decodeRunStateShell(root, readChunk, canonicalEventIds);
+  // Tail verification no longer needs the audit-text index. Release it before
+  // shell hydration; canonical event IDs remain live for shell references.
+  const releasedAuditStringCount = auditStringPool.size;
+  auditStringPool.clear();
+  const compactCanonicalEventIds = canonicalEventIds
+    ? compactCanonicalEventIdLookup(canonicalEventIds)
+    : undefined;
+  options.onBeforeShellDecodeForTests?.({
+    releasedAuditStringCount,
+    auditStringCount: auditStringPool.size,
+    canonicalEventIdCount: canonicalEventIds?.size ?? 0,
+    compactCanonicalEventIdCount: compactCanonicalEventIds?.size ?? 0,
+  });
+  const shell = decodeRunStateShell(root, readChunk, compactCanonicalEventIds);
   if (!shell || typeof shell !== 'object' || !shell.world || typeof shell.world !== 'object') {
     throw new Error('运行状态 shell 内容无效');
   }
   if (Object.prototype.hasOwnProperty.call(shell.world, 'past')) {
     throw new Error('运行状态 shell 非法包含 world.past');
   }
+  if (shell.world.historyCursor) {
+    assertDomainHistoryCursorMatchesLedger(
+      shell.world.historyCursor,
+      root.eventCount,
+      events.at(-1)?.id ?? null,
+      events.length,
+      '运行状态 shell',
+    );
+  }
+
+  // The hydrated history and shell now own every canonical string reference.
+  // Drop the compact lookup before building lastStep's local identity map so
+  // restore peak does not retain both generations together.
+  compactCanonicalEventIds?.clear();
+  options.onAfterShellValidationForTests?.({
+    compactCanonicalEventIdCount: compactCanonicalEventIds?.size ?? 0,
+  });
 
   const lastStepIds = new Set(shell.lastStep.map((event) => event.id));
   const lastStepEventsById = new Map<string, WorldEvent>();
   for (let index = events.length - 1; index >= 0 && lastStepEventsById.size < lastStepIds.size; index -= 1) {
     const event = events[index];
-    if (lastStepIds.has(event.id)) lastStepEventsById.set(event.id, event);
+    if (lastStepIds.has(event.id) && !lastStepEventsById.has(event.id)) {
+      lastStepEventsById.set(event.id, event);
+    }
   }
   const lastStep = shell.lastStep.map((event) => lastStepEventsById.get(event.id) ?? event);
   return {
@@ -819,5 +1998,490 @@ export async function decodeSegmentedRunState(
       lastStep,
     },
     metadata: root,
+  };
+}
+
+function boundedPinnedEventIndexes(
+  indexes: readonly number[] | undefined,
+  eventCount: number,
+  hotStartIndex: number,
+): number[] {
+  if (indexes === undefined) return [];
+  if (!Array.isArray(indexes)) throw new Error('bounded decode 的 pinnedEventIndexes 必须是数组');
+  const unique = new Set<number>();
+  for (const index of indexes) {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= eventCount) {
+      throw new Error(`bounded decode 的 pin 绝对序号 ${String(index)} 超出运行历史范围`);
+    }
+    if (index < hotStartIndex) unique.add(index);
+  }
+  return [...unique].sort((left, right) => left - right);
+}
+
+/**
+ * Materialize exact, selected event bodies from a schema-2/3 history root.
+ * Every history node is verified to preserve the absolute ordinal frame, but
+ * unrelated event segments stay compressed. This is intentionally narrower
+ * than full-ledger streaming: callers must still validate each selected event
+ * identity against their own authenticated pin manifest.
+ */
+export function materializeVerifiedRunHistoryPinnedEvents(
+  root: RunStateRootMetadata,
+  readChunk: (hash: string) => RunStateChunk,
+  absoluteIndexes: readonly number[],
+): RunStatePinnedEvent[] {
+  const cursor = runHistoryCursorFromRootMetadata(root);
+  if (!Array.isArray(absoluteIndexes)) {
+    throw new Error('历史 pin 物化的绝对序号必须是数组');
+  }
+  const requested = [...absoluteIndexes];
+  let previousIndex = -1;
+  for (const absoluteIndex of requested) {
+    if (!Number.isSafeInteger(absoluteIndex)
+      || absoluteIndex < 0
+      || absoluteIndex >= cursor.eventCount) {
+      throw new Error(`历史 pin 物化的绝对序号 ${String(absoluteIndex)} 超出运行历史范围`);
+    }
+    if (absoluteIndex <= previousIndex) {
+      throw new Error('历史 pin 物化的绝对序号必须严格递增且不得重复');
+    }
+    previousIndex = absoluteIndex;
+  }
+  if (requested.length === 0) return [];
+
+  const pinnedEvents = new Array<RunStatePinnedEvent>(requested.length);
+  let nextPinOffset = requested.length - 1;
+  let expectedNodeTotal = cursor.eventCount;
+  let nodeHash = cursor.historyHeadHash;
+  while (nodeHash) {
+    const node = parseRunHistoryNode(
+      readReferencedRunStateChunk(readChunk, nodeHash, '历史 pin 物化节点'),
+    );
+    if (node.lineageId !== cursor.lineageId) {
+      throw new Error(`历史 pin 物化节点 ${nodeHash} 与状态根 lineage 不一致`);
+    }
+    if (node.totalEventCount !== expectedNodeTotal
+      || node.startEventIndex >= expectedNodeTotal) {
+      throw new Error(`历史 pin 物化节点 ${nodeHash} 的累计事件数没有严格递减`);
+    }
+
+    let segmentEndIndex = node.totalEventCount;
+    for (let segmentIndex = node.segments.length - 1; segmentIndex >= 0; segmentIndex -= 1) {
+      const reference = node.segments[segmentIndex];
+      const segmentStartIndex = segmentEndIndex - reference.eventCount;
+      if (segmentStartIndex < node.startEventIndex) {
+        throw new Error(`历史 pin 物化节点 ${nodeHash} 的事件分段序号不连续`);
+      }
+      const nextPinIndex = requested[nextPinOffset];
+      if (nextPinOffset >= 0 && nextPinIndex >= segmentEndIndex) {
+        throw new Error(`历史 pin 物化未找到绝对序号 ${nextPinIndex}`);
+      }
+      if (nextPinOffset >= 0 && nextPinIndex >= segmentStartIndex) {
+        const decoded = decodeCompressedV8<unknown>(
+          readReferencedRunStateChunk(readChunk, reference.hash, '历史 pin 物化事件分段'),
+          RUN_STATE_EVENT_SEGMENT_CODEC,
+          '历史 pin 物化事件分段',
+        );
+        if (!Array.isArray(decoded) || decoded.length !== reference.eventCount) {
+          throw new Error(
+            `历史 pin 物化事件分段 ${reference.hash} 的事件数量与历史节点不一致`,
+          );
+        }
+        const segment = decoded as WorldEvent[];
+        while (nextPinOffset >= 0 && requested[nextPinOffset] >= segmentStartIndex) {
+          const absoluteIndex = requested[nextPinOffset];
+          if (absoluteIndex >= segmentEndIndex) {
+            throw new Error(`历史 pin 物化未找到绝对序号 ${absoluteIndex}`);
+          }
+          pinnedEvents[nextPinOffset] = Object.freeze({
+            absoluteIndex,
+            event: deepFreezeOwnedValue(segment[absoluteIndex - segmentStartIndex]),
+          });
+          nextPinOffset -= 1;
+        }
+      }
+      segmentEndIndex = segmentStartIndex;
+    }
+    if (segmentEndIndex !== node.startEventIndex) {
+      throw new Error(`历史 pin 物化节点 ${nodeHash} 的事件分段没有覆盖完整节点`);
+    }
+    expectedNodeTotal = node.startEventIndex;
+    nodeHash = node.parentHash;
+  }
+
+  if (expectedNodeTotal !== 0) throw new Error('历史 pin 物化节点链缺少前缀');
+  if (nextPinOffset !== -1) {
+    throw new Error(`历史 pin 物化未找到绝对序号 ${requested[nextPinOffset]}`);
+  }
+  return pinnedEvents;
+}
+
+interface LastStepContentGroups {
+  hashesByEventId: Map<string, Set<string>>;
+  shellIndexesByHash: Map<string, number[]>;
+}
+
+interface DecodedBoundedRunHistory {
+  hotEvents: WorldEvent[];
+  pinnedEvents: RunStatePinnedEvent[];
+  tailEventId: string | null;
+  ledgerOccurrencesByLastStepHash: Map<string, number>;
+}
+
+function lastStepContentGroups(lastStep: readonly WorldEvent[]): LastStepContentGroups {
+  const hashesByEventId = new Map<string, Set<string>>();
+  const shellIndexesByHash = new Map<string, number[]>();
+  for (let index = 0; index < lastStep.length; index += 1) {
+    const event = lastStep[index];
+    const hash = eventContentHash(event);
+    const hashes = hashesByEventId.get(event.id);
+    if (hashes) hashes.add(hash);
+    else hashesByEventId.set(event.id, new Set([hash]));
+    const shellIndexes = shellIndexesByHash.get(hash);
+    if (shellIndexes) shellIndexes.push(index);
+    else shellIndexesByHash.set(hash, [index]);
+  }
+  return { hashesByEventId, shellIndexesByHash };
+}
+
+function countLastStepContentOccurrences(
+  events: readonly WorldEvent[],
+  groups: LastStepContentGroups,
+  counts: Map<string, number>,
+): void {
+  for (const event of events) {
+    // Event IDs are a cheap rejection filter. Content hashing is needed only
+    // for the handful of IDs present in the bounded shell's last step.
+    const candidateHashes = groups.hashesByEventId.get(event.id);
+    if (!candidateHashes) continue;
+    const hash = eventContentHash(event);
+    if (candidateHashes.has(hash)) counts.set(hash, (counts.get(hash) ?? 0) + 1);
+  }
+}
+
+/**
+ * Verify the ledger from its head towards the genesis without materializing
+ * the node chain. `totalEventCount -> startEventIndex` must strictly decrease,
+ * so a cycle or discontinuity fails with O(1) node metadata residency.
+ */
+function decodeBoundedRunHistoryReverse(
+  root: RunStateRootMetadata,
+  readChunk: (hash: string) => RunStateChunk,
+  hotStartIndex: number,
+  requestedColdPins: readonly number[],
+  lastStepGroups: LastStepContentGroups,
+): DecodedBoundedRunHistory {
+  const hotEventCount = root.eventCount - hotStartIndex;
+  const hotEvents = new Array<WorldEvent>(hotEventCount);
+  const pinnedEvents = new Array<RunStatePinnedEvent>(requestedColdPins.length);
+  const ledgerOccurrencesByLastStepHash = new Map<string, number>();
+  let filledHotEventCount = 0;
+  let nextPinOffset = requestedColdPins.length - 1;
+  let expectedNodeTotal = root.eventCount;
+  let nodeHash = root.historyHeadHash;
+  let tailEventId: string | null = null;
+  let streamedTailEventContentHash: string | null = null;
+  let sawTailSegment = false;
+
+  while (nodeHash) {
+    const node = parseRunHistoryNode(readReferencedRunStateChunk(readChunk, nodeHash, '运行历史节点'));
+    if (node.lineageId !== root.lineageId) {
+      throw new Error(`运行历史节点 ${nodeHash} 与状态根 lineage 不一致`);
+    }
+    if (node.totalEventCount !== expectedNodeTotal
+      || node.startEventIndex >= expectedNodeTotal) {
+      throw new Error(`运行历史节点 ${nodeHash} 的累计事件数没有严格递减`);
+    }
+
+    let segmentEndIndex = node.totalEventCount;
+    for (let segmentIndex = node.segments.length - 1; segmentIndex >= 0; segmentIndex -= 1) {
+      const reference = node.segments[segmentIndex];
+      const segmentStartIndex = segmentEndIndex - reference.eventCount;
+      if (segmentStartIndex < node.startEventIndex) {
+        throw new Error(`运行历史节点 ${nodeHash} 的事件分段序号不连续`);
+      }
+      const decoded = decodeCompressedV8<unknown>(
+        readReferencedRunStateChunk(readChunk, reference.hash, '运行状态事件分段'),
+        RUN_STATE_EVENT_SEGMENT_CODEC,
+        '运行状态事件分段',
+      );
+      if (!Array.isArray(decoded) || decoded.length !== reference.eventCount) {
+        throw new Error(`运行状态事件分段 ${reference.hash} 的事件数量与历史节点不一致`);
+      }
+      const segment = decoded as WorldEvent[];
+      if (!sawTailSegment) {
+        streamedTailEventContentHash = tailEventContentHash(segment);
+        tailEventId = segment.at(-1)?.id ?? null;
+        sawTailSegment = true;
+      }
+      countLastStepContentOccurrences(
+        segment,
+        lastStepGroups,
+        ledgerOccurrencesByLastStepHash,
+      );
+
+      while (nextPinOffset >= 0
+        && requestedColdPins[nextPinOffset] >= segmentStartIndex) {
+        const absoluteIndex = requestedColdPins[nextPinOffset];
+        if (absoluteIndex >= segmentEndIndex) {
+          throw new Error(`bounded decode 未找到 pin 绝对序号 ${absoluteIndex}`);
+        }
+        pinnedEvents[nextPinOffset] = {
+          absoluteIndex,
+          event: segment[absoluteIndex - segmentStartIndex],
+        };
+        nextPinOffset -= 1;
+      }
+
+      const retainedStartIndex = Math.max(segmentStartIndex, hotStartIndex);
+      if (retainedStartIndex < segmentEndIndex) {
+        for (let absoluteIndex = retainedStartIndex;
+          absoluteIndex < segmentEndIndex;
+          absoluteIndex += 1) {
+          hotEvents[absoluteIndex - hotStartIndex] = segment[absoluteIndex - segmentStartIndex];
+        }
+        filledHotEventCount += segmentEndIndex - retainedStartIndex;
+      }
+      segmentEndIndex = segmentStartIndex;
+    }
+    if (segmentEndIndex !== node.startEventIndex) {
+      throw new Error(`运行历史节点 ${nodeHash} 的事件分段没有覆盖完整节点`);
+    }
+    expectedNodeTotal = node.startEventIndex;
+    nodeHash = node.parentHash;
+  }
+
+  if (expectedNodeTotal !== 0) throw new Error('运行历史节点链缺少前缀');
+  if (filledHotEventCount !== hotEventCount) {
+    throw new Error('bounded decode 的连续历史热窗口与状态根不一致');
+  }
+  if (nextPinOffset !== -1) {
+    throw new Error(`bounded decode 未找到 pin 绝对序号 ${requestedColdPins[nextPinOffset]}`);
+  }
+  if (streamedTailEventContentHash !== root.tailEventContentHash
+    || (root.eventCount === 0
+      ? tailEventId !== null
+      : typeof tailEventId !== 'string')) {
+    throw new Error('运行状态事件历史与状态根不一致');
+  }
+  return {
+    hotEvents,
+    pinnedEvents,
+    tailEventId,
+    ledgerOccurrencesByLastStepHash,
+  };
+}
+
+function rebindLastStepToRetainedEvents(
+  lastStep: readonly WorldEvent[],
+  pinnedEvents: readonly RunStatePinnedEvent[],
+  hotEvents: readonly WorldEvent[],
+  hotStartIndex: number,
+  groups: LastStepContentGroups,
+  ledgerOccurrencesByHash: ReadonlyMap<string, number>,
+): WorldEvent[] {
+  const retainedByContentHash = new Map<string, RunStatePinnedEvent[]>();
+  const retain = (retained: RunStatePinnedEvent): void => {
+    const candidateHashes = groups.hashesByEventId.get(retained.event.id);
+    if (!candidateHashes) return;
+    const hash = eventContentHash(retained.event);
+    if (!candidateHashes.has(hash)) return;
+    const matches = retainedByContentHash.get(hash);
+    if (matches) matches.push(retained);
+    else retainedByContentHash.set(hash, [retained]);
+  };
+  for (const pinned of pinnedEvents) retain(pinned);
+  for (let index = 0; index < hotEvents.length; index += 1) {
+    retain({ absoluteIndex: hotStartIndex + index, event: hotEvents[index] });
+  }
+
+  const rebound = [...lastStep];
+  for (const [hash, shellIndexes] of groups.shellIndexesByHash) {
+    const retained = retainedByContentHash.get(hash);
+    const ledgerOccurrenceCount = ledgerOccurrencesByHash.get(hash) ?? 0;
+    // A single exact fact is globally unique. Repeated byte-equal facts are
+    // rebound only when every occurrence is retained and represented in the
+    // shell group; a partial pin cannot impersonate another identical fact.
+    if (!retained
+      || ledgerOccurrenceCount !== shellIndexes.length
+      || retained.length !== shellIndexes.length) {
+      continue;
+    }
+    retained.sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+    for (let index = 0; index < shellIndexes.length; index += 1) {
+      rebound[shellIndexes[index]] = retained[index].event;
+    }
+  }
+  return rebound;
+}
+
+/**
+ * Decode a schema-2/3 state while retaining only a continuous hot tail and a
+ * small set of cold facts selected by absolute ordinal. The shell is restored
+ * independently, then every history node and segment is verified from the head
+ * towards genesis with only one node and segment resident at a time. All
+ * retained values remain staged until the complete root event count and tail
+ * content hash have passed; no partial state is ever returned.
+ *
+ * This is a dedicated continuation seam. It deliberately does not change the
+ * full decoder, public store restore path or worker behavior.
+ */
+async function decodeSegmentedRunStateBoundedFromShell(
+  rootChunk: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  options: RunStateBoundedDecodeOptions,
+  shell: SimulationStateShell,
+): Promise<DecodedBoundedRunState> {
+  const root = parseRunStateRoot(rootChunk);
+  if (root.schemaVersion !== 2 && root.schemaVersion !== 3) {
+    throw new Error('bounded decode 只支持带权威尾校验的 schema 2/3 运行状态');
+  }
+  if (!options || !Number.isSafeInteger(options.hotEventLimit) || options.hotEventLimit < 0) {
+    throw new Error('bounded decode 的 hotEventLimit 必须是非负安全整数');
+  }
+
+  const hotStartIndex = Math.max(0, root.eventCount - options.hotEventLimit);
+  const requestedColdPins = boundedPinnedEventIndexes(
+    options.pinnedEventIndexes,
+    root.eventCount,
+    hotStartIndex,
+  );
+
+  if (!shell || typeof shell !== 'object' || !shell.world || typeof shell.world !== 'object') {
+    throw new Error('运行状态 shell 内容无效');
+  }
+  if (Object.prototype.hasOwnProperty.call(shell.world, 'past')) {
+    throw new Error('运行状态 shell 非法包含 world.past');
+  }
+  if (!Array.isArray(shell.lastStep)) throw new Error('运行状态 shell 的 lastStep 内容无效');
+
+  const originalDomainCursor = shell.world.historyCursor;
+  if (originalDomainCursor) {
+    // The shell omits its old `world.past`, so its former hot length is not
+    // available here. This still validates every cursor field that can agree
+    // with the authoritative root before the streamed tail id is known.
+    assertDomainHistoryCursorMatchesLedger(
+      originalDomainCursor,
+      root.eventCount,
+      originalDomainCursor.tailEventId,
+      originalDomainCursor.eventCount - originalDomainCursor.hotStartIndex,
+      'bounded decode shell',
+    );
+  }
+
+  const lastStepGroups = lastStepContentGroups(shell.lastStep);
+  const boundedHistory = decodeBoundedRunHistoryReverse(
+    root,
+    readChunk,
+    hotStartIndex,
+    requestedColdPins,
+    lastStepGroups,
+  );
+  if (originalDomainCursor) {
+    assertDomainHistoryCursorMatchesLedger(
+      originalDomainCursor,
+      root.eventCount,
+      boundedHistory.tailEventId,
+      originalDomainCursor.eventCount - originalDomainCursor.hotStartIndex,
+      'bounded decode shell',
+    );
+  }
+
+  const historyCursor: WorldHistoryCursorV1 = {
+    version: 1,
+    eventCount: root.eventCount,
+    hotStartIndex,
+    tailEventId: boundedHistory.tailEventId,
+  };
+  const lastStep = rebindLastStepToRetainedEvents(
+    shell.lastStep,
+    boundedHistory.pinnedEvents,
+    boundedHistory.hotEvents,
+    hotStartIndex,
+    lastStepGroups,
+    boundedHistory.ledgerOccurrencesByLastStepHash,
+  );
+  return {
+    state: {
+      ...shell,
+      world: {
+        ...shell.world,
+        historyCursor,
+        past: boundedHistory.hotEvents,
+      },
+      lastStep,
+    },
+    metadata: root,
+    pinnedEvents: boundedHistory.pinnedEvents,
+  };
+}
+
+/**
+ * Generic bounded history decoder. It restores every shell field exactly and
+ * therefore remains unsuitable for legacy roots whose observer blobs dominate
+ * memory; gameplay continuation uses the closed profile below.
+ */
+export async function decodeSegmentedRunStateBounded(
+  rootChunk: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  options: RunStateBoundedDecodeOptions,
+): Promise<DecodedBoundedRunState> {
+  const root = parseRunStateRoot(rootChunk);
+  const shell = decodeRunStateShell(root, readChunk);
+  return decodeSegmentedRunStateBoundedFromShell(rootChunk, readChunk, options, shell);
+}
+
+/**
+ * Decode the closed schema-3 gameplay continuation profile. Large observer
+ * history is carried opaquely, terminal rule objects are filtered in manifest
+ * order, and no staged shell is returned before both shell and history seals
+ * have succeeded.
+ */
+export async function decodeSegmentedRunStateGameplayBounded(
+  rootChunkInput: RunStateChunk,
+  readChunk: (hash: string) => RunStateChunk,
+  options: RunStateGameplayBoundedDecodeOptions,
+): Promise<DecodedBoundedGameplayRunState> {
+  const rootChunk = snapshotRunStateChunk(rootChunkInput);
+  const root = parseRunStateRoot(rootChunk);
+  if (root.schemaVersion !== 3) {
+    throw new Error('bounded gameplay decode 只接受 schemaVersion 3 root');
+  }
+  if (!options
+    || !Number.isSafeInteger(options.hotEventLimit)
+    || options.hotEventLimit < 0
+    || !options.observerAuthority
+    || options.observerAuthority.stateHash !== rootChunk.hash) {
+    throw new Error('bounded gameplay decode options/observer authority 无效');
+  }
+
+  const accumulator = createBoundedGameplayShellAccumulator(options.observerAuthority);
+  const receipt = await streamVerifiedSchema3GameplayShell(
+    rootChunk,
+    readChunk,
+    accumulator.visitor,
+  );
+  assertVerifiedSchema3RunStateShellReceipt(receipt, rootChunk.hash);
+  const gameplayShell = accumulator.finish(receipt);
+  const { past: _emptyPast, ...world } = gameplayShell.state.world;
+  if (_emptyPast.length !== 0) {
+    throw new Error('bounded gameplay shell accumulator 非法预装 world.past');
+  }
+  const shell = {
+    ...gameplayShell.state,
+    world,
+  } as SimulationStateShell;
+  const decoded = await decodeSegmentedRunStateBoundedFromShell(
+    rootChunk,
+    readChunk,
+    options,
+    shell,
+  );
+  return {
+    ...decoded,
+    gameplayShell: Object.freeze({
+      sourceArrayLengths: gameplayShell.sourceArrayLengths,
+      retainedArrayLengths: gameplayShell.retainedArrayLengths,
+    }),
   };
 }

@@ -8,11 +8,13 @@ import { MONTHS_PER_YEAR, PLANNING_TICKS_PER_MONTH } from '../../domain/calendar
 import { createInitialAnimals } from '../../domain/animal';
 import { emptyCivilizationIndex } from '../../domain/civilization-index';
 import { createCognitionState, ensureCognitionState } from '../../domain/cognition';
-import { primeEventIndex } from '../../domain/event-index';
+import { primeEventIndex, worldEventById } from '../../domain/event-index';
+import { historyEventCount, initializeHistoryCursorFromFullHistory } from '../../domain/history';
 import { Material } from '../../domain/material';
 import {
   MECHANICAL_POWER_WORLD_VERSION,
   emptyMechanicalPowerWorldState,
+  migrateMechanicalPowerWorldState,
 } from '../../domain/mechanical-power';
 import { initialEraSchedule } from '../../domain/monthly-processes';
 import {
@@ -100,6 +102,23 @@ export function createDefaultSimulationConfig(overrides: Partial<SimulationConfi
 }
 
 const FOUNDER_COHORT_EVENT_ID = 'e-0-environment-founding-0';
+const LEGACY_REQUIRED_SOCIAL_OPTION = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
+const LEGACY_FULFILLMENT_OPTION = /^(?:settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|return-shared-living|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
+
+function legacyDecisionCreatedObligationIntent(
+  state: SimulationState,
+  intent: SimulationState['intents'][number],
+): boolean {
+  const source = worldEventById(state, intent.sourceDecisionEventId);
+  if (source?.kind !== 'decision'
+    || source.intentId !== intent.id
+    || source.who !== intent.ownerId
+    || (source.decision.kind !== 'start' && source.decision.kind !== 'revise')) return false;
+  return [source.decision.optionId, source.decision.followUpOptionId]
+    .filter((optionId): optionId is string => typeof optionId === 'string')
+    .some((optionId) => LEGACY_REQUIRED_SOCIAL_OPTION.test(optionId)
+      || LEGACY_FULFILLMENT_OPTION.test(optionId));
+}
 
 function initialPerson(seed: number, profile: CharacterProfile, spawnCell: number, spawnZ: number, profiles: CharacterProfile[]): PersonState {
   const founderAge = createFounderAgeMonths(seed, profile.id);
@@ -183,6 +202,7 @@ export function createInitialState(
     schemaVersion: 17,
     seed,
     branchId: `root-${seed}-${config.civilizationNo}`,
+    identityCounters: { intentOrdinal: 0 },
     clock: { unit: 'month', elapsedMonths: 0, monthsPerYear: MONTHS_PER_YEAR },
     world: {
       grid: generated.world,
@@ -191,6 +211,12 @@ export function createInitialState(
       remains: [],
       memorials: [],
       past: [foundingFact],
+      historyCursor: {
+        version: 1,
+        eventCount: 1,
+        hotStartIndex: 0,
+        tailEventId: foundingFact.id,
+      },
       traffic: {},
       mechanicalPower: generated.mechanicalPower,
     },
@@ -259,6 +285,16 @@ export function adoptSimulationState(
   state.containers ??= [];
   state.eraPredictions ??= [];
   state.projects ??= [];
+  const persistedIntentOrdinal = state.identityCounters?.intentOrdinal;
+  const compatibleIntentOrdinal = typeof persistedIntentOrdinal === 'number'
+    && Number.isSafeInteger(persistedIntentOrdinal)
+    && persistedIntentOrdinal >= 0
+    ? persistedIntentOrdinal
+    : state.intents.length;
+  state.identityCounters = {
+    ...state.identityCounters,
+    intentOrdinal: Math.max(state.intents.length, compatibleIntentOrdinal),
+  };
   state.civilization.era ??= initialEraSchedule(state.seed, state.civilization.conditions.chaosIntensity);
   if (!state.world.traffic) {
     state.world.traffic = {};
@@ -286,7 +322,7 @@ export function adoptSimulationState(
     state.world.mechanicalPower = state.world.grid.generator.version === CURRENT_WORLD_GENERATOR_VERSION
       ? mechanicalPowerWorldForSeed(state.world.grid.generator.seed)
       : emptyMechanicalPowerWorldState();
-  }
+  } else migrateMechanicalPowerWorldState(state.world.mechanicalPower);
   ensureNamingMetadata(state.people);
   for (const drop of state.world.drops) {
     drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
@@ -338,6 +374,7 @@ export function adoptSimulationState(
       ? event.toZ
       : surfaceStandingPosition(state.world.grid, event.toCellId)?.z ?? event.fromZ;
   }
+  initializeHistoryCursorFromFullHistory(state);
   // Legacy intents may lack agreementId. Resolve their two source facts through
   // an active-agreement index instead of scanning every agreement per intent.
   const activeAgreementsByProposalEventId = new Map<string, typeof state.agreements>();
@@ -350,9 +387,12 @@ export function adoptSimulationState(
   for (const intent of state.intents) {
     // Completed historical intents may accumulate the same proposal/response
     // evidence through later decisions without ever having been an obligation.
-    // Only a still-executable legacy intent needs migration; newly created
-    // obligation intents persist agreementId at creation time.
-    if (intent.agreementId || (intent.status !== 'active' && intent.status !== 'suspended')) continue;
+    // Only a still-executable intent whose own decision selected an obligation
+    // option may migrate. Generic source facts are shared by unrelated plans
+    // and cannot prove agreement ownership by themselves.
+    if (intent.agreementId
+      || (intent.status !== 'active' && intent.status !== 'suspended')
+      || !legacyDecisionCreatedObligationIntent(state, intent)) continue;
     const sourceFactIds = intent.sourceFactIds ?? [];
     let agreement: SimulationState['agreements'][number] | undefined;
     for (const sourceFactId of sourceFactIds) {
@@ -393,6 +433,6 @@ export function buildEvolutionReport(finalState: SimulationState, checkpoints: S
     civilization: structuredClone(finalState.civilization),
     finalState: copyState(finalState),
     checkpoints: checkpoints.map(copyState),
-    review: { milestones: structuredClone(finalState.derived.milestones), eventCount: finalState.world.past.length },
+    review: { milestones: structuredClone(finalState.derived.milestones), eventCount: historyEventCount(finalState) },
   };
 }

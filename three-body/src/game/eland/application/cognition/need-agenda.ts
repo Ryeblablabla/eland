@@ -3,7 +3,7 @@ import { cognitionStateOf, outcomeBeliefSuccess, outcomeBeliefUncertainty } from
 import { materialHas } from '../../domain/material';
 import type { DecisionContext } from '../../domain/model';
 import { personalityScore } from '../../domain/personality';
-import { bereavementUrgency } from '../../domain/mortuary';
+import { strongestBereavement } from '../../domain/mortuary';
 import { worldEventById } from '../../domain/event-index';
 import { agreementsForPerson } from '../../domain/agreement';
 import { personById, projectById } from '../../domain/state-index';
@@ -15,6 +15,7 @@ import {
 } from '../../domain/shared-living';
 import { assessFamilyReadiness } from './family-readiness';
 import { crowdingUrgency } from '../../domain/social-space';
+import { relationTo } from '../../domain/relation';
 
 export type NeedKind =
   | 'homeostasis'
@@ -169,11 +170,8 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     ['本人能够直接感到同一站立位置过于拥挤，附近较空位置会更舒适'],
   ));
 
-  const grief = (person.bereavements ?? []).map((bereavement) => ({
-    bereavement,
-    urgency: bereavementUrgency(context.state, bereavement, atMonth),
-  })).sort((left, right) => right.urgency - left.urgency)[0];
-  if (grief?.urgency > 0) {
+  const grief = strongestBereavement(context.state, person, atMonth);
+  if (grief && grief.urgency > 0) {
     const deceased = personById(context.state, grief.bereavement.deceasedPersonId);
     needs.push(signal(
       'bereavement',
@@ -272,7 +270,7 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
   const careReasons: string[] = [];
   for (const other of context.visiblePeople) {
     if (other.id === person.id) continue;
-    const relation = person.relations.find((candidate) => candidate.personId === other.id);
+    const relation = relationTo(person, other.id);
     const danger = Math.max(
       saturating(COGNITIVE_POLICY.bodyComfort - other.body.health, COGNITIVE_POLICY.bodyDeficitScale),
       saturating(COGNITIVE_POLICY.bodyComfort - other.body.hydration, COGNITIVE_POLICY.bodyDeficitScale),
@@ -395,12 +393,10 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
   const companionSatisfaction = combinedSatisfaction(activeCompanions.flatMap((agreement) => {
     const otherId = agreement.partyIds.find((candidate) => candidate !== person.id);
     const other = otherId ? personById(context.state, otherId) : undefined;
-    const relation = otherId
-      ? person.relations.find((candidate) => candidate.personId === otherId)
-      : undefined;
-    if (!other || !relation) return [];
+    const relation = otherId ? relationTo(person, otherId) : undefined;
+    if (!other) return [];
     const relationalSecurity = clamp(
-      (Math.max(0, relation.trust) + Math.max(0, relation.bond) - Math.max(0, relation.fear)) / 100,
+      (Math.max(0, relation?.trust ?? 0) + Math.max(0, relation?.bond ?? 0) - Math.max(0, relation?.fear ?? 0)) / 100,
     );
     const anchor = companionLivingAnchor(context.state, agreement);
     const currentlyShared = Boolean(anchor && personWithinLivingArea(person, anchor));

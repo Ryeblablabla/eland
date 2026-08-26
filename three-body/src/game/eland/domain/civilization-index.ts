@@ -1,6 +1,13 @@
-import type { ActionFact, CivilizationIndex, SimulationState } from './model';
+import type {
+  ActionFact,
+  CivilizationIndex,
+  MaterialCapabilityObservation,
+  SimulationState,
+  WorldEvent,
+} from './model';
 import { Material } from './material';
-import { isAlive } from './person';
+import { livingPeople } from './state-index';
+import { actionFacts, worldEventById, worldEventFacts } from './event-index';
 import { observeFunctionalBuildings, observeMaterialCapabilities } from './era-progression';
 import {
   WORLD_CELL_COUNT,
@@ -18,11 +25,73 @@ const WEIGHTS = {
   history: 1,
 } as const;
 
+const MATERIAL_CAPABILITY_KEYS = [
+  'processed-wood',
+  'masonry-stone',
+  'bronze',
+  'iron',
+] as const;
+const MATERIAL_CAPABILITY_STAGE_FACTOR = {
+  hypothesis: 0,
+  sample: 0.1,
+  repeatable: 0.35,
+  distributed: 0.7,
+  institutional: 1,
+} as const;
+const MATERIAL_CAPABILITY_WEIGHTS = {
+  'processed-wood': 20,
+  'masonry-stone': 45,
+  bronze: 110,
+  iron: 180,
+} as const;
+
 // Experiment toggles. Baseline and candidate builds differ only here; these
 // observer flags must never be read by planners or world rules.
 const USE_FUNCTIONAL_TERRITORY = true;
 const FILTER_SOCIAL_SELF_DYADS = true;
 export const CIVILIZATION_INDEX_FORMULA_VERSION = 'open-material-institution-v1';
+export const CIVILIZATION_INDEX_CERTIFIED_FLOOR_FORMULA_VERSION =
+  'open-material-institution-v1-certified-current-root-lower-bound-v1' as const;
+
+export interface CertifiedCivilizationIndexFacilityFacts {
+  /** Canonical facility identity; duplicates fail closed. */
+  readonly id: string;
+  /** Current-grid truth, not historical installation presence. */
+  readonly active: boolean;
+  /** Exact folded count. A bounded witness-array length is not accepted here. */
+  readonly useCount: number;
+  /** Exact distinct-user count from the folded facility history. */
+  readonly userCount: number;
+}
+
+function materialCapabilityPointsFromCanonicalObservations(
+  capabilities: readonly MaterialCapabilityObservation[],
+): number {
+  if (capabilities.length !== MATERIAL_CAPABILITY_KEYS.length) {
+    throw new Error('civilization index material capabilities 必须精确覆盖四个 canonical key');
+  }
+  const byKey = new Map<MaterialCapabilityObservation['key'], MaterialCapabilityObservation>();
+  for (const capability of capabilities) {
+    if (!MATERIAL_CAPABILITY_KEYS.includes(capability.key)
+      || byKey.has(capability.key)
+      || !Object.prototype.hasOwnProperty.call(MATERIAL_CAPABILITY_STAGE_FACTOR, capability.stage)) {
+      throw new Error('civilization index material capabilities 含重复 key 或非法 stage');
+    }
+    byKey.set(capability.key, capability);
+  }
+  return MATERIAL_CAPABILITY_KEYS.reduce((sum, key) => {
+    const capability = byKey.get(key);
+    if (!capability) throw new Error(`civilization index material capability 缺少 ${key}`);
+    return sum + MATERIAL_CAPABILITY_WEIGHTS[key] * MATERIAL_CAPABILITY_STAGE_FACTOR[capability.stage];
+  }, 0);
+}
+
+export interface CertifiedCivilizationIndexFloorFacts {
+  /** Capability stages reduced from exact counts/span/producers/adoption/sites/institutions. */
+  readonly materialCapabilities: readonly MaterialCapabilityObservation[];
+  /** Exact current activity plus exact cumulative use/user counts. */
+  readonly facilities: readonly CertifiedCivilizationIndexFacilityFacts[];
+}
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -87,7 +156,11 @@ function actionCell(event: ActionFact): number | null {
   return isCellId(result) ? result : null;
 }
 
-function currentHumanModifiedCells(state: SimulationState, actions: ActionFact[]): Set<number> {
+function currentHumanModifiedCells(
+  state: SimulationState,
+  events: readonly WorldEvent[],
+  actions: readonly ActionFact[],
+): Set<number> {
   const result = new Set<number>();
   const latestMaterialChange = new Map<string, {
     cell: number;
@@ -95,7 +168,7 @@ function currentHumanModifiedCells(state: SimulationState, actions: ActionFact[]
     to: number;
     action: ActionFact | null;
   }>();
-  for (const event of state.world.past) {
+  for (const event of events) {
     if (!('diff' in event)) continue;
     const changes = Array.isArray(event.diff.materialChanges) ? event.diff.materialChanges : [];
     for (const raw of changes) {
@@ -141,7 +214,7 @@ function actionCells(event: ActionFact): number[] {
   return [...cells];
 }
 
-function legacyTerritoryObservation(state: SimulationState, actions: ActionFact[]): { score: number; evidence: Record<string, number> } {
+function legacyTerritoryObservation(state: SimulationState, actions: readonly ActionFact[]): { score: number; evidence: Record<string, number> } {
   const exploredCells = new Set<number>();
   const modifiedCells = new Set<number>();
   for (const person of state.people) {
@@ -197,13 +270,103 @@ export function emptyCivilizationIndex(atMonth = 0): CivilizationIndex {
 }
 
 /**
+ * Observer-only certified lower bound for a compact authoritative shell.
+ *
+ * Every included term is the corresponding non-negative term from
+ * `calculateCivilizationIndex`. Terms whose complete replay basis is not
+ * available are deliberately zero, so this value may prove `>= threshold`
+ * but a value below a threshold means only "unknown". Callers must never take
+ * a maximum with an older snapshot: this observation describes the current
+ * root only.
+ */
+export function calculateCertifiedCivilizationIndexFloor(
+  state: SimulationState,
+  facts: Readonly<CertifiedCivilizationIndexFloorFacts>,
+): CivilizationIndex {
+  const assertExactCount = (value: number, label: string): void => {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`civilization index certified floor ${label} 必须是非负安全整数`);
+    }
+  };
+  const facilityIds = new Set<string>();
+  for (const facility of facts.facilities) {
+    if (typeof facility.id !== 'string' || facility.id.length === 0 || facilityIds.has(facility.id)) {
+      throw new Error('civilization index certified floor facility.id 必须 canonical 且不可重复');
+    }
+    facilityIds.add(facility.id);
+    if (typeof facility.active !== 'boolean') {
+      throw new Error('civilization index certified floor facility.active 必须是 boolean');
+    }
+    assertExactCount(facility.useCount, 'facility.useCount');
+    assertExactCount(facility.userCount, 'facility.userCount');
+  }
+
+  const living = livingPeople(state);
+  const historicalPeople = state.people.filter((person) => person.bornAtMonth <= state.clock.elapsedMonths);
+  const generationCount = new Set(historicalPeople.map((person) => person.generation)).size;
+  const completeStructures = state.derived.structures.filter((structure) => structure.complete).length;
+  const cultivatedCells = state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0;
+  const activeFacilities = facts.facilities.filter((facility) => facility.active);
+  const usedFacilities = activeFacilities.filter((facility) => facility.useCount > 0);
+  const multiUserUsedFacilities = usedFacilities.filter((facility) => facility.userCount >= 2);
+  const functionalInstitutions = state.derived.institutions.length;
+  const recordedKnowledge = state.records.length;
+
+  const materialCapabilityPoints = materialCapabilityPointsFromCanonicalObservations(
+    facts.materialCapabilities,
+  );
+
+  const populationPoints = living.length * 6 + Math.max(0, generationCount - 1) * 8;
+  const territoryPoints = completeStructures * 8
+    + activeFacilities.length * 9
+    + Math.min(30, cultivatedCells * 0.8);
+  const technologyPoints = materialCapabilityPoints + usedFacilities.length * 4;
+  const socialPoints = functionalInstitutions * 18 + multiUserUsedFacilities.length * 6;
+  const historyPoints = recordedKnowledge * 8;
+  const component = (score: number, weight: number, evidence: Record<string, number>) => ({
+    score: roundedOpen(score),
+    weight,
+    evidence,
+  });
+  const components: CivilizationIndex['components'] = {
+    population: component(populationPoints, WEIGHTS.population, {
+      livingPeople: living.length,
+      totalPeople: historicalPeople.length,
+      generations: generationCount,
+    }),
+    territory: component(territoryPoints, WEIGHTS.territory, {
+      completeStructures,
+      activeFunctionalBuildings: activeFacilities.length,
+      cultivatedCells,
+    }),
+    technology: component(technologyPoints, WEIGHTS.technology, {
+      materialCapabilityPoints: roundedOpen(materialCapabilityPoints),
+      activeUsedFacilities: usedFacilities.length,
+    }),
+    social: component(socialPoints, WEIGHTS.social, {
+      functionalInstitutions,
+      activeMultiUserUsedFacilities: multiUserUsedFacilities.length,
+    }),
+    history: component(historyPoints, WEIGHTS.history, { recordedKnowledge }),
+  };
+  const total = Object.values(components).reduce((sum, value) => sum + value.score * value.weight, 0);
+  return {
+    formulaVersion: CIVILIZATION_INDEX_CERTIFIED_FLOOR_FORMULA_VERSION,
+    total: roundedOpen(total),
+    calculatedAtMonth: state.clock.elapsedMonths,
+    components,
+  };
+}
+
+/**
  * Pure observer over authoritative state. It never grants abilities or changes
  * outcomes; every subscore is backed by replayable facts.
  */
 export function calculateCivilizationIndex(state: SimulationState): CivilizationIndex {
-  const living = state.people.filter(isAlive);
+  const living = livingPeople(state);
 
-  const actions = state.world.past.filter((event): event is ActionFact => event.kind === 'action');
+  const events = worldEventFacts(state);
+  const actions = actionFacts(state);
   const territoryObservation = USE_FUNCTIONAL_TERRITORY ? (() => {
     const livingIds = new Set(living.map((person) => person.id));
   const cognitiveCells = new Set<number>();
@@ -244,7 +407,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   ]);
   functionalCells.forEach((cell) => cognitiveCells.add(cell));
 
-  const persistentModifiedCells = currentHumanModifiedCells(state, actions);
+  const persistentModifiedCells = currentHumanModifiedCells(state, events, actions);
   state.derived.structures.forEach((structure) => structure.occupiedCells.forEach((cell) => persistentModifiedCells.add(cell)));
   standingContainers.forEach((container) => persistentModifiedCells.add(cellId(container.position.x, container.position.y)));
   cultivatedCells.forEach((cell) => persistentModifiedCells.add(cell));
@@ -282,14 +445,15 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const functionalSiteComponents = connectedCellComponents(functionalSiteAnchorCells);
   const functionalSiteByCell = new Map<number, number>();
   functionalSiteComponents.forEach((component, index) => component.forEach((cell) => functionalSiteByCell.set(cell, index)));
-  const eventMonthById = new Map(state.world.past.map((event) => [event.id, event.atMonth]));
   const siteEstablishmentMonths = functionalSiteComponents.map(() => state.clock.elapsedMonths);
   const establishSite = (cell: number, month: number): void => {
     const index = functionalSiteByCell.get(cell);
     if (index !== undefined) siteEstablishmentMonths[index] = Math.min(siteEstablishmentMonths[index], month);
   };
   for (const structure of functionalStructures) {
-    const sourceMonths = structure.sourceEventIds.map((id) => eventMonthById.get(id)).filter((month): month is number => month !== undefined);
+    const sourceMonths = structure.sourceEventIds
+      .map((id) => worldEventById(state, id)?.atMonth)
+      .filter((month): month is number => month !== undefined);
     if (!sourceMonths.length) continue;
     const establishedAt = Math.max(...sourceMonths);
     structure.occupiedCells.forEach((cell) => establishSite(cell, establishedAt));
@@ -408,7 +572,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
     if (record.kind === 'technique') confidentTechniques.add(record.knowledgeId);
   }
   const realizedProcesses = new Set<string>();
-  for (const event of state.world.past) {
+  for (const event of events) {
     if (event.kind !== 'action' || event.status !== 'completed' || event.action.kind !== 'act') continue;
     if (!['combine', 'separate', 'exert', 'expose', 'hunt'].includes(event.action.operation)) continue;
     realizedProcesses.add(`${event.action.operation}:${String(event.diff.outputMaterialId ?? event.diff.sourceMaterialId ?? event.diff.animalSpeciesId ?? 'none')}`);
@@ -437,7 +601,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   }
   const interactionDyads = new Set<string>();
   const interactionKinds = new Set<string>();
-  for (const event of state.world.past) {
+  for (const event of events) {
     if (event.kind !== 'action' || event.status !== 'completed') continue;
     if (event.action.kind === 'communicate') {
       const audience = event.action.audience
@@ -478,7 +642,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   const activeCollectives = state.collectives.filter((collective) => collective.status === 'active');
   const largestCollectiveSize = activeCollectives.reduce((largest, collective) => Math.max(largest,
     collective.memberships.filter((membership) => membership.status === 'active'
-      && state.people.some((person) => person.id === membership.personId && isAlive(person))).length), 0);
+      && living.some((person) => person.id === membership.personId)).length), 0);
   const contributionCounts = new Map<string, number>();
   for (const project of completedJointProjects) for (const personId of project.contributorIds) {
     contributionCounts.set(personId, (contributionCounts.get(personId) ?? 0) + 1);
@@ -506,7 +670,7 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
   let deaths = 0;
   let agreementOutcomes = 0;
   let eraTransitions = 0;
-  for (const event of state.world.past) {
+  for (const event of events) {
     if (event.kind === 'action'
       && event.status === 'completed'
       && event.action.kind === 'communicate'
@@ -534,12 +698,13 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
       turningCategories.add(`agreement:${event.change}`);
     }
   }
-  const eventMonths = new Map(state.world.past.map((event) => [event.id, event.atMonth]));
   state.derived.milestones.forEach((milestone) => {
     if (Number.isInteger(milestone.capabilityId)) capabilityIds.add(Number(milestone.capabilityId));
     const outcomeAnchor = [...milestone.evidenceEventIds]
-      .filter((eventId) => eventMonths.has(eventId))
-      .sort((first, second) => Number(eventMonths.get(first)) - Number(eventMonths.get(second)) || first.localeCompare(second))
+      .filter((eventId) => worldEventById(state, eventId) !== undefined)
+      .sort((first, second) => Number(worldEventById(state, first)?.atMonth)
+        - Number(worldEventById(state, second)?.atMonth)
+        || first.localeCompare(second))
       .at(-1);
     if (outcomeAnchor) causalEpisodeAnchors.add(outcomeAnchor);
     turningCategories.add(milestone.domain
@@ -578,12 +743,10 @@ export function calculateCivilizationIndex(state: SimulationState): Civilization
 
   const functionalBuildings = state.derived.functionalBuildings ?? observeFunctionalBuildings(state);
   const materialCapabilities = observeMaterialCapabilities(state);
-  const stageFactor = { hypothesis: 0, sample: 0.1, repeatable: 0.35, distributed: 0.7, institutional: 1 } as const;
   const stageRank = { hypothesis: 0, sample: 1, repeatable: 2, distributed: 3, institutional: 4 } as const;
-  const materialWeights = { 'processed-wood': 20, 'masonry-stone': 45, bronze: 110, iron: 180 } as const;
-  const materialCapabilityPoints = materialCapabilities.reduce((sum, capability) => (
-    sum + materialWeights[capability.key] * stageFactor[capability.stage]
-  ), 0);
+  const materialCapabilityPoints = materialCapabilityPointsFromCanonicalObservations(
+    materialCapabilities,
+  );
   const generationCount = new Set(historicalPeople.map((person) => person.generation)).size;
   const cultivatedCells = state.derived.regions.find((region) => region.kind === 'cultivated')?.cells.length ?? 0;
   const usedFacilities = functionalBuildings.filter((facility) => facility.useEventIds.length > 0);

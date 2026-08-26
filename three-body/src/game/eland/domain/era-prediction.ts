@@ -1,5 +1,6 @@
 import type { EraPrediction, SimulationState } from './model';
 import type { PersonState } from './person';
+import { relationTo } from './relation';
 
 export const MAX_ERA_PREDICTION_HORIZON_MONTHS = 6;
 
@@ -15,7 +16,7 @@ export function personTrustsEraPrediction(
       && candidate.status !== 'pending'
   ));
   const correct = resolved.filter((candidate) => candidate.status === 'correct').length;
-  const trust = person.relations.find((relation) => relation.personId === prediction.predictorId)?.trust ?? 0;
+  const trust = relationTo(person, prediction.predictorId)?.trust ?? 0;
   return trust >= 22 || (resolved.length >= 2 && correct / resolved.length >= 0.6 && trust >= 8);
 }
 

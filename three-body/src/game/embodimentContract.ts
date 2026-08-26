@@ -58,6 +58,18 @@ export type EmbodimentTargetView =
       containerId: string;
       cellId: number;
       z: number;
+    }
+  | {
+      kind: 'animal';
+      animalId: string;
+      cellId: number;
+      z: number;
+    }
+  | {
+      kind: 'remains';
+      remainsId: string;
+      cellId: number;
+      z: number;
     };
 
 export type EmbodimentOptionCategory =

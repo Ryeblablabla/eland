@@ -4,14 +4,16 @@ import type {
   GroundedConversationTopic,
 } from '../domain/action';
 import {
-  agreementFactsForPerson,
-  completedSupportActionFactsBetween,
+  GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
   groundedConversationOpeningsForListener,
-  hasGroundedConversationOpeningBasis,
-  hasGroundedConversationResponse,
+  hasRecentGroundedConversationResponseForListener,
+  hasRememberedGroundedConversationOpeningBasis,
+  compareWorldEventsInCanonicalOrder,
+  livePersonSocialEvidenceLeaseKey,
   planningOverlayEvents,
+  retainedColdWorldEventsForLease,
   worldEventById,
-  worldEventsByIdsInHistoryOrder,
+  worldEventByIdWithRetainedLease,
 } from '../domain/event-index';
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, type PersonState } from '../domain/person';
@@ -20,6 +22,8 @@ import { cellsInRadius } from '../world/grid';
 import { knowsDeath, remainsById } from '../domain/mortuary';
 import { latestSharedProjectBetween } from '../domain/project-participant-index';
 import { conversationalRendezvous, positionsWithinVoiceRange } from '../domain/social-space';
+import { relationTo } from '../domain/relation';
+import { agreementsForPerson } from '../domain/agreement';
 
 interface ConversationCandidate {
   topic: GroundedConversationTopic;
@@ -45,12 +49,26 @@ function resolvedSourceIds(state: SimulationState, sourceIds: string[]): string[
   return [...new Set(sourceIds)].filter((sourceId) => Boolean(worldEventById(state, sourceId))).sort();
 }
 
-function alreadyUsedBasis(state: SimulationState, basisKey: string): boolean {
-  return hasGroundedConversationOpeningBasis(state, basisKey);
+function alreadyUsedBasis(
+  state: SimulationState,
+  person: PersonState,
+  other: PersonState,
+  basisKey: string,
+): boolean {
+  return hasRememberedGroundedConversationOpeningBasis(
+    state,
+    basisKey,
+    person.id,
+    other.id,
+  );
 }
 
-function openingAlreadyAnswered(state: SimulationState, openingEventId: string): boolean {
-  return hasGroundedConversationResponse(state, openingEventId);
+function openingAlreadyAnswered(
+  state: SimulationState,
+  listenerId: string,
+  openingEventId: string,
+): boolean {
+  return hasRecentGroundedConversationResponseForListener(state, listenerId, openingEventId);
 }
 
 function basisKey(
@@ -67,7 +85,11 @@ function basisKey(
   ].join('|');
 }
 
-function latestEvent(state: SimulationState, predicate: (event: WorldEvent) => boolean): WorldEvent | undefined {
+function latestEvent(
+  state: SimulationState,
+  predicate: (event: WorldEvent) => boolean,
+  retainedCold: readonly WorldEvent[] = [],
+): WorldEvent | undefined {
   const overlay = planningOverlayEvents(state);
   for (let offset = overlay.length - 1; offset >= 0; offset -= 1) {
     const event = overlay[offset];
@@ -77,7 +99,15 @@ function latestEvent(state: SimulationState, predicate: (event: WorldEvent) => b
     const event = state.world.past[offset];
     if (predicate(event)) return event;
   }
+  for (let offset = retainedCold.length - 1; offset >= 0; offset -= 1) {
+    const event = retainedCold[offset];
+    if (predicate(event)) return event;
+  }
   return undefined;
+}
+
+function livingChildBirthLeaseKey(childId: string): string {
+  return `gameplay:living-child:${childId}:birth`;
 }
 
 function conditionPhrase(person: PersonState): { summary: string; sourceFactIds: string[] } | null {
@@ -100,12 +130,38 @@ function conditionPhrase(person: PersonState): { summary: string; sourceFactIds:
 }
 
 function gratitudeEvent(state: SimulationState, person: PersonState, other: PersonState): WorldEvent | undefined {
-  const agreementIds = agreementFactsForPerson(state, person.id)
-    .filter((event) => event.change === 'fulfilled' && event.partyIds.includes(other.id))
-    .map((event) => event.id);
-  const actionIds = completedSupportActionFactsBetween(state, other.id, person.id)
-    .map((event) => event.id);
-  return worldEventsByIdsInHistoryOrder(state, [...agreementIds, ...actionIds]).at(-1);
+  const personallyHeldSourceIds = new Set([
+    ...person.memories
+      .filter((memory) => memory.personIds.includes(other.id))
+      .flatMap((memory) => memory.sourceEventIds),
+    ...(relationTo(person, other.id)?.sourceEventIds ?? []),
+  ]);
+  const fulfilledAgreements = agreementsForPerson(state, person.id)
+    .filter((agreement) => agreement.status === 'fulfilled'
+      && agreement.partyIds.includes(other.id)
+      && agreement.fulfilledByPersonIds.includes(other.id));
+  const socialLeaseKey = livePersonSocialEvidenceLeaseKey(person.id);
+  return [...personallyHeldSourceIds]
+    .flatMap((eventId) => worldEventByIdWithRetainedLease(
+      state,
+      eventId,
+      socialLeaseKey,
+    ) ?? [])
+    .sort(compareWorldEventsInCanonicalOrder)
+    .filter((event) => {
+      if (event.kind !== 'action' || event.status !== 'completed') return false;
+      const directSupport = event.who === other.id && (
+        event.diff.caredPersonId === person.id
+        || event.action.kind === 'transfer'
+          && event.action.to.kind === 'person'
+          && event.action.to.personId === person.id
+      );
+      const fulfilledSupport = fulfilledAgreements.some((agreement) => (
+        agreement.fulfillmentEventIds.includes(event.id)
+      ));
+      return directSupport || fulfilledSupport;
+    })
+    .at(-1);
 }
 
 function sharedProject(state: SimulationState, person: PersonState, other: PersonState) {
@@ -117,9 +173,16 @@ function birthEventForSharedChild(state: SimulationState, person: PersonState, o
     && candidate.geneticParents.includes(person.id)
     && candidate.geneticParents.includes(other.id));
   if (!child) return undefined;
-  const birth = latestEvent(state, (event) => event.kind === 'environment'
-    && event.change === 'body'
-    && event.diff.bornPersonId === child.id);
+  const birth = latestEvent(
+    state,
+    (event) => event.kind === 'environment'
+      && event.change === 'body'
+      && event.diff.bornPersonId === child.id,
+    retainedColdWorldEventsForLease(state, livingChildBirthLeaseKey(child.id)),
+  );
+  if (!birth && (state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
+    throw new Error(`living child ${child.id} 缺少已验证出生事实`);
+  }
   return birth?.kind === 'environment' ? birth : undefined;
 }
 
@@ -240,7 +303,7 @@ function openingOption(
   atMonth: number,
 ): ActionOption | null {
   const conversationBasisKey = basisKey(person, other, candidate);
-  if (alreadyUsedBasis(state, conversationBasisKey)) return null;
+  if (alreadyUsedBasis(state, person, other, conversationBasisKey)) return null;
   const conversation: GroundedConversationRef = {
     version: 'grounded-conversation-v1',
     basisKey: conversationBasisKey,
@@ -317,7 +380,7 @@ function liveResponseOpeningIds(state: SimulationState, person: PersonState): Se
 function pendingOpening(state: SimulationState, person: PersonState, atMonth: number): ActionFact | undefined {
   const liveResponses = liveResponseOpeningIds(state, person);
   return [...groundedConversationOpeningsForListener(state, person.id)].reverse().find((event) => {
-    if (atMonth - event.atMonth > 6
+    if (atMonth - event.atMonth > GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS
       || event.action.kind !== 'communicate'
       || event.action.content.kind !== 'claim') return false;
     const conversation = event.action.content.conversation;
@@ -325,7 +388,7 @@ function pendingOpening(state: SimulationState, person: PersonState, atMonth: nu
       && conversation.listenerId === person.id
       && event.action.audience.includes(person.id)
       && !liveResponses.has(event.id)
-      && !openingAlreadyAnswered(state, event.id);
+      && !openingAlreadyAnswered(state, person.id, event.id);
   });
 }
 
@@ -342,7 +405,7 @@ function responseOptionForOpening(
   const speaker = speakerCandidate && isAlive(speakerCandidate) ? speakerCandidate : undefined;
   if (!speaker || (!positionsWithinVoiceRange(person.position, speaker.position)
     && !visiblePeople.some((candidate) => candidate.id === speaker.id))) return null;
-  const relation = person.relations.find((candidate) => candidate.personId === speaker.id);
+  const relation = relationTo(person, speaker.id);
   const guarded = (relation?.fear ?? 0) >= 35 && (relation?.trust ?? 0) < 8;
   const summary = responseMeaning(openingConversation.topic, guarded);
   const conversation: GroundedConversationRef = {

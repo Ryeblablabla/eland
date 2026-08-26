@@ -1,26 +1,31 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'threebody-reproduction-test-'));
+const simulationEntryPath = path.join(temporaryDirectory, 'simulation-entry.ts');
 const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const executorBundlePath = path.join(temporaryDirectory, 'action-executor.mjs');
-const decisionFactorBundlePath = path.join(temporaryDirectory, 'decision-factor-forest.mjs');
 const monthlyProcessesBundlePath = path.join(temporaryDirectory, 'monthly-processes.mjs');
 const personalityBundlePath = path.join(temporaryDirectory, 'personality.mjs');
 const materialBundlePath = path.join(temporaryDirectory, 'material.mjs');
 const gridBundlePath = path.join(temporaryDirectory, 'grid.mjs');
 
 try {
+  writeFileSync(simulationEntryPath, [
+    `export * from ${JSON.stringify(path.resolve('src/game/eland/simulation.ts'))};`,
+    `export { evaluateDecisionOption } from ${JSON.stringify(path.resolve('src/game/eland/application/decision-factor-forest.ts'))};`,
+    `export { appendCommittedEvents, initializeHistoryCursorFromFullHistory } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};`,
+    `export { derivePhysicalStructureIndex } from ${JSON.stringify(path.resolve('src/game/eland/domain/physical-structure-index.ts'))};`,
+  ].join('\n'));
   for (const [entry, output] of [
-    ['src/game/eland/simulation.ts', simulationBundlePath],
+    [simulationEntryPath, simulationBundlePath],
     ['src/game/eland/domain/agreement.ts', agreementBundlePath],
     ['src/game/eland/domain/action-executor.ts', executorBundlePath],
-    ['src/game/eland/application/decision-factor-forest.ts', decisionFactorBundlePath],
     ['src/game/eland/domain/monthly-processes.ts', monthlyProcessesBundlePath],
     ['src/game/eland/domain/personality.ts', personalityBundlePath],
     ['src/game/eland/domain/material.ts', materialBundlePath],
@@ -31,10 +36,9 @@ try {
     ], { stdio: 'pipe' });
   }
 
-  const { buildDecisionContexts, createInitialState, executeActiveIntent, seededFraction, stepSimulation } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
+  const { appendCommittedEvents, buildDecisionContexts, createInitialState, derivePhysicalStructureIndex, evaluateDecisionOption, executeActiveIntent, initializeHistoryCursorFromFullHistory, seededFraction, stepSimulation } = await import(`${pathToFileURL(simulationBundlePath).href}?test=${Date.now()}`);
   const { advanceAgreementLifecycle, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { executePrimitiveAction } = await import(`${pathToFileURL(executorBundlePath).href}?test=${Date.now()}`);
-  const { evaluateDecisionOption } = await import(`${pathToFileURL(decisionFactorBundlePath).href}?test=${Date.now()}`);
   const { advanceSharedRelationshipExperience } = await import(`${pathToFileURL(monthlyProcessesBundlePath).href}?test=${Date.now()}`);
   const { newbornInitialTrust } = await import(`${pathToFileURL(personalityBundlePath).href}?test=${Date.now()}`);
   const { Material } = await import(`${pathToFileURL(materialBundlePath).href}?test=${Date.now()}`);
@@ -155,7 +159,7 @@ try {
   for (let month = 1; month <= 4; month += 1) {
     const sharedActions = sharedActionTicks(month, 5);
     const sharedFacts = advanceSharedRelationshipExperience(state, sharedActions, month);
-    state.world.past.push(...sharedActions, ...sharedFacts);
+    appendCommittedEvents(state, [...sharedActions, ...sharedFacts]);
     state.clock.elapsedMonths = month;
   }
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
@@ -164,7 +168,7 @@ try {
   assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '关系 63/59 时仍应允许人物自行评估是否提出生殖');
   const fifthMonthActions = sharedActionTicks(5, 5);
   const fifthMonthFacts = advanceSharedRelationshipExperience(state, fifthMonthActions, 5);
-  state.world.past.push(...fifthMonthActions, ...fifthMonthFacts);
+  appendCommittedEvents(state, [...fifthMonthActions, ...fifthMonthFacts]);
   state.clock.elapsedMonths = 5;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.equal(directedRelation.trust, 65);
@@ -261,7 +265,7 @@ try {
     },
     audience: [responseMale.id], channel: 'voice',
   });
-  responseState.world.past.push(responseOfferFact);
+  appendCommittedEvents(responseState, [responseOfferFact]);
   recordAgreementAction(responseState, responseOfferFact);
   const responseRelation = responseMale.relations.find((relation) => relation.personId === responseFemale.id);
   Object.assign(responseRelation, { trust: 5, bond: 5, fear: 50, sourceEventIds: [founding.id] });
@@ -370,6 +374,9 @@ try {
   const fullTickAttemptState = structuredClone(state);
   fullTickAttemptState.clock.elapsedMonths = 1;
   fullTickAttemptState.world.past = fullTickAttemptState.world.past.filter((event) => event.atMonth <= 1);
+  delete fullTickAttemptState.world.historyCursor;
+  initializeHistoryCursorFromFullHistory(fullTickAttemptState);
+  fullTickAttemptState.world.physicalStructureIndex = derivePhysicalStructureIndex(fullTickAttemptState);
   fullTickAttemptState.intents = [];
   for (const [index, actorId] of [female.id, male.id].entries()) {
     const actor = fullTickAttemptState.people.find((person) => person.id === actorId);
@@ -696,6 +703,7 @@ try {
   }];
   birthState.civilization.externalClimate = { epoch: 'stable', kind: 'temperate', severity: 0 };
   for (const person of birthState.people) person.body = { health: 100, hydration: 100, nutrition: 100 };
+  birthState.world.physicalStructureIndex = derivePhysicalStructureIndex(birthState);
   const afterBirth = stepSimulation(birthState, { decide: () => ({ kind: 'idle', reason: '只检查出生关系' }) });
   const child = afterBirth.people.find((person) => person.bornAtMonth === 1);
   assert.ok(child, '到期妊娠应产生新生儿');
@@ -716,18 +724,22 @@ try {
   assert.deepEqual(witnessRelation?.sourceEventIds, [birthFact.id], '初始信任必须只引用真实出生事实');
   const witnessToChild = afterBirth.people.find((person) => person.id === birthWitness.id)
     .relations.find((relation) => relation.personId === child.id);
-  assert.equal(witnessToChild?.trust, 0, '初始信任只能从新生儿指向在场者，不能伪造双向关系');
+  assert.equal(witnessToChild, undefined, '初始信任只能从新生儿指向在场者，不能为旁观者伪造反向零关系');
   const lateRelation = child.relations.find((relation) => relation.personId === lateVisitor.id);
-  assert.deepEqual(lateRelation, { personId: lateVisitor.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] }, '出生时不在场的陌生人不能获得初始关系');
+  assert.equal(lateRelation, undefined, '出生时不在场的陌生人不能获得无事实零关系');
+  for (const parentId of child.geneticParents) {
+    const parentRelation = child.relations.find((relation) => relation.personId === parentId);
+    assert.ok(parentRelation?.bond > 0 && parentRelation.sourceEventIds.includes(birthFact.id), '父母关系必须保留真实出生来源与亲缘羁绊');
+  }
 
   const laterArrivalState = structuredClone(afterBirth);
   const laterChild = laterArrivalState.people.find((person) => person.id === child.id);
   const laterVisitor = laterArrivalState.people.find((person) => person.id === lateVisitor.id);
   laterVisitor.position = structuredClone(laterChild.position);
   const afterLaterArrival = stepSimulation(laterArrivalState, { decide: () => ({ kind: 'idle', reason: '检查后来到场者' }) });
-  assert.deepEqual(
+  assert.equal(
     afterLaterArrival.people.find((person) => person.id === child.id).relations.find((relation) => relation.personId === lateVisitor.id),
-    { personId: lateVisitor.id, trust: 0, bond: 0, fear: 0, sourceEventIds: [] },
+    undefined,
     '陌生人后来同格不会追授出生时人格先验',
   );
 
@@ -778,7 +790,7 @@ try {
     for (let month = 1; month <= 60; month += 1) {
       const sharedActions = sharedActionTicks(month, 5, first, second);
       const facts = advanceSharedRelationshipExperience(relationshipState, sharedActions, month);
-      relationshipState.world.past.push(...sharedActions, ...facts);
+      appendCommittedEvents(relationshipState, [...sharedActions, ...facts]);
       relationshipState.clock.elapsedMonths = month;
       if (month === 20) {
         const monthTwenty = buildDecisionContexts(relationshipState).find((candidate) => candidate.person.id === first.id);

@@ -22,7 +22,13 @@ function trackedEvents(events) {
 function stateAt(month, events, milestones) {
   return {
     clock: { elapsedMonths: month },
-    world: { past: events },
+    world: {
+      past: events,
+      historyCursor: {
+        version: 1, eventCount: events.length, hotStartIndex: 0,
+        tailEventId: events.at(-1)?.id ?? null,
+      },
+    },
     people: [
       { id: 'p1', bornAtMonth: 0 },
       { id: 'p2', bornAtMonth: 13 },
@@ -64,7 +70,7 @@ try {
     '--format=esm',
     `--outfile=${bundlePath}`,
   ], { stdio: 'pipe' });
-  const { checkpointFor, evolvePath } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const { buildEvolutionFactsReport, checkpointFor, evolvePath } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   const firstEvents = [
     decision('decision-rule-1', 1, false),
@@ -112,7 +118,7 @@ try {
   const secondState = stateAt(24, secondEvents, [firstMilestone, secondMilestone]);
   const trackedCheckpointEvents = trackedEvents(secondEvents);
   const incrementalCheckpoint = checkpointFor(
-    { ...secondState, world: { past: trackedCheckpointEvents.proxy } },
+    { ...secondState, world: { ...secondState.world, past: trackedCheckpointEvents.proxy } },
     usage,
     firstCheckpoint,
   );
@@ -131,13 +137,13 @@ try {
     'incremental decision counts must equal a full replay',
   );
   assert.deepEqual(
-    trackedCheckpointEvents.indexes,
+    [...new Set(trackedCheckpointEvents.indexes)].sort((left, right) => left - right),
     [4, 5, 6, 7],
     'the second checkpoint must read only events after the previous eventCount',
   );
 
   const trackedMilestoneEvents = trackedEvents(secondEvents);
-  const incrementalPath = evolvePath({ ...secondState, world: { past: trackedMilestoneEvents.proxy } }, {
+  const incrementalPath = evolvePath({ ...secondState, world: { ...secondState.world, past: trackedMilestoneEvents.proxy } }, {
     runId: 'incremental-path',
     model: 'rule-planner-v1',
     fromMonth: 0,
@@ -147,7 +153,7 @@ try {
     status: 'running',
   });
   assert.deepEqual(
-    trackedMilestoneEvents.indexes,
+    [...new Set(trackedMilestoneEvents.indexes)].sort((left, right) => left - right),
     [4, 5, 6, 7],
     'a newly observed milestone may resolve evidence only from the same event suffix',
   );
@@ -186,7 +192,7 @@ try {
   const thirdState = stateAt(36, thirdEvents, [firstMilestone, secondMilestone]);
   const trackedTurningEvents = trackedEvents(thirdEvents);
   const thirdCheckpoint = checkpointFor(thirdState, usage, incrementalCheckpoint);
-  evolvePath({ ...thirdState, world: { past: trackedTurningEvents.proxy } }, {
+  evolvePath({ ...thirdState, world: { ...thirdState.world, past: trackedTurningEvents.proxy } }, {
     runId: 'incremental-path',
     model: 'rule-planner-v1',
     fromMonth: 0,
@@ -196,9 +202,47 @@ try {
     status: 'completed',
   });
   assert.deepEqual(
-    trackedTurningEvents.indexes,
+    [...new Set(trackedTurningEvents.indexes)].sort((left, right) => left - right),
     [8],
     'without a new milestone, turning-point evolution must inspect only the event suffix',
+  );
+
+  const boundedSecondEvents = trackedEvents(secondEvents.slice(4));
+  const boundedSecondState = {
+    ...secondState,
+    world: {
+      ...secondState.world,
+      past: boundedSecondEvents.proxy,
+      historyCursor: {
+        version: 1, eventCount: secondEvents.length, hotStartIndex: 4,
+        tailEventId: secondEvents.at(-1).id,
+      },
+    },
+  };
+  const boundedCheckpoint = checkpointFor(boundedSecondState, usage, firstCheckpoint);
+  assert.deepEqual(
+    {
+      eventCount: boundedCheckpoint.eventCount,
+      ruleDecisions: boundedCheckpoint.ruleDecisions,
+      modelDecisions: boundedCheckpoint.modelDecisions,
+    },
+    {
+      eventCount: fullCheckpoint.eventCount,
+      ruleDecisions: fullCheckpoint.ruleDecisions,
+      modelDecisions: fullCheckpoint.modelDecisions,
+    },
+    'bounded checkpoint 必须使用绝对 cursor 并从上一绝对 checkpoint 连续累计',
+  );
+  assert.deepEqual([...new Set(boundedSecondEvents.indexes)].sort((left, right) => left - right), [0, 1, 2, 3],
+    'bounded checkpoint 只能读取本地热窗对应的绝对 suffix');
+  assert.throws(() => checkpointFor(boundedSecondState, usage), /缺少绝对序号/u,
+    '没有前缀累计的 bounded checkpoint 必须 fail closed');
+  assert.throws(() => checkpointFor(boundedSecondState, usage, { ...firstCheckpoint, eventCount: 3 }), /缺少绝对序号/u,
+    '上一 checkpoint 落在冷前缀时不得从热窗零点重算');
+  assert.throws(
+    () => buildEvolutionFactsReport(boundedSecondState, incrementalPath),
+    /累计报告投影/u,
+    'terminal report 尚未有全历史累计时不得把 bounded 热窗伪装成完整事实报告',
   );
 
   process.stdout.write('incremental evolution path tests passed\n');

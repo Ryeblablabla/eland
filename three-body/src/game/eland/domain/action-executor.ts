@@ -23,7 +23,7 @@ import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
 import { recordPersonalityEvidence } from './personality';
 import { recordActionOutcomeBelief } from './cognition';
-import { applyRelationEvidence } from './relation';
+import { applyRelationEvidence, relationTo } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
 import { mandateById, mandateSupportsTransfer, recordGovernanceAction } from './governance';
@@ -38,6 +38,7 @@ import {
   inventoryCombinationFor,
   inventoryCombinationSummary,
   inventoryCombinationTechniqueId,
+  inventoryVoxelCombinationOutput,
 } from './interaction-rules';
 import { rememberMaterialPlace } from './spatial-knowledge';
 import { shelterGeometryAt } from './structure';
@@ -55,7 +56,7 @@ import {
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
 import { hasReproductiveRecoveryCondition } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
-import { personById, projectById } from './state-index';
+import { intentById, livingPeople, personById, projectById } from './state-index';
 import {
   isActionableChaosPrediction,
   personTrustsEraPrediction,
@@ -90,6 +91,10 @@ import {
   samePosition,
 } from './actions/execution-helpers';
 import { executeMechanicalPowerAction } from './actions/mechanical-power-actions';
+import {
+  executeElectricalPowerAction,
+  executeElectricalPowerFaultAttend,
+} from './actions/electrical-power-actions';
 import { executeMortuary } from './actions/mortuary-actions';
 import { rememberMineralDeposit } from './actions/material-observations';
 import {
@@ -97,6 +102,7 @@ import {
   validateTechniqueLearningAction,
 } from './actions/technique-learning-actions';
 import { executeCommunicate } from './actions/communication-actions';
+import { executeMeasurementAttend } from './actions/measurement-actions';
 
 export { addDrop, addInventory } from './actions/inventory';
 
@@ -261,8 +267,8 @@ function executeMove(state: SimulationState, person: PersonState, action: Extrac
   person.position.cellId = to.cellId;
   person.position.z = to.z;
   if (moved) person.position.lastPath.push(...segment.slice(1).map((position) => position.cellId));
-  const carried = !moved ? [] : state.people.filter((candidate) => isAlive(candidate)
-    && candidate.position.cellId === from.cellId
+  const carried = !moved ? [] : livingPeople(state).filter((candidate) =>
+    candidate.position.cellId === from.cellId
     && candidate.position.z === from.z
     && candidate.geneticParents.includes(person.id)
     && lifePlanningStage(candidate, atMonth) === 'dependent-child'
@@ -386,10 +392,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
   const authorized = action.from.kind === 'ground' || action.from.kind === 'container' || action.from.personId === person.id || agreementAuthorized || permissionAuthorized || mandateAuthorized;
   const witnessedBy = state.people.filter((candidate) => sameLocation(candidate, person)).map((candidate) => candidate.id);
   if (!authorized && sourcePerson && sourcePerson.body.health > 20 && !sourcePerson.conditions.some((condition) => condition.kind === 'restrained')) {
-    const relation = sourcePerson.relations.find((item) => item.personId === person.id);
-    if (relation) {
-      applyRelationEvidence(sourcePerson, person.id, eventId, { trust: -7, fear: 3 });
-    }
+    applyRelationEvidence(sourcePerson, person.id, eventId, { trust: -7, fear: 3 });
     return { status: 'blocked' as const, result: `${sourcePerson.name}阻止了未经授权的取物`, diff: { authorized: false, attempted: true, resistedBy: sourcePerson.id, witnessedBy } };
   }
   if (sourceDrop) sourceDrop.quantity -= quantity;
@@ -439,10 +442,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       sourceLineageKeys,
     );
     if (destinationPerson.id !== person.id && !referencedNorm) {
-      const relation = destinationPerson.relations.find((item) => item.personId === person.id);
-      if (relation) {
-        applyRelationEvidence(destinationPerson, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
-      }
+      applyRelationEvidence(destinationPerson, person.id, eventId, { trust: authorized ? 3 : -8, bond: authorized ? 2 : -5 });
     }
   } else if (destinationContainer) {
     addContainerInventory(
@@ -682,7 +682,11 @@ function executeInventoryCombine(state: SimulationState, person: PersonState, st
       : [Material.Workshop]);
   const exactMechanicalComponent = rule.output.materialId === Material.WaterWheel
     || rule.output.materialId === Material.DriveShaft
-    || rule.output.materialId === Material.Mill;
+    || rule.output.materialId === Material.SteelDriveShaft
+    || rule.output.materialId === Material.Mill
+    || rule.output.materialId === Material.MechanicalDynamo
+    || rule.output.materialId === Material.CopperConductor
+    || rule.output.materialId === Material.ResistiveLoad;
   const facilityBonus = facilityMaterialId
     && !materialHas(rule.output.materialId, 'facility')
     && !exactMechanicalComponent ? 1 : 0;
@@ -758,23 +762,14 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
     if (condition.stage > 1) condition.stage = (condition.stage - 1) as 1 | 2;
     else receiver.conditions = receiver.conditions.filter((item) => item.id !== condition.id);
     receiver.body.health = clamp(receiver.body.health + (stack.materialId === Material.HerbalMedicine ? 9 : 3));
-    const relation = receiver.relations.find((item) => item.personId === person.id);
-    if (relation) {
-      applyRelationEvidence(receiver, person.id, eventId, { trust: 7, bond: 5 });
-    }
+    applyRelationEvidence(receiver, person.id, eventId, { trust: 7, bond: 5 });
     return { status: 'completed' as const, result: `${person.name}用${materialDefinition(stack.materialId).name}照护${receiver.name}的${condition.kind === 'wound' ? '伤口' : '疾病'}`, diff: { caredPersonId: receiver.id, condition: condition.kind, careMaterialId: stack.materialId, fromStage: priorStage, toStage: receiver.conditions.find((item) => item.id === condition.id)?.stage ?? 0, health: receiver.body.health, atMonth } };
   }
   if (!stackRef || !voxelRef || stackRef.personId !== person.id || distanceToPosition(person, voxelRef.position) > 1) return { status: 'blocked' as const, result: '结合材料或目标不在近身范围', diff: {} };
   const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
   if (!stack) return { status: 'blocked' as const, result: '背包中的材料已经不存在', diff: {} };
   const current = voxelAt(state.world.grid, voxelRef.position.x, voxelRef.position.y, voxelRef.position.z);
-  let output: MaterialId | null = null;
-  if (stack.materialId === Material.Seed && (current === Material.WetSoil || current === Material.RichSoil || current === Material.ExhaustedSoil)) output = Material.CropSprout;
-  if (current === Material.Container && stack.materialId === Material.Plank) output = Material.Granary;
-  if (current === Material.Container && stack.materialId === Material.Stone) output = Material.Cistern;
-  if (current === Material.Air && materialHas(stack.materialId, 'solid') && (materialHas(stack.materialId, 'building') || materialHas(stack.materialId, 'placeable'))) {
-    output = stack.materialId === Material.Wood ? Material.Plank : stack.materialId;
-  }
+  const output = inventoryVoxelCombinationOutput(stack.materialId, current);
   if (output === null) return { status: 'blocked' as const, result: '这些物质当前没有可发生的结合规则', diff: { inputMaterialId: stack.materialId, targetMaterialId: current } };
   if (materialHas(output, 'solid') && bodyOccupies(state, voxelRef.position)) return { status: 'blocked' as const, result: '目标空气体素正被身体占据，不能放入固体物质', diff: { outputMaterialId: output, position: voxelRef.position } };
   stack.quantity -= 1;
@@ -934,7 +929,7 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
   const age = (candidate: PersonState) => atMonth - candidate.bornAtMonth;
   const relationshipSnapshot = [person, other].map((observer) => {
     const observedId = observer.id === person.id ? other.id : person.id;
-    const relation = observer.relations.find((candidate) => candidate.personId === observedId);
+    const relation = relationTo(observer, observedId);
     return {
       observerId: observer.id,
       otherPersonId: observedId,
@@ -975,7 +970,7 @@ function executeReproduce(state: SimulationState, person: PersonState, action: E
     ) < 55)) {
     return { status: 'blocked' as const, result: '当前身体条件不能开始妊娠过程', diff: consentDiff };
   }
-  const livingPopulation = state.people.filter(isAlive).length;
+  const livingPopulation = livingPeople(state).length;
   const capacityFactor = humanReproductionCapacityFactor(livingPopulation);
   const chance = 0.28 * Math.min(female.body.health, female.body.nutrition, female.body.hydration) / 100 * capacityFactor;
   const sampleKey = `reproduce:${eventId}:${atMonth}:${female.id}:${male.id}`;
@@ -1342,8 +1337,18 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
   };
 }
 
-function executeAct(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
+function executeAct(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  atMonth: number,
+  actionTick: number,
+  eventId: string,
+) {
   if (action.operation === 'inter') return executeMortuary(state, person, action, atMonth, eventId);
+  if (action.electricalPowerBasis) {
+    return executeElectricalPowerAction(state, person, action, atMonth, actionTick, eventId);
+  }
   if (action.mechanicalPowerBasis) return executeMechanicalPowerAction(state, person, action, atMonth, eventId);
   if (action.operation === 'combine' || action.operation === 'exert' || action.operation === 'expose') {
     const protectedCarrier = action.targets.flatMap((target) => {
@@ -1375,9 +1380,20 @@ function executeAct(state: SimulationState, person: PersonState, action: Extract
   return { status: 'blocked' as const, result: '当前暴露组合没有产生变化', diff: {} };
 }
 
-function executeAttend(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'attend' }>, atMonth: number, eventId: string) {
+function executeAttend(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'attend' }>,
+  atMonth: number,
+  eventId: string,
+  intentId?: string,
+) {
   const cell = targetCell(state, action.target);
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
+  const measurement = executeMeasurementAttend(state, person, action, atMonth, eventId);
+  if (measurement) return measurement;
+  const electricalFault = executeElectricalPowerFaultAttend(state, person, action, atMonth, eventId);
+  if (electricalFault) return electricalFault;
   if (action.waterCurrentSegmentId) {
     const mechanicalPower = state.world.mechanicalPower;
     const segment = mechanicalPower?.version === MECHANICAL_POWER_WORLD_VERSION
@@ -1499,7 +1515,48 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
     if (!stack) return { status: 'blocked' as const, result: '观察对象已经不在背包中', diff: {} };
     const record = stack.recordPayloadId ? state.records.find((candidate) => candidate.id === stack.recordPayloadId) : undefined;
     if (record) {
-      const codebook = person.knowledge.find((fact) => fact.id === record.codebookId && fact.kind === 'codebook' && fact.confidence >= 55);
+      let codebook = person.knowledge.find((fact) => fact.id === record.codebookId
+        && fact.kind === 'codebook'
+        && fact.confidence >= 55);
+      let selfDecodedCodebook = false;
+      const recordUseIntent = intentId ? intentById(state, intentId) : undefined;
+      const selfDecodeBasis = recordUseIntent?.status === 'active'
+        && (recordUseIntent.recordUseBasis?.version === 'record-use-basis-v2'
+          || recordUseIntent.recordUseBasis?.version === 'record-use-basis-v3')
+        && recordUseIntent.recordUseBasis.readerId === person.id
+        && recordUseIntent.recordUseBasis.recordId === record.id
+        && recordUseIntent.recordUseBasis.knowledgeId === record.knowledgeId
+        && recordUseIntent.recordUseBasis.codebookId === record.codebookId
+        ? recordUseIntent.recordUseBasis
+        : undefined;
+      if (!codebook
+        && selfDecodeBasis
+        && record.kind === 'technique'
+        && record.authorId !== person.id) {
+        const existingCodebook = person.knowledge.find((fact) => fact.id === record.codebookId);
+        if (!existingCodebook) {
+          person.knowledge.push({
+            id: record.codebookId,
+            kind: 'codebook',
+            summary: `能辨认“${record.summary}”所用实体刻痕的符号约定`,
+            confidence: 58,
+            learnedAtMonth: atMonth,
+            sourceEventIds: [...new Set([record.id, ...record.sourceEventIds, eventId])].slice(-24),
+          });
+          codebook = person.knowledge.at(-1);
+          selfDecodedCodebook = true;
+        } else if (existingCodebook.kind === 'codebook') {
+          existingCodebook.confidence = Math.max(existingCodebook.confidence, 58);
+          existingCodebook.sourceEventIds = [...new Set([
+            ...existingCodebook.sourceEventIds,
+            record.id,
+            ...record.sourceEventIds,
+            eventId,
+          ])].slice(-24);
+          codebook = existingCodebook;
+          selfDecodedCodebook = true;
+        }
+      }
       if (!codebook) return {
         status: 'completed' as const,
         result: '看见木制记录板上的规则刻痕，但还不知道这些符号表示什么',
@@ -1507,7 +1564,9 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
       };
       const known = person.knowledge.find((fact) => fact.id === record.knowledgeId);
       if (known) {
-        known.confidence = known.kind === 'technique' ? Math.min(54, known.confidence + 8) : clamp(known.confidence + 8);
+        known.confidence = known.kind === 'technique'
+          ? Math.min(54, Math.max(46, known.confidence + 8))
+          : clamp(known.confidence + 8);
         known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId, record.id])].slice(-24);
       } else person.knowledge.push({
         id: record.knowledgeId,
@@ -1517,7 +1576,20 @@ function executeAttend(state: SimulationState, person: PersonState, action: Extr
         learnedAtMonth: atMonth,
         sourceEventIds: [record.id, eventId],
       });
-      return { status: 'completed' as const, result: `阅读木制记录板：${record.summary}`, diff: { recordPayloadId: record.id, learnedFactId: record.knowledgeId, understood: true } };
+      return {
+        status: 'completed' as const,
+        result: `${selfDecodedCodebook ? '辨认刻痕并' : ''}阅读木制记录板：${record.summary}`,
+        diff: {
+          recordPayloadId: record.id,
+          learnedFactId: record.knowledgeId,
+          understood: true,
+          ...(selfDecodedCodebook ? {
+            selfDecodedCodebook: true,
+            learnedCodebookId: codebook.id,
+            learnedCodebookConfidence: codebook.confidence,
+          } : {}),
+        },
+      };
     }
     const requestedVerification = action.verification;
     const sourceBoundTechnique = requestedVerification
@@ -1681,9 +1753,9 @@ export function executePrimitiveAction(
       : action.kind === 'transfer'
         ? executeTransfer(state, person, action, atMonth, eventId)
         : action.kind === 'act'
-          ? executeAct(state, person, action, atMonth, eventId)
+          ? executeAct(state, person, action, atMonth, meta.actionTick, eventId)
           : action.kind === 'attend'
-            ? executeAttend(state, person, action, atMonth, eventId)
+            ? executeAttend(state, person, action, atMonth, eventId, meta.intentId)
             : executeCommunicate(state, person, action, atMonth, eventId);
   if (outcome.status === 'completed'
     && action.kind === 'act'

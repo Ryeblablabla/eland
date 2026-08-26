@@ -13,6 +13,9 @@ export interface MonthlyDecisionUsage {
 
 export const ORDINARY_DECISION_PERSON_MONTHS = 3;
 
+/** Local rule planning is cheap, but bounded so short intents cannot churn through all 15 ticks. */
+export const ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH = 2;
+
 export function rollingDecisionUsage<T extends MonthlyDecisionUsage>(ledgers: T[], elapsedMonths: number): T[] {
   const firstMonth = Math.max(1, elapsedMonths - 10);
   return ledgers.filter((ledger) => ledger.atMonth >= firstMonth);

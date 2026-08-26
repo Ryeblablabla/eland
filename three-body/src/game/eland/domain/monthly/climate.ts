@@ -2,10 +2,38 @@ import type { ActionFact, EnvironmentFact, EraSchedule, SimulationState, Weather
 import type { PersonState } from '../person';
 import { remember } from '../memory';
 import { applyRelationEvidence } from '../relation';
+import { retainedColdWorldEventsForLease, worldEventById } from '../event-index';
 import { seededFraction } from '../../world/generator';
+import { personById } from '../state-index';
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function pendingEraPredictionWakeLeaseKey(predictionId: string): string {
+  return `gameplay:pending-era-prediction:${predictionId}:disputed-wake`;
+}
+
+function disputedWakeFactsForPendingPrediction(
+  state: SimulationState,
+  prediction: SimulationState['eraPredictions'][number],
+): ActionFact[] {
+  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0
+    && prediction.sourceEventIds.some((eventId) => !worldEventById(state, eventId))) {
+    throw new Error(`pending era prediction ${prediction.id} 缺少已验证来源事实`);
+  }
+  return [
+    ...retainedColdWorldEventsForLease(state, pendingEraPredictionWakeLeaseKey(prediction.id)),
+    ...state.world.past,
+  ].filter((candidate): candidate is ActionFact => (
+    candidate.kind === 'action'
+      && candidate.status === 'completed'
+      && candidate.action.kind === 'act'
+      && candidate.action.operation === 'rehydrate'
+      && candidate.diff.rehydrationBasis === 'disputed-pending-prediction'
+      && candidate.diff.hibernationPredictionId === prediction.id
+      && typeof candidate.diff.rehydratedPersonId === 'string'
+  ));
 }
 
 function event(
@@ -237,10 +265,11 @@ export function advanceEraPredictions(
       correct = false;
     }
     if (correct === null) continue;
+    const disputedWakes = disputedWakeFactsForPendingPrediction(state, prediction);
     prediction.status = correct ? 'correct' : 'incorrect';
     prediction.resolvedAtMonth = atMonth;
     prediction.errorMonths = errorMonths;
-    const predictor = state.people.find((person) => person.id === prediction.predictorId);
+    const predictor = personById(state, prediction.predictorId);
     const fact = event(
       atMonth,
       events,
@@ -270,21 +299,14 @@ export function advanceEraPredictions(
         sourceEventIds: [fact.id],
       });
     }
-    const disputedWakes = state.world.past.filter((candidate): candidate is ActionFact => (
-      candidate.kind === 'action'
-        && candidate.status === 'completed'
-        && candidate.action.kind === 'act'
-        && candidate.action.operation === 'rehydrate'
-        && candidate.diff.rehydrationBasis === 'disputed-pending-prediction'
-        && candidate.diff.hibernationPredictionId === prediction.id
-        && typeof candidate.diff.rehydratedPersonId === 'string'
-    ));
     const chaosArrived = eraTransition
       && prediction.targetEpoch === 'chaotic'
       && state.civilization.epoch === 'chaotic';
     for (const wake of disputedWakes) {
-      const sleeper = state.people.find((person) => person.id === wake.diff.rehydratedPersonId);
-      const helper = state.people.find((person) => person.id === wake.who);
+      const rehydratedPersonId = wake.diff.rehydratedPersonId;
+      if (typeof rehydratedPersonId !== 'string') continue;
+      const sleeper = personById(state, rehydratedPersonId);
+      const helper = personById(state, wake.who);
       if (!sleeper || !helper || sleeper.id === helper.id) continue;
       applyRelationEvidence(sleeper, helper.id, fact.id, chaosArrived
         ? { trust: -8, bond: -2 }

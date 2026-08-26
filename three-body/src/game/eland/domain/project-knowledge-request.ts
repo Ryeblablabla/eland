@@ -161,6 +161,12 @@ export function pendingProjectKnowledgeGap(
   state: SimulationState,
   project: ProjectState,
 ): { outputMaterialId: number; sourceFactIds: string[]; techniquePath: string[] } | undefined {
+  // Reliability inquiries ask collaborators about no privileged output. Their
+  // finite material trials begin from repeated personal faults and observable
+  // entities; naming SteelDriveShaft here would disclose the answer before any
+  // physical response exists.
+  if (project.need === 'equipment-reliability'
+    || project.desiredFunction === 'durable-power-transmission') return undefined;
   if (project.status !== 'active'
     || project.need !== 'mechanical-power-capability'
     || project.desiredFunction !== 'water-powered-crop-processing'

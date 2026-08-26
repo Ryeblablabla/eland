@@ -7,11 +7,16 @@ import { worldEventById } from '../event-index';
 import { projectById } from '../state-index';
 import {
   MECHANICAL_POWER_ACTION_BASIS_VERSION,
+  MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT,
   MECHANICAL_POWER_OPERATION_TECHNIQUE_ID,
   MECHANICAL_POWER_PLAN_VERSION,
   MECHANICAL_POWER_WORN_FAULT_THRESHOLD,
   MECHANICAL_POWER_WORLD_VERSION,
+  currentMechanicalPowerServiceLoadedOperationCount,
   ensureMechanicalPowerNetwork,
+  isMechanicalDriveShaftMaterial,
+  mechanicalDriveShaftSpecification,
+  mechanicalPowerFaultProofEventIds,
   mechanicalPowerFaultObservationFactId,
   mechanicalPowerNetworkId,
   mechanicalPowerPlanKey,
@@ -23,6 +28,8 @@ import {
   validateMechanicalPowerTopology,
   waterCurrentAvailabilityFor,
   type MechanicalPowerActionBasis,
+  type MechanicalDriveShaftMaterialId,
+  type MechanicalPowerComponentInstallation,
   type MechanicalPowerNetworkState,
   type MechanicalPowerProjectPlan,
   type MechanicalPowerWorldState,
@@ -39,6 +46,13 @@ interface MechanicalActionContext {
   network?: MechanicalPowerNetworkState;
   observationEvent?: ActionFact;
   supportingSegmentIds: string[];
+}
+
+interface MechanicalActionBlock {
+  blocked: string;
+  currentUnavailable?: {
+    reason: string;
+  };
 }
 
 function actionHappenedAfter(candidate: ActionFact, basis: ActionFact): boolean {
@@ -80,7 +94,7 @@ function mechanicalActionContext(
   person: PersonState,
   basis: Extract<MechanicalPowerActionBasis, { mode: 'install' | 'operate' | 'repair' }>,
   requireFlow: boolean,
-): MechanicalActionContext | { blocked: string } {
+): MechanicalActionContext | MechanicalActionBlock {
   if (basis.version !== MECHANICAL_POWER_ACTION_BASIS_VERSION) {
     return { blocked: '机械动作依据版本或模式无效' };
   }
@@ -116,7 +130,10 @@ function mechanicalActionContext(
     return { blocked: '机械动作缺少项目发起者本人对该水流的可靠观察' };
   }
   const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id);
-  if (requireFlow && !availability.available) return { blocked: '冻结计划所绑定的水流当前已经失效' };
+  if (requireFlow && !availability.available) return {
+    blocked: '冻结计划所绑定的水流当前已经失效',
+    currentUnavailable: { reason: availability.reason ?? 'unknown' },
+  };
   const network = mechanicalPower.networks.find((candidate) => candidate.id === basis.networkId);
   if (network && (network.planKey !== basis.planKey
     || network.installationProjectId !== project.id
@@ -134,12 +151,28 @@ function mechanicalActionContext(
   };
 }
 
+function maintenanceMatchesReliabilityBasis(
+  maintenance: ProjectState,
+  observerId: string,
+  networkId: string,
+  installationProjectId: string,
+  faultEventId: string | undefined,
+): boolean {
+  if (maintenance.desiredFunction !== 'durable-power-transmission') return true;
+  const reliability = maintenance.mechanicalReliabilityBasis;
+  return maintenance.need === 'equipment-reliability'
+    && reliability?.observerId === observerId
+    && reliability.networkId === networkId
+    && reliability.installationProjectId === installationProjectId
+    && reliability.faults.at(-1)?.faultEventId === faultEventId;
+}
+
 function mechanicalServiceActionContext(
   state: SimulationState,
   person: PersonState,
   basis: Extract<MechanicalPowerActionBasis, { mode: 'operate-service' | 'repair-service' }>,
   requireFlow: boolean,
-): MechanicalActionContext | { blocked: string } {
+): MechanicalActionContext | MechanicalActionBlock {
   if (basis.version !== MECHANICAL_POWER_ACTION_BASIS_VERSION) {
     return { blocked: '持续机械动作依据版本无效' };
   }
@@ -171,7 +204,10 @@ function mechanicalServiceActionContext(
     return { blocked: '持续机械动作的来源或网络身份已经失效' };
   }
   const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id);
-  if (requireFlow && !availability.available) return { blocked: '机械网络绑定的水流当前已经失效' };
+  if (requireFlow && !availability.available) return {
+    blocked: '机械网络绑定的水流当前已经失效',
+    currentUnavailable: { reason: availability.reason ?? 'unknown' },
+  };
 
   let project = installationProject;
   if (basis.mode === 'operate-service') {
@@ -186,7 +222,15 @@ function mechanicalServiceActionContext(
       if (!maintenance
         || maintenance.status !== 'active'
         || maintenance.ownerId !== person.id
-        || maintenance.desiredFunction !== 'restore-water-powered-crop-processing'
+        || (maintenance.desiredFunction !== 'restore-water-powered-crop-processing'
+          && maintenance.desiredFunction !== 'durable-power-transmission')
+        || !maintenanceMatchesReliabilityBasis(
+          maintenance,
+          person.id,
+          network.id,
+          installationProject.id,
+          maintenance.mechanicalPowerFaultEventId,
+        )
         || maintenance.mechanicalPowerNetworkId !== network.id
         || maintenance.mechanicalPowerPlanKey !== network.planKey
         || maintenance.mechanicalPowerPlan?.projectId !== installationProject.id
@@ -198,7 +242,8 @@ function mechanicalServiceActionContext(
         || repair.diff.networkId !== network.id
         || repair.diff.faultEventId !== maintenance.mechanicalPowerFaultEventId
         || !maintenance.actionEventIds.includes(repair.id)
-        || !network.repairEventIds.includes(repair.id)) {
+        || !network.components.some((component) => component.role === 'connector'
+          && component.latestRepairEventId === repair.id)) {
         return { blocked: '恢复作业没有绑定仍活跃的维修项目及其真实修复事实' };
       }
       project = maintenance;
@@ -222,7 +267,15 @@ function mechanicalServiceActionContext(
     if (!maintenance
       || maintenance.status !== 'active'
       || maintenance.ownerId !== person.id
-      || maintenance.desiredFunction !== 'restore-water-powered-crop-processing'
+      || (maintenance.desiredFunction !== 'restore-water-powered-crop-processing'
+        && maintenance.desiredFunction !== 'durable-power-transmission')
+      || !maintenanceMatchesReliabilityBasis(
+        maintenance,
+        person.id,
+        network.id,
+        installationProject.id,
+        basis.faultEventId,
+      )
       || maintenance.mechanicalPowerNetworkId !== network.id
       || maintenance.mechanicalPowerPlanKey !== network.planKey
       || maintenance.mechanicalPowerPlan?.projectId !== installationProject.id
@@ -252,6 +305,79 @@ function projectActionFactsForMechanical(state: SimulationState, project: Projec
   });
 }
 
+function driveShaftComponentAt(
+  network: MechanicalPowerNetworkState,
+  plan: MechanicalPowerProjectPlan,
+  position: MechanicalPowerProjectPlan['shaftPositions'][number],
+): MechanicalPowerComponentInstallation | undefined {
+  return network.components.find((component) => component.role === 'connector'
+    && component.projectId === plan.projectId
+    && samePosition(component.position, position)
+    && isMechanicalDriveShaftMaterial(component.materialId));
+}
+
+function installedDriveShaftAt(
+  state: SimulationState,
+  network: MechanicalPowerNetworkState,
+  plan: MechanicalPowerProjectPlan,
+  position: MechanicalPowerProjectPlan['shaftPositions'][number],
+): { component: MechanicalPowerComponentInstallation; materialId: MechanicalDriveShaftMaterialId } | null {
+  const component = driveShaftComponentAt(network, plan, position);
+  const materialId = voxelAt(state.world.grid, position.x, position.y, position.z);
+  return component && isMechanicalDriveShaftMaterial(materialId) && component.materialId === materialId
+    ? { component, materialId }
+    : null;
+}
+
+/** A mixed chain wears at its weakest installed connector; ties keep frozen plan order. */
+function loadedDriveShaft(
+  state: SimulationState,
+  network: MechanicalPowerNetworkState,
+  plan: MechanicalPowerProjectPlan,
+): { component: MechanicalPowerComponentInstallation; materialId: MechanicalDriveShaftMaterialId } | null {
+  let selected: { component: MechanicalPowerComponentInstallation; materialId: MechanicalDriveShaftMaterialId } | null = null;
+  for (const position of plan.shaftPositions) {
+    const candidate = installedDriveShaftAt(state, network, plan, position);
+    if (!candidate) return null;
+    if (!selected || mechanicalDriveShaftSpecification(candidate.materialId)!.wearPerLoadedOperation
+      > mechanicalDriveShaftSpecification(selected.materialId)!.wearPerLoadedOperation) {
+      selected = candidate;
+    }
+  }
+  return selected;
+}
+
+function faultEvidenceFor(
+  network: MechanicalPowerNetworkState,
+  shaft: { component: MechanicalPowerComponentInstallation; materialId: MechanicalDriveShaftMaterialId },
+) {
+  return {
+    failedComponentMaterialId: shaft.materialId,
+    failedComponentInstallationEventId: shaft.component.installationEventId,
+    ...(shaft.component.latestRepairEventId ? {
+      failedComponentRepairEventId: shaft.component.latestRepairEventId,
+    } : {}),
+    serviceLoadedOperationCount: currentMechanicalPowerServiceLoadedOperationCount(network, shaft.materialId),
+    proofEventIds: mechanicalPowerFaultProofEventIds(network, shaft.component),
+  };
+}
+
+function currentShaftRepairFact(
+  state: SimulationState,
+  network: MechanicalPowerNetworkState,
+  shaft: { component: MechanicalPowerComponentInstallation; materialId: MechanicalDriveShaftMaterialId },
+): ActionFact | null {
+  const repairEventId = shaft.component.latestRepairEventId;
+  const repair = repairEventId ? worldEventById(state, repairEventId) : undefined;
+  return repair?.kind === 'action'
+    && repair.status === 'completed'
+    && repair.diff.mechanicalPowerRepair === true
+    && repair.diff.networkId === network.id
+    && Number(repair.diff.replacementMaterialId) === shaft.materialId
+    ? repair
+    : null;
+}
+
 function verifiedComponentEvidence(
   state: SimulationState,
   person: PersonState,
@@ -259,6 +385,7 @@ function verifiedComponentEvidence(
   stackId: string,
   materialId: MaterialId,
   after?: ActionFact,
+  expected?: { manufactureEventId: string; verificationEventId: string },
 ): { manufacture: ActionFact; verification: ActionFact; stack: ItemStack } | null {
   const stack = person.inventory.find((candidate) => candidate.id === stackId
     && candidate.materialId === materialId
@@ -267,6 +394,7 @@ function verifiedComponentEvidence(
   if (!stack) return null;
   const actions = projectActionFactsForMechanical(state, project);
   for (const manufacture of actions.filter((event) => event.status === 'completed'
+    && (!expected || event.id === expected.manufactureEventId)
     && event.who === person.id
     && event.action.kind === 'act'
     && event.action.operation === 'combine'
@@ -275,6 +403,7 @@ function verifiedComponentEvidence(
     && stack.sourceEventIds.includes(event.id)
     && (!after || actionHappenedAfter(event, after))).reverse()) {
     const verification = actions.find((event) => event.status === 'completed'
+      && (!expected || event.id === expected.verificationEventId)
       && event.who === person.id
       && event.action.kind === 'attend'
       && event.diff.verifiedSourceEventId === manufacture.id
@@ -294,7 +423,7 @@ function mechanicalInstall(
   atMonth: number,
   eventId: string,
 ) {
-  const context = mechanicalActionContext(state, person, basis, true);
+  const context = mechanicalActionContext(state, person, basis, false);
   if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
   const planned = plannedMechanicalPowerComponents(context.plan).find((component) => component.role === basis.componentRole
     && component.materialId === basis.componentMaterialId
@@ -364,6 +493,11 @@ function mechanicalInstall(
       componentMaterialId: planned.materialId,
       componentPosition: { ...planned.position },
       installationSourceEventIds,
+      ...(planned.role === 'connector' && isMechanicalDriveShaftMaterial(planned.materialId) ? {
+        shaftMaterialId: planned.materialId,
+        shaftInstallationEventId: eventId,
+        shaftInstallationSourceEventIds: installationSourceEventIds,
+      } : {}),
       mechanicalPowerBasis: structuredClone(basis),
     },
   };
@@ -375,7 +509,9 @@ function exactNetworkComponentsInstalled(
 ): boolean {
   const planned = plannedMechanicalPowerComponents(plan);
   return planned.every((candidate) => network.components.some((component) => component.role === candidate.role
-    && component.materialId === candidate.materialId
+    && (candidate.role === 'connector'
+      ? isMechanicalDriveShaftMaterial(component.materialId)
+      : component.materialId === candidate.materialId)
     && component.projectId === plan.projectId
     && samePosition(component.position, candidate.position)));
 }
@@ -409,7 +545,21 @@ function mechanicalOperate(
   const context = basis.mode === 'operate'
     ? mechanicalActionContext(state, person, basis, true)
     : mechanicalServiceActionContext(state, person, basis, true);
-  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
+  if ('blocked' in context) return {
+    status: 'blocked' as const,
+    result: context.blocked,
+    diff: context.currentUnavailable ? {
+      mechanicalPowerCurrentUnavailable: true,
+      mode: basis.mode,
+      projectId: basis.mode === 'operate' ? basis.projectId : basis.maintenanceProjectId,
+      installationProjectId: basis.mode === 'operate' ? basis.projectId : basis.installationProjectId,
+      planKey: basis.planKey,
+      networkId: basis.networkId,
+      sourceSegmentId: basis.sourceSegmentId,
+      currentAvailabilityReason: context.currentUnavailable.reason,
+      mechanicalPowerBasis: structuredClone(basis),
+    } : {},
+  };
   const network = context.network;
   const inputRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => target.kind === 'inventory-stack');
   const loadRef = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => target.kind === 'voxel');
@@ -435,11 +585,14 @@ function mechanicalOperate(
     result: `机械拓扑实时复核失败：${topology.reason ?? 'unknown'}`,
     diff: { topologyReason: topology.reason },
   };
-  if (basis.mode === 'operate' && network.faultEventIds.length === 0 && network.operationEventIds.length === 0) {
-    const brokenPosition = context.plan.shaftPositions[0];
-    if (!brokenPosition || voxelAt(
-      state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z,
-    ) !== Material.DriveShaft) return { status: 'blocked' as const, result: '试运转故障目标传动轴不存在', diff: {} };
+  const shaft = loadedDriveShaft(state, network, context.plan);
+  if (!shaft) {
+    return { status: 'blocked' as const, result: '机械网络的轴材与安装来源不一致', diff: {} };
+  }
+  if (basis.mode === 'operate' && network.faultCount === 0 && network.operationCount === 0) {
+    const brokenPosition = shaft.component.position;
+    const faultSourceEventIds = [...network.installationEventIds, context.observationEvent!.id];
+    const frozenFaultEvidence = faultEvidenceFor(network, shaft);
     setVoxel(state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z, Material.BrokenDriveShaft);
     recordMechanicalPowerFault(network, {
       kind: 'commissioning-misalignment',
@@ -447,7 +600,8 @@ function mechanicalOperate(
       componentPosition: { ...brokenPosition },
       atMonth,
       faultEventId: eventId,
-      sourceEventIds: [...network.installationEventIds, context.observationEvent!.id],
+      sourceEventIds: faultSourceEventIds,
+      ...frozenFaultEvidence,
     });
     return {
       status: 'progressed' as const,
@@ -463,6 +617,18 @@ function mechanicalOperate(
         faultEventId: eventId,
         componentRole: 'connector',
         componentPosition: { ...brokenPosition },
+        shaftMaterialId: shaft.materialId,
+        shaftInstallationEventId: shaft.component.installationEventId,
+        shaftInstallationSourceEventIds: shaft.component.sourceEventIds
+          .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+        ...(shaft.component.latestRepairEventId ? { shaftRepairEventId: shaft.component.latestRepairEventId } : {}),
+        ...(shaft.component.latestRepairSourceEventIds?.length ? {
+          shaftRepairSourceEventIds: shaft.component.latestRepairSourceEventIds
+            .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+        } : {}),
+        wearApplied: 0,
+        serviceLoadedOperationCount: frozenFaultEvidence.serviceLoadedOperationCount,
+        faultProofEventIds: frozenFaultEvidence.proofEventIds,
         inputPreserved: true,
         inputMaterialId: input.materialId,
         inputStackId: input.id,
@@ -473,12 +639,9 @@ function mechanicalOperate(
     };
   }
   if (basis.mode === 'operate-service' && network.condition <= MECHANICAL_POWER_WORN_FAULT_THRESHOLD) {
-    const brokenPosition = context.plan.shaftPositions[0];
-    if (!brokenPosition || voxelAt(
-      state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z,
-    ) !== Material.DriveShaft) return { status: 'blocked' as const, result: '磨损故障目标传动轴不存在', diff: {} };
-    setVoxel(state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z, Material.BrokenDriveShaft);
-    const wearSourceEventIds = network.operationEventIds.slice(-3);
+    const brokenPosition = shaft.component.position;
+    const wearSourceEventIds = (network.serviceCycleOperationEventIds ?? []).slice(-3);
+    const frozenFaultEvidence = faultEvidenceFor(network, shaft);
     recordMechanicalPowerFault(network, {
       kind: 'worn-drive-shaft',
       componentRole: 'connector',
@@ -486,7 +649,9 @@ function mechanicalOperate(
       atMonth,
       faultEventId: eventId,
       sourceEventIds: wearSourceEventIds,
-    });
+      ...frozenFaultEvidence,
+    }, person.id);
+    setVoxel(state.world.grid, brokenPosition.x, brokenPosition.y, brokenPosition.z, Material.BrokenDriveShaft);
     return {
       status: 'completed' as const,
       result: '累积负载磨损在本次投入前暴露为传动轴断裂，种子尚未投入',
@@ -502,6 +667,18 @@ function mechanicalOperate(
         faultEventId: eventId,
         componentRole: 'connector',
         componentPosition: { ...brokenPosition },
+        shaftMaterialId: shaft.materialId,
+        shaftInstallationEventId: shaft.component.installationEventId,
+        shaftInstallationSourceEventIds: shaft.component.sourceEventIds
+          .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+        ...(shaft.component.latestRepairEventId ? { shaftRepairEventId: shaft.component.latestRepairEventId } : {}),
+        ...(shaft.component.latestRepairSourceEventIds?.length ? {
+          shaftRepairSourceEventIds: shaft.component.latestRepairSourceEventIds
+            .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+        } : {}),
+        wearApplied: 0,
+        serviceLoadedOperationCount: frozenFaultEvidence.serviceLoadedOperationCount,
+        faultProofEventIds: frozenFaultEvidence.proofEventIds,
         conditionBefore: network.condition,
         conditionAfter: network.condition,
         wearSourceEventIds,
@@ -514,7 +691,8 @@ function mechanicalOperate(
       },
     };
   }
-  if (!network.repairEventIds.length) {
+  const currentRepair = currentShaftRepairFact(state, network, shaft);
+  if (!currentRepair) {
     return { status: 'blocked' as const, result: '机械网络没有可回放的修复事实', diff: {} };
   }
   const inputStackId = input.id;
@@ -527,13 +705,18 @@ function mechanicalOperate(
     person,
     Material.Food,
     outputQuantity,
-    [eventId, ...network.repairEventIds, ...inputSourceEventIds],
+    [
+      eventId,
+      currentRepair.id,
+      ...(shaft.component.latestRepairSourceEventIds ?? []),
+      ...inputSourceEventIds,
+    ],
     `stack-${person.id}-${Material.Food}-${eventId}`,
     undefined,
     [`mechanical-network:${network.id}`, `input-stack:${inputStackId}`, ...inputSourceLineageKeys],
   );
   const conditionBefore = network.condition;
-  recordMechanicalPowerOperation(network, eventId);
+  const operationRecord = recordMechanicalPowerOperation(network, eventId, shaft.materialId);
   recordMechanicalOperationKnowledge(person, eventId, atMonth);
   return {
     status: 'completed' as const,
@@ -555,8 +738,18 @@ function mechanicalOperate(
       outputQuantity,
       conditionBefore,
       conditionAfter: network.condition,
+      shaftMaterialId: shaft.materialId,
+      shaftInstallationEventId: shaft.component.installationEventId,
+      ...(shaft.component.latestRepairEventId ? { shaftRepairEventId: shaft.component.latestRepairEventId } : {}),
+      shaftInstallationSourceEventIds: shaft.component.sourceEventIds.slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+      ...(shaft.component.latestRepairSourceEventIds?.length ? {
+        shaftRepairSourceEventIds: shaft.component.latestRepairSourceEventIds
+          .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+      } : {}),
+      wearApplied: operationRecord.wearApplied,
+      serviceLoadedOperationOrdinal: operationRecord.serviceLoadedOperationOrdinal,
       operationKnowledgeId: MECHANICAL_POWER_OPERATION_TECHNIQUE_ID,
-      repairEventIds: [...network.repairEventIds],
+      repairEventIds: [currentRepair.id],
       ...(basis.mode === 'operate-service' && basis.maintenanceProjectId ? {
         mechanicalPowerRecovery: true,
         maintenanceProjectId: basis.maintenanceProjectId,
@@ -576,9 +769,16 @@ function repairTopologyMatchesFault(
   if (!network.fault || !exactNetworkComponentsInstalled(network, plan)) return false;
   if (voxelAt(state.world.grid, plan.wheelPosition.x, plan.wheelPosition.y, plan.wheelPosition.z) !== Material.WaterWheel
     || voxelAt(state.world.grid, plan.loadPosition.x, plan.loadPosition.y, plan.loadPosition.z) !== Material.Mill) return false;
-  return plan.shaftPositions.every((position) => samePosition(position, network.fault!.componentPosition)
-    ? voxelAt(state.world.grid, position.x, position.y, position.z) === Material.BrokenDriveShaft
-    : voxelAt(state.world.grid, position.x, position.y, position.z) === Material.DriveShaft);
+  return plan.shaftPositions.every((position) => {
+    const component = driveShaftComponentAt(network, plan, position);
+    if (!component) return false;
+    if (samePosition(position, network.fault!.componentPosition)) {
+      return voxelAt(state.world.grid, position.x, position.y, position.z) === Material.BrokenDriveShaft
+        && component.materialId === (network.fault!.failedComponentMaterialId ?? component.materialId);
+    }
+    return voxelAt(state.world.grid, position.x, position.y, position.z) === component.materialId
+      && isMechanicalDriveShaftMaterial(component.materialId);
+  });
 }
 
 function mechanicalRepair(
@@ -601,9 +801,21 @@ function mechanicalRepair(
     && stack.materialId === Material.BronzeTool
     && stack.quantity > 0
     && !stack.recordPayloadId) : undefined;
+  const replacementSpecification = mechanicalDriveShaftSpecification(basis.replacementMaterialId);
+  const steelUpgrade = basis.replacementMaterialId === Material.SteelDriveShaft;
+  const exactReplacementEvidence = basis.replacementManufactureEventId
+    && basis.replacementVerificationEventId
+    ? {
+      manufactureEventId: basis.replacementManufactureEventId,
+      verificationEventId: basis.replacementVerificationEventId,
+    }
+    : undefined;
   if (!network || !fault || fault.faultEventId !== basis.faultEventId
     || faultEvent?.kind !== 'action'
-    || basis.replacementMaterialId !== Material.DriveShaft
+    || network.recentRepairEventIds.includes(eventId)
+    || !replacementSpecification
+    || (steelUpgrade && (basis.mode !== 'repair-service' || !exactReplacementEvidence))
+    || ((basis.replacementManufactureEventId || basis.replacementVerificationEventId) && !exactReplacementEvidence)
     || basis.toolMaterialId !== Material.BronzeTool
     || !faultRef || !samePosition(faultRef.position, fault.componentPosition)
     || distanceToPosition(person, fault.componentPosition) > 1
@@ -618,8 +830,9 @@ function mechanicalRepair(
     person,
     context.project,
     replacementRef.stackId,
-    Material.DriveShaft,
+    replacementSpecification.materialId,
     faultEvent,
+    exactReplacementEvidence,
   );
   if (!evidence) return { status: 'blocked' as const, result: '替换传动轴不是故障之后由本人制造并核验的构件', diff: {} };
   const repairSourceEventIds = [fault.faultEventId, evidence.manufacture.id, evidence.verification.id, ...tool.sourceEventIds];
@@ -630,12 +843,20 @@ function mechanicalRepair(
     fault.componentPosition.x,
     fault.componentPosition.y,
     fault.componentPosition.z,
-    Material.DriveShaft,
+    replacementSpecification.materialId,
   );
-  recordMechanicalPowerRepair(network, eventId, repairSourceEventIds);
+  recordMechanicalPowerRepair(network, eventId, repairSourceEventIds, {
+    componentPosition: { ...fault.componentPosition },
+    replacementMaterialId: replacementSpecification.materialId,
+    manufactureEventId: evidence.manufacture.id,
+    verificationEventId: evidence.verification.id,
+  });
+  const repairedComponent = driveShaftComponentAt(network, context.plan, fault.componentPosition);
   return {
     status: 'completed' as const,
-    result: '用新传动轴和青铜工具修复了机械网络',
+    result: replacementSpecification.materialId === Material.DriveShaft
+      ? '用新传动轴和青铜工具修复了机械网络'
+      : `用新${materialDefinition(replacementSpecification.materialId).name}和青铜工具修复了机械网络`,
     diff: {
       mechanicalPowerRepair: true,
       mode: basis.mode,
@@ -645,12 +866,27 @@ function mechanicalRepair(
       networkId: network.id,
       sourceSegmentId: basis.sourceSegmentId,
       faultEventId: basis.faultEventId,
-      replacementMaterialId: Material.DriveShaft,
+      replacementMaterialId: replacementSpecification.materialId,
       replacementStackId: replacementRef.stackId,
+      replacementManufactureEventId: evidence.manufacture.id,
+      replacementVerificationEventId: evidence.verification.id,
       toolMaterialId: Material.BronzeTool,
       toolStackId: tool.id,
       repairSourceEventIds,
-      repairEventIds: [...network.repairEventIds],
+      repairEventIds: [eventId],
+      faultShaftMaterialId: fault.failedComponentMaterialId,
+      shaftMaterialId: replacementSpecification.materialId,
+      shaftInstallationEventId: repairedComponent?.installationEventId
+        ?? fault.failedComponentInstallationEventId,
+      shaftRepairEventId: eventId,
+      shaftInstallationSourceEventIds: repairedComponent?.sourceEventIds
+        .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT) ?? [],
+      shaftRepairSourceEventIds: repairedComponent?.latestRepairSourceEventIds
+        ?.slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT) ?? repairSourceEventIds
+          .slice(-MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT),
+      wearApplied: 0,
+      serviceLoadedOperationCountAfter: 0,
+      repairCount: network.repairCount,
       mechanicalPowerBasis: structuredClone(basis),
     },
   };

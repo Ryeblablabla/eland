@@ -173,7 +173,8 @@ function assignCandidateSource(
 }
 
 function pairSlots(candidate: ProjectHypothesisCandidate): CandidateInventorySlot[] {
-  const slots = candidate.materialIds.map((materialId) => ({ materialId }));
+  const slots = (candidate.inventoryMaterialIds ?? candidate.materialIds)
+    .map((materialId) => ({ materialId }));
   assignCandidateSource(
     slots,
     candidate.toolRoleMaterialId ?? candidate.toolMaterialId,
@@ -335,6 +336,16 @@ function groundedCandidateDrop(
   return null;
 }
 
+function combineCandidateDescription(candidate: ProjectHypothesisCandidate): string {
+  const counts = new Map<MaterialId, number>();
+  for (const materialId of candidate.inventoryMaterialIds ?? candidate.materialIds) {
+    counts.set(materialId, (counts.get(materialId) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([materialId, quantity]) => `${quantity > 1 ? `${quantity}份` : ''}${materialDefinition(materialId).name}`)
+    .join('与');
+}
+
 export function hypothesisStep(
   state: SimulationState,
   person: PersonState,
@@ -343,11 +354,12 @@ export function hypothesisStep(
   request: ProjectHypothesisRequest = { operation: 'combine-inventory' },
   targetPosition?: { x: number; y: number; z: number },
 ): ProjectStep | null {
-  const reachableDrops = visibleDrops.filter((drop) => findStandingPath(
-    state.world.grid,
-    person.position,
-    { cellId: drop.cellId, z: drop.z },
-  ).length > 0);
+  const reachableDrops = visibleDrops.filter((drop) => !drop.recordPayloadId
+    && findStandingPath(
+      state.world.grid,
+      person.position,
+      { cellId: drop.cellId, z: drop.z },
+    ).length > 0);
   const purpose = project.summary;
   const candidate = nextProjectHypothesisCandidate(
     state.seed,
@@ -370,10 +382,14 @@ export function hypothesisStep(
     const refs = refsForPair(person, candidate, groundedDropSourceKeys);
     if (refs) return {
       key: `hypothesis-${candidate.key}`,
-      summary: `为${purpose}试验${materialDefinition(pair[0]).name}与${materialDefinition(pair[1]).name}`,
-      reason: candidate.reasonKeys.includes('verified-response-material')
-        ? '本人刚核验了一种真实物质变化；把新物质放进下一次有限试验，观察它是否带来新的响应'
-        : '当前困境与本人已经接触到的物质性质形成一个有限的局部假设；世界是否响应仍未知',
+      summary: `为${purpose}试验${combineCandidateDescription(candidate)}`,
+      reason: candidate.questionKind === 'assemble-balanced-suspension'
+        ? '比较困境使人物尝试两件相同的刚性构件和一个柔性悬挂件；它们是否真的组成可用装置仍由世界响应决定'
+        : candidate.questionKind === 'shape-repeatable-reference'
+          ? '为了让比较结果可以重复，人物尝试给一个硬质稳定实体加上可识别的柔性标记；它是否可用仍未知'
+          : candidate.reasonKeys.includes('verified-response-material')
+            ? '本人刚核验了一种真实物质变化；把新物质放进下一次有限试验，观察它是否带来新的响应'
+            : '当前困境与本人已经接触到的物质性质形成一个有限的局部假设；世界是否响应仍未知',
       action: { kind: 'act', operation: 'combine', targets: refs },
       sourceFactIds: [...candidate.sourceFactIds],
       missingMaterialIds: [],
@@ -439,7 +455,9 @@ export function hypothesisStep(
   }
   const quantities = new Map<MaterialId, number>();
   if (candidate.operation === 'combine-inventory') {
-    pair.forEach((materialId) => quantities.set(materialId, (quantities.get(materialId) ?? 0) + 1));
+    (candidate.inventoryMaterialIds ?? pair).forEach((materialId) => (
+      quantities.set(materialId, (quantities.get(materialId) ?? 0) + 1)
+    ));
   } else {
     const inputMaterialId = candidate.inputMaterialId ?? pair[candidate.operation === 'exert-air' ? 1 : 0];
     quantities.set(inputMaterialId, 1);
@@ -514,7 +532,7 @@ export function buildProjectInquiryOpportunityBasis(
       materialSources.set(materialId, sources);
     }
   };
-  for (const stack of [...person.inventory].filter((item) => item.quantity > 0)
+  for (const stack of [...person.inventory].filter((item) => item.quantity > 0 && !item.recordPayloadId)
     .sort((left, right) => left.materialId - right.materialId || left.id.localeCompare(right.id))) {
     addMaterialSource(
       stack.materialId,
@@ -523,7 +541,7 @@ export function buildProjectInquiryOpportunityBasis(
       stack.sourceEventIds,
     );
   }
-  for (const drop of [...visibleDrops].filter((item) => item.quantity > 0)
+  for (const drop of [...visibleDrops].filter((item) => item.quantity > 0 && !item.recordPayloadId)
     .sort((left, right) => left.materialId - right.materialId || left.id.localeCompare(right.id))) {
     addMaterialSource(
       drop.materialId,

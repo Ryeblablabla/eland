@@ -32,7 +32,10 @@ import {
 } from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
 import { personalityScore } from '../domain/personality';
-import { worldEventById, worldEventsByIdsInHistoryOrder } from '../domain/event-index';
+import {
+  livePersonSocialEvidenceLeaseKey,
+  worldEventByIdWithRetainedLease,
+} from '../domain/event-index';
 import { agreementById, agreementsForPerson } from '../domain/agreement';
 import { intentsOwnedBy, personById } from '../domain/state-index';
 import {
@@ -47,14 +50,15 @@ import {
   peopleWithinVoiceRange,
   positionsWithinVoiceRange,
 } from '../domain/social-space';
-
-function relationTo(person: PersonState, otherId: string) {
-  return person.relations.find((relation) => relation.personId === otherId);
-}
+import { relationTo } from '../domain/relation';
 
 function groundedRelationSourceIds(state: SimulationState, person: PersonState, otherId: string): string[] {
   return (relationTo(person, otherId)?.sourceEventIds ?? [])
-    .filter((eventId) => worldEventById(state, eventId));
+    .filter((eventId) => worldEventByIdWithRetainedLease(
+      state,
+      eventId,
+      livePersonSocialEvidenceLeaseKey(person.id),
+    ));
 }
 
 function reachableWater(state: SimulationState, person: PersonState) {
@@ -122,11 +126,24 @@ function canRequestCompanyWithCurrentBasis(
   const resolvedAtMonth = previous.resolvedAtMonth ?? previous.proposedAtMonth;
   if (atMonth - resolvedAtMonth < COMPANY_REQUEST_REOFFER_MONTHS) return false;
   return relationshipSourceFactIds.some((eventId) => {
-    const ordered = worldEventsByIdsInHistoryOrder(state, [previous.proposalEventId, eventId]);
-    return ordered.length === 2
-      && ordered[0]?.id === previous.proposalEventId
-      && ordered[1]?.id === eventId;
+    const event = worldEventByIdWithRetainedLease(
+      state,
+      eventId,
+      livePersonSocialEvidenceLeaseKey(requesterId),
+    );
+    return Boolean(event && event.atMonth > previous.proposedAtMonth);
   });
+}
+
+function assistAlreadyPerformedBy(
+  state: SimulationState,
+  agreementId: string,
+  helperId: string,
+): boolean {
+  const agreement = agreementById(state, agreementId);
+  return Boolean(agreement
+    && agreement.proposal.kind === 'assist'
+    && (agreement.status === 'fulfilled' || agreement.fulfilledByPersonIds.includes(helperId)));
 }
 
 function responseOption(state: SimulationState, person: PersonState, referenceId: string, other: PersonState, accept: boolean, kind: 'assist' | 'companion' | 'collective' | 'permission' | 'decision-rule' | 'mandate'): ActionOption {
@@ -234,6 +251,7 @@ export function buildSocialOptions(
       nextAction: { kind: 'move', toCellId: site.cellId, toZ: site.z },
       estimatedDuration: 'long',
       estimatedMonths: 6,
+      completionPolicy: { kind: 'maintain-state', durationMonths: 6 },
       risks: [], domain: 'strategic', sourceFactIds: [...recentJointProject.completionEventIds],
     });
   }
@@ -265,26 +283,15 @@ export function buildSocialOptions(
   const acceptedAssist = acceptedAssistFor(state, person.id, atMonth);
   if (acceptedAssist) {
     const requester = personById(state, acceptedAssist.proposal.requesterId);
-    let alreadyHelped = false;
-    for (let index = state.world.past.length - 1; index >= 0; index -= 1) {
-      const event = state.world.past[index];
-      if (event.atMonth < acceptedAssist.acceptance.atMonth) break;
-      if (event.kind === 'action'
-        && event.status === 'completed'
-        && event.who === person.id
-        && event.action.kind === 'transfer'
-        && event.action.to.kind === 'person'
-        && event.action.to.personId === requester?.id) {
-        alreadyHelped = true;
-        break;
-      }
-    }
+    const agreementId = acceptedAssist.request.action.kind === 'communicate'
+      ? acceptedAssist.request.action.content.id
+      : undefined;
+    const alreadyHelped = agreementId
+      ? assistAlreadyPerformedBy(state, agreementId, person.id)
+      : false;
     if (requester && !alreadyHelped) {
       const food = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
       const water = acceptedAssist.proposal.need === 'water' ? reachableWater(state, person) : null;
-      const agreementId = acceptedAssist.request.action.kind === 'communicate'
-        ? acceptedAssist.request.action.content.id
-        : undefined;
       const companyContinuation = acceptedAssist.proposal.need === 'company' && agreementId
         ? compileAgreementContinuations(state, agreementId, atMonth)
           .find((continuation) => continuation.personId === person.id)

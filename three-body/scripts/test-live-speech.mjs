@@ -50,6 +50,38 @@ try {
     ],
   }, 8), true, '接受与拒绝都合法时仍应让模型参与真实选择');
 
+  const lifecycleReviewContext = {
+    ...fixedReplyContext,
+    options: [
+      { id: 'work:first', requiresFollowUp: false, nextAction: { kind: 'move' } },
+      { id: 'work:second', requiresFollowUp: false, nextAction: { kind: 'move' } },
+    ],
+    activeIntent: {
+      id: 'intent-lifecycle-review',
+      lastProgressAtMonth: 8,
+      lifecycle: { completion: 'on-achievement', reviewAtMonth: 8 },
+      stateGoalUntilMonth: 100,
+    },
+  };
+  assert.equal(isLiveModelDecisionContext(lifecycleReviewContext, 9), true,
+    '新 lifecycle.reviewAtMonth 必须触发到期复核，即使 legacy horizon 更晚');
+  assert.equal(isLiveModelDecisionContext({
+    ...lifecycleReviewContext,
+    activeIntent: {
+      ...lifecycleReviewContext.activeIntent,
+      lifecycle: { completion: 'on-achievement', reviewAtMonth: 100 },
+      stateGoalUntilMonth: 8,
+    },
+  }, 9), false, '存在 lifecycle 时不得让更早的 legacy stateGoalUntilMonth 覆盖它');
+  assert.equal(isLiveModelDecisionContext({
+    ...lifecycleReviewContext,
+    activeIntent: {
+      id: 'intent-legacy-review',
+      lastProgressAtMonth: 8,
+      stateGoalUntilMonth: 8,
+    },
+  }, 9), true, '没有 lifecycle 的旧意图仍须按 stateGoalUntilMonth 复核');
+
   const experience = {
     id: 'experience-care', kind: 'environment', change: 'body', atMonth: 7, orderInMonth: 1,
     cellId: 3, who: 'speaker', result: '缺水时，听者把自己的水分给了说话者', diff: { hydration: 18 },

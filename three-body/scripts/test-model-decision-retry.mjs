@@ -78,6 +78,13 @@ try {
   assert.equal(result.status, 200);
   assert.equal(receivedBodies.length, 2, 'reasoning-only stop 响应应且只应重试一次');
   assert.deepEqual(result.body.decisions, [{ kind: 'idle', reason: '没有需要调整的意图' }]);
+  const systemPrompt = receivedBodies[0].messages[0].content;
+  assert.match(systemPrompt, /on-achievement.*真实达成就结算/u,
+    '模型 prompt 必须解释一次性目标达成即结算');
+  assert.match(systemPrompt, /reviewAtMonth.*不是.*维持/u,
+    '模型 prompt 不得把一次性目标的复核月解释成维持锁');
+  assert.match(systemPrompt, /maintain-state.*maintainUntilMonth/u,
+    '模型 prompt 必须只把显式维护目标绑定到 maintainUntilMonth');
   assert.match(receivedBodies[1].messages.at(-1).content, /只返回了内部推理/);
 
   console.log('model decision reasoning-only retry test passed');

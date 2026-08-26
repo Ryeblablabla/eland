@@ -19,6 +19,7 @@ import { lifePlanningStage } from './life-stage';
 import { cellsInRadius, findStandingPath } from '../world/grid';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from './stored-food-access';
+import { relationTo } from './relation';
 
 const INFANT_MONTHS = 3 * 12;
 const DEPENDENT_MONTHS = 12 * 12;
@@ -95,7 +96,7 @@ export function reproductiveResponsibility(
     if (ageBand === 'infant') infantCount += 1;
     pressure += base;
     basisKeys.push(`dependent-care:${dependent.id}:${ageBand}`);
-    caregiver.relations.find((relation) => relation.personId === dependent.id)
+    relationTo(caregiver, dependent.id)
       ?.sourceEventIds.forEach((eventId) => sourceFactIds.add(eventId));
     if (sameLocation(dependent, caregiver)) {
       const reserve = Math.min(dependent.body.health, dependent.body.hydration, dependent.body.nutrition);

@@ -23,17 +23,13 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { SimStats } from '@/components/ThreeBodyCanvas';
 import type { AgentHistoryView, SocietyAgent, SocietyState, StructureView } from '@/game/societyContract';
-import { STAR_STYLES } from '@/lib/threebody';
 import PersonConversation from './PersonConversation';
 import './ObservationUI.css';
 
 export type FocusTarget =
   | { kind: 'agent'; id: string }
-  | { kind: 'structure'; id: string }
-  | { kind: 'celestial'; body: 'star'; index: number }
-  | { kind: 'celestial'; body: 'planet' };
+  | { kind: 'structure'; id: string };
 
 export type AgentSubtab = 'overview' | 'conversation' | 'inventory' | 'history';
 
@@ -51,7 +47,6 @@ export interface ObservationEvent {
 interface FocusInspectorProps {
   target: FocusTarget | null;
   society: SocietyState | null;
-  stats: SimStats | null;
   history: ObservationEvent[];
   runId: string;
   observedBranchId: string;
@@ -78,14 +73,6 @@ const AGENT_SUBTABS = [
   shortcut?: string;
   icon: typeof UserRound;
 }>;
-
-const FATE_LABELS: Record<SimStats['planetFate'], string> = {
-  stable: '恒纪元',
-  chaotic: '乱纪元',
-  burned: '地表焚毁',
-  frozen: '地表冻结',
-  extinct: '星系崩解',
-};
 
 function monthLabel(month: number): string {
   if (month <= 0) return '月初';
@@ -370,19 +357,16 @@ function relatedEvents(target: FocusTarget, society: SocietyState | null, histor
     const sources = new Set(structure?.sourceEventIds ?? []);
     return events.filter((entry) => entry.sourceEventIds?.some((id) => sources.has(id)));
   }
-  const eraEvents = events.filter((entry) => entry.tone === 'era');
-  return eraEvents.length ? eraEvents : events;
+  return [];
 }
 
 function targetKey(target: FocusTarget): string {
-  if (target.kind === 'celestial') return target.body === 'planet' ? 'celestial:planet' : `celestial:star:${target.index}`;
   return `${target.kind}:${target.id}`;
 }
 
 export function FocusInspector({
   target,
   society,
-  stats,
   history,
   runId,
   observedBranchId,
@@ -442,7 +426,7 @@ export function FocusInspector({
     ? society?.intents.find((intent) => intent.ownerId === agent.id && intent.status === 'active')
     : undefined;
 
-  let eyebrow = '天体';
+  let eyebrow = '对象';
   let name = '未知对象';
   let activity = '没有可读取的当前行为';
   let status = '状态不可用';
@@ -457,17 +441,6 @@ export function FocusInspector({
     name = structure.name;
     activity = structureActivity(structure);
     status = `${structure.complete ? '完整结构' : '未完成结构'} · 占据 ${structure.occupiedCells.length} 格 · ${structure.componentCount} 个构件`;
-  } else if (renderedTarget.kind === 'celestial' && renderedTarget.body === 'star') {
-    const star = STAR_STYLES[renderedTarget.index];
-    name = star?.name ?? `恒星 ${renderedTarget.index + 1}`;
-    activity = '在三星引力系统中围绕共同质心运行';
-    status = stats ? `当前星系尺度 ${stats.spread.toFixed(2)} · 总能量 ${stats.energy.toFixed(4)}` : '等待轨道状态';
-  } else if (renderedTarget.kind === 'celestial') {
-    name = '文明行星';
-    activity = '承受三星引力与辐照';
-    status = stats
-      ? `${FATE_LABELS[stats.planetFate]} · 相对辐照 ${stats.fluxRel.toFixed(2)} · 最近恒星 ${stats.planetDist.toFixed(2)}`
-      : '等待行星状态';
   }
 
   const materialNames = structure?.materialIds
@@ -488,12 +461,6 @@ export function FocusInspector({
         structure.effects.capacity > 0 ? `容量 ${structure.effects.capacity}` : '',
       ].filter(Boolean).join(' · ')
     : '尚未形成有效防护';
-  const celestialOffset = renderedTarget.kind === 'celestial'
-    ? renderedTarget.body === 'planet' ? 6 : renderedTarget.index * 2
-    : -1;
-  const celestialPosition = stats && celestialOffset >= 0
-    ? { x: stats.bodies[celestialOffset], y: stats.bodies[celestialOffset + 1] }
-    : null;
   const onPersonTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
@@ -722,14 +689,6 @@ export function FocusInspector({
                   <p>{agent.inventory.length ? agent.inventory.map((item) => `${item.name} × ${item.quantity}`).join(' · ') : '空'}</p>
                 </section>
               </>
-            )}
-
-            {renderedTarget.kind === 'celestial' && (
-              <section>
-                <h3>轨道观测</h3>
-                <p>{celestialPosition ? `坐标 ${celestialPosition.x.toFixed(3)}, ${celestialPosition.y.toFixed(3)}` : '等待坐标'}</p>
-                {stats && <p>系统尺度 {stats.spread.toFixed(3)} · 行星辐照 {stats.fluxRel.toFixed(3)}</p>}
-              </section>
             )}
 
             <section>

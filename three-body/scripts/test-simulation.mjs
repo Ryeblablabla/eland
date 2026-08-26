@@ -10,6 +10,8 @@ const bundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 const agreementBundlePath = path.join(temporaryDirectory, 'agreement.mjs');
 const decisionBundlePath = path.join(temporaryDirectory, 'decision-context.mjs');
 const intentBundlePath = path.join(temporaryDirectory, 'intent.mjs');
+const historyBundlePath = path.join(temporaryDirectory, 'history.mjs');
+const physicalStructureBundlePath = path.join(temporaryDirectory, 'physical-structure-index.mjs');
 const memoryBundlePath = path.join(temporaryDirectory, 'memory.mjs');
 const waterAccessBundlePath = path.join(temporaryDirectory, 'water-access.mjs');
 const constructionBundlePath = path.join(temporaryDirectory, 'construction-options.mjs');
@@ -29,6 +31,12 @@ try {
     'src/game/eland/domain/intent.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${intentBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/history.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${historyBundlePath}`,
+  ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
+    'src/game/eland/domain/physical-structure-index.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${physicalStructureBundlePath}`,
+  ], { stdio: 'pipe' });
+  execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/memory.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${memoryBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -44,6 +52,8 @@ try {
   const { advanceAgreementLifecycle, agreementAuthorizesTransfer, recordAgreementAction } = await import(`${pathToFileURL(agreementBundlePath).href}?test=${Date.now()}`);
   const { buildDecisionRequestContext } = await import(`${pathToFileURL(decisionBundlePath).href}?test=${Date.now()}`);
   const { composeIntentChoice } = await import(`${pathToFileURL(intentBundlePath).href}?test=${Date.now()}`);
+  const { appendCommittedEvents } = await import(`${pathToFileURL(historyBundlePath).href}?test=${Date.now()}`);
+  const { advancePhysicalStructureIndex, copyPhysicalStructures } = await import(`${pathToFileURL(physicalStructureBundlePath).href}?test=${Date.now()}`);
   const { projectMemories } = await import(`${pathToFileURL(memoryBundlePath).href}?test=${Date.now()}`);
   const { findReachableWater } = await import(`${pathToFileURL(waterAccessBundlePath).href}?test=${Date.now()}`);
   const { buildConstructionOptions } = await import(`${pathToFileURL(constructionBundlePath).href}?test=${Date.now()}`);
@@ -53,6 +63,18 @@ try {
     person.position.z = other.position.z;
     person.position.previousCellId = other.position.cellId;
     person.position.previousZ = other.position.z;
+  };
+  const appendFixtureEvents = (state, events) => {
+    const previousIndex = state.world.physicalStructureIndex;
+    const previousSeal = {
+      eventCount: state.world.historyCursor.eventCount,
+      tailEventId: state.world.historyCursor.tailEventId,
+    };
+    appendCommittedEvents(state, events);
+    if (previousIndex?.projectionVersion !== 2) return;
+    const nextIndex = advancePhysicalStructureIndex(state, previousIndex, events, previousSeal);
+    state.world.physicalStructureIndex = nextIndex;
+    state.derived = { ...state.derived, structures: copyPhysicalStructures(nextIndex) };
   };
   const surfaceStandingZ = (state, cell) => {
     for (let z = state.world.grid.levels - 1; z >= 0; z -= 1) {
@@ -231,14 +253,14 @@ try {
   assert.ok(cultivatedRelationship && cultivatedReciprocalRelationship, '关系培养测试需要双向关系');
   Object.assign(cultivatedRelationship, { trust: 5, bond: 5, sourceEventIds: [cultivatedRelationshipEventId] });
   Object.assign(cultivatedReciprocalRelationship, { trust: 0, bond: 0, sourceEventIds: [] });
-  cultivatedReproductionState.world.past.push({
+  appendFixtureEvents(cultivatedReproductionState, [{
     id: cultivatedRelationshipEventId, kind: 'action', actionTick: 1, atMonth: 0, orderInMonth: 0,
     cellId: cultivatedReproductionActor.position.cellId, who: cultivatedReproductionActor.id, cause: 'intent',
     action: { kind: 'attend', target: { kind: 'person', personId: cultivatedReproductionPartner.id } },
     fromCellId: cultivatedReproductionActor.position.cellId, toCellId: cultivatedReproductionActor.position.cellId,
     fromZ: cultivatedReproductionActor.position.z, toZ: cultivatedReproductionActor.position.z, pathSegment: [cultivatedReproductionActor.position.cellId],
     status: 'completed', result: '共同经历形成了足够的信任与亲近', diff: {},
-  });
+  }]);
   const cultivatedReproductionContext = buildDecisionContexts(cultivatedReproductionState).find((context) => context.person.id === cultivatedReproductionActor.id);
   assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者有可追溯共同经历后，应由本人评估是否提出生殖，不要求固定或双向关系分数');
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 6, bond: 6, sourceEventIds: [foundingFact.id] });
@@ -277,7 +299,7 @@ try {
   const pressureState = createInitialState(315, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const pressured = pressureState.people[0];
   pressured.conditions.push({ id: 'test-severe-cold', kind: 'cold', stage: 2, sinceMonth: 0, sourceEventIds: ['test-cold-escalation'] });
-  pressureState.world.past.push({ id: 'test-cold-escalation', kind: 'environment', atMonth: 0, orderInMonth: 0, cellId: pressured.position.cellId, who: pressured.id, change: 'condition', result: '寒冷加重', diff: { condition: 'cold', stage: 2 } });
+  appendFixtureEvents(pressureState, [{ id: 'test-cold-escalation', kind: 'environment', atMonth: 0, orderInMonth: 0, cellId: pressured.position.cellId, who: pressured.id, change: 'condition', result: '寒冷加重', diff: { condition: 'cold', stage: 2 } }]);
   const pressureIntentId = 'intent-before-cold-escalation';
   pressureState.intents.push({
     id: pressureIntentId, ownerId: pressured.id, summary: '继续原有远行', domain: 'strategic',
@@ -316,12 +338,12 @@ try {
   const actionFact = (id, atMonth, who, action) => ({ id, kind: 'action', actionTick: 1, atMonth, orderInMonth: 0, cellId: requester.position.cellId, who, cause: 'intent', action, fromCellId: requester.position.cellId, toCellId: requester.position.cellId, fromZ: requester.position.z, toZ: requester.position.z, pathSegment: [requester.position.cellId], status: 'completed', result: id, diff: {} });
   const proposal = actionFact('test-proposal', 1, requester.id, { kind: 'communicate', content: { id: agreementId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 3 } }, audience: [helper.id], channel: 'voice' });
   recordAgreementAction(agreementState, proposal);
-  agreementState.world.past.push(proposal);
+  appendFixtureEvents(agreementState, [proposal]);
   assert.equal(agreementState.agreements[0]?.status, 'proposed', '结构化求助应创建待回应 Agreement');
   const trustBeforeAcceptance = requester.relations.find((relation) => relation.personId === helper.id)?.trust;
   const acceptance = actionFact('test-acceptance', 2, helper.id, { kind: 'communicate', content: { id: 'test-acceptance-content', kind: 'accept', referenceId: agreementId }, audience: [requester.id], channel: 'voice' });
   recordAgreementAction(agreementState, acceptance);
-  agreementState.world.past.push(acceptance);
+  appendFixtureEvents(agreementState, [acceptance]);
   assert.equal(agreementState.agreements[0]?.status, 'active', '指定回应者接受后 Agreement 才生效');
   assert.equal(requester.relations.find((relation) => relation.personId === helper.id)?.trust, trustBeforeAcceptance, '接受承诺本身不能增加信任');
   const unrelatedTransfer = { kind: 'transfer', materialId: 13, quantity: 1, from: { kind: 'person', personId: requester.id }, to: { kind: 'person', personId: helper.id }, authorizationRef: agreementId };
@@ -346,7 +368,7 @@ try {
     orderInMonth: 0, cellId: socialPeer.position.cellId, who: socialPeer.id,
     result: `${socialPeer.name}感到寒冷`, diff: { condition: 'cold', stage: 2 },
   };
-  socialBasisState.world.past.push(socialSource);
+  appendFixtureEvents(socialBasisState, [socialSource]);
   socialPeer.conditions.push({
     id: 'test-social-cooldown-cold', kind: 'cold', stage: 2, sinceMonth: 1,
     sourceEventIds: [socialSource.id],
@@ -356,7 +378,10 @@ try {
     && option.nextAction.kind === 'communicate'
     && option.nextAction.audience.includes(socialPeer.id));
   assert.ok(firstTalk?.nextAction.kind === 'communicate', '社交冷却测试需要一项普通近身交谈');
-  socialBasisState.world.past.push(actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction));
+  const recentSocialTalk = actionFact('test-recent-social-talk', 1, socialActor.id, firstTalk.nextAction);
+  appendFixtureEvents(socialBasisState, [recentSocialTalk]);
+  socialActor.relations.find((relation) => relation.personId === socialPeer.id)?.sourceEventIds.push(recentSocialTalk.id);
+  socialPeer.relations.find((relation) => relation.personId === socialActor.id)?.sourceEventIds.push(recentSocialTalk.id);
   const repeatedBasisContext = buildDecisionContexts(socialBasisState).find((context) => context.person.id === socialActor.id);
   const firstBasisKey = firstTalk.nextAction.content.kind === 'claim'
     ? firstTalk.nextAction.content.conversation?.basisKey
@@ -406,10 +431,10 @@ try {
   const budgetExchangeId = 'test-budget-exchange';
   const budgetExchangeOffer = actionFact('test-budget-exchange-offer', 1, tradeOfferer.id, { kind: 'communicate', content: { id: budgetExchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: tradeOfferer.id, partnerId: tradeResponder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 6 } }, audience: [tradeResponder.id], channel: 'voice' });
   recordAgreementAction(fulfillmentBudgetState, budgetExchangeOffer);
-  fulfillmentBudgetState.world.past.push(budgetExchangeOffer);
+  appendFixtureEvents(fulfillmentBudgetState, [budgetExchangeOffer]);
   const budgetExchangeAcceptance = actionFact('test-budget-exchange-acceptance', 1, tradeResponder.id, { kind: 'communicate', content: { id: 'test-budget-exchange-acceptance-content', kind: 'accept', referenceId: budgetExchangeId }, audience: [tradeOfferer.id], channel: 'voice' });
   recordAgreementAction(fulfillmentBudgetState, budgetExchangeAcceptance);
-  fulfillmentBudgetState.world.past.push(budgetExchangeAcceptance);
+  appendFixtureEvents(fulfillmentBudgetState, [budgetExchangeAcceptance]);
   fulfillmentBudgetState.clock.elapsedMonths = 1;
   fulfillmentBudgetState.decisionBudget.credits = 0;
   const exhaustedFulfillmentContexts = Math.floor(fulfillmentBudgetState.people.length / 3);
@@ -588,7 +613,7 @@ try {
   const waterAssistId = 'test-water-assist';
   const waterProposal = { ...actionFact('test-water-proposal', 1, waterRequester.id, { kind: 'communicate', content: { id: waterAssistId, kind: 'request', summary: '请帮助我找水', proposal: { kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id, need: 'water', expiresAtMonth: 4 } }, audience: [waterHelper.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterProposal);
-  waterAssistState.world.past.push(waterProposal);
+  appendFixtureEvents(waterAssistState, [waterProposal]);
   waterRequester.bornAtMonth = -20 * 12;
   waterHelper.bornAtMonth = -20 * 12;
   waterRequester.body.hydration = 80;
@@ -624,10 +649,10 @@ try {
   const breachId = 'test-breach-agreement';
   const breachProposal = actionFact('test-breach-proposal', 1, breachRequester.id, { kind: 'communicate', content: { id: breachId, kind: 'request', summary: '请帮助我', proposal: { kind: 'assist', requesterId: breachRequester.id, helperId: breachHelper.id, need: 'food', expiresAtMonth: 3 } }, audience: [breachHelper.id], channel: 'voice' });
   recordAgreementAction(breachState, breachProposal);
-  breachState.world.past.push(breachProposal);
+  appendFixtureEvents(breachState, [breachProposal]);
   const breachAcceptance = actionFact('test-breach-acceptance', 2, breachHelper.id, { kind: 'communicate', content: { id: 'test-breach-acceptance-content', kind: 'accept', referenceId: breachId }, audience: [breachRequester.id], channel: 'voice' });
   recordAgreementAction(breachState, breachAcceptance);
-  breachState.world.past.push(breachAcceptance);
+  appendFixtureEvents(breachState, [breachAcceptance]);
   advanceAgreementLifecycle(breachState, 9);
   assert.equal(breachState.agreements[0]?.status, 'breached', '超过履行期限的有效 Agreement 应明确违约');
 
@@ -682,12 +707,12 @@ try {
     id: 'test-dependent-child-heat-condition', kind: 'heat', stage: 3,
     sinceMonth: caredChildState.clock.elapsedMonths, sourceEventIds: [childHeatExposureId],
   }];
-  caredChildState.world.past.push({
+  appendFixtureEvents(caredChildState, [{
     id: childHeatExposureId, kind: 'environment', change: 'condition',
     atMonth: caredChildState.clock.elapsedMonths, orderInMonth: caredChildState.world.past.length,
     cellId: hibernationChild.position.cellId, who: hibernationChild.id,
     result: '孩子在严重高温中受到暴露', diff: { condition: 'heat', stage: 3 },
-  });
+  }]);
   caredChildState.civilization.epoch = 'chaotic';
   caredChildState.civilization.climate = {
     kind: 'heat', severity: 5, sinceMonth: caredChildState.clock.elapsedMonths,
@@ -796,17 +821,13 @@ try {
     takeUsage() { return { inputTokens: 0, outputTokens: 0 }; },
   });
   const harvestIntent = harvestState.intents.find((intent) => intent.ownerId === harvester.id && intent.target?.kind === 'voxel');
-  assert.ok((harvestIntent?.plannedDurationMonths ?? 0) >= 3 && (harvestIntent?.plannedDurationMonths ?? 99) <= 12, '一次可完成的生产动作应升级为三到十二个月的状态目标');
-  assert.equal(harvestIntent?.status, 'active', '物质取得后不应当月立刻关闭状态目标');
+  assert.ok((harvestIntent?.plannedDurationMonths ?? 0) >= 3 && (harvestIntent?.plannedDurationMonths ?? 99) <= 12, '一次性生产目标仍应保留有界复核估时，但估时不得冒充维护锁');
+  assert.equal(harvestIntent?.lifecycle?.completion, 'on-achievement', '采收属于一次性成就，不应从 inventory goal.kind 推断维护语义');
+  assert.equal(harvestIntent?.stateGoalUntilMonth, undefined, '新采收意图不得写入 legacy 状态维持期限');
+  assert.equal(harvestIntent?.status, 'completed', '真实采收达成库存目标后应当月结算');
   const firstHarvestAction = harvestState.world.past.find((event) => event.kind === 'action' && event.intentId === harvestIntent?.id);
   assert.equal(firstHarvestAction?.action.kind, 'act', '指定采收目标必须先执行分离，不能被附近野生食物偷换');
   assert.equal(firstHarvestAction?.diff.sourceMaterialId, 12, '采收事实必须来自目标成熟作物');
-  harvestState = stepSimulation(harvestState, { decide() { return { kind: 'idle', reason: '维持生产状态目标' }; } });
-  assert.equal(harvestState.intents.find((intent) => intent.id === harvestIntent?.id)?.status, 'active', '状态目标应跨月保持，而不是动作完成后重新抽取决定');
-  while (harvestState.clock.elapsedMonths < harvestIntent.stateGoalUntilMonth) {
-    harvestState = stepSimulation(harvestState, { decide() { return { kind: 'idle', reason: '完成状态复核' }; } });
-  }
-  assert.equal(harvestState.intents.find((intent) => intent.id === harvestIntent?.id)?.status, 'completed', '持续窗口到期且状态仍满足时才关闭目标');
 
   let survivalHarvestState = createInitialState(341, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   const survivalHarvester = survivalHarvestState.people[0];
@@ -887,7 +908,7 @@ try {
   const tentativeTechniqueState = createInitialState(35, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
   tentativeTechniqueState.people[0].knowledge.push({ id: 'technique:test', kind: 'technique', summary: '暂定结合经验', confidence: 46, learnedAtMonth: 0, sourceEventIds: ['test-combine'] });
   const testPosition = { x: tentativeTechniqueState.people[0].position.cellId % tentativeTechniqueState.world.grid.width, y: Math.floor(tentativeTechniqueState.people[0].position.cellId / tentativeTechniqueState.world.grid.width), z: 0 };
-  tentativeTechniqueState.world.past.push({ ...actionFact('test-combine', 0, tentativeTechniqueState.people[0].id, { kind: 'act', operation: 'combine', targets: [] }), diff: { position: testPosition, outputMaterialId: tentativeTechniqueState.world.grid.voxels[tentativeTechniqueState.people[0].position.cellId] } });
+  appendFixtureEvents(tentativeTechniqueState, [{ ...actionFact('test-combine', 0, tentativeTechniqueState.people[0].id, { kind: 'act', operation: 'combine', targets: [] }), diff: { position: testPosition, outputMaterialId: tentativeTechniqueState.world.grid.voxels[tentativeTechniqueState.people[0].position.cellId] } }]);
   const tentativeContext = buildDecisionContexts(tentativeTechniqueState, tentativeTechniqueState.clock.elapsedMonths + 1)
     .find((context) => context.person.id === tentativeTechniqueState.people[0].id);
   assert.equal(tentativeContext?.options.some((option) => option.id.startsWith('teach:')), false, '一次成功结合还不能直接传授为可靠技术');
@@ -1249,16 +1270,16 @@ try {
   failedExperimentState.people[0].bornAtMonth = -20 * 12;
   failedExperimentState.people[0].inventory = [
     { id: 'failed-trial-wood', materialId: 13, quantity: 2, sourceEventIds: [] },
-    { id: 'failed-trial-fiber', materialId: 20, quantity: 2, sourceEventIds: [] },
+    { id: 'failed-trial-food', materialId: 21, quantity: 2, sourceEventIds: [] },
   ];
   const failedCombinationOption = () => buildDecisionContexts(failedExperimentState)
     .find((context) => context.person.id === experimenterId)?.options
     .find((option) => option.nextAction.kind === 'act'
       && option.nextAction.operation === 'combine'
       && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-wood')
-      && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-fiber'));
+      && option.nextAction.targets.some((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-food'));
   failedExperimentState = runRecordOption(failedExperimentState, experimenterId, failedCombinationOption(), 'first-failed-material-experiment');
-  const negativeFactId = 'observation:no-response:combine-inventory:13+20';
+  const negativeFactId = 'observation:no-response:combine-inventory:13+21';
   assert.equal(failedExperimentState.people[0].knowledge.find((fact) => fact.id === negativeFactId)?.confidence, 46, '一次真实失败只应形成暂定的负面观察');
   failedExperimentState.clock.elapsedMonths += 7;
   assert.ok(failedCombinationOption(), '单次失败不足以把一种材料组合认定为无响应');
@@ -1270,7 +1291,7 @@ try {
   assert.ok(buildDecisionContexts(failedExperimentState).find((context) => context.person.id === experimenterId)?.options
     .some((option) => option.nextAction.kind === 'act'
       && option.nextAction.operation === 'combine'
-      && option.nextAction.targets.filter((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-fiber').length === 2), '排除一个已证伪组合不能关闭仍可能成功的其他材料实验');
+      && option.nextAction.targets.filter((target) => target.kind === 'inventory-stack' && target.stackId === 'failed-trial-food').length === 2), '排除一个已证伪组合不能关闭仍可能成功的其他材料实验');
 
   let recordContext = buildDecisionContexts(recordState).find((context) => context.person.id === authorId);
   const carveOption = recordContext?.options.find((option) => option.id.startsWith('try-exert:') && option.nextAction.kind === 'act'
@@ -1311,13 +1332,13 @@ try {
   const priorAssistId = 'test-prior-fulfilled-assist';
   const priorRequest = actionFact('test-prior-assist-request', 1, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorRequest);
-  collectiveState.world.past.push(priorRequest);
+  appendFixtureEvents(collectiveState, [priorRequest]);
   const priorAcceptance = actionFact('test-prior-assist-acceptance', 1, partner.id, { kind: 'communicate', content: { id: 'test-prior-assist-acceptance-content', kind: 'accept', referenceId: priorAssistId }, audience: [founder.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorAcceptance);
-  collectiveState.world.past.push(priorAcceptance);
+  appendFixtureEvents(collectiveState, [priorAcceptance]);
   const priorFulfillment = actionFact('test-prior-assist-fulfillment', 1, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: priorAssistId });
   recordAgreementAction(collectiveState, priorFulfillment);
-  collectiveState.world.past.push(priorFulfillment);
+  appendFixtureEvents(collectiveState, [priorFulfillment]);
   const collectiveContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const collectiveOffer = collectiveContext?.options.find((option) => option.id.startsWith('offer-collective:'));
   assert.ok(collectiveOffer && !collectiveOffer.requiresFollowUp, '共同体提议是完整结构化行动，不能借无关后续动作取得额外目标');
@@ -1451,13 +1472,13 @@ try {
   const candidateAssistId = 'test-candidate-fulfilled-assist';
   const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: candidate.id, helperId: founder.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [founder.id], channel: 'voice' });
   recordAgreementAction(collectiveState, candidateRequest);
-  collectiveState.world.past.push(candidateRequest);
+  appendFixtureEvents(collectiveState, [candidateRequest]);
   const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, audience: [candidate.id], channel: 'voice' });
   recordAgreementAction(collectiveState, candidateAcceptance);
-  collectiveState.world.past.push(candidateAcceptance);
+  appendFixtureEvents(collectiveState, [candidateAcceptance]);
   const candidateFulfillment = actionFact('test-candidate-assist-fulfillment', collectiveState.clock.elapsedMonths, founder.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: founder.id }, to: { kind: 'person', personId: candidate.id }, authorizationRef: candidateAssistId });
   recordAgreementAction(collectiveState, candidateFulfillment);
-  collectiveState.world.past.push(candidateFulfillment);
+  appendFixtureEvents(collectiveState, [candidateFulfillment]);
   const membershipContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerMembership = membershipContext?.options.find((option) => option.id.startsWith('offer-membership:')
     && option.nextAction.kind === 'communicate'
@@ -1492,10 +1513,10 @@ try {
   const experimenter = repeatedExperimentState.people[0];
   const techniqueId = 'technique:combine:22:3:11';
   experimenter.knowledge.push({ id: techniqueId, kind: 'technique', summary: '种子与湿土可结合为作物幼苗', confidence: 64, learnedAtMonth: 0, sourceEventIds: ['repeat-trial-1', 'repeat-trial-2'] });
-  repeatedExperimentState.world.past.push(
+  appendFixtureEvents(repeatedExperimentState, [
     { ...actionFact('repeat-trial-1', 1, experimenter.id, { kind: 'act', operation: 'combine', targets: [] }), diff: { inputMaterialId: 22, targetMaterialId: 3, outputMaterialId: 11 } },
     { ...actionFact('repeat-trial-2', 2, experimenter.id, { kind: 'act', operation: 'combine', targets: [] }), diff: { inputMaterialId: 22, targetMaterialId: 3, outputMaterialId: 11 } },
-  );
+  ]);
   const observedExperimentState = stepSimulation(repeatedExperimentState, { decide() { return { kind: 'idle', reason: '不干扰重复实验观察' }; } });
   assert.ok(observedExperimentState.derived.milestones.some((milestone) => milestone.capabilityId === 222), '同一物质规律被成功复现两次，应构成试错学习的证据链');
 
@@ -1518,7 +1539,7 @@ try {
   const exchangeId = 'test-required-exchange';
   const exchangeFact = actionFact('test-required-exchange-event', 1, offerer.id, { kind: 'communicate', content: { id: exchangeId, kind: 'offer', summary: '木材换食物', proposal: { kind: 'exchange', offererId: offerer.id, partnerId: responder.id, offererMaterialId: 13, offererQuantity: 1, partnerMaterialId: 21, partnerQuantity: 1, expiresAtMonth: 8 } }, audience: [responder.id], channel: 'voice' });
   recordAgreementAction(responseState, exchangeFact);
-  responseState.world.past.push(exchangeFact);
+  appendFixtureEvents(responseState, [exchangeFact]);
   responder.position.cellId = separatedCell;
   responder.position.z = separatedPosition.z;
   responder.position.previousCellId = separatedCell;
@@ -1557,11 +1578,13 @@ try {
 
   const roadState = createInitialState(40, { endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0 });
   const roadWalker = roadState.people[0];
-  for (let index = 0; index < 4; index += 1) roadState.world.past.push({
-    ...actionFact(`road-formation-${index}`, index + 1, roadWalker.id, { kind: 'move', toCellId: roadWalker.position.cellId }),
-    pathSegment: [roadWalker.position.cellId, roadWalker.position.cellId + 1],
-    diff: { materialChanges: [{ cellId: 100 + index, from: 2, to: 15 }] },
-  });
+  for (let index = 0; index < 4; index += 1) {
+    appendFixtureEvents(roadState, [{
+      ...actionFact(`road-formation-${index}`, index + 1, roadWalker.id, { kind: 'move', toCellId: roadWalker.position.cellId }),
+      pathSegment: [roadWalker.position.cellId, roadWalker.position.cellId + 1],
+      diff: { materialChanges: [{ cellId: 100 + index, from: 2, to: 15 }] },
+    }]);
+  }
   const projectedRoad = stepSimulation(roadState, { decide() { return { kind: 'idle', reason: '道路观察测试' }; } });
   const roadMilestone = projectedRoad.derived.milestones.find((milestone) => milestone.capabilityId === 42);
   assert.equal(roadMilestone?.observedAtMonth, 4, '道路首次出现时间应取第四个真实压实格形成时，而不是最早一次历史移动');

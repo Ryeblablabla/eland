@@ -36,6 +36,8 @@ export interface ProjectHypothesisRequest {
   targetSourceKeys?: string[];
   /** Exact held entities that created the present project dilemma. */
   subjectSourceKeys?: string[];
+  /** Current project artifacts that must remain entities, not experiment inputs. */
+  protectedSourceKeys?: string[];
 }
 
 interface LocalMaterialEvidence {
@@ -81,6 +83,12 @@ function projectMaterialFocus(project: ProjectState): Array<{
     operation: 'combine-inventory' as const,
     materials: [...pair].sort((left, right) => left - right) as [MaterialId, MaterialId],
   }));
+  // A reliability inquiry is opened by repeated physical failure, not by
+  // knowing a better material route. Its unknown trials receive no recipe or
+  // target bonus; ordinary entity evidence and seeded ranking must select them.
+  if (project.desiredFunction === 'durable-power-transmission'
+    || project.desiredFunction === 'remote-work-power-delivery'
+    || project.desiredFunction === 'comparable-mass-measurement') return [];
   if (project.desiredFunction === 'efficient-production') return combine(
     [Material.Wood, Material.Rope], [Material.StoneTool, Material.Plank],
   );
@@ -168,6 +176,7 @@ function mergeEvidence(
 function localMaterialEvidence(person: PersonState, visibleDrops: DropState[]): LocalMaterialEvidence[] {
   const evidence = new Map<MaterialId, LocalMaterialEvidence>();
   for (const stack of person.inventory) {
+    if (stack.quantity <= 0 || stack.recordPayloadId) continue;
     mergeEvidence(
       evidence,
       stack.materialId,
@@ -179,6 +188,7 @@ function localMaterialEvidence(person: PersonState, visibleDrops: DropState[]): 
     );
   }
   for (const drop of visibleDrops) {
+    if (drop.quantity <= 0 || drop.recordPayloadId) continue;
     mergeEvidence(
       evidence,
       drop.materialId,
@@ -190,6 +200,21 @@ function localMaterialEvidence(person: PersonState, visibleDrops: DropState[]): 
     );
   }
   return [...evidence.values()].sort((left, right) => left.materialId - right.materialId);
+}
+
+function experimentEvidence(
+  evidence: LocalMaterialEvidence[],
+  request: Pick<ProjectHypothesisRequest, 'protectedSourceKeys'>,
+): LocalMaterialEvidence[] {
+  const protectedKeys = new Set(request.protectedSourceKeys ?? []);
+  if (!protectedKeys.size) return evidence;
+  // Evidence is aggregated by material. If one current entity of that material
+  // is protected, omit the material from this finite trial rather than risk
+  // silently substituting the protected stack at action compilation time.
+  const protectedMaterialIds = new Set(evidence
+    .filter((item) => item.sourceKeys.some((sourceKey) => protectedKeys.has(sourceKey)))
+    .map((item) => item.materialId));
+  return evidence.filter((item) => !protectedMaterialIds.has(item.materialId));
 }
 
 function hasTag(materialId: MaterialId, tag: MaterialTag): boolean {
@@ -236,6 +261,18 @@ function questionSourceKey(project: ProjectState, questionKind: ProjectHypothesi
 }
 
 const REGISTERED_MATERIAL_IDS = new Set(MATERIAL_PALETTE.map((material) => material.id));
+const REPEATABLE_REFERENCE_METALS = new Set<MaterialId>([
+  Material.Copper,
+  Material.Bronze,
+  Material.Iron,
+]);
+const REPEATABLE_REFERENCE_MARKERS = new Set<MaterialId>([Material.Fiber, Material.Rope]);
+const FLOW_DRIVEN_ROTOR_MEMBERS = new Set<MaterialId>([Material.Wood, Material.Plank]);
+const RIGID_ROTATING_CONNECTOR_METALS = new Set<MaterialId>([
+  Material.Copper,
+  Material.Bronze,
+  Material.Iron,
+]);
 
 function exactMaterialIds(factId: string, pattern: RegExp): number[] | null {
   const match = factId.match(pattern);
@@ -533,8 +570,14 @@ export function projectHypothesisCandidateKey(
   operation: ProjectHypothesisOperation,
   materialIds: readonly [MaterialId, MaterialId],
   targetMaterialId?: MaterialId,
+  inventoryMaterialIds?: readonly MaterialId[],
 ): string {
-  if (operation === 'combine-inventory') return projectHypothesisPairKey(canonicalPair(materialIds[0], materialIds[1]));
+  if (operation === 'combine-inventory') {
+    const exactInputs = [...(inventoryMaterialIds ?? materialIds)].sort((left, right) => left - right);
+    return exactInputs.length === 2
+      ? projectHypothesisPairKey([exactInputs[0], exactInputs[1]])
+      : `combine-inventory:${exactInputs.join('+')}`;
+  }
   if (operation === 'exert-air') return `exert-air:${materialIds[0]}>${materialIds[1]}@${targetMaterialId ?? materialIds[1]}`;
   return `expose-local:${materialIds[0]}@${targetMaterialId ?? materialIds[1]}`;
 }
@@ -569,6 +612,258 @@ function pairScore(pair: [MaterialId, MaterialId]): { score: number; reasonKeys:
     reasons.push('different-shapes');
   }
   return { score: rounded(score), reasonKeys: [...new Set(reasons)] };
+}
+
+interface ObservableAssemblyBasis {
+  score: number;
+  primaryScore: number;
+  secondaryScore: number;
+  primaryMaterialId: MaterialId;
+  secondaryMaterialId: MaterialId;
+  primarySourceKey?: string;
+  secondarySourceKey?: string;
+  reasonKeys: string[];
+  sourceFactIds: string[];
+  sourceKeys: string[];
+}
+
+function assemblySourceBasis(
+  evidence: LocalMaterialEvidence,
+  preferredSourceKeys: readonly string[],
+): { sourceKey?: string; sourceFactIds: string[] } {
+  const sourceKey = selectedSourceKey(evidence, false, preferredSourceKeys);
+  return {
+    ...(sourceKey ? { sourceKey } : {}),
+    sourceFactIds: sourceFactIdsFor(evidence, sourceKey),
+  };
+}
+
+/**
+ * A comparison problem can suggest a symmetric suspended structure without
+ * revealing which material recipe, if any, the world will accept. The roles
+ * below use only current entities and coarse tangible properties.
+ */
+function balancedSuspensionBasis(
+  inventoryMaterialIds: readonly MaterialId[],
+  evidence: readonly LocalMaterialEvidence[],
+  subjectSourceKeys: readonly string[],
+): ObservableAssemblyBasis | null {
+  if (inventoryMaterialIds.length !== 3) return null;
+  const counts = new Map<MaterialId, number>();
+  for (const materialId of inventoryMaterialIds) {
+    counts.set(materialId, (counts.get(materialId) ?? 0) + 1);
+  }
+  if (counts.size !== 2) return null;
+  const repeatedMaterialId = [...counts].find(([, quantity]) => quantity === 2)?.[0];
+  const connectorMaterialId = [...counts].find(([, quantity]) => quantity === 1)?.[0];
+  if (repeatedMaterialId === undefined || connectorMaterialId === undefined) return null;
+  const repeated = evidence.find((item) => item.materialId === repeatedMaterialId);
+  const connector = evidence.find((item) => item.materialId === connectorMaterialId);
+  if (!repeated || !connector) return null;
+  const repeatedDefinition = materialDefinition(repeatedMaterialId);
+  const connectorDefinition = materialDefinition(connectorMaterialId);
+  if (repeatedDefinition.phase !== 'solid'
+    || !hasTag(repeatedMaterialId, 'solid')
+    || !hasTag(repeatedMaterialId, 'building')
+    || repeatedDefinition.hardness < 3
+    || repeatedDefinition.hardness > 7
+    || repeatedDefinition.mass > 1.5
+    || !hasTag(connectorMaterialId, 'fiber')
+    || connectorDefinition.hardness > 3
+    || connectorDefinition.mass > 0.5) return null;
+
+  const preferred = new Set(subjectSourceKeys);
+  const repeatedSource = assemblySourceBasis(
+    repeated,
+    repeated.sourceKeys.filter((sourceKey) => preferred.has(sourceKey)),
+  );
+  const connectorSource = assemblySourceBasis(connector, []);
+  const personallyGrounded = Boolean(repeatedSource.sourceKey && preferred.has(repeatedSource.sourceKey));
+  const primaryScore = 12
+    + repeatedDefinition.hardness
+    + 4
+    + (personallyGrounded ? 6 : 0);
+  const secondaryScore = 13
+    + (connectorDefinition.mass <= 0.5 ? 3 : 0)
+    + (connectorDefinition.hardness <= 2 ? 2 : 0);
+  return {
+    score: rounded(primaryScore + secondaryScore + 8),
+    primaryScore: rounded(primaryScore),
+    secondaryScore: rounded(secondaryScore),
+    primaryMaterialId: repeatedMaterialId,
+    secondaryMaterialId: connectorMaterialId,
+    ...(repeatedSource.sourceKey ? { primarySourceKey: repeatedSource.sourceKey } : {}),
+    ...(connectorSource.sourceKey ? { secondarySourceKey: connectorSource.sourceKey } : {}),
+    reasonKeys: [
+      'role-symmetric-rigid-members',
+      'role-flexible-suspension',
+      'role-portable-balanced-assembly',
+      'role-structural-member',
+      ...(personallyGrounded ? ['project-source-bound-symmetric-member'] : []),
+    ],
+    sourceFactIds: [...new Set([
+      ...repeatedSource.sourceFactIds,
+      ...connectorSource.sourceFactIds,
+    ])],
+    sourceKeys: [repeatedSource.sourceKey, connectorSource.sourceKey]
+      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+  };
+}
+
+/** A reference object is explored as a hard stable body plus a tangible marker. */
+function repeatableReferenceBasis(
+  inventoryMaterialIds: readonly MaterialId[],
+  evidence: readonly LocalMaterialEvidence[],
+): ObservableAssemblyBasis | null {
+  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
+  const [left, right] = inventoryMaterialIds;
+  const metalMaterialId = REPEATABLE_REFERENCE_METALS.has(left) && REPEATABLE_REFERENCE_MARKERS.has(right)
+    ? left
+    : REPEATABLE_REFERENCE_METALS.has(right) && REPEATABLE_REFERENCE_MARKERS.has(left) ? right : undefined;
+  const markerMaterialId = metalMaterialId === left ? right : metalMaterialId === right ? left : undefined;
+  if (metalMaterialId === undefined || markerMaterialId === undefined) return null;
+  const metal = evidence.find((item) => item.materialId === metalMaterialId);
+  const marker = evidence.find((item) => item.materialId === markerMaterialId);
+  if (!metal || !marker) return null;
+  const metalDefinition = materialDefinition(metalMaterialId);
+  const markerDefinition = materialDefinition(markerMaterialId);
+  if (metalDefinition.phase !== 'solid'
+    || !hasTag(metalMaterialId, 'metal')
+    || metalDefinition.hardness < 4
+    || markerDefinition.hardness > 3
+    || markerDefinition.mass > 0.5
+    // A thicker rope is only paired with a visibly rigid reference body;
+    // light fiber remains the broader marker for softer portable metals.
+    || (markerMaterialId === Material.Rope && metalDefinition.hardness < 8)) return null;
+  const metalSource = assemblySourceBasis(metal, []);
+  const markerSource = assemblySourceBasis(marker, []);
+  const primaryScore = 14 + metalDefinition.hardness * 1.5;
+  const secondaryScore = 12
+    + (markerDefinition.mass <= 0.5 ? 3 : 0)
+    + (markerDefinition.hardness <= 2 ? 2 : 0);
+  return {
+    score: rounded(primaryScore + secondaryScore),
+    primaryScore: rounded(primaryScore),
+    secondaryScore: rounded(secondaryScore),
+    primaryMaterialId: metalMaterialId,
+    secondaryMaterialId: markerMaterialId,
+    ...(metalSource.sourceKey ? { primarySourceKey: metalSource.sourceKey } : {}),
+    ...(markerSource.sourceKey ? { secondarySourceKey: markerSource.sourceKey } : {}),
+    reasonKeys: [
+      'role-hard-stable-reference-body',
+      'role-flexible-reference-marker',
+      'role-repeatable-portable-reference',
+    ],
+    sourceFactIds: [...new Set([
+      ...metalSource.sourceFactIds,
+      ...markerSource.sourceFactIds,
+    ])],
+    sourceKeys: [metalSource.sourceKey, markerSource.sourceKey]
+      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+  };
+}
+
+/**
+ * Flow can suggest a light rotor held together by a flexible lashing. This is
+ * an observable functional question: it deliberately names only the locally
+ * recognizable member and connector classes, never an expected output.
+ */
+function flowDrivenRotorBasis(
+  inventoryMaterialIds: readonly MaterialId[],
+  evidence: readonly LocalMaterialEvidence[],
+): ObservableAssemblyBasis | null {
+  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
+  const [left, right] = inventoryMaterialIds;
+  const memberMaterialId = FLOW_DRIVEN_ROTOR_MEMBERS.has(left) && right === Material.Fiber
+    ? left
+    : FLOW_DRIVEN_ROTOR_MEMBERS.has(right) && left === Material.Fiber ? right : undefined;
+  if (memberMaterialId === undefined) return null;
+  const connectorMaterialId = Material.Fiber;
+  const member = evidence.find((item) => item.materialId === memberMaterialId);
+  const connector = evidence.find((item) => item.materialId === connectorMaterialId);
+  if (!member || !connector) return null;
+  const memberDefinition = materialDefinition(memberMaterialId);
+  const connectorDefinition = materialDefinition(connectorMaterialId);
+  if (memberDefinition.phase !== 'solid'
+    || !hasTag(memberMaterialId, 'building')
+    || memberDefinition.hardness < 3
+    || memberDefinition.hardness > 7
+    || memberDefinition.mass > 1.5
+    || !hasTag(connectorMaterialId, 'fiber')
+    || connectorDefinition.mass > 0.5) return null;
+  const memberSource = assemblySourceBasis(member, []);
+  const connectorSource = assemblySourceBasis(connector, []);
+  const primaryScore = 17 + memberDefinition.hardness;
+  const secondaryScore = 14 + (connectorDefinition.mass <= 0.25 ? 3 : 0);
+  return {
+    score: rounded(primaryScore + secondaryScore + 6),
+    primaryScore: rounded(primaryScore),
+    secondaryScore: rounded(secondaryScore),
+    primaryMaterialId: memberMaterialId,
+    secondaryMaterialId: connectorMaterialId,
+    ...(memberSource.sourceKey ? { primarySourceKey: memberSource.sourceKey } : {}),
+    ...(connectorSource.sourceKey ? { secondarySourceKey: connectorSource.sourceKey } : {}),
+    reasonKeys: [
+      'role-light-structural-rotor-member',
+      'role-flexible-rotor-lashing',
+      'role-flow-facing-assembly',
+    ],
+    sourceFactIds: [...new Set([
+      ...memberSource.sourceFactIds,
+      ...connectorSource.sourceFactIds,
+    ])],
+    sourceKeys: [memberSource.sourceKey, connectorSource.sourceKey]
+      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+  };
+}
+
+/** A rotating connection suggests a straight member joined to a portable metal body. */
+function rigidRotatingConnectorBasis(
+  inventoryMaterialIds: readonly MaterialId[],
+  evidence: readonly LocalMaterialEvidence[],
+): ObservableAssemblyBasis | null {
+  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
+  const [left, right] = inventoryMaterialIds;
+  const memberMaterialId = left === Material.Plank && RIGID_ROTATING_CONNECTOR_METALS.has(right)
+    ? left
+    : right === Material.Plank && RIGID_ROTATING_CONNECTOR_METALS.has(left) ? right : undefined;
+  const metalMaterialId = memberMaterialId === left ? right : memberMaterialId === right ? left : undefined;
+  if (memberMaterialId === undefined || metalMaterialId === undefined) return null;
+  const member = evidence.find((item) => item.materialId === memberMaterialId);
+  const metal = evidence.find((item) => item.materialId === metalMaterialId);
+  if (!member || !metal) return null;
+  const memberDefinition = materialDefinition(memberMaterialId);
+  const metalDefinition = materialDefinition(metalMaterialId);
+  if (memberDefinition.phase !== 'solid'
+    || !hasTag(memberMaterialId, 'building')
+    || memberDefinition.mass > 1.5
+    || metalDefinition.phase !== 'solid'
+    || !hasTag(metalMaterialId, 'metal')
+    || metalDefinition.mass > 2.5) return null;
+  const memberSource = assemblySourceBasis(member, []);
+  const metalSource = assemblySourceBasis(metal, []);
+  const primaryScore = 18 + memberDefinition.hardness;
+  const secondaryScore = 16 + metalDefinition.hardness;
+  return {
+    score: rounded(primaryScore + secondaryScore + 5),
+    primaryScore: rounded(primaryScore),
+    secondaryScore: rounded(secondaryScore),
+    primaryMaterialId: memberMaterialId,
+    secondaryMaterialId: metalMaterialId,
+    ...(memberSource.sourceKey ? { primarySourceKey: memberSource.sourceKey } : {}),
+    ...(metalSource.sourceKey ? { secondarySourceKey: metalSource.sourceKey } : {}),
+    reasonKeys: [
+      'role-straight-structural-member',
+      'role-rigid-portable-metal-body',
+      'role-rotating-load-connector',
+    ],
+    sourceFactIds: [...new Set([
+      ...memberSource.sourceFactIds,
+      ...metalSource.sourceFactIds,
+    ])],
+    sourceKeys: [memberSource.sourceKey, metalSource.sourceKey]
+      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+  };
 }
 
 function rankedCandidate(
@@ -762,30 +1057,83 @@ function combineCandidates(
       if (roleReasonKeys.some((reason) => reason.startsWith('exact-verified-response-as-'))) {
         reasons.push('verified-response-material');
       }
-      const key = projectHypothesisCandidateKey('combine-inventory', pair);
-      candidates.push(rankedCandidate(seed, person, project, {
-        key,
-        operation: 'combine-inventory',
-        questionKind: request.questionKind,
-        materialIds: pair,
-        ...(toolSourceKey ? { toolSourceKey } : {}),
-        ...(inputSourceKey ? { inputSourceKey } : {}),
-        ...(toolRoleMaterialId === undefined ? {} : { toolRoleMaterialId }),
-        ...(inputRoleMaterialId === undefined ? {} : { inputRoleMaterialId }),
-        roleScore,
-        ...(toolRoleScore === undefined ? {} : { toolRoleScore }),
-        ...(inputRoleScore === undefined ? {} : { inputRoleScore }),
-        roleReasonKeys: [...new Set(roleReasonKeys)],
-        reasonKeys: [...new Set(reasons)],
-        sourceFactIds: [...new Set([
-          ...questionSources,
-          ...roleSourceFactIds,
-        ])],
-        sourceKeys: [...new Set([
-          ...basisSourceKeys,
-          questionSourceKey(project, request.questionKind),
-        ])],
-      }, roleScore));
+      const inventoryVariants: Array<[MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId]> =
+        request.questionKind === 'assemble-balanced-suspension' ? [] : [pair];
+      if (project.desiredFunction === 'comparable-mass-measurement') {
+        if (pair[0] === pair[1]) {
+          if (left.quantity >= 3) inventoryVariants.push([pair[0], pair[0], pair[0]]);
+        } else {
+          if (left.quantity >= 2) inventoryVariants.push([pair[0], pair[0], pair[1]]);
+          if (right.quantity >= 2) inventoryVariants.push([pair[0], pair[1], pair[1]]);
+        }
+      }
+      for (const inventoryMaterialIds of inventoryVariants) {
+        const assemblyBasis = request.questionKind === 'assemble-balanced-suspension'
+          ? balancedSuspensionBasis(
+            inventoryMaterialIds,
+            evidence,
+            request.subjectSourceKeys ?? [],
+          )
+          : request.questionKind === 'shape-repeatable-reference'
+            ? repeatableReferenceBasis(inventoryMaterialIds, evidence)
+            : request.questionKind === 'assemble-flow-driven-rotor'
+              ? flowDrivenRotorBasis(inventoryMaterialIds, evidence)
+              : request.questionKind === 'shape-rigid-rotating-connector'
+                ? rigidRotatingConnectorBasis(inventoryMaterialIds, evidence)
+                : null;
+        if ((request.questionKind === 'assemble-balanced-suspension'
+          || request.questionKind === 'shape-repeatable-reference'
+          || request.questionKind === 'assemble-flow-driven-rotor'
+          || request.questionKind === 'shape-rigid-rotating-connector') && !assemblyBasis) continue;
+        const candidateRoleScore = assemblyBasis?.score ?? roleScore;
+        const candidateRoleReasons = assemblyBasis?.reasonKeys ?? roleReasonKeys;
+        const candidateSourceFactIds = assemblyBasis?.sourceFactIds ?? roleSourceFactIds;
+        const candidateSourceKeys = assemblyBasis?.sourceKeys ?? basisSourceKeys;
+        const key = projectHypothesisCandidateKey(
+          'combine-inventory',
+          pair,
+          undefined,
+          inventoryMaterialIds,
+        );
+        candidates.push(rankedCandidate(seed, person, project, {
+          key,
+          operation: 'combine-inventory',
+          questionKind: request.questionKind,
+          materialIds: pair,
+          ...(inventoryMaterialIds.length === 3 ? { inventoryMaterialIds } : {}),
+          ...((assemblyBasis?.primarySourceKey ?? toolSourceKey)
+            ? { toolSourceKey: assemblyBasis?.primarySourceKey ?? toolSourceKey } : {}),
+          ...((assemblyBasis?.secondarySourceKey ?? inputSourceKey)
+            ? { inputSourceKey: assemblyBasis?.secondarySourceKey ?? inputSourceKey } : {}),
+          ...((assemblyBasis?.primaryMaterialId ?? toolRoleMaterialId) === undefined ? {} : {
+            toolRoleMaterialId: assemblyBasis?.primaryMaterialId ?? toolRoleMaterialId,
+          }),
+          ...((assemblyBasis?.secondaryMaterialId ?? inputRoleMaterialId) === undefined ? {} : {
+            inputRoleMaterialId: assemblyBasis?.secondaryMaterialId ?? inputRoleMaterialId,
+          }),
+          roleScore: candidateRoleScore,
+          ...((assemblyBasis?.primaryScore ?? toolRoleScore) === undefined ? {} : {
+            toolRoleScore: assemblyBasis?.primaryScore ?? toolRoleScore,
+          }),
+          ...((assemblyBasis?.secondaryScore ?? inputRoleScore) === undefined ? {} : {
+            inputRoleScore: assemblyBasis?.secondaryScore ?? inputRoleScore,
+          }),
+          roleReasonKeys: [...new Set(candidateRoleReasons)],
+          reasonKeys: [...new Set([
+            ...reasons,
+            ...candidateRoleReasons,
+            ...(inventoryMaterialIds.length === 3 ? ['bounded-observable-quantity-variation'] : []),
+          ])],
+          sourceFactIds: [...new Set([
+            ...questionSources,
+            ...candidateSourceFactIds,
+          ])],
+          sourceKeys: [...new Set([
+            ...candidateSourceKeys,
+            questionSourceKey(project, request.questionKind),
+          ])],
+        }, candidateRoleScore));
+      }
     }
   }
   return candidates;
@@ -990,9 +1338,15 @@ function candidateGrounded(candidate: ProjectHypothesisCandidate, evidence: Loca
     if (candidate.roleReasonKeys.includes('exact-verified-response-as-input')
       && (!candidate.inputSourceKey || !sourceKeys.has(candidate.inputSourceKey))) return false;
   }
-  if (candidate.operation === 'combine-inventory') return candidate.materialIds[0] === candidate.materialIds[1]
-    ? (quantities.get(candidate.materialIds[0]) ?? 0) >= 2
-    : candidate.materialIds.every((materialId) => (quantities.get(materialId) ?? 0) >= 1);
+  if (candidate.operation === 'combine-inventory') {
+    const required = new Map<MaterialId, number>();
+    for (const materialId of candidate.inventoryMaterialIds ?? candidate.materialIds) {
+      required.set(materialId, (required.get(materialId) ?? 0) + 1);
+    }
+    return [...required].every(([materialId, quantity]) => (
+      (quantities.get(materialId) ?? 0) >= quantity
+    ));
+  }
   if (candidate.operation === 'exert-air') {
     const toolMaterialId = candidate.toolMaterialId ?? candidate.materialIds[0];
     const inputMaterialId = candidate.inputMaterialId ?? candidate.materialIds[1];
@@ -1002,7 +1356,7 @@ function candidateGrounded(candidate: ProjectHypothesisCandidate, evidence: Loca
   return (quantities.get(candidate.inputMaterialId ?? candidate.materialIds[0]) ?? 0) >= 1;
 }
 
-function combineTechniqueInputs(factId: string): [MaterialId, MaterialId] | null {
+function combineTechniqueInputs(factId: string): MaterialId[] | null {
   const match = factId.match(/^technique:combine-inventory:((?:\d+x\d+)(?:\+\d+x\d+)*):(\d+)$/);
   if (!match) return null;
   const output = /^(?:0|[1-9]\d*)$/.test(match[2]) ? Number(match[2]) : Number.NaN;
@@ -1014,10 +1368,11 @@ function combineTechniqueInputs(factId: string): [MaterialId, MaterialId] | null
     const materialId = Number(input[1]);
     const quantity = Number(input[2]);
     if (!Number.isSafeInteger(materialId) || !REGISTERED_MATERIAL_IDS.has(materialId)
-      || !Number.isSafeInteger(quantity) || quantity > 2) return null;
+      || !Number.isSafeInteger(quantity) || quantity > 3) return null;
     counts.set(materialId, (counts.get(materialId) ?? 0) + quantity);
   }
-  if ([...counts.values()].reduce((sum, quantity) => sum + quantity, 0) !== 2) return null;
+  const totalQuantity = [...counts.values()].reduce((sum, quantity) => sum + quantity, 0);
+  if (totalQuantity < 2 || totalQuantity > 3) return null;
   const canonical = [...counts]
     .sort(([left], [right]) => left - right)
     .map(([materialId, quantity]) => `${materialId}x${quantity}`)
@@ -1025,19 +1380,29 @@ function combineTechniqueInputs(factId: string): [MaterialId, MaterialId] | null
   if (canonical !== match[1]) return null;
   const materialIds: MaterialId[] = [];
   for (const [materialId, quantity] of counts) {
-    materialIds.push(materialId);
-    if (quantity === 2) materialIds.push(materialId);
+    for (let index = 0; index < quantity; index += 1) materialIds.push(materialId);
   }
   materialIds.sort((left, right) => left - right);
-  return [materialIds[0], materialIds[1]];
+  return materialIds;
 }
 
 function reliableKnowledgeForCandidate(person: PersonState, candidate: ProjectHypothesisCandidate): string | null {
   for (const fact of person.knowledge) {
     if (fact.confidence < 55 || fact.kind !== 'technique') continue;
     if (candidate.operation === 'combine-inventory') {
-      const materialIds = combineTechniqueInputs(fact.id);
-      if (materialIds && projectHypothesisPairKey(materialIds) === candidate.key) return fact.id;
+      const inventoryMaterialIds = combineTechniqueInputs(fact.id);
+      if (inventoryMaterialIds) {
+        const materialIds = canonicalPair(
+          inventoryMaterialIds[0],
+          inventoryMaterialIds[inventoryMaterialIds.length - 1],
+        );
+        if (projectHypothesisCandidateKey(
+          'combine-inventory',
+          materialIds,
+          undefined,
+          inventoryMaterialIds,
+        ) === candidate.key) return fact.id;
+      }
     }
     if (candidate.operation === 'exert-air') {
       const direction = exertTechniqueDirection(fact.id);
@@ -1058,7 +1423,9 @@ function reliableKnowledgeForCandidate(person: PersonState, candidate: ProjectHy
 }
 
 function noResponseFactId(candidate: ProjectHypothesisCandidate): string {
-  if (candidate.operation === 'combine-inventory') return inventoryNoResponseFactId([...candidate.materialIds]);
+  if (candidate.operation === 'combine-inventory') {
+    return inventoryNoResponseFactId([...(candidate.inventoryMaterialIds ?? candidate.materialIds)]);
+  }
   if (candidate.operation === 'exert-air') return voxelNoResponseFactId(
     'exert',
     candidate.inputMaterialId ?? candidate.materialIds[1],
@@ -1116,6 +1483,7 @@ export function refreshProjectHypothesisCampaign(
 ): ProjectHypothesisCampaign {
   const request = normalizedRequest(project, requestInput);
   const evidence = localMaterialEvidence(person, visibleDrops);
+  const availableExperimentEvidence = experimentEvidence(evidence, request);
   const campaign = project.hypothesisCampaign ?? {
     version: 'project-hypothesis-campaign-v2' as const,
     id: `project-hypothesis:${project.id}:${person.id}`,
@@ -1154,7 +1522,22 @@ export function refreshProjectHypothesisCampaign(
     ...evidence.flatMap((item) => item.sourceKeys),
     ...(request.targetSourceKeys ?? []),
   ])];
-  const generated = observableCandidates(seed, person, project, evidence, request, campaign);
+  const generated = observableCandidates(
+    seed,
+    person,
+    project,
+    availableExperimentEvidence,
+    request,
+    campaign,
+  );
+  if (campaign.activeCandidateKey) {
+    const activeCandidate = campaign.candidates.find((candidate) => (
+      candidate.key === campaign.activeCandidateKey
+    ));
+    if (activeCandidate && activeCandidate.questionKind !== request.questionKind) {
+      delete campaign.activeCandidateKey;
+    }
+  }
   const preservedKeys = new Set([
     ...campaign.attempts.map((attempt) => attempt.candidateKey),
     ...(campaign.activeCandidateKey ? [campaign.activeCandidateKey] : []),
@@ -1171,7 +1554,12 @@ export function refreshProjectHypothesisCampaign(
     const candidates = sorted.filter((candidate) => candidate.operation === operation);
     return [
       ...candidates.filter((candidate) => preservedKeys.has(candidate.key)),
-      ...candidates.filter((candidate) => !preservedKeys.has(candidate.key)),
+      ...candidates.filter((candidate) => (
+        !preservedKeys.has(candidate.key) && candidate.questionKind === request.questionKind
+      )),
+      ...candidates.filter((candidate) => (
+        !preservedKeys.has(candidate.key) && candidate.questionKind !== request.questionKind
+      )),
     ].filter((candidate, index, all) => all.findIndex((item) => item.key === candidate.key) === index)
       .slice(0, Math.max(
         MAX_STORED_CANDIDATES_PER_OPERATION,
@@ -1193,13 +1581,14 @@ export function nextProjectHypothesisCandidate(
   const request = normalizedRequest(project, requestInput);
   const campaign = refreshProjectHypothesisCampaign(seed, atMonth, person, project, visibleDrops, request);
   if (campaign.status !== 'active') return null;
-  const evidence = localMaterialEvidence(person, visibleDrops);
+  const evidence = experimentEvidence(localMaterialEvidence(person, visibleDrops), request);
   const attempted = new Set(campaign.attempts.map((attempt) => attempt.candidateKey));
   const actionable = (candidate: ProjectHypothesisCandidate) => !attempted.has(candidate.key)
     && !knowsReliableNoResponse(person, noResponseFactId(candidate))
     && reliableKnowledgeForCandidate(person, candidate) === null
     && candidateGrounded(candidate, evidence);
   const allowed = (candidate: ProjectHypothesisCandidate) => candidate.operation === request.operation
+    && candidate.questionKind === request.questionKind
     && actionable(candidate);
   const renewalAttempted = campaign.attempts.some((attempt) => {
     const attemptedCandidate = campaign.candidates.find((candidate) => candidate.key === attempt.candidateKey);
@@ -1221,8 +1610,10 @@ export function nextProjectHypothesisCandidate(
     // Persist that terminal fact so lifecycle does not hold the owner until a
     // distant review; genuinely new entity evidence can still justify a new
     // project through the existing inquiry-opportunity renewal protocol.
-    const requestPoolWasTangible = campaign.candidates.some((candidate) => candidate.operation === request.operation);
-    const anySelectableCandidate = campaign.candidates.some((candidate) => actionable(candidate)
+    const requestPoolWasTangible = campaign.candidates.some((candidate) => (
+      candidate.operation === request.operation && candidate.questionKind === request.questionKind
+    ));
+    const anySelectableCandidate = campaign.candidates.some((candidate) => allowed(candidate)
       && (!commitmentPending || candidate.reasonKeys.includes('cross-project-renewal-opportunity')));
     if (campaign.attempts.length > 0 && requestPoolWasTangible && !anySelectableCandidate) {
       campaign.status = 'exhausted';
@@ -1239,6 +1630,7 @@ export function nextProjectHypothesisCandidate(
 function factSignature(fact: ActionFact): {
   operation: ProjectHypothesisOperation;
   materialIds: [MaterialId, MaterialId];
+  inventoryMaterialIds?: [MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId];
   toolMaterialId?: MaterialId;
   inputMaterialId?: MaterialId;
   targetMaterialId?: MaterialId;
@@ -1248,8 +1640,14 @@ function factSignature(fact: ActionFact): {
     const materialIds = Array.isArray(fact.diff.inputMaterialIds)
       ? fact.diff.inputMaterialIds.filter((value): value is MaterialId => typeof value === 'number')
       : [];
-    if (materialIds.length !== 2) return null;
-    return { operation: 'combine-inventory', materialIds: canonicalPair(materialIds[0], materialIds[1]) };
+    if (materialIds.length < 2 || materialIds.length > 3 || new Set(materialIds).size > 2) return null;
+    const inventoryMaterialIds = [...materialIds].sort((left, right) => left - right) as
+      [MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId];
+    return {
+      operation: 'combine-inventory',
+      materialIds: canonicalPair(inventoryMaterialIds[0], inventoryMaterialIds.at(-1)!),
+      ...(inventoryMaterialIds.length === 3 ? { inventoryMaterialIds } : {}),
+    };
   }
   const inputMaterialId = Number(fact.diff.inputMaterialId);
   const targetMaterialId = Number(fact.diff.targetMaterialId);
@@ -1285,7 +1683,12 @@ export function recordProjectHypothesisAttempt(
   if (!signature || (fact.status !== 'completed' && fact.status !== 'blocked')) return;
   const candidate = campaign.candidates.find((item) => item.key === campaign.activeCandidateKey);
   if (!candidate || candidate.operation !== signature.operation) return;
-  const key = projectHypothesisCandidateKey(signature.operation, signature.materialIds, signature.targetMaterialId);
+  const key = projectHypothesisCandidateKey(
+    signature.operation,
+    signature.materialIds,
+    signature.targetMaterialId,
+    signature.inventoryMaterialIds,
+  );
   if (key !== candidate.key || campaign.attempts.some((attempt) => attempt.candidateKey === candidate.key)) return;
   const outcome = fact.status === 'completed' ? 'response' as const : 'no-response' as const;
   const ordinal = campaign.attempts.length + 1;
@@ -1317,6 +1720,9 @@ export function recordProjectHypothesisAttempt(
     operation: candidate.operation,
     questionKind: candidate.questionKind,
     materialIds: [...candidate.materialIds],
+    ...(candidate.inventoryMaterialIds
+      ? { inventoryMaterialIds: [...candidate.inventoryMaterialIds] as typeof candidate.inventoryMaterialIds }
+      : {}),
     ...(candidate.toolMaterialId === undefined ? {} : { toolMaterialId: candidate.toolMaterialId }),
     ...(candidate.inputMaterialId === undefined ? {} : { inputMaterialId: candidate.inputMaterialId }),
     ...(candidate.targetMaterialId === undefined ? {} : { targetMaterialId: candidate.targetMaterialId }),
@@ -1352,6 +1758,9 @@ export function recordProjectHypothesisAttempt(
     projectHypothesisOperation: candidate.operation,
     projectHypothesisQuestionKind: candidate.questionKind,
     projectHypothesisMaterialIds: [...candidate.materialIds],
+    ...(candidate.inventoryMaterialIds
+      ? { projectHypothesisInventoryMaterialIds: [...candidate.inventoryMaterialIds] }
+      : {}),
     ...(candidate.toolMaterialId === undefined ? {} : { projectHypothesisToolMaterialId: candidate.toolMaterialId }),
     ...(candidate.inputMaterialId === undefined ? {} : { projectHypothesisInputMaterialId: candidate.inputMaterialId }),
     ...(candidate.targetMaterialId === undefined ? {} : { projectHypothesisTargetMaterialId: candidate.targetMaterialId }),

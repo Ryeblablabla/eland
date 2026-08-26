@@ -2,7 +2,11 @@ import { Material, materialHas, type MaterialId } from '../../domain/material';
 import { productionToolRank } from '../../domain/production-tool';
 import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import { isAlive } from '../../domain/person';
-import type { ProjectFunction, ProjectState } from '../../domain/project';
+import type {
+  ProjectFunction,
+  ProjectFunctionalCommissioning,
+  ProjectState,
+} from '../../domain/project';
 import { shelterGeometryAt } from '../../domain/structure';
 import { worldEventById } from '../../domain/event-index';
 import { cellsInRadius, voxelAt } from '../../world/grid';
@@ -10,6 +14,9 @@ import {
   mechanicalPowerCompletionEvidence,
   mechanicalPowerMaintenanceCompletionEvidence,
 } from '../mechanical-power-options';
+import { massMeasurementProjectCompletionEvidence } from '../measurement-options';
+import { electricalPowerProjectCompletionEvidence } from '../electrical-power-options';
+import { electricalPowerMaintenanceCompletionEvidence } from '../electrical-power-maintenance-options';
 
 export function completedFunctionMaterialIds(
   project: Pick<ProjectState, 'desiredFunction'>,
@@ -154,6 +161,195 @@ export function placedFunctionEvidence(state: SimulationState, project: ProjectS
   });
 }
 
+interface FunctionalCommissioningRequirement {
+  desiredFunction: ProjectFunction;
+  serviceKind: ProjectFunctionalCommissioning['serviceKind'];
+  facilityMaterialId: MaterialId;
+  serviceRadius: number;
+}
+
+function functionalCommissioningRequirement(
+  project: Pick<ProjectState, 'desiredFunction'>,
+): FunctionalCommissioningRequirement | null {
+  if (project.desiredFunction === 'crop-processing') return {
+    desiredFunction: 'crop-processing',
+    serviceKind: 'crop-mature-separation',
+    facilityMaterialId: Material.Mill,
+    serviceRadius: 1,
+  };
+  return null;
+}
+
+export function projectRequiresFunctionalCommissioning(
+  project: Pick<ProjectState, 'desiredFunction'>,
+): boolean {
+  return functionalCommissioningRequirement(project) !== null;
+}
+
+function factOutputPosition(fact: ActionFact): { x: number; y: number; z: number } | null {
+  const position = fact.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
+  if (![position?.x, position?.y, position?.z].every((value) => Number.isInteger(Number(value)))) return null;
+  return { x: Number(position?.x), y: Number(position?.y), z: Number(position?.z) };
+}
+
+function installationFactMatches(
+  state: SimulationState,
+  project: ProjectState,
+  requirement: FunctionalCommissioningRequirement,
+  fact: ActionFact,
+): boolean {
+  if (fact.status !== 'completed'
+    || fact.action.kind !== 'act'
+    || fact.action.operation !== 'combine'
+    || Number(fact.diff.inputMaterialId) !== requirement.facilityMaterialId
+    || Number(fact.diff.targetMaterialId) !== Material.Air
+    || Number(fact.diff.outputMaterialId) !== requirement.facilityMaterialId
+    || fact.diff.sourceEventId !== fact.id) return false;
+  const position = factOutputPosition(fact);
+  const target = fact.action.targets.find((candidate) => candidate.kind === 'voxel');
+  if (!position
+    || target?.kind !== 'voxel'
+    || target.position.x !== position.x
+    || target.position.y !== position.y
+    || target.position.z !== position.z
+    || voxelAt(state.world.grid, position.x, position.y, position.z) !== requirement.facilityMaterialId) return false;
+  if (project.site) {
+    const installationCellId = position.x + position.y * state.world.grid.width;
+    if (installationCellId !== project.site.cellId || position.z !== project.site.z) return false;
+  }
+  return true;
+}
+
+function currentCommissioningInstallation(
+  state: SimulationState,
+  project: ProjectState,
+  requirement: FunctionalCommissioningRequirement,
+): ActionFact | null {
+  return projectActionFacts(state, project)
+    .filter((fact) => installationFactMatches(state, project, requirement, fact))
+    .sort((left, right) => right.atMonth - left.atMonth
+      || right.orderInMonth - left.orderInMonth
+      || right.id.localeCompare(left.id))[0] ?? null;
+}
+
+/**
+ * Enter commissioning only from this project's still-present installation.
+ * Calling this while compiling a step freezes eligibility before the service
+ * action is executed, preventing an unrelated action from authorizing itself.
+ */
+export function establishProjectFunctionalCommissioning(
+  state: SimulationState,
+  project: ProjectState,
+): ProjectFunctionalCommissioning | null {
+  const requirement = functionalCommissioningRequirement(project);
+  if (!requirement) return null;
+  const installation = currentCommissioningInstallation(state, project, requirement);
+  if (!installation) return null;
+  const position = factOutputPosition(installation);
+  if (!position) return null;
+  const eligiblePersonIds = [...new Set([
+    project.ownerId,
+    ...project.beneficiaryIds,
+    ...project.contributorIds,
+  ])];
+  const current = project.functionalCommissioning;
+  if (current?.version === 'project-functional-commissioning-v1'
+    && current.desiredFunction === requirement.desiredFunction
+    && current.serviceKind === requirement.serviceKind
+    && current.facilityMaterialId === requirement.facilityMaterialId
+    && current.installationEventId === installation.id
+    && current.installationPosition.x === position.x
+    && current.installationPosition.y === position.y
+    && current.installationPosition.z === position.z
+    && current.serviceRadius === requirement.serviceRadius) {
+    return current;
+  }
+  project.functionalCommissioning = {
+    version: 'project-functional-commissioning-v1',
+    desiredFunction: requirement.desiredFunction,
+    serviceKind: requirement.serviceKind,
+    facilityMaterialId: requirement.facilityMaterialId,
+    installationEventId: installation.id,
+    installationPosition: position,
+    serviceRadius: requirement.serviceRadius,
+    enteredAtMonth: installation.atMonth,
+    eligiblePersonIds,
+    sourceFactIds: [installation.id],
+  };
+  return project.functionalCommissioning;
+}
+
+function currentFunctionalCommissioning(
+  state: SimulationState,
+  project: ProjectState,
+): ProjectFunctionalCommissioning | null {
+  const requirement = functionalCommissioningRequirement(project);
+  const commissioning = project.functionalCommissioning;
+  if (!requirement
+    || commissioning?.version !== 'project-functional-commissioning-v1'
+    || commissioning.desiredFunction !== requirement.desiredFunction
+    || commissioning.serviceKind !== requirement.serviceKind
+    || commissioning.facilityMaterialId !== requirement.facilityMaterialId
+    || commissioning.serviceRadius !== requirement.serviceRadius) return null;
+  const installation = currentCommissioningInstallation(state, project, requirement);
+  if (!installation || installation.id !== commissioning.installationEventId) return null;
+  const position = factOutputPosition(installation);
+  if (!position
+    || position.x !== commissioning.installationPosition.x
+    || position.y !== commissioning.installationPosition.y
+    || position.z !== commissioning.installationPosition.z) return null;
+  return commissioning;
+}
+
+function eventFollowsInstallation(service: ActionFact, installation: ActionFact): boolean {
+  return service.atMonth > installation.atMonth
+    || service.atMonth === installation.atMonth && service.orderInMonth > installation.orderInMonth;
+}
+
+function positiveCropProcessingService(fact: ActionFact): boolean {
+  if (fact.status !== 'completed'
+    || fact.action.kind !== 'act'
+    || fact.action.operation !== 'separate'
+    || Number(fact.diff.sourceMaterialId) !== Material.CropMature
+    || Number(fact.diff.replacementMaterialId) !== Material.ExhaustedSoil
+    || Number(fact.diff.facilityMaterialId) !== Material.Mill) return false;
+  const multiplier = Number(fact.diff.productionMultiplier);
+  if (!Number.isFinite(multiplier) || multiplier <= 0 || !Array.isArray(fact.diff.outputs)) return false;
+  const foodQuantity = fact.diff.outputs.reduce((sum, output) => {
+    if (!output || typeof output !== 'object') return sum;
+    const candidate = output as { materialId?: unknown; quantity?: unknown };
+    return Number(candidate.materialId) === Material.Food
+      ? sum + Math.max(0, Number(candidate.quantity) || 0)
+      : sum;
+  }, 0);
+  const withoutFacility = Math.max(4, Math.floor(4 * multiplier));
+  return foodQuantity > withoutFacility;
+}
+
+function functionalCommissioningEvidence(
+  state: SimulationState,
+  project: ProjectState,
+): string[] {
+  const commissioning = currentFunctionalCommissioning(state, project);
+  if (!commissioning) return [];
+  const installation = worldEventById(state, commissioning.installationEventId);
+  if (installation?.kind !== 'action') return [];
+  for (const fact of projectActionFacts(state, project)) {
+    if (!eventFollowsInstallation(fact, installation)
+      || !commissioning.eligiblePersonIds.includes(fact.who)
+      || !positiveCropProcessingService(fact)) continue;
+    const target = fact.action.kind === 'act'
+      ? fact.action.targets.find((candidate) => candidate.kind === 'voxel')
+      : undefined;
+    if (target?.kind !== 'voxel') continue;
+    const distance = Math.abs(target.position.x - commissioning.installationPosition.x)
+      + Math.abs(target.position.y - commissioning.installationPosition.y);
+    if (distance > commissioning.serviceRadius) continue;
+    return [installation.id, fact.id];
+  }
+  return [];
+}
+
 function portableFunctionEvidenceIds(state: SimulationState, project: ProjectState): string[] {
   const owner = state.people.find((person) => person.id === project.ownerId && isAlive(person));
   if (!owner) return [];
@@ -217,7 +413,17 @@ function verifiedProductionToolEvidenceIds(state: SimulationState, project: Proj
 }
 
 export function projectFunctionSatisfied(state: SimulationState, project: ProjectState): boolean {
-  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+  if (project.desiredFunction === 'restore-electrical-power-delivery') {
+    return electricalPowerMaintenanceCompletionEvidence(state, project).length > 0;
+  }
+  if (project.desiredFunction === 'remote-work-power-delivery') {
+    return electricalPowerProjectCompletionEvidence(state, project).length > 0;
+  }
+  if (project.desiredFunction === 'comparable-mass-measurement') {
+    return massMeasurementProjectCompletionEvidence(state, project).length > 0;
+  }
+  if (project.desiredFunction === 'restore-water-powered-crop-processing'
+    || project.desiredFunction === 'durable-power-transmission') {
     return mechanicalPowerMaintenanceCompletionEvidence(state, project).length > 0;
   }
   if (project.desiredFunction === 'water-powered-crop-processing') {
@@ -251,6 +457,9 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
     const harvests = projectCultivationHarvests(state, project).length;
     return plantedByProject && harvests >= 2;
   }
+  if (projectRequiresFunctionalCommissioning(project)) {
+    return functionalCommissioningEvidence(state, project).length > 0;
+  }
   if (project.desiredFunction === 'reserve-storage') {
     return placedFunctionEvidence(state, project).some((event) => {
       const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
@@ -276,7 +485,17 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
 }
 
 export function projectCompletionEvidence(state: SimulationState, project: ProjectState): string[] {
-  if (project.desiredFunction === 'restore-water-powered-crop-processing') {
+  if (project.desiredFunction === 'restore-electrical-power-delivery') {
+    return electricalPowerMaintenanceCompletionEvidence(state, project);
+  }
+  if (project.desiredFunction === 'remote-work-power-delivery') {
+    return electricalPowerProjectCompletionEvidence(state, project);
+  }
+  if (project.desiredFunction === 'comparable-mass-measurement') {
+    return massMeasurementProjectCompletionEvidence(state, project);
+  }
+  if (project.desiredFunction === 'restore-water-powered-crop-processing'
+    || project.desiredFunction === 'durable-power-transmission') {
     return mechanicalPowerMaintenanceCompletionEvidence(state, project);
   }
   if (project.desiredFunction === 'water-powered-crop-processing') {
@@ -291,6 +510,9 @@ export function projectCompletionEvidence(state: SimulationState, project: Proje
     return [...new Set(projectActionFacts(state, project)
       .filter((event) => event.status === 'completed')
       .map((event) => event.id))];
+  }
+  if (projectRequiresFunctionalCommissioning(project)) {
+    return functionalCommissioningEvidence(state, project);
   }
   if (placedFunctionMaterialIds(project).length) return [...new Set([
     ...placedFunctionEvidence(state, project).map((event) => event.id),

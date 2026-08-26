@@ -10,6 +10,7 @@ import { planningOverlayEvents } from '../domain/event-index';
 import { intentsOwnedBy, projectById } from '../domain/state-index';
 import { isObservedEmergencyHibernationOption } from './action-options';
 import { perceivedKinshipRisk } from './reproductive-risk';
+import { relationTo } from '../domain/relation';
 import {
   assessIntentionPersistence,
   deliberate,
@@ -55,7 +56,7 @@ function isExecutingPriorityObligation(intent: Intent): boolean {
     || (content.kind === 'claim' && content.conversation?.turn === 'response');
 }
 
-export function isMaintainableStateGoal(goal: FactPredicate): boolean {
+export function isStateAchievementGoal(goal: FactPredicate): boolean {
   return goal.kind === 'inventory-at-least'
     || goal.kind === 'container-inventory-at-least'
     || goal.kind === 'at-cell'
@@ -65,8 +66,11 @@ export function isMaintainableStateGoal(goal: FactPredicate): boolean {
     || goal.kind === 'project-completed';
 }
 
+/** @deprecated Goal shape identifies a bounded achievement, never maintenance by itself. */
+export const isMaintainableStateGoal = isStateAchievementGoal;
+
 export function isProductionOption(option: ActionOption): boolean {
-  return option.domain !== 'social' && isMaintainableStateGoal(option.goal);
+  return option.domain !== 'social' && isStateAchievementGoal(option.goal);
 }
 
 const OPTIONAL_LIFE_REVIEW = /^(offer-reproduce|offer-companion):/;
@@ -118,7 +122,7 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
 } {
   const targetId = option.target?.kind === 'person' ? option.target.personId : undefined;
   const partner = targetId ? context.state.people.find((candidate) => candidate.id === targetId) : undefined;
-  const relation = targetId ? context.person.relations.find((candidate) => candidate.personId === targetId) : undefined;
+  const relation = targetId ? relationTo(context.person, targetId) : undefined;
   const relationPressure = Math.min(30, Math.max(0, relation?.trust ?? 0) * 0.9 + Math.max(0, relation?.bond ?? 0) * 1.1);
   const socialAttachment = (personalityScore(context.person, 'emotionality') + personalityScore(context.person, 'extraversion')) / 2;
   const affiliationPressure = Math.min(10, Math.max(0, socialAttachment - 45) * 0.2);
@@ -338,11 +342,9 @@ export class RulePlanner implements AgentDecider {
       };
     }
 
-    const persistence = assessIntentionPersistence(context, active, appraisal, moment);
-    if (persistence.keep || !option || goalSatisfied(context.state, context.person, active.goal)) {
-      return { kind: 'idle', reason: persistence.reason };
-    }
-
+    // A demand-bound record experiment is an instrumental child of one exact
+    // owned active project, even when the currently resumable activity is a
+    // different generic state goal. Never insert it without a legal option.
     if (option?.recordUseBasis
       && !active.recordUseBasis
       && isResumableIntent(active)) {
@@ -353,11 +355,19 @@ export class RulePlanner implements AgentDecider {
         mode: 'interrupt',
         interruptionKind: 'record-use',
         reason: option.recordUseStage === 'acquire'
-          ? '可见公共记录与当前项目的真实技术缺口完全匹配，先亲自取得、读懂并核验，再返回原项目'
-          : option.recordUseStage === 'read' || option.recordUseStage === 'experiment' || option.recordUseStage === 'read-experiment'
-            ? '本人持有的实体记录与当前项目的真实技术缺口完全匹配，先读懂并用手头材料复现，再返回原项目'
+          ? '可见公共记录与本人活动项目的真实技术缺口完全匹配，先亲自取得、读懂、准备并核验，再返回原安排'
+          : option.recordUseStage === 'read'
+            || option.recordUseStage === 'prepare-experiment'
+            || option.recordUseStage === 'experiment'
+            || option.recordUseStage === 'read-experiment'
+            ? '本人持有的实体记录与本人活动项目的真实技术缺口完全匹配，先读懂并沿项目物流准备实体材料，再亲自复现'
             : '这项旧版记录交付与身边项目的真实技术缺口匹配，短暂完成后继续原安排',
       };
+    }
+
+    const persistence = assessIntentionPersistence(context, active, appraisal, moment);
+    if (persistence.keep || !option || goalSatisfied(context.state, context.person, active.goal)) {
+      return { kind: 'idle', reason: persistence.reason };
     }
 
     if (lifeReview?.option.id === option.id) {

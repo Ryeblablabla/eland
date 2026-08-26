@@ -8,7 +8,7 @@ import {
   type CivilizationRequiemLine,
 } from '../src/game/civilizationRequiem';
 import type { SimulationState } from '../src/game/eland/simulation';
-import { isAlive } from '../src/game/eland/domain/person';
+import { livingPeople } from '../src/game/eland/domain/state-index';
 import type { NarrativeEntryView } from '../src/game/societyContract';
 import { requestModelText } from './model-client';
 import { resolveModelEndpoint } from './model-config';
@@ -175,7 +175,7 @@ export function requiemFactsFromState(
     cause: outcome.cause,
     authoritativeSummary: outcome.summary,
     stage: state.civilization.stage,
-    livingPeople: state.people.filter(isAlive).length,
+    livingPeople: livingPeople(state).length,
     totalPeople: state.people.length,
     names: state.people.map((person) => person.name).filter(Boolean).slice(0, 12),
     milestones: state.derived.milestones.slice(-12).map((milestone) => milestone.label),

@@ -12,10 +12,14 @@ import {
   communicationByRepresentationId,
   completedActionFactsForPerson,
   completedCommunications,
-  worldEventById,
+  liveAgreementHistoryLeaseKey,
+  worldEventByIdWithRetainedLease,
 } from './event-index';
 
 export function completedCommunicationFacts(state: SimulationState): ActionFact[] {
+  if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
+    throw new Error('有界历史状态不能把热窗口冒充完整 communication history');
+  }
   return [...completedCommunications(state)];
 }
 
@@ -24,30 +28,68 @@ export function communicationById(state: SimulationState, representationId: stri
 }
 
 export function acceptanceOf(state: SimulationState, representationId: string, byPersonId?: PersonId): ActionFact | undefined {
-  const facts = byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state);
-  return facts.find((event) => event.action.kind === 'communicate'
-    && event.action.content.kind === 'accept'
-    && event.action.content.referenceId === representationId
-    && (!byPersonId || event.who === byPersonId));
+  const visible = (byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state))
+    .find((event) => event.action.kind === 'communicate'
+      && event.action.content.kind === 'accept'
+      && event.action.content.referenceId === representationId
+      && (!byPersonId || event.who === byPersonId));
+  if (visible) return visible;
+  const agreement = agreementById(state, representationId);
+  if (agreement && (agreement.status === 'active' || agreement.status === 'proposed')) {
+    const fact = agreement.responseEventId
+      ? communicationFact(state, agreement.responseEventId, agreement.id)
+      : undefined;
+    return fact?.action.kind === 'communicate'
+      && fact.action.content.kind === 'accept'
+      && fact.action.content.referenceId === representationId
+      && (!byPersonId || fact.who === byPersonId)
+      ? fact
+      : undefined;
+  }
+  return undefined;
 }
 
 export function rejectionOf(state: SimulationState, representationId: string, byPersonId?: PersonId): ActionFact | undefined {
-  const facts = byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state);
-  return facts.find((event) => event.action.kind === 'communicate'
-    && event.action.content.kind === 'reject'
-    && event.action.content.referenceId === representationId
-    && (!byPersonId || event.who === byPersonId));
+  const visible = (byPersonId ? completedActionFactsForPerson(state, byPersonId) : completedCommunications(state))
+    .find((event) => event.action.kind === 'communicate'
+      && event.action.content.kind === 'reject'
+      && event.action.content.referenceId === representationId
+      && (!byPersonId || event.who === byPersonId));
+  if (visible) return visible;
+  const agreement = agreementById(state, representationId);
+  if (agreement?.status === 'proposed') {
+    const fact = agreement.responseEventId
+      ? communicationFact(state, agreement.responseEventId, agreement.id)
+      : undefined;
+    return fact?.action.kind === 'communicate'
+      && fact.action.content.kind === 'reject'
+      && fact.action.content.referenceId === representationId
+      && (!byPersonId || fact.who === byPersonId)
+      ? fact
+      : undefined;
+  }
+  return undefined;
 }
 
-function communicationFact(state: SimulationState, eventId: string): ActionFact | undefined {
-  const fact = worldEventById(state, eventId);
+function communicationFact(
+  state: SimulationState,
+  eventId: string,
+  agreementId: string,
+): ActionFact | undefined {
+  const fact = worldEventByIdWithRetainedLease(
+    state,
+    eventId,
+    liveAgreementHistoryLeaseKey(agreementId),
+  );
   return fact?.kind === 'action' && fact.action.kind === 'communicate' ? fact : undefined;
 }
 
 function agreementFacts(state: SimulationState, agreement: Agreement): { proposalFact: ActionFact; responseFact?: ActionFact } | null {
-  const proposalFact = communicationFact(state, agreement.proposalEventId);
+  const proposalFact = communicationFact(state, agreement.proposalEventId, agreement.id);
   if (!proposalFact) return null;
-  const responseFact = agreement.responseEventId ? communicationFact(state, agreement.responseEventId) : undefined;
+  const responseFact = agreement.responseEventId
+    ? communicationFact(state, agreement.responseEventId, agreement.id)
+    : undefined;
   return { proposalFact, responseFact };
 }
 

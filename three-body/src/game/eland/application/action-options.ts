@@ -38,6 +38,7 @@ import { seededFraction } from '../world/generator';
 import { buildSocialOptions } from './social-options';
 import { PLANNING_TICKS_PER_MONTH } from '../domain/calendar';
 import { compileAgreementContinuations } from './agreement-continuation';
+import { relationTo } from '../domain/relation';
 import { permissionById } from '../domain/permission';
 import { buildConstructionOptions } from './construction-options';
 import { findReachableWater } from '../domain/water-access';
@@ -53,6 +54,7 @@ import {
   knowsReliableNoResponse,
   voxelNoResponseFactId,
 } from '../domain/interaction-knowledge';
+import { inventoryVoxelCombinationOutput } from '../domain/interaction-rules';
 import {
   eraForecastTransitionFacts,
   recentEraForecastEnvironmentFacts,
@@ -83,11 +85,14 @@ import {
   personTrustsEraPrediction,
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
-import { intentById, personById } from '../domain/state-index';
+import { bodyOccupies } from '../domain/actions/execution-helpers';
+import { intentById, intentsOwnedBy, livingPeople, personById } from '../domain/state-index';
 import {
   buildMechanicalPowerServiceOptions,
   buildWaterCurrentObservationOptions,
 } from './mechanical-power-options';
+import { buildElectricalPowerServiceOptions } from './electrical-power-service-options';
+import { buildElectricalPowerMaintenanceOptions } from './electrical-power-maintenance-options';
 import { MECHANICAL_POWER_OPERATION_TECHNIQUE_ID } from '../domain/mechanical-power';
 import {
   bestHuntingToolStack,
@@ -317,9 +322,11 @@ function semanticRecordUseBasis(basis: ActionOption['recordUseBasis']): unknown 
     codebookId: basis.codebookId,
     techniqueId: basis.techniqueId,
     ruleSignature: basis.ruleSignature,
-    experimentAction: semanticAction(basis.experimentAction),
     expectedOutputMaterialId: basis.expectedOutputMaterialId,
-    ...(basis.version === 'record-use-basis-v2' ? {
+    ...(basis.version !== 'record-use-basis-v3' ? {
+      experimentAction: semanticAction(basis.experimentAction),
+    } : {}),
+    ...(basis.version !== 'record-use-basis-v1' ? {
       carrierSource: structuredClone(basis.carrierSource),
       acquisitionRequired: basis.acquisitionRequired,
     } : {}),
@@ -335,20 +342,36 @@ function retryBasisForOption(option: ActionOption, openingFailure: boolean): str
   };
   return stableSemanticKey(openingFailure
     ? shared
-    : { ...shared, goal: semanticGoal(option.goal), target: option.target ? structuredClone(option.target) : null });
+    : { ...shared, goal: semanticGoal(option.goal) });
 }
 
-function retryBasisForIntent(intent: Intent, prefix: FailureMemoryPrefix): string {
-  const openingFailure = prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
+function retryBasisForIntentAction(
+  intent: Intent,
+  action: PrimitiveAction,
+  openingFailure: boolean,
+): string {
   const shared = {
-    action: semanticAction(openingFailure ? intent.openingAction! : intent.completionAction ?? intent.nextAction),
+    action: semanticAction(action),
     projectId: intent.projectId ?? null,
     recordUseBasis: semanticRecordUseBasis(intent.recordUseBasis),
     relationshipBasis: intent.relationshipBasis?.basisKey ?? null,
   };
   return stableSemanticKey(openingFailure
     ? shared
-    : { ...shared, goal: semanticGoal(intent.goal), target: intent.target ? structuredClone(intent.target) : null });
+    // Project recompilation replaces the executable action while the intent's
+    // top-level target may still describe an earlier logistics step. The
+    // action already carries its actual person/drop/voxel targets, so routing
+    // metadata must not make an identical failed action look novel.
+    : { ...shared, goal: semanticGoal(intent.goal) });
+}
+
+function retryBasisForIntent(intent: Intent, prefix: FailureMemoryPrefix): string {
+  const openingFailure = prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
+  return retryBasisForIntentAction(
+    intent,
+    openingFailure ? intent.openingAction! : intent.completionAction ?? intent.nextAction,
+    openingFailure,
+  );
 }
 
 function parseFailureMemory(
@@ -366,12 +389,57 @@ function parseFailureMemory(
 
 interface FailureRetryEntry {
   openingFailure: boolean;
+  actionBasis: string;
   basis: string;
+  failedAtMonth: number;
   previousSources: ReadonlySet<string>;
 }
 
 interface FailureRetryContext {
   entries: FailureRetryEntry[];
+}
+
+function sameSemanticAction(left: PrimitiveAction, right: PrimitiveAction): boolean {
+  return stableSemanticKey(semanticAction(left)) === stableSemanticKey(semanticAction(right));
+}
+
+function authoritativeFailureRetryEntry(
+  state: SimulationState,
+  intent: Intent,
+  atMonth: number,
+): FailureRetryEntry | null {
+  if (intent.status !== 'blocked' && intent.status !== 'failed') return null;
+  const outcome = intent.goalOutcome;
+  const age = outcome ? atMonth - outcome.resolvedAtMonth : Number.POSITIVE_INFINITY;
+  if (!outcome || age < 0 || age > 6) return null;
+  const outcomeSources = new Set(outcome.sourceEventIds);
+  const fact = [...intent.actionEventIds].reverse().flatMap((eventId) => {
+    if (!outcomeSources.has(eventId)) return [];
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' ? [event] : [];
+  }).find((event) => event.who === intent.ownerId
+    && (event.intentId === undefined || event.intentId === intent.id)
+    && event.atMonth === outcome.resolvedAtMonth
+    && (event.status === 'blocked' || event.status === 'failed'));
+  if (!fact) return null;
+  const openingFailure = Boolean(intent.openingAction
+    && !intent.openingActionCompleted
+    && sameSemanticAction(intent.openingAction, fact.action));
+  return {
+    openingFailure,
+    actionBasis: stableSemanticKey(semanticAction(fact.action)),
+    // The executed ActionFact is authoritative. A project may recompile or
+    // rewrite intent routing fields after the attempt, so those fields cannot
+    // safely stand in for what actually failed.
+    basis: retryBasisForIntentAction(intent, fact.action, openingFailure),
+    failedAtMonth: fact.atMonth,
+    previousSources: new Set([
+      ...(intent.sourceFactIds ?? []),
+      ...intent.actionEventIds,
+      ...outcome.sourceEventIds,
+      fact.id,
+    ].filter(Boolean)),
+  };
 }
 
 function buildFailureRetryContext(
@@ -385,15 +453,38 @@ function buildFailureRetryContext(
     const parsed = parseFailureMemory(memory);
     return parsed ? [parsed] : [];
   });
-  if (!recent.length) return { entries: [] };
-  const entries: FailureRetryEntry[] = [];
+  const entriesByKey = new Map<string, FailureRetryEntry>();
+  const addEntry = (entry: FailureRetryEntry) => {
+    const key = `${entry.openingFailure ? 'opening' : 'regular'}\u0000${entry.failedAtMonth}\u0000${entry.basis}`;
+    const existing = entriesByKey.get(key);
+    entriesByKey.set(key, existing ? {
+      ...entry,
+      previousSources: new Set([...existing.previousSources, ...entry.previousSources]),
+    } : entry);
+  };
+  const authoritativeIntentFailures = new Set<string>();
+  for (const intent of intentsOwnedBy(state, person.id)) {
+    const entry = authoritativeFailureRetryEntry(state, intent, atMonth);
+    if (!entry) continue;
+    addEntry(entry);
+    authoritativeIntentFailures.add(`${intent.id}\u0000${entry.failedAtMonth}`);
+  }
   for (const item of recent) {
     const intent = intentById(state, item.intentId);
     if (!intent || intent.ownerId !== person.id) continue;
     const openingFailure = item.prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
-    entries.push({
+    const failedAction = openingFailure
+      ? intent.openingAction!
+      : intent.completionAction ?? intent.nextAction;
+    // New states retain an exact ActionFact link on the terminal intent. Use
+    // bounded memory only as a compatibility fallback for older snapshots and
+    // review/compile failures that did not execute an action.
+    if (authoritativeIntentFailures.has(`${intent.id}\u0000${item.memory.createdAtMonth}`)) continue;
+    addEntry({
       openingFailure,
+      actionBasis: stableSemanticKey(semanticAction(failedAction)),
       basis: retryBasisForIntent(intent, item.prefix),
+      failedAtMonth: item.memory.createdAtMonth,
       previousSources: new Set([
         ...(intent.sourceFactIds ?? []),
         ...intent.actionEventIds,
@@ -401,7 +492,7 @@ function buildFailureRetryContext(
       ].filter(Boolean)),
     });
   }
-  return { entries };
+  return { entries: [...entriesByKey.values()] };
 }
 
 export function isFailureRetryCoolingDown(
@@ -414,13 +505,78 @@ export function isFailureRetryCoolingDown(
   if (REQUIRED_SOCIAL_RESPONSE.test(option.id) || FULFILLMENT_OPTION.test(option.id)) return false;
   let regularBasis: string | undefined;
   let openingBasis: string | undefined;
+  let regularActionBasis: string | undefined;
+  let openingActionBasis: string | undefined;
   return prepared.entries.some((entry) => {
-    if (option.sourceFactIds.some((sourceId) => Boolean(sourceId) && !entry.previousSources.has(sourceId))) return false;
+    const optionActionBasis = entry.openingFailure
+      ? openingActionBasis ??= stableSemanticKey(semanticAction(option.nextAction))
+      : regularActionBasis ??= stableSemanticKey(semanticAction(option.completionAction ?? option.nextAction));
+    // A root failure may grant one more ordinary deliberation in the same
+    // month, but the already committed ActionFact is present-tense physical
+    // evidence. The exact same action is not newly plausible merely because a
+    // different goal or project now asks for it. A changed action remains
+    // eligible, while later months return to the full causal basis below.
+    if (atMonth === entry.failedAtMonth && optionActionBasis === entry.actionBasis) return true;
     const optionBasis = entry.openingFailure
       ? openingBasis ??= retryBasisForOption(option, true)
       : regularBasis ??= retryBasisForOption(option, false);
-    return optionBasis === entry.basis;
+    if (optionBasis !== entry.basis) return false;
+    return !option.sourceFactIds.some((sourceId) => Boolean(sourceId) && !entry.previousSources.has(sourceId));
   });
+}
+
+function sameVoxelPosition(
+  left: { x: number; y: number; z: number },
+  right: { x: number; y: number; z: number },
+): boolean {
+  return left.x === right.x && left.y === right.y && left.z === right.z;
+}
+
+export function isCurrentlyBodyBlockedPlacement(
+  state: SimulationState,
+  person: PersonState,
+  action: PrimitiveAction,
+): boolean {
+  if (action.kind !== 'act') return false;
+  const installationPosition = action.mechanicalPowerBasis?.mode === 'install'
+    ? action.mechanicalPowerBasis.componentPosition
+    : action.electricalPowerBasis?.mode === 'install'
+      ? action.electricalPowerBasis.componentPosition
+      : null;
+  if (installationPosition) {
+    const exactVoxelTarget = action.targets.some((target) => target.kind === 'voxel'
+      && sameVoxelPosition(target.position, installationPosition));
+    return exactVoxelTarget
+      && voxelAt(state.world.grid, installationPosition.x, installationPosition.y, installationPosition.z) === Material.Air
+      && bodyOccupies(state, installationPosition);
+  }
+  if (action.operation !== 'combine') return false;
+  const stackRef = action.targets.find((target) => target.kind === 'inventory-stack'
+    && target.personId === person.id);
+  const voxelRef = action.targets.find((target) => target.kind === 'voxel');
+  if (!stackRef || stackRef.kind !== 'inventory-stack' || !voxelRef || voxelRef.kind !== 'voxel') return false;
+  const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
+  if (!stack) return false;
+  const targetMaterialId = voxelAt(
+    state.world.grid,
+    voxelRef.position.x,
+    voxelRef.position.y,
+    voxelRef.position.z,
+  );
+  const outputMaterialId = inventoryVoxelCombinationOutput(stack.materialId, targetMaterialId);
+  return outputMaterialId !== null
+    && materialHas(outputMaterialId, 'solid')
+    && bodyOccupies(state, voxelRef.position);
+}
+
+export function optionHasCurrentlyBodyBlockedPlacement(
+  state: SimulationState,
+  person: PersonState,
+  option: Pick<ActionOption, 'nextAction' | 'completionAction'>,
+): boolean {
+  return isCurrentlyBodyBlockedPlacement(state, person, option.nextAction)
+    || Boolean(option.completionAction
+      && isCurrentlyBodyBlockedPlacement(state, person, option.completionAction));
 }
 
 function withPlanning(
@@ -471,6 +627,7 @@ function withPlanning(
       },
     };
   }
+  if (optionHasCurrentlyBodyBlockedPlacement(state, person, plannedOption)) return null;
   let estimatedMonths = 1;
   if (plannedOption.nextAction.kind === 'move') {
     const cacheKey = `${plannedOption.nextAction.toCellId}:${plannedOption.nextAction.toZ ?? ''}`;
@@ -599,7 +756,7 @@ function acceptedExchangeAt(state: SimulationState, person: PersonState, atMonth
 }
 
 function nextFirePosition(state: SimulationState, person: PersonState): { x: number; y: number; z: number } | null {
-  const occupied = new Set(state.people.filter(isAlive).map((candidate) => candidate.position.cellId));
+  const occupied = new Set(livingPeople(state).map((candidate) => candidate.position.cellId));
   const targetCell = neighbors4(person.position.cellId)
     .filter((cellId) => {
       const surface = surfaceMaterial(state.world.grid, cellId);
@@ -661,7 +818,7 @@ function buildOptions(
       nextAction: { kind: 'move', toCellId: visibleParent.position.cellId, toZ: visibleParent.position.z },
       target: { kind: 'person', personId: visibleParent.id },
       estimatedDuration: 'several-months',
-      sourceFactIds: person.relations.find((relation) => relation.personId === visibleParent.id)?.sourceEventIds ?? [],
+      sourceFactIds: relationTo(person, visibleParent.id)?.sourceEventIds ?? [],
     });
   }
   const visible = new Set(visibleCells);
@@ -1185,6 +1342,8 @@ function buildOptions(
     .filter((option) => option.goal.kind === 'voxel-is' && option.goal.materialId === Material.Container));
   options.push(...buildWaterCurrentObservationOptions(state, person, visibleCells));
   options.push(...buildMechanicalPowerServiceOptions(state, person, visibleCells));
+  options.push(...buildElectricalPowerMaintenanceOptions(state, person, visibleCells));
+  options.push(...buildElectricalPowerServiceOptions(state, person, visibleCells, atMonth));
   const projectOptions = buildProjectOptions(state, person, visibleCells, visibleDrops, visiblePeople);
   options.push(...projectOptions);
   options.push(...buildDemandBoundRecordUseOptions(state, person, visibleDrops));
@@ -1556,7 +1715,7 @@ function buildOptions(
   const rope = person.inventory.find((stack) => stack.materialId === Material.Rope && stack.quantity > 0);
   const restraintTarget = localPeople.find((other) => {
     if (other.conditions.some((condition) => condition.kind === 'restrained')) return false;
-    const relation = person.relations.find((item) => item.personId === other.id);
+    const relation = relationTo(person, other.id);
     const unableToResist = other.body.health <= 20 || other.conditions.some((condition) => condition.kind === 'wound' && condition.stage === 3);
     return unableToResist && (person.body.nutrition < 18 || (relation?.fear ?? 0) > 45);
   });
@@ -1567,12 +1726,12 @@ function buildOptions(
     goal: { kind: 'condition', personId: restraintTarget.id, condition: 'restrained', present: true },
     nextAction: { kind: 'act', operation: 'combine', targets: [{ kind: 'inventory-stack', personId: person.id, stackId: rope.id }, { kind: 'person', personId: restraintTarget.id }] },
     target: { kind: 'person', personId: restraintTarget.id }, estimatedDuration: 'one-month',
-    sourceFactIds: [...rope.sourceEventIds, ...(person.relations.find((item) => item.personId === restraintTarget.id)?.sourceEventIds ?? [])],
+    sourceFactIds: [...rope.sourceEventIds, ...(relationTo(person, restraintTarget.id)?.sourceEventIds ?? [])],
   });
 
   const fearedOpponent = localPeople.find((other) => {
-    const relation = person.relations.find((item) => item.personId === other.id);
-    return relation && relation.trust < 12 && (relation.fear > 45 || person.body.nutrition < 18);
+    const relation = relationTo(person, other.id);
+    return (relation?.trust ?? 0) < 12 && ((relation?.fear ?? 0) > 45 || person.body.nutrition < 18);
   });
   if (fearedOpponent) options.push({
     id: `exert-person:${fearedOpponent.id}:${atMonth}`,
@@ -1582,7 +1741,7 @@ function buildOptions(
     nextAction: { kind: 'act', operation: 'exert', targets: [{ kind: 'person', personId: fearedOpponent.id }] },
     target: { kind: 'person', personId: fearedOpponent.id },
     estimatedDuration: 'one-month',
-    sourceFactIds: person.relations.find((item) => item.personId === fearedOpponent.id)?.sourceEventIds ?? [],
+    sourceFactIds: relationTo(person, fearedOpponent.id)?.sourceEventIds ?? [],
   });
 
   const projectTeaching = projectKnowledgeTeachingOpportunity(state, person, atMonth);
@@ -1770,8 +1929,7 @@ export function buildDecisionContext(
   const visibleDrops = state.world.drops.filter((drop) => drop.quantity > 0
     && visibleSet.has(drop.cellId)
     && Math.abs(drop.z - person.position.z) <= visibleRadius);
-  const visiblePeople = state.people.filter((other) => other.id !== person.id
-    && isAlive(other)
+  const visiblePeople = livingPeople(state).filter((other) => other.id !== person.id
     && visibleSet.has(other.position.cellId)
     && Math.abs(other.position.z - person.position.z) <= visibleRadius);
   const visibleAnimals = state.world.animals.filter((animal) => isAnimalAlive(animal)
@@ -1782,7 +1940,7 @@ export function buildDecisionContext(
   // Project options own a copy of the one project they may route; unrelated
   // projects and all terminal evidence are read-only in this context.
   const planningState = state;
-  const planningPerson = planningState.people.find((candidate) => candidate.id === person.id) ?? person;
+  const planningPerson = personById(planningState, person.id) ?? person;
   const stage = lifePlanningStage(person, atMonth);
   const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, visibleRemains, atMonth)
     .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
@@ -1849,12 +2007,13 @@ export function recompileNextAction(
       && intent.nextAction.content.techniqueDemonstration)
     || (intent.nextAction.kind === 'act'
       && (intent.nextAction.techniqueDemonstration || intent.nextAction.techniqueImitation))) return null;
-  const mechanicalCompletion = intent.completionAction?.kind === 'act'
+  const physicalServiceCompletion = intent.completionAction?.kind === 'act'
     && (intent.completionAction.mechanicalPowerBasis?.mode === 'operate-service'
-      || intent.completionAction.mechanicalPowerBasis?.mode === 'repair-service')
+      || intent.completionAction.mechanicalPowerBasis?.mode === 'repair-service'
+      || intent.completionAction.electricalPowerBasis?.mode === 'operate-service')
     ? intent.completionAction
     : undefined;
-  if (mechanicalCompletion && intent.target?.kind === 'voxel') {
+  if (physicalServiceCompletion && intent.target?.kind === 'voxel') {
     const target = intent.target.position;
     const horizontal = Math.abs(cellX(person.position.cellId) - target.x)
       + Math.abs(cellY(person.position.cellId) - target.y);
@@ -1862,7 +2021,7 @@ export function recompileNextAction(
     const actorOccupiesTarget = person.position.cellId === target.x + target.y * state.world.grid.width
       && (person.position.z === target.z || person.position.z + 1 === target.z);
     return Math.max(horizontal, vertical) <= 1 && !actorOccupiesTarget
-      ? mechanicalCompletion
+      ? physicalServiceCompletion
       : intent.nextAction;
   }
   if (intent.projectId) return recompileProjectNextAction(state, person, intent.projectId);

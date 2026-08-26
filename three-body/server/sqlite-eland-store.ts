@@ -16,7 +16,13 @@ import {
   SESSION_TIMELINE_CHUNK_REFERENCE_KEY,
   type SessionTimelineChunkReference,
 } from './session-snapshot-codec';
-import { ELAND_DATABASE_FILENAME, ELAND_DATABASE_SCHEMA_VERSION } from './sqlite-run-store';
+import {
+  ELAND_DATABASE_FILENAME,
+  ELAND_DATABASE_FOUNDATION_SCHEMA_VERSION,
+  ELAND_DATABASE_SCHEMA_VERSION,
+  sqliteUserVersion,
+  withSqliteSchemaTransaction,
+} from './sqlite-schema';
 
 const SESSION_MANIFEST_CODEC = 'eland-session-manifest-v2';
 const SESSION_SHELL_CODEC = 'eland-session-shell-v2';
@@ -314,9 +320,7 @@ export class SqliteElandStore {
     this.databaseFile = path.join(rootDir, ELAND_DATABASE_FILENAME);
     this.database = new DatabaseSync(this.databaseFile);
     this.database.exec(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
-    const currentSchemaVersion = Number(
-      this.database.prepare('PRAGMA user_version').get()?.user_version ?? 0,
-    );
+    const currentSchemaVersion = sqliteUserVersion(this.database);
     if (currentSchemaVersion > ELAND_DATABASE_SCHEMA_VERSION) {
       this.database.close();
       throw new Error(
@@ -326,64 +330,73 @@ export class SqliteElandStore {
     this.database.exec('PRAGMA journal_mode = WAL');
     this.database.exec('PRAGMA foreign_keys = ON');
     this.database.exec('PRAGMA synchronous = NORMAL');
-    this.database.exec(`
-      CREATE TABLE IF NOT EXISTS chunks (
-        hash TEXT PRIMARY KEY,
-        codec TEXT NOT NULL,
-        raw_size INTEGER NOT NULL CHECK (raw_size >= 0),
-        data BLOB NOT NULL
-      ) STRICT;
+    withSqliteSchemaTransaction(this.database, (lockedSchemaVersion) => {
+      if (lockedSchemaVersion > ELAND_DATABASE_SCHEMA_VERSION) {
+        throw new Error(
+          `SQLite 数据库版本 ${lockedSchemaVersion} 高于当前支持的 ${ELAND_DATABASE_SCHEMA_VERSION}`,
+        );
+      }
+      this.database.exec(`
+        CREATE TABLE IF NOT EXISTS chunks (
+          hash TEXT PRIMARY KEY,
+          codec TEXT NOT NULL,
+          raw_size INTEGER NOT NULL CHECK (raw_size >= 0),
+          data BLOB NOT NULL
+        ) STRICT;
 
-      CREATE TABLE IF NOT EXISTS manual_saves (
-        id TEXT PRIMARY KEY,
-        snapshot_hash TEXT NOT NULL REFERENCES chunks(hash),
-        schema_version INTEGER NOT NULL CHECK (schema_version = 1),
-        state_schema_version INTEGER NOT NULL CHECK (state_schema_version = 17),
-        label TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        source_run_id TEXT NOT NULL,
-        civilization_id INTEGER NOT NULL CHECK (civilization_id >= 1),
-        branch_id TEXT NOT NULL,
-        elapsed_months INTEGER NOT NULL CHECK (elapsed_months >= 0),
-        calendar_label TEXT NOT NULL,
-        world_seed INTEGER NOT NULL,
-        living_people INTEGER NOT NULL CHECK (living_people >= 0),
-        stage TEXT NOT NULL,
-        ended INTEGER NOT NULL CHECK (ended IN (0, 1))
-      ) STRICT;
+        CREATE TABLE IF NOT EXISTS manual_saves (
+          id TEXT PRIMARY KEY,
+          snapshot_hash TEXT NOT NULL REFERENCES chunks(hash),
+          schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+          state_schema_version INTEGER NOT NULL CHECK (state_schema_version = 17),
+          label TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          source_run_id TEXT NOT NULL,
+          civilization_id INTEGER NOT NULL CHECK (civilization_id >= 1),
+          branch_id TEXT NOT NULL,
+          elapsed_months INTEGER NOT NULL CHECK (elapsed_months >= 0),
+          calendar_label TEXT NOT NULL,
+          world_seed INTEGER NOT NULL,
+          living_people INTEGER NOT NULL CHECK (living_people >= 0),
+          stage TEXT NOT NULL,
+          ended INTEGER NOT NULL CHECK (ended IN (0, 1))
+        ) STRICT;
 
-      CREATE INDEX IF NOT EXISTS manual_saves_by_updated_at
-        ON manual_saves(updated_at DESC, id ASC);
+        CREATE INDEX IF NOT EXISTS manual_saves_by_updated_at
+          ON manual_saves(updated_at DESC, id ASC);
 
-      CREATE TABLE IF NOT EXISTS live_sessions (
-        run_id TEXT PRIMARY KEY,
-        snapshot_hash TEXT NOT NULL REFERENCES chunks(hash),
-        touched_at INTEGER NOT NULL,
-        last_step_at INTEGER NOT NULL,
-        lease_id TEXT NOT NULL,
-        creation_id TEXT NOT NULL,
-        saved_at INTEGER NOT NULL,
-        civilization_id INTEGER NOT NULL CHECK (civilization_id >= 1),
-        elapsed_months INTEGER NOT NULL CHECK (elapsed_months >= 0),
-        updated_at TEXT NOT NULL
-      ) STRICT;
+        CREATE TABLE IF NOT EXISTS live_sessions (
+          run_id TEXT PRIMARY KEY,
+          snapshot_hash TEXT NOT NULL REFERENCES chunks(hash),
+          touched_at INTEGER NOT NULL,
+          last_step_at INTEGER NOT NULL,
+          lease_id TEXT NOT NULL,
+          creation_id TEXT NOT NULL,
+          saved_at INTEGER NOT NULL,
+          civilization_id INTEGER NOT NULL CHECK (civilization_id >= 1),
+          elapsed_months INTEGER NOT NULL CHECK (elapsed_months >= 0),
+          updated_at TEXT NOT NULL
+        ) STRICT;
 
-      CREATE INDEX IF NOT EXISTS live_sessions_by_touched_at
-        ON live_sessions(touched_at DESC, run_id ASC);
+        CREATE INDEX IF NOT EXISTS live_sessions_by_touched_at
+          ON live_sessions(touched_at DESC, run_id ASC);
 
-      CREATE TABLE IF NOT EXISTS campaign_state (
-        key TEXT PRIMARY KEY,
-        integer_value INTEGER NOT NULL CHECK (integer_value >= 0),
-        updated_at TEXT NOT NULL
-      ) STRICT;
+        CREATE TABLE IF NOT EXISTS campaign_state (
+          key TEXT PRIMARY KEY,
+          integer_value INTEGER NOT NULL CHECK (integer_value >= 0),
+          updated_at TEXT NOT NULL
+        ) STRICT;
 
-      INSERT OR IGNORE INTO campaign_state(key, integer_value, updated_at)
-      VALUES ('${CAMPAIGN_HIGH_WATER_KEY}', 0, '1970-01-01T00:00:00.000Z');
-    `);
-    if (currentSchemaVersion < ELAND_DATABASE_SCHEMA_VERSION) {
-      this.database.exec(`PRAGMA user_version = ${ELAND_DATABASE_SCHEMA_VERSION}`);
-    }
+        INSERT OR IGNORE INTO campaign_state(key, integer_value, updated_at)
+        VALUES ('${CAMPAIGN_HIGH_WATER_KEY}', 0, '1970-01-01T00:00:00.000Z');
+      `);
+      if (lockedSchemaVersion < ELAND_DATABASE_FOUNDATION_SCHEMA_VERSION) {
+        this.database.exec(
+          `PRAGMA user_version = ${ELAND_DATABASE_FOUNDATION_SCHEMA_VERSION}`,
+        );
+      }
+    });
 
     this.selectChunk = this.database.prepare(`
       SELECT codec, raw_size, data FROM chunks WHERE hash = ?

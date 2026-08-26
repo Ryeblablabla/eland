@@ -1,4 +1,4 @@
-import { Material, materialDefinition, type MaterialId } from './material';
+import { Material, materialDefinition, materialHas, type MaterialId } from './material';
 
 export interface InventoryCombinationRule {
   id: string;
@@ -21,6 +21,25 @@ export interface ExposureRule {
   inputMaterialId: MaterialId;
   targetMaterialId: MaterialId;
   outputMaterialId: MaterialId;
+}
+
+/** Shared rule for a carried material acting on one world voxel. */
+export function inventoryVoxelCombinationOutput(
+  inputMaterialId: MaterialId,
+  targetMaterialId: MaterialId,
+): MaterialId | null {
+  if (inputMaterialId === Material.Seed
+    && (targetMaterialId === Material.WetSoil
+      || targetMaterialId === Material.RichSoil
+      || targetMaterialId === Material.ExhaustedSoil)) return Material.CropSprout;
+  if (targetMaterialId === Material.Container && inputMaterialId === Material.Plank) return Material.Granary;
+  if (targetMaterialId === Material.Container && inputMaterialId === Material.Stone) return Material.Cistern;
+  if (targetMaterialId === Material.Air
+    && materialHas(inputMaterialId, 'solid')
+    && (materialHas(inputMaterialId, 'building') || materialHas(inputMaterialId, 'placeable'))) {
+    return inputMaterialId === Material.Wood ? Material.Plank : inputMaterialId;
+  }
+  return null;
 }
 
 const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
@@ -155,6 +174,11 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     output: { materialId: Material.Iron, quantity: 1 },
   },
   {
+    id: 'prepare-steel-charge',
+    inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.Charcoal, quantity: 1 }],
+    output: { materialId: Material.SteelCharge, quantity: 1 },
+  },
+  {
     id: 'forge-iron-tool',
     inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.Wood, quantity: 1 }],
     output: { materialId: Material.IronTool, quantity: 1 },
@@ -170,9 +194,92 @@ const INVENTORY_COMBINATIONS: readonly InventoryCombinationRule[] = [
     output: { materialId: Material.WaterWheel, quantity: 1 },
   },
   {
+    id: 'assemble-water-wheel-from-wood',
+    inputs: [{ materialId: Material.Wood, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.WaterWheel, quantity: 1 },
+  },
+  {
     id: 'cast-drive-shaft',
     inputs: [{ materialId: Material.Bronze, quantity: 1 }, { materialId: Material.Plank, quantity: 1 }],
     output: { materialId: Material.DriveShaft, quantity: 1 },
+  },
+  {
+    id: 'shape-copper-drive-shaft',
+    inputs: [{ materialId: Material.Copper, quantity: 1 }, { materialId: Material.Plank, quantity: 1 }],
+    output: { materialId: Material.DriveShaft, quantity: 1 },
+  },
+  {
+    id: 'forge-iron-drive-shaft',
+    inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.Plank, quantity: 1 }],
+    output: { materialId: Material.DriveShaft, quantity: 1 },
+  },
+  {
+    id: 'forge-steel-drive-shaft',
+    inputs: [{ materialId: Material.Steel, quantity: 1 }, { materialId: Material.Plank, quantity: 1 }],
+    output: { materialId: Material.SteelDriveShaft, quantity: 1 },
+  },
+  {
+    id: 'assemble-beam-balance',
+    inputs: [{ materialId: Material.Plank, quantity: 2 }, { materialId: Material.Rope, quantity: 1 }],
+    output: { materialId: Material.BeamBalance, quantity: 1 },
+  },
+  {
+    id: 'assemble-beam-balance-from-wood',
+    inputs: [{ materialId: Material.Wood, quantity: 2 }, { materialId: Material.Rope, quantity: 1 }],
+    output: { materialId: Material.BeamBalance, quantity: 1 },
+  },
+  {
+    id: 'assemble-beam-balance-with-fiber',
+    inputs: [{ materialId: Material.Plank, quantity: 2 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.BeamBalance, quantity: 1 },
+  },
+  {
+    id: 'assemble-beam-balance-from-wood-with-fiber',
+    inputs: [{ materialId: Material.Wood, quantity: 2 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.BeamBalance, quantity: 1 },
+  },
+  {
+    id: 'shape-standard-weight',
+    inputs: [{ materialId: Material.Bronze, quantity: 1 }, { materialId: Material.Rope, quantity: 1 }],
+    output: { materialId: Material.StandardWeight, quantity: 1 },
+  },
+  {
+    id: 'shape-standard-weight-with-fiber',
+    inputs: [{ materialId: Material.Bronze, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.StandardWeight, quantity: 1 },
+  },
+  {
+    id: 'shape-copper-standard-weight-with-fiber',
+    inputs: [{ materialId: Material.Copper, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.StandardWeight, quantity: 1 },
+  },
+  {
+    id: 'shape-iron-standard-weight-with-fiber',
+    inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.Fiber, quantity: 1 }],
+    output: { materialId: Material.StandardWeight, quantity: 1 },
+  },
+  {
+    id: 'shape-iron-standard-weight',
+    inputs: [{ materialId: Material.Iron, quantity: 1 }, { materialId: Material.Rope, quantity: 1 }],
+    output: { materialId: Material.StandardWeight, quantity: 1 },
+  },
+  {
+    id: 'assemble-mechanical-dynamo',
+    inputs: [
+      { materialId: Material.DriveShaft, quantity: 1 },
+      { materialId: Material.Copper, quantity: 1 },
+    ],
+    output: { materialId: Material.MechanicalDynamo, quantity: 1 },
+  },
+  {
+    id: 'insulate-copper-conductor',
+    inputs: [{ materialId: Material.Copper, quantity: 1 }, { materialId: Material.Rope, quantity: 1 }],
+    output: { materialId: Material.CopperConductor, quantity: 1 },
+  },
+  {
+    id: 'assemble-resistive-load',
+    inputs: [{ materialId: Material.Copper, quantity: 1 }, { materialId: Material.FiredBrick, quantity: 1 }],
+    output: { materialId: Material.ResistiveLoad, quantity: 1 },
   },
 ] as const;
 
@@ -180,8 +287,12 @@ export function inventoryCombinationRules(): readonly InventoryCombinationRule[]
   return INVENTORY_COMBINATIONS;
 }
 
+export function inventoryCombinationsForOutput(materialId: MaterialId): readonly InventoryCombinationRule[] {
+  return INVENTORY_COMBINATIONS.filter((rule) => rule.output.materialId === materialId);
+}
+
 export function inventoryCombinationForOutput(materialId: MaterialId): InventoryCombinationRule | undefined {
-  return INVENTORY_COMBINATIONS.find((rule) => rule.output.materialId === materialId);
+  return inventoryCombinationsForOutput(materialId)[0];
 }
 
 const EXERTION_RULES: readonly ExertionRule[] = [
@@ -280,6 +391,12 @@ const EXPOSURE_RULES: readonly ExposureRule[] = [
     inputMaterialId: Material.IronCharge,
     targetMaterialId: Material.Smithy,
     outputMaterialId: Material.IronBloom,
+  },
+  {
+    id: 'refine-steel-charge-in-smithy',
+    inputMaterialId: Material.SteelCharge,
+    targetMaterialId: Material.Smithy,
+    outputMaterialId: Material.Steel,
   },
 ] as const;
 

@@ -3,10 +3,15 @@ import type {
   MechanicalPowerActionBasis,
   MechanicalPowerFaultObservationRef,
 } from './mechanical-power';
+import type {
+  ElectricalPowerActionBasis,
+  ElectricalPowerFaultObservationRef,
+} from './electrical-power';
 import type { ConditionKind, HibernationPhase, PersonId } from './person';
 import type { ProjectFunction, ProjectProposal } from './project';
 import type { WildlifeThreatBasis } from './wildlife-threat';
 import type { MortuaryPhase } from './mortuary';
+import type { SourcedMassMeasurementAction } from './measurement';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -232,6 +237,8 @@ export type PrimitiveAction =
       targets: WorldRef[];
       /** Exact source -> converter -> connector -> load basis for generic mechanical acts. */
       mechanicalPowerBasis?: MechanicalPowerActionBasis;
+      /** Exact commissioned mechanical source -> dynamo -> conductor -> load basis. */
+      electricalPowerBasis?: ElectricalPowerActionBasis;
       /** Required by actions whose legality comes from one concrete agreement. */
       authorizationRef?: string;
       toolStackId?: string;
@@ -247,11 +254,15 @@ export type PrimitiveAction =
   | {
       kind: 'attend';
       target: WorldRef;
+      /** A calibrated, source-bound use of one physical measuring apparatus. */
+      measurement?: SourcedMassMeasurementAction;
       instrumentStackId?: string;
       /** A visible current segment selected for source-bound observation. */
       waterCurrentSegmentId?: string;
       /** A visible broken component selected for source-bound personal diagnosis. */
       mechanicalPowerFaultObservation?: MechanicalPowerFaultObservationRef;
+      /** A visible current open circuit selected for source-bound personal diagnosis. */
+      electricalPowerFaultObservation?: ElectricalPowerFaultObservationRef;
       /** Optional source-bound verification compiled from an authoritative material response. */
       verification?: {
         techniqueId: string;
@@ -278,7 +289,6 @@ interface RecordUseBasisFields {
   techniqueId: string;
   ruleSignature: string;
   projectPressure: number;
-  experimentAction: PrimitiveAction;
   expectedOutputMaterialId?: MaterialId;
   createdAtMonth: number;
   projectSourceEventIds: string[];
@@ -288,8 +298,13 @@ interface RecordUseBasisFields {
   sourceFactIds: string[];
 }
 
+interface FrozenRecordUseBasisFields extends RecordUseBasisFields {
+  /** Legacy v1/v2 episodes froze the final physical action before reading. */
+  experimentAction: PrimitiveAction;
+}
+
 /** Legacy carrier handoff basis kept readable for persisted v1 intents. */
-export interface RecordUseBasisV1 extends RecordUseBasisFields {
+export interface RecordUseBasisV1 extends FrozenRecordUseBasisFields {
   version: 'record-use-basis-v1';
 }
 
@@ -299,16 +314,33 @@ export type RecordCarrierSource =
   | { kind: 'ground'; dropId: string; cellId: number; z: number };
 
 /** Reader-owned record-use basis. A ground source must be acquired before it can be read. */
-export interface RecordUseBasisV2 extends RecordUseBasisFields {
+export interface RecordUseBasisV2 extends FrozenRecordUseBasisFields {
   version: 'record-use-basis-v2';
   carrierSource: RecordCarrierSource;
   acquisitionRequired: boolean;
 }
 
-export type RecordUseBasis = RecordUseBasisV1 | RecordUseBasisV2;
+/**
+ * Project-bound record use. The final experiment is deliberately not stored:
+ * each tick recompiles the owned active project and binds current physical
+ * inputs only after ordinary preparation has made the exact technique legal.
+ */
+export interface RecordUseBasisV3 extends RecordUseBasisFields {
+  version: 'record-use-basis-v3';
+  carrierSource: RecordCarrierSource;
+  acquisitionRequired: boolean;
+  expectedOutputMaterialId: MaterialId;
+}
+
+export type RecordUseBasis = RecordUseBasisV1 | RecordUseBasisV2 | RecordUseBasisV3;
 
 /** `share` and `read-experiment` remain for persisted v1 intents. */
-export type RecordUseStage = 'share' | 'read-experiment' | 'acquire' | 'read' | 'experiment';
+export type RecordUseStage = 'share'
+  | 'read-experiment'
+  | 'acquire'
+  | 'read'
+  | 'prepare-experiment'
+  | 'experiment';
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
@@ -366,6 +398,20 @@ export interface IntentGoalOutcome {
   sourceEventIds: string[];
 }
 
+/** Relative policy declared by an executable option. Absence means complete on achievement. */
+export interface ActionCompletionPolicy {
+  kind: 'maintain-state';
+  durationMonths: number;
+}
+
+/** Absolute, replayable lifecycle installed when an option becomes an intent. */
+export interface IntentLifecycle {
+  version: 'intent-lifecycle-v1';
+  completion: 'on-achievement' | 'maintain-state';
+  reviewAtMonth: number;
+  maintainUntilMonth?: number;
+}
+
 export interface Intent {
   id: string;
   ownerId: PersonId;
@@ -382,13 +428,16 @@ export interface Intent {
   createdAtMonth: number;
   lastProgressAtMonth: number;
   progress: number;
-  /** Strategic state goals remain active for this 3-12 month planning horizon. */
+  /** Expected horizon for bounded review; it is not by itself a maintenance lock. */
   plannedDurationMonths?: number;
-  /** The state is maintained until this month, then completed or sent back for replanning. */
+  /** New intents use lifecycle. Kept only so old snapshots retain their former maintenance semantics. */
   stateGoalUntilMonth?: number;
+  lifecycle?: IntentLifecycle;
   sourceDecisionEventId: string;
   projectId?: string;
   agreementId?: string;
+  /** Agreement attempts that already existed before this intent bound to it. */
+  reproductionAttemptEventIdsAtStart?: string[];
   relationshipBasis?: RelationshipCausalBasis;
   recordUseBasis?: RecordUseBasis;
   recordUseStage?: RecordUseStage;
@@ -426,6 +475,8 @@ export interface ActionOption {
   completionAction?: PrimitiveAction;
   target?: WorldRef;
   estimatedDuration: 'one-month' | 'several-months' | 'long' | 'unknown';
+  /** Only real waiting/maintenance behavior opts in; ordinary achievements omit this field. */
+  completionPolicy?: ActionCompletionPolicy;
   sourceFactIds: string[];
   requiresFollowUp?: boolean;
   domain?: 'strategic' | 'social';

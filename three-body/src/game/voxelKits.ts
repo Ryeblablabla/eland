@@ -507,6 +507,164 @@ function kitCharcoal(k: Kit, r: number): void {
   }
 }
 
+/** 低矮、带湿润断面的黏土团块；不再回退成麻布包。 */
+function kitClayPile(k: Kit, r: number): void {
+  const lumps = [
+    [-2.7, 0, -1.4, 3.2, 1.8, 2.7], [0.2, 0, -1.7, 3.7, 2.1, 2.5],
+    [2.9, 0, -0.7, 2.4, 1.6, 2.8], [-1.8, 0, 1.6, 3, 1.7, 2.4],
+    [1.2, 0, 1.5, 3.8, 2.2, 2.8], [0, 1.35, 0.2, 2.8, 1.55, 2.4],
+  ] as const;
+  lumps.forEach(([x, y, z, sx, sy, sz], index) => k.m(
+    index % 3 === 0 ? 'groundMark' : 'roofTile', x, y, z, sx, sy, sz,
+    jit(index % 3 === 0 ? 0x765443 : 0x956852, hash01(index, 320) * 0.72 + r * 0.28),
+  ));
+  k.m('groundMark', -0.6, 2.7, 0.32, 1.5, 0.12, 0.9, 0xb08369);
+}
+
+type OrePileKind = 'copper_ore' | 'tin_ore' | 'iron_ore';
+
+/** 围岩、断面和矿脉共同区分三类权威矿石；低矮轮廓避免被误认成成品金属。 */
+function kitOrePile(k: Kit, r: number, kind: OrePileKind): void {
+  const profile = {
+    copper_ore: { rock: 0x52695f, deep: 0x344a43, vein: 0x6ca17f },
+    tin_ore: { rock: 0x737d82, deep: 0x4d565c, vein: 0xb3c0c4 },
+    iron_ore: { rock: 0x6f4f42, deep: 0x493a35, vein: 0xa25e3d },
+  }[kind];
+  const rocks = [
+    [-3, 0, -1.6, 2.1, 1.6, 2], [-1, 0, -1.8, 2.6, 1.9, 2.2],
+    [1.3, 0, -1.4, 2.1, 1.5, 1.9], [3, 0, -0.8, 1.8, 1.6, 2.2],
+    [-2.7, 0, 1.1, 1.9, 1.5, 2.4], [-0.7, 0, 1.3, 2.4, 2, 2.2],
+    [1.7, 0, 1.3, 2.3, 1.7, 2.2], [3.2, 0.1, 1.4, 1.6, 1.5, 1.7],
+    [-1.7, 1.25, -0.4, 1.9, 1.6, 1.7], [0.3, 1.35, -0.3, 2.2, 2.1, 1.9],
+    [1.8, 1.25, 0.2, 1.7, 1.6, 1.7], [-0.3, 2.85, 0.2, 1.4, 1.2, 1.3],
+  ] as const;
+  rocks.forEach(([x, y, z, sx, sy, sz], index) => k.m(
+    index % 3 === 1 ? 'dark' : 'stone', x, y, z, sx, sy, sz,
+    jit(index % 3 === 1 ? profile.deep : profile.rock, hash01(index, 321) * 0.65 + r * 0.35),
+  ));
+  const veins = kind === 'copper_ore'
+    ? [[-3, 1.02, -0.56, 1.45], [-0.7, 1.32, 2.44, 1.45], [1.7, 1.18, 2.44, 1.3], [0.3, 3.02, 0.7, 0.78]]
+    : kind === 'tin_ore'
+      ? [[-3, 1.02, -0.56, 1.35], [-0.7, 1.34, 2.44, 1.55], [1.7, 1.16, 2.44, 1.35], [0.3, 3.02, 0.7, 0.86]]
+      : [[-3, 1.02, -0.56, 1.35], [-0.7, 1.32, 2.44, 1.45], [1.7, 1.14, 2.44, 1.4], [0.3, 3.02, 0.7, 0.82]];
+  veins.forEach(([x, y, z, sx], index) => k.m(
+    'accent', x, y, z, sx, kind === 'iron_ore' ? 0.38 : 0.32, 0.2,
+    jit(profile.vein, hash01(index, 322)),
+  ));
+}
+
+type SmeltingChargeKind = 'copper_charge' | 'tin_charge' | 'iron_charge' | 'steel_charge';
+
+/** 浅耐火料盘中的矿炭混料；它是配料，不冒充矿石或已经冶炼的金属锭。 */
+function kitSmeltingCharge(k: Kit, r: number, kind: SmeltingChargeKind): void {
+  const color = {
+    copper_charge: 0x4c5b4d,
+    tin_charge: 0x5e6468,
+    iron_charge: 0x4f3d36,
+    steel_charge: 0x434647,
+  }[kind];
+  k.m('roofTile', 0, 0, 0, 8, 1, 6, jit(0x754b3b, r));
+  for (const [x, z, sx, sz] of [[-3.5, 0, 1, 5], [3.5, 0, 1, 5], [0, -2.5, 6, 1], [0, 2.5, 6, 1]] as const)
+    k.m('roofTile', x, 1, z, sx, 1.4, sz, jit(0x8a5540, hash01(x + z, 323)));
+  const pieces = [
+    [-2.6, -1.4, 1.5, 1.2], [0, -1.6, 1.7, 1], [2.4, -1.1, 1.4, 1.5],
+    [-1.5, 0.5, 1.8, 1.6], [1.1, 0.6, 1.5, 1.7], [-0.2, 1.75, 1.4, 1],
+  ] as const;
+  pieces.forEach(([x, z, sx, sz], index) => k.m(
+    index % 3 === 1 ? 'organicDark' : 'dark', x, 1.1, z, sx, 1 + (index % 2) * 0.55, sz,
+    index % 3 === 1 ? jit(0x30302f, r) : jit(color, hash01(index, 324)),
+  ));
+}
+
+type MetalIngotKind = 'copper' | 'tin' | 'bronze' | 'iron' | 'steel';
+
+/** 缩腰铸锭按错层方向平码；颜色和顶面印记区分各类成品金属。 */
+function kitMetalIngotStack(k: Kit, r: number, kind: MetalIngotKind): void {
+  const color = {
+    copper: 0xb56537,
+    tin: 0xaeb8b9,
+    bronze: 0xb07936,
+    iron: 0x5d6365,
+    steel: 0x767e82,
+  }[kind];
+  const bars = [
+    [-2, 0, -1.4, 0], [2, 0, -1.4, 0], [-2, 0, 1.4, 0], [2, 0, 1.4, 0],
+    [0, 1.15, -0.75, 1], [0, 1.15, 1.25, 1], [0, 2.3, 0.15, 0],
+  ] as const;
+  bars.forEach(([x, y, z, cross], index) => {
+    const sx = cross ? 2.6 : 3.5;
+    const sz = cross ? 3.5 : 2.6;
+    k.m('dark', x, y, z, sx, 1.05, sz, jit(color, hash01(index, 325) * 0.7 + r * 0.3));
+    k.m('dark', x, y + 1.05, z, sx * 0.72, 0.34, sz * 0.72, jit(color, hash01(index, 326)));
+    k.m('groundMark', x, y + 1.39, z, cross ? 1.15 : 0.26, 0.08, cross ? 0.26 : 1.15,
+      kind === 'steel' ? 0xc0c8cb : 0x5f4935);
+  });
+}
+
+/** 多孔、不规则的海绵铁团块，和后续规整锻铁锭保持清晰形态断点。 */
+function kitIronBloom(k: Kit, r: number): void {
+  const lumps = [
+    [-2.1, 0, -1.3, 3.4, 2.4, 3], [1.3, 0, -1.2, 3, 2, 2.7],
+    [-0.5, 0.2, 1.5, 3.8, 2.7, 3.1], [2.7, 0.1, 1.5, 2.1, 1.8, 2],
+    [0.1, 1.6, 0.1, 2.5, 2.1, 2.4],
+  ] as const;
+  lumps.forEach(([x, y, z, sx, sy, sz], index) => k.m(
+    'dark', x, y, z, sx, sy, sz,
+    jit(index % 2 ? 0x4d4945 : 0x6b655e, hash01(index, 327) * 0.7 + r * 0.3),
+  ));
+  for (const [x, y, z] of [[-2.6, 1.7, -2.82], [-0.2, 3.25, 1.45], [1.7, 1.55, -2.5], [2.95, 1.2, 2.38]] as const)
+    k.m('groundMark', x, y, z, 0.42, 0.34, 0.16, 0x282725);
+}
+
+/** 烧结砖按层交替方向错缝，稳定缺角只承担视觉辨识。 */
+function kitFiredBrickStack(k: Kit, r: number): void {
+  for (let layer = 0; layer < 4; layer += 1) {
+    const alongX = layer % 2 === 0;
+    const count = layer === 3 ? 3 : 4;
+    for (let index = 0; index < count; index += 1) {
+      const offset = (index - (count - 1) / 2) * 2.05;
+      const x = alongX ? offset : index % 2 ? 1.05 : -1.05;
+      const z = alongX ? index % 2 ? 1.05 : -1.05 : offset;
+      k.m('roofTile', x, layer * 1.05, z, alongX ? 1.86 : 3.9, 0.92, alongX ? 3.9 : 1.86,
+        jit(index === count - 1 && layer === 2 ? 0x8b4937 : 0x9f4e34, hash01(index + layer * 7, 328) * 0.7 + r * 0.3));
+    }
+  }
+  k.m('roofTile', 4.7, 0.08, 2.8, 2.9, 0.78, 1.55, jit(0x8f4633, r));
+  k.m('groundMark', 5.55, 0.86, 3.38, 0.55, 0.12, 0.2, 0x563329);
+}
+
+type ProductionToolKind = 'wood_tool' | 'stone_hoe' | 'bronze_tool' | 'iron_tool';
+
+/** 同尺度工具架用刀头材质和轮廓表达技术代际，不再回退为箱包。 */
+function kitProductionTools(k: Kit, r: number, kind: ProductionToolKind): void {
+  k.m('organicDark', 0, 0, -2.4, 8, 1, 1, jit(0x5b3f2b, r));
+  for (const x of [-3.2, 3.2]) k.m('organicDark', x, 0, -2.4, 1, 5, 1, 0x5b3f2b);
+  const headBucket: DecorBucket = kind === 'wood_tool' ? 'wood' : kind === 'stone_hoe' ? 'stone' : 'dark';
+  const headColor = {
+    wood_tool: 0x855731,
+    stone_hoe: 0x716f67,
+    bronze_tool: 0xb98038,
+    iron_tool: 0x666c6e,
+  }[kind];
+  k.m('wood', -2.2, 0.65, 0, 1, 7, 1, jit(0x775136, r));
+  k.m(headBucket, -2.2, 7.2, kind === 'stone_hoe' ? 1 : 0,
+    kind === 'iron_tool' ? 4 : 3.2, 1.5, kind === 'stone_hoe' ? 2.7 : 1.5, headColor);
+  k.m('wood', 1.6, 0.65, 0.2, 1, 6.6, 1, jit(0x775136, hash01(2, 329)));
+  if (kind === 'stone_hoe') {
+    k.m('stone', 2.55, 6.1, 0.2, 2.8, 1.2, 1.1, headColor);
+    k.m('stone', 3.55, 5.35, 0.2, 1, 2.3, 1.1, 0x65635d);
+  } else if (kind === 'bronze_tool') {
+    k.m('dark', 1.6, 6.45, 0.2, 1.4, 3.2, 1.4, headColor);
+    k.m('dark', 3, 7.25, 0.2, 2.4, 0.7, 0.72, 0xc08a43);
+  } else if (kind === 'iron_tool') {
+    k.m('dark', 1.6, 6.3, 0.2, 5, 1.2, 1.25, headColor);
+    k.m('dark', 3.85, 5.75, 0.2, 0.65, 2.2, 1, 0x53585a);
+  } else {
+    k.m('wood', 1.6, 6.45, 0.2, 3.4, 2, 1.7, headColor);
+    k.m('organicDark', 3.15, 6.8, 0.2, 0.55, 1.2, 1.9, 0x5b3f2b);
+  }
+}
+
 interface PileVisual {
   materialId: number;
   quantity: number;
@@ -717,6 +875,64 @@ function kitTemplePreview(k: Kit, active = true): void {
   }
 }
 
+/**
+ * 合并后的现代文明卡片：小型发电、导线与负载连成一条可读链路，旁侧保留
+ * 中性天平和记录架。它只是一枚观察层象征印章；实际世界中的电网、测量和
+ * 记录使用仍分别由权威网络、动作与项目事实投影，不能由这张卡片反推生成。
+ */
+function kitElectricalKnowledgeStationPreview(k: Kit): void {
+  // 成熟聚落底座与开放式站棚。
+  k.m('stone', 0, 0, 0, 27, 1, 19, 0x77746e);
+  for (const [x, z] of [[-11, -7], [-11, 7], [11, -7], [11, 7]] as const)
+    k.m('stone', x, 1, z, 1.5, 9, 1.5, jit(0x85827c, hash01(x * 17 + z, 156)));
+  k.m('roofTile', 0, 10, 0, 25, 1, 17, 0x4a4f58);
+  k.m('plaster', 0, 9.3, 0, 23, 0.45, 15, 0xd5d0c4);
+
+  // 左侧微型发电机：静态飞轮、轴与铜色绕组，不使用世界设施动画。
+  k.m('dark', -7.2, 1, 0, 7.5, 1, 6, 0x41484b);
+  k.m('dark', -7.2, 2, 0, 5.2, 4, 4.4, 0x59666a);
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index * Math.PI / 6;
+    k.m('dark', -10.1, 4.5 + Math.cos(angle) * 2.25, Math.sin(angle) * 2.25,
+      0.72, 0.72, 0.72, jit(0x596164, hash01(index, 157)));
+  }
+  k.m('dark', -10.1, 2.25, 0, 0.65, 4.5, 0.65, 0x596164);
+  k.m('dark', -10.1, 4.2, -2, 0.65, 0.65, 4, 0x596164);
+  for (const x of [-8.8, -7.8, -6.8, -5.8])
+    k.m('accent', x, 2.5, 2.28, 0.48, 3, 0.28, jit(0xc26e3f, hash01(Math.round(x * 10), 158)));
+
+  // 一条清晰的铜导线把发电机接到右侧小型有用负载。
+  k.m('organicDark', 0, 7, -3.2, 18, 0.75, 0.75, 0x584b43);
+  k.m('accent', 0, 7.15, -3.2, 20, 0.32, 0.32, 0xb76439);
+  for (const x of [-8, 0, 8]) {
+    k.m('plaster', x, 5.8, -3.2, 1.2, 1.2, 1.2, 0xd7cdb7);
+    k.m('dark', x, 4.1, -3.2, 0.55, 3.6, 0.55, 0x55595b);
+  }
+  k.m('stone', 7.6, 1, 0, 6.5, 1, 5.5, 0x69655e);
+  k.m('dark', 7.6, 2, 0, 4.6, 3.5, 3.7, 0x555b5e);
+  k.m('glowWarm', 7.6, 5.5, 0, 2.1, 2.1, 2.1, 0xffb85c);
+  k.m('plaster', 7.6, 7.6, 0, 1.15, 1.1, 1.15, 0xe5dcc8);
+
+  // 前方是中性测量台；两侧秤盘等高，不虚构任何具体读数。
+  k.m('wood', -4, 1, 6, 9, 1, 4.2, 0x765038);
+  k.m('organicDark', -4, 2, 6, 1, 3.8, 1, 0x563c2a);
+  k.m('wood', -4, 5.8, 6, 8.5, 0.55, 0.55, 0x92704a);
+  for (const x of [-7.5, -0.5]) {
+    k.m('dark', x, 4.3, 6, 0.25, 1.8, 0.25, 0x6a6d6e);
+    k.m('dark', x, 3.9, 6, 2.5, 0.3, 2.2, 0x777a7b);
+  }
+
+  // 右前方的记录架只表达信息可以被保存和再利用，不代表世界中新增了记录。
+  k.m('wood', 5.3, 1, 6.2, 7.5, 1, 3.6, 0x67482f);
+  for (const x of [2.5, 8.1]) k.m('organicDark', x, 2, 6.2, 0.8, 5.8, 0.8, 0x4e3822);
+  for (const y of [2.1, 4.2, 6.3]) k.m('wood', 5.3, y, 6.2, 6.4, 0.55, 3, 0x765038);
+  const recordColors = [0xb9894f, 0x9d6847, 0xc4a46a, 0x8e6d53, 0xb77b55];
+  recordColors.forEach((color, index) => k.m(
+    index % 2 === 0 ? 'accent' : 'plaster',
+    3.4 + index * 0.95, 4.75, 6.15, 0.65, 1.5 + (index % 2) * 0.4, 2.35, color,
+  ));
+}
+
 /** 西方中世纪城堡原型：并入古代文明后的铁器与防御建筑语汇。 */
 function kitCastlePreview(k: Kit, active = true): void {
   const width = 7;
@@ -758,6 +974,7 @@ const CIVILIZATION_STAGE_PREVIEWS: Record<string, { label: string; build: (k: Ki
   '农耕定居': { label: '风车磨坊', build: kitWindmillPreview },
   '古代文明': { label: '阶梯神庙', build: kitTemplePreview },
   '中世纪': { label: '城堡', build: kitCastlePreview },
+  '现代文明（含信息能力）': { label: '电力与知识站', build: kitElectricalKnowledgeStationPreview },
 };
 
 /**
@@ -1258,6 +1475,190 @@ interface FacilityVisualState {
   fillRatio: number;
 }
 
+type ElectricalNetworkDecorView = NonNullable<SocietyState['electricalPower']>['networks'][number];
+type ElectricalComponentDecorView = ElectricalNetworkDecorView['components'][number];
+
+/**
+ * 钢制传动轴的标准接口沿 Kit 的局部 X 轴；rot=1/3 时由 Kit 统一转为世界 Z 轴。
+ * 只有已提交机械作业把该格标记 active 后，钢轴、飞轮和联轴节才复用真实机械转动。
+ */
+function kitSteelDriveShaft(k: Kit, r: number, state: FacilityVisualState): void {
+  const animation = state.active ? 'wheel-spin' as const : undefined;
+  for (const x of [-4.5, 4.5]) {
+    k.m('stone', x, 0, 0, 2.2, 2, 4.2, jit(0x716e68, hash01(x, 331)));
+    k.m('dark', x, 2, 0, 1.6, 2.5, 2.2, jit(0x444b4e, r));
+  }
+  k.m('dark', 0, 3.48, 0, 11.5, 1.05, 1.05, jit(0x767e82, r), 'steel-shaft', animation);
+  for (const x of [-3.4, 3.4])
+    k.m('dark', x, 3.25, 0, 1.1, 1.5, 1.5, 0x596064, 'steel-shaft-collar', animation);
+  k.m('dark', 6, 3.12, 0, 1.8, 1.75, 1.75, 0x8a9397, 'steel-shaft-coupling', animation);
+  k.m('dark', 6, 4.87, 0, 0.32, 0.55, 0.32, 0x303638, 'steel-shaft-pin', animation);
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index * Math.PI / 6;
+    k.m('dark', -1.4, 3.5 + Math.cos(angle) * 2.65, Math.sin(angle) * 2.65,
+      1, 1, 1, jit(0x555d60, hash01(index, 332)), 'steel-shaft-flywheel', animation);
+  }
+  k.m('dark', -1.4, 1.3, 0, 0.7, 5.4, 0.7, 0x596064, 'steel-shaft-spoke', animation);
+  k.m('dark', -1.4, 3.65, -2.2, 0.7, 0.7, 4.4, 0x596064, 'steel-shaft-spoke', animation);
+}
+
+/** 等臂秤保持中性静态读数；装饰层不根据随机数制造称量结果。 */
+function kitBeamBalance(k: Kit, r: number): void {
+  k.m('organicDark', 0, 0, 0, 9, 1.1, 5.5, 0x563c2a);
+  k.m('wood', 0, 1.1, 0, 6.8, 0.65, 3.7, jit(0x88603a, r));
+  k.m('organicDark', 0, 1.75, 0, 1.25, 6.2, 1.25, 0x67482f);
+  k.m('dark', 0, 7.95, 0, 1.25, 1, 2.1, 0x8e6f43);
+  k.m('wood', 0, 8.4, 0, 12.2, 0.72, 0.72, jit(0x92704a, r));
+  k.m('dark', 0, 7.75, 0.52, 0.34, 1.35, 0.34, 0x555a5d);
+  for (const x of [-5.4, 5.4]) {
+    k.m('dark', x, 7.15, 0, 0.24, 2.45, 0.24, 0x6a6d6e);
+    k.m('dark', x, 5, 0, 3.8, 0.35, 3.4, 0x777a7b);
+    k.m('dark', x, 5.35, 0, 3, 0.22, 2.6, 0x9b8768);
+  }
+  k.m('accent', 0, 6.3, 0.78, 0.28, 1.65, 0.24, 0xad7042);
+}
+
+/** 不同尺寸、带吊环和稳定刻痕的标准秤砣组。 */
+function kitStandardWeights(k: Kit, r: number): void {
+  const specs = [[-2.6, 3.4, 2.3], [1, 2.8, 1.9], [3.7, 2, 1.4]] as const;
+  specs.forEach(([x, width, height], index) => {
+    k.m('dark', x, 0, 0, width, 0.65, width, 0x5f6364);
+    k.m('dark', x, 0.65, 0, width * 0.78, height, width * 0.78,
+      jit(0x686c6d, hash01(index, 333) * 0.7 + r * 0.3));
+    k.m('dark', x, 0.65 + height, 0, width * 0.42, 0.45, width * 0.42, 0x858b8d);
+    k.m('dark', x - 0.36, 1 + height, 0, 0.28, 0.95, 0.34, 0x4e5253);
+    k.m('dark', x + 0.36, 1 + height, 0, 0.28, 0.95, 0.34, 0x4e5253);
+    k.m('dark', x, 1.78 + height, 0, 1, 0.25, 0.34, 0x4e5253);
+    for (let tick = 0; tick <= index; tick += 1)
+      k.m('groundMark', x - 0.28 + tick * 0.28, 0.74 + height, width * 0.4 + 0.04,
+        0.14, 0.1, 0.08, 0xd4c49f);
+  });
+}
+
+/** 局部 X 轴左端接机械轴，右上双端子接首段导体；只有真实供电事实才转动、发光。 */
+function kitMechanicalDynamo(k: Kit, r: number, state?: FacilityVisualState): void {
+  const active = state?.active === true;
+  const animation = active ? 'wheel-spin' as const : undefined;
+  k.m('dark', 0, 0, 0, 10, 1, 6.5, 0x42494c);
+  for (const x of [-3.6, 3.6]) k.m('dark', x, 1, 0, 1, 5.5, 5.4, jit(0x535c60, hash01(x, 334)));
+  k.m('dark', 0, 1.25, 0, 6.7, 4.9, 4.8, jit(0x596a70, r));
+  for (const x of [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5])
+    k.m(active ? 'glowWarm' : 'dark', x, 1.62, 2.48, 0.56, 4, 0.28,
+      jit(active ? 0xf0a44f : 0xc26e3f, hash01(Math.round(x * 10), 335)));
+  k.m('dark', 0, 3.15, 0, 12, 0.85, 0.85, 0x3f474a, 'dynamo-rotor', animation);
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index * Math.PI / 6;
+    k.m('dark', -5.2, 3.15 + Math.cos(angle) * 2.2, Math.sin(angle) * 2.2,
+      0.75, 0.78, 0.78, 0x596164, 'dynamo-rotor', animation);
+  }
+  for (const z of [-1.35, 1.35]) {
+    k.m('plaster', 2.9, 6.15, z, 1, 0.85, 1, 0xd2c7ad);
+    k.m(active ? 'glowWarm' : 'dark', 2.9, 7, z, 0.42, 0.65, 0.42,
+      active ? 0xffc165 : 0xb96a3c);
+  }
+}
+
+/**
+ * 一段直线绝缘铜导体，局部 X 轴是连接方向；rot=1/3 时沿世界 Z 轴。
+ * 转角和竖直段必须由权威电力计划另行选择，不能在这里从地表相邻随机猜测。
+ */
+function kitCopperConductor(k: Kit, r: number, broken: boolean, active = false): void {
+  if (broken) {
+    k.m('dark', -3.85, 3.45, 0, 5.2, 0.5, 0.5, jit(0x76513d, r));
+    k.m('dark', 3.85, 3.45, 0, 5.2, 0.5, 0.5, jit(0x76513d, hash01(1, 336)));
+    k.m('organicDark', -3.1, 3.25, 0, 3.9, 0.92, 0.92, 0x3f3935);
+    k.m('organicDark', 3.1, 3.25, 0, 3.9, 0.92, 0.92, 0x3f3935);
+    k.m('groundMark', -0.62, 3.1, 0, 0.48, 0.58, 0.72, 0x242322);
+    k.m('groundMark', 0.62, 3.1, 0, 0.48, 0.58, 0.72, 0x242322);
+  } else {
+    k.m(active ? 'glowWarm' : 'dark', 0, 3.45, 0, 13, 0.5, 0.5,
+      jit(active ? 0xf0a04f : 0xb56037, r));
+    k.m('organicDark', 0, 3.25, 0, 9.8, 0.92, 0.92, 0x584b43);
+  }
+  for (const x of [-5.3, 0, 5.3]) {
+    k.m('stone', x, 0, 0, 2.2, 0.72, 3.1, jit(0x77746e, hash01(Math.round(x * 10), 337)));
+    k.m('plaster', x, 0.72, 0, 1.45, 2.15, 1.45, 0xd7cdb7);
+    k.m('dark', x, 2.87, 0, 0.52, 0.72, 0.52, 0x55595b);
+  }
+  for (const x of [-6.75, 6.75]) k.m(active && !broken ? 'glowWarm' : 'dark', x, 3.1, 0, 1.2, 1.15, 1.15,
+    active && !broken ? 0xffbb62 : 0xc37543);
+}
+
+type ElectricalPlanDirection = 'east' | 'west' | 'north' | 'south' | 'up' | 'down';
+
+/** 按冻结计划的前后节点生成直线、转角与竖直段；每个方向只延伸到本体素边界。 */
+function kitPlannedCopperConductor(
+  k: Kit,
+  r: number,
+  broken: boolean,
+  active: boolean,
+  directions: readonly ElectricalPlanDirection[],
+  faultNow: boolean,
+): void {
+  k.m('stone', 0, 0, 0, 2.7, 0.72, 3.2, jit(0x77746e, r));
+  k.m('plaster', 0, 0.72, 0, 1.6, 2.15, 1.6, 0xd7cdb7);
+  k.m('dark', 0, 2.87, 0, 0.58, 0.62, 0.58, 0x55595b);
+  const wireBucket: DecorBucket = active && !broken ? 'glowWarm' : 'dark';
+  const wireColor = active && !broken ? 0xffb45a : broken ? 0x6f4938 : 0xb56037;
+  const appendHorizontal = (axis: 'x' | 'z', sign: -1 | 1) => {
+    const length = broken ? 3.1 : 4.45;
+    const center = sign * (broken ? 2.75 : 2.15);
+    k.m('organicDark', axis === 'x' ? center : 0, 3.17, axis === 'z' ? center : 0,
+      axis === 'x' ? length : 0.94, 0.92, axis === 'z' ? length : 0.94, 0x584b43);
+    k.m(wireBucket, axis === 'x' ? center : 0, 3.45, axis === 'z' ? center : 0,
+      axis === 'x' ? length : 0.5, 0.5, axis === 'z' ? length : 0.5, jit(wireColor, r));
+  };
+  const appendVertical = (up: boolean) => {
+    const bottom = broken ? (up ? 4.4 : -0.5) : (up ? 3.3 : -0.75);
+    const length = broken ? 3.45 : 4.35;
+    k.m('organicDark', 0, bottom, 0, 0.94, length, 0.94, 0x584b43);
+    k.m(wireBucket, 0, bottom, 0, 0.5, length, 0.5, jit(wireColor, r));
+  };
+  const resolved = directions.length ? [...new Set(directions)] : ['east', 'west'] as ElectricalPlanDirection[];
+  for (const direction of resolved) {
+    if (direction === 'east') appendHorizontal('x', 1);
+    else if (direction === 'west') appendHorizontal('x', -1);
+    else if (direction === 'south') appendHorizontal('z', 1);
+    else if (direction === 'north') appendHorizontal('z', -1);
+    else appendVertical(direction === 'up');
+  }
+  if (!broken) {
+    k.m(wireBucket, 0, 3.18, 0, 1.05, 1.05, 1.05, wireColor);
+  } else {
+    for (const direction of resolved.slice(0, 2)) {
+      const x = direction === 'east' ? 0.72 : direction === 'west' ? -0.72 : 0;
+      const z = direction === 'south' ? 0.72 : direction === 'north' ? -0.72 : 0;
+      const y = direction === 'up' ? 4.08 : direction === 'down' ? 2.55 : 3.18;
+      k.m('groundMark', x, y, z, 0.48, 0.58, 0.48, 0x242322);
+    }
+  }
+  if (faultNow) {
+    k.m('glowWarm', -0.3, 3.72, 0.1, 0.24, 0.24, 0.24, 0xffc25f, 'fire-spark', 'fire');
+    k.m('glowWarm', 0.34, 3.45, -0.18, 0.18, 0.18, 0.18, 0xff8a3d, 'fire-spark', 'fire');
+  }
+}
+
+/** 耐火砖基座和蛇形电阻带；只有真实交付电能的当前事实才升为暖色。 */
+function kitResistiveLoad(k: Kit, r: number, state?: FacilityVisualState): void {
+  const active = state?.active === true;
+  k.m('stone', 0, 0, 0, 9.5, 1, 5, jit(0x69655e, r));
+  for (const x of [-3.6, 3.6]) {
+    k.m('dark', x, 1, 0, 0.75, 6, 0.75, 0x4f5557);
+    k.m('plaster', x, 6.9, 0, 1.25, 0.9, 1.25, 0xd4cab4);
+    k.m('dark', x, 7.8, 0, 0.42, 0.8, 0.42, 0xad6a3e);
+  }
+  k.m('dark', 0, 6, 0, 7.5, 0.65, 0.65, 0x555b5e);
+  const points = [[-3.1, 5.4], [2.6, 4.55], [-2.6, 3.7], [2.6, 2.85], [-3.1, 2]] as const;
+  points.forEach(([x, y], index) => k.m(active ? 'glowWarm' : 'dark', x, y, 2.55,
+    index % 2 ? 5.4 : 5, 0.34, 0.3, active ? 0xffa74e : 0xc18a50));
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const x = points[index][0] > 0 ? 2.6 : -2.6;
+    k.m(active ? 'glowWarm' : 'dark', x, points[index + 1][1] + 0.28, 2.55,
+      0.34, 0.92, 0.3, active ? 0xff9647 : 0xaa7544);
+  }
+  k.m('roofTile', 0, 1.1, -1.7, 6.8, 3.6, 1.1, 0x895142);
+}
+
 function kitCouncilHearth(k: Kit, r: number, state: FacilityVisualState): void {
   const ring = [[-2, -1], [-2, 1], [2, -1], [2, 1], [-1, -2], [1, -2], [-1, 2], [1, 2]] as const;
   ring.forEach(([x, z], index) => k.m('stone', x, 0, z, 2, 1, 2, jit(0x746b5f, hash01(index, 231))));
@@ -1391,6 +1792,11 @@ function kitDriveShaft(k: Kit, r: number, broken: boolean): void {
 }
 
 function facilityBuilderFor(key: string, state: FacilityVisualState): KitBuilder | undefined {
+  if (key === 'steel_drive_shaft') return (k, r) => kitSteelDriveShaft(k, r, state);
+  if (key === 'mechanical_dynamo') return kitMechanicalDynamo;
+  if (key === 'copper_conductor') return (k, r) => kitCopperConductor(k, r, false);
+  if (key === 'broken_copper_conductor') return (k, r) => kitCopperConductor(k, r, true);
+  if (key === 'resistive_load') return kitResistiveLoad;
   if (key === 'council_hearth') return (k, r) => kitCouncilHearth(k, r, state);
   if (key === 'workshop') return (k, r) => kitWorkshop(k, r, state);
   if (key === 'granary') return (k, r) => kitGranary(k, r, state);
@@ -1569,6 +1975,8 @@ const FUNCTIONAL_MODEL_KEYS = new Set([
   'council_hearth', 'workshop', 'granary', 'cistern', 'kiln', 'mill',
   'civic_hall', 'foundry', 'smithy', 'keep_core',
   'water_wheel', 'drive_shaft', 'broken_drive_shaft',
+  'steel_drive_shaft',
+  'mechanical_dynamo', 'copper_conductor', 'broken_copper_conductor', 'resistive_load',
 ]);
 
 const SURFACE_REPLACEMENT_DECOR = new Set([
@@ -1591,7 +1999,13 @@ export function featureDepth(
   // 被压缩掉的高度；否则地形合批会把悬空屋顶填成一根实心“底座”。
   const missingLevels = Math.max(0, world.elevation[cellId] + 1 - stack.length);
   const top = world.palette[stack[0]];
-  const modeledDepth = top?.key && FUNCTIONAL_MODEL_KEYS.has(top.key) ? missingLevels + 1 : 0;
+  let modeledLayers = 0;
+  while (modeledLayers < stack.length) {
+    const material = world.palette[stack[modeledLayers]];
+    if (!material?.key || !FUNCTIONAL_MODEL_KEYS.has(material.key)) break;
+    modeledLayers += 1;
+  }
+  const modeledDepth = modeledLayers > 0 ? missingLevels + modeledLayers : 0;
   const overheadDepth = missingLevels > 0 && top?.tags.includes('solid') && top.tags.includes('building')
     ? missingLevels + 1
     : 0;
@@ -1900,7 +2314,7 @@ export function appendDirtPathCell(
 
 type PavedPathStyle = 'agrarian-stone' | 'ancient-brick' | 'medieval-cobble';
 
-const PAVED_PATH_PROFILE: Record<PavedPathStyle, {
+interface PavedPathProfile {
   width: number;
   junctionRadius: number;
   edgeThreshold: number;
@@ -1911,11 +2325,13 @@ const PAVED_PATH_PROFILE: Record<PavedPathStyle, {
   mossChance: number;
   inset: number;
   height: number;
-}> = {
+}
+
+const PAVED_PATH_PROFILE: Record<PavedPathStyle, PavedPathProfile> = {
   'agrarian-stone': {
     width: 0.305, junctionRadius: 0.36, edgeThreshold: 0.225,
-    center: 0x9a9da2, alternate: 0x8d9095, curb: 0x7d8288, moss: 0x6f7a5f,
-    mossChance: 0.06, inset: 0.009, height: 0.025,
+    center: 0x978f82, alternate: 0xa49b8d, curb: 0x7c756b, moss: 0x657052,
+    mossChance: 0.045, inset: 0.006, height: 0.014,
   },
   'ancient-brick': {
     width: 0.34, junctionRadius: 0.39, edgeThreshold: 0.27,
@@ -1929,7 +2345,137 @@ const PAVED_PATH_PROFILE: Record<PavedPathStyle, {
   },
 };
 
-/** 铺装道路的共用八向几何；各阶段只替换石板、砖块或鹅卵石的视觉语汇。 */
+interface PavedPathMicroCell {
+  microX: number;
+  microZ: number;
+  local: DirtPathPoint;
+  distance: number;
+  insideFilledCorner: boolean;
+  insideJunction: boolean;
+  tangentX: number;
+  tangentZ: number;
+}
+
+/**
+ * 农耕石板使用顺着道路方向铺设的短条旗石，而不是每个微体素各画一块方砖。
+ * 石板压进夯土表层，窄缝直接露出下方真实路面；苔痕只沿少量石缝生长，不替换整块石板。
+ */
+function appendAgrarianFlagstones(
+  out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
+  cells: readonly (PavedPathMicroCell | undefined)[], seed: number, profile: PavedPathProfile,
+): void {
+  const claimed = new Set<number>();
+
+  for (let microZ = 0; microZ < MICRO_PER_CELL; microZ++) {
+    for (let microX = 0; microX < MICRO_PER_CELL; microX++) {
+      const microId = microZ * MICRO_PER_CELL + microX;
+      const cell = cells[microId];
+      if (!cell || claimed.has(microId)) continue;
+
+      const horizontal = Math.abs(cell.tangentX) > Math.abs(cell.tangentZ)
+        || (Math.abs(cell.tangentX) === Math.abs(cell.tangentZ) && hash01(seed ^ microId, 229) > 0.5);
+      const curb = !cell.insideFilledCorner && !cell.insideJunction && cell.distance > profile.edgeThreshold;
+      const lengthRoll = hash01(seed ^ microId, 230);
+      const desiredLength = lengthRoll > 0.88 ? 3 : lengthRoll > 0.16 ? 2 : 1;
+      const members = [cell];
+      claimed.add(microId);
+
+      for (let step = 1; step < desiredLength; step++) {
+        const nextX = microX + (horizontal ? step : 0);
+        const nextZ = microZ + (horizontal ? 0 : step);
+        if (nextX >= MICRO_PER_CELL || nextZ >= MICRO_PER_CELL) break;
+        const nextId = nextZ * MICRO_PER_CELL + nextX;
+        const next = cells[nextId];
+        if (!next || claimed.has(nextId)) break;
+        const nextHorizontal = Math.abs(next.tangentX) > Math.abs(next.tangentZ)
+          || (Math.abs(next.tangentX) === Math.abs(next.tangentZ) && horizontal);
+        const nextCurb = !next.insideFilledCorner && !next.insideJunction && next.distance > profile.edgeThreshold;
+        if (nextHorizontal !== horizontal || nextCurb !== curb) break;
+        members.push(next);
+        claimed.add(nextId);
+      }
+
+      if (hash01(seed ^ microId, 238) > 0.76) {
+        const crossMembers: PavedPathMicroCell[] = [];
+        for (const member of members) {
+          const nextX = member.microX + (horizontal ? 0 : 1);
+          const nextZ = member.microZ + (horizontal ? 1 : 0);
+          if (nextX >= MICRO_PER_CELL || nextZ >= MICRO_PER_CELL) {
+            crossMembers.length = 0;
+            break;
+          }
+          const nextId = nextZ * MICRO_PER_CELL + nextX;
+          const next = cells[nextId];
+          if (!next || claimed.has(nextId)) {
+            crossMembers.length = 0;
+            break;
+          }
+          const nextHorizontal = Math.abs(next.tangentX) > Math.abs(next.tangentZ)
+            || (Math.abs(next.tangentX) === Math.abs(next.tangentZ) && horizontal);
+          const nextCurb = !next.insideFilledCorner && !next.insideJunction
+            && next.distance > profile.edgeThreshold;
+          if (nextHorizontal !== horizontal || nextCurb !== curb) {
+            crossMembers.length = 0;
+            break;
+          }
+          crossMembers.push(next);
+        }
+        for (const next of crossMembers) {
+          members.push(next);
+          claimed.add(next.microZ * MICRO_PER_CELL + next.microX);
+        }
+      }
+
+      const minX = Math.min(...members.map((member) => member.local.x));
+      const maxX = Math.max(...members.map((member) => member.local.x));
+      const minZ = Math.min(...members.map((member) => member.local.z));
+      const maxZ = Math.max(...members.map((member) => member.local.z));
+      const slabCenterX = (minX + maxX) / 2;
+      const slabCenterZ = (minZ + maxZ) / 2;
+      const slabWidthX = maxX - minX + MICRO;
+      const slabWidthZ = maxZ - minZ + MICRO;
+      const tileSeed = seed ^ microId ^ members.length * 0x45d9f3b;
+      const slabHeight = profile.height + hash01(tileSeed, 231) * 0.006;
+      const baseColor = curb
+        ? profile.curb
+        : hash01(tileSeed, 232) > 0.53 ? profile.alternate : profile.center;
+      const jitterAcross = (hash01(tileSeed, 233) - 0.5) * 0.005;
+      const x = centerX + slabCenterX + (horizontal ? 0 : jitterAcross);
+      const z = centerZ + slabCenterZ + (horizontal ? jitterAcross : 0);
+      const sx = slabWidthX - profile.inset * (horizontal ? 0.8 : 1.15);
+      const sz = slabWidthZ - profile.inset * (horizontal ? 1.15 : 0.8);
+
+      out.push({
+        b: 'stone',
+        x,
+        y: groundY + 0.001 + slabHeight / 2,
+        z,
+        sx,
+        sy: slabHeight,
+        sz,
+        c: jit(baseColor, 0.4 + hash01(tileSeed, 234) * 0.24),
+        visualLayer: 'settlement-era',
+      });
+
+      if (!curb && hash01(tileSeed, 235) > 1 - profile.mossChance) {
+        const seamSign = hash01(tileSeed, 236) > 0.5 ? 1 : -1;
+        out.push({
+          b: 'groundMark',
+          x: x + (horizontal ? seamSign * (sx / 2 - 0.008) : 0),
+          y: groundY + 0.002 + slabHeight,
+          z: z + (horizontal ? 0 : seamSign * (sz / 2 - 0.008)),
+          sx: horizontal ? 0.016 : Math.max(MICRO * 0.42, sx * 0.56),
+          sy: 0.002,
+          sz: horizontal ? Math.max(MICRO * 0.42, sz * 0.56) : 0.016,
+          c: jit(profile.moss, 0.42 + hash01(tileSeed, 237) * 0.18),
+          visualLayer: 'settlement-era',
+        });
+      }
+    }
+  }
+}
+
+/** 铺装道路的共用八向蒙版；各阶段在同一真实路网轮廓中安排自己的铺装构型。 */
 function appendPavedPathCell(
   out: DecorInstance[], centerX: number, groundY: number, centerZ: number,
   connections: readonly DirtPathDirection[], r: number,
@@ -1938,6 +2484,7 @@ function appendPavedPathCell(
   const seed = Math.floor(r * 0x7fffffff);
   const { centerLines, junction } = pathCenterGeometry(connections, r);
   const profile = PAVED_PATH_PROFILE[style];
+  const cells: Array<PavedPathMicroCell | undefined> = new Array(MICRO_PER_CELL * MICRO_PER_CELL);
   for (let microZ = 0; microZ < MICRO_PER_CELL; microZ++) {
     for (let microX = 0; microX < MICRO_PER_CELL; microX++) {
       const local: DirtPathPoint = {
@@ -1945,9 +2492,17 @@ function appendPavedPathCell(
         z: (microZ + 0.5) * MICRO - 0.5,
       };
       let distance = Number.POSITIVE_INFINITY;
+      let tangentX = 1;
+      let tangentZ = 0;
       for (const line of centerLines) {
-        for (let pointIndex = 1; pointIndex < line.length; pointIndex++)
-          distance = Math.min(distance, distanceToDirtPathSegment(local, line[pointIndex - 1], line[pointIndex]));
+        for (let pointIndex = 1; pointIndex < line.length; pointIndex++) {
+          const segmentDistance = distanceToDirtPathSegment(local, line[pointIndex - 1], line[pointIndex]);
+          if (segmentDistance < distance) {
+            distance = segmentDistance;
+            tangentX = line[pointIndex].x - line[pointIndex - 1].x;
+            tangentZ = line[pointIndex].z - line[pointIndex - 1].z;
+          }
+        }
       }
       const microId = microZ * MICRO_PER_CELL + microX;
       const edgeNoise = (hash01(seed ^ microId, 221) - 0.5) * 0.025;
@@ -1958,28 +2513,42 @@ function appendPavedPathCell(
         && local.x * corner.dx > 0.18 && local.z * corner.dz > 0.18);
       if (!insideRibbon && !insideJunction && !insideFilledCorner) continue;
 
-      const moss = hash01(seed ^ microId, 222) > 1 - profile.mossChance;
-      const curb = !insideFilledCorner && !insideJunction && distance > profile.edgeThreshold;
-      const alternating = style === 'ancient-brick'
-        ? (microX + Math.floor(microZ / 2)) % 2 === 0
-        : hash01(seed ^ microId, 226) > 0.55;
-      const baseColor = moss ? profile.moss : curb ? profile.curb : alternating ? profile.alternate : profile.center;
-      const slabInset = profile.inset + hash01(seed ^ microId, 223) * (style === 'medieval-cobble' ? 0.009 : 0.004);
-      const slabHeight = profile.height + hash01(seed ^ microId, 224) * (style === 'medieval-cobble' ? 0.014 : 0.007);
-      const jitterX = style === 'medieval-cobble' ? (hash01(seed ^ microId, 227) - 0.5) * 0.014 : 0;
-      const jitterZ = style === 'medieval-cobble' ? (hash01(seed ^ microId, 228) - 0.5) * 0.014 : 0;
-      out.push({
-        b: moss ? 'groundMark' : 'stone',
-        x: centerX + local.x + jitterX,
-        y: groundY + 0.003 + slabHeight / 2,
-        z: centerZ + local.z + jitterZ,
-        sx: MICRO - slabInset * (style === 'ancient-brick' ? 0.65 : 1),
-        sy: slabHeight,
-        sz: MICRO - slabInset * (style === 'ancient-brick' ? 1.35 : 1),
-        c: jit(baseColor, 0.36 + hash01(seed ^ microId, 225) * 0.3),
-        visualLayer: 'settlement-era',
-      });
+      cells[microId] = {
+        microX, microZ, local, distance, insideFilledCorner, insideJunction, tangentX, tangentZ,
+      };
     }
+  }
+
+  if (style === 'agrarian-stone') {
+    appendAgrarianFlagstones(out, centerX, groundY, centerZ, cells, seed, profile);
+    return;
+  }
+
+  for (const cell of cells) {
+    if (!cell) continue;
+    const { microX, microZ, local, distance, insideFilledCorner, insideJunction } = cell;
+    const microId = microZ * MICRO_PER_CELL + microX;
+    const moss = hash01(seed ^ microId, 222) > 1 - profile.mossChance;
+    const curb = !insideFilledCorner && !insideJunction && distance > profile.edgeThreshold;
+    const alternating = style === 'ancient-brick'
+      ? (microX + Math.floor(microZ / 2)) % 2 === 0
+      : hash01(seed ^ microId, 226) > 0.55;
+    const baseColor = moss ? profile.moss : curb ? profile.curb : alternating ? profile.alternate : profile.center;
+    const slabInset = profile.inset + hash01(seed ^ microId, 223) * (style === 'medieval-cobble' ? 0.009 : 0.004);
+    const slabHeight = profile.height + hash01(seed ^ microId, 224) * (style === 'medieval-cobble' ? 0.014 : 0.007);
+    const jitterX = style === 'medieval-cobble' ? (hash01(seed ^ microId, 227) - 0.5) * 0.014 : 0;
+    const jitterZ = style === 'medieval-cobble' ? (hash01(seed ^ microId, 228) - 0.5) * 0.014 : 0;
+    out.push({
+      b: moss ? 'groundMark' : 'stone',
+      x: centerX + local.x + jitterX,
+      y: groundY + 0.003 + slabHeight / 2,
+      z: centerZ + local.z + jitterZ,
+      sx: MICRO - slabInset * (style === 'ancient-brick' ? 0.65 : 1),
+      sy: slabHeight,
+      sz: MICRO - slabInset * (style === 'ancient-brick' ? 1.35 : 1),
+      c: jit(baseColor, 0.36 + hash01(seed ^ microId, 225) * 0.3),
+      visualLayer: 'settlement-era',
+    });
   }
 }
 
@@ -2014,7 +2583,7 @@ export type SettlementVisualStage = 'primitive' | 'agrarian' | 'ancient';
 
 export function settlementVisualStage(stage: string | undefined): SettlementVisualStage {
   if (stage === '农耕定居') return 'agrarian';
-  if (stage === '古代文明' || stage === '中世纪') return 'ancient';
+  if (stage === '古代文明' || stage === '中世纪' || stage === '现代文明（含信息能力）') return 'ancient';
   return 'primitive';
 }
 
@@ -2238,8 +2807,26 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
       // 动力作业只点亮该 ActionFact 所属权威网络的已安装构件，不从邻接猜网络身份。
       for (const cellId of action.linkedFacilityCellIds ?? []) {
         const key = w.palette[w.surface[cellId]]?.key;
-        if (key === 'mill' || key === 'water_wheel' || key === 'drive_shaft') activeFacilityCells.add(cellId);
+        if (key === 'mill' || key === 'water_wheel' || key === 'drive_shaft' || key === 'steel_drive_shaft') {
+          activeFacilityCells.add(cellId);
+        }
       }
+    }
+  }
+  const electricalComponentAt = new Map<string, {
+    network: ElectricalNetworkDecorView;
+    component: ElectricalComponentDecorView;
+  }>();
+  const activeElectricalNetworkIds = new Set<string>();
+  const faultNowElectricalNetworkIds = new Set<string>();
+  for (const network of society.electricalPower?.networks ?? []) {
+    if (network.activity?.kind === 'operation' && network.activity.delivered) {
+      activeElectricalNetworkIds.add(network.id);
+    } else if (network.activity?.kind === 'fault') {
+      faultNowElectricalNetworkIds.add(network.id);
+    }
+    for (const component of network.components) {
+      electricalComponentAt.set(`${component.cellId}:${component.z}`, { network, component });
     }
   }
   const containerByCell = new Map(society.containers.map((container) => [container.cellId, container]));
@@ -2249,7 +2836,8 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const mechanicalAt = (nx: number, ny: number): boolean => {
       if (nx < 0 || ny < 0 || nx >= w.width || ny >= w.height) return false;
       const key = w.palette[w.surface[ny * w.width + nx]]?.key;
-      return key === 'water_wheel' || key === 'drive_shaft' || key === 'mill' || key === 'broken_drive_shaft';
+      return key === 'water_wheel' || key === 'drive_shaft' || key === 'steel_drive_shaft'
+        || key === 'mill' || key === 'broken_drive_shaft';
     };
     return mechanicalAt(x, y - 1) || mechanicalAt(x, y + 1) ? 1 : 0;
   };
@@ -2344,6 +2932,8 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
         if (drought && r < 0.22) smallKit(kitDroughtCracks, 0.46);
         break;
       default: {
+        // 已安装电力构件按精确 cellId:z 和冻结计划另行生成，避免二维 surface 丢失竖直段与转角。
+        if (electricalComponentAt.has(`${id}:${w.elevation[id]}`)) break;
         const container = containerByCell.get(id);
         const facilityState: FacilityVisualState = {
           active: activeFacilityCells.has(id),
@@ -2357,7 +2947,8 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
           const start = out.length;
           const rot = wonderAtCell
             ? Math.floor(r * 4)
-            : key === 'water_wheel' || key === 'drive_shaft' || key === 'broken_drive_shaft'
+            : key === 'water_wheel' || key === 'drive_shaft' || key === 'steel_drive_shaft'
+              || key === 'broken_drive_shaft'
             ? facilityRotationFor(id)
             : Math.floor(r * 4);
           const scale = wonderAtCell ? wonderScale(wonder.kind) : key === 'granary' ? 0.72 : 1;
@@ -2368,6 +2959,80 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
         }
         break;
       }
+    }
+  }
+
+  const electricalDirection = (
+    from: { cellId: number; z: number },
+    to: { cellId: number; z: number },
+  ): ElectricalPlanDirection | undefined => {
+    if (to.z === from.z + 1 && to.cellId === from.cellId) return 'up';
+    if (to.z === from.z - 1 && to.cellId === from.cellId) return 'down';
+    const fromX = from.cellId % w.width;
+    const fromY = Math.floor(from.cellId / w.width);
+    const toX = to.cellId % w.width;
+    const toY = Math.floor(to.cellId / w.width);
+    if (to.z !== from.z) return undefined;
+    if (toX === fromX + 1 && toY === fromY) return 'east';
+    if (toX === fromX - 1 && toY === fromY) return 'west';
+    if (toY === fromY + 1 && toX === fromX) return 'south';
+    if (toY === fromY - 1 && toX === fromX) return 'north';
+    return undefined;
+  };
+  const rotationToward = (direction: ElectricalPlanDirection | undefined, fallback: number): number => {
+    if (direction === 'east') return 0;
+    if (direction === 'west') return 2;
+    if (direction === 'north') return 1;
+    if (direction === 'south') return 3;
+    return fallback;
+  };
+
+  // 只绘制账本与精确 voxel 一致的已安装构件；planPath 仅提供端口方向，不补画计划余段。
+  for (const network of society.electricalPower?.networks ?? []) {
+    const active = activeElectricalNetworkIds.has(network.id);
+    for (const component of network.components) {
+      const materialKey = w.palette[component.materialId]?.key;
+      if (materialKey !== 'mechanical_dynamo'
+        && materialKey !== 'copper_conductor'
+        && materialKey !== 'broken_copper_conductor'
+        && materialKey !== 'resistive_load') continue;
+      const pathIndex = network.planPath.findIndex((position) => (
+        position.cellId === component.cellId && position.z === component.z
+      ));
+      if (pathIndex < 0) continue;
+      const current = network.planPath[pathIndex];
+      const neighbors = [network.planPath[pathIndex - 1], network.planPath[pathIndex + 1]]
+        .filter((position): position is { cellId: number; z: number } => Boolean(position));
+      const directions = neighbors
+        .map((neighbor) => electricalDirection(current, neighbor))
+        .filter((direction): direction is ElectricalPlanDirection => direction !== undefined);
+      const x = component.cellId % w.width;
+      const y = Math.floor(component.cellId / w.width);
+      const wx = x - w.width / 2 + 0.5;
+      const wz = y - w.height / 2 + 0.5;
+      const r = hash01(component.cellId ^ Math.imul(component.z + 1, 0x45d9f3b), 338);
+      const entityId = `electrical:${network.id}:${component.cellId}:${component.z}`;
+      const state: FacilityVisualState = { active, fillRatio: 0 };
+      if (component.role === 'conductor') {
+        const faultNow = materialKey === 'broken_copper_conductor'
+          && faultNowElectricalNetworkIds.has(network.id)
+          && network.fault?.cellId === component.cellId
+          && network.fault.z === component.z;
+        kitPlannedCopperConductor(
+          new Kit(out, wx, component.z * CELL_H, wz, 1, 0, entityId),
+          r,
+          materialKey === 'broken_copper_conductor',
+          active,
+          directions,
+          faultNow,
+        );
+        continue;
+      }
+      const outward = component.role === 'source' ? directions.at(-1) : directions[0];
+      const rot = rotationToward(outward, Math.floor(r * 4));
+      const kit = new Kit(out, wx, component.z * CELL_H, wz, 1, rot, entityId);
+      if (component.role === 'source') kitMechanicalDynamo(kit, r, state);
+      else kitResistiveLoad(kit, r, state);
     }
   }
 
@@ -2429,25 +3094,48 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
   }
 
   // 掉落物 / 容器 → 同格聚合物资堆
-  const pileFor = (materialKey: string | undefined): KitBuilder =>
-    materialKey === 'wood' || materialKey === 'plank' ? kitWoodpile
-      : materialKey === 'stone' ? kitStonepile
-        : materialKey === 'food' ? kitFoodpile
-          : materialKey === 'seed' ? kitSeedpile
-            : materialKey === 'raw_meat' ? kitMeat
-              : materialKey === 'hide' ? kitHide
-                : materialKey === 'bone' ? kitBonePile
-                  : materialKey === 'stone_tool' ? (k, r) => kitToolRack(k, r, 'stone')
-                    : materialKey === 'bone_tool' ? (k, r) => kitToolRack(k, r, 'bone')
-                      : materialKey === 'spear' ? (k, r) => kitToolRack(k, r, 'spear')
-                        : materialKey === 'fiber' || materialKey === 'clothing' ? (k, r) => kitTextile(k, r)
-                          : materialKey === 'leather_clothing' ? (k, r) => kitTextile(k, r, true)
-                            : materialKey === 'rope' ? kitRope
-                              : materialKey === 'wood_tablet' ? kitTablet
-                                : materialKey === 'container' ? kitContainer
-                                  : materialKey === 'cooked_food' ? kitCookedFood
-                                    : materialKey === 'herbal_medicine' ? kitHerbs
-                                      : materialKey === 'charcoal' ? kitCharcoal : kitBundle;
+  const pileFor = (materialKey: string | undefined): KitBuilder => {
+    switch (materialKey) {
+      case 'wood': case 'plank': return kitWoodpile;
+      case 'stone': return kitStonepile;
+      case 'food': return kitFoodpile;
+      case 'seed': return kitSeedpile;
+      case 'raw_meat': return kitMeat;
+      case 'hide': return kitHide;
+      case 'bone': return kitBonePile;
+      case 'stone_tool': return (k, r) => kitToolRack(k, r, 'stone');
+      case 'bone_tool': return (k, r) => kitToolRack(k, r, 'bone');
+      case 'spear': return (k, r) => kitToolRack(k, r, 'spear');
+      case 'fiber': case 'clothing': return (k, r) => kitTextile(k, r);
+      case 'leather_clothing': return (k, r) => kitTextile(k, r, true);
+      case 'rope': return kitRope;
+      case 'wood_tablet': return kitTablet;
+      case 'container': return kitContainer;
+      case 'cooked_food': return kitCookedFood;
+      case 'herbal_medicine': return kitHerbs;
+      case 'charcoal': return kitCharcoal;
+      case 'clay': return kitClayPile;
+      case 'copper_ore': case 'tin_ore': case 'iron_ore':
+        return (k, r) => kitOrePile(k, r, materialKey);
+      case 'copper_charge': case 'tin_charge': case 'iron_charge': case 'steel_charge':
+        return (k, r) => kitSmeltingCharge(k, r, materialKey);
+      case 'copper': case 'tin': case 'bronze': case 'iron': case 'steel':
+        return (k, r) => kitMetalIngotStack(k, r, materialKey);
+      case 'iron_bloom': return kitIronBloom;
+      case 'fired_brick': return kitFiredBrickStack;
+      case 'wood_tool': case 'stone_hoe': case 'bronze_tool': case 'iron_tool':
+        return (k, r) => kitProductionTools(k, r, materialKey);
+      case 'steel_drive_shaft':
+        return (k, r) => kitSteelDriveShaft(k, r, { active: false, fillRatio: 0 });
+      case 'beam_balance': return kitBeamBalance;
+      case 'standard_weight': return kitStandardWeights;
+      case 'mechanical_dynamo': return kitMechanicalDynamo;
+      case 'copper_conductor': return (k, r) => kitCopperConductor(k, r, false);
+      case 'broken_copper_conductor': return (k, r) => kitCopperConductor(k, r, true);
+      case 'resistive_load': return kitResistiveLoad;
+      default: return kitBundle;
+    }
+  };
 
   const pileGroups = new Map<string, {
     cellId: number;

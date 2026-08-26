@@ -3,7 +3,7 @@ import { Material, materialDefinition, materialHas, type MaterialId } from '../d
 import { isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
 import { cellId, cellX, cellY, neighbors4, voxelAt } from '../world/grid';
-import { completedConstructionActions } from '../domain/event-index';
+import { constructedConnectionPositionsOf } from '../domain/physical-structure-index';
 
 type CandidateKind = 'grounded' | 'vertical' | 'lateral' | 'overhead';
 
@@ -22,16 +22,7 @@ function occupiedByBody(state: SimulationState, position: ConnectionCandidate['p
 }
 
 function constructedStructurePositions(state: SimulationState): Set<string> {
-  return new Set(completedConstructionActions(state).flatMap((event) => {
-    const materialId = Number(event.diff.outputMaterialId);
-    const position = event.diff.position as { x?: unknown; y?: unknown; z?: unknown } | undefined;
-    if (!materialHas(materialId, 'solid') || !materialHas(materialId, 'building')
-      || ![position?.x, position?.y, position?.z].every((value) => Number.isInteger(value))) return [];
-    const x = Number(position?.x);
-    const y = Number(position?.y);
-    const z = Number(position?.z);
-    return voxelAt(state.world.grid, x, y, z) === materialId ? [`${x}:${y}:${z}`] : [];
-  }));
+  return new Set(constructedConnectionPositionsOf(state));
 }
 
 function classifyConnection(state: SimulationState, person: PersonState, position: ConnectionCandidate['position'], constructed: Set<string>): CandidateKind | null {

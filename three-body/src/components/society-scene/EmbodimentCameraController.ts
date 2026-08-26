@@ -17,13 +17,68 @@ interface EmbodimentCameraControllerOptions {
 }
 
 const FIRST_PERSON_FOV = 63;
-const MOVE_DURATION_MS = 420;
+// Horizontal steps should feel immediate while height changes keep enough
+// weight to read as stepping up/down instead of riding a linear lift.
+const HORIZONTAL_SMOOTH_TIME_SECONDS = 0.095;
+const VERTICAL_SMOOTH_TIME_SECONDS = 0.14;
+const MAX_HORIZONTAL_SPEED = 8.5;
+const MAX_VERTICAL_SPEED = 5.5;
+const HORIZONTAL_SETTLE_DISTANCE = 0.004;
+const VERTICAL_SETTLE_DISTANCE = 0.003;
+const HORIZONTAL_SETTLE_SPEED = 0.075;
+const VERTICAL_SETTLE_SPEED = 0.06;
 const DRAG_RADIANS_PER_PIXEL = 0.002;
 const UP = new THREE.Vector3(0, 1, 0);
 
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export interface SmoothDampStep {
+  value: number;
+  velocity: number;
+}
+
+/**
+ * Advances one critically damped axis with the analytic spring solution.
+ *
+ * The exponential solution makes the response depend on elapsed time rather
+ * than frame count. The travel and velocity caps keep delayed/corrective
+ * anchors finite, while the crossing guard prevents spring overshoot.
+ */
+export function smoothDampAxis(
+  current: number,
+  target: number,
+  velocity: number,
+  deltaSeconds: number,
+  smoothTimeSeconds: number,
+  maxSpeed: number,
+): SmoothDampStep {
+  if (deltaSeconds <= 0) {
+    return { value: current, velocity };
+  }
+  if (current === target) return { value: target, velocity: 0 };
+
+  const smoothTime = Math.max(0.001, smoothTimeSeconds);
+  const omega = 2 / smoothTime;
+  const offset = current - target;
+  const spring = velocity + omega * offset;
+  const decay = Math.exp(-omega * deltaSeconds);
+  let nextValue = target + (offset + spring * deltaSeconds) * decay;
+  let nextVelocity = (velocity - omega * spring * deltaSeconds) * decay;
+
+  const speedLimit = Math.max(0, maxSpeed);
+  const maxTravel = speedLimit * deltaSeconds;
+  const travel = nextValue - current;
+  if (Math.abs(travel) > maxTravel) {
+    nextValue = current + Math.sign(travel) * maxTravel;
+    nextVelocity = Math.sign(travel) * speedLimit;
+  } else {
+    nextVelocity = THREE.MathUtils.clamp(nextVelocity, -speedLimit, speedLimit);
+  }
+
+  const remainingBefore = target - current;
+  const remainingAfter = target - nextValue;
+  if (remainingBefore !== 0 && remainingBefore * remainingAfter <= 0) {
+    return { value: target, velocity: 0 };
+  }
+  return { value: nextValue, velocity: nextVelocity };
 }
 
 /**
@@ -38,17 +93,22 @@ export class EmbodimentCameraController {
   private readonly pointerControls: PointerLockControls;
   private readonly overviewPosition = new THREE.Vector3();
   private readonly overviewQuaternion = new THREE.Quaternion();
-  private readonly moveFrom = new THREE.Vector3();
   private readonly moveTo = new THREE.Vector3();
+  private readonly moveVelocity = new THREE.Vector3();
   private readonly lookDirection = new THREE.Vector3();
   private readonly movementDirection = new THREE.Vector3();
   private readonly movementRight = new THREE.Vector3();
   private readonly lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   private readonly dragPointer = { id: -1, x: 0, y: 0 };
+  private readonly reducedMotionQuery = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : null;
 
   private active = false;
   private moving = false;
-  private moveStartedAt = 0;
+  private lastMoveUpdatedAt: number | null = null;
+  private settledNotified = true;
   private overviewFov = 31;
   private onPointerLockChange?: (locked: boolean) => void;
   private onSettled?: () => void;
@@ -99,7 +159,8 @@ export class EmbodimentCameraController {
     }
     this.active = true;
     this.pointerControls.enabled = true;
-    this.moving = false;
+    this.moveTo.set(anchor.x, anchor.y, anchor.z);
+    this.resetMotion();
     this.camera.fov = FIRST_PERSON_FOV;
     this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
@@ -113,43 +174,148 @@ export class EmbodimentCameraController {
     this.camera.position.set(anchor.x, anchor.y, anchor.z);
     this.camera.lookAt(this.camera.position.clone().add(this.lookDirection));
     this.camera.updateMatrixWorld();
-    this.onSettled?.();
+    this.settledNotified = false;
+    this.notifySettled();
   }
 
   setAnchor(anchor: EmbodimentCameraAnchor, animate = true): void {
     if (!this.active) return;
-    this.moveTo.set(anchor.x, anchor.y, anchor.z);
-    if (this.moveTo.distanceToSquared(this.camera.position) < 1e-8) {
-      this.camera.position.copy(this.moveTo);
-      this.moving = false;
-      this.onSettled?.();
+    const reducedMotion = this.reducedMotionQuery?.matches ?? false;
+    const isCurrentTarget = Math.abs(this.moveTo.x - anchor.x) < 1e-4
+      && Math.abs(this.moveTo.y - anchor.y) < 1e-4
+      && Math.abs(this.moveTo.z - anchor.z) < 1e-4;
+    if (isCurrentTarget) {
+      // A speculative anchor and its later authoritative confirmation often
+      // resolve to the same place. Preserve the in-flight motion instead of
+      // restarting it and making a successful step feel twice as long.
+      if (this.moving && (!animate || reducedMotion)) {
+        this.camera.position.copy(this.moveTo);
+        this.resetMotion();
+        this.camera.updateMatrixWorld();
+        this.notifySettled();
+      }
       return;
     }
-    this.moveFrom.copy(this.camera.position);
-    this.moveStartedAt = performance.now();
-    this.moving = animate && !prefersReducedMotion();
-    if (!this.moving) {
+
+    this.moveTo.set(anchor.x, anchor.y, anchor.z);
+    this.settledNotified = false;
+    if (this.moveTo.distanceToSquared(this.camera.position) < 1e-8) {
       this.camera.position.copy(this.moveTo);
+      this.resetMotion();
       this.camera.updateMatrixWorld();
-      this.onSettled?.();
+      this.notifySettled();
+      return;
     }
+
+    if (!animate || reducedMotion) {
+      this.camera.position.copy(this.moveTo);
+      this.resetMotion();
+      this.camera.updateMatrixWorld();
+      this.notifySettled();
+      return;
+    }
+
+    // A new target changes only the spring destination. Keeping both the
+    // current position and velocity lets held movement flow through adjacent
+    // authoritative cells and lets a correction bend the same motion back.
+    if (!this.moving) this.lastMoveUpdatedAt = performance.now();
+    this.moving = true;
   }
 
   update(now: number): void {
     if (!this.active || !this.moving) return;
-    const progress = THREE.MathUtils.clamp((now - this.moveStartedAt) / MOVE_DURATION_MS, 0, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    this.camera.position.lerpVectors(this.moveFrom, this.moveTo, eased);
-    if (progress < 1) return;
+    if (this.reducedMotionQuery?.matches) {
+      this.camera.position.copy(this.moveTo);
+      this.resetMotion();
+      this.camera.updateMatrixWorld();
+      this.notifySettled();
+      return;
+    }
+
+    if (this.lastMoveUpdatedAt === null || now <= this.lastMoveUpdatedAt) {
+      this.lastMoveUpdatedAt = now;
+      return;
+    }
+    const deltaSeconds = (now - this.lastMoveUpdatedAt) / 1_000;
+    this.lastMoveUpdatedAt = now;
+
+    const x = smoothDampAxis(
+      this.camera.position.x,
+      this.moveTo.x,
+      this.moveVelocity.x,
+      deltaSeconds,
+      HORIZONTAL_SMOOTH_TIME_SECONDS,
+      Number.POSITIVE_INFINITY,
+    );
+    const z = smoothDampAxis(
+      this.camera.position.z,
+      this.moveTo.z,
+      this.moveVelocity.z,
+      deltaSeconds,
+      HORIZONTAL_SMOOTH_TIME_SECONDS,
+      Number.POSITIVE_INFINITY,
+    );
+    const y = smoothDampAxis(
+      this.camera.position.y,
+      this.moveTo.y,
+      this.moveVelocity.y,
+      deltaSeconds,
+      VERTICAL_SMOOTH_TIME_SECONDS,
+      MAX_VERTICAL_SPEED,
+    );
+
+    let horizontalX = x.value - this.camera.position.x;
+    let horizontalZ = z.value - this.camera.position.z;
+    const horizontalTravel = Math.hypot(horizontalX, horizontalZ);
+    const maxHorizontalTravel = MAX_HORIZONTAL_SPEED * deltaSeconds;
+    if (horizontalTravel > maxHorizontalTravel) {
+      const travelScale = maxHorizontalTravel / horizontalTravel;
+      horizontalX *= travelScale;
+      horizontalZ *= travelScale;
+      this.moveVelocity.set(
+        horizontalX / deltaSeconds,
+        y.velocity,
+        horizontalZ / deltaSeconds,
+      );
+    } else {
+      let horizontalVelocityX = x.velocity;
+      let horizontalVelocityZ = z.velocity;
+      const horizontalSpeed = Math.hypot(horizontalVelocityX, horizontalVelocityZ);
+      if (horizontalSpeed > MAX_HORIZONTAL_SPEED) {
+        const velocityScale = MAX_HORIZONTAL_SPEED / horizontalSpeed;
+        horizontalVelocityX *= velocityScale;
+        horizontalVelocityZ *= velocityScale;
+      }
+      this.moveVelocity.set(horizontalVelocityX, y.velocity, horizontalVelocityZ);
+    }
+    this.camera.position.set(
+      this.camera.position.x + horizontalX,
+      y.value,
+      this.camera.position.z + horizontalZ,
+    );
+    this.camera.updateMatrixWorld();
+
+    const horizontalRemaining = Math.hypot(
+      this.moveTo.x - this.camera.position.x,
+      this.moveTo.z - this.camera.position.z,
+    );
+    const horizontalSpeed = Math.hypot(this.moveVelocity.x, this.moveVelocity.z);
+    if (horizontalRemaining > HORIZONTAL_SETTLE_DISTANCE
+      || Math.abs(this.moveTo.y - this.camera.position.y) > VERTICAL_SETTLE_DISTANCE
+      || horizontalSpeed > HORIZONTAL_SETTLE_SPEED
+      || Math.abs(this.moveVelocity.y) > VERTICAL_SETTLE_SPEED) return;
+
     this.camera.position.copy(this.moveTo);
-    this.moving = false;
-    this.onSettled?.();
+    this.resetMotion();
+    this.camera.updateMatrixWorld();
+    this.notifySettled();
   }
 
   leave(): void {
     if (!this.active) return;
     this.active = false;
-    this.moving = false;
+    this.resetMotion();
+    this.settledNotified = true;
     this.dragPointer.id = -1;
     this.pointerControls.enabled = false;
     if (this.pointerControls.isLocked) this.pointerControls.unlock();
@@ -159,7 +325,22 @@ export class EmbodimentCameraController {
     this.camera.updateProjectionMatrix();
   }
 
-  directionForKey(code: 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD'): EmbodimentMoveDirection {
+  private resetMotion(): void {
+    this.moving = false;
+    this.lastMoveUpdatedAt = null;
+    this.moveVelocity.set(0, 0, 0);
+  }
+
+  private notifySettled(): void {
+    if (this.settledNotified) return;
+    this.settledNotified = true;
+    this.onSettled?.();
+  }
+
+  directionForKey(
+    code: 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD',
+    previousDirection?: EmbodimentMoveDirection,
+  ): EmbodimentMoveDirection {
     this.camera.getWorldDirection(this.movementDirection);
     this.movementDirection.y = 0;
     if (this.movementDirection.lengthSq() < 1e-6) this.movementDirection.set(0, 0, -1);
@@ -169,17 +350,29 @@ export class EmbodimentCameraController {
     else if (code === 'KeyA') this.movementDirection.copy(this.movementRight).multiplyScalar(-1);
     else if (code === 'KeyD') this.movementDirection.copy(this.movementRight);
 
-    if (Math.abs(this.movementDirection.x) > Math.abs(this.movementDirection.z)) {
-      return this.movementDirection.x >= 0 ? 'east' : 'west';
-    }
-    return this.movementDirection.z >= 0 ? 'south' : 'north';
+    const nextDirection: EmbodimentMoveDirection = Math.abs(this.movementDirection.x) > Math.abs(this.movementDirection.z)
+      ? this.movementDirection.x >= 0 ? 'east' : 'west'
+      : this.movementDirection.z >= 0 ? 'south' : 'north';
+    if (!previousDirection || previousDirection === nextDirection) return nextDirection;
+
+    const previousDot = previousDirection === 'east' ? this.movementDirection.x
+      : previousDirection === 'west' ? -this.movementDirection.x
+        : previousDirection === 'south' ? this.movementDirection.z
+          : -this.movementDirection.z;
+    // Cardinal snapping normally changes at 45 degrees. Retain the previous
+    // sector until 53 degrees so tiny mouse motion cannot alternate queued
+    // authority steps around a diagonal boundary.
+    return previousDot >= Math.cos(THREE.MathUtils.degToRad(53))
+      ? previousDirection
+      : nextDirection;
   }
 
   requestPointerLock(): void {
     if (!this.active || this.pointerControls.isLocked) return;
     if (typeof this.canvas.requestPointerLock !== 'function') return;
     try {
-      this.pointerControls.lock();
+      const requested = this.canvas.requestPointerLock();
+      if (requested && typeof requested.catch === 'function') void requested.catch(() => undefined);
     } catch {
       // Drag-look remains available when the browser rejects Pointer Lock.
     }
@@ -197,6 +390,10 @@ export class EmbodimentCameraController {
   }
 
   private readonly handlePointerLock = () => {
+    if (this.dragPointer.id >= 0 && this.canvas.hasPointerCapture?.(this.dragPointer.id)) {
+      this.canvas.releasePointerCapture(this.dragPointer.id);
+    }
+    this.dragPointer.id = -1;
     this.onPointerLockChange?.(true);
   };
 
@@ -206,14 +403,14 @@ export class EmbodimentCameraController {
 
   private readonly handlePointerDown = (event: PointerEvent) => {
     if (!this.active || event.button !== 0) return;
-    if (event.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
-      this.requestPointerLock();
-      return;
-    }
     this.dragPointer.id = event.pointerId;
     this.dragPointer.x = event.clientX;
     this.dragPointer.y = event.clientY;
     this.canvas.setPointerCapture?.(event.pointerId);
+    if (event.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
+      this.requestPointerLock();
+      return;
+    }
   };
 
   private readonly handlePointerMove = (event: PointerEvent) => {

@@ -9,7 +9,24 @@ import type {
 } from '../domain/model';
 import { Material, materialHas } from '../domain/material';
 import { isAlive, type PersonId } from '../domain/person';
+import {
+  actionFacts,
+  completedActionFacts,
+  environmentFacts,
+  worldEventById,
+  worldEventFacts,
+} from '../domain/event-index';
 import { cellX, cellY, neighbors4 } from '../world/grid';
+import {
+  eventManufacturedMeasurementArtifact,
+  eventSupportsMeasurementStackMaterial,
+  isMassCalibrationReceipt,
+  isMassMeasurementReceipt,
+  isSourcedMassMeasurementAction,
+  measurementStackReceiptMatchesUse,
+  sameMeasurementStackIdentity,
+  type MeasurementStackReceipt,
+} from '../domain/measurement';
 
 export const CAPABILITY_MILESTONE_DEFINITION_VERSION = 'capability-causal-v2';
 
@@ -70,12 +87,13 @@ interface Episode {
 }
 
 interface ObserverIndex {
-  byId: Map<string, WorldEvent>;
-  events: WorldEvent[];
-  actions: ActionFact[];
-  completedActions: ActionFact[];
-  environments: EnvironmentFact[];
+  eventById: (eventId: string) => WorldEvent | undefined;
+  events: readonly WorldEvent[];
+  actions: readonly ActionFact[];
+  completedActions: readonly ActionFact[];
+  environments: readonly EnvironmentFact[];
   peopleById: Map<PersonId, SimulationState['people'][number]>;
+  structures: SimulationState['derived']['structures'];
 }
 
 function unique<T>(items: T[]): T[] {
@@ -86,20 +104,22 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-function indexState(state: SimulationState): ObserverIndex {
-  const events = state.world.past;
-  const actions = events.filter((event): event is ActionFact => event.kind === 'action');
+function indexState(
+  state: SimulationState,
+  structures: SimulationState['derived']['structures'],
+): ObserverIndex {
   return {
-    byId: new Map(events.map((event) => [event.id, event])),
-    events,
-    actions,
-    completedActions: actions.filter((event) => event.status === 'completed'),
-    environments: events.filter((event): event is EnvironmentFact => event.kind === 'environment'),
+    eventById: (eventId) => worldEventById(state, eventId),
+    events: worldEventFacts(state),
+    actions: actionFacts(state),
+    completedActions: completedActionFacts(state),
+    environments: environmentFacts(state),
     peopleById: new Map(state.people.map((person) => [person.id, person])),
+    structures,
   };
 }
 
-function episode(events: WorldEvent[], participantIds: PersonId[] = [], affectedPersonIds: PersonId[] = []): Episode | null {
+function episode(events: readonly WorldEvent[], participantIds: PersonId[] = [], affectedPersonIds: PersonId[] = []): Episode | null {
   if (!events.length) return null;
   const ordered = [...new Map(events.map((event) => [event.id, event])).values()]
     .sort((left, right) => left.atMonth - right.atMonth || left.orderInMonth - right.orderInMonth || left.id.localeCompare(right.id));
@@ -116,7 +136,7 @@ function eventEpisodes<T extends WorldEvent>(events: T[], participants: (event: 
 }
 
 function resolvedEvents(index: ObserverIndex, ids: string[]): WorldEvent[] {
-  return unique(ids).flatMap((id) => index.byId.get(id) ?? []);
+  return unique(ids).flatMap((id) => index.eventById(id) ?? []);
 }
 
 function actionTargetPerson(event: ActionFact): PersonId | null {
@@ -168,7 +188,7 @@ function cellDistance(left: number, right: number): number {
   return Math.abs(cellX(left) - cellX(right)) + Math.abs(cellY(left) - cellY(right));
 }
 
-function continuousMovementChunks(events: ActionFact[], maxGapMonths: number): ActionFact[][] {
+function continuousMovementChunks(events: readonly ActionFact[], maxGapMonths: number): ActionFact[][] {
   const chunks: ActionFact[][] = [];
   for (const event of [...events].sort(compareWorldEvents)) {
     const current = chunks.at(-1);
@@ -274,7 +294,7 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
     'physical-record': ['completed record 写入为 RecordPayload 提供真实创作来源', '至少 12 个月后，当前背包、地面或容器仍存在同一 recordPayloadId 载体'],
     memory: ['人物记忆保存具体 sourceEventIds', '来源事实能解析到亲历、对话、承诺或失败事件'],
     observation: ['attend 指向真实世界对象', 'completed diff 保存理解、核验或观察后果'],
-    'instrument-observation': ['attend 明确引用人物持有的 instrumentStackId', 'completed 观察事实保存仪器与对象的同一行动链'],
+    'instrument-observation': ['人物先用有制造来源的实体仪器和参考物完成本人校准', '随后 completed attend 保存有分辨率区间、校准事件与仪器/对象完整来源的 typed 测量回执'],
     experiment: ['技术来源含成功物质操作', '重复试验或主动 attend 核验提升技术可信度'],
     'decision-rule': ['共同体成员提出具体范围的 unanimous 规则', '全体现有成员接受并生成 active DecisionRule'],
     mandate: ['全体同意规则先成为 DecisionRule', '成员随后按规则接受限时 Mandate'],
@@ -315,6 +335,89 @@ function detectorConditions(): Record<DetectorKey, readonly string[]> {
 }
 
 const CONDITIONS = detectorConditions();
+
+function measurementStackSources(
+  index: ObserverIndex,
+  receipt: MeasurementStackReceipt,
+  requireManufacture: boolean,
+): WorldEvent[] | null {
+  const sources = receipt.sourceEventIds.map((sourceEventId) => index.eventById(sourceEventId));
+  if (sources.some((event) => !eventSupportsMeasurementStackMaterial(event, receipt.materialId))) return null;
+  if (requireManufacture
+    && !sources.some((event) => eventManufacturedMeasurementArtifact(event, receipt.materialId))) return null;
+  return sources as WorldEvent[];
+}
+
+function instrumentMeasurementEpisode(
+  event: ActionFact,
+  index: ObserverIndex,
+): Episode | null {
+  if (event.status !== 'completed'
+    || event.action.kind !== 'attend'
+    || !isSourcedMassMeasurementAction(event.action.measurement)
+    || event.action.measurement.mode !== 'measure-mass'
+    || !isMassMeasurementReceipt(event.diff)) return null;
+  const action = event.action.measurement;
+  const receipt = event.diff;
+  if (receipt.measurementEventId !== event.id
+    || receipt.measuredByPersonId !== event.who
+    || receipt.measuredAtMonth !== event.atMonth
+    || event.action.instrumentStackId !== action.instrument.stackId
+    || event.action.target.kind !== 'inventory-stack'
+    || event.action.target.personId !== event.who
+    || event.action.target.stackId !== action.subject.stackId
+    || receipt.calibrationEventId !== action.calibrationEventId
+    || !measurementStackReceiptMatchesUse(receipt.instrument, action.instrument)
+    || !measurementStackReceiptMatchesUse(receipt.subject, action.subject)
+    || !materialHas(receipt.instrument.materialId, 'instrument')) return null;
+
+  const calibration = index.eventById(receipt.calibrationEventId);
+  if (!calibration
+    || calibration.kind !== 'action'
+    || calibration.status !== 'completed'
+    || compareWorldEvents(calibration, event) >= 0
+    || calibration.who !== event.who
+    || calibration.action.kind !== 'attend'
+    || !isSourcedMassMeasurementAction(calibration.action.measurement)
+    || calibration.action.measurement.mode !== 'calibrate-mass'
+    || !isMassCalibrationReceipt(calibration.diff)) return null;
+  const calibrationAction = calibration.action.measurement;
+  const calibrationReceipt = calibration.diff;
+  if (calibrationReceipt.calibrationEventId !== calibration.id
+    || calibrationReceipt.calibratedByPersonId !== calibration.who
+    || calibrationReceipt.calibratedAtMonth !== calibration.atMonth
+    || calibration.action.instrumentStackId !== calibrationAction.instrument.stackId
+    || calibration.action.target.kind !== 'inventory-stack'
+    || calibration.action.target.personId !== calibration.who
+    || calibration.action.target.stackId !== calibrationAction.reference.stackId
+    || !measurementStackReceiptMatchesUse(calibrationReceipt.instrument, calibrationAction.instrument)
+    || !measurementStackReceiptMatchesUse(calibrationReceipt.reference, calibrationAction.reference)
+    || !sameMeasurementStackIdentity(receipt.instrument, calibrationReceipt.instrument)
+    || !sameMeasurementStackIdentity(receipt.reference, calibrationReceipt.reference)
+    || !materialHas(calibrationReceipt.reference.materialId, 'mass-reference')) return null;
+
+  const supersedingCalibration = index.completedActions.some((candidate) => candidate.id !== calibration.id
+    && candidate.who === event.who
+    && compareWorldEvents(calibration, candidate) < 0
+    && compareWorldEvents(candidate, event) < 0
+    && candidate.action.kind === 'attend'
+    && isSourcedMassMeasurementAction(candidate.action.measurement)
+    && candidate.action.measurement.mode === 'calibrate-mass'
+    && isMassCalibrationReceipt(candidate.diff)
+    && candidate.diff.calibrationEventId === candidate.id
+    && sameMeasurementStackIdentity(candidate.diff.instrument, receipt.instrument));
+  if (supersedingCalibration) return null;
+
+  const instrumentSources = measurementStackSources(index, receipt.instrument, true);
+  const referenceSources = measurementStackSources(index, receipt.reference, true);
+  const subjectSources = measurementStackSources(index, receipt.subject, false);
+  if (!instrumentSources || !referenceSources || !subjectSources) return null;
+  if ([...instrumentSources, ...referenceSources]
+    .some((source) => compareWorldEvents(source, calibration) > 0)) return null;
+  const evidence = [...instrumentSources, ...referenceSources, calibration, ...subjectSources, event];
+  if (evidence.some((source) => compareWorldEvents(source, event) > 0)) return null;
+  return episode(evidence, [event.who], [event.who]);
+}
 
 function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex): Episode[] {
   const completed = index.completedActions;
@@ -404,7 +507,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
           && event.diff.remainsId === marker.diff.remainsId
           && event.diff.mortuaryPhase === 'cover-grave');
         const deathEventId = typeof marker.diff.deathEventId === 'string' ? marker.diff.deathEventId : undefined;
-        const death = deathEventId ? index.byId.get(deathEventId) : undefined;
+        const death = deathEventId ? index.eventById(deathEventId) : undefined;
         const deceasedPersonId = typeof marker.diff.deceasedPersonId === 'string' ? marker.diff.deceasedPersonId : undefined;
         const markerSources = Array.isArray(marker.diff.sourceEventIds) ? marker.diff.sourceEventIds : [];
         const burialSources = burial && Array.isArray(burial.diff.sourceEventIds) ? burial.diff.sourceEventIds : [];
@@ -538,10 +641,10 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
       return actionEvents((event) => event.action.kind === 'act' && event.action.operation === 'combine'
         && ([Material.Clothing, Material.LeatherClothing] as number[]).includes(materialOutput(event)));
     case 'shelter':
-      return state.derived.structures.filter((structure) => structure.complete && structure.capacity > 0)
+      return index.structures.filter((structure) => structure.complete && structure.capacity > 0)
         .flatMap((structure) => episode(resolvedEvents(index, structure.sourceEventIds), [], []) ?? []);
     case 'settlement': {
-      const complete = state.derived.structures.filter((structure) => structure.complete && structure.capacity > 0);
+      const complete = index.structures.filter((structure) => structure.complete && structure.capacity > 0);
       return complete.flatMap((structure) => {
         const residents = state.people.filter(isAlive).filter((person) => structure.occupiedCells.includes(person.position.cellId));
         const sources = resolvedEvents(index, structure.sourceEventIds);
@@ -723,7 +826,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
             && agreement.proposal.candidateId === membership.personId
             && agreement.resolvedAtMonth === membership.joinedAtMonth);
           if (!admission || admission.proposal.kind !== 'membership') return [];
-          const proposalEvent = index.byId.get(admission.proposalEventId);
+          const proposalEvent = index.eventById(admission.proposalEventId);
           if (!proposalEvent || proposalEvent.kind !== 'action' || proposalEvent.status !== 'completed'
             || proposalEvent.who !== admission.proposerId
             || proposalEvent.action.kind !== 'communicate'
@@ -824,7 +927,7 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
     case 'observation':
       return actionEvents((event) => event.action.kind === 'attend');
     case 'instrument-observation':
-      return actionEvents((event) => event.action.kind === 'attend' && typeof event.action.instrumentStackId === 'string');
+      return completed.flatMap((event) => instrumentMeasurementEpisode(event, index) ?? []);
     case 'tested-hypothesis':
     case 'trial-learning': {
       const facts = state.people.flatMap((person) => person.knowledge
@@ -1325,6 +1428,7 @@ const WORLD_SPECIFIC_SPECS = [
   ['project-breakdown', '项目因有来源的供给失败而阻塞', 'world-event', 'harmful', 'collapse', 'project-breakdown'],
   ['project-recovery', '项目在有来源失败后恢复并完成', 'world-event', 'constructive', 'recovery', 'project-recovery'],
   ['animal-attack', '野生动物袭击人物发生', 'world-event', 'harmful', 'harm', 'animal-attack'],
+  ['sourced-mass-measurement', '人物用校准实体仪器完成粗粒度称量', 'knowledge', 'constructive', 'practice', 'instrument-observation'],
 ] as const satisfies readonly WorldSpecificSpec[];
 
 function stageCriteriaFor(phase: MilestonePhase, overrides: StageCriteriaOverrides = {}): CapabilityStageCriteria {
@@ -1394,7 +1498,7 @@ function meetsStageCriteria(
   index: ObserverIndex,
 ): boolean {
   const evidenceIds = unique(episodes.flatMap((item) => item.evidenceEventIds));
-  const months = new Set(evidenceIds.flatMap((eventId) => index.byId.get(eventId)?.atMonth ?? []));
+  const months = new Set(evidenceIds.flatMap((eventId) => index.eventById(eventId)?.atMonth ?? []));
   const actors = new Set(episodes.flatMap((item) => item.participantIds));
   return episodes.length >= criteria.minEpisodes
     && months.size >= criteria.minDistinctMonths
@@ -1429,14 +1533,17 @@ function replayableEpisodesFor(
  * Pure, replayable observer. Definitions are never exposed to planners and the
  * observer never mutates authoritative state.
  */
-export function observeCapabilityMilestones(state: SimulationState): MilestoneObservation[] {
-  const index = indexState(state);
+export function observeCapabilityMilestones(
+  state: SimulationState,
+  structures: SimulationState['derived']['structures'] = state.derived.structures,
+): MilestoneObservation[] {
+  const index = indexState(state, structures);
   const cache = new Map<DetectorKey, Episode[]>();
   const episodesFor = (key: DetectorKey) => {
     const cached = cache.get(key);
     if (cached) return cached;
     const observed = detect(key, state, index).filter((item) => item.evidenceEventIds.length > 0
-      && item.evidenceEventIds.every((eventId) => index.byId.has(eventId)));
+      && item.evidenceEventIds.every((eventId) => index.eventById(eventId) !== undefined));
     cache.set(key, observed);
     return observed;
   };

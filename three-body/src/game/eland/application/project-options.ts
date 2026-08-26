@@ -3,7 +3,7 @@ import { inventoryCombinationRules, inventoryCombinationTechniqueId } from '../d
 import { Material, type MaterialId } from '../domain/material';
 import type { ActionFact, DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
-import { worldEventById } from '../domain/event-index';
+import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-index';
 import {
   intentsOwnedBy,
   personById,
@@ -14,6 +14,7 @@ import {
 import {
   cloneProjectForPlanning,
   instantiateProject,
+  type ProjectFunction,
   type ProjectProposal,
   type ProjectState,
 } from '../domain/project';
@@ -30,6 +31,7 @@ import {
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 import { registerProjectParticipantMembership } from '../domain/project-participant-index';
 import type { ProjectPressureView } from './project-pressure';
+import { mechanicalPowerProjectHasCurrentRecoveryWait } from './mechanical-power-options';
 import { surfaceMaterial } from '../world/grid';
 import {
   closeProjectHypothesisCampaign,
@@ -77,6 +79,12 @@ import {
   projectOption,
   projectSupportsMaterialContribution,
 } from './projects/project-step-compiler';
+import type { ProjectStep } from './projects/project-step';
+import {
+  projectProposalPressureGroups,
+  projectProposalWithFunctionIdentity,
+  rankExecutableProjectFrontier,
+} from './projects/project-frontier';
 export {
   buildProjectInquiryOpportunityBasis,
   hasCausalShelterAdaptationNeed,
@@ -144,27 +152,37 @@ function currentOutstandingMaterialIds(project: ProjectState): MaterialId[] {
   return [...new Set(demands.length ? demands : project.missingMaterialIds)].sort((a, b) => a - b);
 }
 
-function projectInquiryExplicitlyExhausted(project: ProjectState): boolean {
+function projectInquiryExhaustedAtMonth(project: ProjectState): number | undefined {
   const currentMaterials = currentOutstandingMaterialIds(project);
   if (currentMaterials.length) {
     const relevantSearches = (project.searchCampaigns ?? []).filter((campaign) => (
       campaign.planKnowledgeId === project.planKnowledgeId
       && sameMaterialBasis(campaign.materialIds, currentMaterials)
     ));
-    if (relevantSearches.some((campaign) => campaign.status === 'active')) return false;
+    if (relevantSearches.some((campaign) => campaign.status === 'active')) return undefined;
     const latestRelevantSearch = relevantSearches
       .filter((campaign) => campaign.status === 'exhausted')
       .sort((left, right) => (right.closedAt ?? right.openedAt) - (left.closedAt ?? left.openedAt))[0];
-    return Boolean(latestRelevantSearch
-      && (latestRelevantSearch.closedAt ?? latestRelevantSearch.openedAt) >= project.lastProgressAtMonth);
+    const exhaustedAtMonth = latestRelevantSearch?.closedAt ?? latestRelevantSearch?.openedAt;
+    return exhaustedAtMonth !== undefined && exhaustedAtMonth >= project.lastProgressAtMonth
+      ? exhaustedAtMonth
+      : undefined;
   }
   // Search and entity hypotheses are consecutive branches. Once there is no
   // current material deficit, an old still-active search cannot keep a later
   // exhausted hypothesis alive; while a material deficit exists, the inverse
   // is also true and only its exact search basis is relevant.
-  if (project.hypothesisCampaign?.status === 'active') return false;
-  return Boolean(project.hypothesisCampaign?.status === 'exhausted'
-    && (project.hypothesisCampaign.endedAt ?? project.hypothesisCampaign.openedAt) >= project.lastProgressAtMonth);
+  if (project.hypothesisCampaign?.status === 'active') return undefined;
+  const exhaustedAtMonth = project.hypothesisCampaign?.status === 'exhausted'
+    ? project.hypothesisCampaign.endedAt ?? project.hypothesisCampaign.openedAt
+    : undefined;
+  return exhaustedAtMonth !== undefined && exhaustedAtMonth >= project.lastProgressAtMonth
+    ? exhaustedAtMonth
+    : undefined;
+}
+
+function projectInquiryExplicitlyExhausted(project: ProjectState): boolean {
+  return projectInquiryExhaustedAtMonth(project) !== undefined;
 }
 
 function projectHasLegitimateWait(
@@ -173,6 +191,8 @@ function projectHasLegitimateWait(
   project: ProjectState,
   atMonth: number,
 ): boolean {
+  if (project.desiredFunction === 'water-powered-crop-processing'
+    && mechanicalPowerProjectHasCurrentRecoveryWait(state, owner, project)) return true;
   if (project.desiredFunction === 'settled-cultivation') {
     // Old seed searches describe an older material branch. The compiler keeps
     // Seed outstanding only while the anchored plot still has fewer than six
@@ -190,17 +210,20 @@ function projectHasLegitimateWait(
   if (episode?.status === 'active' && episode.actorId !== owner.id) return true;
   const openContribution = project.materialContributionRequests?.some((request) => {
     const demand = project.materialDemands?.find((candidate) => candidate.materialId === request.materialId);
-    return Boolean(demand && inspectProjectMaterialContributionRequest(
-      state,
-      project,
-      request,
-      atMonth,
-      demand,
-    ).status === 'open');
+    return Boolean(demand
+      && projectMaterialContributionRequestHasAuthoritativeSource(state, project, request)
+      && inspectProjectMaterialContributionRequest(
+        state,
+        project,
+        request,
+        atMonth,
+        demand,
+      ).status === 'open');
   });
   if (openContribution) return true;
   const openKnowledgeRequest = project.knowledgeRequests?.some((request) => (
-    inspectProjectKnowledgeRequest(state, project, request, atMonth) === 'open'
+    projectKnowledgeRequestHasAuthoritativeSource(state, project, request)
+      && inspectProjectKnowledgeRequest(state, project, request, atMonth) === 'open'
   ));
   if (openKnowledgeRequest) return true;
   const pendingOutputs = new Set(completedFunctionMaterialIds(project));
@@ -235,6 +258,79 @@ function projectHasOpenBoundedExternalRequest(
   return Boolean(openKnowledgeRequest);
 }
 
+interface ProjectReviewTiming {
+  planBasisTransitionAtMonth?: number;
+  reviewDeadline: number;
+  progressAnchor: number;
+}
+
+function projectReviewTiming(
+  state: SimulationState,
+  owner: PersonState,
+  project: ProjectState,
+  atMonth: number,
+): ProjectReviewTiming {
+  const ownerProjectIntent = [...intentsOwnedBy(state, project.ownerId)].reverse().find((intent) => (
+    intent.projectId === project.id
+    && (intent.status === 'active' || intent.status === 'suspended')
+  ));
+  const hibernationSuspensionActive = Boolean(ownerProjectIntent?.suspendedForHibernationConditionId
+    && owner.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
+      && condition.id === ownerProjectIntent.suspendedForHibernationConditionId));
+  const progressAnchor = Math.max(
+    project.lastProgressAtMonth,
+    projectInquiryExhaustedAtMonth(project) ?? 0,
+    ownerProjectIntent?.lastResumedAtMonth ?? 0,
+    ownerProjectIntent?.suspendedAtMonth ?? 0,
+    hibernationSuspensionActive ? atMonth : 0,
+  );
+  const reviewWindowMonths = Math.max(1, project.reviewAtMonth - project.createdAtMonth);
+  const planBasisTransitionAtMonth = projectPlanBasisTransitionAtMonth(state, project, owner);
+  return {
+    ...(planBasisTransitionAtMonth !== undefined ? { planBasisTransitionAtMonth } : {}),
+    reviewDeadline: Math.max(
+      project.reviewAtMonth,
+      planBasisTransitionAtMonth !== undefined
+        ? planBasisTransitionAtMonth + reviewWindowMonths
+        : project.reviewAtMonth,
+    ),
+    progressAnchor,
+  };
+}
+
+function projectReviewWindowElapsed(
+  state: SimulationState,
+  owner: PersonState,
+  project: ProjectState,
+  atMonth: number,
+): ProjectReviewTiming | null {
+  const timing = projectReviewTiming(state, owner, project, atMonth);
+  return atMonth > timing.reviewDeadline && atMonth - timing.progressAnchor >= 4
+    ? timing
+    : null;
+}
+
+function projectHasCurrentRecoveryStep(
+  state: SimulationState,
+  owner: PersonState,
+  project: ProjectState,
+): boolean {
+  const previewOwner = structuredClone(owner);
+  const previewProject = cloneProjectForPlanning(project);
+  const previewState: SimulationState = {
+    ...state,
+    people: state.people.map((candidate) => candidate.id === owner.id ? previewOwner : candidate),
+    projects: state.projects.map((candidate) => candidate.id === project.id ? previewProject : candidate),
+  };
+  inheritPlanningEventOverlay(state, previewState);
+  return Boolean(compileProjectStep(
+    previewState,
+    previewOwner,
+    visibleDropsFor(previewState, previewOwner),
+    previewProject,
+  ));
+}
+
 function blockExplicitlyExhaustedProject(
   state: SimulationState,
   owner: PersonState,
@@ -243,7 +339,9 @@ function blockExplicitlyExhaustedProject(
 ): boolean {
   if (project.status !== 'active'
     || !projectInquiryExplicitlyExhausted(project)
-    || projectHasLegitimateWait(state, owner, project, atMonth)) return false;
+    || !projectReviewWindowElapsed(state, owner, project, atMonth)
+    || projectHasLegitimateWait(state, owner, project, atMonth)
+    || projectHasOpenBoundedExternalRequest(state, project, atMonth)) return false;
   freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
   project.status = 'blocked';
   project.blockedAtMonth = atMonth;
@@ -304,32 +402,18 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
       return;
     }
   }
-  const ownerProjectIntent = [...intentsOwnedBy(state, project.ownerId)].reverse().find((intent) => intent.projectId === project.id
-    && (intent.status === 'active' || intent.status === 'suspended'));
-  const hibernationSuspensionActive = Boolean(ownerProjectIntent?.suspendedForHibernationConditionId
-    && owner.conditions.some((condition) => condition.kind === 'dehydrated-hibernation'
-      && condition.id === ownerProjectIntent.suspendedForHibernationConditionId));
-  const progressAnchor = Math.max(
-    project.lastProgressAtMonth,
-    ownerProjectIntent?.lastResumedAtMonth ?? 0,
-    ownerProjectIntent?.suspendedAtMonth ?? 0,
-    hibernationSuspensionActive ? atMonth : 0,
-  );
-  const reviewWindowMonths = Math.max(1, project.reviewAtMonth - project.createdAtMonth);
-  const planBasisTransitionAtMonth = projectPlanBasisTransitionAtMonth(state, project, owner);
-  const reviewDeadline = Math.max(
-    project.reviewAtMonth,
-    planBasisTransitionAtMonth !== undefined
-      ? planBasisTransitionAtMonth + reviewWindowMonths
-      : project.reviewAtMonth,
-  );
-  if (atMonth > reviewDeadline
-    && atMonth - progressAnchor >= 4
-    && !projectHasOpenBoundedExternalRequest(state, project, atMonth)) {
+  const reviewTiming = projectReviewWindowElapsed(state, owner, project, atMonth);
+  const exhaustedInquiryHasRecovery = Boolean(reviewTiming)
+    && projectInquiryExplicitlyExhausted(project)
+    && projectHasCurrentRecoveryStep(state, owner, project);
+  if (reviewTiming
+    && !projectHasLegitimateWait(state, owner, project, atMonth)
+    && !projectHasOpenBoundedExternalRequest(state, project, atMonth)
+    && !exhaustedInquiryHasRecovery) {
     freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
     project.status = 'blocked';
     project.blockedAtMonth = atMonth;
-    project.blockedReason = planBasisTransitionAtMonth !== undefined
+    project.blockedReason = reviewTiming.planBasisTransitionAtMonth !== undefined
       ? '取得新的项目计划基础后，有界阶段内仍未提交下一阶段进展'
       : '复核期内持续缺少可执行的材料、知识或空间步骤';
     project.reservations = [];
@@ -338,6 +422,34 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     closeProjectSearchCampaigns(project, atMonth);
     closeProjectHypothesisCampaign(project, atMonth, 'project-blocked');
   }
+}
+
+function isSourceBoundProjectStateTransition(
+  state: SimulationState,
+  project: ProjectState,
+  fact: ActionFact,
+): boolean {
+  const basis = fact.action.kind === 'act' ? fact.action.mechanicalPowerBasis : undefined;
+  const plan = project.mechanicalPowerPlan;
+  const network = state.world.mechanicalPower?.networks.find((candidate) => (
+    candidate.id === project.mechanicalPowerNetworkId
+    && candidate.installationProjectId === project.id
+    && candidate.planKey === project.mechanicalPowerPlanKey
+    && candidate.fault?.faultEventId === fact.id
+  ));
+  return fact.status === 'progressed'
+    && fact.diff.mechanicalPowerFault === true
+    && fact.diff.faultKind === 'commissioning-misalignment'
+    && fact.diff.projectId === project.id
+    && fact.diff.planKey === project.mechanicalPowerPlanKey
+    && fact.diff.networkId === project.mechanicalPowerNetworkId
+    && fact.diff.sourceSegmentId === plan?.sourceSegmentId
+    && basis?.mode === 'operate'
+    && basis.projectId === project.id
+    && basis.planKey === project.mechanicalPowerPlanKey
+    && basis.networkId === project.mechanicalPowerNetworkId
+    && basis.sourceSegmentId === plan?.sourceSegmentId
+    && Boolean(network);
 }
 
 export function advanceProjects(state: SimulationState, atMonth = state.clock.elapsedMonths): void {
@@ -389,6 +501,12 @@ export function recordProjectAction(state: SimulationState, projectId: string, f
   }
   const logisticsProgress = logisticsAdvanceEvidence(state, episode, fact);
   if (logisticsProgress) recordProjectProgress(project, logisticsProgress);
+  if (isSourceBoundProjectStateTransition(state, project, fact)) recordProjectProgress(project, {
+    eventId: fact.id,
+    atMonth: fact.atMonth,
+    kind: 'action-progress',
+    actorId: fact.who,
+  });
   if (materialContribution) recordProjectProgress(project, {
     eventId: fact.id,
     atMonth: fact.atMonth,
@@ -509,13 +627,56 @@ function previewProjectState(
   project: ProjectState,
 ): { state: SimulationState; project: ProjectState } {
   const previewProject = cloneProjectForPlanning(project);
-  return {
-    state: {
-      ...state,
-      projects: state.projects.map((candidate) => candidate.id === project.id ? previewProject : candidate),
-    },
-    project: previewProject,
+  const previewState: SimulationState = {
+    ...state,
+    projects: state.projects.map((candidate) => candidate.id === project.id ? previewProject : candidate),
   };
+  inheritPlanningEventOverlay(state, previewState);
+  return { state: previewState, project: previewProject };
+}
+
+/**
+ * Compile one owner project against isolated person/project clones. A caller
+ * may pass a person clone with planning-only knowledge changes; compiler-made
+ * demands, reservations and logistics campaigns stay non-authoritative until
+ * its returned primitive action is selected and executed in the real world.
+ */
+export function previewOwnedProjectStep(
+  state: SimulationState,
+  person: PersonState,
+  projectId: string,
+): ProjectStep | null {
+  const project = projectById(state, projectId);
+  if (!project || project.status !== 'active' || project.ownerId !== person.id) return null;
+  const previewPerson = structuredClone(person);
+  const previewProject = cloneProjectForPlanning(project);
+  const previewState: SimulationState = {
+    ...state,
+    people: state.people.map((candidate) => (
+      candidate.id === previewPerson.id ? previewPerson : candidate
+    )),
+    projects: state.projects.map((candidate) => (
+      candidate.id === previewProject.id ? previewProject : candidate
+    )),
+  };
+  inheritPlanningEventOverlay(state, previewState);
+  synchronizeProject(previewState, previewProject, state.clock.elapsedMonths + 1);
+  if (previewProject.status !== 'active') return null;
+  const step = compileProjectStep(
+    previewState,
+    previewPerson,
+    visibleDropsFor(previewState, previewPerson),
+    previewProject,
+  );
+  if (!step) return null;
+  return structuredClone({
+    ...step,
+    ...(step.planKnowledgeId
+      ? { planKnowledgeId: step.planKnowledgeId }
+      : previewProject.planKnowledgeId
+        ? { planKnowledgeId: previewProject.planKnowledgeId }
+        : {}),
+  });
 }
 
 /**
@@ -641,11 +802,26 @@ export function buildProjectOptions(
   }
   if (options.length) return options;
 
-  for (const candidate of deriveProjectProposals(state, person, visibleCells, visibleDrops, visiblePeople).slice(0, 2)) {
-    const project = instantiateProject(candidate);
-    const step = compileProjectStep(state, person, visibleDrops, project);
-    if (step && openingStepUsesRenewalCommitment(state, person, project, step)) {
-      options.push(projectOption(project, step, candidate));
+  const completedFunctions = new Set<ProjectFunction>([
+    ...projectsOwnedBy(state, person.id)
+      .filter((project) => project.status === 'completed')
+      .map((project) => project.desiredFunction),
+    ...(person.cognition?.needResolutionEpisodes ?? [])
+      .map((episode) => episode.desiredFunction),
+  ]);
+  const proposals = deriveProjectProposals(state, person, visibleCells, visibleDrops, visiblePeople)
+    .map(projectProposalWithFunctionIdentity);
+  for (const pressureGroup of projectProposalPressureGroups(proposals)) {
+    const executable = pressureGroup.flatMap((candidate) => {
+      const project = instantiateProject(candidate);
+      const step = compileProjectStep(state, person, visibleDrops, project);
+      return step && openingStepUsesRenewalCommitment(state, person, project, step)
+        ? [{ proposal: candidate, project, step }]
+        : [];
+    });
+    for (const candidate of rankExecutableProjectFrontier(executable, completedFunctions)) {
+      options.push(projectOption(candidate.project, candidate.step, candidate.proposal));
+      if (options.length >= 2) return options;
     }
   }
   return options;
@@ -702,6 +878,7 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
   const step = compileProjectStep(state, person, visibleDropsFor(state, person), project);
   if (!step) {
     if (project.ownerId === person.id) {
+      const explicitlyExhausted = projectInquiryExplicitlyExhausted(project);
       const legitimateWait = projectHasLegitimateWait(
         state,
         person,
@@ -714,7 +891,10 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
         project,
         state.clock.elapsedMonths + 1,
       );
-      if (!legitimateWait) {
+      const awaitingInquiryReview = explicitlyExhausted
+        && project.status === 'active'
+        && !blockedForExhaustion;
+      if (!legitimateWait && !awaitingInquiryReview) {
         project.missingMaterialIds = [];
         project.materialDemands = [];
         project.reservations = [];

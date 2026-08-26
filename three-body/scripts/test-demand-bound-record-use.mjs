@@ -19,10 +19,12 @@ try {
       stepSimulation,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildDecisionContext, visibleCellsFor } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
+    export { planLocallyForTick } from ${JSON.stringify(path.resolve('src/game/eland/application/simulation/tick-planner.ts'))};
     export {
       buildDemandBoundRecordUseOptions,
       recompileRecordUseNextAction,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/record-use-options.ts'))};
+    export { deriveProjectProposals } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-proposals.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
     export {
       inventoryCombinationForOutput,
@@ -45,12 +47,14 @@ try {
     buildDemandBoundRecordUseOptions,
     buildEvolutionFactsReport,
     createInitialState,
+    deriveProjectProposals,
     executeActiveIntent,
     executePrimitiveAction,
     findStandingPath,
     followUpSemanticallyMatches,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
+    planLocallyForTick,
     recompileRecordUseNextAction,
     resolveInterruptedIntentReturn,
     startInterruptIntent,
@@ -170,6 +174,92 @@ try {
     turningPoints: [],
   });
 
+  const durableRecordProposalsFor = (state, author) => {
+    const visibleCells = visibleCellsFor(author);
+    const visible = new Set(visibleCells);
+    return deriveProjectProposals(
+      state,
+      author,
+      visibleCells,
+      state.world.drops.filter((drop) => drop.quantity > 0 && visible.has(drop.cellId)),
+      state.people.filter((person) => person.id !== author.id
+        && person.diedAtMonth === undefined
+        && visible.has(person.position.cellId)),
+    ).filter((candidate) => candidate.desiredFunction === 'durable-record');
+  };
+
+  const makeRequestBoundRecordFixture = () => {
+    const state = createInitialState(822, { endpoint: { kind: 'months', value: 36 }, chaosIntensity: 0 });
+    state.clock.elapsedMonths = 12;
+    state.world.past = [];
+    state.projects = [];
+    state.intents = [];
+    state.records = [];
+    const author = state.people[0];
+    const requester = state.people[1];
+    for (const person of state.people.slice(2)) person.diedAtMonth = 0;
+    for (const person of [author, requester]) {
+      person.diedAtMonth = undefined;
+      person.bornAtMonth = -20 * 12;
+      person.conditions = [];
+      person.body = { health: 100, hydration: 100, nutrition: 100 };
+      person.inventory = [];
+      person.knowledge = [];
+      delete person.activeIntentId;
+    }
+    requester.position = structuredClone(author.position);
+    const millRule = inventoryCombinationForOutput(Material.Mill);
+    const spearRule = inventoryCombinationForOutput(Material.Spear);
+    assert.ok(millRule && spearRule);
+    const techniqueId = inventoryCombinationTechniqueId(millRule);
+    const priorTechniqueId = inventoryCombinationTechniqueId(spearRule);
+    author.knowledge = [{
+      id: techniqueId, kind: 'technique', summary: '石与木板能做成磨坊', confidence: 80,
+      learnedAtMonth: 8, sourceEventIds: ['author-mill-trial-a', 'author-mill-trial-b'],
+    }];
+    state.records.push({
+      id: 'prior-unrelated-author-record', authorId: author.id, knowledgeId: priorTechniqueId,
+      codebookId: 'codebook:prior-unrelated', kind: 'technique', summary: '先前写下的另一项技术',
+      version: 1, createdAtMonth: 7, sourceEventIds: ['prior-record-write'],
+    });
+    const projectId = 'project-async-record-request';
+    const source = state.world.mechanicalPower.sources[0];
+    assert.ok(source);
+    const project = {
+      id: projectId, kind: 'production', need: 'mechanical-power-capability',
+      desiredFunction: 'water-powered-crop-processing', summary: '为固定磨坊补齐未知部件',
+      ownerId: requester.id, beneficiaryIds: [requester.id], triggerFactIds: ['requester-water-work'],
+      pressure: 70, createdAtMonth: 10, reviewAtMonth: 30, status: 'active',
+      lastProgressAtMonth: 12, missingMaterialIds: [], materialDemands: [], reservations: [],
+      contributorIds: [requester.id], actionEventIds: [], failureEventIds: [],
+      completionEventIds: [], progressEvidence: [], searchCampaigns: [], logisticsEpisodes: [],
+      site: { cellId: requester.position.cellId, z: requester.position.z },
+      mechanicalPowerPlan: {
+        version: 'mechanical-power-plan-v1', projectId, sourceSegmentId: source.id,
+        wheelPosition: { ...source.from }, shaftPositions: [], loadPosition: { ...source.to },
+        sourceKeys: [...source.sourceKeys],
+      },
+    };
+    state.projects.push(project);
+    const requestFact = executePrimitiveAction(state, requester, {
+      kind: 'communicate',
+      content: {
+        id: 'request-async-mill-knowledge', kind: 'request', summary: '谁知道怎样做出磨坊部件？',
+        projectKnowledgeRequest: {
+          version: 'project-knowledge-request-v1', projectId, requesterId: requester.id,
+          outputMaterialId: Material.Mill, expiresAtMonth: 25,
+        },
+      },
+      audience: [author.id], channel: 'voice',
+    }, 13, 0, { cause: 'intent', actionTick: 1 });
+    assert.equal(requestFact.status, 'completed');
+    state.world.past.push(requestFact);
+    project.actionEventIds.push(requestFact.id);
+    project.lastProgressAtMonth = 13;
+    state.clock.elapsedMonths = 13;
+    return { state, author, requester, project, requestFact, techniqueId };
+  };
+
   const runAlreadyReviewedSchedulingFixture = ({ publishRecord, requestResponse = false }) => {
     const fixture = makeFixture({ publicAtReader: false });
     const requester = fixture.state.people[2];
@@ -265,14 +355,88 @@ try {
   };
 
   {
+    const fixture = makeRequestBoundRecordFixture();
+    assert.equal(durableRecordProposalsFor(fixture.state, fixture.author)
+      .some((candidate) => candidate.targetKnowledgeId === fixture.techniqueId), false,
+    'a request that can be answered by direct speech now must not be diverted into a record project');
+
+    const remotePosition = visibleCellsFor(fixture.author)
+      .flatMap((candidateCellId) => {
+        const standing = surfaceStandingPosition(fixture.state.world.grid, candidateCellId);
+        if (!standing) return [];
+        const route = findStandingPath(fixture.state.world.grid, fixture.author.position, standing);
+        return route.length > 3 ? [{ standing, route }] : [];
+      })
+      .sort((left, right) => right.route.length - left.route.length)[0]?.standing;
+    assert.ok(remotePosition);
+    fixture.requester.position = structuredClone(remotePosition);
+    const [asyncRecord] = durableRecordProposalsFor(fixture.state, fixture.author)
+      .filter((candidate) => candidate.targetKnowledgeId === fixture.techniqueId);
+    assert.ok(asyncRecord,
+      'a personally heard request that remains open after separation should create an asynchronous record project');
+    assert.deepEqual(asyncRecord.site, fixture.project.site,
+      'the physical publication site must be the requester project site, not the author current position');
+    assert.ok(asyncRecord.beneficiaryIds.includes(fixture.requester.id));
+    assert.ok(asyncRecord.beneficiaryIds.includes(fixture.author.id));
+    assert.ok(asyncRecord.triggerFactIds.includes(fixture.requestFact.id),
+      'the proposal must retain the exact heard request action as causal evidence');
+    assert.ok(asyncRecord.pressureBasis.sourceFactIds.includes(fixture.requestFact.id));
+    assert.ok(asyncRecord.pressureBasis.reasonKeys.includes('heard-open-project-knowledge-request'));
+    assert.ok(asyncRecord.pressure >= 64,
+      'a still-open explicit project request should be actionable without waiting for old-age continuity pressure');
+
+    const ungroundedState = structuredClone(fixture.state);
+    const ungroundedProject = ungroundedState.projects.find((project) => project.id === fixture.project.id);
+    assert.ok(ungroundedProject?.knowledgeRequests?.[0]);
+    ungroundedProject.knowledgeRequests[0].requestEventId = 'forged-unheard-request';
+    assert.equal(durableRecordProposalsFor(
+      ungroundedState,
+      ungroundedState.people.find((person) => person.id === fixture.author.id),
+    ).some((candidate) => candidate.targetKnowledgeId === fixture.techniqueId), false,
+    'a request basis without its completed heard communication fact cannot motivate publication');
+
+    fixture.state.records.push({
+      id: 'already-authored-request-knowledge', authorId: fixture.author.id,
+      knowledgeId: fixture.techniqueId, codebookId: 'codebook:already-authored-request-knowledge',
+      kind: 'technique', summary: '已经写过同一项磨坊知识', version: 1,
+      createdAtMonth: 13, sourceEventIds: ['already-authored-request-knowledge-write'],
+    });
+    assert.equal(durableRecordProposalsFor(fixture.state, fixture.author)
+      .some((candidate) => candidate.targetKnowledgeId === fixture.techniqueId), false,
+    'the same author and knowledge pair remains deduplicated');
+  }
+
+  {
+    const fixture = makeRequestBoundRecordFixture();
+    fixture.state.projects = [];
+    fixture.state.world.past = [];
+    fixture.author.bornAtMonth = -61 * 12;
+    const cappedFallback = durableRecordProposalsFor(fixture.state, fixture.author)
+      .find((candidate) => candidate.targetKnowledgeId === fixture.techniqueId);
+    assert.equal(cappedFallback, undefined,
+      'ordinary age/memory continuity should stop after one representative work instead of dumping every technique');
+
+    fixture.state.records = [];
+    const [fallback] = durableRecordProposalsFor(fixture.state, fixture.author)
+      .filter((candidate) => candidate.targetKnowledgeId === fixture.techniqueId);
+    assert.ok(fallback,
+      'a person without any authored record should still be able to leave one age/memory fallback work');
+    assert.deepEqual(fallback.beneficiaryIds, [fixture.author.id]);
+    assert.deepEqual(fallback.site, {
+      cellId: fixture.author.position.cellId,
+      z: fixture.author.position.z,
+    });
+  }
+
+  {
     const { fixture, result, readerPlanningCalls } = runAlreadyReviewedSchedulingFixture({ publishRecord: false });
     assert.equal(readerPlanningCalls[0]?.decision.interruptionKind, 'life-review',
       'the deterministic month must begin with one real life review of the active project');
     assert.ok(result.agreements.some((agreement) => agreement.proposerId === fixture.reader.id
       && agreement.proposal.kind === 'companion'),
       'that first review must create a same-month proposal before the parent project resumes');
-    assert.equal(readerPlanningCalls.length, 1,
-      'without any perceived written carrier, an already reviewed person must not enter a second planning review');
+    assert.equal(readerPlanningCalls.some((call) => call.hasRecordOption), false,
+      'without any perceived written carrier, later obligation or terminal reviews must not fabricate record use');
     assert.equal(result.lastStep.filter((event) => event.kind === 'decision'
       && event.who === fixture.reader.id
       && event.decision.lifeReview).length, 1,
@@ -281,7 +445,9 @@ try {
 
   {
     const { fixture, result, readerPlanningCalls } = runAlreadyReviewedSchedulingFixture({ publishRecord: true });
-    assert.deepEqual(readerPlanningCalls.map((call) => call.hasRecordOption), [false, true],
+    assert.equal(readerPlanningCalls[0]?.hasRecordOption, false,
+      'the month-opening life review must not see a carrier that has not been published yet');
+    assert.equal(readerPlanningCalls.filter((call) => call.hasRecordOption).length, 1,
       'a matching carrier published after the first review must trigger exactly one fresh record-use review');
     assert.ok(result.lastStep.some((event) => event.kind === 'decision'
       && event.who === fixture.reader.id
@@ -331,7 +497,7 @@ try {
     fixture.project.contributorIds.push(fixture.author.id);
     const context = buildDecisionContext(fixture.state, fixture.reader, 13);
     const use = context.options.find((option) => option.id.startsWith('use-demand-record:'));
-    assert.equal(use?.recordUseBasis?.version, 'record-use-basis-v2',
+    assert.equal(use?.recordUseBasis?.version, 'record-use-basis-v3',
       'the normal decision context must pass only its visibility-filtered public drops into record use');
     assert.equal(use?.recordUseBasis?.carrierSource.kind, 'ground');
     const opening = context.options.find((option) => option.id.startsWith('conversation:shared-work:'));
@@ -356,10 +522,34 @@ try {
 
   {
     const fixture = makeFixture();
+    delete fixture.parent.projectId;
+    fixture.parent.goal = { kind: 'body-at-least', field: 'health', value: 100 };
+    fixture.parent.stateGoalUntilMonth = 20;
+    let reviewedContext;
+    planLocallyForTick(
+      fixture.state,
+      fixture.reader,
+      13,
+      2,
+      [],
+      {
+        decide(context) {
+          reviewedContext = context;
+          return { kind: 'idle', reason: '只验证记录预检' };
+        },
+      },
+      new Set([fixture.reader.id]),
+    );
+    assert.ok(reviewedContext?.options.some((option) => option.recordUseBasis?.version === 'record-use-basis-v3'),
+      'a perceived carrier must wake record-use preflight for a generic non-project intent when an owned project has the exact gap');
+  }
+
+  {
+    const fixture = makeFixture();
     const projectBeforePreview = structuredClone(fixture.project);
     const [use] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]);
     assert.ok(use, 'a visible public record should serve the reader\'s own active project deficit');
-    assert.equal(use.recordUseBasis?.version, 'record-use-basis-v2');
+    assert.equal(use.recordUseBasis?.version, 'record-use-basis-v3');
     assert.deepEqual(use.recordUseBasis?.carrierSource, {
       kind: 'ground', dropId: fixture.publicDrop.id,
       cellId: fixture.publicDrop.cellId, z: fixture.publicDrop.z,
@@ -501,7 +691,7 @@ try {
       recordPayloadId: fixture.record.id, sourceEventIds: ['reader-owned-record'],
     });
     const [use] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
-    assert.equal(use.recordUseBasis?.version, 'record-use-basis-v2');
+    assert.equal(use.recordUseBasis?.version, 'record-use-basis-v3');
     assert.equal(use.recordUseBasis?.carrierSource.kind, 'inventory');
     assert.equal(use.recordUseBasis?.acquisitionRequired, false);
     assert.equal(use.recordUseStage, 'read');
@@ -530,17 +720,92 @@ try {
   }
 
   {
+    const fixture = makeFixture({ publicAtReader: false });
+    fixture.reader.knowledge = [];
+    fixture.reader.inventory.push({
+      id: 'unbound-record-carrier', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['unbound-record-carrier-source'],
+    });
+    const unboundRead = executePrimitiveAction(fixture.state, fixture.reader, {
+      kind: 'attend',
+      target: { kind: 'inventory-stack', personId: fixture.reader.id, stackId: 'unbound-record-carrier' },
+    }, 13, 0, { cause: 'intent', actionTick: 1 });
+    assert.equal(unboundRead.diff.understood, false);
+    assert.equal(fixture.reader.knowledge.some((fact) => fact.id === fixture.codebookId), false,
+      'ordinary attention outside a validated record-use child must not self-decode a foreign codebook');
+  }
+
+  {
     const fixture = makeFixture();
     fixture.reader.knowledge = [];
-    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]).length, 0,
-      'a record without the reader\'s reliable codebook is ineligible');
+    const [use] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]);
+    assert.ok(use,
+      'an exact executable project deficit may begin a physical read even before the reader has the author codebook');
+    assert.deepEqual(use.recordUseBasis?.codebookSourceEventIds, [],
+      'the basis must not fabricate pre-existing codebook evidence');
+    const child = startRecordUseChild(fixture, use);
+    assert.ok(child);
+    appendIntentAction(fixture, 13, 2);
+    const readFact = appendIntentAction(fixture, 13, 3);
+    assert.equal(readFact.diff.recordUseStage, 'read');
+    assert.equal(readFact.diff.understood, true);
+    const selfDecodedCodebook = fixture.reader.knowledge.find((fact) => fact.id === fixture.codebookId);
+    assert.equal(selfDecodedCodebook?.kind, 'codebook');
+    assert.ok(selfDecodedCodebook.confidence >= 55 && selfDecodedCodebook.confidence <= 60,
+      'explicit attention to the physical notation should create a bounded self-decoded codebook');
+    const tentative = fixture.reader.knowledge.find((fact) => fact.id === fixture.techniqueId);
+    assert.equal(tentative?.confidence, 46,
+      'self-decoding the record creates only tentative technique knowledge');
+    const experimentFact = appendIntentAction(fixture, 13, 4);
+    assert.equal(experimentFact.diff.recordUseStage, 'experiment');
+    assert.equal(experimentFact.diff.outputMaterialId, Material.Spear);
+    assert.equal(fixture.reader.knowledge.find((fact) => fact.id === fixture.techniqueId)?.confidence, 64,
+      'only the existing real act raises the recorded technique by exactly 18');
   }
 
   {
     const fixture = makeFixture();
     fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.materialId !== Material.Wood);
-    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]).length, 0,
-      'a record cannot become eligible before every real experiment input is held');
+    const woodDrop = {
+      id: 'record-prepare-wood', materialId: Material.Wood,
+      cellId: fixture.reader.position.cellId, z: fixture.reader.position.z, quantity: 1,
+      createdAtMonth: 12, sourceEventIds: ['record-prepare-visible-wood'],
+      sourceLineageKeys: ['voxel:record-prepare-visible-wood'],
+    };
+    fixture.state.world.drops.push(woodDrop);
+    const [use] = buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      [fixture.publicDrop, woodDrop],
+    );
+    assert.ok(use,
+      'an exact project knowledge gap may start before every experiment input is held');
+    assert.equal(use.recordUseBasis?.version, 'record-use-basis-v3');
+    assert.equal('experimentAction' in use.recordUseBasis, false,
+      'v3 must not freeze concrete experiment stack ids before preparation');
+
+    delete fixture.parent.projectId;
+    fixture.parent.goal = { kind: 'body-at-least', field: 'health', value: 100 };
+    fixture.parent.stateGoalUntilMonth = 20;
+    const child = startRecordUseChild(fixture, use);
+    assert.equal(child.returnToIntentId, fixture.parent.id,
+      'a generic resumable non-project intent may be interrupted by an owned active project record');
+
+    appendIntentAction(fixture, 13, 2);
+    const readFact = appendIntentAction(fixture, 13, 3);
+    assert.equal(readFact.diff.recordUseStage, 'read');
+    assert.equal(child.recordUseStage, 'prepare-experiment');
+    const prepareFact = appendIntentAction(fixture, 13, 4);
+    assert.equal(prepareFact.action.kind, 'transfer');
+    assert.equal(prepareFact.action.from.kind, 'ground');
+    assert.equal(prepareFact.action.dropId, woodDrop.id);
+    assert.equal(prepareFact.diff.recordUsePreparation, true);
+    assert.equal(prepareFact.diff.recordUseStage, undefined,
+      'ordinary project logistics is preparation, not a completed experiment');
+    const experimentFact = appendIntentAction(fixture, 13, 5);
+    assert.equal(experimentFact.action.kind, 'act');
+    assert.equal(experimentFact.diff.recordUseStage, 'experiment');
+    assert.equal(experimentFact.diff.outputMaterialId, Material.Spear);
   }
 
   {
@@ -551,6 +816,46 @@ try {
     });
     assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]).length, 0,
       'already reliable knowledge has no record-use deficit');
+  }
+
+  {
+    const fixture = makeFixture();
+    fixture.record.authorId = fixture.reader.id;
+    assert.equal(buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      [fixture.publicDrop],
+    ).length, 0, 'a record author cannot use their own carrier as outsider transmission');
+  }
+
+  {
+    const fixture = makeFixture();
+    const millRule = inventoryCombinationForOutput(Material.Mill);
+    assert.ok(millRule);
+    const wrongTechniqueId = inventoryCombinationTechniqueId(millRule);
+    fixture.record.knowledgeId = wrongTechniqueId;
+    fixture.record.summary = '不对应当前狩猎项目缺口的磨坊记录';
+    assert.equal(buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      [fixture.publicDrop],
+    ).length, 0, 'a readable but project-irrelevant technique record must not trigger');
+  }
+
+  {
+    const fixture = makeFixture({ publicAtReader: false });
+    fixture.reader.inventory.push({
+      id: 'gap-change-record-carrier', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['gap-change-carrier'],
+    });
+    const [use] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    const child = startRecordUseChild(fixture, use);
+    const readFact = appendIntentAction(fixture, 13, 2);
+    assert.equal(readFact.diff.recordUseStage, 'read');
+    fixture.project.need = 'food-reserve';
+    fixture.project.desiredFunction = 'reserve-storage';
+    assert.equal(recompileRecordUseNextAction(fixture.state, fixture.reader, child), null,
+      'when the owned project gap changes, the old record episode terminates instead of pursuing a stale recipe');
   }
 
   {
@@ -571,8 +876,8 @@ try {
       id: 'legacy-composite-record', materialId: Material.WoodTablet, quantity: 1,
       recordPayloadId: fixture.record.id, sourceEventIds: ['legacy-composite-carrier'],
     });
-    const [v2Option] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
-    const { carrierSource: _carrierSource, acquisitionRequired: _acquisitionRequired, ...sharedBasis } = v2Option.recordUseBasis;
+    const [v3Option] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    const { carrierSource: _carrierSource, acquisitionRequired: _acquisitionRequired, ...sharedBasis } = v3Option.recordUseBasis;
     const openingAction = {
       kind: 'communicate',
       content: { id: 'legacy-composite-opening', kind: 'claim', summary: '先谈共同劳动，再处理记录' },
@@ -588,7 +893,11 @@ try {
       ...structuredClone(fixture.parent),
       id: 'legacy-composite-intent', projectId: undefined,
       openingAction, openingActionCompleted: true,
-      recordUseBasis: { ...sharedBasis, version: 'record-use-basis-v1' },
+      recordUseBasis: {
+        ...sharedBasis,
+        version: 'record-use-basis-v1',
+        experimentAction: structuredClone(fixture.parent.nextAction),
+      },
       recordUseStage: 'read-experiment', actionEventIds: [openingFact.id],
     };
     fixture.parent.status = 'suspended';
@@ -609,11 +918,15 @@ try {
       id: 'legacy-reader-record', materialId: Material.WoodTablet, quantity: 1,
       recordPayloadId: fixture.record.id, sourceEventIds: ['legacy-share'],
     });
-    const [v2Option] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
-    const { carrierSource: _carrierSource, acquisitionRequired: _acquisitionRequired, ...sharedBasis } = v2Option.recordUseBasis;
+    const [v3Option] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    const { carrierSource: _carrierSource, acquisitionRequired: _acquisitionRequired, ...sharedBasis } = v3Option.recordUseBasis;
     const legacyIntent = {
       ...structuredClone(fixture.parent), id: 'legacy-record-reader', projectId: undefined,
-      recordUseBasis: { ...sharedBasis, version: 'record-use-basis-v1' },
+      recordUseBasis: {
+        ...sharedBasis,
+        version: 'record-use-basis-v1',
+        experimentAction: structuredClone(fixture.parent.nextAction),
+      },
       recordUseStage: 'read-experiment',
     };
     assert.equal(recompileRecordUseNextAction(fixture.state, fixture.reader, legacyIntent)?.kind, 'attend',

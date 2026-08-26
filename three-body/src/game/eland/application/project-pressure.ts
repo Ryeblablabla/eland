@@ -13,13 +13,30 @@ import { buildLocalMaterialEvidence } from './local-material-evidence';
 import {
   mechanicalPowerMaintenancePressureEvidence,
   mechanicalPowerPressureEvidence,
+  validateMechanicalReliabilityBasis,
 } from './mechanical-power-options';
+import {
+  measurementUncertaintyPressure,
+  validateMeasurementUncertaintyBasis,
+} from './measurement-options';
+import {
+  remoteWorkPowerPressure,
+  validateRemoteWorkPowerTransmissionBasis,
+} from './electrical-power-options';
+import {
+  electricalPowerMaintenancePressure,
+  validateElectricalPowerMaintenanceBasis,
+} from './electrical-power-maintenance-options';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
 export type ProjectPressureSubject = Pick<
   ProjectProposal,
   'need' | 'beneficiaryIds' | 'createdAtMonth' | 'targetKnowledgeId' | 'shelterRequirement' | 'pressureBasis'
+    | 'mechanicalReliabilityBasis'
+    | 'electricalPowerMaintenanceBasis'
+    | 'measurementUncertaintyBasis'
+    | 'remoteWorkPowerBasis'
     | 'productionToolBaselineRank'
 > & { desiredFunction?: ProjectProposal['desiredFunction'] };
 
@@ -343,6 +360,80 @@ function knowledgeBasis(state: SimulationState, owner: PersonState, subject: Pro
   ]);
 }
 
+function measurementComparisonBasis(
+  state: SimulationState,
+  owner: PersonState,
+  subject: ProjectPressureSubject,
+  atMonth: number,
+) {
+  const uncertainty = subject.measurementUncertaintyBasis;
+  const valid = Boolean(uncertainty
+    && subject.desiredFunction === 'comparable-mass-measurement'
+    && validateMeasurementUncertaintyBasis(
+      state,
+      owner,
+      uncertainty,
+      !subject.pressureBasis,
+      atMonth,
+    ));
+  const samples = valid ? uncertainty!.samples : [];
+  return makeBasis(
+    subject,
+    owner,
+    atMonth,
+    valid ? measurementUncertaintyPressure(state, uncertainty!) : 0,
+    [
+      `project:function:${subject.desiredFunction ?? 'unspecified'}`,
+      `state:measurement-comparison-basis:${valid ? uncertainty!.basisKey : 'invalid'}`,
+      ...samples.map((sample) => (
+        `state:felt-load:${sample.stackId}:${sample.materialId}:${sample.quantity}:${sample.perceivedLoadBand}`
+      )),
+      `state:remembered-production-experiences:${valid ? uncertainty!.productionEventIds.length : 0}`,
+      `state:experienced-production-months:${valid ? uncertainty!.experiencedMonthCount : 0}`,
+    ],
+    valid
+      ? ['overlapping-felt-load-bands', 'repeated-personal-production-memory', 'current-sourced-comparison-entities']
+      : ['measurement-uncertainty-evidence-invalid'],
+    valid ? uncertainty!.sourceFactIds : [],
+  );
+}
+
+function remoteWorkPowerBasis(
+  state: SimulationState,
+  owner: PersonState,
+  subject: ProjectPressureSubject,
+  atMonth: number,
+) {
+  const transmission = subject.remoteWorkPowerBasis;
+  const valid = Boolean(transmission
+    && subject.desiredFunction === 'remote-work-power-delivery'
+    && validateRemoteWorkPowerTransmissionBasis(
+      state,
+      owner,
+      transmission,
+      !subject.pressureBasis,
+    ));
+  const basis = makeBasis(
+    subject,
+    owner,
+    atMonth,
+    valid ? remoteWorkPowerPressure(transmission!) : 0,
+    [
+      `project:function:${subject.desiredFunction ?? 'unspecified'}`,
+      `state:remote-work-power-basis:${valid ? transmission!.basisKey : 'invalid'}`,
+      `state:personal-mechanical-services:${valid ? transmission!.mechanicalServiceEventIds.length : 0}`,
+      `state:fixed-route-travel-legs:${valid ? transmission!.travelEventIds.length : 0}`,
+      `state:fixed-route-distance:${valid ? transmission!.routeDistance : 0}`,
+    ],
+    valid
+      ? ['repeated-personal-mechanical-service', 'repeated-fixed-route-burden', 'current-mechanical-source']
+      : ['remote-work-power-evidence-invalid'],
+    valid ? transmission!.sourceFactIds : [],
+  );
+  if (valid) basis.sourceFactIds = [...transmission!.sourceFactIds];
+  return basis;
+}
+
 function developmentBasis(
   state: SimulationState,
   owner: PersonState,
@@ -417,6 +508,44 @@ function developmentBasis(
     `state:climate:${state.civilization.climate.kind}:${state.civilization.climate.severity}`,
     `state:visible-facilities:${pressureFacilities.sort((a, b) => a - b).join('.') || 'none'}`,
   ];
+
+  if (subject.need === 'equipment-reliability') {
+    if (subject.desiredFunction === 'restore-electrical-power-delivery') {
+      const maintenance = subject.electricalPowerMaintenanceBasis;
+      const valid = Boolean(maintenance
+        && validateElectricalPowerMaintenanceBasis(state, owner, maintenance));
+      return makeBasis(subject, owner, atMonth,
+        valid ? electricalPowerMaintenancePressure(maintenance!) : 0,
+        [
+          `state:current-electrical-fault:${valid ? maintenance!.faultEventId : 'none'}`,
+          `state:personal-electrical-diagnosis:${valid ? maintenance!.diagnosisEventId : 'none'}`,
+          `project:function:${subject.desiredFunction}`,
+        ],
+        valid
+          ? ['current-electrical-open-circuit', 'personal-electrical-fault-diagnosis']
+          : ['electrical-maintenance-evidence-invalid'],
+        valid ? maintenance!.sourceFactIds : []);
+    }
+    const reliability = subject.mechanicalReliabilityBasis;
+    const valid = Boolean(reliability
+      && subject.desiredFunction === 'durable-power-transmission'
+      && validateMechanicalReliabilityBasis(state, owner, reliability, !subject.pressureBasis));
+    const faults = valid ? reliability!.faults : [];
+    const loadProofCount = faults.reduce((sum, fault) => sum + fault.loadedOperationEventIds.length, 0);
+    return makeBasis(subject, owner, atMonth,
+      valid ? 24 + faults.length * 24 + Math.min(24, loadProofCount * 4) : 0,
+      [
+        `state:repeated-worn-shaft-network:${valid ? reliability!.networkId : 'none'}`,
+        `state:personal-worn-shaft-faults:${faults.map((fault) => fault.faultEventId).join('.') || 'none'}`,
+        `state:personally-diagnosed-faults:${faults.map((fault) => fault.diagnosisEventId).join('.') || 'none'}`,
+        `state:loaded-service-proof-count:${loadProofCount}`,
+        `project:function:${subject.desiredFunction ?? 'unspecified'}`,
+      ],
+      valid
+        ? ['same-network-repeated-worn-shaft', 'personal-fault-diagnoses', 'loaded-service-proof']
+        : ['repeated-worn-shaft-evidence-invalid'],
+      valid ? reliability!.sourceFactIds : []);
+  }
 
   if (subject.need === 'mechanical-power-capability') {
     if (subject.desiredFunction === 'restore-water-powered-crop-processing') {
@@ -591,6 +720,9 @@ export function buildProjectPressureBasis(
   atMonth: number,
   inputView: ProjectPressureView = {},
 ): ProjectPressureBasis {
+  if (subject.need === 'remote-work-power') {
+    return remoteWorkPowerBasis(state, owner, subject, atMonth);
+  }
   const view = resolvedView(state, owner, inputView);
   if (subject.need === 'thermal-safety') return thermalBasis(state, owner, subject, atMonth);
   if (subject.need === 'hunting-safety') return huntingBasis(state, owner, subject, atMonth, view);
@@ -598,6 +730,9 @@ export function buildProjectPressureBasis(
   if (subject.need === 'food-preparation') return foodBasis(owner, subject, atMonth, view);
   if (subject.need === 'shelter-capacity') return shelterBasis(state, owner, subject, atMonth, view);
   if (subject.need === 'knowledge-preservation') return knowledgeBasis(state, owner, subject, atMonth);
+  if (subject.need === 'measurement-uncertainty') {
+    return measurementComparisonBasis(state, owner, subject, atMonth);
+  }
   return developmentBasis(state, owner, subject, atMonth, view);
 }
 

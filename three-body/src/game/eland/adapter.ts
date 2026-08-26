@@ -1,5 +1,13 @@
 /** 领域状态到 UI 读取模型的纯投影。 */
-import type { ActionVisualView, AgentHistoryItem, AgentHistoryView, EraKey, SocietyAgent, SocietyState } from '../societyContract';
+import type {
+  ActionVisualView,
+  AgentHistoryItem,
+  AgentHistoryView,
+  EraKey,
+  ModernCivilizationAchievementView,
+  SocietyAgent,
+  SocietyState,
+} from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, TerminalCatastropheKind, WorldEvent } from './simulation';
 import { Material, materialDefinition } from './domain/material';
 import { ageMonths, isAlive, isDormantDehydratedHibernating, type PersonState } from './domain/person';
@@ -13,6 +21,8 @@ import { projectSocietyWorld } from './projection/society-world-cache';
 import { portraitForPerson } from '../personPortraits';
 import { voxelAt } from './world/grid';
 import { traitDefinition, traitStatesOf } from './domain/trait';
+import { validateElectricalPowerTopology, type ElectricalPowerNetworkState } from './domain/electrical-power';
+import { observeModernCivilizationEvidence } from './domain/era-progression';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 export type { WorldEventLookup } from './projection/player-narrative';
@@ -45,6 +55,13 @@ const CONDITION_LABELS: Record<string, string> = {
   cold: '寒冷', heat: '炎热', wound: '受伤', illness: '患病', aging: '衰老', pregnancy: '妊娠',
   'postpartum-recovery': '产后恢复', restrained: '拘束',
 };
+
+function meaningfulRelationsOf(person: PersonState): PersonState['relations'] {
+  return person.relations.filter((relation) => relation.trust !== 0
+    || relation.bond !== 0
+    || relation.fear !== 0
+    || relation.sourceEventIds.length > 0);
+}
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 type EnvironmentEvent = Extract<WorldEvent, { kind: 'environment' }>;
@@ -111,11 +128,14 @@ function societyProjectionLookup(state: SimulationState): SocietyProjectionLooku
   return { ...base, recentActionByPersonId, latestAnimalFactById, huntedAnimalIds };
 }
 
-function needsFor(person: PersonState): SocietyAgent['needs'] {
+function needsFor(
+  person: PersonState,
+  meaningfulRelations = meaningfulRelationsOf(person),
+): SocietyAgent['needs'] {
   const physiological = Math.max(100 - person.body.health, 100 - person.body.hydration, 100 - person.body.nutrition);
   const safety = Math.max(person.conditions.reduce((value, condition) => Math.max(value, condition.stage * 25), 0), 100 - person.body.health);
-  const socialSupport = person.relations.reduce((sum, relation) => sum + Math.max(0, relation.bond) + Math.max(0, relation.trust) * 0.35, 0)
-    / Math.max(1, person.relations.length);
+  const socialSupport = meaningfulRelations.reduce((sum, relation) => sum + Math.max(0, relation.bond) + Math.max(0, relation.trust) * 0.35, 0)
+    / Math.max(1, meaningfulRelations.length);
   const belonging = Math.max(0, 58 - socialSupport
     + (personalityScore(person, 'emotionality') - 50) * 0.18
     + (personalityScore(person, 'extraversion') - 50) * 0.12);
@@ -202,11 +222,24 @@ function actionVisual(
   const mechanicalNetworkId = mechanicalPowerOperation && typeof fact?.diff.networkId === 'string'
     ? fact.diff.networkId
     : undefined;
+  const electricalPowerOperation = fact?.diff.electricalPowerOperation === true;
+  const electricalPowerDelivered = fact?.diff.electricalPowerDelivered === true;
+  const electricalPowerFault = fact?.diff.electricalPowerFault === true;
+  const electricalPowerRepair = fact?.diff.electricalPowerRepair === true;
+  const electricalNetworkId = typeof fact?.diff.electricalNetworkId === 'string'
+    ? fact.diff.electricalNetworkId
+    : undefined;
   const linkedFacilityCellIds = mechanicalNetworkId
     ? state.world.mechanicalPower?.networks.find((network) => network.id === mechanicalNetworkId)?.components
       .map((component) => component.position.x + component.position.y * state.world.grid.width)
     : undefined;
-  const factLocation: Pick<ActionVisualView, 'sourceEventId' | 'sourceOrderInMonth' | 'sourceCellId' | 'sourceZ' | 'targetCellId' | 'targetZ' | 'facilityMaterialId' | 'mechanicalPowerOperation' | 'linkedFacilityCellIds'> = fact ? {
+  const factLocation: Pick<ActionVisualView,
+    | 'sourceEventId' | 'sourceOrderInMonth' | 'sourceCellId' | 'sourceZ'
+    | 'targetCellId' | 'targetZ' | 'facilityMaterialId'
+    | 'mechanicalPowerOperation' | 'linkedFacilityCellIds'
+    | 'electricalPowerOperation' | 'electricalPowerDelivered' | 'electricalPowerFault'
+    | 'electricalPowerRepair' | 'electricalNetworkId'
+  > = fact ? {
     sourceEventId: fact.id,
     sourceOrderInMonth: fact.orderInMonth,
     sourceCellId: fact.fromCellId,
@@ -216,6 +249,11 @@ function actionVisual(
     ...(facilityMaterialId !== undefined ? { facilityMaterialId } : {}),
     ...(mechanicalPowerOperation ? { mechanicalPowerOperation: true } : {}),
     ...(linkedFacilityCellIds?.length ? { linkedFacilityCellIds: [...new Set(linkedFacilityCellIds)] } : {}),
+    ...(electricalPowerOperation ? { electricalPowerOperation: true } : {}),
+    ...(electricalPowerDelivered ? { electricalPowerDelivered: true } : {}),
+    ...(electricalPowerFault ? { electricalPowerFault: true } : {}),
+    ...(electricalPowerRepair ? { electricalPowerRepair: true } : {}),
+    ...(electricalNetworkId ? { electricalNetworkId } : {}),
   } : {};
   if (action.kind === 'move') return { actionKind: 'move', ...factLocation };
   if (action.kind === 'transfer') {
@@ -272,6 +310,9 @@ function actionVisual(
       actionKind: 'attend', ...factLocation, ...targetIdentity(action.target), ...worldRefLocation(state, lookup, action.target),
       ...(toolMaterialId !== undefined ? { toolMaterialId } : {}),
       ...(materialId !== undefined ? { materialId } : {}),
+      ...(fact?.status === 'completed' && action.measurement
+        ? { measurementMode: action.measurement.mode }
+        : {}),
     };
   }
   const toolMaterialId = action.carrierStackId
@@ -369,7 +410,9 @@ function actionHistoryDetail(state: SimulationState, lookup: StateLookup, event:
 }
 
 function personView(state: SimulationState, lookup: SocietyProjectionLookup, person: PersonState): SocietyAgent {
-  const needs = needsFor(person);
+  const meaningfulRelations = meaningfulRelationsOf(person);
+  const needs = needsFor(person, meaningfulRelations);
+  const currentAgeMonths = ageMonths(person, state.clock.elapsedMonths);
   const activeIntent = person.activeIntentId ? lookup.intentsById.get(person.activeIntentId) : undefined;
   const active = activeIntent?.status === 'active' ? activeIntent : undefined;
   const currentNeed = needs.find((need) => need.dominant)?.label ?? '维持生活';
@@ -388,7 +431,7 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
   return {
     id: person.id,
     name: person.name,
-    portrait: portraitForPerson(person),
+    portrait: portraitForPerson(person, currentAgeMonths),
     title: person.profile.description,
     cellId: projectedPosition.cellId,
     z: projectedPosition.z,
@@ -406,23 +449,23 @@ function personView(state: SimulationState, lookup: SocietyProjectionLookup, per
       const definition = traitDefinition(trait.id);
       return { id: definition.id, name: definition.name, description: definition.description };
     }),
-    respect: Math.round(person.relations.reduce((sum, relation) => sum + relation.trust, 0) / Math.max(1, person.relations.length)),
+    respect: Math.round(meaningfulRelations.reduce((sum, relation) => sum + relation.trust, 0) / Math.max(1, meaningfulRelations.length)),
     mind: {
       want: `当前最迫切的是${currentNeed}`,
       choice: person.lastDecisionText,
       ought: active ? `意图：${active.summary}` : person.knowledge.at(-1)?.summary ?? '只依据自己见过和经历过的事实',
     },
     needs,
-    body: { ...person.body, ageMonths: ageMonths(person, state.clock.elapsedMonths) },
+    body: { ...person.body, ageMonths: currentAgeMonths },
     conditions: person.conditions.map((condition) => ({ id: condition.id, kind: condition.kind, label: CONDITION_LABELS[condition.kind] ?? condition.kind, stage: condition.stage, sinceMonth: condition.sinceMonth })),
     inventory: person.inventory.map((stack) => ({ id: stack.id, materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
-    relations: person.relations.flatMap((relation) => {
+    relations: meaningfulRelations.flatMap((relation) => {
       const other = lookup.peopleById.get(relation.personId);
       if (!other) return [];
       return [{
         personId: other.id,
         name: other.name,
-        portrait: portraitForPerson(other),
+        portrait: portraitForPerson(other, ageMonths(other, state.clock.elapsedMonths)),
         state: personStateOf(other),
         trust: relation.trust,
         bond: relation.bond,
@@ -452,10 +495,159 @@ function animalActivity(state: SimulationState, lookup: SocietyProjectionLookup,
   return 'idle';
 }
 
+function electricalPowerView(state: SimulationState): SocietyState['electricalPower'] | undefined {
+  const electricalPower = state.world.electricalPower;
+  if (!electricalPower?.networks.length) return undefined;
+  const { grid } = state.world;
+  const positionView = (position: { x: number; y: number; z: number }) => ({
+    cellId: position.x + position.y * grid.width,
+    z: position.z,
+  });
+  const recentEvents = [...state.lastStep, ...state.world.past.slice(-160)];
+  const electricalActivityFor = (network: ElectricalPowerNetworkState): NonNullable<SocietyState['electricalPower']>['networks'][number]['activity'] => {
+    let latest: ActionEvent | undefined;
+    for (const event of recentEvents) {
+      if (event.kind !== 'action'
+        || event.status !== 'completed'
+        || event.atMonth !== state.clock.elapsedMonths
+        || event.diff.electricalNetworkId !== network.id
+        || (typeof event.diff.electricalPowerDelivered !== 'boolean'
+          && event.diff.electricalPowerOperation !== true
+          && event.diff.electricalPowerFault !== true
+          && event.diff.electricalPowerRepair !== true
+          && event.diff.electricalPowerInstallation !== true)) continue;
+      if (!latest || event.orderInMonth > latest.orderInMonth) latest = event;
+    }
+    if (!latest) return undefined;
+    const operation = latest.diff.electricalPowerOperation === true
+      && latest.diff.electricalPowerDelivered === true
+      && network.recentOperationEventIds.includes(latest.id)
+      && !network.fault
+      && validateElectricalPowerTopology(grid, network).valid;
+    const fault = latest.diff.electricalPowerFault === true
+      && network.fault?.faultEventId === latest.id;
+    const repair = latest.diff.electricalPowerRepair === true
+      && !network.fault
+      && network.recentRepairEventIds.includes(latest.id);
+    const installation = latest.diff.electricalPowerInstallation === true
+      && network.installationEventIds.includes(latest.id);
+    const kind = operation ? 'operation' as const
+      : fault ? 'fault' as const
+        : repair ? 'repair' as const
+          : installation ? 'installation' as const
+            : undefined;
+    if (!kind) return undefined;
+    return {
+      kind,
+      sourceEventId: latest.id,
+      delivered: operation,
+    };
+  };
+  return {
+    networks: electricalPower.networks.map((network) => {
+      const visibleComponents = network.components.flatMap((component) => {
+        const materialId = voxelAt(grid, component.position.x, component.position.y, component.position.z);
+        const faultPosition = network.fault?.componentPosition;
+        const physicalMatch = component.role === 'source' ? materialId === Material.MechanicalDynamo
+          : component.role === 'load' ? materialId === Material.ResistiveLoad
+            : materialId === Material.CopperConductor
+              || (materialId === Material.BrokenCopperConductor
+                && faultPosition?.x === component.position.x
+                && faultPosition.y === component.position.y
+                && faultPosition.z === component.position.z);
+        return physicalMatch ? [{
+          role: component.role,
+          materialId,
+          ...positionView(component.position),
+        }] : [];
+      });
+      const faultMaterial = network.fault ? voxelAt(
+        grid,
+        network.fault.componentPosition.x,
+        network.fault.componentPosition.y,
+        network.fault.componentPosition.z,
+      ) : undefined;
+      const activity = electricalActivityFor(network);
+      return {
+        id: network.id,
+        planPath: [
+          network.plan.generatorPosition,
+          ...network.plan.conductorPositions,
+          network.plan.loadPosition,
+        ].map(positionView),
+        components: visibleComponents,
+        ...(network.fault && faultMaterial === Material.BrokenCopperConductor ? {
+        fault: {
+          ...positionView(network.fault.componentPosition),
+          atMonth: network.fault.atMonth,
+          sourceEventId: network.fault.faultEventId,
+        },
+      } : {}),
+        ...(activity ? { activity } : {}),
+      };
+    }),
+  };
+}
+
+const MODERN_ACHIEVEMENT_FACTS = [
+  {
+    key: 'stable-electricity',
+    label: '有用供电',
+  },
+  {
+    key: 'reviewable-measurement',
+    label: '可复核测量',
+  },
+  {
+    key: 'independent-record-use',
+    label: '他人读取并使用记录',
+  },
+] as const;
+
+/**
+ * 从权威状态观察三项现代事实并投影为 UI 读模型；不写回领域状态。
+ * development 的 gate 只属于当前目标阶段，不能用它隐藏已经发生的跨阶段现代事实。
+ */
+export function toModernCivilizationAchievementView(
+  state: SimulationState,
+): ModernCivilizationAchievementView {
+  const development = state.civilization.development;
+  const current = development?.currentEra === 'modern-civilization';
+  const historical = development?.historicalPeakEra === 'modern-civilization';
+  const status: ModernCivilizationAchievementView['status'] = current
+    ? 'achieved'
+    : historical
+      ? 'historical-achievement'
+      : 'candidate';
+  const achieved = status !== 'candidate';
+  const modernEvidence = observeModernCivilizationEvidence(state);
+  const observedByKey = {
+    'stable-electricity': modernEvidence.electricalPower !== null,
+    'reviewable-measurement': modernEvidence.comparableMeasurement !== null,
+    'independent-record-use': modernEvidence.independentRecordExperiment !== null,
+  } as const;
+  const facts = MODERN_ACHIEVEMENT_FACTS.map(({ key, label }) => ({
+    key,
+    label,
+    // 历史最高或当前现代已是权威观察器确认过三项事实的结果。
+    observed: achieved || observedByKey[key],
+  }));
+  const observedFactCount = facts.filter((fact) => fact.observed).length;
+  return {
+    status,
+    observedFactCount,
+    requiredFactCount: 3,
+    progress: observedFactCount / 3,
+    facts,
+  };
+}
+
 export function toSocietyState(state: SimulationState): SocietyState {
   const { grid } = state.world;
   const lookup = societyProjectionLookup(state);
   const civilizationIndex = state.civilization.civilizationIndex;
+  const electricalPower = electricalPowerView(state);
+  const modernAchievement = toModernCivilizationAchievementView(state);
   const componentPoints = (key: keyof typeof civilizationIndex.components): number => {
     const component = civilizationIndex.components[key];
     return Math.round(component.score * component.weight * 100) / 100;
@@ -536,6 +728,7 @@ export function toSocietyState(state: SimulationState): SocietyState {
       sourceEventIds: [...structure.sourceEventIds],
       materialIds: [...structure.materialIds],
     })),
+    ...(electricalPower ? { electricalPower } : {}),
     intents: state.intents.filter((intent) => intent.status === 'active').map((intent) => {
       const person = lookup.peopleById.get(intent.ownerId);
       return {
@@ -558,6 +751,7 @@ export function toSocietyState(state: SimulationState): SocietyState {
           social: componentPoints('social'),
           history: componentPoints('history'),
         },
+        modernAchievement,
       },
       practices: state.derived.practices.map(({ key, label, count, stability }) => ({ key, label, count, stability })),
       institutions: state.derived.institutions.map(({ key, label, note }) => ({ key, label, note })),

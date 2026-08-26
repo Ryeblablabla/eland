@@ -1,6 +1,7 @@
 import { buildDecisionRequestContext } from "../src/game/eland/kimi-decider";
 import type { BatchDecider, Decision, DecisionContext } from "../src/game/eland/simulation";
 import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
+import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
   validatePlayerInteractionChoice,
   isPlayerInteractionEmergencyContext,
@@ -119,8 +120,9 @@ export function isLiveModelDecisionContext(context: DecisionContext, atMonth: nu
   const progressAnchor = active
     ? Math.max(active.lastProgressAtMonth, active.lastResumedAtMonth ?? active.lastProgressAtMonth)
     : atMonth;
+  const reviewAtMonth = active ? intentReviewAtMonth(active) : undefined;
   const turningPoint = Boolean(active) && (
-    active?.stateGoalUntilMonth !== undefined && atMonth > active.stateGoalUntilMonth
+    reviewAtMonth !== undefined && atMonth > reviewAtMonth
     || atMonth - progressAnchor >= 2
   );
   return hasDialogueChoice || turningPoint || !active;

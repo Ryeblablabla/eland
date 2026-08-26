@@ -99,6 +99,7 @@ function stableChoiceKey(choice: IntentChoice, selected: ActionOption): string {
     projectId: selected.projectProposal ? undefined : choice.projectId,
     projectProposal: selected.projectProposal,
     relationshipBasis: choice.relationshipBasis,
+    completionPolicy: choice.completionPolicy,
     recordUseBasisKey: choice.recordUseBasis?.basisKey,
     recordUseStage: choice.recordUseStage,
   }));

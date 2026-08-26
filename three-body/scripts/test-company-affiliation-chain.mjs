@@ -463,6 +463,29 @@ try {
   );
   assert.equal(unrelatedIntent?.agreementId, undefined,
     'an ordinary option must not bind an agreement merely because it cites the proposal fact');
+  assert.ok(unrelatedIntent, 'ordinary intent fixture must be created');
+  multiResponseState.world.past.push({
+    id: unrelatedIntent.sourceDecisionEventId,
+    kind: 'decision',
+    atMonth: unrelatedIntent.createdAtMonth,
+    orderInMonth: multiResponseState.world.past.filter((event) => event.atMonth === atMonth).length + 1,
+    planningTick: 2,
+    orderInTick: 0,
+    cellId: multiResponder.position.cellId,
+    who: multiResponder.id,
+    decision: { kind: 'start', optionId: unrelatedOption.id, reason: '测试普通社会意图的恢复来源' },
+    intentId: unrelatedIntent.id,
+    usedModel: false,
+    domain: unrelatedIntent.domain,
+    result: '测试普通社会意图的恢复来源',
+  });
+  delete multiResponseState.world.historyCursor;
+  assert.equal(
+    restoreSimulationState(multiResponseState).intents
+      .find((intent) => intent.id === unrelatedIntent.id)?.agreementId,
+    undefined,
+    'checkpoint adoption must not rewrite an active ordinary intent as agreement fulfillment',
+  );
   unrelatedIntent.status = 'completed';
   delete multiResponder.activeIntentId;
   const restoredCompletedOrdinaryState = restoreSimulationState(multiResponseState);
@@ -484,6 +507,26 @@ try {
     returnAgreement.proposalEventId,
     legacyActiveReturnAgreement.responseEventId,
   ])];
+  const legacyReturnOwner = legacyActiveReturnState.people
+    .find((person) => person.id === legacyActiveReturnIntent.ownerId);
+  assert.ok(legacyReturnOwner, 'legacy migration fixture requires the intent owner');
+  legacyActiveReturnState.world.past.push({
+    id: legacyActiveReturnIntent.sourceDecisionEventId,
+    kind: 'decision',
+    atMonth: legacyActiveReturnIntent.createdAtMonth,
+    orderInMonth: legacyActiveReturnState.world.past
+      .filter((event) => event.atMonth === legacyActiveReturnIntent.createdAtMonth).length + 1,
+    planningTick: 2,
+    orderInTick: 0,
+    cellId: legacyReturnOwner.position.cellId,
+    who: legacyReturnOwner.id,
+    decision: { kind: 'start', optionId: returnOption.id, reason: '测试旧版履约意图恢复' },
+    intentId: legacyActiveReturnIntent.id,
+    usedModel: false,
+    domain: legacyActiveReturnIntent.domain,
+    result: '测试旧版履约意图恢复',
+  });
+  delete legacyActiveReturnState.world.historyCursor;
   assert.equal(
     restoreSimulationState(legacyActiveReturnState).intents
       .find((intent) => intent.id === legacyActiveReturnIntent.id)?.agreementId,

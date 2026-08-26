@@ -1,6 +1,6 @@
 import type { WorldRef } from '../../../domain/action';
 import {
-  inventoryCombinationForOutput,
+  inventoryCombinationsForOutput,
   inventoryCombinationRules,
   inventoryCombinationTechniqueId,
   type InventoryCombinationRule,
@@ -27,16 +27,31 @@ import type { LocalVoxelTarget } from '../project-spatial-planning';
 import type { ProjectStep } from '../project-step';
 import { fixedFacilityWorkplace, knownFacilitySite } from '../project-workplace';
 
+export function knownRecipes(
+  person: PersonState,
+  outputMaterialId: MaterialId,
+): Array<{ rule: InventoryCombinationRule; knowledgeId: string }> {
+  return inventoryCombinationsForOutput(outputMaterialId).flatMap((rule) => {
+    const knowledgeId = inventoryCombinationTechniqueId(rule);
+    const knowledge = person.knowledge.find((fact) => fact.kind === 'technique'
+      && fact.id === knowledgeId
+      && fact.confidence >= 55);
+    return knowledge ? [{ rule, knowledgeId, confidence: knowledge.confidence }] : [];
+  }).sort((left, right) => {
+    const outstandingFor = (rule: InventoryCombinationRule) => rule.inputs.reduce((sum, input) => (
+      sum + Math.max(0, input.quantity - consumableInventoryQuantity(person, input.materialId))
+    ), 0);
+    return outstandingFor(left.rule) - outstandingFor(right.rule)
+      || right.confidence - left.confidence
+      || left.rule.id.localeCompare(right.rule.id);
+  }).map(({ rule, knowledgeId }) => ({ rule, knowledgeId }));
+}
+
 export function knownRecipe(
   person: PersonState,
   outputMaterialId: MaterialId,
 ): { rule: InventoryCombinationRule; knowledgeId: string } | null {
-  const rule = inventoryCombinationForOutput(outputMaterialId);
-  if (!rule) return null;
-  const knowledgeId = inventoryCombinationTechniqueId(rule);
-  return person.knowledge.some((fact) => fact.id === knowledgeId && fact.confidence >= 55)
-    ? { rule, knowledgeId }
-    : null;
+  return knownRecipes(person, outputMaterialId)[0] ?? null;
 }
 
 export interface KnownOutputAccessOptions {

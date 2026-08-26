@@ -1,4 +1,10 @@
 import { Material, materialHas, type MaterialId } from './material';
+import {
+  actionFacts,
+  compareWorldEventsInCanonicalOrder,
+  retainedColdWorldEventsForLease,
+  worldEventByIdWithRetainedLease,
+} from './event-index';
 import type {
   ActionFact,
   CivilizationDevelopmentObservation,
@@ -8,21 +14,71 @@ import type {
   MaterialCapabilityStage,
   SimulationState,
 } from './model';
-import { isAlive } from './person';
+import {
+  isMassCalibrationReceipt,
+  isMassMeasurementReceipt,
+  isSourcedMassMeasurementAction,
+  measurementStackReceiptMatchesUse,
+  sameMeasurementSourceEventIds,
+  sameMeasurementStackIdentity,
+} from './measurement';
+import { validateElectricalPowerTopology } from './electrical-power';
+import type { MeasurementUncertaintyBasis, ProjectState } from './project';
+import { livingPeople } from './state-index';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
 
-export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v6' as const;
+export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v7' as const;
+
+/** Observer-only leases: planners never query these society-level achievements. */
+export const MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY =
+  'observer:modern-civilization:electrical-useful-load' as const;
+export const MODERN_RECORD_EXPERIMENT_LEASE_KEY =
+  'observer:modern-civilization:independent-record-experiment' as const;
+
+export function modernElectricalUsefulLoadLeaseKey(networkId: string): string {
+  if (typeof networkId !== 'string' || networkId.length === 0) {
+    throw new Error('现代文明用电见证缺少 network ID');
+  }
+  return `${MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY}:${encodeURIComponent(networkId)}`;
+}
+
+export function modernElectricalOperationLeaseKey(networkId: string): string {
+  if (typeof networkId !== 'string' || networkId.length === 0) {
+    throw new Error('现代文明运行见证缺少 network ID');
+  }
+  return `observer:modern-civilization:electrical-operations:${encodeURIComponent(networkId)}`;
+}
+
+export function parseModernElectricalUsefulLoadLeaseKey(leaseKey: string): string | null {
+  const prefix = `${MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY}:`;
+  if (!leaseKey.startsWith(prefix)) return null;
+  try {
+    const networkId = decodeURIComponent(leaseKey.slice(prefix.length));
+    return networkId.length > 0 ? networkId : null;
+  } catch {
+    return null;
+  }
+}
+
+export function modernCompletedMeasurementReceiptLeaseKey(projectId: string): string {
+  if (typeof projectId !== 'string' || projectId.length === 0) {
+    throw new Error('现代文明测量见证缺少 project ID');
+  }
+  return `completed-measurement-project:${projectId}:receipt-chain`;
+}
 
 const ERA_ORDER: DevelopmentEraKey[] = [
   'primitive-tribe',
   'agrarian-settlement',
   'ancient-civilization',
+  'modern-civilization',
 ];
 
 export const DEVELOPMENT_ERA_LABELS: Record<DevelopmentEraKey, string> = {
   'primitive-tribe': '原始部落',
   'agrarian-settlement': '农耕定居',
   'ancient-civilization': '古代文明',
+  'modern-civilization': '现代文明（含信息能力）',
   medieval: '古代文明',
 };
 
@@ -46,10 +102,6 @@ const FACILITIES: ReadonlyMap<MaterialId, {
   [Material.Foundry, { kind: 'foundry', functionSummary: '为青铜铸造和青铜工具批量制作提供实体场所' }],
   [Material.Smithy, { kind: 'smithy', functionSummary: '使铁矿炭料形成海绵铁，并提高铁器制作产量' }],
 ]);
-
-function actionFacts(state: SimulationState): ActionFact[] {
-  return state.world.past.filter((event): event is ActionFact => event.kind === 'action');
-}
 
 function eventOutputIds(event: ActionFact): MaterialId[] {
   const direct = Number(event.diff.outputMaterialId);
@@ -233,6 +285,101 @@ const CAPABILITIES: CapabilityDefinition[] = [
 
 const STAGE_ORDER: MaterialCapabilityStage[] = ['hypothesis', 'sample', 'repeatable', 'distributed', 'institutional'];
 
+export interface ExactMaterialCapabilityFacts {
+  readonly key: MaterialCapabilityObservation['key'];
+  readonly successfulBatchCount: number;
+  readonly failedBatchCount: number;
+  readonly adoptedActionCount: number;
+  readonly firstSuccessfulMonth: number | null;
+  readonly lastSuccessfulMonth: number | null;
+  readonly producerIds: readonly string[];
+  readonly productionSiteMaterialIds: readonly MaterialId[];
+  readonly supportingInstitutionKeys: readonly string[];
+  /** Bounded witnesses only. Their lengths are never used as exact counts. */
+  readonly successfulBatchEventIds: readonly string[];
+  readonly failedBatchEventIds: readonly string[];
+  readonly adoptedActionEventIds: readonly string[];
+}
+
+function exactCapabilityDefinition(key: MaterialCapabilityObservation['key']): CapabilityDefinition {
+  const definition = CAPABILITIES.find((candidate) => candidate.key === key);
+  if (!definition) throw new Error(`未知材料能力 ${key}`);
+  return definition;
+}
+
+function assertExactCapabilityCount(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`材料能力 exact ${label} 必须是非负安全整数`);
+  }
+}
+
+function assertCanonicalUniqueValues(
+  values: readonly (string | number)[],
+  label: string,
+): void {
+  if (new Set(values).size !== values.length
+    || values.some((value) => typeof value === 'string' && value.length === 0)) {
+    throw new Error(`材料能力 exact ${label} 必须 canonical 且不可重复`);
+  }
+}
+
+/** Shared full/bounded reducer. Only exact counters and identities affect the stage. */
+export function materialCapabilityObservationFromExactFacts(
+  facts: Readonly<ExactMaterialCapabilityFacts>,
+): MaterialCapabilityObservation {
+  const definition = exactCapabilityDefinition(facts.key);
+  assertExactCapabilityCount(facts.successfulBatchCount, `${facts.key}.successfulBatchCount`);
+  assertExactCapabilityCount(facts.failedBatchCount, `${facts.key}.failedBatchCount`);
+  assertExactCapabilityCount(facts.adoptedActionCount, `${facts.key}.adoptedActionCount`);
+  assertCanonicalUniqueValues(facts.producerIds, `${facts.key}.producerIds`);
+  assertCanonicalUniqueValues(facts.productionSiteMaterialIds, `${facts.key}.productionSiteMaterialIds`);
+  assertCanonicalUniqueValues(facts.supportingInstitutionKeys, `${facts.key}.supportingInstitutionKeys`);
+  const span = facts.firstSuccessfulMonth === null || facts.lastSuccessfulMonth === null
+    ? 0
+    : facts.lastSuccessfulMonth - facts.firstSuccessfulMonth + 1;
+  if ((facts.successfulBatchCount === 0) !== (span === 0)
+    || span < 0
+    || (facts.successfulBatchCount > 0
+      && (!Number.isSafeInteger(facts.firstSuccessfulMonth)
+        || !Number.isSafeInteger(facts.lastSuccessfulMonth)
+        || Number(facts.firstSuccessfulMonth) < 0
+        || Number(facts.lastSuccessfulMonth) < 0))) {
+    throw new Error(`材料能力 exact ${facts.key} 的 batch month span 无效`);
+  }
+  let stage: MaterialCapabilityStage = 'hypothesis';
+  if (facts.successfulBatchCount >= 1) stage = 'sample';
+  if (facts.successfulBatchCount >= definition.repeatableBatches
+    && span >= definition.repeatableSpan) stage = 'repeatable';
+  if (stage === 'repeatable'
+    && facts.producerIds.length >= definition.distributedProducers
+    && facts.adoptedActionCount >= definition.distributedUses
+    && facts.productionSiteMaterialIds.length >= 1) stage = 'distributed';
+  if (stage === 'distributed' && facts.supportingInstitutionKeys.length >= 1) {
+    stage = 'institutional';
+  }
+  return {
+    key: facts.key,
+    stage,
+    successfulBatchEventIds: [...facts.successfulBatchEventIds],
+    failedBatchEventIds: [...facts.failedBatchEventIds],
+    producerIds: [...facts.producerIds],
+    adoptedActionEventIds: [...facts.adoptedActionEventIds],
+    productionSiteMaterialIds: [...facts.productionSiteMaterialIds],
+    supportingInstitutionKeys: [...facts.supportingInstitutionKeys],
+  };
+}
+
+/** Institution matching is part of the capability formula and is shared by both observers. */
+export function supportingMaterialCapabilityInstitutionKeys(
+  key: MaterialCapabilityObservation['key'],
+  institutionKeys: readonly string[],
+): string[] {
+  const fragments = exactCapabilityDefinition(key).institutionFragments;
+  return institutionKeys.filter((institutionKey) => (
+    fragments.some((fragment) => institutionKey.includes(fragment))
+  ));
+}
+
 export function materialCapabilityAtLeast(
   capability: MaterialCapabilityObservation | undefined,
   stage: MaterialCapabilityStage,
@@ -298,30 +445,26 @@ export function observeMaterialCapabilities(state: SimulationState): MaterialCap
       const output = Number(event.diff.outputMaterialId);
       return [facility, output].filter((materialId) => siteSet.has(materialId));
     }))];
-    const supportingInstitutionKeys = institutions
-      .filter((institution) => definition.institutionFragments.some((fragment) => institution.key.includes(fragment)))
-      .map((institution) => institution.key);
+    const supportingInstitutionKeys = supportingMaterialCapabilityInstitutionKeys(
+      definition.key,
+      institutions.map((institution) => institution.key),
+    );
     const months = [...new Set(batches.map((event) => event.atMonth))].sort((left, right) => left - right);
-    const span = months.length ? (months.at(-1) ?? 0) - months[0] + 1 : 0;
     const producers = [...new Set(batches.map((event) => event.who))];
-    let stage: MaterialCapabilityStage = failures.length ? 'hypothesis' : 'hypothesis';
-    if (batches.length >= 1) stage = 'sample';
-    if (batches.length >= definition.repeatableBatches && span >= definition.repeatableSpan) stage = 'repeatable';
-    if (stage === 'repeatable'
-      && producers.length >= definition.distributedProducers
-      && adopted.length >= definition.distributedUses
-      && sites.length >= 1) stage = 'distributed';
-    if (stage === 'distributed' && supportingInstitutionKeys.length >= 1) stage = 'institutional';
-    return {
+    return materialCapabilityObservationFromExactFacts({
       key: definition.key,
-      stage,
-      successfulBatchEventIds: batches.map((event) => event.id),
-      failedBatchEventIds: failures.map((event) => event.id),
+      successfulBatchCount: batches.length,
+      failedBatchCount: failures.length,
+      adoptedActionCount: adopted.length,
+      firstSuccessfulMonth: months[0] ?? null,
+      lastSuccessfulMonth: months.at(-1) ?? null,
       producerIds: producers,
-      adoptedActionEventIds: adopted.map((event) => event.id),
       productionSiteMaterialIds: sites,
       supportingInstitutionKeys,
-    };
+      successfulBatchEventIds: batches.map((event) => event.id),
+      failedBatchEventIds: failures.map((event) => event.id),
+      adoptedActionEventIds: adopted.map((event) => event.id),
+    });
   });
 }
 
@@ -333,7 +476,124 @@ function nextEra(era: DevelopmentEraKey): DevelopmentEraKey | null {
   return ERA_ORDER[eraRank(normalizeDevelopmentEra(era)) + 1] ?? null;
 }
 
-type EraGateResults = Partial<Record<DevelopmentEraKey, readonly (readonly [string, unknown])[]>>;
+export type EraGateResults = Partial<Record<DevelopmentEraKey, readonly (readonly [string, unknown])[]>>;
+
+export interface CivilizationDevelopmentFacilityFacts {
+  readonly materialId: MaterialId;
+  readonly active: boolean;
+  /** Exact folded use count; never a bounded witness-array length. */
+  readonly useCount: number;
+}
+
+export interface CivilizationDevelopmentGateFacts {
+  /** `true` means certified current-root index floor >= 120 (or exact full index >= 120). */
+  readonly indexAtLeast120Proven: boolean;
+  readonly materialCapabilities: readonly MaterialCapabilityObservation[];
+  readonly settledCultivationEstablished: boolean;
+  readonly storedFoodUnits: number;
+  readonly facilities: readonly CivilizationDevelopmentFacilityFacts[];
+  readonly functionalInstitutionCount: number;
+  readonly modern: Readonly<{
+    electricalPower: boolean;
+    comparableMeasurement: boolean;
+    independentRecordExperiment: boolean;
+  }>;
+}
+
+/** One gate grammar shared by the full replay observer and bounded exact-fact adapter. */
+export function civilizationDevelopmentGateState(
+  facts: Readonly<CivilizationDevelopmentGateFacts>,
+): EraGateResults {
+  const capability = (key: MaterialCapabilityObservation['key']) => (
+    facts.materialCapabilities.find((candidate) => candidate.key === key)
+  );
+  const activeUsed = (materialId: MaterialId, minimumUses = 1) => facts.facilities.some((facility) => (
+    facility.materialId === materialId && facility.active && facility.useCount >= minimumUses
+  ));
+  return {
+    'agrarian-settlement': [
+      ['index:120', facts.indexAtLeast120Proven],
+      ['material:masonry-stone:distributed', materialCapabilityAtLeast(capability('masonry-stone'), 'distributed')],
+      ['food:settled-cultivation-cycle', facts.settledCultivationEstablished],
+      ['food:stored-units:10', facts.storedFoodUnits >= 10],
+      ['facility:granary-used', activeUsed(Material.Granary, 2)],
+      ['facility:early-core-used', activeUsed(Material.CouncilHearth, 1)],
+      ['institution:early-functional:1', facts.functionalInstitutionCount >= 1],
+    ],
+    'ancient-civilization': [
+      ['material:bronze-or-iron:institutional', ancientMetalworkingCapabilitySatisfied([
+        ...facts.materialCapabilities,
+      ])],
+    ],
+    'modern-civilization': [
+      ['power:complete-network-useful-load', facts.modern.electricalPower],
+      ['measurement:calibrated-comparable-mass', facts.modern.comparableMeasurement],
+      ['record:independent-experiment-reuse', facts.modern.independentRecordExperiment],
+    ],
+  };
+}
+
+export const DEVELOPMENT_ERA_STABILITY_MONTHS: Readonly<Record<DevelopmentEraKey, number>> = Object.freeze({
+  'primitive-tribe': 0,
+  'agrarian-settlement': 12,
+  'ancient-civilization': 0,
+  'modern-civilization': 0,
+  medieval: 0,
+});
+
+export interface CivilizationDevelopmentStabilityBasis {
+  readonly observerVersion: CivilizationDevelopmentObservation['observerVersion'] | null;
+  readonly currentEra: DevelopmentEraKey;
+  readonly historicalPeakEra: DevelopmentEraKey;
+  readonly candidateEra: DevelopmentEraKey;
+  readonly candidateSinceMonth: number;
+}
+
+export interface CivilizationDevelopmentStabilityReduction {
+  readonly currentEra: DevelopmentEraKey;
+  readonly historicalPeakEra: DevelopmentEraKey;
+  readonly candidateEra: DevelopmentEraKey;
+  readonly candidateSinceMonth: number;
+  readonly targetEra: DevelopmentEraKey | null;
+  readonly upward: boolean;
+  readonly requiredStableMonths: number;
+  readonly stableMonths: number;
+}
+
+/** Shared stage reducer; it observes facts and never imposes era sequence prerequisites. */
+export function reduceCivilizationDevelopmentStability(
+  atMonth: number,
+  candidateEraInput: DevelopmentEraKey,
+  previous: Readonly<CivilizationDevelopmentStabilityBasis>,
+): CivilizationDevelopmentStabilityReduction {
+  const candidateEra = normalizeDevelopmentEra(candidateEraInput);
+  const previousCurrent = normalizeDevelopmentEra(previous.currentEra);
+  const previousCandidate = normalizeDevelopmentEra(previous.candidateEra);
+  const previousHistoricalPeak = normalizeDevelopmentEra(previous.historicalPeakEra);
+  const candidateSinceMonth = previous.observerVersion === DEVELOPMENT_OBSERVER_VERSION
+    && previousCandidate === candidateEra
+    ? previous.candidateSinceMonth
+    : atMonth;
+  const upward = eraRank(candidateEra) > eraRank(previousCurrent);
+  const requiredStableMonths = DEVELOPMENT_ERA_STABILITY_MONTHS[candidateEra];
+  const stableMonths = Math.max(0, atMonth - candidateSinceMonth);
+  const currentEra = upward && stableMonths < requiredStableMonths
+    ? previousCurrent
+    : candidateEra;
+  const historicalPeakEra = eraRank(currentEra) > eraRank(previousHistoricalPeak)
+    ? currentEra
+    : previousHistoricalPeak;
+  return {
+    currentEra,
+    historicalPeakEra,
+    candidateEra,
+    candidateSinceMonth,
+    targetEra: upward ? candidateEra : nextEra(currentEra),
+    upward,
+    requiredStableMonths,
+    stableMonths,
+  };
+}
 
 /**
  * Development eras are observations of fact bundles, not steps that society
@@ -413,40 +673,336 @@ function establishedCultivationEvidence(state: SimulationState): EstablishedCult
   return null;
 }
 
+export interface ModernCivilizationEvidence {
+  electricalPower: {
+    networkId: string;
+    operationCount: number;
+    installationEventIds: string[];
+    operationEventIds: string[];
+    usefulLoadEventId: string;
+  } | null;
+  comparableMeasurement: {
+    projectId: string;
+    calibrationEventId: string;
+    measurementEventId: string;
+  } | null;
+  independentRecordExperiment: {
+    eventId: string;
+    projectId: string;
+    recordId: string;
+    knowledgeId: string;
+    readerId: string;
+    recordAuthorId: string;
+  } | null;
+  supportingEventIds: string[];
+  satisfied: boolean;
+}
+
+function modernCivilizationActionFacts(state: SimulationState): ActionFact[] {
+  const merged = new Map<string, ActionFact>();
+  const retain = (event: unknown): void => {
+    if (event
+      && typeof event === 'object'
+      && (event as { kind?: unknown }).kind === 'action') {
+      const action = event as ActionFact;
+      merged.set(action.id, action);
+    }
+  };
+  for (const event of actionFacts(state)) retain(event);
+  // Keep the former global key readable for any already encoded v7 sidecar,
+  // while new projections retain one latest useful load per concrete network.
+  const observerLeaseKeys = [
+    MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY,
+    ...((state.world.electricalPower?.networks ?? []).flatMap((network) => [
+      modernElectricalUsefulLoadLeaseKey(network.id),
+      modernElectricalOperationLeaseKey(network.id),
+    ])),
+    MODERN_RECORD_EXPERIMENT_LEASE_KEY,
+  ];
+  for (const leaseKey of observerLeaseKeys) {
+    for (const event of retainedColdWorldEventsForLease(state, leaseKey)) retain(event);
+  }
+  for (const project of state.projects) {
+    if (project.status !== 'completed'
+      || project.desiredFunction !== 'comparable-mass-measurement') continue;
+    const leaseKey = modernCompletedMeasurementReceiptLeaseKey(project.id);
+    for (const eventId of project.completionEventIds) {
+      retain(worldEventByIdWithRetainedLease(state, eventId, leaseKey));
+    }
+  }
+  return [...merged.values()].sort(compareWorldEventsInCanonicalOrder);
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+export function isModernElectricalOperationFact(
+  event: ActionFact,
+  networkId: string,
+): boolean {
+  return event.status === 'completed'
+    && event.action.kind === 'act'
+    && event.diff.electricalPowerOperation === true
+    && event.diff.electricalPowerDelivered === true
+    && event.diff.electricalNetworkId === networkId;
+}
+
+export function isModernElectricalUsefulLoadFact(
+  event: ActionFact,
+  networkId: string,
+): boolean {
+  return isModernElectricalOperationFact(event, networkId)
+    && event.diff.electricalPowerUsefulLoad === true;
+}
+
+type ModernRecordValidationShell = Pick<SimulationState, 'people' | 'projects' | 'records'>;
+
+/** Validate one completed demand-bound experiment without exposing it to planning. */
+export function isIndependentRecordExperimentFact(
+  state: ModernRecordValidationShell,
+  event: ActionFact,
+): boolean {
+  if (event.status !== 'completed'
+    || event.action.kind !== 'act'
+    || event.diff.recordUseStage !== 'experiment'
+    || !nonEmptyString(event.diff.recordUseProjectId)
+    || !nonEmptyString(event.diff.recordUseRecordId)
+    || !nonEmptyString(event.diff.recordUseKnowledgeId)
+    || !nonEmptyString(event.diff.recordUseTechniqueId)
+    || event.diff.recordUseTechniqueId !== event.diff.recordUseKnowledgeId
+    || !nonEmptyString(event.diff.recordUseReaderId)
+    || event.diff.recordUseReaderId !== event.who
+    || !nonEmptyString(event.diff.recordUseRecordAuthorId)
+    || event.diff.recordUseRecordAuthorId === event.diff.recordUseReaderId
+    || !Number.isSafeInteger(event.diff.recordUseExpectedOutputMaterialId)
+    || event.diff.outputMaterialId !== event.diff.recordUseExpectedOutputMaterialId
+    || !Number.isFinite(event.diff.recordUseKnowledgeConfidenceBefore)
+    || !Number.isFinite(event.diff.recordUseKnowledgeConfidenceAfter)
+    || Number(event.diff.recordUseKnowledgeConfidenceBefore) >= 55
+    || Number(event.diff.recordUseKnowledgeConfidenceAfter) < 55
+    || Number(event.diff.recordUseKnowledgeConfidenceAfter)
+      <= Number(event.diff.recordUseKnowledgeConfidenceBefore)) return false;
+  const readerId = event.diff.recordUseReaderId;
+  const authorId = event.diff.recordUseRecordAuthorId;
+  const project = state.projects.find((candidate) => candidate.id === event.diff.recordUseProjectId
+    && candidate.ownerId === readerId
+    && (candidate.status === 'active' || candidate.status === 'completed')
+    && candidate.actionEventIds.includes(event.id));
+  const record = state.records.find((candidate) => candidate.id === event.diff.recordUseRecordId
+    && candidate.kind === 'technique'
+    && candidate.knowledgeId === event.diff.recordUseKnowledgeId
+    && candidate.authorId === authorId);
+  const reader = state.people.find((candidate) => candidate.id === readerId);
+  const author = state.people.find((candidate) => candidate.id === authorId);
+  if (!project || !record || !reader || !author) return false;
+  const knowledge = reader.knowledge.find((candidate) => candidate.id === record.knowledgeId
+    && candidate.kind === 'technique'
+    && candidate.confidence >= Number(event.diff.recordUseKnowledgeConfidenceAfter)
+    && candidate.sourceEventIds.includes(event.id));
+  const codebook = reader.knowledge.find((candidate) => candidate.id === record.codebookId
+    && candidate.kind === 'codebook'
+    && candidate.confidence >= 55);
+  return Boolean(knowledge && codebook);
+}
+
+function completedMassCalibrationFact(event: ActionFact): boolean {
+  if (event.status !== 'completed'
+    || event.action.kind !== 'attend'
+    || !isSourcedMassMeasurementAction(event.action.measurement)
+    || event.action.measurement.mode !== 'calibrate-mass'
+    || !isMassCalibrationReceipt(event.diff)) return false;
+  return event.diff.calibrationEventId === event.id
+    && event.diff.calibratedByPersonId === event.who
+    && event.diff.calibratedAtMonth === event.atMonth
+    && event.action.instrumentStackId === event.action.measurement.instrument.stackId
+    && measurementStackReceiptMatchesUse(event.diff.instrument, event.action.measurement.instrument)
+    && measurementStackReceiptMatchesUse(event.diff.reference, event.action.measurement.reference)
+    && event.action.target.kind === 'inventory-stack'
+    && event.action.target.personId === event.who
+    && event.action.target.stackId === event.action.measurement.reference.stackId;
+}
+
+function completedMassMeasurementFact(event: ActionFact): boolean {
+  if (event.status !== 'completed'
+    || event.action.kind !== 'attend'
+    || !isSourcedMassMeasurementAction(event.action.measurement)
+    || event.action.measurement.mode !== 'measure-mass'
+    || !isMassMeasurementReceipt(event.diff)) return false;
+  return event.diff.measurementEventId === event.id
+    && event.diff.measuredByPersonId === event.who
+    && event.diff.measuredAtMonth === event.atMonth
+    && event.action.instrumentStackId === event.action.measurement.instrument.stackId
+    && measurementStackReceiptMatchesUse(event.diff.instrument, event.action.measurement.instrument)
+    && measurementStackReceiptMatchesUse(event.diff.subject, event.action.measurement.subject)
+    && event.action.target.kind === 'inventory-stack'
+    && event.action.target.personId === event.who
+    && event.action.target.stackId === event.action.measurement.subject.stackId;
+}
+
+function measurementBasisSupportsSubject(
+  basis: MeasurementUncertaintyBasis,
+  measurement: ActionFact,
+): boolean {
+  if (!isMassMeasurementReceipt(measurement.diff)
+    || !Array.isArray(basis.samples)
+    || basis.samples.length !== 2) return false;
+  const receipt = measurement.diff;
+  return basis.samples.some((sample) => nonEmptyString(sample.personId)
+    && nonEmptyString(sample.stackId)
+    && Number.isSafeInteger(sample.materialId)
+    && Number.isSafeInteger(sample.quantity)
+    && sample.quantity > 0
+    && Array.isArray(sample.sourceEventIds)
+    && sample.sourceEventIds.every(nonEmptyString)
+    && sample.personId === measurement.who
+    && sample.stackId === receipt.subject.stackId
+    && sample.materialId === receipt.subject.materialId
+    && sample.quantity === receipt.subject.quantity
+    && sameMeasurementSourceEventIds(sample.sourceEventIds, receipt.subject.sourceEventIds));
+}
+
+function completedMeasurementProjectEvidence(
+  project: ProjectState,
+  actionsById: ReadonlyMap<string, ActionFact>,
+): ModernCivilizationEvidence['comparableMeasurement'] {
+  const basis = project.measurementUncertaintyBasis;
+  if (project.status !== 'completed'
+    || project.desiredFunction !== 'comparable-mass-measurement'
+    || basis?.version !== 'measurement-uncertainty-basis-v1') return null;
+  const completionIds = new Set(project.completionEventIds);
+  const completionFacts = project.completionEventIds
+    .flatMap((eventId) => {
+      const event = actionsById.get(eventId);
+      return event ? [event] : [];
+    })
+    .sort(compareWorldEventsInCanonicalOrder);
+  for (const measurement of [...completionFacts].reverse()) {
+    if (measurement.who !== project.ownerId
+      || !completedMassMeasurementFact(measurement)
+      || !isMassMeasurementReceipt(measurement.diff)
+      || !measurementBasisSupportsSubject(basis, measurement)) continue;
+    const calibration = actionsById.get(measurement.diff.calibrationEventId);
+    if (!calibration
+      || !completionIds.has(calibration.id)
+      || calibration.who !== project.ownerId
+      || !completedMassCalibrationFact(calibration)
+      || !isMassCalibrationReceipt(calibration.diff)
+      || measurement.action.kind !== 'attend'
+      || !isSourcedMassMeasurementAction(measurement.action.measurement)
+      || measurement.action.measurement.mode !== 'measure-mass'
+      || measurement.action.measurement.calibrationEventId !== calibration.id
+      || compareWorldEventsInCanonicalOrder(calibration, measurement) >= 0
+      || !sameMeasurementStackIdentity(calibration.diff.instrument, measurement.diff.instrument)
+      || !sameMeasurementStackIdentity(calibration.diff.reference, measurement.diff.reference)) continue;
+    return {
+      projectId: project.id,
+      calibrationEventId: calibration.id,
+      measurementEventId: measurement.id,
+    };
+  }
+  return null;
+}
+
+/**
+ * Small replay observer for the merged modern era. It reads only committed
+ * world/project facts and never exposes an era label or score to planners.
+ */
+export function observeModernCivilizationEvidence(state: SimulationState): ModernCivilizationEvidence {
+  const actions = modernCivilizationActionFacts(state);
+  const actionsById = new Map(actions.map((event) => [event.id, event]));
+
+  let electricalPower: ModernCivilizationEvidence['electricalPower'] = null;
+  for (const network of state.world.electricalPower?.networks ?? []) {
+    if (!Number.isSafeInteger(network.operationCount)
+      || network.operationCount < 1
+      || !validateElectricalPowerTopology(state.world.grid, network).valid) continue;
+    const operations = [...new Set(network.recentOperationEventIds)]
+      .flatMap((eventId) => {
+        const event = actionsById.get(eventId);
+        return event && isModernElectricalOperationFact(event, network.id) ? [event] : [];
+      });
+    if (operations.length < 1) continue;
+    const usefulLoad = actions.find((event) => isModernElectricalUsefulLoadFact(event, network.id));
+    if (!usefulLoad) continue;
+    electricalPower = {
+      networkId: network.id,
+      operationCount: network.operationCount,
+      installationEventIds: [...new Set(network.installationEventIds
+        .filter((eventId) => nonEmptyString(eventId) && actionsById.has(eventId)))],
+      operationEventIds: operations.map((event) => event.id),
+      usefulLoadEventId: usefulLoad.id,
+    };
+    break;
+  }
+
+  const comparableMeasurement = [...state.projects]
+    .sort((left, right) => (left.completedAtMonth ?? Number.MAX_SAFE_INTEGER)
+      - (right.completedAtMonth ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id))
+    .map((project) => completedMeasurementProjectEvidence(project, actionsById))
+    .find((evidence) => evidence !== null) ?? null;
+
+  const recordExperiment = actions.find((event) => isIndependentRecordExperimentFact(state, event));
+  const independentRecordExperiment = recordExperiment ? {
+    eventId: recordExperiment.id,
+    projectId: String(recordExperiment.diff.recordUseProjectId),
+    recordId: String(recordExperiment.diff.recordUseRecordId),
+    knowledgeId: String(recordExperiment.diff.recordUseKnowledgeId),
+    readerId: String(recordExperiment.diff.recordUseReaderId),
+    recordAuthorId: String(recordExperiment.diff.recordUseRecordAuthorId),
+  } : null;
+
+  const supportingEventIds = [...new Set([
+    ...(electricalPower ? [
+      ...electricalPower.installationEventIds,
+      ...electricalPower.operationEventIds,
+      electricalPower.usefulLoadEventId,
+    ] : []),
+    ...(comparableMeasurement
+      ? [comparableMeasurement.calibrationEventId, comparableMeasurement.measurementEventId]
+      : []),
+    ...(independentRecordExperiment ? [independentRecordExperiment.eventId] : []),
+  ])];
+  return {
+    electricalPower,
+    comparableMeasurement,
+    independentRecordExperiment,
+    supportingEventIds,
+    satisfied: electricalPower !== null
+      && comparableMeasurement !== null
+      && independentRecordExperiment !== null,
+  };
+}
+
 function eraGateState(
   state: SimulationState,
   indexTotal: number,
   capabilities: MaterialCapabilityObservation[],
   facilities: FunctionalBuildingObservation[],
+  modernEvidence: ModernCivilizationEvidence,
 ) {
   const establishedCultivation = establishedCultivationEvidence(state);
   const storedFood = state.containers.reduce((sum, container) => sum + container.inventory.reduce((inner, stack) => (
     materialHas(stack.materialId, 'edible') ? inner + stack.quantity : inner
   ), 0), 0);
-  const institutions = state.derived.institutions.length;
-  const records = state.records.length;
-  const capability = (key: MaterialCapabilityObservation['key']) => capabilities.find((candidate) => candidate.key === key);
-  const activeUsed = (materialId: MaterialId, minimumUses = 1) => facilities.some((facility) => facility.materialId === materialId
-    && facility.active && facility.useEventIds.length >= minimumUses);
-  return {
-    'agrarian-settlement': [
-      ['index:120', indexTotal >= 120],
-      ['material:masonry-stone:distributed', materialCapabilityAtLeast(capability('masonry-stone'), 'distributed')],
-      ['food:settled-cultivation-cycle', establishedCultivation !== null],
-      ['food:stored-units:10', storedFood >= 10],
-      ['facility:granary-used', activeUsed(Material.Granary, 2)],
-      ['facility:early-core-used', activeUsed(Material.CouncilHearth, 1)],
-      ['institution:early-functional:1', institutions >= 1],
-    ],
-    'ancient-civilization': [
-      ['index:300', indexTotal >= 300],
-      ['material:bronze-or-iron:institutional', ancientMetalworkingCapabilitySatisfied(capabilities)],
-      ['facility:foundry-or-institutional-iron-smithy-used', ancientMetalworkingFacilitySatisfied(capabilities, facilities)],
-      ['facility:civic-hall-used', activeUsed(Material.CivicHall, 2)],
-      ['institution:functional:2', institutions >= 2],
-      ['history:records:2', records >= 2],
-    ],
-  } as const;
+  return civilizationDevelopmentGateState({
+    indexAtLeast120Proven: indexTotal >= 120,
+    materialCapabilities: capabilities,
+    settledCultivationEstablished: establishedCultivation !== null,
+    storedFoodUnits: storedFood,
+    facilities: facilities.map((facility) => ({
+      materialId: facility.materialId,
+      active: facility.active,
+      useCount: facility.useEventIds.length,
+    })),
+    functionalInstitutionCount: state.derived.institutions.length,
+    modern: {
+      electricalPower: modernEvidence.electricalPower !== null,
+      comparableMeasurement: modernEvidence.comparableMeasurement !== null,
+      independentRecordExperiment: modernEvidence.independentRecordExperiment !== null,
+    },
+  });
 }
 
 export function observeCivilizationDevelopment(
@@ -456,24 +1012,30 @@ export function observeCivilizationDevelopment(
   const facilities = observeFunctionalBuildings(state);
   const materialCapabilities = observeMaterialCapabilities(state);
   const establishedCultivation = establishedCultivationEvidence(state);
-  const gates = eraGateState(state, indexTotal, materialCapabilities, facilities);
+  const modernEvidence = observeModernCivilizationEvidence(state);
+  const gates = eraGateState(state, indexTotal, materialCapabilities, facilities, modernEvidence);
   const candidateEra = highestSatisfiedDevelopmentEra(gates);
   const previous = state.civilization.development;
-  const previousCurrent = normalizeDevelopmentEra(previous?.currentEra ?? 'primitive-tribe');
-  const previousCandidate = normalizeDevelopmentEra(previous?.candidateEra ?? 'primitive-tribe');
-  const candidateSinceMonth = previous?.observerVersion === DEVELOPMENT_OBSERVER_VERSION
-    && previousCandidate === candidateEra
-    ? previous.candidateSinceMonth
-    : state.clock.elapsedMonths;
-  const upward = eraRank(candidateEra) > eraRank(previousCurrent);
-  const requiredStableMonths = eraRank(candidateEra) >= eraRank('ancient-civilization') ? 24 : 12;
-  const stableMonths = Math.max(0, state.clock.elapsedMonths - candidateSinceMonth);
-  const currentEra = upward && stableMonths < requiredStableMonths ? previousCurrent : candidateEra;
-  const previousHistoricalPeak = normalizeDevelopmentEra(previous?.historicalPeakEra ?? 'primitive-tribe');
-  const historicalPeakEra = eraRank(currentEra) > eraRank(previousHistoricalPeak)
-    ? currentEra
-    : previousHistoricalPeak;
-  const targetEra = upward ? candidateEra : nextEra(currentEra);
+  const stability = reduceCivilizationDevelopmentStability(
+    state.clock.elapsedMonths,
+    candidateEra,
+    {
+      observerVersion: previous?.observerVersion ?? null,
+      currentEra: previous?.currentEra ?? 'primitive-tribe',
+      historicalPeakEra: previous?.historicalPeakEra ?? 'primitive-tribe',
+      candidateEra: previous?.candidateEra ?? 'primitive-tribe',
+      candidateSinceMonth: previous?.candidateSinceMonth ?? state.clock.elapsedMonths,
+    },
+  );
+  const {
+    currentEra,
+    historicalPeakEra,
+    candidateSinceMonth,
+    targetEra,
+    upward,
+    requiredStableMonths,
+    stableMonths,
+  } = stability;
   const targetGates = targetEra && targetEra !== 'primitive-tribe'
     ? gates[targetEra as keyof typeof gates] ?? []
     : [];
@@ -486,14 +1048,17 @@ export function observeCivilizationDevelopment(
       ? [...establishedCultivation.plantingEventIds, ...establishedCultivation.harvestEventIds]
       : []),
     ...state.derived.institutions.flatMap((institution) => institution.evidenceEventIds),
+    ...modernEvidence.supportingEventIds,
   ])];
   const gateProgress = targetGates.length ? satisfiedGateIds.length / targetGates.length : 1;
-  const stabilityProgress = upward ? Math.min(1, stableMonths / requiredStableMonths) : 1;
+  const stabilityProgress = upward && requiredStableMonths > 0
+    ? Math.min(1, stableMonths / requiredStableMonths)
+    : 1;
   return {
     observerVersion: DEVELOPMENT_OBSERVER_VERSION,
     currentEra,
     historicalPeakEra,
-    candidateEra,
+    candidateEra: stability.candidateEra,
     candidateSinceMonth,
     transitionProgress: Math.round(gateProgress * stabilityProgress * 100) / 100,
     satisfiedGateIds,
@@ -510,7 +1075,7 @@ export function livingPopulationPressure(state: SimulationState): {
   storedEdibleUnits: number;
   pressure: number;
 } {
-  const living = state.people.filter(isAlive);
+  const living = livingPeople(state);
   const dependents = living.filter((person) => state.clock.elapsedMonths - person.bornAtMonth < 12 * 12).length;
   const edibleUnits = living.reduce((sum, person) => sum + person.inventory.reduce((inner, stack) => (
     materialHas(stack.materialId, 'edible') ? inner + stack.quantity : inner

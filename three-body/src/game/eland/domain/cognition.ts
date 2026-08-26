@@ -10,7 +10,7 @@ import type {
   PersonState,
 } from './person';
 import type { ProjectState } from './project';
-import { intentById } from './state-index';
+import { intentById, personById } from './state-index';
 
 export const COGNITION_VERSION = 'causal-bdi-v1' as const;
 const MAX_OUTCOME_BELIEFS = 48;
@@ -242,7 +242,7 @@ export function recordIntentGoalOutcome(
     sourceEventIds: sources,
   };
   if (kind === 'not-evaluated') return;
-  const person = state.people.find((candidate) => candidate.id === intent.ownerId);
+  const person = personById(state, intent.ownerId);
   if (!person) return;
   const cognition = ensureCognitionState(person);
   let belief = cognition.goalOutcomeBeliefs?.find((candidate) => candidate.basisKey === basisKey);
@@ -308,7 +308,7 @@ export function isMeaningfulCognitiveOutcome(fact: ActionFact): boolean {
 /** Learn only after the domain has produced a real, replayable action fact. */
 export function recordActionOutcomeBelief(state: SimulationState, fact: ActionFact): void {
   if (!isMeaningfulCognitiveOutcome(fact)) return;
-  const person = state.people.find((candidate) => candidate.id === fact.who);
+  const person = personById(state, fact.who);
   if (!person) return;
   const cognition = ensureCognitionState(person);
   const basisKey = actionFactOutcomeBasisKey(state, fact);

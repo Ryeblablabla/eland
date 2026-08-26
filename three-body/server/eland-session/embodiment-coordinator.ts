@@ -35,6 +35,7 @@ import type {
   FrozenEmbodimentDecision,
   StoredEmbodimentCommandReceipt,
 } from './recovery';
+import { logPerf, perfElapsed, perfNow } from '../perf';
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
@@ -49,6 +50,17 @@ export class EmbodimentCommandRejectedError extends Error {
   constructor(readonly failure: PlayerEmbodimentCommandFailure) {
     super(commandFailureMessage(failure));
     this.name = 'EmbodimentCommandRejectedError';
+  }
+}
+
+export class EmbodimentReplayMismatchError extends Error {
+  constructor(
+    readonly expectedHash: string,
+    readonly actualHash: string,
+    detail?: string,
+  ) {
+    super(`有限化身暂存月份重放 hash 不一致（expected=${expectedHash}, actual=${actualHash}${detail ? `, ${detail}` : ''}）`);
+    this.name = 'EmbodimentReplayMismatchError';
   }
 }
 
@@ -153,15 +165,41 @@ function commandFailureMessage(failure: PlayerEmbodimentCommandFailure): string 
 }
 
 function cloneExecution(execution: MonthExecution): MonthExecution {
+  // Committed facts are immutable during a staged month. They are also the
+  // largest cold member of long-running states, so copying the entire history
+  // on every WASD tick only creates allocation pressure. Keep the history array
+  // shared while a tick is speculative; detach the array immediately before
+  // month finalization, which is the only point that appends to it.
+  const committedPast = execution.prepared.state.world.past;
+  const prepared = structuredClone({
+    ...execution.prepared,
+    state: {
+      ...execution.prepared.state,
+      world: {
+        ...execution.prepared.state.world,
+        past: [] as WorldEvent[],
+      },
+    },
+  });
+  prepared.state.world.past = committedPast;
   return {
     ...execution,
-    prepared: structuredClone(execution.prepared),
+    prepared,
     usage: structuredClone(execution.usage),
     attempted: structuredClone(execution.attempted),
     reviewedPeople: new Set(execution.reviewedPeople),
     plannedAtTickOne: new Set(execution.plannedAtTickOne),
+    ordinaryDeliberationCounts: new Map(execution.ordinaryDeliberationCounts),
+    ordinaryReplanPermits: new Set(execution.ordinaryReplanPermits),
     participantIds: [...execution.participantIds],
   };
+}
+
+function detachPastForFinish(execution: MonthExecution): void {
+  // finishMonthExecution appends the current month's events. A shallow array
+  // copy is sufficient because already-committed WorldEvent facts are never
+  // mutated; current-month events live in execution.prepared.events.
+  execution.prepared.state.world.past = [...execution.prepared.state.world.past];
 }
 
 function updateCanonicalHash(
@@ -232,7 +270,14 @@ function updateCanonicalHash(
   }
 }
 
-function executionHash(execution: MonthExecution): string {
+type ExecutionHashMode =
+  | 'legacy-with-identity'
+  | 'legacy-without-identity'
+  | 'migration-equivalence'
+  | 'v2'
+  | 'v3';
+
+function executionHashPayload(execution: MonthExecution, mode: ExecutionHashMode = 'v3') {
   // The voxel revision is a WeakMap-backed process-local cache identity. A
   // copied/recovered world deliberately starts a new revision sequence, while
   // its voxels and construction facts remain identical. Exclude the derived
@@ -240,6 +285,11 @@ function executionHash(execution: MonthExecution): string {
   // an unreplayable cache counter.
   const {
     physicalStructureIndex: _physicalStructureIndex,
+    // The absolute ledger cursor is derived from the same committed history
+    // that is excluded below. Old active-embodiment snapshots predate this
+    // field, so including it would make an otherwise identical replay hash
+    // incompatible across restore.
+    historyCursor: _historyCursor,
     // The committed history is immutable throughout a staged month and is
     // already protected by the recovery root/content store. Restore also adds
     // default tick coordinates to legacy facts, so hashing it here would make
@@ -249,7 +299,30 @@ function executionHash(execution: MonthExecution): string {
   } = execution.prepared.state.world;
   // Observer projections are rebuilt on controller adoption and must never be
   // an input to domain decisions. Hash only the authoritative staged shell.
-  const { derived: _derived, ...state } = execution.prepared.state;
+  const { derived: _derived, ...stateWithoutDerived } = execution.prepared.state;
+  const stateWithoutIdentity = mode === 'legacy-without-identity'
+    || mode === 'migration-equivalence' ? (() => {
+      // Legacy snapshots written before monotonic identity allocation could not
+      // include the compatibility counter synthesized by current restoration.
+      const { identityCounters: _identityCounters, ...legacyState } = stateWithoutDerived;
+      return legacyState;
+    })() : stateWithoutDerived;
+  const state = mode === 'v2' || mode === 'v3' || mode === 'migration-equivalence' ? (() => {
+    // These fields are projection output. Refreshing them while adopting an
+    // otherwise identical committed state must not invalidate a staged month.
+    const {
+      civilizationIndex: _civilizationIndex,
+      development: _development,
+      stage: _stage,
+      ...civilization
+    } = stateWithoutIdentity.civilization;
+    return { ...stateWithoutIdentity, civilization };
+  })() : stateWithoutIdentity;
+  const cadence = mode === 'v3' || mode === 'migration-equivalence' ? {
+    ordinaryDeliberationCounts: [...execution.ordinaryDeliberationCounts]
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
+    ordinaryReplanPermits: [...execution.ordinaryReplanPermits].sort(),
+  } : {};
   const payload = {
     state: { ...state, world },
     events: execution.prepared.events,
@@ -258,14 +331,41 @@ function executionHash(execution: MonthExecution): string {
     candidateCount: execution.prepared.candidates.length,
     reviewedPeople: [...execution.reviewedPeople],
     plannedAtTickOne: [...execution.plannedAtTickOne],
+    ...cadence,
     participantIds: execution.participantIds,
     completedTick: execution.completedTick,
     usage: execution.usage,
     attempted: execution.attempted,
   };
+  return payload;
+}
+
+function canonicalHash(value: unknown): string {
   const hash = createHash('sha256');
-  updateCanonicalHash(hash, payload);
+  updateCanonicalHash(hash, value);
   return hash.digest('hex');
+}
+
+function executionHash(execution: MonthExecution, mode: ExecutionHashMode = 'v3'): string {
+  return canonicalHash(executionHashPayload(execution, mode));
+}
+
+/** Server-internal compatibility seam for persisted staged-month fixtures. */
+export function stagedExecutionHashForRecoveryVersion(
+  execution: MonthExecution,
+  version: 2 | 3,
+): string {
+  return executionHash(execution, version === 2 ? 'v2' : 'v3');
+}
+
+function migrationPartHashes(
+  execution: MonthExecution,
+): Record<string, string> {
+  const { state, ...executionFields } = executionHashPayload(execution, 'migration-equivalence');
+  return Object.fromEntries([
+    ...Object.entries(state).map(([key, value]) => [`state.${key}`, canonicalHash(value)]),
+    ...Object.entries(executionFields).map(([key, value]) => [`execution.${key}`, canonicalHash(value)]),
+  ]);
 }
 
 function tickEventView(event: WorldEvent, fallbackOrder: number): EmbodimentTickEventView {
@@ -330,12 +430,17 @@ function executeCommand(
 ): {
   execution: MonthExecution;
   tick: TickExecutionResult;
+  cloneMs: number;
+  tickMs: number;
   failure?: PlayerEmbodimentCommandFailure;
   remappedOptionId?: string;
 } {
+  const cloneStartedAt = perfNow();
   const candidate = cloneExecution(execution);
+  const cloneMs = perfElapsed(cloneStartedAt);
   let failure: PlayerEmbodimentCommandFailure | undefined;
   let remappedOptionId: string | undefined;
+  const tickStartedAt = perfNow();
   const tick = executePlanningTick(candidate, ({ state, person, atMonth }) => {
     const resolution = resolvePlayerEmbodimentCommand(state, person, atMonth, command);
     if (!resolution.ok) {
@@ -345,9 +450,12 @@ function executeCommand(
     remappedOptionId = resolution.remappedOptionId;
     return resolution.control;
   });
+  const tickMs = perfElapsed(tickStartedAt);
   return {
     execution: candidate,
     tick,
+    cloneMs,
+    tickMs,
     ...(failure ? { failure } : {}),
     ...(remappedOptionId ? { remappedOptionId } : {}),
   };
@@ -376,6 +484,7 @@ export class EmbodimentCoordinator {
     host: EmbodimentCoordinatorHost,
     input: BeginEmbodimentRequest,
   ): EmbodimentCoordinator {
+    const totalStartedAt = perfNow();
     if (!validId(input.embodimentId) || !validId(input.agentId, 320)) {
       throw new EmbodimentConflictError('有限化身标识或人物标识无效');
     }
@@ -395,14 +504,19 @@ export class EmbodimentCoordinator {
     if (!committedState || !actor || !isAlive(actor)) {
       throw new EmbodimentConflictError('只能进入当前分支中仍然在世的人物');
     }
+    const prepareStartedAt = perfNow();
     const preparation = host.prepareExecution({
       state: committedState,
       actorId: input.agentId,
       skySample: input.skySample,
       ...(input.cosmosSnapshot ? { cosmosSnapshot: input.cosmosSnapshot } : {}),
     });
+    const prepareMs = perfElapsed(prepareStartedAt);
     validatePreparation(preparation, committedState, input.agentId, authority.elapsedMonths);
     const now = host.now?.() ?? Date.now();
+    const hashStartedAt = perfNow();
+    const stagedStateHash = executionHash(preparation.execution);
+    const hashMs = perfElapsed(hashStartedAt);
     const durable: ActiveEmbodimentSnapshot = {
       schemaVersion: 1,
       id: input.embodimentId,
@@ -422,16 +536,29 @@ export class EmbodimentCoordinator {
       decisionUsage: structuredClone(preparation.execution.usage),
       decisionAttempts: structuredClone(preparation.execution.attempted),
       commands: [],
-      stagedStateHash: executionHash(preparation.execution),
+      stagedStateHashVersion: 3,
+      stagedStateHash,
       createdAt: now,
       updatedAt: now,
     };
+    logPerf('embodiment-begin-core', {
+      embodimentId: input.embodimentId,
+      actorId: input.agentId,
+      branchId: authority.branchId,
+      month: preparation.execution.prepared.atMonth,
+      people: preparation.execution.prepared.state.people.length,
+      committedEvents: preparation.execution.prepared.state.world.past.length,
+      prepareMs,
+      hashMs,
+      totalMs: perfElapsed(totalStartedAt),
+    });
     return new EmbodimentCoordinator(host, durable, preparation.execution);
   }
 
   static restore(
     host: EmbodimentCoordinatorHost,
     snapshotInput: ActiveEmbodimentSnapshot,
+    legacyCommittedState?: SimulationState,
   ): EmbodimentCoordinator {
     const snapshot = structuredClone(snapshotInput);
     if (!SHA256_PATTERN.test(snapshot.stagedStateHash)) {
@@ -445,61 +572,118 @@ export class EmbodimentCoordinator {
       || authority.elapsedMonths !== snapshot.baseElapsedMonths) {
       throw new Error('有限化身暂存月份不属于当前 committed authority');
     }
-    const preparation = host.prepareExecution({
-      state: committedState,
-      actorId: snapshot.actorId,
-      skySample: snapshot.skySample,
-      ...(snapshot.cosmosSnapshot ? { cosmosSnapshot: snapshot.cosmosSnapshot } : {}),
-      frozenInitialDecisions: structuredClone(snapshot.frozenInitialDecisions),
-    });
-    validatePreparation(preparation, committedState, snapshot.actorId, snapshot.baseElapsedMonths);
-    let execution = preparation.execution;
-    // The host can deterministically rebuild rule decisions, but model usage is
-    // accounting input rather than a consequence of those decisions. Restore
-    // it from the durable boundary before replaying and hashing the staged month.
-    execution = {
-      ...execution,
-      usage: structuredClone(snapshot.decisionUsage),
-      attempted: structuredClone(snapshot.decisionAttempts),
-    };
-    const generatedReceipts: StoredEmbodimentCommandReceipt[] = [];
-    for (const stored of snapshot.commands) {
-      const replay = executeCommand(execution, stored.receipt.command);
-      if (replay.tick.controlRequested && replay.failure) {
-        throw new Error(`有限化身命令 ${stored.receipt.commandId} 无法确定性重放`);
-      }
-      execution = replay.execution;
-      const generatedReceipt: EmbodimentCommandReceipt = {
-        commandId: stored.receipt.commandId,
-        embodimentId: snapshot.id,
-        command: structuredClone(stored.receipt.command),
-        actionTick: replay.tick.actionTick,
-        revision: generatedReceipts.length + 1,
-        completedTick: replay.tick.actionTick,
-        controlApplied: replay.tick.controlApplied,
-        ...(replay.remappedOptionId ? { remappedOptionId: replay.remappedOptionId } : {}),
+
+    const replayAgainst = (baseState: SimulationState): {
+      execution: MonthExecution;
+      receipts: StoredEmbodimentCommandReceipt[];
+    } => {
+      const preparation = host.prepareExecution({
+        state: baseState,
+        actorId: snapshot.actorId,
+        skySample: snapshot.skySample,
+        ...(snapshot.cosmosSnapshot ? { cosmosSnapshot: snapshot.cosmosSnapshot } : {}),
+        frozenInitialDecisions: structuredClone(snapshot.frozenInitialDecisions),
+      });
+      validatePreparation(preparation, baseState, snapshot.actorId, snapshot.baseElapsedMonths);
+      // The host can deterministically rebuild rule decisions, but model usage
+      // is accounting input rather than a consequence of those decisions.
+      let execution: MonthExecution = {
+        ...preparation.execution,
+        usage: structuredClone(snapshot.decisionUsage),
+        attempted: structuredClone(snapshot.decisionAttempts),
       };
-      if (generatedReceipt.actionTick !== stored.receipt.actionTick
-        || generatedReceipt.revision !== stored.receipt.revision
-        || generatedReceipt.controlApplied !== stored.receipt.controlApplied
-        || generatedReceipt.remappedOptionId !== stored.receipt.remappedOptionId) {
-        throw new Error(`有限化身命令 ${stored.receipt.commandId} 的重放收据不一致`);
+      const receipts: StoredEmbodimentCommandReceipt[] = [];
+      for (const stored of snapshot.commands) {
+        const replay = executeCommand(execution, stored.receipt.command);
+        if (replay.tick.controlRequested && replay.failure) {
+          throw new Error(`有限化身命令 ${stored.receipt.commandId} 无法确定性重放`);
+        }
+        execution = replay.execution;
+        const generatedReceipt: EmbodimentCommandReceipt = {
+          commandId: stored.receipt.commandId,
+          embodimentId: snapshot.id,
+          command: structuredClone(stored.receipt.command),
+          actionTick: replay.tick.actionTick,
+          revision: receipts.length + 1,
+          completedTick: replay.tick.actionTick,
+          controlApplied: replay.tick.controlApplied,
+          ...(replay.remappedOptionId ? { remappedOptionId: replay.remappedOptionId } : {}),
+        };
+        if (generatedReceipt.actionTick !== stored.receipt.actionTick
+          || generatedReceipt.revision !== stored.receipt.revision
+          || generatedReceipt.controlApplied !== stored.receipt.controlApplied
+          || generatedReceipt.remappedOptionId !== stored.receipt.remappedOptionId) {
+          throw new Error(`有限化身命令 ${stored.receipt.commandId} 的重放收据不一致`);
+        }
+        receipts.push({ fingerprint: stored.fingerprint, receipt: generatedReceipt });
       }
-      generatedReceipts.push({ fingerprint: stored.fingerprint, receipt: generatedReceipt });
-    }
-    if (execution.completedTick !== snapshot.completedTick
-      || generatedReceipts.length !== snapshot.commands.length
-      || executionHash(execution) !== snapshot.stagedStateHash) {
-      throw new Error('有限化身暂存月份重放 hash 不一致');
+      if (execution.completedTick !== snapshot.completedTick
+        || receipts.length !== snapshot.commands.length) {
+        throw new Error('有限化身暂存月份重放进度不一致');
+      }
+      return { execution, receipts };
+    };
+
+    // Verify and release the legacy execution before building the current one.
+    // Long-running worlds are large enough that retaining both staged copies at
+    // once can exceed the worker heap during an otherwise valid recovery.
+    const legacyVerification = snapshot.stagedStateHashVersion === undefined ? (() => {
+      if (!legacyCommittedState) throw new Error('有限化身旧版暂存月份缺少原始 committed state');
+      const legacyReplay = replayAgainst(legacyCommittedState);
+      const legacyStateHash = executionHash(
+        legacyReplay.execution,
+        legacyCommittedState.identityCounters === undefined
+          ? 'legacy-without-identity'
+          : 'legacy-with-identity',
+      );
+      if (legacyStateHash !== snapshot.stagedStateHash) {
+        throw new EmbodimentReplayMismatchError(snapshot.stagedStateHash, legacyStateHash);
+      }
+      const partHashes = migrationPartHashes(legacyReplay.execution);
+      return { meaningHash: canonicalHash(partHashes), partHashes };
+    })() : null;
+
+    // Current snapshots replay from the adopted committed state. After exact
+    // legacy verification, the current replay may differ only in newly
+    // synthesized identity counters and observer-owned civilization fields.
+    // Exact v2 verification deliberately uses the pre-cadence payload; every
+    // successful restore is then migrated to the cadence-aware v3 payload.
+    const currentReplay = replayAgainst(committedState);
+    const currentStateHashV3 = executionHash(currentReplay.execution, 'v3');
+    if (snapshot.stagedStateHashVersion === 2) {
+      const currentStateHashV2 = executionHash(currentReplay.execution, 'v2');
+      if (currentStateHashV2 !== snapshot.stagedStateHash) {
+        throw new EmbodimentReplayMismatchError(snapshot.stagedStateHash, currentStateHashV2);
+      }
+    } else if (snapshot.stagedStateHashVersion === 3) {
+      if (currentStateHashV3 !== snapshot.stagedStateHash) {
+        throw new EmbodimentReplayMismatchError(snapshot.stagedStateHash, currentStateHashV3);
+      }
+    } else {
+      const currentPartHashes = migrationPartHashes(currentReplay.execution);
+      const currentMeaningHash = canonicalHash(currentPartHashes);
+      if (legacyVerification?.meaningHash !== currentMeaningHash) {
+        const differingParts = Object.keys(legacyVerification!.partHashes)
+          .filter((key) => legacyVerification!.partHashes[key] !== currentPartHashes[key]);
+        throw new EmbodimentReplayMismatchError(
+          legacyVerification!.meaningHash,
+          currentMeaningHash,
+          `parts=${differingParts.join('|')}`,
+        );
+      }
     }
     const restored = new EmbodimentCoordinator(host, {
       ...snapshot,
-      commands: generatedReceipts,
+      commands: currentReplay.receipts,
+      // A strictly verified legacy replay migrates to the independently rebuilt
+      // current execution, not merely to a new label on the legacy execution.
+      stagedStateHashVersion: 3,
+      stagedStateHash: currentStateHashV3,
       // Runtime authority revisions rotate on process/session restore. The
       // original value remains in beginFingerprint and persisted audit data;
       // new views derive their revision from host.authority().
       baseAuthorityRevision: authority.revision,
-    }, execution);
+    }, currentReplay.execution);
     return restored;
   }
 
@@ -533,14 +717,19 @@ export class EmbodimentCoordinator {
   }
 
   view(): EmbodimentView {
+    const totalStartedAt = perfNow();
     const state = this.execution.prepared.state;
     const person = personById(state, this.durable.actorId);
+    const projectionStartedAt = perfNow();
     const society = toSocietyState(state);
+    const projectionMs = perfElapsed(projectionStartedAt);
+    const optionsStartedAt = perfNow();
     const options = this.status === 'awaiting-command' && person && isAlive(person)
       ? buildPlayerEmbodimentOptions(state, person, this.durable.atMonth)
       : [];
+    const optionsMs = perfElapsed(optionsStartedAt);
     const authority = this.host.authority();
-    return {
+    const view: EmbodimentView = {
       id: this.durable.id,
       actorId: this.durable.actorId,
       status: this.status,
@@ -559,6 +748,21 @@ export class EmbodimentCoordinator {
       options,
       tickEvents: this.tickEvents.map(tickEventView),
     };
+    logPerf('embodiment-view', {
+      embodimentId: this.durable.id,
+      actorId: this.durable.actorId,
+      branchId: this.durable.branchId,
+      month: this.durable.atMonth,
+      tick: this.execution.completedTick,
+      revision: this.durable.revision,
+      status: this.status,
+      people: state.people.length,
+      options: options.length,
+      projectionMs,
+      optionsMs,
+      totalMs: perfElapsed(totalStartedAt),
+    });
+    return view;
   }
 
   step(input: EmbodimentStepRequest): Promise<EmbodimentStepResponse> {
@@ -606,10 +810,21 @@ export class EmbodimentCoordinator {
     input: EmbodimentStepRequest,
     fingerprint: string,
   ): Promise<EmbodimentStepResponse> {
+    const totalStartedAt = perfNow();
+    let cloneMs = 0;
+    let tickMs = 0;
+    let hashMs = 0;
+    let viewMs = 0;
+    let finishMs = 0;
+    let commitMs = 0;
+    let outcome = 'failed';
     this.status = 'executing-tick';
     try {
       const result = executeCommand(this.execution, input.command);
+      cloneMs = result.cloneMs;
+      tickMs = result.tickMs;
       if (result.tick.controlRequested && result.failure) {
+        outcome = 'rejected';
         throw new EmbodimentCommandRejectedError(result.failure);
       }
       const revision = this.durable.revision + 1;
@@ -628,35 +843,55 @@ export class EmbodimentCoordinator {
       this.tickEvents = result.tick.events;
 
       if (result.execution.completedTick < PLANNING_TICKS_PER_MONTH) {
+        const hashStartedAt = perfNow();
+        const stagedStateHash = executionHash(result.execution);
+        hashMs = perfElapsed(hashStartedAt);
         this.execution = result.execution;
         this.durable = {
           ...this.durable,
           completedTick: result.execution.completedTick,
           revision,
           commands: [...this.durable.commands, stored],
-          stagedStateHash: executionHash(result.execution),
+          stagedStateHash,
           updatedAt: now,
         };
         this.status = 'awaiting-command';
-        return { receipt, embodiment: this.view() };
+        const viewStartedAt = perfNow();
+        const embodiment = this.view();
+        viewMs = perfElapsed(viewStartedAt);
+        outcome = 'awaiting-command';
+        return { receipt, embodiment };
       }
 
       this.status = 'finalizing';
+      // This is the only transition that appends to world.past. Detaching here
+      // preserves rollback if finalization or commit fails.
+      detachPastForFinish(result.execution);
+      const finishStartedAt = perfNow();
       const state = finishMonthExecution(result.execution);
-      const frame = await this.host.commitMonth({
-        state,
-        skySample: this.durable.skySample,
-        ...(this.durable.cosmosSnapshot ? { cosmosSnapshot: this.durable.cosmosSnapshot } : {}),
-      });
+      finishMs = perfElapsed(finishStartedAt);
+      const commitStartedAt = perfNow();
+      let frame: GameFrame;
+      try {
+        frame = await this.host.commitMonth({
+          state,
+          skySample: this.durable.skySample,
+          ...(this.durable.cosmosSnapshot ? { cosmosSnapshot: this.durable.cosmosSnapshot } : {}),
+        });
+      } finally {
+        commitMs = perfElapsed(commitStartedAt);
+      }
       this.execution = result.execution;
       this.durable = {
         ...this.durable,
         completedTick: result.execution.completedTick,
         revision,
         commands: [...this.durable.commands, stored],
-        stagedStateHash: executionHash(result.execution),
         updatedAt: now,
       };
+      // No staged hash is recomputed here: the staged authority has already
+      // become a committed month and recovery persists the completed receipt,
+      // not this now-terminal ActiveEmbodimentSnapshot.
       const completed: CompletedEmbodimentSnapshot = {
         schemaVersion: 1,
         id: this.durable.id,
@@ -669,9 +904,29 @@ export class EmbodimentCoordinator {
         completedAt: now,
       };
       this.terminal = { frame, completed };
+      outcome = 'committed';
       return { receipt, committedFrame: frame };
     } finally {
       if (!this.terminal) this.status = 'awaiting-command';
+      logPerf('embodiment-step-core', {
+        embodimentId: this.durable.id,
+        commandId: input.commandId,
+        actorId: this.durable.actorId,
+        branchId: this.durable.branchId,
+        month: this.durable.atMonth,
+        expectedTick: input.expectedTick,
+        completedTick: this.execution.completedTick,
+        commandKind: input.command.kind,
+        outcome,
+        cloneMs,
+        tickMs,
+        cloneTickMs: Math.round((cloneMs + tickMs) * 100) / 100,
+        hashMs,
+        viewMs,
+        finishMs,
+        commitMs,
+        totalMs: perfElapsed(totalStartedAt),
+      });
     }
   }
 
@@ -712,21 +967,42 @@ export class EmbodimentCoordinator {
     input: ReleaseEmbodimentRequest,
     fingerprint: string,
   ): Promise<EmbodimentReleaseResponse> {
+    const totalStartedAt = perfNow();
+    const releasedAfterTick = this.execution.completedTick;
+    let cloneMs = 0;
+    let tickMs = 0;
+    let finishMs = 0;
+    let commitMs = 0;
+    let autonomousTicks = 0;
+    let outcome = 'failed';
     this.status = 'releasing';
     try {
-      const releasedAfterTick = this.execution.completedTick;
+      const cloneStartedAt = perfNow();
       const candidate = cloneExecution(this.execution);
+      cloneMs = perfElapsed(cloneStartedAt);
       let lastTickEvents: WorldEvent[] = [];
+      const tickStartedAt = perfNow();
       while (candidate.completedTick < PLANNING_TICKS_PER_MONTH) {
         lastTickEvents = executePlanningTick(candidate).events;
+        autonomousTicks += 1;
       }
+      tickMs = perfElapsed(tickStartedAt);
       this.status = 'finalizing';
+      detachPastForFinish(candidate);
+      const finishStartedAt = perfNow();
       const state = finishMonthExecution(candidate);
-      const frame = await this.host.commitMonth({
-        state,
-        skySample: this.durable.skySample,
-        ...(this.durable.cosmosSnapshot ? { cosmosSnapshot: this.durable.cosmosSnapshot } : {}),
-      });
+      finishMs = perfElapsed(finishStartedAt);
+      const commitStartedAt = perfNow();
+      let frame: GameFrame;
+      try {
+        frame = await this.host.commitMonth({
+          state,
+          skySample: this.durable.skySample,
+          ...(this.durable.cosmosSnapshot ? { cosmosSnapshot: this.durable.cosmosSnapshot } : {}),
+        });
+      } finally {
+        commitMs = perfElapsed(commitStartedAt);
+      }
       const now = this.host.now?.() ?? Date.now();
       const receipt = {
         releaseId: input.releaseId,
@@ -750,9 +1026,28 @@ export class EmbodimentCoordinator {
         completedAt: now,
       };
       this.terminal = { frame, completed, releaseId: input.releaseId };
+      outcome = 'committed';
       return { receipt, committedFrame: frame };
     } finally {
       if (!this.terminal) this.status = 'awaiting-command';
+      logPerf('embodiment-release-core', {
+        embodimentId: this.durable.id,
+        releaseId: input.releaseId,
+        actorId: this.durable.actorId,
+        branchId: this.durable.branchId,
+        month: this.durable.atMonth,
+        releasedAfterTick,
+        autonomousTicks,
+        outcome,
+        cloneMs,
+        tickMs,
+        cloneTickMs: Math.round((cloneMs + tickMs) * 100) / 100,
+        hashMs: 0,
+        viewMs: 0,
+        finishMs,
+        commitMs,
+        totalMs: perfElapsed(totalStartedAt),
+      });
     }
   }
 }

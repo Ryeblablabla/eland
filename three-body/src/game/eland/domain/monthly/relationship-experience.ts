@@ -1,6 +1,6 @@
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../model';
 import type { PersonState } from '../person';
-import { ageMonths, isAlive } from '../person';
+import { ageMonths } from '../person';
 import {
   sharedActivityTickThreshold,
   youthfulSharedActivityTrustBonus,
@@ -13,6 +13,7 @@ import {
   REQUIRED_SHARED_LIVING_MONTHS,
   SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS,
 } from '../shared-living';
+import { livingPeople } from '../state-index';
 
 function adverseRelationshipPair(event: WorldEvent): string | undefined {
   if (event.kind !== 'action') return undefined;
@@ -47,7 +48,7 @@ export function advanceSharedRelationshipExperience(
     const pair = adverseRelationshipPair(fact);
     return pair ? [pair] : [];
   }));
-  const peopleById = new Map(state.people.filter(isAlive).map((person) => [person.id, person]));
+  const peopleById = new Map(livingPeople(state).map((person) => [person.id, person]));
   const sharedLivingAreaByPair = new Map(state.agreements
     .filter((agreement) => agreement.status === 'active' && agreement.proposal.kind === 'companion')
     .flatMap((agreement) => {

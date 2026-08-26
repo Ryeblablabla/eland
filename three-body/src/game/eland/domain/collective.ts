@@ -4,6 +4,7 @@ import type { PersonId } from './person';
 import { isAlive } from './person';
 import { agreementById, type Agreement } from './agreement';
 import type { DecisionRule, Mandate } from './governance';
+import { livingPeople, personById } from './state-index';
 
 export type MembershipStatus = 'active' | 'withdrawn' | 'ended';
 
@@ -56,8 +57,9 @@ export function activeCollectivesFor(state: SimulationState, personId: PersonId)
 }
 
 export function activeMemberIds(state: SimulationState, collective: CollectiveState): PersonId[] {
+  const livingIds = new Set(livingPeople(state).map((person) => person.id));
   return collective.memberships
-    .filter((item) => item.status === 'active' && state.people.some((person) => person.id === item.personId && isAlive(person)))
+    .filter((item) => item.status === 'active' && livingIds.has(item.personId))
     .map((item) => item.personId);
 }
 
@@ -100,7 +102,7 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
       const currentMemberIds = collective ? activeMemberIds(state, collective) : [];
       const expectedApprovers = new Set([...currentMemberIds.filter((id) => id !== proposal.proposerId), proposal.candidateId]);
       const proposedApprovers = new Set(proposal.requiredApproverIds);
-      const candidate = state.people.find((person) => person.id === proposal.candidateId && isAlive(person));
+      const candidate = livingPeople(state).find((person) => person.id === proposal.candidateId);
       const valid = Boolean(collective
         && collective.status !== 'dissolved'
         && activeMembership(collective, proposal.proposerId)
@@ -136,7 +138,7 @@ export function recordCollectiveAction(state: SimulationState, fact: ActionFact)
 export function advanceCollectiveLifecycle(state: SimulationState, atMonth: number): void {
   for (const collective of state.collectives) {
     for (const item of collective.memberships.filter((candidate) => candidate.status === 'active')) {
-      const person = state.people.find((candidate) => candidate.id === item.personId);
+      const person = personById(state, item.personId);
       if (person && isAlive(person)) continue;
       item.status = 'ended';
       item.endedAtMonth = atMonth;

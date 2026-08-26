@@ -69,7 +69,23 @@ export async function executeLongEvolution(
   initialPath: EvolutionPath,
 ): Promise<void> {
   const current = await store.load(id);
-  const controller = createSimulationFromOwnedState(current.state);
+  await executeLongEvolutionFromOwnedState(store, id, requestedEndMonth, initialPath, current.state);
+}
+
+/**
+ * Continues a long evolution from state already hydrated by the owning Worker.
+ * This is the memory-bounded path used by Worker bootstrap: loading the run,
+ * validating its identity, publishing the initial path, and evolving all share
+ * one authoritative state instance.
+ */
+export async function executeLongEvolutionFromOwnedState(
+  store: SqliteRunStore,
+  id: string,
+  requestedEndMonth: number,
+  initialPath: EvolutionPath,
+  initialState: SimulationState,
+): Promise<void> {
+  const controller = createSimulationFromOwnedState(initialState);
   let persisted = controller.ownedState();
   let path = initialPath;
   const inputTokens = path.checkpoints.at(-1)?.inputTokens ?? 0;

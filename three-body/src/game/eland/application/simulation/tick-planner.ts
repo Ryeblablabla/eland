@@ -1,6 +1,8 @@
 import { goalSatisfied } from '../../domain/action-executor';
 import { agreementsForPerson } from '../../domain/agreement';
-import { registerPlanningEventOverlay } from '../../domain/event-index';
+import { ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH } from '../../domain/decision-budget';
+import { inheritPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
+import { intentReviewAtMonth } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { Material } from '../../domain/material';
 import { strongestBereavementUrgency } from '../../domain/mortuary';
@@ -20,7 +22,7 @@ import {
   type PersonId,
   type PersonState,
 } from '../../domain/person';
-import { personById } from '../../domain/state-index';
+import { livingPeople, personById, projectsOwnedBy } from '../../domain/state-index';
 import {
   buildDecisionContext,
   cloneMutableProjectsForPlanning,
@@ -32,10 +34,11 @@ import { compileAgreementContinuations } from '../agreement-continuation';
 import { hasGroundedConversationResponseOpportunity } from '../conversation-options';
 import {
   groundedLifeReviewOpportunity,
+  isFulfillmentOption,
   isRequiredSocialOption,
   RulePlanner,
 } from '../rule-planner';
-import { activeIntent, applyDecision } from './intent-execution';
+import { activeIntent, applyDecision, decisionPlanningChannel } from './intent-execution';
 
 function personCanDecide(
   state: SimulationState,
@@ -49,8 +52,7 @@ function personCanDecide(
 }
 
 export function hasCoLocatedLivingParent(state: SimulationState, person: PersonState): boolean {
-  return state.people.some((candidate) => person.geneticParents.includes(candidate.id)
-    && isAlive(candidate)
+  return livingPeople(state).some((candidate) => person.geneticParents.includes(candidate.id)
     && sameLocation(candidate, person));
 }
 
@@ -73,12 +75,14 @@ export function buildDecisionContexts(
   state: SimulationState,
   atMonth = state.clock.elapsedMonths,
 ): DecisionContext[] {
-  return state.people.filter(isAlive).map((person) => buildDecisionContextForPerson(state, person, atMonth));
+  return livingPeople(state).map((person) => buildDecisionContextForPerson(state, person, atMonth));
 }
 
 interface CurrentMonthPlanningIndex {
+  atMonth: number;
   indexedLength: number;
   lastIndexedEvent?: WorldEvent;
+  events: WorldEvent[];
   lifeReviewsByPerson: Map<PersonId, DecisionFact[]>;
   groundedOpeningsByListener: Map<PersonId, ActionFact[]>;
   socialProposalsByAudience: Map<PersonId, ActionFact[]>;
@@ -89,10 +93,13 @@ const currentMonthPlanningIndexes = new WeakMap<WorldEvent[], CurrentMonthPlanni
 function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): CurrentMonthPlanningIndex {
   let index = currentMonthPlanningIndexes.get(events);
   if (!index
+    || index.atMonth !== atMonth
     || index.indexedLength > events.length
     || (index.indexedLength > 0 && events[index.indexedLength - 1] !== index.lastIndexedEvent)) {
     index = {
+      atMonth,
       indexedLength: 0,
+      events: [],
       lifeReviewsByPerson: new Map(),
       groundedOpeningsByListener: new Map(),
       socialProposalsByAudience: new Map(),
@@ -102,6 +109,7 @@ function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): Curre
   for (let offset = index.indexedLength; offset < events.length; offset += 1) {
     const event = events[offset];
     if (event.atMonth !== atMonth) continue;
+    index.events.push(event);
     if (event.kind === 'decision'
       && (event.decision.kind === 'start' || event.decision.kind === 'revise')
       && event.decision.lifeReview) {
@@ -127,6 +135,34 @@ function currentMonthPlanningIndex(events: WorldEvent[], atMonth: number): Curre
   index.indexedLength = events.length;
   index.lastIndexedEvent = events.at(-1);
   return index;
+}
+
+export interface LocalDeliberationCadence {
+  ordinaryDeliberationCounts: Map<PersonId, number>;
+  ordinaryReplanPermits: Set<PersonId>;
+}
+
+const fallbackCadences = new WeakMap<Set<PersonId>, LocalDeliberationCadence>();
+
+/**
+ * Direct diagnostic callers historically passed only reviewedPeople. Keep a
+ * process-local cadence for them; authoritative month execution always owns
+ * and passes the explicit replay/hash state.
+ */
+function localDeliberationCadence(
+  reviewedPeople: Set<PersonId>,
+  provided?: LocalDeliberationCadence,
+): LocalDeliberationCadence {
+  if (provided) return provided;
+  let cadence = fallbackCadences.get(reviewedPeople);
+  if (!cadence) {
+    cadence = {
+      ordinaryDeliberationCounts: new Map(),
+      ordinaryReplanPermits: new Set(),
+    };
+    fallbackCadences.set(reviewedPeople, cadence);
+  }
+  return cadence;
 }
 
 function hasPendingAgreementWork(
@@ -161,7 +197,6 @@ function needsFullPlanningReview(
 ): boolean {
   const active = activeIntent(state, person);
   if (!active) return true;
-  if (hasPendingAgreementWork(state, person, active, atMonth)) return true;
   if (planningTick === 1 && (
     person.body.health < 35
     || person.body.hydration < 28
@@ -174,7 +209,8 @@ function needsFullPlanningReview(
       || condition.kind === 'illness'
     ) && condition.stage >= 2)
   )) return true;
-  if (active.stateGoalUntilMonth !== undefined && atMonth > active.stateGoalUntilMonth) return true;
+  const reviewAtMonth = intentReviewAtMonth(active);
+  if (reviewAtMonth !== undefined && atMonth > reviewAtMonth) return true;
   return atMonth - active.lastProgressAtMonth >= 2
     && !goalSatisfied(state, person, active.goal);
 }
@@ -193,6 +229,7 @@ export function previewGroundedLifeReviewOpportunity(
     ...state,
     projects: cloneMutableProjectsForPlanning(state.projects),
   };
+  inheritPlanningEventOverlay(state, previewState);
   const previewPerson = personById(previewState, person.id);
   if (!previewPerson) return null;
   return groundedLifeReviewOpportunity(buildDecisionContext(previewState, previewPerson, atMonth));
@@ -224,6 +261,7 @@ function previewDemandBoundRecordUseOpportunity(
     ...state,
     projects: cloneMutableProjectsForPlanning(state.projects),
   };
+  inheritPlanningEventOverlay(state, previewState);
   const previewPerson = personById(previewState, person.id);
   return Boolean(previewPerson && buildDecisionContext(previewState, previewPerson, atMonth).options.some((option) => option.recordUseBasis));
 }
@@ -236,13 +274,31 @@ export function planLocallyForTick(
   events: WorldEvent[],
   planner: AgentDecider,
   reviewedPeople: Set<PersonId>,
+  cadenceInput?: LocalDeliberationCadence,
 ): void {
   if (!personCanDecide(state, person, atMonth)) return;
+  const cadence = localDeliberationCadence(reviewedPeople, cadenceInput);
+  if (!cadenceInput
+    && reviewedPeople.has(person.id)
+    && !cadence.ordinaryDeliberationCounts.has(person.id)) {
+    const priorDecisionFacts = events.filter((event): event is DecisionFact => event.kind === 'decision'
+      && event.atMonth === atMonth
+      && event.who === person.id);
+    if (!priorDecisionFacts.length || priorDecisionFacts.some((event) => event.planningChannel !== 'edge')) {
+      cadence.ordinaryDeliberationCounts.set(person.id, 1);
+    }
+  }
   const fullReview = needsFullPlanningReview(state, person, atMonth, planningTick);
   const current = activeIntent(state, person);
+  const ordinaryCount = cadence.ordinaryDeliberationCounts.get(person.id) ?? 0;
+  const hasOrdinaryPermit = cadence.ordinaryReplanPermits.has(person.id);
+  const firstOrdinaryReviewDue = ordinaryCount === 0 && fullReview;
+  const terminalOrdinaryReplanDue = !current
+    && hasOrdinaryPermit
+    && ordinaryCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH;
   const checkLifeOpportunity = planningTick === 1 && Boolean(current?.projectId);
-  const recordUsePreflight = Boolean(current?.projectId)
-    && !current?.recordUseBasis
+  const recordUsePreflight = !current?.recordUseBasis
+    && projectsOwnedBy(state, person.id).some((project) => project.status === 'active')
     && hasPerceivedWrittenRecordCarrier(state, person);
   let cachedRecordUseOpportunity: boolean | undefined;
   const hasRecordUseOpportunity = (): boolean => {
@@ -261,11 +317,7 @@ export function planLocallyForTick(
   const checkProjectKnowledgeRequest = Boolean(projectKnowledgeTeachingOpportunity(state, person, atMonth));
   const currentMonthGroundedOpenings = planningIndex.groundedOpeningsByListener.get(person.id) ?? [];
   const currentMonthSocialProposals = planningIndex.socialProposalsByAudience.get(person.id) ?? [];
-  const planningEvidence = [
-    ...lifeReviewEvents,
-    ...currentMonthGroundedOpenings,
-    ...currentMonthSocialProposals,
-  ];
+  const planningEvidence = planningIndex.events;
   const planningState = planningEvidence.length ? { ...state } : state;
   if (planningState !== state) registerPlanningEventOverlay(planningState, planningEvidence);
   const planningPerson = personById(planningState, person.id) ?? person;
@@ -277,39 +329,30 @@ export function planLocallyForTick(
     : hasGroundedConversationResponseOpportunity(state, person, atMonth);
   const checkCurrentMonthRequiredResponse = currentMonthSocialProposals.length > 0
     && contextForPlanning().options.some(isRequiredSocialOption);
+  const checkPendingAgreementWork = hasPendingAgreementWork(state, person, current, atMonth);
   const alreadyReviewed = reviewedPeople.has(person.id);
-  if (alreadyReviewed
-    && !hasRecordUseOpportunity()
-    && !checkTechniqueRequest
-    && !checkProjectKnowledgeRequest
-    && !checkGroundedConversationResponse
-    && !checkCurrentMonthRequiredResponse) return;
-  if (!fullReview
-    && !checkLifeOpportunity
-    && !recordUsePreflight
-    && !checkTechniqueRequest
-    && !checkProjectKnowledgeRequest
-    && !checkGroundedConversationResponse
-    && !checkCurrentMonthRequiredResponse) return;
-  if (!fullReview) {
-    const hasLifeOpportunity = !alreadyReviewed && checkLifeOpportunity
-      && !lifeReviewEvents.length
-      && Boolean(previewGroundedLifeReviewOpportunity(state, person, atMonth));
-    const recordUseOpportunity = hasRecordUseOpportunity();
-    const hasTechniqueDemonstration = checkTechniqueRequest
-      && contextForPlanning().options
-        .some((option) => option.id.startsWith('demonstrate-technique:'));
-    const hasProjectKnowledgeResponse = checkProjectKnowledgeRequest
-      && contextForPlanning().options.some((option) => option.nextAction.kind === 'communicate'
-        && option.nextAction.content.kind === 'claim'
-        && Boolean(option.nextAction.content.projectKnowledgeResponse));
-    if (!hasLifeOpportunity
-      && !recordUseOpportunity
-      && !hasTechniqueDemonstration
-      && !hasProjectKnowledgeResponse
-      && !checkGroundedConversationResponse
-      && !checkCurrentMonthRequiredResponse) return;
-  }
+  const hasLifeOpportunity = !alreadyReviewed && checkLifeOpportunity
+    && !lifeReviewEvents.length
+    && Boolean(previewGroundedLifeReviewOpportunity(state, person, atMonth));
+  const recordUseOpportunity = hasRecordUseOpportunity();
+  const hasTechniqueDemonstration = checkTechniqueRequest
+    && contextForPlanning().options
+      .some((option) => option.id.startsWith('demonstrate-technique:'));
+  const hasProjectKnowledgeResponse = checkProjectKnowledgeRequest
+    && contextForPlanning().options.some((option) => option.nextAction.kind === 'communicate'
+      && option.nextAction.content.kind === 'claim'
+      && Boolean(option.nextAction.content.projectKnowledgeResponse));
+  const hasPendingAgreementOption = checkPendingAgreementWork
+    && contextForPlanning().options.some((option) => isRequiredSocialOption(option) || isFulfillmentOption(option));
+  const ordinaryReviewDue = firstOrdinaryReviewDue || terminalOrdinaryReplanDue;
+  const edgeReviewDue = hasLifeOpportunity
+    || recordUseOpportunity
+    || hasTechniqueDemonstration
+    || hasProjectKnowledgeResponse
+    || checkGroundedConversationResponse
+    || checkCurrentMonthRequiredResponse
+    || hasPendingAgreementOption;
+  if (!ordinaryReviewDue && !edgeReviewDue) return;
   // Current-month requests and social proposals mutate their authoritative
   // project/agreement immediately, while their action facts join world.past at
   // month end. The overlay makes those facts resolvable on the next tick.
@@ -318,9 +361,30 @@ export function planLocallyForTick(
   const decision = timedPlanner.decideAt
     ? timedPlanner.decideAt(context, { atMonth, planningTick })
     : planner.decide(context);
+  const planningChannel = decisionPlanningChannel(context, decision);
+  if (planningChannel === 'ordinary') {
+    const latestCount = cadence.ordinaryDeliberationCounts.get(person.id) ?? 0;
+    const canSpendFirst = latestCount === 0;
+    const canSpendTerminalReplan = !activeIntent(state, person)
+      && cadence.ordinaryReplanPermits.has(person.id)
+      && latestCount < ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH;
+    if (!canSpendFirst && !canSpendTerminalReplan) return;
+    if (cadence.ordinaryReplanPermits.has(person.id)) cadence.ordinaryReplanPermits.delete(person.id);
+    cadence.ordinaryDeliberationCounts.set(person.id, latestCount + 1);
+  }
   reviewedPeople.add(person.id);
   // Stable plans and genuinely empty affordance sets do not produce repetitive
   // "continue living" facts. The active intent is simply executed below.
   if (decision.kind === 'idle') return;
-  events.push(applyDecision(state, person, context, decision, false, atMonth, events.length, planningTick));
+  events.push(applyDecision(
+    state,
+    person,
+    context,
+    decision,
+    false,
+    atMonth,
+    events.length,
+    planningTick,
+    planningChannel,
+  ));
 }

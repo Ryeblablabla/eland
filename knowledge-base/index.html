@@ -30,6 +30,7 @@
   .status-dot { float:right; margin-top:1px; padding:2px 5px; border-radius:999px; font-size:8px;
     letter-spacing:.5px; font-weight:700; line-height:1.2; }
   .status-dot.live { color:#9fe2b2; background:rgba(75,173,105,.14); border:1px solid rgba(94,204,128,.28); }
+  .status-dot.ready { color:#ffd08a; background:rgba(204,145,54,.13); border:1px solid rgba(230,171,75,.30); }
   .status-dot.prototype { color:#a9b2be; background:rgba(138,149,163,.10); border:1px solid rgba(138,149,163,.20); }
   .group { margin-top:14px; padding:0 6px; font-size:9px; letter-spacing:2px; color:#566070; }
   .section-title { margin-top:18px; padding:6px; font-size:10px; letter-spacing:3px; color:#8b95a1;
@@ -68,7 +69,27 @@
   #detail .status { display:inline-block; margin:2px 0 7px; padding:2px 6px; border-radius:999px;
     font-size:9px; letter-spacing:.08em; }
   #detail .status.live { color:#9fe2b2; background:rgba(75,173,105,.13); border:1px solid rgba(94,204,128,.25); }
+  #detail .status.ready { color:#ffd08a; background:rgba(204,145,54,.13); border:1px solid rgba(230,171,75,.28); }
   #detail .status.prototype { color:#a9b2be; background:rgba(138,149,163,.10); border:1px solid rgba(138,149,163,.20); }
+  #portraitPreview {
+    position:fixed; left:214px; right:282px; bottom:42px; z-index:9;
+    padding:12px 14px 13px; border-radius:10px;
+    background:rgba(12,15,19,.84); border:1px solid rgba(255,208,138,.18);
+    backdrop-filter:blur(10px); color:#aab4bf;
+  }
+  #portraitPreview[hidden] { display:none; }
+  #portraitPreview header { display:flex; justify-content:space-between; gap:14px; align-items:baseline; margin-bottom:10px; }
+  #portraitPreview header b { color:#f0e4cf; font-size:11px; letter-spacing:.08em; }
+  #portraitPreview header span { color:#74808b; font-size:9px; text-align:right; }
+  .portrait-strip { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:9px; }
+  .portrait-age-card { min-width:0; padding:6px; border-radius:7px; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); }
+  .portrait-age-card img { display:block; width:100%; max-height:112px; object-fit:contain; image-rendering:auto; }
+  .portrait-age-card b { display:block; margin-top:5px; color:#d9e0e6; font-size:9px; font-weight:600; }
+  .portrait-age-card small { display:block; margin-top:2px; color:#78838e; font-size:8px; }
+  @media (max-width:960px) {
+    #portraitPreview { right:16px; }
+    .portrait-strip { grid-template-columns:repeat(6,minmax(104px,1fr)); overflow-x:auto; padding-bottom:4px; }
+  }
 </style>
 <script type="importmap">
 {
@@ -127,6 +148,10 @@
     <button class="tool" id="btnJSON">导出 JSON</button>
   </div>
   <div id="detail"></div>
+  <section id="portraitPreview" hidden aria-label="同一后代的年龄头像预览">
+    <header><b>同一人物 · 六个年龄阶段</b><span>ID 与亲缘决定身份，年龄只切换版本</span></header>
+    <div class="portrait-strip" id="portraitStrip"></div>
+  </section>
   <div id="hint">左键旋转 · 右键平移 · 滚轮缩放 · P 人物长卷 · 9 建筑长卷 · 0 环境长卷</div>
   <div id="stats"></div>
 </div>
@@ -170,11 +195,13 @@ const MATS = {
   woodDark:  std({ roughness:0.80, metalness:0.00 }),
   groundMark:std({ roughness:1.00, metalness:0.00 }),
   roofTile:  std({ roughness:0.80, metalness:0.02 }),
+  brick:     std({ roughness:0.92, metalness:0.00 }),
   accent:    std({ roughness:0.55, metalness:0.05 }),   // 漆面（红漆柱等）
   skin:      std({ roughness:0.82, metalness:0.00 }),   // 人物皮肤（颜色由实例决定）
   clothBand: std({ roughness:0.90, metalness:0.00 }),   // 衣料 / 脱水束带
   panel:     std({ roughness:0.30, metalness:0.60 }),   // 太阳能板
   metal:     std({ roughness:0.22, metalness:1.00 }),
+  copperMetal:std({ roughness:0.32, metalness:0.72 }),
   darkMetal: std({ roughness:0.42, metalness:0.90 }),
   glass:     phys({ transmission:1.00, roughness:0.06, ior:1.52, thickness:1.2, specularIntensity:1.1 }),
   glassDark: phys({ transmission:0.92, roughness:0.10, ior:1.52, thickness:1.5 }),
@@ -188,7 +215,7 @@ const MATS = {
                    depthWrite:false, emissive:0x123b4a, emissiveIntensity:0.08 }),
 };
 const CAST_SHADOW = new Set(['stone','concrete','plaster','thatch','wood','woodDark',
-  'roofTile','accent','skin','clothBand','panel','metal','darkMetal','grass','leaf']);
+  'roofTile','brick','accent','skin','clothBand','panel','metal','copperMetal','darkMetal','grass','leaf']);
 
 /* ================= 体素构建器 ================= */
 // 与生产装饰层同构：一个地图格内有 8×8 微体素。旧单元是 2×2×2 微体素 cuboid，尺寸不变。
@@ -1270,8 +1297,7 @@ function dirtPreviewFilledCorners(road,x,z){
   }
   return result;
 }
-/** 与生产装饰层同构：每地图格 8×8 微体素，中心线栅格化成连续泥面。 */
-function genDirtPathCell(B,cellX,cellZ,connections,filledCorners,seed){
+function dirtPathPreviewGeometry(connections){
   const edge=d=>({x:d.dx*0.53,z:d.dz*0.53});
   const lines=[];
   let junction=false;
@@ -1294,6 +1320,11 @@ function genDirtPathCell(B,cellX,cellZ,connections,filledCorners,seed){
     junction=true;
     connections.forEach(d=>lines.push([{x:0,z:0},edge(d)]));
   }
+  return {lines,junction};
+}
+/** 与生产装饰层同构：每地图格 8×8 微体素，中心线栅格化成连续泥面。 */
+function genDirtPathCell(B,cellX,cellZ,connections,filledCorners,seed){
+  const {lines,junction}=dirtPathPreviewGeometry(connections);
   const roadMicros=[];
   for(let mz=0;mz<MICRO_PER_MAP_CELL;mz++)for(let mx=0;mx<MICRO_PER_MAP_CELL;mx++){
     const local={x:(mx+0.5)/MICRO_PER_MAP_CELL-0.5,z:(mz+0.5)/MICRO_PER_MAP_CELL-0.5};
@@ -1347,15 +1378,126 @@ function genDirtPath(B){
   }
 }
 
-/** 石板路：三宽石板 + 路缘 + 苔痕 */
-function genStoneRoad(B){
-  for(let x=-9;x<=9;x++) for(let z=-1;z<=1;z++){
-    if (rand()<0.06){ B.vox('grass', x,0,z, vary(0x6f7a5f,0.02,0.1,0.08)); continue; } // 苔痕/缝隙草
-    B.vox('stone', x,0,z, vary(0x9a9da2,0,0.04,0.08));
+/** 农耕石板路：顺着真实道路方向铺短条旗石，苔痕只长在少量石缝上。 */
+function genStoneRoadCell(B,cellX,cellZ,connections,filledCorners,seed){
+  const profile={
+    width:0.305,junctionRadius:0.36,edgeThreshold:0.225,
+    center:0x978f82,alternate:0xa49b8d,curb:0x7c756b,moss:0x657052,
+    mossChance:0.045,inset:0.006,height:0.014,
+  };
+  const {lines,junction}=dirtPathPreviewGeometry(connections);
+  const cells=new Array(MICRO_PER_MAP_CELL*MICRO_PER_MAP_CELL);
+  for(let mz=0;mz<MICRO_PER_MAP_CELL;mz++)for(let mx=0;mx<MICRO_PER_MAP_CELL;mx++){
+    const local={x:(mx+0.5)/MICRO_PER_MAP_CELL-0.5,z:(mz+0.5)/MICRO_PER_MAP_CELL-0.5};
+    let distance=Infinity,tangentX=1,tangentZ=0;
+    for(const line of lines)for(let i=1;i<line.length;i++){
+      const segmentDistance=dirtSegmentDistance(local,line[i-1],line[i]);
+      if(segmentDistance<distance){
+        distance=segmentDistance;
+        tangentX=line[i].x-line[i-1].x;
+        tangentZ=line[i].z-line[i-1].z;
+      }
+    }
+    const microId=mz*MICRO_PER_MAP_CELL+mx;
+    const edgeNoise=(dirtHash(seed^microId,221)-0.5)*0.025;
+    const insideRibbon=distance<=profile.width+edgeNoise;
+    const insideJunction=junction&&Math.hypot(local.x,local.z)<=profile.junctionRadius+edgeNoise;
+    const insideFilledCorner=filledCorners.some(({dx,dz})=>
+      dx!==0&&dz!==0&&local.x*dx>0.18&&local.z*dz>0.18);
+    if(!insideRibbon&&!insideJunction&&!insideFilledCorner)continue;
+    cells[microId]={mx,mz,local,distance,insideFilledCorner,insideJunction,tangentX,tangentZ};
   }
-  for(let x=-9;x<=9;x++){
-    B.vox('stone', x,0,-2, vary(0x7d8288,0,0.05,0.07));
-    B.vox('stone', x,0, 2, vary(0x7d8288,0,0.05,0.07));
+
+  const claimed=new Set();
+  for(let mz=0;mz<MICRO_PER_MAP_CELL;mz++)for(let mx=0;mx<MICRO_PER_MAP_CELL;mx++){
+    const microId=mz*MICRO_PER_MAP_CELL+mx,cell=cells[microId];
+    if(!cell||claimed.has(microId))continue;
+    const horizontal=Math.abs(cell.tangentX)>Math.abs(cell.tangentZ)
+      ||(Math.abs(cell.tangentX)===Math.abs(cell.tangentZ)&&dirtHash(seed^microId,229)>0.5);
+    const curb=!cell.insideFilledCorner&&!cell.insideJunction&&cell.distance>profile.edgeThreshold;
+    const lengthRoll=dirtHash(seed^microId,230);
+    const desiredLength=lengthRoll>0.88?3:lengthRoll>0.16?2:1;
+    const members=[cell]; claimed.add(microId);
+    for(let step=1;step<desiredLength;step++){
+      const nextX=mx+(horizontal?step:0),nextZ=mz+(horizontal?0:step);
+      if(nextX>=MICRO_PER_MAP_CELL||nextZ>=MICRO_PER_MAP_CELL)break;
+      const nextId=nextZ*MICRO_PER_MAP_CELL+nextX,next=cells[nextId];
+      if(!next||claimed.has(nextId))break;
+      const nextHorizontal=Math.abs(next.tangentX)>Math.abs(next.tangentZ)
+        ||(Math.abs(next.tangentX)===Math.abs(next.tangentZ)&&horizontal);
+      const nextCurb=!next.insideFilledCorner&&!next.insideJunction&&next.distance>profile.edgeThreshold;
+      if(nextHorizontal!==horizontal||nextCurb!==curb)break;
+      members.push(next); claimed.add(nextId);
+    }
+
+    if(dirtHash(seed^microId,238)>0.76){
+      const crossMembers=[];
+      for(const member of members){
+        const nextX=member.mx+(horizontal?0:1),nextZ=member.mz+(horizontal?1:0);
+        if(nextX>=MICRO_PER_MAP_CELL||nextZ>=MICRO_PER_MAP_CELL){crossMembers.length=0;break;}
+        const nextId=nextZ*MICRO_PER_MAP_CELL+nextX,next=cells[nextId];
+        if(!next||claimed.has(nextId)){crossMembers.length=0;break;}
+        const nextHorizontal=Math.abs(next.tangentX)>Math.abs(next.tangentZ)
+          ||(Math.abs(next.tangentX)===Math.abs(next.tangentZ)&&horizontal);
+        const nextCurb=!next.insideFilledCorner&&!next.insideJunction&&next.distance>profile.edgeThreshold;
+        if(nextHorizontal!==horizontal||nextCurb!==curb){crossMembers.length=0;break;}
+        crossMembers.push(next);
+      }
+      for(const next of crossMembers){
+        members.push(next); claimed.add(next.mz*MICRO_PER_MAP_CELL+next.mx);
+      }
+    }
+
+    const minX=Math.min(...members.map(member=>member.local.x));
+    const maxX=Math.max(...members.map(member=>member.local.x));
+    const minZ=Math.min(...members.map(member=>member.local.z));
+    const maxZ=Math.max(...members.map(member=>member.local.z));
+    const slabCenterX=(minX+maxX)/2,slabCenterZ=(minZ+maxZ)/2;
+    const slabWidthX=maxX-minX+1/MICRO_PER_MAP_CELL;
+    const slabWidthZ=maxZ-minZ+1/MICRO_PER_MAP_CELL;
+    const tileSeed=seed^microId^members.length*0x45d9f3b;
+    const slabHeight=profile.height+dirtHash(tileSeed,231)*0.006;
+    const baseColor=curb?profile.curb:dirtHash(tileSeed,232)>0.53?profile.alternate:profile.center;
+    const jitterAcross=(dirtHash(tileSeed,233)-0.5)*0.005;
+    const x=cellX*8+(slabCenterX+(horizontal?0:jitterAcross))*8;
+    const z=cellZ*8+(slabCenterZ+(horizontal?jitterAcross:0))*8;
+    const sx=(slabWidthX-profile.inset*(horizontal?0.8:1.15))*8;
+    const sz=(slabWidthZ-profile.inset*(horizontal?1.15:0.8))*8;
+    const sy=slabHeight*8;
+    B.microCuboid('stone',x,2.008,z,sx,sy,sz,
+      dirtColor(baseColor,0.4+dirtHash(tileSeed,234)*0.24));
+
+    if(!curb&&dirtHash(tileSeed,235)>1-profile.mossChance){
+      const seamSign=dirtHash(tileSeed,236)>0.5?1:-1;
+      B.microCuboid(
+        'groundMark',
+        x+(horizontal?seamSign*(sx/2-0.064):0),
+        2.008+sy,
+        z+(horizontal?0:seamSign*(sz/2-0.064)),
+        horizontal?0.128:Math.max(0.42,sx*0.56),
+        0.016,
+        horizontal?Math.max(0.42,sz*0.56):0.128,
+        dirtColor(profile.moss,0.42+dirtHash(tileSeed,237)*0.18),
+      );
+    }
+  }
+}
+
+/** 石板路：用和主游戏相同的八向路网、错缝旗石和同尺度参数做预览。 */
+function genStoneRoad(B){
+  const road=new Set();
+  const add=(x,z)=>road.add(`${x}|${z}`);
+  for(let x=-2;x<=2;x++)add(x,0);
+  for(let z=-2;z<=2;z++)add(0,z);
+  add(-1,1); add(-2,2);
+  add(3,-1); add(4,-2);
+  add(2,2); add(3,2); add(2,3); add(3,3);
+  for(const key of road){
+    const [x,z]=key.split('|').map(Number);
+    genStoneRoadCell(
+      B,x,z,dirtPreviewConnections(road,x,z),dirtPreviewFilledCorners(road,x,z),
+      Math.imul(x+17,73856093)^Math.imul(z+29,19349663),
+    );
   }
 }
 
@@ -2012,19 +2154,254 @@ function genMetalWorkshop(B, kind){
   for(const x of [-2,0,2]) B.vox(bronze?'metal':'darkMetal',x,1,2,bronze?0xa36c38:0x464b50);
 }
 
-/** 材料链样品：矿石、黏土与木/石/青铜/铁工具。 */
+/** 矿石样品：保留同一低矮矿堆占地，用围岩、断面和矿脉区分铜 / 锡 / 铁。 */
+function genOreSample(B, kind){
+  const profiles={
+    copper_ore:{rock:0x52695f,deep:0x344a43,vein:0x6ca17f},
+    tin_ore:{rock:0x737d82,deep:0x4d565c,vein:0xb3c0c4},
+    iron_ore:{rock:0x6f4f42,deep:0x493a35,vein:0xa25e3d},
+  };
+  const p=profiles[kind]||profiles.iron_ore;
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  const rocks=[
+    [-3.0,0,-1.6,2.1,1.6,2.0],[-1.0,0,-1.8,2.6,1.9,2.2],[1.3,0,-1.4,2.1,1.5,1.9],[3.0,0,-.8,1.8,1.6,2.2],
+    [-2.7,0,1.1,1.9,1.5,2.4],[-.7,0,1.3,2.4,2.0,2.2],[1.7,0,1.3,2.3,1.7,2.2],[3.2,.1,1.4,1.6,1.5,1.7],
+    [-1.7,1.25,-.4,1.9,1.6,1.7],[.3,1.35,-.3,2.2,2.1,1.9],[1.8,1.25,.2,1.7,1.6,1.7],[-.3,2.85,.2,1.4,1.2,1.3],
+  ];
+  rocks.forEach(([x,y,z,sx,sy,sz],i)=>m(i%3===1?'darkMetal':'stone',x,y,z,sx,sy,sz,
+    vary(i%3===1?p.deep:p.rock,0.01,0.07,0.07)));
+  const veins=kind==='copper_ore'
+    ? [[-3.0,1.02,-.56,1.45,.34,.18],[-.70,1.32,2.44,1.45,.30,.18],[1.70,1.18,2.44,1.30,.30,.18],[.30,3.02,.70,.78,.34,.18]]
+    : kind==='tin_ore'
+      ? [[-3.0,1.02,-.56,1.35,.32,.18],[-.70,1.34,2.44,1.55,.30,.18],[1.70,1.16,2.44,1.35,.30,.18],[.30,3.02,.70,.86,.32,.18]]
+      : [[-3.0,1.02,-.56,1.35,.38,.20],[-.70,1.32,2.44,1.45,.34,.20],[1.70,1.14,2.44,1.40,.34,.20],[.30,3.02,.70,.82,.36,.20]];
+  veins.forEach(([x,y,z,sx,sy,sz])=>m('accent',x,y,z,sx,sy,sz,vary(p.vein,0.01,0.08,0.06)));
+  for(const [x,y,z] of [[-3.55,1.35,-.2],[-1.45,2.7,.2],[.15,3.95,.1],[2.8,2.75,1.4],[3.35,1.85,-.7]])
+    m('stone',x,y,z,1.15,.9,1.05,vary(p.rock,0.01,0.08,0.08));
+}
+
+/** 冶炼金属：带缩腰和铸造印记的锭垛，不再使用木箱或麻袋。 */
+function genMetalIngotStack(B, kind){
+  const colors={copper:0xb56537,tin:0xaeb8b9,bronze:0xb07936,iron:0x5d6365,steel:0x767e82};
+  const type=kind==='copper'||kind==='bronze'?'copperMetal':kind==='iron'||kind==='steel'?'darkMetal':'metal';
+  const color=colors[kind]||colors.iron;
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  const bars=[[-2.0,0,-1.4,0],[2.0,0,-1.4,0],[-2.0,0,1.4,0],[2.0,0,1.4,0],[0,1.15,-.75,1],[0,1.15,1.25,1],[0,2.30,.15,0]];
+  bars.forEach(([x,y,z,cross],i)=>{
+    const sx=cross?2.6:3.5,sz=cross?3.5:2.6;
+    m(type,x,y,z,sx,1.05,sz,vary(color,0.008,0.05,0.07));
+    m(type,x,y+1.05,z,sx*.72,.34,sz*.72,vary(color,0.008,0.04,0.10));
+    m('groundMark',x,y+1.40,z,cross?1.15:.26,.08,cross?.26:1.15,kind==='steel'?0xc0c8cb:0x5f4935);
+  });
+}
+
+/** 海绵铁保持多孔团块；形态上和已经精炼、规整堆放的铁锭分开。 */
+function genIronBloom(B){
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  const lumps=[[-2.1,0,-1.3,3.4,2.4,3.0],[1.3,0,-1.2,3.0,2.0,2.7],[-.5,.2,1.5,3.8,2.7,3.1],[2.7,.1,1.5,2.1,1.8,2.0],[.1,1.6,.1,2.5,2.1,2.4]];
+  lumps.forEach(([x,y,z,sx,sy,sz],i)=>m(i%2?'darkMetal':'metal',x,y,z,sx,sy,sz,
+    vary(i%2?0x4d4945:0x6b655e,0.005,0.04,0.09)));
+  for(const [x,y,z] of [[-2.6,1.7,-2.82],[-.2,3.25,1.45],[1.7,1.55,-2.5],[2.95,1.2,2.38]])
+    m('groundMark',x,y,z,.42,.34,.16,0x282725);
+}
+
+/** 冶炼配料：浅耐火料盘中混合矿粒与木炭；钢料使用更深色、致密的回炉块。 */
+function genSmeltingCharge(B, kind){
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  const colors={copper_charge:0x4c5b4d,tin_charge:0x5e6468,iron_charge:0x4f3d36,steel_charge:0x434647};
+  const color=colors[kind]||colors.iron_charge;
+  m('brick',0,0,0,8,1,6,0x754b3b);
+  for(const [x,z,sx,sz] of [[-3.5,0,1,5],[3.5,0,1,5],[0,-2.5,6,1],[0,2.5,6,1]])
+    m('brick',x,1,z,sx,1.4,sz,0x8a5540);
+  const pieces=[[-2.6,-1.4,1.5,1.2],[0,-1.6,1.7,1.0],[2.4,-1.1,1.4,1.5],[-1.5,.5,1.8,1.6],[1.1,.6,1.5,1.7],[-.2,1.75,1.4,1.0]];
+  pieces.forEach(([x,z,sx,sz],i)=>m(i%3===1?'woodDark':'darkMetal',x,1.1,z,sx,1.0+(i%2)*.55,sz,
+    i%3===1?0x30302f:vary(color,.006,.04,.06)));
+}
+
+/** 烧结砖：按真实砖材形态错缝平码，缺角和色差只做稳定视觉细节。 */
+function genFiredBrickStack(B){
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  for(let layer=0;layer<4;layer++){
+    const alongX=layer%2===0;
+    const count=layer===3?3:4;
+    for(let i=0;i<count;i++){
+      const offset=(i-(count-1)/2)*2.05;
+      const x=alongX?offset:(i%2?1.05:-1.05),z=alongX?(i%2?1.05:-1.05):offset;
+      m('brick',x,layer*1.05,z,alongX?1.86:3.90,.92,alongX?3.90:1.86,
+        vary(i===count-1&&layer===2?0x8b4937:0x9f4e34,0.01,0.08,0.07));
+    }
+  }
+  m('brick',4.7,.08,2.8,2.9,.78,1.55,0x8f4633);
+  m('groundMark',5.55,.86,3.38,.55,.12,.20,0x563329);
+}
+
+/** 生产工具架：每个时代都保留手柄，但用真实刀头语义形成不同剪影。 */
+function genProductionTools(B, kind){
+  const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+  m('woodDark',0,0,-2.4,8,1,1,0x5b3f2b);
+  for(const x of [-3.2,3.2])m('woodDark',x,0,-2.4,1,5,1,0x5b3f2b);
+  const headType=kind==='wood_tool'?'wood':kind==='stone_hoe'?'stone':kind==='bronze_tool'?'metal':'darkMetal';
+  const headColor={wood_tool:0x855731,stone_hoe:0x716f67,bronze_tool:0xb98038,iron_tool:0x666c6e}[kind];
+  // 主工具：锄 / 斧 / 锤，刀头宽度和安装方向按材质时代变化。
+  m('wood',-2.2,.65,0,1,7,1,0x775136);
+  m(headType,-2.2,7.2,kind==='stone_hoe'?1.0:0,kind==='iron_tool'?4.0:3.2,1.5,kind==='stone_hoe'?2.7:1.5,headColor);
+  // 副工具：木槌、石镰、青铜凿或铁镐。
+  m('wood',1.6,.65,.2,1,6.6,1,0x775136);
+  if(kind==='stone_hoe'){
+    m('stone',2.55,6.1,.2,2.8,1.2,1.1,headColor);
+    m('stone',3.55,5.35,.2,1.0,2.3,1.1,0x65635d);
+  }else if(kind==='bronze_tool'){
+    m('metal',1.6,6.45,.2,1.4,3.2,1.4,headColor);
+    m('metal',3.0,7.25,.2,2.4,.7,.72,0xc08a43);
+  }else if(kind==='iron_tool'){
+    m('darkMetal',1.6,6.3,.2,5.0,1.2,1.25,headColor);
+    m('darkMetal',3.85,5.75,.2,.65,2.2,1.0,0x53585a);
+  }else{
+    m('wood',1.6,6.45,.2,3.4,2.0,1.7,headColor);
+    m('woodDark',3.15,6.8,.2,.55,1.2,1.9,0x5b3f2b);
+  }
+}
+
+/** 兼容现有素材 key；专用模型按权威 material key 分派。 */
 function genEraMaterial(B, kind){
-  const colors={clay:0xa9664e,copper:0x9b6546,tin:0x8b9298,ironore:0x665c55,woodtool:0x8a613d,stonehoe:0x77746e,bronzetool:0xaa713c,irontool:0x4d5358};
-  const tool=kind.endsWith('tool')||kind==='stonehoe';
-  if(tool){
-    box(B,'wood',0,1,0,0,7,0,()=>0x765038);
-    box(B,kind==='woodtool'?'wood':kind==='stonehoe'?'stone':kind==='bronzetool'?'metal':'darkMetal',-2,7,0,2,8,0,()=>colors[kind]);
+  if(kind==='clay'){
+    const y0=2,m=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,x,y0+y,z,sx,sy,sz,c);
+    for(const [x,y,z,sx,sy,sz] of [[-2,0,-1,4,2.2,3],[1.6,0,-1.2,3.2,1.6,2.5],[-.2,.2,1.7,4.4,2.5,2.8]])
+      m('brick',x,y,z,sx,sy,sz,vary(0xa9664e,0.02,0.10,0.08));
     return;
   }
-  for(let i=0;i<18;i++){
-    const x=Math.round((rand()-.5)*6),z=Math.round((rand()-.5)*6),y=1+Math.floor(rand()*2);
-    B.vox(kind==='clay'?'brick':kind==='tin'?'metal':kind==='ironore'?'darkMetal':'stone',x,y,z,vary(colors[kind],0.02,0.10,0.08));
+  if(kind==='copper'||kind==='tin'||kind==='ironore'){
+    genOreSample(B,kind==='copper'?'copper_ore':kind==='tin'?'tin_ore':'iron_ore');
+    return;
   }
+  genProductionTools(B,{woodtool:'wood_tool',stonehoe:'stone_hoe',bronzetool:'bronze_tool',irontool:'iron_tool'}[kind]||kind);
+}
+
+/* ================= 工业机械 / 度量 / 电力链原型 ================= */
+
+function componentWriter(B, ox=0, oz=0){
+  const y0=2;
+  return (type,x,y,z,sx,sy,sz,color)=>B.microCuboid(type,ox+x,y0+y,oz+z,sx,sy,sz,color);
+}
+
+function buildSteelDriveShaft(B, ox=0, oz=0){
+  const m=componentWriter(B,ox,oz);
+  m('stone',-4.5,0,0,2.2,2.0,4.2,0x716e68); m('stone',4.5,0,0,2.2,2.0,4.2,0x716e68);
+  m('darkMetal',-4.5,2.0,0,1.6,2.5,2.2,0x444b4e); m('darkMetal',4.5,2.0,0,1.6,2.5,2.2,0x444b4e);
+  m('metal',0,3.0,0,11.5,1.05,1.05,0x767e82);
+  for(const x of [-3.4,3.4])m('darkMetal',x,2.78,0,1.1,1.5,1.5,0x596064);
+  // 钢轴右端的方形联轴节与定位销，和青铜轴外观直接区分。
+  m('metal',6.0,2.65,0,1.8,1.75,1.75,0x8a9397);
+  m('groundMark',6.0,4.38,0,.32,.55,.32,0x303638);
+  // 轴上飞轮：体素环只表达转动部件，不暗示正在运转。
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6;
+    m('darkMetal',-1.4,3.0+Math.cos(a)*2.65,Math.sin(a)*2.65,1.0,1.0,1.0,0x555d60);
+  }
+  m('darkMetal',-1.4,.85,0,.7,5.4,.7,0x596064); m('darkMetal',-1.4,3.0,-2.2,.7,.7,4.4,0x596064);
+}
+function genSteelDriveShaft(B){ buildSteelDriveShaft(B); }
+
+function buildBeamBalance(B, ox=0, oz=0){
+  const m=componentWriter(B,ox,oz);
+  m('woodDark',0,0,0,9,1.1,5.5,0x563c2a); m('wood',0,1.1,0,6.8,.65,3.7,0x88603a);
+  m('woodDark',0,1.75,0,1.25,6.2,1.25,0x67482f);
+  m('metal',0,7.95,0,1.25,1.0,2.1,0x8e6f43);
+  m('wood',0,8.4,0,12.2,.72,.72,0x92704a);
+  m('darkMetal',0,7.75,.52,.34,1.35,.34,0x555a5d);
+  for(const x of [-5.4,5.4]){
+    m('darkMetal',x,7.15,0,.24,2.45,.24,0x6a6d6e);
+    m('darkMetal',x,5.0,0,3.8,.35,3.4,0x777a7b);
+    m('metal',x,5.35,0,3.0,.22,2.6,0x9b8768);
+  }
+  // 中央指针只有视觉读数，不在装饰层制造称量结果。
+  m('accent',0,6.3,.78,.28,1.65,.24,0xad7042);
+}
+function genBeamBalance(B){ buildBeamBalance(B); }
+
+function buildStandardWeights(B, ox=0, oz=0){
+  const m=componentWriter(B,ox,oz);
+  const specs=[[-2.6,0,3.4,2.3], [1.0,0,2.8,1.9], [3.7,0,2.0,1.4]];
+  specs.forEach(([x,y,w,h],i)=>{
+    m('darkMetal',x,y,0,w,.65,w,0x5f6364);
+    m('darkMetal',x,y+.65,0,w*.78,h,w*.78,vary(0x686c6d,0,.02,.05));
+    m('metal',x,y+.65+h,0,w*.42,.45,w*.42,0x858b8d);
+    m('darkMetal',x-.36,y+1.0+h,0,.28,.95,.34,0x4e5253);
+    m('darkMetal',x+.36,y+1.0+h,0,.28,.95,.34,0x4e5253);
+    m('darkMetal',x,y+1.78+h,0,1.0,.25,.34,0x4e5253);
+    for(let tick=0;tick<=i;tick++)m('groundMark',x-.28+tick*.28,y+.74+h,w*.40+.04,.14,.10,.08,0xd4c49f);
+  });
+}
+function genStandardWeights(B){ buildStandardWeights(B); }
+
+function buildMechanicalDynamo(B, ox=0, oz=0){
+  const m=componentWriter(B,ox,oz);
+  m('darkMetal',0,0,0,10,1.0,6.5,0x42494c);
+  for(const x of [-3.6,3.6])m('darkMetal',x,1.0,0,1.0,5.5,5.4,0x535c60);
+  m('metal',0,1.25,0,6.7,4.9,4.8,0x596a70);
+  // 可见铜绕组是材料身份；没有权威通电事实时不使用发光材质。
+  for(const x of [-2.5,-1.5,-.5,.5,1.5,2.5])m('copperMetal',x,1.62,2.48,.56,4.0,.28,0xc26e3f);
+  m('darkMetal',0,3.15,0,12.0,.85,.85,0x3f474a);
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6;
+    m('darkMetal',-5.2,3.15+Math.cos(a)*2.2,Math.sin(a)*2.2,.75,.78,.78,0x596164);
+  }
+  for(const z of [-1.35,1.35]){
+    m('plaster',2.9,6.15,z,1.0,.85,1.0,0xd2c7ad);
+    m('copperMetal',2.9,7.0,z,.42,.65,.42,0xb96a3c);
+  }
+}
+function genMechanicalDynamo(B){ buildMechanicalDynamo(B); }
+
+function buildCopperConductor(B, ox=0, oz=0, broken=false){
+  const m=componentWriter(B,ox,oz);
+  // 一段可铺设导体：铜芯沿统一 X 轴，两端和中部落在陶瓷绝缘座上。
+  if(broken){
+    m('copperMetal',-3.85,3.45,0,5.2,.50,.50,0x76513d);
+    m('copperMetal',3.85,3.45,0,5.2,.50,.50,0x76513d);
+    m('clothBand',-3.1,3.25,0,3.9,.92,.92,0x3f3935);
+    m('clothBand',3.1,3.25,0,3.9,.92,.92,0x3f3935);
+    m('groundMark',-.62,3.10,0,.48,.58,.72,0x242322);
+    m('groundMark',.62,3.10,0,.48,.58,.72,0x242322);
+  }else{
+    m('copperMetal',0,3.45,0,13.0,.50,.50,0xb56037);
+    m('clothBand',0,3.25,0,9.8,.92,.92,0x584b43);
+  }
+  for(const x of [-5.3,0,5.3]){
+    m('stone',x,0,0,2.2,.72,3.1,0x77746e);
+    m('plaster',x,.72,0,1.45,2.15,1.45,0xd7cdb7);
+    m('darkMetal',x,2.87,0,.52,.72,.52,0x55595b);
+  }
+  for(const x of [-6.75,6.75])m('copperMetal',x,3.10,0,1.2,1.15,1.15,0xc37543);
+}
+function genCopperConductor(B){ buildCopperConductor(B); }
+function genBrokenCopperConductor(B){ buildCopperConductor(B,0,0,true); }
+
+function buildResistiveLoad(B, ox=0, oz=0){
+  const m=componentWriter(B,ox,oz);
+  m('stone',0,0,0,9.5,1.0,5.0,0x69655e);
+  for(const x of [-3.6,3.6]){
+    m('darkMetal',x,1.0,0,.75,6.0,.75,0x4f5557);
+    m('plaster',x,6.9,0,1.25,.9,1.25,0xd4cab4);
+    m('metal',x,7.8,0,.42,.8,.42,0xad6a3e);
+  }
+  m('darkMetal',0,6.0,0,7.5,.65,.65,0x555b5e);
+  // 前后错层的电阻带形成清晰蛇形；静态原型不显示红热或火花。
+  const points=[[-3.1,5.4],[2.6,4.55],[-2.6,3.7],[2.6,2.85],[-3.1,2.0]];
+  points.forEach(([x,y],i)=>m('copperMetal',x,y,2.55,i%2?5.4:5.0,.34,.30,0xc18a50));
+  for(let i=0;i<points.length-1;i++){
+    const x=points[i][0]>0?2.6:-2.6;
+    m('copperMetal',x,points[i+1][1]+.28,2.55,.34,.92,.30,0xaa7544);
+  }
+  m('brick',0,1.1,-1.7,6.8,3.6,1.1,0x895142);
+}
+function genResistiveLoad(B){ buildResistiveLoad(B); }
+
+/** 组合预览只验证接口朝向；生产中仍须由真实 source → conductor → load 相邻链决定是否组装。 */
+function genElectricalChain(B){
+  buildMechanicalDynamo(B,-10,0);
+  buildCopperConductor(B,0,0);
+  buildResistiveLoad(B,10,0);
 }
 
 /** 火焰：跳动的篝火（Fire 材质的具象化） */
@@ -2489,6 +2866,145 @@ function appearanceForStablePerson(personId){
   };
 }
 
+const DESCENDANT_PORTRAIT_STAGES = [
+  {key:'infant',label:'0–11 月',ageMonths:6,head:1.22,shoulder:.68,faceY:3.65,marker:1},
+  {key:'toddler',label:'1–4 岁',ageMonths:30,head:1.14,shoulder:.78,faceY:3.75,marker:2},
+  {key:'child',label:'5–11 岁',ageMonths:96,head:1.08,shoulder:.88,faceY:3.82,marker:3},
+  {key:'adolescent',label:'12–17 岁',ageMonths:180,head:1.02,shoulder:.96,faceY:3.88,marker:4},
+  {key:'adult',label:'18–59 岁',ageMonths:360,head:1.00,shoulder:1.00,faceY:3.90,marker:5},
+  {key:'elder',label:'60+ 岁',ageMonths:780,head:.98,shoulder:.96,faceY:3.82,marker:6},
+];
+
+/**
+ * 身份种子和年龄选择保持分离：同胞可继承相近色板，但年龄永远不会重抽身份。
+ * 生产接入时 geneticParents 来自权威 PersonState；本页只用固定样例验证契约。
+ */
+function appearanceForDescendant(personId, geneticParents=[]){
+  const own=appearanceForStablePerson(personId);
+  if(!geneticParents.length)return own;
+  const lineageHash=stableTextHash([...geneticParents].sort().join('|'));
+  return {
+    ...own,
+    skin:HUMAN_SKIN_PALETTES[lineageHash%HUMAN_SKIN_PALETTES.length],
+    hair:HUMAN_HAIR_PALETTES[(lineageHash>>>4)%HUMAN_HAIR_PALETTES.length],
+  };
+}
+
+/** 一个朝向镜头的微体素头像卡；各年龄共享五官间距、头形、肤发色和衣色。 */
+function buildDescendantPortraitCard(B, appearance, stage, ox){
+  const m=(type,x,y,z,sx,sy,sz,color)=>B.microCuboid(type,ox+x,y,z,sx,sy,sz,color);
+  const cardW=6.5,cardH=8.6,front=.42;
+  m('darkMetal',0,0,0,cardW,cardH,.58,0x262d32);
+  m('metal',0,0,front+.04,cardW,.28,.16,0x7b858a);
+  m('metal',0,cardH-.28,front+.04,cardW,.28,.16,0x7b858a);
+  m('metal',-cardW/2+.14,0,front+.04,.28,cardH,.16,0x7b858a);
+  m('metal',cardW/2-.14,0,front+.04,.28,cardH,.16,0x7b858a);
+
+  const headProfile=appearance.headShape==='wide'?{w:1.10,h:.94}
+    :appearance.headShape==='tall'?{w:.92,h:1.10}:{w:1,h:1};
+  const headW=2.55*stage.head*headProfile.w,headH=2.70*stage.head*headProfile.h;
+  const shoulderW=4.65*stage.shoulder;
+  const skin=vary(appearance.skin,.004,.025,.035);
+  const hair=stage.key==='elder'?0xb9bec4:vary(appearance.hair,.004,.025,.030);
+  const cloth=vary(appearance.cloth,.006,.035,.040);
+  const faceBottom=stage.faceY-headH/2;
+
+  if(stage.key==='infant'){
+    m('clothBand',0,.82,front+.26,4.0,3.15,.62,cloth);
+    m('clothBand',0,.62,front+.60,2.8,.42,.18,0xd6b77d);
+  }else{
+    m('accent',0,.72,front+.20,shoulderW,2.45,.64,cloth);
+    m('accent',0,2.55,front+.20,shoulderW*.72,.72,.64,vary(appearance.cloth,.006,.03,.07));
+  }
+  m('skin',0,faceBottom,front+.40,headW,headH,.78,skin);
+  // 耳朵、眼睛与鼻梁位置只由身份头形决定，年龄仅改变比例。
+  m('skin',-headW/2-.16,stage.faceY-.05,front+.42,.34,.72,.50,skin);
+  m('skin', headW/2+.16,stage.faceY-.05,front+.42,.34,.72,.50,skin);
+  const eyeY=stage.faceY+.35*headH;
+  m('woodDark',-headW*.21,eyeY,front+.84,.22,.20,.14,0x211d1a);
+  m('woodDark', headW*.21,eyeY,front+.84,.22,.20,.14,0x211d1a);
+  m('groundMark',0,stage.faceY+.05,front+.85,.18,.45,.14,vary(appearance.skin,0,.02,-.08));
+  m('accent',0,stage.faceY-.43,front+.85,.72,.16,.14,0x865b4d);
+
+  // 婴儿稀疏发际；其余阶段沿用同一个 hairStyle，老年只改变色与发际高度。
+  const hairHeight=stage.key==='infant'?.30:stage.key==='toddler'?.48:.68;
+  const hairInset=stage.key==='elder'?.24:0;
+  m('woodDark',0,faceBottom+headH-hairHeight-hairInset,front+.42,headW+.16,hairHeight,.82,hair);
+  if(stage.key!=='infant'&&appearance.hairStyle==='long'){
+    m('woodDark',-headW/2+.02,faceBottom+.12,front+.26,.36,headH*.78,.56,hair);
+    m('woodDark', headW/2-.02,faceBottom+.12,front+.26,.36,headH*.78,.56,hair);
+  }else if(stage.key!=='infant'&&appearance.hairStyle==='tuft'){
+    m('woodDark',-.28,faceBottom+headH+.02,front+.42,.42,.62,.52,hair);
+  }else if(stage.key!=='infant'&&appearance.hairStyle==='side-swept'){
+    m('woodDark',-headW*.22,faceBottom+headH-.42,front+.86,headW*.52,.56,.15,hair);
+  }
+  if(stage.key==='elder'){
+    m('groundMark',-headW*.22,stage.faceY-.10,front+.86,.48,.08,.12,0xb78370);
+    m('groundMark', headW*.22,stage.faceY-.10,front+.86,.48,.08,.12,0xb78370);
+  }
+  // 卡底刻度表示年龄段序号，避免用颜色暗示能力、地位或健康。
+  for(let i=0;i<stage.marker;i++)m('accent',-2.25+i*.46,.24,front+.18,.28,.18,.12,0xd3ad66);
+}
+
+function genDescendantAgePortraits(B){
+  const appearance=appearanceForDescendant('descendant-141-08',['person-141-a','person-141-c']);
+  DESCENDANT_PORTRAIT_STAGES.forEach((stage,i)=>buildDescendantPortraitCard(B,appearance,stage,(i-2.5)*7.35));
+}
+
+function cssHex(color){ return `#${color.toString(16).padStart(6,'0')}`; }
+
+/** 与 3D 卡片共享同一身份参数的二维头像原型；后续可移入 personPortraits.ts。 */
+function descendantPortraitSvg(appearance, stage){
+  const wide=appearance.headShape==='wide',tall=appearance.headShape==='tall';
+  const headW=41*stage.head*(wide?1.08:tall?.93:1);
+  const headH=48*stage.head*(wide?.95:tall?1.08:1);
+  const headX=48-headW/2,headY=49-headH/2;
+  const skin=cssHex(appearance.skin),hair=stage.key==='elder'?'#b9bec4':cssHex(appearance.hair),cloth=cssHex(appearance.cloth);
+  const shoulderW=72*stage.shoulder,shoulderX=48-shoulderW/2;
+  const eyeDx=headW*.20,eyeY=headY+headH*.48;
+  const ageTicks=Array.from({length:stage.marker},(_,i)=>`<rect x="${18+i*7}" y="101" width="4" height="2" rx="1" fill="#d3ad66"/>`).join('');
+  const hairShape=stage.key==='infant'
+    ? `<path d="M${headX+9} ${headY+10} Q48 ${headY-1} ${headX+headW-9} ${headY+10}" fill="none" stroke="${hair}" stroke-width="4" stroke-linecap="round"/>`
+    : appearance.hairStyle==='long'
+      ? `<path d="M${headX+2} ${headY+18} Q48 ${headY-9} ${headX+headW-2} ${headY+18} V${headY+headH-2} H${headX+headW-8} V${headY+15} H${headX+8} V${headY+headH-2} H${headX+2}Z" fill="${hair}"/>`
+      : appearance.hairStyle==='tuft'
+        ? `<path d="M${headX+4} ${headY+17} Q48 ${headY-8} ${headX+headW-4} ${headY+17} L${headX+headW-7} ${headY+9} L${headX+headW*.56} ${headY+5} L${headX+headW*.47} ${headY-3} L${headX+headW*.38} ${headY+6} L${headX+8} ${headY+10}Z" fill="${hair}"/>`
+        : appearance.hairStyle==='side-swept'
+          ? `<path d="M${headX+3} ${headY+19} Q${headX+headW*.42} ${headY-9} ${headX+headW-3} ${headY+12} Q${headX+headW*.58} ${headY+8} ${headX+headW*.36} ${headY+23}Z" fill="${hair}"/>`
+          : `<path d="M${headX+3} ${headY+18} Q48 ${headY-7} ${headX+headW-3} ${headY+18} L${headX+headW-5} ${headY+9} L${headX+7} ${headY+9}Z" fill="${hair}"/>`;
+  const body=stage.key==='infant'
+    ? `<path d="M31 70 Q48 61 65 70 L61 99 H35Z" fill="${cloth}"/><path d="M35 80 L61 92 M61 80 L35 92" stroke="#d6b77d" stroke-width="3" opacity=".72"/>`
+    : `<path d="M${shoulderX} 101 Q${shoulderX+3} 73 48 69 Q${shoulderX+shoulderW-3} 73 ${shoulderX+shoulderW} 101Z" fill="${cloth}"/><path d="M34 73 Q48 81 62 73" fill="none" stroke="#ffffff" stroke-opacity=".18" stroke-width="3"/>`;
+  const ageLines=stage.key==='elder'
+    ? `<path d="M${48-eyeDx-7} ${eyeY+9}h10 M${48+eyeDx-3} ${eyeY+9}h10 M40 ${headY+headH-8}q8 4 16 0" fill="none" stroke="#9b6f5d" stroke-width="1" opacity=".72"/>`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 112" role="img" aria-label="${stage.label}头像">
+    <rect width="96" height="112" rx="10" fill="#1b2228"/>
+    <rect x="4" y="4" width="88" height="104" rx="8" fill="#263139" stroke="#69777f" stroke-width="1"/>
+    ${body}
+    <rect x="43" y="62" width="10" height="13" rx="4" fill="${skin}"/>
+    <ellipse cx="${headX-1}" cy="${headY+headH*.54}" rx="4" ry="7" fill="${skin}"/>
+    <ellipse cx="${headX+headW+1}" cy="${headY+headH*.54}" rx="4" ry="7" fill="${skin}"/>
+    <rect x="${headX}" y="${headY}" width="${headW}" height="${headH}" rx="${Math.min(14,headW*.32)}" fill="${skin}"/>
+    ${hairShape}
+    <ellipse cx="${48-eyeDx}" cy="${eyeY}" rx="2.1" ry="2.4" fill="#201c19"/>
+    <ellipse cx="${48+eyeDx}" cy="${eyeY}" rx="2.1" ry="2.4" fill="#201c19"/>
+    <path d="M48 ${eyeY+3}v7" stroke="#9b6f5d" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M42 ${headY+headH*.76} Q48 ${headY+headH*.81} 54 ${headY+headH*.76}" fill="none" stroke="#865b4d" stroke-width="1.7" stroke-linecap="round"/>
+    ${ageLines}${ageTicks}
+  </svg>`;
+}
+
+function renderDescendantPortraitStrip(){
+  const appearance=appearanceForDescendant('descendant-141-08',['person-141-a','person-141-c']);
+  document.getElementById('portraitStrip').innerHTML=DESCENDANT_PORTRAIT_STAGES.map((stage)=>{
+    const src=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(descendantPortraitSvg(appearance,stage))}`;
+    const label={infant:'婴儿',toddler:'幼儿',child:'儿童',adolescent:'青少年',adult:'成年',elder:'老年'}[stage.key];
+    return `<article class="portrait-age-card"><img src="${src}" alt="同一后代的${label}头像"><b>${label}</b><small>${stage.label} · ${stage.ageMonths} 月样例</small></article>`;
+  }).join('');
+}
+renderDescendantPortraitStrip();
+
 function genStableIdentitySet(B){
   const ids = ['person-141-a','person-141-b','person-141-c','person-141-d','person-141-e','person-141-f'];
   const xs = [-6,-3.6,-1.2,1.2,3.6,6];
@@ -2538,6 +3054,7 @@ const STYLES = [
   { key:'child',       cat:'p', group:'性别与年龄', name:'儿童', en:'Child', gen:(B)=>genHuman(B,{sex:'female',age:'child',action:'walk'}), tags:'儿童 · 小比例 · 行走', note:'缩短腿与躯干、保留较大的头身比，不只做整体等比缩放。' },
   { key:'elder',       cat:'p', group:'性别与年龄', name:'老年人', en:'Elder', gen:(B)=>genHuman(B,{sex:'male',age:'elder',action:'walk'}), tags:'老年 · 灰发 · 手杖', note:'前倾姿态、灰发和支撑手杖共同表达年龄，步幅更小。' },
   { key:'identity-set',cat:'p', group:'外观组合', name:'稳定身份组合', en:'Stable Identity Set', gen:genStableIdentitySet, tags:'视觉原型 · 人物 ID · 模块化组合', note:'六个人物由稳定 ID 映射发型、头形、基础衣着和色板；只验证重放一致的辨识度，不写回领域状态。' },
+  { key:'descendant-age-portraits',cat:'p',group:'头像投影',name:'后代年龄头像序列',en:'Descendant Age Portraits',gen:genDescendantAgePortraits,base:'none',overview:false,status:'live',tags:'游戏已接入 · 同一身份 · 婴儿/幼儿/儿童/青少年/成年/老年',note:'游戏已接入：同一后代始终复用由人物 ID 与排序后的父母 ID 决定的肤色、发色、头形和衣色；权威当前年龄只切换六档版本，不会重新抽一张成年档案照。初代继续保留自己的档案头像。',authorityKeys:['person.id','person.sex','person.generation','person.geneticParents','person.bornAtMonth','clock.elapsedMonths'],integrationTarget:'personPortraits.portraitForPerson' },
   { key:'hair-shapes', cat:'p', group:'外观组合', name:'发型轮廓', en:'Hair Silhouettes', gen:genHairSilhouettes, tags:'视觉原型 · 短发 · 发束 · 长发 · 侧分', note:'发型只改变轮廓，不绑定性别、职业、性格或能力。' },
   { key:'head-shapes', cat:'p', group:'外观组合', name:'头部轮廓', en:'Head Proportions', gen:genHeadProfiles, tags:'视觉原型 · 标准 · 宽 · 修长', note:'三种克制的头部比例用于远景辨认；不从隐藏能力或人格推断外貌。' },
   { key:'outfit-cuts', cat:'p', group:'外观组合', name:'基础服装剪裁', en:'Garment Cuts', gen:genOutfitCuts, tags:'视觉原型 · 基础 · 围裹 · 长衣 · 拼片', note:'基础衣着是装饰层语汇；兽皮衣、工具和职业附件仍必须由真实库存与历史事实驱动。' },
@@ -2584,6 +3101,14 @@ const STYLES = [
   { key:'kiln',       cat:'s', group:'材料设施', name:'陶窑', en:'Kiln', gen:genKiln, tags:'农耕定居 · 黏土与铜锡高温处理', note:'游戏已接入：烧砖并为铜锡矿炭料提供真实高温目标；炉火与烟只在真实使用时出现。' },
   { key:'handmill',   cat:'s', group:'材料设施', name:'石磨', en:'Stone Mill', gen:genHandMill, tags:'农耕定居 · 作物加工', note:'游戏已接入：附近收获成熟作物时增加食物产出；真实作业时转柄旋转。' },
   { key:'waterpower', cat:'s', group:'材料设施', name:'水力传动组', en:'Water Wheel & Drive Shaft', gen:genWaterPower, tags:'游戏已接入 · 水轮 → 传动轴 → 磨坊', note:'三个外形分别绑定真实 WaterWheel、DriveShaft 与 Mill 体素；只有已提交机械动力作业才沿真实相邻构件同步转动，断轴显示为分离残件。' },
+  { key:'steel-drive-shaft',cat:'s',group:'机械传动',name:'钢制传动轴',en:'Steel Drive Shaft',gen:genSteelDriveShaft,status:'live',tags:'游戏已接入 · 钢轴 · 轴承座 · 联轴节 · 飞轮',note:'游戏已接入：权威 steel_drive_shaft 使用独立钢轴、方形联轴节与飞轮构型；沿真实机械链选向，只有已提交机械动力作业才转动。',authorityKeys:['steel_drive_shaft'],integrationTarget:'voxelKits.facilityBuilderFor + pileFor' },
+  { key:'beam-balance',cat:'s',group:'度量工具',name:'等臂秤',en:'Beam Balance',gen:genBeamBalance,status:'live',tags:'游戏已接入 · 双盘 · 中央指针 · 可携带仪器',note:'游戏已接入：权威 beam_balance 掉落时显示专用双盘秤；只有已提交称量事实才在人物双手间出现并轻微偏转，不作为永久聚落设施。',authorityKeys:['beam_balance'],integrationTarget:'voxelKits.pileFor + person action prop' },
+  { key:'standard-weight',cat:'s',group:'度量工具',name:'标准秤砣组',en:'Standard Weights',gen:genStandardWeights,status:'live',tags:'游戏已接入 · 吊环 · 刻度 · 称量基准',note:'游戏已接入：权威 standard_weight 掉落时呈现不同尺寸的吊环秤砣；校准称量时盘中实体读取本次真实目标材质，不自行生成读数或质量等级。',authorityKeys:['standard_weight'],integrationTarget:'voxelKits.pileFor + person action prop' },
+  { key:'mechanical-dynamo',cat:'s',group:'电气基础',name:'机械发电机',en:'Mechanical Dynamo',gen:genMechanicalDynamo,status:'live',tags:'游戏已接入 · 钢壳 · 铜绕组 · 机械输入轴',note:'游戏已接入：权威 mechanical_dynamo 按冻结计划朝首段导体选向；静态时冷暗，只有当前月最后一条有效电力事实确认交付后才显示转子运动与克制电光。',authorityKeys:['mechanical_dynamo'],integrationTarget:'electrical power projection + voxelKits' },
+  { key:'copper-conductor',cat:'s',group:'电气基础',name:'绝缘铜导体',en:'Insulated Copper Conductor',gen:genCopperConductor,status:'live',tags:'游戏已接入 · 铜芯 · 绝缘层 · 陶瓷支座',note:'游戏已接入：只绘制账本与精确 voxel 一致的已安装 copper_conductor；读取冻结计划的前后节点生成直线、转角与竖直段，不从二维地表猜方向。',authorityKeys:['copper_conductor'],integrationTarget:'electrical power projection + voxelKits' },
+  { key:'broken-copper-conductor',cat:'s',group:'电气基础',name:'熔断的铜导体',en:'Broken Copper Conductor',gen:genBrokenCopperConductor,status:'live',tags:'游戏已接入 · 开路 · 焦黑断端 · 故障态',note:'游戏已接入：权威 broken_copper_conductor 持久显示焦黑开路；火星只绑定当前月最后一条已提交电力故障事实，后续月份不会持续冒火。',authorityKeys:['broken_copper_conductor'],integrationTarget:'electrical power projection + voxelKits' },
+  { key:'resistive-load',cat:'s',group:'电气基础',name:'电阻负载',en:'Resistive Load',gen:genResistiveLoad,status:'live',tags:'游戏已接入 · 耐火砖 · 蛇形电阻带 · 双端子',note:'游戏已接入：权威 resistive_load 默认保持冷暗；只有当前月最后一条有效电力事实确认真实交付后，蛇形电阻带才显示暖色。',authorityKeys:['resistive_load'],integrationTarget:'electrical power projection + voxelKits' },
+  { key:'electrical-chain',cat:'s',group:'电气基础',name:'机械发电链总成',en:'Dynamo → Conductor → Load',gen:genElectricalChain,status:'live',overview:false,tags:'游戏已接入 · source → conductor → load · 三维接口朝向',note:'游戏已接入：主游戏只绘制权威网络中已经安装且实体材质匹配的构件，冻结计划只用于端口方向；未安装余段不会出现，没有有效供电事实时不转动、不发热。',authorityKeys:['mechanical_dynamo','copper_conductor','resistive_load'],integrationTarget:'electrical power projection + voxelKits' },
   { key:'foundry',    cat:'s', group:'材料设施', name:'青铜铸造场', en:'Bronze Foundry', gen:(B)=>genMetalWorkshop(B,'foundry'), tags:'古代文明 · 铜锡与青铜批量生产', note:'游戏已接入：作为铜锡冶炼目标，并提高青铜工具制作产量；炉火与烟由真实使用事实驱动。' },
   { key:'civichall',  cat:'s', group:'时代核心', name:'城邦公共厅堂', en:'Civic Hall Core', gen:genChinese, tags:'古代文明 · 记录、度量与协调核心', note:'游戏已接入规则；只有实际沟通、记录和多人使用才进入时代观察。' },
   { key:'smithy',     cat:'s', group:'材料设施', name:'铁匠铺', en:'Iron Smithy', gen:(B)=>genMetalWorkshop(B,'smithy'), tags:'古代文明 · 铁器高阶形态 · 铁料还原与锻造', note:'游戏已接入：使铁矿炭料形成海绵铁，并提高铁器制作产量；炉火与烟由真实使用事实驱动。' },
@@ -2608,14 +3133,25 @@ const STYLES = [
   { key:'cookedfood', cat:'s', group:'加工物资', name:'熟食', en:'Cooked Food',       gen:(B)=>genSpecialPile(B,'cooked') },
   { key:'herbs',      cat:'s', group:'加工物资', name:'草药', en:'Herbal Medicine',  gen:(B)=>genSpecialPile(B,'herbs') },
   { key:'charcoal',   cat:'s', group:'加工物资', name:'木炭', en:'Charcoal',          gen:(B)=>genSpecialPile(B,'charcoal') },
-  { key:'clay',       cat:'s', group:'矿物与材料', name:'黏土', en:'Clay', gen:(B)=>genEraMaterial(B,'clay'), tags:'世界自然生成 · 烧砖/陶窑前置' },
-  { key:'copperore',  cat:'s', group:'矿物与材料', name:'铜矿石', en:'Copper Ore', gen:(B)=>genEraMaterial(B,'copper'), tags:'世界自然生成 · 青铜链前置' },
-  { key:'tinore',     cat:'s', group:'矿物与材料', name:'锡矿石', en:'Tin Ore', gen:(B)=>genEraMaterial(B,'tin'), tags:'世界自然生成 · 稀缺青铜链前置' },
-  { key:'ironore',    cat:'s', group:'矿物与材料', name:'铁矿石', en:'Iron Ore', gen:(B)=>genEraMaterial(B,'ironore'), tags:'世界自然生成 · 铁器链前置' },
-  { key:'woodtool',   cat:'s', group:'时代工具', name:'木制生产工具', en:'Wood Tool', gen:(B)=>genEraMaterial(B,'woodtool'), tags:'原始部落 · 1.25× 采集效率' },
-  { key:'stonehoe',   cat:'s', group:'时代工具', name:'石锄', en:'Stone Hoe', gen:(B)=>genEraMaterial(B,'stonehoe'), tags:'农耕定居 · 1.50× 生产效率' },
-  { key:'bronzetool', cat:'s', group:'时代工具', name:'青铜工具', en:'Bronze Tool', gen:(B)=>genEraMaterial(B,'bronzetool'), tags:'古代文明 · 2.05× 生产效率' },
-  { key:'irontool',   cat:'s', group:'时代工具', name:'铁制工具', en:'Iron Tool', gen:(B)=>genEraMaterial(B,'irontool'), tags:'古代文明 · 铁器高阶形态 · 2.60× 生产效率' },
+  { key:'clay',       cat:'s', group:'矿物与材料', name:'黏土', en:'Clay', gen:(B)=>genEraMaterial(B,'clay'), status:'live', tags:'游戏已接入专用堆 · clay · 烧砖/陶窑前置', note:'游戏已接入：权威 clay 掉落物使用低矮湿黏土团块，不再回退成通用包裹。', authorityKeys:['clay'], integrationTarget:'voxelKits.pileFor' },
+  { key:'copperore',  cat:'s', group:'矿物与材料', name:'铜矿石', en:'Copper Ore', gen:(B)=>genEraMaterial(B,'copper'), status:'live', tags:'游戏已接入专用堆 · copper_ore · 绿灰围岩/铜绿矿脉', note:'用绿灰围岩、铜绿断面与低矮乱石轮廓区分于金属锭和普通石材。', authorityKeys:['copper_ore'], integrationTarget:'voxelKits.pileFor' },
+  { key:'tinore',     cat:'s', group:'矿物与材料', name:'锡矿石', en:'Tin Ore', gen:(B)=>genEraMaterial(B,'tin'), status:'live', tags:'游戏已接入专用堆 · tin_ore · 冷灰晶面', note:'冷灰围岩和浅银断面用于远景辨认，不再使用通用箱包。', authorityKeys:['tin_ore'], integrationTarget:'voxelKits.pileFor' },
+  { key:'ironore',    cat:'s', group:'矿物与材料', name:'铁矿石', en:'Iron Ore', gen:(B)=>genEraMaterial(B,'ironore'), status:'live', tags:'游戏已接入专用堆 · iron_ore · 锈红结核', note:'红褐围岩和锈色矿脉与普通石、煤炭和精炼铁明确分开。', authorityKeys:['iron_ore'], integrationTarget:'voxelKits.pileFor' },
+  { key:'coppercharge',cat:'s',group:'冶炼配料',name:'铜矿炭料',en:'Copper Smelting Charge',gen:(B)=>genSmeltingCharge(B,'copper_charge'),status:'live',tags:'游戏已接入 · copper_charge · 矿粒/木炭混料',note:'浅耐火料盘表达已经配好的矿炭混料，不把它画成纯矿石或精炼金属。',authorityKeys:['copper_charge'],integrationTarget:'voxelKits.pileFor' },
+  { key:'tincharge',cat:'s',group:'冶炼配料',name:'锡矿炭料',en:'Tin Smelting Charge',gen:(B)=>genSmeltingCharge(B,'tin_charge'),status:'live',tags:'游戏已接入 · tin_charge · 矿粒/木炭混料',note:'配料形态沿用同一料盘尺度，冷灰矿粒负责区分锡料。',authorityKeys:['tin_charge'],integrationTarget:'voxelKits.pileFor' },
+  { key:'ironcharge',cat:'s',group:'冶炼配料',name:'铁矿炭料',en:'Iron Smelting Charge',gen:(B)=>genSmeltingCharge(B,'iron_charge'),status:'live',tags:'游戏已接入 · iron_charge · 矿粒/木炭混料',note:'配料形态明确区别于铁矿石与海绵铁，只有权威组合产物才能出现。',authorityKeys:['iron_charge'],integrationTarget:'voxelKits.pileFor' },
+  { key:'steelcharge',cat:'s',group:'冶炼配料',name:'炼钢料',en:'Steel Charge',gen:(B)=>genSmeltingCharge(B,'steel_charge'),status:'live',tags:'游戏已接入 · steel_charge · 深色回炉块',note:'更深色、更致密的回炉料块，仍保持配料盘语义，不冒充成品钢锭。',authorityKeys:['steel_charge'],integrationTarget:'voxelKits.pileFor' },
+  { key:'coppermetal',cat:'s',group:'金属与砖材',name:'铜锭垛',en:'Copper Ingots',gen:(B)=>genMetalIngotStack(B,'copper'),status:'live',tags:'游戏已接入专用堆 · copper · 暖铜色铸锭',note:'缩腰铸锭、错层平码和顶面印记构成成品金属语汇。',authorityKeys:['copper'],integrationTarget:'voxelKits.pileFor' },
+  { key:'tinmetal',cat:'s',group:'金属与砖材',name:'锡锭垛',en:'Tin Ingots',gen:(B)=>genMetalIngotStack(B,'tin'),status:'live',tags:'游戏已接入专用堆 · tin · 浅银灰铸锭',note:'与铜锭共享堆放尺度，但用冷银色和高亮顶面维持辨识。',authorityKeys:['tin'],integrationTarget:'voxelKits.pileFor' },
+  { key:'bronzemetal',cat:'s',group:'金属与砖材',name:'青铜锭垛',en:'Bronze Ingots',gen:(B)=>genMetalIngotStack(B,'bronze'),status:'live',tags:'游戏已接入专用堆 · bronze · 金棕铸锭',note:'青铜使用更深的金棕色，不与铜矿石、铜锭或青铜工具混用。',authorityKeys:['bronze'],integrationTarget:'voxelKits.pileFor' },
+  { key:'ironbloom',cat:'s',group:'金属与砖材',name:'海绵铁团块',en:'Iron Bloom',gen:genIronBloom,status:'live',tags:'游戏已接入专用堆 · iron_bloom · 多孔团块',note:'海绵铁保持不规则、多孔的中间产物轮廓，不能提前画成规整铁锭。',authorityKeys:['iron_bloom'],integrationTarget:'voxelKits.pileFor' },
+  { key:'ironmetal',cat:'s',group:'金属与砖材',name:'锻铁锭垛',en:'Wrought Iron',gen:(B)=>genMetalIngotStack(B,'iron'),status:'live',tags:'游戏已接入专用堆 · iron · 深灰锻铁',note:'权威锻铁以深灰规整锭垛呈现，与海绵铁团块保持形态断点。',authorityKeys:['iron'],integrationTarget:'voxelKits.pileFor' },
+  { key:'steelmetal',cat:'s',group:'金属与砖材',name:'钢锭垛',en:'Steel Ingots',gen:(B)=>genMetalIngotStack(B,'steel'),status:'live',tags:'游戏已接入专用堆 · steel · 冷灰钢锭',note:'钢锭用冷灰高亮棱面和统一顶面标记区分于锻铁，不改变材料能力。',authorityKeys:['steel'],integrationTarget:'voxelKits.pileFor' },
+  { key:'firedbrick',cat:'s',group:'金属与砖材',name:'烧结砖垛',en:'Fired Brick Stack',gen:genFiredBrickStack,status:'live',tags:'游戏已接入专用堆 · fired_brick · 错缝砖垛',note:'红砖按方向交替错缝平码，并保留少量稳定缺角；不再回退成木箱与麻袋。',authorityKeys:['fired_brick'],integrationTarget:'voxelKits.pileFor' },
+  { key:'woodtool',   cat:'s', group:'时代工具', name:'木制生产工具', en:'Wood Tool', gen:(B)=>genEraMaterial(B,'woodtool'), status:'live', tags:'游戏已接入专用架 · wood_tool · 木槌/掘棒', note:'用木槌和掘棒轮廓取代统一箱包。', authorityKeys:['wood_tool'], integrationTarget:'voxelKits.pileFor' },
+  { key:'stonehoe',   cat:'s', group:'时代工具', name:'石锄与石镰', en:'Stone Hoe & Sickle', gen:(B)=>genEraMaterial(B,'stonehoe'), status:'live', tags:'游戏已接入专用架 · stone_hoe · 横刃/弯刃', note:'长柄横刃与折线石镰用于区分一般石制工具。', authorityKeys:['stone_hoe'], integrationTarget:'voxelKits.pileFor' },
+  { key:'bronzetool', cat:'s', group:'时代工具', name:'青铜生产工具', en:'Bronze Tools', gen:(B)=>genEraMaterial(B,'bronzetool'), status:'live', tags:'游戏已接入专用架 · bronze_tool · 斧/凿', note:'青铜斧、凿的金棕刀头保持同一材质语义。', authorityKeys:['bronze_tool'], integrationTarget:'voxelKits.pileFor' },
+  { key:'irontool',   cat:'s', group:'时代工具', name:'铁制生产工具', en:'Iron Tools', gen:(B)=>genEraMaterial(B,'irontool'), status:'live', tags:'游戏已接入专用架 · iron_tool · 锤/镐', note:'铁锤和镐头形成高阶工具剪影，不与铁锭混淆。', authorityKeys:['iron_tool'], integrationTarget:'voxelKits.pileFor' },
   // 野外 · 植被与动物
   { key:'deer',       cat:'n', group:'动 物', name:'成年雄鹿', en:'Adult Male Deer', gen:genDeer, tags:'雄性 · 成年 · 鹿角 · 行走' },
   { key:'deer-family',cat:'n', group:'动 物', name:'雌鹿与幼鹿', en:'Doe & Fawn',    gen:genDeerFamily, tags:'雌性/幼年 · 无鹿角 · 年龄缩放' },
@@ -2644,7 +3180,7 @@ const STYLES = [
   { key:'branch',     cat:'n', group:'生态点缀', name:'倒木枝', en:'Fallen Branch',  gen:(B)=>genGroundDetail(B,'branch') },
   // 道路与桥梁
   { key:'dirtpath',   cat:'r', group:'道路演进', lv:1, name:'泥土小径', en:'Dirt Path',    gen:genDirtPath, tags:'游戏已接入 · 原始部落 · 八向邻接 · PackedSoil / Trail', note:'原始部落阶段读取真实夯土地表的八向邻接，以连续单带生成端头、直路、弯道与斜向过渡；只有同高的真实夯土 2×2 会合并共享缝，不改变通行规则。' },
-  { key:'stoneroad',  cat:'r', group:'道路演进', lv:2, name:'石板路',   en:'Stone Road',   gen:genStoneRoad, tags:'游戏已接入 · 农耕定居 · 时代装饰层', note:'文明观察阶段进入农耕定居后，真实 PackedSoil / Trail 道路格改用石板时代皮肤；不会增加道路格、消耗石材、改变通行能力或形成文明观察证据。' },
+  { key:'stoneroad',  cat:'r', group:'道路演进', lv:2, name:'石板路',   en:'Stone Road',   gen:genStoneRoad, tags:'游戏已接入 · 农耕定居 · 暖灰错缝旗石 · 八向邻接', note:'文明观察阶段进入农耕定居后，真实 PackedSoil / Trail 道路格改用压入夯土的暖灰旗石；短条石板顺着端头、弯道与路口错缝铺设，苔痕只生长在少量石缝中。它不会增加道路格、消耗石材、改变通行能力或形成文明观察证据。' },
   { key:'ancientroad',cat:'r', group:'道路演进', lv:3, name:'古代青砖大道',en:'Ancient Brick Road',gen:genAncientRoad,tags:'游戏已接入 · 古代文明 · 错缝长砖 · 连续路缘',note:'古代文明阶段用青灰长砖和连续路缘重绘真实道路格；只替换装饰语汇，不改变道路事实、库存和通行能力。' },
   { key:'medievalroad',cat:'r',group:'道路演进', lv:4, name:'西方鹅卵石路',en:'Western Cobblestone',gen:genGravelRoad,tags:'视觉原型 · 古代文明 · 西方中世纪风 · 鹅卵石 · 车辙',note:'原中世纪道路皮肤保留为古代文明的西方风格原型；当前主游戏的古代道路仍统一使用青砖大道，不形成新的铺路事实。' },
   { key:'highway',    cat:'r', group:'道路演进', lv:6, name:'公路',     en:'Highway',      gen:genHighway },
@@ -2677,7 +3213,17 @@ const LIVE_ASSET_KEYS = new Set([
   'deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','spruce','oak','birch','acacia','sakura','palm','deadtree','bush','flowers','wheat','rocks','grasstuft','reeds','mushrooms','branch','dirtpath','stoneroad','ancientroad','medievalroad',
   'surface-transition','shoreline-transition','fire','scorched','snowdrift','icespikes','snowspruce','riverflow','rain','snowfall','fog','storm','drought'
 ]);
-const assetStatus = (s) => LIVE_ASSET_KEYS.has(s.key) ? 'live' : 'prototype';
+const ASSET_STATUS_META = {
+  live:{badge:'已接入',detail:'已接入主游戏',search:'已接入'},
+  ready:{badge:'待接入',detail:'视觉原型 · 权威键已存在 · 待接入专用模型',search:'原型·待接入'},
+  prototype:{badge:'原型',detail:'视觉原型 · 尚无生产接入',search:'视觉原型'},
+};
+const assetStatus = (s) => s.status || (LIVE_ASSET_KEYS.has(s.key) ? 'live' : 'prototype');
+function assetStatusSummary(list){
+  const counts={live:0,ready:0,prototype:0};
+  list.forEach((style)=>{ counts[assetStatus(style)]++; });
+  return `${counts.live} 项已接入 · ${counts.ready} 项待接入 · ${counts.prototype} 项视觉原型`;
+}
 
 /* ================= 渲染器 / 场景 ================= */
 const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance', preserveDrawingBuffer:true });
@@ -2809,7 +3355,7 @@ let meshGroup = new THREE.Group();
 scene.add(meshGroup);
 
 let curStyle = 0, seed = (Math.random()*1e9)|0, gridMode = 'p'; // gridMode: null | 'p' | 'b' | 'n'
-let lastExport = { name:'', seed:0, count:0, buckets:new Map() };
+let lastExport = { name:'', seed:0, count:0, buckets:new Map(), style:undefined };
 
 function buildMeshes(buckets){
   scene.remove(meshGroup);
@@ -2921,7 +3467,7 @@ function regenerate(preserveView=false){
     controls.maxDistance = 160;
   }
   const drawn = buildMeshes(buckets);
-  lastExport = { name, seed, count: total, buckets };
+  lastExport = { name, seed, count: total, buckets, style:gridMode ? undefined : STYLES[curStyle] };
   document.getElementById('seedTag').textContent = `seed ${seed}${gridMode?' · 总览':''}`;
   document.getElementById('stats').innerHTML =
     `<b>${total.toLocaleString()}</b> cuboids · <b>${buckets.size}</b> batches · <b>${drawn.toLocaleString()}</b> instances`;
@@ -2958,7 +3504,7 @@ STYLES.forEach((s, i)=>{
   const b = document.createElement('button');
   b.className = 'style-btn';
   const status = assetStatus(s);
-  b.innerHTML = `${s.name}<span class="status-dot ${status}">${status==='live'?'已接入':'原型'}</span><small>${s.en.toUpperCase()}</small>`;
+  b.innerHTML = `${s.name}<span class="status-dot ${status}">${ASSET_STATUS_META[status].badge}</span><small>${s.en.toUpperCase()}</small>`;
   b.onclick = ()=>{ gridMode = null; curStyle = i; refreshActive(); regenerate(); };
   listEl.appendChild(b);
   styleBtns.push(b);
@@ -2986,21 +3532,22 @@ function refreshActive(){
 }
 function updateDetail(){
   const el = document.getElementById('detail');
+  document.getElementById('portraitPreview').hidden = gridMode!==null || STYLES[curStyle]?.key!=='descendant-age-portraits';
   if (gridMode==='p'){
     const people = STYLES.filter(s=>s.cat==='p');
-    const live = people.filter(s=>assetStatus(s)==='live').length;
-    el.innerHTML = `<b>人物与动作总览</b><span class="status prototype">${live} 项已接入 · ${people.length-live} 项视觉原型</span><br><span class="tags">稳定外观 · 年龄 · 身体状态 · 生产动作 · 社会交互</span><span class="note">外观原型只做确定性组合；道具、伤势、装备和身份标志仍须来自实际模拟字段与历史。</span>`;
+    el.innerHTML = `<b>人物与动作总览</b><span class="status prototype">${assetStatusSummary(people)}</span><br><span class="tags">稳定外观 · 年龄 · 身体状态 · 生产动作 · 社会交互</span><span class="note">外观原型只做确定性组合；道具、伤势、装备和身份标志仍须来自实际模拟字段与历史。</span>`;
     return;
   }
   if (gridMode){
     const list = STYLES.filter(s=>s.overview!==false && (gridMode==='b'?s.cat==='b':s.cat!=='b'&&s.cat!=='p'));
-    const live = list.filter(s=>assetStatus(s)==='live').length;
-    el.innerHTML = `<b>${gridMode==='b'?'文明建筑长卷':'世界素材长卷'}</b><span class="tags">${live} 项已接入 · ${list.length-live} 项视觉原型</span><span class="note">原型可继续预览和导出，但不会暗示模拟规则已经支持。</span>`;
+    el.innerHTML = `<b>${gridMode==='b'?'文明建筑长卷':'世界素材长卷'}</b><span class="tags">${assetStatusSummary(list)}</span><span class="note">“待接入”表示权威键已经存在、专用视觉已完成原型，但生产端仍可能显示通用回退模型。</span>`;
     return;
   }
   const s = STYLES[curStyle];
   const status = assetStatus(s);
-  el.innerHTML = `<b>${s.name} · ${s.en}</b><span class="status ${status}">${status==='live'?'已接入主游戏':'视觉原型 · 规则未接入'}</span><br><span class="tags">${s.tags || CAT_NAMES[s.cat]}</span>${s.note?`<span class="note">${s.note}</span>`:''}`;
+  const contract=s.authorityKeys?.length
+    ? `<span class="note">权威输入：${s.authorityKeys.join(' · ')}${s.integrationTarget?`<br>接入点：${s.integrationTarget}`:''}</span>`:'';
+  el.innerHTML = `<b>${s.name} · ${s.en}</b><span class="status ${status}">${ASSET_STATUS_META[status].detail}</span><br><span class="tags">${s.tags || CAT_NAMES[s.cat]}</span>${s.note?`<span class="note">${s.note}</span>`:''}${contract}`;
 }
 refreshActive();
 
@@ -3013,7 +3560,7 @@ mountRulesPage({
     category: CAT_NAMES[style.cat],
     tags: style.tags || '',
     note: style.note || '',
-    status: assetStatus(style) === 'live' ? '已接入' : '视觉原型',
+    status: ASSET_STATUS_META[assetStatus(style)].search,
   })),
   selectAsset(key) {
     const index = STYLES.findIndex((style) => style.key === key);
@@ -3049,6 +3596,11 @@ document.getElementById('btnJSON').onclick = ()=>{
     format: 'micro-cuboid-v2', generator: lastExport.name, seed: lastExport.seed,
     mapCellMicroVoxels: MICRO_PER_MAP_CELL, worldUnitPerMicroVoxel: 1/MICRO_PER_MAP_CELL,
     legacyVoxelMicroSize: LEGACY_VOXEL_MICROS,
+    integration: lastExport.style ? {
+      status: ASSET_STATUS_META[assetStatus(lastExport.style)].search,
+      authorityKeys: lastExport.style.authorityKeys || [],
+      target: lastExport.style.integrationTarget || null,
+    } : null,
     note: '每个构件: [mx, my中心, mz, sx, sy, sz, 0xRRGGBB]；坐标和尺寸均以 1/8 地图格计',
     count: lastExport.count, cuboids,
   };

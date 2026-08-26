@@ -139,15 +139,18 @@ try {
   inquiryExhausted.desiredFunction = 'fortified-coordination';
   inquiryExhausted.summary = '已经穷尽有限实体假说';
   inquiryExhausted.status = 'active';
-  inquiryExhausted.reviewAtMonth = 100;
+  inquiryExhausted.reviewAtMonth = 12;
   inquiryExhausted.lastProgressAtMonth = 12;
   inquiryExhausted.hypothesisCampaign = exhaustedHypothesis(inquiryExhausted.id, 12);
   state.projects.push(inquiryExhausted);
   state.clock.elapsedMonths = 12;
   assert.equal(recompileProjectNextAction(state, actor, inquiryExhausted.id), null);
+  assert.equal(inquiryExhausted.status, 'active',
+    '当前有限假说刚刚穷尽时，必须保留真实复核窗口而不是同月永久终止');
+  synchronizeProject(state, inquiryExhausted, 16);
   assert.equal(inquiryExhausted.status, 'blocked',
-    '当前有限假说已明确穷尽且没有合法等待时，不应继续占用所有者到长期 review');
-  assert.equal(inquiryExhausted.blockedAtMonth, 13);
+    '超过 review 且距真实假说结束满四个月后，无新依据的项目才应释放所有者');
+  assert.equal(inquiryExhausted.blockedAtMonth, 16);
 
   const progressedAfterOldExhaustion = structuredClone(inquiryExhausted);
   progressedAfterOldExhaustion.id = 'test-progress-after-old-exhaustion';
@@ -230,6 +233,7 @@ try {
   }];
   state.projects.push(staleActiveSearch);
   assert.equal(recompileProjectNextAction(state, actor, staleActiveSearch.id), null);
+  synchronizeProject(state, staleActiveSearch, 16);
   assert.equal(staleActiveSearch.status, 'blocked',
     '当前已经没有物料缺口时，悬空的旧 active search 不得压住已穷尽 hypothesis');
 
@@ -242,6 +246,7 @@ try {
     ...exhaustedHypothesis(staleActiveHypothesis.id, 12),
     status: 'active',
   };
+  delete staleActiveHypothesis.planKnowledgeId;
   delete staleActiveHypothesis.hypothesisCampaign.endedAt;
   delete staleActiveHypothesis.hypothesisCampaign.endingReason;
   staleActiveHypothesis.logisticsEpisodes = [];
@@ -252,7 +257,7 @@ try {
     ownerId: actor.id,
     actorId: actor.id,
     materialIds: [Material.Clay],
-    basisKey: `project-search-campaign-v1|project=${staleActiveHypothesis.id}|actor=${actor.id}|materials=${Material.Clay}|plan=none`,
+    basisKey: `project-search-campaign-v2|project=${staleActiveHypothesis.id}|actor=${actor.id}|materials=${Material.Clay}|branches=${Material.Clay}:1:development-subassembly:high-heat-processing:${Material.Clay}|plan=none`,
     openedAt: 12,
     anchor: { ...actor.position },
     cellIds: [actor.position.cellId],
@@ -263,6 +268,7 @@ try {
   }];
   state.projects.push(staleActiveHypothesis);
   assert.equal(recompileProjectNextAction(state, actor, staleActiveHypothesis.id), null);
+  synchronizeProject(state, staleActiveHypothesis, 16);
   assert.equal(staleActiveHypothesis.status, 'blocked',
     '当前精确物料分支已穷尽时，旧 active hypothesis 不得反向把项目留到长期 review');
 
@@ -317,7 +323,7 @@ try {
     ownerId: actor.id,
     actorId: actor.id,
     materialIds: [Material.Seed],
-    basisKey: `project-search-campaign-v1|project=${exhaustedSeedSearch.id}|actor=${actor.id}|materials=${Material.Seed}|plan=none`,
+    basisKey: `project-search-campaign-v2|project=${exhaustedSeedSearch.id}|actor=${actor.id}|materials=${Material.Seed}|branches=${Material.Seed}:1:development-subassembly:settled-cultivation:${Material.Seed}|plan=none`,
     openedAt: 12,
     anchor: { ...actor.position },
     cellIds: [actor.position.cellId],
@@ -339,6 +345,7 @@ try {
   }
   state.projects.push(exhaustedSeedSearch);
   assert.equal(recompileProjectNextAction(state, actor, exhaustedSeedSearch.id), null);
+  synchronizeProject(state, exhaustedSeedSearch, 16);
   assert.equal(exhaustedSeedSearch.status, 'blocked',
     '耕作项目的种源搜索已经明确穷尽时，不能把无作物状态误当成自然生长等待');
 
@@ -362,7 +369,7 @@ try {
     triggerFactIds: [],
     pressure: 62,
     createdAtMonth: 12,
-    reviewAtMonth: 100,
+    reviewAtMonth: 13,
     status: 'active',
     lastProgressAtMonth: 12,
     site: { ...finiteActor.position },
@@ -415,8 +422,11 @@ try {
   assert.ok(finiteCandidateProject.hypothesisCampaign.attempts.length
     < finiteCandidateProject.hypothesisCampaign.noResponseBudget,
   '可感知的有限候选已用尽时，不应为凑数字 budget 继续占用所有者');
+  assert.equal(finiteCandidateProject.status, 'active',
+    '候选池刚穷尽时必须先进入有界复核等待');
+  synchronizeProject(finiteState, finiteCandidateProject, 17);
   assert.equal(finiteCandidateProject.status, 'blocked',
-    '小于数字 budget 的真实有限候选池穷尽后应当立即释放项目');
+    '小于数字 budget 的真实有限候选池穷尽后，应在有界复核到期时释放项目');
 
   process.stdout.write('project progress tests passed\n');
 } finally {

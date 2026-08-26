@@ -7,6 +7,7 @@ import type {
   PersonalityState,
   PersonState,
 } from './person';
+import { isAlive } from './person';
 import { seededFraction } from '../world/generator';
 import { intentById, personById, projectById } from './state-index';
 
@@ -35,6 +36,65 @@ const MIN_EVIDENCE_MONTHS = 3;
 const MIN_EVIDENCE_CONTEXTS = 2;
 const MIN_EVIDENCE_STRENGTH = 120;
 const MAX_CHANGES_PER_ROLLING_YEAR = 2;
+
+type PersonalityOwner = Pick<PersonState, 'id' | 'personality'>;
+
+interface ScheduledPersonalityConsolidation {
+  month: number;
+  generation: number;
+  person: PersonState;
+}
+
+interface PersonalityConsolidationIndex {
+  people: PersonState[];
+  knownLength: number;
+  firstKnownPerson?: PersonState;
+  lastKnownPerson?: PersonState;
+  living: PersonState[];
+  members: WeakSet<PersonState>;
+  dirty: Set<PersonState>;
+  scheduledGeneration: WeakMap<PersonState, number>;
+  heap: ScheduledPersonalityConsolidation[];
+  lastConsolidatedAtMonth?: number;
+  retired: boolean;
+}
+
+const PERSONALITY_CONSOLIDATION_BY_STATE = new WeakMap<SimulationState, PersonalityConsolidationIndex>();
+const PERSONALITY_CONSOLIDATION_BY_PERSON = new WeakMap<PersonState, PersonalityConsolidationIndex>();
+
+function markPersonalityConsolidationDirty(person: PersonState): void {
+  const owner = PERSONALITY_CONSOLIDATION_BY_PERSON.get(person);
+  if (owner && !owner.retired) owner.dirty.add(person);
+}
+
+function retirePersonalityConsolidationIndex(index: PersonalityConsolidationIndex): void {
+  index.retired = true;
+  index.people = [];
+  index.living = [];
+  index.heap = [];
+  index.dirty.clear();
+}
+
+/**
+ * `state.people` is append-only during ordinary evolution. Same-array middle
+ * replacement, splice, or sort is an exceptional ownership rewrite and must
+ * call this hook so the next month takes the safe all-person rebuild path.
+ * Whole-array replacement, truncation, and a changed old tail are detected.
+ */
+export function invalidatePersonalityConsolidationIndex(state: SimulationState): void {
+  const existing = PERSONALITY_CONSOLIDATION_BY_STATE.get(state);
+  if (existing) retirePersonalityConsolidationIndex(existing);
+  PERSONALITY_CONSOLIDATION_BY_STATE.delete(state);
+}
+
+/**
+ * Normal personality evidence writes invalidate their person automatically.
+ * Call this after directly replacing or mutating a dead person's personality;
+ * living people are consolidated every month.
+ */
+export function invalidatePersonPersonalityConsolidation(person: PersonState): void {
+  markPersonalityConsolidationDirty(person);
+}
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
@@ -175,15 +235,18 @@ function addEvidence(person: PersonState, next: PersonalityEvidence): void {
   if (sameContextThisMonth) {
     sameContextThisMonth.strength = Math.max(sameContextThisMonth.strength, next.strength);
     sameContextThisMonth.sourceEventIds = [...new Set([...sameContextThisMonth.sourceEventIds, ...next.sourceEventIds])].slice(-8);
+    markPersonalityConsolidationDirty(person);
     return;
   }
   person.personality.evidence.push(next);
-  if (person.personality.evidence.length <= MAX_EVIDENCE) return;
-  person.personality.evidence = [...person.personality.evidence]
-    .sort((left, right) => Number(Boolean(left.consolidatedInto)) - Number(Boolean(right.consolidatedInto))
-      || right.atMonth - left.atMonth)
-    .slice(0, MAX_EVIDENCE)
-    .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
+  if (person.personality.evidence.length > MAX_EVIDENCE) {
+    person.personality.evidence = [...person.personality.evidence]
+      .sort((left, right) => Number(Boolean(left.consolidatedInto)) - Number(Boolean(right.consolidatedInto))
+        || right.atMonth - left.atMonth)
+      .slice(0, MAX_EVIDENCE)
+      .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
+  }
+  markPersonalityConsolidationDirty(person);
 }
 
 function projectContext(state: SimulationState, fact: ActionFact): string | undefined {
@@ -277,8 +340,9 @@ function qualifies(items: PersonalityEvidence[]): boolean {
 }
 
 /** Consolidate at most two one-point changes per trait in any rolling year. */
-export function consolidatePersonality(state: SimulationState, atMonth: number): void {
-  for (const person of state.people) for (const trait of HEXACO_TRAITS) {
+function consolidatePersonalityForPerson(person: PersonalityOwner, atMonth: number): boolean {
+  let changed = false;
+  for (const trait of HEXACO_TRAITS) {
     const recentChanges = person.personality.changes.filter((change) => change.trait === trait && atMonth - change.atMonth < 12);
     if (recentChanges.length >= MAX_CHANGES_PER_ROLLING_YEAR) continue;
     const pending = person.personality.evidence.filter((item) => item.trait === trait && !item.consolidatedInto && atMonth - item.atMonth <= 36);
@@ -306,5 +370,197 @@ export function consolidatePersonality(state: SimulationState, atMonth: number):
       sourceEventIds: [...new Set(selected.flatMap((item) => item.sourceEventIds))].slice(-24),
     });
     person.personality.changes = person.personality.changes.slice(-MAX_CHANGES);
+    changed = true;
   }
+  return changed;
+}
+
+/** Exact all-person fold retained as the simple reference implementation. */
+export function consolidatePersonality(state: SimulationState, atMonth: number): void {
+  invalidatePersonalityConsolidationIndex(state);
+  for (const person of state.people) consolidatePersonalityForPerson(person, atMonth);
+}
+
+function scheduledBefore(
+  left: ScheduledPersonalityConsolidation,
+  right: ScheduledPersonalityConsolidation,
+): boolean {
+  return left.month < right.month
+    || left.month === right.month && left.person.id.localeCompare(right.person.id) < 0;
+}
+
+function pushScheduled(
+  index: PersonalityConsolidationIndex,
+  item: ScheduledPersonalityConsolidation,
+): void {
+  index.heap.push(item);
+  let child = index.heap.length - 1;
+  while (child > 0) {
+    const parent = Math.floor((child - 1) / 2);
+    if (!scheduledBefore(index.heap[child], index.heap[parent])) break;
+    [index.heap[parent], index.heap[child]] = [index.heap[child], index.heap[parent]];
+    child = parent;
+  }
+}
+
+function popScheduled(index: PersonalityConsolidationIndex): ScheduledPersonalityConsolidation | undefined {
+  const first = index.heap[0];
+  const last = index.heap.pop();
+  if (!first || !last || index.heap.length === 0) return first;
+  index.heap[0] = last;
+  let parent = 0;
+  while (true) {
+    const left = parent * 2 + 1;
+    const right = left + 1;
+    let next = parent;
+    if (left < index.heap.length && scheduledBefore(index.heap[left], index.heap[next])) next = left;
+    if (right < index.heap.length && scheduledBefore(index.heap[right], index.heap[next])) next = right;
+    if (next === parent) return first;
+    [index.heap[parent], index.heap[next]] = [index.heap[next], index.heap[parent]];
+    parent = next;
+  }
+}
+
+function compactScheduled(index: PersonalityConsolidationIndex): void {
+  const maximumRetainedEntries = index.people.length * 2 + 64;
+  if (index.heap.length <= maximumRetainedEntries) return;
+  const current = index.heap.filter((scheduled) => (
+    index.members.has(scheduled.person)
+    && index.scheduledGeneration.get(scheduled.person) === scheduled.generation
+  ));
+  index.heap = [];
+  for (const scheduled of current) pushScheduled(index, scheduled);
+}
+
+/**
+ * Dead people receive no ordinary action evidence. Starting from an isolated
+ * personality clone, replay at most the remaining 36-month evidence window
+ * and return the first month whose normal fold changes authoritative
+ * personality fields. Rolling-year releases and mixed-direction expiry are
+ * therefore scheduled without mutating the real person's evidence.
+ */
+function nextDeadPersonalityChangeMonth(person: PersonState, afterMonth: number): number | undefined {
+  if (!Number.isSafeInteger(afterMonth)) return afterMonth + 1;
+  const unconsolidated = person.personality.evidence.filter((item) => !item.consolidatedInto);
+  if (!unconsolidated.length) return undefined;
+  if (unconsolidated.some((item) => !Number.isSafeInteger(item.atMonth) || item.atMonth > afterMonth)
+    || person.personality.changes.some((change) => !Number.isSafeInteger(change.atMonth) || change.atMonth > afterMonth)) {
+    return afterMonth + 1;
+  }
+  const stillPotentiallyVisible = unconsolidated.filter((item) => afterMonth - item.atMonth <= 36);
+  if (!stillPotentiallyVisible.length) return undefined;
+  const lastEvidenceMonth = Math.max(...stillPotentiallyVisible.map((item) => item.atMonth));
+  const finalCandidateMonth = lastEvidenceMonth + 36;
+  const forecast: PersonalityOwner = {
+    id: person.id,
+    personality: structuredClone(person.personality),
+  };
+  for (let month = afterMonth + 1; month <= finalCandidateMonth; month += 1) {
+    if (consolidatePersonalityForPerson(forecast, month)) return month;
+  }
+  return undefined;
+}
+
+function registerPerson(index: PersonalityConsolidationIndex, person: PersonState): void {
+  index.members.add(person);
+  PERSONALITY_CONSOLIDATION_BY_PERSON.set(person, index);
+}
+
+function createPersonalityConsolidationIndex(state: SimulationState): PersonalityConsolidationIndex {
+  const index: PersonalityConsolidationIndex = {
+    people: state.people,
+    knownLength: state.people.length,
+    firstKnownPerson: state.people[0],
+    lastKnownPerson: state.people[state.people.length - 1],
+    living: [],
+    members: new WeakSet(),
+    dirty: new Set(),
+    scheduledGeneration: new WeakMap(),
+    heap: [],
+    retired: false,
+  };
+  for (const person of state.people) registerPerson(index, person);
+  PERSONALITY_CONSOLIDATION_BY_STATE.set(state, index);
+  return index;
+}
+
+function replacePersonalityConsolidationIndex(
+  state: SimulationState,
+  previous?: PersonalityConsolidationIndex,
+): PersonalityConsolidationIndex {
+  if (previous) retirePersonalityConsolidationIndex(previous);
+  return createPersonalityConsolidationIndex(state);
+}
+
+function appendedPeople(index: PersonalityConsolidationIndex, people: PersonState[]): PersonState[] | null {
+  if (people !== index.people || people.length < index.knownLength) return null;
+  if (index.knownLength > 0 && (
+    people[0] !== index.firstKnownPerson
+    || people[index.knownLength - 1] !== index.lastKnownPerson
+  )) return null;
+  return people.slice(index.knownLength);
+}
+
+function scheduleNextDeadConsolidation(
+  index: PersonalityConsolidationIndex,
+  person: PersonState,
+  afterMonth: number,
+): void {
+  const generation = (index.scheduledGeneration.get(person) ?? 0) + 1;
+  index.scheduledGeneration.set(person, generation);
+  const month = nextDeadPersonalityChangeMonth(person, afterMonth);
+  if (month !== undefined) pushScheduled(index, { month, generation, person });
+}
+
+/**
+ * Incremental monthly personality fold. The first call and ownership rewrites
+ * take the exact O(P) reference path. Sequential steady-state months visit all
+ * living people, appended people, explicitly dirtied dead people, and only
+ * dead people whose private forecast changes in that month.
+ */
+export function consolidateDuePersonalities(state: SimulationState, atMonth: number): void {
+  let index = PERSONALITY_CONSOLIDATION_BY_STATE.get(state);
+  let targets: PersonState[];
+  if (!index) {
+    index = createPersonalityConsolidationIndex(state);
+    targets = [...state.people];
+  } else {
+    const suffix = appendedPeople(index, state.people);
+    const sequential = index.lastConsolidatedAtMonth !== undefined
+      && atMonth === index.lastConsolidatedAtMonth + 1;
+    if (!suffix || !sequential) {
+      index = replacePersonalityConsolidationIndex(state, index);
+      targets = [...state.people];
+    } else {
+      for (const person of suffix) registerPerson(index, person);
+      compactScheduled(index);
+      const selected = new Set<PersonState>(index.living);
+      while (index.heap.length > 0 && index.heap[0].month <= atMonth) {
+        const scheduled = popScheduled(index);
+        if (!scheduled
+          || index.scheduledGeneration.get(scheduled.person) !== scheduled.generation
+          || !index.members.has(scheduled.person)) continue;
+        selected.add(scheduled.person);
+      }
+      for (const person of index.dirty) {
+        if (index.members.has(person)) selected.add(person);
+      }
+      index.dirty.clear();
+      for (const person of suffix) selected.add(person);
+      targets = [...selected];
+    }
+  }
+
+  const living: PersonState[] = [];
+  for (const person of targets) {
+    consolidatePersonalityForPerson(person, atMonth);
+    if (isAlive(person)) living.push(person);
+    else scheduleNextDeadConsolidation(index, person, atMonth);
+  }
+  index.living = living;
+  index.knownLength = state.people.length;
+  index.firstKnownPerson = state.people[0];
+  index.lastKnownPerson = state.people[state.people.length - 1];
+  index.lastConsolidatedAtMonth = atMonth;
+  compactScheduled(index);
 }

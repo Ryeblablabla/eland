@@ -1,4 +1,4 @@
-import type { ActionOption, FactPredicate, Intent, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
+import type { ActionCompletionPolicy, ActionOption, FactPredicate, Intent, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
 import type { ProjectProposal } from './project';
 import { followUpSemanticallyMatches } from './intent-follow-up';
 
@@ -12,6 +12,7 @@ export interface IntentChoice {
   target?: WorldRef;
   estimatedDuration: ActionOption['estimatedDuration'];
   estimatedMonths?: number;
+  completionPolicy?: ActionCompletionPolicy;
   sourceFactIds: string[];
   projectId?: string;
   projectProposal?: ProjectProposal;
@@ -25,11 +26,32 @@ export interface IntentChoice {
  * resumed without losing their identity or progress.
  */
 export function isResumableIntent(
-  intent: Pick<Intent, 'projectId' | 'returnToIntentId' | 'stateGoalUntilMonth'>,
+  intent: Pick<Intent, 'lifecycle' | 'projectId' | 'recordUseBasis' | 'returnToIntentId' | 'stateGoalUntilMonth'>,
 ): boolean {
   return Boolean(intent.projectId
+    || intent.recordUseBasis
     || intent.returnToIntentId
+    || intent.lifecycle
     || intent.stateGoalUntilMonth !== undefined);
+}
+
+/** New lifecycle wins; stateGoalUntilMonth is a compatibility fallback for old snapshots. */
+export function intentReviewAtMonth(
+  intent: Pick<Intent, 'lifecycle' | 'stateGoalUntilMonth'>,
+): number | undefined {
+  return intent.lifecycle?.reviewAtMonth ?? intent.stateGoalUntilMonth;
+}
+
+/** Only explicit maintenance, or a legacy state goal without lifecycle, keeps an achieved intent open. */
+export function intentMaintainUntilMonth(
+  intent: Pick<Intent, 'lifecycle' | 'stateGoalUntilMonth'>,
+): number | undefined {
+  if (intent.lifecycle) {
+    return intent.lifecycle.completion === 'maintain-state'
+      ? intent.lifecycle.maintainUntilMonth ?? intent.lifecycle.reviewAtMonth
+      : undefined;
+  }
+  return intent.stateGoalUntilMonth;
 }
 
 function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {
@@ -64,6 +86,7 @@ export function composeIntentChoice(
       ...(selected.target ? { target: structuredClone(selected.target) } : {}),
       estimatedDuration: selected.estimatedDuration,
       ...(selected.estimatedMonths !== undefined ? { estimatedMonths: selected.estimatedMonths } : {}),
+      ...(selected.completionPolicy ? { completionPolicy: structuredClone(selected.completionPolicy) } : {}),
       sourceFactIds: [...selected.sourceFactIds],
       ...(selected.projectId ? { projectId: selected.projectId } : {}),
       ...(selected.projectProposal ? { projectProposal: structuredClone(selected.projectProposal) } : {}),
@@ -85,6 +108,7 @@ export function composeIntentChoice(
     ...(followUp.target ? { target: structuredClone(followUp.target) } : {}),
     estimatedDuration: followUp.estimatedDuration,
     ...(followUp.estimatedMonths !== undefined ? { estimatedMonths: followUp.estimatedMonths } : {}),
+    ...(followUp.completionPolicy ? { completionPolicy: structuredClone(followUp.completionPolicy) } : {}),
     sourceFactIds: [...new Set([...selected.sourceFactIds, ...followUp.sourceFactIds])],
     ...(followUp.projectId ? { projectId: followUp.projectId } : {}),
     ...(followUp.projectProposal ? { projectProposal: structuredClone(followUp.projectProposal) } : {}),

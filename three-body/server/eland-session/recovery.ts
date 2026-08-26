@@ -45,6 +45,8 @@ export interface ActiveEmbodimentSnapshot {
   decisionUsage: TokenUsage;
   decisionAttempts: ModelAttemptSummary;
   commands: StoredEmbodimentCommandReceipt[];
+  /** Missing means the legacy hash payload used before observer fields were excluded. */
+  stagedStateHashVersion?: 2 | 3;
   stagedStateHash: string;
   createdAt: number;
   updatedAt: number;
@@ -112,6 +114,9 @@ function validateActiveEmbodimentSnapshot(
     || !Number.isInteger(active.revision)
     || active.revision !== active.completedTick
     || active.commands.length !== active.completedTick
+    || (active.stagedStateHashVersion !== undefined
+      && active.stagedStateHashVersion !== 2
+      && active.stagedStateHashVersion !== 3)
     || !/^[0-9a-f]{64}$/u.test(active.stagedStateHash)
     || !Number.isFinite(active.createdAt)
     || !Number.isFinite(active.updatedAt)

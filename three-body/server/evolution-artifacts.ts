@@ -1,4 +1,5 @@
 import type { SimulationState, WorldEvent } from '../src/game/eland/simulation';
+import { committedHistoryView } from '../src/game/eland/domain/history';
 import { Material, materialDefinition, materialHas } from '../src/game/eland/domain/material';
 import { hypothesisMetrics } from './evolution-artifacts/hypothesis-metrics';
 import { objectRecord } from './evolution-artifacts/object-record';
@@ -15,6 +16,19 @@ export interface EvolutionCheckpoint {
   modelDecisions: number;
   inputTokens: number;
   outputTokens: number;
+}
+
+/**
+ * The only prefix-history state consumed by `checkpointFor`.
+ *
+ * All other checkpoint fields are snapshots of the current authoritative
+ * shell (plus the explicit token-usage input), so a bounded history reducer
+ * must carry exactly these three scalars and no observer-facing stage data.
+ */
+export interface EvolutionCheckpointDecisionAccumulator {
+  readonly eventCount: number;
+  readonly ruleDecisions: number;
+  readonly modelDecisions: number;
 }
 
 export interface EvolutionTurningPoint {
@@ -220,6 +234,22 @@ export interface EvolutionReport {
   hypothesisConnectFlexibleLayersAttempts: number;
   hypothesisConnectFlexibleLayersResponses: number;
   hypothesisConnectFlexibleLayersNoResponses: number;
+  hypothesisAssembleBalancedSuspensionCandidates: number;
+  hypothesisAssembleBalancedSuspensionAttempts: number;
+  hypothesisAssembleBalancedSuspensionResponses: number;
+  hypothesisAssembleBalancedSuspensionNoResponses: number;
+  hypothesisShapeRepeatableReferenceCandidates: number;
+  hypothesisShapeRepeatableReferenceAttempts: number;
+  hypothesisShapeRepeatableReferenceResponses: number;
+  hypothesisShapeRepeatableReferenceNoResponses: number;
+  hypothesisAssembleFlowDrivenRotorCandidates: number;
+  hypothesisAssembleFlowDrivenRotorAttempts: number;
+  hypothesisAssembleFlowDrivenRotorResponses: number;
+  hypothesisAssembleFlowDrivenRotorNoResponses: number;
+  hypothesisShapeRigidRotatingConnectorCandidates: number;
+  hypothesisShapeRigidRotatingConnectorAttempts: number;
+  hypothesisShapeRigidRotatingConnectorResponses: number;
+  hypothesisShapeRigidRotatingConnectorNoResponses: number;
   hypothesisSeekLocalHeatCandidates: number;
   hypothesisSeekLocalHeatAttempts: number;
   hypothesisSeekLocalHeatResponses: number;
@@ -631,7 +661,7 @@ function recordUseMetrics(state: SimulationState): {
       const expectedDropId = stringValue(carrierSource?.dropId);
       const expectedCellId = Number(carrierSource?.cellId);
       const expectedZ = Number(carrierSource?.z);
-      if (basisVersion !== 'record-use-basis-v2'
+      if ((basisVersion !== 'record-use-basis-v2' && basisVersion !== 'record-use-basis-v3')
         || !acquisitionRequired
         || carrierSource?.kind !== 'ground'
         || action?.kind !== 'transfer'
@@ -2529,11 +2559,16 @@ function turningPoints(state: SimulationState, previous?: EvolutionPath): Evolut
   const points: EvolutionTurningPoint[] = [...(previous?.turningPoints ?? [])];
   const existingIds = new Set(points.map((point) => point.id));
   const newMilestones = state.derived.milestones.filter((milestone) => !existingIds.has(`milestone:${milestone.id}`));
-  const events = state.world.past;
-  const fromEventIndex = latestCheckpointEventCount(previous, events.length);
+  const history = committedHistoryView(state);
+  const events = history.events;
+  const fromAbsoluteIndex = latestCheckpointEventCount(previous, history.eventCount);
+  if (fromAbsoluteIndex < history.hotStartIndex) {
+    throw new Error(`演化转折点缺少绝对序号 ${fromAbsoluteIndex} 至 ${history.hotStartIndex - 1} 的连续历史`);
+  }
+  const fromEventIndex = fromAbsoluteIndex - history.hotStartIndex;
   const newMilestoneEvidenceIds = new Set(newMilestones.flatMap((milestone) => milestone.evidenceEventIds));
   const newMilestoneEvidence = new Map<string, WorldEvent>();
-  for (let index = fromEventIndex; index < events.length; index += 1) {
+  for (let index = fromEventIndex; index < history.hotEventCount; index += 1) {
     const event = events[index];
     if (newMilestoneEvidenceIds.has(event.id)) newMilestoneEvidence.set(event.id, event);
     if (event.kind !== 'environment') continue;
@@ -2580,10 +2615,11 @@ function turningPoints(state: SimulationState, previous?: EvolutionPath): Evolut
 export function checkpointFor(
   state: SimulationState,
   usage: { inputTokens: number; outputTokens: number },
-  previous?: EvolutionCheckpoint,
+  previous?: EvolutionCheckpointDecisionAccumulator,
 ): EvolutionCheckpoint {
   const through = state.clock.elapsedMonths;
-  const eventCount = state.world.past.length;
+  const history = committedHistoryView(state);
+  const eventCount = history.eventCount;
   const canIncrement = previous !== undefined
     && Number.isInteger(previous.eventCount)
     && previous.eventCount >= 0
@@ -2592,11 +2628,15 @@ export function checkpointFor(
     && previous.ruleDecisions >= 0
     && Number.isInteger(previous.modelDecisions)
     && previous.modelDecisions >= 0;
-  const fromEventIndex = canIncrement ? previous.eventCount : 0;
+  const fromAbsoluteIndex = canIncrement ? previous.eventCount : 0;
+  if (fromAbsoluteIndex < history.hotStartIndex) {
+    throw new Error(`演化检查点缺少绝对序号 ${fromAbsoluteIndex} 至 ${history.hotStartIndex - 1} 的连续决策历史`);
+  }
+  const fromEventIndex = fromAbsoluteIndex - history.hotStartIndex;
   let ruleDecisions = canIncrement ? previous.ruleDecisions : 0;
   let modelDecisions = canIncrement ? previous.modelDecisions : 0;
-  for (let index = fromEventIndex; index < eventCount; index += 1) {
-    const event = state.world.past[index];
+  for (let index = fromEventIndex; index < history.hotEventCount; index += 1) {
+    const event = history.events[index];
     if (event.kind !== 'decision') continue;
     if (event.usedModel) modelDecisions += 1;
     else ruleDecisions += 1;
@@ -2646,6 +2686,12 @@ export function evolvePath(
 }
 
 export function buildEvolutionFactsReport(state: SimulationState, path: EvolutionPath): EvolutionReport {
+  const committedHistory = committedHistoryView(state);
+  if (committedHistory.hotStartIndex > 0) {
+    throw new Error(
+      `演化事实报告缺少绝对序号 0 至 ${committedHistory.hotStartIndex - 1} 的累计报告投影`,
+    );
+  }
   const births = state.world.past.filter((event) => event.kind === 'environment' && typeof event.diff.bornPersonId === 'string').length;
   const deathEvents = state.world.past.filter((event): event is Extract<WorldEvent, { kind: 'environment' }> => (
     event.kind === 'environment' && event.change === 'death'

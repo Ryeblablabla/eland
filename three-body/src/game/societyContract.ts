@@ -225,6 +225,31 @@ export interface StructureView {
   materialIds?: number[];
 }
 
+/** 电力世界的只读装饰投影；计划路径用于还原三维接线，不参与领域判定。 */
+export interface ElectricalPowerNetworkView {
+  id: string;
+  planPath: Array<{ cellId: number; z: number }>;
+  components: Array<{
+    role: 'source' | 'conductor' | 'load';
+    /** 当前实体体素材质；熔断后会是 broken_copper_conductor。 */
+    materialId: number;
+    cellId: number;
+    z: number;
+  }>;
+  fault?: {
+    cellId: number;
+    z: number;
+    atMonth: number;
+    sourceEventId: string;
+  };
+  /** 当前已提交月份里该网络最后一条电力事实；只负责瞬时反馈。 */
+  activity?: {
+    kind: 'operation' | 'fault' | 'repair' | 'installation';
+    sourceEventId: string;
+    delivered: boolean;
+  };
+}
+
 export interface ActionVisualView {
   actionKind: 'move' | 'transfer' | 'act' | 'attend' | 'communicate';
   /** 仅真实 ActionFact 投影携带；意图预览没有来源事件，装饰层不得把它当成已发生动作。 */
@@ -238,6 +263,14 @@ export interface ActionVisualView {
   facilityMaterialId?: number;
   mechanicalPowerOperation?: boolean;
   linkedFacilityCellIds?: number[];
+  /** 仅由已提交电力 ActionFact 投影；意图预览不得触发通电视觉。 */
+  electricalPowerOperation?: boolean;
+  electricalPowerDelivered?: boolean;
+  electricalPowerFault?: boolean;
+  electricalPowerRepair?: boolean;
+  electricalNetworkId?: string;
+  /** 只有带来源的称量动作才会携带，供人物显示等臂秤道具。 */
+  measurementMode?: 'calibrate-mass' | 'measure-mass';
   operation?: 'exert' | 'separate' | 'combine' | 'expose' | 'ingest' | 'reproduce' | 'hunt' | 'dehydrate' | 'rehydrate' | 'inter';
   mortuaryPhase?: 'mourn' | 'lift' | 'prepare-grave' | 'place-in-grave' | 'cover-grave' | 'mark';
   targetKind?: 'voxel' | 'drop' | 'container' | 'inventory-stack' | 'animal' | 'remains' | 'person';
@@ -263,6 +296,19 @@ export interface IntentView extends ActionVisualView {
 }
 
 /** 文明观察器给 UI 的只读快照；各分项是对总指数的实际点数贡献。 */
+export interface ModernCivilizationAchievementView {
+  /** 候选期、当前达成或历史达成均来自权威 development 观察，不是玩家任务。 */
+  status: 'candidate' | 'achieved' | 'historical-achievement';
+  observedFactCount: number;
+  requiredFactCount: 3;
+  progress: number;
+  facts: Array<{
+    key: 'stable-electricity' | 'reviewable-measurement' | 'independent-record-use';
+    label: string;
+    observed: boolean;
+  }>;
+}
+
 export interface CivilizationIndexView {
   formulaVersion: string;
   total: number;
@@ -275,6 +321,8 @@ export interface CivilizationIndexView {
     social: number;
     history: number;
   };
+  /** 只在 development 已进入现代候选、当前现代或历史现代时存在。 */
+  modernAchievement?: ModernCivilizationAchievementView;
 }
 
 /** 已提交月份的只读文明指数投影，用于展示当前分支的时间趋势。 */
@@ -293,6 +341,8 @@ export interface SocietyState {
   containers: ContainerView[];
   graves?: GraveView[];
   structures: StructureView[];
+  /** 已安装电力构件及冻结计划路径；可选以兼容旧帧与轻量测试 mock。 */
+  electricalPower?: { networks: ElectricalPowerNetworkView[] };
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];
   observations: {

@@ -11,12 +11,14 @@ import type { ContainerState } from './container';
 import type { AnimalState } from './animal';
 import type { ProjectState } from './project';
 import type { MechanicalPowerWorldState } from './mechanical-power';
+import type { ElectricalPowerWorldState } from './electrical-power';
 import type { HumanRemainsState, MemorialMarkerState } from './mortuary';
 
 export * from './action';
 export * from './material';
 export * from './person';
 export * from './mechanical-power';
+export * from './electrical-power';
 export * from './mortuary';
 
 export type EpochKind = 'stable' | 'chaotic';
@@ -143,6 +145,8 @@ export interface DecisionFact extends BaseEvent {
   intentId?: string;
   usedModel: boolean;
   domain?: 'strategic' | 'social';
+  /** Missing on older facts means an ordinary review. Edge reviews do not spend the ordinary cadence budget. */
+  planningChannel?: 'ordinary' | 'edge';
   reproductionEvidence?: ReproductionDecisionEvidence;
   result: string;
 }
@@ -257,12 +261,35 @@ export interface PhysicalStructure {
   sourceEventIds: string[];
 }
 
+/**
+ * Bounded construction provenance for one voxel/material pair. A coordinate
+ * may retain more than one material because the current grid can later return
+ * to an older constructed material without another combine action.
+ */
+export interface PhysicalConstructionRecord {
+  x: number;
+  y: number;
+  z: number;
+  materialId: MaterialId;
+  firstSeenAbsoluteIndex: number;
+  latestSourceAbsoluteIndex: number;
+  sourceEventId: string;
+}
+
 export interface PhysicalStructureIndex {
+  /** Optional only for schema-17 states written before the bounded v2 fold. */
+  projectionVersion?: 2;
+  /** Absolute committed-ledger cursor covered by `constructionRecords`. */
+  appliedHistoryEventCount?: number;
+  /** Exact event id at `appliedHistoryEventCount - 1`, or null at genesis. */
+  appliedTailEventId?: string | null;
   calculatedAtMonth: number;
   /** Optional only for schema-17 states written before freshness tracking. */
   voxelRevision?: number;
   /** Optional only for schema-17 states written before freshness tracking. */
   constructionEventCount?: number;
+  /** Optional only for schema-17 states written before the bounded v2 fold. */
+  constructionRecords?: PhysicalConstructionRecord[];
   structures: PhysicalStructure[];
 }
 
@@ -329,7 +356,12 @@ export interface CivilizationIndex {
 }
 
 /** `medieval` remains readable only for persisted observer snapshots from v1-v4. */
-export type DevelopmentEraKey = 'primitive-tribe' | 'agrarian-settlement' | 'ancient-civilization' | 'medieval';
+export type DevelopmentEraKey =
+  | 'primitive-tribe'
+  | 'agrarian-settlement'
+  | 'ancient-civilization'
+  | 'modern-civilization'
+  | 'medieval';
 export type MaterialCapabilityStage = 'hypothesis' | 'sample' | 'repeatable' | 'distributed' | 'institutional';
 
 export interface MaterialCapabilityObservation {
@@ -358,8 +390,15 @@ export interface FunctionalBuildingObservation {
 }
 
 export interface CivilizationDevelopmentObservation {
-  /** v1-v5 remain readable for persisted snapshots; new observations are emitted as v6. */
-  observerVersion: 'material-institution-era-v1' | 'material-institution-era-v2' | 'material-institution-era-v3' | 'material-institution-era-v4' | 'material-institution-era-v5' | 'material-institution-era-v6';
+  /** v1-v6 remain readable for persisted snapshots; new observations are emitted as v7. */
+  observerVersion:
+    | 'material-institution-era-v1'
+    | 'material-institution-era-v2'
+    | 'material-institution-era-v3'
+    | 'material-institution-era-v4'
+    | 'material-institution-era-v5'
+    | 'material-institution-era-v6'
+    | 'material-institution-era-v7';
   currentEra: DevelopmentEraKey;
   historicalPeakEra: DevelopmentEraKey;
   candidateEra: DevelopmentEraKey;
@@ -389,10 +428,36 @@ export interface PersistedSimulationObservations extends SimulationObservations 
   structures: PhysicalStructure[];
 }
 
+/**
+ * Observer-neutral position of the committed event ledger.
+ *
+ * `world.past` still contains the complete history in schema 17 today. The
+ * separate cursor lets a later runtime retain only the window beginning at
+ * `hotStartIndex` without changing absolute event ordinals or exposing an era
+ * metric to planners.
+ */
+export interface WorldHistoryCursorV1 {
+  version: 1;
+  eventCount: number;
+  hotStartIndex: number;
+  tailEventId: string | null;
+}
+
+/**
+ * Observer-neutral identity allocation state. These counters preserve entity
+ * identity when terminal history is compacted out of the live gameplay shell.
+ */
+export interface SimulationIdentityCounters {
+  /** Next ordinal reserved for a newly created intent. */
+  intentOrdinal: number;
+}
+
 export interface SimulationState {
   schemaVersion: 17;
   seed: number;
   branchId: string;
+  /** Optional for schema-17 states written before monotonic identity allocation. */
+  identityCounters?: SimulationIdentityCounters;
   clock: { unit: 'month'; elapsedMonths: number; monthsPerYear: typeof MONTHS_PER_YEAR };
   world: {
     grid: VoxelWorld;
@@ -403,10 +468,14 @@ export interface SimulationState {
     /** Physical memorial carriers created by completed mortuary acts. */
     memorials?: MemorialMarkerState[];
     past: WorldEvent[];
+    /** Optional for old schema-17 states and compact fixtures; restore derives it from full history. */
+    historyCursor?: WorldHistoryCursorV1;
     /** Incremental traversal counts keyed by `cellId:z`. */
     traffic?: Record<string, number>;
     /** Optional on schema v17 for compatibility; new and restored states initialize v1 explicitly. */
     mechanicalPower?: MechanicalPowerWorldState;
+    /** Optional on schema v17; the first authoritative electrical installation initializes v1. */
+    electricalPower?: ElectricalPowerWorldState;
     /**
      * Physical cache rebuilt from committed construction facts and voxels.
      * Optional because persisted schema-17 states and hand-built fixtures can

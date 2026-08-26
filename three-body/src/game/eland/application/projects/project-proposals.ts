@@ -1,7 +1,13 @@
 import { Material, materialHas, type MaterialId } from '../../domain/material';
 import { bestProductionToolStack, productionToolRank } from '../../domain/production-tool';
 import type { DropState, SimulationState } from '../../domain/model';
-import { ageMonths, inventoryQuantity, isAlive, type PersonState } from '../../domain/person';
+import {
+  ageMonths,
+  inventoryQuantity,
+  isAlive,
+  MIN_TEACHING_AGE_MONTHS,
+  type PersonState,
+} from '../../domain/person';
 import type {
   ProjectFunction,
   ProjectNeed,
@@ -12,7 +18,13 @@ import type {
 import { shelterGeometryAt } from '../../domain/structure';
 import { worldEventById } from '../../domain/event-index';
 import { inspectProjectMaterialContributionRequest } from '../../domain/project-material-request';
-import { inspectProjectKnowledgeRequest } from '../../domain/project-knowledge-request';
+import {
+  inspectProjectKnowledgeRequest,
+  openProjectKnowledgeRequestsFor,
+  projectKnowledgeRequestHasAuthoritativeSource,
+} from '../../domain/project-knowledge-request';
+import { positionsWithinVoiceRange } from '../../domain/social-space';
+import { techniqueOutputMaterialId } from '../../domain/technique-demonstration';
 import {
   cellX,
   cellY,
@@ -33,7 +45,11 @@ import { buildLocalMaterialEvidence } from '../local-material-evidence';
 import {
   mechanicalPowerMaintenanceProposalCandidate,
   mechanicalPowerProposalCandidate,
+  mechanicalPowerReliabilityProposalCandidate,
 } from '../mechanical-power-options';
+import { measurementUncertaintyBasisFor } from '../measurement-options';
+import { remoteWorkPowerTransmissionBasisFor } from '../electrical-power-options';
+import { electricalPowerMaintenanceProposalCandidate } from '../electrical-power-maintenance-options';
 import {
   completedFunctionMaterialIds,
   cultivationSurfaceMaterials,
@@ -67,6 +83,7 @@ function proposal(
     'production-efficiency', 'reserve-security', 'water-security', 'coordination-capacity',
   ].includes(need) ? 23 : [
     'high-heat-capability', 'alloy-capability', 'iron-capability', 'mechanical-power-capability',
+    'equipment-reliability', 'measurement-uncertainty', 'remote-work-power',
   ].includes(need) ? 35 : 11;
   const subject = {
     need,
@@ -75,6 +92,18 @@ function proposal(
     ...(productionToolBaselineRank !== undefined ? { productionToolBaselineRank } : {}),
     ...(anchoredInput.targetKnowledgeId ? { targetKnowledgeId: anchoredInput.targetKnowledgeId } : {}),
     ...(anchoredInput.shelterRequirement ? { shelterRequirement: anchoredInput.shelterRequirement } : {}),
+    ...(anchoredInput.mechanicalReliabilityBasis
+      ? { mechanicalReliabilityBasis: anchoredInput.mechanicalReliabilityBasis }
+      : {}),
+    ...(anchoredInput.measurementUncertaintyBasis
+      ? { measurementUncertaintyBasis: anchoredInput.measurementUncertaintyBasis }
+      : {}),
+    ...(anchoredInput.remoteWorkPowerBasis
+      ? { remoteWorkPowerBasis: anchoredInput.remoteWorkPowerBasis }
+      : {}),
+    ...(anchoredInput.electricalPowerMaintenanceBasis
+      ? { electricalPowerMaintenanceBasis: anchoredInput.electricalPowerMaintenanceBasis }
+      : {}),
   };
   const basis = pressureBasis ?? buildProjectPressureBasis(state, person, subject, createdAtMonth, view);
   return {
@@ -254,6 +283,70 @@ function hasLocallyVisibleShelter(state: SimulationState, visible: ReadonlySet<n
       .some((position) => Boolean(shelterGeometryAt(state.world.grid, position))));
 }
 
+function cropProcessingFacilitySite(
+  state: SimulationState,
+  person: PersonState,
+  visibleCells: number[],
+): ProjectState['site'] | undefined {
+  const visible = new Set(visibleCells);
+  const sourcePriorityByCell = new Map<number, number>();
+  for (const cellId of visibleCells) {
+    if (surfaceMaterial(state.world.grid, cellId) === Material.CropMature) {
+      sourcePriorityByCell.set(cellId, 0);
+    }
+  }
+  for (const project of state.projects) {
+    if (project.status !== 'active' || project.desiredFunction !== 'settled-cultivation') continue;
+    for (const cellId of projectCultivationCells(project)) {
+      if (!visible.has(cellId)) continue;
+      const materialId = surfaceMaterial(state.world.grid, cellId);
+      if (!cultivationSurfaceMaterials.has(materialId)
+        && !plantableCultivationMaterials.has(materialId)) continue;
+      if (!sourcePriorityByCell.has(cellId)) sourcePriorityByCell.set(cellId, 1);
+    }
+  }
+  return [...sourcePriorityByCell]
+    .flatMap(([sourceCellId, sourcePriority]) => {
+      const sourceZ = topPosition(state.world.grid, sourceCellId).z;
+      return neighbors4(sourceCellId)
+        .filter((targetCellId) => visible.has(targetCellId))
+        .flatMap((targetCellId) => standingPositions(state.world.grid, targetCellId)
+          .filter((site) => Math.abs(site.z - (sourceZ + 1)) <= 1)
+          .filter((site) => !state.people.some((candidate) => isAlive(candidate)
+            && candidate.position.cellId === site.cellId
+            && (candidate.position.z === site.z || candidate.position.z + 1 === site.z)))
+          .flatMap((site) => {
+            const approach = neighbors4(site.cellId)
+              .flatMap((approachCellId) => standingPositions(state.world.grid, approachCellId))
+              .filter((position) => Math.abs(position.z - site.z) <= 2)
+              .filter((position) => !state.people.some((candidate) => candidate.id !== person.id
+                && isAlive(candidate)
+                && candidate.position.cellId === position.cellId
+                && candidate.position.z === position.z))
+              .map((position) => ({
+                position,
+                path: findStandingPath(state.world.grid, person.position, position),
+              }))
+              .filter((candidate) => candidate.path.length > 0)
+              .sort((left, right) => left.path.length - right.path.length
+                || left.position.cellId - right.position.cellId
+                || left.position.z - right.position.z)[0];
+            return approach ? [{
+              site,
+              sourceCellId,
+              sourcePriority,
+              pathLength: approach.path.length,
+            }] : [];
+          }));
+    })
+    .sort((left, right) => left.sourcePriority - right.sourcePriority
+      || left.pathLength - right.pathLength
+      || left.sourceCellId - right.sourceCellId
+      || left.site.cellId - right.site.cellId
+      || left.site.z - right.site.z)
+    .map((candidate) => ({ cellId: candidate.site.cellId, z: candidate.site.z }))[0];
+}
+
 export function deriveProjectProposals(
   state: SimulationState,
   person: PersonState,
@@ -316,6 +409,28 @@ export function deriveProjectProposals(
   }, pressureView));
 
   const authoredRecords = state.records.filter((record) => record.authorId === person.id);
+  const requestBoundKnowledge = openProjectKnowledgeRequestsFor(state, person, proposalMonth)
+    .flatMap(({ project, request, requester }) => {
+      if (!project.site || !projectKnowledgeRequestHasAuthoritativeSource(state, project, request)) return [];
+      const requestEvent = worldEventById(state, request.requestEventId);
+      const heardAudience = requestEvent?.kind === 'action' && Array.isArray(requestEvent.diff.audience)
+        ? requestEvent.diff.audience
+        : [];
+      if (!heardAudience.includes(person.id)) return [];
+      const knowledge = person.knowledge
+        .filter((fact) => fact.kind === 'technique'
+          && fact.confidence >= 55
+          && techniqueOutputMaterialId(fact.id) === request.outputMaterialId
+          && !authoredRecords.some((record) => record.knowledgeId === fact.id))
+        .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))[0];
+      if (!knowledge) return [];
+      const canTeachDirectly = positionsWithinVoiceRange(person.position, requester.position)
+        && ageMonths(requester, proposalMonth) >= MIN_TEACHING_AGE_MONTHS;
+      return canTeachDirectly ? [] : [{ project, request, requester, knowledge }];
+    })
+    .sort((left, right) => left.request.atMonth - right.request.atMonth
+    || left.request.requestEventId.localeCompare(right.request.requestEventId)
+    || right.knowledge.confidence - left.knowledge.confidence)[0];
   const durableKnowledge = person.knowledge
     .filter((fact) => fact.kind === 'technique'
       && fact.confidence >= 68
@@ -324,21 +439,175 @@ export function deriveProjectProposals(
     .sort((a, b) => b.confidence - a.confidence
       || b.sourceEventIds.length - a.sourceEventIds.length
       || a.id.localeCompare(b.id))[0];
+  const selectedDurableKnowledge = requestBoundKnowledge?.knowledge ?? durableKnowledge;
+  const knowledgeBeneficiaryIds = requestBoundKnowledge
+    ? [...new Set([person.id, requestBoundKnowledge.requester.id])]
+    : [person.id];
   const knowledgeSubject = {
     need: 'knowledge-preservation' as const,
-    beneficiaryIds: [person.id],
+    beneficiaryIds: knowledgeBeneficiaryIds,
     createdAtMonth: proposalMonth,
-    ...(durableKnowledge ? { targetKnowledgeId: durableKnowledge.id } : {}),
+    ...(selectedDurableKnowledge ? { targetKnowledgeId: selectedDurableKnowledge.id } : {}),
   };
-  const knowledgeBasis = buildProjectPressureBasis(state, person, knowledgeSubject, proposalMonth, pressureView);
+  const personalContinuityBasis = buildProjectPressureBasis(
+    state,
+    person,
+    knowledgeSubject,
+    proposalMonth,
+    pressureView,
+  );
+  const knowledgeBasis: ProjectPressureBasis = requestBoundKnowledge
+    ? (() => {
+      const requestEdge = `event:project-knowledge-request:${requestBoundKnowledge.request.requestEventId}`;
+      const edgeKeys = [...new Set([...personalContinuityBasis.edgeKeys, requestEdge])].sort();
+      return {
+        ...personalContinuityBasis,
+        pressure: Math.max(64, personalContinuityBasis.pressure),
+        edgeKeys,
+        reasonKeys: [...new Set([
+          ...personalContinuityBasis.reasonKeys,
+          'heard-open-project-knowledge-request',
+        ])].sort(),
+        sourceFactIds: [...new Set([
+          ...personalContinuityBasis.sourceFactIds,
+          requestBoundKnowledge.request.requestEventId,
+        ])].sort(),
+        basisKey: `${personalContinuityBasis.version}|need=knowledge-preservation|observer=${person.id}|edges=${edgeKeys.join(',')}`,
+      };
+    })()
+    : personalContinuityBasis;
   const continuityPressure = knowledgeBasis.reasonKeys.some((reason) => reason.startsWith('age-band-'))
     || projectPressureReasonPresent(knowledgeBasis, 'personal-memory-disruption');
-  if (continuityPressure && durableKnowledge && authoredRecords.length < 1) proposals.push(proposal(state, person, 'knowledge-preservation', {
-    kind: 'inquiry', desiredFunction: 'durable-record',
-    summary: `让“${durableKnowledge.summary}”在个人记忆中断后仍可留下`,
-    beneficiaryIds: [person.id],
-    targetKnowledgeId: durableKnowledge.id,
-  }, pressureView, knowledgeBasis));
+  if ((requestBoundKnowledge || (continuityPressure && authoredRecords.length < 1))
+    && selectedDurableKnowledge) {
+    proposals.push(proposal(state, person, 'knowledge-preservation', {
+      kind: 'inquiry', desiredFunction: 'durable-record',
+      summary: requestBoundKnowledge
+        ? `把“${selectedDurableKnowledge.summary}”留在${requestBoundKnowledge.requester.name}的项目地点，异步回应其知识缺口`
+        : `让“${selectedDurableKnowledge.summary}”在个人记忆中断后仍可留下`,
+      beneficiaryIds: knowledgeBeneficiaryIds,
+      ...(requestBoundKnowledge ? { site: { ...requestBoundKnowledge.project.site! } } : {}),
+      targetKnowledgeId: selectedDurableKnowledge.id,
+    }, pressureView, knowledgeBasis));
+  }
+
+  const measurementUncertainty = measurementUncertaintyBasisFor(state, person, proposalMonth);
+  const repeatedMeasurementBasis = measurementUncertainty && projectsOwnedBy(state, person.id).some((project) => (
+    project.status === 'completed'
+      && project.desiredFunction === 'comparable-mass-measurement'
+      && project.measurementUncertaintyBasis?.basisKey === measurementUncertainty.basisKey
+  ));
+  if (measurementUncertainty && !repeatedMeasurementBasis) {
+    const subject = {
+      need: 'measurement-uncertainty' as const,
+      desiredFunction: 'comparable-mass-measurement' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+      measurementUncertaintyBasis: measurementUncertainty,
+    };
+    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'measurement-uncertainty', {
+      kind: 'inquiry',
+      desiredFunction: 'comparable-mass-measurement',
+      summary: '把本人反复制作却只能凭同一粗手感判断的实体批次，变成可复核的局部质量比较',
+      beneficiaryIds: [person.id],
+      measurementUncertaintyBasis: structuredClone(measurementUncertainty),
+    }, pressureView, basis));
+  }
+
+  const remoteWorkPower = remoteWorkPowerTransmissionBasisFor(state, person, proposalMonth);
+  const repeatedRemoteSite = remoteWorkPower && projectsOwnedBy(state, person.id).some((project) => (
+    project.status === 'completed'
+      && project.desiredFunction === 'remote-work-power-delivery'
+      && project.remoteWorkPowerBasis?.mechanicalNetworkId === remoteWorkPower.mechanicalNetworkId
+      && project.remoteWorkPowerBasis.remoteWorkPosition.cellId === remoteWorkPower.remoteWorkPosition.cellId
+      && project.remoteWorkPowerBasis.remoteWorkPosition.z === remoteWorkPower.remoteWorkPosition.z
+  ));
+  if (remoteWorkPower && !repeatedRemoteSite) {
+    const subject = {
+      need: 'remote-work-power' as const,
+      desiredFunction: 'remote-work-power-delivery' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+      remoteWorkPowerBasis: remoteWorkPower,
+    };
+    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'remote-work-power', {
+      kind: 'inquiry',
+      desiredFunction: 'remote-work-power-delivery',
+      summary: '尝试把本人反复使用的水力功送到往返负担较重的固定工位',
+      beneficiaryIds: [person.id],
+      site: { ...remoteWorkPower.remoteWorkPosition },
+      remoteWorkPowerBasis: structuredClone(remoteWorkPower),
+    }, pressureView, basis));
+  }
+
+  const electricalMaintenance = electricalPowerMaintenanceProposalCandidate(
+    state,
+    person,
+    visibleCells,
+    proposalMonth,
+  );
+  if (electricalMaintenance && !projectsOwnedBy(state, person.id).some((project) => (
+    (project.status === 'active' || project.status === 'completed')
+      && project.desiredFunction === 'restore-electrical-power-delivery'
+      && project.electricalPowerNetworkId === electricalMaintenance.network.id
+      && project.electricalPowerMaintenanceBasis?.faultEventId === electricalMaintenance.faultEvent.id
+  ))) {
+    const subject = {
+      need: 'equipment-reliability' as const,
+      desiredFunction: 'restore-electrical-power-delivery' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+      electricalPowerMaintenanceBasis: electricalMaintenance.basis,
+    };
+    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'equipment-reliability', {
+      kind: 'production',
+      desiredFunction: 'restore-electrical-power-delivery',
+      summary: '依据本人对眼前熔断导体的诊断，制造并核验替换件以恢复实体电力交付',
+      beneficiaryIds: [person.id],
+      site: {
+        cellId: electricalMaintenance.contributionSite.cellId,
+        z: electricalMaintenance.contributionSite.z,
+      },
+      electricalPowerPlan: structuredClone(electricalMaintenance.plan),
+      electricalPowerPlanKey: electricalMaintenance.network.planKey,
+      electricalPowerNetworkId: electricalMaintenance.network.id,
+      electricalPowerMaintenanceBasis: structuredClone(electricalMaintenance.basis),
+    }, pressureView, basis));
+  }
+
+  const reliabilityCandidate = mechanicalPowerReliabilityProposalCandidate(state, person, visibleCells);
+  if (reliabilityCandidate && !projectsOwnedBy(state, person.id).some((project) => (
+    project.status === 'active' || project.status === 'completed'
+  ) && project.desiredFunction === 'durable-power-transmission'
+    && project.mechanicalPowerNetworkId === reliabilityCandidate.network.id
+    && project.mechanicalPowerFaultEventId === reliabilityCandidate.faultEvent.id)) {
+    const subject = {
+      need: 'equipment-reliability' as const,
+      desiredFunction: 'durable-power-transmission' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+      mechanicalReliabilityBasis: reliabilityCandidate.reliabilityBasis,
+    };
+    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'equipment-reliability', {
+      kind: 'inquiry',
+      desiredFunction: 'durable-power-transmission',
+      summary: '针对本人在同一带载网络反复经历的断轴，有限试验可观察材料并复核更长服役',
+      beneficiaryIds: [person.id],
+      site: {
+        cellId: reliabilityCandidate.contributionSite.cellId,
+        z: reliabilityCandidate.contributionSite.z,
+      },
+      mechanicalPowerPlan: structuredClone(reliabilityCandidate.plan),
+      mechanicalPowerPlanKey: reliabilityCandidate.planKey,
+      mechanicalPowerNetworkId: reliabilityCandidate.network.id,
+      mechanicalPowerFaultEventId: reliabilityCandidate.faultEvent.id,
+      mechanicalReliabilityBasis: structuredClone(reliabilityCandidate.reliabilityBasis),
+    }, pressureView, basis));
+  }
 
   const maintenanceCandidate = mechanicalPowerMaintenanceProposalCandidate(state, person, visibleCells);
   if (maintenanceCandidate && !projectsOwnedBy(state, person.id).some((project) => (
@@ -519,6 +788,7 @@ export function deriveProjectProposals(
     ? projectCultivationCells({ site: { cellId: cultivationSite.cellId, z: cultivationSite.position.z } })
       .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId))).length
     : 0;
+  const cropProcessingSite = cropProcessingFacilitySite(state, person, visibleCells);
   pushDevelopmentProposal(
     'production-efficiency',
     'efficient-production',
@@ -570,9 +840,10 @@ export function deriveProjectProposals(
     'production-efficiency',
     'crop-processing',
     '建立石磨，提高定居作物的收获效率',
-    hasObserved(Material.CropMature, Material.Seed) && !hasFacility(Material.Mill)
+    Boolean(cropProcessingSite) && hasObserved(Material.Seed) && !hasFacility(Material.Mill)
       && hasObserved(Material.Stone) && hasObserved(Material.Leaves, Material.Wood, Material.Plank),
     'construction',
+    cropProcessingSite,
   );
   pushDevelopmentProposal(
     'coordination-capacity',
@@ -662,6 +933,9 @@ export function deriveProjectProposals(
   );
 
   return proposals.flatMap((candidate) => {
+    // This inquiry already carries an exact seven-fact personal route basis;
+    // generic failed-inquiry history would widen it back into cumulative state.
+    if (candidate.desiredFunction === 'remote-work-power-delivery') return [candidate];
     const grounded = proposalWithInquiryOpportunityMemory(state, person, visibleDrops, candidate);
     return grounded ? [grounded] : [];
   }).sort((a, b) => b.pressure - a.pressure

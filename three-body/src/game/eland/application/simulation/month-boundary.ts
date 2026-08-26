@@ -3,7 +3,9 @@ import { rollingDecisionUsage } from '../../domain/decision-budget';
 import { advanceAgreementLifecycle, synchronizeAgreementResponseDeadlineSuspensions } from '../../domain/agreement';
 import { advanceCollectiveLifecycle } from '../../domain/collective';
 import { advanceGovernanceLifecycle } from '../../domain/governance';
-import { maintainMemories } from '../../domain/memory';
+import { appendCommittedEvents, assertCommittedHistoryAppendable } from '../../domain/history';
+import { intentReviewAtMonth } from '../../domain/intent';
+import { maintainDueMemories } from '../../domain/memory';
 import type {
   BatchDecider,
   DecisionContext,
@@ -23,11 +25,13 @@ import {
 } from '../../domain/monthly-processes';
 import { advancePermissionLifecycle } from '../../domain/permission';
 import {
+  advancePhysicalStructureIndex,
   copyPhysicalStructures,
   derivePhysicalStructureIndex,
 } from '../../domain/physical-structure-index';
-import { isAlive, type PersonId, type PersonState } from '../../domain/person';
-import { consolidatePersonality } from '../../domain/personality';
+import { type PersonId, type PersonState } from '../../domain/person';
+import { consolidateDuePersonalities } from '../../domain/personality';
+import { livingPeople } from '../../domain/state-index';
 import { seededFraction } from '../../world/generator';
 import { advanceProjects } from '../project-options';
 import { decisionBudgetExemption, decisionProbability } from './model-review';
@@ -47,8 +51,8 @@ export interface PreparedMonth {
 }
 
 function stateGoalReviewDue(context: DecisionContext, atMonth: number): boolean {
-  return context.activeIntent?.stateGoalUntilMonth !== undefined
-    && atMonth > context.activeIntent.stateGoalUntilMonth;
+  const reviewAtMonth = context.activeIntent ? intentReviewAtMonth(context.activeIntent) : undefined;
+  return reviewAtMonth !== undefined && atMonth > reviewAtMonth;
 }
 
 export function currentRollingLedgers(state: SimulationState): DecisionMonthLedger[] {
@@ -69,11 +73,11 @@ export function prepareMonth(
     contexts: [],
     candidates: [],
     naturallyTriggeredPeople,
-    livingAgents: state.people.filter(isAlive).length,
+    livingAgents: livingPeople(state).length,
     atMonth: state.clock.elapsedMonths,
   };
   const atMonth = state.clock.elapsedMonths + 1;
-  for (const person of state.people.filter(isAlive)) {
+  for (const person of livingPeople(state)) {
     person.position.previousCellId = person.position.cellId;
     person.position.previousZ = person.position.z;
     person.position.lastPath = [person.position.cellId];
@@ -104,15 +108,14 @@ export function prepareMonth(
   events.push(...synchronizeAgreementResponseDeadlineSuspensions(state, atMonth, events.length, events));
   events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
   events.push(...advancePermissionLifecycle(state, atMonth, events.length));
-  maintainMemories(state, atMonth);
+  maintainDueMemories(state, atMonth);
   const exitedHibernationPersonIds = new Set(hibernationPhaseEvents
     .filter((event) => event.diff.exited === true)
     .map((event) => event.who));
-  for (const person of state.people.filter((candidate) => isAlive(candidate)
-    && exitedHibernationPersonIds.has(candidate.id))) {
+  for (const person of livingPeople(state).filter((candidate) => exitedHibernationPersonIds.has(candidate.id))) {
     drainInterruptedIntentReturns(state, person, atMonth);
   }
-  const livingAgents = state.people.filter(isAlive).length;
+  const livingAgents = livingPeople(state).length;
   if (!collectEnhancementCandidates) {
     return {
       state,
@@ -238,6 +241,12 @@ export function finishMonth(
   projectionCadence: 'monthly' | 'annual',
   observationProjector: ObservationProjector,
 ): SimulationState {
+  const historyBeforeCommit = assertCommittedHistoryAppendable(state);
+  const previousHistorySeal = {
+    eventCount: historyBeforeCommit.eventCount,
+    tailEventId: historyBeforeCommit.tailEventId,
+  };
+  const previousPhysicalStructureIndex = state.world.physicalStructureIndex;
   const orderByTick = new Map<number, number>();
   events.forEach((event, index) => {
     const planningTick = event.planningTick ?? (event.kind === 'action' ? event.actionTick : 0);
@@ -248,14 +257,14 @@ export function finishMonth(
     orderByTick.set(planningTick, orderInTick + 1);
   });
   state.clock.elapsedMonths = atMonth;
-  state.world.past.push(...events);
-  consolidatePersonality(state, atMonth);
+  appendCommittedEvents(state, events);
+  consolidateDuePersonalities(state, atMonth);
   advanceProjects(state, atMonth);
   advanceCollectiveLifecycle(state, atMonth);
   advanceGovernanceLifecycle(state, atMonth);
   state.lastStep = events;
   state.world.drops = state.world.drops.filter((drop) => drop.quantity > 0);
-  const living = state.people.filter(isAlive);
+  const living = livingPeople(state);
   const endpointReached = state.civilization.conditions.endpoint.kind === 'months'
     && atMonth >= state.civilization.conditions.endpoint.value;
   const fullProjection = projectionCadence === 'monthly'
@@ -263,7 +272,14 @@ export function finishMonth(
     || atMonth % MONTHS_PER_YEAR === 0
     || endpointReached
     || living.length === 0;
-  const physicalStructureIndex = derivePhysicalStructureIndex(state);
+  const physicalStructureIndex = previousPhysicalStructureIndex?.projectionVersion === 2
+    ? advancePhysicalStructureIndex(
+      state,
+      previousPhysicalStructureIndex,
+      events,
+      previousHistorySeal,
+    )
+    : derivePhysicalStructureIndex(state);
   state.world.physicalStructureIndex = physicalStructureIndex;
   state.derived = { ...state.derived, structures: copyPhysicalStructures(physicalStructureIndex) };
   if (fullProjection) observationProjector.project(state, 'full');

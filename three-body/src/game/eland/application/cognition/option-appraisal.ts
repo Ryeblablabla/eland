@@ -26,6 +26,7 @@ import {
 } from './need-agenda';
 import { projectById } from '../../domain/state-index';
 import { assessFamilyReadiness, type FamilyReadinessAssessment } from './family-readiness';
+import { relationTo } from '../../domain/relation';
 
 export type CognitiveFactorName =
   | 'need'
@@ -365,7 +366,7 @@ function relationshipAppraisal(context: DecisionContext, option: ActionOption): 
     sourceFactIds: [...option.sourceFactIds],
   };
   const targetId = optionTargetPersonId(context, option);
-  const relation = targetId ? context.person.relations.find((candidate) => candidate.personId === targetId) : undefined;
+  const relation = targetId ? relationTo(context.person, targetId) : undefined;
   const communication = communicationAction(option);
   const content = communication?.content;
   const proceeds = content?.kind === 'offer' || content?.kind === 'accept'
@@ -381,7 +382,7 @@ function relationshipAppraisal(context: DecisionContext, option: ActionOption): 
   let preference = ((relation?.trust ?? 0) + (relation?.bond ?? 0) - Math.max(0, relation?.fear ?? 0) * 1.25) / 65;
   const reasons: string[] = [];
   const sourceFactIds = new Set(relation?.sourceEventIds ?? []);
-  if (relation) reasons.push('本人依据与目标人物的信任、羁绊和恐惧预期社会后果');
+  if (targetId) reasons.push('本人依据与目标人物的信任、羁绊和恐惧预期社会后果');
   if (reproduction) {
     const relationalSafety = (
       (relation?.trust ?? 0) * 0.52

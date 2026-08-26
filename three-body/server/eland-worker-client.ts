@@ -1,5 +1,4 @@
-import { Worker } from 'node:worker_threads';
-import { totalmem } from 'node:os';
+import { Worker, type WorkerOptions } from 'node:worker_threads';
 
 import { loadServerEnvValue } from './env';
 
@@ -21,11 +20,51 @@ interface PendingRequest {
   reject: (reason: Error) => void;
 }
 
-function workerHeapLimitMb(): number {
-  const configured = Number(loadServerEnvValue('ELAND_WORKER_OLD_SPACE_MB'));
-  if (Number.isFinite(configured) && configured > 0) return Math.round(configured);
-  return Math.min(8_192, Math.max(4_096, Math.floor(totalmem() / 1024 / 1024 * 0.4)));
+const DEFAULT_WORKER_OLD_SPACE_MB = 1_536;
+const MAX_WORKER_OLD_SPACE_MB = 2_048;
+const MIN_WORKER_OLD_SPACE_MB = 16;
+const DEFAULT_WORKER_YOUNG_SPACE_MB = 64;
+const MAX_WORKER_YOUNG_SPACE_MB = 128;
+const MIN_WORKER_YOUNG_SPACE_MB = 4;
+const DEFAULT_WORKER_STACK_MB = 8;
+const MAX_WORKER_STACK_MB = 16;
+const MIN_WORKER_STACK_MB = 4;
+
+function boundedResourceLimitMb(
+  envName: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const configured = Number(loadServerEnvValue(envName));
+  if (!Number.isFinite(configured) || configured <= 0) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.round(configured)));
 }
+
+export function workerResourceLimits(): NonNullable<WorkerOptions['resourceLimits']> {
+  return {
+    maxOldGenerationSizeMb: boundedResourceLimitMb(
+      'ELAND_WORKER_OLD_SPACE_MB',
+      DEFAULT_WORKER_OLD_SPACE_MB,
+      MIN_WORKER_OLD_SPACE_MB,
+      MAX_WORKER_OLD_SPACE_MB,
+    ),
+    maxYoungGenerationSizeMb: boundedResourceLimitMb(
+      'ELAND_WORKER_YOUNG_SPACE_MB',
+      DEFAULT_WORKER_YOUNG_SPACE_MB,
+      MIN_WORKER_YOUNG_SPACE_MB,
+      MAX_WORKER_YOUNG_SPACE_MB,
+    ),
+    stackSizeMb: boundedResourceLimitMb(
+      'ELAND_WORKER_STACK_MB',
+      DEFAULT_WORKER_STACK_MB,
+      MIN_WORKER_STACK_MB,
+      MAX_WORKER_STACK_MB,
+    ),
+  };
+}
+
+type WorkerFactory = (url: URL, options: WorkerOptions) => Worker;
 
 export class ElandWorkerClient {
   private worker: Worker | null = null;
@@ -33,18 +72,15 @@ export class ElandWorkerClient {
   private sequence = 0;
   private closed = false;
 
-  constructor() {
-    this.startWorker();
-  }
+  constructor(
+    private readonly createWorker: WorkerFactory = (url, options) => new Worker(url, options),
+  ) {}
 
   private startWorker(): Worker {
     if (this.closed) throw new Error('文明演化 Worker 已关闭');
-    const worker = new Worker(new URL('./eland-worker.mjs', import.meta.url), {
-      // 实时恢复、按需历史回放和响应投影需要堆余量；环境变量可按部署机器容量调整。
-      resourceLimits: {
-        maxOldGenerationSizeMb: workerHeapLimitMb(),
-        maxYoungGenerationSizeMb: Number(loadServerEnvValue('ELAND_WORKER_YOUNG_SPACE_MB')) || 64,
-      },
+    const worker = this.createWorker(new URL('./eland-worker.mjs', import.meta.url), {
+      // 实时恢复、按需历史回放和响应投影需要堆余量，但不能挤占宿主机全部内存。
+      resourceLimits: workerResourceLimits(),
     });
     this.worker = worker;
     worker.on('message', (message: WorkerResponse) => {
@@ -69,9 +105,8 @@ export class ElandWorkerClient {
     if (this.worker !== worker) return;
     this.worker = null;
     this.rejectAll(error);
-    if (!this.closed) queueMicrotask(() => {
-      if (!this.closed && !this.worker) this.startWorker();
-    });
+    void worker.terminate().catch(() => undefined);
+    // 保持惰性：异常后不在后台形成重启循环，由下一次真实请求按需重建。
   }
 
   handle(method: string | undefined, url: URL, body: unknown): Promise<EncodedElandApiResponse> {

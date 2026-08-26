@@ -27,7 +27,12 @@ export type MaterialTag =
   | 'storage'
   | 'water-source'
   | 'workstation'
-  | 'meeting-place';
+  | 'meeting-place'
+  | 'instrument'
+  | 'mass-reference'
+  | 'electrical-source'
+  | 'electrical-conductor'
+  | 'electrical-load';
 
 export interface MaterialDefinition {
   id: MaterialId;
@@ -109,6 +114,15 @@ export const Material = {
   WaterWheel: 64,
   DriveShaft: 65,
   BrokenDriveShaft: 66,
+  SteelCharge: 67,
+  Steel: 68,
+  SteelDriveShaft: 69,
+  BeamBalance: 70,
+  StandardWeight: 71,
+  MechanicalDynamo: 72,
+  CopperConductor: 73,
+  ResistiveLoad: 74,
+  BrokenCopperConductor: 75,
 } as const satisfies Record<string, MaterialId>;
 
 export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
@@ -177,8 +191,17 @@ export const MATERIAL_PALETTE: readonly MaterialDefinition[] = [
   { id: Material.Smithy, key: 'smithy', name: '铁匠铺锻炉', phase: 'solid', tags: ['solid', 'building', 'placeable', 'facility', 'workstation', 'hot'], hardness: 9, mass: 4, color: [88, 78, 72] },
   { id: Material.KeepCore, key: 'keep_core', name: '城堡议事核心', phase: 'solid', tags: ['solid', 'building', 'placeable', 'facility', 'meeting-place', 'insulating'], hardness: 9, mass: 4.2, color: [89, 91, 92] },
   { id: Material.WaterWheel, key: 'water_wheel', name: '水轮', phase: 'solid', tags: ['solid', 'building', 'placeable'], hardness: 5, mass: 2.2, color: [126, 87, 48] },
-  { id: Material.DriveShaft, key: 'drive_shaft', name: '青铜传动轴', phase: 'solid', tags: ['solid', 'building', 'placeable', 'metal'], hardness: 8, mass: 1.8, color: [161, 111, 50] },
+  { id: Material.DriveShaft, key: 'drive_shaft', name: '金属传动轴', phase: 'solid', tags: ['solid', 'building', 'placeable', 'metal'], hardness: 8, mass: 1.8, color: [161, 111, 50] },
   { id: Material.BrokenDriveShaft, key: 'broken_drive_shaft', name: '断裂的传动轴', phase: 'solid', tags: ['solid', 'placeable', 'metal'], hardness: 5, mass: 1.7, color: [104, 78, 50] },
+  { id: Material.SteelCharge, key: 'steel_charge', name: '炼钢料', phase: 'solid', tags: ['solid'], hardness: 7, mass: 2.4, color: [67, 70, 71] },
+  { id: Material.Steel, key: 'steel', name: '钢', phase: 'solid', tags: ['solid', 'metal', 'building', 'tool-material'], hardness: 10, mass: 2.5, color: [111, 119, 123] },
+  { id: Material.SteelDriveShaft, key: 'steel_drive_shaft', name: '钢制传动轴', phase: 'solid', tags: ['solid', 'building', 'placeable', 'metal'], hardness: 10, mass: 1.9, color: [118, 126, 130] },
+  { id: Material.BeamBalance, key: 'beam_balance', name: '等臂秤', phase: 'solid', tags: ['solid', 'tool', 'instrument'], hardness: 6, mass: 1.1, color: [146, 111, 67] },
+  { id: Material.StandardWeight, key: 'standard_weight', name: '标准秤砣', phase: 'solid', tags: ['solid', 'metal', 'mass-reference'], hardness: 9, mass: 1, color: [103, 106, 107] },
+  { id: Material.MechanicalDynamo, key: 'mechanical_dynamo', name: '机械发电机', phase: 'solid', tags: ['solid', 'placeable', 'metal', 'electrical-source'], hardness: 9, mass: 3.2, color: [87, 103, 108] },
+  { id: Material.CopperConductor, key: 'copper_conductor', name: '绝缘铜导体', phase: 'solid', tags: ['solid', 'placeable', 'metal', 'electrical-conductor'], hardness: 5, mass: 0.8, color: [181, 96, 55] },
+  { id: Material.ResistiveLoad, key: 'resistive_load', name: '电阻负载', phase: 'solid', tags: ['solid', 'placeable', 'metal', 'electrical-load'], hardness: 8, mass: 2.1, color: [177, 133, 72] },
+  { id: Material.BrokenCopperConductor, key: 'broken_copper_conductor', name: '熔断的铜导体', phase: 'solid', tags: ['solid', 'placeable', 'metal'], hardness: 3, mass: 0.7, color: [77, 62, 54] },
 ];
 
 const BY_ID = new Map(MATERIAL_PALETTE.map((material) => [material.id, material]));

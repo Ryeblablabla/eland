@@ -436,11 +436,5 @@ export function maternalFirstTeachingConfidence(
   ));
   if (!matrilinealBirth || mother.sex !== 'female' || !child.geneticParents.includes(mother.id)) return 60;
   if ((child.maternalTeachingSourceEventIds ?? []).length > 0) return 60;
-  const prior = state.world.past.some((fact) => fact.kind === 'action'
-    && fact.status === 'completed'
-    && fact.who === mother.id
-    && (fact.diff.explicitTeaching === true || typeof fact.diff.teachingFactId === 'string')
-    && Array.isArray(fact.diff.taughtAudienceIds)
-    && fact.diff.taughtAudienceIds.includes(child.id));
-  return prior ? 60 : 72;
+  return 72;
 }

@@ -399,6 +399,14 @@ try {
   'the mirror intent should end with the joint process (or fulfilled agreement) instead of emitting a blocked action');
   const afterJointFemale = afterJointAttempt.people.find((candidate) => candidate.id === jointFemale.id);
   if (afterJointFemale && !afterJointFemale.conditions.some((condition) => condition.kind === 'pregnancy')) {
+    const afterJointMale = afterJointAttempt.people.find((candidate) => candidate.id === jointMale.id);
+    if (afterJointMale) {
+      // The bounded second deliberation may legitimately send either partner
+      // elsewhere after the failed attempt. Re-establish the test's intended
+      // co-location precondition before checking next-month consent affordance.
+      afterJointMale.position.cellId = afterJointFemale.position.cellId;
+      afterJointMale.position.z = afterJointFemale.position.z;
+    }
     const nextMonthHasAttempt = afterJointAttempt.people.some((candidate) => (
       candidate.id === jointFemale.id || candidate.id === jointMale.id
     ) && buildDecisionContextForPerson(afterJointAttempt, candidate, 14).options.some((candidate) => (

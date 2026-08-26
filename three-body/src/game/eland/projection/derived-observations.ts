@@ -49,7 +49,7 @@ export function observeSimulation(
   state: SimulationState,
   physicalStructureIndex: PhysicalStructureIndex,
 ): SimulationObservations {
-  const actions = [...actionFacts(state)];
+  const actions = actionFacts(state);
   const transfers = actions.filter((event) => event.action.kind === 'transfer' && event.status === 'completed');
   const containerTransfers = transfers.filter((event) => event.action.kind === 'transfer'
     && (event.action.from.kind === 'container' || event.action.to.kind === 'container'));
@@ -73,10 +73,7 @@ export function observeSimulation(
   const functionalBuildings = observeFunctionalBuildings(state);
   const trailCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.PackedSoil);
   const cultivatedCells = Array.from({ length: WORLD_CELL_COUNT }, (_, cell) => cell).filter((cell) => surfaceMaterial(state.world.grid, cell) === Material.CropSprout || surfaceMaterial(state.world.grid, cell) === Material.CropMature || surfaceMaterial(state.world.grid, cell) === Material.ExhaustedSoil);
-  const milestones = observeCapabilityMilestones({
-    ...state,
-    derived: { ...state.derived, structures },
-  });
+  const milestones = observeCapabilityMilestones(state, structures);
   const practices: PracticeObservation[] = [
     transfers.length ? { key: 'transfer', label: '反复转移物质', count: transfers.length, agentIds: [...new Set(transfers.map((event) => event.who))], eventIds: transfers.map((event) => event.id), stability: clamp(transfers.length * 5) } : null,
     containerTransfers.length ? { key: 'storage', label: '使用空间容器储藏物质', count: containerTransfers.length, agentIds: [...new Set(containerTransfers.map((event) => event.who))], eventIds: containerTransfers.map((event) => event.id), stability: clamp(containerTransfers.length * 8) } : null,

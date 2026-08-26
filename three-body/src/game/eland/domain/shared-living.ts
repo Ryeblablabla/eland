@@ -2,7 +2,8 @@ import type { Agreement } from './agreement';
 import type { SharedLivingAnchor } from './action';
 import { worldEventById } from './event-index';
 import type { SimulationState } from './model';
-import { isAlive, type PersonState } from './person';
+import type { PersonState } from './person';
+import { livingPeople } from './state-index';
 import {
   cellX,
   cellY,
@@ -62,8 +63,9 @@ export function personWithinLivingArea(person: PersonState, anchor: SharedLiving
 export function companionSharesLivingArea(state: SimulationState, agreement: Agreement): boolean {
   const anchor = companionLivingAnchor(state, agreement);
   if (!anchor) return false;
+  const living = livingPeople(state);
   const parties = agreement.partyIds
-    .map((id) => state.people.find((candidate) => candidate.id === id && isAlive(candidate)));
+    .map((id) => living.find((candidate) => candidate.id === id));
   return parties.length >= 2
     && parties.every((person): person is PersonState => Boolean(person))
     && parties.every((person) => personWithinLivingArea(person, anchor));
@@ -109,8 +111,8 @@ export function sharedLivingReturnTarget(
   const rotated = candidates.map((_, index) => candidates[(index + Math.max(0, partyIndex)) % candidates.length]!);
   const reachable = rotated.filter((position) => findStandingPath(state.world.grid, person.position, position).length > 0);
   if (!reachable.length) return null;
-  return reachable.find((position) => !state.people.some((candidate) => candidate.id !== person.id
-    && isAlive(candidate)
+  const living = livingPeople(state);
+  return reachable.find((position) => !living.some((candidate) => candidate.id !== person.id
     && candidate.position.cellId === position.cellId
     && candidate.position.z === position.z)) ?? reachable[0]!;
 }

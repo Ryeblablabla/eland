@@ -1,16 +1,75 @@
-import { checkpointFor, evolvePath, type EvolutionPath } from './evolution-artifacts';
+import type { EvolutionPath } from './evolution-artifacts';
 import {
-  assertEvolutionIdentity,
   evolutionExpectedBasisKey,
   parseEvolutionRunRequest,
   type EvolutionRunRequest,
 } from './evolution-request';
 import { HttpError } from './http-error';
-import { completeLongEvolution } from './run-evolution-executor';
-import { executeLongEvolutionInWorker } from './run-evolution-worker-client';
+import {
+  executeLongEvolutionInWorker,
+  type EvolutionWorkerExecution,
+} from './run-evolution-worker-client';
 import type { SqliteRunStore } from './sqlite-run-store';
 
-const RULE_PLANNER_MODEL = 'rule-planner-v1';
+// One server process owns one shell-part cache in the API isolate and one in
+// each evolution Worker isolate. Serializing Workers keeps their combined
+// cache residency bounded to two codec isolates (currently at most 256 MiB),
+// instead of growing with the number of runs submitted concurrently.
+let evolutionWorkerQueue: Promise<unknown> = Promise.resolve();
+
+export async function serializeEvolutionWorker<T>(task: () => Promise<T>): Promise<T> {
+  const current = evolutionWorkerQueue.catch(() => undefined).then(task);
+  evolutionWorkerQueue = current;
+  try {
+    return await current;
+  } finally {
+    if (evolutionWorkerQueue === current) evolutionWorkerQueue = Promise.resolve();
+  }
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+/**
+ * Queues Worker construction globally while exposing bootstrap readiness.
+ * Completion remains chained through the real Worker exit, so the next Worker
+ * cannot start while the current isolate or codec cache is still resident.
+ */
+export function enqueueEvolutionWorker(
+  task: () => EvolutionWorkerExecution,
+): EvolutionWorkerExecution {
+  const ready = deferred<EvolutionPath>();
+  const completion = serializeEvolutionWorker(async () => {
+    let execution: EvolutionWorkerExecution;
+    try {
+      execution = task();
+    } catch (error) {
+      ready.reject(error);
+      throw error;
+    }
+    void execution.ready.then(ready.resolve, ready.reject);
+    try {
+      await execution.completion;
+    } catch (error) {
+      // Constructor/exit failures may happen before a ready message. The
+      // deferred is idempotent, so this is also safe after a ready rejection.
+      ready.reject(error);
+      throw error;
+    }
+  });
+  return { ready: ready.promise, completion };
+}
 
 interface EvolutionJob {
   token: symbol;
@@ -59,7 +118,10 @@ export class RunEvolutionService {
     try {
       return await job.ready;
     } catch (error) {
-      this.releaseEvolutionJob(id, job);
+      // Once a Worker has been scheduled, keep the active-job identity until
+      // its real exit. Otherwise a pre-ready failure could admit a second large
+      // Worker while the first isolate is still being released.
+      if (!job.promise) this.releaseEvolutionJob(id, job);
       throw error;
     }
   }
@@ -83,60 +145,29 @@ export class RunEvolutionService {
     request: EvolutionRunRequest,
     job: EvolutionJob,
   ): Promise<EvolutionPath> {
-    return this.serializeRun(id, async () => {
-      const current = await this.store.load(id);
-      const previous = await this.store.loadEvolutionPath(id);
-      const requestedEndMonth = request.kind === 'ensure-through'
-        ? request.requestedEndMonth
-        : current.state.clock.elapsedMonths + request.months;
-      job.requestedEndMonth = requestedEndMonth;
-      if (request.kind === 'ensure-through') assertEvolutionIdentity(current, previous, request);
-      else if (current.state.civilization.status === 'ended') throw new HttpError(409, `运行 ${id} 已经结束`);
-
-      if (request.kind === 'ensure-through' && previous?.status === 'failed') {
-        this.releaseEvolutionJob(id, job);
-        return previous;
+    const ready = deferred<EvolutionPath>();
+    const promise = this.serializeRun(id, async () => {
+      const queued = enqueueEvolutionWorker(
+        () => executeLongEvolutionInWorker(
+          this.store.dataDirectory(),
+          id,
+          request,
+        ),
+      );
+      void queued.ready.then((path) => {
+        job.requestedEndMonth = path.requestedEndMonth;
+        ready.resolve(path);
+      }, ready.reject);
+      try {
+        await queued.completion;
+      } catch (error) {
+        ready.reject(error);
+        throw error;
       }
-
-      if (request.kind === 'ensure-through'
-        && previous?.status === 'completed'
-        && (current.state.civilization.status === 'ended' || current.state.clock.elapsedMonths >= requestedEndMonth)) {
-        this.releaseEvolutionJob(id, job);
-        return previous;
-      }
-
-      const fromMonth = previous?.fromMonth
-        ?? (request.kind === 'ensure-through' ? request.expected.fromMonth : current.state.clock.elapsedMonths);
-      const initial = evolvePath(current.state, {
-        runId: id,
-        provider: 'local',
-        model: previous?.model ?? RULE_PLANNER_MODEL,
-        fromMonth,
-        requestedEndMonth,
-        ...(previous ? { previous } : {}),
-        checkpoint: checkpointFor(current.state, {
-          inputTokens: previous?.checkpoints.at(-1)?.inputTokens ?? 0,
-          outputTokens: previous?.checkpoints.at(-1)?.outputTokens ?? 0,
-        }, previous?.checkpoints.at(-1)),
-        status: 'running',
-      });
-      await this.store.saveEvolutionPath(id, initial);
-
-      if (current.state.civilization.status === 'ended' || current.state.clock.elapsedMonths >= requestedEndMonth) {
-        const completed = await completeLongEvolution(this.store, id, current.state, initial, requestedEndMonth);
-        this.releaseEvolutionJob(id, job);
-        return completed;
-      }
-
-      const promise = this.serializeRun(id, () => executeLongEvolutionInWorker(
-        this.store.dataDirectory(),
-        id,
-        requestedEndMonth,
-      )).then(() => undefined);
-      job.promise = promise;
-      this.observeEvolutionJob(id, job, promise);
-      return initial;
-    });
+    }).then(() => undefined);
+    job.promise = promise;
+    this.observeEvolutionJob(id, job, promise);
+    return ready.promise;
   }
 
   private async acknowledgeActiveEvolution(

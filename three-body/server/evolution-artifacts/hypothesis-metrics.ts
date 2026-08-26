@@ -27,6 +27,22 @@ interface HypothesisMetrics {
   hypothesisConnectFlexibleLayersAttempts: number;
   hypothesisConnectFlexibleLayersResponses: number;
   hypothesisConnectFlexibleLayersNoResponses: number;
+  hypothesisAssembleBalancedSuspensionCandidates: number;
+  hypothesisAssembleBalancedSuspensionAttempts: number;
+  hypothesisAssembleBalancedSuspensionResponses: number;
+  hypothesisAssembleBalancedSuspensionNoResponses: number;
+  hypothesisShapeRepeatableReferenceCandidates: number;
+  hypothesisShapeRepeatableReferenceAttempts: number;
+  hypothesisShapeRepeatableReferenceResponses: number;
+  hypothesisShapeRepeatableReferenceNoResponses: number;
+  hypothesisAssembleFlowDrivenRotorCandidates: number;
+  hypothesisAssembleFlowDrivenRotorAttempts: number;
+  hypothesisAssembleFlowDrivenRotorResponses: number;
+  hypothesisAssembleFlowDrivenRotorNoResponses: number;
+  hypothesisShapeRigidRotatingConnectorCandidates: number;
+  hypothesisShapeRigidRotatingConnectorAttempts: number;
+  hypothesisShapeRigidRotatingConnectorResponses: number;
+  hypothesisShapeRigidRotatingConnectorNoResponses: number;
   hypothesisSeekLocalHeatCandidates: number;
   hypothesisSeekLocalHeatAttempts: number;
   hypothesisSeekLocalHeatResponses: number;
@@ -116,6 +132,22 @@ function emptyHypothesisMetrics(): HypothesisMetrics {
     hypothesisConnectFlexibleLayersAttempts: 0,
     hypothesisConnectFlexibleLayersResponses: 0,
     hypothesisConnectFlexibleLayersNoResponses: 0,
+    hypothesisAssembleBalancedSuspensionCandidates: 0,
+    hypothesisAssembleBalancedSuspensionAttempts: 0,
+    hypothesisAssembleBalancedSuspensionResponses: 0,
+    hypothesisAssembleBalancedSuspensionNoResponses: 0,
+    hypothesisShapeRepeatableReferenceCandidates: 0,
+    hypothesisShapeRepeatableReferenceAttempts: 0,
+    hypothesisShapeRepeatableReferenceResponses: 0,
+    hypothesisShapeRepeatableReferenceNoResponses: 0,
+    hypothesisAssembleFlowDrivenRotorCandidates: 0,
+    hypothesisAssembleFlowDrivenRotorAttempts: 0,
+    hypothesisAssembleFlowDrivenRotorResponses: 0,
+    hypothesisAssembleFlowDrivenRotorNoResponses: 0,
+    hypothesisShapeRigidRotatingConnectorCandidates: 0,
+    hypothesisShapeRigidRotatingConnectorAttempts: 0,
+    hypothesisShapeRigidRotatingConnectorResponses: 0,
+    hypothesisShapeRigidRotatingConnectorNoResponses: 0,
     hypothesisSeekLocalHeatCandidates: 0,
     hypothesisSeekLocalHeatAttempts: 0,
     hypothesisSeekLocalHeatResponses: 0,
@@ -185,10 +217,15 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
   type HypothesisQuestionKind =
     | 'connect-manipulator-shapes'
     | 'connect-flexible-layers'
+    | 'assemble-balanced-suspension'
+    | 'shape-repeatable-reference'
+    | 'assemble-flow-driven-rotor'
+    | 'shape-rigid-rotating-connector'
     | 'seek-local-heat'
     | 'shape-portable-surface'
     | 'transform-subject-with-observed-heat';
   type MaterialPair = [number, number];
+  type InventoryMaterialIds = MaterialPair | [number, number, number];
   type QuestionCounts = { candidates: number; attempts: number; responses: number; noResponses: number };
   type RoleBasis = {
     questionKind: unknown;
@@ -230,13 +267,22 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
   const questionValue = (value: unknown): HypothesisQuestionKind | null => {
     if (value === 'connect-manipulator-shapes'
       || value === 'connect-flexible-layers'
+      || value === 'assemble-balanced-suspension'
+      || value === 'shape-repeatable-reference'
+      || value === 'assemble-flow-driven-rotor'
+      || value === 'shape-rigid-rotating-connector'
       || value === 'seek-local-heat'
       || value === 'shape-portable-surface'
       || value === 'transform-subject-with-observed-heat') return value;
     return null;
   };
   const expectedQuestionOperation = (question: HypothesisQuestionKind): HypothesisOperation => (
-    question === 'connect-manipulator-shapes' || question === 'connect-flexible-layers'
+    question === 'connect-manipulator-shapes'
+      || question === 'connect-flexible-layers'
+      || question === 'assemble-balanced-suspension'
+      || question === 'shape-repeatable-reference'
+      || question === 'assemble-flow-driven-rotor'
+      || question === 'shape-rigid-rotating-connector'
       ? 'combine-inventory'
       : question === 'transform-subject-with-observed-heat'
         ? 'expose-local'
@@ -253,6 +299,12 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     const right = integerValue(value[1]);
     return left === null || right === null ? null : [left, right];
   };
+  const inventoryMaterialIds = (value: unknown): InventoryMaterialIds | null => {
+    if (!Array.isArray(value) || (value.length !== 2 && value.length !== 3)) return null;
+    const materialIds = value.map(integerValue);
+    if (materialIds.some((materialId) => materialId === null)) return null;
+    return materialIds as InventoryMaterialIds;
+  };
   const normalizedPair = (operation: HypothesisOperation, pair: MaterialPair): MaterialPair => (
     operation === 'combine-inventory' && pair[0] > pair[1] ? [pair[1], pair[0]] : pair
   );
@@ -260,9 +312,15 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     operation: HypothesisOperation,
     pair: MaterialPair,
     targetMaterialId?: number | null,
+    exactInventoryMaterialIds?: InventoryMaterialIds | null,
   ): string => {
     const [left, right] = normalizedPair(operation, pair);
-    if (operation === 'combine-inventory') return String(left) + '+' + String(right);
+    if (operation === 'combine-inventory') {
+      const exactInputs = [...(exactInventoryMaterialIds ?? pair)].sort((a, b) => a - b);
+      return exactInputs.length === 2
+        ? String(exactInputs[0]) + '+' + String(exactInputs[1])
+        : 'combine-inventory:' + exactInputs.join('+');
+    }
     if (operation === 'exert-air') {
       return 'exert-air:' + String(left) + '>' + String(right) + '@' + String(targetMaterialId ?? Material.Air);
     }
@@ -272,9 +330,14 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     operation: HypothesisOperation | null,
     pair: MaterialPair | null,
     targetMaterialId?: number | null,
-  ): string | null => (
-    operation && pair ? operation + '\u0000' + candidateKeyFor(operation, pair, targetMaterialId) : null
-  );
+    exactInventoryMaterialIds?: InventoryMaterialIds | null,
+  ): string | null => {
+    if (!operation || !pair || (operation === 'combine-inventory' && exactInventoryMaterialIds === null)) {
+      return null;
+    }
+    return operation + '\u0000'
+      + candidateKeyFor(operation, pair, targetMaterialId, exactInventoryMaterialIds);
+  };
   const optionalIntegerMatches = (
     record: Record<string, unknown>,
     field: string,
@@ -301,7 +364,14 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     operation: HypothesisOperation,
   ): string | null => {
     if (operation === 'combine-inventory') {
-      return signatureFor(operation, materialPair(diff.inputMaterialIds));
+      const exactInputs = inventoryMaterialIds(diff.inputMaterialIds);
+      if (!exactInputs) return null;
+      return signatureFor(
+        operation,
+        [exactInputs[0], exactInputs[exactInputs.length - 1]],
+        undefined,
+        exactInputs,
+      );
     }
     const inputMaterialId = integerValue(diff.inputMaterialId);
     const targetMaterialId = integerValue(diff.targetMaterialId);
@@ -594,6 +664,10 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
   const questionCounts: Record<HypothesisQuestionKind, QuestionCounts> = {
     'connect-manipulator-shapes': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
     'connect-flexible-layers': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
+    'assemble-balanced-suspension': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
+    'shape-repeatable-reference': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
+    'assemble-flow-driven-rotor': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
+    'shape-rigid-rotating-connector': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
     'seek-local-heat': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
     'shape-portable-surface': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
     'transform-subject-with-observed-heat': { candidates: 0, attempts: 0, responses: 0, noResponses: 0 },
@@ -664,6 +738,9 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     const operationMismatchKey = attemptEventId ?? attemptKey;
     const candidateKey = stringValue(attempt.candidateKey);
     const attemptMaterialIds = materialPair(attempt.materialIds);
+    const attemptInventoryMaterialIds = attempt.inventoryMaterialIds === undefined
+      ? attemptMaterialIds
+      : inventoryMaterialIds(attempt.inventoryMaterialIds);
     const legacyCampaign = stringValue(campaign.version) !== 'project-hypothesis-campaign-v2';
     const legacyAttempt = attempt.operation === undefined
       && (legacyCampaign || legacyPairShape(attempt, 'candidateKey'));
@@ -705,9 +782,14 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     }
 
     const attemptTargetMaterialId = integerValue(attempt.targetMaterialId);
-    const attemptSignature = signatureFor(operation, attemptMaterialIds, attemptTargetMaterialId);
-    const expectedCandidateKey = operation && attemptMaterialIds
-      ? candidateKeyFor(operation, attemptMaterialIds, attemptTargetMaterialId)
+    const attemptSignature = signatureFor(
+      operation,
+      attemptMaterialIds,
+      attemptTargetMaterialId,
+      attemptInventoryMaterialIds,
+    );
+    const expectedCandidateKey = operation && attemptMaterialIds && attemptInventoryMaterialIds
+      ? candidateKeyFor(operation, attemptMaterialIds, attemptTargetMaterialId, attemptInventoryMaterialIds)
       : null;
     if (attemptSignature) uniqueSignatures.add(attemptSignature);
     if (attemptSignature) {
@@ -754,15 +836,28 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     const candidate = candidateMatches.length === 1 ? candidateMatches[0] : undefined;
     if (candidateMatches.length !== 1) campaignMismatches.add(attemptKey);
     const candidateMaterialIds = materialPair(candidate?.materialIds);
+    const candidateInventoryMaterialIds = candidate?.inventoryMaterialIds === undefined
+      ? candidateMaterialIds
+      : inventoryMaterialIds(candidate.inventoryMaterialIds);
     const legacyCandidate = candidate?.operation === undefined
       && (legacyCampaign || legacyPairShape(candidate, 'key'));
     const candidateOperation = candidate
       ? operationValue(candidate.operation, legacyCandidate)
       : null;
     const candidateTargetMaterialId = integerValue(candidate?.targetMaterialId);
-    const candidateSignature = signatureFor(candidateOperation, candidateMaterialIds, candidateTargetMaterialId);
-    const candidateExpectedKey = candidateOperation && candidateMaterialIds
-      ? candidateKeyFor(candidateOperation, candidateMaterialIds, candidateTargetMaterialId)
+    const candidateSignature = signatureFor(
+      candidateOperation,
+      candidateMaterialIds,
+      candidateTargetMaterialId,
+      candidateInventoryMaterialIds,
+    );
+    const candidateExpectedKey = candidateOperation && candidateMaterialIds && candidateInventoryMaterialIds
+      ? candidateKeyFor(
+        candidateOperation,
+        candidateMaterialIds,
+        candidateTargetMaterialId,
+        candidateInventoryMaterialIds,
+      )
       : null;
     const candidateQuestion = questionValue(candidate?.questionKind);
     if (candidate && !roleBasisMatches(
@@ -886,8 +981,16 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
       budgetExceeds.add(attemptKey);
     }
     const projectedMaterialIds = materialPair(diff.projectHypothesisMaterialIds);
+    const projectedInventoryMaterialIds = diff.projectHypothesisInventoryMaterialIds === undefined
+      ? projectedMaterialIds
+      : inventoryMaterialIds(diff.projectHypothesisInventoryMaterialIds);
     const projectedTargetMaterialId = integerValue(diff.projectHypothesisTargetMaterialId);
-    const projectedSignature = signatureFor(diffOperation, projectedMaterialIds, projectedTargetMaterialId);
+    const projectedSignature = signatureFor(
+      diffOperation,
+      projectedMaterialIds,
+      projectedTargetMaterialId,
+      projectedInventoryMaterialIds,
+    );
     const reconstructedActualSignature = operation ? actualSignature(diff, operation) : null;
     const diffCandidateKey = stringValue(diff.projectHypothesisCandidateKey);
     if (!attemptSignature || reconstructedActualSignature !== attemptSignature
@@ -1082,6 +1185,7 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
   const hypothesisDiffFields = [
     'projectHypothesisCampaignId', 'projectHypothesisProjectId', 'projectHypothesisActorId',
     'projectHypothesisCandidateKey', 'projectHypothesisOperation', 'projectHypothesisMaterialIds',
+    'projectHypothesisInventoryMaterialIds',
     'projectHypothesisToolMaterialId', 'projectHypothesisInputMaterialId',
     'projectHypothesisTargetMaterialId', 'projectHypothesisToolSourceKey',
     'projectHypothesisInputSourceKey', 'projectHypothesisAttemptOrdinal',
@@ -1161,6 +1265,22 @@ export function hypothesisMetrics(state: SimulationState): HypothesisMetrics {
     hypothesisConnectFlexibleLayersAttempts: questionCounts['connect-flexible-layers'].attempts,
     hypothesisConnectFlexibleLayersResponses: questionCounts['connect-flexible-layers'].responses,
     hypothesisConnectFlexibleLayersNoResponses: questionCounts['connect-flexible-layers'].noResponses,
+    hypothesisAssembleBalancedSuspensionCandidates: questionCounts['assemble-balanced-suspension'].candidates,
+    hypothesisAssembleBalancedSuspensionAttempts: questionCounts['assemble-balanced-suspension'].attempts,
+    hypothesisAssembleBalancedSuspensionResponses: questionCounts['assemble-balanced-suspension'].responses,
+    hypothesisAssembleBalancedSuspensionNoResponses: questionCounts['assemble-balanced-suspension'].noResponses,
+    hypothesisShapeRepeatableReferenceCandidates: questionCounts['shape-repeatable-reference'].candidates,
+    hypothesisShapeRepeatableReferenceAttempts: questionCounts['shape-repeatable-reference'].attempts,
+    hypothesisShapeRepeatableReferenceResponses: questionCounts['shape-repeatable-reference'].responses,
+    hypothesisShapeRepeatableReferenceNoResponses: questionCounts['shape-repeatable-reference'].noResponses,
+    hypothesisAssembleFlowDrivenRotorCandidates: questionCounts['assemble-flow-driven-rotor'].candidates,
+    hypothesisAssembleFlowDrivenRotorAttempts: questionCounts['assemble-flow-driven-rotor'].attempts,
+    hypothesisAssembleFlowDrivenRotorResponses: questionCounts['assemble-flow-driven-rotor'].responses,
+    hypothesisAssembleFlowDrivenRotorNoResponses: questionCounts['assemble-flow-driven-rotor'].noResponses,
+    hypothesisShapeRigidRotatingConnectorCandidates: questionCounts['shape-rigid-rotating-connector'].candidates,
+    hypothesisShapeRigidRotatingConnectorAttempts: questionCounts['shape-rigid-rotating-connector'].attempts,
+    hypothesisShapeRigidRotatingConnectorResponses: questionCounts['shape-rigid-rotating-connector'].responses,
+    hypothesisShapeRigidRotatingConnectorNoResponses: questionCounts['shape-rigid-rotating-connector'].noResponses,
     hypothesisSeekLocalHeatCandidates: questionCounts['seek-local-heat'].candidates,
     hypothesisSeekLocalHeatAttempts: questionCounts['seek-local-heat'].attempts,
     hypothesisSeekLocalHeatResponses: questionCounts['seek-local-heat'].responses,

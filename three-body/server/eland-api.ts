@@ -13,6 +13,7 @@ import { ElandSaveNotFoundError } from './sqlite-eland-store';
 import { ModelRequestError } from './model-client';
 import type { CosmosSnapshot, EraKey, GameFrame, SkySample } from '../src/game/societyContract';
 import { createStepPayload } from '../src/game/eland/society-patch';
+import { logPerf, perfElapsed, perfJsonBytes, perfNow } from './perf';
 
 const INITIAL_HISTORY_LIMIT = 240;
 const INITIAL_CIVILIZATION_INDEX_HISTORY_LIMIT = 2_400;
@@ -68,6 +69,18 @@ function settleAnnualPersistence(session: object, frame: GameFrame, succeeded: b
 export interface ElandApiResponse {
   status: number;
   body: unknown;
+}
+
+function logEmbodimentApiPerf(
+  event: 'embodiment-begin-api' | 'embodiment-step-api' | 'embodiment-release-api',
+  response: ElandApiResponse,
+  fields: Record<string, string | number | boolean | null | undefined>,
+): void {
+  logPerf(event, {
+    ...fields,
+    status: response.status,
+    responseBytes: perfJsonBytes(response.body),
+  });
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -217,11 +230,13 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     return { status: 200, body: { embodiment: session.embodimentView() } };
   }
   if (route === 'embodiment-begin' && method === 'POST') {
+    const totalStartedAt = perfNow();
     const sky = skySample(body.skySample);
     const cosmos = cosmosSnapshot(body.cosmosSnapshot);
     if (body.cosmosSnapshot !== undefined && !cosmos) {
       return { status: 400, body: { error: '宇宙快照无效' } };
     }
+    const sessionStartedAt = perfNow();
     try {
       const embodiment = session.beginEmbodiment({
         runId,
@@ -234,18 +249,46 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         skySample: sky,
         ...(cosmos ? { cosmosSnapshot: cosmos } : {}),
       });
+      const sessionMs = perfElapsed(sessionStartedAt);
+      const persistenceStartedAt = perfNow();
       const persistence = elandSessions.persistIfCurrent(runId, session);
-      if (!persistence.current) return { status: 409, body: { error: '进入化身时会话已被替换' } };
-      if (!persistence.persisted) return { status: 503, body: { error: '化身月份暂时无法持久化，请使用同一请求重试' } };
-      return { status: 200, body: { embodiment } };
+      const persistenceMs = perfElapsed(persistenceStartedAt);
+      const response: ElandApiResponse = !persistence.current
+        ? { status: 409, body: { error: '进入化身时会话已被替换' } }
+        : !persistence.persisted
+          ? { status: 503, body: { error: '化身月份暂时无法持久化，请使用同一请求重试' } }
+          : { status: 200, body: { embodiment } };
+      logEmbodimentApiPerf('embodiment-begin-api', response, {
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        actorId: String(body.agentId ?? ''),
+        sessionMs,
+        persistenceMs,
+        persisted: persistence.persisted,
+        totalMs: perfElapsed(totalStartedAt),
+      });
+      return response;
     } catch (error) {
       if (error instanceof EmbodimentConflictError || error instanceof ElandSessionBusyError) {
-        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        const response = { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        logEmbodimentApiPerf('embodiment-begin-api', response, {
+          runId,
+          embodimentId: String(body.embodimentId ?? ''),
+          actorId: String(body.agentId ?? ''),
+          sessionMs: perfElapsed(sessionStartedAt),
+          persistenceMs: 0,
+          persisted: false,
+          outcome: 'conflict',
+          totalMs: perfElapsed(totalStartedAt),
+        });
+        return response;
       }
       throw error;
     }
   }
   if (route === 'embodiment-step' && method === 'POST') {
+    const totalStartedAt = perfNow();
+    const sessionStartedAt = perfNow();
     try {
       const result = await session.stepEmbodiment({
         runId,
@@ -264,21 +307,64 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
                 : {}),
             },
       });
+      const sessionMs = perfElapsed(sessionStartedAt);
+      const persistenceStartedAt = perfNow();
       const persistence = elandSessions.persistIfCurrent(runId, session);
-      if (!persistence.current) return { status: 409, body: { error: '化身行动完成时会话已被替换' } };
-      if (!persistence.persisted) return { status: 503, body: { error: '化身行动暂时无法持久化，请使用同一 commandId 重试' } };
-      return { status: 200, body: result };
+      const persistenceMs = perfElapsed(persistenceStartedAt);
+      const response: ElandApiResponse = !persistence.current
+        ? { status: 409, body: { error: '化身行动完成时会话已被替换' } }
+        : !persistence.persisted
+          ? { status: 503, body: { error: '化身行动暂时无法持久化，请使用同一 commandId 重试' } }
+          : { status: 200, body: result };
+      logEmbodimentApiPerf('embodiment-step-api', response, {
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        commandId: String(body.commandId ?? ''),
+        expectedTick: Number(body.expectedTick),
+        sessionMs,
+        persistenceMs,
+        persisted: persistence.persisted,
+        committed: 'committedFrame' in result,
+        totalMs: perfElapsed(totalStartedAt),
+      });
+      return response;
     } catch (error) {
       if (error instanceof EmbodimentCommandRejectedError) {
-        return { status: 422, body: { error: error.message, failure: error.failure, embodiment: session.embodimentView() } };
+        const response = { status: 422, body: { error: error.message, failure: error.failure, embodiment: session.embodimentView() } };
+        logEmbodimentApiPerf('embodiment-step-api', response, {
+          runId,
+          embodimentId: String(body.embodimentId ?? ''),
+          commandId: String(body.commandId ?? ''),
+          expectedTick: Number(body.expectedTick),
+          sessionMs: perfElapsed(sessionStartedAt),
+          persistenceMs: 0,
+          persisted: false,
+          outcome: 'rejected',
+          totalMs: perfElapsed(totalStartedAt),
+        });
+        return response;
       }
       if (error instanceof EmbodimentConflictError) {
-        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        const response = { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        logEmbodimentApiPerf('embodiment-step-api', response, {
+          runId,
+          embodimentId: String(body.embodimentId ?? ''),
+          commandId: String(body.commandId ?? ''),
+          expectedTick: Number(body.expectedTick),
+          sessionMs: perfElapsed(sessionStartedAt),
+          persistenceMs: 0,
+          persisted: false,
+          outcome: 'conflict',
+          totalMs: perfElapsed(totalStartedAt),
+        });
+        return response;
       }
       throw error;
     }
   }
   if (route === 'embodiment-release' && method === 'POST') {
+    const totalStartedAt = perfNow();
+    const sessionStartedAt = perfNow();
     try {
       const result = await session.releaseEmbodiment({
         runId,
@@ -286,13 +372,39 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
         releaseId: String(body.releaseId ?? ''),
         expectedRevision: Number(body.expectedRevision),
       });
+      const sessionMs = perfElapsed(sessionStartedAt);
+      const persistenceStartedAt = perfNow();
       const persistence = elandSessions.persistIfCurrent(runId, session);
-      if (!persistence.current) return { status: 409, body: { error: '交还自主时会话已被替换' } };
-      if (!persistence.persisted) return { status: 503, body: { error: '交还结果暂时无法持久化，请使用同一 releaseId 重试' } };
-      return { status: 200, body: result };
+      const persistenceMs = perfElapsed(persistenceStartedAt);
+      const response: ElandApiResponse = !persistence.current
+        ? { status: 409, body: { error: '交还自主时会话已被替换' } }
+        : !persistence.persisted
+          ? { status: 503, body: { error: '交还结果暂时无法持久化，请使用同一 releaseId 重试' } }
+          : { status: 200, body: result };
+      logEmbodimentApiPerf('embodiment-release-api', response, {
+        runId,
+        embodimentId: String(body.embodimentId ?? ''),
+        releaseId: String(body.releaseId ?? ''),
+        sessionMs,
+        persistenceMs,
+        persisted: persistence.persisted,
+        totalMs: perfElapsed(totalStartedAt),
+      });
+      return response;
     } catch (error) {
       if (error instanceof EmbodimentConflictError) {
-        return { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        const response = { status: 409, body: { error: error.message, embodiment: session.embodimentView() } };
+        logEmbodimentApiPerf('embodiment-release-api', response, {
+          runId,
+          embodimentId: String(body.embodimentId ?? ''),
+          releaseId: String(body.releaseId ?? ''),
+          sessionMs: perfElapsed(sessionStartedAt),
+          persistenceMs: 0,
+          persisted: false,
+          outcome: 'conflict',
+          totalMs: perfElapsed(totalStartedAt),
+        });
+        return response;
       }
       throw error;
     }

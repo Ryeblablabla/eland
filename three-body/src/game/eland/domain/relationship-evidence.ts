@@ -9,6 +9,7 @@ import {
 import { reproductiveResponsibility } from './dependent-care';
 import {
   COMPANION_RELATION_THRESHOLD,
+  relationTo,
   relationshipPairKey,
 } from './relation';
 import { reproductiveUpperAgeMonths } from './trait';
@@ -69,7 +70,7 @@ function relationshipEvidenceIds(
   proposer: PersonState,
   partner: PersonState,
 ): string[] {
-  const relation = proposer.relations.find((candidate) => candidate.personId === partner.id);
+  const relation = relationTo(proposer, partner.id);
   return [...new Set((relation?.sourceEventIds ?? [])
     .filter((eventId) => qualifiesAsRelationshipEvidence(worldEventById(state, eventId), proposer.id, partner.id)))].sort();
 }
@@ -133,7 +134,7 @@ export function hasCultivatedCompanionRelationship(
   basis = buildRelationshipCausalBasis(state, person, partner, 'companion'),
 ): boolean {
   if (basis.kind !== 'companion' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  const relation = person.relations.find((candidate) => candidate.personId === partner.id);
+  const relation = relationTo(person, partner.id);
   return Boolean(relation
     && relation.trust >= COMPANION_RELATION_THRESHOLD
     && relation.bond >= COMPANION_RELATION_THRESHOLD

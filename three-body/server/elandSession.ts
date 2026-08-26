@@ -142,7 +142,11 @@ export type {
   AgentConversationView,
 } from './eland-session/conversation-coordinator';
 export { AgentConversationConflictError } from './eland-session/conversation-coordinator';
-export { EmbodimentCommandRejectedError, EmbodimentConflictError } from './eland-session/embodiment-coordinator';
+export {
+  EmbodimentCommandRejectedError,
+  EmbodimentConflictError,
+  stagedExecutionHashForRecoveryVersion,
+} from './eland-session/embodiment-coordinator';
 export type { ElandSessionRecoverySnapshot } from './eland-session/recovery';
 export {
   ElandSessionBusyError,
@@ -398,6 +402,13 @@ export class ElandSession {
       activeEmbodiment,
       completedEmbodiments,
     } = validateRecoverySnapshot(snapshot);
+    // Legacy active-embodiment hashes were calculated before controller
+    // adoption refreshed observer fields or synthesized newer compatibility
+    // state. Keep their exact persisted replay basis until the staged month is
+    // verified and migrated to the current hash payload.
+    const legacyEmbodimentState = activeEmbodiment?.stagedStateHashVersion === undefined
+      ? structuredClone(state)
+      : undefined;
     const session = new ElandSession(runId, snapshot.skySample, timelineChunkResolver);
     session.civilizationId = snapshot.civilizationId;
     session.controller = createSimulationFromOwnedState(state);
@@ -435,6 +446,7 @@ export class ElandSession {
       session.embodimentCoordinator = EmbodimentCoordinator.restore(
         session.embodimentHost(),
         activeEmbodiment,
+        legacyEmbodimentState,
       );
     }
     return session;

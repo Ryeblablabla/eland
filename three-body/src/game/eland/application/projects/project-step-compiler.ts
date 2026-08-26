@@ -4,6 +4,12 @@ import {
   type InventoryCombinationRule,
 } from '../../domain/interaction-rules';
 import { Material, materialDefinition, materialHas, type MaterialId } from '../../domain/material';
+import {
+  SOURCED_MASS_MEASUREMENT_ACTION_VERSION,
+  isMassCalibrationReceipt,
+  isSourcedMassMeasurementAction,
+  measurementStackReceiptMatchesUse,
+} from '../../domain/measurement';
 import { productionToolRank } from '../../domain/production-tool';
 import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import {
@@ -33,10 +39,12 @@ import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } 
 import {
   cellX,
   cellY,
+  cellsInRadius,
   findStandingPath,
   neighbors4,
   standingPositions,
   surfaceMaterial,
+  voxelAt,
 } from '../../world/grid';
 import { closeProjectHypothesisCampaign } from '../project-hypotheses';
 import {
@@ -44,11 +52,29 @@ import {
   mechanicalPowerMaintenanceProjectStep,
   mechanicalPowerMaterialRequirement,
   mechanicalPowerProjectStep,
+  mechanicalPowerReliabilityMaterialRequirement,
 } from '../mechanical-power-options';
+import {
+  electricalHypothesisProtectedSourceKeys,
+  electricalPowerMaterialRequirement,
+  electricalPowerProjectStep,
+  hasReliableElectricalComponentKnowledge,
+} from '../electrical-power-options';
+import {
+  electricalPowerMaintenanceMaterialRequirement,
+  electricalPowerMaintenanceProjectStep,
+} from '../electrical-power-maintenance-options';
+import {
+  currentMassMeasurementInstrument,
+  currentMassMeasurementReference,
+  currentMeasurementBasisSubject,
+  measurementStackUse,
+} from '../measurement-options';
 import {
   completedFunctionMaterialIds,
   cultivationSurfaceMaterials,
   durableRecordWriteEvidence,
+  establishProjectFunctionalCommissioning,
   placedFunctionEvidence,
   placedFunctionMaterialIds,
   projectActionFacts,
@@ -81,6 +107,7 @@ import {
   hypothesisStep,
   inventorySourceKey,
   questionAllowsAnotherExert,
+  reliableExposureTechniques,
   reliableExertionTechniques,
   sourceEventIdsForTarget,
   stacksForCandidateSlots,
@@ -95,7 +122,7 @@ import {
   visiblePlacementApproach,
 } from './project-spatial-planning';
 import type { ProjectStep } from './project-step';
-import { fixedFacilityWorkplace } from './project-workplace';
+import { fixedFacilityWorkplace, knownFacilitySite } from './project-workplace';
 import { careApplicationProjectStep } from './steps/care';
 import { constructionProjectStep, shelterBuildingStack } from './steps/construction';
 import { settledCultivationProjectStep } from './steps/cultivation';
@@ -116,6 +143,7 @@ export function projectSupportsMaterialContribution(project: Pick<ProjectState, 
   return project.need === 'alloy-capability'
     || project.need === 'iron-capability'
     || project.need === 'mechanical-power-capability'
+    || project.need === 'equipment-reliability'
     || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
 }
 
@@ -360,7 +388,11 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   const knownOutputAccess = {
     preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop'
       || project.desiredFunction === 'water-powered-crop-processing'
-      || project.desiredFunction === 'restore-water-powered-crop-processing',
+      || project.desiredFunction === 'restore-water-powered-crop-processing'
+      || project.desiredFunction === 'durable-power-transmission'
+      || project.desiredFunction === 'remote-work-power-delivery'
+      || project.desiredFunction === 'restore-electrical-power-delivery'
+      || project.desiredFunction === 'comparable-mass-measurement',
     allowVisibleHolder: projectSupportsMaterialContribution(project),
   };
   let explicitRequirementPlanKnowledgeId: string | undefined;
@@ -395,6 +427,46 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
     }
     explicitRequirementPlanKnowledgeId = mechanicalRequirement.planKnowledgeId;
     explicitRequirementSourceFactIds = mechanicalRequirement.sourceFactIds;
+  }
+  if (project.desiredFunction === 'durable-power-transmission') {
+    const mechanicalRequirement = mechanicalPowerReliabilityMaterialRequirement(state, person, project);
+    for (const materialId of mechanicalRequirement.materialIds) {
+      const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
+      if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+      else requireRaw(materialId, 1);
+    }
+    explicitRequirementPlanKnowledgeId = mechanicalRequirement.planKnowledgeId;
+    explicitRequirementSourceFactIds = mechanicalRequirement.sourceFactIds;
+  }
+  if (project.desiredFunction === 'remote-work-power-delivery') {
+    const electricalRequirement = electricalPowerMaterialRequirement(state, person, project);
+    for (const materialId of electricalRequirement.materialIds) {
+      const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
+      if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+      else requireRaw(materialId, 1);
+    }
+    explicitRequirementPlanKnowledgeId = electricalRequirement.planKnowledgeId;
+    explicitRequirementSourceFactIds = electricalRequirement.sourceFactIds;
+  }
+  if (project.desiredFunction === 'restore-electrical-power-delivery') {
+    const electricalRequirement = electricalPowerMaintenanceMaterialRequirement(state, person, project);
+    for (const materialId of electricalRequirement.materialIds) {
+      const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
+      if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+      else requireRaw(materialId, 1);
+    }
+    explicitRequirementPlanKnowledgeId = electricalRequirement.planKnowledgeId;
+    explicitRequirementSourceFactIds = electricalRequirement.sourceFactIds;
+  }
+  if (project.desiredFunction === 'comparable-mass-measurement') {
+    const missingArtifacts = [
+      ...(currentMassMeasurementInstrument(state, person) ? [] : [Material.BeamBalance]),
+      ...(currentMassMeasurementReference(state, person) ? [] : [Material.StandardWeight]),
+    ];
+    for (const outputMaterialId of missingArtifacts) {
+      const known = knownOutputRequirement(state, person, outputMaterialId, knownOutputAccess);
+      if (known) knownIntermediateRequirements.push(known);
+    }
   }
   if (project.desiredFunction === 'efficient-production') {
     requireRaw(Material.Wood, 1);
@@ -902,6 +974,22 @@ function metallurgyWorkStep(
   if (!metallurgyFunctions.has(project.desiredFunction)) return null;
   const workplace = fixedProjectWorkplace(state, person, project);
   if (!workplace) return null;
+  const requirement = projectMaterialRequirement(state, person, project);
+  const visibleCharcoal = nearestDrop(state, person, visibleDrops, [Material.Charcoal]);
+  const canMakeMissingCharcoalAtWorkplace = (
+    project.desiredFunction === 'copper-charge' || project.desiredFunction === 'tin-charge'
+  )
+    && consumableInventoryQuantity(person, Material.Wood) > 0
+    && visibleCharcoal === undefined;
+  const unstagedPortableInputs = requirement?.demands.filter((demand) => (
+    demand.outstandingQuantity > 0
+      && !(demand.materialId === Material.Charcoal && canMakeMissingCharcoalAtWorkplace)
+  )) ?? [];
+  // Preserve exact visible or remembered inputs before committing to the
+  // fixed-site journey. Otherwise a person can observe an ore, walk to the
+  // kiln to make charcoal, lose the source from perception, and exhaust a
+  // blind search even though the project began from that tangible ore.
+  if (unstagedPortableInputs.length > 0) return null;
   const atWorkplace = person.position.cellId === workplace.workingPosition.cellId
     && person.position.z === workplace.workingPosition.z;
   if (!atWorkplace) return {
@@ -1016,6 +1104,244 @@ function blindExertThenCombineStep(
     operation: 'combine-inventory',
     questionKind: 'connect-manipulator-shapes',
     subjectSourceKeys,
+  });
+}
+
+function massMeasurementInquiryStep(
+  state: SimulationState,
+  person: PersonState,
+  visibleDrops: DropState[],
+  project: ProjectState,
+): ProjectStep | null {
+  const uncertainty = project.measurementUncertaintyBasis;
+  if (project.desiredFunction !== 'comparable-mass-measurement' || !uncertainty) return null;
+  const instrument = currentMassMeasurementInstrument(state, person);
+  const reference = currentMassMeasurementReference(state, person);
+  const protectedSourceKeys = [
+    ...(instrument ? [inventorySourceKey(person, instrument)] : []),
+    ...(reference ? [inventorySourceKey(person, reference)] : []),
+  ];
+  const missingArtifactMaterialId = !instrument
+    ? Material.BeamBalance
+    : !reference ? Material.StandardWeight : undefined;
+  if (missingArtifactMaterialId !== undefined) {
+    const accessOptions = { preferLocalFinishedOutput: true };
+    const hasKnownRoute = Boolean(
+      knownRecipe(person, missingArtifactMaterialId)
+      || localFinishedOutputAccess(state, person, missingArtifactMaterialId, accessOptions),
+    );
+    if (hasKnownRoute) return compileKnownOutput(
+      state,
+      person,
+      visibleDrops,
+      missingArtifactMaterialId,
+      project.summary,
+      accessOptions,
+    );
+    return hypothesisStep(state, person, visibleDrops, project, {
+      operation: 'combine-inventory',
+      questionKind: !instrument
+        ? 'assemble-balanced-suspension'
+        : 'shape-repeatable-reference',
+      subjectSourceKeys: uncertainty.samples.map((sample) => (
+        `inventory:${person.id}:${sample.stackId}`
+      )),
+      protectedSourceKeys,
+    });
+  }
+  if (!instrument || !reference) return null;
+
+  const subject = currentMeasurementBasisSubject(person, uncertainty);
+  if (!subject) return null;
+  const instrumentUse = measurementStackUse(person, instrument, 1);
+  const referenceUse = measurementStackUse(person, reference, 1);
+  const subjectUse = measurementStackUse(person, subject.stack, subject.quantity);
+  const calibration = [...projectActionFacts(state, project)].reverse().find((event) => (
+    event.status === 'completed'
+      && event.who === person.id
+      && event.action.kind === 'attend'
+      && isSourcedMassMeasurementAction(event.action.measurement)
+      && event.action.measurement.mode === 'calibrate-mass'
+      && isMassCalibrationReceipt(event.diff)
+      && event.diff.calibrationEventId === event.id
+      && event.diff.calibratedByPersonId === person.id
+      && event.action.instrumentStackId === instrument.id
+      && measurementStackReceiptMatchesUse(event.diff.instrument, instrumentUse)
+      && measurementStackReceiptMatchesUse(event.diff.reference, referenceUse)
+  ));
+  if (!calibration) return {
+    key: `calibrate-project-mass-instrument-${project.id}-${instrument.id}-${reference.id}`,
+    summary: '用本人持有且有制造来源的参考物校准质量比较装置',
+    reason: '项目已经取得两件真实装置；先冻结同一人物、同一仪器和参考物的校准事实，才能形成可复核读数',
+    action: {
+      kind: 'attend',
+      target: { kind: 'inventory-stack', personId: person.id, stackId: reference.id },
+      instrumentStackId: instrument.id,
+      measurement: {
+        version: SOURCED_MASS_MEASUREMENT_ACTION_VERSION,
+        mode: 'calibrate-mass',
+        instrument: instrumentUse,
+        reference: referenceUse,
+      },
+    },
+    target: { kind: 'inventory-stack', personId: person.id, stackId: reference.id },
+    sourceFactIds: [...new Set([
+      ...project.triggerFactIds,
+      ...instrument.sourceEventIds,
+      ...reference.sourceEventIds,
+    ])],
+    missingMaterialIds: [],
+    reservations: [
+      ...reservation(person, instrument.id),
+      ...reservation(person, reference.id),
+    ],
+  };
+  return {
+    key: `measure-project-mass-subject-${project.id}-${subject.stack.id}-${calibration.id}`,
+    summary: '用刚校准的实体装置比较项目所指批次的质量',
+    reason: '校准事实、仪器、参考物和被测实体都仍绑定本人当前持有的完整来源；结果只会是装置分辨率允许的区间',
+    action: {
+      kind: 'attend',
+      target: { kind: 'inventory-stack', personId: person.id, stackId: subject.stack.id },
+      instrumentStackId: instrument.id,
+      measurement: {
+        version: SOURCED_MASS_MEASUREMENT_ACTION_VERSION,
+        mode: 'measure-mass',
+        instrument: instrumentUse,
+        subject: subjectUse,
+        calibrationEventId: calibration.id,
+      },
+    },
+    target: { kind: 'inventory-stack', personId: person.id, stackId: subject.stack.id },
+    sourceFactIds: [...new Set([
+      calibration.id,
+      ...project.triggerFactIds,
+      ...instrument.sourceEventIds,
+      ...reference.sourceEventIds,
+      ...subject.stack.sourceEventIds,
+    ])],
+    missingMaterialIds: [],
+    reservations: [
+      ...reservation(person, instrument.id),
+      ...reservation(person, reference.id),
+      ...reservation(person, subject.stack.id, subject.quantity),
+    ],
+  };
+}
+
+function mechanicalReliabilityInquiryStep(
+  state: SimulationState,
+  person: PersonState,
+  visibleDrops: DropState[],
+  project: ProjectState,
+): ProjectStep | null {
+  if (project.desiredFunction !== 'durable-power-transmission') return null;
+  if (projectActionFacts(state, project).some((event) => event.status === 'completed'
+    && event.diff.mechanicalPowerRepair === true
+    && event.diff.faultEventId === project.mechanicalPowerFaultEventId
+    && event.diff.networkId === project.mechanicalPowerNetworkId)) return null;
+  // These probes can only produce a step when the owner already has reliable
+  // personal knowledge for that exact output. Unknown recipes remain opaque.
+  for (const personallyKnownOutput of [
+    Material.SteelDriveShaft,
+    Material.Steel,
+    Material.SteelCharge,
+  ] as const) {
+    const knownStep = compileKnownOutput(
+      state,
+      person,
+      visibleDrops,
+      personallyKnownOutput,
+      project.summary,
+      { preferLocalFinishedOutput: true, allowVisibleHolder: projectSupportsMaterialContribution(project) },
+    );
+    if (knownStep) return knownStep;
+  }
+
+  // A newly verified entity can suggest a later operation only through its
+  // perceptible properties and the owner's own prior facility experience.
+  // No material id is mapped to a privileged target or expected response.
+  const response = [...(project.hypothesisCampaign?.attempts ?? [])].reverse().flatMap((attempt) => {
+    const responseRef = attempt.responseRef;
+    if (attempt.outcome !== 'response' || !attempt.verifiedEventId
+      || responseRef?.kind !== 'inventory-stack') return [];
+    const stack = person.inventory.find((candidate) => candidate.id === responseRef.stackId
+      && candidate.materialId === responseRef.materialId
+      && isConsumableProjectStack(candidate));
+    return stack ? [{ stack, materialId: responseRef.materialId }] : [];
+  })[0];
+  if (!response || materialHas(response.materialId, 'metal') || materialHas(response.materialId, 'tool-material')) {
+    return hypothesisStep(state, person, visibleDrops, project, {
+      operation: 'combine-inventory',
+      questionKind: 'connect-manipulator-shapes',
+      ...(response ? { subjectSourceKeys: [inventorySourceKey(person, response.stack)] } : {}),
+    });
+  }
+  const experiencedWorkplaces = reliableExposureTechniques(person).flatMap((technique) => {
+    const targetMaterialId = technique.rule.targetMaterialId;
+    if (!materialHas(targetMaterialId, 'hot') || !materialHas(targetMaterialId, 'facility')) return [];
+    const site = knownFacilitySite(state, person, [targetMaterialId]);
+    const workplace = site ? fixedFacilityWorkplace(state, person, site, [targetMaterialId]) : null;
+    const knowledge = person.knowledge.find((fact) => fact.id === technique.knowledgeId);
+    return workplace ? [{
+      workplace,
+      targetMaterialId,
+      learnedAtMonth: knowledge?.learnedAtMonth ?? -1,
+      sourceFactIds: technique.sourceEventIds,
+    }] : [];
+  }).sort((left, right) => right.learnedAtMonth - left.learnedAtMonth
+    || left.workplace.pathLength - right.workplace.pathLength
+    || left.targetMaterialId - right.targetMaterialId);
+  const experienced = experiencedWorkplaces[0];
+  if (!experienced) return hypothesisStep(state, person, visibleDrops, project, {
+    operation: 'combine-inventory',
+    questionKind: 'connect-manipulator-shapes',
+    subjectSourceKeys: [inventorySourceKey(person, response.stack)],
+  });
+  const { workplace, targetMaterialId } = experienced;
+  if (person.position.cellId !== workplace.workingPosition.cellId
+    || person.position.z !== workplace.workingPosition.z) return {
+    key: `approach-reliability-hot-workplace-${project.id}-${workplace.workingPosition.cellId}-${workplace.workingPosition.z}`,
+    summary: '把本次可观察材料响应带到本人熟悉的高温工位',
+    reason: '人物只沿用自己曾亲历的高温设施操作方向，结果仍由当前实体规则决定',
+    action: {
+      kind: 'move',
+      toCellId: workplace.workingPosition.cellId,
+      toZ: workplace.workingPosition.z,
+    },
+    target: { kind: 'voxel', position: workplace.target.position },
+    sourceFactIds: [...new Set([
+      ...project.triggerFactIds,
+      ...response.stack.sourceEventIds,
+      ...experienced.sourceFactIds,
+      ...person.knownPlaces
+        .filter((place) => place.materialId === targetMaterialId
+          && place.position.x === workplace.target.position.x
+          && place.position.y === workplace.target.position.y
+          && place.position.z === workplace.target.position.z)
+        .flatMap((place) => place.sourceEventIds),
+    ])],
+    missingMaterialIds: [],
+    reservations: reservation(person, response.stack.id),
+  };
+  return hypothesisStep(state, person, visibleDrops, project, {
+    operation: 'expose-local',
+    questionKind: 'transform-subject-with-observed-heat',
+    targetMaterialId,
+    targetSourceFactIds: sourceEventIdsForTarget(
+      state,
+      project,
+      workplace.target.position,
+      targetMaterialId,
+    ),
+    targetSourceKeys: [
+      `voxel:${workplace.target.position.x}:${workplace.target.position.y}:${workplace.target.position.z}:${targetMaterialId}`,
+    ],
+    subjectSourceKeys: [inventorySourceKey(person, response.stack)],
+  }, workplace.target.position) ?? hypothesisStep(state, person, visibleDrops, project, {
+    operation: 'combine-inventory',
+    questionKind: 'connect-manipulator-shapes',
+    subjectSourceKeys: [inventorySourceKey(person, response.stack)],
   });
 }
 
@@ -1187,12 +1513,273 @@ function durableRecordStep(state: SimulationState, person: PersonState, visibleD
   );
 }
 
+function cropProcessingFacilityPlacementStep(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+  stack: PersonState['inventory'][number],
+): ProjectStep | null {
+  if (project.desiredFunction !== 'crop-processing' || !project.site) return null;
+  const position = {
+    x: cellX(project.site.cellId),
+    y: cellY(project.site.cellId),
+    z: project.site.z,
+  };
+  if (position.z <= 0
+    || !materialHas(voxelAt(state.world.grid, position.x, position.y, position.z), 'air')
+    || materialDefinition(voxelAt(state.world.grid, position.x, position.y, position.z - 1)).phase !== 'solid') {
+    return null;
+  }
+  const occupant = state.people.find((candidate) => isAlive(candidate)
+    && candidate.position.cellId === project.site?.cellId
+    && (candidate.position.z === position.z || candidate.position.z + 1 === position.z));
+  const horizontalDistance = Math.abs(cellX(person.position.cellId) - position.x)
+    + Math.abs(cellY(person.position.cellId) - position.y);
+  const verticalDistance = Math.max(0, Math.abs(person.position.z - position.z) - 1);
+  if (!occupant && Math.max(horizontalDistance, verticalDistance) <= 1) return {
+    key: `place-crop-processing-mill-${project.id}-${position.x}-${position.y}-${position.z}`,
+    summary: '把磨坊设置在项目绑定的作物加工工地',
+    reason: '该位置来自本人看见的成熟作物或仍在营的耕作工作区；固定落地后才能在真实收获半径内产生加工能力',
+    action: {
+      kind: 'act',
+      operation: 'combine',
+      targets: [
+        { kind: 'inventory-stack', personId: person.id, stackId: stack.id },
+        { kind: 'voxel', position },
+      ],
+    },
+    target: { kind: 'voxel', position },
+    sourceFactIds: [...new Set([...project.triggerFactIds, ...stack.sourceEventIds])],
+    missingMaterialIds: [],
+    reservations: reservation(person, stack.id),
+  };
+  if (occupant && occupant.id !== person.id) return null;
+  const approach = neighbors4(project.site.cellId)
+    .flatMap((cellId) => standingPositions(state.world.grid, cellId))
+    .filter((candidate) => Math.abs(candidate.z - position.z) <= 2)
+    .filter((candidate) => !state.people.some((other) => other.id !== person.id
+      && isAlive(other)
+      && other.position.cellId === candidate.cellId
+      && other.position.z === candidate.z))
+    .map((candidate) => ({
+      candidate,
+      path: findStandingPath(state.world.grid, person.position, candidate),
+    }))
+    .filter((candidate) => candidate.path.length > 0)
+    .sort((left, right) => left.path.length - right.path.length
+      || left.candidate.cellId - right.candidate.cellId
+      || left.candidate.z - right.candidate.z)[0];
+  if (!approach) return null;
+  return {
+    key: `return-to-crop-processing-site-${project.id}-${approach.candidate.cellId}-${approach.candidate.z}`,
+    summary: '把磨坊构件带回项目绑定的作物加工工地',
+    reason: '磨坊的收获效用取决于与真实耕作地点的距离，已经完成的构件不能随当前人物位置漂移落地',
+    action: {
+      kind: 'move',
+      toCellId: approach.candidate.cellId,
+      toZ: approach.candidate.z,
+    },
+    target: { kind: 'voxel', position },
+    sourceFactIds: [...new Set([...project.triggerFactIds, ...stack.sourceEventIds])],
+    missingMaterialIds: [],
+    reservations: reservation(person, stack.id),
+  };
+}
+
+type FunctionalCommissioningCompilation =
+  | { status: 'not-installed' }
+  | { status: 'waiting' }
+  | { status: 'action'; step: ProjectStep };
+
+function personCanReachVoxel(
+  person: PersonState,
+  position: { x: number; y: number; z: number },
+): boolean {
+  const horizontal = Math.abs(cellX(person.position.cellId) - position.x)
+    + Math.abs(cellY(person.position.cellId) - position.y);
+  const vertical = Math.max(0, Math.abs(person.position.z - position.z) - 1);
+  return Math.max(horizontal, vertical) <= 1;
+}
+
+function unoccupiedReachablePosition(
+  state: SimulationState,
+  person: PersonState,
+  cells: number[],
+  target: { x: number; y: number; z: number },
+): { cellId: number; z: number } | null {
+  return cells
+    .flatMap((localCellId) => standingPositions(state.world.grid, localCellId))
+    .filter((candidate) => {
+      const horizontal = Math.abs(cellX(candidate.cellId) - target.x)
+        + Math.abs(cellY(candidate.cellId) - target.y);
+      const vertical = Math.max(0, Math.abs(candidate.z - target.z) - 1);
+      return Math.max(horizontal, vertical) <= 1;
+    })
+    .filter((candidate) => !state.people.some((other) => other.id !== person.id
+      && isAlive(other)
+      && other.position.cellId === candidate.cellId
+      && other.position.z === candidate.z))
+    .map((candidate) => ({
+      candidate,
+      path: findStandingPath(state.world.grid, person.position, candidate),
+    }))
+    .filter((candidate) => candidate.path.length > 0)
+    .sort((left, right) => left.path.length - right.path.length
+      || left.candidate.cellId - right.candidate.cellId
+      || left.candidate.z - right.candidate.z)[0]?.candidate ?? null;
+}
+
+function cropProcessingCommissioningStep(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+): FunctionalCommissioningCompilation {
+  if (project.desiredFunction !== 'crop-processing') return { status: 'not-installed' };
+  const commissioning = establishProjectFunctionalCommissioning(state, project);
+  if (!commissioning) return { status: 'not-installed' };
+  if (!commissioning.eligiblePersonIds.includes(person.id)) return { status: 'waiting' };
+  const facilityCellId = commissioning.installationPosition.x
+    + commissioning.installationPosition.y * state.world.grid.width;
+  const visible = new Set(visibleCellsFor(person));
+  if (!visible.has(facilityCellId)) {
+    const approach = unoccupiedReachablePosition(
+      state,
+      person,
+      neighbors4(facilityCellId),
+      commissioning.installationPosition,
+    );
+    if (!approach) return { status: 'waiting' };
+    return {
+      status: 'action',
+      step: {
+        key: `approach-functional-commissioning-${project.id}-${approach.cellId}-${approach.z}`,
+        summary: '回到已安装的磨坊核验真实作物加工',
+        reason: '项目载体已经落地，但人物还没有在现场看见并完成一次真实加工；返回的是本人项目的固定安装点',
+        action: { kind: 'move', toCellId: approach.cellId, toZ: approach.z },
+        target: { kind: 'voxel', position: commissioning.installationPosition },
+        sourceFactIds: [...new Set([...project.triggerFactIds, commissioning.installationEventId])],
+        missingMaterialIds: [],
+        reservations: [],
+      },
+    };
+  }
+  const serviceTargets = cellsInRadius(facilityCellId, commissioning.serviceRadius)
+    .filter((candidate) => visible.has(candidate))
+    .flatMap((candidate) => {
+      const positions: Array<{ x: number; y: number; z: number }> = [];
+      for (let z = 0; z < state.world.grid.levels; z += 1) {
+        if (voxelAt(state.world.grid, cellX(candidate), cellY(candidate), z) === Material.CropMature) {
+          positions.push({ x: cellX(candidate), y: cellY(candidate), z });
+        }
+      }
+      return positions;
+    })
+    .sort((left, right) => left.x - right.x || left.y - right.y || left.z - right.z);
+  const serviceTarget = serviceTargets[0];
+  if (!serviceTarget) return { status: 'waiting' };
+  const sourceFactIds = [...new Set([
+    ...project.triggerFactIds,
+    commissioning.installationEventId,
+    ...sourceEventIdsForTarget(state, project, serviceTarget, Material.CropMature),
+  ])];
+  if (personCanReachVoxel(person, serviceTarget)) return {
+    status: 'action',
+    step: {
+      key: `commission-crop-processing-${project.id}-${serviceTarget.x}-${serviceTarget.y}-${serviceTarget.z}`,
+      summary: '用项目磨坊加工眼前成熟作物',
+      reason: '成熟作物当前真实存在于该项目磨坊的服务半径内；普通分离规则将决定磨坊是否带来正产出',
+      action: {
+        kind: 'act',
+        operation: 'separate',
+        targets: [{ kind: 'voxel', position: serviceTarget }],
+      },
+      target: { kind: 'voxel', position: serviceTarget },
+      sourceFactIds,
+      missingMaterialIds: [],
+      reservations: [],
+    },
+  };
+  const serviceCellId = serviceTarget.x + serviceTarget.y * state.world.grid.width;
+  const workingPosition = unoccupiedReachablePosition(
+    state,
+    person,
+    cellsInRadius(serviceCellId, 1),
+    serviceTarget,
+  );
+  if (!workingPosition) return { status: 'waiting' };
+  return {
+    status: 'action',
+    step: {
+      key: `approach-crop-processing-service-${project.id}-${workingPosition.cellId}-${workingPosition.z}`,
+      summary: '走到项目磨坊旁的成熟作物工位',
+      reason: '磨坊已经安装且服务半径内存在本人看见的成熟作物；人物只前往当前可达的真实加工位置',
+      action: { kind: 'move', toCellId: workingPosition.cellId, toZ: workingPosition.z },
+      target: { kind: 'voxel', position: serviceTarget },
+      sourceFactIds,
+      missingMaterialIds: [],
+      reservations: [],
+    },
+  };
+}
+
 function compileProjectWorkStep(
   state: SimulationState,
   person: PersonState,
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
+  if (project.desiredFunction === 'restore-electrical-power-delivery') {
+    const electricalStep = electricalPowerMaintenanceProjectStep(state, person, project);
+    if (electricalStep) return electricalStep;
+    const requirement = electricalPowerMaintenanceMaterialRequirement(state, person, project);
+    for (const outputMaterialId of requirement.materialIds) {
+      const known = compileKnownOutput(
+        state,
+        person,
+        visibleDrops,
+        outputMaterialId,
+        project.summary,
+        {
+          preferLocalFinishedOutput: true,
+          allowVisibleHolder: projectSupportsMaterialContribution(project),
+        },
+      );
+      if (known) return known;
+    }
+    return null;
+  }
+  if (project.desiredFunction === 'remote-work-power-delivery') {
+    const verification = tentativeTechniqueStep(state, person, project);
+    if (verification) return verification;
+    const electricalStep = electricalPowerProjectStep(state, person, project);
+    if (electricalStep) return electricalStep;
+    if (!hasReliableElectricalComponentKnowledge(state, person)) return null;
+    const requirement = electricalPowerMaterialRequirement(state, person, project);
+    for (const outputMaterialId of requirement.materialIds) {
+      const known = compileKnownOutput(
+        state,
+        person,
+        visibleDrops,
+        outputMaterialId,
+        project.summary,
+        { preferLocalFinishedOutput: true, allowVisibleHolder: false },
+      );
+      if (known) return known;
+    }
+    return null;
+  }
+  if (project.desiredFunction === 'comparable-mass-measurement') {
+    const verification = tentativeTechniqueStep(state, person, project);
+    if (verification) return verification;
+    return massMeasurementInquiryStep(state, person, visibleDrops, project);
+  }
+  if (project.desiredFunction === 'durable-power-transmission') {
+    const verification = tentativeTechniqueStep(state, person, project);
+    if (verification) return verification;
+    const mechanicalStep = mechanicalPowerMaintenanceProjectStep(state, person, project);
+    if (mechanicalStep) return mechanicalStep;
+    return mechanicalReliabilityInquiryStep(state, person, visibleDrops, project);
+  }
   if (project.desiredFunction === 'restore-water-powered-crop-processing') {
     const mechanicalStep = mechanicalPowerMaintenanceProjectStep(state, person, project);
     if (mechanicalStep) return mechanicalStep;
@@ -1250,6 +1837,9 @@ function compileProjectWorkStep(
   for (const materialId of facilityMaterialIds) {
     const stack = person.inventory.find((candidate) => candidate.materialId === materialId
       && isConsumableProjectStack(candidate));
+    if (stack && materialId === Material.Mill && project.desiredFunction === 'crop-processing') {
+      return cropProcessingFacilityPlacementStep(state, person, project, stack);
+    }
     const target = stack ? localOpenExertionTarget(state, person) : null;
     if (stack && target) return {
       key: `place-project-facility-${materialId}-${target.position.x}-${target.position.y}-${target.position.z}`,
@@ -1416,6 +2006,14 @@ function mechanicalProjectKnowledgeRequestStep(
       reservations: [],
     },
   };
+}
+
+export function mechanicalUnknownOutputQuestionKind(
+  outputMaterialId: MaterialId,
+): ProjectHypothesisQuestionKind | null {
+  if (outputMaterialId === Material.WaterWheel) return 'assemble-flow-driven-rotor';
+  if (outputMaterialId === Material.DriveShaft) return 'shape-rigid-rotating-connector';
+  return null;
 }
 
 function materialContributionRequestStep(
@@ -1628,6 +2226,9 @@ export function compileProjectStep(
     && projectSupportsMaterialContribution(project)) {
     return projectContributionStep(state, person, project);
   }
+  const commissioning = cropProcessingCommissioningStep(state, person, project);
+  if (commissioning.status === 'action') return commissioning.step;
+  if (commissioning.status === 'waiting') return null;
   // A project-bound written carrier is already the final private intermediate.
   // Publish it before resuming an older search route; the route remains active
   // until the physical placement lets normal project completion close it.
@@ -1649,7 +2250,10 @@ export function compileProjectStep(
     project.planKnowledgeId = workStep.planKnowledgeId;
     const reliableTechnique = workStep.planKnowledgeId.startsWith('technique:')
       && person.knowledge.some((fact) => fact.id === workStep.planKnowledgeId && fact.confidence >= 55);
-    if (reliableTechnique) closeProjectHypothesisCampaign(
+    if (reliableTechnique
+      && project.desiredFunction !== 'durable-power-transmission'
+      && project.desiredFunction !== 'remote-work-power-delivery'
+      && project.desiredFunction !== 'comparable-mass-measurement') closeProjectHypothesisCampaign(
       project,
       state.clock.elapsedMonths + 1,
       'reliable-knowledge',
@@ -1673,6 +2277,15 @@ export function compileProjectStep(
   }
   if (workStep) return workStep;
 
+  if (project.desiredFunction === 'remote-work-power-delivery'
+    && !hasReliableElectricalComponentKnowledge(state, person)) {
+    return hypothesisStep(state, person, visibleDrops, project, {
+      operation: 'combine-inventory',
+      questionKind: 'connect-manipulator-shapes',
+      protectedSourceKeys: electricalHypothesisProtectedSourceKeys(person, project),
+    });
+  }
+
   if (project.desiredFunction === 'water-powered-crop-processing') {
     const mechanicalRequirement = mechanicalPowerMaterialRequirement(state, person, project);
     if (mechanicalRequirement.unknownRecipeOutputMaterialId !== undefined) {
@@ -1691,7 +2304,13 @@ export function compileProjectStep(
       // One unanswered bounded request does not become an unlimited social
       // retry. The existing finite, local and fallible inquiry remains the
       // only fallback once no request can currently advance the project.
-      return hypothesisStep(state, person, visibleDrops, project);
+      const questionKind = mechanicalUnknownOutputQuestionKind(
+        mechanicalRequirement.unknownRecipeOutputMaterialId,
+      );
+      return hypothesisStep(state, person, visibleDrops, project, questionKind ? {
+        operation: 'combine-inventory',
+        questionKind,
+      } : undefined);
     }
   }
 

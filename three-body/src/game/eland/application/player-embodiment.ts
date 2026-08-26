@@ -114,6 +114,24 @@ function targetForWorldRef(
       z: container.position.z,
     } : undefined;
   }
+  if (target.kind === 'animal') {
+    const animal = state.world.animals.find((candidate) => candidate.id === target.animalId);
+    return animal ? {
+      kind: 'animal',
+      animalId: animal.id,
+      cellId: animal.position.cellId,
+      z: animal.position.z,
+    } : undefined;
+  }
+  if (target.kind === 'remains') {
+    const remains = (state.world.remains ?? []).find((candidate) => candidate.id === target.remainsId);
+    return remains ? {
+      kind: 'remains',
+      remainsId: remains.id,
+      cellId: remains.position.cellId,
+      z: remains.position.z,
+    } : undefined;
+  }
   return undefined;
 }
 
@@ -207,10 +225,15 @@ function materialCostForChoice(
 
 function actionTargetForChoice(
   state: SimulationState,
+  person: PersonState,
   choice: Pick<IntentChoice, 'target' | 'nextAction' | 'openingAction'>,
 ): EmbodimentTargetView | undefined {
-  return targetForWorldRef(state, choice.target)
+  const target = targetForWorldRef(state, choice.target)
     ?? targetForAction(state, choice.openingAction ?? choice.nextAction);
+  // The embodied person's own figure is intentionally hidden from its camera.
+  // Self-care remains a real server option, but is presented as a global body
+  // action instead of requiring the player to raycast an invisible self.
+  return target?.kind === 'person' && target.personId === person.id ? undefined : target;
 }
 
 function moveLabel(fromCellId: number, toCellId: number): string {
@@ -249,7 +272,7 @@ function continueIntentOption(
     label: `继续：${intent.summary}`,
     reason: '沿用本人当前仍有效的意图，并在本刻重新校验下一原子行动',
     tickCost: 1,
-    target: actionTargetForChoice(state, intent),
+    target: actionTargetForChoice(state, person, intent),
     materialCost: materialCostForChoice(person, intent, category),
     primary: true,
   };
@@ -311,7 +334,7 @@ function decisionOptions(
       label: validation.summary,
       reason: option.reason,
       tickCost: 1 as const,
-      target: actionTargetForChoice(state, choice),
+      target: actionTargetForChoice(state, person, choice),
       materialCost: materialCostForChoice(person, choice, category),
       ...(risks.length ? { risks } : {}),
       primary: isRequiredSocialOption(option) || isFulfillmentOption(option),

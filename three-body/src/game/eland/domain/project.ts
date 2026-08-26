@@ -1,4 +1,5 @@
 import type { MaterialId } from './material';
+import type { ElectricalPowerPlan } from './electrical-power';
 import type { MechanicalPowerProjectPlan } from './mechanical-power';
 import type { PersonId } from './person';
 
@@ -18,7 +19,10 @@ export type ProjectNeed =
   | 'high-heat-capability'
   | 'alloy-capability'
   | 'iron-capability'
-  | 'mechanical-power-capability';
+  | 'mechanical-power-capability'
+  | 'equipment-reliability'
+  | 'remote-work-power'
+  | 'measurement-uncertainty';
 
 export type ProjectFunction =
   | 'insulation'
@@ -51,7 +55,124 @@ export type ProjectFunction =
   | 'iron-tooling'
   | 'fortified-coordination'
   | 'water-powered-crop-processing'
-  | 'restore-water-powered-crop-processing';
+  | 'restore-water-powered-crop-processing'
+  | 'durable-power-transmission'
+  | 'remote-work-power-delivery'
+  | 'restore-electrical-power-delivery'
+  | 'comparable-mass-measurement';
+
+export interface RemoteWorkPowerPosition {
+  cellId: number;
+  z: number;
+}
+
+/**
+ * Frozen, person-local evidence that repeated trips between a commissioned
+ * mechanical source and one fixed remote workplace made transmitting useful
+ * work worth investigating. It names no electrical component or recipe.
+ */
+export interface RemoteWorkPowerTransmissionBasis {
+  version: 'remote-work-power-transmission-basis-v1';
+  observerId: PersonId;
+  atMonth: number;
+  mechanicalInstallationProjectId: string;
+  mechanicalNetworkId: string;
+  mechanicalPlanKey: string;
+  sourceSegmentId: string;
+  sourceWorkPosition: RemoteWorkPowerPosition;
+  remoteWorkPosition: RemoteWorkPowerPosition;
+  /** Exactly two personally remembered, authoritative Seed -> Food services. */
+  mechanicalServiceEventIds: [string, string];
+  /** Exactly two personally remembered non-mechanical work facts at one site. */
+  remoteWorkEventIds: [string, string];
+  /** One remembered physical move from each of the three alternating legs. */
+  travelEventIds: [string, string, string];
+  routeDistance: number;
+  /** Minimal chronological union of the seven facts above. */
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
+export type PerceivedLoadBand = 'trace' | 'light' | 'hand-load' | 'burdensome';
+
+/** One current entity whose coarse hand-feel contributed to a comparison doubt. */
+export interface MeasurementUncertaintySampleBasis {
+  personId: PersonId;
+  stackId: string;
+  materialId: MaterialId;
+  quantity: number;
+  perceivedLoadBand: PerceivedLoadBand;
+  /** Complete current stack provenance, not a replaceable material category. */
+  sourceEventIds: string[];
+  /** Personally performed production facts among that provenance. */
+  productionEventIds: string[];
+}
+
+/**
+ * Frozen person-local evidence for a mass-comparison inquiry. It records only
+ * an overlapping coarse felt-load band; exact physical mass never enters the
+ * proposal or planner-facing project state.
+ */
+export interface MeasurementUncertaintyBasis {
+  version: 'measurement-uncertainty-basis-v1';
+  observerId: PersonId;
+  atMonth: number;
+  uncertaintyKind: 'overlapping-felt-load-bands';
+  samples: [MeasurementUncertaintySampleBasis, MeasurementUncertaintySampleBasis];
+  productionEventIds: string[];
+  experiencedMonthCount: number;
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
+export interface MechanicalReliabilityFaultBasis {
+  faultEventId: string;
+  diagnosisEventId: string;
+  shaftMaterialId: MaterialId;
+  shaftInstallationEventId: string;
+  shaftInstallationSourceEventIds: string[];
+  shaftRepairEventId?: string;
+  shaftRepairSourceEventIds: string[];
+  serviceLoadedOperationCount: number;
+  /** Exact successful loaded actions retained from this fault's bounded proof. */
+  loadedOperationEventIds: string[];
+}
+
+/**
+ * Frozen person-local evidence that repeated wear, rather than an observer
+ * milestone, opened a reliability inquiry. It deliberately names no expected
+ * replacement material or recipe.
+ */
+export interface MechanicalReliabilityBasis {
+  version: 'mechanical-reliability-basis-v1';
+  observerId: PersonId;
+  networkId: string;
+  installationProjectId: string;
+  atMonth: number;
+  faults: MechanicalReliabilityFaultBasis[];
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
+/**
+ * Frozen, person-local evidence for restoring one current electrical delivery
+ * chain. It names the broken entity and personal diagnosis, but no replacement
+ * recipe or observer milestone.
+ */
+export interface ElectricalPowerMaintenanceBasis {
+  version: 'electrical-power-maintenance-basis-v1';
+  observerId: PersonId;
+  installationProjectId: string;
+  networkId: string;
+  planKey: string;
+  faultEventId: string;
+  diagnosisEventId: string;
+  componentPosition: { x: number; y: number; z: number };
+  atMonth: number;
+  /** Exact two-fact causal basis: current overload and personal diagnosis. */
+  sourceFactIds: [string, string];
+  basisKey: string;
+}
 
 /**
  * A person's positive, locally observable reasons for reopening a functional
@@ -170,6 +291,18 @@ export interface ProjectProposal {
   mechanicalPowerNetworkId?: string;
   /** Present only for a maintenance project bound to one still-current physical fault. */
   mechanicalPowerFaultEventId?: string;
+  /** Present only when repeated personally diagnosed wear opened a reliability inquiry. */
+  mechanicalReliabilityBasis?: MechanicalReliabilityBasis;
+  /** Present only when remembered, current craft batches formed a comparison doubt. */
+  measurementUncertaintyBasis?: MeasurementUncertaintyBasis;
+  /** Present only when personal mechanical service plus repeated remote travel opened the inquiry. */
+  remoteWorkPowerBasis?: RemoteWorkPowerTransmissionBasis;
+  /** Present only for restoration of one personally diagnosed current electrical fault. */
+  electricalPowerMaintenanceBasis?: ElectricalPowerMaintenanceBasis;
+  /** Frozen only after all required component techniques were personally discovered and verified. */
+  electricalPowerPlan?: ElectricalPowerPlan;
+  electricalPowerPlanKey?: string;
+  electricalPowerNetworkId?: string;
 }
 
 export interface ProjectReservation {
@@ -188,7 +321,11 @@ export interface ProjectMaterialDemand {
   sourceFactIds: string[];
 }
 
-export type ProjectProgressKind = 'material-contribution' | 'knowledge-contribution' | 'logistics-advance';
+export type ProjectProgressKind =
+  | 'material-contribution'
+  | 'knowledge-contribution'
+  | 'logistics-advance'
+  | 'action-progress';
 
 export interface ProjectProgressEvidence {
   eventId: string;
@@ -347,6 +484,10 @@ export type ProjectHypothesisOperation = 'combine-inventory' | 'exert-air' | 'ex
 export type ProjectHypothesisQuestionKind =
   | 'connect-manipulator-shapes'
   | 'connect-flexible-layers'
+  | 'assemble-balanced-suspension'
+  | 'shape-repeatable-reference'
+  | 'assemble-flow-driven-rotor'
+  | 'shape-rigid-rotating-connector'
   | 'seek-local-heat'
   | 'shape-portable-surface'
   | 'transform-subject-with-observed-heat';
@@ -361,6 +502,8 @@ export interface ProjectHypothesisCandidate {
   questionKind: ProjectHypothesisQuestionKind;
   /** Combine uses [left,right], exert uses [tool,input], expose uses [input,target]. */
   materialIds: [MaterialId, MaterialId];
+  /** Exact bounded combine slots; omitted on legacy two-slot candidates. */
+  inventoryMaterialIds?: [MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId];
   toolMaterialId?: MaterialId;
   inputMaterialId?: MaterialId;
   targetMaterialId?: MaterialId;
@@ -390,6 +533,7 @@ export interface ProjectHypothesisAttempt {
   operation: ProjectHypothesisOperation;
   questionKind: ProjectHypothesisQuestionKind;
   materialIds: [MaterialId, MaterialId];
+  inventoryMaterialIds?: [MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId];
   toolMaterialId?: MaterialId;
   inputMaterialId?: MaterialId;
   targetMaterialId?: MaterialId;
@@ -456,6 +600,26 @@ export interface ProjectHypothesisCampaign {
 }
 
 /**
+ * A placed capability carrier is not yet a delivered function. This basis is
+ * frozen from one project-owned installation and names only the already-known
+ * physical service envelope; the later service action still has to pass the
+ * ordinary world rules.
+ */
+export interface ProjectFunctionalCommissioning {
+  version: 'project-functional-commissioning-v1';
+  desiredFunction: ProjectFunction;
+  serviceKind: 'crop-mature-separation';
+  facilityMaterialId: MaterialId;
+  installationEventId: string;
+  installationPosition: { x: number; y: number; z: number };
+  serviceRadius: number;
+  enteredAtMonth: number;
+  /** Membership is frozen before the service action, so that action cannot authorize its own actor. */
+  eligiblePersonIds: PersonId[];
+  sourceFactIds: string[];
+}
+
+/**
  * A project is the persistence unit between a local need and primitive actions.
  * `desiredFunction` is deliberately not a hidden recipe or civilization target.
  */
@@ -469,6 +633,8 @@ export interface ProjectState extends ProjectProposal {
   contributorIds: PersonId[];
   actionEventIds: string[];
   failureEventIds: string[];
+  /** Present after a project-owned carrier is installed and before a real positive service completes. */
+  functionalCommissioning?: ProjectFunctionalCommissioning;
   completedAtMonth?: number;
   completionEventIds: string[];
   blockedReason?: string;

@@ -187,11 +187,16 @@ try {
       sourceSegmentId: plan.sourceSegmentId,
       components: [],
       installationEventIds: [],
-      operationEventIds: [],
-      faultEventIds: [],
-      repairEventIds: [],
+      recentOperationEventIds: [],
+      recentFaultEventIds: [],
+      recentRepairEventIds: [],
       sourceEventIds: [],
+      operationCount: 0,
+      faultCount: 0,
+      repairCount: 0,
       condition: 100,
+      serviceLoadedOperationCount: 0,
+      serviceCycleOperationEventIds: [],
       fault: null,
     });
 
@@ -210,6 +215,12 @@ try {
     assert.deepEqual(network.installationEventIds, ['install-wheel-1']);
     assert.ok(network.components[0].sourceEventIds.includes('inspection-wheel-1'));
 
+    recordMechanicalPowerInstallation(network, {
+      role: 'connector', materialId: Material.DriveShaft, position: plan.shaftPositions[0],
+      projectId: plan.projectId, installedAtMonth: 12,
+      installationEventId: 'install-shaft-1', sourceEventIds: ['crafted-shaft-1'],
+    });
+
     const fault = {
       kind: 'commissioning-misalignment', componentRole: 'connector',
       componentPosition: plan.shaftPositions[0], atMonth: 13,
@@ -219,15 +230,18 @@ try {
     recordMechanicalPowerFault(network, fault);
     assert.equal(network.condition, 40);
     assert.equal(network.fault.faultEventId, fault.faultEventId);
-    assert.deepEqual(network.faultEventIds, ['fault-shaft-1']);
+    assert.deepEqual(network.recentFaultEventIds, ['fault-shaft-1']);
+    assert.equal(network.faultCount, 1);
     recordMechanicalPowerRepair(network, 'repair-shaft-1', ['replacement-shaft-1']);
     recordMechanicalPowerRepair(network, 'repair-shaft-1', ['replacement-shaft-1']);
     assert.equal(network.condition, 100);
     assert.equal(network.fault, null);
-    assert.deepEqual(network.repairEventIds, ['repair-shaft-1']);
+    assert.deepEqual(network.recentRepairEventIds, ['repair-shaft-1']);
+    assert.equal(network.repairCount, 1);
     recordMechanicalPowerOperation(network, 'operate-mill-1');
     recordMechanicalPowerOperation(network, 'operate-mill-1');
-    assert.deepEqual(network.operationEventIds, ['operate-mill-1']);
+    assert.deepEqual(network.recentOperationEventIds, ['operate-mill-1']);
+    assert.equal(network.operationCount, 1);
     assert.ok(network.sourceEventIds.includes('replacement-shaft-1'), '维修来源必须保留在网络 provenance 中');
   }
 

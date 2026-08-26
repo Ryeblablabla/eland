@@ -1,6 +1,7 @@
 import type { ActionFact, SimulationState } from './model';
 import { materialDefinition, type MaterialId } from './material';
 import type { PersonState } from './person';
+import { personById } from './state-index';
 
 const RELIABLE_NO_RESPONSE_CONFIDENCE = 55;
 
@@ -57,7 +58,7 @@ function interactionFailure(fact: ActionFact): { id: string; summary: string } |
 export function recordInteractionFailureKnowledge(state: SimulationState, fact: ActionFact): void {
   const failure = interactionFailure(fact);
   if (!failure) return;
-  const person = state.people.find((candidate) => candidate.id === fact.who);
+  const person = personById(state, fact.who);
   if (!person) return;
   const known = person.knowledge.find((item) => item.id === failure.id);
   if (known) {

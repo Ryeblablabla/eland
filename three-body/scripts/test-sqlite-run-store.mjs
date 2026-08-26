@@ -204,7 +204,7 @@ try {
   integrityDatabase.prepare("DELETE FROM chunks WHERE hash = ?").run(fakeHash);
 
   const currentRoot = deserialize(currentStateChunk.data);
-  assert.equal(currentRoot.schemaVersion, 2, "新运行状态根必须使用跨进程稳定的事件哈希");
+  assert.equal(currentRoot.schemaVersion, 3, "新运行状态根必须使用当前稳定的 schema 3 事件哈希与 shell 分段");
   const currentShellHash = String(currentRoot.shellHash);
   const currentShellCodec = String(integrityDatabase.prepare("SELECT codec FROM chunks WHERE hash = ?")
     .get(currentShellHash).codec);
@@ -231,7 +231,7 @@ try {
   const inspection = new DatabaseSync(databaseFile, { readOnly: true });
   const journalMode = inspection.prepare("PRAGMA journal_mode").get();
   assert.equal(journalMode.journal_mode, "wal");
-  assert.equal(Number(inspection.prepare("PRAGMA user_version").get().user_version), 2);
+  assert.equal(Number(inspection.prepare("PRAGMA user_version").get().user_version), 3);
   assert.deepEqual(
     inspection.prepare("PRAGMA table_info(runs)").all().map((column) => column.name),
     [

@@ -143,7 +143,16 @@ export interface HumanSkySnapshot {
 
 export type SocietyCameraMode =
   | { kind: 'overview' }
-  | { kind: 'embodiment'; agentId: string };
+  | {
+      kind: 'embodiment';
+      agentId: string;
+      /**
+       * Presentation-only camera anchor used while an already-legal movement
+       * command is awaiting authority. It never moves the projected person or
+       * participates in target raycasts / option legality.
+       */
+      presentationPosition?: { cellId: number; z: number };
+    };
 
 interface Props {
   society: SocietyState;
@@ -159,8 +168,8 @@ interface Props {
   cameraMode?: SocietyCameraMode;
   embodimentTargets?: readonly EmbodimentTargetView[];
   previewEmbodimentOption?: EmbodimentOptionView | null;
-  embodimentCommandPending?: boolean;
   onEmbodimentMove?: (direction: EmbodimentMoveDirection) => void;
+  onEmbodimentMoveHoldChange?: (direction: EmbodimentMoveDirection | null) => void;
   onEmbodimentTargetChange?: (target: EmbodimentTargetView | null) => void;
   onEmbodimentPointerLockChange?: (locked: boolean) => void;
   onEmbodimentCameraSettled?: () => void;
@@ -186,10 +195,226 @@ const SPEECH_MAX_LINES = 3;
 const SPEECH_COLLISION_GAP_PX = 8;
 const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参与规则、寻路或选择
 const SOCIETY_MAX_PIXEL_RATIO = 1.5;
+const EMBODIMENT_MAX_PIXEL_RATIO = 1.15;
 const CAMERA_TARGET_INSET_X = 12;
 const CAMERA_TARGET_INSET_Z = 10;
 const EMBODIMENT_EYE_HEIGHT = 0.44;
-const EMBODIMENT_INTERACTION_DISTANCE = 5;
+// Highest current human perception projection is eight cells; the half-cell
+// margin accounts for the eye-to-proxy vertical offset at that boundary.
+const EMBODIMENT_INTERACTION_DISTANCE = 8.5;
+
+type Primitive = string | number | boolean | null | undefined;
+
+function cachedObjectPair<T extends object>(
+  cache: WeakMap<T, WeakMap<T, boolean>>,
+  left: T,
+  right: T,
+  compare: () => boolean,
+): boolean {
+  let comparisons = cache.get(left);
+  if (!comparisons) {
+    comparisons = new WeakMap<T, boolean>();
+    cache.set(left, comparisons);
+  }
+  if (comparisons.has(right)) return comparisons.get(right)!;
+  const result = compare();
+  comparisons.set(right, result);
+  return result;
+}
+
+const terrainWorldComparisonCache = new WeakMap<
+  SocietyState['world'],
+  WeakMap<SocietyState['world'], boolean>
+>();
+const terrainVisualComparisonCache = new WeakMap<SocietyState, WeakMap<SocietyState, boolean>>();
+const activeDecorFacilityCache = new WeakMap<SocietyState, number[]>();
+
+function samePrimitiveArray<T extends Primitive>(left: readonly T[] | undefined, right: readonly T[] | undefined): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function sameArrayBy<T>(left: readonly T[], right: readonly T[], same: (a: T, b: T) => boolean): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    if (!same(left[index], right[index])) return false;
+  }
+  return true;
+}
+
+function samePalette(left: SocietyState['world']['palette'], right: SocietyState['world']['palette']): boolean {
+  return sameArrayBy(left, right, (a, b) => a.id === b.id
+    && a.key === b.key
+    && samePrimitiveArray(a.color, b.color)
+    && samePrimitiveArray(a.tags, b.tags));
+}
+
+/** Exact comparison of the facts consumed by terrainApi; activity/HUD data is intentionally absent. */
+function sameTerrainWorld(left: SocietyState['world'], right: SocietyState['world']): boolean {
+  if (left === right) return true;
+  return cachedObjectPair(terrainWorldComparisonCache, left, right, () => left.width === right.width
+    && left.height === right.height
+    && left.levels === right.levels
+    && left.generator.seed === right.generator.seed
+    && left.generator.version === right.generator.version
+    && samePalette(left.palette, right.palette)
+    && samePrimitiveArray(left.surface, right.surface)
+    && samePrimitiveArray(left.elevation, right.elevation)
+    && sameArrayBy(left.columns, right.columns, samePrimitiveArray));
+}
+
+function sameTerrainStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
+  return sameArrayBy(left, right, (a, b) => a.id === b.id
+    && a.complete === b.complete
+    && samePrimitiveArray(a.occupiedCells, b.occupiedCells)
+    && sameArrayBy(a.interiorPositions, b.interiorPositions, (p, q) => p.cellId === q.cellId && p.z === q.z));
+}
+
+function sameTerrainVisuals(left: SocietyState, right: SocietyState): boolean {
+  if (left === right) return true;
+  return cachedObjectPair(terrainVisualComparisonCache, left, right, () => sameTerrainWorld(left.world, right.world)
+    && sameTerrainStructures(left.structures, right.structures));
+}
+
+function sameSelectionVisuals(left: SocietyState, right: SocietyState): boolean {
+  // Proxy bounds use exactly the same structure facts as terrain plus column
+  // lengths/elevation, all of which are covered by this comparison.
+  return sameTerrainVisuals(left, right);
+}
+
+function sameDecorStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
+  return sameArrayBy(left, right, (a, b) => a.id === b.id
+    && a.complete === b.complete
+    && a.componentCount === b.componentCount
+    && a.effects.weatherProtection === b.effects.weatherProtection
+    && a.effects.thermalInsulation === b.effects.thermalInsulation
+    && a.effects.capacity === b.effects.capacity
+    && samePrimitiveArray(a.occupiedCells, b.occupiedCells)
+    && samePrimitiveArray(a.interiorCells, b.interiorCells)
+    && sameArrayBy(a.interiorPositions, b.interiorPositions, (p, q) => p.cellId === q.cellId && p.z === q.z)
+    && samePrimitiveArray(a.materialIds, b.materialIds));
+}
+
+function sameTrailRegions(left: SocietyState['regions'], right: SocietyState['regions']): boolean {
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (true) {
+    while (leftIndex < left.length && left[leftIndex].kind !== 'trail') leftIndex++;
+    while (rightIndex < right.length && right[rightIndex].kind !== 'trail') rightIndex++;
+    const a = left[leftIndex];
+    const b = right[rightIndex];
+    if (!a || !b) return !a && !b;
+    if (a.id !== b.id || !samePrimitiveArray(a.cells, b.cells)) return false;
+    leftIndex++;
+    rightIndex++;
+  }
+}
+
+function sameDecorObservations(left: SocietyState['observations'], right: SocietyState['observations']): boolean {
+  if (left === right) return true;
+  if (left.civilizationIndex?.stage !== right.civilizationIndex?.stage) return false;
+  if (!sameArrayBy(left.practices, right.practices, (a, b) => a.key === b.key && a.count === b.count)) return false;
+  if (!sameArrayBy(left.institutions, right.institutions, (a, b) => a.key === b.key)) return false;
+  return sameArrayBy(left.milestones, right.milestones, (a, b) => a.id === b.id);
+}
+
+const DECOR_FUNCTIONAL_MODEL_KEYS = new Set([
+  'council_hearth', 'workshop', 'granary', 'cistern', 'kiln', 'mill',
+  'civic_hall', 'foundry', 'smithy', 'keep_core',
+  'water_wheel', 'drive_shaft', 'broken_drive_shaft', 'steel_drive_shaft',
+  'mechanical_dynamo', 'copper_conductor', 'broken_copper_conductor', 'resistive_load',
+]);
+
+/**
+ * collectDecor only consumes agent state to decide which authoritative
+ * facilities are active. Comparing that projection (instead of whole agents)
+ * lets ordinary walking update figures without rebuilding every decor batch.
+ */
+function activeDecorFacilityCells(society: SocietyState): number[] {
+  const cached = activeDecorFacilityCache.get(society);
+  if (cached) return cached;
+  const { world } = society;
+  const cellsByMaterial = new Map<number, number[]>();
+  const functionalCells = new Set<number>();
+  for (let cellId = 0; cellId < world.surface.length; cellId++) {
+    const materialId = world.surface[cellId];
+    if (!DECOR_FUNCTIONAL_MODEL_KEYS.has(world.palette[materialId]?.key ?? '')) continue;
+    functionalCells.add(cellId);
+    const cells = cellsByMaterial.get(materialId);
+    if (cells) cells.push(cellId);
+    else cellsByMaterial.set(materialId, [cellId]);
+  }
+  const result = new Set<number>();
+  const distance = (left: number, right: number): number => Math.abs(left % world.width - right % world.width)
+    + Math.abs(Math.floor(left / world.width) - Math.floor(right / world.width));
+  for (const agent of society.agents) {
+    const action = agent.visualAction;
+    if (!action?.sourceEventId) continue;
+    const anchor = action.targetCellId ?? action.sourceCellId ?? agent.cellId;
+    if (functionalCells.has(anchor)) result.add(anchor);
+    if (action.facilityMaterialId !== undefined) {
+      let nearestCell: number | undefined;
+      let nearestDistance = 3;
+      for (const cellId of cellsByMaterial.get(action.facilityMaterialId) ?? []) {
+        const candidateDistance = distance(anchor, cellId);
+        if (candidateDistance > 2
+          || candidateDistance > nearestDistance
+          || (candidateDistance === nearestDistance && nearestCell !== undefined && cellId >= nearestCell)) continue;
+        nearestCell = cellId;
+        nearestDistance = candidateDistance;
+      }
+      if (nearestCell !== undefined) result.add(nearestCell);
+    }
+    if (action.mechanicalPowerOperation) {
+      for (const cellId of action.linkedFacilityCellIds ?? []) {
+        const key = world.palette[world.surface[cellId]]?.key;
+        if (key === 'mill' || key === 'water_wheel' || key === 'drive_shaft' || key === 'steel_drive_shaft') result.add(cellId);
+      }
+    }
+  }
+  for (const network of society.electricalPower?.networks ?? []) {
+    if (network.activity?.kind !== 'operation' || !network.activity.delivered) continue;
+    for (const component of network.components) result.add(component.cellId);
+  }
+  const cells = [...result].sort((a, b) => a - b);
+  activeDecorFacilityCache.set(society, cells);
+  return cells;
+}
+
+function sameDecorVisuals(left: SocietyState, leftEra: EraKey, right: SocietyState, rightEra: EraKey): boolean {
+  if (leftEra !== rightEra
+    || left.weather?.kind !== right.weather?.kind
+    || !sameTerrainWorld(left.world, right.world)
+    || !samePrimitiveArray(left.world.biomes, right.world.biomes)
+    || !sameDecorStructures(left.structures, right.structures)
+    || !sameArrayBy(left.electricalPower?.networks ?? [], right.electricalPower?.networks ?? [], (a, b) => a.id === b.id
+      && sameArrayBy(a.planPath, b.planPath, (p, q) => p.cellId === q.cellId && p.z === q.z)
+      && sameArrayBy(a.components, b.components, (p, q) => p.role === q.role
+        && p.materialId === q.materialId && p.cellId === q.cellId && p.z === q.z)
+      && a.fault?.cellId === b.fault?.cellId && a.fault?.z === b.fault?.z
+      && a.fault?.atMonth === b.fault?.atMonth && a.fault?.sourceEventId === b.fault?.sourceEventId
+      && a.activity?.kind === b.activity?.kind && a.activity?.sourceEventId === b.activity?.sourceEventId
+      && a.activity?.delivered === b.activity?.delivered)
+    || !sameTrailRegions(left.regions, right.regions)
+    || !sameDecorObservations(left.observations, right.observations)) return false;
+  if (!sameArrayBy(left.drops, right.drops, (a, b) => a.id === b.id
+    && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z && a.quantity === b.quantity)) return false;
+  if (!sameArrayBy(left.containers, right.containers, (a, b) => a.id === b.id
+    && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z
+    && a.capacity === b.capacity && a.usedCapacity === b.usedCapacity)) return false;
+  if (!sameArrayBy(left.graves ?? [], right.graves ?? [], (a, b) => a.id === b.id
+    && a.cellId === b.cellId && a.z === b.z && a.marked === b.marked
+    && a.markerMaterialId === b.markerMaterialId)) return false;
+  if (!sameArrayBy(left.animals, right.animals, (a, b) => a.id === b.id
+    && a.speciesId === b.speciesId && a.sex === b.sex && a.ageBand === b.ageBand
+    && a.cellId === b.cellId && a.z === b.z)) return false;
+  return samePrimitiveArray(activeDecorFacilityCells(left), activeDecorFacilityCells(right));
+}
 
 function embodimentTargetKey(target: EmbodimentTargetView): string {
   if (target.kind === 'person') return `person:${target.personId}`;
@@ -197,7 +422,9 @@ function embodimentTargetKey(target: EmbodimentTargetView): string {
   if (target.kind === 'standing-position') return `standing:${target.cellId}:${target.z}`;
   if (target.kind === 'voxel') return `voxel:${target.cellId}:${target.z}`;
   if (target.kind === 'drop') return `drop:${target.dropId}`;
-  return `container:${target.containerId}`;
+  if (target.kind === 'container') return `container:${target.containerId}`;
+  if (target.kind === 'animal') return `animal:${target.animalId}`;
+  return `remains:${target.remainsId}`;
 }
 
 function visualSpatialHash(seed: number, x: number, z: number, salt: number): number {
@@ -663,6 +890,9 @@ interface FigureParts {
   toolHead: THREE.Mesh;
   heldLoad: THREE.Group;
   heldLoadFill: THREE.Mesh;
+  balance: THREE.Group;
+  balanceBeam: THREE.Group;
+  balanceLoad: THREE.Mesh;
   tablet: THREE.Group;
   heldFood: THREE.Mesh;
   outerwear: THREE.Mesh;
@@ -901,7 +1131,33 @@ function buildFigure(agent: SocietyAgent): FigureParts {
   heldLoad.add(parcel, heldLoadFill, bindingX, bindingZ);
   heldLoad.position.set(0, 0.44, 0.33);
   heldLoad.visible = false;
-  upright.add(legL, legR, upperBody, heldLoad);
+
+  // 等臂秤只在已提交称量事实中显示；右盘实体颜色来自本次真实称量对象。
+  const balance = new THREE.Group();
+  balance.position.set(0, 0.52, 0.42);
+  const balanceStem = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.27, 0.045), wood);
+  balanceStem.position.y = 0.08;
+  const balanceGrip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.055), wood);
+  balanceGrip.position.y = -0.045;
+  const balanceBeam = new THREE.Group();
+  balanceBeam.position.y = 0.22;
+  const beamBar = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.04, 0.05), wood);
+  const beamPointer = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.15, 0.035), stone);
+  beamPointer.position.y = -0.075;
+  balanceBeam.add(beamBar, beamPointer);
+  for (const side of [-1, 1]) {
+    const cord = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.19, 0.025), linen);
+    cord.position.set(side * 0.255, -0.11, 0);
+    const pan = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.025, 0.18), stone);
+    pan.position.set(side * 0.255, -0.215, 0);
+    balanceBeam.add(cord, pan);
+  }
+  const balanceLoad = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.095, 0.105), loadMat);
+  balanceLoad.position.set(0.255, -0.275, 0);
+  balanceBeam.add(balanceLoad);
+  balance.add(balanceStem, balanceGrip, balanceBeam);
+  balance.visible = false;
+  upright.add(legL, legR, upperBody, heldLoad, balance);
 
   // 脱水 / 脱水冬眠：收束成干燥卷，不再只是人物换色。
   const dehydrated = new THREE.Group();
@@ -963,7 +1219,8 @@ function buildFigure(agent: SocietyAgent): FigureParts {
   group.add(pickProxy);
   return {
     group, pickProxy, upright, upperBody, dehydrated, legL, legR, armL, armR,
-    spear, handTool, toolHead, heldLoad, heldLoadFill, tablet, heldFood, outerwear, bandage, belly, sprite,
+    spear, handTool, toolHead, heldLoad, heldLoadFill, balance, balanceBeam, balanceLoad,
+    tablet, heldFood, outerwear, bandage, belly, sprite,
     spriteKey: '', speechBubble, speechKey: '', speechTexture: null, speechAspect: 1,
     speechPixelWidth: 1, speechPixelHeight: 1, speechPlacement: 'center',
     visualKey: figureVisualKey(agent),
@@ -996,8 +1253,8 @@ export default function SocietyScene3D({
   cameraMode = { kind: 'overview' },
   embodimentTargets = [],
   previewEmbodimentOption,
-  embodimentCommandPending = false,
   onEmbodimentMove,
+  onEmbodimentMoveHoldChange,
   onEmbodimentTargetChange,
   onEmbodimentPointerLockChange,
   onEmbodimentCameraSettled,
@@ -1026,8 +1283,8 @@ export default function SocietyScene3D({
     cameraMode,
     embodimentTargets,
     previewEmbodimentOption,
-    embodimentCommandPending,
     onEmbodimentMove,
+    onEmbodimentMoveHoldChange,
     onEmbodimentTargetChange,
     onEmbodimentPointerLockChange,
     onEmbodimentCameraSettled,
@@ -1047,8 +1304,8 @@ export default function SocietyScene3D({
       cameraMode,
       embodimentTargets,
       previewEmbodimentOption,
-      embodimentCommandPending,
       onEmbodimentMove,
+      onEmbodimentMoveHoldChange,
       onEmbodimentTargetChange,
       onEmbodimentPointerLockChange,
       onEmbodimentCameraSettled,
@@ -1149,11 +1406,19 @@ export default function SocietyScene3D({
       onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
     });
     let embodiedAgentId: string | null = null;
-    const actorCameraAnchor = (s: SocietyState, agentId: string) => {
+    const lastEmbodimentAnchor = new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN);
+    const actorCameraAnchor = (
+      s: SocietyState,
+      agentId: string,
+      presentationPosition?: { cellId: number; z: number },
+    ) => {
       const actor = s.agents.find((agent) => agent.id === agentId);
       if (!actor || actor.state === 'dead') return null;
+      const cellId = presentationPosition?.cellId ?? actor.cellId;
+      const standingZ = presentationPosition?.z ?? actor.z;
       const occupants = s.agents
-        .filter((agent) => agent.cellId === actor.cellId && agent.bodyDisposition !== 'interred')
+        .filter((agent) => (agent.id === actor.id ? cellId : agent.cellId) === cellId
+          && agent.bodyDisposition !== 'interred')
         .sort((left, right) => left.id.localeCompare(right.id));
       const occupantIndex = occupants.findIndex((agent) => agent.id === actor.id);
       const offset = occupantIndex >= 0
@@ -1161,9 +1426,9 @@ export default function SocietyScene3D({
         : { x: 0, z: 0 };
       const ageScale = figureAgeOf(actor) === 'child' ? 0.72 : figureAgeOf(actor) === 'elder' ? 0.9 : 1;
       return {
-        x: actor.cellId % s.world.width - s.world.width / 2 + 0.5 + offset.x,
-        y: actor.z * CELL_H + EMBODIMENT_EYE_HEIGHT * ageScale,
-        z: Math.floor(actor.cellId / s.world.width) - s.world.height / 2 + 0.5 + offset.z,
+        x: cellId % s.world.width - s.world.width / 2 + 0.5 + offset.x,
+        y: standingZ * CELL_H + EMBODIMENT_EYE_HEIGHT * ageScale,
+        z: Math.floor(cellId / s.world.width) - s.world.height / 2 + 0.5 + offset.z,
       };
     };
     cameraModeApiRef.current = (s, mode) => {
@@ -1172,19 +1437,22 @@ export default function SocietyScene3D({
         onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
       });
       if (mode.kind === 'embodiment') {
-        const anchor = actorCameraAnchor(s, mode.agentId);
+        const anchor = actorCameraAnchor(s, mode.agentId, mode.presentationPosition);
         if (!anchor) return;
         controls.enabled = false;
         if (embodiedAgentId !== mode.agentId || !embodimentCamera.isActive()) {
           embodiedAgentId = mode.agentId;
+          lastEmbodimentAnchor.set(anchor.x, anchor.y, anchor.z);
           embodimentCamera.enter(anchor);
-        } else {
+        } else if (lastEmbodimentAnchor.distanceToSquared(anchor) > 1e-8) {
+          lastEmbodimentAnchor.set(anchor.x, anchor.y, anchor.z);
           embodimentCamera.setAnchor(anchor, true);
         }
         return;
       }
       if (!embodimentCamera.isActive()) return;
       embodiedAgentId = null;
+      lastEmbodimentAnchor.set(Number.NaN, Number.NaN, Number.NaN);
       embodimentCamera.leave();
       const width = mount.clientWidth;
       const height = mount.clientHeight;
@@ -2359,6 +2627,7 @@ void main() {`,
     const embodimentTargetByKey = new Map<string, EmbodimentTargetView>();
     const embodimentPersonTargetById = new Map<string, EmbodimentTargetView>();
     const embodimentStructureTargetById = new Map<string, EmbodimentTargetView>();
+    const embodimentProxyByKey = new Map<string, THREE.Mesh>();
     const embodimentPreviewMaterial = new THREE.MeshBasicMaterial({
       color: '#6fd2a1',
       transparent: true,
@@ -2376,10 +2645,10 @@ void main() {`,
     aoExcluded.push(embodimentPreview);
 
     embodimentTargetsApiRef.current = (s, targets, preview) => {
-      embodimentTargetGroup.clear();
       embodimentTargetByKey.clear();
       embodimentPersonTargetById.clear();
       embodimentStructureTargetById.clear();
+      const visibleProxyKeys = new Set<string>();
       for (const target of targets) {
         const key = embodimentTargetKey(target);
         if (embodimentTargetByKey.has(key)) continue;
@@ -2393,9 +2662,16 @@ void main() {`,
           continue;
         }
         if (target.kind === 'standing-position') continue;
+        visibleProxyKeys.add(key);
         const x = target.cellId % s.world.width;
         const y = Math.floor(target.cellId / s.world.width);
-        const proxy = new THREE.Mesh(embodimentTargetGeometry, embodimentTargetMaterial);
+        let proxy = embodimentProxyByKey.get(key);
+        if (!proxy) {
+          proxy = new THREE.Mesh(embodimentTargetGeometry, embodimentTargetMaterial);
+          proxy.userData.embodimentTargetKey = key;
+          embodimentProxyByKey.set(key, proxy);
+          embodimentTargetGroup.add(proxy);
+        }
         proxy.position.set(
           x - s.world.width / 2 + 0.5,
           target.z * CELL_H + CELL_H * 0.5,
@@ -2403,8 +2679,11 @@ void main() {`,
         );
         if (target.kind === 'voxel') proxy.scale.set(0.94, CELL_H * 0.94, 0.94);
         else proxy.scale.set(0.62, 0.52, 0.62);
-        proxy.userData.embodimentTargetKey = key;
-        embodimentTargetGroup.add(proxy);
+      }
+      for (const [key, proxy] of embodimentProxyByKey) {
+        if (visibleProxyKeys.has(key)) continue;
+        embodimentTargetGroup.remove(proxy);
+        embodimentProxyByKey.delete(key);
       }
 
       const previewTarget = preview?.category === 'build' && preview.target?.kind === 'voxel'
@@ -2434,20 +2713,27 @@ void main() {`,
       }
     };
 
-    const clearStructureSelection = () => {
-      for (const child of [...structureSelectionGroup.children]) {
-        structureSelectionGroup.remove(child);
-        const mesh = child as THREE.Mesh;
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
-      }
-    };
+    const structureSelectionMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    });
+    structureSelectionMaterial.colorWrite = false;
+    const structureSelectionById = new Map<string, { mesh: THREE.Mesh; signature: string }>();
+    let renderedSelectionSociety: SocietyState | null = null;
 
     selectionApiRef.current = (s) => {
-      clearStructureSelection();
+      if (renderedSelectionSociety && sameSelectionVisuals(renderedSelectionSociety, s)) {
+        renderedSelectionSociety = s;
+        return;
+      }
+      renderedSelectionSociety = s;
       const w = s.world;
+      const visibleStructureIds = new Set<string>();
       for (const structure of s.structures) {
         if (structure.occupiedCells.length === 0) continue;
+        visibleStructureIds.add(structure.id);
         const xs = structure.occupiedCells.map((cellId) => cellId % w.width);
         const zs = structure.occupiedCells.map((cellId) => Math.floor(cellId / w.width));
         const minX = Math.min(...xs);
@@ -2460,28 +2746,44 @@ void main() {`,
           2,
         );
         const height = Math.max(1.4, topLayer * CELL_H + 0.8);
-        const material = new THREE.MeshBasicMaterial({
-          transparent: true,
-          opacity: 0,
-          depthTest: false,
-          depthWrite: false,
-        });
-        material.colorWrite = false;
-        const proxy = new THREE.Mesh(
-          new THREE.BoxGeometry(maxX - minX + 1, height, maxZ - minZ + 1),
-          material,
-        );
+        const signature = `${minX}:${maxX}:${minZ}:${maxZ}:${height}`;
+        let entry = structureSelectionById.get(structure.id);
+        if (!entry) {
+          const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(maxX - minX + 1, height, maxZ - minZ + 1),
+            structureSelectionMaterial,
+          );
+          mesh.userData.structureId = structure.id;
+          entry = { mesh, signature };
+          structureSelectionById.set(structure.id, entry);
+          structureSelectionGroup.add(mesh);
+        } else if (entry.signature !== signature) {
+          entry.mesh.geometry.dispose();
+          entry.mesh.geometry = new THREE.BoxGeometry(maxX - minX + 1, height, maxZ - minZ + 1);
+          entry.signature = signature;
+        }
+        const proxy = entry.mesh;
         proxy.position.set(
           (minX + maxX) / 2 - w.width / 2 + 0.5,
           height / 2,
           (minZ + maxZ) / 2 - w.height / 2 + 0.5,
         );
-        proxy.userData.structureId = structure.id;
-        structureSelectionGroup.add(proxy);
+      }
+      for (const [structureId, entry] of structureSelectionById) {
+        if (visibleStructureIds.has(structureId)) continue;
+        structureSelectionGroup.remove(entry.mesh);
+        entry.mesh.geometry.dispose();
+        structureSelectionById.delete(structureId);
       }
     };
 
+    let renderedTerrainSociety: SocietyState | null = null;
     terrainApiRef.current = (s) => {
+      if (renderedTerrainSociety && sameTerrainVisuals(renderedTerrainSociety, s)) {
+        renderedTerrainSociety = s;
+        return;
+      }
+      renderedTerrainSociety = s;
       const w = s.world;
       const structureCells = new Set(s.structures.flatMap((structure) => structure.occupiedCells));
       const liquidDepthByCell = new Uint8Array(COUNT);
@@ -3396,7 +3698,17 @@ void main() {`,
       mesh.setColorAt(index, col);
     };
 
+    let renderedDecorSociety: SocietyState | null = null;
+    let renderedDecorEra: EraKey | null = null;
     decorApiRef.current = (s, era) => {
+      if (renderedDecorSociety && renderedDecorEra
+        && sameDecorVisuals(renderedDecorSociety, renderedDecorEra, s, era)) {
+        renderedDecorSociety = s;
+        renderedDecorEra = era;
+        return;
+      }
+      renderedDecorSociety = s;
+      renderedDecorEra = era;
       const nextDevelopmentStage = s.observations.civilizationIndex?.stage ?? '原始部落';
       if (renderedDevelopmentStage !== undefined && renderedDevelopmentStage !== nextDevelopmentStage)
         beginSettlementEraTransition(performance.now());
@@ -3883,6 +4195,8 @@ void main() {`,
         f.handTool.visible = false;
         f.heldLoad.visible = false;
         f.heldLoad.position.z = 0.33;
+        f.balance.visible = false;
+        f.balanceBeam.rotation.z = 0;
         f.tablet.visible = false;
         f.heldFood.visible = false;
         const toolKey = actionView?.toolMaterialId !== undefined ? w.palette[actionView.toolMaterialId]?.key : undefined;
@@ -3894,6 +4208,9 @@ void main() {`,
         );
         if (carriedColor) {
           for (const mesh of [f.heldLoadFill, f.heldFood]) (mesh.material as THREE.MeshLambertMaterial).color.setRGB(
+            carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
+          );
+          (f.balanceLoad.material as THREE.MeshLambertMaterial).color.setRGB(
             carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
           );
         }
@@ -3988,13 +4305,18 @@ void main() {`,
             f.legL.rotation.x = 0.28;
             f.legR.rotation.x = -0.2;
           } else if (action === 'attend') {
-            const hasTablet = toolKey === 'wood_tablet' || materialKey === 'wood_tablet'
-              || actionView?.channel === 'record';
+            const hasBalance = Boolean(agent.visualAction?.sourceEventId
+              && actionView?.measurementMode
+              && toolKey === 'beam_balance');
+            const hasTablet = !hasBalance && (toolKey === 'wood_tablet' || materialKey === 'wood_tablet'
+              || actionView?.channel === 'record');
+            f.balance.visible = hasBalance;
+            if (hasBalance) f.balanceBeam.rotation.z = Math.sin(cycle * 0.45) * 0.045;
             f.tablet.visible = hasTablet;
-            f.armL.rotation.x = hasTablet ? -1.05 : -0.22;
-            f.armR.rotation.x = hasTablet ? -0.72 : -1.48;
+            f.armL.rotation.x = hasBalance ? -1.18 : hasTablet ? -1.05 : -0.22;
+            f.armR.rotation.x = hasBalance ? -1.18 : hasTablet ? -0.72 : -1.48;
             f.armR.rotation.z = hasTablet ? 0.08 : -0.42;
-            f.upperBody.rotation.x = hasTablet ? 0.12 : -0.03;
+            f.upperBody.rotation.x = hasBalance ? 0.08 : hasTablet ? 0.12 : -0.03;
           } else if (action === 'communicate') {
             const gesture = Math.sin(cycle * 0.52);
             f.armL.rotation.x = -0.45 - gesture * 0.32;
@@ -4264,37 +4586,48 @@ void main() {`,
       }
       return null;
     };
-    const updateEmbodimentReticle = () => {
+    const reticleCandidates: THREE.Object3D[] = [];
+    let nextReticleUpdateAt = 0;
+    let lastReticleHitAt = Number.NEGATIVE_INFINITY;
+    const updateEmbodimentReticle = (now: number) => {
       if (!embodimentCamera.isActive()) {
+        nextReticleUpdateAt = 0;
+        lastReticleHitAt = Number.NEGATIVE_INFINITY;
         emitEmbodimentTarget(null);
         return;
       }
-      const candidates: THREE.Object3D[] = [];
+      if (now < nextReticleUpdateAt) return;
+      nextReticleUpdateAt = now + 1_000 / 30;
+      reticleCandidates.length = 0;
       for (const [agentId] of embodimentPersonTargetById) {
         const figure = figures.get(agentId);
-        if (figure?.group.visible) candidates.push(figure.pickProxy);
+        if (figure?.group.visible) reticleCandidates.push(figure.pickProxy);
       }
       for (const child of structureSelectionGroup.children) {
         if (typeof child.userData.structureId === 'string'
-          && embodimentStructureTargetById.has(child.userData.structureId)) candidates.push(child);
+          && embodimentStructureTargetById.has(child.userData.structureId)) reticleCandidates.push(child);
       }
-      candidates.push(...embodimentTargetGroup.children);
-      if (!candidates.length) {
+      reticleCandidates.push(...embodimentTargetGroup.children);
+      if (!reticleCandidates.length) {
+        lastReticleHitAt = Number.NEGATIVE_INFINITY;
         emitEmbodimentTarget(null);
         return;
       }
-      scene.updateMatrixWorld(true);
       camera.updateMatrixWorld();
+      for (const candidate of reticleCandidates) candidate.updateWorldMatrix(true, false);
       embodimentRaycaster.setFromCamera(reticlePointer, camera);
-      const hits = embodimentRaycaster.intersectObjects(candidates, false);
+      const hits = embodimentRaycaster.intersectObjects(reticleCandidates, false);
       for (const hit of hits) {
         const target = targetFromEmbodimentHit(hit.object);
         if (target) {
+          lastReticleHitAt = now;
           emitEmbodimentTarget(target);
           return;
         }
       }
-      emitEmbodimentTarget(null);
+      // A short grace period prevents action prompts flickering while the
+      // crosshair passes over voxel edges or a walking figure's thin limbs.
+      if (now - lastReticleHitAt >= 110) emitEmbodimentTarget(null);
     };
 
     // ---- 滚轮 / 键盘 / 双指缩放持续越过阈值 → 请求升起返回宇宙 ----
@@ -4348,6 +4681,22 @@ void main() {`,
 
     // ---- 键盘镜头：WASD 沿当前视角平移，↑↓ 复用滚轮的距离语义 ----
     const pressedKeys = new Set<string>();
+    const embodimentPressedKeys = new Set<'KeyW' | 'KeyA' | 'KeyS' | 'KeyD'>();
+    type EmbodimentMovementKey = 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD';
+    let emittedEmbodimentHoldDirection: EmbodimentMoveDirection | null = null;
+    let emittedEmbodimentHoldCode: EmbodimentMovementKey | null = null;
+    const emitEmbodimentHoldDirection = (
+      direction: EmbodimentMoveDirection | null,
+      requestStep: boolean,
+      code: EmbodimentMovementKey | null,
+    ) => {
+      if (direction === emittedEmbodimentHoldDirection && code === emittedEmbodimentHoldCode) return;
+      const directionChanged = direction !== emittedEmbodimentHoldDirection;
+      emittedEmbodimentHoldDirection = direction;
+      emittedEmbodimentHoldCode = code;
+      if (directionChanged) propsRef.current.onEmbodimentMoveHoldChange?.(direction);
+      if (requestStep && direction && directionChanged) propsRef.current.onEmbodimentMove?.(direction);
+    };
     const cameraMove = new THREE.Vector3();
     const viewForward = new THREE.Vector3();
     const viewRight = new THREE.Vector3();
@@ -4360,10 +4709,18 @@ void main() {`,
         if (!['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(ev.code)
           || ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
         ev.preventDefault();
-        if (propsRef.current.embodimentCommandPending || embodimentCamera.isInterpolating()) return;
-        propsRef.current.onEmbodimentMove?.(embodimentCamera.directionForKey(
-          ev.code as 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD',
-        ));
+        const code = ev.code as EmbodimentMovementKey;
+        embodimentPressedKeys.delete(code);
+        embodimentPressedKeys.add(code);
+        const direction = embodimentCamera.directionForKey(
+          code,
+          emittedEmbodimentHoldCode === code ? emittedEmbodimentHoldDirection ?? undefined : undefined,
+        );
+        // Always forward a deliberate key press. The parent serializes
+        // authority commands and retains at most one next direction, including
+        // while this presentation-only camera interpolation is still running.
+        propsRef.current.onEmbodimentMove?.(direction);
+        emitEmbodimentHoldDirection(direction, false, code);
         return;
       }
       if (!handledKeys.has(ev.code) || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
@@ -4371,11 +4728,25 @@ void main() {`,
       pressedKeys.add(ev.code);
     };
     const onKeyUp = (ev: KeyboardEvent) => {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(ev.code)) {
+        embodimentPressedKeys.delete(ev.code as EmbodimentMovementKey);
+        const remainingCode = [...embodimentPressedKeys].at(-1);
+        emitEmbodimentHoldDirection(remainingCode
+          ? embodimentCamera.directionForKey(
+            remainingCode,
+            emittedEmbodimentHoldCode === remainingCode
+              ? emittedEmbodimentHoldDirection ?? undefined
+              : undefined,
+          )
+          : null, false, remainingCode ?? null);
+      }
       pressedKeys.delete(ev.code);
       if (ev.code === 'ArrowDown' && !zoomOutAsked) zoomOutAcc = 0;
     };
     const clearPressedKeys = () => {
       pressedKeys.clear();
+      embodimentPressedKeys.clear();
+      emitEmbodimentHoldDirection(null, false, null);
       if (!zoomOutAsked) zoomOutAcc = 0;
     };
     const updateKeyboardCamera = (deltaSeconds: number) => {
@@ -4460,8 +4831,8 @@ void main() {`,
     };
     const onControlsEnd = () => {
       overviewControlsActive = false;
-      gtaoPass.enabled = true;
-      tiltShiftPass.enabled = true;
+      gtaoPass.enabled = !embodimentCamera.isActive();
+      tiltShiftPass.enabled = !embodimentCamera.isActive();
     };
     controls.addEventListener('start', onControlsStart);
     controls.addEventListener('end', onControlsEnd);
@@ -4542,7 +4913,10 @@ void main() {`,
       const wpx = mount.clientWidth;
       const hpx = mount.clientHeight;
       if (wpx <= 0 || hpx <= 0) return;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SOCIETY_MAX_PIXEL_RATIO));
+      const maxPixelRatio = embodimentCamera.isActive()
+        ? EMBODIMENT_MAX_PIXEL_RATIO
+        : SOCIETY_MAX_PIXEL_RATIO;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
       renderer.setSize(wpx, hpx, false);
       camera.aspect = wpx / hpx;
       if (embodimentCamera.isActive()) {
@@ -4562,6 +4936,7 @@ void main() {`,
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
     resize();
+    let resizedForEmbodiment = embodimentCamera.isActive();
 
     // ---- 主循环 ----
     let raf = 0;
@@ -4597,12 +4972,33 @@ void main() {`,
       // 入场：从太空高位丝滑下降（easeOutCubic），结束后开放相机控制
       const entryT = Math.min(1, (now - mountedAt) / 1100);
       const entryE = 1 - Math.pow(1 - entryT, 3);
-      if (embodimentCamera.isActive()) {
+      const embodimentActive = embodimentCamera.isActive();
+      if (resizedForEmbodiment !== embodimentActive) {
+        resizedForEmbodiment = embodimentActive;
+        resize();
+      }
+      if (embodimentActive) {
         controls.enabled = false;
         embodimentCamera.update(now);
+        const heldCode = [...embodimentPressedKeys].at(-1);
+        if (heldCode) emitEmbodimentHoldDirection(
+          embodimentCamera.directionForKey(
+            heldCode,
+            emittedEmbodimentHoldCode === heldCode
+              ? emittedEmbodimentHoldDirection ?? undefined
+              : undefined,
+          ),
+          true,
+          heldCode,
+        );
+        gtaoPass.enabled = false;
         tiltShiftPass.enabled = false;
-        updateEmbodimentReticle();
+        updateEmbodimentReticle(now);
       } else {
+        if (embodimentPressedKeys.size) {
+          embodimentPressedKeys.clear();
+          emitEmbodimentHoldDirection(null, false, null);
+        }
         if (entryT < 1) {
           camera.position.lerpVectors(cameraEntry, cameraFinal, entryE);
           camera.lookAt(cameraTarget);
@@ -4614,9 +5010,10 @@ void main() {`,
         }
         updateKeyboardCamera(deltaSeconds);
         controls.update();
+        gtaoPass.enabled = !overviewControlsActive;
         tiltShiftPass.enabled = !overviewControlsActive;
         updateTiltShift(deltaSeconds, entryT);
-        updateEmbodimentReticle();
+        updateEmbodimentReticle(now);
       }
       layoutSpeechBubbles();
       // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
@@ -4676,6 +5073,14 @@ void main() {`,
       for (const f of figures.values()) disposeFigure(f);
       figures.clear();
       for (const child of [...decorGroup.children]) (child as THREE.InstancedMesh).dispose(); // 释放装饰层实例缓冲
+      for (const entry of structureSelectionById.values()) entry.mesh.geometry.dispose();
+      structureSelectionById.clear();
+      structureSelectionGroup.clear();
+      structureSelectionMaterial.dispose();
+      embodimentProxyByKey.clear();
+      embodimentTargetGroup.clear();
+      embodimentTargetGeometry.dispose();
+      embodimentTargetMaterial.dispose();
       scene.environment = null;
       scene.background = null;
       skyGlowTexture.dispose();

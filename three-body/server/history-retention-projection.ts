@@ -3461,7 +3461,18 @@ export function resumeHistoryRetentionProjection(
     const previousDemand = previousReproductionById.get(item.intentId);
     if (!previousDemand) {
       const sourceGroup = fold.demandGroupsByKey.get(`active-reproduction-intent:${item.intentId}:facts`);
+      const previousLiveIntentGroup = previousGroupsByKey.get(
+        liveIntentHistoryLeaseKey(item.intentId),
+      );
       for (const eventId of sourceGroup?.eventIds ?? []) {
+        const previousMatch = previousDirectMatches.get(eventId);
+        const restoredMatch = fold.directMatchesByEventId.get(eventId);
+        const promotedFromStrictLiveIntent = previousLiveIntentGroup?.requirement === 'all'
+          && previousLiveIntentGroup.eventIds.includes(eventId)
+          && previousMatch?.eventId === eventId
+          && restoredMatch?.eventId === eventId
+          && restoredMatch.absoluteIndex === previousMatch.absoluteIndex;
+        if (promotedFromStrictLiveIntent) continue;
         fold.requiredSuffixDirectDemandEventIds.add(eventId);
         fold.requiredSuffixReproductionAnchorEventIds.add(eventId);
         fold.directMatchesByEventId.delete(eventId);

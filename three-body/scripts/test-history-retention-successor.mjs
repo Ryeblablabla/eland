@@ -383,7 +383,7 @@ try {
     requiredResponderIds: ['fixture-other-author'],
     acceptedByPersonIds: ['fixture-person', 'fixture-other-author'],
     rejectedByPersonIds: [], status: 'active', proposedAtMonth: 2,
-    acceptByMonth: 6, acceptedAtMonth: 2, dueAtMonth: 7,
+    acceptByMonth: 6, acceptedAtMonth: 2, dueAtMonth: 5,
     proposalEventId: 'dynamic-agreement-offer',
     responseEventId: 'dynamic-agreement-response',
     fulfillmentEventIds: [], fulfilledByPersonIds: [], coLocatedMonths: 0,
@@ -392,6 +392,28 @@ try {
       'remembered-cognitive-outcome',
       'dynamic-agreement-offer', 'dynamic-agreement-response',
     ],
+  });
+  previousState.intents.push({
+    id: 'intent-promoted-to-reproduction', ownerId: 'fixture-person',
+    summary: 'wait before accepted family agreement', domain: 'social',
+    goal: { kind: 'at-cell', cellId: 0, z: 1 },
+    nextAction: { kind: 'act', operation: 'wait', targets: [] },
+    status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1, progress: 0,
+    sourceDecisionEventId: 'prefix-tail', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+  });
+  nextState.intents.push({
+    id: 'intent-promoted-to-reproduction', ownerId: 'fixture-person',
+    summary: 'continue after accepted family agreement', domain: 'social',
+    goal: {
+      kind: 'condition', personId: 'fixture-other-author', condition: 'pregnancy', present: true,
+    },
+    nextAction: {
+      kind: 'act', operation: 'reproduce', authorizationRef: dynamicAgreementId,
+      targets: [{ kind: 'person', personId: 'fixture-other-author' }],
+    },
+    status: 'active', createdAtMonth: 1, lastProgressAtMonth: 2, progress: 0,
+    sourceDecisionEventId: 'prefix-tail', sourceFactIds: [], actionEventIds: [], replanCount: 0,
+    agreementId: dynamicAgreementId, reproductionAttemptEventIdsAtStart: [],
   });
   nextState.eraPredictions.push({
     id: dynamicPredictionId,
@@ -623,6 +645,19 @@ try {
     true,
     'index-only logistics match 被真实意图引用后必须提升为可解码 strict pin',
   );
+  const promotedReproductionDecisionPin = advanced.projection.pins.find(
+    (pin) => pin.eventId === 'prefix-tail',
+  );
+  assert.equal(promotedReproductionDecisionPin?.absoluteIndex, prefix.length - 1);
+  assert.deepEqual([
+    'live-intent:intent-promoted-to-reproduction:anchors',
+    'gameplay:reproduction-intent:intent-promoted-to-reproduction:attempt',
+    'gameplay:reproduction-intent:intent-promoted-to-reproduction:conception',
+  ].filter((leaseKey) => promotedReproductionDecisionPin?.leaseKeys.includes(leaseKey)), [
+    'live-intent:intent-promoted-to-reproduction:anchors',
+    'gameplay:reproduction-intent:intent-promoted-to-reproduction:attempt',
+    'gameplay:reproduction-intent:intent-promoted-to-reproduction:conception',
+  ], '同一 live intent 晋升 reproduction selector 时应复用已严格验证的 prefix decision ordinal');
   assert.deepEqual(
     advanced.projection.continuationBasis.selectiveMatches.find(
       (item) => item.leaseKey
@@ -654,6 +689,74 @@ try {
     nextState,
     previousRoot.root.hash,
     nextRoot.root.hash,
+  );
+
+  const missingPreviousLiveState = structuredClone(previousState);
+  missingPreviousLiveState.intents = missingPreviousLiveState.intents.filter(
+    (intent) => intent.id !== 'intent-promoted-to-reproduction',
+  );
+  const missingPreviousLiveRoot = store(await api.encodeSegmentedRunState(
+    missingPreviousLiveState,
+    { mode: 'replace' },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  const missingPreviousLiveFold = api.beginHistoryRetentionProjection(
+    missingPreviousLiveState,
+    { stateHash: missingPreviousLiveRoot.root.hash },
+  );
+  api.foldHistoryRetentionSegment(missingPreviousLiveFold, prefix, 0);
+  const missingPreviousLiveProjection = api.finishHistoryRetentionProjection(
+    missingPreviousLiveFold,
+  );
+  const missingPreviousLiveEncoded = api.encodeHistoryRetentionSidecar(
+    missingPreviousLiveProjection,
+  );
+  const missingPreviousLiveDecoded = api.decodeHistoryRetentionSidecar(
+    missingPreviousLiveEncoded.chunk,
+    {
+      reference: missingPreviousLiveEncoded.reference,
+      boundary: {
+        authority: { stateHash: missingPreviousLiveRoot.root.hash },
+        target: missingPreviousLiveProjection.target,
+      },
+    },
+  );
+  const missingPreviousLiveNextRoot = store(await api.encodeSegmentedRunState(
+    nextState,
+    { mode: 'append', previous: missingPreviousLiveRoot.metadata },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  await assert.rejects(
+    api.projectHistoryRetentionFromVerifiedSuccessor(
+      missingPreviousLiveDecoded,
+      missingPreviousLiveRoot.root,
+      nextState,
+      missingPreviousLiveNextRoot.root,
+      readChunk,
+    ),
+    /prefix-tail.*(?:suffix|不在 suffix)|新 demand prefix-tail/u,
+    '没有 previous strict live core 时，其他 selector 的同 ID prefix match 不得冒充晋升依据',
+  );
+
+  const changedAnchorNextState = structuredClone(nextState);
+  changedAnchorNextState.intents.find(
+    (intent) => intent.id === 'intent-promoted-to-reproduction',
+  ).sourceDecisionEventId = 'prefix-a';
+  const changedAnchorNextRoot = store(await api.encodeSegmentedRunState(
+    changedAnchorNextState,
+    { mode: 'append', previous: previousRoot.metadata },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  await assert.rejects(
+    api.projectHistoryRetentionFromVerifiedSuccessor(
+      decodedPrefix,
+      previousRoot.root,
+      changedAnchorNextState,
+      changedAnchorNextRoot.root,
+      readChunk,
+    ),
+    /新 demand prefix-a|reproduction anchor prefix-a/u,
+    '同 intent 改用未被 previous strict live core 证明的 prefix anchor 仍须 suffix-only',
   );
 
   // Simulate opening a checkpoint written before the logistics index-only
@@ -723,12 +826,13 @@ try {
     migrationNextRoot.root,
     readChunk,
   );
-  assert.equal(
-    migrated.projection.pins.some((pin) => pin.eventId === 'old-active-logistics-source'
-      && pin.leaseKeys.includes('live-intent:legacy-checkpoint-logistics-intent:anchors')),
-    true,
-    'legacy checkpoint 只能经 exact previous-root scan 将 logistics identity 提升为 strict pin',
+  const migratedLogisticsSupport = migrated.projection.demandGroups.find(
+    (group) => group.groupKey
+      === 'live-intent:legacy-checkpoint-logistics-intent:anchors:supporting-sources',
   );
+  assert.equal(migratedLogisticsSupport?.requirement, 'audit-only');
+  assert.equal(migratedLogisticsSupport?.blocking, false,
+    'legacy logistics provenance 作为 supporting source 缺失时不得重新升级为 strict blocker');
 
   const forgedPredictionState = structuredClone(nextState);
   forgedPredictionState.world.past = [...prefix, ...suffix.map((event) => (

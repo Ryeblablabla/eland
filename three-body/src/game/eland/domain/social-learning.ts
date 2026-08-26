@@ -1,7 +1,8 @@
 import type { SocialProposal } from './action';
 import type { Agreement } from './agreement';
 import { ensureCognitionState } from './cognition';
-import type { SimulationState } from './model';
+import { worldEventById } from './event-index';
+import type { SimulationState, WorldEvent } from './model';
 import { isAlive, type PersonId, type PersonState } from './person';
 import type { ProjectKind, ProjectState } from './project';
 import { personById } from './state-index';
@@ -541,6 +542,12 @@ function projectCooperationContext(kind: ProjectKind): CooperationContext {
   return 'joint-project-inquiry';
 }
 
+function compareAuthoritativeEventOrder(left: WorldEvent, right: WorldEvent): number {
+  return left.atMonth - right.atMonth
+    || left.orderInMonth - right.orderInMonth
+    || left.id.localeCompare(right.id);
+}
+
 /**
  * A completed joint project counts only contributors named by real progress
  * evidence. The completion is one success episode, regardless of tick volume.
@@ -551,24 +558,40 @@ export function recordJointProjectSocialLearning(
   atMonth: number,
 ): void {
   const participants = [...new Set(project.contributorIds)];
-  if (participants.length < 2 || project.completionEventIds.length === 0) return;
-  const evidenceByActor = new Map<PersonId, string[]>();
+  if (participants.length < 2) return;
+  const latestProgressEventByActor = new Map<PersonId, WorldEvent>();
   for (const evidence of project.progressEvidence ?? []) {
     if (!participants.includes(evidence.actorId)) continue;
-    evidenceByActor.set(evidence.actorId, uniqueSources([
-      ...(evidenceByActor.get(evidence.actorId) ?? []),
-      evidence.eventId,
-    ]));
+    const event = worldEventById(state, evidence.eventId);
+    if (event?.kind !== 'action'
+      || event.who !== evidence.actorId
+      || event.atMonth !== evidence.atMonth
+      || (event.status !== 'progressed' && event.status !== 'completed')) continue;
+    const latest = latestProgressEventByActor.get(evidence.actorId);
+    if (!latest || compareAuthoritativeEventOrder(latest, event) < 0) {
+      latestProgressEventByActor.set(evidence.actorId, event);
+    }
+  }
+  let completionEvent: WorldEvent | undefined;
+  for (const eventId of uniqueSources(project.completionEventIds)) {
+    const event = worldEventById(state, eventId);
+    if (event && (!completionEvent || compareAuthoritativeEventOrder(completionEvent, event) < 0)) {
+      completionEvent = event;
+    }
   }
   const context = projectCooperationContext(project.kind);
-  for (const [targetPersonId, progressEventIds] of evidenceByActor) {
+  for (const [targetPersonId, progressEvent] of latestProgressEventByActor) {
     for (const observerId of participants) {
       if (observerId === targetPersonId) continue;
+      const sourceEventIds = uniqueSources([
+        progressEvent,
+        ...(completionEvent ? [completionEvent] : []),
+      ].sort(compareAuthoritativeEventOrder).map((event) => event.id));
       recordPairReliability(state, observerId, targetPersonId, context, {
         receiptId: `joint-project:${project.id}:${observerId}:${targetPersonId}`,
         kind: 'joint-project-progress',
         atMonth,
-        sourceEventIds: uniqueSources([...progressEventIds, ...project.completionEventIds]),
+        sourceEventIds,
         reliability: 'positive',
       });
     }

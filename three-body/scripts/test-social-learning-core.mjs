@@ -258,7 +258,7 @@ try {
   assert.equal(socialLearningStateOf(requester).beliefs.length, beliefCountBeforeReproduction,
     'reproduction rejection is never converted into cooperation reputation');
 
-  function jointProject(id, completedAtMonth) {
+  function jointProject(id, completedAtMonth, evidenceCount = 1) {
     const project = instantiateProject({
       id,
       kind: 'production',
@@ -273,20 +273,52 @@ try {
       reviewAtMonth: completedAtMonth + 6,
     });
     project.contributorIds = [requester.id, third.id];
-    project.progressEvidence = [{
-      eventId: `progress:${id}:${third.id}`,
-      atMonth: completedAtMonth - 1,
+    const progressEvents = Array.from({ length: evidenceCount }, (_, index) => ({
+      ...actionFact(`progress:${id}:${third.id}:${index}`, completedAtMonth - 1, third.id, {
+        kind: 'act', operation: 'wait', targets: [],
+      }),
+      orderInMonth: index,
+    }));
+    const completionEvents = Array.from({ length: evidenceCount }, (_, index) => ({
+      ...actionFact(`complete:${id}:${index}`, completedAtMonth, requester.id, {
+        kind: 'act', operation: 'wait', targets: [],
+      }),
+      orderInMonth: index,
+    }));
+    appendCommittedEvents(state, [...progressEvents, ...completionEvents]);
+    project.progressEvidence = progressEvents.map((event) => ({
+      eventId: event.id,
+      atMonth: event.atMonth,
       kind: 'material-contribution',
       actorId: third.id,
-    }];
-    project.actionEventIds = [`progress:${id}:${third.id}`];
-    completeProject(state, project, completedAtMonth, [`complete:${id}`]);
+    })).reverse();
+    project.actionEventIds = project.progressEvidence.map((evidence) => evidence.eventId);
+    completeProject(
+      state,
+      project,
+      completedAtMonth,
+      completionEvents.map((event) => event.id).reverse(),
+    );
     return project;
   }
-  jointProject('joint-project-1', 30);
+  let highVolumeJointProject;
+  assert.doesNotThrow(() => {
+    highVolumeJointProject = jointProject('joint-project-1', 30, 32);
+  }, '一个完成的共同项目不应因 progress/completion tick 数超过24而无法形成单次学习');
   const projectBelief = socialCooperationBeliefFor(requester, third.id, 'joint-project-production');
   assert.equal(projectBelief?.reliability.positiveObservations, 1,
     'a contributor needs real project progress plus completion before reliability changes');
+  const highVolumeReceipt = projectBelief?.receipts.find((receipt) => (
+    receipt.id === 'joint-project:joint-project-1:requester:third'
+  ));
+  assert.deepEqual(highVolumeReceipt?.sourceEventIds, [
+    'progress:joint-project-1:third:31',
+    'complete:joint-project-1:31',
+  ], '共同项目的单次 success episode 只引用该贡献者末尾进度和项目末尾完成锚点');
+  assert.ok((highVolumeReceipt?.sourceEventIds.length ?? 0) <= 2,
+    '共同项目 receipt 必须保持至多两个真实权威来源');
+  assert.equal(projectBelief?.reliability.positiveObservations, 1,
+    '32个进度 tick 仍只能让 reliability 增加一次');
   jointProject('joint-project-2', 36);
   assert.ok(coordinationPracticeBasisFor(requester, third.id, 'joint-project-production'),
     'two completed progress-backed joint projects can form a practice basis');

@@ -44,6 +44,13 @@ import {
 } from '../src/game/eland/domain/electrical-power';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from '../src/game/eland/domain/population-capacity';
 import {
+  MAX_COORDINATION_PRACTICES,
+  MAX_PRACTICE_EPISODES,
+  MAX_SOCIAL_BELIEF_RECEIPTS,
+  MAX_SOCIAL_BELIEF_SOURCES,
+  MAX_SOCIAL_COOPERATION_BELIEFS,
+} from '../src/game/eland/domain/social-learning';
+import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
   MAX_LIVE_INTENT_ACTION_EVENT_IDS,
   groundedConversationOpeningsForListener,
@@ -315,6 +322,13 @@ export const HISTORY_RETENTION_RECENT_TERMINAL_FAILURE_WINDOW_MONTHS = 6;
 export const HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_PER_PERSON = 256;
 export const HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_TOTAL = 16_384;
 /**
+ * Person-local social posteriors and coordination-practice bases are bounded
+ * domain state. Preserve the exact facts they still cite, without turning
+ * dead people or discarded beliefs into permanent history roots.
+ */
+export const HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON = 8_448;
+export const HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL = 32_768;
+/**
  * `project-pressure` may reuse any event still remembered through a living
  * person's memory, condition, knowledge, or inventory. Keep the union exact
  * enough for future projects without letting imported shells grow the sidecar
@@ -383,6 +397,7 @@ const GROUNDED_RESPONSE_SOURCE_GROUP_PREFIX =
   'gameplay:grounded-conversation-response:';
 const RECENT_TERMINAL_FAILURE_ACTION_GROUP_PREFIX =
   'gameplay:recent-terminal-intent-failure:';
+const SOCIAL_LEARNING_SOURCE_GROUP_PREFIX = 'gameplay:person-social-learning:';
 
 export function groundedConversationResponseSourceLeaseKey(
   responderId: string,
@@ -430,6 +445,29 @@ export function parseRecentTerminalFailureActionLeaseKey(
     const ownerId = decodeURIComponent(encodedOwnerId);
     if (!ownerId || recentTerminalFailureActionLeaseKey(ownerId) !== value) return null;
     return { ownerId };
+  } catch {
+    return null;
+  }
+}
+
+export function socialLearningSourceLeaseKey(observerId: string): string {
+  return `${SOCIAL_LEARNING_SOURCE_GROUP_PREFIX}${encodeURIComponent(observerId)}:sources`;
+}
+
+export function parseSocialLearningSourceLeaseKey(
+  value: string,
+): { observerId: string } | null {
+  if (!value.startsWith(SOCIAL_LEARNING_SOURCE_GROUP_PREFIX)
+    || !value.endsWith(':sources')) return null;
+  const encodedObserverId = value.slice(
+    SOCIAL_LEARNING_SOURCE_GROUP_PREFIX.length,
+    -':sources'.length,
+  );
+  if (!encodedObserverId) return null;
+  try {
+    const observerId = decodeURIComponent(encodedObserverId);
+    if (!observerId || socialLearningSourceLeaseKey(observerId) !== value) return null;
+    return { observerId };
   } catch {
     return null;
   }
@@ -737,6 +775,66 @@ function boundedFutureCognitiveAppraisalSourceEventIds(
     throw new Error(
       'future cognitive-appraisal source IDs 超出有界续接上限 '
       + HISTORY_RETENTION_MAX_FUTURE_COGNITIVE_APPRAISAL_SOURCE_EVENT_IDS,
+    );
+  }
+  return eventIds;
+}
+
+function boundedSocialLearningSourceEventIds(
+  person: SimulationState['people'][number],
+): string[] {
+  const socialLearning = person.cognition?.socialLearning;
+  if (!socialLearning) return [];
+  if (socialLearning.version !== 'social-learning-v1'
+    || !Array.isArray(socialLearning.beliefs)
+    || socialLearning.beliefs.length > MAX_SOCIAL_COOPERATION_BELIEFS
+    || !Array.isArray(socialLearning.coordinationPractices)
+    || socialLearning.coordinationPractices.length > MAX_COORDINATION_PRACTICES) {
+    throw new Error(`person ${person.id} social learning state 无效`);
+  }
+  const values: string[] = [];
+  for (const belief of socialLearning.beliefs) {
+    if (!Array.isArray(belief.sourceEventIds)
+      || belief.sourceEventIds.length > MAX_SOCIAL_BELIEF_SOURCES
+      || !Array.isArray(belief.receipts)
+      || belief.receipts.length > MAX_SOCIAL_BELIEF_RECEIPTS) {
+      throw new Error(`person ${person.id} social learning belief sources 无效或超界`);
+    }
+    values.push(...belief.sourceEventIds);
+    for (const receipt of belief.receipts) {
+      if (!Array.isArray(receipt.sourceEventIds)
+        || receipt.sourceEventIds.length > MAX_SOCIAL_BELIEF_SOURCES) {
+        throw new Error(`person ${person.id} social learning receipt sources 无效或超界`);
+      }
+      values.push(...receipt.sourceEventIds);
+    }
+  }
+  for (const practice of socialLearning.coordinationPractices) {
+    if (!Array.isArray(practice.sourceFactIds)
+      || practice.sourceFactIds.length > MAX_SOCIAL_BELIEF_SOURCES
+      || !Array.isArray(practice.successes)
+      || practice.successes.length > MAX_PRACTICE_EPISODES
+      || !Array.isArray(practice.recentCounterEvidence)
+      || practice.recentCounterEvidence.length > MAX_PRACTICE_EPISODES) {
+      throw new Error(`person ${person.id} coordination practice sources 无效或超界`);
+    }
+    values.push(...practice.sourceFactIds);
+    for (const episode of [...practice.successes, ...practice.recentCounterEvidence]) {
+      if (!Array.isArray(episode.sourceEventIds)
+        || episode.sourceEventIds.length > MAX_SOCIAL_BELIEF_SOURCES) {
+        throw new Error(`person ${person.id} coordination practice episode sources 无效或超界`);
+      }
+      values.push(...episode.sourceEventIds);
+    }
+  }
+  const eventIds = [...new Set(values.map((value) => requiredEventId(
+    value,
+    `person ${person.id} social learning sources`,
+  )))].sort();
+  if (eventIds.length > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON) {
+    throw new Error(
+      `person ${person.id} social learning source IDs 超出有界上限 `
+      + HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON,
     );
   }
   return eventIds;
@@ -1250,6 +1348,7 @@ function collectDemand(state: SimulationState) {
 
   let calibrationInstrumentCount = 0;
   let calibrationReferenceStackCount = 0;
+  let socialLearningEventIdMembershipCount = 0;
   for (const person of livingPeople) {
     const selectors: CalibrationSelector[] = [];
     const seenStackIds = new Set<string>();
@@ -1315,6 +1414,22 @@ function collectDemand(state: SimulationState) {
       requirement: 'all',
       leaseKey: livePersonSocialEvidenceLeaseKey(person.id),
       eventIds: socialSourceEventIds,
+    });
+    const socialLearningSourceEventIds = boundedSocialLearningSourceEventIds(person);
+    socialLearningEventIdMembershipCount += socialLearningSourceEventIds.length;
+    if (socialLearningEventIdMembershipCount
+      > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL) {
+      throw new Error(
+        'living social learning source memberships 超出有界总上限 '
+        + HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL,
+      );
+    }
+    const socialLearningLeaseKey = socialLearningSourceLeaseKey(person.id);
+    addDemandGroup(demandGroupsByKey, directDemandEventIds, {
+      groupKey: socialLearningLeaseKey,
+      requirement: 'all',
+      leaseKey: socialLearningLeaseKey,
+      eventIds: socialLearningSourceEventIds,
     });
   }
   const waterObservationIds = new Set((state.world.mechanicalPower?.sources ?? [])
@@ -1970,7 +2085,8 @@ function compatibilityCanonicalDemandGroups(
     if (group.groupKey.endsWith(LIVE_AGREEMENT_SUPPORTING_SOURCE_GROUP_SUFFIX)
       || group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
-      || parseRecentTerminalFailureActionLeaseKey(group.groupKey)) continue;
+      || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
+      || parseSocialLearningSourceLeaseKey(group.groupKey)) continue;
     canonical.set(group.groupKey, {
       groupKey: group.groupKey,
       requirement: group.groupKey === FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY
@@ -2707,6 +2823,8 @@ function validateHistoryRetentionContinuationBasis(
   const groundedResponseSourceEventIds = new Set<string>();
   let recentTerminalFailureGroupCount = 0;
   let recentTerminalFailureEventIdCount = 0;
+  let socialLearningGroupCount = 0;
+  let socialLearningEventIdMembershipCount = 0;
   const livingPersonIdSet = new Set(sourceDemand.millLaborPersonIds);
   for (const group of sourceDemand.groups) {
     if (!HISTORY_RETENTION_REQUIREMENTS.includes(group.requirement)) {
@@ -2768,6 +2886,21 @@ function validateHistoryRetentionContinuationBasis(
       }
       recentTerminalFailureEventIdCount += group.eventIds.length;
     }
+    const socialLearning = parseSocialLearningSourceLeaseKey(group.groupKey);
+    if (socialLearning) {
+      socialLearningGroupCount += 1;
+      socialLearningEventIdMembershipCount += group.eventIds.length;
+      if (!livingPersonIdSet.has(socialLearning.observerId)
+        || group.requirement !== 'all'
+        || group.leaseKeys.length !== 1
+        || group.leaseKeys[0] !== group.groupKey
+        || group.eventIds.length > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON) {
+        throw new Error(
+          `retention continuation demand group ${group.groupKey}`
+          + ' social learning sources 无效或超界',
+        );
+      }
+    }
     if (group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       && (group.requirement !== 'index-only'
         || group.leaseKeys.length !== 1
@@ -2811,6 +2944,11 @@ function validateHistoryRetentionContinuationBasis(
     || recentTerminalFailureEventIdCount
       > HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_TOTAL) {
     throw new Error('retention continuation recent terminal failure action leases 超出有界上限');
+  }
+  if (socialLearningGroupCount > HISTORY_RETENTION_MAX_LIVE_GAMEPLAY_SELECTOR_PERSONS
+    || socialLearningEventIdMembershipCount
+      > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL) {
+    throw new Error('retention continuation social learning source leases 超出有界上限');
   }
   const reproductionIntentIds = sourceDemand.reproductionFacts.map((item) => item.intentId);
   assertSortedUniqueStrings(reproductionIntentIds, 'retention continuation reproduction intents');
@@ -3356,6 +3494,63 @@ export function seedVerifiedPrefixRecentTerminalFailureActionMatches(
       || match.absoluteIndex < 0
       || match.absoluteIndex >= sourceTarget.eventCount) {
       throw new Error(`retention prefix terminal failure bridge match ${match.eventId} 无效`);
+    }
+    seen.add(match.eventId);
+    fold.directMatchesByEventId.set(match.eventId, { ...match });
+    fold.requiredSuffixDirectDemandEventIds.delete(match.eventId);
+  }
+}
+
+/**
+ * One-time storage migration for checkpoints written before person-local
+ * social-learning leases existed. Only IDs already named by an exact living
+ * observer group can be looked up in the fully verified previous root.
+ */
+export function unresolvedVerifiedPrefixSocialLearningSourceEventIds(
+  fold: HistoryRetentionProjectionFold,
+): string[] {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix social learning bridge 只接受 open fold');
+  }
+  const eligibleEventIds = new Set([...fold.demandGroupsByKey.values()]
+    .filter((group) => parseSocialLearningSourceLeaseKey(group.groupKey) !== null
+      && group.requirement === 'all')
+    .flatMap((group) => [...group.eventIds]));
+  return [...fold.requiredSuffixDirectDemandEventIds]
+    .filter((eventId) => eligibleEventIds.has(eventId)
+      && !fold.directMatchesByEventId.has(eventId))
+    .sort();
+}
+
+export function seedVerifiedPrefixSocialLearningSourceMatches(
+  fold: HistoryRetentionProjectionFold,
+  verifiedSourceEventCount: number,
+  matches: readonly HistoryRetentionContinuationMatch[],
+): void {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix social learning bridge 只接受 open fold');
+  }
+  const sourceTarget = fold.continuationSourceTarget;
+  if (!sourceTarget || verifiedSourceEventCount !== sourceTarget.eventCount) {
+    throw new Error('retention prefix social learning bridge 与 continuation source seal 不一致');
+  }
+  const eligibleEventIds = new Set([...fold.demandGroupsByKey.values()]
+    .filter((group) => parseSocialLearningSourceLeaseKey(group.groupKey) !== null
+      && group.requirement === 'all')
+    .flatMap((group) => [...group.eventIds]));
+  if (eligibleEventIds.size === 0) {
+    if (matches.length === 0) return;
+    throw new Error('retention prefix social learning bridge 缺少 exact demand');
+  }
+  const seen = new Set<string>();
+  for (const match of matches) {
+    if (seen.has(match.eventId)
+      || !eligibleEventIds.has(match.eventId)
+      || !fold.requiredSuffixDirectDemandEventIds.has(match.eventId)
+      || !Number.isSafeInteger(match.absoluteIndex)
+      || match.absoluteIndex < 0
+      || match.absoluteIndex >= sourceTarget.eventCount) {
+      throw new Error(`retention prefix social learning bridge match ${match.eventId} 无效`);
     }
     seen.add(match.eventId);
     fold.directMatchesByEventId.set(match.eventId, { ...match });

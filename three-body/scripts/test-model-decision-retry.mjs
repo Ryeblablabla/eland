@@ -66,12 +66,42 @@ try {
   process.env.THREEBODY_MODEL_CONFIG = configPath;
 
   const { handleDecide } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+  const contextShell = {
+    person: { id: 'person-1' },
+    followUpOptions: [],
+    visibleDrops: [],
+  };
+  const partialSemantics = await handleDecide({
+    contexts: [{
+      ...contextShell,
+      options: [{ id: 'opaque-partial', semantics: { version: 'action-option-semantics-v1' } }],
+    }],
+  });
+  assert.equal(partialSemantics.status, 400,
+    'gateway must reject a version-only semantics forgery before calling the model');
+  const inconsistentSemantics = await handleDecide({
+    contexts: [{
+      ...contextShell,
+      options: [{
+        id: 'opaque-inconsistent',
+        semantics: {
+          version: 'action-option-semantics-v1',
+          obligation: 'required-response',
+          planningChannel: 'ordinary',
+          purpose: 'social-coordination',
+          minimumLifeStage: 'adolescent',
+          needKinds: [],
+        },
+      }],
+    }],
+  });
+  assert.equal(inconsistentSemantics.status, 400,
+    'gateway must fail closed on structurally present but inconsistent semantics');
+  assert.equal(receivedBodies.length, 0, 'invalid contexts must not reach the model endpoint');
   const result = await handleDecide({
     contexts: [{
-      person: { id: 'person-1' },
+      ...contextShell,
       options: [],
-      followUpOptions: [],
-      visibleDrops: [],
     }],
   });
 

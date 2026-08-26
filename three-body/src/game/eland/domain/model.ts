@@ -138,6 +138,24 @@ export interface ReproductionDecisionEvidence {
   sourceFactIds: string[];
 }
 
+/** Bounded, person-local planning audit; it records no simulated future fact. */
+export interface ForesightDecisionEvidence {
+  version: 'bounded-foresight-decision-v1';
+  selectedOptionId: string;
+  selectedWasExpanded: boolean;
+  changedLocalSelection: boolean;
+  selectedMatchesAdjustedChoice: boolean;
+  rootCount: number;
+  expandedNodes: number;
+  maxDepth: number;
+  budgetCutoff: boolean;
+  expectedValue: number;
+  valueOfInformation: number;
+  adjustment: number;
+  sourceFactCount: number;
+  sourceFactIds: string[];
+}
+
 export interface DecisionFact extends BaseEvent {
   kind: 'decision';
   who: PersonId;
@@ -148,6 +166,7 @@ export interface DecisionFact extends BaseEvent {
   /** Missing on older facts means an ordinary review. Edge reviews do not spend the ordinary cadence budget. */
   planningChannel?: 'ordinary' | 'edge';
   reproductionEvidence?: ReproductionDecisionEvidence;
+  foresightEvidence?: ForesightDecisionEvidence;
   result: string;
 }
 

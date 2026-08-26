@@ -3,6 +3,7 @@ import type { NamingTradition } from '../naming';
 import type { MaterialId } from './material';
 import type { BereavementState } from './mortuary';
 import type { ProjectFunction, ProjectNeed } from './project';
+import type { SocialLearningState } from './social-learning';
 import type { PersonTraitState } from './trait';
 
 export type PersonId = string;
@@ -165,6 +166,11 @@ export interface CognitionState {
   goalOutcomeBeliefs?: GoalOutcomeBelief[];
   /** Optional for schema-v17 save compatibility; old projects are not inferred retroactively. */
   needResolutionEpisodes?: NeedResolutionEpisode[];
+  /**
+   * Optional person-local social posterior. Legacy saves start with no social
+   * evidence and are never reconstructed from their already-terminal history.
+   */
+  socialLearning?: SocialLearningState;
 }
 
 export type HexacoTrait =

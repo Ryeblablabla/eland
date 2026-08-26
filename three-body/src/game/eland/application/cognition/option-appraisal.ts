@@ -27,6 +27,8 @@ import {
 import { projectById } from '../../domain/state-index';
 import { assessFamilyReadiness, type FamilyReadinessAssessment } from './family-readiness';
 import { relationTo } from '../../domain/relation';
+import { actionOptionSemantics } from '../../domain/action-option-semantics';
+import { appraiseSocialExpectation } from './social-expectation';
 
 export type CognitiveFactorName =
   | 'need'
@@ -34,6 +36,7 @@ export type CognitiveFactorName =
   | 'commitment'
   | 'learning'
   | 'relationship'
+  | 'social-expectation'
   | 'family-readiness'
   | 'social-repetition'
   | 'consent'
@@ -71,6 +74,7 @@ export interface CognitiveOptionAppraisal {
   memoryGate: number;
   feasibilityGate: number;
   relationshipGate: number;
+  socialExpectationGate: number;
   readinessGate: number;
   familyReadiness?: FamilyReadinessAssessment;
   repetitionGate: number;
@@ -122,16 +126,11 @@ function communicationAction(option: ActionOption): Extract<PrimitiveAction, { k
 }
 
 function reproductionDirection(option: ActionOption): 'proceed' | 'refuse' | undefined {
-  if (option.id.startsWith('offer-reproduce:')
-    || option.id.startsWith('accept-reproduce:')
-    || option.id.startsWith('reproduce:')) return 'proceed';
-  if (option.id.startsWith('reject-reproduce:')
-    || option.id.startsWith('withdraw-reproduce:')) return 'refuse';
-  return undefined;
+  return actionOptionSemantics(option).reproduction?.direction;
 }
 
 function isSuccubusReproductionOption(option: ActionOption): boolean {
-  return option.id.startsWith('reproduce:succubus:');
+  return actionOptionSemantics(option).reproduction?.mode === 'unilateral-trait';
 }
 
 function mergeAlignments(items: NeedAlignment[]): NeedAlignment[] {
@@ -177,7 +176,10 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     ...(projectId ? { projectId } : {}),
   });
   const goal = option.goal;
-  const returnsToSharedLiving = option.id.startsWith('return-shared-living:');
+  const semantics = actionOptionSemantics(option);
+  const returnsToSharedLiving = semantics.obligation === 'commitment-action'
+    && semantics.socialContext?.cooperationKind === 'companion'
+    && semantics.socialContext.phase === 'continuation';
   const targetPersonId = option.target?.kind === 'person' ? option.target.personId : undefined;
   const caresForOther = Boolean(targetPersonId && targetPersonId !== context.person.id)
     && (goal.kind === 'body-at-least' || goal.kind === 'body-at-most' || goal.kind === 'condition');
@@ -229,12 +231,14 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     );
   }
   if (goal.kind === 'near-person') add('belonging', 0.65, '候选接近一个当前可感知的人');
-  if (option.id.startsWith('relieve-crowding:')) add('spatial-comfort', 1, '候选会减少本人直接感受到的同格拥挤');
+  if (semantics.purpose === 'spatial-comfort') add('spatial-comfort', 1, '候选会减少本人直接感受到的同格拥挤');
   if (goal.kind === 'representation-made') add('belonging', 0.55, '候选形成一次有来源的社会表达');
   if (goal.kind === 'death-mourned') add('bereavement', 0.82, '候选让本人对一项有来源的死亡作出悼念回应');
   if (goal.kind === 'remains-interred') add('bereavement', 1, '候选用实体行动照料本人知晓的遗体');
   if (goal.kind === 'memorial-marked') add('bereavement', 0.58, '候选在真实安葬和材料基础上留下墓记');
-  if (option.id.startsWith('estate:')) add('bereavement', 0.7, '候选收拢本人知晓的死者遗物');
+  if (semantics.purpose === 'mortuary-care' && goal.kind === 'inventory-at-least') {
+    add('bereavement', 0.7, '候选收拢本人知晓的死者遗物');
+  }
   if (returnsToSharedLiving) {
     add('commitment', 1, '候选返回协议中的固定共同生活地点，履行已到维护时点的长期承诺');
   }
@@ -373,11 +377,7 @@ function relationshipAppraisal(context: DecisionContext, option: ActionOption): 
     || (option.nextAction.kind === 'act' && option.nextAction.operation === 'reproduce');
   const refuses = content?.kind === 'reject' || content?.kind === 'revoke-agreement'
     || content?.kind === 'revoke' || content?.kind === 'withdraw';
-  const reproduction = option.id.startsWith('offer-reproduce:')
-    || option.id.startsWith('accept-reproduce:')
-    || option.id.startsWith('reject-reproduce:')
-    || option.id.startsWith('reproduce:')
-    || option.id.startsWith('withdraw-reproduce:')
+  const reproduction = Boolean(actionOptionSemantics(option).reproduction)
     || ((content?.kind === 'offer') && content.proposal?.kind === 'reproduce');
   let preference = ((relation?.trust ?? 0) + (relation?.bond ?? 0) - Math.max(0, relation?.fear ?? 0) * 1.25) / 65;
   const reasons: string[] = [];
@@ -562,6 +562,7 @@ export function evaluateCognitiveOption(
   const memory = memoryAppraisal(context, option, basisKey, moment.atMonth);
   const personalityGate = personalityCongruence(context, alignments);
   const relationship = relationshipAppraisal(context, option);
+  const socialExpectation = appraiseSocialExpectation(context.person, option, moment.atMonth);
   const readiness = familyReadinessAppraisal(context, option, moment.atMonth);
   const repetition = assessSocialRepetition(context.state, context.person, option);
   const repetitionGate = repetition.subjectKey
@@ -578,6 +579,7 @@ export function evaluateCognitiveOption(
     * memory.gate
     * feasibilityGate
     * relationship.gate
+    * socialExpectation.gate
     * readiness.gate
     * repetitionGate
     * ethical.gate
@@ -605,6 +607,7 @@ export function evaluateCognitiveOption(
     factor('commitment', activationFor('commitment') * commitmentPersonality * continuityGate * 100, ['尽责性与真实进度门控意图持续'], context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
     factor('learning', union([activationFor('inquiry'), activationFor('capability')]) * learningPersonality * 100, ['开放性调节对未知结果的探索，而不创造知识'], addressedNeeds.filter((need) => need.kind === 'inquiry' || need.kind === 'capability').flatMap((need) => need.sourceFactIds)),
     factor('relationship', activationFor('belonging') * socialPersonality * 100 + (relationship.gate - 1) * 40, relationship.reasons, relationship.sourceFactIds),
+    factor('social-expectation', (socialExpectation.gate - 1) * 100, socialExpectation.reasons, socialExpectation.sourceFactIds),
     factor('family-readiness', (readiness.gate - 1) * 100, readiness.reasons, readiness.sourceFactIds),
     factor('social-repetition', repetition.score, repetition.reasons, repetition.sourceFactIds),
     factor('consent', relationship.consentDiagnostic, relationship.reasons, relationship.sourceFactIds),
@@ -617,6 +620,7 @@ export function evaluateCognitiveOption(
     ...(goalBelief ? [`本人对相似目标的达成预期为 ${Math.round(expectedSuccess * 100)}%（${goalBelief.attempts} 次亲历）`] : ['本人尚无相似目标结果，使用保守先验']),
     ...(memory.reason ? [memory.reason] : []),
     ...relationship.reasons.slice(0, 1),
+    ...socialExpectation.reasons.slice(0, 1),
     ...readiness.reasons.slice(0, 1),
     ...(repetition.subjectKey ? repetition.reasons.slice(0, 1) : []),
     ...(ethical.reason ? [ethical.reason] : []),
@@ -636,6 +640,7 @@ export function evaluateCognitiveOption(
     memoryGate: memory.gate,
     feasibilityGate,
     relationshipGate: relationship.gate,
+    socialExpectationGate: socialExpectation.gate,
     readinessGate: readiness.gate,
     ...(readiness.assessment ? { familyReadiness: readiness.assessment } : {}),
     repetitionGate,
@@ -653,6 +658,7 @@ export function evaluateCognitiveOption(
       ...(goalBelief?.sourceEventIds ?? []),
       ...memory.sourceFactIds,
       ...relationship.sourceFactIds,
+      ...socialExpectation.sourceFactIds,
       ...readiness.sourceFactIds,
       ...repetition.sourceFactIds,
       ...ethical.sourceFactIds,

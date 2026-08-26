@@ -16,6 +16,7 @@ import {
 import { assessFamilyReadiness } from './family-readiness';
 import { crowdingUrgency } from '../../domain/social-space';
 import { relationTo } from '../../domain/relation';
+import { actionOptionSemantics } from '../../domain/action-option-semantics';
 
 export type NeedKind =
   | 'homeostasis'
@@ -114,12 +115,15 @@ function isResponseOption(context: DecisionContext): boolean {
 export function deriveNeedAgenda(context: DecisionContext, atMonth: number): NeedSignal[] {
   const person = context.person;
   const needs: NeedSignal[] = [];
-  const positiveReproductionOptions = context.options.filter((option) => option.id.startsWith('offer-reproduce:')
-    || option.id.startsWith('accept-reproduce:')
-    || option.id.startsWith('reproduce:'));
-  const succubusReproductionOptions = positiveReproductionOptions.filter((option) => option.id.startsWith('reproduce:succubus:'));
-  const reproductiveWithdrawalOptions = context.options.filter((option) => option.id.startsWith('reject-reproduce:')
-    || option.id.startsWith('withdraw-reproduce:'));
+  const positiveReproductionOptions = context.options.filter((option) => (
+    actionOptionSemantics(option).reproduction?.direction === 'proceed'
+  ));
+  const succubusReproductionOptions = positiveReproductionOptions.filter((option) => (
+    actionOptionSemantics(option).reproduction?.mode === 'unilateral-trait'
+  ));
+  const reproductiveWithdrawalOptions = context.options.filter((option) => (
+    actionOptionSemantics(option).reproduction?.direction === 'refuse'
+  ));
   const familyReadiness = positiveReproductionOptions.length || reproductiveWithdrawalOptions.length
     ? assessFamilyReadiness(context, atMonth)
     : undefined;

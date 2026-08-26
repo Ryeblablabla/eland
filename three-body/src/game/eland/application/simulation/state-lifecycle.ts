@@ -52,6 +52,7 @@ import {
   mechanicalPowerWorldForSeed,
 } from '../../world/generator';
 import type { ObservationProjector } from './observation-projector';
+import { cloneValidatedSocialLearningState } from './social-learning-state';
 import { clamp, copyState } from './state-utils';
 
 export const MAX_SIMULATION_YEARS = 1_000;
@@ -346,7 +347,14 @@ export function adoptSimulationState(
       person.baselineCapacities = applyTraitCapacityModifiers(person.baselineCapacities, person.traits);
       grantProphetKnowledge(person, person.bornAtMonth, sourceEventId);
     } else person.traits = normalizePersonTraits(person.traits);
-    ensureCognitionState(person);
+    const socialLearning = cloneValidatedSocialLearningState(
+      person,
+      state.people,
+      state.clock.elapsedMonths,
+    );
+    const cognition = ensureCognitionState(person);
+    if (socialLearning) cognition.socialLearning = socialLearning;
+    else delete cognition.socialLearning;
     person.bereavements ??= [];
     person.knownPlaces ??= [];
     person.geneticLoad = Number.isFinite(person.geneticLoad) ? clamp(person.geneticLoad, 0, 1) : 0;

@@ -4,7 +4,7 @@ import {
   outcomeBeliefFor,
   outcomeBeliefSuccess,
 } from '../../domain/cognition';
-import type { DecisionContext } from '../../domain/model';
+import type { Decision, DecisionContext } from '../../domain/model';
 import { intentReviewAtMonth } from '../../domain/intent';
 import { personalityScore } from '../../domain/personality';
 import { seededFraction } from '../../world/generator';
@@ -14,19 +14,46 @@ import {
   type CognitiveFrame,
   type CognitiveOptionAppraisal,
 } from './option-appraisal';
+import {
+  compareBoundedForesight,
+  type BoundedForesightComparison,
+} from './foresight-deliberation';
 
 export interface RankedCognitiveAppraisal extends CognitiveOptionAppraisal {
   /** Tiny deterministic value used only after the causal appraisal. */
   tieBreak: number;
+  foresightExpectedValue: number;
+  valueOfInformation: number;
+  foresightAdjustment: number;
+  deliberativeMotivation: number;
   rankScore: number;
 }
 
 export interface BdiDeliberation {
   frame: CognitiveFrame;
   ranked: RankedCognitiveAppraisal[];
+  foresight: BoundedForesightComparison;
   selected?: RankedCognitiveAppraisal;
   reason: string;
 }
+
+interface DecisionDeliberationHandoff {
+  personId: string;
+  atMonth: number;
+  planningTick: number;
+  optionId: string;
+  deliberation: BdiDeliberation;
+}
+
+/**
+ * Ephemeral, non-enumerable handoff from the rule planner to decision
+ * execution. It is attached to the exact Decision object, never serialized,
+ * and consumed before that decision becomes a world fact.
+ */
+const DECISION_DELIBERATION_HANDOFF = Symbol('decision-deliberation-handoff');
+type DecisionWithDeliberation = Decision & {
+  [DECISION_DELIBERATION_HANDOFF]?: DecisionDeliberationHandoff;
+};
 
 export interface IntentionPersistenceAssessment {
   keep: boolean;
@@ -56,13 +83,61 @@ export function rankCognitiveOptions(
   moment: { atMonth: number; planningTick: number },
 ): RankedCognitiveAppraisal[] {
   const frame = buildCognitiveFrame(context, options, moment);
+  const foresight = compareBoundedForesight(context, frame);
+  return rankAppraisals(context, frame, foresight, moment);
+}
+
+function noForesightComparison(): BoundedForesightComparison {
+  return {
+    version: 'bounded-foresight-comparison-v1',
+    audit: {
+      version: 'bounded-foresight-v1',
+      rootCount: 0,
+      expandedNodes: 0,
+      maxDepth: 0,
+      budgetCutoff: false,
+      roots: [],
+    },
+    options: [],
+    changedSelection: false,
+  };
+}
+
+/** Rank an already forced duty or a follow-up without opening a future tree. */
+export function rankCognitiveOptionsWithoutForesight(
+  context: DecisionContext,
+  options: ActionOption[],
+  moment: { atMonth: number; planningTick: number },
+): RankedCognitiveAppraisal[] {
+  const frame = buildCognitiveFrame(context, options, moment);
+  return rankAppraisals(context, frame, noForesightComparison(), moment);
+}
+
+function rankAppraisals(
+  context: DecisionContext,
+  frame: CognitiveFrame,
+  foresight: BoundedForesightComparison,
+  moment: { atMonth: number; planningTick: number },
+): RankedCognitiveAppraisal[] {
+  const foresightByOption = new Map(foresight.options.map((item) => [item.optionId, item]));
   return frame.appraisals
     .map((appraisal): RankedCognitiveAppraisal => {
       const tieBreak = seededFraction(
         context.state.seed,
         `causal-bdi-tie:${context.state.branchId}:${moment.atMonth}:${moment.planningTick}:${context.person.id}:${appraisal.basisKey}:${appraisal.option.id}`,
       ) * 0.0001;
-      return { ...appraisal, tieBreak, rankScore: appraisal.motivation + tieBreak };
+      const bounded = foresightByOption.get(appraisal.option.id);
+      const foresightAdjustment = bounded?.adjustment ?? 0;
+      const deliberativeMotivation = appraisal.motivation + foresightAdjustment;
+      return {
+        ...appraisal,
+        tieBreak,
+        foresightExpectedValue: bounded?.expectedValue ?? 0,
+        valueOfInformation: bounded?.valueOfInformation ?? 0,
+        foresightAdjustment,
+        deliberativeMotivation,
+        rankScore: deliberativeMotivation + tieBreak,
+      };
     })
     .sort((left, right) => right.rankScore - left.rankScore || left.option.id.localeCompare(right.option.id));
 }
@@ -73,20 +148,14 @@ export function deliberate(
   moment: { atMonth: number; planningTick: number },
 ): BdiDeliberation {
   const frame = buildCognitiveFrame(context, options, moment);
-  const ranked = frame.appraisals
-    .map((appraisal): RankedCognitiveAppraisal => {
-      const tieBreak = seededFraction(
-        context.state.seed,
-        `causal-bdi-tie:${context.state.branchId}:${moment.atMonth}:${moment.planningTick}:${context.person.id}:${appraisal.basisKey}:${appraisal.option.id}`,
-      ) * 0.0001;
-      return { ...appraisal, tieBreak, rankScore: appraisal.motivation + tieBreak };
-    })
-    .sort((left, right) => right.rankScore - left.rankScore || left.option.id.localeCompare(right.option.id));
-  const selected = ranked.find((appraisal) => appraisal.motivation >= appraisal.aspiration);
+  const foresight = compareBoundedForesight(context, frame);
+  const ranked = rankAppraisals(context, frame, foresight, moment);
+  const selected = ranked.find((appraisal) => appraisal.deliberativeMotivation >= appraisal.aspiration);
   const dominant = frame.needs[0];
   return {
     frame,
     ranked,
+    foresight,
     ...(selected ? { selected } : {}),
     reason: selected
       ? `${dominant ? `当前最强需要是${dominant.kind}` : '当前出现有来源的机会'}；${selected.reasons.slice(0, 2).join('；')}`
@@ -94,6 +163,51 @@ export function deliberate(
         ? '现有候选都没有跨过本人的当前行动阈值'
         : '当前没有合法候选',
   };
+}
+
+/**
+ * Carry the exact selection-time deliberation into applyDecision without
+ * adding it to the persisted Decision schema.
+ */
+export function carryDecisionDeliberation<T extends Decision>(
+  decision: T,
+  context: DecisionContext,
+  moment: { atMonth: number; planningTick: number },
+  deliberation: BdiDeliberation,
+): T {
+  if (decision.kind !== 'start' && decision.kind !== 'revise') return decision;
+  if (deliberation.selected?.option.id !== decision.optionId) return decision;
+  Object.defineProperty(decision, DECISION_DELIBERATION_HANDOFF, {
+    configurable: true,
+    enumerable: false,
+    writable: false,
+    value: {
+      personId: context.person.id,
+      atMonth: moment.atMonth,
+      planningTick: moment.planningTick,
+      optionId: decision.optionId,
+      deliberation,
+    } satisfies DecisionDeliberationHandoff,
+  });
+  return decision;
+}
+
+/** Consume the transient handoff before the Decision object enters history. */
+export function takeDecisionDeliberation(
+  decision: Decision,
+  personId: string,
+  moment: { atMonth: number; planningTick: number },
+): BdiDeliberation | undefined {
+  const tagged = decision as DecisionWithDeliberation;
+  const handoff = tagged[DECISION_DELIBERATION_HANDOFF];
+  if (handoff) delete tagged[DECISION_DELIBERATION_HANDOFF];
+  if (!handoff
+    || (decision.kind !== 'start' && decision.kind !== 'revise')
+    || handoff.personId !== personId
+    || handoff.atMonth !== moment.atMonth
+    || handoff.planningTick !== moment.planningTick
+    || handoff.optionId !== decision.optionId) return undefined;
+  return handoff.deliberation;
 }
 
 function sameIntention(active: Intent, challenger?: CognitiveOptionAppraisal): boolean {
@@ -142,7 +256,9 @@ export function assessIntentionPersistence(
   const acuteNeed = frame.needs
     .filter((need) => need.kind === 'homeostasis' || need.kind === 'safety' || need.kind === 'care' || need.kind === 'bereavement')
     .reduce((maximum, need) => Math.max(maximum, need.urgency), 0);
-  const challengerStrength = challenger?.motivation ?? 0;
+  const challengerStrength = challenger
+    ? (challenger as Partial<RankedCognitiveAppraisal>).deliberativeMotivation ?? challenger.motivation
+    : 0;
   const reviewAtMonth = intentReviewAtMonth(active);
   const overdue = reviewAtMonth !== undefined && moment.atMonth > reviewAtMonth;
   const switchingMargin = 0.07

@@ -1,12 +1,11 @@
 import type { DecisionRequestContext } from '../src/game/eland/kimi-decider';
+import { validateActionOptionSemantics } from '../src/game/eland/domain/action-option-semantics';
 import type { Decision, TokenUsage } from '../src/game/eland/simulation';
 import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
 
 const MAX_AGENTS = 12;
-const REQUIRED_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce):/;
 
 const SYSTEM_PROMPT = [
   '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
@@ -16,6 +15,7 @@ const SYSTEM_PROMPT = [
   'activeIntent.lifecycle.reviewAtMonth 是未完成意图的到期复核月份。lifecycle.completion="on-achievement" 表示目标一旦真实达成就结算；reviewAtMonth 不是要求把已达成状态维持到该月的锁。',
   '只有 lifecycle.completion="maintain-state" 才要求把已达成状态持续维持到 lifecycle.maintainUntilMonth。缺少 lifecycle 时，activeIntent.stateGoalUntilMonth 只是兼容旧存档的维持与复核字段。除非出现紧急危险、履约义务或明显更高价值的机会，不要仅因本月没有新动作而改换尚未完成的目标。',
   '输入中的 options 都已通过引擎的身体、物质、距离、关系事实与权利前提检查；它们是当下可以尝试的可行意图，不是引擎建议。是否愿意做，应由你结合 HEXACO personality、motiveSensitivity、记忆、关系和风险决定。',
+  'option.id 只是选择句柄，不表达行动类别。required-response、commitment-action、edge、reproduction、conversation 与社会协作语境只能读取 option.semantics；不得从 id 文本猜测。',
   'person.cognition 是规则引擎从本人可感知压力、有效人格、结构化亲历记忆和个人行动结果后验生成的只读因果 BDI 投影。needs 表示此刻欲望强度，outcomeBeliefs 表示本人过去经验形成的不确定先验，optionAppraisals 用于解释各合法候选如何回应这些需要。',
   'cognition 只帮助比较输入中已经存在的合法 options：不得把它当成新世界事实、隐藏知识或已发生结果，也不得据此创造候选、跳过必须回应与履约、绕过物理或领域合法性。',
   'person.description 只是档案原型与外貌线索，不是人格、技能、知识或历史事实；与结构化 personality 或 soul 冲突时以后两者为准。',
@@ -110,8 +110,8 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const intentId = text(raw.intentId, 100);
   const utterance = text(raw.utterance, 180);
   const option = context.options.find((item) => item.id === optionId);
-  const requiredOptions = context.options.filter((item) => REQUIRED_RESPONSE.test(item.id));
-  const fulfillmentOptions = context.options.filter((item) => FULFILLMENT.test(item.id));
+  const requiredOptions = context.options.filter((item) => item.semantics.obligation === 'required-response');
+  const fulfillmentOptions = context.options.filter((item) => item.semantics.obligation === 'commitment-action');
   const optionAllowed = Boolean(option)
     && (!requiredOptions.length || requiredOptions.some((item) => item.id === optionId))
     && (requiredOptions.length > 0 || !fulfillmentOptions.length || fulfillmentOptions.some((item) => item.id === optionId));
@@ -181,7 +181,19 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
 function isContext(value: unknown): value is DecisionRequestContext {
   if (!value || typeof value !== 'object') return false;
   const context = value as DecisionRequestContext;
-  return Boolean(context.person?.id && Array.isArray(context.options) && Array.isArray(context.followUpOptions) && Array.isArray(context.visibleDrops));
+  return Boolean(context.person?.id
+    && Array.isArray(context.options)
+    && context.options.every((option) => {
+      if (!option || typeof option !== 'object' || typeof option.id !== 'string') return false;
+      try {
+        validateActionOptionSemantics(option.semantics);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    && Array.isArray(context.followUpOptions)
+    && Array.isArray(context.visibleDrops));
 }
 
 export async function handleDecide(payload: unknown, requestedEndpoint?: string): Promise<{ status: number; body: unknown }> {

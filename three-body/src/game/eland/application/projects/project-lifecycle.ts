@@ -7,6 +7,7 @@ import { applyRelationEvidence } from '../../domain/relation';
 import { remember } from '../../domain/memory';
 import { buildProjectPressureBasis } from '../project-pressure';
 import { closeProjectHypothesisCampaign } from '../project-hypotheses';
+import { recordJointProjectSocialLearning } from '../../domain/social-learning';
 import {
   closeProjectSearchCampaigns,
   endActiveLogisticsEpisode,
@@ -91,5 +92,6 @@ export function completeProject(
   }
   const completionActor = finalCompletionActor(state, project);
   if (completionActor) recordProjectNeedResolution(completionActor, project, atMonth);
+  recordJointProjectSocialLearning(state, project, atMonth);
   rememberJointCompletion(state, project);
 }

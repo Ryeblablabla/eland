@@ -361,6 +361,7 @@ export function buildAgentInteractionContext(
       inventory: projected.person.inventory.map((stack, index) => source(`inventory:${index + 1}`, {
         name: stack.name,
         properties: stack.properties,
+        perception: stack.perception,
         quantity: stack.quantity,
       })),
       knowledge: projected.person.knowledge.map((knowledge, index) => source(`knowledge:${index + 1}`, {
@@ -404,7 +405,17 @@ export function buildAgentInteractionContext(
       summary: sanitizeEngineText(projected.activeProject.summary),
       need: projected.activeProject.need,
       status: projected.activeProject.status,
-      missingMaterials: projected.activeProject.missingMaterials.map((material) => material.name),
+      materialPlan: projected.activeProject.materialPlan.status === 'verified'
+        ? {
+            status: 'verified',
+            desiredFunction: projected.activeProject.materialPlan.desiredFunction,
+            missingMaterials: projected.activeProject.materialPlan.missingMaterials.map((material) => material.name),
+            provenanceKind: projected.activeProject.materialPlan.provenance.kind,
+          }
+        : {
+            status: 'unresolved',
+            question: projected.activeProject.materialPlan.question,
+          },
     }) : null,
     surroundings: {
       people: projected.visiblePeople.map((other, index) => source(`visible-person:${index + 1}`, {
@@ -419,6 +430,7 @@ export function buildAgentInteractionContext(
       })),
       looseMaterials: projected.visibleDrops.map((drop, index) => source(`visible-drop:${index + 1}`, {
         name: drop.name,
+        perception: drop.perception,
         quantity: drop.quantity,
         location: relativeLocation(person.position.cellId, drop.cellId),
       })),

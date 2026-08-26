@@ -51,6 +51,31 @@ import {
   positionsWithinVoiceRange,
 } from '../domain/social-space';
 import { relationTo } from '../domain/relation';
+import { defineActionOptionSemantics } from '../domain/action-option-semantics';
+import {
+  socialCooperationBeliefFor,
+  socialDimensionExpectation,
+  socialLearningStateOf,
+  type CooperationContext,
+  type CoordinationPracticeBasis,
+} from '../domain/social-learning';
+import { applyContextualSocialAttention } from './cognition/social-expectation';
+
+function commitmentActionSemantics(
+  minimumLifeStage: 'adolescent' | 'adult' = 'adolescent',
+  needKinds: Array<'commitment' | 'belonging' | 'care' | 'reserve' | 'autonomy'> = ['commitment'],
+  socialContext?: NonNullable<ActionOption['semantics']>['socialContext'],
+) {
+  return defineActionOptionSemantics({
+    obligation: 'commitment-action',
+    planningChannel: 'edge',
+    purpose: 'social-coordination',
+    minimumLifeStage,
+    needKinds,
+    edgeTrigger: 'commitment-action',
+    ...(socialContext ? { socialContext } : {}),
+  });
+}
 
 function groundedRelationSourceIds(state: SimulationState, person: PersonState, otherId: string): string[] {
   return (relationTo(person, otherId)?.sourceEventIds ?? [])
@@ -87,27 +112,41 @@ function companyAssistInFlightBetween(state: SimulationState, firstId: string, s
 }
 
 const COMPANY_REQUEST_REOFFER_MONTHS = 6;
-const LOCAL_SOCIAL_ATTENTION_LIMIT = 3;
+const AFFILIATION_PRACTICE_CONTEXTS = new Set<CooperationContext>([
+  'assist-water',
+  'assist-food',
+  'assist-shelter',
+  'assist-company',
+  'exchange',
+  'shared-living',
+  'joint-project-production',
+  'joint-project-construction',
+  'joint-project-inquiry',
+]);
 
-/**
- * A person can only appraise a few local relationships in one month, but the
- * bounded window must not make state insertion order a lifelong social fate.
- * The person-specific phase also keeps a whole settlement from focusing on
- * the same three people at once.
- */
-function localSocialAttention(
+function supportedPracticesWith(
   person: PersonState,
-  localPeople: PersonState[],
-  atMonth: number,
-): PersonState[] {
-  if (!localPeople.length) return [];
-  const ordered = [...localPeople].sort((left, right) => left.id.localeCompare(right.id));
-  const identityPhase = [...person.id].reduce((total, character) => total + character.charCodeAt(0), 0);
-  const start = (identityPhase + atMonth) % ordered.length;
-  return Array.from(
-    { length: Math.min(LOCAL_SOCIAL_ATTENTION_LIMIT, ordered.length) },
-    (_, index) => ordered[(start + index) % ordered.length]!,
-  );
+  targetPersonId: string,
+  acceptedContexts: ReadonlySet<CooperationContext> = AFFILIATION_PRACTICE_CONTEXTS,
+): CoordinationPracticeBasis[] {
+  return (socialLearningStateOf(person)?.coordinationPractices ?? [])
+    .filter((practice) => practice.targetPersonId === targetPersonId
+      && practice.support === 'supported'
+      && acceptedContexts.has(practice.context))
+    .sort((left, right) => right.lastUpdatedAtMonth - left.lastUpdatedAtMonth
+      || left.basisKey.localeCompare(right.basisKey));
+}
+
+function supportedMemberPractices(
+  person: PersonState,
+  memberIds: ReadonlySet<string>,
+): CoordinationPracticeBasis[] {
+  return (socialLearningStateOf(person)?.coordinationPractices ?? [])
+    .filter((practice) => practice.support === 'supported'
+      && memberIds.has(practice.targetPersonId)
+      && AFFILIATION_PRACTICE_CONTEXTS.has(practice.context))
+    .sort((left, right) => right.lastUpdatedAtMonth - left.lastUpdatedAtMonth
+      || left.basisKey.localeCompare(right.basisKey));
 }
 
 function canRequestCompanyWithCurrentBasis(
@@ -155,6 +194,10 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
   const rendezvous = conversationalRendezvous(state, person, other);
   const target = rendezvous?.position ?? other.position;
   const distance = Math.max(0, (rendezvous?.path.length ?? 1) - 1);
+  const proposal = agreementById(state, referenceId)?.proposal;
+  const cooperationKind = kind === 'permission' || kind === 'decision-rule' || kind === 'mandate'
+    ? 'governance' as const
+    : kind;
   return {
     id: `${accept ? 'accept' : 'reject'}-${kind}:${referenceId}`,
     summary: `${accept ? '接受' : '拒绝'}${other.name}的${kind === 'assist' ? '求助' : kind === 'companion' ? '结伴提议' : kind === 'collective' ? '共同体提议' : kind === 'permission' ? '物质取用许可' : kind === 'decision-rule' ? '共同决策规则' : '临时协调授权提议'}`,
@@ -166,6 +209,24 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
     estimatedDuration: together ? 'one-month' : 'several-months',
     estimatedMonths: together ? 1 : Math.max(1, Math.ceil(distance / 15)),
     risks: [], domain: 'social', sourceFactIds: [],
+    semantics: defineActionOptionSemantics({
+      obligation: 'required-response',
+      planningChannel: 'edge',
+      purpose: 'social-coordination',
+      minimumLifeStage: ['collective', 'permission', 'decision-rule', 'mandate'].includes(kind) ? 'adult' : 'adolescent',
+      needKinds: ['autonomy', ...(kind === 'assist' ? ['care' as const] : ['belonging' as const])],
+      edgeTrigger: 'required-response',
+      socialContext: {
+        cooperationKind,
+        phase: 'response',
+        counterpartIds: [other.id],
+        referenceId,
+        ...(proposal?.kind === 'assist' ? { assistNeed: proposal.need } : {}),
+        ...(proposal?.kind === 'permission' || proposal?.kind === 'decision-rule'
+          ? { materialId: proposal.materialId }
+          : {}),
+      },
+    }),
   };
 }
 
@@ -210,6 +271,14 @@ function membershipResponseOption(state: SimulationState, person: PersonState, r
     estimatedDuration: together ? 'one-month' : 'several-months',
     estimatedMonths: together ? 1 : Math.max(1, Math.ceil(((rendezvous?.path.length ?? 1) - 1) / RULE_ACTION_TICKS_PER_MONTH)), risks: [], domain: 'social',
     sourceFactIds: [...agreement.sourceEventIds],
+    semantics: defineActionOptionSemantics({
+      obligation: 'required-response', planningChannel: 'edge',
+      purpose: 'social-coordination', minimumLifeStage: 'adult',
+      needKinds: ['autonomy', 'belonging'], edgeTrigger: 'required-response',
+      socialContext: {
+        cooperationKind: 'membership', phase: 'response', counterpartIds: [proposer.id], referenceId,
+      },
+    }),
   };
 }
 
@@ -277,6 +346,10 @@ export function buildSocialOptions(
         estimatedDuration: path.length <= RULE_ACTION_TICKS_PER_MONTH ? 'one-month' : 'several-months',
         estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
         risks: [], domain: 'social', sourceFactIds: [...requestedWaterAssist.sourceEventIds],
+        semantics: commitmentActionSemantics('adolescent', ['commitment', 'care'], {
+          cooperationKind: 'assist', phase: 'continuation', counterpartIds: [helper.id],
+          referenceId: requestedWaterAssist.id, assistNeed: 'water',
+        }),
       });
     }
   }
@@ -305,6 +378,10 @@ export function buildSocialOptions(
         ...(companyContinuation.target ? { target: companyContinuation.target } : {}),
         estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...companyContinuation.sourceFactIds],
+        semantics: commitmentActionSemantics('adolescent', ['commitment', 'belonging', 'care'], {
+          cooperationKind: 'assist', phase: 'fulfillment', counterpartIds: [requester.id],
+          referenceId: agreementId, assistNeed: 'company',
+        }),
       });
       else if (acceptedAssist.proposal.need === 'food' && food && sameLocation(requester, person)) options.push({
         id: `fulfill-assist:${acceptedAssist.request.id}`,
@@ -314,6 +391,10 @@ export function buildSocialOptions(
         nextAction: { kind: 'transfer', materialId: food.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: requester.id }, stackId: food.id, authorizationRef: acceptedAssist.request.action.kind === 'communicate' ? acceptedAssist.request.action.content.id : undefined },
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
+        semantics: commitmentActionSemantics('adolescent', ['commitment', 'care', 'reserve'], {
+          cooperationKind: 'assist', phase: 'fulfillment', counterpartIds: [requester.id],
+          referenceId: acceptedAssist.request.id, assistNeed: 'food', materialId: food.materialId,
+        }),
       });
       else if (acceptedAssist.proposal.need !== 'company' && !sameLocation(requester, person)) options.push({
         id: `meet-to-assist:${acceptedAssist.request.id}`,
@@ -321,6 +402,10 @@ export function buildSocialOptions(
         goal: { kind: 'near-person', personId: requester.id }, nextAction: { kind: 'move', toCellId: requester.position.cellId, toZ: requester.position.z },
         target: { kind: 'person', personId: requester.id }, estimatedDuration: 'several-months', estimatedMonths: 2,
         risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
+        semantics: commitmentActionSemantics('adolescent', ['commitment', 'care'], {
+          cooperationKind: 'assist', phase: 'continuation', counterpartIds: [requester.id],
+          referenceId: acceptedAssist.request.id, assistNeed: acceptedAssist.proposal.need,
+        }),
       });
       else if (water) {
         const alreadyAtWater = water.bankPosition.cellId === person.position.cellId && water.bankPosition.z === person.position.z;
@@ -337,6 +422,10 @@ export function buildSocialOptions(
           estimatedDuration: water.pathLength <= RULE_ACTION_TICKS_PER_MONTH ? 'one-month' : 'several-months',
           estimatedMonths: Math.max(1, Math.ceil((water.pathLength - 1) / RULE_ACTION_TICKS_PER_MONTH)),
           risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
+          semantics: commitmentActionSemantics('adolescent', ['commitment', 'care', 'reserve'], {
+            cooperationKind: 'assist', phase: 'fulfillment', counterpartIds: [requester.id],
+            referenceId: acceptedAssist.request.id, assistNeed: 'water',
+          }),
         });
       } else if (acceptedAssist.proposal.need !== 'company') {
         const representationId = `fulfill-assist:${acceptedAssist.request.id}:${person.id}`;
@@ -347,6 +436,10 @@ export function buildSocialOptions(
           nextAction: { kind: 'communicate', content: { id: representationId, kind: 'claim', summary: acceptedAssist.proposal.need === 'water' ? '我会和你一起寻找附近的水' : '我会陪你一起设法解决眼前困难' }, audience: [requester.id], channel: 'voice' },
           target: { kind: 'person', personId: requester.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
           risks: [], domain: 'social', sourceFactIds: [acceptedAssist.request.id, acceptedAssist.acceptance.id],
+          semantics: commitmentActionSemantics('adolescent', ['commitment', 'care'], {
+            cooperationKind: 'assist', phase: 'fulfillment', counterpartIds: [requester.id],
+            referenceId: acceptedAssist.request.id, assistNeed: acceptedAssist.proposal.need,
+          }),
         });
       }
     }
@@ -391,6 +484,10 @@ export function buildSocialOptions(
       estimatedDuration: 'several-months',
       estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
       risks: [], domain: 'social', sourceFactIds: [...companionship.sourceEventIds],
+      semantics: commitmentActionSemantics('adolescent', ['commitment', 'belonging'], {
+        cooperationKind: 'companion', phase: 'continuation', counterpartIds: partnerId ? [partnerId] : [],
+        referenceId: companionship.id,
+      }),
     });
   }
   const incomingAssist = openAssistRequestFor(state, person.id);
@@ -468,13 +565,14 @@ export function buildSocialOptions(
     }
   }
 
-  const visibleJointPartner = visiblePeople.find((other) => {
+  const visibleJointPartners = visiblePeople.filter((other) => {
     if (sameLocation(person, other)) return false;
     if (personCollectives.some((collective) => collective.status === 'active')
       || activeCollectivesFor(state, other.id).some((collective) => collective.status === 'active')) return false;
     if ((relationTo(person, other.id)?.trust ?? 0) < 6) return false;
     if (hasOpenCollectiveOfferBetween(state, person.id, other.id)
       || hasOpenCollectiveOfferBetween(state, other.id, person.id)) return false;
+    if (!supportedPracticesWith(person, other.id).length) return false;
     const lastAttempt = latestCollectiveAttemptMonth(state, person.id, other.id);
     return state.projects.some((project) => project.status === 'completed'
       && project.ownerId === person.id
@@ -482,7 +580,8 @@ export function buildSocialOptions(
       && project.completionEventIds.length > 0
       && completedAfter(project, lastAttempt));
   });
-  if (visibleJointPartner) {
+  for (const visibleJointPartner of visibleJointPartners) {
+    const practice = supportedPracticesWith(person, visibleJointPartner.id)[0]!;
     const lastAttempt = latestCollectiveAttemptMonth(state, person.id, visibleJointPartner.id);
     const sharedProject = [...state.projects].reverse().find((project) => project.status === 'completed'
       && project.ownerId === person.id
@@ -518,13 +617,19 @@ export function buildSocialOptions(
       target: { kind: 'person', personId: visibleJointPartner.id },
       estimatedDuration: 'several-months',
       estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / RULE_ACTION_TICKS_PER_MONTH)),
-      risks: [], domain: 'social', sourceFactIds: [...sharedProject.completionEventIds],
+      risks: [], domain: 'social', sourceFactIds: [...new Set([
+        ...sharedProject.completionEventIds,
+        ...practice.sourceFactIds,
+      ])],
     });
   }
 
   for (const collective of personCollectives) {
     const memberIds = new Set(activeMemberIds(state, collective));
-    const localMember = conversationalPeople.find((other) => memberIds.has(other.id));
+    const localMembers = conversationalPeople
+      .filter((other) => memberIds.has(other.id))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    const localMember = localMembers[0];
     const relations = activeMemberIds(state, collective)
       .filter((id) => id !== person.id)
       .map((id) => relationTo(person, id));
@@ -541,36 +646,36 @@ export function buildSocialOptions(
         risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...(relationTo(person, localMember.id)?.sourceEventIds ?? [])],
       });
     }
-    if (localMember) {
+    for (const permissionMember of localMembers) {
       const ownShareable = person.inventory.find((stack) => stack.quantity >= 2
         && !state.permissions.some((permission) => permission.status === 'active'
           && permission.collectiveId === collective.id
           && permission.grantorId === person.id
-          && permission.granteeId === localMember.id
+          && permission.granteeId === permissionMember.id
           && permission.materialId === stack.materialId)
         && !agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
           && agreement.proposal.kind === 'permission'
           && agreement.proposal.grantorId === person.id
-          && agreement.proposal.granteeId === localMember.id
+          && agreement.proposal.granteeId === permissionMember.id
           && agreement.proposal.materialId === stack.materialId));
       if (ownShareable) {
-        const representationId = `offer-permission:${atMonth}:${collective.id}:${person.id}:${localMember.id}:${ownShareable.materialId}`;
+        const representationId = `offer-permission:${atMonth}:${collective.id}:${person.id}:${permissionMember.id}:${ownShareable.materialId}`;
         options.push({
           id: representationId,
-          summary: `允许${localMember.name}在需要时取用自己的${materialDefinition(ownShareable.materialId).name}`,
+          summary: `允许${permissionMember.name}在需要时取用自己的${materialDefinition(ownShareable.materialId).name}`,
           reason: '彼此已有持续成员身份，可以明确协商具体物质的取用边界',
           goal: { kind: 'representation-made', representationId },
           nextAction: {
             kind: 'communicate',
             content: { id: representationId, kind: 'offer', summary: `你可以在需要时每次取用我的一份${materialDefinition(ownShareable.materialId).name}`, proposal: {
-              kind: 'permission', proposerId: person.id, partnerId: localMember.id,
-              collectiveId: collective.id, grantorId: person.id, granteeId: localMember.id,
+              kind: 'permission', proposerId: person.id, partnerId: permissionMember.id,
+              collectiveId: collective.id, grantorId: person.id, granteeId: permissionMember.id,
               materialId: ownShareable.materialId, maxQuantityPerTransfer: 1,
               validUntilMonth: atMonth + 24, expiresAtMonth: atMonth + 6,
             } },
-            audience: [localMember.id], channel: 'voice',
+            audience: [permissionMember.id], channel: 'voice',
           },
-          target: { kind: 'person', personId: localMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
+          target: { kind: 'person', personId: permissionMember.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
           risks: [], domain: 'social', sourceFactIds: [...collective.sourceEventIds, ...ownShareable.sourceEventIds],
         });
       }
@@ -582,6 +687,7 @@ export function buildSocialOptions(
     const activeMembers = activeMemberIds(state, collective)
       .flatMap((id) => personById(state, id) ?? []);
     const requiredMemberApprovals = activeMembers.map((member) => member.id).filter((id) => id !== person.id);
+    const governancePractice = supportedMemberPractices(person, memberIds)[0];
     const initiativeMember = [...activeMembers].sort((a, b) =>
       (b.motiveSensitivity.status + personalityScore(b, 'extraversion') * 0.35 + b.baselineCapacities.cognition)
         - (a.motiveSensitivity.status + personalityScore(a, 'extraversion') * 0.35 + a.baselineCapacities.cognition)
@@ -592,7 +698,8 @@ export function buildSocialOptions(
     if (allMembersHere
       && initiativeMember?.id === person.id
       && !collective.decisionRules.some((rule) => rule.status === 'active')
-      && !pendingDecisionRule) {
+      && !pendingDecisionRule
+      && governancePractice) {
       const groupMaterials = new Map<number, number>();
       for (const member of activeMembers) for (const stack of member.inventory) {
         if (stack.quantity > 0) groupMaterials.set(stack.materialId, (groupMaterials.get(stack.materialId) ?? 0) + stack.quantity);
@@ -628,7 +735,10 @@ export function buildSocialOptions(
             audience: requiredMemberApprovals, channel: 'voice',
           },
           estimatedDuration: 'one-month', estimatedMonths: 1,
-          risks: ['任何一名成员拒绝都会使规则提议终止'], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+          risks: ['任何一名成员拒绝都会使规则提议终止'], domain: 'social', sourceFactIds: [...new Set([
+            ...collective.sourceEventIds,
+            ...governancePractice.sourceFactIds,
+          ])],
         });
       }
     }
@@ -648,11 +758,20 @@ export function buildSocialOptions(
       && !activeMandate
       && !pendingMandate
       && renewalReady) {
+      const holderPreference = (candidate: PersonState) => (
+        personalityScore(candidate, 'agreeableness')
+        + personalityScore(candidate, 'conscientiousness')
+        + candidate.baselineCapacities.communication
+        + (socialDimensionExpectation(
+          socialCooperationBeliefFor(person, candidate.id, 'mandate-resource-coordination'),
+          'reliability', atMonth,
+        ) - 0.5) * 30
+      );
       const holder = [...activeMembers].sort((a, b) => inventoryQuantity(b, rule.materialId) - inventoryQuantity(a, rule.materialId)
-        || (personalityScore(b, 'agreeableness') + personalityScore(b, 'conscientiousness') + b.baselineCapacities.communication)
-          - (personalityScore(a, 'agreeableness') + personalityScore(a, 'conscientiousness') + a.baselineCapacities.communication)
+        || holderPreference(b) - holderPreference(a)
         || a.id.localeCompare(b.id))[0];
       if (holder) {
+        const holderReliability = socialCooperationBeliefFor(person, holder.id, 'mandate-resource-coordination');
         const representationId = `offer-mandate:${atMonth}:${collective.id}:${person.id}:${holder.id}:${rule.id}`;
         options.push({
           id: representationId,
@@ -669,20 +788,20 @@ export function buildSocialOptions(
             audience: requiredMemberApprovals, channel: 'voice',
           },
           target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-          risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...rule.sourceEventIds],
+          risks: ['授权有期限，且协调者不能强取任何成员的私人背包'], domain: 'social', sourceFactIds: [...new Set([
+            ...rule.sourceEventIds,
+            ...(holderReliability?.sourceEventIds ?? []),
+          ])],
         });
       }
     }
-    const candidate = allMembersHere ? conversationalPeople.find((other) => {
+    const candidates = allMembersHere ? conversationalPeople.filter((other) => {
       if (memberIds.has(other.id) || hasOpenMembershipOfferFor(state, collective.id, other.id)) return false;
-      const relation = relationTo(person, other.id);
-      const fulfilledTogether = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'fulfilled'
-        && agreement.partyIds.includes(person.id)
-        && agreement.partyIds.includes(other.id)
-        && (agreement.proposal.kind === 'assist' || agreement.proposal.kind === 'exchange' || agreement.proposal.kind === 'companion'));
-      return fulfilledTogether && (relation?.trust ?? 0) >= 6;
-    }) : undefined;
-    if (candidate) {
+      return supportedPracticesWith(person, other.id).length > 0
+        && (relationTo(person, other.id)?.trust ?? 0) >= 6;
+    }) : [];
+    for (const candidate of candidates) {
+      const membershipPractice = supportedPracticesWith(person, candidate.id)[0]!;
       const requiredApproverIds = [...new Set([...activeMemberIds(state, collective).filter((id) => id !== person.id), candidate.id])];
       const representationId = `offer-membership:${atMonth}:${collective.id}:${person.id}:${candidate.id}`;
       options.push({
@@ -701,7 +820,10 @@ export function buildSocialOptions(
           channel: 'voice',
         },
         target: { kind: 'person', personId: candidate.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-        risks: ['任一现有成员或候选人拒绝，提议都会终止'], domain: 'social', sourceFactIds: [...collective.sourceEventIds],
+        risks: ['任一现有成员或候选人拒绝，提议都会终止'], domain: 'social', sourceFactIds: [...new Set([
+          ...collective.sourceEventIds,
+          ...membershipPractice.sourceFactIds,
+        ])],
       });
     }
   }
@@ -722,6 +844,10 @@ export function buildSocialOptions(
         nextAction: { kind: 'transfer', materialId: mandate.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: holder.id }, stackId: stack.id, authorizationRef: mandate.id },
         target: { kind: 'person', personId: holder.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...mandate.sourceEventIds],
+        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+          cooperationKind: 'material-coordination', phase: 'fulfillment', counterpartIds: [holder.id],
+          referenceId: mandate.id, materialId: mandate.materialId,
+        }),
       });
     }
     if (person.id === holder.id && mandate.distributionEventIds.length < mandate.contributionEventIds.length) {
@@ -737,6 +863,10 @@ export function buildSocialOptions(
         nextAction: { kind: 'transfer', materialId: mandate.materialId, quantity: 1, from: { kind: 'person', personId: person.id }, to: { kind: 'person', personId: recipient.id }, stackId: stack.id, authorizationRef: mandate.id },
         target: { kind: 'person', personId: recipient.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...mandate.sourceEventIds],
+        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+          cooperationKind: 'material-coordination', phase: 'fulfillment', counterpartIds: [recipient.id],
+          referenceId: mandate.id, materialId: mandate.materialId,
+        }),
       });
     }
   }
@@ -755,6 +885,10 @@ export function buildSocialOptions(
         nextAction: { kind: 'transfer', materialId: permission.materialId, quantity: 1, from: { kind: 'person', personId: grantor.id }, to: { kind: 'person', personId: person.id }, stackId: stack.id, authorizationRef: permission.id },
         target: { kind: 'person', personId: grantor.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: [], domain: 'social', sourceFactIds: [...permission.sourceEventIds],
+        semantics: commitmentActionSemantics('adult', ['commitment', 'autonomy'], {
+          cooperationKind: 'material-coordination', phase: 'fulfillment', counterpartIds: [grantor.id],
+          referenceId: permission.id, materialId: permission.materialId,
+        }),
       });
     }
     if (person.id === permission.grantorId && grantee && positionsWithinVoiceRange(grantee.position, person.position)) {
@@ -809,7 +943,7 @@ export function buildSocialOptions(
     });
   }
 
-  for (const other of localSocialAttention(person, conversationalPeople, atMonth)) {
+  for (const other of [...conversationalPeople].sort((left, right) => left.id.localeCompare(right.id))) {
     const relation = relationTo(person, other.id);
     const relationshipSourceFactIds = groundedRelationSourceIds(state, person, other.id);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);
@@ -871,6 +1005,8 @@ export function buildSocialOptions(
       });
     }
     const lastCollectiveAttempt = latestCollectiveAttemptMonth(state, person.id, other.id);
+    const collectivePractice = supportedPracticesWith(person, other.id)
+      .find((practice) => practice.lastUpdatedAtMonth > lastCollectiveAttempt);
     const sharedFulfillment = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'fulfilled'
       && agreement.partyIds.includes(person.id)
       && agreement.partyIds.includes(other.id)
@@ -883,18 +1019,22 @@ export function buildSocialOptions(
       && completedAfter(project, lastCollectiveAttempt));
     if (!personCollectives.some((collective) => collective.status === 'active')
       && !activeCollectivesFor(state, other.id).some((collective) => collective.status === 'active')
-      && (sharedFulfillment || sharedJointProject)
+      && collectivePractice
       && (relation?.trust ?? 0) >= 6
       && !hasOpenCollectiveOfferBetween(state, person.id, other.id)
       && !hasOpenCollectiveOfferBetween(state, other.id, person.id)) {
       const representationId = `offer-collective:${atMonth}:${person.id}:${other.id}`;
-      const purposeSummary = sharedJointProject
-        ? `继续协作完成${sharedJointProject.kind === 'construction' ? '共同住所与环境改造' : '共同生产目标'}`
-        : sharedFulfillment?.proposal.kind === 'exchange'
-          ? '持续交换物质并互相履约'
-          : sharedFulfillment?.proposal.kind === 'companion'
-            ? '长期结伴并共同生活'
-            : '持续互助并共同应对生存压力';
+      const purposeSummary = collectivePractice.context === 'joint-project-construction'
+        ? '继续协作完成共同住所与环境改造'
+        : collectivePractice.context === 'joint-project-production'
+          ? '继续协作完成共同生产目标'
+          : collectivePractice.context === 'joint-project-inquiry'
+            ? '继续协作调查并保存共同知识'
+            : collectivePractice.context === 'exchange'
+              ? '持续交换物质并互相履约'
+              : collectivePractice.context === 'shared-living'
+                ? '长期结伴并共同生活'
+                : '持续互助并共同应对生存压力';
       const sourceFactIds = sharedJointProject?.completionEventIds ?? sharedFulfillment?.sourceEventIds ?? [];
       options.push({
         id: representationId,
@@ -905,10 +1045,13 @@ export function buildSocialOptions(
         goal: { kind: 'representation-made', representationId },
         nextAction: { kind: 'communicate', content: { id: representationId, kind: 'offer', summary: `我们已经一起做成过事情，愿不愿意以后继续${purposeSummary}？`, proposal: { kind: 'collective', proposerId: person.id, partnerId: other.id, purposeSummary, expiresAtMonth: atMonth + 6 } }, audience: [other.id], channel: 'voice' },
         target: { kind: 'person', personId: other.id }, estimatedDuration: 'one-month', estimatedMonths: 1,
-        risks: [], domain: 'social', sourceFactIds: [...sourceFactIds],
+        risks: [], domain: 'social', sourceFactIds: [...new Set([
+          ...sourceFactIds,
+          ...collectivePractice.sourceFactIds,
+        ])],
       });
     }
   }
 
-  return options;
+  return applyContextualSocialAttention(person, options, atMonth);
 }

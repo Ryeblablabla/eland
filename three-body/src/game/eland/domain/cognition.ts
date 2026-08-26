@@ -39,11 +39,19 @@ export function createCognitionState(): CognitionState {
 /** Read-only callers get an empty prior without mutating a legacy state. */
 export function cognitionStateOf(person: PersonState): CognitionState {
   if (person.cognition?.version !== COGNITION_VERSION) return createCognitionState();
+  const socialLearning = person.cognition.socialLearning?.version === 'social-learning-v1'
+    ? {
+        ...person.cognition.socialLearning,
+        beliefs: person.cognition.socialLearning.beliefs ?? [],
+        coordinationPractices: person.cognition.socialLearning.coordinationPractices ?? [],
+      }
+    : undefined;
   return {
     ...person.cognition,
     outcomeBeliefs: person.cognition.outcomeBeliefs ?? [],
     goalOutcomeBeliefs: person.cognition.goalOutcomeBeliefs ?? [],
     needResolutionEpisodes: person.cognition.needResolutionEpisodes ?? [],
+    ...(socialLearning ? { socialLearning } : {}),
   };
 }
 
@@ -53,6 +61,10 @@ export function ensureCognitionState(person: PersonState): CognitionState {
   person.cognition.outcomeBeliefs ??= [];
   person.cognition.goalOutcomeBeliefs ??= [];
   person.cognition.needResolutionEpisodes ??= [];
+  if (person.cognition.socialLearning?.version === 'social-learning-v1') {
+    person.cognition.socialLearning.beliefs ??= [];
+    person.cognition.socialLearning.coordinationPractices ??= [];
+  }
   return person.cognition;
 }
 

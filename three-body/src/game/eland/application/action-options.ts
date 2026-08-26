@@ -113,6 +113,14 @@ import {
   peopleWithinVoiceRange,
   positionsWithinVoiceRange,
 } from '../domain/social-space';
+import {
+  actionOptionSemantics,
+  assertClassifiedActionOption,
+  classifyActionOption,
+  defineActionOptionSemantics,
+  isCommitmentActionOption,
+  isRequiredResponseOption,
+} from '../domain/action-option-semantics';
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -238,11 +246,20 @@ function optionForDrop(state: SimulationState, person: PersonState, drop: DropSt
     target: { kind: 'drop', dropId: drop.id },
     estimatedDuration: person.position.cellId === drop.cellId && person.position.z === dropZ ? 'one-month' : 'several-months',
     sourceFactIds: drop.sourceEventIds,
+    semantics: defineActionOptionSemantics(awareEstate
+      ? {
+          purpose: 'mortuary-care',
+          minimumLifeStage: 'learning-child',
+          needKinds: ['bereavement'],
+        }
+      : {
+          purpose: 'resource',
+          minimumLifeStage: 'learning-child',
+          needKinds: ['reserve'],
+        }),
   };
 }
 
-const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|reproduce|demonstrate-technique|withdraw-reproduce):/;
 const FAILURE_MEMORY_PREFIXES = [
   'memory:intent-opening-failed:',
   'memory:intent-review-due:',
@@ -502,7 +519,7 @@ export function isFailureRetryCoolingDown(
   atMonth: number,
   prepared = buildFailureRetryContext(state, person, atMonth),
 ): boolean {
-  if (REQUIRED_SOCIAL_RESPONSE.test(option.id) || FULFILLMENT_OPTION.test(option.id)) return false;
+  if (isRequiredResponseOption(option) || isCommitmentActionOption(option)) return false;
   let regularBasis: string | undefined;
   let openingBasis: string | undefined;
   let regularActionBasis: string | undefined;
@@ -660,8 +677,8 @@ function withPlanning(
 }
 
 function decisionOptionPriority(option: ActionOption): number {
-  if (REQUIRED_SOCIAL_RESPONSE.test(option.id)) return 0;
-  if (FULFILLMENT_OPTION.test(option.id)) return 1;
+  if (isRequiredResponseOption(option)) return 0;
+  if (isCommitmentActionOption(option)) return 1;
   return option.domain === 'strategic' ? 2 : 3;
 }
 
@@ -837,6 +854,11 @@ function buildOptions(
     },
     estimatedDuration: 'one-month',
     sourceFactIds: [],
+    semantics: defineActionOptionSemantics({
+      purpose: 'spatial-comfort',
+      minimumLifeStage: 'adult',
+      needKinds: ['spatial-comfort'],
+    }),
   });
   const foodStack = person.inventory.find((stack) => materialHas(stack.materialId, 'edible') && stack.quantity > 0);
   if (foodStack && person.body.nutrition < 88) options.push({
@@ -1130,6 +1152,9 @@ function buildOptions(
         target: { kind: 'voxel', position },
         estimatedDuration: 'several-months',
         sourceFactIds: [],
+        semantics: defineActionOptionSemantics({
+          purpose: 'resource', minimumLifeStage: 'learning-child', needKinds: ['reserve', 'capability'],
+        }),
       });
     }
     if (surface === Material.CropMature || surface === Material.BerryBush) options.push({
@@ -1143,6 +1168,9 @@ function buildOptions(
       target: { kind: 'voxel', position },
       estimatedDuration: 'several-months',
       sourceFactIds: [],
+      semantics: defineActionOptionSemantics({
+        purpose: 'resource', minimumLifeStage: 'learning-child', needKinds: ['reserve'],
+      }),
     });
   }
 
@@ -1381,6 +1409,15 @@ function buildOptions(
         target: { kind: 'person', personId: offerer.id },
         estimatedDuration: together ? 'one-month' : 'several-months',
         sourceFactIds: [incomingExchange.fact.id],
+        semantics: defineActionOptionSemantics({
+          obligation: 'required-response', planningChannel: 'edge',
+          purpose: 'social-coordination', minimumLifeStage: 'adolescent',
+          needKinds: ['autonomy', 'reserve'], edgeTrigger: 'required-response',
+          socialContext: {
+            cooperationKind: 'exchange', phase: 'response', counterpartIds: [offerer.id],
+            referenceId: incomingExchange.content.id, materialId: proposal.partnerMaterialId,
+          },
+        }),
       });
       const rejectId = `reject:${incomingExchange.content.id}:${person.id}`;
       const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingExchange.content.id }, audience: [offerer.id], channel: 'voice' as const };
@@ -1392,6 +1429,15 @@ function buildOptions(
         nextAction: together ? rejectAction : { kind: 'move', toCellId: offerer.position.cellId, toZ: offerer.position.z },
         ...(!together ? { completionAction: rejectAction } : {}),
         target: { kind: 'person', personId: offerer.id }, estimatedDuration: together ? 'one-month' : 'several-months', sourceFactIds: [incomingExchange.fact.id],
+        semantics: defineActionOptionSemantics({
+          obligation: 'required-response', planningChannel: 'edge',
+          purpose: 'social-coordination', minimumLifeStage: 'adolescent',
+          needKinds: ['autonomy'], edgeTrigger: 'required-response',
+          socialContext: {
+            cooperationKind: 'exchange', phase: 'response', counterpartIds: [offerer.id],
+            referenceId: incomingExchange.content.id, materialId: proposal.partnerMaterialId,
+          },
+        }),
       });
     }
   }
@@ -1415,6 +1461,18 @@ function buildOptions(
       target: { kind: 'person', personId: receiverId },
       estimatedDuration: 'one-month',
       sourceFactIds: [acceptedExchange.offer.id, acceptedExchange.acceptance.id],
+      semantics: defineActionOptionSemantics({
+        obligation: 'commitment-action',
+        planningChannel: 'edge',
+        purpose: 'social-coordination',
+        minimumLifeStage: 'adolescent',
+        needKinds: ['commitment', 'reserve'],
+        edgeTrigger: 'commitment-action',
+        socialContext: {
+          cooperationKind: 'exchange', phase: 'fulfillment', counterpartIds: [receiverId],
+          referenceId: acceptedExchange.offer.id, materialId,
+        },
+      }),
     });
   }
 
@@ -1497,6 +1555,9 @@ function buildOptions(
     target: { kind: 'person', personId: injured.id },
     estimatedDuration: 'one-month',
     sourceFactIds: [...fiber.sourceEventIds, ...injured.conditions.flatMap((condition) => condition.sourceEventIds)],
+    semantics: defineActionOptionSemantics({
+      purpose: 'care', minimumLifeStage: 'learning-child', needKinds: ['care'],
+    }),
   });
 
   const activeReproductionAgreement = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'active'
@@ -1537,6 +1598,19 @@ function buildOptions(
       target: { kind: 'person', personId: activeReproductionPartner.id },
       estimatedDuration: together ? 'one-month' : 'several-months',
       sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
+      semantics: defineActionOptionSemantics({
+        obligation: 'commitment-action',
+        planningChannel: 'edge',
+        purpose: 'reproduction',
+        minimumLifeStage: 'adult',
+        needKinds: ['commitment', 'generativity', 'autonomy'],
+        reproduction: { direction: 'refuse', phase: 'withdrawal', mode: 'mutual' },
+        edgeTrigger: 'commitment-action',
+        socialContext: {
+          cooperationKind: 'reproduction', phase: 'withdrawal',
+          counterpartIds: [activeReproductionPartner.id], referenceId: activeReproductionAgreement.id,
+        },
+      }),
     });
     if (!reproductionAttemptedBetweenInMonth(state, person.id, activeReproductionPartner.id, atMonth)
       && reproductivePairEligible(person, activeReproductionPartner, atMonth)) {
@@ -1583,6 +1657,16 @@ function buildOptions(
         estimatedDuration: together ? 'one-month' : 'several-months',
         sourceFactIds: responseSourceFactIds,
         relationshipBasis: responseBasis,
+        semantics: defineActionOptionSemantics({
+          obligation: 'required-response', planningChannel: 'edge',
+          purpose: 'reproduction', minimumLifeStage: 'adult',
+          needKinds: ['autonomy', 'generativity'], edgeTrigger: 'required-response',
+          reproduction: { direction: 'proceed', phase: 'response', mode: 'mutual' },
+          socialContext: {
+            cooperationKind: 'reproduction', phase: 'response', counterpartIds: [proposer.id],
+            referenceId: incomingOffer.content.id,
+          },
+        }),
       });
       const rejectId = `reject:${incomingOffer.content.id}:${person.id}`;
       const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
@@ -1601,6 +1685,16 @@ function buildOptions(
         estimatedDuration: together ? 'one-month' : 'several-months',
         sourceFactIds: responseSourceFactIds,
         relationshipBasis: responseBasis,
+        semantics: defineActionOptionSemantics({
+          obligation: 'required-response', planningChannel: 'edge',
+          purpose: 'reproduction', minimumLifeStage: 'adult',
+          needKinds: ['autonomy', 'generativity'], edgeTrigger: 'required-response',
+          reproduction: { direction: 'refuse', phase: 'response', mode: 'mutual' },
+          socialContext: {
+            cooperationKind: 'reproduction', phase: 'response', counterpartIds: [proposer.id],
+            referenceId: incomingOffer.content.id,
+          },
+        }),
       });
     }
   }
@@ -1913,8 +2007,11 @@ function buildOptions(
   const pathCache = new Map<string, ReturnType<typeof findStandingPath>>();
   return [...new Map(options.map((option) => [option.id, option])).values()]
     .flatMap((option) => {
-      const planned = withPlanning(state, person, option, atMonth, failureRetryContext, pathCache);
-      return planned ? [planned] : [];
+      const classified = classifyActionOption(option);
+      const planned = withPlanning(state, person, classified, atMonth, failureRetryContext, pathCache);
+      if (!planned) return [];
+      assertClassifiedActionOption(planned);
+      return [planned];
     });
 }
 
@@ -1943,7 +2040,12 @@ export function buildDecisionContext(
   const planningPerson = personById(planningState, person.id) ?? person;
   const stage = lifePlanningStage(person, atMonth);
   const allOptions = buildOptions(planningState, planningPerson, visibleCells, visibleDrops, visiblePeople, visibleAnimals, visibleRemains, atMonth)
-    .filter((option) => !option.id.startsWith('eat:') && !option.id.startsWith('drink:'))
+    .filter((option) => {
+      const action = option.completionAction ?? option.nextAction;
+      return !(actionOptionSemantics(option).purpose === 'homeostasis'
+        && action.kind === 'act'
+        && action.operation === 'ingest');
+    })
     .filter((option) => optionAllowedForLifeStage(stage, option))
     .filter((option) => stage !== 'learning-child' || optionAllowedForLearningChildCareRadius(state, person, option))
     .sort((a, b) => decisionOptionPriority(a) - decisionOptionPriority(b) || a.id.localeCompare(b.id));
@@ -1954,7 +2056,7 @@ export function buildDecisionContext(
       && followUpOptions.some((followUp) => followUpSemanticallyMatches(option, followUp))
       ? { ...option, requiresFollowUp: true }
       : { ...option, requiresFollowUp: false });
-  const requiredSocialResponses = options.filter((option) => REQUIRED_SOCIAL_RESPONSE.test(option.id));
+  const requiredSocialResponses = options.filter(isRequiredResponseOption);
   const observedEmergencyHibernation = options.filter((option) => (
     isObservedEmergencyHibernationOption(state, person, option)
   ));

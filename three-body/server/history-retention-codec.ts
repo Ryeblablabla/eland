@@ -16,6 +16,8 @@ import {
   HISTORY_RETENTION_MAX_GROUNDED_RESPONSE_UNIQUE_EVENT_IDS,
   HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_PER_PERSON,
   HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_TOTAL,
+  HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON,
+  HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL,
   HISTORY_RETENTION_MAX_LIVE_PROJECT_PRESSURE_SOURCE_EVENT_IDS,
   HISTORY_RETENTION_MAX_FUTURE_FAMILY_STORED_FOOD_SOURCE_EVENT_IDS,
   HISTORY_RETENTION_MAX_FUTURE_SOCIAL_REPETITION_SOURCE_EVENT_IDS,
@@ -48,6 +50,7 @@ import {
   historyRetentionRequirementPinsResolvedEvents,
   parseGroundedConversationResponseSourceLeaseKey,
   parseRecentTerminalFailureActionLeaseKey,
+  parseSocialLearningSourceLeaseKey,
   productionWindowMonthFromDemandGroups,
 } from './history-retention-projection';
 import {
@@ -573,6 +576,9 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
   let recentTerminalFailureGroupCount = 0;
   let recentTerminalFailureEventIdCount = 0;
   const recentTerminalFailureOwnerIds = new Set<string>();
+  let socialLearningGroupCount = 0;
+  let socialLearningEventIdMembershipCount = 0;
+  const socialLearningObserverIds = new Set<string>();
   for (let index = 0; index < value.groups.length; index += 1) {
     const candidate = value.groups[index];
     const label = `retention continuation sourceDemand.groups[${index}]`;
@@ -628,6 +634,18 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
       }
       recentTerminalFailureOwnerIds.add(recentTerminalFailure.ownerId);
       recentTerminalFailureEventIdCount += eventIds.length;
+    }
+    const socialLearning = parseSocialLearningSourceLeaseKey(candidate.groupKey);
+    if (socialLearning) {
+      socialLearningGroupCount += 1;
+      socialLearningEventIdMembershipCount += eventIds.length;
+      if (candidate.requirement !== 'all'
+        || leaseKeys.length !== 1
+        || leaseKeys[0] !== candidate.groupKey
+        || eventIds.length > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_PER_PERSON) {
+        throw new Error(`${label} 的 social learning sources 无效或超界`);
+      }
+      socialLearningObserverIds.add(socialLearning.observerId);
     }
     if (candidate.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
       && (candidate.requirement !== 'audit-only'
@@ -690,6 +708,11 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
       > HISTORY_RETENTION_MAX_RECENT_TERMINAL_FAILURE_EVENT_IDS_TOTAL) {
     throw new Error('retention continuation recent terminal failure action leases 超出有界上限');
   }
+  if (socialLearningGroupCount > HISTORY_RETENTION_MAX_LIVE_GAMEPLAY_SELECTOR_PERSONS
+    || socialLearningEventIdMembershipCount
+      > HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL) {
+    throw new Error('retention continuation social learning source leases 超出有界上限');
+  }
   const millLaborPersonIds = assertStringArray(
     value.millLaborPersonIds,
     'retention continuation sourceDemand.millLaborPersonIds',
@@ -701,6 +724,9 @@ function normalizeSourceDemand(value: unknown): HistoryRetentionContinuationDema
   const livingPersonIds = new Set(millLaborPersonIds);
   if ([...recentTerminalFailureOwnerIds].some((ownerId) => !livingPersonIds.has(ownerId))) {
     throw new Error('retention continuation recent terminal failure owner 不属于存活人物');
+  }
+  if ([...socialLearningObserverIds].some((observerId) => !livingPersonIds.has(observerId))) {
+    throw new Error('retention continuation social learning observer 不属于存活人物');
   }
   const pendingEraPredictionIds = assertStringArray(
     value.pendingEraPredictionIds,

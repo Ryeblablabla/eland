@@ -67,6 +67,21 @@ try {
     id: 'accept-companion:weaver-proposal',
     summary: '接受织女今后一段时间结伴行动的提议',
     reason: '织女此前在世界内提出了结伴邀请',
+    semantics: {
+      version: 'action-option-semantics-v1',
+      obligation: 'required-response',
+      planningChannel: 'edge',
+      purpose: 'social-coordination',
+      minimumLifeStage: 'adolescent',
+      needKinds: ['belonging'],
+      edgeTrigger: 'required-response',
+      socialContext: {
+        cooperationKind: 'companion',
+        phase: 'response',
+        counterpartIds: ['weaver'],
+        referenceId: 'weaver-proposal',
+      },
+    },
   };
   const pendingCompanionContext = {
     ...initialContext,

@@ -12,6 +12,7 @@ const simulationBundlePath = path.join(temporaryDirectory, 'simulation.mjs');
 try {
   const testEntry = `
     export { optionAllowedForLifeStage } from ${JSON.stringify(path.resolve('src/game/eland/application/age-planning.ts'))};
+    export { classifyActionOption } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-option-semantics.ts'))};
     export { lifePlanningStageForAge } from ${JSON.stringify(path.resolve('src/game/eland/domain/life-stage.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
     export { findStandingPath, neighbors4 } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
@@ -20,7 +21,7 @@ try {
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
     '--sourcefile=age-planning-test-entry.ts', `--outfile=${bundlePath}`,
   ], { input: testEntry, stdio: ['pipe', 'pipe', 'pipe'] });
-  const { executePrimitiveAction, findStandingPath, lifePlanningStageForAge, neighbors4, optionAllowedForLifeStage } = await import(
+  const { classifyActionOption, executePrimitiveAction, findStandingPath, lifePlanningStageForAge, neighbors4, optionAllowedForLifeStage } = await import(
     `${pathToFileURL(bundlePath).href}?test=${Date.now()}`
   );
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -37,20 +38,34 @@ try {
   assert.equal(lifePlanningStageForAge(12 * 12), 'adolescent-worker');
   assert.equal(lifePlanningStageForAge(16 * 12), 'adult');
 
-  const option = (id, extra = {}) => ({
+  const option = (id, extra = {}, semanticOverride = {}) => classifyActionOption({
     id, summary: id, reason: id,
     goal: { kind: 'at-cell', cellId: 1 },
     nextAction: { kind: 'move', toCellId: 1 },
     estimatedDuration: 'one-month', sourceFactIds: [], ...extra,
+  }, semanticOverride);
+  const collect = option('collect:food', {}, {
+    purpose: 'resource', minimumLifeStage: 'learning-child', needKinds: ['reserve'],
   });
-  const collect = option('collect:food');
   const drink = option('drink:1:1:1', { nextAction: { kind: 'act', operation: 'ingest', targets: [] } });
-  const gatherWood = option('separate:wood:1', { nextAction: { kind: 'act', operation: 'separate', targets: [] } });
+  const gatherWood = option('separate:wood:1', { nextAction: { kind: 'act', operation: 'separate', targets: [] } }, {
+    purpose: 'resource', minimumLifeStage: 'learning-child', needKinds: ['reserve', 'capability'],
+  });
   const observe = option('attend:stone', { nextAction: { kind: 'attend', target: { kind: 'voxel', position: { x: 1, y: 1, z: 1 } } } });
   const transformation = option('try-combine:seed:soil');
   const projectWork = option('project:kiln:place', { projectId: 'kiln-project' });
   const projectProposal = option('project-proposal', { projectProposal: {} });
-  const reproduction = option('offer-reproduce:person-a:person-b', { domain: 'social' });
+  const reproduction = option('offer-reproduce:person-a:person-b', {
+    domain: 'social', target: { kind: 'person', personId: 'person-b' },
+    goal: { kind: 'representation-made', representationId: 'reproduction-offer' },
+    nextAction: {
+      kind: 'communicate', channel: 'voice', audience: ['person-b'],
+      content: {
+        id: 'reproduction-offer', kind: 'offer', summary: '共同生殖提议',
+        proposal: { kind: 'reproduce', proposerId: 'person-a', partnerId: 'person-b', expiresAtMonth: 12 },
+      },
+    },
+  });
 
   assert.equal(optionAllowedForLifeStage('dependent-child', collect), false, '未满 1 岁不发起普通规划');
   assert.equal(optionAllowedForLifeStage('learning-child', collect), true, '1–11 岁可以采集');
@@ -148,6 +163,7 @@ try {
   const afterTwelveYearBoundary = stepSimulation(twelveYearState, {
     decide(context) {
       if (context.person.id !== twelveYearTeacher.id) return { kind: 'idle', reason: '不干扰十二岁边界测试' };
+      if (twelveYearContextSeen) return { kind: 'idle', reason: '首个边界候选已验证，不重复要求同月教学' };
       twelveYearContextSeen = true;
       assert.ok(context.options.every((candidate) => optionAllowedForLifeStage('adolescent-worker', candidate)),
         '满 12 岁提交月的候选必须全部服从 adolescent-worker 权限');
@@ -216,6 +232,7 @@ try {
   const afterSixteenYearBoundary = stepSimulation(sixteenYearState, {
     decide(context) {
       if (context.person.id !== sixteenYearFemale.id) return { kind: 'idle', reason: '不干扰十六岁边界测试' };
+      if (sixteenYearContextSeen) return { kind: 'idle', reason: '首个边界候选已验证，不重复要求同月接受' };
       sixteenYearContextSeen = true;
       assert.ok(context.options.every((candidate) => optionAllowedForLifeStage('adult', candidate)),
         '满 16 岁提交月的候选必须服从 adult 权限');

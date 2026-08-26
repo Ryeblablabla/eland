@@ -42,6 +42,7 @@ import {
 import { ordinaryLearningChildActionAllowed } from '../age-planning';
 import { compileAgreementContinuations, type AgreementContinuation } from '../agreement-continuation';
 import { evaluateCognitiveOption } from '../cognition/option-appraisal';
+import { deliberate, takeDecisionDeliberation } from '../cognition/bdi-deliberation';
 import {
   ensureProject,
   recordProjectAction,
@@ -49,6 +50,7 @@ import {
 } from '../project-options';
 import { isFulfillmentOption, isRequiredSocialOption, isStateAchievementGoal } from '../rule-planner';
 import { clamp } from './state-utils';
+import { actionOptionSemantics, isEdgeActionOption } from '../../domain/action-option-semantics';
 
 const MAX_REPRODUCTION_AUDIT_SOURCE_FACTS = 32;
 
@@ -629,13 +631,19 @@ export function applyDecision(
   const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
     ? context.options.find((option) => option.id === decision.optionId)
     : undefined;
-  const selectedReproductionOption = selectedOption && (
-    selectedOption.id.startsWith('offer-reproduce:')
-      || selectedOption.id.startsWith('accept-reproduce:')
-      || selectedOption.id.startsWith('reject-reproduce:')
-      || selectedOption.id.startsWith('reproduce:')
-      || selectedOption.id.startsWith('withdraw-reproduce:')
-  ) ? selectedOption : undefined;
+  const selectedReproductionOption = selectedOption
+    && actionOptionSemantics(selectedOption).reproduction
+    ? selectedOption
+    : undefined;
+  const selectionTimeDeliberation = selectedOption
+    ? takeDecisionDeliberation(decision, person.id, { atMonth, planningTick })
+    : undefined;
+  const selectedForesightDeliberation = selectedOption
+    && actionOptionSemantics(selectedOption).obligation === 'optional'
+    ? selectionTimeDeliberation ?? deliberate(context, context.options, { atMonth, planningTick })
+    : undefined;
+  const selectedForesight = selectedForesightDeliberation?.foresight.options
+    .find((item) => item.optionId === selectedOption?.id);
   const selectedCognitiveAppraisal = selectedReproductionOption
     ? evaluateCognitiveOption(context, selectedReproductionOption, { atMonth, planningTick })
     : undefined;
@@ -717,8 +725,7 @@ export function applyDecision(
       reproductionEvidence: {
         version: 'family-readiness-v2' as const,
         optionId: selectedCognitiveAppraisal.option.id,
-        direction: selectedCognitiveAppraisal.option.id.startsWith('reject-reproduce:')
-          || selectedCognitiveAppraisal.option.id.startsWith('withdraw-reproduce:')
+        direction: actionOptionSemantics(selectedCognitiveAppraisal.option).reproduction?.direction === 'refuse'
           ? 'withdraw' as const
           : 'proceed' as const,
         generativityUrgency: selectedCognitiveAppraisal.generativityUrgency,
@@ -742,6 +749,24 @@ export function applyDecision(
         sourceFactIds: [...selectedCognitiveAppraisal.sourceFactIds],
       },
     } : {}),
+    ...(selectedOption && selectedForesightDeliberation ? {
+      foresightEvidence: {
+        version: 'bounded-foresight-decision-v1' as const,
+        selectedOptionId: selectedOption.id,
+        selectedWasExpanded: Boolean(selectedForesight),
+        changedLocalSelection: selectedForesightDeliberation.foresight.changedSelection,
+        selectedMatchesAdjustedChoice: selectedForesightDeliberation.foresight.adjustedSelectedOptionId
+          === selectedOption.id,
+        rootCount: selectedForesightDeliberation.foresight.audit.rootCount,
+        expandedNodes: selectedForesightDeliberation.foresight.audit.expandedNodes,
+        maxDepth: selectedForesightDeliberation.foresight.audit.maxDepth,
+        budgetCutoff: selectedForesightDeliberation.foresight.audit.budgetCutoff,
+        expectedValue: selectedForesight?.expectedValue ?? 0,
+        valueOfInformation: selectedForesight?.valueOfInformation ?? 0,
+        adjustment: selectedForesight?.adjustment ?? 0,
+        ...boundedAuditSourceFacts(selectedForesight?.sourceFactIds ?? []),
+      },
+    } : {}),
     usedModel,
     result,
   };
@@ -753,15 +778,8 @@ export function decisionPlanningChannel(
   decision: Decision,
 ): NonNullable<DecisionFact['planningChannel']> {
   const isEdgeOption = (option: ActionOption): boolean => Boolean(
-    option.recordUseBasis
-    || isRequiredSocialOption(option)
-    || isFulfillmentOption(option)
+    isEdgeActionOption(option)
     || isObservedEmergencyHibernationOption(context.state, context.person, option)
-    || option.id.startsWith('demonstrate-technique:')
-    || option.id.startsWith('respond-conversation:')
-    || (option.nextAction.kind === 'communicate'
-      && option.nextAction.content.kind === 'claim'
-      && Boolean(option.nextAction.content.projectKnowledgeResponse)),
   );
   if (decision.kind === 'idle') return context.options.some(isEdgeOption) ? 'edge' : 'ordinary';
   if (decision.kind !== 'start' && decision.kind !== 'revise') return 'ordinary';

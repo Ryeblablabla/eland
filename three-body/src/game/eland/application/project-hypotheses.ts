@@ -1,10 +1,9 @@
+import { MATERIAL_PALETTE, type MaterialId } from '../domain/material';
 import {
-  Material,
-  MATERIAL_PALETTE,
-  materialDefinition,
-  type MaterialId,
-  type MaterialTag,
-} from '../domain/material';
+  perceiveMaterial,
+  type MaterialPerceptionAccess,
+  type PerceivedMaterialProfile,
+} from '../domain/material-perception';
 import type { ActionFact, DropState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 import {
@@ -17,10 +16,16 @@ import type {
   ProjectHypothesisCandidate,
   ProjectHypothesisOperation,
   ProjectHypothesisQuestionKind,
+  ProjectHypothesisRankBasis,
   ProjectInquiryOpportunitySource,
   ProjectState,
 } from '../domain/project';
 import { seededFraction } from '../world/generator';
+import {
+  assessMaterialRole,
+  materialQuestionFor,
+  type MaterialRoleAssessment,
+} from './project-material-questions';
 
 export const PROJECT_HYPOTHESIS_ATTEMPT_BUDGET = 7;
 export const PROJECT_HYPOTHESIS_NO_RESPONSE_BUDGET = 4;
@@ -52,6 +57,10 @@ interface LocalMaterialEvidence {
 
 interface RoleScoreBasis {
   score: number;
+  requiredRoleFit: number;
+  learnedEvidence: number;
+  informationRelevance: number;
+  optionalTraitFit: number;
   reasonKeys: string[];
   sourceFactIds: string[];
   sourceKey?: string;
@@ -70,74 +79,15 @@ interface DirectionalRoleExperience {
   sourceFactIds: string[];
 }
 
+interface CombineRoleExperience {
+  score: number;
+  reasonKeys: string[];
+  sourceFactIds: string[];
+}
+
 type NormalizedProjectHypothesisRequest = Omit<ProjectHypothesisRequest, 'questionKind'> & {
   questionKind: ProjectHypothesisQuestionKind;
 };
-
-function projectMaterialFocus(project: ProjectState): Array<{
-  operation: ProjectHypothesisOperation;
-  materials: [MaterialId, MaterialId];
-  targetMaterialIds?: MaterialId[];
-}> {
-  const combine = (...materials: Array<[MaterialId, MaterialId]>) => materials.map((pair) => ({
-    operation: 'combine-inventory' as const,
-    materials: [...pair].sort((left, right) => left - right) as [MaterialId, MaterialId],
-  }));
-  // A reliability inquiry is opened by repeated physical failure, not by
-  // knowing a better material route. Its unknown trials receive no recipe or
-  // target bonus; ordinary entity evidence and seeded ranking must select them.
-  if (project.desiredFunction === 'durable-power-transmission'
-    || project.desiredFunction === 'remote-work-power-delivery'
-    || project.desiredFunction === 'comparable-mass-measurement') return [];
-  if (project.desiredFunction === 'efficient-production') return combine(
-    [Material.Wood, Material.Rope], [Material.StoneTool, Material.Plank],
-  );
-  if (project.desiredFunction === 'workshop-production') return combine([Material.Plank, Material.WoodTablet]);
-  if (project.desiredFunction === 'crop-processing') return combine([Material.Stone, Material.Plank]);
-  if (project.desiredFunction === 'community-coordination') return combine([Material.Plank, Material.Rope]);
-  if (project.desiredFunction === 'high-heat-processing') return combine([Material.Clay, Material.Stone]);
-  if (project.desiredFunction === 'copper-charge') return [
-    ...combine([Material.CopperOre, Material.Charcoal]),
-    { operation: 'expose-local', materials: [Material.Wood, Material.Kiln], targetMaterialIds: [Material.Fire, Material.Kiln, Material.Foundry] },
-  ];
-  if (project.desiredFunction === 'tin-charge') return [
-    ...combine([Material.TinOre, Material.Charcoal]),
-    { operation: 'expose-local', materials: [Material.Wood, Material.Kiln], targetMaterialIds: [Material.Fire, Material.Kiln, Material.Foundry] },
-  ];
-  if (project.desiredFunction === 'bronze-alloying') return combine([Material.Copper, Material.Tin]);
-  if (project.desiredFunction === 'bronze-tooling') return combine([Material.Bronze, Material.Wood]);
-  if (project.desiredFunction === 'bronze-workshop') return combine([Material.Bronze, Material.Stone]);
-  if (project.desiredFunction === 'civic-coordination') return combine([Material.FiredBrick, Material.WoodTablet]);
-  if (project.desiredFunction === 'iron-workshop') return combine([Material.Bronze, Material.FiredBrick]);
-  if (project.desiredFunction === 'iron-charge') return combine([Material.IronOre, Material.Charcoal]);
-  if (project.desiredFunction === 'iron-working') return combine([Material.IronBloom, Material.Charcoal]);
-  if (project.desiredFunction === 'iron-tooling') return combine([Material.Iron, Material.Wood]);
-  if (project.desiredFunction === 'fortified-coordination') return combine([Material.Iron, Material.FiredBrick]);
-  if (project.desiredFunction === 'brick-firing') return [{
-    operation: 'expose-local', materials: [Material.Clay, Material.Kiln], targetMaterialIds: [Material.Fire, Material.Kiln, Material.Foundry],
-  }];
-  if (project.desiredFunction === 'copper-smelting') return [{
-    operation: 'expose-local', materials: [Material.CopperCharge, Material.Kiln], targetMaterialIds: [Material.Kiln, Material.Foundry],
-  }];
-  if (project.desiredFunction === 'tin-smelting') return [{
-    operation: 'expose-local', materials: [Material.TinCharge, Material.Kiln], targetMaterialIds: [Material.Kiln, Material.Foundry],
-  }];
-  if (project.desiredFunction === 'iron-reduction') return [{
-    operation: 'expose-local', materials: [Material.IronCharge, Material.Smithy], targetMaterialIds: [Material.Smithy],
-  }];
-  return [];
-}
-
-function candidateMatchesProjectFocus(project: ProjectState, candidate: ProjectHypothesisCandidate): boolean {
-  return projectMaterialFocus(project).some((focus) => {
-    if (focus.operation !== candidate.operation) return false;
-    if (candidate.operation === 'combine-inventory') {
-      return focus.materials[0] === candidate.materialIds[0] && focus.materials[1] === candidate.materialIds[1];
-    }
-    return candidate.inputMaterialId === focus.materials[0]
-      && Boolean(candidate.targetMaterialId !== undefined && focus.targetMaterialIds?.includes(candidate.targetMaterialId));
-  });
-}
 
 function mergeEvidence(
   map: Map<MaterialId, LocalMaterialEvidence>,
@@ -217,16 +167,6 @@ function experimentEvidence(
   return evidence.filter((item) => !protectedMaterialIds.has(item.materialId));
 }
 
-function hasTag(materialId: MaterialId, tag: MaterialTag): boolean {
-  return materialDefinition(materialId).tags.includes(tag);
-}
-
-function addReason(reasons: string[], condition: boolean, key: string): number {
-  if (!condition) return 0;
-  reasons.push(key);
-  return 1;
-}
-
 function rounded(score: number): number {
   return Math.round(score * 100) / 100;
 }
@@ -240,13 +180,7 @@ function questionKindFor(
   project: ProjectState,
   operation: ProjectHypothesisOperation,
 ): ProjectHypothesisQuestionKind {
-  if (operation === 'expose-local') return 'transform-subject-with-observed-heat';
-  if (operation === 'exert-air') return project.desiredFunction === 'prepared-food'
-    ? 'seek-local-heat'
-    : 'shape-portable-surface';
-  return project.desiredFunction === 'insulation' || project.desiredFunction === 'healing'
-    ? 'connect-flexible-layers'
-    : 'connect-manipulator-shapes';
+  return materialQuestionFor(project.desiredFunction, operation).kind;
 }
 
 function questionSourceFactIds(project: ProjectState): string[] {
@@ -261,18 +195,6 @@ function questionSourceKey(project: ProjectState, questionKind: ProjectHypothesi
 }
 
 const REGISTERED_MATERIAL_IDS = new Set(MATERIAL_PALETTE.map((material) => material.id));
-const REPEATABLE_REFERENCE_METALS = new Set<MaterialId>([
-  Material.Copper,
-  Material.Bronze,
-  Material.Iron,
-]);
-const REPEATABLE_REFERENCE_MARKERS = new Set<MaterialId>([Material.Fiber, Material.Rope]);
-const FLOW_DRIVEN_ROTOR_MEMBERS = new Set<MaterialId>([Material.Wood, Material.Plank]);
-const RIGID_ROTATING_CONNECTOR_METALS = new Set<MaterialId>([
-  Material.Copper,
-  Material.Bronze,
-  Material.Iron,
-]);
 
 function exactMaterialIds(factId: string, pattern: RegExp): number[] | null {
   const match = factId.match(pattern);
@@ -330,6 +252,28 @@ function selectedSourceKey(
   const available = availableSourceKeys(evidence, heldOnly);
   const availableSet = new Set(available);
   return preferredKeys.find((key) => availableSet.has(key)) ?? available[0];
+}
+
+function perceptionAccess(
+  sourceKey: string | undefined,
+  verifiedResponses: ReadonlyMap<string, VerifiedResponseEntity>,
+): MaterialPerceptionAccess {
+  if (sourceKey && verifiedResponses.has(sourceKey)) return 'verified';
+  return sourceKey?.startsWith('inventory:') ? 'held' : 'visible';
+}
+
+function perceivedProfile(
+  evidence: LocalMaterialEvidence,
+  sourceKey: string | undefined,
+  verifiedResponses: ReadonlyMap<string, VerifiedResponseEntity>,
+): PerceivedMaterialProfile {
+  return perceiveMaterial(evidence.materialId, perceptionAccess(sourceKey, verifiedResponses));
+}
+
+function requiredRoleFit(assessment: MaterialRoleAssessment): number {
+  if (assessment.requiredMismatched > 0) return 0;
+  if (assessment.requiredUnknown > 0) return 1;
+  return 2 + assessment.requiredMatched;
 }
 
 /**
@@ -420,6 +364,51 @@ function directionalRoleExperience(
   };
 }
 
+/** Exact attempted inputs are legitimate learned evidence; expected outputs are ignored. */
+function combineRoleExperience(
+  person: PersonState,
+  inventoryMaterialIds: readonly MaterialId[],
+): CombineRoleExperience {
+  const candidateKey = projectHypothesisCandidateKey(
+    'combine-inventory',
+    canonicalPair(inventoryMaterialIds[0], inventoryMaterialIds.at(-1)!),
+    undefined,
+    inventoryMaterialIds,
+  );
+  const exactNoResponseId = inventoryNoResponseFactId([...inventoryMaterialIds]);
+  let score = 0;
+  const reasonKeys: string[] = [];
+  const sourceFactIds: string[] = [];
+  for (const fact of person.knowledge) {
+    if (fact.kind === 'technique') {
+      const knownInputs = combineTechniqueInputs(fact.id);
+      if (!knownInputs) continue;
+      const knownKey = projectHypothesisCandidateKey(
+        'combine-inventory',
+        canonicalPair(knownInputs[0], knownInputs.at(-1)!),
+        undefined,
+        knownInputs,
+      );
+      if (knownKey !== candidateKey) continue;
+      score += fact.confidence >= 55 ? 2 : 1;
+      reasonKeys.push(fact.confidence >= 55
+        ? 'learned-verified-input-response'
+        : 'learned-tentative-input-response');
+      sourceFactIds.push(...fact.sourceEventIds);
+      continue;
+    }
+    if (fact.kind !== 'observation' || fact.id !== exactNoResponseId) continue;
+    score -= Math.min(3, Math.max(1, fact.sourceEventIds.length)) * 1.25;
+    reasonKeys.push('learned-exact-input-no-response');
+    sourceFactIds.push(...fact.sourceEventIds);
+  }
+  return {
+    score: rounded(score),
+    reasonKeys: [...new Set(reasonKeys)],
+    sourceFactIds: [...new Set(sourceFactIds)],
+  };
+}
+
 function verifiedResponseEvidence(campaign: ProjectHypothesisCampaign): Map<string, VerifiedResponseEntity> {
   const evidence = new Map<string, VerifiedResponseEntity>();
   for (const attempt of campaign.attempts) {
@@ -439,6 +428,7 @@ function verifiedResponseEvidence(campaign: ProjectHypothesisCampaign): Map<stri
 
 function toolRoleBasis(
   person: PersonState,
+  questionKind: ProjectHypothesisQuestionKind,
   evidence: LocalMaterialEvidence,
   inputMaterialId: MaterialId,
   targetMaterialId: MaterialId | undefined,
@@ -447,26 +437,32 @@ function toolRoleBasis(
   preferredSourceKeys: readonly string[] = [],
 ): RoleScoreBasis {
   const materialId = evidence.materialId;
-  const material = materialDefinition(materialId);
   const reasons: string[] = [];
   const exactVerifiedKeys = [...verifiedResponses]
     .filter(([, response]) => response.materialId === materialId)
     .map(([sourceKey]) => sourceKey);
   const sourceKey = selectedSourceKey(evidence, heldOnly, [...preferredSourceKeys, ...exactVerifiedKeys]);
   const verified = sourceKey ? verifiedResponses.get(sourceKey) : undefined;
-  let score = material.hardness * 0.75;
-  if (material.hardness >= 3) reasons.push('role-tool-hardness');
-  score += addReason(reasons, material.phase === 'solid' && hasTag(materialId, 'solid'), 'role-tool-solid') * 3;
-  score += addReason(reasons, material.mass <= 1.5, 'role-tool-portable') * 4;
-  score -= addReason(reasons, material.mass > 1.5, 'role-tool-heavy') * 2;
+  const question = materialQuestionFor('durable-record', 'exert-air', questionKind);
+  const assessment = assessMaterialRole(
+    perceivedProfile(evidence, sourceKey, verifiedResponses),
+    question.roles[0],
+  );
+  reasons.push(...assessment.reasonKeys);
   const experience = directionalRoleExperience(person, 'exert-air', materialId, inputMaterialId, targetMaterialId);
-  score += experience.toolScore;
-  if (verified && material.mass <= 1.5 && material.hardness >= 5) {
-    score += 3;
+  let learnedEvidence = experience.toolScore;
+  if (verified) {
+    learnedEvidence += 2;
     reasons.push('exact-verified-response-as-tool');
   }
+  const roleFit = requiredRoleFit(assessment);
+  const score = roleFit * 10 + learnedEvidence * 3 + assessment.optionalMatched;
   return {
     score: rounded(score),
+    requiredRoleFit: roleFit,
+    learnedEvidence: rounded(learnedEvidence),
+    informationRelevance: 0,
+    optionalTraitFit: assessment.optionalMatched,
     reasonKeys: [...new Set([...reasons, ...experience.reasonKeys.filter((key) => key.includes('tool'))])],
     sourceFactIds: [...new Set([
       ...sourceFactIdsFor(evidence, sourceKey),
@@ -486,9 +482,9 @@ function inputRoleBasis(
   verifiedResponses: ReadonlyMap<string, VerifiedResponseEntity>,
   subjectSourceKeys: ReadonlySet<string> = new Set(),
   preferredSourceKeys: readonly string[] = [],
+  roleIndex?: number,
 ): RoleScoreBasis {
   const materialId = evidence.materialId;
-  const material = materialDefinition(materialId);
   const reasons: string[] = [];
   const exactVerifiedKeys = [...verifiedResponses]
     .filter(([, response]) => response.materialId === materialId)
@@ -496,46 +492,32 @@ function inputRoleBasis(
   const preferredKeys = [...preferredSourceKeys, ...subjectSourceKeys, ...exactVerifiedKeys];
   const sourceKey = selectedSourceKey(evidence, false, preferredKeys);
   const verified = sourceKey ? verifiedResponses.get(sourceKey) : undefined;
-  let score = 0;
-  if (questionKind === 'seek-local-heat') {
-    score += addReason(reasons, hasTag(materialId, 'fiber'), 'role-input-fiber-shape') * 5;
-    score += addReason(reasons, hasTag(materialId, 'plant'), 'role-input-plant-shape') * 3;
-    score += addReason(reasons, material.mass <= 0.5, 'role-input-light') * 2;
-    score += addReason(reasons, material.hardness <= 2, 'role-input-soft') * 2;
-    score += addReason(reasons, material.phase === 'solid', 'role-input-solid-phase') * 1;
-    score -= addReason(reasons, material.hardness >= 7, 'role-input-very-hard-penalty') * 2;
-  } else if (questionKind === 'shape-portable-surface') {
-    score += addReason(reasons, material.phase === 'solid' && hasTag(materialId, 'solid'), 'role-surface-solid') * 4;
-    score += addReason(reasons, material.mass <= 1.5, 'role-surface-portable') * 3;
-    score += addReason(reasons, material.hardness >= 2 && material.hardness <= 5, 'role-surface-middle-hardness') * 4;
-    score -= addReason(reasons, material.hardness >= 7, 'role-surface-very-hard-penalty') * 2;
-  } else if (questionKind === 'connect-manipulator-shapes') {
-    score += addReason(reasons, material.phase === 'solid' && hasTag(materialId, 'solid'), 'role-input-solid-shape') * 3;
-    score += addReason(reasons, material.mass <= 1.5, 'role-input-portable-shape') * 3;
-    score += addReason(reasons, material.hardness >= 2 && material.hardness <= 5, 'role-input-middle-hardness') * 3;
-    score += addReason(reasons, hasTag(materialId, 'fiber') || hasTag(materialId, 'plant'), 'role-input-bindable-shape') * 2;
-    score += addReason(reasons, material.mass <= 0.5, 'role-input-light-shape');
-  } else if (questionKind === 'connect-flexible-layers') {
-    score += addReason(reasons, hasTag(materialId, 'fiber'), 'role-input-flexible-layer') * 4;
-    score += addReason(reasons, hasTag(materialId, 'plant'), 'role-input-plant-layer') * 2;
-    score += addReason(reasons, material.hardness <= 2, 'role-input-soft-layer') * 2;
-    score += addReason(reasons, material.mass <= 0.5, 'role-input-light-layer') * 2;
-  } else {
-    score += addReason(reasons, sourceKey !== undefined && subjectSourceKeys.has(sourceKey), 'project-source-bound-subject') * 4;
-    score += addReason(reasons, material.mass <= 1.5, 'role-input-portable-subject');
-  }
   const operation = questionKind === 'transform-subject-with-observed-heat' ? 'expose-local' : 'exert-air';
+  const question = materialQuestionFor('durable-record', operation, questionKind);
+  const role = question.roles[roleIndex ?? Math.min(1, question.roles.length - 1)];
+  const assessment = assessMaterialRole(
+    perceivedProfile(evidence, sourceKey, verifiedResponses),
+    role,
+  );
+  reasons.push(...assessment.reasonKeys);
+  const sourceBound = sourceKey !== undefined && subjectSourceKeys.has(sourceKey);
+  if (sourceBound) reasons.push('project-source-bound-subject');
   const experience = directionalRoleExperience(person, operation, toolMaterialId, materialId, targetMaterialId);
-  score += experience.inputScore;
+  let learnedEvidence = experience.inputScore;
   if (verified) {
-    score += 2;
+    learnedEvidence += 2;
     reasons.push('exact-verified-response-as-input');
   }
-  if (reasons.length === 0) reasons.push(questionKind === 'shape-portable-surface'
-    ? 'role-surface-no-observed-fit'
-    : 'role-input-no-observed-fit');
+  const roleFit = requiredRoleFit(assessment);
+  const informationRelevance = sourceBound ? 1 : 0;
+  const score = roleFit * 10 + learnedEvidence * 3 + informationRelevance * 2 + assessment.optionalMatched;
+  if (assessment.requiredMatched === 0 && assessment.optionalMatched === 0) reasons.push('role-input-no-observed-fit');
   return {
     score: rounded(score),
+    requiredRoleFit: roleFit,
+    learnedEvidence: rounded(learnedEvidence),
+    informationRelevance,
+    optionalTraitFit: assessment.optionalMatched,
     reasonKeys: [...new Set([...reasons, ...experience.reasonKeys.filter((key) => key.includes('input') || key.includes('exact'))])],
     sourceFactIds: [...new Set([
       ...experience.sourceFactIds,
@@ -544,17 +526,6 @@ function inputRoleBasis(
     ])],
     ...(sourceKey ? { sourceKey } : {}),
   };
-}
-
-/** Uses coarse observable affordances only; it deliberately has no access to interaction rules. */
-function flexibleLayerAffordanceScore(materialId: MaterialId, reasons: string[]): number {
-  const material = materialDefinition(materialId);
-  return (
-    addReason(reasons, hasTag(materialId, 'fiber'), 'flexible-fiber') * 6
-    + addReason(reasons, hasTag(materialId, 'plant'), 'pliant-plant') * 2
-    + addReason(reasons, material.hardness <= 3, 'soft-to-touch') * 2
-    + addReason(reasons, material.mass <= 1.1, 'lightweight')
-  );
 }
 
 function canonicalPair(left: MaterialId, right: MaterialId): [MaterialId, MaterialId] {
@@ -582,40 +553,12 @@ export function projectHypothesisCandidateKey(
   return `expose-local:${materialIds[0]}@${targetMaterialId ?? materialIds[1]}`;
 }
 
-function pairScore(pair: [MaterialId, MaterialId]): { score: number; reasonKeys: string[] } {
-  const reasons: string[] = [];
-  const [left, right] = pair;
-  let score = flexibleLayerAffordanceScore(left, reasons)
-    + flexibleLayerAffordanceScore(right, reasons);
-  const leftDefinition = materialDefinition(left);
-  const rightDefinition = materialDefinition(right);
-  const oneFiber = hasTag(left, 'fiber') || hasTag(right, 'fiber');
-  const oneSolid = hasTag(left, 'solid') || hasTag(right, 'solid');
-  const onePlant = hasTag(left, 'plant') || hasTag(right, 'plant');
-  if (oneFiber && (oneSolid || onePlant)) {
-    score += 3;
-    reasons.push('binding-complement');
-  }
-  if (oneSolid && Math.abs(leftDefinition.hardness - rightDefinition.hardness) >= 2) {
-    score += 2;
-    reasons.push('hard-soft-complement');
-  }
-  if (Math.abs(leftDefinition.hardness - rightDefinition.hardness) >= 3) {
-    score += 2;
-    reasons.push('hardness-contrast');
-  }
-  if (left === right) {
-    score += hasTag(left, 'fiber') ? 2 : -2;
-    reasons.push('repeatable-same-material');
-  } else {
-    score += 1;
-    reasons.push('different-shapes');
-  }
-  return { score: rounded(score), reasonKeys: [...new Set(reasons)] };
-}
-
 interface ObservableAssemblyBasis {
   score: number;
+  requiredRoleFit: number;
+  learnedEvidence: number;
+  informationRelevance: number;
+  optionalTraitFit: number;
   primaryScore: number;
   secondaryScore: number;
   primaryMaterialId: MaterialId;
@@ -638,232 +581,88 @@ function assemblySourceBasis(
   };
 }
 
-/**
- * A comparison problem can suggest a symmetric suspended structure without
- * revealing which material recipe, if any, the world will accept. The roles
- * below use only current entities and coarse tangible properties.
- */
-function balancedSuspensionBasis(
+function observableAssemblyBasis(
+  questionKind: ProjectHypothesisQuestionKind,
   inventoryMaterialIds: readonly MaterialId[],
   evidence: readonly LocalMaterialEvidence[],
   subjectSourceKeys: readonly string[],
+  verifiedResponses: ReadonlyMap<string, VerifiedResponseEntity>,
 ): ObservableAssemblyBasis | null {
-  if (inventoryMaterialIds.length !== 3) return null;
+  const question = materialQuestionFor('durable-record', 'combine-inventory', questionKind);
+  if (question.roles.length !== 2) return null;
   const counts = new Map<MaterialId, number>();
-  for (const materialId of inventoryMaterialIds) {
-    counts.set(materialId, (counts.get(materialId) ?? 0) + 1);
-  }
-  if (counts.size !== 2) return null;
-  const repeatedMaterialId = [...counts].find(([, quantity]) => quantity === 2)?.[0];
-  const connectorMaterialId = [...counts].find(([, quantity]) => quantity === 1)?.[0];
-  if (repeatedMaterialId === undefined || connectorMaterialId === undefined) return null;
-  const repeated = evidence.find((item) => item.materialId === repeatedMaterialId);
-  const connector = evidence.find((item) => item.materialId === connectorMaterialId);
-  if (!repeated || !connector) return null;
-  const repeatedDefinition = materialDefinition(repeatedMaterialId);
-  const connectorDefinition = materialDefinition(connectorMaterialId);
-  if (repeatedDefinition.phase !== 'solid'
-    || !hasTag(repeatedMaterialId, 'solid')
-    || !hasTag(repeatedMaterialId, 'building')
-    || repeatedDefinition.hardness < 3
-    || repeatedDefinition.hardness > 7
-    || repeatedDefinition.mass > 1.5
-    || !hasTag(connectorMaterialId, 'fiber')
-    || connectorDefinition.hardness > 3
-    || connectorDefinition.mass > 0.5) return null;
-
+  for (const materialId of inventoryMaterialIds) counts.set(materialId, (counts.get(materialId) ?? 0) + 1);
+  const materialIds = [...counts.keys()];
   const preferred = new Set(subjectSourceKeys);
-  const repeatedSource = assemblySourceBasis(
-    repeated,
-    repeated.sourceKeys.filter((sourceKey) => preferred.has(sourceKey)),
-  );
-  const connectorSource = assemblySourceBasis(connector, []);
-  const personallyGrounded = Boolean(repeatedSource.sourceKey && preferred.has(repeatedSource.sourceKey));
-  const primaryScore = 12
-    + repeatedDefinition.hardness
-    + 4
-    + (personallyGrounded ? 6 : 0);
-  const secondaryScore = 13
-    + (connectorDefinition.mass <= 0.5 ? 3 : 0)
-    + (connectorDefinition.hardness <= 2 ? 2 : 0);
-  return {
-    score: rounded(primaryScore + secondaryScore + 8),
-    primaryScore: rounded(primaryScore),
-    secondaryScore: rounded(secondaryScore),
-    primaryMaterialId: repeatedMaterialId,
-    secondaryMaterialId: connectorMaterialId,
-    ...(repeatedSource.sourceKey ? { primarySourceKey: repeatedSource.sourceKey } : {}),
-    ...(connectorSource.sourceKey ? { secondarySourceKey: connectorSource.sourceKey } : {}),
-    reasonKeys: [
-      'role-symmetric-rigid-members',
-      'role-flexible-suspension',
-      'role-portable-balanced-assembly',
-      'role-structural-member',
-      ...(personallyGrounded ? ['project-source-bound-symmetric-member'] : []),
-    ],
-    sourceFactIds: [...new Set([
-      ...repeatedSource.sourceFactIds,
-      ...connectorSource.sourceFactIds,
-    ])],
-    sourceKeys: [repeatedSource.sourceKey, connectorSource.sourceKey]
-      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
-  };
-}
-
-/** A reference object is explored as a hard stable body plus a tangible marker. */
-function repeatableReferenceBasis(
-  inventoryMaterialIds: readonly MaterialId[],
-  evidence: readonly LocalMaterialEvidence[],
-): ObservableAssemblyBasis | null {
-  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
-  const [left, right] = inventoryMaterialIds;
-  const metalMaterialId = REPEATABLE_REFERENCE_METALS.has(left) && REPEATABLE_REFERENCE_MARKERS.has(right)
-    ? left
-    : REPEATABLE_REFERENCE_METALS.has(right) && REPEATABLE_REFERENCE_MARKERS.has(left) ? right : undefined;
-  const markerMaterialId = metalMaterialId === left ? right : metalMaterialId === right ? left : undefined;
-  if (metalMaterialId === undefined || markerMaterialId === undefined) return null;
-  const metal = evidence.find((item) => item.materialId === metalMaterialId);
-  const marker = evidence.find((item) => item.materialId === markerMaterialId);
-  if (!metal || !marker) return null;
-  const metalDefinition = materialDefinition(metalMaterialId);
-  const markerDefinition = materialDefinition(markerMaterialId);
-  if (metalDefinition.phase !== 'solid'
-    || !hasTag(metalMaterialId, 'metal')
-    || metalDefinition.hardness < 4
-    || markerDefinition.hardness > 3
-    || markerDefinition.mass > 0.5
-    // A thicker rope is only paired with a visibly rigid reference body;
-    // light fiber remains the broader marker for softer portable metals.
-    || (markerMaterialId === Material.Rope && metalDefinition.hardness < 8)) return null;
-  const metalSource = assemblySourceBasis(metal, []);
-  const markerSource = assemblySourceBasis(marker, []);
-  const primaryScore = 14 + metalDefinition.hardness * 1.5;
-  const secondaryScore = 12
-    + (markerDefinition.mass <= 0.5 ? 3 : 0)
-    + (markerDefinition.hardness <= 2 ? 2 : 0);
-  return {
-    score: rounded(primaryScore + secondaryScore),
-    primaryScore: rounded(primaryScore),
-    secondaryScore: rounded(secondaryScore),
-    primaryMaterialId: metalMaterialId,
-    secondaryMaterialId: markerMaterialId,
-    ...(metalSource.sourceKey ? { primarySourceKey: metalSource.sourceKey } : {}),
-    ...(markerSource.sourceKey ? { secondarySourceKey: markerSource.sourceKey } : {}),
-    reasonKeys: [
-      'role-hard-stable-reference-body',
-      'role-flexible-reference-marker',
-      'role-repeatable-portable-reference',
-    ],
-    sourceFactIds: [...new Set([
-      ...metalSource.sourceFactIds,
-      ...markerSource.sourceFactIds,
-    ])],
-    sourceKeys: [metalSource.sourceKey, markerSource.sourceKey]
-      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
-  };
-}
-
-/**
- * Flow can suggest a light rotor held together by a flexible lashing. This is
- * an observable functional question: it deliberately names only the locally
- * recognizable member and connector classes, never an expected output.
- */
-function flowDrivenRotorBasis(
-  inventoryMaterialIds: readonly MaterialId[],
-  evidence: readonly LocalMaterialEvidence[],
-): ObservableAssemblyBasis | null {
-  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
-  const [left, right] = inventoryMaterialIds;
-  const memberMaterialId = FLOW_DRIVEN_ROTOR_MEMBERS.has(left) && right === Material.Fiber
-    ? left
-    : FLOW_DRIVEN_ROTOR_MEMBERS.has(right) && left === Material.Fiber ? right : undefined;
-  if (memberMaterialId === undefined) return null;
-  const connectorMaterialId = Material.Fiber;
-  const member = evidence.find((item) => item.materialId === memberMaterialId);
-  const connector = evidence.find((item) => item.materialId === connectorMaterialId);
-  if (!member || !connector) return null;
-  const memberDefinition = materialDefinition(memberMaterialId);
-  const connectorDefinition = materialDefinition(connectorMaterialId);
-  if (memberDefinition.phase !== 'solid'
-    || !hasTag(memberMaterialId, 'building')
-    || memberDefinition.hardness < 3
-    || memberDefinition.hardness > 7
-    || memberDefinition.mass > 1.5
-    || !hasTag(connectorMaterialId, 'fiber')
-    || connectorDefinition.mass > 0.5) return null;
-  const memberSource = assemblySourceBasis(member, []);
-  const connectorSource = assemblySourceBasis(connector, []);
-  const primaryScore = 17 + memberDefinition.hardness;
-  const secondaryScore = 14 + (connectorDefinition.mass <= 0.25 ? 3 : 0);
-  return {
-    score: rounded(primaryScore + secondaryScore + 6),
-    primaryScore: rounded(primaryScore),
-    secondaryScore: rounded(secondaryScore),
-    primaryMaterialId: memberMaterialId,
-    secondaryMaterialId: connectorMaterialId,
-    ...(memberSource.sourceKey ? { primarySourceKey: memberSource.sourceKey } : {}),
-    ...(connectorSource.sourceKey ? { secondarySourceKey: connectorSource.sourceKey } : {}),
-    reasonKeys: [
-      'role-light-structural-rotor-member',
-      'role-flexible-rotor-lashing',
-      'role-flow-facing-assembly',
-    ],
-    sourceFactIds: [...new Set([
-      ...memberSource.sourceFactIds,
-      ...connectorSource.sourceFactIds,
-    ])],
-    sourceKeys: [memberSource.sourceKey, connectorSource.sourceKey]
-      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
-  };
-}
-
-/** A rotating connection suggests a straight member joined to a portable metal body. */
-function rigidRotatingConnectorBasis(
-  inventoryMaterialIds: readonly MaterialId[],
-  evidence: readonly LocalMaterialEvidence[],
-): ObservableAssemblyBasis | null {
-  if (inventoryMaterialIds.length !== 2 || inventoryMaterialIds[0] === inventoryMaterialIds[1]) return null;
-  const [left, right] = inventoryMaterialIds;
-  const memberMaterialId = left === Material.Plank && RIGID_ROTATING_CONNECTOR_METALS.has(right)
-    ? left
-    : right === Material.Plank && RIGID_ROTATING_CONNECTOR_METALS.has(left) ? right : undefined;
-  const metalMaterialId = memberMaterialId === left ? right : memberMaterialId === right ? left : undefined;
-  if (memberMaterialId === undefined || metalMaterialId === undefined) return null;
-  const member = evidence.find((item) => item.materialId === memberMaterialId);
-  const metal = evidence.find((item) => item.materialId === metalMaterialId);
-  if (!member || !metal) return null;
-  const memberDefinition = materialDefinition(memberMaterialId);
-  const metalDefinition = materialDefinition(metalMaterialId);
-  if (memberDefinition.phase !== 'solid'
-    || !hasTag(memberMaterialId, 'building')
-    || memberDefinition.mass > 1.5
-    || metalDefinition.phase !== 'solid'
-    || !hasTag(metalMaterialId, 'metal')
-    || metalDefinition.mass > 2.5) return null;
-  const memberSource = assemblySourceBasis(member, []);
-  const metalSource = assemblySourceBasis(metal, []);
-  const primaryScore = 18 + memberDefinition.hardness;
-  const secondaryScore = 16 + metalDefinition.hardness;
-  return {
-    score: rounded(primaryScore + secondaryScore + 5),
-    primaryScore: rounded(primaryScore),
-    secondaryScore: rounded(secondaryScore),
-    primaryMaterialId: memberMaterialId,
-    secondaryMaterialId: metalMaterialId,
-    ...(memberSource.sourceKey ? { primarySourceKey: memberSource.sourceKey } : {}),
-    ...(metalSource.sourceKey ? { secondarySourceKey: metalSource.sourceKey } : {}),
-    reasonKeys: [
-      'role-straight-structural-member',
-      'role-rigid-portable-metal-body',
-      'role-rotating-load-connector',
-    ],
-    sourceFactIds: [...new Set([
-      ...memberSource.sourceFactIds,
-      ...metalSource.sourceFactIds,
-    ])],
-    sourceKeys: [memberSource.sourceKey, metalSource.sourceKey]
-      .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
-  };
+  const assignments: ObservableAssemblyBasis[] = [];
+  for (const primaryMaterialId of materialIds) {
+    for (const secondaryMaterialId of materialIds) {
+      const required = new Map<MaterialId, number>();
+      required.set(primaryMaterialId, (required.get(primaryMaterialId) ?? 0) + question.roles[0].quantity);
+      required.set(secondaryMaterialId, (required.get(secondaryMaterialId) ?? 0) + question.roles[1].quantity);
+      if (required.size !== counts.size || [...required].some(([id, quantity]) => counts.get(id) !== quantity)) continue;
+      const primary = evidence.find((item) => item.materialId === primaryMaterialId);
+      const secondary = evidence.find((item) => item.materialId === secondaryMaterialId);
+      if (!primary || !secondary) continue;
+      const primarySource = assemblySourceBasis(
+        primary,
+        primary.sourceKeys.filter((sourceKey) => preferred.has(sourceKey)),
+      );
+      const secondarySource = assemblySourceBasis(secondary, []);
+      const primaryAssessment = assessMaterialRole(
+        perceivedProfile(primary, primarySource.sourceKey, verifiedResponses),
+        question.roles[0],
+      );
+      const secondaryAssessment = assessMaterialRole(
+        perceivedProfile(secondary, secondarySource.sourceKey, verifiedResponses),
+        question.roles[1],
+      );
+      if (question.strictVisualRoles
+        && (primaryAssessment.requiredMismatched > 0 || secondaryAssessment.requiredMismatched > 0)) continue;
+      const primaryFit = requiredRoleFit(primaryAssessment);
+      const secondaryFit = requiredRoleFit(secondaryAssessment);
+      const learnedEvidence = (primarySource.sourceKey && verifiedResponses.has(primarySource.sourceKey) ? 2 : 0)
+        + (secondarySource.sourceKey && verifiedResponses.has(secondarySource.sourceKey) ? 2 : 0);
+      const informationRelevance = primarySource.sourceKey && preferred.has(primarySource.sourceKey) ? 1 : 0;
+      const optionalTraitFit = primaryAssessment.optionalMatched + secondaryAssessment.optionalMatched;
+      const primaryScore = primaryFit * 10 + primaryAssessment.optionalMatched;
+      const secondaryScore = secondaryFit * 10 + secondaryAssessment.optionalMatched;
+      assignments.push({
+        score: rounded(primaryScore + secondaryScore + learnedEvidence * 3 + informationRelevance * 2),
+        requiredRoleFit: primaryFit + secondaryFit,
+        learnedEvidence,
+        informationRelevance,
+        optionalTraitFit,
+        primaryScore,
+        secondaryScore,
+        primaryMaterialId,
+        secondaryMaterialId,
+        ...(primarySource.sourceKey ? { primarySourceKey: primarySource.sourceKey } : {}),
+        ...(secondarySource.sourceKey ? { secondarySourceKey: secondarySource.sourceKey } : {}),
+        reasonKeys: [...new Set([
+          ...primaryAssessment.reasonKeys,
+          ...secondaryAssessment.reasonKeys,
+          ...(questionKind === 'assemble-balanced-suspension' ? ['role-symmetric-rigid-members'] : []),
+          ...(informationRelevance ? ['project-source-bound-primary-role'] : []),
+          ...(learnedEvidence ? ['verified-response-material'] : []),
+        ])],
+        sourceFactIds: [...new Set([
+          ...primarySource.sourceFactIds,
+          ...secondarySource.sourceFactIds,
+          ...(primarySource.sourceKey ? verifiedResponses.get(primarySource.sourceKey)?.sourceFactIds ?? [] : []),
+          ...(secondarySource.sourceKey ? verifiedResponses.get(secondarySource.sourceKey)?.sourceFactIds ?? [] : []),
+        ])],
+        sourceKeys: [primarySource.sourceKey, secondarySource.sourceKey]
+          .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+      });
+    }
+  }
+  return assignments.sort((left, right) => right.requiredRoleFit - left.requiredRoleFit
+    || right.learnedEvidence - left.learnedEvidence
+    || right.informationRelevance - left.informationRelevance
+    || right.optionalTraitFit - left.optionalTraitFit
+    || left.primaryMaterialId - right.primaryMaterialId
+    || left.secondaryMaterialId - right.secondaryMaterialId)[0] ?? null;
 }
 
 function rankedCandidate(
@@ -872,16 +671,35 @@ function rankedCandidate(
   project: ProjectState,
   candidate: Omit<ProjectHypothesisCandidate, 'observableScore' | 'seededRank'>,
   score: number,
+  rankBasisInput: Omit<ProjectHypothesisRankBasis, 'seedTieBreak'>,
 ): ProjectHypothesisCandidate {
-  const perturbation = (seededFraction(
+  const seedTieBreak = seededFraction(
     seed,
     `project-hypothesis:${person.id}:${project.id}:${candidate.key}`,
-  ) - 0.5) * 3;
+  );
   return {
     ...candidate,
     observableScore: Math.round(score * 100) / 100,
-    seededRank: Math.round((score + perturbation) * 100) / 100,
+    rankBasis: { ...rankBasisInput, seedTieBreak },
+    // Retained for persisted readers; on new candidates it is only a tie key.
+    seededRank: seedTieBreak,
   };
+}
+
+function compareCandidates(left: ProjectHypothesisCandidate, right: ProjectHypothesisCandidate): number {
+  if (left.rankBasis && right.rankBasis) {
+    return right.rankBasis.requiredRoleFit - left.rankBasis.requiredRoleFit
+      || right.rankBasis.learnedEvidence - left.rankBasis.learnedEvidence
+      || right.rankBasis.informationRelevance - left.rankBasis.informationRelevance
+      || right.rankBasis.optionalTraitFit - left.rankBasis.optionalTraitFit
+      || right.rankBasis.seedTieBreak - left.rankBasis.seedTieBreak
+      || left.key.localeCompare(right.key);
+  }
+  if (left.rankBasis) return -1;
+  if (right.rankBasis) return 1;
+  return right.seededRank - left.seededRank
+    || right.observableScore - left.observableScore
+    || left.key.localeCompare(right.key);
 }
 
 function renewalOpportunitySources(project: ProjectState) {
@@ -977,6 +795,10 @@ function combineCandidates(
       let toolRoleScore: number | undefined;
       let inputRoleScore: number | undefined;
       let roleScore = 0;
+      let requiredFit = 0;
+      let learnedEvidence = 0;
+      let informationRelevance = 0;
+      let optionalTraitFit = 0;
       let roleReasonKeys: string[] = [];
       let roleSourceFactIds: string[] = [];
       let toolSourceKey: string | undefined;
@@ -986,20 +808,24 @@ function combineCandidates(
         const leftInput = inputRoleBasis(
           person, request.questionKind, left, undefined, undefined, verifiedResponses, new Set(),
           renewalPreferredSourceKeys(project, left),
+          0,
         );
         const rightInput = inputRoleBasis(
           person, request.questionKind, right, undefined, undefined, verifiedResponses, new Set(),
           renewalPreferredSourceKeys(project, right),
+          1,
         );
-        const scored = pairScore(pair);
         inputRoleMaterialId = leftInput.score >= rightInput.score ? pair[0] : pair[1];
         inputSourceKey = leftInput.score >= rightInput.score ? leftInput.sourceKey : rightInput.sourceKey;
         toolRoleScore = 0;
         inputRoleScore = rounded(leftInput.score + rightInput.score);
-        roleScore = rounded(Math.max(scored.score, inputRoleScore));
+        roleScore = inputRoleScore;
+        requiredFit = leftInput.requiredRoleFit + rightInput.requiredRoleFit;
+        learnedEvidence = leftInput.learnedEvidence + rightInput.learnedEvidence;
+        informationRelevance = leftInput.informationRelevance + rightInput.informationRelevance;
+        optionalTraitFit = leftInput.optionalTraitFit + rightInput.optionalTraitFit;
         roleReasonKeys = [...new Set([
           'role-no-manipulator-required',
-          ...scored.reasonKeys,
           ...leftInput.reasonKeys,
           ...rightInput.reasonKeys,
         ])];
@@ -1007,7 +833,7 @@ function combineCandidates(
         basisSourceKeys = [leftInput.sourceKey, rightInput.sourceKey].filter((key): key is string => Boolean(key));
       } else {
         const leftTool = toolRoleBasis(
-          person, left, pair[1], undefined, verifiedResponses, false,
+          person, request.questionKind, left, pair[1], undefined, verifiedResponses, false,
           renewalPreferredSourceKeys(project, left),
         );
         const rightInput = inputRoleBasis(
@@ -1015,7 +841,7 @@ function combineCandidates(
           renewalPreferredSourceKeys(project, right),
         );
         const rightTool = toolRoleBasis(
-          person, right, pair[0], undefined, verifiedResponses, false,
+          person, request.questionKind, right, pair[0], undefined, verifiedResponses, false,
           renewalPreferredSourceKeys(project, right),
         );
         const leftInput = inputRoleBasis(
@@ -1034,19 +860,19 @@ function combineCandidates(
         toolRoleScore = selectedTool.score;
         inputRoleScore = selectedInput.score;
         roleScore = selectedTool.score + selectedInput.score;
+        requiredFit = selectedTool.requiredRoleFit + selectedInput.requiredRoleFit;
+        learnedEvidence = selectedTool.learnedEvidence + selectedInput.learnedEvidence;
+        informationRelevance = selectedTool.informationRelevance + selectedInput.informationRelevance;
+        optionalTraitFit = selectedTool.optionalTraitFit + selectedInput.optionalTraitFit;
         roleReasonKeys = [...new Set([...selectedTool.reasonKeys, ...selectedInput.reasonKeys])];
         roleSourceFactIds = [...new Set([...selectedTool.sourceFactIds, ...selectedInput.sourceFactIds])];
         basisSourceKeys = [toolSourceKey, inputSourceKey].filter((key): key is string => Boolean(key));
-        const hardnessDifference = materialDefinition(toolRoleMaterialId).hardness
-          - materialDefinition(inputRoleMaterialId).hardness;
-        if (hardnessDifference >= 2) {
-          roleScore += 2;
-          roleReasonKeys.push('role-shape-hard-soft-complement');
-        }
         if (pair[0] === pair[1]) {
-          roleScore -= 8;
+          optionalTraitFit -= 1;
+          roleScore -= 1;
           roleReasonKeys.push('role-shape-same-rigid-penalty');
         } else {
+          optionalTraitFit += 1;
           roleScore += 1;
           roleReasonKeys.push('role-shape-different-forms');
         }
@@ -1069,18 +895,17 @@ function combineCandidates(
       }
       for (const inventoryMaterialIds of inventoryVariants) {
         const assemblyBasis = request.questionKind === 'assemble-balanced-suspension'
-          ? balancedSuspensionBasis(
+          || request.questionKind === 'shape-repeatable-reference'
+          || request.questionKind === 'assemble-flow-driven-rotor'
+          || request.questionKind === 'shape-rigid-rotating-connector'
+          ? observableAssemblyBasis(
+            request.questionKind,
             inventoryMaterialIds,
             evidence,
             request.subjectSourceKeys ?? [],
+            verifiedResponses,
           )
-          : request.questionKind === 'shape-repeatable-reference'
-            ? repeatableReferenceBasis(inventoryMaterialIds, evidence)
-            : request.questionKind === 'assemble-flow-driven-rotor'
-              ? flowDrivenRotorBasis(inventoryMaterialIds, evidence)
-              : request.questionKind === 'shape-rigid-rotating-connector'
-                ? rigidRotatingConnectorBasis(inventoryMaterialIds, evidence)
-                : null;
+          : null;
         if ((request.questionKind === 'assemble-balanced-suspension'
           || request.questionKind === 'shape-repeatable-reference'
           || request.questionKind === 'assemble-flow-driven-rotor'
@@ -1089,6 +914,7 @@ function combineCandidates(
         const candidateRoleReasons = assemblyBasis?.reasonKeys ?? roleReasonKeys;
         const candidateSourceFactIds = assemblyBasis?.sourceFactIds ?? roleSourceFactIds;
         const candidateSourceKeys = assemblyBasis?.sourceKeys ?? basisSourceKeys;
+        const learned = combineRoleExperience(person, inventoryMaterialIds);
         const key = projectHypothesisCandidateKey(
           'combine-inventory',
           pair,
@@ -1122,17 +948,24 @@ function combineCandidates(
           reasonKeys: [...new Set([
             ...reasons,
             ...candidateRoleReasons,
+            ...learned.reasonKeys,
             ...(inventoryMaterialIds.length === 3 ? ['bounded-observable-quantity-variation'] : []),
           ])],
           sourceFactIds: [...new Set([
             ...questionSources,
             ...candidateSourceFactIds,
+            ...learned.sourceFactIds,
           ])],
           sourceKeys: [...new Set([
             ...candidateSourceKeys,
             questionSourceKey(project, request.questionKind),
           ])],
-        }, candidateRoleScore));
+        }, candidateRoleScore, {
+          requiredRoleFit: assemblyBasis?.requiredRoleFit ?? requiredFit,
+          learnedEvidence: (assemblyBasis?.learnedEvidence ?? learnedEvidence) + learned.score,
+          informationRelevance: assemblyBasis?.informationRelevance ?? informationRelevance,
+          optionalTraitFit: assemblyBasis?.optionalTraitFit ?? optionalTraitFit,
+        }));
       }
     }
   }
@@ -1149,14 +982,17 @@ function exertCandidates(
 ): ProjectHypothesisCandidate[] {
   if (request.targetMaterialId === undefined) return [];
   const candidates: ProjectHypothesisCandidate[] = [];
-  const tools = evidence.filter((item) => item.heldQuantity > 0
-    && materialDefinition(item.materialId).phase === 'solid'
-    && materialDefinition(item.materialId).hardness >= 3);
+  const tools = evidence.filter((item) => {
+    if (item.heldQuantity <= 0) return false;
+    const profile = perceiveMaterial(item.materialId, 'held');
+    return profile.phase === 'solid' && profile.rigidity !== 'pliant';
+  });
   for (const tool of tools) {
     for (const input of evidence) {
       if (tool.materialId === input.materialId && tool.heldQuantity < 2) continue;
       const toolBasis = toolRoleBasis(
         person,
+        request.questionKind,
         tool,
         input.materialId,
         request.targetMaterialId,
@@ -1176,10 +1012,6 @@ function exertCandidates(
       );
       const roleReasons = [...new Set([...toolBasis.reasonKeys, ...inputBasis.reasonKeys])];
       let roleScore = toolBasis.score + inputBasis.score;
-      if (materialDefinition(tool.materialId).hardness - materialDefinition(input.materialId).hardness >= 2) {
-        roleScore += 3;
-        roleReasons.push('role-hard-tool-soft-input');
-      }
       roleScore = rounded(roleScore);
       ensureAggregateNoFitReason(roleReasons, roleScore);
       const reasons = [...new Set(['grounded-operation-question', 'held-role-tool', 'adjacent-supported-target', ...roleReasons])];
@@ -1220,7 +1052,12 @@ function exertCandidates(
           ...(request.targetSourceKeys ?? []),
           questionSourceKey(project, request.questionKind),
         ])],
-      }, roleScore));
+      }, roleScore, {
+        requiredRoleFit: toolBasis.requiredRoleFit + inputBasis.requiredRoleFit,
+        learnedEvidence: toolBasis.learnedEvidence + inputBasis.learnedEvidence,
+        informationRelevance: toolBasis.informationRelevance + inputBasis.informationRelevance,
+        optionalTraitFit: toolBasis.optionalTraitFit + inputBasis.optionalTraitFit,
+      }));
     }
   }
   return candidates;
@@ -1284,7 +1121,12 @@ function exposeCandidates(
         ...(request.targetSourceKeys ?? []),
         questionSourceKey(project, request.questionKind),
       ])],
-    }, roleScore);
+    }, roleScore, {
+      requiredRoleFit: inputBasis.requiredRoleFit,
+      learnedEvidence: inputBasis.learnedEvidence + (targetVerified ? 2 : 0),
+      informationRelevance: inputBasis.informationRelevance + ((request.targetSourceKeys?.length ?? 0) > 0 ? 1 : 0),
+      optionalTraitFit: inputBasis.optionalTraitFit,
+    });
   });
 }
 
@@ -1307,6 +1149,12 @@ function observableCandidates(
     const matchedSources = matchingRenewalOpportunitySources(project, candidate, evidence);
     return {
       ...candidate,
+      ...(candidate.rankBasis ? {
+        rankBasis: {
+          ...candidate.rankBasis,
+          informationRelevance: candidate.rankBasis.informationRelevance + 1,
+        },
+      } : {}),
       reasonKeys: [...new Set([...candidate.reasonKeys, 'cross-project-renewal-opportunity'])],
       sourceFactIds: [...new Set([
         ...candidate.sourceFactIds,
@@ -1319,13 +1167,7 @@ function observableCandidates(
         ...matchedSources.flatMap((source) => source.sourceKeys),
       ])],
     };
-  }).map((candidate) => candidateMatchesProjectFocus(project, candidate) ? {
-    ...candidate,
-    seededRank: candidate.seededRank + 100,
-    reasonKeys: [...new Set([...candidate.reasonKeys, 'project-material-focus'])],
-  } : candidate).sort((left, right) => right.seededRank - left.seededRank
-    || right.observableScore - left.observableScore
-    || left.key.localeCompare(right.key));
+  }).sort(compareCandidates);
 }
 
 function candidateGrounded(candidate: ProjectHypothesisCandidate, evidence: LocalMaterialEvidence[]): boolean {
@@ -1547,9 +1389,7 @@ export function refreshProjectHypothesisCampaign(
     const existing = merged.get(candidate.key);
     merged.set(candidate.key, existing && preservedKeys.has(candidate.key) ? existing : candidate);
   }
-  const sorted = [...merged.values()].sort((left, right) => right.seededRank - left.seededRank
-    || right.observableScore - left.observableScore
-    || left.key.localeCompare(right.key));
+  const sorted = [...merged.values()].sort(compareCandidates);
   campaign.candidates = [...new Set(sorted.map((candidate) => candidate.operation))].flatMap((operation) => {
     const candidates = sorted.filter((candidate) => candidate.operation === operation);
     return [
@@ -1738,6 +1578,7 @@ export function recordProjectHypothesisAttempt(
     ...(candidate.inputRoleScore === undefined ? {} : { inputRoleScore: candidate.inputRoleScore }),
     ...(candidate.surfaceRoleScore === undefined ? {} : { surfaceRoleScore: candidate.surfaceRoleScore }),
     roleReasonKeys: [...candidate.roleReasonKeys],
+    ...(candidate.rankBasis ? { rankBasis: { ...candidate.rankBasis } } : {}),
     eventId: fact.id,
     atMonth: fact.atMonth,
     ordinal,
@@ -1782,6 +1623,7 @@ export function recordProjectHypothesisAttempt(
       ? {}
       : { projectHypothesisSurfaceRoleScore: candidate.surfaceRoleScore }),
     projectHypothesisRoleReasonKeys: [...candidate.roleReasonKeys],
+    ...(candidate.rankBasis ? { projectHypothesisRankBasis: { ...candidate.rankBasis } } : {}),
     projectHypothesisAttemptOrdinal: ordinal,
     projectHypothesisCandidateRank: candidateRank,
     projectHypothesisBudget: campaign.budget,

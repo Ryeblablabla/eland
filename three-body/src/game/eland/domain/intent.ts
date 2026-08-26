@@ -1,6 +1,7 @@
 import type { ActionCompletionPolicy, ActionOption, FactPredicate, Intent, PrimitiveAction, RecordUseBasis, RecordUseStage, RelationshipCausalBasis, WorldRef } from './action';
 import type { ProjectProposal } from './project';
 import { followUpSemanticallyMatches } from './intent-follow-up';
+import { actionOptionSemantics } from './action-option-semantics';
 
 export interface IntentChoice {
   summary: string;
@@ -55,11 +56,7 @@ export function intentMaintainUntilMonth(
 }
 
 function compositeDomain(selected: ActionOption, followUp: ActionOption): Intent['domain'] {
-  const action = selected.nextAction;
-  const conversationalOpening = (selected.id.startsWith('talk:') || selected.id.startsWith('conversation:'))
-    && action.kind === 'communicate'
-    && action.content.kind === 'claim'
-    && (!action.content.conversation || action.content.conversation.turn === 'opening');
+  const conversationalOpening = actionOptionSemantics(selected).conversation?.turn === 'opening';
   return conversationalOpening ? followUp.domain ?? 'strategic' : 'social';
 }
 

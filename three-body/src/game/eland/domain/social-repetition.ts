@@ -4,9 +4,7 @@ import type { ActionFact, SimulationState } from './model';
 import type { PersonState } from './person';
 import { agreementByProposalEventId } from './agreement';
 import { intentById, personById } from './state-index';
-
-const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|contribute-mandate|distribute-mandate|use-permission|demonstrate-technique|withdraw-reproduce):/;
+import { actionOptionSemantics } from './action-option-semantics';
 
 type SocialOutcome = 'unanswered' | 'supportive' | 'guarded' | 'proposed' | 'accepted' | 'rejected' | 'fulfilled' | 'expired' | 'breached' | 'cancelled';
 
@@ -70,8 +68,7 @@ function socialSubjectKey(action: Extract<PrimitiveAction, { kind: 'communicate'
 
 function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'communicate' }>): boolean {
   if (option.domain !== 'social'
-    || REQUIRED_SOCIAL_RESPONSE.test(option.id)
-    || FULFILLMENT_OPTION.test(option.id)) return false;
+    || actionOptionSemantics(option).obligation !== 'optional') return false;
   return action.content.kind === 'claim'
     || action.content.kind === 'prediction'
     || action.content.kind === 'request'

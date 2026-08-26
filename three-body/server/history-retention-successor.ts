@@ -12,8 +12,10 @@ import {
   resumeHistoryRetentionProjection,
   seedVerifiedPrefixLogisticsIndexMatches,
   seedVerifiedPrefixRecentTerminalFailureActionMatches,
+  seedVerifiedPrefixSocialLearningSourceMatches,
   unresolvedVerifiedPrefixLogisticsIndexEventIds,
   unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds,
+  unresolvedVerifiedPrefixSocialLearningSourceEventIds,
   type HistoryRetentionDemandSnapshot,
   type HistoryRetentionContinuationMatch,
   type HistoryRetentionProjectionResult,
@@ -154,9 +156,12 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
   const unresolvedPrefixLogisticsIds = unresolvedVerifiedPrefixLogisticsIndexEventIds(fold);
   const unresolvedPrefixTerminalFailureIds =
     unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds(fold);
+  const unresolvedPrefixSocialLearningIds =
+    unresolvedVerifiedPrefixSocialLearningSourceEventIds(fold);
   const unresolvedPrefixIds = [...new Set([
     ...unresolvedPrefixLogisticsIds,
     ...unresolvedPrefixTerminalFailureIds,
+    ...unresolvedPrefixSocialLearningIds,
   ])].sort();
   if (unresolvedPrefixIds.length > 0) {
     const required = new Set(unresolvedPrefixIds);
@@ -194,6 +199,16 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       fold,
       verifiedPrefix.eventCount,
       unresolvedPrefixTerminalFailureIds.flatMap((eventId) => {
+        const match = matchesByEventId.get(eventId);
+        return match ? [match] : [];
+      }).sort((left, right) => (
+        left.eventId.localeCompare(right.eventId) || left.absoluteIndex - right.absoluteIndex
+      )),
+    );
+    seedVerifiedPrefixSocialLearningSourceMatches(
+      fold,
+      verifiedPrefix.eventCount,
+      unresolvedPrefixSocialLearningIds.flatMap((eventId) => {
         const match = matchesByEventId.get(eventId);
         return match ? [match] : [];
       }).sort((left, right) => (

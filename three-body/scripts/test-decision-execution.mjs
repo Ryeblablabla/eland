@@ -60,11 +60,22 @@ try {
   });
   const idleEdgePerson = idleEdgeState.people[0];
   assert.equal(decisionPlanningChannel(makeContext(idleEdgeState, idleEdgePerson, {
-    id: 'respond-conversation:test-opening',
+    id: 'opaque-conversation-response',
     summary: '回应当前对话',
     reason: '存在真实待回应对话',
     goal: { kind: 'at-cell', cellId: idleEdgePerson.position.cellId },
     nextAction: { kind: 'move', toCellId: idleEdgePerson.position.cellId, toZ: idleEdgePerson.position.z },
+    completionAction: {
+      kind: 'communicate',
+      content: {
+        id: 'response-representation', kind: 'claim', summary: '我听见了',
+        conversation: {
+          version: 'grounded-conversation-v1', basisKey: 'fixture-conversation', topic: 'care', turn: 'response',
+          speakerId: idleEdgePerson.id, listenerId: 'fixture-speaker', sourceFactIds: ['test-opening'], referenceEventId: 'test-opening',
+        },
+      },
+      audience: ['fixture-speaker'], channel: 'voice',
+    },
     estimatedDuration: 'one-month',
     sourceFactIds: [],
     domain: 'social',

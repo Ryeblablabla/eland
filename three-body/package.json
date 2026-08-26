@@ -45,6 +45,8 @@
     "test:decision-factor-forest": "node scripts/test-decision-factor-forest.mjs",
     "test:personality": "node scripts/test-personality.mjs",
     "test:agent-cognition": "node scripts/test-agent-cognition.mjs",
+    "test:action-option-semantics": "node scripts/test-action-option-semantics.mjs",
+    "test:material-epistemic-boundary": "node scripts/test-material-epistemic-boundary.mjs",
     "test:person-soul": "node scripts/test-person-soul.mjs",
     "test:player-interaction": "node scripts/test-player-interaction-choice.mjs",
     "test:limited-embodiment": "node scripts/test-player-embodiment.mjs && node scripts/test-limited-embodiment-session.mjs",

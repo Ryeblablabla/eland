@@ -3,60 +3,17 @@ import type { LifePlanningStage } from '../domain/life-stage';
 import type { SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
 import { cellsInRadius } from '../world/grid';
-
-const CHILD_SIMPLE_OPTION_PREFIXES = [
-  'collect:',
-  'eat:',
-  'drink:',
-  'harvest:',
-  'separate:wood:',
-  'share:',
-  'care:',
-  'shelter:',
-  'attend:',
-  'attend-animal:',
-  'verify-technique:',
-  'follow-parent:',
-  'mourn:',
-] as const;
-
-const ADOLESCENT_RESTRICTED_PREFIXES = [
-  'predict-era:',
-  'offer-reproduce:',
-  'accept-reproduce:',
-  'reject-reproduce:',
-  'reproduce:',
-  'offer-collective:',
-  'accept-collective:',
-  'reject-collective:',
-  'offer-membership:',
-  'accept-membership:',
-  'reject-membership:',
-  'offer-decision-rule:',
-  'accept-decision-rule:',
-  'reject-decision-rule:',
-  'offer-mandate:',
-  'accept-mandate:',
-  'reject-mandate:',
-  'offer-permission:',
-  'accept-permission:',
-  'reject-permission:',
-  'contribute-mandate:',
-  'distribute-mandate:',
-  'use-permission:',
-  'withdraw-collective:',
-] as const;
+import { actionOptionSemantics } from '../domain/action-option-semantics';
 
 export function optionAllowedForLifeStage(stage: LifePlanningStage, option: ActionOption): boolean {
   if (stage === 'adult') return true;
   if (stage === 'dependent-child') return false;
+  const minimum = actionOptionSemantics(option).minimumLifeStage;
   if (stage === 'learning-child') {
-    if (option.projectId || option.projectProposal || option.domain === 'social' || option.relationshipBasis) return false;
-    return CHILD_SIMPLE_OPTION_PREFIXES.some((prefix) => option.id.startsWith(prefix));
+    return minimum === 'learning-child';
   }
   if (option.projectProposal) return false;
-  if (option.relationshipBasis?.kind === 'reproduce') return false;
-  return !ADOLESCENT_RESTRICTED_PREFIXES.some((prefix) => option.id.startsWith(prefix));
+  return minimum !== 'adult';
 }
 
 function learningChildVisibleParents(state: SimulationState, child: PersonState): PersonState[] {

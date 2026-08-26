@@ -21,6 +21,7 @@ import {
   isStateAchievementGoal,
 } from '../rule-planner';
 import { clamp } from './state-utils';
+import { actionOptionSemantics } from '../../domain/action-option-semantics';
 
 export type DecisionBudgetExemption = 'bootstrap' | 'emergency' | 'required-response' | 'fulfillment';
 
@@ -102,7 +103,8 @@ export function decisionProbability(state: SimulationState, context: DecisionCon
     probability += 0.72;
     reasons.push('已接受的交换等待本人交付');
   }
-  if (context.options.some((option) => option.id.startsWith('fulfill-assist:') || option.id.startsWith('meet-to-assist:') || option.id.startsWith('join-water-assist:'))) {
+  if (context.options.some((option) => isFulfillmentOption(option)
+    && actionOptionSemantics(option).socialContext?.cooperationKind === 'assist')) {
     probability += 0.72;
     reasons.push('已接受的求助等待本人履行');
   }

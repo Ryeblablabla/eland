@@ -1,9 +1,11 @@
 import type { PrimitiveAction } from './action';
 import { agreementById, type Agreement } from './agreement';
 import { activeMemberIds, activeMembership } from './collective';
+import { worldEventById } from './event-index';
 import type { MaterialId } from './material';
 import type { ActionFact, SimulationState } from './model';
 import type { PersonId } from './person';
+import { recordMandateCoordinationClosureSocialLearning } from './social-learning';
 
 export interface DecisionRule {
   id: string;
@@ -33,7 +35,22 @@ export interface Mandate {
   sourceEventIds: string[];
   contributionEventIds: string[];
   distributionEventIds: string[];
+  /** Index into contributionEventIds after the latest real contribution -> distribution closure. */
+  coordinationContributionCursor?: number;
+  /** Bounded causal bases for social learning; these confer no extra authority. */
+  coordinationClosures?: MandateCoordinationClosure[];
   endedAtMonth?: number;
+}
+
+export interface MandateCoordinationClosure {
+  version: 'mandate-coordination-closure-v1';
+  id: string;
+  atMonth: number;
+  contributorIds: PersonId[];
+  recipientIds: PersonId[];
+  contributionEventIds: string[];
+  distributionEventIds: string[];
+  sourceEventIds: string[];
 }
 
 export function activeMandatesFor(state: SimulationState, personId: PersonId): Mandate[] {
@@ -93,6 +110,47 @@ function fulfillAgreement(agreement: Agreement, fact: ActionFact): void {
   agreement.fulfilledByPersonIds = [...agreement.partyIds];
 }
 
+function closeMandateCoordinationCycle(
+  state: SimulationState,
+  mandate: Mandate,
+  distributionFact: ActionFact,
+): void {
+  if (distributionFact.action.kind !== 'transfer' || distributionFact.action.to.kind !== 'person') return;
+  const cursor = Math.max(0, mandate.coordinationContributionCursor ?? 0);
+  const pendingContributionEventIds = mandate.contributionEventIds.slice(cursor);
+  if (pendingContributionEventIds.length === 0) return;
+  const contributionFacts = pendingContributionEventIds.map((eventId) => worldEventById(state, eventId));
+  if (contributionFacts.some((event) => event?.kind !== 'action'
+    || event.status !== 'completed'
+    || event.action.kind !== 'transfer'
+    || event.action.authorizationRef !== mandate.id)) return;
+  const contributorIds = [...new Set(contributionFacts.flatMap((event) => (
+    event?.kind === 'action' ? [event.who] : []
+  )))];
+  if (contributorIds.length === 0) return;
+  const closure: MandateCoordinationClosure = {
+    version: 'mandate-coordination-closure-v1',
+    id: `mandate-coordination:${mandate.id}:${distributionFact.id}`,
+    atMonth: distributionFact.atMonth,
+    contributorIds,
+    recipientIds: [distributionFact.action.to.personId],
+    contributionEventIds: pendingContributionEventIds,
+    distributionEventIds: [distributionFact.id],
+    sourceEventIds: [...new Set([...pendingContributionEventIds, distributionFact.id])],
+  };
+  mandate.coordinationContributionCursor = mandate.contributionEventIds.length;
+  mandate.coordinationClosures = [...(mandate.coordinationClosures ?? []), closure].slice(-8);
+  recordMandateCoordinationClosureSocialLearning(
+    state,
+    mandate.holderId,
+    closure.contributorIds,
+    closure.recipientIds,
+    closure.id,
+    closure.atMonth,
+    closure.sourceEventIds,
+  );
+}
+
 /** 沟通产生规则与授权；真实转移才算授权被行使。 */
 export function recordGovernanceAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
@@ -100,8 +158,15 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     const mandate = mandateById(state, fact.action.authorizationRef);
     const use = mandateSupportsTransfer(state, mandate, fact.who, fact.action, fact.atMonth);
     if (!mandate || !use) return;
+    // A restored legacy mandate may already contain both sides of earlier
+    // coordination. Start after that verified prefix instead of replaying it
+    // into a newly introduced person-local posterior.
+    mandate.coordinationContributionCursor ??= mandate.contributionEventIds.length;
     if (use === 'contribution') mandate.contributionEventIds = [...new Set([...mandate.contributionEventIds, fact.id])];
-    else mandate.distributionEventIds = [...new Set([...mandate.distributionEventIds, fact.id])];
+    else {
+      mandate.distributionEventIds = [...new Set([...mandate.distributionEventIds, fact.id])];
+      closeMandateCoordinationCycle(state, mandate, fact);
+    }
     mandate.sourceEventIds = [...new Set([...mandate.sourceEventIds, fact.id])];
     return;
   }
@@ -152,6 +217,8 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     sourceEventIds: [...new Set([...mandateAgreement.sourceEventIds, fact.id])],
     contributionEventIds: [],
     distributionEventIds: [],
+    coordinationContributionCursor: 0,
+    coordinationClosures: [],
   });
   fulfillAgreement(mandateAgreement, fact);
   match.collective.sourceEventIds = [...new Set([...match.collective.sourceEventIds, ...mandateAgreement.sourceEventIds, fact.id])];

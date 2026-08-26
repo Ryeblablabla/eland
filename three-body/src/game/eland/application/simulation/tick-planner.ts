@@ -39,6 +39,7 @@ import {
   RulePlanner,
 } from '../rule-planner';
 import { activeIntent, applyDecision, decisionPlanningChannel } from './intent-execution';
+import { actionOptionSemantics } from '../../domain/action-option-semantics';
 
 function personCanDecide(
   state: SimulationState,
@@ -325,7 +326,10 @@ export function planLocallyForTick(
   let compiledContext: DecisionContext | undefined;
   const contextForPlanning = (): DecisionContext => compiledContext ??= buildDecisionContext(planningState, planningPerson, atMonth);
   const checkGroundedConversationResponse = hasCurrentMonthOpening
-    ? contextForPlanning().options.some((option) => option.id.startsWith('respond-conversation:'))
+    ? contextForPlanning().options.some((option) => (
+        actionOptionSemantics(option).socialContext?.cooperationKind === 'conversation'
+          && actionOptionSemantics(option).socialContext?.phase === 'response'
+      ))
     : hasGroundedConversationResponseOpportunity(state, person, atMonth);
   const checkCurrentMonthRequiredResponse = currentMonthSocialProposals.length > 0
     && contextForPlanning().options.some(isRequiredSocialOption);
@@ -337,11 +341,11 @@ export function planLocallyForTick(
   const recordUseOpportunity = hasRecordUseOpportunity();
   const hasTechniqueDemonstration = checkTechniqueRequest
     && contextForPlanning().options
-      .some((option) => option.id.startsWith('demonstrate-technique:'));
+      .some((option) => actionOptionSemantics(option).edgeTrigger === 'technique-demonstration');
   const hasProjectKnowledgeResponse = checkProjectKnowledgeRequest
-    && contextForPlanning().options.some((option) => option.nextAction.kind === 'communicate'
-      && option.nextAction.content.kind === 'claim'
-      && Boolean(option.nextAction.content.projectKnowledgeResponse));
+    && contextForPlanning().options.some((option) => (
+      actionOptionSemantics(option).edgeTrigger === 'project-knowledge-response'
+    ));
   const hasPendingAgreementOption = checkPendingAgreementWork
     && contextForPlanning().options.some((option) => isRequiredSocialOption(option) || isFulfillmentOption(option));
   const ordinaryReviewDue = firstOrdinaryReviewDue || terminalOrdinaryReplanDue;

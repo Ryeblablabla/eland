@@ -13,13 +13,17 @@ import { perceivedKinshipRisk } from './reproductive-risk';
 import { relationTo } from '../domain/relation';
 import {
   assessIntentionPersistence,
+  carryDecisionDeliberation,
   deliberate,
-  rankCognitiveOptions,
+  rankCognitiveOptionsWithoutForesight,
+  type BdiDeliberation,
   type RankedCognitiveAppraisal,
 } from './cognition/bdi-deliberation';
-
-const REQUIRED_SOCIAL_RESPONSE = /^(?:(?:accept|reject)-(?:assist|companion|exchange|reproduce|collective|membership|permission|decision-rule|mandate):|respond-conversation:)/;
-const FULFILLMENT_OPTION = /^(settle-exchange|fulfill-assist|meet-to-assist|join-water-assist|return-shared-living|contribute-mandate|distribute-mandate|use-permission|reproduce|withdraw-reproduce):/;
+import {
+  actionOptionSemantics,
+  isCommitmentActionOption,
+  isRequiredResponseOption,
+} from '../domain/action-option-semantics';
 
 export interface PlanningMoment {
   atMonth: number;
@@ -27,11 +31,11 @@ export interface PlanningMoment {
 }
 
 export function isRequiredSocialOption(option: ActionOption): boolean {
-  return REQUIRED_SOCIAL_RESPONSE.test(option.id);
+  return isRequiredResponseOption(option);
 }
 
 export function isFulfillmentOption(option: ActionOption): boolean {
-  return FULFILLMENT_OPTION.test(option.id);
+  return isCommitmentActionOption(option);
 }
 
 export function hasRequiredSocialResponse(context: DecisionContext): boolean {
@@ -73,7 +77,16 @@ export function isProductionOption(option: ActionOption): boolean {
   return option.domain !== 'social' && isStateAchievementGoal(option.goal);
 }
 
-const OPTIONAL_LIFE_REVIEW = /^(offer-reproduce|offer-companion):/;
+function optionalLifeReviewKind(option: ActionOption): LifeReviewEvidence['optionKind'] | undefined {
+  const semantics = actionOptionSemantics(option);
+  if (semantics.reproduction?.phase === 'proposal'
+    && semantics.reproduction.direction === 'proceed') return 'offer-reproduce';
+  const action = option.completionAction ?? option.nextAction;
+  if (action.kind === 'communicate'
+    && (action.content.kind === 'request' || action.content.kind === 'offer')
+    && action.content.proposal?.kind === 'companion') return 'offer-companion';
+  return undefined;
+}
 
 export interface GroundedLifeReviewOpportunity {
   option: ActionOption;
@@ -84,7 +97,8 @@ export interface GroundedLifeReviewOpportunity {
 }
 
 function reproductiveWindow(context: DecisionContext, option: ActionOption): { pressure: number; band?: LifeReviewEvidence['femaleAgeBand'] } {
-  if (!option.id.startsWith('offer-reproduce:') || option.target?.kind !== 'person') return { pressure: 0 };
+  if (actionOptionSemantics(option).reproduction?.phase !== 'proposal'
+    || option.target?.kind !== 'person') return { pressure: 0 };
   const partnerId = option.target.personId;
   const partner = context.state.people.find((candidate) => candidate.id === partnerId);
   const female = context.person.sex === 'female' ? context.person : partner?.sex === 'female' ? partner : undefined;
@@ -127,13 +141,14 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
   const socialAttachment = (personalityScore(context.person, 'emotionality') + personalityScore(context.person, 'extraversion')) / 2;
   const affiliationPressure = Math.min(10, Math.max(0, socialAttachment - 45) * 0.2);
   const window = reproductiveWindow(context, option);
-  const responsibility = option.id.startsWith('offer-reproduce:')
+  const reproductionProposal = actionOptionSemantics(option).reproduction?.phase === 'proposal';
+  const responsibility = reproductionProposal
     ? reproductiveResponsibility(context.state, context.person)
     : undefined;
-  const kinshipRisk = option.id.startsWith('offer-reproduce:') && partner
+  const kinshipRisk = reproductionProposal && partner
     ? perceivedKinshipRisk(context.state, context.person, partner)
     : undefined;
-  const base = option.id.startsWith('offer-reproduce:') ? 36 : 30;
+  const base = reproductionProposal ? 36 : 30;
   const reasons: string[] = [];
   if (relationPressure > 0) reasons.push('已有关系证据');
   if (window.pressure > 0) reasons.push('女性生育年龄窗口正在收窄');
@@ -154,23 +169,24 @@ function lifeReviewPressure(context: DecisionContext, option: ActionOption): {
   };
 }
 
-function rankOptions(context: DecisionContext, options: ActionOption[], moment: PlanningMoment): ActionOption[] {
-  return rankCognitiveOptions(context, options, moment).map((evaluation) => evaluation.option);
+function rankOptionsWithoutForesight(context: DecisionContext, options: ActionOption[], moment: PlanningMoment): ActionOption[] {
+  return rankCognitiveOptionsWithoutForesight(context, options, moment).map((evaluation) => evaluation.option);
 }
 
 function chooseOption(context: DecisionContext, moment: PlanningMoment): {
   option?: ActionOption;
   followUp?: ActionOption;
   appraisal?: RankedCognitiveAppraisal;
+  deliberation: BdiDeliberation;
   reason: string;
 } {
   const deliberation = deliberate(context, context.options, moment);
   const appraisal = deliberation.selected;
   const option = appraisal?.option;
   const followUp = option?.requiresFollowUp
-    ? rankOptions(context, context.followUpOptions.filter((candidate) => followUpSemanticallyMatches(option, candidate)), moment)[0]
+    ? rankOptionsWithoutForesight(context, context.followUpOptions.filter((candidate) => followUpSemanticallyMatches(option, candidate)), moment)[0]
     : undefined;
-  return { option, followUp, appraisal, reason: deliberation.reason };
+  return { option, followUp, appraisal, deliberation, reason: deliberation.reason };
 }
 
 function urgentReplan(context: DecisionContext): boolean {
@@ -214,13 +230,11 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
   const project = projectById(context.state, active.projectId);
   if (project?.status !== 'active') return null;
   const candidates = context.options
-    .filter((option) => OPTIONAL_LIFE_REVIEW.test(option.id))
+    .filter((option) => Boolean(optionalLifeReviewKind(option)))
     .flatMap((option) => {
       if (option.target?.kind !== 'person' || !option.relationshipBasis) return [];
       const scored = lifeReviewPressure(context, option);
-      const optionKind: LifeReviewEvidence['optionKind'] = option.id.startsWith('offer-reproduce:')
-        ? 'offer-reproduce'
-        : 'offer-companion';
+      const optionKind = optionalLifeReviewKind(option)!;
       const basisKey = option.relationshipBasis.basisKey;
       if (intentsOwnedBy(context.state, context.person.id).some((intent) => intent.ownerId === context.person.id
         && (intent.lifeReview?.relationshipBasis?.basisKey === basisKey
@@ -301,7 +315,7 @@ export class RulePlanner implements AgentDecider {
     const required = context.options.filter(isRequiredSocialOption);
     const fulfillment = context.options.filter(isFulfillmentOption);
     const forcedOptions = required.length ? required : fulfillment;
-    const forced = rankOptions(context, forcedOptions, moment)[0];
+    const forced = rankOptionsWithoutForesight(context, forcedOptions, moment)[0];
     if (active && forced) {
       if (isExecutingPriorityObligation(active)) {
         return { kind: 'idle', reason: '先完成已经开始的回应或履约；新收到的义务随后仍会保留并依次处理' };
@@ -317,29 +331,46 @@ export class RulePlanner implements AgentDecider {
         reason: required.length ? '先完成必须由本人作出的回应' : '先履行已经生效的承诺或职责',
       };
     }
+    if (forced) return {
+      kind: 'start',
+      optionId: forced.id,
+      reason: required.length ? '先完成必须由本人作出的回应' : '先履行已经生效的承诺或职责',
+    };
 
     const lifeReview = active ? groundedLifeReviewOpportunity(context) : null;
-    const { option, followUp, appraisal, reason: deliberationReason } = chooseOption(context, moment);
+    const {
+      option,
+      followUp,
+      appraisal,
+      deliberation,
+      reason: deliberationReason,
+    } = chooseOption(context, moment);
+    const withDeliberation = <T extends Decision>(decision: T): T => carryDecisionDeliberation(
+      decision,
+      context,
+      moment,
+      deliberation,
+    );
     if (!active) {
       return option
-        ? {
+        ? withDeliberation({
             kind: 'start',
             optionId: option.id,
             ...(followUp ? { followUpOptionId: followUp.id } : {}),
             reason: `${option.reason}；${deliberationReason}`,
-          }
+          })
         : { kind: 'idle', reason: context.options.length ? deliberationReason : '当前没有可执行目标' };
     }
 
     if (option?.nextAction.kind === 'act' && option.nextAction.operation === 'dehydrate') {
-      return {
+      return withDeliberation({
         kind: 'revise',
         intentId: active.id,
         optionId: option.id,
         mode: 'interrupt',
         interruptionKind: 'survival-reflex',
         reason: '乱纪元的直接生存风险要求暂时进入脱水休眠，恢复后返回原有安排',
-      };
+      });
     }
 
     // A demand-bound record experiment is an instrumental child of one exact
@@ -348,7 +379,7 @@ export class RulePlanner implements AgentDecider {
     if (option?.recordUseBasis
       && !active.recordUseBasis
       && isResumableIntent(active)) {
-      return {
+      return withDeliberation({
         kind: 'revise',
         intentId: active.id,
         optionId: option.id,
@@ -361,8 +392,8 @@ export class RulePlanner implements AgentDecider {
             || option.recordUseStage === 'experiment'
             || option.recordUseStage === 'read-experiment'
             ? '本人持有的实体记录与本人活动项目的真实技术缺口完全匹配，先读懂并沿项目物流准备实体材料，再亲自复现'
-            : '这项旧版记录交付与身边项目的真实技术缺口匹配，短暂完成后继续原安排',
-      };
+          : '这项旧版记录交付与身边项目的真实技术缺口匹配，短暂完成后继续原安排',
+      });
     }
 
     const persistence = assessIntentionPersistence(context, active, appraisal, moment);
@@ -374,9 +405,9 @@ export class RulePlanner implements AgentDecider {
       const matchingProjectFollowUps = context.followUpOptions.filter((candidate) => candidate.projectId === active.projectId
         && followUpSemanticallyMatches(lifeReview.option, candidate));
       const lifeReviewFollowUp = lifeReview.option.requiresFollowUp
-        ? rankOptions(context, matchingProjectFollowUps, moment)[0]
+        ? rankOptionsWithoutForesight(context, matchingProjectFollowUps, moment)[0]
         : undefined;
-      return {
+      return withDeliberation({
         kind: 'revise',
         intentId: active.id,
         optionId: lifeReview.option.id,
@@ -385,26 +416,30 @@ export class RulePlanner implements AgentDecider {
         interruptionKind: 'life-review',
         reason: `${persistence.reason}；生活复核：${lifeReview.reasons.length ? lifeReview.reasons.join('、') : '眼前出现具体生活机会'}；${deliberationReason}`,
         lifeReview: lifeReview.evidence,
-      };
+      });
     }
 
-    if (option?.id.startsWith('offer-collective:') && option.sourceFactIds.length > 0) {
-      return {
+    const optionAction = option?.completionAction ?? option?.nextAction;
+    if (optionAction?.kind === 'communicate'
+      && (optionAction.content.kind === 'request' || optionAction.content.kind === 'offer')
+      && optionAction.content.proposal?.kind === 'collective'
+      && option.sourceFactIds.length > 0) {
+      return withDeliberation({
         kind: 'revise',
         intentId: active.id,
         optionId: option.id,
         ...(followUp ? { followUpOptionId: followUp.id } : {}),
         reason: '与共同项目协作者重逢，出现了把已完成合作延续为成员关系的具体机会',
-      };
+      });
     }
 
-    return {
+    return withDeliberation({
       kind: 'revise',
       intentId: active.id,
       optionId: option.id,
       ...(followUp ? { followUpOptionId: followUp.id } : {}),
       reason: `${persistence.reason}；${deliberationReason}`,
-    };
+    });
   }
 }
 

@@ -1,4 +1,5 @@
-import { materialDefinition, type MaterialTag } from './domain/material';
+import { materialDefinition } from './domain/material';
+import { perceiveMaterial, type PerceivedMaterialProfile } from './domain/material-perception';
 import { projectMemories } from './domain/memory';
 import { ageMonths } from './domain/person';
 import { effectivePersonality } from './domain/personality';
@@ -12,6 +13,18 @@ import { speechActFromRepresentation } from './projection/speech-act';
 import type { SpeechActView } from '../societyContract';
 import { traitDefinition, traitStatesOf } from './domain/trait';
 import { relationTo } from './domain/relation';
+import { actionOptionSemantics } from './domain/action-option-semantics';
+import { projectMaterialPlanProvenance } from './application/projects/project-material-provenance';
+
+function perceivedProperties(profile: PerceivedMaterialProfile): string[] {
+  return [...new Set([
+    profile.phase,
+    profile.form,
+    profile.appearance,
+    ...(profile.loadBand ? [profile.loadBand] : []),
+    ...(profile.rigidity ? [profile.rigidity] : []),
+  ])];
+}
 
 export interface DecisionRequestContext {
   person: {
@@ -30,9 +43,9 @@ export interface DecisionRequestContext {
     currentChoice: string;
     currentAction: string;
     position: { cellId: number; z: number };
-    inventory: Array<{ stackId: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number }>;
+    inventory: Array<{ stackId: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number }>;
     knowledge: Array<{ id: string; summary: string; confidence: number }>;
-    knownPlaces: Array<{ materialId: number; name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
+    knownPlaces: Array<{ name: string; position: { x: number; y: number; z: number }; lastConfirmedAtMonth: number }>;
     memories: ReturnType<typeof projectMemories>;
     cognition: ReturnType<typeof buildDecisionCognitionProjection>;
     kinship: {
@@ -62,12 +75,18 @@ export interface DecisionRequestContext {
     id: string;
     summary: string;
     need: string;
-    desiredFunction: string;
     status: string;
     lastProgressAtMonth: number;
-    missingMaterials: Array<{ materialId: number; name: string }>;
-    reservations: Array<{ personId: string; materialId: number; name: string; quantity: number }>;
     contributorIds: string[];
+    materialPlan:
+      | {
+          status: 'verified';
+          desiredFunction: string;
+          provenance: { kind: 'verified-technique' | 'completed-recipe'; knowledgeId?: string; sourceFactIds: string[] };
+          missingMaterials: Array<{ name: string }>;
+          reservations: Array<{ personId: string; name: string; quantity: number }>;
+        }
+      | { status: 'unresolved'; question: 'inspect-local-properties-and-test-candidates'; reservationCount: number };
   };
   suspendedIntents: Array<{ id: string; summary: string; progress: number; nextActionKind: string }>;
   agreements: Array<{
@@ -94,6 +113,7 @@ export interface DecisionRequestContext {
       outcome?: string;
       previousCommunicationEventId?: string;
     };
+    semantics: ReturnType<typeof actionOptionSemantics>;
   }>;
   followUpOptions: Array<{
     id: string; summary: string; reason: string; domain?: 'strategic' | 'social';
@@ -104,12 +124,12 @@ export interface DecisionRequestContext {
     health: number; hydration: number; nutrition: number; conditions: DecisionContext['person']['conditions'];
     cellId: number; z: number; trust: number; bond: number; fear: number;
   }>;
-  visibleDrops: Array<{ id: string; materialId: number; name: string; properties: MaterialTag[]; quantity: number; cellId: number; z: number }>;
+  visibleDrops: Array<{ id: string; name: string; properties: string[]; perception: PerceivedMaterialProfile; quantity: number; cellId: number; z: number }>;
   visibleAnimals: Array<{ id: string; speciesId: string; cellId: number; z: number; health: number; hunger: number }>;
   visibleContainers: Array<{
     id: string; position: { x: number; y: number; z: number };
     capacity: number; usedCapacity: number;
-    contents: Array<{ materialId: number; name: string; quantity: number }>;
+    contents: Array<{ name: string; quantity: number }>;
   }>;
 }
 
@@ -221,6 +241,9 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
   const activeProject = context.activeIntent?.projectId
     ? state.projects.find((project) => project.id === context.activeIntent?.projectId)
     : undefined;
+  const activeProjectProvenance = activeProject
+    ? projectMaterialPlanProvenance(state, person, activeProject)
+    : null;
   return {
     person: {
       id: person.id,
@@ -243,13 +266,20 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       position: { cellId: person.position.cellId, z: person.position.z },
       inventory: person.inventory.map((stack) => {
         const material = materialDefinition(stack.materialId);
-        return { stackId: stack.id, materialId: stack.materialId, name: material.name, properties: [...material.tags], quantity: stack.quantity };
+        const perception = perceiveMaterial(stack.materialId, 'held');
+        return {
+          stackId: stack.id,
+          name: material.name,
+          properties: perceivedProperties(perception),
+          perception,
+          quantity: stack.quantity,
+        };
       }),
       knowledge: [...person.knowledge].sort((a, b) => b.confidence - a.confidence).slice(0, 6).map(({ id, summary, confidence }) => ({ id, summary, confidence })),
       knownPlaces: [...person.knownPlaces]
         .sort((a, b) => b.lastConfirmedAtMonth - a.lastConfirmedAtMonth || a.id.localeCompare(b.id))
         .slice(0, 8)
-        .map(({ materialId, position, lastConfirmedAtMonth }) => ({ materialId, name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
+        .map(({ materialId, position, lastConfirmedAtMonth }) => ({ name: materialDefinition(materialId).name, position, lastConfirmedAtMonth })),
       memories: projectMemories(person, state.clock.elapsedMonths),
       cognition: buildDecisionCognitionProjection(context),
       kinship: immediateKinship(state, person),
@@ -282,20 +312,26 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       id: activeProject.id,
       summary: activeProject.summary,
       need: activeProject.need,
-      desiredFunction: activeProject.desiredFunction,
       status: activeProject.status,
       lastProgressAtMonth: activeProject.lastProgressAtMonth,
-      missingMaterials: activeProject.missingMaterialIds.map((materialId) => ({
-        materialId,
-        name: materialDefinition(materialId).name,
-      })),
-      reservations: activeProject.reservations.map((reservation) => ({
-        personId: reservation.personId,
-        materialId: reservation.materialId,
-        name: materialDefinition(reservation.materialId).name,
-        quantity: reservation.quantity,
-      })),
       contributorIds: [...activeProject.contributorIds],
+      materialPlan: activeProjectProvenance ? {
+        status: 'verified',
+        desiredFunction: activeProject.desiredFunction,
+        provenance: structuredClone(activeProjectProvenance),
+        missingMaterials: activeProject.missingMaterialIds.map((materialId) => ({
+          name: materialDefinition(materialId).name,
+        })),
+        reservations: activeProject.reservations.map((reservation) => ({
+          personId: reservation.personId,
+          name: materialDefinition(reservation.materialId).name,
+          quantity: reservation.quantity,
+        })),
+      } : {
+        status: 'unresolved',
+        question: 'inspect-local-properties-and-test-candidates',
+        reservationCount: activeProject.reservations.length,
+      },
     } } : {}),
     suspendedIntents: state.intents
       .filter((intent) => intent.ownerId === person.id && intent.status === 'suspended' && !intent.suspendedByIntentId)
@@ -325,6 +361,7 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
       const repetition = assessSocialRepetition(state, person, option);
       return {
         id, summary, reason, domain, estimatedMonths, risks, target, requiresFollowUp: Boolean(requiresFollowUp),
+        semantics: structuredClone(actionOptionSemantics(option)),
         ...(nextAction.kind === 'communicate'
           ? {
               communicationKind: nextAction.content.kind,
@@ -370,7 +407,16 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
     }),
     visibleDrops: context.visibleDrops.map((drop) => {
       const material = materialDefinition(drop.materialId);
-      return { id: drop.id, materialId: drop.materialId, name: material.name, properties: [...material.tags], quantity: drop.quantity, cellId: drop.cellId, z: drop.z };
+      const perception = perceiveMaterial(drop.materialId, 'visible');
+      return {
+        id: drop.id,
+        name: material.name,
+        properties: perceivedProperties(perception),
+        perception,
+        quantity: drop.quantity,
+        cellId: drop.cellId,
+        z: drop.z,
+      };
     }),
     visibleAnimals: context.visibleAnimals.map((animal) => ({
       id: animal.id,
@@ -388,7 +434,10 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         position: container.position,
         capacity: CONTAINER_CAPACITY,
         usedCapacity: container.inventory.reduce((sum, stack) => sum + stack.quantity, 0),
-        contents: container.inventory.slice(0, 6).map((stack) => ({ materialId: stack.materialId, name: materialDefinition(stack.materialId).name, quantity: stack.quantity })),
+        contents: container.inventory.slice(0, 6).map((stack) => ({
+          name: materialDefinition(stack.materialId).name,
+          quantity: stack.quantity,
+        })),
       })),
   };
 }

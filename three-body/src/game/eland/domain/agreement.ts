@@ -18,6 +18,12 @@ import {
   REQUIRED_SHARED_LIVING_MONTHS,
   SHARED_LIVING_RADIUS,
 } from './shared-living';
+import {
+  recordAgreementBreachSocialLearning,
+  recordAgreementFulfillmentSocialLearning,
+  recordAgreementNoResponseSocialLearning,
+  recordAgreementResponseSocialLearning,
+} from './social-learning';
 
 export type AgreementStatus = 'proposed' | 'active' | 'fulfilled' | 'rejected' | 'expired' | 'breached' | 'cancelled';
 
@@ -394,6 +400,14 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       agreement.status = 'rejected';
       agreement.resolvedAtMonth = fact.atMonth;
     }
+    recordAgreementResponseSocialLearning(
+      state,
+      agreement,
+      fact.who,
+      content.kind === 'accept' ? 'accepted' : 'rejected',
+      fact.atMonth,
+      [fact.id],
+    );
     return;
   }
 
@@ -448,6 +462,12 @@ function fulfill(state: SimulationState, agreement: Agreement, fact: ActionFact)
     const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
     if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust, bond: 3 });
   }
+  recordAgreementFulfillmentSocialLearning(
+    state,
+    agreement,
+    fact.atMonth,
+    [...agreement.fulfillmentEventIds],
+  );
 }
 
 function agreementFact(agreement: Agreement, atMonth: number, orderInMonth: number, change: AgreementFact['change'], result: string): AgreementFact {
@@ -599,14 +619,17 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
         !agreement.acceptedByPersonIds.includes(responderId)
         && !agreement.rejectedByPersonIds.includes(responderId)
       ));
-      const expiredResponderId = unresolvedResponderIds.find((responderId) => (
+      const expiredResponderIds = unresolvedResponderIds.filter((responderId) => (
         atMonth > agreementResponseDeadline(agreement, responderId)
       ));
-      if (expiredResponderId === undefined) continue;
+      if (expiredResponderIds.length === 0) continue;
       agreement.status = 'expired';
       agreement.resolvedAtMonth = atMonth;
       const fact = agreementFact(agreement, atMonth, orderOffset + events.length, 'expired', '一项未被回应的提议已经过期');
       agreement.sourceEventIds.push(fact.id);
+      for (const responderId of expiredResponderIds) {
+        recordAgreementNoResponseSocialLearning(state, agreement, responderId, atMonth, [fact.id]);
+      }
       events.push(fact);
       continue;
     }
@@ -641,6 +664,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
         const otherId = agreement.partyIds.find((candidate) => candidate !== personId);
         if (person && otherId) applyRelationEvidence(person, otherId, fact.id, { trust: 3, bond: 5 });
       }
+      recordAgreementFulfillmentSocialLearning(state, agreement, atMonth, [fact.id]);
       events.push(fact);
       continue;
     }
@@ -672,6 +696,7 @@ export function advanceAgreementLifecycle(state: SimulationState, atMonth: numbe
       const creditor = personById(state, creditorId);
       for (const debtorId of debtors) if (creditor) applyRelationEvidence(creditor, debtorId, fact.id, { trust: -10, bond: -3 });
     }
+    recordAgreementBreachSocialLearning(state, agreement, atMonth, [fact.id]);
     events.push(fact);
   }
   return events;

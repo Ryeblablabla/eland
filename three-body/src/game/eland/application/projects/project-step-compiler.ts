@@ -102,6 +102,11 @@ import {
 } from './project-material-planning';
 import { locallyKnownPlacedContainer, visibleCellsFor } from './project-perception';
 import {
+  auditedTechniqueMaterialPlanProvenance,
+  projectMaterialPlanProvenance,
+  type ProjectMaterialPlanProvenance,
+} from './project-material-provenance';
+import {
   activeHypothesisCandidate,
   blankRecordCarrier,
   hypothesisStep,
@@ -385,6 +390,7 @@ function reliableMissingManipulatorRecipe(person: PersonState): { rule: Inventor
 function projectMaterialRequirement(state: SimulationState, person: PersonState, project: ProjectState): ProjectMaterialRequirement | null {
   const rawRequirements = new Map<MaterialId, number>();
   const knownIntermediateRequirements: ProjectMaterialRequirement[] = [];
+  let exactPlanProvenance = projectMaterialPlanProvenance(state, person, project);
   const knownOutputAccess = {
     preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop'
       || project.desiredFunction === 'water-powered-crop-processing'
@@ -398,9 +404,22 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   let explicitRequirementPlanKnowledgeId: string | undefined;
   let explicitRequirementSourceFactIds: string[] = [];
   const requireRaw = (materialId: MaterialId, quantity: number) => {
+    if (!exactPlanProvenance) return;
     if (consumableInventoryQuantity(person, materialId) < quantity) rawRequirements.set(materialId, Math.max(
       rawRequirements.get(materialId) ?? 0, quantity,
     ));
+  };
+  const acceptExplicitPlanProvenance = (
+    knowledgeId: string | undefined,
+    sourceFactIds: string[],
+  ): ProjectMaterialPlanProvenance | null => {
+    const verified = auditedTechniqueMaterialPlanProvenance(person, knowledgeId);
+    if (!verified) return null;
+    exactPlanProvenance ??= {
+      ...verified,
+      sourceFactIds: [...new Set([...verified.sourceFactIds, ...sourceFactIds])],
+    };
+    return exactPlanProvenance;
   };
   const requireKnownOutputOrRaw = (materialId: MaterialId, quantity = 1) => {
     if (consumableInventoryQuantity(person, materialId) >= quantity) return;
@@ -410,7 +429,8 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   };
   if (project.desiredFunction === 'water-powered-crop-processing') {
     const mechanicalRequirement = mechanicalPowerMaterialRequirement(state, person, project);
-    for (const materialId of mechanicalRequirement.materialIds) {
+    acceptExplicitPlanProvenance(mechanicalRequirement.planKnowledgeId, mechanicalRequirement.sourceFactIds);
+    for (const materialId of exactPlanProvenance ? mechanicalRequirement.materialIds : []) {
       const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
       if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
       else requireRaw(materialId, 1);
@@ -420,7 +440,8 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   }
   if (project.desiredFunction === 'restore-water-powered-crop-processing') {
     const mechanicalRequirement = mechanicalPowerMaintenanceMaterialRequirement(state, person, project);
-    for (const materialId of mechanicalRequirement.materialIds) {
+    acceptExplicitPlanProvenance(mechanicalRequirement.planKnowledgeId, mechanicalRequirement.sourceFactIds);
+    for (const materialId of exactPlanProvenance ? mechanicalRequirement.materialIds : []) {
       const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
       if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
       else requireRaw(materialId, 1);
@@ -430,7 +451,8 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   }
   if (project.desiredFunction === 'durable-power-transmission') {
     const mechanicalRequirement = mechanicalPowerReliabilityMaterialRequirement(state, person, project);
-    for (const materialId of mechanicalRequirement.materialIds) {
+    acceptExplicitPlanProvenance(mechanicalRequirement.planKnowledgeId, mechanicalRequirement.sourceFactIds);
+    for (const materialId of exactPlanProvenance ? mechanicalRequirement.materialIds : []) {
       const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
       if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
       else requireRaw(materialId, 1);
@@ -440,7 +462,8 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   }
   if (project.desiredFunction === 'remote-work-power-delivery') {
     const electricalRequirement = electricalPowerMaterialRequirement(state, person, project);
-    for (const materialId of electricalRequirement.materialIds) {
+    acceptExplicitPlanProvenance(electricalRequirement.planKnowledgeId, electricalRequirement.sourceFactIds);
+    for (const materialId of exactPlanProvenance ? electricalRequirement.materialIds : []) {
       const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
       if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
       else requireRaw(materialId, 1);
@@ -450,7 +473,8 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
   }
   if (project.desiredFunction === 'restore-electrical-power-delivery') {
     const electricalRequirement = electricalPowerMaintenanceMaterialRequirement(state, person, project);
-    for (const materialId of electricalRequirement.materialIds) {
+    acceptExplicitPlanProvenance(electricalRequirement.planKnowledgeId, electricalRequirement.sourceFactIds);
+    for (const materialId of exactPlanProvenance ? electricalRequirement.materialIds : []) {
       const known = personallyKnownProcessRequirement(state, person, materialId, knownOutputAccess);
       if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
       else requireRaw(materialId, 1);
@@ -573,11 +597,14 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
       ...project.triggerFactIds,
       ...knownIntermediateRequirements.flatMap((requirement) => requirement.sourceEventIds),
       ...explicitRequirementSourceFactIds,
+      ...(exactPlanProvenance?.sourceFactIds ?? []),
     ])],
     ...((knownIntermediateRequirements.find((requirement) => requirement.planKnowledgeId)?.planKnowledgeId
-      ?? explicitRequirementPlanKnowledgeId)
+      ?? explicitRequirementPlanKnowledgeId
+      ?? exactPlanProvenance?.knowledgeId)
       ? { planKnowledgeId: knownIntermediateRequirements.find((requirement) => requirement.planKnowledgeId)?.planKnowledgeId
-        ?? explicitRequirementPlanKnowledgeId }
+        ?? explicitRequirementPlanKnowledgeId
+        ?? exactPlanProvenance?.knowledgeId }
       : {}),
   };
   if (project.desiredFunction === 'weather-shelter') {
@@ -680,6 +707,7 @@ function developmentSubassemblyStep(
   person: PersonState,
   project: ProjectState,
 ): ProjectStep | null {
+  if (!projectMaterialPlanProvenance(state, person, project)) return null;
   const needsRope = ['efficient-production', 'community-coordination'].includes(project.desiredFunction);
   if (needsRope && consumableInventoryQuantity(person, Material.Rope) === 0) {
     const rope = combineSubassemblyStep(person, Material.Fiber, Material.Fiber, '绳索', project.summary);
@@ -728,6 +756,7 @@ function containerUpgradeStep(
   person: PersonState,
   project: ProjectState,
 ): ProjectStep | null {
+  if (!projectMaterialPlanProvenance(state, person, project)) return null;
   const inputMaterialId = project.desiredFunction === 'reserve-storage'
     ? Material.Plank
     : project.desiredFunction === 'reliable-water'
@@ -974,6 +1003,7 @@ function metallurgyWorkStep(
   if (!metallurgyFunctions.has(project.desiredFunction)) return null;
   const workplace = fixedProjectWorkplace(state, person, project);
   if (!workplace) return null;
+  if (!projectMaterialPlanProvenance(state, person, project)) return null;
   const requirement = projectMaterialRequirement(state, person, project);
   const visibleCharcoal = nearestDrop(state, person, visibleDrops, [Material.Charcoal]);
   const canMakeMissingCharcoalAtWorkplace = (
@@ -2289,6 +2319,15 @@ export function compileProjectStep(
   if (project.desiredFunction === 'water-powered-crop-processing') {
     const mechanicalRequirement = mechanicalPowerMaterialRequirement(state, person, project);
     if (mechanicalRequirement.unknownRecipeOutputMaterialId !== undefined) {
+      if (!projectMaterialPlanProvenance(state, person, project)) {
+        const questionKind = mechanicalUnknownOutputQuestionKind(
+          mechanicalRequirement.unknownRecipeOutputMaterialId,
+        );
+        return hypothesisStep(state, person, visibleDrops, project, questionKind ? {
+          operation: 'combine-inventory',
+          questionKind,
+        } : undefined);
+      }
       const knowledgeGap = pendingProjectKnowledgeGap(state, project);
       const knowledgeRequest = mechanicalProjectKnowledgeRequestStep(
         state,

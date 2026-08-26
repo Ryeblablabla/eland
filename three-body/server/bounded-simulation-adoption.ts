@@ -8,6 +8,7 @@ import {
 import type { SimulationState } from '../src/game/eland/domain/model';
 import { rematerializePhysicalStructureIndex } from '../src/game/eland/domain/physical-structure-index';
 import { WILDLIFE_ECOLOGY_VERSION } from '../src/game/eland/domain/wildlife-ecology';
+import { cloneValidatedSocialLearningState } from '../src/game/eland/application/simulation/social-learning-state';
 import { hydrateWorld, voxelWorldRevision } from '../src/game/eland/world/grid';
 import {
   beginHistoryRetentionProjection,
@@ -141,6 +142,13 @@ function adoptDecodedBoundedSimulationState(
       || person.position.tickPath.length === 0) {
       throw new Error(`bounded state 的人物 ${person.id} 尚未完成当前 schema 迁移`);
     }
+    const socialLearning = cloneValidatedSocialLearningState(
+      person,
+      state.people,
+      state.clock.elapsedMonths,
+    );
+    if (socialLearning) person.cognition.socialLearning = socialLearning;
+    else delete person.cognition.socialLearning;
   }
   for (const collective of state.collectives) {
     if (!Array.isArray(collective.decisionRules) || !Array.isArray(collective.mandates)) {

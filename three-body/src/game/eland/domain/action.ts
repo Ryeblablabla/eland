@@ -12,6 +12,7 @@ import type { ProjectFunction, ProjectProposal } from './project';
 import type { WildlifeThreatBasis } from './wildlife-threat';
 import type { MortuaryPhase } from './mortuary';
 import type { SourcedMassMeasurementAction } from './measurement';
+import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -489,6 +490,12 @@ export interface ActionOption {
   recordUseStage?: RecordUseStage;
   /** Local pressure, not civilization score. Used only to compare executable options. */
   projectPressure?: number;
+  /**
+   * Planner-facing meaning. Authoritative decision contexts always carry v1;
+   * omission remains type-readable only for pre-classification builders and
+   * narrow legacy test fixtures.
+   */
+  semantics?: ActionOptionSemanticsV1;
 }
 
 export type IntentDecision =

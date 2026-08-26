@@ -492,6 +492,15 @@ export type ProjectHypothesisQuestionKind =
   | 'shape-portable-surface'
   | 'transform-subject-with-observed-heat';
 
+/** Lexicographic, causal ranking. Randomness may only break an exact tie. */
+export interface ProjectHypothesisRankBasis {
+  requiredRoleFit: number;
+  learnedEvidence: number;
+  informationRelevance: number;
+  optionalTraitFit: number;
+  seedTieBreak: number;
+}
+
 export type ProjectHypothesisResponseRef =
   | { kind: 'inventory-stack'; stackId: string; materialId: MaterialId }
   | { kind: 'voxel'; position: { x: number; y: number; z: number }; materialId: MaterialId };
@@ -519,8 +528,11 @@ export interface ProjectHypothesisCandidate {
   inputRoleScore?: number;
   surfaceRoleScore?: number;
   roleReasonKeys: string[];
-  /** Rank derived only from observable material properties plus a replayable local perturbation. */
+  /** Diagnostic aggregate of observable role fit; never an expected-output score. */
   observableScore: number;
+  /** Present on next-generation candidates; absent only on persisted legacy campaigns. */
+  rankBasis?: ProjectHypothesisRankBasis;
+  /** Legacy field; next-generation candidates use it only as an exact causal-tier tie key. */
   seededRank: number;
   reasonKeys: string[];
   sourceFactIds: string[];
@@ -547,6 +559,7 @@ export interface ProjectHypothesisAttempt {
   inputRoleScore?: number;
   surfaceRoleScore?: number;
   roleReasonKeys: string[];
+  rankBasis?: ProjectHypothesisRankBasis;
   eventId: string;
   atMonth: number;
   ordinal: number;

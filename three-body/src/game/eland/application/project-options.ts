@@ -6,9 +6,10 @@ import { isAlive, type PersonState } from '../domain/person';
 import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-index';
 import {
   intentsOwnedBy,
+  invalidateProjectLeadershipIndex,
   personById,
   projectById,
-  projectsOwnedBy,
+  projectsLedBy,
   projectsRequiringMonthlySynchronization,
 } from '../domain/state-index';
 import {
@@ -32,7 +33,20 @@ import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 import { registerProjectParticipantMembership } from '../domain/project-participant-index';
 import type { ProjectPressureView } from './project-pressure';
 import { mechanicalPowerProjectHasCurrentRecoveryWait } from './mechanical-power-options';
-import { surfaceMaterial } from '../world/grid';
+import { findStandingPath, surfaceMaterial } from '../world/grid';
+import {
+  appendProjectLeadershipSuccession,
+  appendProjectLeadershipVacancy,
+  buildProjectLeadershipSuccessionBasis,
+  inspectProjectLeadership,
+  latestProjectLeadershipContribution,
+  projectIsLedBy,
+  projectLeadershipDeathFact,
+  projectLeadershipInspectionFactId,
+  projectLeadershipInspectionPosition,
+  projectCurrentLeadId,
+  projectSupportsLeadershipSuccession,
+} from '../domain/project-leadership';
 import {
   closeProjectHypothesisCampaign,
   recordProjectHypothesisAttempt,
@@ -102,7 +116,7 @@ function projectPlanBasisTransitionAtMonth(
   for (const request of project.knowledgeRequests ?? []) {
     if (request.version !== 'project-knowledge-request-v1'
       || request.projectId !== project.id
-      || request.requesterId !== project.ownerId
+      || request.requesterId !== owner.id
       || !request.responseEventId
       || !request.responderId
       || !request.techniqueId) continue;
@@ -270,7 +284,7 @@ function projectReviewTiming(
   project: ProjectState,
   atMonth: number,
 ): ProjectReviewTiming {
-  const ownerProjectIntent = [...intentsOwnedBy(state, project.ownerId)].reverse().find((intent) => (
+  const ownerProjectIntent = [...intentsOwnedBy(state, owner.id)].reverse().find((intent) => (
     intent.projectId === project.id
     && (intent.status === 'active' || intent.status === 'suspended')
   ));
@@ -286,12 +300,19 @@ function projectReviewTiming(
   );
   const reviewWindowMonths = Math.max(1, project.reviewAtMonth - project.createdAtMonth);
   const planBasisTransitionAtMonth = projectPlanBasisTransitionAtMonth(state, project, owner);
+  const leadership = inspectProjectLeadership(project);
+  const leadershipTransitionAtMonth = leadership.status === 'led'
+    ? leadership.latestSuccession?.atMonth
+    : undefined;
   return {
     ...(planBasisTransitionAtMonth !== undefined ? { planBasisTransitionAtMonth } : {}),
     reviewDeadline: Math.max(
       project.reviewAtMonth,
       planBasisTransitionAtMonth !== undefined
         ? planBasisTransitionAtMonth + reviewWindowMonths
+        : project.reviewAtMonth,
+      leadershipTransitionAtMonth !== undefined
+        ? leadershipTransitionAtMonth + reviewWindowMonths
         : project.reviewAtMonth,
     ),
     progressAnchor,
@@ -354,9 +375,37 @@ function blockExplicitlyExhaustedProject(
   return true;
 }
 
+function closeProjectLeadershipEpisode(project: ProjectState, atMonth: number): void {
+  endActiveLogisticsEpisode(project, atMonth, 'invalidated', 'leadership-vacancy');
+  closeProjectSearchCampaigns(project, atMonth);
+  closeProjectHypothesisCampaign(project, atMonth, 'leadership-vacancy');
+  delete project.hypothesisCampaign;
+  project.reservations = [];
+  project.missingMaterialIds = [];
+  project.materialDemands = [];
+  project.materialContributionRequests = [];
+  project.knowledgeRequests = [];
+  project.techniqueDemonstrationRequests = [];
+  project.techniqueDemonstrations = [];
+  delete project.planKnowledgeId;
+  delete project.inquiryOpportunityBasis;
+  delete project.pressureBasis;
+}
+
+function blockProjectForMissingLead(project: ProjectState, atMonth: number, reason: string): void {
+  project.status = 'blocked';
+  project.blockedAtMonth = atMonth;
+  project.blockedReason = reason;
+  project.reservations = [];
+  project.materialDemands = [];
+  endActiveLogisticsEpisode(project, atMonth, 'exhausted', 'project-blocked');
+  closeProjectSearchCampaigns(project, atMonth);
+  closeProjectHypothesisCampaign(project, atMonth, 'project-blocked');
+}
+
 export function synchronizeProject(state: SimulationState, project: ProjectState, atMonth = state.clock.elapsedMonths): void {
   if (project.status !== 'active') {
-    const terminalOwner = personById(state, project.ownerId);
+    const terminalOwner = personById(state, projectCurrentLeadId(project) ?? project.ownerId);
     if (project.status === 'blocked' && terminalOwner) {
       freezeTerminalInquiryOpportunityBasis(state, terminalOwner, project, atMonth);
     }
@@ -371,16 +420,33 @@ export function synchronizeProject(state: SimulationState, project: ProjectState
     completeProject(state, project, atMonth, evidenceEventIds);
     return;
   }
-  const owner = personById(state, project.ownerId);
+  const leadership = inspectProjectLeadership(project);
+  if (leadership.status === 'invalid') {
+    blockProjectForMissingLead(project, atMonth, `项目负责人历史无效：${leadership.reason}`);
+    return;
+  }
+  if (leadership.status === 'vacant') {
+    if (atMonth > leadership.vacancy.expiresAtMonth) {
+      blockProjectForMissingLead(project, atMonth, '项目负责人死亡后，有界接任期内没有真实贡献者到场接续');
+    }
+    return;
+  }
+  const owner = personById(state, leadership.currentLeadId);
   if (!owner || !isAlive(owner)) {
+    const hasSourcedContributor = projectSupportsLeadershipSuccession(project)
+      && project.contributorIds.some((personId) => personId !== leadership.currentLeadId
+        && Boolean(latestProjectLeadershipContribution(state, project, personId)));
+    const death = owner ? projectLeadershipDeathFact(state, owner.id) : null;
+    if (owner && death && hasSourcedContributor) {
+      const vacancy = appendProjectLeadershipVacancy(project, death);
+      if (vacancy) {
+        invalidateProjectLeadershipIndex(state);
+        closeProjectLeadershipEpisode(project, atMonth);
+        return;
+      }
+    }
     if (owner) freezeTerminalInquiryOpportunityBasis(state, owner, project, atMonth);
-    project.status = 'blocked';
-    project.blockedAtMonth = atMonth;
-    project.blockedReason = '项目发起者已经无法继续行动';
-    project.materialDemands = [];
-    endActiveLogisticsEpisode(project, atMonth, 'exhausted', 'project-blocked');
-    closeProjectSearchCampaigns(project, atMonth);
-    closeProjectHypothesisCampaign(project, atMonth, 'project-blocked');
+    blockProjectForMissingLead(project, atMonth, '当前项目负责人已经无法继续行动');
     return;
   }
   refreshProjectPressure(state, project, atMonth);
@@ -461,6 +527,19 @@ export function advanceProjects(state: SimulationState, atMonth = state.clock.el
 export function recordProjectAction(state: SimulationState, projectId: string, fact: ActionFact): void {
   const project = projectById(state, projectId);
   if (!project || project.status !== 'active') return;
+  if (fact.action.kind === 'attend' && fact.diff.projectLeadershipSuccession === true) {
+    const transition = appendProjectLeadershipSuccession(project, fact);
+    if (!transition) return;
+    invalidateProjectLeadershipIndex(state);
+  }
+  if (fact.status === 'completed'
+    && fact.action.kind === 'attend'
+    && fact.action.waterCurrentSegmentId === project.mechanicalPowerPlan?.sourceSegmentId
+    && fact.diff.mechanicalPowerObservation === true
+    && projectIsLedBy(project, fact.who)
+    && !project.triggerFactIds.includes(fact.id)) {
+    project.triggerFactIds.push(fact.id);
+  }
   const actor = personById(state, fact.who);
   recordProjectHypothesisAttempt(project, fact, actor);
   recordProjectHypothesisVerification(
@@ -595,7 +674,7 @@ function adoptableConstructionProjects(state: SimulationState, person: PersonSta
   const atMonth = state.clock.elapsedMonths + 1;
   return state.projects.filter((project) => project.kind === 'construction'
     && project.status === 'active'
-    && project.ownerId !== person.id
+    && !projectIsLedBy(project, person.id)
     && project.contributorIds.length < 3
     && (personHasProjectLink(state, project, person, atMonth)
       || visibleConstructionProgress(project, visibleCells)))
@@ -607,7 +686,7 @@ function adoptableConstructionProjects(state: SimulationState, person: PersonSta
 
 function requestedMaterialProjects(state: SimulationState, person: PersonState): ProjectState[] {
   return state.projects.filter((project) => project.status === 'active'
-    && project.ownerId !== person.id
+    && !projectIsLedBy(project, person.id)
     && projectSupportsMaterialContribution(project)
     && project.materialContributionRequests?.some((request) => {
       if (!request.contributorIds.includes(person.id)) return false;
@@ -647,7 +726,7 @@ export function previewOwnedProjectStep(
   projectId: string,
 ): ProjectStep | null {
   const project = projectById(state, projectId);
-  if (!project || project.status !== 'active' || project.ownerId !== person.id) return null;
+  if (!project || project.status !== 'active' || !projectIsLedBy(project, person.id)) return null;
   const previewPerson = structuredClone(person);
   const previewProject = cloneProjectForPlanning(project);
   const previewState: SimulationState = {
@@ -729,7 +808,63 @@ export function buildProjectOptions(
       projectPressure: Math.max(64, project.pressure),
     });
   }
-  const own = projectsOwnedBy(state, person.id).filter((project) => project.status === 'active');
+  for (const project of state.projects) {
+    if (!projectSupportsLeadershipSuccession(project)) continue;
+    const basis = buildProjectLeadershipSuccessionBasis(
+      state, person, project, state.clock.elapsedMonths + 1,
+    );
+    if (!basis || !visibleCells.includes(basis.site.cellId)) continue;
+    const path = findStandingPath(state.world.grid, person.position, basis.site);
+    if (!path.length) continue;
+    const targetPosition = projectLeadershipInspectionPosition(basis.site);
+    const atSite = person.position.cellId === basis.site.cellId && person.position.z === basis.site.z;
+    options.push(atSite ? {
+      id: `inspect-project-leadership:${basis.projectId}:${basis.vacancyTransitionId}:${person.id}`,
+      summary: `亲自检查固定工地并考虑接续“${project.summary}”`,
+      reason: '本人真实参与过该项目，也有来源地知道前任负责人死亡；只有亲自到场检查后才会自愿承担后续责任',
+      goal: { kind: 'knowledge', factId: projectLeadershipInspectionFactId(basis), minConfidence: 55 },
+      nextAction: {
+        kind: 'attend',
+        target: { kind: 'voxel', position: targetPosition },
+        projectLeadershipSuccession: structuredClone(basis),
+      },
+      target: { kind: 'voxel', position: targetPosition },
+      estimatedDuration: 'one-month',
+      sourceFactIds: [...basis.sourceFactIds],
+      projectPressure: Math.max(42, project.pressure),
+      domain: 'strategic',
+      semantics: {
+        version: 'action-option-semantics-v1',
+        obligation: 'optional',
+        planningChannel: 'ordinary',
+        purpose: 'project',
+        minimumLifeStage: 'learning-child',
+        needKinds: ['bereavement', 'capability', 'generativity', 'autonomy'],
+      },
+    } : {
+      id: `approach-project-leadership:${basis.projectId}:${basis.vacancyTransitionId}:${person.id}`,
+      summary: `回到固定工地查看是否接续“${project.summary}”`,
+      reason: '本人真实参与过该固定工地，也有来源地知道前任负责人死亡；先沿可达路线回到现场，不在远处自动取得负责人身份',
+      goal: { kind: 'at-cell', cellId: basis.site.cellId },
+      nextAction: { kind: 'move', toCellId: basis.site.cellId, toZ: basis.site.z },
+      target: { kind: 'voxel', position: targetPosition },
+      estimatedDuration: path.length <= 15 ? 'one-month' : 'several-months',
+      estimatedMonths: Math.max(1, Math.ceil((path.length - 1) / 15)),
+      sourceFactIds: [...basis.sourceFactIds],
+      projectPressure: Math.max(40, project.pressure - 4),
+      domain: 'strategic',
+      semantics: {
+        version: 'action-option-semantics-v1',
+        obligation: 'optional',
+        planningChannel: 'ordinary',
+        purpose: 'project',
+        minimumLifeStage: 'learning-child',
+        needKinds: ['bereavement', 'capability', 'generativity', 'autonomy'],
+      },
+    });
+    break;
+  }
+  const own = projectsLedBy(state, person.id).filter((project) => project.status === 'active');
   for (const project of own) {
     if (projectFunctionSatisfied(state, project)) continue;
     const preview = previewProjectState(state, project);
@@ -803,7 +938,7 @@ export function buildProjectOptions(
   if (options.length) return options;
 
   const completedFunctions = new Set<ProjectFunction>([
-    ...projectsOwnedBy(state, person.id)
+    ...projectsLedBy(state, person.id)
       .filter((project) => project.status === 'completed')
       .map((project) => project.desiredFunction),
     ...(person.cognition?.needResolutionEpisodes ?? [])
@@ -877,7 +1012,7 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
   if (project.status !== 'active') return null;
   const step = compileProjectStep(state, person, visibleDropsFor(state, person), project);
   if (!step) {
-    if (project.ownerId === person.id) {
+    if (projectIsLedBy(project, person.id)) {
       const explicitlyExhausted = projectInquiryExplicitlyExhausted(project);
       const legitimateWait = projectHasLegitimateWait(
         state,
@@ -905,7 +1040,7 @@ export function recompileProjectNextAction(state: SimulationState, person: Perso
     }
     return null;
   }
-  if (project.ownerId === person.id) {
+  if (projectIsLedBy(project, person.id)) {
     project.missingMaterialIds = [...new Set(step.missingMaterialIds)];
     project.materialDemands = structuredClone(step.materialDemands ?? []);
     project.reservations = [...step.reservations];

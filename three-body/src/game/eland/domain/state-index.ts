@@ -1,6 +1,7 @@
 import type { Intent, SimulationState } from './model';
 import { isAlive, type PersonId, type PersonState } from './person';
 import type { ProjectState } from './project';
+import { projectCurrentLeadId } from './project-leadership';
 
 interface AppendOnlyIdIndex<T extends { id: string }> {
   indexedLength: number;
@@ -29,6 +30,12 @@ interface ProjectLifecycleIndex {
   candidates: ProjectState[];
 }
 
+interface ProjectLeadershipIndex {
+  indexedLength: number;
+  lastIndexedProject?: ProjectState;
+  byLeadId: Map<PersonId, ProjectState[]>;
+}
+
 interface AgreementLifecycleIndex {
   itemRefs: AgreementState[];
   signatures: string[];
@@ -40,6 +47,7 @@ const personIndexes = new WeakMap<SimulationState['people'], PersonIndex>();
 const projectIndexes = new WeakMap<SimulationState['projects'], ProjectIndex>();
 const intentIndexes = new WeakMap<SimulationState['intents'], IntentIndex>();
 const projectLifecycleIndexes = new WeakMap<SimulationState['projects'], ProjectLifecycleIndex>();
+const projectLeadershipIndexes = new WeakMap<SimulationState['projects'], ProjectLeadershipIndex>();
 const agreementLifecycleIndexes = new WeakMap<SimulationState['agreements'], AgreementLifecycleIndex>();
 
 function indexInvalid<T extends { id: string }>(items: T[], index: AppendOnlyIdIndex<T>): boolean {
@@ -67,6 +75,7 @@ function projectLifecycleSignature(project: ProjectState): string {
     project.terminalInquiryOpportunityBasis ? 'terminal-basis' : '',
     project.hypothesisCampaign?.status ?? '',
     project.hypothesisCampaign?.attempts.length ?? 0,
+    project.leadershipTransitions?.length ?? 0,
     ...(project.searchCampaigns ?? []).map((campaign) => campaign.status),
   ].join('|');
 }
@@ -219,6 +228,36 @@ export function projectById(state: SimulationState, projectId: string): ProjectS
 
 export function projectsOwnedBy(state: SimulationState, ownerId: PersonId): readonly ProjectState[] {
   return projectIndex(state).byOwnerId.get(ownerId) ?? [];
+}
+
+/** Founder ownership remains immutable; this view follows the append-only current lead. */
+export function projectsLedBy(state: SimulationState, leadId: PersonId): readonly ProjectState[] {
+  const projects = state.projects;
+  let index = projectLeadershipIndexes.get(projects);
+  if (!index
+    || index.indexedLength !== projects.length
+    || index.lastIndexedProject !== projects.at(-1)) {
+    const byLeadId = new Map<PersonId, ProjectState[]>();
+    for (const project of projects) {
+      const currentLeadId = projectCurrentLeadId(project);
+      if (!currentLeadId) continue;
+      const owned = byLeadId.get(currentLeadId) ?? [];
+      owned.push(project);
+      byLeadId.set(currentLeadId, owned);
+    }
+    index = {
+      indexedLength: projects.length,
+      lastIndexedProject: projects.at(-1),
+      byLeadId,
+    };
+    projectLeadershipIndexes.set(projects, index);
+  }
+  return index.byLeadId.get(leadId) ?? [];
+}
+
+/** Leadership transitions mutate project shells in place, so callers invalidate explicitly after an append. */
+export function invalidateProjectLeadershipIndex(state: SimulationState): void {
+  projectLeadershipIndexes.delete(state.projects);
 }
 
 export function intentById(state: SimulationState, intentId: string): Intent | undefined {

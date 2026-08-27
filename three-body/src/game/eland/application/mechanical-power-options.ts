@@ -45,6 +45,12 @@ import type {
   ProjectReservation,
   ProjectState,
 } from '../domain/project';
+import {
+  eventAfterCurrentLeadership,
+  inspectProjectLeadership,
+  projectEventHasEventTimeLead,
+  projectIsLedBy,
+} from '../domain/project-leadership';
 import { pendingProjectKnowledgeOutput } from '../domain/project-knowledge-request';
 import {
   cellId,
@@ -161,6 +167,31 @@ export function personalWaterCurrentObservation(
     && fact.action.waterCurrentSegmentId === segmentId
     && fact.diff.mechanicalPowerObservation === true
     && fact.diff.waterCurrentSegmentId === segmentId)
+    .sort(actionOrder)
+    .at(-1) ?? null;
+}
+
+function projectLeadWaterCurrentObservation(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+): ActionFact | null {
+  const segmentId = project.mechanicalPowerPlan?.sourceSegmentId;
+  const known = segmentId ? person.knowledge.find((fact) => fact.id === waterCurrentObservationFactId(segmentId)
+    && fact.kind === 'observation'
+    && fact.confidence >= 55) : undefined;
+  if (!known || !projectIsLedBy(project, person.id)) return null;
+  const allowed = new Set(project.triggerFactIds);
+  return known.sourceEventIds.flatMap((eventId) => {
+    const event = worldEventById(state, eventId);
+    return event?.kind === 'action' ? [event] : [];
+  }).filter((event) => event.status === 'completed'
+    && event.who === person.id
+    && event.action.kind === 'attend'
+    && event.action.waterCurrentSegmentId === segmentId
+    && event.diff.mechanicalPowerObservation === true
+    && allowed.has(event.id)
+    && eventAfterCurrentLeadership(project, event))
     .sort(actionOrder)
     .at(-1) ?? null;
 }
@@ -858,12 +889,14 @@ function refsForRecipe(person: PersonState, rule: InventoryCombinationRule): Arr
 
 function manufacturedFacts(
   state: SimulationState,
+  person: PersonState,
   project: ProjectState,
   outputMaterialId: MaterialId,
   after?: ActionFact,
 ): ActionFact[] {
   return projectFacts(state, project).filter((fact) => fact.status === 'completed'
-    && fact.who === project.ownerId
+    && fact.who === person.id
+    && projectEventHasEventTimeLead(project, fact)
     && fact.action.kind === 'act'
     && fact.action.operation === 'combine'
     && Number(fact.diff.outputMaterialId) === outputMaterialId
@@ -878,7 +911,9 @@ function verificationFor(
   materialId: MaterialId,
 ): ActionFact | null {
   return projectFacts(state, project).find((fact) => fact.status === 'completed'
-    && fact.who === project.ownerId
+    && fact.who === manufacture.who
+    && projectEventHasEventTimeLead(project, fact)
+    && projectEventHasEventTimeLead(project, manufacture)
     && fact.action.kind === 'attend'
     && fact.diff.verifiedSourceEventId === manufacture.id
     && Number(fact.diff.verifiedMaterialId) === materialId) ?? null;
@@ -886,14 +921,15 @@ function verificationFor(
 
 function verifiedManufacture(
   state: SimulationState,
+  person: PersonState,
   project: ProjectState,
   materialId: MaterialId,
   after?: ActionFact,
 ): { manufacture: ActionFact; verification: ActionFact; stack: ItemStack | null } | null {
-  for (const manufacture of manufacturedFacts(state, project, materialId, after).reverse()) {
+  for (const manufacture of manufacturedFacts(state, person, project, materialId, after).reverse()) {
     const verification = verificationFor(state, project, manufacture, materialId);
     if (!verification) continue;
-    const stack = state.people.find((candidate) => candidate.id === project.ownerId)?.inventory.find((candidate) => (
+    const stack = person.inventory.find((candidate) => (
       candidate.materialId === materialId
         && candidate.quantity > 0
         && candidate.sourceEventIds.includes(manufacture.id)
@@ -1083,31 +1119,12 @@ function initialOperationAttemptMatchesProject(
   project: ProjectState,
 ): boolean {
   const basis = fact.action.kind === 'act' ? fact.action.mechanicalPowerBasis : undefined;
-  return fact.who === project.ownerId
+  return projectEventHasEventTimeLead(project, fact)
     && basis?.mode === 'operate'
     && basis.projectId === project.id
     && basis.planKey === project.mechanicalPowerPlanKey
     && basis.networkId === project.mechanicalPowerNetworkId
     && basis.sourceSegmentId === project.mechanicalPowerPlan?.sourceSegmentId;
-}
-
-function mechanicalPowerOperationReadyExceptCurrent(
-  state: SimulationState,
-  person: PersonState,
-  project: ProjectState,
-): boolean {
-  if (project.status !== 'active'
-    || project.ownerId !== person.id
-    || !planContractValid(project)
-    || !person.inventory.some((stack) => stack.materialId === Material.Seed
-      && stack.quantity > 0
-      && !stack.recordPayloadId)) return false;
-  const plan = project.mechanicalPowerPlan!;
-  if (!installedAt(state, project, 'load', plan.loadPosition)
-    || !installedAt(state, project, 'converter', plan.wheelPosition)
-    || plan.shaftPositions.some((position) => !installedAt(state, project, 'connector', position))) return false;
-  const fault = faultFact(state, project);
-  return !fault || Boolean(repairFact(state, project, fault));
 }
 
 /**
@@ -1122,15 +1139,28 @@ export function mechanicalPowerProjectHasCurrentRecoveryWait(
   person: PersonState,
   project: ProjectState,
 ): boolean {
-  if (!mechanicalPowerOperationReadyExceptCurrent(state, person, project)) return false;
+  if (!projectIsLedBy(project, person.id) || !planContractValid(project)) return false;
+  const plan = project.mechanicalPowerPlan!;
+  const allInstalled = installedAt(state, project, 'load', plan.loadPosition)
+    && installedAt(state, project, 'converter', plan.wheelPosition)
+    && plan.shaftPositions.every((position) => installedAt(state, project, 'connector', position));
+  if (!allInstalled) return false;
   const latestAttempt = projectFacts(state, project)
     .filter((fact) => initialOperationAttemptMatchesProject(fact, project))
     .at(-1);
-  if (latestAttempt?.status !== 'blocked'
-    || latestAttempt.diff.mechanicalPowerCurrentUnavailable !== true
-    || (latestAttempt.diff.currentAvailabilityReason !== 'blocked-water'
-      && latestAttempt.diff.currentAvailabilityReason !== 'upstream-unavailable')) return false;
-  const plan = project.mechanicalPowerPlan!;
+  const leadership = inspectProjectLeadership(project);
+  const successionInspection = leadership.status === 'led' && leadership.latestSuccession
+    ? worldEventById(state, leadership.latestSuccession.successionEventId)
+    : undefined;
+  const personallyInspectedSuccession = successionInspection?.kind === 'action'
+    && successionInspection.status === 'completed'
+    && successionInspection.who === person.id
+    && successionInspection.diff.projectLeadershipSuccession === true;
+  const sourcedCurrentWait = latestAttempt?.status === 'blocked'
+    && latestAttempt.diff.mechanicalPowerCurrentUnavailable === true
+    && (latestAttempt.diff.currentAvailabilityReason === 'blocked-water'
+      || latestAttempt.diff.currentAvailabilityReason === 'upstream-unavailable');
+  if (!sourcedCurrentWait && !personallyInspectedSuccession) return false;
   const availability = waterCurrentAvailabilityFor(
     state.world.grid,
     state.world.mechanicalPower,
@@ -1139,6 +1169,49 @@ export function mechanicalPowerProjectHasCurrentRecoveryWait(
   return availability.available
     || availability.reason === 'blocked-water'
     || availability.reason === 'upstream-unavailable';
+}
+
+function mechanicalPowerLeadObservationStep(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+): MechanicalPowerProjectStep | null {
+  const plan = project.mechanicalPowerPlan!;
+  const mechanicalPower = state.world.mechanicalPower;
+  const source = mechanicalPower?.sources.find((candidate) => candidate.id === plan.sourceSegmentId
+    && candidate.sourceKeys.length === plan.sourceKeys.length
+    && candidate.sourceKeys.every((sourceKey, index) => sourceKey === plan.sourceKeys[index]));
+  const availability = source && mechanicalPower
+    ? waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id)
+    : undefined;
+  if (!source || !availability?.available) return null;
+  const visible = new Set(cellsInRadius(
+    person.position.cellId,
+    4 + Math.floor(person.baselineCapacities.perception / 25),
+  ));
+  const target = source.requiredWaterVoxels.find((position) => visible.has(cellId(position.x, position.y))
+    && voxelAt(state.world.grid, position.x, position.y, position.z) === Material.Water);
+  if (!target) return null;
+  const leadership = inspectProjectLeadership(project);
+  const leadershipSources = leadership.status === 'led' && leadership.latestSuccession
+    ? leadership.latestSuccession.sourceEventIds
+    : project.triggerFactIds;
+  return moveOrActStep(
+    state,
+    person,
+    target,
+    `mechanical-reobserve-current-${project.id}-${source.id}`,
+    '重新观察冻结工地所依赖的实体水流',
+    '接任只保留实体构件；新负责人必须在当前现场亲自重新观察水流，不能沿用发起者的私人知识',
+    {
+      kind: 'attend',
+      target: { kind: 'voxel', position: { ...target } },
+      waterCurrentSegmentId: source.id,
+    },
+    [...leadershipSources],
+    [],
+    7,
+  );
 }
 
 function mechanicalPowerProjectShouldPauseForCurrentRecovery(
@@ -1191,7 +1264,7 @@ function installStep(
 
 function faultFact(state: SimulationState, project: ProjectState): ActionFact | null {
   return projectFacts(state, project).find((fact) => fact.status === 'progressed'
-    && fact.who === project.ownerId
+    && projectEventHasEventTimeLead(project, fact)
     && fact.diff.mechanicalPowerFault === true
     && fact.diff.networkId === project.mechanicalPowerNetworkId) ?? null;
 }
@@ -1199,7 +1272,7 @@ function faultFact(state: SimulationState, project: ProjectState): ActionFact | 
 function repairFact(state: SimulationState, project: ProjectState, fault: ActionFact): ActionFact | null {
   return projectFacts(state, project).find((fact) => fact.status === 'completed'
     && actionAfter(fact, fault)
-    && fact.who === project.ownerId
+    && projectEventHasEventTimeLead(project, fact)
     && fact.diff.mechanicalPowerRepair === true
     && fact.diff.faultEventId === fault.id
     && fact.diff.networkId === project.mechanicalPowerNetworkId) ?? null;
@@ -1208,7 +1281,7 @@ function repairFact(state: SimulationState, project: ProjectState, fault: Action
 function operationFact(state: SimulationState, project: ProjectState, after: ActionFact): ActionFact | null {
   return projectFacts(state, project).find((fact) => fact.status === 'completed'
     && actionAfter(fact, after)
-    && fact.who === project.ownerId
+    && projectEventHasEventTimeLead(project, fact)
     && fact.diff.mechanicalPowerOperation === true
     && fact.diff.networkId === project.mechanicalPowerNetworkId
     && Number(fact.diff.inputMaterialId) === Material.Seed
@@ -1613,11 +1686,11 @@ export function mechanicalPowerMaintenanceProjectStep(
   const replacementMaterialId = project.desiredFunction === 'durable-power-transmission'
     ? Material.SteelDriveShaft
     : Material.DriveShaft;
-  const manufacture = manufacturedFacts(state, project, replacementMaterialId, fault).at(-1);
+  const manufacture = manufacturedFacts(state, person, project, replacementMaterialId, fault).at(-1);
   if (manufacture && !verificationFor(state, project, manufacture, replacementMaterialId)) {
     return verificationStep(person, manufacture, replacementMaterialId);
   }
-  const replacement = verifiedManufacture(state, project, replacementMaterialId, fault);
+  const replacement = verifiedManufacture(state, person, project, replacementMaterialId, fault);
   if (!replacement?.stack) return mechanicalComponentManufactureStep(
     person,
     project,
@@ -1632,10 +1705,13 @@ export function mechanicalPowerProjectStep(
   person: PersonState,
   project: ProjectState,
 ): MechanicalPowerProjectStep | null {
-  if (project.ownerId !== person.id || !planContractValid(project)) return null;
+  if (!projectIsLedBy(project, person.id) || !planContractValid(project)) return null;
+  if (!projectLeadWaterCurrentObservation(state, person, project)) {
+    return mechanicalPowerLeadObservationStep(state, person, project);
+  }
   const plan = project.mechanicalPowerPlan!;
   for (const materialId of [Material.Mill, Material.WaterWheel, Material.DriveShaft]) {
-    const unverified = manufacturedFacts(state, project, materialId).reverse().find((manufacture) => (
+    const unverified = manufacturedFacts(state, person, project, materialId).reverse().find((manufacture) => (
       !verificationFor(state, project, manufacture, materialId)
         && person.inventory.some((stack) => stack.materialId === materialId
           && stack.quantity > 0
@@ -1644,8 +1720,8 @@ export function mechanicalPowerProjectStep(
     if (unverified) return verificationStep(person, unverified, materialId);
   }
   if (!installedAt(state, project, 'load', plan.loadPosition)) {
-    const loadManufactures = manufacturedFacts(state, project, Material.Mill);
-    const load = verifiedManufacture(state, project, Material.Mill);
+    const loadManufactures = manufacturedFacts(state, person, project, Material.Mill);
+    const load = verifiedManufacture(state, person, project, Material.Mill);
     if (!loadManufactures.length) return manufactureStep(person, project, Material.Mill, '水力磨坊负载');
     if (!load?.stack) return manufactureStep(person, project, Material.Mill, '水力磨坊负载');
     return installStep(state, person, project, 'load', Material.Mill, plan.loadPosition, load);
@@ -1653,16 +1729,16 @@ export function mechanicalPowerProjectStep(
 
   for (const shaftPosition of plan.shaftPositions) {
     if (installedAt(state, project, 'connector', shaftPosition)) continue;
-    const shaftManufactures = manufacturedFacts(state, project, Material.DriveShaft);
-    const shaft = verifiedManufacture(state, project, Material.DriveShaft);
+    const shaftManufactures = manufacturedFacts(state, person, project, Material.DriveShaft);
+    const shaft = verifiedManufacture(state, person, project, Material.DriveShaft);
     if (!shaftManufactures.length || !shaft?.stack) return mechanicalComponentManufactureStep(
       person, project, Material.DriveShaft, '传动轴',
     );
     return installStep(state, person, project, 'connector', Material.DriveShaft, shaftPosition, shaft);
   }
   if (!installedAt(state, project, 'converter', plan.wheelPosition)) {
-    const wheelManufactures = manufacturedFacts(state, project, Material.WaterWheel);
-    const wheel = verifiedManufacture(state, project, Material.WaterWheel);
+    const wheelManufactures = manufacturedFacts(state, person, project, Material.WaterWheel);
+    const wheel = verifiedManufacture(state, person, project, Material.WaterWheel);
     if (!wheelManufactures.length) return manufactureStep(person, project, Material.WaterWheel, '水轮');
     if (!wheel?.stack) return manufactureStep(person, project, Material.WaterWheel, '水轮');
     return installStep(state, person, project, 'converter', Material.WaterWheel, plan.wheelPosition, wheel);
@@ -1680,8 +1756,8 @@ export function mechanicalPowerProjectStep(
     ? null
     : waitingForCurrentRecovery ? null : operateStep(state, person, project);
 
-  const replacementManufactures = manufacturedFacts(state, project, Material.DriveShaft, fault);
-  const replacement = verifiedManufacture(state, project, Material.DriveShaft, fault);
+  const replacementManufactures = manufacturedFacts(state, person, project, Material.DriveShaft, fault);
+  const replacement = verifiedManufacture(state, person, project, Material.DriveShaft, fault);
   if (!replacementManufactures.length) return mechanicalComponentManufactureStep(
     person, project, Material.DriveShaft, '替换传动轴',
   );
@@ -1753,20 +1829,20 @@ export function mechanicalPowerMaterialRequirement(
     };
   };
   if (!installedAt(state, project, 'load', plan.loadPosition)) {
-    if (!manufacturedFacts(state, project, Material.Mill).length) return missingForRecipe(Material.Mill);
-    if (!verifiedManufacture(state, project, Material.Mill)) return empty();
-    return verifiedManufacture(state, project, Material.Mill)?.stack ? empty() : missingForRecipe(Material.Mill);
+    if (!manufacturedFacts(state, person, project, Material.Mill).length) return missingForRecipe(Material.Mill);
+    if (!verifiedManufacture(state, person, project, Material.Mill)) return empty();
+    return verifiedManufacture(state, person, project, Material.Mill)?.stack ? empty() : missingForRecipe(Material.Mill);
   }
   if (plan.shaftPositions.some((position) => !installedAt(state, project, 'connector', position))) {
-    const shaft = verifiedManufacture(state, project, Material.DriveShaft);
-    return shaft?.stack ? empty() : manufacturedFacts(state, project, Material.DriveShaft).length
+    const shaft = verifiedManufacture(state, person, project, Material.DriveShaft);
+    return shaft?.stack ? empty() : manufacturedFacts(state, person, project, Material.DriveShaft).length
       ? empty()
       : missingForMechanicalComponent(Material.DriveShaft);
   }
   if (!installedAt(state, project, 'converter', plan.wheelPosition)) {
-    if (!manufacturedFacts(state, project, Material.WaterWheel).length) return missingForRecipe(Material.WaterWheel);
-    if (!verifiedManufacture(state, project, Material.WaterWheel)) return empty();
-    return verifiedManufacture(state, project, Material.WaterWheel)?.stack ? empty() : missingForRecipe(Material.WaterWheel);
+    if (!manufacturedFacts(state, person, project, Material.WaterWheel).length) return missingForRecipe(Material.WaterWheel);
+    if (!verifiedManufacture(state, person, project, Material.WaterWheel)) return empty();
+    return verifiedManufacture(state, person, project, Material.WaterWheel)?.stack ? empty() : missingForRecipe(Material.WaterWheel);
   }
   const fault = faultFact(state, project);
   if (!fault) return person.inventory.some((stack) => stack.materialId === Material.Seed && stack.quantity > 0)
@@ -1774,9 +1850,9 @@ export function mechanicalPowerMaterialRequirement(
   if (repairFact(state, project, fault)) return operationFact(state, project, repairFact(state, project, fault)!)
     || person.inventory.some((stack) => stack.materialId === Material.Seed && stack.quantity > 0)
     ? empty() : raw(Material.Seed);
-  const replacement = verifiedManufacture(state, project, Material.DriveShaft, fault);
+  const replacement = verifiedManufacture(state, person, project, Material.DriveShaft, fault);
   if (!replacement?.stack) {
-    return manufacturedFacts(state, project, Material.DriveShaft, fault).length
+    return manufacturedFacts(state, person, project, Material.DriveShaft, fault).length
       ? empty()
       : missingForMechanicalComponent(Material.DriveShaft);
   }
@@ -1804,9 +1880,9 @@ export function mechanicalPowerMaintenanceMaterialRequirement(
     || person.inventory.some((stack) => stack.materialId === Material.Seed && stack.quantity > 0)
     ? empty()
     : raw(Material.Seed, [repair.id]);
-  const manufacture = manufacturedFacts(state, project, Material.DriveShaft, fault).at(-1);
+  const manufacture = manufacturedFacts(state, person, project, Material.DriveShaft, fault).at(-1);
   if (manufacture && !verificationFor(state, project, manufacture, Material.DriveShaft)) return empty();
-  const replacement = verifiedManufacture(state, project, Material.DriveShaft, fault);
+  const replacement = verifiedManufacture(state, person, project, Material.DriveShaft, fault);
   if (!replacement?.stack) {
     if (manufacture) return empty();
     const shaft = reliableRecipeBasis(person, Material.DriveShaft);
@@ -1872,9 +1948,9 @@ export function mechanicalPowerReliabilityMaterialRequirement(
       ? empty()
       : raw([Material.Seed], [repair.id, ...basisSources]);
   }
-  const manufacture = manufacturedFacts(state, project, Material.SteelDriveShaft, fault).at(-1);
+  const manufacture = manufacturedFacts(state, person, project, Material.SteelDriveShaft, fault).at(-1);
   if (manufacture && !verificationFor(state, project, manufacture, Material.SteelDriveShaft)) return empty();
-  const replacement = verifiedManufacture(state, project, Material.SteelDriveShaft, fault);
+  const replacement = verifiedManufacture(state, person, project, Material.SteelDriveShaft, fault);
   if (replacement?.stack) {
     return person.inventory.some((stack) => stack.materialId === Material.BronzeTool
       && stack.quantity > 0
@@ -1927,18 +2003,32 @@ export function mechanicalPowerCompletionEvidence(
       && candidate.materialId === planned.materialId
       && samePosition(candidate.position, planned.position));
     if (!component) return false;
+    const installation = actions.find((fact) => fact.id === component.installationEventId
+      && fact.status === 'completed'
+      && projectEventHasEventTimeLead(project, fact)
+      && fact.diff.mechanicalPowerInstallation === true
+      && fact.diff.projectId === project.id
+      && fact.diff.networkId === network.id
+      && fact.diff.componentRole === planned.role
+      && Number(fact.diff.componentMaterialId) === planned.materialId);
+    if (!installation) return false;
     const manufacture = actions.find((fact) => component.sourceEventIds.includes(fact.id)
       && fact.status === 'completed'
-      && fact.who === project.ownerId
+      && fact.who === installation.who
+      && projectEventHasEventTimeLead(project, fact)
       && fact.action.kind === 'act'
       && fact.action.operation === 'combine'
-      && Number(fact.diff.outputMaterialId) === planned.materialId);
+      && Number(fact.diff.outputMaterialId) === planned.materialId
+      && actionAfter(installation, fact));
     return Boolean(manufacture && actions.some((fact) => component.sourceEventIds.includes(fact.id)
       && fact.status === 'completed'
-      && fact.who === project.ownerId
+      && fact.who === installation.who
+      && projectEventHasEventTimeLead(project, fact)
       && fact.action.kind === 'attend'
       && fact.diff.verifiedSourceEventId === manufacture.id
-      && Number(fact.diff.verifiedMaterialId) === planned.materialId));
+      && Number(fact.diff.verifiedMaterialId) === planned.materialId
+      && actionAfter(fact, manufacture)
+      && actionAfter(installation, fact)));
   });
   if (!componentProvenanceComplete) return [];
   const fault = faultFact(state, project);
@@ -1948,7 +2038,7 @@ export function mechanicalPowerCompletionEvidence(
   const operation = operationFact(state, project, repair);
   if (!operation) return [];
   const installationIds = actions.filter((fact) => fact.status === 'completed'
-    && fact.who === project.ownerId
+    && projectEventHasEventTimeLead(project, fact)
     && fact.diff.mechanicalPowerInstallation === true
     && fact.diff.networkId === network.id).map((fact) => fact.id);
   const faultPosition = fault.diff.componentPosition as VoxelPosition | undefined;

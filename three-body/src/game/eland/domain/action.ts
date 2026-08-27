@@ -13,6 +13,7 @@ import type { WildlifeThreatBasis } from './wildlife-threat';
 import type { MortuaryPhase } from './mortuary';
 import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
+import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
 
 export interface VoxelPosition { x: number; y: number; z: number }
 
@@ -264,6 +265,8 @@ export type PrimitiveAction =
       mechanicalPowerFaultObservation?: MechanicalPowerFaultObservationRef;
       /** A visible current open circuit selected for source-bound personal diagnosis. */
       electricalPowerFaultObservation?: ElectricalPowerFaultObservationRef;
+      /** A sourced, voluntary inspection of one bounded project vacancy. */
+      projectLeadershipSuccession?: ProjectLeadershipSuccessionActionBasis;
       /** Optional source-bound verification compiled from an authoritative material response. */
       verification?: {
         techniqueId: string;

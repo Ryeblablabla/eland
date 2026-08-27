@@ -26,6 +26,7 @@ import type {
   ProjectProposal,
   ProjectState,
 } from '../../domain/project';
+import { projectIsLedBy } from '../../domain/project-leadership';
 import {
   inspectProjectMaterialContributionRequest,
   transferMatchesProjectMaterialRequest,
@@ -2252,7 +2253,7 @@ export function compileProjectStep(
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
-  if (project.ownerId !== person.id
+  if (!projectIsLedBy(project, person.id)
     && projectSupportsMaterialContribution(project)) {
     return projectContributionStep(state, person, project);
   }

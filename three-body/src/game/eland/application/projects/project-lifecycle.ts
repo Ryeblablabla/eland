@@ -8,6 +8,7 @@ import { remember } from '../../domain/memory';
 import { buildProjectPressureBasis } from '../project-pressure';
 import { closeProjectHypothesisCampaign } from '../project-hypotheses';
 import { recordJointProjectSocialLearning } from '../../domain/social-learning';
+import { projectCurrentLeadId } from '../../domain/project-leadership';
 import {
   closeProjectSearchCampaigns,
   endActiveLogisticsEpisode,
@@ -19,9 +20,10 @@ export function refreshProjectPressure(
   atMonth: number,
 ): void {
   if (project.status !== 'active') return;
-  const owner = state.people.find((person) => person.id === project.ownerId && isAlive(person));
-  if (!owner) return;
-  const observed = buildProjectPressureBasis(state, owner, project, atMonth);
+  const leadId = projectCurrentLeadId(project);
+  const lead = state.people.find((person) => person.id === leadId && isAlive(person));
+  if (!lead) return;
+  const observed = buildProjectPressureBasis(state, lead, project, atMonth);
   project.pressureHistory ??= [];
   if (!project.pressureBasis || project.pressureBasis.basisKey !== observed.basisKey) {
     project.pressure = observed.pressure;

@@ -103,6 +103,10 @@ import {
 } from './actions/technique-learning-actions';
 import { executeCommunicate } from './actions/communication-actions';
 import { executeMeasurementAttend } from './actions/measurement-actions';
+import {
+  projectLeadershipInspectionFactId,
+  validateProjectLeadershipSuccessionAction,
+} from './project-leadership';
 
 export { addDrop, addInventory } from './actions/inventory';
 
@@ -1664,6 +1668,44 @@ function executeAttend(
 ) {
   const cell = targetCell(state, action.target);
   if (cell === null || Math.abs(cellX(cell) - cellX(person.position.cellId)) + Math.abs(cellY(cell) - cellY(person.position.cellId)) > 7) return { status: 'blocked' as const, result: '观察目标超出感知范围', diff: {} };
+  if (action.projectLeadershipSuccession) {
+    const succession = validateProjectLeadershipSuccessionAction(state, person, action, atMonth);
+    if (!succession) return {
+      status: 'blocked' as const,
+      result: '项目 vacancy、本人贡献、死亡认知或现场位置已不再支持接任',
+      diff: {},
+    };
+    const factId = projectLeadershipInspectionFactId(succession.basis);
+    const sourceEventIds = [...new Set([...succession.basis.sourceFactIds, eventId])];
+    const existing = person.knowledge.find((fact) => fact.id === factId && fact.kind === 'observation');
+    if (existing) {
+      existing.confidence = clamp(Math.max(existing.confidence, 68) + 8);
+      existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
+    } else person.knowledge.push({
+      id: factId,
+      kind: 'observation',
+      summary: `亲自检查“${succession.project.summary}”的固定工地并愿意接续公开工程`,
+      confidence: 72,
+      learnedAtMonth: atMonth,
+      sourceEventIds,
+    });
+    return {
+      status: 'completed' as const,
+      result: `亲自检查固定工地后接任“${succession.project.summary}”`,
+      diff: {
+        factId,
+        projectLeadershipSuccession: true,
+        projectLeadershipProjectId: succession.project.id,
+        projectLeadershipVacancyTransitionId: succession.basis.vacancyTransitionId,
+        projectLeadershipPredecessorId: succession.basis.predecessorId,
+        projectLeadershipSuccessorId: succession.basis.successorId,
+        projectLeadershipDeathEventId: succession.basis.deathEventId,
+        projectLeadershipContributionEventId: succession.basis.contributionEventId,
+        projectLeadershipSite: { ...succession.basis.site },
+        projectLeadershipSourceFactIds: [...succession.basis.sourceFactIds],
+      },
+    };
+  }
   const measurement = executeMeasurementAttend(state, person, action, atMonth, eventId);
   if (measurement) return measurement;
   const electricalFault = executeElectricalPowerFaultAttend(state, person, action, atMonth, eventId);

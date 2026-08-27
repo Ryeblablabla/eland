@@ -2,6 +2,7 @@ import type { MaterialId } from './material';
 import type { ElectricalPowerPlan } from './electrical-power';
 import type { MechanicalPowerProjectPlan } from './mechanical-power';
 import type { PersonId } from './person';
+import type { ProjectLeadershipTransition } from './project-leadership';
 
 export type ProjectKind = 'production' | 'construction' | 'inquiry';
 
@@ -409,6 +410,7 @@ export type ProjectLogisticsEndingReason =
   | 'search-target-reached'
   | 'search-budget-exhausted'
   | 'search-target-unreachable'
+  | 'leadership-vacancy'
   | 'project-completed'
   | 'project-blocked'
   | 'project-abandoned';
@@ -609,6 +611,7 @@ export interface ProjectHypothesisCampaign {
     | 'project-completed'
     | 'project-blocked'
     | 'project-abandoned'
+    | 'leadership-vacancy'
     | 'reliable-knowledge';
 }
 
@@ -671,6 +674,8 @@ export interface ProjectState extends ProjectProposal {
   /** Optional while v8 saves are migrated lazily by the project compiler. */
   logisticsEpisodes?: ProjectLogisticsEpisode[];
   activeLogisticsEpisodeId?: string;
+  /** Append-only authority history; absence is the legacy founder-led state. */
+  leadershipTransitions?: ProjectLeadershipTransition[];
 }
 
 export function cloneProjectForPlanning(project: ProjectState): ProjectState {

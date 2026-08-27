@@ -6,6 +6,11 @@ import type { ProjectState } from '../project';
 import { worldEventById } from '../event-index';
 import { projectById } from '../state-index';
 import {
+  eventAfterCurrentLeadership,
+  projectEventHasEventTimeLead,
+  projectIsLedBy,
+} from '../project-leadership';
+import {
   MECHANICAL_POWER_ACTION_BASIS_VERSION,
   MECHANICAL_POWER_FAULT_PROOF_EVENT_LIMIT,
   MECHANICAL_POWER_OPERATION_TECHNIQUE_ID,
@@ -100,7 +105,7 @@ function mechanicalActionContext(
   }
   const projectCandidate = projectById(state, basis.projectId);
   const project = projectCandidate?.status === 'active'
-    && projectCandidate.ownerId === person.id
+    && projectIsLedBy(projectCandidate, person.id)
     && projectCandidate.desiredFunction === 'water-powered-crop-processing'
     ? projectCandidate
     : undefined;
@@ -126,8 +131,8 @@ function mechanicalActionContext(
   const observationEvent = personalWaterCurrentObservationEvent(
     state, person, source.id, new Set(project.triggerFactIds),
   );
-  if (!observationEvent) {
-    return { blocked: '机械动作缺少项目发起者本人对该水流的可靠观察' };
+  if (!observationEvent || !eventAfterCurrentLeadership(project, observationEvent)) {
+    return { blocked: '机械动作缺少当前负责人的现场水流观察' };
   }
   const availability = waterCurrentAvailabilityFor(state.world.grid, mechanicalPower, source.id);
   if (requireFlow && !availability.available) return {
@@ -396,6 +401,7 @@ function verifiedComponentEvidence(
   for (const manufacture of actions.filter((event) => event.status === 'completed'
     && (!expected || event.id === expected.manufactureEventId)
     && event.who === person.id
+    && projectEventHasEventTimeLead(project, event)
     && event.action.kind === 'act'
     && event.action.operation === 'combine'
     && Number(event.diff.outputMaterialId) === materialId
@@ -405,6 +411,7 @@ function verifiedComponentEvidence(
     const verification = actions.find((event) => event.status === 'completed'
       && (!expected || event.id === expected.verificationEventId)
       && event.who === person.id
+      && projectEventHasEventTimeLead(project, event)
       && event.action.kind === 'attend'
       && event.diff.verifiedSourceEventId === manufacture.id
       && event.diff.verifiedStackId === stack.id

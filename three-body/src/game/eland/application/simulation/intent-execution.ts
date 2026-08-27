@@ -38,6 +38,7 @@ import {
   type PersonState,
 } from '../../domain/person';
 import { intentById, intentsOwnedBy, personById, projectById } from '../../domain/state-index';
+import { projectIsLedBy } from '../../domain/project-leadership';
 import {
   isCurrentlyBodyBlockedPlacement,
   isObservedEmergencyHibernationOption,
@@ -234,14 +235,14 @@ export function bindIntentProjectTarget(
 
 export function shouldWaitForSameMonthSharedProject(
   intent: Pick<Intent, 'createdAtMonth' | 'projectId'>,
-  project: Pick<SimulationState['projects'][number], 'id' | 'ownerId' | 'status'> | undefined,
+  project: SimulationState['projects'][number] | undefined,
   personId: PersonId,
   atMonth: number,
 ): boolean {
   return Boolean(intent.projectId
     && project?.id === intent.projectId
     && project.status === 'active'
-    && project.ownerId !== personId
+    && !projectIsLedBy(project, personId)
     && intent.createdAtMonth === atMonth);
 }
 
@@ -1153,7 +1154,10 @@ export function executeActiveIntent(
   }
   intent.actionEventIds.push(fact.id);
   if (intent.projectId) recordProjectAction(state, intent.projectId, fact);
-  else if (intent.recordUseBasis && (fact.diff.recordUseStage === 'experiment'
+  else if (fact.diff.projectLeadershipSuccession === true
+    && typeof fact.diff.projectLeadershipProjectId === 'string') {
+    recordProjectAction(state, fact.diff.projectLeadershipProjectId, fact);
+  } else if (intent.recordUseBasis && (fact.diff.recordUseStage === 'experiment'
     || fact.diff.recordUseStage === 'replicate'
     || fact.diff.recordUsePreparation === true)) {
     recordProjectAction(state, intent.recordUseBasis.projectId, fact);

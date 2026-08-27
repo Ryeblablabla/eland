@@ -200,6 +200,122 @@ try {
   assert.equal(practice.support, 'supported');
   assert.ok(practice.sourceFactIds.includes('fulfill:assist-1') && practice.sourceFactIds.includes('fulfill:assist-2'));
 
+  const waterRequester = person('water-requester', '饮水请求者');
+  const waterHelper = person('water-helper', '寻水帮助者');
+  waterRequester.position = { cellId: 4, z: 2, previousCellId: 4, previousZ: 2 };
+  waterHelper.position = { cellId: 3, z: 1, previousCellId: 3, previousZ: 1 };
+  const waterState = simulationState([waterRequester, waterHelper]);
+  waterState.world.grid = {
+    version: 2,
+    width: 84,
+    depth: 52,
+    levels: 12,
+    generator: { version: 'material-world-v1', seed: waterState.seed },
+    palette: [],
+    voxels: new Uint16Array(84 * 52 * 12),
+  };
+  waterState.world.grid.voxels[0] = Material.Water;
+  const waterAgreement = agreement('assist-water-long-fulfillment', {
+    kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id,
+    need: 'water', expiresAtMonth: 862,
+  }, waterRequester.id, waterHelper.id, 'active', 860);
+  waterState.agreements.push(waterAgreement);
+
+  const interleavedWaterFacts = Array.from({ length: 25 }, (_, index) => {
+    const helperEvidence = index % 2 === 0;
+    const fact = helperEvidence
+      ? actionFact(`water-helper:${index}`, 861, waterHelper.id, {
+        kind: 'move', to: { cellId: 1, z: 1 },
+      })
+      : actionFact(`water-requester:${index}`, 861, waterRequester.id, {
+        kind: 'act', operation: 'ingest', targets: [],
+      }, { materialId: Material.Water, hydration: 12 });
+    fact.orderInMonth = 0;
+    fact.planningTick = index;
+    fact.orderInTick = 25 - index;
+    fact.cellId = helperEvidence ? 1 : 2;
+    fact.fromCellId = fact.cellId;
+    fact.toCellId = fact.cellId;
+    if (!helperEvidence) {
+      fact.fromZ = 2;
+      fact.toZ = 2;
+    }
+    return fact;
+  });
+  for (const fact of interleavedWaterFacts) {
+    appendCommittedEvents(waterState, [fact]);
+    recordAgreementAction(waterState, fact);
+  }
+  assert.equal(waterAgreement.status, 'active', '双方尚未在同一水源汇合时应继续积累真实履约事实');
+  assert.equal(waterAgreement.fulfillmentEventIds.length, 25);
+  waterAgreement.fulfillmentEventIds.reverse();
+  waterRequester.position = { cellId: 4, z: 1, previousCellId: 4, previousZ: 2 };
+
+  const finalRequesterDrink = actionFact('water-requester:final', 861, waterRequester.id, {
+    kind: 'act', operation: 'ingest', targets: [],
+  }, { materialId: Material.Water, hydration: 18 });
+  finalRequesterDrink.orderInMonth = 0;
+  finalRequesterDrink.planningTick = 30;
+  finalRequesterDrink.orderInTick = 0;
+  finalRequesterDrink.cellId = 1;
+  finalRequesterDrink.fromCellId = 1;
+  finalRequesterDrink.toCellId = 1;
+  appendCommittedEvents(waterState, [finalRequesterDrink]);
+  recordAgreementAction(waterState, finalRequesterDrink);
+
+  const waterBelief = socialCooperationBeliefFor(waterRequester, waterHelper.id, 'assist-water');
+  assert.equal(waterAgreement.status, 'fulfilled');
+  assert.ok(waterBelief);
+  assert.equal(waterBelief.reliability.positiveObservations, 1,
+    '多 tick 的同一次水协助履约只能形成一个可靠性观测');
+  assert.equal(waterBelief.receipts.length, 1);
+  assert.deepEqual(
+    waterBelief.receipts[0].sourceEventIds,
+    ['water-helper:24', finalRequesterDrink.id],
+    '乱序累积源必须按完整权威顺序各选最后一个 helper 到水与 requester 饮水事实',
+  );
+  assert.ok(waterBelief.receipts[0].sourceEventIds.length <= 2);
+  recordAgreementAction(waterState, finalRequesterDrink);
+  assert.equal(waterBelief.reliability.positiveObservations, 1, '重复处理结算事实不得追加第二次观测');
+
+  const partialWaterAgreement = agreement('assist-water-partial-retention', {
+    kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id,
+    need: 'water', expiresAtMonth: 863,
+  }, waterRequester.id, waterHelper.id, 'active', 861);
+  partialWaterAgreement.fulfilledByPersonIds = [waterHelper.id, waterRequester.id];
+  partialWaterAgreement.fulfillmentEventIds = ['water-helper:not-retained'];
+  waterState.agreements.push(partialWaterAgreement);
+  waterHelper.position = { cellId: 4, z: 1, previousCellId: 3, previousZ: 1 };
+  const retainedRequesterDrink = actionFact('water-requester:retained-only', 862, waterRequester.id, {
+    kind: 'act', operation: 'ingest', targets: [],
+  }, { materialId: Material.Water, hydration: 16 });
+  appendCommittedEvents(waterState, [retainedRequesterDrink]);
+  recordAgreementAction(waterState, retainedRequesterDrink);
+  assert.deepEqual(
+    waterBelief.receipts.find((receipt) => receipt.id.includes(partialWaterAgreement.id))?.sourceEventIds,
+    [retainedRequesterDrink.id],
+    '一类事实未保留时只能留下另一类已验证锚点，不能补造 helper 来源',
+  );
+
+  const unverifiedWaterAgreement = agreement('assist-water-unverified', {
+    kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id,
+    need: 'water', expiresAtMonth: 864,
+  }, waterRequester.id, waterHelper.id, 'active', 862);
+  unverifiedWaterAgreement.fulfilledByPersonIds = [waterHelper.id, waterRequester.id];
+  unverifiedWaterAgreement.fulfillmentEventIds = ['water-helper:missing', 'water-requester:missing'];
+  waterState.agreements.push(unverifiedWaterAgreement);
+  const uncommittedRequesterDrink = actionFact('water-requester:uncommitted', 863, waterRequester.id, {
+    kind: 'act', operation: 'ingest', targets: [],
+  }, { materialId: Material.Water, hydration: 14 });
+  const waterReceiptCountBeforeUnverified = waterBelief.receipts.length;
+  assert.throws(
+    () => recordAgreementAction(waterState, uncommittedRequesterDrink),
+    /缺少可验证的履约事实/u,
+    '两类来源都无法从权威历史解析时必须继续 fail-closed',
+  );
+  assert.equal(unverifiedWaterAgreement.status, 'active');
+  assert.equal(waterBelief.receipts.length, waterReceiptCountBeforeUnverified);
+
   const rejected = agreement('assist-rejected', {
     kind: 'assist', requesterId: requester.id, helperId: helper.id, need: 'food', expiresAtMonth: 13,
   }, requester.id, helper.id, 'proposed', 11);

@@ -6,7 +6,11 @@ import { applyRelationEvidence } from './relation';
 import { Material, materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
-import { completedActionFactsForPerson, worldEventById } from './event-index';
+import {
+  compareWorldEventsInCanonicalOrder,
+  completedActionFactsForPerson,
+  worldEventById,
+} from './event-index';
 import {
   agreementsRequiringLifecycle,
   agreementsRequiringResponseDeadlineSynchronization,
@@ -258,6 +262,76 @@ export function agreementAuthorizesTransfer(
     && actualQuantity >= term.quantity);
 }
 
+type AssistanceProposal = Extract<SocialProposal, { kind: 'assist' }>;
+
+function isHelperWaterAssistanceEvidence(
+  state: SimulationState,
+  proposal: AssistanceProposal,
+  fact: ActionFact,
+): boolean {
+  const action = fact.action;
+  return fact.status === 'completed'
+    && fact.who === proposal.helperId
+    && ((action.kind === 'move'
+      && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+      || (action.kind === 'communicate'
+        && action.audience.includes(proposal.requesterId)
+        && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+      || (action.kind === 'attend'
+        && action.target.kind === 'voxel'
+        && voxelAt(
+          state.world.grid,
+          action.target.position.x,
+          action.target.position.y,
+          action.target.position.z,
+        ) === Material.Water));
+}
+
+function isRequesterWaterAssistanceEvidence(
+  proposal: AssistanceProposal,
+  fact: ActionFact,
+): boolean {
+  const action = fact.action;
+  const materialId = Number(fact.diff.materialId);
+  return fact.status === 'completed'
+    && fact.who === proposal.requesterId
+    && action.kind === 'act'
+    && action.operation === 'ingest'
+    && Number.isFinite(materialId)
+    && materialHas(materialId, 'drinkable')
+    && Number(fact.diff.hydration ?? 0) > 0;
+}
+
+/**
+ * Water assistance may accumulate many arrival/drinking facts before the two
+ * parties actually meet. Keep one latest verified anchor for each side rather
+ * than widening a single social-learning observation to the full episode.
+ */
+function waterAssistanceSocialLearningSources(
+  state: SimulationState,
+  agreement: Agreement,
+  proposal: AssistanceProposal,
+): string[] {
+  let latestHelper: ActionFact | undefined;
+  let latestRequester: ActionFact | undefined;
+  for (const eventId of new Set(agreement.fulfillmentEventIds)) {
+    const event = worldEventById(state, eventId);
+    if (event?.kind !== 'action') continue;
+    if (isHelperWaterAssistanceEvidence(state, proposal, event)
+      && (!latestHelper || compareWorldEventsInCanonicalOrder(latestHelper, event) < 0)) {
+      latestHelper = event;
+    }
+    if (isRequesterWaterAssistanceEvidence(proposal, event)
+      && (!latestRequester || compareWorldEventsInCanonicalOrder(latestRequester, event) < 0)) {
+      latestRequester = event;
+    }
+  }
+  return [latestHelper, latestRequester]
+    .filter((event): event is ActionFact => Boolean(event))
+    .sort(compareWorldEventsInCanonicalOrder)
+    .map((event) => event.id);
+}
+
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
   const action = fact.action;
@@ -265,24 +339,14 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
     && agreement.proposal.kind === 'assist'
     && agreement.proposal.need === 'water'
     && agreement.partyIds.includes(fact.who));
-  if (waterAssistance?.proposal.kind === 'assist') {
+  if (waterAssistance?.proposal.kind === 'assist' && waterAssistance.proposal.need === 'water') {
     const proposal = waterAssistance.proposal;
     const helperCandidate = personById(state, proposal.helperId);
     const requesterCandidate = personById(state, proposal.requesterId);
     const helper = helperCandidate && isAlive(helperCandidate) ? helperCandidate : undefined;
     const requester = requesterCandidate && isAlive(requesterCandidate) ? requesterCandidate : undefined;
-    const helperReachedWater = fact.who === proposal.helperId && (
-      (action.kind === 'move' && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
-      || (action.kind === 'communicate' && action.audience.includes(proposal.requesterId) && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
-      || (action.kind === 'attend' && action.target.kind === 'voxel' && voxelAt(state.world.grid, action.target.position.x, action.target.position.y, action.target.position.z) === Material.Water)
-    );
-    const materialId = Number(fact.diff.materialId);
-    const requesterDrank = fact.who === proposal.requesterId
-      && action.kind === 'act'
-      && action.operation === 'ingest'
-      && Number.isFinite(materialId)
-      && materialHas(materialId, 'drinkable')
-      && Number(fact.diff.hydration ?? 0) > 0;
+    const helperReachedWater = isHelperWaterAssistanceEvidence(state, proposal, fact);
+    const requesterDrank = isRequesterWaterAssistanceEvidence(proposal, fact);
     if (helperReachedWater || requesterDrank) {
       const contributorId = helperReachedWater ? proposal.helperId : proposal.requesterId;
       if (!waterAssistance.fulfilledByPersonIds.includes(contributorId)) waterAssistance.fulfilledByPersonIds.push(contributorId);
@@ -298,7 +362,15 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
         && (sameLocation(helper, requester) || (helperArrival?.cellId === fact.cellId && helperArrival.toZ === requester.position.z))
         && waterAssistance.fulfilledByPersonIds.includes(proposal.helperId)
         && waterAssistance.fulfilledByPersonIds.includes(proposal.requesterId)) {
-        fulfill(state, waterAssistance, fact);
+        const socialLearningSourceEventIds = waterAssistanceSocialLearningSources(
+          state,
+          waterAssistance,
+          proposal,
+        );
+        if (socialLearningSourceEventIds.length === 0) {
+          throw new Error(`water assistance ${waterAssistance.id} 缺少可验证的履约事实`);
+        }
+        fulfill(state, waterAssistance, fact, socialLearningSourceEventIds);
         return;
       }
     }
@@ -451,7 +523,12 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
 
 }
 
-function fulfill(state: SimulationState, agreement: Agreement, fact: ActionFact): void {
+function fulfill(
+  state: SimulationState,
+  agreement: Agreement,
+  fact: ActionFact,
+  socialLearningSourceEventIds: string[] = agreement.fulfillmentEventIds,
+): void {
   agreement.status = 'fulfilled';
   agreement.resolvedAtMonth = fact.atMonth;
   if (!agreement.fulfillmentEventIds.includes(fact.id)) agreement.fulfillmentEventIds.push(fact.id);
@@ -466,7 +543,7 @@ function fulfill(state: SimulationState, agreement: Agreement, fact: ActionFact)
     state,
     agreement,
     fact.atMonth,
-    [...agreement.fulfillmentEventIds],
+    [...socialLearningSourceEventIds],
   );
 }
 

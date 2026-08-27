@@ -18,6 +18,7 @@ const runnerPath = path.join(workspace, 'scripts/run-bounded-modern-evolution.mj
 const verifierPath = path.join(workspace, 'scripts/verify-era-boundary-ledger.mjs');
 const driftRunnerPath = path.join(workspace, `scripts/.era-ledger-drift-${process.pid}.mjs`);
 const LEDGER_HASH_DOMAIN = 'eland-era-boundary-ledger-v1\0';
+const LEGACY_NONBOUNDARY_RUNNER_HASH = 'cb29178344bdb2671c871eddbbbebc8909cfdc66b9eb7dbf97a253ca502569b4';
 const results = [];
 
 function canonicalValue(value) {
@@ -90,6 +91,20 @@ function readLedger(id) {
   return readFileSync(ledgerPath(id), 'utf8').trimEnd().split('\n').map((line) => JSON.parse(line));
 }
 
+function rewriteLedger(id, mutate) {
+  const lines = readLedger(id);
+  mutate(lines);
+  let previousHash = null;
+  for (const line of lines) {
+    line.prevHash = previousHash;
+    const { hash: _oldHash, ...unhashed } = line;
+    line.hash = ledgerHash(unhashed);
+    previousHash = line.hash;
+  }
+  writeFileSync(ledgerPath(id), `${lines.map(JSON.stringify).join('\n')}\n`);
+  return lines;
+}
+
 try {
   const annual = invokeRunner({ id: 'ledger-annual', seed: 94_201 });
   assert.equal(annual.child.status, 0, `${annual.child.stderr}\n${annual.child.stdout}`);
@@ -132,6 +147,39 @@ try {
   assert.equal(recoveredLines.length, 3);
   assert.equal(recoveredLines[2].recoveredAfterPublication, true);
   assert.equal(recoveredLines[2].authority.month, 12);
+
+  const nonboundary = invokeRunner({ id: 'ledger-nonboundary', seed: 94_203, targetMonth: 13 });
+  assert.equal(nonboundary.child.status, 0, `${nonboundary.child.stderr}\n${nonboundary.child.stdout}`);
+  assert.equal(nonboundary.result.reachedMonth, 13);
+  assert.equal(readLedger('ledger-nonboundary').at(-1).authority.month, 12);
+  const nonboundaryResumed = invokeRunner({ id: 'ledger-nonboundary', seed: 94_203, targetMonth: 14 });
+  assert.equal(
+    nonboundaryResumed.child.status,
+    0,
+    `${nonboundaryResumed.child.stderr}\n${nonboundaryResumed.child.stdout}`,
+  );
+  assert.equal(nonboundaryResumed.result.startMonth, 13);
+  assert.equal(nonboundaryResumed.result.reachedMonth, 14);
+
+  rewriteLedger('ledger-nonboundary', (lines) => {
+    lines[0].runnerHash = LEGACY_NONBOUNDARY_RUNNER_HASH;
+  });
+  const successorResumed = invokeRunner({ id: 'ledger-nonboundary', seed: 94_203, targetMonth: 15 });
+  assert.equal(successorResumed.child.status, 0, `${successorResumed.child.stderr}\n${successorResumed.child.stdout}`);
+  const successorLines = readLedger('ledger-nonboundary');
+  const successor = successorLines.at(-1);
+  assert.equal(successor.type, 'runner-successor');
+  assert.equal(successor.authority.month, 14);
+  assert.equal(successor.observer.source.month, 12);
+  assert.equal(successor.runnerSuccessor.fromRunnerHash, LEGACY_NONBOUNDARY_RUNNER_HASH);
+  assert.equal(
+    successor.runnerSuccessor.toRunnerHash,
+    createHash('sha256').update(readFileSync(runnerPath)).digest('hex'),
+  );
+  const verifiedSuccessor = invokeVerifier('ledger-nonboundary');
+  assert.equal(verifiedSuccessor.child.status, 0, verifiedSuccessor.child.stdout);
+  assert.equal(verifiedSuccessor.result.sourceHashesCurrent.runner, true);
+  assert.equal(verifiedSuccessor.result.dbRelation, 'db-ahead-nonboundary');
 
   const originalLedger = readFileSync(ledgerPath('ledger-annual'));
   const tamperedLines = readLedger('ledger-annual');
@@ -182,6 +230,7 @@ try {
     ok: true,
     annual: { entries: annualLines.length, resumedEntries: readLedger('ledger-annual').length },
     recovery: { committedMonth: crashed.result.reachedMonth, recovered: recoveredLines[2].recoveredAfterPublication },
+    nonboundary: { resumedFrom: nonboundaryResumed.result.startMonth, successorAt: successor.authority.month },
     rejected: ['hash tamper', 'internally rehashed lineage mismatch', 'runner source drift', 'config drift'],
     maxRss,
   }));

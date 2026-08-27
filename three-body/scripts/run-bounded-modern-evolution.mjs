@@ -40,6 +40,11 @@ let ledgerLockPath;
 
 const ERA_LEDGER_SCHEMA = 'eland-era-boundary-ledger-v1';
 const ERA_PROOF_SCHEMA = 'eland-era-boundary-proof-pack-v2';
+const RUNNER_SUCCESSOR_MANIFEST_SCHEMA = 'eland-bounded-modern-runner-successors-v1';
+const runnerSuccessorManifestPath = path.join(
+  import.meta.dirname,
+  'run-bounded-modern-evolution-successors.json',
+);
 const ERA_ORDER = [
   'primitive-tribe',
   'agrarian-settlement',
@@ -94,6 +99,58 @@ function ledgerEntryHash(value) {
 
 function proofPackHash(value) {
   return sha256Bytes(`${PROOF_HASH_DOMAIN}${canonicalJson(value)}`);
+}
+
+function runnerSuccessorEntryHash(value) {
+  return sha256Bytes(`${RUNNER_SUCCESSOR_MANIFEST_SCHEMA}\0${canonicalJson(value)}`);
+}
+
+function readRunnerSuccessorManifest() {
+  const manifest = JSON.parse(readFileSync(runnerSuccessorManifestPath, 'utf8'));
+  assert.equal(manifest.schema, RUNNER_SUCCESSOR_MANIFEST_SCHEMA, 'runner successor manifest schema 无效');
+  assert.equal(Array.isArray(manifest.successors), true, 'runner successor manifest 缺少 successors');
+  const seenFromHashes = new Set();
+  for (const successor of manifest.successors) {
+    assert.equal(HASH_PATTERN.test(successor.fromRunnerHash), true, 'runner successor from hash 无效');
+    assert.equal(HASH_PATTERN.test(successor.toRunnerHash), true, 'runner successor to hash 无效');
+    assert.notEqual(successor.fromRunnerHash, successor.toRunnerHash, 'runner successor 不得自循环');
+    assert.equal(typeof successor.policy === 'string' && successor.policy.length > 0, true);
+    assert.equal(typeof successor.reason === 'string' && successor.reason.length > 0, true);
+    assert.equal(seenFromHashes.has(successor.fromRunnerHash), false, 'runner successor from hash 重复');
+    seenFromHashes.add(successor.fromRunnerHash);
+  }
+  return manifest.successors;
+}
+
+function activeLedgerRunnerHash(lines) {
+  let active = lines[0].runnerHash;
+  for (const line of lines.slice(1)) {
+    if (line.type !== 'runner-successor') continue;
+    assert.equal(line.runnerSuccessor?.fromRunnerHash, active, `runner successor seq ${line.seq} 链断裂`);
+    assert.equal(HASH_PATTERN.test(line.runnerSuccessor.toRunnerHash), true);
+    active = line.runnerSuccessor.toRunnerHash;
+  }
+  return active;
+}
+
+function validateRunnerSuccessorChain(lines, manifest) {
+  let active = lines[0].runnerHash;
+  for (const line of lines.slice(1)) {
+    if (line.type !== 'runner-successor') continue;
+    const recorded = line.runnerSuccessor;
+    assert.equal(recorded?.fromRunnerHash, active, `runner successor seq ${line.seq} 链断裂`);
+    const known = manifest.find((candidate) => (
+      candidate.fromRunnerHash === recorded.fromRunnerHash
+      && candidate.toRunnerHash === recorded.toRunnerHash
+    ));
+    assert.ok(known, `runner successor seq ${line.seq} 未在 manifest 注册`);
+    assert.deepEqual(recorded, {
+      ...known,
+      manifestEntryHash: runnerSuccessorEntryHash(known),
+    }, `runner successor seq ${line.seq} 与 manifest 不一致`);
+    active = recorded.toRunnerHash;
+  }
+  return active;
 }
 
 function withLedgerHash(value) {
@@ -354,10 +411,22 @@ function authorityDatabaseSnapshot(api, dataDirectory, id, opened, requireBounda
     if (observerSource) {
       const rootAChunk = readChunk(database, observerSource.stateHash, 'observer source root A');
       rootA = api.parseRunStateRoot(rootAChunk);
+      assert.equal(observerSource.revision <= authority.revision, true);
+      assert.equal(observerSource.month <= authority.month, true);
       assert.equal(rootA.lineageId, authority.lineageId);
-      assert.equal(rootA.historyHeadHash, authority.historyHeadHash);
-      assert.equal(rootA.eventCount, authority.eventCount);
-      assert.equal(rootA.tailEventContentHash, authority.tailEventContentHash);
+      assert.equal(rootA.eventCount <= authority.eventCount, true);
+      const sourceIsCurrentRevision = observerSource.revision === authority.revision;
+      const sourceIsCurrentMonth = observerSource.month === authority.month;
+      assert.equal(
+        sourceIsCurrentRevision,
+        sourceIsCurrentMonth,
+        'observer source revision/month 只能同时等于当前 authority',
+      );
+      if (requireBoundarySource || sourceIsCurrentRevision) {
+        assert.equal(rootA.historyHeadHash, authority.historyHeadHash);
+        assert.equal(rootA.eventCount, authority.eventCount);
+        assert.equal(rootA.tailEventContentHash, authority.tailEventContentHash);
+      }
     }
     return { authority, observerSource, rootB, rootA };
   } finally {
@@ -648,6 +717,29 @@ function appendBootstrap(api, paths, header, opened, snapshot) {
   return [header, bootstrap];
 }
 
+function appendRunnerSuccessorRecord(api, paths, lines, opened, snapshot, successor) {
+  const previous = lines.at(-1);
+  const observation = makeLedgerObservation(api, opened, snapshot);
+  const record = withLedgerHash({
+    type: 'runner-successor',
+    seq: lines.length,
+    boundaryKind: 'runner-successor',
+    recoveredAfterPublication: false,
+    runnerSuccessor: {
+      ...successor,
+      manifestEntryHash: runnerSuccessorEntryHash(successor),
+    },
+    ...observation,
+    transition: transitionFrom(previous.observer.current, observation.observer.current),
+    proof: null,
+    proofPolicy: 'append-time-db-verified',
+    prevHash: previous.hash,
+  });
+  appendDurableJsonLine(paths.ledger, record);
+  lines.push(record);
+  return record;
+}
+
 function appendBoundaryRecord(
   api,
   paths,
@@ -700,18 +792,27 @@ function stableLedgerConfig(initialOpened, hotEventLimit, stopOnModern) {
   };
 }
 
-function validateHeader(header, api, id, seed, config, sourceHashes) {
+function validateHeader(lines, api, id, seed, config, sourceHashes) {
+  const header = lines[0];
   assert.equal(header.runId, id, '时代账本 runId 与参数不一致');
   assert.equal(header.seed, seed, '时代账本 seed 与参数不一致');
   assert.deepEqual(header.config, config, '时代账本 config 与当前运行不一致');
   assert.equal(header.configHash, sha256Bytes(canonicalJson(config)), '时代账本 configHash 无效');
   assert.equal(header.observerVersion, api.DEVELOPMENT_OBSERVER_VERSION, '时代 observer version 漂移');
-  assert.equal(header.runnerHash, sourceHashes.runnerHash, 'runner source hash 漂移，必须使用新 run prefix');
   assert.equal(
     header.engineBundleHash,
     sourceHashes.engineBundleHash,
     'engine bundle hash 漂移，必须使用新 run prefix',
   );
+  const manifest = readRunnerSuccessorManifest();
+  const activeRunnerHash = validateRunnerSuccessorChain(lines, manifest);
+  if (activeRunnerHash === sourceHashes.runnerHash) return null;
+  const successor = manifest.find((candidate) => (
+    candidate.fromRunnerHash === activeRunnerHash
+    && candidate.toRunnerHash === sourceHashes.runnerHash
+  ));
+  assert.ok(successor, 'runner source hash 漂移，必须使用新 run prefix');
+  return successor;
 }
 
 function lastBoundaryMonth(lines) {
@@ -747,7 +848,13 @@ function assertLedgerContinuation(lines, opened, snapshot) {
     assert.equal(snapshot.authority.revision, latest.authority.revision, '同月 revision 失配');
     assert.equal(snapshot.authority.month, latest.authority.month, '同 revision month 失配');
     assert.equal(snapshot.authority.stateHash, latest.authority.stateHash, '同 revision stateHash 失配');
-    return { recoverableBoundary: false };
+    const coveredBoundaryMonth = lastBoundaryMonth(lines);
+    const sourceMonth = snapshot.observerSource?.month ?? -1;
+    return {
+      recoverableBoundary: latest.type === 'runner-successor'
+        && sourceMonth === snapshot.authority.month
+        && sourceMonth > coveredBoundaryMonth,
+    };
   }
   const sourceMonth = snapshot.observerSource?.month ?? -1;
   const coveredBoundaryMonth = lastBoundaryMonth(lines);
@@ -781,8 +888,18 @@ function initializeOrResumeLedger(
     return appendBootstrap(api, paths, header, opened, snapshot);
   }
   const lines = readVerifiedLedger(paths.ledger);
-  validateHeader(lines[0], api, id, seed, config, sourceHashes);
+  const pendingRunnerSuccessor = validateHeader(lines, api, id, seed, config, sourceHashes);
   const continuation = assertLedgerContinuation(lines, opened, snapshot);
+  if (pendingRunnerSuccessor) {
+    appendRunnerSuccessorRecord(
+      api,
+      paths,
+      lines,
+      opened,
+      snapshot,
+      pendingRunnerSuccessor,
+    );
+  }
   if (continuation.recoverableBoundary) {
     appendBoundaryRecord(
       api,
@@ -798,10 +915,15 @@ function initializeOrResumeLedger(
   return lines;
 }
 
-function assertCurrentSourceHashes(header, bundlePath) {
+function assertCurrentSourceHashes(lines, bundlePath) {
+  const header = lines[0];
   const currentRunnerHash = sha256Bytes(readFileSync(import.meta.filename));
   const currentBundleHash = sha256Bytes(readFileSync(bundlePath));
-  assert.equal(currentRunnerHash, header.runnerHash, 'runner source 在 staging 前漂移，必须使用新 run prefix');
+  assert.equal(
+    currentRunnerHash,
+    activeLedgerRunnerHash(lines),
+    'runner source 在 staging 前漂移，必须使用新 run prefix',
+  );
   assert.equal(currentBundleHash, header.engineBundleHash, 'engine bundle 在 staging 前漂移');
 }
 
@@ -1016,7 +1138,7 @@ async function run() {
   while (currentMonth < targetMonth) {
     const nextMonth = currentMonth + 1;
     try {
-      assertCurrentSourceHashes(ledgerLines[0], bundlePath);
+      assertCurrentSourceHashes(ledgerLines, bundlePath);
       const scheduledBoundary = nextMonth % 12 === 0
         || (endpoint.kind === 'months' && nextMonth === endpoint.value);
       let receipt;

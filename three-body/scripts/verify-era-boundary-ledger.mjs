@@ -19,6 +19,11 @@ const bundlePath = path.join(temporaryDirectory, 'verifier-engine.mjs');
 const ERA_LEDGER_SCHEMA = 'eland-era-boundary-ledger-v1';
 const ERA_PROOF_SCHEMA_V1 = 'eland-era-boundary-proof-pack-v1';
 const ERA_PROOF_SCHEMA = 'eland-era-boundary-proof-pack-v2';
+const RUNNER_SUCCESSOR_MANIFEST_SCHEMA = 'eland-bounded-modern-runner-successors-v1';
+const runnerSuccessorManifestPath = path.join(
+  import.meta.dirname,
+  'run-bounded-modern-evolution-successors.json',
+);
 const ERA_PROOF_SCHEMAS = new Set([ERA_PROOF_SCHEMA_V1, ERA_PROOF_SCHEMA]);
 const ERA_ORDER = [
   'primitive-tribe',
@@ -70,6 +75,37 @@ function sha256Bytes(value) {
 
 function ledgerEntryHash(value) {
   return sha256Bytes(`${LEDGER_HASH_DOMAIN}${canonicalJson(value)}`);
+}
+
+function runnerSuccessorEntryHash(value) {
+  return sha256Bytes(`${RUNNER_SUCCESSOR_MANIFEST_SCHEMA}\0${canonicalJson(value)}`);
+}
+
+function readRunnerSuccessorManifest() {
+  const manifest = JSON.parse(readFileSync(runnerSuccessorManifestPath, 'utf8'));
+  assert.equal(manifest.schema, RUNNER_SUCCESSOR_MANIFEST_SCHEMA, 'runner successor manifest schema 无效');
+  assert.equal(Array.isArray(manifest.successors), true, 'runner successor manifest 缺少 successors');
+  return manifest.successors;
+}
+
+function validateRunnerSuccessorChain(lines, manifest) {
+  let active = lines[0].runnerHash;
+  for (const line of lines.slice(1)) {
+    if (line.type !== 'runner-successor') continue;
+    const recorded = line.runnerSuccessor;
+    assert.equal(recorded?.fromRunnerHash, active, `runner successor seq ${line.seq} 链断裂`);
+    const known = manifest.find((candidate) => (
+      candidate.fromRunnerHash === recorded.fromRunnerHash
+      && candidate.toRunnerHash === recorded.toRunnerHash
+    ));
+    assert.ok(known, `runner successor seq ${line.seq} 未在 manifest 注册`);
+    assert.deepEqual(recorded, {
+      ...known,
+      manifestEntryHash: runnerSuccessorEntryHash(known),
+    }, `runner successor seq ${line.seq} 与 manifest 不一致`);
+    active = recorded.toRunnerHash;
+  }
+  return active;
 }
 
 function proofPackHash(value) {
@@ -481,6 +517,7 @@ async function run() {
   assert.equal(existsSync(ledgerPath), true, `时代账本 ${ledgerPath} 不存在`);
   const lines = readVerifiedLedger(ledgerPath);
   const header = lines[0];
+  const activeRunnerHash = validateRunnerSuccessorChain(lines, readRunnerSuccessorManifest());
   assert.equal(header.runId, runId);
   assert.equal(header.configHash, sha256Bytes(canonicalJson(header.config)));
 
@@ -497,7 +534,7 @@ async function run() {
   assert.equal(header.observerVersion, api.DEVELOPMENT_OBSERVER_VERSION);
   const sourceHashesCurrent = {
     runner: sha256Bytes(readFileSync(path.join(workspace, 'scripts/run-bounded-modern-evolution.mjs')))
-      === header.runnerHash,
+      === activeRunnerHash,
     engineBundle: sha256Bytes(readFileSync(bundlePath)) === header.engineBundleHash,
   };
 

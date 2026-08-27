@@ -5,6 +5,7 @@ import type {
 } from '../domain/action';
 import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
+  createRememberedGroundedOpeningBasisSnapshot,
   groundedConversationOpeningsForListener,
   hasRecentGroundedConversationResponseForListener,
   hasRememberedGroundedConversationOpeningBasis,
@@ -14,6 +15,8 @@ import {
   retainedColdWorldEventsForLease,
   worldEventById,
   worldEventByIdWithRetainedLease,
+  type RememberedGroundedOpeningBasisCompilationDiagnostics,
+  type RememberedGroundedOpeningBasisSnapshot,
 } from '../domain/event-index';
 import type { ActionFact, EnvironmentFact, SimulationState, WorldEvent } from '../domain/model';
 import { ageMonths, isAlive, isDehydratedHibernating, type PersonState } from '../domain/person';
@@ -34,6 +37,29 @@ interface ConversationCandidate {
   priority: number;
 }
 
+export interface GroundedConversationCompilationDiagnostics
+  extends RememberedGroundedOpeningBasisCompilationDiagnostics {
+  rendezvousComputations: number;
+  rendezvousComputationsByPair: Record<string, number>;
+}
+
+export interface GroundedConversationCompilationOptions {
+  /** Test-only baseline switch; production always reuses one call-local snapshot. */
+  reuseRememberedBasisSnapshot?: boolean;
+  diagnostics?: GroundedConversationCompilationDiagnostics;
+}
+
+export function createGroundedConversationCompilationDiagnostics(): GroundedConversationCompilationDiagnostics {
+  return {
+    personSourceSnapshots: 0,
+    exactLeaseIndexes: 0,
+    sourceResolutions: 0,
+    sourceResolutionsByPersonAndId: {},
+    rendezvousComputations: 0,
+    rendezvousComputationsByPair: {},
+  };
+}
+
 const TOPIC_LABEL: Record<GroundedConversationTopic, string> = {
   care: '身体与照护',
   hardship: '自己的难处',
@@ -50,17 +76,36 @@ function resolvedSourceIds(state: SimulationState, sourceIds: string[]): string[
 }
 
 function alreadyUsedBasis(
-  state: SimulationState,
+  rememberedSources: RememberedGroundedOpeningBasisSnapshot,
   person: PersonState,
   other: PersonState,
   basisKey: string,
 ): boolean {
-  return hasRememberedGroundedConversationOpeningBasis(
-    state,
+  return rememberedSources.hasOpeningBasis(
     basisKey,
     person.id,
     other.id,
   );
+}
+
+function legacyRememberedGroundedOpeningBasisResolution(
+  state: SimulationState,
+): RememberedGroundedOpeningBasisSnapshot {
+  return {
+    hasOpeningBasis: (basisKey, speakerId, listenerId) => (
+      hasRememberedGroundedConversationOpeningBasis(
+        state,
+        basisKey,
+        speakerId,
+        listenerId,
+      )
+    ),
+    eventForPersonSource: (personId, eventId) => worldEventByIdWithRetainedLease(
+      state,
+      eventId,
+      livePersonSocialEvidenceLeaseKey(personId),
+    ),
+  };
 }
 
 function openingAlreadyAnswered(
@@ -129,7 +174,12 @@ function conditionPhrase(person: PersonState): { summary: string; sourceFactIds:
   return { summary: label, sourceFactIds: condition.sourceEventIds };
 }
 
-function gratitudeEvent(state: SimulationState, person: PersonState, other: PersonState): WorldEvent | undefined {
+function gratitudeEvent(
+  state: SimulationState,
+  person: PersonState,
+  other: PersonState,
+  rememberedSources: RememberedGroundedOpeningBasisSnapshot,
+): WorldEvent | undefined {
   const personallyHeldSourceIds = new Set([
     ...person.memories
       .filter((memory) => memory.personIds.includes(other.id))
@@ -140,13 +190,8 @@ function gratitudeEvent(state: SimulationState, person: PersonState, other: Pers
     .filter((agreement) => agreement.status === 'fulfilled'
       && agreement.partyIds.includes(other.id)
       && agreement.fulfilledByPersonIds.includes(other.id));
-  const socialLeaseKey = livePersonSocialEvidenceLeaseKey(person.id);
   return [...personallyHeldSourceIds]
-    .flatMap((eventId) => worldEventByIdWithRetainedLease(
-      state,
-      eventId,
-      socialLeaseKey,
-    ) ?? [])
+    .flatMap((eventId) => rememberedSources.eventForPersonSource(person.id, eventId) ?? [])
     .sort(compareWorldEventsInCanonicalOrder)
     .filter((event) => {
       if (event.kind !== 'action' || event.status !== 'completed') return false;
@@ -186,7 +231,12 @@ function birthEventForSharedChild(state: SimulationState, person: PersonState, o
   return birth?.kind === 'environment' ? birth : undefined;
 }
 
-function openingCandidates(state: SimulationState, person: PersonState, other: PersonState): ConversationCandidate[] {
+function openingCandidates(
+  state: SimulationState,
+  person: PersonState,
+  other: PersonState,
+  rememberedSources: RememberedGroundedOpeningBasisSnapshot,
+): ConversationCandidate[] {
   const candidates: ConversationCandidate[] = [];
   const otherCondition = conditionPhrase(other);
   if (otherCondition) candidates.push({
@@ -206,7 +256,7 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
     priority: 68,
   });
 
-  const gratitude = gratitudeEvent(state, person, other);
+  const gratitude = gratitudeEvent(state, person, other, rememberedSources);
   if (gratitude) candidates.push({
     topic: 'gratitude',
     summary: `感谢${other.name}此前在本人需要帮助时给予物质、照护或履约支持`,
@@ -296,14 +346,15 @@ function openingCandidates(state: SimulationState, person: PersonState, other: P
 }
 
 function openingOption(
-  state: SimulationState,
   person: PersonState,
   other: PersonState,
   candidate: ConversationCandidate,
   atMonth: number,
+  rememberedSources: RememberedGroundedOpeningBasisSnapshot,
+  rendezvousForPair: () => ReturnType<typeof conversationalRendezvous>,
 ): ActionOption | null {
   const conversationBasisKey = basisKey(person, other, candidate);
-  if (alreadyUsedBasis(state, person, other, conversationBasisKey)) return null;
+  if (alreadyUsedBasis(rememberedSources, person, other, conversationBasisKey)) return null;
   const conversation: GroundedConversationRef = {
     version: 'grounded-conversation-v1',
     basisKey: conversationBasisKey,
@@ -327,7 +378,7 @@ function openingOption(
     channel: 'voice' as const,
   };
   const together = positionsWithinVoiceRange(person.position, other.position);
-  const rendezvous = conversationalRendezvous(state, person, other);
+  const rendezvous = rendezvousForPair();
   if (!rendezvous) return null;
   const path = rendezvous.path;
   return {
@@ -478,14 +529,53 @@ export function buildGroundedConversationOptions(
   person: PersonState,
   visiblePeople: PersonState[],
   atMonth = state.clock.elapsedMonths,
+  compilationOptions: GroundedConversationCompilationOptions = {},
 ): ActionOption[] {
   const requiredResponse = responseOption(state, person, visiblePeople, atMonth);
   if (requiredResponse) return [requiredResponse];
-  return visiblePeople
+  const listeners = visiblePeople
     .filter((other) => ageMonths(other, atMonth) >= 12 * 12
       && !isDehydratedHibernating(other))
-    .slice(0, 3)
-    .flatMap((other) => openingCandidates(state, person, other)
-      .map((candidate) => openingOption(state, person, other, candidate, atMonth))
+    .slice(0, 3);
+  const diagnostics = compilationOptions.diagnostics;
+  const rememberedSources = compilationOptions.reuseRememberedBasisSnapshot === false
+    ? legacyRememberedGroundedOpeningBasisResolution(state)
+    : createRememberedGroundedOpeningBasisSnapshot(
+      state,
+      [person, ...listeners],
+      diagnostics,
+    );
+  const rendezvousByListenerId = new Map<string, () => ReturnType<typeof conversationalRendezvous>>();
+  const rendezvousFor = (other: PersonState) => {
+    let current = rendezvousByListenerId.get(other.id);
+    if (current) return current;
+    let resolved = false;
+    let rendezvous: ReturnType<typeof conversationalRendezvous> = null;
+    current = () => {
+      if (!resolved) {
+        resolved = true;
+        if (diagnostics) {
+          diagnostics.rendezvousComputations += 1;
+          const pairKey = JSON.stringify([person.id, other.id]);
+          diagnostics.rendezvousComputationsByPair[pairKey] =
+            (diagnostics.rendezvousComputationsByPair[pairKey] ?? 0) + 1;
+        }
+        rendezvous = conversationalRendezvous(state, person, other);
+      }
+      return rendezvous;
+    };
+    rendezvousByListenerId.set(other.id, current);
+    return current;
+  };
+  return listeners
+    .flatMap((other) => openingCandidates(state, person, other, rememberedSources)
+      .map((candidate) => openingOption(
+        person,
+        other,
+        candidate,
+        atMonth,
+        rememberedSources,
+        rendezvousFor(other),
+      ))
       .filter((option): option is ActionOption => Boolean(option)));
 }

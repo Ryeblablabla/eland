@@ -798,6 +798,121 @@ function currentPersonalSocialSourceIds(
   ]);
 }
 
+export interface RememberedGroundedOpeningBasisCompilationDiagnostics {
+  personSourceSnapshots: number;
+  exactLeaseIndexes: number;
+  sourceResolutions: number;
+  sourceResolutionsByPersonAndId: Record<string, number>;
+}
+
+/**
+ * A person-scoped, caller-owned view used by one synchronous conversation
+ * option compilation. Nothing is registered on the state or history base, so
+ * the next compilation must observe memories, overlay and retained leases
+ * again instead of reusing a stale cross-tick cache.
+ */
+export interface RememberedGroundedOpeningBasisSnapshot {
+  hasOpeningBasis(
+    basisKey: string,
+    speakerId: PersonId,
+    listenerId: PersonId,
+  ): boolean;
+  eventForPersonSource(personId: PersonId, eventId: string): WorldEvent | undefined;
+}
+
+function groundedOpeningIdentity(
+  basisKey: string,
+  speakerId: PersonId,
+  listenerId: PersonId,
+): string {
+  return JSON.stringify([basisKey, speakerId, listenerId]);
+}
+
+/**
+ * Resolve each participant's current social sources exactly once with the
+ * same overlay > hot > named exact-lease precedence as the legacy selector.
+ * The cold map deliberately keeps the first retained fact for a duplicate ID,
+ * matching Array.find in worldEventByIdWithRetainedLease. A participant can
+ * never resolve a fact retained only for another person's lease.
+ */
+export function createRememberedGroundedOpeningBasisSnapshot(
+  state: SimulationState,
+  participants: readonly PersonState[],
+  diagnostics?: RememberedGroundedOpeningBasisCompilationDiagnostics,
+): RememberedGroundedOpeningBasisSnapshot {
+  const participantById = new Map<PersonId, PersonState>();
+  for (const participant of participants) {
+    if (state.people.find((candidate) => candidate.id === participant.id) !== participant) {
+      throw new Error('grounded conversation compilation participant 不是当前 state 人物');
+    }
+    if (!participantById.has(participant.id)) participantById.set(participant.id, participant);
+  }
+
+  const overlay = planningOverlays.get(state);
+  const resolvedByPersonId = new Map<PersonId, Map<string, WorldEvent>>();
+  const openingIdentitiesByPersonId = new Map<PersonId, Set<string>>();
+  const initializedPersonIds = new Set<PersonId>();
+  const ensurePersonSnapshot = (personId: PersonId): boolean => {
+    if (!participantById.has(personId)) return false;
+    if (initializedPersonIds.has(personId)) return true;
+    initializedPersonIds.add(personId);
+    if (diagnostics) diagnostics.personSourceSnapshots += 1;
+    const sourceIds = currentPersonalSocialSourceIds(state, personId);
+    const coldById = new Map<string, WorldEvent>();
+    if (diagnostics) diagnostics.exactLeaseIndexes += 1;
+    for (const fact of retainedColdIndexFor(state)?.byLeaseKey
+      .get(livePersonSocialEvidenceLeaseKey(personId)) ?? []) {
+      if (!coldById.has(fact.eventId)) coldById.set(fact.eventId, fact.event);
+    }
+
+    const hotById = indexFor(state).byId;
+    const resolvedById = new Map<string, WorldEvent>();
+    const openingIdentities = new Set<string>();
+    for (const eventId of sourceIds) {
+      if (diagnostics) {
+        diagnostics.sourceResolutions += 1;
+        const diagnosticKey = JSON.stringify([personId, eventId]);
+        diagnostics.sourceResolutionsByPersonAndId[diagnosticKey] =
+          (diagnostics.sourceResolutionsByPersonAndId[diagnosticKey] ?? 0) + 1;
+      }
+      const event = overlay?.byId.get(eventId)
+        ?? hotById.get(eventId)
+        ?? coldById.get(eventId);
+      if (!event) continue;
+      resolvedById.set(eventId, event);
+      if (!isGroundedConversationAction(event)) continue;
+      const conversation = event.action.content.conversation;
+      if (conversation.turn !== 'opening') continue;
+      openingIdentities.add(groundedOpeningIdentity(
+        conversation.basisKey,
+        conversation.speakerId,
+        conversation.listenerId,
+      ));
+    }
+    resolvedByPersonId.set(personId, resolvedById);
+    openingIdentitiesByPersonId.set(personId, openingIdentities);
+    return true;
+  };
+
+  return Object.freeze({
+    hasOpeningBasis: (basisKey: string, speakerId: PersonId, listenerId: PersonId): boolean => {
+      // Current-tick openings suppress duplicates before they are written into
+      // either person's memory. This remains intentionally basis-only/global.
+      if (overlay?.groundedOpeningBasisKeys.has(basisKey)) return true;
+      const identity = groundedOpeningIdentity(basisKey, speakerId, listenerId);
+      for (const personId of new Set([speakerId, listenerId])) {
+        if (ensurePersonSnapshot(personId)
+          && openingIdentitiesByPersonId.get(personId)?.has(identity)) return true;
+      }
+      return false;
+    },
+    eventForPersonSource: (personId: PersonId, eventId: string): WorldEvent | undefined => {
+      if (!ensurePersonSnapshot(personId)) return undefined;
+      return resolvedByPersonId.get(personId)?.get(eventId);
+    },
+  });
+}
+
 /**
  * Hard duplicate prevention follows facts the speaker or listener still
  * carries in memory/relationship state. Forgotten, obligation-free ancient

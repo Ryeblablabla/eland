@@ -9,7 +9,8 @@ import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 import {
   compareWorldEventsInCanonicalOrder,
   completedActionFactsForPerson,
-  worldEventById,
+  waterAssistanceEvidenceLeaseKey,
+  worldEventByIdWithRetainedLease,
 } from './event-index';
 import {
   agreementsRequiringLifecycle,
@@ -262,9 +263,9 @@ export function agreementAuthorizesTransfer(
     && actualQuantity >= term.quantity);
 }
 
-type AssistanceProposal = Extract<SocialProposal, { kind: 'assist' }>;
+export type AssistanceProposal = Extract<SocialProposal, { kind: 'assist' }>;
 
-function isHelperWaterAssistanceEvidence(
+export function isHelperWaterAssistanceEvidence(
   state: SimulationState,
   proposal: AssistanceProposal,
   fact: ActionFact,
@@ -287,7 +288,7 @@ function isHelperWaterAssistanceEvidence(
         ) === Material.Water));
 }
 
-function isRequesterWaterAssistanceEvidence(
+export function isRequesterWaterAssistanceEvidence(
   proposal: AssistanceProposal,
   fact: ActionFact,
 ): boolean {
@@ -302,20 +303,42 @@ function isRequesterWaterAssistanceEvidence(
     && Number(fact.diff.hydration ?? 0) > 0;
 }
 
+export interface VerifiedWaterAssistanceEvidenceAnchors {
+  helper?: ActionFact;
+  requester?: ActionFact;
+  sourceEventIds: string[];
+}
+
 /**
- * Water assistance may accumulate many arrival/drinking facts before the two
- * parties actually meet. Keep one latest verified anchor for each side rather
- * than widening a single social-learning observation to the full episode.
+ * Resolve only the two exact leases owned by this live agreement. The current
+ * fact is supplied explicitly because agreement bookkeeping runs before the
+ * ActionFact enters the planning overlay/history.
  */
-function waterAssistanceSocialLearningSources(
+export function verifiedWaterAssistanceEvidenceAnchors(
   state: SimulationState,
   agreement: Agreement,
   proposal: AssistanceProposal,
-): string[] {
+  currentFact?: ActionFact,
+): VerifiedWaterAssistanceEvidenceAnchors {
   let latestHelper: ActionFact | undefined;
   let latestRequester: ActionFact | undefined;
+  const helperLeaseKey = waterAssistanceEvidenceLeaseKey(
+    agreement.id,
+    proposal.requesterId,
+    proposal.helperId,
+    'helper',
+  );
+  const requesterLeaseKey = waterAssistanceEvidenceLeaseKey(
+    agreement.id,
+    proposal.requesterId,
+    proposal.helperId,
+    'requester',
+  );
   for (const eventId of new Set(agreement.fulfillmentEventIds)) {
-    const event = worldEventById(state, eventId);
+    const event = currentFact?.id === eventId
+      ? currentFact
+      : worldEventByIdWithRetainedLease(state, eventId, helperLeaseKey)
+        ?? worldEventByIdWithRetainedLease(state, eventId, requesterLeaseKey);
     if (event?.kind !== 'action') continue;
     if (isHelperWaterAssistanceEvidence(state, proposal, event)
       && (!latestHelper || compareWorldEventsInCanonicalOrder(latestHelper, event) < 0)) {
@@ -326,10 +349,15 @@ function waterAssistanceSocialLearningSources(
       latestRequester = event;
     }
   }
-  return [latestHelper, latestRequester]
+  const sourceEventIds = [latestHelper, latestRequester]
     .filter((event): event is ActionFact => Boolean(event))
     .sort(compareWorldEventsInCanonicalOrder)
     .map((event) => event.id);
+  return {
+    ...(latestHelper ? { helper: latestHelper } : {}),
+    ...(latestRequester ? { requester: latestRequester } : {}),
+    sourceEventIds,
+  };
 }
 
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
@@ -352,25 +380,21 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       if (!waterAssistance.fulfilledByPersonIds.includes(contributorId)) waterAssistance.fulfilledByPersonIds.push(contributorId);
       if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
       if (!waterAssistance.sourceEventIds.includes(fact.id)) waterAssistance.sourceEventIds.push(fact.id);
-      const helperArrival = waterAssistance.fulfillmentEventIds
-        .flatMap((eventId) => {
-          const event = worldEventById(state, eventId);
-          return event?.kind === 'action' ? [event] : [];
-        })
-        .find((event) => event.who === proposal.helperId);
+      const evidence = verifiedWaterAssistanceEvidenceAnchors(
+        state,
+        waterAssistance,
+        proposal,
+        fact,
+      );
+      const helperArrival = evidence.helper;
       if (helper && requester
         && (sameLocation(helper, requester) || (helperArrival?.cellId === fact.cellId && helperArrival.toZ === requester.position.z))
         && waterAssistance.fulfilledByPersonIds.includes(proposal.helperId)
         && waterAssistance.fulfilledByPersonIds.includes(proposal.requesterId)) {
-        const socialLearningSourceEventIds = waterAssistanceSocialLearningSources(
-          state,
-          waterAssistance,
-          proposal,
-        );
-        if (socialLearningSourceEventIds.length === 0) {
+        if (!evidence.helper || !evidence.requester) {
           throw new Error(`water assistance ${waterAssistance.id} 缺少可验证的履约事实`);
         }
-        fulfill(state, waterAssistance, fact, socialLearningSourceEventIds);
+        fulfill(state, waterAssistance, fact, evidence.sourceEventIds);
         return;
       }
     }

@@ -108,6 +108,89 @@ export function liveAgreementHistoryLeaseKey(agreementId: string): string {
   return `live-agreement:${agreementId}:anchors`;
 }
 
+export type WaterAssistanceEvidenceRole = 'helper' | 'requester';
+
+const WATER_ASSISTANCE_RETENTION_PREFIX = 'gameplay:water-assistance:';
+
+/** Exact body lease for one side's latest verified water-assistance evidence. */
+export function waterAssistanceEvidenceLeaseKey(
+  agreementId: string,
+  requesterId: string,
+  helperId: string,
+  role: WaterAssistanceEvidenceRole,
+): string {
+  return `${WATER_ASSISTANCE_RETENTION_PREFIX}${encodeURIComponent(agreementId)}`
+    + `:${encodeURIComponent(requesterId)}:${encodeURIComponent(helperId)}:${role}:anchor`;
+}
+
+export function waterAssistanceFulfillmentMembershipGroupKey(
+  agreementId: string,
+  requesterId: string,
+  helperId: string,
+): string {
+  return `${WATER_ASSISTANCE_RETENTION_PREFIX}${encodeURIComponent(agreementId)}`
+    + `:${encodeURIComponent(requesterId)}:${encodeURIComponent(helperId)}:fulfillment-membership`;
+}
+
+export function parseWaterAssistanceEvidenceLeaseKey(value: string): {
+  agreementId: string;
+  requesterId: string;
+  helperId: string;
+  role: WaterAssistanceEvidenceRole;
+} | null {
+  if (!value.startsWith(WATER_ASSISTANCE_RETENTION_PREFIX) || !value.endsWith(':anchor')) {
+    return null;
+  }
+  const body = value.slice(WATER_ASSISTANCE_RETENTION_PREFIX.length, -':anchor'.length);
+  const parts = body.split(':');
+  if (parts.length !== 4 || (parts[3] !== 'helper' && parts[3] !== 'requester')) return null;
+  try {
+    const agreementId = decodeURIComponent(parts[0]!);
+    const requesterId = decodeURIComponent(parts[1]!);
+    const helperId = decodeURIComponent(parts[2]!);
+    const role = parts[3];
+    if (!agreementId || !requesterId || !helperId
+      || waterAssistanceEvidenceLeaseKey(
+        agreementId,
+        requesterId,
+        helperId,
+        role,
+      ) !== value) return null;
+    return { agreementId, requesterId, helperId, role };
+  } catch {
+    return null;
+  }
+}
+
+export function parseWaterAssistanceFulfillmentMembershipGroupKey(value: string): {
+  agreementId: string;
+  requesterId: string;
+  helperId: string;
+} | null {
+  if (!value.startsWith(WATER_ASSISTANCE_RETENTION_PREFIX)
+    || !value.endsWith(':fulfillment-membership')) return null;
+  const body = value.slice(
+    WATER_ASSISTANCE_RETENTION_PREFIX.length,
+    -':fulfillment-membership'.length,
+  );
+  const parts = body.split(':');
+  if (parts.length !== 3) return null;
+  try {
+    const agreementId = decodeURIComponent(parts[0]!);
+    const requesterId = decodeURIComponent(parts[1]!);
+    const helperId = decodeURIComponent(parts[2]!);
+    if (!agreementId || !requesterId || !helperId
+      || waterAssistanceFulfillmentMembershipGroupKey(
+        agreementId,
+        requesterId,
+        helperId,
+      ) !== value) return null;
+    return { agreementId, requesterId, helperId };
+  } catch {
+    return null;
+  }
+}
+
 export function liveIntentHistoryLeaseKey(intentId: string): string {
   return `live-intent:${intentId}:anchors`;
 }

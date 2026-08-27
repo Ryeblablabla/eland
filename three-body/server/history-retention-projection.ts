@@ -60,7 +60,17 @@ import {
   liveIntentHistoryLeaseKey,
   livePersonSocialEvidenceLeaseKey,
   parseGroundedConversationWindowLeaseKey,
+  parseWaterAssistanceEvidenceLeaseKey,
+  parseWaterAssistanceFulfillmentMembershipGroupKey,
+  waterAssistanceEvidenceLeaseKey,
+  waterAssistanceFulfillmentMembershipGroupKey,
+  worldEventByIdWithRetainedLease,
 } from '../src/game/eland/domain/event-index';
+import {
+  isHelperWaterAssistanceEvidence,
+  isRequesterWaterAssistanceEvidence,
+  type AssistanceProposal,
+} from '../src/game/eland/domain/agreement';
 import {
   LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
   rememberedProjectPressureSourceEventIds,
@@ -254,6 +264,14 @@ interface CalibrationSelector {
   personId: string;
   instrument: MeasurementStackReceipt;
 }
+interface WaterAssistanceSelector {
+  agreementId: string;
+  proposal: AssistanceProposal;
+  helperLeaseKey: string;
+  requesterLeaseKey: string;
+  membershipGroupKey: string;
+  fulfillmentEventIds: Set<string>;
+}
 interface ReproductionFactDemand {
   intentId: string;
   ownerId: string;
@@ -320,6 +338,9 @@ export const HISTORY_RETENTION_MAX_CALIBRATION_INSTRUMENTS_PER_PERSON = 64;
 export const HISTORY_RETENTION_MAX_MEASUREMENT_STACK_SOURCE_EVENT_IDS = 24;
 /** Personally held social evidence remains exact but must not create an unbounded sidecar. */
 export const HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS = 4_096;
+/** Active water help retains full index identity, but only two typed bodies. */
+export const HISTORY_RETENTION_MAX_ACTIVE_WATER_ASSISTANCE_AGREEMENTS = 4_096;
+export const HISTORY_RETENTION_MAX_WATER_ASSISTANCE_FULFILLMENT_EVENT_IDS = 4_096;
 /** A response copies the opening and every nested source into a strict intent. */
 export const HISTORY_RETENTION_MAX_GROUNDED_RESPONSE_SOURCE_GROUPS = 4_096;
 export const HISTORY_RETENTION_MAX_GROUNDED_RESPONSE_SOURCE_EVENT_IDS =
@@ -488,6 +509,61 @@ type ProjectPressureDemandGroupShape = Pick<
   'groupKey' | 'requirement' | 'leaseKeys' | 'eventIds'
 >;
 
+export function waterAssistanceSelectiveLeaseKeysFromDemandGroups(
+  groups: readonly ProjectPressureDemandGroupShape[],
+): Set<string> {
+  const leaseKeys = new Set<string>();
+  let groupCount = 0;
+  for (const group of groups) {
+    const parsed = parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey);
+    const typedLeaseKeys = group.leaseKeys.filter((leaseKey) => (
+      parseWaterAssistanceEvidenceLeaseKey(leaseKey) !== null
+    ));
+    if (!parsed) {
+      if (typedLeaseKeys.length > 0) {
+        throw new Error(`retention water assistance typed lease ${group.groupKey} 缺少 membership group`);
+      }
+      continue;
+    }
+    groupCount += 1;
+    if (groupCount > HISTORY_RETENTION_MAX_ACTIVE_WATER_ASSISTANCE_AGREEMENTS) {
+      throw new Error('retention water assistance membership groups 超出有界上限');
+    }
+    const expected = [
+      waterAssistanceEvidenceLeaseKey(
+        parsed.agreementId,
+        parsed.requesterId,
+        parsed.helperId,
+        'helper',
+      ),
+      waterAssistanceEvidenceLeaseKey(
+        parsed.agreementId,
+        parsed.requesterId,
+        parsed.helperId,
+        'requester',
+      ),
+    ].sort();
+    if (group.requirement !== 'index-only'
+      || !sameStringSet(group.leaseKeys, expected)
+      || typedLeaseKeys.length !== expected.length
+      || new Set(group.eventIds).size !== group.eventIds.length
+      || group.eventIds.length > HISTORY_RETENTION_MAX_WATER_ASSISTANCE_FULFILLMENT_EVENT_IDS) {
+      throw new Error(`retention water assistance membership ${group.groupKey} 无效或超界`);
+    }
+    for (const leaseKey of expected) leaseKeys.add(leaseKey);
+  }
+  return leaseKeys;
+}
+
+function waterAssistanceMembershipGroupKeyForLease(leaseKey: string): string | null {
+  const parsed = parseWaterAssistanceEvidenceLeaseKey(leaseKey);
+  return parsed ? waterAssistanceFulfillmentMembershipGroupKey(
+    parsed.agreementId,
+    parsed.requesterId,
+    parsed.helperId,
+  ) : null;
+}
+
 /** Accept one exact broad identity group: legacy body-pinning or current index-only. */
 export function assertProjectPressureHistoryRetentionDemandGroups(
   groups: readonly ProjectPressureDemandGroupShape[],
@@ -570,6 +646,52 @@ function assertFutureSocialRepetitionStorageRefinementMatches(
   }
 }
 
+/**
+ * Legacy live-agreement support groups pinned every fulfillment body. Admit a
+ * one-way split only when the exact same IDs move into the typed index group;
+ * the verified bodies are reclassified during cold installation.
+ */
+function assertWaterAssistanceStorageRefinementMatches(
+  projected: readonly ProjectPressureDemandGroupShape[],
+  demanded: readonly ProjectPressureDemandGroupShape[],
+): void {
+  waterAssistanceSelectiveLeaseKeysFromDemandGroups(demanded);
+  const previousWaterGroups = new Map(projected.flatMap((group) => (
+    parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey)
+      ? [[group.groupKey, group] as const]
+      : []
+  )));
+  const currentWaterGroups = demanded.filter((group) => (
+    parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null
+  ));
+  for (const current of currentWaterGroups) {
+    const parsed = parseWaterAssistanceFulfillmentMembershipGroupKey(current.groupKey)!;
+    const previous = previousWaterGroups.get(current.groupKey);
+    if (previous) {
+      if (previous.requirement !== current.requirement
+        || !sameStringSet(previous.leaseKeys, current.leaseKeys)
+        || !sameStringSet(previous.eventIds, current.eventIds)) {
+        throw new Error(`retention water assistance ${current.groupKey} typed refinement 漂移`);
+      }
+      previousWaterGroups.delete(current.groupKey);
+      continue;
+    }
+    const coreKey = liveAgreementHistoryLeaseKey(parsed.agreementId);
+    const legacyEventIds = new Set(projected
+      .filter((group) => group.groupKey === coreKey
+        || liveSupportingSourceCoreGroupKey(group.groupKey) === coreKey)
+      .flatMap((group) => group.eventIds));
+    if (current.eventIds.some((eventId) => !legacyEventIds.has(eventId))) {
+      throw new Error(
+        `retention water assistance ${current.groupKey} legacy membership 无 exact shell 来源`,
+      );
+    }
+  }
+  if (previousWaterGroups.size > 0) {
+    throw new Error('retention projection 含 bounded shell 不再拥有的 water assistance typed group');
+  }
+}
+
 export function recentPersonalProductionWindowGroupKey(atMonth: number): string {
   return `${RECENT_PRODUCTION_WINDOW_GROUP_PREFIX}${atMonth}`;
 }
@@ -623,6 +745,9 @@ export interface HistoryRetentionProjectionFold {
   productionSelectorLeaseKeyByPersonId: Map<string, string>;
   calibrationSelectorsByPersonId: Map<string, CalibrationSelector[]>;
   modernRecordValidationState: SimulationState;
+  waterAssistanceSelectorsByEventId: Map<string, WaterAssistanceSelector[]>;
+  waterAssistanceSelectiveLeaseKeys: Set<string>;
+  waterAssistanceValidationState: SimulationState;
   productionWindowMonth: number;
   livingChildBirthMatchesByChildId: Map<string, DirectPinMatch>;
   continuationSourceTarget?: HistoryRetentionSeal;
@@ -1387,6 +1512,8 @@ function collectDemand(state: SimulationState) {
     .map((person) => person.id));
   const reproductionFactsByIntentId = new Map<string, ReproductionFactDemand>();
   const calibrationSelectorsByPersonId = new Map<string, CalibrationSelector[]>();
+  const waterAssistanceSelectorsByEventId = new Map<string, WaterAssistanceSelector[]>();
+  let activeWaterAssistanceAgreementCount = 0;
   const productionWindowMonth = state.clock.elapsedMonths;
   const completedMeasurementProject = completedMeasurementWitnessProject(state);
   const independentRecordWitness = firstIndependentRecordReuseFact(state);
@@ -1605,6 +1732,69 @@ function collectDemand(state: SimulationState) {
       eventIds: coreEventIds,
     });
     const coreEventIdSet = new Set(coreEventIds);
+    const waterFulfillmentEventIdSet = new Set<string>();
+    if (agreement.status === 'active'
+      && agreement.proposal.kind === 'assist'
+      && agreement.proposal.need === 'water') {
+      activeWaterAssistanceAgreementCount += 1;
+      if (activeWaterAssistanceAgreementCount
+        > HISTORY_RETENTION_MAX_ACTIVE_WATER_ASSISTANCE_AGREEMENTS) {
+        throw new Error(
+          'retention active water assistance agreements 超出有界上限 '
+          + HISTORY_RETENTION_MAX_ACTIVE_WATER_ASSISTANCE_AGREEMENTS,
+        );
+      }
+      const proposal = agreement.proposal;
+      if (!agreement.partyIds.includes(proposal.requesterId)
+        || !agreement.partyIds.includes(proposal.helperId)) {
+        throw new Error(`water assistance agreement ${agreement.id} 参与者与 proposal 不一致`);
+      }
+      const fulfillmentEventIds = boundedCanonicalEventIdsAtMost(
+        agreement.fulfillmentEventIds,
+        `water assistance agreement ${agreement.id} fulfillment membership`,
+        HISTORY_RETENTION_MAX_WATER_ASSISTANCE_FULFILLMENT_EVENT_IDS,
+      );
+      for (const eventId of fulfillmentEventIds) waterFulfillmentEventIdSet.add(eventId);
+      const helperLeaseKey = waterAssistanceEvidenceLeaseKey(
+        agreement.id,
+        proposal.requesterId,
+        proposal.helperId,
+        'helper',
+      );
+      const requesterLeaseKey = waterAssistanceEvidenceLeaseKey(
+        agreement.id,
+        proposal.requesterId,
+        proposal.helperId,
+        'requester',
+      );
+      const membershipGroupKey = waterAssistanceFulfillmentMembershipGroupKey(
+        agreement.id,
+        proposal.requesterId,
+        proposal.helperId,
+      );
+      for (const typedLeaseKey of [helperLeaseKey, requesterLeaseKey]) {
+        addDemandGroup(demandGroupsByKey, directDemandEventIds, {
+          groupKey: membershipGroupKey,
+          requirement: 'index-only',
+          leaseKey: typedLeaseKey,
+          eventIds: fulfillmentEventIds,
+          includeEmpty: true,
+        });
+      }
+      const selector: WaterAssistanceSelector = {
+        agreementId: agreement.id,
+        proposal,
+        helperLeaseKey,
+        requesterLeaseKey,
+        membershipGroupKey,
+        fulfillmentEventIds: waterFulfillmentEventIdSet,
+      };
+      for (const eventId of fulfillmentEventIds) {
+        const selectors = waterAssistanceSelectorsByEventId.get(eventId) ?? [];
+        selectors.push(selector);
+        waterAssistanceSelectorsByEventId.set(eventId, selectors);
+      }
+    }
     addDemandGroup(demandGroupsByKey, directDemandEventIds, {
       groupKey: `${leaseKey}:supporting-sources`,
       requirement: 'audit-only',
@@ -1612,7 +1802,8 @@ function collectDemand(state: SimulationState) {
       eventIds: boundedCanonicalEventIds(
         agreement.sourceEventIds ?? [],
         `live agreement ${agreement.id} supporting sources`,
-      ).filter((eventId) => !coreEventIdSet.has(eventId)),
+      ).filter((eventId) => !coreEventIdSet.has(eventId)
+        && !waterFulfillmentEventIdSet.has(eventId)),
     });
   }
 
@@ -2144,6 +2335,7 @@ function collectDemand(state: SimulationState) {
     livingChildIds,
     reproductionFactsByIntentId,
     calibrationSelectorsByPersonId,
+    waterAssistanceSelectorsByEventId,
     productionWindowMonth,
   };
 }
@@ -2193,6 +2385,7 @@ function continuationDemandFromCollected(
     continuationDemand.groups,
     'retention collected demand',
   );
+  waterAssistanceSelectiveLeaseKeysFromDemandGroups(continuationDemand.groups);
   return continuationDemand;
 }
 
@@ -2225,6 +2418,7 @@ function compatibilityCanonicalDemandGroups(
   const canonical = new Map<string, HistoryRetentionContinuationDemandGroup>();
   for (const group of groups) {
     if (liveSupportingSourceCoreGroupKey(group.groupKey) !== null
+      || parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null
       || group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
       || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
@@ -2259,6 +2453,25 @@ function compatibilityCanonicalDemandGroups(
     canonical.set(coreKey, {
       ...core,
       leaseKeys: [...new Set([...core.leaseKeys, ...group.leaseKeys])].sort(),
+      eventIds: [...new Set([...core.eventIds, ...group.eventIds])].sort(),
+    });
+  }
+  for (const group of groups) {
+    const water = parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey);
+    if (!water) continue;
+    const coreKey = liveAgreementHistoryLeaseKey(water.agreementId);
+    const core = canonical.get(coreKey);
+    if (!core || core.requirement !== 'all') {
+      canonical.set(group.groupKey, {
+        groupKey: group.groupKey,
+        requirement: group.requirement,
+        leaseKeys: [...new Set(group.leaseKeys)].sort(),
+        eventIds: [...new Set(group.eventIds)].sort(),
+      });
+      continue;
+    }
+    canonical.set(coreKey, {
+      ...core,
       eventIds: [...new Set([...core.eventIds, ...group.eventIds])].sort(),
     });
   }
@@ -2433,6 +2646,7 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     projection.demandGroups,
     demand.groups,
   );
+  assertWaterAssistanceStorageRefinementMatches(projection.demandGroups, demand.groups);
   assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
@@ -2523,6 +2737,15 @@ function createOpenHistoryRetentionFold(
     selectiveMatchesByLeaseKey: new Map(),
     productionSelectorLeaseKeyByPersonId: new Map(),
     calibrationSelectorsByPersonId: demand.calibrationSelectorsByPersonId,
+    waterAssistanceSelectorsByEventId: demand.waterAssistanceSelectorsByEventId,
+    waterAssistanceSelectiveLeaseKeys: new Set(
+      [...demand.waterAssistanceSelectorsByEventId.values()]
+        .flatMap((selectors) => selectors.flatMap((selector) => [
+          selector.helperLeaseKey,
+          selector.requesterLeaseKey,
+        ])),
+    ),
+    waterAssistanceValidationState: finalShell,
     modernRecordValidationState: finalShell,
     productionWindowMonth: demand.productionWindowMonth,
     livingChildBirthMatchesByChildId: new Map(),
@@ -2679,6 +2902,16 @@ function foldGameplayFactSelectors(
         selector.instrument,
       )) setLatestSelectiveMatch(fold, selector.leaseKey, match);
     }
+    for (const selector of fold.waterAssistanceSelectorsByEventId.get(event.id) ?? []) {
+      if (isHelperWaterAssistanceEvidence(
+        fold.waterAssistanceValidationState,
+        selector.proposal,
+        event,
+      )) setLatestSelectiveMatch(fold, selector.helperLeaseKey, match);
+      if (isRequesterWaterAssistanceEvidence(selector.proposal, event)) {
+        setLatestSelectiveMatch(fold, selector.requesterLeaseKey, match);
+      }
+    }
   }
   if (event.kind === 'action'
     && typeof event.diff.electricalNetworkId === 'string'
@@ -2782,6 +3015,7 @@ function discardFold(fold: HistoryRetentionProjectionFold): void {
   fold.reproductionIntentIdsByAttemptEventId.clear();
   fold.selectiveMatchesByLeaseKey.clear(); fold.livingChildBirthMatchesByChildId.clear();
   fold.productionSelectorLeaseKeyByPersonId.clear(); fold.calibrationSelectorsByPersonId.clear();
+  fold.waterAssistanceSelectorsByEventId.clear(); fold.waterAssistanceSelectiveLeaseKeys.clear();
   fold.requiredSuffixDirectDemandEventIds.clear();
   fold.requiredSuffixReproductionAnchorEventIds.clear();
   fold.newLivingPersonIdsRequiringBirth.clear();
@@ -2896,6 +3130,7 @@ function continuationDemandFromFold(fold: HistoryRetentionProjectionFold): Histo
     livingChildIds: fold.livingChildIds,
     reproductionFactsByIntentId: fold.reproductionFactsByIntentId,
     calibrationSelectorsByPersonId: fold.calibrationSelectorsByPersonId,
+    waterAssistanceSelectorsByEventId: fold.waterAssistanceSelectorsByEventId,
     productionWindowMonth: fold.productionWindowMonth,
   });
 }
@@ -3348,6 +3583,7 @@ function validateHistoryRetentionContinuationBasis(
   const allowedSelectiveLeaseKeys = new Set<string>([
     ...allMatchSelectiveLeaseKeys,
     ...calibrationLeaseKeysFromDemandGroups(sourceDemand.groups),
+    ...waterAssistanceSelectiveLeaseKeysFromDemandGroups(sourceDemand.groups),
     // Observer-only modern witnesses deliberately have no gameplay demand
     // group because planners must never read them. Record reuse is global;
     // electrical useful loads are validated below as network-scoped keys.
@@ -3561,6 +3797,24 @@ export function resumeHistoryRetentionProjection(
       }
       continue;
     }
+    if (fold.waterAssistanceSelectiveLeaseKeys.has(leaseKey)) {
+      const groupKey = waterAssistanceMembershipGroupKeyForLease(leaseKey);
+      const previousGroup = groupKey ? previousGroupsByKey.get(groupKey) : undefined;
+      const currentGroup = groupKey ? fold.demandGroupsByKey.get(groupKey) : undefined;
+      if (previousGroup && currentGroup) {
+        if (previousGroup.requirement !== 'index-only'
+          || currentGroup.requirement !== 'index-only'
+          || !sameStringSet(previousGroup.leaseKeys, [...currentGroup.leaseKeys])
+          || previousGroup.eventIds.some((eventId) => !currentGroup.eventIds.has(eventId))) {
+          throw new Error(`retention water assistance selector ${leaseKey} membership 非单调续接`);
+        }
+        fold.selectiveMatchesByLeaseKey.set(
+          leaseKey,
+          matches.map((match) => ({ ...match })),
+        );
+      }
+      continue;
+    }
     if (leaseKey === MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY
       || parseModernElectricalUsefulLoadLeaseKey(leaseKey) !== null) {
       fold.selectiveMatchesByLeaseKey.set(leaseKey, matches.map((match) => ({ ...match })));
@@ -3586,6 +3840,43 @@ export function resumeHistoryRetentionProjection(
       || production.eventMonth > fold.productionWindowMonth) continue;
     fold.productionSelectorLeaseKeyByPersonId.set(production.personId, leaseKey);
     fold.selectiveMatchesByLeaseKey.set(leaseKey, matches.map((match) => ({ ...match })));
+  }
+
+  // One-time bridge from a legacy live-agreement audit group. Cold bodies are
+  // visible here only after exact-root installation reclassified a strictly
+  // verified helper/requester fact into the typed lease.
+  const waterSelectorsByGroupKey = new Map<string, WaterAssistanceSelector>();
+  for (const selectors of fold.waterAssistanceSelectorsByEventId.values()) {
+    for (const selector of selectors) waterSelectorsByGroupKey.set(selector.membershipGroupKey, selector);
+  }
+  for (const selector of waterSelectorsByGroupKey.values()) {
+    if (previousGroupsByKey.has(selector.membershipGroupKey)) continue;
+    const legacyCoreKey = liveAgreementHistoryLeaseKey(selector.agreementId);
+    const legacyMembership = new Set(basis.sourceDemand.groups
+      .filter((group) => group.groupKey === legacyCoreKey
+        || liveSupportingSourceCoreGroupKey(group.groupKey) === legacyCoreKey)
+      .flatMap((group) => group.eventIds));
+    for (const eventId of selector.fulfillmentEventIds) {
+      if (!legacyMembership.has(eventId)) continue;
+      const match = previousDirectMatches.get(eventId);
+      if (!match || match.absoluteIndex >= basis.sourceTarget.eventCount) continue;
+      const event = worldEventByIdWithRetainedLease(
+        newShell,
+        eventId,
+        selector.helperLeaseKey,
+      ) ?? worldEventByIdWithRetainedLease(
+        newShell,
+        eventId,
+        selector.requesterLeaseKey,
+      );
+      if (event?.kind !== 'action') continue;
+      if (isHelperWaterAssistanceEvidence(newShell, selector.proposal, event)) {
+        setLatestSelectiveMatch(fold, selector.helperLeaseKey, { ...match });
+      }
+      if (isRequesterWaterAssistanceEvidence(selector.proposal, event)) {
+        setLatestSelectiveMatch(fold, selector.requesterLeaseKey, { ...match });
+      }
+    }
   }
   const previousPredictionIds = new Set(basis.sourceDemand.pendingEraPredictionIds);
   for (const predictionId of fold.pendingEraPredictionIds) {

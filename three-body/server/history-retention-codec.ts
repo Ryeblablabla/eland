@@ -48,6 +48,7 @@ import {
   calibrationLeaseKeysFromDemandGroups,
   assertProjectPressureHistoryRetentionDemandGroups,
   assertLiveIntentHistoryRetentionDemandGroups,
+  waterAssistanceSelectiveLeaseKeysFromDemandGroups,
   historyRetentionDemandFingerprint,
   historyRetentionRequirementBlocks,
   historyRetentionRequirementPinsResolvedEvents,
@@ -59,6 +60,7 @@ import {
 import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
   parseGroundedConversationWindowLeaseKey,
+  parseWaterAssistanceFulfillmentMembershipGroupKey,
 } from '../src/game/eland/domain/event-index';
 import {
   parseRecentPersonalProductionLaborSelectorLeaseKey,
@@ -452,7 +454,8 @@ function normalizeDemandGroups(value: unknown): HistoryRetentionDemandGroupResul
       nonEmpty: true,
     });
     const eventIds = assertStringArray(candidate.eventIds, `${label}.eventIds`, {
-      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        && parseWaterAssistanceFulfillmentMembershipGroupKey(candidate.groupKey) === null,
     });
     const resolvedEventIds = assertStringArray(
       candidate.resolvedEventIds,
@@ -491,6 +494,7 @@ function normalizeDemandGroups(value: unknown): HistoryRetentionDemandGroupResul
     });
     previousGroupKey = candidate.groupKey;
   }
+  waterAssistanceSelectiveLeaseKeysFromDemandGroups(groups);
   return groups;
 }
 
@@ -605,7 +609,8 @@ function normalizeSourceDemand(
     });
     const eventIds = assertStringArray(candidate.eventIds, `${label}.eventIds`, {
       sorted: true,
-      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+      nonEmpty: candidate.groupKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        && parseWaterAssistanceFulfillmentMembershipGroupKey(candidate.groupKey) === null,
     });
     if ((candidate.groupKey.startsWith('active-mechanical-project:')
       || candidate.groupKey.startsWith('active-project:'))
@@ -729,6 +734,7 @@ function normalizeSourceDemand(
     groups,
     'retention continuation sourceDemand group',
   );
+  waterAssistanceSelectiveLeaseKeysFromDemandGroups(groups);
   const millLaborPersonIds = assertStringArray(
     value.millLaborPersonIds,
     'retention continuation sourceDemand.millLaborPersonIds',
@@ -1195,6 +1201,7 @@ function normalizeContinuationBasis(
   const allowedSelectiveLeaseKeys = new Set<string>([
     ...allMatchSelectiveLeaseKeys,
     ...calibrationLeaseKeysFromDemandGroups(sourceDemand.groups),
+    ...waterAssistanceSelectiveLeaseKeysFromDemandGroups(sourceDemand.groups),
     MODERN_RECORD_EXPERIMENT_LEASE_KEY,
     ...sourceDemand.reproductionFacts.flatMap((item) => [
       reproductionAttemptLeaseKey(item.intentId),

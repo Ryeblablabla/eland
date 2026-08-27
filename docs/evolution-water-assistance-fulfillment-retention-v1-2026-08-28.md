@@ -1,6 +1,6 @@
 # 取水协助履约证据续接 v1（预登记）
 
-状态：实现前预登记；尚无候选长程结论。
+状态：定向实现与验收已完成；尚无候选长程结论。
 
 ## 可证伪假设
 
@@ -25,3 +25,10 @@
 3. 新 suffix 产生较晚证据后 selector 稳定替换；共享正文由其他真实 lease 引用时不被错误释放。
 4. 缺 helper/requester、错 actor、非饮水材料、错误 root/ordinal、legacy 漂移均拒绝。
 5. 真实 SQLite cold open 与 warm successor 重建相同 anchors；定向 fixture、backend build 与 diff-check 通过后才允许集成。
+
+## 定向实现结果
+
+- `Agreement` 继续保存完整 `fulfillmentEventIds`，未增加另一套持久化收据；retention 将其保存为 `index-only` membership，并按共享严格 predicate 各选择最后一条 helper/requester 正文。
+- 协议结算只通过协议身份绑定的 typed lease 解析冷事实；当前 tick 的事实显式传入，仍按 overlay、hot、exact lease 的顺序取证。
+- 旧 live-agreement audit sidecar 只在 exact root、verified ordinal、当前协议 membership 与真实 ActionFact predicate 全部一致时迁移；下一 successor 写回规范 typed group。
+- `node scripts/test-water-assistance-retention.mjs`、`npm run --silent backend:build` 与 scoped diff-check 已通过。该结果只证明 retention/open-warm 因果闭包，不是长程文明演化结论。

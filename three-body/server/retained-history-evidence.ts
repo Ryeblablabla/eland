@@ -1,10 +1,18 @@
 import {
+  compareWorldEventsInCanonicalOrder,
   liveAgreementHistoryLeaseKey,
   liveIntentHistoryLeaseKey,
+  parseWaterAssistanceEvidenceLeaseKey,
   registerProjectPressureEvidenceDescriptors,
   registerRetainedColdWorldEventFacts,
+  waterAssistanceEvidenceLeaseKey,
+  waterAssistanceFulfillmentMembershipGroupKey,
   type RetainedColdWorldEventFact,
 } from '../src/game/eland/domain/event-index';
+import {
+  isHelperWaterAssistanceEvidence,
+  isRequesterWaterAssistanceEvidence,
+} from '../src/game/eland/domain/agreement';
 import type { SimulationState } from '../src/game/eland/domain/model';
 import {
   LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
@@ -265,7 +273,8 @@ export function installVerifiedHistoryRetentionEvidence(
     }
     const gameplayLeaseKeys = pin.leaseKeys.filter(
       (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
-        && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
+        && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+        && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null,
     );
     if (gameplayLeaseKeys.length > 0) retained.push({
       absoluteIndex: pin.absoluteIndex,
@@ -279,7 +288,86 @@ export function installVerifiedHistoryRetentionEvidence(
       throw new Error(`bounded decoder 返回 projection 未请求的冷 pin ${absoluteIndex}`);
     }
   }
-  registerRetainedColdWorldEventFacts(state, retained);
+
+  const directByEventId = new Map(
+    projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
+  );
+  const pinByOrdinal = new Map(projection.pins.map((pin) => [pin.absoluteIndex, pin]));
+  const retainedByOrdinal = new Map(retained.map((fact) => [fact.absoluteIndex, fact]));
+  for (const agreement of state.agreements ?? []) {
+    if (agreement.status !== 'active'
+      || agreement.proposal.kind !== 'assist'
+      || agreement.proposal.need !== 'water') continue;
+    const proposal = agreement.proposal;
+    const membershipGroupKey = waterAssistanceFulfillmentMembershipGroupKey(
+      agreement.id,
+      proposal.requesterId,
+      proposal.helperId,
+    );
+    const typedMembership = projection.demandGroups.find((group) => (
+      group.groupKey === membershipGroupKey
+    ));
+    const legacyCoreKey = liveAgreementHistoryLeaseKey(agreement.id);
+    const projectedMembership = new Set(typedMembership
+      ? typedMembership.eventIds
+      : projection.demandGroups
+        .filter((group) => group.groupKey === legacyCoreKey
+          || group.groupKey === `${legacyCoreKey}:supporting-sources`)
+        .flatMap((group) => group.eventIds));
+    let latestHelper: { event: NonNullable<RunStatePinnedEvent['event']>; absoluteIndex: number } | undefined;
+    let latestRequester: { event: NonNullable<RunStatePinnedEvent['event']>; absoluteIndex: number } | undefined;
+    for (const eventId of new Set(agreement.fulfillmentEventIds)) {
+      if (!projectedMembership.has(eventId)) continue;
+      const match = directByEventId.get(eventId);
+      if (!match || pinByOrdinal.get(match.absoluteIndex)?.eventId !== eventId) continue;
+      const event = match.absoluteIndex >= cursor.hotStartIndex
+        ? state.world.past[match.absoluteIndex - cursor.hotStartIndex]
+        : decodedByOrdinal.get(match.absoluteIndex)?.event;
+      if (!event || event.id !== eventId || event.kind !== 'action') continue;
+      if (isHelperWaterAssistanceEvidence(state, proposal, event)
+        && (!latestHelper
+          || compareWorldEventsInCanonicalOrder(latestHelper.event, event) < 0)) {
+        latestHelper = { event, absoluteIndex: match.absoluteIndex };
+      }
+      if (isRequesterWaterAssistanceEvidence(proposal, event)
+        && (!latestRequester
+          || compareWorldEventsInCanonicalOrder(latestRequester.event, event) < 0)) {
+        latestRequester = { event, absoluteIndex: match.absoluteIndex };
+      }
+    }
+    for (const [role, selected] of [
+      ['helper', latestHelper],
+      ['requester', latestRequester],
+    ] as const) {
+      if (!selected || selected.absoluteIndex >= cursor.hotStartIndex) continue;
+      const leaseKey = waterAssistanceEvidenceLeaseKey(
+        agreement.id,
+        proposal.requesterId,
+        proposal.helperId,
+        role,
+      );
+      const current = retainedByOrdinal.get(selected.absoluteIndex);
+      if (current) {
+        if (current.eventId !== selected.event.id) {
+          throw new Error(`water assistance anchor ordinal ${selected.absoluteIndex} 身份冲突`);
+        }
+        retainedByOrdinal.set(selected.absoluteIndex, {
+          ...current,
+          leaseKeys: [...new Set([...current.leaseKeys, leaseKey])].sort(),
+        });
+      } else {
+        retainedByOrdinal.set(selected.absoluteIndex, {
+          absoluteIndex: selected.absoluteIndex,
+          eventId: selected.event.id,
+          event: selected.event,
+          leaseKeys: [leaseKey],
+        });
+      }
+    }
+  }
+  const retainedWithWaterAnchors = [...retainedByOrdinal.values()]
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  registerRetainedColdWorldEventFacts(state, retainedWithWaterAnchors);
 
   const expectedProjectPressureOrdinals = projectPressureColdMaterializationOrdinals(
     state,
@@ -333,5 +421,5 @@ export function installVerifiedHistoryRetentionEvidence(
     });
   });
   registerProjectPressureEvidenceDescriptors(state, descriptorFacts);
-  return retained;
+  return retainedWithWaterAnchors;
 }

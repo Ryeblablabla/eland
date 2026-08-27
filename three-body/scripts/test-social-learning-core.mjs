@@ -290,12 +290,14 @@ try {
     kind: 'act', operation: 'ingest', targets: [],
   }, { materialId: Material.Water, hydration: 16 });
   appendCommittedEvents(waterState, [retainedRequesterDrink]);
-  recordAgreementAction(waterState, retainedRequesterDrink);
-  assert.deepEqual(
-    waterBelief.receipts.find((receipt) => receipt.id.includes(partialWaterAgreement.id))?.sourceEventIds,
-    [retainedRequesterDrink.id],
-    '一类事实未保留时只能留下另一类已验证锚点，不能补造 helper 来源',
+  const waterReceiptCountBeforePartial = waterBelief.receipts.length;
+  assert.throws(
+    () => recordAgreementAction(waterState, retainedRequesterDrink),
+    /缺少可验证的履约事实/u,
+    '一类事实未保留时不得用另一类单边锚点完成取水协议',
   );
+  assert.equal(partialWaterAgreement.status, 'active');
+  assert.equal(waterBelief.receipts.length, waterReceiptCountBeforePartial);
 
   const unverifiedWaterAgreement = agreement('assist-water-unverified', {
     kind: 'assist', requesterId: waterRequester.id, helperId: waterHelper.id,

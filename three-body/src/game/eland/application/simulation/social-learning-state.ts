@@ -384,7 +384,12 @@ function coordinationPractice(
   const successes = value.successes.map((candidate, index) => {
     const itemLabel = `${label}.successes[${index}]`;
     record(candidate, itemLabel);
-    exactKeys(candidate, ['atMonth', 'receiptIds', 'sourceEventIds'], itemLabel);
+    exactKeys(candidate, [
+      'atMonth',
+      'receiptIds',
+      'sourceEventIds',
+      ...(projectDuty ? ['projectId'] : []),
+    ], itemLabel);
     return {
       atMonth: month(candidate.atMonth, currentMonth, `${itemLabel}.atMonth`),
       receiptIds: uniqueIdentifiers(
@@ -399,10 +404,17 @@ function coordinationPractice(
         `${itemLabel}.sourceEventIds`,
         { nonEmpty: true },
       ),
+      ...(projectDuty
+        ? { projectId: identifier(candidate.projectId, `${itemLabel}.projectId`) }
+        : {}),
     };
   });
   if (new Set(successes.map((candidate) => candidate.atMonth)).size !== successes.length) {
     throw new Error(`${label}.successes 必须来自不同月份`);
+  }
+  if (projectDuty
+    && new Set(successes.map((candidate) => candidate.projectId)).size < 2) {
+    throw new Error(`${label}.successes 必须来自至少两个不同项目`);
   }
   if (!Array.isArray(value.recentCounterEvidence)
     || value.recentCounterEvidence.length > MAX_PRACTICE_EPISODES) {

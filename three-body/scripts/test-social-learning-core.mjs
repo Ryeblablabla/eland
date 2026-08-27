@@ -12,6 +12,7 @@ try {
   const entry = `
     export { advanceAgreementLifecycle, recordAgreementAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/agreement.ts'))};
     export { completeProject } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-lifecycle.ts'))};
+    export { cloneValidatedSocialLearningState } from ${JSON.stringify(path.resolve('src/game/eland/application/simulation/social-learning-state.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.resolve('src/game/eland/domain/project.ts'))};
     export { recordGovernanceAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/governance.ts'))};
     export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
@@ -32,6 +33,7 @@ try {
   const {
     advanceAgreementLifecycle,
     appendCommittedEvents,
+    cloneValidatedSocialLearningState,
     completeProject,
     coordinationPracticeBasisFor,
     instantiateProject,
@@ -471,8 +473,50 @@ try {
   assert.ok(recurringDuty,
     'two completed progress-backed joint projects can form a practice basis');
   assert.deepEqual(recurringDuty.successes.map((success) => success.atMonth), [30, 36]);
+  assert.deepEqual(recurringDuty.successes.map((success) => success.projectId), [
+    'joint-project-1',
+    'joint-project-2',
+  ], 'typed duty successes persist their exact completed project identities');
   assert.equal(new Set(recurringDuty.successes.flatMap((success) => success.receiptIds)).size, 2,
     'the recurring duty requires two different project episodes');
+  assert.ok(practice.successes.every((success) => !Object.hasOwn(success, 'projectId')),
+    'ordinary non-duty practices retain their legacy-compatible success shape');
+
+  const receiptEvictedPerson = structuredClone(requester);
+  receiptEvictedPerson.cognition.socialLearning.beliefs
+    .find((belief) => belief.context === 'joint-project-production').receipts = [];
+  const hydratedAfterReceiptEviction = cloneValidatedSocialLearningState(
+    receiptEvictedPerson,
+    state.people,
+    36,
+  );
+  const hydratedDuty = hydratedAfterReceiptEviction.coordinationPractices.find((candidate) => (
+    candidate.basisKey === recurringDuty.basisKey
+  ));
+  assert.deepEqual(hydratedDuty.successes.map((success) => success.projectId), [
+    'joint-project-1',
+    'joint-project-2',
+  ], 'hydration can re-prove distinct project episodes after belief receipts are evicted');
+
+  const missingProjectIdentity = structuredClone(requester);
+  const missingIdentityDuty = missingProjectIdentity.cognition.socialLearning.coordinationPractices
+    .find((candidate) => candidate.basisKey === recurringDuty.basisKey);
+  delete missingIdentityDuty.successes[0].projectId;
+  assert.throws(
+    () => cloneValidatedSocialLearningState(missingProjectIdentity, state.people, 36),
+    /字段集合无效|projectId/u,
+    'legacy or malformed typed practices without exact project identity fail closed',
+  );
+
+  const repeatedProjectIdentity = structuredClone(requester);
+  const repeatedIdentityDuty = repeatedProjectIdentity.cognition.socialLearning.coordinationPractices
+    .find((candidate) => candidate.basisKey === recurringDuty.basisKey);
+  repeatedIdentityDuty.successes[1].projectId = repeatedIdentityDuty.successes[0].projectId;
+  assert.throws(
+    () => cloneValidatedSocialLearningState(repeatedProjectIdentity, state.people, 36),
+    /至少两个不同项目/u,
+    'two months from only one project cannot hydrate into a supported recurring duty',
+  );
   jointProject('joint-project-other-function', 42, 1, 'durable-record');
   assert.equal(recurringDuty.successes.length, 2,
     'a different desired function must not merge into the learned duty');

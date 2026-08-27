@@ -93,6 +93,8 @@ export interface CoordinationPracticeSuccessBasis {
   atMonth: number;
   receiptIds: string[];
   sourceEventIds: string[];
+  /** Exact completed project episode for a typed recurring duty only. */
+  projectId?: string;
 }
 
 export interface CoordinationPracticeCounterEvidence {
@@ -291,20 +293,44 @@ function mergePracticeSuccess(
   successes: CoordinationPracticeSuccessBasis[],
   receipt: SocialLearningReceipt,
 ): CoordinationPracticeSuccessBasis[] {
+  const projectId = receipt.projectDuty?.projectId;
   const existing = successes.find((success) => success.atMonth === receipt.atMonth);
   if (existing) {
+    if (projectId && existing.projectId && existing.projectId !== projectId) {
+      return successes;
+    }
     existing.receiptIds = [...new Set([...existing.receiptIds, receipt.id])];
     existing.sourceEventIds = uniqueSources([...existing.sourceEventIds, ...receipt.sourceEventIds]);
+    if (projectId) existing.projectId = projectId;
   } else {
     successes.push({
       atMonth: receipt.atMonth,
       receiptIds: [receipt.id],
       sourceEventIds: [...receipt.sourceEventIds],
+      ...(projectId ? { projectId } : {}),
     });
   }
   return successes
     .sort((left, right) => left.atMonth - right.atMonth || left.receiptIds[0].localeCompare(right.receiptIds[0]))
     .slice(-MAX_PRACTICE_EPISODES);
+}
+
+function recurringDutyFormationWitness(
+  receipts: readonly SocialLearningReceipt[],
+): [SocialLearningReceipt, SocialLearningReceipt] | undefined {
+  for (let leftIndex = 0; leftIndex < receipts.length; leftIndex += 1) {
+    const left = receipts[leftIndex]!;
+    const leftProjectId = left.projectDuty?.projectId;
+    if (!leftProjectId) continue;
+    for (let rightIndex = leftIndex + 1; rightIndex < receipts.length; rightIndex += 1) {
+      const right = receipts[rightIndex]!;
+      const rightProjectId = right.projectDuty?.projectId;
+      if (rightProjectId
+        && left.atMonth !== right.atMonth
+        && leftProjectId !== rightProjectId) return [left, right];
+    }
+  }
+  return undefined;
 }
 
 function refreshPracticeSupport(practice: CoordinationPracticeBasis): void {
@@ -348,13 +374,16 @@ function updateCoordinationPractice(
           ? recurringProjectDutySubjectsEqual(candidate.projectDuty?.subject, dutySubject)
           : candidate.projectDuty === undefined))
       .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
-    const distinctMonths = new Set(positiveReceipts.map((candidate) => candidate.atMonth));
-    if (distinctMonths.size < 2) return;
-    if (dutySubject
-      && new Set(positiveReceipts.flatMap((candidate) => candidate.projectDuty?.projectId ?? [])).size < 2) return;
+    const dutyWitness = dutySubject ? recurringDutyFormationWitness(positiveReceipts) : undefined;
+    if (dutySubject ? !dutyWitness : new Set(positiveReceipts.map((candidate) => candidate.atMonth)).size < 2) return;
     const successes: CoordinationPracticeSuccessBasis[] = [];
-    for (const successReceipt of positiveReceipts) mergePracticeSuccess(successes, successReceipt);
-    const formedAtMonth = successes[1]?.atMonth;
+    const formationReceipts = dutyWitness
+      ? [...dutyWitness, ...positiveReceipts.filter((candidate) => !dutyWitness.includes(candidate))]
+      : positiveReceipts;
+    for (const successReceipt of formationReceipts) mergePracticeSuccess(successes, successReceipt);
+    const formedAtMonth = dutyWitness
+      ? Math.max(dutyWitness[0].atMonth, dutyWitness[1].atMonth)
+      : successes[1]?.atMonth;
     if (formedAtMonth === undefined) return;
     practice = {
       version: 'coordination-practice-basis-v1',

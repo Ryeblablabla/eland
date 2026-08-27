@@ -69,7 +69,8 @@ import { latestSharedProjectBetween } from '../src/game/eland/domain/project-par
 import {
   MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY,
   MODERN_RECORD_EXPERIMENT_LEASE_KEY,
-  isIndependentRecordExperimentFact,
+  firstIndependentRecordReuseFact,
+  isIndependentRecordReuseFact,
   isModernElectricalUsefulLoadFact,
   modernElectricalOperationLeaseKey,
   modernElectricalUsefulLoadLeaseKey,
@@ -621,7 +622,7 @@ export interface HistoryRetentionProjectionFold {
   selectiveMatchesByLeaseKey: Map<string, DirectPinMatch[]>;
   productionSelectorLeaseKeyByPersonId: Map<string, string>;
   calibrationSelectorsByPersonId: Map<string, CalibrationSelector[]>;
-  modernRecordValidationShell: Pick<SimulationState, 'people' | 'projects' | 'records'>;
+  modernRecordValidationState: SimulationState;
   productionWindowMonth: number;
   livingChildBirthMatchesByChildId: Map<string, DirectPinMatch>;
   continuationSourceTarget?: HistoryRetentionSeal;
@@ -1388,6 +1389,7 @@ function collectDemand(state: SimulationState) {
   const calibrationSelectorsByPersonId = new Map<string, CalibrationSelector[]>();
   const productionWindowMonth = state.clock.elapsedMonths;
   const completedMeasurementProject = completedMeasurementWitnessProject(state);
+  const independentRecordWitness = firstIndependentRecordReuseFact(state);
   assertNonNegativeSafeInteger(productionWindowMonth, 'retention production window month');
   const target = shellHistorySeal(state);
   if (target.tailEventId !== null) addDemandGroup(demandGroupsByKey, directDemandEventIds, {
@@ -1422,6 +1424,19 @@ function collectDemand(state: SimulationState) {
     leaseKey: FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY,
     eventIds: boundedFutureCognitiveAppraisalSourceEventIds(livingPeople),
   });
+  if (independentRecordWitness?.diff.recordUseReplicationReceipt === true) {
+    const inputSourceEventIds = independentRecordWitness.diff.recordUseInputSourceEventIds;
+    if (!Array.isArray(inputSourceEventIds)
+      || inputSourceEventIds.some((eventId) => typeof eventId !== 'string' || eventId.length === 0)) {
+      throw new Error(`现代记录复制见证 ${independentRecordWitness.id} 缺少精确输入来源`);
+    }
+    addDemandGroup(demandGroupsByKey, directDemandEventIds, {
+      groupKey: `${MODERN_RECORD_EXPERIMENT_LEASE_KEY}:replication-input-sources`,
+      requirement: 'all',
+      leaseKey: MODERN_RECORD_EXPERIMENT_LEASE_KEY,
+      eventIds: inputSourceEventIds,
+    });
+  }
   addDemandGroup(demandGroupsByKey, directDemandEventIds, {
     groupKey: FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY,
     requirement: 'index-only',
@@ -2508,11 +2523,7 @@ function createOpenHistoryRetentionFold(
     selectiveMatchesByLeaseKey: new Map(),
     productionSelectorLeaseKeyByPersonId: new Map(),
     calibrationSelectorsByPersonId: demand.calibrationSelectorsByPersonId,
-    modernRecordValidationShell: {
-      people: finalShell.people,
-      projects: finalShell.projects,
-      records: finalShell.records,
-    },
+    modernRecordValidationState: finalShell,
     productionWindowMonth: demand.productionWindowMonth,
     livingChildBirthMatchesByChildId: new Map(),
     requiredSuffixDirectDemandEventIds: new Set(),
@@ -2600,6 +2611,16 @@ function setLatestSelectiveMatch(
   }
 }
 
+function setFirstSelectiveMatch(
+  fold: HistoryRetentionProjectionFold,
+  leaseKey: string,
+  match: DirectPinMatch,
+): void {
+  if (!fold.selectiveMatchesByLeaseKey.has(leaseKey)) {
+    fold.selectiveMatchesByLeaseKey.set(leaseKey, [match]);
+  }
+}
+
 function validateBoundedReproductionAttemptMembership(
   fold: HistoryRetentionProjectionFold,
   event: WorldEvent,
@@ -2670,8 +2691,8 @@ function foldGameplayFactSelectors(
     );
   }
   if (event.kind === 'action'
-    && isIndependentRecordExperimentFact(fold.modernRecordValidationShell, event)) {
-    setLatestSelectiveMatch(fold, MODERN_RECORD_EXPERIMENT_LEASE_KEY, match);
+    && isIndependentRecordReuseFact(fold.modernRecordValidationState, event)) {
+    setFirstSelectiveMatch(fold, MODERN_RECORD_EXPERIMENT_LEASE_KEY, match);
   }
   if (event.kind === 'action'
     && event.status === 'completed'
@@ -3530,9 +3551,18 @@ export function resumeHistoryRetentionProjection(
     })),
   );
   for (const [leaseKey, matches] of selectiveByLeaseKey) {
+    if (leaseKey === MODERN_RECORD_EXPERIMENT_LEASE_KEY) {
+      const expectedEventId = firstIndependentRecordReuseFact(
+        fold.modernRecordValidationState,
+      )?.id;
+      const expected = matches.filter((match) => match.eventId === expectedEventId);
+      if (expected.length === 1) {
+        fold.selectiveMatchesByLeaseKey.set(leaseKey, expected.map((match) => ({ ...match })));
+      }
+      continue;
+    }
     if (leaseKey === MODERN_ELECTRICAL_USEFUL_LOAD_LEASE_KEY
-      || parseModernElectricalUsefulLoadLeaseKey(leaseKey) !== null
-      || leaseKey === MODERN_RECORD_EXPERIMENT_LEASE_KEY) {
+      || parseModernElectricalUsefulLoadLeaseKey(leaseKey) !== null) {
       fold.selectiveMatchesByLeaseKey.set(leaseKey, matches.map((match) => ({ ...match })));
       continue;
     }

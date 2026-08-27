@@ -25,6 +25,7 @@ import {
 import { validateElectricalPowerTopology } from './electrical-power';
 import type { MeasurementUncertaintyBasis, ProjectState } from './project';
 import { livingPeople } from './state-index';
+import { actionSatisfiesRecordReplicationReceipt } from './action-executor';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
 
 export const DEVELOPMENT_OBSERVER_VERSION = 'material-institution-era-v7' as const;
@@ -806,6 +807,50 @@ export function isIndependentRecordExperimentFact(
   return Boolean(knowledge && codebook);
 }
 
+function recordReplicationGoalForFact(
+  state: SimulationState,
+  event: ActionFact,
+) {
+  if (!event.intentId) return null;
+  const intent = state.intents.find((candidate) => candidate.id === event.intentId);
+  return intent?.goal.kind === 'record-replication-receipt' ? intent.goal : null;
+}
+
+/**
+ * A reliable reader may reproduce an authored technique without gaining more
+ * confidence. This path replays the complete source-bound receipt instead of
+ * trusting the event's boolean marker or an observer-era field.
+ */
+export function isIndependentRecordReplicationReceiptFact(
+  state: SimulationState,
+  event: ActionFact,
+): boolean {
+  const goal = recordReplicationGoalForFact(state, event);
+  return Boolean(goal && actionSatisfiesRecordReplicationReceipt(state, event, goal));
+}
+
+/** Both historical learning experiments and verified replications satisfy the same observer gate. */
+export function isIndependentRecordReuseFact(
+  state: SimulationState,
+  event: ActionFact,
+): boolean {
+  return isIndependentRecordExperimentFact(state, event)
+    || isIndependentRecordReplicationReceiptFact(state, event);
+}
+
+/**
+ * Full and bounded observers retain the same first canonical witness. The
+ * gate is existential; choosing one deterministic fact keeps its cold lease
+ * bounded without changing the threshold.
+ */
+export function firstIndependentRecordReuseFact(state: SimulationState): ActionFact | null {
+  const actions = modernCivilizationActionFacts(state);
+  for (const event of actions) {
+    if (event && isIndependentRecordReuseFact(state, event)) return event;
+  }
+  return null;
+}
+
 function completedMassCalibrationFact(event: ActionFact): boolean {
   if (event.status !== 'completed'
     || event.action.kind !== 'attend'
@@ -943,14 +988,20 @@ export function observeModernCivilizationEvidence(state: SimulationState): Moder
     .map((project) => completedMeasurementProjectEvidence(project, actionsById))
     .find((evidence) => evidence !== null) ?? null;
 
-  const recordExperiment = actions.find((event) => isIndependentRecordExperimentFact(state, event));
+  const recordExperiment = firstIndependentRecordReuseFact(state);
+  const replicationGoal = recordExperiment
+    ? recordReplicationGoalForFact(state, recordExperiment)
+    : null;
+  const replicatedRecord = replicationGoal
+    ? state.records.find((record) => record.id === replicationGoal.recordId)
+    : null;
   const independentRecordExperiment = recordExperiment ? {
     eventId: recordExperiment.id,
-    projectId: String(recordExperiment.diff.recordUseProjectId),
-    recordId: String(recordExperiment.diff.recordUseRecordId),
-    knowledgeId: String(recordExperiment.diff.recordUseKnowledgeId),
-    readerId: String(recordExperiment.diff.recordUseReaderId),
-    recordAuthorId: String(recordExperiment.diff.recordUseRecordAuthorId),
+    projectId: replicationGoal?.projectId ?? String(recordExperiment.diff.recordUseProjectId),
+    recordId: replicationGoal?.recordId ?? String(recordExperiment.diff.recordUseRecordId),
+    knowledgeId: replicationGoal?.techniqueId ?? String(recordExperiment.diff.recordUseKnowledgeId),
+    readerId: replicationGoal?.readerId ?? String(recordExperiment.diff.recordUseReaderId),
+    recordAuthorId: replicatedRecord?.authorId ?? String(recordExperiment.diff.recordUseRecordAuthorId),
   } : null;
 
   const supportingEventIds = [...new Set([

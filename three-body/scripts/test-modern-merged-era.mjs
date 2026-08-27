@@ -108,6 +108,18 @@ try {
     diff,
   });
 
+  const materialSourceFact = (id, atMonth, orderInMonth, materialId) => ({
+    id,
+    kind: 'environment',
+    atMonth,
+    orderInMonth,
+    cellId: cellId(1, 1),
+    who: readerId,
+    change: 'resource',
+    result: id,
+    diff: { materialId },
+  });
+
   function modernState() {
     const grid = {
       version: 2,
@@ -384,6 +396,156 @@ try {
     };
   }
 
+  function replicationModernState() {
+    const state = modernState();
+    const reader = state.people.find((person) => person.id === readerId);
+    const record = state.records.find((candidate) => candidate.id === 'record-payload');
+    const project = state.projects.find((candidate) => candidate.id === 'record-use-project');
+    assert.ok(reader && record && project);
+
+    const intentId = 'record-replication-intent';
+    const basisKey = 'record-replication-basis';
+    const ruleSignature = 'combine:stone-tool+wood->spear';
+    const projectRenewalBasisKey = 'project-opening:safer-hunting';
+    const stoneSource = materialSourceFact(
+      'replication-stone-tool-source', 6, 0, Material.StoneTool,
+    );
+    const woodSource = materialSourceFact('replication-wood-source', 6, 1, Material.Wood);
+    const inputSourceEventIds = [stoneSource.id, woodSource.id].sort();
+    const inputWitnesses = [{
+      version: 'record-use-input-witness-v1',
+      role: 'input',
+      personId: readerId,
+      stackId: 'replication-stone-tool-stack',
+      materialId: Material.StoneTool,
+      quantity: 1,
+      sourceEventIds: [stoneSource.id],
+    }, {
+      version: 'record-use-input-witness-v1',
+      role: 'input',
+      personId: readerId,
+      stackId: 'replication-wood-stack',
+      materialId: Material.Wood,
+      quantity: 1,
+      sourceEventIds: [woodSource.id],
+    }];
+    const goal = {
+      kind: 'record-replication-receipt',
+      basisKey,
+      readerId,
+      projectId: project.id,
+      recordId: record.id,
+      recordVersion: record.version,
+      techniqueId: record.knowledgeId,
+      ruleSignature,
+      expectedOutputMaterialId: Material.Spear,
+    };
+    const basis = {
+      version: 'record-use-basis-v3',
+      basisKey,
+      projectId: project.id,
+      projectOwnerId: readerId,
+      readerId,
+      recordAuthorId: authorId,
+      demand: { kind: 'project-deficit', projectId: project.id, deficitSourceIds: [] },
+      recordId: record.id,
+      knowledgeId: record.knowledgeId,
+      codebookId: record.codebookId,
+      techniqueId: record.knowledgeId,
+      ruleSignature,
+      projectPressure: 70,
+      expectedOutputMaterialId: Material.Spear,
+      createdAtMonth: 6,
+      projectSourceEventIds: [],
+      recordSourceEventIds: [],
+      codebookSourceEventIds: [],
+      inputSourceEventIds,
+      sourceFactIds: [...inputSourceEventIds],
+      carrierSource: {
+        kind: 'inventory', personId: readerId, stackId: 'replication-record-carrier',
+      },
+      acquisitionRequired: false,
+      purpose: 'replicate',
+      recordVersion: record.version,
+      projectRenewalBasisKey,
+      inputWitnesses,
+    };
+    const receipt = actionFact(
+      'independent-record-replication',
+      7,
+      {
+        kind: 'act', operation: 'combine',
+        targets: [{
+          kind: 'inventory-stack', personId: readerId, stackId: 'replication-stone-tool-stack',
+        }, {
+          kind: 'inventory-stack', personId: readerId, stackId: 'replication-wood-stack',
+        }],
+      },
+      {
+        recordUseReplicationReceipt: true,
+        recordUsePurpose: 'replicate',
+        recordUseStage: 'replicate',
+        recordUseBasisKey: basisKey,
+        recordUseReaderId: readerId,
+        recordUseProjectId: project.id,
+        recordUseRecordId: record.id,
+        recordUseRecordVersion: record.version,
+        recordUseKnowledgeId: record.knowledgeId,
+        recordUseTechniqueId: record.knowledgeId,
+        recordUseRuleSignature: ruleSignature,
+        recordUseRecordAuthorId: authorId,
+        recordUseExpectedOutputMaterialId: Material.Spear,
+        recordUseProjectRenewalBasisKey: projectRenewalBasisKey,
+        recordUseInputSourceEventIds: [...inputSourceEventIds],
+        recordUseInputWitnesses: structuredClone(inputWitnesses),
+        inputMaterialIds: [Material.StoneTool, Material.Wood],
+        outputMaterialId: Material.Spear,
+        techniqueId: record.knowledgeId,
+        sourceEventId: 'independent-record-replication',
+      },
+    );
+    receipt.intentId = intentId;
+    state.world.past = state.world.past.filter((event) => (
+      event.id !== 'independent-record-experiment'
+    ));
+    state.world.past.push(stoneSource, woodSource, receipt);
+    reader.inventory.push({
+      id: 'replication-record-carrier',
+      materialId: Material.WoodTablet,
+      quantity: 1,
+      recordPayloadId: record.id,
+      sourceEventIds: ['record-source'],
+    });
+    reader.knowledge.find((knowledge) => knowledge.id === record.knowledgeId).sourceEventIds = [
+      receipt.id,
+    ];
+    project.actionEventIds = [receipt.id];
+    project.completionEventIds = [receipt.id];
+    state.intents = [{
+      id: intentId,
+      ownerId: readerId,
+      summary: '按他人记录独立复制技术产物',
+      domain: 'inquiry',
+      goal,
+      nextAction: structuredClone(receipt.action),
+      status: 'completed',
+      createdAtMonth: 6,
+      lastProgressAtMonth: 7,
+      progress: 1,
+      plannedDurationMonths: 1,
+      sourceDecisionEventId: 'record-replication-decision',
+      sourceFactIds: [...inputSourceEventIds],
+      actionEventIds: [receipt.id],
+      replanCount: 0,
+      recordUseBasis: basis,
+      recordUseStage: 'replicate',
+      goalOutcome: {
+        kind: 'achieved', resolvedAtMonth: 7, sourceEventIds: [receipt.id],
+      },
+    }];
+    return { state, receipt, stoneSource, woodSource, intentId };
+  }
+
   assert.equal(DEVELOPMENT_OBSERVER_VERSION, 'material-institution-era-v7');
   assert.equal(DEVELOPMENT_ERA_LABELS['modern-civilization'], '现代文明（含信息能力）');
 
@@ -423,6 +585,41 @@ try {
   const projectedMeasurementLease = modernCompletedMeasurementReceiptLeaseKey('comparable-mass-project');
   assert.ok(modernPins.get('mass-calibration')?.includes(projectedMeasurementLease));
   assert.ok(modernPins.get('mass-measurement')?.includes(projectedMeasurementLease));
+
+  const twoRecordWitnesses = modernState();
+  const firstRecordWitness = twoRecordWitnesses.world.past
+    .find((event) => event.id === 'independent-record-experiment');
+  assert.ok(firstRecordWitness);
+  const laterRecordWitness = structuredClone(firstRecordWitness);
+  laterRecordWitness.id = 'independent-record-experiment-later';
+  laterRecordWitness.atMonth = 7;
+  laterRecordWitness.diff.sourceEventId = laterRecordWitness.id;
+  twoRecordWitnesses.world.past.push(laterRecordWitness);
+  twoRecordWitnesses.projects.find((project) => project.id === 'record-use-project')
+    .actionEventIds.push(laterRecordWitness.id);
+  twoRecordWitnesses.people.find((person) => person.id === readerId).knowledge
+    .find((knowledge) => knowledge.id === 'knowledge-technique').sourceEventIds.push(
+      laterRecordWitness.id,
+    );
+  assert.equal(
+    observeModernCivilizationEvidence(twoRecordWitnesses).independentRecordExperiment?.eventId,
+    firstRecordWitness.id,
+    '多个有效记录事实只选择 canonical history 中第一个见证',
+  );
+  const twoRecordFold = beginHistoryRetentionProjection(
+    twoRecordWitnesses,
+    { stateHash: 'c'.repeat(64) },
+  );
+  foldHistoryRetentionSegment(twoRecordFold, twoRecordWitnesses.world.past, 0);
+  const twoRecordPins = new Map(
+    finishHistoryRetentionProjection(twoRecordFold).pins.map((pin) => [pin.eventId, pin.leaseKeys]),
+  );
+  assert.ok(twoRecordPins.get(firstRecordWitness.id)?.includes(MODERN_RECORD_EXPERIMENT_LEASE_KEY));
+  assert.equal(
+    twoRecordPins.get(laterRecordWitness.id)?.includes(MODERN_RECORD_EXPERIMENT_LEASE_KEY) ?? false,
+    false,
+    'retention 不得把第二个更晚记录见证扩大为另一条永久 modern lease',
+  );
 
   const cold = modernState();
   const ordinaryOperation = cold.world.past.find((event) => event.id === 'electrical-operation-ordinary');
@@ -482,6 +679,109 @@ try {
     true,
     '三束现代事实移入有界冷见证后仍必须可观察',
   );
+
+  const replicated = replicationModernState();
+  const replicatedEvidence = observeModernCivilizationEvidence(replicated.state);
+  assert.equal(replicatedEvidence.satisfied, true,
+    '可靠读者按他人记录真实复制产物，应成为同一独立记录复用闭环');
+  assert.equal(replicatedEvidence.independentRecordExperiment?.eventId, replicated.receipt.id);
+  assert.deepEqual({
+    projectId: replicatedEvidence.independentRecordExperiment?.projectId,
+    recordId: replicatedEvidence.independentRecordExperiment?.recordId,
+    knowledgeId: replicatedEvidence.independentRecordExperiment?.knowledgeId,
+    readerId: replicatedEvidence.independentRecordExperiment?.readerId,
+    recordAuthorId: replicatedEvidence.independentRecordExperiment?.recordAuthorId,
+  }, {
+    projectId: 'record-use-project',
+    recordId: 'record-payload',
+    knowledgeId: 'knowledge-technique',
+    readerId,
+    recordAuthorId: authorId,
+  });
+
+  const replicationRetentionFold = beginHistoryRetentionProjection(
+    replicated.state,
+    { stateHash: 'b'.repeat(64) },
+  );
+  foldHistoryRetentionSegment(replicationRetentionFold, replicated.state.world.past, 0);
+  const replicationRetention = finishHistoryRetentionProjection(replicationRetentionFold);
+  const replicationPins = new Map(replicationRetention.pins.map((pin) => [pin.eventId, pin.leaseKeys]));
+  for (const eventId of [
+    replicated.receipt.id,
+    replicated.stoneSource.id,
+    replicated.woodSource.id,
+  ]) {
+    assert.ok(replicationPins.get(eventId)?.includes(MODERN_RECORD_EXPERIMENT_LEASE_KEY),
+      `复制闭环必须精确保留见证及其真实输入来源 ${eventId}`);
+  }
+
+  const replicatedCold = replicationModernState();
+  const replicatedColdReader = replicatedCold.state.people.find((person) => person.id === readerId);
+  assert.ok(replicatedColdReader);
+  replicatedColdReader.diedAtMonth = 8;
+  replicatedColdReader.body.health = 0;
+  const replicatedColdEvidenceBefore = observeModernCivilizationEvidence(replicatedCold.state);
+  const replicatedColdFacts = [
+    replicatedCold.state.world.past.find((event) => event.id === 'electrical-operation-ordinary'),
+    replicatedCold.state.world.past.find((event) => event.id === 'electrical-operation-useful-load'),
+    replicatedCold.state.world.past.find((event) => event.id === 'mass-calibration'),
+    replicatedCold.state.world.past.find((event) => event.id === 'mass-measurement'),
+    replicatedCold.stoneSource,
+    replicatedCold.woodSource,
+    replicatedCold.receipt,
+  ];
+  assert.ok(replicatedColdFacts.every(Boolean));
+  const replicatedColdTail = actionFact(
+    'replication-unrelated-hot-tail', 100, { kind: 'act', operation: 'wait', targets: [] }, {},
+  );
+  replicatedCold.state.world.past = [replicatedColdTail];
+  replicatedCold.state.world.historyCursor = {
+    version: 1,
+    eventCount: 108,
+    hotStartIndex: 107,
+    tailEventId: replicatedColdTail.id,
+  };
+  registerRetainedColdWorldEventFacts(replicatedCold.state, replicatedColdFacts.map((event, index) => ({
+    absoluteIndex: 20 + index,
+    eventId: event.id,
+    event,
+    leaseKeys: index < 2
+      ? index === 0
+        ? [electricalOperationLeaseKey]
+        : [electricalLeaseKey, electricalOperationLeaseKey]
+      : index < 4
+        ? [measurementLeaseKey]
+        : [MODERN_RECORD_EXPERIMENT_LEASE_KEY],
+  })));
+  const replicatedColdEvidenceAfter = observeModernCivilizationEvidence(replicatedCold.state);
+  assert.equal(replicatedColdEvidenceAfter.satisfied, true,
+    '复制收据与输入来源移入冷租约后仍须通过完整 verifier');
+  assert.equal(
+    replicatedColdEvidenceAfter.independentRecordExperiment?.eventId,
+    replicatedColdEvidenceBefore.independentRecordExperiment?.eventId,
+    'full 与 bounded/cold 必须选择同一 canonical 记录见证',
+  );
+
+  const readOnlyReplication = replicationModernState();
+  readOnlyReplication.receipt.diff.recordUseReplicationReceipt = undefined;
+  readOnlyReplication.receipt.diff.recordUseStage = 'read';
+  assert.equal(observeModernCivilizationEvidence(readOnlyReplication.state).independentRecordExperiment, null,
+    '只阅读记录不能冒充独立复制实验');
+
+  const forgedReplication = replicationModernState();
+  forgedReplication.state.intents = [];
+  assert.equal(observeModernCivilizationEvidence(forgedReplication.state).independentRecordExperiment, null,
+    '只有布尔 receipt、没有匹配的完成 intent 时必须 fail-closed');
+
+  const wrongBasisReplication = replicationModernState();
+  wrongBasisReplication.state.intents[0].goal.basisKey = 'forged-observer-basis';
+  assert.equal(observeModernCivilizationEvidence(wrongBasisReplication.state).independentRecordExperiment, null,
+    'receipt 与 intent/basis 不一致时必须 fail-closed');
+
+  const wrongInputReplication = replicationModernState();
+  wrongInputReplication.receipt.diff.inputMaterialIds = [Material.Wood, Material.StoneTool];
+  assert.equal(observeModernCivilizationEvidence(wrongInputReplication.state).independentRecordExperiment, null,
+    'receipt 声称的输入与实际动作 witness 顺序不一致时必须 fail-closed');
 
   const missingPower = modernState();
   missingPower.world.electricalPower.networks = [];

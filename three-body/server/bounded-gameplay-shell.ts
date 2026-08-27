@@ -174,6 +174,64 @@ function terminalIntentTouchesLivingMemory(
   return candidateIds.some((id) => livingMemoryFactIds.has(id));
 }
 
+interface CanonicalCompletedRecordReplicationIntent {
+  readonly intent: Intent;
+  readonly sourceIndex: number;
+  readonly resolvedAtMonth: number;
+  readonly orderInMonth: number;
+  readonly eventId: string;
+  readonly intentId: string;
+}
+
+function canonicalCompletedRecordReplicationIntent(
+  value: unknown,
+  sourceIndex: number,
+): CanonicalCompletedRecordReplicationIntent | null {
+  const intent = recordOf(value, 'intent');
+  if (intent.status !== 'completed'
+    || typeof intent.id !== 'string'
+    || typeof intent.ownerId !== 'string') return null;
+  const goal = intent.goal;
+  const outcome = intent.goalOutcome;
+  if (!goal || typeof goal !== 'object' || Array.isArray(goal)
+    || (goal as Record<string, unknown>).kind !== 'record-replication-receipt'
+    || (goal as Record<string, unknown>).readerId !== intent.ownerId
+    || !outcome || typeof outcome !== 'object' || Array.isArray(outcome)
+    || (outcome as Record<string, unknown>).kind !== 'achieved') return null;
+  const resolvedAtMonth = (outcome as Record<string, unknown>).resolvedAtMonth;
+  const outcomeEventIds = stringArray((outcome as Record<string, unknown>).sourceEventIds);
+  if (!Number.isSafeInteger(resolvedAtMonth)
+    || Number(resolvedAtMonth) < 0
+    || outcomeEventIds.length !== 1
+    || !stringArray(intent.actionEventIds).includes(outcomeEventIds[0])) return null;
+  const eventId = outcomeEventIds[0];
+  const prefix = `e-${resolvedAtMonth}-action-${intent.ownerId}-`;
+  if (!eventId.startsWith(prefix)) return null;
+  const rawOrder = eventId.slice(prefix.length);
+  if (!/^(0|[1-9]\d*)$/u.test(rawOrder)) return null;
+  const orderInMonth = Number(rawOrder);
+  if (!Number.isSafeInteger(orderInMonth)) return null;
+  return {
+    intent: value as Intent,
+    sourceIndex,
+    resolvedAtMonth: Number(resolvedAtMonth),
+    orderInMonth,
+    eventId,
+    intentId: intent.id,
+  };
+}
+
+function earlierCompletedRecordReplicationIntent(
+  left: CanonicalCompletedRecordReplicationIntent,
+  right: CanonicalCompletedRecordReplicationIntent,
+): CanonicalCompletedRecordReplicationIntent {
+  const order = left.resolvedAtMonth - right.resolvedAtMonth
+    || left.orderInMonth - right.orderInMonth
+    || left.eventId.localeCompare(right.eventId)
+    || left.intentId.localeCompare(right.intentId);
+  return order <= 0 ? left : right;
+}
+
 function retainIntent(
   value: unknown,
   livingPersonIds: ReadonlySet<string>,
@@ -370,6 +428,8 @@ export function createBoundedGameplayShellAccumulator(
   const livingMemoryFactIds = new Set<string>();
   const referencedProjectIds = new Set<string>();
   const referencedAgreementIds = new Set<string>();
+  const retainedIntentSourceIndexes: number[] = [];
+  let deferredRecordReplicationIntent: CanonicalCompletedRecordReplicationIntent | null = null;
   let finished = false;
 
   const scopedKey = (scope: 'state' | 'world', name: string) => `${scope}.${name}`;
@@ -422,7 +482,9 @@ export function createBoundedGameplayShellAccumulator(
     const target = targetFor(position.scope)[position.fieldName];
     if (!Array.isArray(target)) throw new Error(`bounded gameplay shell array ${key} 未初始化`);
 
-    for (const item of items) {
+    for (let itemOffset = 0; itemOffset < items.length; itemOffset += 1) {
+      const item = items[itemOffset];
+      const sourceIndex = position.startItemIndex + itemOffset;
       let retain = true;
       if (position.scope === 'state' && position.fieldName === 'people') {
         const person = item as PersonState;
@@ -438,7 +500,15 @@ export function createBoundedGameplayShellAccumulator(
           activeIntentIds,
           livingMemoryFactIds,
         );
-        if (retain) collectNamedReferences(item, referencedProjectIds, referencedAgreementIds);
+        if (retain) {
+          retainedIntentSourceIndexes.push(sourceIndex);
+          collectNamedReferences(item, referencedProjectIds, referencedAgreementIds);
+        } else {
+          const candidate = canonicalCompletedRecordReplicationIntent(item, sourceIndex);
+          if (candidate) deferredRecordReplicationIntent = deferredRecordReplicationIntent
+            ? earlierCompletedRecordReplicationIntent(deferredRecordReplicationIntent, candidate)
+            : candidate;
+        }
       } else if (position.scope === 'state' && position.fieldName === 'agreements') {
         retain = retainAgreement(item, livingPersonIds, referencedAgreementIds);
       } else if (position.scope === 'state' && position.fieldName === 'projects') {
@@ -449,6 +519,20 @@ export function createBoundedGameplayShellAccumulator(
           ? compactCompletedProjectForGameplayShell(item as ProjectState)
           : item);
       }
+    }
+    if (position.scope === 'state'
+      && position.fieldName === 'intents'
+      && position.segmentIndex === position.segmentCount - 1
+      && deferredRecordReplicationIntent) {
+      const candidate = deferredRecordReplicationIntent;
+      const insertionIndex = retainedIntentSourceIndexes.findIndex((sourceIndex) => (
+        sourceIndex > candidate.sourceIndex
+      ));
+      const targetIndex = insertionIndex < 0 ? target.length : insertionIndex;
+      target.splice(targetIndex, 0, candidate.intent);
+      retainedIntentSourceIndexes.splice(targetIndex, 0, candidate.sourceIndex);
+      collectNamedReferences(candidate.intent, referencedProjectIds, referencedAgreementIds);
+      deferredRecordReplicationIntent = null;
     }
     retainedArrayLengths[key] = target.length;
   };

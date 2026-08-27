@@ -216,6 +216,50 @@ try {
       agreementId: 'agreement-referenced',
     }),
     intent({ id: 'intent-person-active-ref', ownerId: deadC.id, status: 'failed' }),
+    intent({
+      id: 'intent-record-replication-achieved',
+      ownerId: deadC.id,
+      status: 'completed',
+      goal: {
+        kind: 'record-replication-receipt',
+        basisKey: 'bounded-record-replication-basis',
+        readerId: deadC.id,
+        projectId: 'project-completed-b',
+        recordId: 'bounded-record',
+        recordVersion: 1,
+        techniqueId: 'bounded-technique',
+        ruleSignature: 'bounded-rule',
+        expectedOutputMaterialId: 1,
+      },
+      actionEventIds: [`e-2-action-${deadC.id}-3`],
+      goalOutcome: {
+        kind: 'achieved',
+        resolvedAtMonth: 2,
+        sourceEventIds: [`e-2-action-${deadC.id}-3`],
+      },
+    }),
+    intent({
+      id: 'intent-record-replication-later',
+      ownerId: deadC.id,
+      status: 'completed',
+      goal: {
+        kind: 'record-replication-receipt',
+        basisKey: 'bounded-record-replication-basis-later',
+        readerId: deadC.id,
+        projectId: 'project-completed-b',
+        recordId: 'bounded-record-later',
+        recordVersion: 1,
+        techniqueId: 'bounded-technique-later',
+        ruleSignature: 'bounded-rule-later',
+        expectedOutputMaterialId: 1,
+      },
+      actionEventIds: [`e-3-action-${deadC.id}-1`],
+      goalOutcome: {
+        kind: 'achieved',
+        resolvedAtMonth: 3,
+        sourceEventIds: [`e-3-action-${deadC.id}-1`],
+      },
+    }),
     intent({ id: 'intent-dead-unrelated', ownerId: deadA.id, status: 'completed' }),
     intent({ id: 'intent-dead-blocked-unrelated', ownerId: deadB.id, status: 'blocked' }),
   ];
@@ -398,9 +442,12 @@ try {
     'intent-living-terminal',
     'intent-memory-terminal',
     'intent-person-active-ref',
+    'intent-record-replication-achieved',
   ];
   assert.deepEqual(first.state.intents.map(({ id }) => id), expectedIntentIds,
-    'only live gameplay intent closure must remain, in manifest order');
+    'live closure plus only the first canonical dead-reader replication witness remain in manifest order');
+  assert.equal(first.state.intents.some(({ id }) => id === 'intent-record-replication-later'), false,
+    'a later achieved replication must not grow the bounded terminal intent closure');
   assert.equal(first.gameplayShell.sourceArrayLengths['state.intents'], exactIntentCount);
   assert.equal(first.gameplayShell.retainedArrayLengths['state.intents'], expectedIntentIds.length);
   assert.equal(first.state.identityCounters.intentOrdinal, exactIntentCount,

@@ -394,7 +394,7 @@ try {
     `export { installVerifiedHistoryRetentionEvidence } from ${JSON.stringify(path.join(workspace, 'server/retained-history-evidence.ts'))};`,
     `export { decodeRunContinuationBundle } from ${JSON.stringify(path.join(workspace, 'server/run-continuation-bundle.ts'))};`,
     `export { decodeHistoryRetentionSidecar, encodeHistoryRetentionSidecar, hashHistoryRetentionStoredContent, HISTORY_RETENTION_SIDECAR_CODEC } from ${JSON.stringify(path.join(workspace, 'server/history-retention-codec.ts'))};`,
-    `export { liveAgreementHistoryLeaseKey, retainedColdWorldEventsForLease, waterAssistanceEvidenceLeaseKey, waterAssistanceFulfillmentMembershipGroupKey, worldEventByIdWithRetainedLease } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/event-index.ts'))};`,
+    `export { liveAgreementHistoryLeaseKey, livePersonSocialEvidenceLeaseKey, retainedColdWorldEventsForLease, waterAssistanceEvidenceLeaseKey, waterAssistanceFulfillmentMembershipGroupKey, worldEventById, worldEventByIdWithRetainedLease } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/event-index.ts'))};`,
     `export { recordAgreementAction, verifiedWaterAssistanceEvidenceAnchors } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/agreement.ts'))};`,
     `export { socialCooperationBeliefFor } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/social-learning.ts'))};`,
   ].join('\n'));
@@ -507,7 +507,7 @@ try {
       boundary: { authority: { stateHash: sourceStateHash }, target: projection.target },
     },
   );
-  const legacyBounded = boundedClone(fixture.state);
+  const legacyBounded = boundedClone(fixture.state, 1);
   const legacyColdPins = decodedColdPins(
     decodedLegacy,
     fullHistory,
@@ -525,12 +525,82 @@ try {
   assert.equal(api.retainedColdWorldEventsForLease(legacyBounded, helperLeaseKey).length, 1);
   assert.equal(api.retainedColdWorldEventsForLease(legacyBounded, requesterLeaseKey).length, 1);
   const legacyLiveLeaseKey = api.liveAgreementHistoryLeaseKey(fixture.agreementId);
-  assert.equal(api.retainedColdWorldEventsForLease(
-    legacyBounded, legacyLiveLeaseKey,
-  ).length, decodedLegacy.pins.filter((pin) => (
-    pin.absoluteIndex < legacyBounded.world.historyCursor.hotStartIndex
-      && pin.leaseKeys.includes(legacyLiveLeaseKey)
-  )).length, 'legacy audit membership 仍可解码，但 typed resolver 只能看到各一条 anchor');
+  assert.deepEqual(api.retainedColdWorldEventsForLease(legacyBounded, legacyLiveLeaseKey)
+    .map((event) => event.id), [
+    legacyBounded.agreements[0].proposalEventId,
+    legacyBounded.agreements[0].responseEventId,
+  ], 'legacy live-agreement lease 只能保留 proposal/response core');
+  const legacyVisibleFulfillmentIds = legacyBounded.agreements[0].fulfillmentEventIds
+    .filter((eventId) => api.worldEventById(legacyBounded, eventId) !== undefined)
+    .sort();
+  assert.deepEqual(legacyVisibleFulfillmentIds, [
+    fixture.expectedHelperId,
+    fixture.expectedRequesterId,
+  ].sort(), '无共享 lease 时 legacy migration 最多注册两条 typed 正文');
+  const unselectedLegacyFulfillmentId = fixture.helperFacts[0].id;
+  assert.equal(api.worldEventById(legacyBounded, unselectedLegacyFulfillmentId), undefined);
+  assert.equal(api.worldEventByIdWithRetainedLease(
+    legacyBounded,
+    unselectedLegacyFulfillmentId,
+    legacyLiveLeaseKey,
+  ), undefined, '未选中的旧 fulfillment 不得由 generic 或 legacy agreement lease 解析');
+
+  const sharedFixture = buildFixtureState(api);
+  const sharedFulfillmentId = sharedFixture.helperFacts[0].id;
+  const sharedRequester = sharedFixture.state.people.find((person) => (
+    person.id === sharedFixture.requesterId
+  ));
+  sharedRequester.memories.push({
+    id: 'water-retention-shared-memory',
+    kind: 'episode',
+    summary: '记得较早一次到达水边',
+    importance: 60,
+    createdAtMonth: 851,
+    lastRecalledAtMonth: 860,
+    personIds: [sharedFixture.helperId],
+    sourceEventIds: [sharedFulfillmentId],
+  });
+  const sharedProjection = projectAll(api, sharedFixture.state);
+  const sharedLegacyProjection = legacyAuditProjection(
+    api,
+    sharedProjection,
+    sharedFixture,
+  );
+  const sharedLegacyStored = rawSidecar(api, sharedLegacyProjection);
+  const decodedSharedLegacy = api.decodeHistoryRetentionSidecar(
+    sharedLegacyStored.chunk,
+    {
+      reference: sharedLegacyStored.reference,
+      boundary: { authority: { stateHash: sourceStateHash }, target: sharedProjection.target },
+    },
+  );
+  const sharedLegacyBounded = boundedClone(sharedFixture.state, 1);
+  api.installVerifiedHistoryRetentionEvidence(
+    sharedLegacyBounded,
+    sourceStateHash,
+    decodedSharedLegacy,
+    decodedColdPins(
+      decodedSharedLegacy,
+      sharedFixture.state.world.past,
+      sharedLegacyBounded.world.historyCursor.hotStartIndex,
+    ),
+  );
+  const sharedSocialLeaseKey = api.livePersonSocialEvidenceLeaseKey(
+    sharedFixture.requesterId,
+  );
+  assert.equal(api.worldEventById(sharedLegacyBounded, sharedFulfillmentId)?.id,
+    sharedFulfillmentId,
+    '与其他真实 lease 共享的旧 fulfillment body 不得被整体删除');
+  assert.equal(api.worldEventByIdWithRetainedLease(
+    sharedLegacyBounded,
+    sharedFulfillmentId,
+    sharedSocialLeaseKey,
+  )?.id, sharedFulfillmentId);
+  assert.equal(api.worldEventByIdWithRetainedLease(
+    sharedLegacyBounded,
+    sharedFulfillmentId,
+    api.liveAgreementHistoryLeaseKey(sharedFixture.agreementId),
+  ), undefined, '共享 body 也不得重新获得 legacy agreement lease');
 
   const legacySuccessor = appendSuccessorEvidence(
     api, legacyBounded, fixture, 'legacy-water-successor',

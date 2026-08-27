@@ -247,6 +247,26 @@ export function installVerifiedHistoryRetentionEvidence(
   const expectedColdOrdinals = new Set<number>();
   const seenProjectionOrdinals = new Set<number>();
   const retained: RetainedColdWorldEventFact[] = [];
+  const legacyWaterAgreementLeaseKeysByFulfillmentEventId = new Map<string, Set<string>>();
+  for (const agreement of state.agreements ?? []) {
+    if (agreement.status !== 'active'
+      || agreement.proposal.kind !== 'assist'
+      || agreement.proposal.need !== 'water') continue;
+    const leaseKey = liveAgreementHistoryLeaseKey(agreement.id);
+    const coreEventIds = new Set([
+      agreement.proposalEventId,
+      ...(agreement.responseEventId ? [agreement.responseEventId] : []),
+    ]);
+    for (const eventId of new Set(agreement.fulfillmentEventIds)) {
+      // Proposal/response remain the executable agreement core even if a
+      // malformed legacy array repeats their IDs as fulfillment membership.
+      if (coreEventIds.has(eventId)) continue;
+      const leaseKeys = legacyWaterAgreementLeaseKeysByFulfillmentEventId.get(eventId)
+        ?? new Set<string>();
+      leaseKeys.add(leaseKey);
+      legacyWaterAgreementLeaseKeysByFulfillmentEventId.set(eventId, leaseKeys);
+    }
+  }
   for (const pin of projection.pins) {
     if (!Number.isSafeInteger(pin.absoluteIndex)
       || pin.absoluteIndex < 0
@@ -274,7 +294,9 @@ export function installVerifiedHistoryRetentionEvidence(
     const gameplayLeaseKeys = pin.leaseKeys.filter(
       (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
         && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
-        && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null,
+        && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null
+        && !legacyWaterAgreementLeaseKeysByFulfillmentEventId
+          .get(pin.eventId)?.has(leaseKey),
     );
     if (gameplayLeaseKeys.length > 0) retained.push({
       absoluteIndex: pin.absoluteIndex,

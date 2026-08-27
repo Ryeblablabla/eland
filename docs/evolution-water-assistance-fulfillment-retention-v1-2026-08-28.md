@@ -30,5 +30,5 @@
 
 - `Agreement` 继续保存完整 `fulfillmentEventIds`，未增加另一套持久化收据；retention 将其保存为 `index-only` membership，并按共享严格 predicate 各选择最后一条 helper/requester 正文。
 - 协议结算只通过协议身份绑定的 typed lease 解析冷事实；当前 tick 的事实显式传入，仍按 overlay、hot、exact lease 的顺序取证。
-- 旧 live-agreement audit sidecar 只在 exact root、verified ordinal、当前协议 membership 与真实 ActionFact predicate 全部一致时迁移；下一 successor 写回规范 typed group。
+- 旧 live-agreement audit sidecar 只在 exact root、verified ordinal、当前协议 membership 与真实 ActionFact predicate 全部一致时迁移；安装时剥离 fulfillment 的旧 agreement lease，仅保留 proposal/response core 与其他真实共享 lease，下一 successor 写回规范 typed group。
 - `node scripts/test-water-assistance-retention.mjs`、`npm run --silent backend:build` 与 scoped diff-check 已通过。该结果只证明 retention/open-warm 因果闭包，不是长程文明演化结论。

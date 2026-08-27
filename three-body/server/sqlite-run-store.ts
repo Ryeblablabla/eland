@@ -338,6 +338,8 @@ interface BoundedNonProjectionMonthStagingRecord {
   readonly successorReceipt: object;
   /** Store-owned state produced by the controller; never exposed by a receipt. */
   readonly ownedNextState: SimulationState;
+  /** Body-free source descriptors captured before the owned month changes membership. */
+  readonly reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[];
 }
 
 interface WarmBoundedContinuationRecord {
@@ -2544,6 +2546,7 @@ export class SqliteRunStore implements RunStore {
         state,
         successor.root,
         readChunk,
+        staged.stagedMonth.reusableLiveSocialDescriptors,
       );
       this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
       assertVerifiedHistoryRetentionSuccessor(
@@ -3074,6 +3077,9 @@ export class SqliteRunStore implements RunStore {
       continuationToken = opened.continuationToken;
     }
     const sourceMonth = ownedState.clock.elapsedMonths;
+    const reusableLiveSocialDescriptors = Object.freeze([
+      ...retainedLiveSocialEvidenceForLivingSources(ownedState),
+    ]);
     const stepped = stepOwnedBoundedNonProjectionMonth(ownedState);
     const successorReceipt = await this.stageBoundedEvolutionSuccessorInternal(
       continuationToken,
@@ -3103,6 +3109,7 @@ export class SqliteRunStore implements RunStore {
       nextRootHash: stagedSuccessor.root.hash,
       successorReceipt,
       ownedNextState: stepped,
+      reusableLiveSocialDescriptors,
     });
     const registry = this.continuationTokenRegistry();
     registry.stagedNonProjectionMonths.set(receipt, staging);
@@ -3202,6 +3209,7 @@ export class SqliteRunStore implements RunStore {
       nextState,
       successor.root,
       readPublicationChunk,
+      staged.stagedMonth.reusableLiveSocialDescriptors,
     );
     this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
     assertVerifiedHistoryRetentionSuccessor(

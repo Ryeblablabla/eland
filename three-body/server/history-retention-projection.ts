@@ -3826,9 +3826,18 @@ export function resumeHistoryRetentionProjection(
   const previousDemandedIds = new Set(basis.sourceDemand.groups.flatMap((group) => group.eventIds));
   const previousDirectMatches = new Map(basis.directMatches.map((match) => [match.eventId, match]));
   for (const eventId of fold.directDemandEventIds) {
-    if (previousDemandedIds.has(eventId)) {
-      const match = previousDirectMatches.get(eventId);
-      if (match) fold.directMatchesByEventId.set(eventId, { ...match });
+    const groups = [...fold.demandGroupsByKey.values()]
+      .filter((group) => group.eventIds.has(eventId));
+    const requiresVerifiedPrefixLookup = groups.some((group) => {
+      const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+      return ((group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        || group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
+        || liveSocial?.kind === 'broad')
+        && group.requirement === 'index-only';
+    });
+    const previousMatch = previousDirectMatches.get(eventId);
+    if (previousDemandedIds.has(eventId) && previousMatch) {
+      fold.directMatchesByEventId.set(eventId, { ...previousMatch });
     } else {
       // A match retained for another selector does not prove that it was the
       // latest occurrence of this ID in the cold prefix. New direct demand is
@@ -3836,13 +3845,6 @@ export function resumeHistoryRetentionProjection(
       // selectors deliberately admit non-event source IDs (for example record
       // payload IDs), so a new member is matched when it occurs in the suffix
       // but is not blocking when no event exists.
-      const groups = [...fold.demandGroupsByKey.values()]
-        .filter((group) => group.eventIds.has(eventId));
-      const requiresVerifiedPrefixLookup = groups.some((group) => (
-        (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
-          || group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
-          && group.requirement === 'index-only'
-      ));
       if (requiresVerifiedPrefixLookup
         || groups.some((group) => historyRetentionRequirementBlocks(group.requirement))) {
         fold.requiredSuffixDirectDemandEventIds.add(eventId);
@@ -4165,6 +4167,87 @@ export function seedVerifiedPrefixSocialRepetitionIndexMatches(
     seen.add(match.eventId);
     fold.directMatchesByEventId.set(match.eventId, { ...match });
     fold.requiredSuffixDirectDemandEventIds.delete(match.eventId);
+  }
+}
+
+/**
+ * A living person's broad social membership may first name an old cold event,
+ * or retain an unresolved non-event source ID from an older sidecar. Only an
+ * exact previous-root scan may distinguish the two. Matching identities seed
+ * the resumed fold; searched non-events remain unresolved index-only members.
+ */
+export function unresolvedVerifiedPrefixLiveSocialIndexEventIds(
+  fold: HistoryRetentionProjectionFold,
+): string[] {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix live-social bridge 只接受 open fold');
+  }
+  const eligibleEventIds = new Set([...fold.demandGroupsByKey.values()]
+    .filter((group) => {
+      const parsed = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+      return parsed?.kind === 'broad' && group.requirement === 'index-only';
+    })
+    .flatMap((group) => [...group.eventIds]));
+  return [...fold.requiredSuffixDirectDemandEventIds]
+    .filter((eventId) => eligibleEventIds.has(eventId)
+      && !fold.directMatchesByEventId.has(eventId))
+    .sort();
+}
+
+export function seedVerifiedPrefixLiveSocialIndexMatches(
+  fold: HistoryRetentionProjectionFold,
+  verifiedSourceEventCount: number,
+  searchedEventIds: readonly string[],
+  matches: readonly HistoryRetentionContinuationMatch[],
+): void {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix live-social bridge 只接受 open fold');
+  }
+  const sourceTarget = fold.continuationSourceTarget;
+  if (!sourceTarget || verifiedSourceEventCount !== sourceTarget.eventCount) {
+    throw new Error('retention prefix live-social bridge 与 continuation source seal 不一致');
+  }
+  const broadGroups = [...fold.demandGroupsByKey.values()].filter((group) => {
+    const parsed = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+    return parsed?.kind === 'broad' && group.requirement === 'index-only';
+  });
+  const eligibleEventIds = new Set(broadGroups.flatMap((group) => [...group.eventIds]));
+  if (eligibleEventIds.size === 0) {
+    if (searchedEventIds.length === 0 && matches.length === 0) return;
+    throw new Error('retention prefix live-social bridge 缺少 living-owner broad demand');
+  }
+  const searched = new Set<string>();
+  for (const eventId of searchedEventIds) {
+    const existing = fold.directMatchesByEventId.get(eventId);
+    if (searched.has(eventId)
+      || !eligibleEventIds.has(eventId)
+      || (!fold.requiredSuffixDirectDemandEventIds.has(eventId) && !existing)) {
+      throw new Error(`retention prefix live-social searched ID ${eventId} 无效`);
+    }
+    searched.add(eventId);
+  }
+  const matched = new Set<string>();
+  for (const match of matches) {
+    const existing = fold.directMatchesByEventId.get(match.eventId);
+    if (matched.has(match.eventId)
+      || !searched.has(match.eventId)
+      || !Number.isSafeInteger(match.absoluteIndex)
+      || match.absoluteIndex < 0
+      || match.absoluteIndex >= sourceTarget.eventCount
+      || (existing && (existing.eventId !== match.eventId
+        || existing.absoluteIndex !== match.absoluteIndex))) {
+      throw new Error(`retention prefix live-social match ${match.eventId} 无效`);
+    }
+    matched.add(match.eventId);
+    fold.directMatchesByEventId.set(match.eventId, { ...match });
+    fold.requiredSuffixDirectDemandEventIds.delete(match.eventId);
+  }
+  for (const eventId of searched) {
+    if (matched.has(eventId)) continue;
+    const belongsToBlockingDemand = [...fold.demandGroupsByKey.values()].some((group) => (
+      group.eventIds.has(eventId) && historyRetentionRequirementBlocks(group.requirement)
+    ));
+    if (!belongsToBlockingDemand) fold.requiredSuffixDirectDemandEventIds.delete(eventId);
   }
 }
 

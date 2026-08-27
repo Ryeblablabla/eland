@@ -43,6 +43,31 @@ function memory(id, kind, atMonth, personIds, sourceEventIds) {
   };
 }
 
+function reviewDueIntent(person, id, reviewAtMonth, actionEventIds, materialId) {
+  return {
+    id,
+    ownerId: person.id,
+    summary: `fixture review ${id}`,
+    domain: 'strategic',
+    goal: {
+      kind: 'inventory-at-least', materialId, quantity: 1_000_000, personId: person.id,
+    },
+    nextAction: { kind: 'attend', target: { kind: 'person', personId: person.id } },
+    status: 'active',
+    createdAtMonth: reviewAtMonth - 1,
+    lastProgressAtMonth: reviewAtMonth - 1,
+    progress: 0.5,
+    plannedDurationMonths: 1,
+    lifecycle: {
+      version: 'intent-lifecycle-v1', completion: 'on-achievement', reviewAtMonth,
+    },
+    sourceDecisionEventId: actionEventIds[0],
+    sourceFactIds: [],
+    actionEventIds: [...actionEventIds],
+    replanCount: 0,
+  };
+}
+
 function canonicalProjection(api, state, hash = 'a'.repeat(64)) {
   const fold = api.beginHistoryRetentionProjection(state, { stateHash: hash });
   api.foldHistoryRetentionSegment(fold, state.world.past, 0);
@@ -135,9 +160,12 @@ try {
   const electricalPath = path.resolve('src/game/eland/application/electrical-power-options.ts');
   writeFileSync(entryPath, [
     `export * from ${JSON.stringify(path.resolve('server/sqlite-run-store.ts'))};`,
+    `export { stepOwnedBoundedNonProjectionMonth } from ${JSON.stringify(path.resolve('server/bounded-nonprojection-month-controller.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/bounded-observer-boundary-month-controller.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('server/history-retention-successor.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('server/run-state-codec.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/run-continuation-bundle.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('src/game/eland/domain/event-index.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('src/game/eland/domain/live-social-evidence.ts'))};`,
@@ -317,6 +345,9 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     from: { kind: 'person', personId: observer.id },
     to: { kind: 'ground', cellId: 1, z: 1 }, stackId: 'remote-stone',
   }, { quantity: 1 });
+  const crossOwnerAttend = action('cross-owner-attend', 18, 0, partner.id, {
+    kind: 'attend', target: { kind: 'person', personId: observer.id },
+  });
   const teaching = environment('maternal-teaching-state-only', 17, 0, 'body', {
     personId: observer.id,
   });
@@ -333,7 +364,7 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     observerCondition, partnerCondition, projectRequest, blockedDelivery,
     previousConversation, woodOne, woodTwo, clayOne, mechanicalService,
     unrelatedMechanicalWork,
-    travel, remoteWork, teaching, ...fillerEvents, tail,
+    travel, remoteWork, teaching, crossOwnerAttend, ...fillerEvents, tail,
   ];
   const historyStart = state.world.past.length;
   state.world.past.push(...customEvents);
@@ -367,6 +398,7 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     memory('remote-memory', 'episode', 16, [], [
       mechanicalService.id, unrelatedMechanicalWork.id, travel.id, remoteWork.id,
     ]),
+    memory('cross-owner-source-memory', 'episode', 18, [partner.id], [crossOwnerAttend.id]),
   ];
   observer.maternalTeachingSourceEventIds = [teaching.id];
   observer.inventory = [
@@ -748,6 +780,413 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
   assert.equal(store.ownsBoundedNonProjectionMonthStagingReceipt(warmStage), true,
     'COMMIT 后 warm successor 必须用 next root 重建 registry 并可继续一步');
 
+  const ordinaryState = structuredClone(state);
+  const ordinaryObserver = ordinaryState.people.find((person) => person.id === observer.id);
+  const ordinaryOldMove = action('ordinary-new-memory-old-move', 18, 1, observer.id, {
+    kind: 'move', toCellId: 2, toZ: 1,
+  });
+  const ordinaryOldAttend = action('ordinary-new-memory-old-attend', 18, 2, observer.id, {
+    kind: 'attend', target: { kind: 'person', personId: partner.id },
+  });
+  const ordinaryInsertAt = ordinaryState.world.past
+    .findIndex((event) => event.id === fillerEvents[0].id);
+  assert.ok(ordinaryObserver && ordinaryInsertAt > 0);
+  ordinaryState.world.past.splice(
+    ordinaryInsertAt,
+    0,
+    ordinaryOldMove,
+    ordinaryOldAttend,
+  );
+  const ordinaryHotEventIds = new Set([...electricalGroup.eventIds, tail.id]);
+  const ordinaryHotEvents = ordinaryState.world.past
+    .filter((event) => ordinaryHotEventIds.has(event.id));
+  ordinaryState.world.past = [
+    ...ordinaryState.world.past.filter((event) => !ordinaryHotEventIds.has(event.id)),
+    ...ordinaryHotEvents,
+  ];
+  for (let index = 0; index < ordinaryHotEvents.length; index += 1) {
+    ordinaryHotEvents[index].atMonth = 30;
+    ordinaryHotEvents[index].orderInMonth = index;
+    ordinaryHotEvents[index].orderInTick = index;
+  }
+  ordinaryState.world.historyCursor = {
+    version: 1,
+    eventCount: ordinaryState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: tail.id,
+  };
+  ordinaryState.lastStep = [ordinaryHotEvents.at(-1)];
+  const ordinaryIntent = reviewDueIntent(
+    ordinaryObserver,
+    'ordinary-new-membership-review',
+    30,
+    [ordinaryOldMove.id, ordinaryOldAttend.id],
+    api.Material.Wood,
+  );
+  ordinaryState.intents = [ordinaryIntent];
+  ordinaryObserver.activeIntentId = ordinaryIntent.id;
+  const ordinaryProbe = api.stepOwnedBoundedNonProjectionMonth(structuredClone(ordinaryState));
+  const ordinaryExpected = canonicalProjection(api, ordinaryProbe, 'c'.repeat(64));
+  const ordinaryElectricalExpected = strictGroupFor(
+    ordinaryExpected,
+    observer.id,
+    'electrical-remote-work',
+  );
+  for (const eventId of [ordinaryOldMove.id, ordinaryOldAttend.id]) {
+    assert.ok(ordinaryElectricalExpected.eventIds.includes(eventId),
+      `真实 terminal memory 必须令 ${eventId} 进入 full strict selector`);
+  }
+  const ordinaryCreated = await store.create({
+    id: 'live-social-ordinary-new-cold-membership',
+    state: ordinaryState,
+  });
+  await store.bootstrapBoundedEvolutionContinuation(ordinaryCreated.meta.id, 256);
+  const ordinaryBefore = readPersistedRetention(ordinaryCreated.meta.id);
+  assert.deepEqual(
+    ordinaryBefore.projection.demandGroups
+      .filter((group) => group.blocking)
+      .map((group) => ({ key: group.groupKey, unresolved: group.unresolvedEventIds })),
+    [],
+    'ordinary source continuation 不得带阻断 retention demand',
+  );
+  assert.ok(strictGroupFor(
+    ordinaryBefore.projection,
+    observer.id,
+    'electrical-remote-work',
+  ), 'ordinary source projection 必须已有当前 owner 的规范 strict group');
+  for (const eventId of [ordinaryOldMove.id, ordinaryOldAttend.id]) {
+    assert.equal(broadGroupFor(ordinaryBefore.projection, observer.id)
+      .eventIds.includes(eventId), false, `source live-social membership 尚未引用 ${eventId}`);
+    const activeIntentMatch = ordinaryBefore.projection.continuationBasis.directMatches
+      .find((match) => match.eventId === eventId);
+    assert.ok(activeIntentMatch
+      && activeIntentMatch.absoluteIndex < ordinaryBefore.bundle.hotStartIndex,
+    `active intent 只应为 ${eventId} 保留 verified cold identity，不应预建 owner descriptor`);
+  }
+  const ordinaryStage = await store.stageBoundedNonProjectionMonth(ordinaryCreated.meta.id);
+  const ordinaryPublication = await store.publishBoundedNonProjectionMonth(ordinaryStage);
+  assert.equal(ordinaryPublication.persisted, true);
+  const ordinaryAfter = readPersistedRetention(ordinaryCreated.meta.id);
+  const ordinaryElectricalAfter = strictGroupFor(
+    ordinaryAfter.projection,
+    observer.id,
+    'electrical-remote-work',
+  );
+  assert.deepEqual(
+    ordinaryElectricalAfter.eventIds,
+    ordinaryElectricalExpected.eventIds,
+    '普通 successor 新 terminal memory 的 persisted strict 必须与 full state 逐字一致',
+  );
+  assert.equal(ordinaryAfter.projection.pins.some((pin) => pin.leaseKeys.includes(
+    api.livePersonSocialEvidenceLeaseKey(observer.id),
+  )), false, '普通 successor broad membership 仍不得获得 body pin');
+  const ordinaryContinueStore = new api.SqliteRunStore(dataDirectory);
+  const ordinaryNextStage = await ordinaryContinueStore.stageBoundedNonProjectionMonth(
+    ordinaryCreated.meta.id,
+  );
+  assert.equal(ordinaryContinueStore.ownsBoundedNonProjectionMonthStagingReceipt(
+    ordinaryNextStage,
+  ), true, '普通 successor 必须能从 cold continuation 续下一月');
+  ordinaryContinueStore.close();
+  const ordinaryColdStore = new api.SqliteRunStore(dataDirectory);
+  const ordinaryColdOpened = await ordinaryColdStore.openBoundedEvolutionContinuation(
+    ordinaryCreated.meta.id,
+  );
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      ordinaryColdOpened.state,
+      api.livePersonSocialStrictEvidenceLeaseKey(observer.id, 'electrical-remote-work'),
+    ).map((event) => event.id).filter((eventId) => (
+      eventId === ordinaryOldMove.id || eventId === ordinaryOldAttend.id
+    )).sort(),
+    [ordinaryOldAttend.id, ordinaryOldMove.id].sort(),
+    '普通 successor cold open 必须精确恢复首次引用的旧 move/attend strict bodies',
+  );
+  ordinaryColdStore.close();
+
+  // Directly exercise the verified-prefix seam with a shell transition that
+  // first introduces an old event and a persistent non-event source. The
+  // ordinary/annual cases above cover real SQLite publication and cold open;
+  // this case isolates the identity handoff before the fold is persisted.
+  const prefixSourceState = structuredClone(state);
+  const prefixSourceObserver = prefixSourceState.people
+    .find((person) => person.id === observer.id);
+  const prefixFirstDemandAttend = action(
+    'prefix-first-any-demand-attend',
+    18,
+    3,
+    observer.id,
+    { kind: 'attend', target: { kind: 'person', personId: partner.id } },
+  );
+  const prefixLegacyUnresolvedAttend = action(
+    'prefix-legacy-unresolved-attend',
+    18,
+    4,
+    partner.id,
+    { kind: 'attend', target: { kind: 'person', personId: observer.id } },
+  );
+  const prefixInsertAt = prefixSourceState.world.past
+    .findIndex((event) => event.id === fillerEvents[0].id);
+  assert.ok(prefixSourceObserver && prefixInsertAt > 0);
+  prefixSourceState.world.past.splice(
+    prefixInsertAt,
+    0,
+    prefixFirstDemandAttend,
+    prefixLegacyUnresolvedAttend,
+  );
+  prefixSourceObserver.memories.push(memory(
+    'prefix-legacy-unresolved-owner-memory',
+    'episode',
+    18,
+    [partner.id],
+    [prefixLegacyUnresolvedAttend.id],
+  ));
+  prefixSourceState.world.historyCursor = {
+    version: 1,
+    eventCount: prefixSourceState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: tail.id,
+  };
+  prefixSourceState.lastStep = [prefixSourceState.world.past.at(-1)];
+  const prefixChunks = new Map();
+  const keepPrefixSnapshot = (snapshot) => {
+    for (const chunk of [...snapshot.parts, snapshot.root]) {
+      prefixChunks.set(chunk.hash, chunk);
+    }
+    return snapshot;
+  };
+  const readPrefixChunk = (hash) => {
+    const chunk = prefixChunks.get(hash);
+    if (!chunk) throw new Error(`missing prefix fixture chunk ${hash}`);
+    return chunk;
+  };
+  const prefixSourceRoot = keepPrefixSnapshot(await api.encodeSegmentedRunState(
+    prefixSourceState,
+    { mode: 'replace' },
+    { maxEventsPerSegmentForTests: 32 },
+  ));
+  const canonicalPrefixSource = canonicalProjection(
+    api,
+    prefixSourceState,
+    prefixSourceRoot.root.hash,
+  );
+  assert.equal(canonicalPrefixSource.continuationBasis.directMatches.some(
+    (match) => match.eventId === prefixFirstDemandAttend.id,
+  ), false, '旧冷 attend 在 source shell 中不得已属于任何 demand/directMatch');
+
+  // Model an older index-only sidecar which carried membership but never
+  // proved that its raw prefix was searched. The current decoder accepts this
+  // nonblocking shape, and the successor must search the exact root again.
+  const unresolvedPrefixSource = structuredClone(canonicalPrefixSource);
+  const unresolvedPrefixBroad = broadGroupFor(unresolvedPrefixSource, observer.id);
+  assert.ok(unresolvedPrefixBroad.resolvedEventIds.includes(prefixLegacyUnresolvedAttend.id));
+  const unresolvedPrefixGroups = unresolvedPrefixSource.demandGroups.filter((group) => (
+    group.eventIds.includes(prefixLegacyUnresolvedAttend.id)
+  ));
+  assert.ok(unresolvedPrefixGroups.length >= 1
+    && unresolvedPrefixGroups.every((group) => group.requirement === 'index-only'));
+  for (const group of unresolvedPrefixGroups) {
+    group.resolvedEventIds = group.resolvedEventIds
+      .filter((eventId) => eventId !== prefixLegacyUnresolvedAttend.id);
+    group.unresolvedEventIds = [...new Set([
+      ...group.unresolvedEventIds,
+      prefixLegacyUnresolvedAttend.id,
+    ])].sort();
+    group.satisfied = false;
+    group.blocking = false;
+  }
+  unresolvedPrefixSource.continuationBasis.directMatches =
+    unresolvedPrefixSource.continuationBasis.directMatches.filter(
+      (match) => match.eventId !== prefixLegacyUnresolvedAttend.id,
+    );
+  unresolvedPrefixSource.unresolvedDemands.push(...unresolvedPrefixGroups.map((group) => ({
+    eventId: prefixLegacyUnresolvedAttend.id,
+    leaseKeys: [...group.leaseKeys],
+    requirement: 'index-only',
+    groupKey: group.groupKey,
+    blocking: false,
+  })));
+  unresolvedPrefixSource.unresolvedDemands.sort((left, right) => (
+    left.groupKey.localeCompare(right.groupKey)
+      || left.eventId.localeCompare(right.eventId)
+  ));
+  const unresolvedPrefixSidecar = rawRetentionSidecar(api, unresolvedPrefixSource);
+  const decodedPrefixSource = api.decodeHistoryRetentionSidecar(
+    unresolvedPrefixSidecar.chunk,
+    {
+      reference: unresolvedPrefixSidecar.reference,
+      boundary: {
+        authority: { stateHash: prefixSourceRoot.root.hash },
+        target: canonicalPrefixSource.target,
+      },
+    },
+  );
+  assert.equal(decodedPrefixSource.continuationBasis.directMatches.some(
+    (match) => match.eventId === prefixLegacyUnresolvedAttend.id,
+  ), false, 'legacy unresolved membership 不得伪造 directMatch');
+
+  const prefixNextFullState = structuredClone(prefixSourceState);
+  const prefixNextObserver = prefixNextFullState.people
+    .find((person) => person.id === observer.id);
+  const prefixNextPartner = prefixNextFullState.people
+    .find((person) => person.id === partner.id);
+  const persistentNonEventId = 'record-payload:persistent-live-social-non-event';
+  prefixNextObserver.memories.push(memory(
+    'prefix-first-demand-memory',
+    'episode',
+    31,
+    [partner.id],
+    [prefixFirstDemandAttend.id, persistentNonEventId],
+  ));
+  prefixNextPartner.memories.push(memory(
+    'prefix-cross-owner-new-memory',
+    'episode',
+    31,
+    [observer.id],
+    [prefixLegacyUnresolvedAttend.id],
+  ));
+  const prefixSuffix = environment(
+    'prefix-first-demand-suffix',
+    31,
+    0,
+    'weather',
+    { fixture: 'verified-prefix-live-social' },
+  );
+  prefixNextFullState.clock.elapsedMonths = 31;
+  prefixNextFullState.world.past.push(prefixSuffix);
+  prefixNextFullState.world.historyCursor = {
+    version: 1,
+    eventCount: prefixNextFullState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: prefixSuffix.id,
+  };
+  prefixNextFullState.lastStep = [prefixSuffix];
+  const prefixNextRoot = keepPrefixSnapshot(await api.encodeSegmentedRunState(
+    prefixNextFullState,
+    { mode: 'append', previous: prefixSourceRoot.metadata },
+    { maxEventsPerSegmentForTests: 32 },
+  ));
+  const prefixNextBoundedState = structuredClone(prefixNextFullState);
+  prefixNextBoundedState.world.past = [
+    prefixNextBoundedState.world.past.at(-1),
+  ];
+  prefixNextBoundedState.world.historyCursor = {
+    version: 1,
+    eventCount: prefixNextRoot.metadata.eventCount,
+    hotStartIndex: prefixSourceRoot.metadata.eventCount,
+    tailEventId: prefixSuffix.id,
+  };
+  prefixNextBoundedState.lastStep = [prefixNextBoundedState.world.past[0]];
+  const prefixExpected = canonicalProjection(
+    api,
+    prefixNextFullState,
+    prefixNextRoot.root.hash,
+  );
+  const prefixSuccessor = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    decodedPrefixSource,
+    prefixSourceRoot.root,
+    prefixNextBoundedState,
+    prefixNextRoot.root,
+    readPrefixChunk,
+  );
+  const persistedPrefixProjection = api.decodeHistoryRetentionSidecar(
+    prefixSuccessor.encoded.chunk,
+    {
+      reference: prefixSuccessor.encoded.reference,
+      boundary: {
+        authority: { stateHash: prefixNextRoot.root.hash },
+        target: prefixExpected.target,
+      },
+    },
+  );
+  assert.deepEqual(
+    strictGroupFor(
+      persistedPrefixProjection,
+      observer.id,
+      'electrical-remote-work',
+    ).eventIds,
+    strictGroupFor(prefixExpected, observer.id, 'electrical-remote-work').eventIds,
+    '首次任何 demand 的旧冷 eligible attend 必须 seed 到 persisted strict/full',
+  );
+  assert.deepEqual(
+    strictGroupFor(
+      persistedPrefixProjection,
+      partner.id,
+      'electrical-remote-work',
+    ).eventIds,
+    strictGroupFor(prefixExpected, partner.id, 'electrical-remote-work').eventIds,
+    '旧 sidecar unresolved 真实 prefix ID 必须经 exact scan 迁移',
+  );
+  const persistedPrefixBroad = broadGroupFor(persistedPrefixProjection, observer.id);
+  assert.ok(persistedPrefixBroad.unresolvedEventIds.includes(persistentNonEventId));
+  assert.equal(persistedPrefixBroad.blocking, false);
+  assert.equal([...persistedPrefixProjection.demandGroups]
+    .filter((group) => /:strict:/u.test(group.groupKey))
+    .some((group) => group.eventIds.includes(persistentNonEventId)), false,
+  'exact previous-root searched-no-match 的非事件 ID 只能保留为 broad unresolved');
+  const prefixColdMatches = persistedPrefixProjection.continuationBasis.directMatches
+    .filter((match) => match.eventId === prefixFirstDemandAttend.id
+      || match.eventId === prefixLegacyUnresolvedAttend.id)
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  assert.equal(prefixColdMatches.length, 2);
+  assert.ok(prefixColdMatches.every((match) => (
+    match.absoluteIndex < prefixNextBoundedState.world.historyCursor.hotStartIndex
+  )));
+  assert.deepEqual(
+    api.materializeVerifiedRunHistoryPinnedEvents(
+      prefixNextRoot.metadata,
+      readPrefixChunk,
+      prefixColdMatches.map((match) => match.absoluteIndex),
+    ).map((item) => item.event.id).sort(),
+    [prefixFirstDemandAttend.id, prefixLegacyUnresolvedAttend.id].sort(),
+    'persisted prefix identities 必须能从 exact next root 冷物化',
+  );
+
+  const prefixSecondFullState = structuredClone(prefixNextFullState);
+  const prefixSecondSuffix = environment(
+    'prefix-persistent-non-event-suffix',
+    32,
+    0,
+    'weather',
+    { fixture: 'persistent-non-event-rescan' },
+  );
+  prefixSecondFullState.clock.elapsedMonths = 32;
+  prefixSecondFullState.world.past.push(prefixSecondSuffix);
+  prefixSecondFullState.world.historyCursor = {
+    version: 1,
+    eventCount: prefixSecondFullState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: prefixSecondSuffix.id,
+  };
+  prefixSecondFullState.lastStep = [prefixSecondSuffix];
+  const prefixSecondRoot = keepPrefixSnapshot(await api.encodeSegmentedRunState(
+    prefixSecondFullState,
+    { mode: 'append', previous: prefixNextRoot.metadata },
+    { maxEventsPerSegmentForTests: 32 },
+  ));
+  const prefixSecondBoundedState = structuredClone(prefixSecondFullState);
+  prefixSecondBoundedState.world.past = [prefixSecondBoundedState.world.past.at(-1)];
+  prefixSecondBoundedState.world.historyCursor = {
+    version: 1,
+    eventCount: prefixSecondRoot.metadata.eventCount,
+    hotStartIndex: prefixNextRoot.metadata.eventCount,
+    tailEventId: prefixSecondSuffix.id,
+  };
+  prefixSecondBoundedState.lastStep = [prefixSecondBoundedState.world.past[0]];
+  const prefixSecondSuccessor = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    persistedPrefixProjection,
+    prefixNextRoot.root,
+    prefixSecondBoundedState,
+    prefixSecondRoot.root,
+    readPrefixChunk,
+  );
+  const prefixSecondBroad = broadGroupFor(prefixSecondSuccessor.projection, observer.id);
+  assert.ok(prefixSecondBroad.unresolvedEventIds.includes(persistentNonEventId));
+  assert.equal(prefixSecondBroad.blocking, false);
+  assert.equal(prefixSecondSuccessor.projection.continuationBasis.directMatches.some(
+    (match) => match.eventId === persistentNonEventId,
+  ), false, 'persistent non-event ID 再续一月仍不得伪造 directMatch');
+
   const annualState = structuredClone(state);
   annualState.clock.elapsedMonths = 35;
   const annualHotEventIds = new Set([...electricalGroup.eventIds, tail.id]);
@@ -769,6 +1208,17 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     tailEventId: tail.id,
   };
   annualState.lastStep = [annualHotEvents.at(-1)];
+  const annualPartner = annualState.people.find((person) => person.id === partner.id);
+  assert.ok(annualPartner);
+  const annualCrossOwnerIntent = reviewDueIntent(
+    annualPartner,
+    'annual-cross-owner-review',
+    35,
+    [crossOwnerAttend.id],
+    api.Material.Wood,
+  );
+  annualState.intents = [annualCrossOwnerIntent];
+  annualPartner.activeIntentId = annualCrossOwnerIntent.id;
   const annualProbe = api.stepOwnedBoundedObserverBoundaryMonth(structuredClone(annualState));
   const annualSuffixEventCount = annualProbe.state.world.historyCursor.eventCount
     - annualState.world.historyCursor.eventCount;
@@ -785,6 +1235,13 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     observer.id,
     'measurement-uncertainty',
   );
+  const annualPartnerElectricalExpected = strictGroupFor(
+    annualExpected,
+    partner.id,
+    'electrical-remote-work',
+  );
+  assert.ok(annualPartnerElectricalExpected.eventIds.includes(crossOwnerAttend.id),
+    '年度 root A 必须让新 owner 的 terminal memory 选择旧冷 attend');
   const annualCreated = await store.create({ id: 'live-social-annual-boundary', state: annualState });
   await store.bootstrapBoundedEvolutionContinuation(
     annualCreated.meta.id,
@@ -801,6 +1258,20 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     observer.id,
     'measurement-uncertainty',
   );
+  assert.equal(
+    strictGroupFor(
+      annualBefore.projection,
+      partner.id,
+      'electrical-remote-work',
+    )?.eventIds.includes(crossOwnerAttend.id) ?? false,
+    false,
+    '年度 source shell 中新 owner 尚未引用跨 owner 冷事实',
+  );
+  const crossOwnerBeforeMatch = annualBefore.projection.continuationBasis.directMatches
+    .find((candidate) => candidate.eventId === crossOwnerAttend.id);
+  assert.ok(crossOwnerBeforeMatch
+    && crossOwnerBeforeMatch.absoluteIndex < annualBefore.bundle.hotStartIndex,
+  '跨 owner source 必须已有 verified cold identity 且仅由旧 owner broad membership 保存');
   assert.ok(annualElectricalBefore.eventIds.includes(travel.id));
   assert.ok(annualElectricalBefore.eventIds.includes(remoteWork.id));
   assert.ok(annualElectricalBefore.resolvedEventIds.includes(travel.id));
@@ -827,6 +1298,11 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     observer.id,
     'measurement-uncertainty',
   );
+  const annualPartnerElectricalAfter = strictGroupFor(
+    annualAfter.projection,
+    partner.id,
+    'electrical-remote-work',
+  );
   assert.deepEqual(
     annualElectricalAfter.eventIds,
     annualElectricalExpected.eventIds,
@@ -836,6 +1312,11 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     annualMeasurementAfter.eventIds,
     annualMeasurementExpected.eventIds,
     '年度 fact root A full 与 persisted root B measurement strict IDs 必须逐字一致',
+  );
+  assert.deepEqual(
+    annualPartnerElectricalAfter.eventIds,
+    annualPartnerElectricalExpected.eventIds,
+    '年度新 owner 跨 owner descriptor 的 fact root A 与 persisted root B 必须逐字一致',
   );
   assert.equal(annualAfter.projection.pins.some((pin) => pin.leaseKeys.some((leaseKey) => (
     /^gameplay:live-person-social:[^:]+:sources$/u.test(leaseKey)
@@ -850,6 +1331,11 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
       api.livePersonSocialStrictEvidenceLeaseKey(observer.id, 'electrical-remote-work'),
     ), `年度 successor 必须精确 pin cold strict ${eventId}`);
   }
+  const annualCrossOwnerPin = annualAfter.projection.pins
+    .find((candidate) => candidate.eventId === crossOwnerAttend.id);
+  assert.ok(annualCrossOwnerPin?.leaseKeys.includes(
+    api.livePersonSocialStrictEvidenceLeaseKey(partner.id, 'electrical-remote-work'),
+  ), '年度 successor 必须按新 owner 精确 pin 跨 owner cold strict body');
 
   store.close();
   const coldStore = new api.SqliteRunStore(dataDirectory);
@@ -858,7 +1344,9 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
   );
   const coldObserver = annualColdOpened.state.people
     .find((person) => person.id === observer.id);
-  assert.ok(coldObserver);
+  const coldPartner = annualColdOpened.state.people
+    .find((person) => person.id === partner.id);
+  assert.ok(coldObserver && coldPartner);
   assert.deepEqual(
     api.retainedColdWorldEventsForLease(
       annualColdOpened.state,
@@ -868,6 +1356,14 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     )).sort(),
     [travel.id, remoteWork.id].sort(),
     '真实 cold reopen 必须恢复 completed move/transfer strict bodies',
+  );
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      annualColdOpened.state,
+      api.livePersonSocialStrictEvidenceLeaseKey(partner.id, 'electrical-remote-work'),
+    ).map((event) => event.id).filter((eventId) => eventId === crossOwnerAttend.id),
+    [crossOwnerAttend.id],
+    '年度 cold reopen 必须按新 owner 恢复跨 owner verified cold source',
   );
   assert.deepEqual(
     api.retainedColdWorldEventsForLease(

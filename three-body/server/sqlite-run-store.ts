@@ -16,10 +16,15 @@ import {
   type WorldEvent,
 } from "../src/game/eland/simulation";
 import {
+  registerLiveSocialEvidenceDescriptors,
   retainedLiveSocialEvidenceForLivingSources,
   retainedProjectPressureEvidenceForLivingSources,
   worldEventById,
 } from "../src/game/eland/domain/event-index";
+import {
+  livePersonSocialSourceEventIds,
+  type RetainedLiveSocialEvidenceDescriptor,
+} from "../src/game/eland/domain/live-social-evidence";
 import { trimCommittedHistoryAfterPersistedCursor } from "../src/game/eland/domain/history";
 import { rematerializePhysicalStructureIndex } from "../src/game/eland/domain/physical-structure-index";
 import { livingPeople } from "../src/game/eland/domain/state-index";
@@ -352,6 +357,8 @@ interface BoundedObserverBoundaryMonthStagingRecord {
   readonly targetMonth: number;
   readonly boundaryKind: BoundedObserverBoundaryKind;
   readonly factSuccessorReceipt: BoundedEvolutionSuccessorStagingReceipt;
+  /** Body-free source descriptors captured before the owned boundary step changes history base. */
+  readonly reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[];
 }
 
 interface VerifiedPhysicalContinuationCacheRecord {
@@ -1000,6 +1007,19 @@ function boundedObserverBoundaryMatchesState(
     && state.civilization.status === "ended"
     && state.civilization.outcome?.kind === "boundary"
     && livingPeople(state).length > 0;
+}
+
+function reusableLiveSocialDescriptorsForCurrentOwners(
+  state: SimulationState,
+  reusable: readonly RetainedLiveSocialEvidenceDescriptor[],
+): readonly RetainedLiveSocialEvidenceDescriptor[] {
+  const membershipByOwnerId = new Map(livingPeople(state).map((person) => [
+    person.id,
+    new Set(livePersonSocialSourceEventIds(person)),
+  ]));
+  return reusable.filter((item) => (
+    membershipByOwnerId.get(item.ownerId)?.has(item.descriptor.eventId) === true
+  ));
 }
 
 function evolutionBasisFor(
@@ -2309,8 +2329,16 @@ export class SqliteRunStore implements RunStore {
     label?: string,
   ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
     const opened = await this.openBoundedEvolutionContinuation(id);
+    const reusableLiveSocialDescriptors = Object.freeze([
+      ...retainedLiveSocialEvidenceForLivingSources(opened.state),
+    ]);
     const boundary = stepOwnedBoundedObserverBoundaryMonth(opened.state);
-    return this.stageOwnedBoundedObserverBoundaryMonth(opened, boundary, label);
+    return this.stageOwnedBoundedObserverBoundaryMonth(
+      opened,
+      boundary,
+      reusableLiveSocialDescriptors,
+      label,
+    );
   }
 
   /**
@@ -2323,18 +2351,27 @@ export class SqliteRunStore implements RunStore {
     label?: string,
   ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
     const opened = await this.openBoundedEvolutionContinuation(id);
+    const reusableLiveSocialDescriptors = Object.freeze([
+      ...retainedLiveSocialEvidenceForLivingSources(opened.state),
+    ]);
     const boundary = stepOwnedBoundedTerminalMonth(opened.state);
     if (boundary.receipt.kind !== "extinction") {
       throw new Error(
         `bounded terminal probe 不接受 ${boundary.receipt.kind} 边界`,
       );
     }
-    return this.stageOwnedBoundedObserverBoundaryMonth(opened, boundary, label);
+    return this.stageOwnedBoundedObserverBoundaryMonth(
+      opened,
+      boundary,
+      reusableLiveSocialDescriptors,
+      label,
+    );
   }
 
   private async stageOwnedBoundedObserverBoundaryMonth(
     opened: OpenedBoundedEvolutionContinuation,
     boundary: Readonly<BoundedObserverBoundaryMonthResult>,
+    reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[],
     label?: string,
   ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
     const sourceMonth = boundary.receipt.sourceMonth;
@@ -2368,6 +2405,17 @@ export class SqliteRunStore implements RunStore {
         "bounded 观察边界月没有生成同一 store generation 的 private fact root A",
       );
     }
+    const sourceDirectIdentityByOrdinal = new Map(
+      record.artifacts.retention.continuationBasis.directMatches
+        .map((match) => [match.absoluteIndex, match.eventId]),
+    );
+    if (reusableLiveSocialDescriptors.some((item) => (
+      sourceDirectIdentityByOrdinal.get(item.absoluteIndex) !== item.descriptor.eventId
+    ))) {
+      throw new Error(
+        "bounded 观察边界 source live-social descriptor 缺少 retention exact identity",
+      );
+    }
     const receipt = Object.freeze({
       kind: "bounded-observer-boundary-month-staging-receipt-v1",
       persisted: false,
@@ -2381,6 +2429,7 @@ export class SqliteRunStore implements RunStore {
       targetMonth: boundary.receipt.targetMonth,
       boundaryKind: boundary.receipt.kind,
       factSuccessorReceipt,
+      reusableLiveSocialDescriptors,
     });
     return receipt;
   }
@@ -2560,6 +2609,37 @@ export class SqliteRunStore implements RunStore {
       return { retention, physical, derived, civilization, checkpoint, authority };
     };
 
+    const rebindLiveSocialDescriptorsToVerifiedSuccessor = (
+      successorReceipt: object,
+      successor: BoundedEvolutionSuccessorStagingRecord,
+      state: SimulationState,
+    ): void => {
+      const current = this.currentBoundedObserverBoundaryMonthStaging(staged.receipt);
+      const registeredSuccessor = this.continuationTokenRegistry().stagedSuccessors.get(
+        successorReceipt,
+      );
+      if (current.stagedMonth !== staged.stagedMonth
+        || current.source !== source
+        || current.sourceToken !== sourceToken
+        || registeredSuccessor !== successor
+        || successor.sourceToken !== sourceToken
+        || successor.sourceGeneration !== source.generation
+        || successor.run.stateHash !== successor.root.hash
+        || !stagedHistoryTransitionMatchesSource(parseRunStateRoot(source.root), successor)) {
+        throw new RunWriteConflictError(
+          "bounded 年度观察 live-social descriptor 重绑缺少当前 exact successor authority",
+        );
+      }
+      registerLiveSocialEvidenceDescriptors(
+        state,
+        reusableLiveSocialDescriptorsForCurrentOwners(
+          state,
+          staged.stagedMonth.reusableLiveSocialDescriptors,
+        ),
+        source.artifacts.retention.continuationBasis.directMatches,
+      );
+    };
+
     const observerMaterializationSource = Object.freeze({
       stateHash: factSuccessor.root.hash,
       revision: factSuccessor.run.meta.revision,
@@ -2575,6 +2655,11 @@ export class SqliteRunStore implements RunStore {
         factSuccessor,
         readFactChunk,
         "private fact root A",
+      );
+      rebindLiveSocialDescriptorsToVerifiedSuccessor(
+        staged.stagedMonth.factSuccessorReceipt,
+        factSuccessor,
+        decodedFact.state,
       );
       const factProjection = await projectSuccessors(
         factSuccessor,
@@ -2687,6 +2772,11 @@ export class SqliteRunStore implements RunStore {
       || finalBasis.stage !== decodedFinal.state.civilization.stage) {
       throw new Error("bounded 年度观察 final root B 的 materialization basis 无效");
     }
+    rebindLiveSocialDescriptorsToVerifiedSuccessor(
+      finalSuccessorReceipt,
+      finalSuccessor,
+      decodedFinal.state,
+    );
     const finalProjection = await projectSuccessors(
       finalSuccessor,
       decodedFinal.state,

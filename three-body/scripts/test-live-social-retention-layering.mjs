@@ -135,6 +135,7 @@ try {
   const electricalPath = path.resolve('src/game/eland/application/electrical-power-options.ts');
   writeFileSync(entryPath, [
     `export * from ${JSON.stringify(path.resolve('server/sqlite-run-store.ts'))};`,
+    `export * from ${JSON.stringify(path.resolve('server/bounded-observer-boundary-month-controller.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/run-continuation-bundle.ts'))};`,
@@ -591,6 +592,28 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
       rawSize: Number(row.raw_size), data: Buffer.from(row.data),
     };
   };
+  const readPersistedRetention = (runId) => {
+    const row = database.prepare(
+      'SELECT state_hash, bundle_hash FROM run_continuations WHERE run_id = ?',
+    ).get(runId);
+    assert.ok(row, `run ${runId} 必须有 bounded continuation`);
+    const bundle = api.decodeRunContinuationBundle(readChunk(String(row.bundle_hash)));
+    const reference = bundle.sidecars.retention;
+    const projection = api.decodeHistoryRetentionSidecar(
+      readChunk(reference.hash),
+      {
+        reference,
+        boundary: {
+          authority: { stateHash: String(row.state_hash) },
+          target: {
+            eventCount: bundle.authority.eventCount,
+            tailEventId: bundle.authority.tailEventId,
+          },
+        },
+      },
+    );
+    return { row, bundle, projection };
+  };
   const insertChunk = (chunk) => database.prepare(
     'INSERT OR IGNORE INTO chunks(hash, codec, raw_size, data) VALUES (?, ?, ?, ?)',
   ).run(chunk.hash, chunk.codec, chunk.rawSize, chunk.data);
@@ -725,7 +748,163 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
   assert.equal(store.ownsBoundedNonProjectionMonthStagingReceipt(warmStage), true,
     'COMMIT 后 warm successor 必须用 next root 重建 registry 并可继续一步');
 
+  const annualState = structuredClone(state);
+  annualState.clock.elapsedMonths = 35;
+  const annualHotEventIds = new Set([...electricalGroup.eventIds, tail.id]);
+  const annualHotEvents = annualState.world.past
+    .filter((event) => annualHotEventIds.has(event.id));
+  annualState.world.past = [
+    ...annualState.world.past.filter((event) => !annualHotEventIds.has(event.id)),
+    ...annualHotEvents,
+  ];
+  for (let index = 0; index < annualHotEvents.length; index += 1) {
+    annualHotEvents[index].atMonth = 35;
+    annualHotEvents[index].orderInMonth = index;
+    annualHotEvents[index].orderInTick = index;
+  }
+  annualState.world.historyCursor = {
+    version: 1,
+    eventCount: annualState.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: tail.id,
+  };
+  annualState.lastStep = [annualHotEvents.at(-1)];
+  const annualProbe = api.stepOwnedBoundedObserverBoundaryMonth(structuredClone(annualState));
+  const annualSuffixEventCount = annualProbe.state.world.historyCursor.eventCount
+    - annualState.world.historyCursor.eventCount;
+  assert.ok(annualSuffixEventCount > annualHotEvents.length,
+    'fixture 的真实年度事实月必须把 source strict tail 推出 hot window');
+  const annualExpected = canonicalProjection(api, annualProbe.state, 'b'.repeat(64));
+  const annualElectricalExpected = strictGroupFor(
+    annualExpected,
+    observer.id,
+    'electrical-remote-work',
+  );
+  const annualMeasurementExpected = strictGroupFor(
+    annualExpected,
+    observer.id,
+    'measurement-uncertainty',
+  );
+  const annualCreated = await store.create({ id: 'live-social-annual-boundary', state: annualState });
+  await store.bootstrapBoundedEvolutionContinuation(
+    annualCreated.meta.id,
+    annualSuffixEventCount,
+  );
+  const annualBefore = readPersistedRetention(annualCreated.meta.id);
+  const annualElectricalBefore = strictGroupFor(
+    annualBefore.projection,
+    observer.id,
+    'electrical-remote-work',
+  );
+  const annualMeasurementBefore = strictGroupFor(
+    annualBefore.projection,
+    observer.id,
+    'measurement-uncertainty',
+  );
+  assert.ok(annualElectricalBefore.eventIds.includes(travel.id));
+  assert.ok(annualElectricalBefore.eventIds.includes(remoteWork.id));
+  assert.ok(annualElectricalBefore.resolvedEventIds.includes(travel.id));
+  assert.ok(annualElectricalBefore.resolvedEventIds.includes(remoteWork.id));
+  for (const eventId of [travel.id, remoteWork.id]) {
+    const match = annualBefore.projection.continuationBasis.directMatches
+      .find((candidate) => candidate.eventId === eventId);
+    assert.ok(match && match.absoluteIndex >= annualBefore.bundle.hotStartIndex,
+      `fixture 必须让 completed intent ${eventId} 在年度边界前仍处于 hot window`);
+  }
+
+  const annualStaged = await store.stageBoundedObserverBoundaryMonth(annualCreated.meta.id);
+  const annualPublished = await store.publishBoundedObserverBoundaryMonth(annualStaged);
+  assert.equal(annualPublished.persisted, true);
+  assert.equal(annualPublished.month, 36);
+  const annualAfter = readPersistedRetention(annualCreated.meta.id);
+  const annualElectricalAfter = strictGroupFor(
+    annualAfter.projection,
+    observer.id,
+    'electrical-remote-work',
+  );
+  const annualMeasurementAfter = strictGroupFor(
+    annualAfter.projection,
+    observer.id,
+    'measurement-uncertainty',
+  );
+  assert.deepEqual(
+    annualElectricalAfter.eventIds,
+    annualElectricalExpected.eventIds,
+    '年度 fact root A full 与 persisted root B electrical strict IDs 必须逐字一致',
+  );
+  assert.deepEqual(
+    annualMeasurementAfter.eventIds,
+    annualMeasurementExpected.eventIds,
+    '年度 fact root A full 与 persisted root B measurement strict IDs 必须逐字一致',
+  );
+  assert.equal(annualAfter.projection.pins.some((pin) => pin.leaseKeys.some((leaseKey) => (
+    /^gameplay:live-person-social:[^:]+:sources$/u.test(leaseKey)
+  ))), false, '年度 successor 所有 broad membership 仍必须是 0 body pin');
+  for (const eventId of [travel.id, remoteWork.id]) {
+    const match = annualAfter.projection.continuationBasis.directMatches
+      .find((candidate) => candidate.eventId === eventId);
+    const pin = annualAfter.projection.pins
+      .find((candidate) => candidate.eventId === eventId);
+    assert.ok(match && match.absoluteIndex < annualAfter.bundle.hotStartIndex);
+    assert.ok(pin?.leaseKeys.includes(
+      api.livePersonSocialStrictEvidenceLeaseKey(observer.id, 'electrical-remote-work'),
+    ), `年度 successor 必须精确 pin cold strict ${eventId}`);
+  }
+
   store.close();
+  const coldStore = new api.SqliteRunStore(dataDirectory);
+  const annualColdOpened = await coldStore.openBoundedEvolutionContinuation(
+    annualCreated.meta.id,
+  );
+  const coldObserver = annualColdOpened.state.people
+    .find((person) => person.id === observer.id);
+  assert.ok(coldObserver);
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      annualColdOpened.state,
+      api.livePersonSocialStrictEvidenceLeaseKey(observer.id, 'electrical-remote-work'),
+    ).map((event) => event.id).filter((eventId) => (
+      eventId === travel.id || eventId === remoteWork.id
+    )).sort(),
+    [travel.id, remoteWork.id].sort(),
+    '真实 cold reopen 必须恢复 completed move/transfer strict bodies',
+  );
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      annualColdOpened.state,
+      api.livePersonSocialEvidenceLeaseKey(observer.id),
+    ),
+    [],
+    '真实 cold reopen 不得恢复 broad bodies',
+  );
+  assert.ok(api.liveSocialEvidenceForPersonSource(
+    annualColdOpened.state,
+    coldObserver,
+    observerCondition.id,
+  ), '真实 cold reopen 必须恢复 owner-scoped body-free descriptor');
+  const coldRememberedDescriptors = api.liveSocialEvidenceForPersonSources(
+    annualColdOpened.state,
+    coldObserver,
+    coldObserver.memories.flatMap((item) => item.sourceEventIds),
+  );
+  assert.deepEqual(
+    api.selectLivePersonSocialStrictEvidenceEventIds(
+      coldObserver.id,
+      coldRememberedDescriptors,
+    )['electrical-remote-work'],
+    annualElectricalExpected.eventIds,
+    '真实 cold reopen 的 electrical selector 必须与 full fact root A 逐字一致',
+  );
+  assert.deepEqual(
+    api.selectLivePersonSocialStrictEvidenceEventIds(
+      coldObserver.id,
+      [],
+      api.measurementUncertaintyRawSourceEventIds(coldObserver),
+    )['measurement-uncertainty'],
+    annualMeasurementExpected.eventIds,
+    '真实 cold reopen 的 measurement selector 必须与 full fact root A 逐字一致',
+  );
+  coldStore.close();
   console.log(JSON.stringify({
     result: 'passed',
     fullEventCount: state.world.past.length,
@@ -735,6 +914,7 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     measurementStrictCount: measurementGroup.eventIds.length,
     legacyColdPinCount: legacyColdPins.length,
     successorMonth: published.month,
+    observerBoundaryMonth: annualPublished.month,
   }));
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

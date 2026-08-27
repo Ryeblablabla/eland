@@ -58,6 +58,54 @@ function legacyMissingProjectPressureSidecar(api, currentProjection) {
   };
 }
 
+function legacyAuditFutureSocialSidecar(api, currentProjection) {
+  const legacy = structuredClone(currentProjection);
+  const leaseKey = api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY;
+  const group = legacy.demandGroups.find((candidate) => candidate.groupKey === leaseKey);
+  const sourceGroup = legacy.continuationBasis.sourceDemand.groups
+    .find((candidate) => candidate.groupKey === leaseKey);
+  assert.ok(group, 'fixture 必须含 future social-repetition group');
+  assert.ok(sourceGroup, 'fixture continuation demand 必须含 future social-repetition group');
+  assert.equal(group.requirement, 'index-only');
+  assert.equal(sourceGroup.requirement, 'index-only');
+  group.requirement = 'audit-only';
+  sourceGroup.requirement = 'audit-only';
+  legacy.unresolvedDemands = legacy.unresolvedDemands.map((item) => (
+    item.groupKey === leaseKey ? { ...item, requirement: 'audit-only' } : item
+  ));
+
+  const pinsByOrdinal = new Map(
+    legacy.pins.map((pin) => [pin.absoluteIndex, { ...pin, leaseKeys: [...pin.leaseKeys] }]),
+  );
+  const directMatchById = new Map(
+    legacy.continuationBasis.directMatches.map((match) => [match.eventId, match]),
+  );
+  for (const eventId of group.resolvedEventIds) {
+    const match = directMatchById.get(eventId);
+    assert.ok(match, `legacy social resolved event ${eventId} 必须有 direct match`);
+    const pin = pinsByOrdinal.get(match.absoluteIndex) ?? { ...match, leaseKeys: [] };
+    pin.leaseKeys = [...new Set([...pin.leaseKeys, leaseKey])].sort();
+    pinsByOrdinal.set(match.absoluteIndex, pin);
+  }
+  legacy.pins = [...pinsByOrdinal.values()]
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  const { basisHash: _discardedBasisHash, ...basisWithoutHash } = legacy.continuationBasis;
+  legacy.continuationBasis.basisHash = createHash('sha256')
+    .update('eland-history-retention-continuation-v1\0')
+    .update(JSON.stringify(basisWithoutHash))
+    .digest('hex');
+
+  const canonical = Buffer.from(JSON.stringify(canonicalJsonValue(legacy)), 'utf8');
+  const data = brotliCompressSync(canonical);
+  const codec = api.HISTORY_RETENTION_SIDECAR_CODEC;
+  const hash = api.hashHistoryRetentionStoredContent(codec, data);
+  return {
+    projection: legacy,
+    chunk: { hash, codec, rawSize: data.byteLength, data },
+    reference: { kind: 'content-hash', codec, hash },
+  };
+}
+
 function withoutProjectPressureSources(input) {
   const stateWithoutSources = structuredClone(input);
   for (const person of stateWithoutSources.people) {
@@ -433,12 +481,49 @@ try {
     return chunk;
   };
 
+  const rememberedAgreementId = 'offer-reproduce:1:fixture-person:fixture-other-author';
+  const dynamicPredictionId = 'predict-era:2:fixture-person:0';
+  const dynamicAgreementId = 'offer-reproduce:2:fixture-person:fixture-other-author';
+  const relationshipBasis = {
+    version: 'relationship-causal-basis-v1',
+    subjectKey: 'relationship:reproduce:fixture-other-author:fixture-person',
+    basisKey: 'fixture-dynamic-agreement-basis',
+    kind: 'reproduce',
+    proposerId: 'fixture-person',
+    partnerId: 'fixture-other-author',
+    relationshipKeys: ['mechanical-service'],
+    bodyKeys: ['family-readiness:visible-food-store:fixture-container:fixture-food-stack:2'],
+    sourceFactIds: ['mechanical-service', 'stored-food-transfer-old'],
+  };
   const prefix = [
     action('old-world-drop-source', 1),
     action('old-active-logistics-source', 1),
     action('remembered-cognitive-outcome', 1),
-    action('remembered-old-offer', 1),
-    action('remembered-old-response', 1),
+    agreementCommunication(
+      'remembered-old-offer',
+      'fixture-person',
+      {
+        id: rememberedAgreementId,
+        kind: 'offer',
+        summary: 'fixture remembered family offer',
+        proposal: {
+          kind: 'reproduce', proposerId: 'fixture-person',
+          partnerId: 'fixture-other-author', expiresAtMonth: 1,
+          basis: relationshipBasis,
+        },
+      },
+      ['fixture-other-author'],
+      1,
+    ),
+    agreementCommunication(
+      'remembered-old-response',
+      'fixture-other-author',
+      { id: 'reject:fixture-remembered-agreement', kind: 'reject', referenceId: rememberedAgreementId },
+      ['fixture-person'],
+      1,
+    ),
+    action('remembered-old-outcome', 1),
+    action('social-repetition-bridge-only-prefix', 1),
     action('stored-food-container-created', 1),
     action('stored-food-transfer-old', 1),
     action('mechanical-service', 1, { mechanicalPowerOperation: true, mode: 'operate-service' }),
@@ -476,19 +561,6 @@ try {
     environment('prefix-a', 1),
     decision('prefix-tail', 1),
   ];
-  const dynamicPredictionId = 'predict-era:2:fixture-person:0';
-  const dynamicAgreementId = 'offer-reproduce:2:fixture-person:fixture-other-author';
-  const relationshipBasis = {
-    version: 'relationship-causal-basis-v1',
-    subjectKey: 'relationship:reproduce:fixture-other-author:fixture-person',
-    basisKey: 'fixture-dynamic-agreement-basis',
-    kind: 'reproduce',
-    proposerId: 'fixture-person',
-    partnerId: 'fixture-other-author',
-    relationshipKeys: ['mechanical-service'],
-    bodyKeys: ['family-readiness:visible-food-store:fixture-container:fixture-food-stack:2'],
-    sourceFactIds: ['mechanical-service', 'stored-food-transfer-old'],
-  };
   const suffix = [
     environment('suffix-a', 2),
     predictionAction('dynamic-prediction-source', dynamicPredictionId, 2),
@@ -537,6 +609,9 @@ try {
     candidate.people[0].memories.push({
       id: 'memory:remembered-old-offer',
       sourceEventIds: ['remembered-old-offer'],
+    }, {
+      id: 'memory:remembered-old-response',
+      sourceEventIds: ['remembered-old-response'],
     });
     candidate.containers.push({
       id: 'fixture-container',
@@ -562,7 +637,11 @@ try {
       status: 'rejected', proposedAtMonth: 1, acceptByMonth: 1, resolvedAtMonth: 1,
       proposalEventId: 'remembered-old-offer', responseEventId: 'remembered-old-response',
       fulfillmentEventIds: [], fulfilledByPersonIds: [], coLocatedMonths: 0,
-      sourceEventIds: ['remembered-old-offer', 'remembered-old-response'],
+      sourceEventIds: [
+        'remembered-old-offer',
+        'remembered-old-response',
+        'remembered-old-outcome',
+      ],
     });
     candidate.projects.push({
       id: 'fixture-active-logistics-project', kind: 'production',
@@ -584,6 +663,9 @@ try {
       }],
     });
   }
+  nextState.agreements.find((agreement) => (
+    agreement.id === 'remembered-resolved-agreement'
+  )).sourceEventIds.push('social-repetition-bridge-only-prefix');
   nextState.people[0].memories.push({
     id: 'new-memory-of-old-prefix-pressure-source',
     sourceEventIds: ['project-pressure-bridge-only-prefix'],
@@ -672,6 +754,7 @@ try {
       'mechanical-service',
       'remembered-cognitive-outcome',
       'old-active-logistics-source',
+      'social-repetition-bridge-only-prefix',
     ],
     actionEventIds: [], replanCount: 0,
   });
@@ -720,6 +803,56 @@ try {
       target: prefixProjection.target,
     },
   });
+  const legacySocialSidecar = legacyAuditFutureSocialSidecar(api, prefixProjection);
+  assert.throws(
+    () => api.encodeHistoryRetentionSidecar(legacySocialSidecar.projection),
+    /future social-repetition source selector/u,
+    '新 encoder 不得再次发布 future social-repetition audit bodies',
+  );
+  assert.equal(
+    api.historyRetentionDemandFingerprint(
+      legacySocialSidecar.projection.continuationBasis.sourceDemand,
+    ),
+    prefixProjection.demandFingerprint,
+    'future social storage refinement 必须保持 legacy domain-demand fingerprint',
+  );
+  const decodedLegacySocial = api.decodeHistoryRetentionSidecar(
+    legacySocialSidecar.chunk,
+    {
+      reference: legacySocialSidecar.reference,
+      boundary: {
+        authority: { stateHash: previousRoot.root.hash },
+        target: prefixProjection.target,
+      },
+    },
+  );
+  api.assertHistoryRetentionProjectionMatchesShell(previousState, decodedLegacySocial);
+  const socialLegacyHotStartIndex = prefix.length - 2;
+  const socialLegacyBoundedState = structuredClone(previousState);
+  socialLegacyBoundedState.world.past = prefix.slice(socialLegacyHotStartIndex);
+  socialLegacyBoundedState.world.historyCursor.hotStartIndex = socialLegacyHotStartIndex;
+  const socialLegacyColdPins = decodedLegacySocial.pins
+    .filter((pin) => pin.absoluteIndex < socialLegacyHotStartIndex)
+    .map((pin) => ({ absoluteIndex: pin.absoluteIndex, event: prefix[pin.absoluteIndex] }));
+  api.installVerifiedHistoryRetentionEvidence(
+    socialLegacyBoundedState,
+    previousRoot.root.hash,
+    decodedLegacySocial,
+    socialLegacyColdPins,
+  );
+  assert.deepEqual(
+    api.retainedColdWorldEventsForLease(
+      socialLegacyBoundedState,
+      api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
+    ),
+    [],
+    'legacy future-social audit body 不得进入通用 gameplay cold index',
+  );
+  assert.equal(
+    api.worldEventById(socialLegacyBoundedState, 'remembered-old-outcome'),
+    undefined,
+    '仅由 future-social legacy lease 保留的 outcome 正文不得泄漏给人物',
+  );
   const legacyPrefixProjection = structuredClone(prefixProjection);
   const legacyGlobalGroup = legacyPrefixProjection.demandGroups.find(
     (group) => group.groupKey === api.LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
@@ -921,11 +1054,40 @@ try {
   const futureSocialRepetitionGroup = decodedPrefix.demandGroups.find(
     (group) => group.groupKey === api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
   );
-  assert.ok(futureSocialRepetitionGroup, '被存活人物记住的旧协议结果来源必须提前封存');
-  assert.equal(futureSocialRepetitionGroup.requirement, 'audit-only');
+  assert.ok(futureSocialRepetitionGroup, '被存活人物记住的旧协议结果来源必须提前建立身份索引');
+  assert.equal(futureSocialRepetitionGroup.requirement, 'index-only');
   assert.deepEqual(
     futureSocialRepetitionGroup.resolvedEventIds,
-    ['remembered-old-offer', 'remembered-old-response'],
+    ['remembered-old-offer', 'remembered-old-response', 'remembered-old-outcome'],
+  );
+  assert.equal(
+    decodedPrefix.pins.some((pin) => (
+      pin.leaseKeys.includes(api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
+    )),
+    false,
+    'future social-repetition 只保存 exact identity，不常驻协议结果正文',
+  );
+  assert.equal(
+    decodedPrefix.pins.some((pin) => pin.eventId === 'remembered-old-outcome'),
+    false,
+    '不在人物记忆中的 outcome-only 正文不得因重复判断被 pin',
+  );
+  assert.deepEqual(
+    futureSocialRepetitionGroup.resolvedEventIds.map((eventId) => (
+      decodedPrefix.continuationBasis.directMatches.find((match) => match.eventId === eventId)
+    )),
+    futureSocialRepetitionGroup.resolvedEventIds.map((eventId) => ({
+      absoluteIndex: prefix.findIndex((event) => event.id === eventId),
+      eventId,
+    })),
+    'future social-repetition index 必须保存每个真实来源的准确 ordinal/id',
+  );
+  assert.equal(
+    decodedPrefix.continuationBasis.directMatches.some(
+      (match) => match.eventId === 'social-repetition-bridge-only-prefix',
+    ),
+    false,
+    '尚未进入协议结果 selector 的 prefix 事实不得被提前解析',
   );
   const futureCognitiveAppraisalGroup = decodedPrefix.demandGroups.find(
     (group) => group.groupKey === api.FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY,
@@ -1034,6 +1196,115 @@ try {
       eventId: 'project-pressure-bridge-only-prefix',
     },
     'verified prefix bridge 必须保存独立事件的精确 ordinal/id',
+  );
+  const bridgedSocialRepetitionGroup = advanced.projection.demandGroups.find((group) => (
+    group.groupKey === api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+  ));
+  assert.ok(
+    bridgedSocialRepetitionGroup?.resolvedEventIds.includes(
+      'social-repetition-bridge-only-prefix',
+    ),
+    '新协议结果成员必须从 exact verified prefix 恢复 identity',
+  );
+  assert.deepEqual(
+    advanced.projection.continuationBasis.directMatches.find(
+      (match) => match.eventId === 'social-repetition-bridge-only-prefix',
+    ),
+    {
+      absoluteIndex: prefix.findIndex(
+        (event) => event.id === 'social-repetition-bridge-only-prefix',
+      ),
+      eventId: 'social-repetition-bridge-only-prefix',
+    },
+    'future social verified-prefix bridge 必须保存准确 ordinal/id',
+  );
+  assert.equal(
+    advanced.projection.pins.some((pin) => (
+      pin.leaseKeys.includes(api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
+    )),
+    false,
+    'future social-repetition successor 必须保持零 cold pin lease',
+  );
+  assert.equal(
+    advanced.projection.pins.some((pin) => (
+      pin.eventId === 'social-repetition-bridge-only-prefix'
+        && pin.leaseKeys.includes('live-intent:new-intent-reusing-old-knowledge:anchors')
+    )),
+    true,
+    'index identity 被真实 live intent 引用后必须提升为该 intent 的精确 pin',
+  );
+  const missingSocialPrefixState = structuredClone(nextState);
+  const missingSocialAgreement = missingSocialPrefixState.agreements.find((agreement) => (
+    agreement.id === 'remembered-resolved-agreement'
+  ));
+  missingSocialAgreement.sourceEventIds = missingSocialAgreement.sourceEventIds.map((eventId) => (
+    eventId === 'social-repetition-bridge-only-prefix'
+      ? 'missing-social-repetition-prefix-source'
+      : eventId
+  ));
+  const missingSocialIntent = missingSocialPrefixState.intents.find((intent) => (
+    intent.id === 'new-intent-reusing-old-knowledge'
+  ));
+  missingSocialIntent.sourceFactIds = missingSocialIntent.sourceFactIds.map((eventId) => (
+    eventId === 'social-repetition-bridge-only-prefix'
+      ? 'missing-social-repetition-prefix-source'
+      : eventId
+  ));
+  const missingSocialPrefixRoot = store(await api.encodeSegmentedRunState(
+    missingSocialPrefixState,
+    { mode: 'append', previous: previousRoot.metadata },
+    { maxEventsPerSegmentForTests: 1 },
+  ));
+  await assert.rejects(
+    api.projectHistoryRetentionFromVerifiedSuccessor(
+      decodedPrefix,
+      previousRoot.root,
+      missingSocialPrefixState,
+      missingSocialPrefixRoot.root,
+      readChunk,
+    ),
+    /新 demand missing-social-repetition-prefix-source 无法由 suffix 解析/u,
+    'prefix 中不存在的 social outcome ID 不能被 bridge 伪装成已验证 identity',
+  );
+  const forgottenSocialState = structuredClone(nextState);
+  forgottenSocialState.people[0].memories = forgottenSocialState.people[0].memories.filter(
+    (memory) => !memory.sourceEventIds.includes('remembered-old-offer'),
+  );
+  forgottenSocialState.intents = forgottenSocialState.intents.filter(
+    (intent) => intent.id !== 'new-intent-reusing-old-knowledge',
+  );
+  const forgottenFold = api.beginHistoryRetentionProjection(
+    forgottenSocialState,
+    { stateHash: nextRoot.root.hash },
+  );
+  api.foldHistoryRetentionSegment(forgottenFold, [...prefix, ...suffix], 0);
+  const forgottenProjection = api.finishHistoryRetentionProjection(forgottenFold);
+  assert.equal(
+    forgottenProjection.demandGroups.some((group) => (
+      group.groupKey === api.FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+    )),
+    false,
+    '忘记 proposal 后，即使仍记得 response，future social-repetition 整组也必须退租',
+  );
+  assert.equal(
+    forgottenProjection.continuationBasis.directMatches.some((match) => (
+      match.eventId === 'remembered-old-outcome'
+        || match.eventId === 'social-repetition-bridge-only-prefix'
+    )),
+    false,
+    '退租且无 live intent 后不得残留 outcome identity',
+  );
+  const migratedSocialRetention = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    decodedLegacySocial,
+    previousRoot.root,
+    nextState,
+    nextRoot.root,
+    readChunk,
+  );
+  assert.deepEqual(
+    migratedSocialRetention.projection,
+    oracle,
+    '旧 exact audit future-social sidecar 必须一次迁移为 index-only successor',
   );
   const migratedPressureRetention = await api.projectHistoryRetentionFromVerifiedSuccessor(
     decodedLegacyPrefix,

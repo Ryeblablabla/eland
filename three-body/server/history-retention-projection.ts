@@ -542,6 +542,33 @@ function assertProjectPressureStorageRefinementMatches(
   }
 }
 
+/** The only admitted social-repetition migration is exact legacy bodies to the same identity index. */
+function assertFutureSocialRepetitionStorageRefinementMatches(
+  projected: readonly ProjectPressureDemandGroupShape[],
+  demanded: readonly ProjectPressureDemandGroupShape[],
+): void {
+  const previousGroups = projected.filter((group) => (
+    group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+  ));
+  const currentGroups = demanded.filter((group) => (
+    group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+  ));
+  if (previousGroups.length === 0 && currentGroups.length === 0) return;
+  const previous = previousGroups[0];
+  const current = currentGroups[0];
+  if (previousGroups.length !== 1
+    || currentGroups.length !== 1
+    || !previous
+    || !current
+    || current.requirement !== 'index-only'
+    || (previous.requirement !== 'audit-only' && previous.requirement !== 'index-only')
+    || previous.groupKey !== current.groupKey
+    || !sameStringSet(previous.leaseKeys, current.leaseKeys)
+    || !sameStringSet(previous.eventIds, current.eventIds)) {
+    throw new Error('retention future social-repetition storage refinement 与 bounded shell 不一致');
+  }
+}
+
 export function recentPersonalProductionWindowGroupKey(atMonth: number): string {
   return `${RECENT_PRODUCTION_WINDOW_GROUP_PREFIX}${atMonth}`;
 }
@@ -1385,7 +1412,7 @@ function collectDemand(state: SimulationState) {
   });
   addDemandGroup(demandGroupsByKey, directDemandEventIds, {
     groupKey: FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
-    requirement: 'audit-only',
+    requirement: 'index-only',
     leaseKey: FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
     eventIds: boundedFutureSocialRepetitionSourceEventIds(state, livingPeople),
   });
@@ -2192,7 +2219,8 @@ function compatibilityCanonicalDemandGroups(
     canonical.set(group.groupKey, {
       groupKey: group.groupKey,
       requirement: (group.groupKey === FUTURE_COGNITIVE_APPRAISAL_SOURCE_LEASE_KEY
-          || group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY)
+          || group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+          || group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
         && group.requirement === 'index-only'
         ? 'audit-only'
         : group.requirement,
@@ -2386,6 +2414,10 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     'retention shell raw demand',
   );
   assertProjectPressureStorageRefinementMatches(projection.demandGroups, demand.groups);
+  assertFutureSocialRepetitionStorageRefinementMatches(
+    projection.demandGroups,
+    demand.groups,
+  );
   assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
@@ -3445,7 +3477,8 @@ export function resumeHistoryRetentionProjection(
       const groups = [...fold.demandGroupsByKey.values()]
         .filter((group) => group.eventIds.has(eventId));
       const requiresVerifiedPrefixLookup = groups.some((group) => (
-        group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+          || group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
           && group.requirement === 'index-only'
       ));
       if (requiresVerifiedPrefixLookup
@@ -3650,6 +3683,58 @@ export function seedVerifiedPrefixLogisticsIndexMatches(
       || match.absoluteIndex < 0
       || match.absoluteIndex >= sourceTarget.eventCount) {
       throw new Error(`retention prefix logistics bridge match ${match.eventId} 无效`);
+    }
+    seen.add(match.eventId);
+    fold.directMatchesByEventId.set(match.eventId, { ...match });
+    fold.requiredSuffixDirectDemandEventIds.delete(match.eventId);
+  }
+}
+
+/**
+ * A newly remembered proposal can expose an older agreement outcome source.
+ * Resolve that identity only from the fully verified previous history root;
+ * unlike project-pressure provenance, every named source must be a real event.
+ */
+export function unresolvedVerifiedPrefixSocialRepetitionIndexEventIds(
+  fold: HistoryRetentionProjectionFold,
+): string[] {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix social-repetition bridge 只接受 open fold');
+  }
+  const group = fold.demandGroupsByKey.get(FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY);
+  if (!group || group.requirement !== 'index-only') return [];
+  return [...fold.requiredSuffixDirectDemandEventIds]
+    .filter((eventId) => group.eventIds.has(eventId)
+      && !fold.directMatchesByEventId.has(eventId))
+    .sort();
+}
+
+export function seedVerifiedPrefixSocialRepetitionIndexMatches(
+  fold: HistoryRetentionProjectionFold,
+  verifiedSourceEventCount: number,
+  matches: readonly HistoryRetentionContinuationMatch[],
+): void {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix social-repetition bridge 只接受 open fold');
+  }
+  const sourceTarget = fold.continuationSourceTarget;
+  if (!sourceTarget || verifiedSourceEventCount !== sourceTarget.eventCount) {
+    throw new Error('retention prefix social-repetition bridge 与 continuation source seal 不一致');
+  }
+  const group = fold.demandGroupsByKey.get(FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY);
+  if (!group || group.requirement !== 'index-only') {
+    if (matches.length === 0) return;
+    throw new Error('retention prefix social-repetition bridge 缺少 index-only demand');
+  }
+  const seen = new Set<string>();
+  for (const match of matches) {
+    if (seen.has(match.eventId)
+      || !group.eventIds.has(match.eventId)
+      || !fold.requiredSuffixDirectDemandEventIds.has(match.eventId)
+      || !Number.isSafeInteger(match.absoluteIndex)
+      || match.absoluteIndex < 0
+      || match.absoluteIndex >= sourceTarget.eventCount) {
+      throw new Error(`retention prefix social-repetition bridge match ${match.eventId} 无效`);
     }
     seen.add(match.eventId);
     fold.directMatchesByEventId.set(match.eventId, { ...match });

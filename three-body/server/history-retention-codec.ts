@@ -565,7 +565,10 @@ function normalizeUnresolvedDemands(
 
 function normalizeSourceDemand(
   value: unknown,
-  options: { allowLegacyMissingProjectPressure?: boolean } = {},
+  options: {
+    allowLegacyMissingProjectPressure?: boolean;
+    allowLegacyFutureSocialRepetitionAudit?: boolean;
+  } = {},
 ): HistoryRetentionContinuationDemand {
   assertRecord(value, 'retention continuation sourceDemand');
   assertExactKeys(value, [
@@ -669,7 +672,9 @@ function normalizeSourceDemand(
       throw new Error(`${label} 的 future family stored-food source selector 无效或超界`);
     }
     if (candidate.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
-      && (candidate.requirement !== 'audit-only'
+      && (candidate.requirement !== 'index-only'
+        && !(options.allowLegacyFutureSocialRepetitionAudit
+          && candidate.requirement === 'audit-only')
         || leaseKeys.length !== 1
         || leaseKeys[0] !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
         || eventIds.length > HISTORY_RETENTION_MAX_FUTURE_SOCIAL_REPETITION_SOURCE_EVENT_IDS)) {
@@ -959,7 +964,10 @@ function normalizeContinuationBasis(
     summary: HistoryRetentionSummary;
   },
   registry: MatchIdentityRegistry,
-  options: { allowLegacyMissingProjectPressure?: boolean } = {},
+  options: {
+    allowLegacyMissingProjectPressure?: boolean;
+    allowLegacyFutureSocialRepetitionAudit?: boolean;
+  } = {},
 ): HistoryRetentionProjectionResult['continuationBasis'] {
   assertRecord(value, 'retention projection.continuationBasis');
   assertExactKeys(value, [
@@ -1453,7 +1461,10 @@ function assertProjectionDerivedSemantics(
 
 function normalizeProjection(
   value: unknown,
-  options: { allowLegacyMissingProjectPressure?: boolean } = {},
+  options: {
+    allowLegacyMissingProjectPressure?: boolean;
+    allowLegacyFutureSocialRepetitionAudit?: boolean;
+  } = {},
 ): HistoryRetentionProjectionResult {
   assertRecord(value, 'retention projection');
   assertExactKeys(value, [
@@ -1726,7 +1737,10 @@ export function decodeHistoryRetentionSidecar(
   } catch (error) {
     throw new Error(`retention sidecar chunk ${claimedHash} 无法解析`, { cause: error });
   }
-  const projection = normalizeProjection(parsed, { allowLegacyMissingProjectPressure: true });
+  const projection = normalizeProjection(parsed, {
+    allowLegacyMissingProjectPressure: true,
+    allowLegacyFutureSocialRepetitionAudit: true,
+  });
   if (!canonical.equals(canonicalBytes(projection))) {
     throw new Error('retention sidecar payload 不是 canonical 编码');
   }

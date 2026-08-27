@@ -14,10 +14,12 @@ import {
   seedVerifiedPrefixProjectPressureIndexMatches,
   seedVerifiedPrefixRecentTerminalFailureActionMatches,
   seedVerifiedPrefixSocialLearningSourceMatches,
+  seedVerifiedPrefixSocialRepetitionIndexMatches,
   unresolvedVerifiedPrefixLogisticsIndexEventIds,
   unresolvedVerifiedPrefixProjectPressureIndexEventIds,
   unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds,
   unresolvedVerifiedPrefixSocialLearningSourceEventIds,
+  unresolvedVerifiedPrefixSocialRepetitionIndexEventIds,
   type HistoryRetentionDemandSnapshot,
   type HistoryRetentionContinuationMatch,
   type HistoryRetentionProjectionResult,
@@ -160,10 +162,17 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds(fold);
   const unresolvedPrefixSocialLearningIds =
     unresolvedVerifiedPrefixSocialLearningSourceEventIds(fold);
-  const stricterPrefixIds = new Set([
+  const strictPrefixIds = new Set([
     ...unresolvedPrefixLogisticsIds,
     ...unresolvedPrefixTerminalFailureIds,
     ...unresolvedPrefixSocialLearningIds,
+  ]);
+  const unresolvedPrefixSocialRepetitionIds =
+    unresolvedVerifiedPrefixSocialRepetitionIndexEventIds(fold)
+      .filter((eventId) => !strictPrefixIds.has(eventId));
+  const stricterPrefixIds = new Set([
+    ...strictPrefixIds,
+    ...unresolvedPrefixSocialRepetitionIds,
   ]);
   const unresolvedPrefixProjectPressureIds =
     unresolvedVerifiedPrefixProjectPressureIndexEventIds(fold)
@@ -173,6 +182,7 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     ...unresolvedPrefixProjectPressureIds,
     ...unresolvedPrefixTerminalFailureIds,
     ...unresolvedPrefixSocialLearningIds,
+    ...unresolvedPrefixSocialRepetitionIds,
   ])].sort();
   if (unresolvedPrefixIds.length > 0) {
     const required = new Set(unresolvedPrefixIds);
@@ -231,6 +241,16 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       fold,
       verifiedPrefix.eventCount,
       unresolvedPrefixSocialLearningIds.flatMap((eventId) => {
+        const match = matchesByEventId.get(eventId);
+        return match ? [match] : [];
+      }).sort((left, right) => (
+        left.eventId.localeCompare(right.eventId) || left.absoluteIndex - right.absoluteIndex
+      )),
+    );
+    seedVerifiedPrefixSocialRepetitionIndexMatches(
+      fold,
+      verifiedPrefix.eventCount,
+      unresolvedPrefixSocialRepetitionIds.flatMap((eventId) => {
         const match = matchesByEventId.get(eventId);
         return match ? [match] : [];
       }).sort((left, right) => (

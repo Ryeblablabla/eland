@@ -12,6 +12,7 @@ import {
   type RetainedProjectPressureEvidenceDescriptor,
 } from '../src/game/eland/domain/project-pressure-evidence';
 import {
+  FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
   HISTORY_RETENTION_REQUIREMENTS,
   assertHistoryRetentionProjectionMatchesShell,
   historyRetentionRequirementBlocks,
@@ -263,7 +264,8 @@ export function installVerifiedHistoryRetentionEvidence(
       throw new Error(`retention cold pin ${pin.absoluteIndex}/${pin.eventId} 未被准确解码`);
     }
     const gameplayLeaseKeys = pin.leaseKeys.filter(
-      (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+      (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
     );
     if (gameplayLeaseKeys.length > 0) retained.push({
       absoluteIndex: pin.absoluteIndex,

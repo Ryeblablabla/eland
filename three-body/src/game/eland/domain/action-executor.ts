@@ -32,6 +32,9 @@ import {
   exertionRuleFor,
   exertionTechniqueId,
   exertionTechniqueSummary,
+  groundToolInteractionRuleFor,
+  groundToolInteractionTechniqueId,
+  groundToolInteractionTechniqueSummary,
   exposureRuleFor,
   exposureTechniqueId,
   exposureTechniqueSummary,
@@ -1101,6 +1104,74 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
 function executeExert(state: SimulationState, person: PersonState, action: Extract<PrimitiveAction, { kind: 'act' }>, atMonth: number, eventId: string) {
   const stackRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'inventory-stack' }> => item.kind === 'inventory-stack');
   const voxelRef = action.targets.find((item): item is Extract<WorldRef, { kind: 'voxel' }> => item.kind === 'voxel');
+  if (!stackRef && voxelRef && action.toolStackId) {
+    const tool = person.inventory.find((candidate) => candidate.id === action.toolStackId
+      && candidate.quantity > 0);
+    if (!tool || distanceToPosition(person, voxelRef.position) > 1) {
+      return { status: 'blocked' as const, result: '施力所需的田间工具或地表不在近身范围', diff: {} };
+    }
+    if (voxelRef.position.z < 0 || voxelRef.position.z >= state.world.grid.levels) {
+      return { status: 'blocked' as const, result: '施力目标不在世界范围内', diff: {} };
+    }
+    const targetMaterialId = voxelAt(
+      state.world.grid,
+      voxelRef.position.x,
+      voxelRef.position.y,
+      voxelRef.position.z,
+    );
+    const rule = groundToolInteractionRuleFor(tool.materialId, targetMaterialId);
+    if (!rule) return {
+      status: 'blocked' as const,
+      result: '这个工具作用于当前地表没有产生物质响应',
+      // Reuse the existing exact exert no-response schema. A direct ground
+      // action has no carried input, so the perceived ground is both the
+      // exerted material and the response target.
+      diff: {
+        toolMaterialId: tool.materialId,
+        inputMaterialId: targetMaterialId,
+        targetMaterialId,
+      },
+    };
+    setVoxel(
+      state.world.grid,
+      voxelRef.position.x,
+      voxelRef.position.y,
+      voxelRef.position.z,
+      rule.outputMaterialId,
+    );
+    rememberMaterialPlace(person, rule.outputMaterialId, voxelRef.position, atMonth, eventId);
+    const techniqueId = groundToolInteractionTechniqueId(rule);
+    const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+    if (knownTechnique) {
+      knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
+      knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
+    } else person.knowledge.push({
+      id: techniqueId,
+      kind: 'technique',
+      summary: groundToolInteractionTechniqueSummary(rule),
+      confidence: 46,
+      learnedAtMonth: atMonth,
+      sourceEventIds: [eventId],
+    });
+    return {
+      status: 'completed' as const,
+      result: `${materialDefinition(tool.materialId).name}作用于${materialDefinition(targetMaterialId).name}后，地表成为${materialDefinition(rule.outputMaterialId).name}`,
+      diff: {
+        techniqueId,
+        toolMaterialId: tool.materialId,
+        targetMaterialId,
+        outputMaterialId: rule.outputMaterialId,
+        position: voxelRef.position,
+        materialChanges: [{
+          cellId: cellId(voxelRef.position.x, voxelRef.position.y),
+          z: voxelRef.position.z,
+          from: targetMaterialId,
+          to: rule.outputMaterialId,
+        }],
+        sourceEventId: eventId,
+      },
+    };
+  }
   if (stackRef && voxelRef) {
     const stack = stackRef.personId === person.id ? person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0) : undefined;
     const tool = action.toolStackId ? person.inventory.find((candidate) => candidate.id === action.toolStackId && candidate.quantity > 0) : undefined;

@@ -77,13 +77,12 @@ import {
 } from '../measurement-options';
 import {
   completedFunctionMaterialIds,
-  cultivationSurfaceMaterials,
   durableRecordWriteEvidence,
   establishProjectFunctionalCommissioning,
   placedFunctionEvidence,
   placedFunctionMaterialIds,
   projectActionFacts,
-  projectCultivationCells,
+  projectCultivationPlantingCells,
   projectProductionToolBaselineRank,
   verifiedProductionToolFunctions,
 } from './project-completion';
@@ -502,9 +501,7 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
     if (consumableInventoryQuantity(person, Material.Rope) === 0) requireRaw(Material.Fiber, 2);
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    const cultivatedCells = projectCultivationCells(project)
-      .filter((cellId) => cultivationSurfaceMaterials.has(surfaceMaterial(state.world.grid, cellId)));
-    if (cultivatedCells.length < 6) requireRaw(Material.Seed, 1);
+    if (projectCultivationPlantingCells(state, project).length < 6) requireRaw(Material.Seed, 1);
   }
   if (project.desiredFunction === 'community-coordination') {
     if (consumableInventoryQuantity(person, Material.Plank) === 0) requireRaw(Material.Wood, 2);

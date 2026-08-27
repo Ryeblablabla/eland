@@ -152,6 +152,22 @@ export function projectCultivationHarvests(
     && Number(event.diff.sourceMaterialId) === Material.CropMature);
 }
 
+/** Distinct cells this exact project has actually planted, independent of their current surface. */
+export function projectCultivationPlantingCells(
+  state: SimulationState,
+  project: ProjectState,
+): number[] {
+  return [...new Set(projectActionFacts(state, project).flatMap((event) => {
+    if (event.status !== 'completed'
+      || event.action.kind !== 'act'
+      || event.action.operation !== 'combine'
+      || Number(event.diff.outputMaterialId) !== Material.CropSprout) return [];
+    const position = event.diff.position as { x?: unknown; y?: unknown } | undefined;
+    if (![position?.x, position?.y].every((value) => Number.isInteger(Number(value)))) return [];
+    return [Number(position?.x) + Number(position?.y) * state.world.grid.width];
+  }))];
+}
+
 export function placedFunctionEvidence(state: SimulationState, project: ProjectState): ActionFact[] {
   const desired = new Set(placedFunctionMaterialIds(project));
   if (!desired.size) return [];
@@ -459,17 +475,7 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
     return durableRecordPublicationEvidence(state, project) !== null;
   }
   if (project.desiredFunction === 'settled-cultivation') {
-    const plantedCells = projectActionFacts(state, project).flatMap((event) => {
-      if (event.kind !== 'action'
-        || event.status !== 'completed'
-        || event.action.kind !== 'act'
-        || event.action.operation !== 'combine'
-        || Number(event.diff.outputMaterialId) !== Material.CropSprout) return [];
-      const position = event.diff.position as { x?: unknown; y?: unknown } | undefined;
-      if (![position?.x, position?.y].every((value) => Number.isInteger(Number(value)))) return [];
-      return [Number(position?.x) + Number(position?.y) * state.world.grid.width];
-    });
-    const plantedByProject = new Set(plantedCells).size >= 6;
+    const plantedByProject = projectCultivationPlantingCells(state, project).length >= 6;
     const harvests = projectCultivationHarvests(state, project).length;
     return plantedByProject && harvests >= 2;
   }

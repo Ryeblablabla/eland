@@ -16,6 +16,14 @@ export interface ExertionRule {
   outputPlacement?: 'target' | 'support';
 }
 
+/** A carried tool acting directly on one visible ground voxel without consuming the tool. */
+export interface GroundToolInteractionRule {
+  id: string;
+  toolMaterialId: MaterialId;
+  targetMaterialId: MaterialId;
+  outputMaterialId: MaterialId;
+}
+
 export interface ExposureRule {
   id: string;
   inputMaterialId: MaterialId;
@@ -315,8 +323,52 @@ const EXERTION_RULES: readonly ExertionRule[] = [
   },
 ] as const;
 
+const GROUND_TOOL_INTERACTION_RULES: readonly GroundToolInteractionRule[] = [
+  {
+    id: 'loosen-packed-soil-with-stone-field-tool',
+    toolMaterialId: Material.StoneHoe,
+    targetMaterialId: Material.PackedSoil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+  {
+    id: 'loosen-packed-soil-with-bronze-field-tool',
+    toolMaterialId: Material.BronzeTool,
+    targetMaterialId: Material.PackedSoil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+  {
+    id: 'loosen-packed-soil-with-iron-field-tool',
+    toolMaterialId: Material.IronTool,
+    targetMaterialId: Material.PackedSoil,
+    outputMaterialId: Material.ExhaustedSoil,
+  },
+] as const;
+
 export function exertionRules(): readonly ExertionRule[] {
   return EXERTION_RULES;
+}
+
+export function groundToolInteractionRuleFor(
+  toolMaterialId: MaterialId,
+  targetMaterialId: MaterialId,
+): GroundToolInteractionRule | undefined {
+  return GROUND_TOOL_INTERACTION_RULES.find((rule) => rule.toolMaterialId === toolMaterialId
+    && rule.targetMaterialId === targetMaterialId);
+}
+
+export function groundToolInteractionTechniquePrefix(
+  toolMaterialId: MaterialId,
+  targetMaterialId: MaterialId,
+): string {
+  return `technique:exert-ground:${toolMaterialId}:${targetMaterialId}:`;
+}
+
+export function groundToolInteractionTechniqueId(rule: GroundToolInteractionRule): string {
+  return `${groundToolInteractionTechniquePrefix(rule.toolMaterialId, rule.targetMaterialId)}${rule.outputMaterialId}`;
+}
+
+export function groundToolInteractionTechniqueSummary(rule: GroundToolInteractionRule): string {
+  return `用${materialDefinition(rule.toolMaterialId).name}作用于${materialDefinition(rule.targetMaterialId).name}，可使地表成为${materialDefinition(rule.outputMaterialId).name}`;
 }
 
 const EXPOSURE_RULES: readonly ExposureRule[] = [

@@ -631,6 +631,13 @@ function die(
         ...(stack.recordPayloadId ? { recordPayloadId: stack.recordPayloadId } : {}),
       }))
     : [];
+  const estateInventory: Array<{
+    sourceStackId: string;
+    dropId: string;
+    materialId: number;
+    quantity: number;
+    estateOfPersonId: string;
+  }> = [];
   if (options.vaporized) {
     state.world.remains = state.world.remains.filter((remains) => remains.carriedByPersonId !== person.id);
   } else {
@@ -640,7 +647,7 @@ function die(
       delete carried.carriedByPersonId;
     }
     for (const stack of person.inventory) {
-      addDrop(
+      const estateDrop = addDrop(
         state,
         stack.materialId,
         stack.quantity,
@@ -653,6 +660,13 @@ function die(
         [`inventory:${person.id}:${stack.id}`, ...(stack.sourceLineageKeys ?? [])],
         person.id,
       );
+      estateInventory.push({
+        sourceStackId: stack.id,
+        dropId: estateDrop.id,
+        materialId: stack.materialId,
+        quantity: stack.quantity,
+        estateOfPersonId: person.id,
+      });
     }
   }
   person.inventory = [];
@@ -738,6 +752,7 @@ function die(
     cause,
     healthBeforeDeath,
     sourceEventIds,
+    ...(!options.vaporized && estateInventory.length ? { estateInventory } : {}),
     ...(options.vaporized ? {
       vaporized: true,
       remainsCreated: false,

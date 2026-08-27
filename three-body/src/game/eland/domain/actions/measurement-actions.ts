@@ -12,9 +12,9 @@ import {
   MASS_MEASUREMENT_RECEIPT_VERSION,
   canonicalMeasurementSourceEventIds,
   eventManufacturedMeasurementArtifact,
-  eventSupportsMeasurementStackMaterial,
   isMassCalibrationReceipt,
   isSourcedMassMeasurementAction,
+  measurementSourceEventsSupportStackMaterial,
   measurementStackReceiptMatchesUse,
   sameMeasurementSourceEventIds,
   sameMeasurementStackIdentity,
@@ -55,7 +55,7 @@ function validateCurrentStack(
   }
   const sources = canonicalMeasurementSourceEventIds(use.sourceEventIds)
     .map((sourceEventId) => worldEventById(state, sourceEventId));
-  if (sources.some((event) => !eventSupportsMeasurementStackMaterial(event, stack.materialId))) {
+  if (!measurementSourceEventsSupportStackMaterial(sources, stack.materialId)) {
     return { ok: false, reason: '所指测量物的来源不能解析为同一物质事实' };
   }
   if (sourceKind === 'artifact'
@@ -239,9 +239,10 @@ export function executeMeasurementAttend(
     return { status: 'blocked', result: '所指校准已经被同一实体仪器的较新校准取代', diff: {} };
   }
   const calibrationSources = [calibration.diff.instrument, calibration.diff.reference];
-  if (calibrationSources.some((receipt) => receipt.sourceEventIds.some((sourceEventId) => (
-    !eventSupportsMeasurementStackMaterial(worldEventById(state, sourceEventId), receipt.materialId)
-  )))) {
+  if (calibrationSources.some((receipt) => !measurementSourceEventsSupportStackMaterial(
+    receipt.sourceEventIds.map((sourceEventId) => worldEventById(state, sourceEventId)),
+    receipt.materialId,
+  ))) {
     return { status: 'blocked', result: '校准事实的仪器或参考物来源已经无法解析', diff: {} };
   }
 

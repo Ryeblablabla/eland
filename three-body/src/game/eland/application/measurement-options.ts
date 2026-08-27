@@ -7,6 +7,7 @@ import {
   isMassCalibrationReceipt,
   isMassMeasurementReceipt,
   isSourcedMassMeasurementAction,
+  measurementSourceEventsSupportStackMaterial,
   measurementStackReceiptMatchesUse,
   sameMeasurementSourceEventIds,
   sameMeasurementStackIdentity,
@@ -85,7 +86,7 @@ function canonicalSample(
     || materialHas(stack.materialId, 'mass-reference')) return null;
   const sourceEventIds = canonicalMeasurementSourceEventIds(stack.sourceEventIds);
   const sources = sourceEventIds.map((eventId) => worldEventById(state, eventId));
-  if (sources.some((event) => !eventSupportsMeasurementStackMaterial(event, stack.materialId))) return null;
+  if (!measurementSourceEventsSupportStackMaterial(sources, stack.materialId)) return null;
   const productionEventIds = sources.flatMap((event) => (
     isPersonalProductionFact(event, person.id, stack.materialId, atMonth)
       && rememberedEventIds.has(event.id) ? [event.id] : []
@@ -222,7 +223,7 @@ export function validateMeasurementUncertaintyBasis(
     if (!stack || perceivedLoadBand(stack.materialId, sample.quantity) !== sample.perceivedLoadBand) return [];
     const sources = canonicalMeasurementSourceEventIds(sample.sourceEventIds)
       .map((eventId) => worldEventById(state, eventId));
-    if (sources.some((event) => !eventSupportsMeasurementStackMaterial(event, sample.materialId))) return [];
+    if (!measurementSourceEventsSupportStackMaterial(sources, sample.materialId)) return [];
     const productionEventIds = canonicalMeasurementSourceEventIds(sources.flatMap((event) => (
       isPersonalProductionFact(event, person.id, sample.materialId, basis.atMonth) ? [event.id] : []
     )));
@@ -275,7 +276,7 @@ function validSourcedArtifactStack(
     .sort((left, right) => left.id.localeCompare(right.id))
     .find((stack) => {
       const sources = stack.sourceEventIds.map((eventId) => worldEventById(state, eventId));
-      return sources.every((event) => eventSupportsMeasurementStackMaterial(event, materialId))
+      return measurementSourceEventsSupportStackMaterial(sources, materialId)
         && sources.some((event) => eventManufacturedMeasurementArtifact(event, materialId));
     });
 }
@@ -327,7 +328,7 @@ function validArtifactReceiptSources(state: SimulationState, receipt: {
 }): boolean {
   const sources = receipt.sourceEventIds.map((eventId) => worldEventById(state, eventId));
   return sources.length > 0
-    && sources.every((event) => eventSupportsMeasurementStackMaterial(event, receipt.materialId))
+    && measurementSourceEventsSupportStackMaterial(sources, receipt.materialId)
     && sources.some((event) => eventManufacturedMeasurementArtifact(event, receipt.materialId));
 }
 
@@ -415,12 +416,10 @@ export function massMeasurementProjectCompletionEvidence(
       && sameMeasurementSourceEventIds(sample.sourceEventIds, measurementReceipt.subject.sourceEventIds)
     ));
     if (!subjectMatchesBasis
-      || measurementReceipt.subject.sourceEventIds.some((eventId) => (
-        !eventSupportsMeasurementStackMaterial(
-          worldEventById(state, eventId),
-          measurementReceipt.subject.materialId,
-        )
-      ))) continue;
+      || !measurementSourceEventsSupportStackMaterial(
+        measurementReceipt.subject.sourceEventIds.map((eventId) => worldEventById(state, eventId)),
+        measurementReceipt.subject.materialId,
+      )) continue;
     return canonicalMeasurementSourceEventIds([
       ...project.measurementUncertaintyBasis.sourceFactIds,
       ...measurementReceipt.instrument.sourceEventIds,

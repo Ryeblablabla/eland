@@ -52,7 +52,10 @@ try {
   const producer = state.people[0];
   const receiver = state.people[1];
   const unsupportedHolder = state.people[2];
-  assert.ok(producer && receiver && unsupportedHolder, 'fixture requires three living people');
+  const wrongMaterialHolder = state.people[3];
+  const wrongBindingHolder = state.people[4];
+  assert.ok(producer && receiver && unsupportedHolder && wrongMaterialHolder && wrongBindingHolder,
+    'fixture requires five living people');
 
   const productionFacts = Array.from({ length: ITEM_SOURCE_EVENT_LIMIT }, (_, index) => ({
     id: `lineage-manufacture-${index}`,
@@ -105,7 +108,16 @@ try {
     'lineage-estate',
     undefined,
     producer.position.z,
+    [`inventory:${producer.id}:${original.id}`],
+    producer.id,
   );
+  deathFact.diff.estateInventory = [{
+    sourceStackId: original.id,
+    dropId: estateDrop.id,
+    materialId: Material.BeamBalance,
+    quantity: 1,
+    estateOfPersonId: producer.id,
+  }];
   assert.deepEqual(
     estateDrop.sourceEventIds,
     [...manufactureIds.slice(1), deathFact.id],
@@ -129,7 +141,12 @@ try {
       dropId: estateDrop.id,
     },
     result: 'picked up the estate instrument',
-    diff: { materialId: Material.BeamBalance, quantity: 1 },
+    diff: {
+      materialId: Material.BeamBalance,
+      quantity: 1,
+      estateOfPersonId: producer.id,
+      sourceLineageKeys: [`drop:${estateDrop.id}`, ...(estateDrop.sourceLineageKeys ?? [])],
+    },
   };
   const received = addInventory(
     receiver,
@@ -137,6 +154,8 @@ try {
     1,
     [...estateDrop.sourceEventIds, pickupFact.id],
     'lineage-received-instrument',
+    undefined,
+    [`drop:${estateDrop.id}`, ...(estateDrop.sourceLineageKeys ?? [])],
   );
   assert.deepEqual(
     received.sourceEventIds,
@@ -187,17 +206,126 @@ try {
     'lineage-unsupported-instrument',
   );
 
-  state.world.past.push(...productionFacts, deathFact, pickupFact, ...transferOnlyFacts);
+  const wrongMaterialDeathFact = {
+    id: 'lineage-wrong-material-death',
+    kind: 'environment',
+    atMonth: 5,
+    orderInMonth: 0,
+    who: producer.id,
+    cellId: producer.position.cellId,
+    change: 'death',
+    result: 'a death fact bound to a different material',
+    diff: {
+      personId: producer.id,
+      estateInventory: [{
+        sourceStackId: original.id,
+        dropId: 'drop-lineage-wrong-material',
+        materialId: Material.StandardWeight,
+        quantity: 1,
+        estateOfPersonId: producer.id,
+      }],
+    },
+  };
+  const wrongMaterialPickupFact = {
+    id: 'lineage-wrong-material-pickup',
+    kind: 'action',
+    atMonth: 6,
+    orderInMonth: 0,
+    planningTick: 0,
+    orderInTick: 0,
+    who: wrongMaterialHolder.id,
+    cellId: producer.position.cellId,
+    status: 'completed',
+    action: {
+      kind: 'transfer', materialId: Material.BeamBalance, quantity: 1,
+      from: { kind: 'ground', cellId: producer.position.cellId, z: producer.position.z },
+      to: { kind: 'person', personId: wrongMaterialHolder.id },
+      dropId: 'drop-lineage-wrong-material',
+    },
+    result: 'picked up an instrument with a wrong-material death witness',
+    diff: { materialId: Material.BeamBalance, quantity: 1, estateOfPersonId: producer.id },
+  };
+  addInventory(
+    wrongMaterialHolder,
+    Material.BeamBalance,
+    1,
+    [manufactureIds.at(-1), wrongMaterialDeathFact.id, wrongMaterialPickupFact.id],
+    'lineage-wrong-material-instrument',
+  );
+
+  const wrongBindingDeathFact = {
+    id: 'lineage-wrong-binding-death',
+    kind: 'environment',
+    atMonth: 7,
+    orderInMonth: 0,
+    who: producer.id,
+    cellId: producer.position.cellId,
+    change: 'death',
+    result: 'a death fact bound to a different estate drop',
+    diff: {
+      personId: producer.id,
+      estateInventory: [{
+        sourceStackId: original.id,
+        dropId: 'drop-lineage-bound-estate',
+        materialId: Material.BeamBalance,
+        quantity: 1,
+        estateOfPersonId: producer.id,
+      }],
+    },
+  };
+  const wrongBindingPickupFact = {
+    id: 'lineage-wrong-binding-pickup',
+    kind: 'action',
+    atMonth: 8,
+    orderInMonth: 0,
+    planningTick: 0,
+    orderInTick: 0,
+    who: wrongBindingHolder.id,
+    cellId: producer.position.cellId,
+    status: 'completed',
+    action: {
+      kind: 'transfer', materialId: Material.BeamBalance, quantity: 1,
+      from: { kind: 'ground', cellId: producer.position.cellId, z: producer.position.z },
+      to: { kind: 'person', personId: wrongBindingHolder.id },
+      dropId: 'drop-lineage-other-estate',
+    },
+    result: 'picked up an instrument from a drop not bound by the death fact',
+    diff: { materialId: Material.BeamBalance, quantity: 1, estateOfPersonId: producer.id },
+  };
+  addInventory(
+    wrongBindingHolder,
+    Material.BeamBalance,
+    1,
+    [manufactureIds.at(-1), wrongBindingDeathFact.id, wrongBindingPickupFact.id],
+    'lineage-wrong-binding-instrument',
+  );
+
+  state.world.past.push(
+    ...productionFacts,
+    deathFact,
+    pickupFact,
+    ...transferOnlyFacts,
+    wrongMaterialDeathFact,
+    wrongMaterialPickupFact,
+    wrongBindingDeathFact,
+    wrongBindingPickupFact,
+  );
   state.world.historyCursor = {
     version: 1,
     eventCount: state.world.past.length,
     hotStartIndex: 0,
-    tailEventId: transferOnlyFacts.at(-1).id,
+    tailEventId: wrongBindingPickupFact.id,
   };
   assert.equal(currentMassMeasurementInstrument(state, producer)?.id, original.id,
     'bounded production witnesses must remain a usable physical instrument');
+  assert.equal(currentMassMeasurementInstrument(state, receiver)?.id, received.id,
+    'a precisely bound death and pickup lifecycle must preserve the real inherited instrument');
   assert.equal(currentMassMeasurementInstrument(state, unsupportedHolder), undefined,
     'truncation must not manufacture evidence for a transfer-only artifact');
+  assert.equal(currentMassMeasurementInstrument(state, wrongMaterialHolder), undefined,
+    'a death witness for another material must not validate the current instrument');
+  assert.equal(currentMassMeasurementInstrument(state, wrongBindingHolder), undefined,
+    'a death witness for another estate drop must not validate the current instrument');
   const fold = beginHistoryRetentionProjection(state, { stateHash: 'a'.repeat(64) });
   foldHistoryRetentionSegment(fold, state.world.past, 0);
   const retention = finishHistoryRetentionProjection(fold);

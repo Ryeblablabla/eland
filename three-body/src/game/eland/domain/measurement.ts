@@ -219,6 +219,47 @@ export function sameMeasurementStackIdentity(
  * A receipt source must itself be a replayable fact about this material. Merely
  * placing an arbitrary, resolvable event ID in a stack is not provenance.
  */
+interface DeathEstateInventoryItem {
+  sourceStackId: string;
+  dropId: string;
+  materialId: MaterialId;
+  quantity: number;
+  estateOfPersonId: string;
+}
+
+function deathEstateInventoryItems(
+  event: WorldEvent | undefined,
+  materialId: MaterialId,
+): DeathEstateInventoryItem[] {
+  if (!event
+    || event.kind !== 'environment'
+    || event.change !== 'death'
+    || typeof event.who !== 'string'
+    || event.diff.personId !== event.who
+    || !Array.isArray(event.diff.estateInventory)) return [];
+  const personId = event.who;
+  return event.diff.estateInventory.flatMap((value) => {
+    const item = objectRecord(value);
+    return item
+      && typeof item.sourceStackId === 'string'
+      && item.sourceStackId.length > 0
+      && typeof item.dropId === 'string'
+      && item.dropId.length > 0
+      && item.materialId === materialId
+      && Number.isSafeInteger(item.quantity)
+      && Number(item.quantity) > 0
+      && item.estateOfPersonId === personId
+      ? [{
+          sourceStackId: item.sourceStackId,
+          dropId: item.dropId,
+          materialId,
+          quantity: Number(item.quantity),
+          estateOfPersonId: personId,
+        }]
+      : [];
+  });
+}
+
 export function eventSupportsMeasurementStackMaterial(
   event: WorldEvent | undefined,
   materialId: MaterialId,
@@ -236,9 +277,51 @@ export function eventSupportsMeasurementStackMaterial(
     });
     return false;
   }
+  if (event.kind === 'environment' && event.change === 'death') {
+    return deathEstateInventoryItems(event, materialId).length > 0;
+  }
   if (event.kind !== 'environment' || (event.change !== 'material' && event.change !== 'resource')) return false;
   return Number(event.diff.materialId) === materialId
     || Number(event.diff.outputMaterialId) === materialId;
+}
+
+/**
+ * Death is a lifecycle witness, not manufacturing evidence. It supports a
+ * current stack only when the same retained source set contains a completed
+ * transfer from the exact estate drop recorded by the death fact.
+ */
+export function measurementSourceEventsSupportStackMaterial(
+  events: readonly (WorldEvent | undefined)[],
+  materialId: MaterialId,
+): boolean {
+  if (events.some((event) => !event)) return false;
+  const resolved = events as readonly WorldEvent[];
+  return resolved.every((event) => {
+    const estateItems = deathEstateInventoryItems(event, materialId);
+    if (event.kind !== 'environment' || event.change !== 'death') {
+      return eventSupportsMeasurementStackMaterial(event, materialId);
+    }
+    if (!estateItems.length) return false;
+    const quantitiesByDropId = new Map<string, number>();
+    for (const item of estateItems) {
+      quantitiesByDropId.set(item.dropId, (quantitiesByDropId.get(item.dropId) ?? 0) + item.quantity);
+    }
+    return resolved.some((candidate) => {
+      if (candidate.kind !== 'action'
+        || candidate.status !== 'completed'
+        || candidate.atMonth < event.atMonth
+        || candidate.action.kind !== 'transfer') return false;
+      const transfer = candidate.action;
+      return transfer.from.kind === 'ground'
+        && typeof transfer.dropId === 'string'
+        && quantitiesByDropId.has(transfer.dropId)
+        && transfer.materialId === materialId
+        && Number(candidate.diff.quantity) > 0
+        && Number(candidate.diff.quantity) <= (quantitiesByDropId.get(transfer.dropId) ?? 0)
+        && estateItems.some((item) => item.dropId === transfer.dropId
+          && candidate.diff.estateOfPersonId === item.estateOfPersonId);
+    });
+  });
 }
 
 /** Instrument and reference artifacts need a physical production fact, not just a transfer. */

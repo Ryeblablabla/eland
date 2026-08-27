@@ -7,6 +7,10 @@ import type {
   ProjectMaterialDemand,
   ProjectState,
 } from './project';
+import {
+  projectCurrentLeadId,
+  projectEventHasEventTimeLead,
+} from './project-leadership';
 
 export type ProjectMaterialContributionRequestStatus =
   | 'open'
@@ -42,7 +46,7 @@ export function projectMaterialContributionRequestHasAuthoritativeSource(
   return Boolean(payload
     && request.version === 'project-material-contribution-request-v1'
     && request.projectId === project.id
-    && request.requesterId === project.ownerId
+    && projectEventHasEventTimeLead(project, event)
     && project.actionEventIds.includes(request.requestEventId)
     && request.contributorIds.length > 0
     && new Set(request.contributorIds).size === request.contributorIds.length
@@ -67,7 +71,9 @@ export function activeProjectMaterialDeliveryRequest(
   const delivery = drop.projectMaterialDelivery;
   if (!delivery || delivery.version !== 'project-material-delivery-v1' || delivery.expiresAtMonth < atMonth) return null;
   const project = state.projects.find((candidate) => candidate.id === delivery.projectId);
-  if (!project || project.status !== 'active' || project.ownerId !== delivery.requesterId) return null;
+  if (!project
+    || project.status !== 'active'
+    || projectCurrentLeadId(project) !== delivery.requesterId) return null;
   const requester = state.people.find((person) => person.id === delivery.requesterId && isAlive(person));
   const request = project.materialContributionRequests?.find((candidate) => (
     candidate.requestEventId === delivery.requestEventId
@@ -76,7 +82,10 @@ export function activeProjectMaterialDeliveryRequest(
     && candidate.expiresAtMonth === delivery.expiresAtMonth
   ));
   const demand = project.materialDemands?.find((candidate) => candidate.materialId === drop.materialId);
-  if (!request || !requester || !demand
+  if (!request
+    || !requester
+    || !demand
+    || !projectMaterialContributionRequestHasAuthoritativeSource(state, project, request)
     || consumableInventoryQuantity(requester, drop.materialId) >= demand.requiredQuantity) return null;
   return request;
 }
@@ -192,9 +201,12 @@ export function inspectProjectMaterialContributionRequest(
   atMonth: number,
   demand: ProjectMaterialDemand | undefined,
 ): ProjectMaterialContributionRequestView {
-  const owner = state.people.find((person) => person.id === project.ownerId);
-  const outstandingQuantity = demand?.materialId === request.materialId && owner
-    ? Math.max(0, demand.requiredQuantity - consumableInventoryQuantity(owner, request.materialId))
+  const currentLeadId = projectCurrentLeadId(project);
+  const currentLead = state.people.find((person) => person.id === currentLeadId && isAlive(person));
+  const validCurrentRequest = currentLeadId === request.requesterId
+    && projectMaterialContributionRequestHasAuthoritativeSource(state, project, request);
+  const outstandingQuantity = demand?.materialId === request.materialId && currentLead
+    ? Math.max(0, demand.requiredQuantity - consumableInventoryQuantity(currentLead, request.materialId))
     : 0;
   const contributedQuantity = contributedQuantityForProjectMaterialRequest(state, project, request);
   const requestRemainingQuantity = Math.max(0, request.requestedQuantity - contributedQuantity);
@@ -205,7 +217,9 @@ export function inspectProjectMaterialContributionRequest(
       && consumableInventoryQuantity(contributor, request.materialId) > 0);
   });
   const deliverableQuantity = Math.min(requestRemainingQuantity, outstandingQuantity);
-  const status: ProjectMaterialContributionRequestStatus = outstandingQuantity <= 0 || requestRemainingQuantity <= 0
+  const status: ProjectMaterialContributionRequestStatus = !validCurrentRequest
+    ? 'expired'
+    : outstandingQuantity <= 0 || requestRemainingQuantity <= 0
     ? 'fulfilled'
     : request.expiresAtMonth < atMonth
       ? 'expired'

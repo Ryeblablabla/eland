@@ -33,6 +33,7 @@ import { learnOfDeath } from '../mortuary';
 import { applyRelationEvidence } from '../relation';
 import { rememberMaterialPlace } from '../spatial-knowledge';
 import { projectById } from '../state-index';
+import { projectIsLedBy } from '../project-leadership';
 import { maternalFirstTeachingConfidence } from '../trait';
 import { positionsWithinVoiceRange } from '../social-space';
 import { cellsInRadius } from '../../world/grid';
@@ -287,7 +288,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
     const request = content.projectKnowledgeRequest;
     const projectCandidate = projectById(state, request.projectId);
     const project = projectCandidate?.status === 'active'
-      && projectCandidate.ownerId === person.id
+      && projectIsLedBy(projectCandidate, person.id)
       && projectCandidate.need === 'mechanical-power-capability'
       && projectCandidate.desiredFunction === 'water-powered-crop-processing'
       ? projectCandidate
@@ -310,7 +311,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
     const request = content.projectMaterialContribution;
     const projectCandidate = projectById(state, request.projectId);
     const project = projectCandidate?.status === 'active'
-      && projectCandidate.ownerId === person.id
+      && projectIsLedBy(projectCandidate, person.id)
       && projectSupportsMaterialContribution(projectCandidate)
       && Boolean(projectCandidate.site)
       ? projectCandidate

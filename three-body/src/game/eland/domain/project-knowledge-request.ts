@@ -7,6 +7,10 @@ import {
   resolvePersonKnownProcess,
 } from './person-known-process';
 import type { ProjectKnowledgeRequestBasis, ProjectState } from './project';
+import {
+  projectCurrentLeadId,
+  projectEventHasEventTimeLead,
+} from './project-leadership';
 import { techniqueOutputMaterialId } from './technique-demonstration';
 
 export type ProjectKnowledgeRequestStatus = 'open' | 'answered' | 'expired' | 'obsolete';
@@ -140,7 +144,7 @@ export function projectKnowledgeRequestHasAuthoritativeSource(
   return Boolean(payload
     && request.version === 'project-knowledge-request-v1'
     && request.projectId === project.id
-    && request.requesterId === project.ownerId
+    && projectEventHasEventTimeLead(project, event)
     && project.actionEventIds.includes(request.requestEventId)
     && request.listenerIds.length > 0
     && samePersonIds(request.listenerIds, event.action.audience)
@@ -171,7 +175,8 @@ export function pendingProjectKnowledgeGap(
     || project.need !== 'mechanical-power-capability'
     || project.desiredFunction !== 'water-powered-crop-processing'
     || !project.mechanicalPowerPlan) return undefined;
-  const requester = state.people.find((person) => person.id === project.ownerId && isAlive(person));
+  const currentLeadId = projectCurrentLeadId(project);
+  const requester = state.people.find((person) => person.id === currentLeadId && isAlive(person));
   const componentOutput = pendingMechanicalPowerComponentMaterialId(
     state.world.mechanicalPower,
     project.mechanicalPowerPlan,
@@ -213,8 +218,9 @@ export function inspectProjectKnowledgeRequest(
   const pendingOutput = pendingProjectKnowledgeOutput(state, project);
   if (!requester
     || project.status !== 'active'
-    || project.ownerId !== request.requesterId
+    || projectCurrentLeadId(project) !== request.requesterId
     || request.projectId !== project.id
+    || !projectKnowledgeRequestHasAuthoritativeSource(state, project, request)
     || pendingOutput !== request.outputMaterialId
     || personReliablyKnowsOutput(requester, request.outputMaterialId)) return 'obsolete';
   return 'open';

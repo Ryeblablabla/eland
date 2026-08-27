@@ -14,14 +14,23 @@ try {
     export { createInitialState } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/monthly-simulation.ts'))};
     export { buildProjectOptions, recordProjectAction, recompileProjectNextAction, synchronizeProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
     export { mechanicalPowerCompletionEvidence } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/mechanical-power-options.ts'))};
+    export { projectCompletionEvidence, projectFunctionSatisfied } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-completion.ts'))};
+    export { projectContributionStep } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-step-compiler.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-executor.ts'))};
     export { actionOptionSemantics } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/action-option-semantics.ts'))};
     export { ensureMechanicalPowerNetwork, mechanicalPowerNetworkId, mechanicalPowerPlanKey, recordMechanicalPowerInstallation } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/mechanical-power.ts'))};
+    export { inventoryCombinationRules, inventoryCombinationTechniqueId } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/interaction-rules.ts'))};
+    export { projectKnowledgeRequestHasAuthoritativeSource, pendingProjectKnowledgeOutput } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-knowledge-request.ts'))};
+    export { inspectProjectMaterialContributionRequest, projectMaterialContributionRequestHasAuthoritativeSource } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-material-request.ts'))};
     export { projectCurrentLeadId, projectLeadershipVacancy, PROJECT_LEADERSHIP_VACANCY_MONTHS } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-leadership.ts'))};
+    export { inspectProjectLeadership, projectLeadIdAtEvent } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-leadership.ts'))};
+    export { worldEventById } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/event-index.ts'))};
     export { projectsLedBy } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/state-index.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export { cellId, cellX, cellY, setVoxel } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
+    export { beginHistoryRetentionProjection, finishHistoryRetentionProjection, foldHistoryRetentionSegment } from ${JSON.stringify(path.join(projectRoot, 'server/history-retention-projection.ts'))};
+    export { installVerifiedHistoryRetentionEvidence } from ${JSON.stringify(path.join(projectRoot, 'server/retained-history-evidence.ts'))};
   `;
   execFileSync(path.join(projectRoot, 'node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -32,6 +41,7 @@ try {
     Material,
     PROJECT_LEADERSHIP_VACANCY_MONTHS,
     actionOptionSemantics,
+    beginHistoryRetentionProjection,
     buildProjectOptions,
     cellId,
     cellX,
@@ -39,18 +49,33 @@ try {
     createInitialState,
     ensureMechanicalPowerNetwork,
     executePrimitiveAction,
+    finishHistoryRetentionProjection,
+    foldHistoryRetentionSegment,
+    inspectProjectMaterialContributionRequest,
+    inspectProjectLeadership,
+    installVerifiedHistoryRetentionEvidence,
     instantiateProject,
+    inventoryCombinationRules,
+    inventoryCombinationTechniqueId,
     mechanicalPowerCompletionEvidence,
     mechanicalPowerNetworkId,
     mechanicalPowerPlanKey,
+    pendingProjectKnowledgeOutput,
+    projectContributionStep,
+    projectCompletionEvidence,
     projectCurrentLeadId,
+    projectFunctionSatisfied,
+    projectKnowledgeRequestHasAuthoritativeSource,
+    projectLeadIdAtEvent,
     projectLeadershipVacancy,
+    projectMaterialContributionRequestHasAuthoritativeSource,
     projectsLedBy,
     recordMechanicalPowerInstallation,
     recordProjectAction,
     recompileProjectNextAction,
     setVoxel,
     synchronizeProject,
+    worldEventById,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
 
   function resetPerson(person, bornAtMonth = -25 * 12) {
@@ -63,6 +88,9 @@ try {
     person.memories = [];
     person.knownPlaces = [];
     person.bereavements = [];
+    person.relations = [];
+    person.maternalTeachingSourceEventIds = [];
+    person.geneticParents = [];
   }
 
   function actionFact(actor, id, atMonth, orderInMonth, action, status, diff, result = '测试项目事实') {
@@ -243,6 +271,30 @@ try {
     return { state, founder, successor, alternate, project, death, firstContribution, alternateContribution };
   }
 
+  function completeLeadershipSuccession(fixture, atMonth = 11) {
+    const { state, founder, successor, project, death } = fixture;
+    synchronizeProject(state, project, death.atMonth);
+    assert.ok(projectLeadershipVacancy(project));
+    rememberDeath(successor, founder, death);
+    const option = buildProjectOptions(state, successor, [project.site.cellId], [], [])
+      .find((candidate) => candidate.id.startsWith('inspect-project-leadership:'));
+    assert.equal(option?.nextAction.kind, 'attend');
+    const succession = executePrimitiveAction(
+      state,
+      successor,
+      option.nextAction,
+      atMonth,
+      1,
+      { cause: 'intent', actionTick: 1 },
+    );
+    assert.equal(succession.status, 'completed', succession.result);
+    state.world.past.push(succession);
+    recordProjectAction(state, project.id, succession);
+    assert.equal(projectCurrentLeadId(project), successor.id);
+    assert.equal(project.ownerId, founder.id);
+    return succession;
+  }
+
   {
     const fixture = createLeadershipFixture(9701);
     const { state, founder, successor, alternate, project, death } = fixture;
@@ -322,6 +374,324 @@ try {
   }
 
   {
+    const fixture = createLeadershipFixture(9706);
+    const { state, founder, successor, alternate, project } = fixture;
+    const succession = completeLeadershipSuccession(fixture);
+    project.need = 'coordination-capacity';
+    project.desiredFunction = 'civic-coordination';
+    project.materialDemands = [{
+      materialId: Material.CopperCharge,
+      requiredQuantity: 1,
+      availableQuantity: 0,
+      outstandingQuantity: 1,
+      branchKey: 'test-successor-material-request',
+      sourceFactIds: [succession.id],
+    }];
+    alternate.inventory.push({
+      id: 'successor-request-contributor-stack',
+      materialId: Material.CopperCharge,
+      quantity: 1,
+      sourceEventIds: [fixture.alternateContribution.id],
+    });
+    const requestAction = {
+      kind: 'communicate',
+      content: {
+        id: `project-material-request:${project.id}:${Material.CopperCharge}`,
+        kind: 'request',
+        summary: '请把铜料送到固定工地',
+        projectMaterialContribution: {
+          version: 'project-material-contribution-request-v1',
+          projectId: project.id,
+          requesterId: successor.id,
+          materialId: Material.CopperCharge,
+          quantity: 1,
+          site: { ...project.site },
+          expiresAtMonth: 20,
+        },
+      },
+      audience: [alternate.id],
+      channel: 'gesture',
+    };
+    const requestFact = executePrimitiveAction(
+      state,
+      successor,
+      requestAction,
+      12,
+      1,
+      { cause: 'intent', actionTick: 1 },
+    );
+    assert.equal(requestFact.status, 'completed', requestFact.result);
+    state.world.past.push(requestFact);
+    recordProjectAction(state, project.id, requestFact);
+    const request = project.materialContributionRequests.at(-1);
+    assert.equal(request?.requesterId, successor.id);
+    assert.equal(
+      projectMaterialContributionRequestHasAuthoritativeSource(state, project, request),
+      true,
+      'post-transition request is authoritative only for the event-time lead',
+    );
+
+    const nonLeadRequest = executePrimitiveAction(
+      state,
+      alternate,
+      {
+        ...structuredClone(requestAction),
+        content: {
+          ...structuredClone(requestAction.content),
+          id: `project-material-request:${project.id}:stale`,
+          projectMaterialContribution: {
+            ...structuredClone(requestAction.content.projectMaterialContribution),
+            requesterId: alternate.id,
+          },
+        },
+        audience: [successor.id],
+      },
+      12,
+      2,
+      { cause: 'intent', actionTick: 2 },
+    );
+    assert.equal(nonLeadRequest.status, 'blocked',
+      'a non-lead cannot issue a material request under the immutable founder project identity');
+
+    const contributionStep = projectContributionStep(state, alternate, project);
+    assert.ok(contributionStep, 'the addressed contributor can act on the successor request');
+    assert.equal(contributionStep.action.kind, 'transfer');
+    assert.deepEqual(contributionStep.action.to, { kind: 'person', personId: successor.id });
+    const deliveryFact = executePrimitiveAction(
+      state,
+      alternate,
+      contributionStep.action,
+      12,
+      3,
+      { cause: 'intent', actionTick: 3 },
+    );
+    assert.equal(deliveryFact.status, 'completed', deliveryFact.result);
+    state.world.past.push(deliveryFact);
+    recordProjectAction(state, project.id, deliveryFact);
+    assert.equal(successor.inventory.some((stack) => (
+      stack.materialId === Material.CopperCharge && stack.sourceEventIds.includes(deliveryFact.id)
+    )), true, 'the contribution is delivered to the current lead, not the dead founder');
+    assert.equal(
+      inspectProjectMaterialContributionRequest(
+        state,
+        project,
+        request,
+        12,
+        project.materialDemands[0],
+      ).status,
+      'fulfilled',
+    );
+    assert.equal(project.ownerId, founder.id, 'material collaboration never rewrites founder identity');
+  }
+
+  {
+    const fixture = createLeadershipFixture(9707, 'copper-smelting');
+    const { state, founder, successor, project, death } = fixture;
+    const founderOutput = actionFact(
+      founder,
+      'founder-portable-copper-output',
+      9,
+      3,
+      { kind: 'act', operation: 'combine', targets: [] },
+      'completed',
+      { outputMaterialId: Material.Copper, outputStackId: 'founder-portable-copper-stack' },
+    );
+    state.world.past.splice(state.world.past.indexOf(death), 0, founderOutput);
+    project.actionEventIds.push(founderOutput.id);
+    completeLeadershipSuccession(fixture);
+    successor.inventory.push({
+      id: 'old-founder-copper-in-successor-hands',
+      materialId: Material.Copper,
+      quantity: 1,
+      sourceEventIds: [founderOutput.id],
+    });
+    assert.equal(projectFunctionSatisfied(state, project), false,
+      'a founder-era portable output cannot complete the successor project merely by changing hands');
+
+    const successorOutput = actionFact(
+      successor,
+      'successor-portable-copper-output',
+      12,
+      1,
+      { kind: 'act', operation: 'combine', targets: [] },
+      'completed',
+      { outputMaterialId: Material.Copper, outputStackId: 'successor-portable-copper-stack' },
+    );
+    state.world.past.push(successorOutput);
+    recordProjectAction(state, project.id, successorOutput);
+    successor.inventory.push({
+      id: 'successor-portable-copper-stack',
+      materialId: Material.Copper,
+      quantity: 1,
+      sourceEventIds: [successorOutput.id],
+    });
+    assert.equal(projectFunctionSatisfied(state, project), true,
+      'portable metallurgy advances only from the successor own post-transition output');
+    assert.equal(project.ownerId, founder.id);
+  }
+
+  {
+    const fixture = createLeadershipFixture(9708, 'bronze-tooling');
+    const { state, founder, successor, project, death } = fixture;
+    const bronzeToolRule = inventoryCombinationRules()
+      .find((rule) => rule.output.materialId === Material.BronzeTool);
+    assert.ok(bronzeToolRule);
+    const successorToolTechniqueId = inventoryCombinationTechniqueId(bronzeToolRule);
+    const founderTool = actionFact(
+      founder,
+      'founder-portable-bronze-tool',
+      9,
+      3,
+      { kind: 'act', operation: 'combine', targets: [] },
+      'completed',
+      {
+        outputMaterialId: Material.BronzeTool,
+        outputStackId: 'founder-portable-bronze-tool-stack',
+        techniqueId: 'founder-private-tool-technique',
+      },
+    );
+    state.world.past.splice(state.world.past.indexOf(death), 0, founderTool);
+    project.actionEventIds.push(founderTool.id);
+    completeLeadershipSuccession(fixture);
+    successor.inventory.push({
+      id: 'old-founder-tool-in-successor-hands',
+      materialId: Material.BronzeTool,
+      quantity: 1,
+      sourceEventIds: [founderTool.id],
+    });
+    assert.equal(projectFunctionSatisfied(state, project), false,
+      'founder tool and hidden technique do not become successor completion evidence');
+
+    const successorTool = actionFact(
+      successor,
+      'successor-portable-bronze-tool',
+      12,
+      1,
+      { kind: 'act', operation: 'combine', targets: [] },
+      'completed',
+      {
+        outputMaterialId: Material.BronzeTool,
+        outputStackId: 'successor-portable-bronze-tool-stack',
+        techniqueId: successorToolTechniqueId,
+      },
+    );
+    state.world.past.push(successorTool);
+    recordProjectAction(state, project.id, successorTool);
+    successor.inventory.push({
+      id: 'successor-portable-bronze-tool-stack',
+      materialId: Material.BronzeTool,
+      quantity: 1,
+      sourceEventIds: [successorTool.id],
+    });
+    successor.knowledge.push({
+      id: successorToolTechniqueId,
+      kind: 'technique',
+      summary: '本人复核过的青铜工具制造法',
+      confidence: 46,
+      learnedAtMonth: 12,
+      sourceEventIds: [successorTool.id],
+    });
+    assert.equal(projectFunctionSatisfied(state, project), false,
+      'manufacture without the successor own source-bound verification remains incomplete');
+    const verification = executePrimitiveAction(
+      state,
+      successor,
+      {
+        kind: 'attend',
+        target: {
+          kind: 'inventory-stack',
+          personId: successor.id,
+          stackId: 'successor-portable-bronze-tool-stack',
+        },
+        verification: {
+          techniqueId: successorToolTechniqueId,
+          sourceEventId: successorTool.id,
+          expectedMaterialId: Material.BronzeTool,
+        },
+      },
+      12,
+      2,
+      { cause: 'intent', actionTick: 2 },
+    );
+    assert.equal(verification.status, 'completed', verification.result);
+    state.world.past.push(verification);
+    recordProjectAction(state, project.id, verification);
+    assert.equal(projectFunctionSatisfied(state, project), true,
+      'the successor own manufacture plus source-bound verification completes the tool project');
+    const completionEvidence = projectCompletionEvidence(state, project);
+    assert.equal(completionEvidence.includes(successorTool.id), true);
+    assert.equal(completionEvidence.includes(verification.id), true);
+    assert.equal(completionEvidence.includes(founderTool.id), false);
+    assert.equal(project.ownerId, founder.id);
+  }
+
+  {
+    const fixture = createLeadershipFixture(9709);
+    const { state, successor, project, death, firstContribution } = fixture;
+    const succession = completeLeadershipSuccession(fixture);
+    project.triggerFactIds = [death.id];
+    const postTransitionLeadAction = actionFact(
+      successor,
+      'post-transition-lead-action',
+      11,
+      2,
+      { kind: 'act', operation: 'exert', targets: [] },
+      'completed',
+      {},
+    );
+    state.world.past.push(postTransitionLeadAction);
+    project.actionEventIds.push(postTransitionLeadAction.id);
+    const fullHistory = [...state.world.past];
+    for (let index = 0; index < 12; index += 1) {
+      fullHistory.push(actionFact(
+        successor,
+        `post-succession-hot-padding-${index}`,
+        12 + index,
+        0,
+        { kind: 'act', operation: 'exert', targets: [] },
+        'completed',
+        {},
+      ));
+    }
+    const hotStartIndex = fullHistory.length - 2;
+    state.clock.elapsedMonths = 23;
+    state.world.past = fullHistory.slice(hotStartIndex);
+    state.world.historyCursor = {
+      version: 1,
+      eventCount: fullHistory.length,
+      hotStartIndex,
+      tailEventId: fullHistory.at(-1).id,
+    };
+    const authority = { stateHash: 'c'.repeat(64) };
+    const fold = beginHistoryRetentionProjection(state, authority);
+    foldHistoryRetentionSegment(fold, fullHistory, 0);
+    const projection = finishHistoryRetentionProjection(fold);
+    assert.deepEqual(
+      projection.demandGroups.filter((group) => group.blocking).map((group) => ({
+        groupKey: group.groupKey,
+        unresolvedEventIds: group.unresolvedEventIds,
+      })),
+      [],
+      'bounded leadership fixture must provide every blocking retained source',
+    );
+    const decodedColdPins = projection.pins
+      .filter((pin) => pin.absoluteIndex < hotStartIndex)
+      .map((pin) => ({ absoluteIndex: pin.absoluteIndex, event: fullHistory[pin.absoluteIndex] }));
+    installVerifiedHistoryRetentionEvidence(state, authority.stateHash, projection, decodedColdPins);
+    for (const sourceId of [death.id, firstContribution.id, succession.id]) {
+      assert.equal(worldEventById(state, sourceId)?.id, sourceId,
+        `bounded restore must resolve cold leadership source ${sourceId}`);
+    }
+    assert.equal(inspectProjectLeadership(project).status, 'led');
+    const coldPostTransitionFact = worldEventById(state, postTransitionLeadAction.id);
+    assert.equal(coldPostTransitionFact?.kind, 'action');
+    assert.equal(projectLeadIdAtEvent(project, coldPostTransitionFact), successor.id,
+      'event-time authority remains derivable after vacancy and succession facts leave the hot window');
+    assert.equal(project.ownerId, fixture.founder.id,
+      'bounded restoration keeps founder identity separate from reconstructed active authority');
+  }
+
+  {
     const { state, project } = createLeadershipFixture(9702);
     synchronizeProject(state, project, 10);
     const vacancy = projectLeadershipVacancy(project);
@@ -365,9 +735,11 @@ try {
     state.projects = [];
     const founder = state.people[0];
     const successor = state.people[1];
-    state.people = [founder, successor];
+    const teacher = state.people[2];
+    state.people = [founder, successor, teacher];
     resetPerson(founder);
     resetPerson(successor);
+    resetPerson(teacher);
 
     const source = state.world.mechanicalPower.sources.find((candidate) => candidate.from.y === 12)
       ?? state.world.mechanicalPower.sources[0];
@@ -381,7 +753,7 @@ try {
       setVoxel(state.world.grid, position.x, position.y, position.z, Material.Air);
       setVoxel(state.world.grid, position.x, position.y, position.z + 1, Material.Air);
     }
-    for (const person of [founder, successor]) {
+    for (const person of [founder, successor, teacher]) {
       person.position.cellId = site.cellId;
       person.position.z = site.z;
       person.position.previousCellId = site.cellId;
@@ -517,6 +889,106 @@ try {
     assert.equal(project.ownerId, founder.id);
     assert.equal(successor.knowledge.some((fact) => fact.id.includes(`water-current:${source.id}`)), false,
       'the founder water observation is not copied during succession');
+
+    const converterIndex = network.components.findIndex((component) => component.role === 'converter');
+    assert.notEqual(converterIndex, -1);
+    const [temporarilyMissingConverter] = network.components.splice(converterIndex, 1);
+    setVoxel(
+      state.world.grid,
+      temporarilyMissingConverter.position.x,
+      temporarilyMissingConverter.position.y,
+      temporarilyMissingConverter.position.z,
+      Material.Air,
+    );
+    const unknownOutputMaterialId = pendingProjectKnowledgeOutput(state, project);
+    assert.equal(unknownOutputMaterialId, Material.WaterWheel,
+      'the successor independently perceives the next unknown component gap');
+    const teachingRule = inventoryCombinationRules()
+      .find((rule) => rule.output.materialId === unknownOutputMaterialId);
+    assert.ok(teachingRule);
+    const teachingTechniqueId = inventoryCombinationTechniqueId(teachingRule);
+    teacher.knowledge.push({
+      id: teachingTechniqueId,
+      kind: 'technique',
+      summary: '可公开讲授的水轮制造法',
+      confidence: 90,
+      learnedAtMonth: 1,
+      sourceEventIds: [founderObservation.id],
+    });
+    const knowledgeRequestFact = executePrimitiveAction(
+      state,
+      successor,
+      {
+        kind: 'communicate',
+        content: {
+          id: `project-knowledge-request:${project.id}:${unknownOutputMaterialId}`,
+          kind: 'request',
+          summary: '询问当前缺失构件的制造办法',
+          projectKnowledgeRequest: {
+            version: 'project-knowledge-request-v1',
+            projectId: project.id,
+            requesterId: successor.id,
+            outputMaterialId: unknownOutputMaterialId,
+            expiresAtMonth: 15,
+          },
+        },
+        audience: [teacher.id],
+        channel: 'gesture',
+      },
+      3,
+      2,
+      { cause: 'intent', actionTick: 2 },
+    );
+    assert.equal(knowledgeRequestFact.status, 'completed', knowledgeRequestFact.result);
+    state.world.past.push(knowledgeRequestFact);
+    recordProjectAction(state, project.id, knowledgeRequestFact);
+    const knowledgeRequest = project.knowledgeRequests.at(-1);
+    assert.equal(knowledgeRequest?.requesterId, successor.id);
+    assert.equal(
+      projectKnowledgeRequestHasAuthoritativeSource(state, project, knowledgeRequest),
+      true,
+      'mechanical unknown-component request is authenticated against the event-time lead',
+    );
+    const knowledgeResponseFact = executePrimitiveAction(
+      state,
+      teacher,
+      {
+        kind: 'communicate',
+        content: {
+          id: `teach:${teachingTechniqueId}:${successor.id}`,
+          kind: 'claim',
+          summary: '示范当前缺失构件的制造办法',
+          factId: teachingTechniqueId,
+          projectKnowledgeResponse: {
+            version: 'project-knowledge-response-v1',
+            projectId: project.id,
+            requestEventId: knowledgeRequest.requestEventId,
+            requesterId: successor.id,
+            outputMaterialId: unknownOutputMaterialId,
+          },
+        },
+        audience: [successor.id],
+        channel: 'gesture',
+      },
+      3,
+      3,
+      { cause: 'intent', actionTick: 3 },
+    );
+    assert.equal(knowledgeResponseFact.status, 'completed', knowledgeResponseFact.result);
+    state.world.past.push(knowledgeResponseFact);
+    recordProjectAction(state, project.id, knowledgeResponseFact);
+    assert.equal(knowledgeRequest.responseEventId, knowledgeResponseFact.id);
+    assert.equal(successor.knowledge.some((fact) => (
+      fact.id === teachingTechniqueId && fact.confidence >= 55
+    )), true, 'the successor learns through its own explicit request, not founder hidden knowledge');
+    network.components.splice(converterIndex, 0, temporarilyMissingConverter);
+    setVoxel(
+      state.world.grid,
+      temporarilyMissingConverter.position.x,
+      temporarilyMissingConverter.position.y,
+      temporarilyMissingConverter.position.z,
+      temporarilyMissingConverter.materialId,
+    );
 
     successor.inventory.push(
       { id: 'successor-seed', materialId: Material.Seed, quantity: 2, sourceEventIds: ['seed-source'] },

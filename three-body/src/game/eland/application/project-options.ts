@@ -117,6 +117,7 @@ function projectPlanBasisTransitionAtMonth(
     if (request.version !== 'project-knowledge-request-v1'
       || request.projectId !== project.id
       || request.requesterId !== owner.id
+      || !projectKnowledgeRequestHasAuthoritativeSource(state, project, request)
       || !request.responseEventId
       || !request.responderId
       || !request.techniqueId) continue;

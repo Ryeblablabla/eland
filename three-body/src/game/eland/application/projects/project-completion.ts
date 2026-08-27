@@ -7,6 +7,10 @@ import type {
   ProjectFunctionalCommissioning,
   ProjectState,
 } from '../../domain/project';
+import {
+  projectCurrentLeadId,
+  projectEventHasEventTimeLead,
+} from '../../domain/project-leadership';
 import { shelterGeometryAt } from '../../domain/structure';
 import { worldEventById } from '../../domain/event-index';
 import { cellsInRadius, voxelAt } from '../../world/grid';
@@ -351,13 +355,23 @@ function functionalCommissioningEvidence(
 }
 
 function portableFunctionEvidenceIds(state: SimulationState, project: ProjectState): string[] {
-  const owner = state.people.find((person) => person.id === project.ownerId && isAlive(person));
-  if (!owner) return [];
+  const currentLeadId = projectCurrentLeadId(project);
+  const currentLead = state.people.find((person) => person.id === currentLeadId && isAlive(person));
+  if (!currentLead) return [];
   const desired = new Set(completedFunctionMaterialIds(project));
   const projectActionIds = new Set(project.actionEventIds);
-  return [...new Set(owner.inventory
+  return [...new Set(currentLead.inventory
     .filter((stack) => stack.quantity > 0 && desired.has(stack.materialId))
-    .flatMap((stack) => stack.sourceEventIds.filter((eventId) => projectActionIds.has(eventId))))];
+    .flatMap((stack) => stack.sourceEventIds.filter((eventId) => {
+      if (!projectActionIds.has(eventId)) return false;
+      const event = worldEventById(state, eventId);
+      return event?.kind === 'action'
+        && event.status === 'completed'
+        && event.who === currentLead.id
+        && projectEventHasEventTimeLead(project, event)
+        && event.action.kind === 'act'
+        && desired.has(Number(event.diff.outputMaterialId));
+    })))];
 }
 
 export const verifiedProductionToolFunctions = new Set<ProjectFunction>([
@@ -385,13 +399,15 @@ export function projectProductionToolBaselineRank(project: ProjectState): number
  * has become reliable (normally through the existing source-bound attend step).
  */
 function verifiedProductionToolEvidenceIds(state: SimulationState, project: ProjectState): string[] {
-  const owner = state.people.find((person) => person.id === project.ownerId && isAlive(person));
-  if (!owner) return [];
+  const currentLeadId = projectCurrentLeadId(project);
+  const currentLead = state.people.find((person) => person.id === currentLeadId && isAlive(person));
+  if (!currentLead) return [];
   const desired = new Set(completedFunctionMaterialIds(project));
   const portableEvidence = new Set(portableFunctionEvidenceIds(state, project));
   const baselineRank = projectProductionToolBaselineRank(project);
   const outputFacts = projectActionFacts(state, project).filter((event) => event.status === 'completed'
-    && event.who === owner.id
+    && event.who === currentLead.id
+    && projectEventHasEventTimeLead(project, event)
     && event.action.kind === 'act'
     && event.action.operation === 'combine'
     && desired.has(Number(event.diff.outputMaterialId))
@@ -399,7 +415,7 @@ function verifiedProductionToolEvidenceIds(state: SimulationState, project: Proj
     && portableEvidence.has(event.id));
   for (const output of outputFacts.reverse()) {
     const techniqueId = typeof output.diff.techniqueId === 'string' ? output.diff.techniqueId : undefined;
-    const knowledge = techniqueId ? owner.knowledge.find((fact) => fact.id === techniqueId
+    const knowledge = techniqueId ? currentLead.knowledge.find((fact) => fact.id === techniqueId
       && fact.kind === 'technique'
       && fact.confidence >= 55
       && fact.sourceEventIds.includes(output.id)) : undefined;

@@ -26,7 +26,11 @@ import type {
   ProjectProposal,
   ProjectState,
 } from '../../domain/project';
-import { projectIsLedBy } from '../../domain/project-leadership';
+import {
+  projectCurrentLeadId,
+  projectEventHasEventTimeLead,
+  projectIsLedBy,
+} from '../../domain/project-leadership';
 import {
   inspectProjectMaterialContributionRequest,
   transferMatchesProjectMaterialRequest,
@@ -2054,7 +2058,7 @@ function materialContributionRequestStep(
   requirement: ProjectMaterialRequirement,
   activeDemands: ProjectMaterialDemand[] = requirement.demands,
 ): ProjectStep | null {
-  if (project.ownerId !== person.id
+  if (!projectIsLedBy(project, person.id)
     || !projectSupportsMaterialContribution(project)
     || !project.site) return null;
   const visible = new Set(visibleCellsFor(person));
@@ -2172,11 +2176,12 @@ export function projectContributionStep(
   person: PersonState,
   project: ProjectState,
 ): ProjectStep | null {
-  if (project.ownerId === person.id
+  if (projectIsLedBy(project, person.id)
     || !projectSupportsMaterialContribution(project)
     || !project.site) return null;
-  const owner = state.people.find((candidate) => candidate.id === project.ownerId && isAlive(candidate));
-  if (!owner) return null;
+  const currentLeadId = projectCurrentLeadId(project);
+  const currentLead = state.people.find((candidate) => candidate.id === currentLeadId && isAlive(candidate));
+  if (!currentLead) return null;
   const selected = (project.materialContributionRequests ?? [])
     .flatMap((request) => {
       if (!request.contributorIds.includes(person.id)) return [];
@@ -2214,8 +2219,8 @@ export function projectContributionStep(
     key: `carry-project-material-${project.id}-${request.requestEventId}`,
     summary: `把${materialName}运往${usesFixedWorkplace ? '固定冶炼工地' : '固定项目工地'}`,
     reason: usesFixedWorkplace
-      ? '本人收到与真实项目缺口绑定的请求；运输目标是固定设施，不追逐正在移动的项目所有者'
-      : '本人收到与真实项目缺口绑定的请求；运输目标是固定地点，不追逐正在移动的项目所有者',
+      ? '本人收到与真实项目缺口绑定的请求；运输目标是固定设施，不追逐正在移动的项目负责人'
+      : '本人收到与真实项目缺口绑定的请求；运输目标是固定地点，不追逐正在移动的项目负责人',
     action: { kind: 'move', toCellId: destination.cellId, toZ: destination.z },
     ...(metallurgyWorkplace ? { target: { kind: 'voxel' as const, position: metallurgyWorkplace.target.position } } : {}),
     sourceFactIds: [...new Set([request.requestEventId, ...stack.sourceEventIds])],
@@ -2226,16 +2231,16 @@ export function projectContributionStep(
   return {
     key: `contribute-project-material-${project.id}-${request.requestEventId}-${stack.id}`,
     summary: `向“${project.summary}”贡献${materialName} × ${quantity}`,
-    reason: sameLocation(person, owner)
-      ? '项目所有者已经在固定工地，材料当面交接并保留来源'
-      : '项目所有者暂时不在工位，材料留在固定设施旁，后续仍需由真实取物动作接续',
+    reason: sameLocation(person, currentLead)
+      ? '项目负责人已经在固定工地，材料当面交接并保留来源'
+      : '项目负责人暂时不在工位，材料留在固定设施旁，后续仍需由真实取物动作接续',
     action: {
       kind: 'transfer',
       materialId: request.materialId,
       quantity,
       from: { kind: 'person', personId: person.id },
-      to: sameLocation(person, owner)
-        ? { kind: 'person', personId: owner.id }
+      to: sameLocation(person, currentLead)
+        ? { kind: 'person', personId: currentLead.id }
         : { kind: 'ground', cellId: person.position.cellId, z: person.position.z },
       stackId: stack.id,
       authorizationRef: request.requestEventId,
@@ -2392,8 +2397,8 @@ export function compileProjectStep(
       ? -1
       : projectFacts.length - 1 - reversedDeliveryIndex;
     const deliveryFact = deliveryIndex >= 0 ? projectFacts[deliveryIndex] : undefined;
-    const ownerInspectedAfterDelivery = deliveryIndex >= 0 && projectFacts.slice(deliveryIndex + 1)
-      .some((event) => event.who === project.ownerId
+    const leadInspectedAfterDelivery = deliveryIndex >= 0 && projectFacts.slice(deliveryIndex + 1)
+      .some((event) => projectEventHasEventTimeLead(project, event)
         && event.cellId === destination.cellId
         && event.toZ === destination.z);
     const deliveredDropVisible = Boolean(deliveryFact && visibleDrops.some((drop) => (
@@ -2404,7 +2409,7 @@ export function compileProjectStep(
     )));
     const deliveredForInspection = view.outstandingQuantity > 0
       && Boolean(deliveryFact)
-      && (!ownerInspectedAfterDelivery || deliveredDropVisible);
+      && (!leadInspectedAfterDelivery || deliveredDropVisible);
     if (view.status === 'open') return [{ kind: 'open' as const, request, demand }];
     return deliveredForInspection && deliveryFact
       ? [{ kind: 'delivered' as const, request, demand, deliveryFact }]

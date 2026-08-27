@@ -104,6 +104,7 @@ import {
 import { executeCommunicate } from './actions/communication-actions';
 import { executeMeasurementAttend } from './actions/measurement-actions';
 import {
+  projectIsLedBy,
   projectLeadershipInspectionFactId,
   validateProjectLeadershipSuccessionAction,
 } from './project-leadership';
@@ -121,7 +122,7 @@ function projectMaterialDeliveryForTransfer(
     || action.from.personId !== person.id
     || !action.authorizationRef) return undefined;
   for (const project of state.projects) {
-    if (project.status !== 'active' || project.ownerId === person.id) continue;
+    if (project.status !== 'active' || projectIsLedBy(project, person.id)) continue;
     const request = project.materialContributionRequests?.find((candidate) => (
       candidate.requestEventId === action.authorizationRef
       && candidate.contributorIds.includes(person.id)

@@ -394,7 +394,8 @@ try {
     `export { installVerifiedHistoryRetentionEvidence } from ${JSON.stringify(path.join(workspace, 'server/retained-history-evidence.ts'))};`,
     `export { decodeRunContinuationBundle } from ${JSON.stringify(path.join(workspace, 'server/run-continuation-bundle.ts'))};`,
     `export { decodeHistoryRetentionSidecar, encodeHistoryRetentionSidecar, hashHistoryRetentionStoredContent, HISTORY_RETENTION_SIDECAR_CODEC } from ${JSON.stringify(path.join(workspace, 'server/history-retention-codec.ts'))};`,
-    `export { liveAgreementHistoryLeaseKey, livePersonSocialEvidenceLeaseKey, retainedColdWorldEventsForLease, waterAssistanceEvidenceLeaseKey, waterAssistanceFulfillmentMembershipGroupKey, worldEventById, worldEventByIdWithRetainedLease } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/event-index.ts'))};`,
+    `export { liveAgreementHistoryLeaseKey, retainedColdWorldEventsForLease, waterAssistanceEvidenceLeaseKey, waterAssistanceFulfillmentMembershipGroupKey, worldEventById, worldEventByIdWithRetainedLease } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/event-index.ts'))};`,
+    `export { livePersonSocialStrictEvidenceLeaseKey } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/live-social-evidence.ts'))};`,
     `export { recordAgreementAction, verifiedWaterAssistanceEvidenceAnchors } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/agreement.ts'))};`,
     `export { socialCooperationBeliefFor } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/social-learning.ts'))};`,
   ].join('\n'));
@@ -547,17 +548,18 @@ try {
 
   const sharedFixture = buildFixtureState(api);
   const sharedFulfillmentId = sharedFixture.helperFacts[0].id;
-  const sharedRequester = sharedFixture.state.people.find((person) => (
-    person.id === sharedFixture.requesterId
+  sharedFixture.helperFacts[0].cause = 'intent';
+  const sharedHelper = sharedFixture.state.people.find((person) => (
+    person.id === sharedFixture.helperId
   ));
-  sharedRequester.memories.push({
+  sharedHelper.memories.push({
     id: 'water-retention-shared-memory',
     kind: 'episode',
     summary: '记得较早一次到达水边',
     importance: 60,
     createdAtMonth: 851,
     lastRecalledAtMonth: 860,
-    personIds: [sharedFixture.helperId],
+    personIds: [sharedFixture.requesterId],
     sourceEventIds: [sharedFulfillmentId],
   });
   const sharedProjection = projectAll(api, sharedFixture.state);
@@ -585,8 +587,9 @@ try {
       sharedLegacyBounded.world.historyCursor.hotStartIndex,
     ),
   );
-  const sharedSocialLeaseKey = api.livePersonSocialEvidenceLeaseKey(
-    sharedFixture.requesterId,
+  const sharedSocialLeaseKey = api.livePersonSocialStrictEvidenceLeaseKey(
+    sharedFixture.helperId,
+    'electrical-remote-work',
   );
   assert.equal(api.worldEventById(sharedLegacyBounded, sharedFulfillmentId)?.id,
     sharedFulfillmentId,

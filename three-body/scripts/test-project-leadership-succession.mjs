@@ -655,17 +655,19 @@ try {
     }
     const hotStartIndex = fullHistory.length - 2;
     state.clock.elapsedMonths = 23;
-    state.world.past = fullHistory.slice(hotStartIndex);
+    state.world.past = fullHistory;
     state.world.historyCursor = {
       version: 1,
       eventCount: fullHistory.length,
-      hotStartIndex,
+      hotStartIndex: 0,
       tailEventId: fullHistory.at(-1).id,
     };
     const authority = { stateHash: 'c'.repeat(64) };
     const fold = beginHistoryRetentionProjection(state, authority);
     foldHistoryRetentionSegment(fold, fullHistory, 0);
     const projection = finishHistoryRetentionProjection(fold);
+    state.world.past = fullHistory.slice(hotStartIndex);
+    state.world.historyCursor.hotStartIndex = hotStartIndex;
     assert.deepEqual(
       projection.demandGroups.filter((group) => group.blocking).map((group) => ({
         groupKey: group.groupKey,

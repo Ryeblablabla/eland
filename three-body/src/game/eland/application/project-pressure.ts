@@ -41,6 +41,7 @@ import {
   electricalPowerMaintenancePressure,
   validateElectricalPowerMaintenanceBasis,
 } from './electrical-power-maintenance-options';
+import { validateCapabilityReplicationBasis } from './projects/capability-replication';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
@@ -52,6 +53,7 @@ export type ProjectPressureSubject = Pick<
     | 'measurementUncertaintyBasis'
     | 'remoteWorkPowerBasis'
     | 'productionToolBaselineRank'
+    | 'capabilityReplicationBasis'
 > & { desiredFunction?: ProjectProposal['desiredFunction'] };
 
 export interface ProjectPressureView {
@@ -667,6 +669,34 @@ function developmentBasis(
   }
 
   if (subject.need === 'production-efficiency') {
+    const replication = subject.capabilityReplicationBasis;
+    if (subject.desiredFunction === 'efficient-production' && replication) {
+      const valid = validateCapabilityReplicationBasis(state, owner, replication, {
+        view,
+        requireCurrentExemplar: !subject.pressureBasis,
+      });
+      const rankGap = valid ? replication.targetToolRank - replication.baselineToolRank : 0;
+      return makeBasis(subject, owner, atMonth,
+        valid ? 48 + Math.min(24, rankGap * 6) + (replication.visibleExemplarCount === 1 ? 8 : 0) : 0,
+        [
+          `project:function:${subject.desiredFunction}`,
+          `state:recent-own-production-labor:${valid ? replication.recentLaborEventId : 'invalid'}`,
+          `state:visible-production-tool-output:${valid ? replication.outputMaterialId : 'invalid'}`,
+          `state:visible-capability-exemplars:${valid ? replication.visibleExemplarCount : 0}`,
+          `state:personal-tool-rank:${valid ? replication.baselineToolRank : 0}`,
+          `state:visible-tool-rank:${valid ? replication.targetToolRank : 0}`,
+          `state:capability-replication-basis:${valid ? replication.basisKey : 'invalid'}`,
+        ],
+        valid ? [
+          'own-recent-production-labor',
+          'visible-higher-rank-production-tool',
+          'personal-tool-access-absent',
+          replication.visibleExemplarCount === 1
+            ? 'single-visible-capability-exemplar'
+            : 'few-visible-capability-exemplars',
+        ] : ['capability-replication-evidence-invalid'],
+        valid ? replication.sourceFactIds : []);
+    }
     const crowding = Math.max(0, visiblePopulation - 3);
     const shortage = Math.max(0, 2.5 - foodPerPerson);
     const productionToolAddressesFunction = currentProductionToolRank >= efficientProductionTargetRank

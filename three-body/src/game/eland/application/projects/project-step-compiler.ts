@@ -38,7 +38,9 @@ import {
 import {
   inspectProjectKnowledgeRequest,
   pendingProjectKnowledgeGap,
+  personReliablyKnowsOutput,
 } from '../../domain/project-knowledge-request';
+import { worldEventById } from '../../domain/event-index';
 import { resolvePersonKnownProcess } from '../../domain/person-known-process';
 import { findCurrentVisibleStoredMaterialAccess, retrieveStoredMaterialOrMove } from '../../domain/stored-food-access';
 import {
@@ -132,6 +134,8 @@ import {
 } from './project-spatial-planning';
 import type { ProjectStep } from './project-step';
 import { fixedFacilityWorkplace, knownFacilitySite } from './project-workplace';
+import { capabilityReplicationAcquisitionFact } from './capability-replication';
+import { productionToolUseOpportunity } from '../separation-options';
 import { careApplicationProjectStep } from './steps/care';
 import { constructionProjectStep, shelterBuildingStack } from './steps/construction';
 import { settledCultivationProjectStep } from './steps/cultivation';
@@ -496,7 +500,15 @@ function projectMaterialRequirement(state: SimulationState, person: PersonState,
       if (known) knownIntermediateRequirements.push(known);
     }
   }
-  if (project.desiredFunction === 'efficient-production') {
+  if (project.capabilityReplicationBasis
+    && personReliablyKnowsOutput(person, project.capabilityReplicationBasis.outputMaterialId)) {
+    const known = personallyKnownProcessRequirement(
+      state,
+      person,
+      project.capabilityReplicationBasis.outputMaterialId,
+    );
+    if (known.demands.length || known.planKnowledgeId) knownIntermediateRequirements.push(known);
+  } else if (project.desiredFunction === 'efficient-production') {
     requireRaw(Material.Wood, 1);
     if (consumableInventoryQuantity(person, Material.Rope) === 0) requireRaw(Material.Fiber, 2);
   }
@@ -1760,6 +1772,9 @@ function compileProjectWorkStep(
   visibleDrops: DropState[],
   project: ProjectState,
 ): ProjectStep | null {
+  if (project.capabilityReplicationBasis) {
+    return capabilityReplicationProjectStep(state, person, visibleDrops, project);
+  }
   if (project.desiredFunction === 'restore-electrical-power-delivery') {
     const electricalStep = electricalPowerMaintenanceProjectStep(state, person, project);
     if (electricalStep) return electricalStep;
@@ -1982,7 +1997,7 @@ type ProjectKnowledgeRequestCompilation =
   | { status: 'waiting' }
   | { status: 'unavailable' };
 
-function mechanicalProjectKnowledgeRequestStep(
+function projectKnowledgeRequestStep(
   state: SimulationState,
   person: PersonState,
   project: ProjectState,
@@ -2014,14 +2029,14 @@ function mechanicalProjectKnowledgeRequestStep(
     status: 'action',
     step: {
       key: representationId,
-      summary: `向眼前的人询问怎样制作项目下一步所需的${materialName}`,
-      reason: '本人能够从亲身劳动与冻结计划辨认下一部件，但尚无可靠制作经验；请求只说明部件，不包含本人未知的配方输入，也不预判谁会回答',
+      summary: `向眼前的人询问怎样制作项目所需的${materialName}`,
+      reason: '本人能够从亲身劳动与当前项目证据辨认目标产物，但尚无可靠制作经验；请求只说明产物，不包含本人未知的配方输入，也不预判谁会回答',
       action: {
         kind: 'communicate',
         content: {
           id: representationId,
           kind: 'request',
-          summary: `“${project.summary}”下一步需要${materialName}，我还不知道怎样制作，谁能教我？`,
+          summary: `“${project.summary}”需要${materialName}，我还不知道怎样制作，谁能教我？`,
           projectKnowledgeRequest: {
             version: 'project-knowledge-request-v1',
             projectId: project.id,
@@ -2038,6 +2053,93 @@ function mechanicalProjectKnowledgeRequestStep(
       reservations: [],
     },
   };
+}
+
+function capabilityReplicationProjectStep(
+  state: SimulationState,
+  person: PersonState,
+  visibleDrops: DropState[],
+  project: ProjectState,
+): ProjectStep | null {
+  const basis = project.capabilityReplicationBasis;
+  if (!basis
+    || project.status !== 'active'
+    || project.ownerId !== person.id
+    || project.need !== 'production-efficiency'
+    || project.desiredFunction !== 'efficient-production'
+    || project.productionToolBaselineRank !== basis.baselineToolRank) return null;
+  const acquired = person.inventory
+    .filter((stack) => stack.quantity > 0 && stack.materialId === basis.outputMaterialId)
+    .flatMap((stack) => {
+      const acquisition = capabilityReplicationAcquisitionFact(state, person, project, stack);
+      return acquisition ? [{ stack, acquisition }] : [];
+    })
+    .sort((left, right) => left.stack.id.localeCompare(right.stack.id))[0];
+  if (acquired) {
+    const labor = worldEventById(state, basis.recentLaborEventId);
+    const preferredSourceMaterialId = labor?.kind === 'action'
+      && typeof labor.diff.sourceMaterialId === 'number'
+      ? labor.diff.sourceMaterialId
+      : undefined;
+    const use = productionToolUseOpportunity(
+      state,
+      person,
+      visibleCellsFor(person),
+      acquired.stack.id,
+      preferredSourceMaterialId,
+    );
+    return use ? {
+      key: `use-replicated-production-tool:${project.id}:${acquired.stack.id}`,
+      summary: use.summary,
+      reason: use.reason,
+      action: use.action,
+      target: use.target,
+      sourceFactIds: [...new Set([
+        ...basis.sourceFactIds,
+        acquired.acquisition.id,
+        ...use.sourceFactIds,
+      ])],
+      missingMaterialIds: [],
+      reservations: reservation(person, acquired.stack.id),
+      ...(project.planKnowledgeId ? { planKnowledgeId: project.planKnowledgeId } : {}),
+    } : null;
+  }
+  if (person.inventory.some((stack) => stack.quantity > 0 && stack.materialId === basis.outputMaterialId)) {
+    // A malformed/imported stack without a post-opening acquisition fact must
+    // not authorize its own completion or trigger duplicate manufacturing.
+    return null;
+  }
+  const availableDrop = nearestDrop(state, person, visibleDrops, [basis.outputMaterialId]);
+  if (availableDrop) {
+    const demand = materialDemand(
+      person,
+      basis.outputMaterialId,
+      1,
+      `capability-replication:${project.id}:${basis.outputMaterialId}`,
+      basis.sourceFactIds,
+    );
+    return dropStep(person, availableDrop, project.summary, demand);
+  }
+  if (personReliablyKnowsOutput(person, basis.outputMaterialId)) {
+    return compileKnownOutput(
+      state,
+      person,
+      visibleDrops,
+      basis.outputMaterialId,
+      project.summary,
+      { preferLocalFinishedOutput: false, allowVisibleHolder: false },
+    );
+  }
+  const gap = pendingProjectKnowledgeGap(state, project);
+  if (!gap || gap.outputMaterialId !== basis.outputMaterialId) return null;
+  const request = projectKnowledgeRequestStep(
+    state,
+    person,
+    project,
+    basis.outputMaterialId,
+    gap.sourceFactIds,
+  );
+  return request.status === 'action' ? request.step : null;
 }
 
 export function mechanicalUnknownOutputQuestionKind(
@@ -2332,7 +2434,7 @@ export function compileProjectStep(
         } : undefined);
       }
       const knowledgeGap = pendingProjectKnowledgeGap(state, project);
-      const knowledgeRequest = mechanicalProjectKnowledgeRequestStep(
+      const knowledgeRequest = projectKnowledgeRequestStep(
         state,
         person,
         project,
@@ -2507,7 +2609,7 @@ export function compileProjectStep(
       demand.materialId === knowledgeGap.outputMaterialId
         && demand.outstandingQuantity > 0
     ))) {
-      const knowledgeRequest = mechanicalProjectKnowledgeRequestStep(
+      const knowledgeRequest = projectKnowledgeRequestStep(
         state,
         person,
         project,

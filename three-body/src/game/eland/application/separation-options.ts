@@ -1,8 +1,8 @@
 import type { ActionOption } from '../domain/action';
 import { inventoryQuantity, isAlive, type PersonState } from '../domain/person';
 import type { SimulationState } from '../domain/model';
-import { materialDefinition } from '../domain/material';
-import { productionToolRank } from '../domain/production-tool';
+import { Material, materialDefinition, type MaterialId } from '../domain/material';
+import { isProductionToolMaterial, productionToolRank } from '../domain/production-tool';
 import {
   separationTechniqueId,
   separationTechniqueSummary,
@@ -48,6 +48,77 @@ function nearestWorkingPosition(
     .filter(({ path }) => path.length > 0)
     .map(({ position, path }) => ({ position, pathLength: path.length }))
     .sort((a, b) => a.pathLength - b.pathLength || a.position.cellId - b.position.cellId || a.position.z - b.position.z)[0] ?? null;
+}
+
+const PRODUCTION_TOOL_USE_MATERIALS = new Set<MaterialId>([
+  Material.Wood,
+  Material.Leaves,
+  Material.CropMature,
+  Material.BerryBush,
+  Material.Shrub,
+]);
+
+export interface ProductionToolUseOpportunity {
+  summary: string;
+  reason: string;
+  action: Extract<ActionOption['nextAction'], { kind: 'act' | 'move' }>;
+  target: Extract<NonNullable<ActionOption['target']>, { kind: 'voxel' }>;
+  sourceFactIds: string[];
+}
+
+/**
+ * Finds one ordinary, physically legal separation job that will use one exact
+ * production-tool stack. The executor remains authoritative for outputs and
+ * multiplier; this helper neither simulates nor promises a consequence.
+ */
+export function productionToolUseOpportunity(
+  state: SimulationState,
+  person: PersonState,
+  visibleCells: number[],
+  toolStackId: string,
+  preferredSourceMaterialId?: MaterialId,
+): ProductionToolUseOpportunity | null {
+  const tool = person.inventory.find((stack) => stack.id === toolStackId
+    && stack.quantity > 0
+    && isProductionToolMaterial(stack.materialId));
+  if (!tool) return null;
+  const candidates = visibleCells.flatMap((cell) => {
+    const inputMaterialId = surfaceMaterial(state.world.grid, cell);
+    const rule = voxelSeparationRuleFor(inputMaterialId);
+    const genericProduction = PRODUCTION_TOOL_USE_MATERIALS.has(inputMaterialId);
+    if (!genericProduction && !rule) return [];
+    if (rule && !separationToolFits(rule, tool.materialId)) return [];
+    const target = topPosition(state.world.grid, cell);
+    if (supportedBodyAt(state, target)) return [];
+    const working = nearestWorkingPosition(state, person, target);
+    return working ? [{
+      cell,
+      inputMaterialId,
+      target,
+      ...working,
+      preferred: inputMaterialId === preferredSourceMaterialId,
+    }] : [];
+  }).sort((left, right) => Number(right.preferred) - Number(left.preferred)
+    || left.pathLength - right.pathLength
+    || left.cell - right.cell)[0];
+  if (!candidates) return null;
+  const atWorkingPosition = person.position.cellId === candidates.position.cellId
+    && person.position.z === candidates.position.z;
+  const target = { kind: 'voxel' as const, position: candidates.target };
+  return {
+    summary: `用${materialDefinition(tool.materialId).name}完成一次真实生产`,
+    reason: '工具已经在本人手中；只有把它用于眼前可接触的真实物质并产生普通领域后果，能力复制才算落实',
+    action: atWorkingPosition
+      ? {
+          kind: 'act',
+          operation: 'separate',
+          targets: [target],
+          toolStackId: tool.id,
+        }
+      : { kind: 'move', toCellId: candidates.position.cellId, toZ: candidates.position.z },
+    target,
+    sourceFactIds: [...tool.sourceEventIds],
+  };
 }
 
 /** 每种可分离物质只暴露最近一个真实候选，避免把同质体素重复塞进模型上下文。 */

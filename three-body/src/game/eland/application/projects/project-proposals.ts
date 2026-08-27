@@ -1,4 +1,4 @@
-import { Material, materialHas, type MaterialId } from '../../domain/material';
+import { Material, materialDefinition, materialHas, type MaterialId } from '../../domain/material';
 import { bestProductionToolStack, productionToolRank } from '../../domain/production-tool';
 import type { DropState, SimulationState } from '../../domain/model';
 import {
@@ -65,6 +65,7 @@ import { proposalWithInquiryOpportunityMemory } from './project-inquiry';
 import { visibleCellsFor } from './project-perception';
 import { knownFacilitySite } from './project-workplace';
 import { projectsOwnedBy } from '../../domain/state-index';
+import { capabilityReplicationBasisFor } from './capability-replication';
 function proposal(
   state: SimulationState,
   person: PersonState,
@@ -102,6 +103,9 @@ function proposal(
       : {}),
     ...(anchoredInput.remoteWorkPowerBasis
       ? { remoteWorkPowerBasis: anchoredInput.remoteWorkPowerBasis }
+      : {}),
+    ...(anchoredInput.capabilityReplicationBasis
+      ? { capabilityReplicationBasis: anchoredInput.capabilityReplicationBasis }
       : {}),
     ...(anchoredInput.electricalPowerMaintenanceBasis
       ? { electricalPowerMaintenanceBasis: anchoredInput.electricalPowerMaintenanceBasis }
@@ -733,6 +737,38 @@ export function deriveProjectProposals(
   }
 
   const materialEvidence = buildLocalMaterialEvidence(state, person, { visibleCells, visibleDrops, visiblePeople });
+  const capabilityReplication = capabilityReplicationBasisFor(
+    state,
+    person,
+    { visibleCells, visibleDrops, visiblePeople },
+    proposalMonth,
+  );
+  if (capabilityReplication) {
+    const subject = {
+      need: 'production-efficiency' as const,
+      desiredFunction: 'efficient-production' as const,
+      beneficiaryIds: [person.id],
+      createdAtMonth: proposalMonth,
+      productionToolBaselineRank: capabilityReplication.baselineToolRank,
+      capabilityReplicationBasis: capabilityReplication,
+    };
+    const basis = buildProjectPressureBasis(
+      state,
+      person,
+      subject,
+      proposalMonth,
+      pressureView,
+      pressureContextForNeed('production-efficiency'),
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('production-efficiency', {
+      kind: 'production',
+      desiredFunction: 'efficient-production',
+      summary: `把本人眼前稀缺、且能改善近期劳动的${materialDefinition(capabilityReplication.outputMaterialId).name}变成自己可实际使用的能力`,
+      beneficiaryIds: [person.id],
+      productionToolBaselineRank: capabilityReplication.baselineToolRank,
+      capabilityReplicationBasis: structuredClone(capabilityReplication),
+    }, basis));
+  }
   const hasObserved = (...materialIds: MaterialId[]) => materialIds.some((materialId) => (
     materialEvidence.observedMaterialIds.has(materialId)
   ));
@@ -852,7 +888,8 @@ export function deriveProjectProposals(
     'production-efficiency',
     'efficient-production',
     '用专门工具缓解本人反复感知到的食物与采集压力',
-    accessibleProductionToolRank < efficientProductionTargetRank
+    !capabilityReplication
+      && accessibleProductionToolRank < efficientProductionTargetRank
       && hasObserved(Material.Leaves, Material.Shrub, Material.Wood, Material.Fiber, Material.Rope, Material.Plank),
   );
   pushDevelopmentProposal(

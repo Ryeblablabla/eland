@@ -1,5 +1,5 @@
 import { Material, materialHas, type MaterialId } from '../../domain/material';
-import { productionToolRank } from '../../domain/production-tool';
+import { productionToolMultiplier, productionToolRank } from '../../domain/production-tool';
 import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import { isAlive } from '../../domain/person';
 import type {
@@ -12,7 +12,7 @@ import {
   projectEventHasEventTimeLead,
 } from '../../domain/project-leadership';
 import { shelterGeometryAt } from '../../domain/structure';
-import { worldEventById } from '../../domain/event-index';
+import { compareWorldEventsInCanonicalOrder, worldEventById } from '../../domain/event-index';
 import { cellsInRadius, voxelAt } from '../../world/grid';
 import {
   mechanicalPowerCompletionEvidence,
@@ -21,6 +21,7 @@ import {
 import { massMeasurementProjectCompletionEvidence } from '../measurement-options';
 import { electricalPowerProjectCompletionEvidence } from '../electrical-power-options';
 import { electricalPowerMaintenanceCompletionEvidence } from '../electrical-power-maintenance-options';
+import { capabilityReplicationAcquisitionFact } from './capability-replication';
 
 export function completedFunctionMaterialIds(
   project: Pick<ProjectState, 'desiredFunction'>,
@@ -444,7 +445,51 @@ function verifiedProductionToolEvidenceIds(state: SimulationState, project: Proj
   return [];
 }
 
+function capabilityReplicationEvidenceIds(state: SimulationState, project: ProjectState): string[] {
+  const basis = project.capabilityReplicationBasis;
+  const owner = basis
+    ? state.people.find((person) => person.id === project.ownerId && isAlive(person))
+    : undefined;
+  if (!basis
+    || !owner
+    || basis.observerId !== owner.id
+    || project.need !== 'production-efficiency'
+    || project.desiredFunction !== 'efficient-production') return [];
+  for (const stack of owner.inventory
+    .filter((candidate) => candidate.quantity > 0 && candidate.materialId === basis.outputMaterialId)
+    .sort((left, right) => left.id.localeCompare(right.id))) {
+    const acquisition = capabilityReplicationAcquisitionFact(state, owner, project, stack);
+    if (!acquisition) continue;
+    const use = projectActionFacts(state, project).find((event) => event.status === 'completed'
+      && event.who === owner.id
+      && projectEventHasEventTimeLead(project, event)
+      && compareWorldEventsInCanonicalOrder(acquisition, event) < 0
+      && event.action.kind === 'act'
+      && event.action.operation === 'separate'
+      && event.action.toolStackId === stack.id
+      && event.diff.toolStackId === stack.id
+      && Number(event.diff.toolMaterialId) === basis.outputMaterialId
+      && Number(event.diff.productionMultiplier) === productionToolMultiplier(basis.outputMaterialId)
+      && typeof event.diff.sourceMaterialId === 'number'
+      && Array.isArray(event.diff.outputs)
+      && event.diff.outputs.some((output) => Boolean(output)
+        && typeof output === 'object'
+        && Number((output as { quantity?: unknown }).quantity) > 0));
+    if (!use) continue;
+    const teachingResponseIds = (project.knowledgeRequests ?? []).flatMap((request) => (
+      request.outputMaterialId === basis.outputMaterialId && request.responseEventId
+        ? [request.responseEventId]
+        : []
+    ));
+    return [...new Set([...teachingResponseIds, acquisition.id, use.id])];
+  }
+  return [];
+}
+
 export function projectFunctionSatisfied(state: SimulationState, project: ProjectState): boolean {
+  if (project.capabilityReplicationBasis) {
+    return capabilityReplicationEvidenceIds(state, project).length > 0;
+  }
   if (project.desiredFunction === 'restore-electrical-power-delivery') {
     return electricalPowerMaintenanceCompletionEvidence(state, project).length > 0;
   }
@@ -507,6 +552,9 @@ export function projectFunctionSatisfied(state: SimulationState, project: Projec
 }
 
 export function projectCompletionEvidence(state: SimulationState, project: ProjectState): string[] {
+  if (project.capabilityReplicationBasis) {
+    return capabilityReplicationEvidenceIds(state, project);
+  }
   if (project.desiredFunction === 'restore-electrical-power-delivery') {
     return electricalPowerMaintenanceCompletionEvidence(state, project);
   }

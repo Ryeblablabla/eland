@@ -289,8 +289,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
     const projectCandidate = projectById(state, request.projectId);
     const project = projectCandidate?.status === 'active'
       && projectIsLedBy(projectCandidate, person.id)
-      && projectCandidate.need === 'mechanical-power-capability'
-      && projectCandidate.desiredFunction === 'water-powered-crop-processing'
+      && pendingProjectKnowledgeOutput(state, projectCandidate) === request.outputMaterialId
       ? projectCandidate
       : undefined;
     const repeated = Boolean(project?.knowledgeRequests?.some((basis) => (
@@ -304,7 +303,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
       || pendingProjectKnowledgeOutput(state, project) !== request.outputMaterialId
       || personReliablyKnowsOutput(person, request.outputMaterialId)
       || repeated) {
-      return { status: 'blocked' as const, result: '项目知识请求没有绑定本人当前的未知部件，已过期或已经提出过', diff: {} };
+      return { status: 'blocked' as const, result: '项目知识请求没有绑定本人当前的未知产物，已过期或已经提出过', diff: {} };
     }
   }
   if (content.kind === 'request' && content.projectMaterialContribution) {

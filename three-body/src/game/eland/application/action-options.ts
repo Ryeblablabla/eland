@@ -107,6 +107,7 @@ import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-op
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 import { canPersonPlanToCollectProjectMaterialDrop } from '../domain/project-material-request';
 import { openProjectKnowledgeRequestsFor } from '../domain/project-knowledge-request';
+import { productionToolUpgradeTradeCandidate } from './projects/capability-replication';
 import {
   conversationalRendezvous,
   crowdingReliefTarget,
@@ -725,37 +726,6 @@ function betterGroundProductionTool(
     .sort((left, right) => productionToolRank(right.drop.materialId) - productionToolRank(left.drop.materialId)
       || left.pathLength - right.pathLength
       || left.drop.id.localeCompare(right.drop.id))[0];
-}
-
-function toolUpgradeTradeCandidate(state: SimulationState, person: PersonState, people: PersonState[]) {
-  const currentRank = productionToolRank(bestProductionToolStack(person)?.materialId ?? Material.Air);
-  const ownGoods = tangibleInventoryStacks(person).filter((stack) => stack.quantity >= 2);
-  return people
-    .filter((other) => sameLocation(other, person)
-      && !hasOpenExchangeOfferBetween(state, person.id, other.id))
-    .flatMap((other) => {
-      const holderHighestRank = other.inventory.reduce((highest, stack) => stack.quantity > 0
-        ? Math.max(highest, productionToolRank(stack.materialId))
-        : highest, 0);
-      return other.inventory
-        .filter((their) => their.quantity > 0 && productionToolRank(their.materialId) > currentRank)
-        .filter((their) => {
-          const retainedRank = other.inventory.reduce((highest, backup) => backup.id !== their.id && backup.quantity > 0
-            ? Math.max(highest, productionToolRank(backup.materialId))
-            : highest, 0);
-          return their.quantity >= 2
-            || retainedRank >= Math.max(holderHighestRank, productionToolRank(their.materialId))
-            || (their.materialId === Material.BronzeTool
-              && retainedRank >= productionToolRank(Material.StoneTool));
-        })
-        .flatMap((their) => {
-          const own = ownGoods.find((stack) => stack.materialId !== their.materialId);
-          return own ? [{ person: other, own, their }] : [];
-        });
-    })
-    .sort((left, right) => productionToolRank(right.their.materialId) - productionToolRank(left.their.materialId)
-      || left.person.id.localeCompare(right.person.id)
-      || left.their.id.localeCompare(right.their.id))[0];
 }
 
 function acceptedExchangeAt(state: SimulationState, person: PersonState, atMonth: number) {
@@ -1477,7 +1447,7 @@ function buildOptions(
   }
 
   const toolUpgradeTrade = !incomingExchange && !acceptedExchange && recentProductionLabor.length
-    ? toolUpgradeTradeCandidate(state, person, visiblePeople)
+    ? productionToolUpgradeTradeCandidate(state, person, visiblePeople)
     : undefined;
   if (toolUpgradeTrade) {
     const representationId = `offer-tool-upgrade:${atMonth}:${person.id}:${toolUpgradeTrade.person.id}:${toolUpgradeTrade.their.id}`;
@@ -1856,22 +1826,6 @@ function buildOptions(
       return learner ? [{ fact, learner }] : [];
     })[0]
     : undefined;
-  const usefulToolTeaching = person.knowledge
-    .filter((fact) => fact.kind === 'technique' && fact.confidence >= 55)
-    .flatMap((fact) => conversationalPeople.flatMap((learner) => {
-      if (ageMonths(learner, atMonth) < MIN_TEACHING_AGE_MONTHS
-        || learner.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)) return [];
-      const outputMaterialId = techniqueOutputMaterialId(fact.id);
-      const learnerLabor = recentPersonalProductionLaborEvents(state, learner.id, atMonth);
-      return outputMaterialId === Material.BronzeTool
-        && productionToolRank(outputMaterialId) > productionToolRank(bestProductionToolStack(learner)?.materialId ?? Material.Air)
-        && learnerLabor.length > 0
-        ? [{ fact, learner, learnerLabor }]
-        : [];
-    }))
-    .sort((a, b) => b.fact.confidence - a.fact.confidence
-      || a.fact.id.localeCompare(b.fact.id)
-      || a.learner.id.localeCompare(b.learner.id))[0];
   const ordinaryTeachableFacts = person.knowledge
     .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
       && fact.confidence >= 55
@@ -1881,9 +1835,7 @@ function buildOptions(
   const teachableFacts = [
     ...(projectTeaching ? [projectTeaching.fact] : []),
     ...(mechanicalOperationTeaching ? [mechanicalOperationTeaching.fact] : []),
-    ...(usefulToolTeaching ? [usefulToolTeaching.fact] : []),
-    ...ordinaryTeachableFacts.filter((fact) => fact.id !== usefulToolTeaching?.fact.id
-      && fact.id !== projectTeaching?.fact.id
+    ...ordinaryTeachableFacts.filter((fact) => fact.id !== projectTeaching?.fact.id
       && fact.id !== mechanicalOperationTeaching?.fact.id),
   ].slice(0, 3);
   for (const teachable of teachableFacts) {
@@ -1892,12 +1844,9 @@ function buildOptions(
     const prioritizedMechanicalTeaching = mechanicalOperationTeaching?.fact.id === teachable.id
       ? mechanicalOperationTeaching
       : undefined;
-    const prioritizedToolTeaching = usefulToolTeaching?.fact.id === teachable.id ? usefulToolTeaching : undefined;
-    const usefulToolUpgrade = Boolean(prioritizedToolTeaching);
-    const learner = prioritizedProjectTeaching?.learner ?? prioritizedMechanicalTeaching?.learner ?? (prioritizedToolTeaching
-      ? prioritizedToolTeaching.learner
-      : conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold)));
+    const learner = prioritizedProjectTeaching?.learner ?? prioritizedMechanicalTeaching?.learner
+      ?? conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
+        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
     if (!learner) continue;
     const representationId = prioritizedProjectTeaching
       ? `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}:${prioritizedProjectTeaching.request.requestEventId}`
@@ -1933,9 +1882,7 @@ function buildOptions(
           ? `本人实际收到“${prioritizedProjectTeaching.project.summary}”对${materialDefinition(prioritizedProjectTeaching.request.outputMaterialId).name}制作知识的请求，并可靠掌握匹配技术`
         : prioritizedMechanicalTeaching
           ? '本人在眼前完成网络上做成过真实负载作业，身边成年人还不会独立操作这类网络'
-        : usefulToolUpgrade
-          ? '自己可靠掌握更高效生产工具的制作技术，而身边刚完成过真实劳动的人还不会'
-          : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
+        : '自己可靠掌握这项技术，而身边达到学习年龄的人还不会；一次明确教导即可传授',
       goal: { kind: 'knowledge', factId: teachable.id, minConfidence: learnedThreshold, personId: learner.id },
       nextAction: communicate,
       target: { kind: 'person', personId: learner.id },
@@ -1943,7 +1890,6 @@ function buildOptions(
       sourceFactIds: [...new Set([
         ...teachable.sourceEventIds,
         ...(prioritizedProjectTeaching ? [prioritizedProjectTeaching.request.requestEventId] : []),
-        ...(prioritizedToolTeaching ? prioritizedToolTeaching.learnerLabor.map((event) => event.id) : []),
       ])],
     });
   }

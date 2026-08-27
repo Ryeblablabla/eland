@@ -229,6 +229,41 @@ export interface ProjectPressureBasis {
   basisKey: string;
 }
 
+export type ProjectCapabilityReplicationExemplar =
+  | {
+      kind: 'visible-holder';
+      holderId: PersonId;
+      stackId: string;
+    }
+  | {
+      kind: 'visible-drop';
+      dropId: string;
+    };
+
+/**
+ * Frozen, person-local evidence that one tangible production tool is both
+ * useful to the observer's recent work and not currently theirs to use. It
+ * records only a visible sample identity, never its hidden provenance, recipe,
+ * era, or a global producer count.
+ */
+export interface ProjectCapabilityReplicationBasis {
+  version: 'project-capability-replication-basis-v1';
+  kind: 'production-tool';
+  observerId: PersonId;
+  atMonth: number;
+  outputMaterialId: MaterialId;
+  baselineToolRank: number;
+  targetToolRank: number;
+  recentLaborEventId: string;
+  exemplar: ProjectCapabilityReplicationExemplar;
+  /** Current local holders only; absence does not imply global absence. */
+  visibleHolderIds: PersonId[];
+  visibleExemplarCount: number;
+  /** The observer's one recent personal labor fact; entity lineage is not knowledge. */
+  sourceFactIds: string[];
+  basisKey: string;
+}
+
 export type ProjectStatus = 'active' | 'completed' | 'blocked' | 'abandoned';
 
 export interface ProjectSite {
@@ -268,6 +303,8 @@ export interface ProjectProposal {
   pressureBasis?: ProjectPressureBasis;
   /** Best production-tool rank personally held when this tool project was proposed. */
   productionToolBaselineRank?: number;
+  /** A locally visible, already-made tool that the owner's own work makes worth reproducing. */
+  capabilityReplicationBasis?: ProjectCapabilityReplicationBasis;
   createdAtMonth: number;
   reviewAtMonth: number;
   site?: ProjectSite;

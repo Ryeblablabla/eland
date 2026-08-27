@@ -12,6 +12,11 @@ import {
   projectEventHasEventTimeLead,
 } from './project-leadership';
 import { techniqueOutputMaterialId } from './technique-demonstration';
+import {
+  isCompletedPersonalProductionLaborEvent,
+  isProductionToolMaterial,
+  productionToolRank,
+} from './production-tool';
 
 export type ProjectKnowledgeRequestStatus = 'open' | 'answered' | 'expired' | 'obsolete';
 
@@ -165,6 +170,38 @@ export function pendingProjectKnowledgeGap(
   state: SimulationState,
   project: ProjectState,
 ): { outputMaterialId: number; sourceFactIds: string[]; techniquePath: string[] } | undefined {
+  const replication = project.capabilityReplicationBasis;
+  if (replication) {
+    const requester = state.people.find((person) => person.id === project.ownerId && isAlive(person));
+    const labor = worldEventById(state, replication.recentLaborEventId);
+    const structurallyValid = project.status === 'active'
+      && project.need === 'production-efficiency'
+      && project.desiredFunction === 'efficient-production'
+      && projectCurrentLeadId(project) === project.ownerId
+      && replication.version === 'project-capability-replication-basis-v1'
+      && replication.kind === 'production-tool'
+      && replication.observerId === project.ownerId
+      && project.productionToolBaselineRank === replication.baselineToolRank
+      && isProductionToolMaterial(replication.outputMaterialId)
+      && replication.targetToolRank === productionToolRank(replication.outputMaterialId)
+      && replication.targetToolRank > replication.baselineToolRank
+      && replication.sourceFactIds.length === 1
+      && replication.sourceFactIds[0] === replication.recentLaborEventId
+      && project.triggerFactIds.includes(replication.recentLaborEventId)
+      && Boolean(labor
+        && requester
+        && isCompletedPersonalProductionLaborEvent(labor, requester.id)
+        && labor.atMonth <= replication.atMonth
+        && labor.atMonth >= replication.atMonth - 12);
+    if (!structurallyValid || !requester || personReliablyKnowsOutput(requester, replication.outputMaterialId)) {
+      return undefined;
+    }
+    return {
+      outputMaterialId: replication.outputMaterialId,
+      sourceFactIds: [...replication.sourceFactIds],
+      techniquePath: [],
+    };
+  }
   // Reliability inquiries ask collaborators about no privileged output. Their
   // finite material trials begin from repeated personal faults and observable
   // entities; naming SteelDriveShaft here would disclose the answer before any

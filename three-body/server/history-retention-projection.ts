@@ -322,6 +322,9 @@ interface HistoryRetentionDemandSnapshotRecord {
 
 const historyRetentionDemandSnapshots = new WeakMap<object, HistoryRetentionDemandSnapshotRecord>();
 let historyRetentionDemandCollectionCount = 0;
+let historyRetentionIntentFullTraversalCount = 0;
+let historyRetentionIntentSnapshotClassificationCount = 0;
+let historyRetentionIntentReferenceCollectionCount = 0;
 
 /**
  * Agreement lifecycle allows at most one sample per month and fixes the
@@ -1143,9 +1146,19 @@ interface RecentTerminalFailureActionDemand {
   eventIds: string[];
 }
 
+type HistoryRetentionIntent = SimulationState['intents'][number];
+
+interface HistoryRetentionIntentDemandSources {
+  groundedResponseIntents: readonly HistoryRetentionIntent[];
+  recentTerminalFailureIntents: readonly HistoryRetentionIntent[];
+  liveIntents: readonly HistoryRetentionIntent[];
+  reproductionIntents: readonly HistoryRetentionIntent[];
+}
+
 function groundedResponseSourceDemands(
   state: SimulationState,
   livingPeople: readonly SimulationState['people'][number][],
+  intents: readonly HistoryRetentionIntent[],
 ): GroundedResponseSourceDemand[] {
   const livingPersonIds = new Set(livingPeople.map((person) => person.id));
   const byLeaseKey = new Map<string, {
@@ -1190,7 +1203,7 @@ function groundedResponseSourceDemands(
     }
   }
 
-  for (const intent of state.intents ?? []) {
+  for (const intent of intents) {
     if (!livingPersonIds.has(intent.ownerId)
       || (intent.status !== 'active' && intent.status !== 'suspended')) continue;
     for (const action of [intent.nextAction, intent.completionAction]) {
@@ -1230,10 +1243,11 @@ function groundedResponseSourceDemands(
 function recentTerminalFailureActionDemands(
   state: SimulationState,
   livingPeople: readonly SimulationState['people'][number][],
+  intents: readonly HistoryRetentionIntent[],
 ): RecentTerminalFailureActionDemand[] {
   const livingPersonIds = new Set(livingPeople.map((person) => person.id));
   const eventIdsByOwnerId = new Map<string, Set<string>>();
-  for (const intent of state.intents ?? []) {
+  for (const intent of intents) {
     if (!livingPersonIds.has(intent.ownerId)
       || (intent.status !== 'blocked' && intent.status !== 'failed')
       || !intent.goalOutcome) continue;
@@ -1476,6 +1490,50 @@ function isReproductionIntent(intent: SimulationState['intents'][number]): boole
   );
 }
 
+function classifyHistoryRetentionIntents(
+  intents: readonly HistoryRetentionIntent[],
+): HistoryRetentionIntentDemandSources {
+  historyRetentionIntentFullTraversalCount += 1;
+  historyRetentionIntentSnapshotClassificationCount += 1;
+  const liveIntents: HistoryRetentionIntent[] = [];
+  const recentTerminalFailureIntents: HistoryRetentionIntent[] = [];
+  const reproductionIntents: HistoryRetentionIntent[] = [];
+  for (const intent of intents) {
+    if (intent.status === 'active' || intent.status === 'suspended') liveIntents.push(intent);
+    if (intent.status === 'blocked' || intent.status === 'failed') {
+      recentTerminalFailureIntents.push(intent);
+    }
+    if (isReproductionIntent(intent)) reproductionIntents.push(intent);
+  }
+  return {
+    groundedResponseIntents: liveIntents,
+    recentTerminalFailureIntents,
+    liveIntents,
+    reproductionIntents,
+  };
+}
+
+function referenceHistoryRetentionIntentFilter(
+  intents: readonly HistoryRetentionIntent[],
+  predicate: (intent: HistoryRetentionIntent) => boolean,
+): HistoryRetentionIntent[] {
+  historyRetentionIntentFullTraversalCount += 1;
+  return intents.filter(predicate);
+}
+
+/** Test oracle matching the four independent pre-snapshot whole-array scans. */
+function collectReferenceHistoryRetentionIntentDemandSources(
+  intents: readonly HistoryRetentionIntent[],
+): HistoryRetentionIntentDemandSources {
+  historyRetentionIntentReferenceCollectionCount += 1;
+  return {
+    groundedResponseIntents: referenceHistoryRetentionIntentFilter(intents, () => true),
+    recentTerminalFailureIntents: referenceHistoryRetentionIntentFilter(intents, () => true),
+    liveIntents: referenceHistoryRetentionIntentFilter(intents, () => true),
+    reproductionIntents: referenceHistoryRetentionIntentFilter(intents, isReproductionIntent),
+  };
+}
+
 function boundedReproductionAttemptEventIds(
   intent: SimulationState['intents'][number],
   agreement: SimulationState['agreements'][number] | undefined,
@@ -1553,7 +1611,10 @@ function boundedReproductionAttemptEventIds(
   };
 }
 
-function collectDemand(state: SimulationState) {
+function collectDemand(
+  state: SimulationState,
+  intentCollectionMode: 'snapshot' | 'reference' = 'snapshot',
+) {
   historyRetentionDemandCollectionCount += 1;
   const directDemandEventIds = new Set<string>();
   const demandGroupsByKey = new Map<string, DirectDemandGroup>();
@@ -1563,6 +1624,10 @@ function collectDemand(state: SimulationState) {
   }
   const peopleById = new Map<string, SimulationState['people'][number]>();
   for (const person of state.people) peopleById.set(person.id, person);
+  const intents = state.intents ?? [];
+  const intentDemandSources = intentCollectionMode === 'reference'
+    ? collectReferenceHistoryRetentionIntentDemandSources(intents)
+    : classifyHistoryRetentionIntents(intents);
   const millLaborPersonIds = new Set(livingPeople.map((person) => person.id));
   const pendingEraPredictionIds = new Set<string>();
   const livingChildIds = new Set(livingPeople
@@ -1634,7 +1699,11 @@ function collectDemand(state: SimulationState) {
     leaseKey: FUTURE_MATERIAL_AFFORDANCE_SOURCE_LEASE_KEY,
     eventIds: boundedFutureMaterialAffordanceSourceEventIds(state),
   });
-  for (const response of groundedResponseSourceDemands(state, livingPeople)) {
+  for (const response of groundedResponseSourceDemands(
+    state,
+    livingPeople,
+    intentDemandSources.groundedResponseIntents,
+  )) {
     const leaseKey = groundedConversationResponseSourceLeaseKey(
       response.responderId,
       response.openingEventId,
@@ -1646,7 +1715,11 @@ function collectDemand(state: SimulationState) {
       eventIds: response.eventIds,
     });
   }
-  for (const failure of recentTerminalFailureActionDemands(state, livingPeople)) {
+  for (const failure of recentTerminalFailureActionDemands(
+    state,
+    livingPeople,
+    intentDemandSources.recentTerminalFailureIntents,
+  )) {
     const leaseKey = recentTerminalFailureActionLeaseKey(failure.ownerId);
     addDemandGroup(demandGroupsByKey, directDemandEventIds, {
       groupKey: leaseKey,
@@ -1894,7 +1967,7 @@ function collectDemand(state: SimulationState) {
     });
   }
 
-  for (const intent of state.intents ?? []) {
+  for (const intent of intentDemandSources.liveIntents) {
     if (intent.status !== 'active' && intent.status !== 'suspended') continue;
     if (!Array.isArray(intent.actionEventIds)
       || intent.actionEventIds.length > MAX_LIVE_INTENT_ACTION_EVENT_IDS) {
@@ -2034,7 +2107,7 @@ function collectDemand(state: SimulationState) {
     }
     agreementsById.set(agreement.id, agreement);
   }
-  for (const intent of (state.intents ?? []).filter(isReproductionIntent)) {
+  for (const intent of intentDemandSources.reproductionIntents) {
     const agreement = intent.agreementId ? agreementsById.get(intent.agreementId) : undefined;
     if (intent.agreementId && !agreement) {
       throw new Error(`reproduction intent ${intent.id} 缺少 agreement ${intent.agreementId}`);
@@ -2437,6 +2510,26 @@ export function historyRetentionDemandCollectionStatsForTests(): Readonly<{
   collections: number;
 }> {
   return Object.freeze({ collections: historyRetentionDemandCollectionCount });
+}
+
+/** Test/benchmark observability only; counters never enter authoritative state. */
+export function resetHistoryRetentionIntentTraversalStatsForTests(): void {
+  historyRetentionIntentFullTraversalCount = 0;
+  historyRetentionIntentSnapshotClassificationCount = 0;
+  historyRetentionIntentReferenceCollectionCount = 0;
+}
+
+/** Test/benchmark observability only; counters never enter authoritative state. */
+export function historyRetentionIntentTraversalStatsForTests(): Readonly<{
+  fullTraversals: number;
+  snapshotClassifications: number;
+  referenceCollections: number;
+}> {
+  return Object.freeze({
+    fullTraversals: historyRetentionIntentFullTraversalCount,
+    snapshotClassifications: historyRetentionIntentSnapshotClassificationCount,
+    referenceCollections: historyRetentionIntentReferenceCollectionCount,
+  });
 }
 
 function continuationDemandFromCollected(
@@ -2863,6 +2956,16 @@ export function beginHistoryRetentionProjection(
 ): HistoryRetentionProjectionFold {
   assertHistoryRetentionAuthority(authority, 'retention projection ');
   const demand = collectDemand(finalShell);
+  return createOpenHistoryRetentionFold(finalShell, authority, demand);
+}
+
+/** Four-scan reference oracle for the focused demand-snapshot equivalence fixture only. */
+export function beginHistoryRetentionProjectionWithReferenceIntentTraversalForTests(
+  finalShell: SimulationState,
+  authority: HistoryRetentionAuthority,
+): HistoryRetentionProjectionFold {
+  assertHistoryRetentionAuthority(authority, 'retention reference projection ');
+  const demand = collectDemand(finalShell, 'reference');
   return createOpenHistoryRetentionFold(finalShell, authority, demand);
 }
 

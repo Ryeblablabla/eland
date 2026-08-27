@@ -4,7 +4,7 @@ import { materialHas } from '../../domain/material';
 import type { DecisionContext } from '../../domain/model';
 import { personalityScore } from '../../domain/personality';
 import { strongestBereavement } from '../../domain/mortuary';
-import { worldEventById } from '../../domain/event-index';
+import { liveSocialEvidenceForPersonSources } from '../../domain/event-index';
 import { agreementsForPerson } from '../../domain/agreement';
 import { personById, projectById } from '../../domain/state-index';
 import { ageMonths } from '../../domain/person';
@@ -416,7 +416,12 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     .some((agreement) => agreement.partyIds.includes(other.id)));
   const visibleSourcedRelations = person.relations.flatMap((relation) => {
     if (!visibleRelationshipOpportunities.some((other) => other.id === relation.personId)) return [];
-    const sourceFactIds = relation.sourceEventIds.filter((eventId) => worldEventById(context.state, eventId));
+    const resolved = new Set(liveSocialEvidenceForPersonSources(
+      context.state,
+      person,
+      relation.sourceEventIds,
+    ).map((evidence) => evidence.eventId));
+    const sourceFactIds = relation.sourceEventIds.filter((eventId) => resolved.has(eventId));
     return sourceFactIds.length ? [{ relation, sourceFactIds }] : [];
   });
   const affiliationRelations = visibleSourcedRelations.filter(({ relation }) => availableRelationshipOpportunities

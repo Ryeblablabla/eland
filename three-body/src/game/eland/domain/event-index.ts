@@ -9,7 +9,17 @@ import {
   type ProjectPressureSourceEventIdSnapshot,
   type RetainedProjectPressureEvidenceDescriptor,
 } from './project-pressure-evidence';
+import {
+  cloneValidatedLiveSocialEvidenceDescriptor,
+  livePersonSocialEvidenceLeaseKey,
+  livePersonSocialSourceEventIds,
+  liveSocialEvidenceDescriptorFromWorldEvent,
+  type LiveSocialEvidenceDescriptor,
+  type RetainedLiveSocialEvidenceDescriptor,
+} from './live-social-evidence';
 import { WORLD_CELL_COUNT } from '../world/grid';
+
+export { livePersonSocialEvidenceLeaseKey } from './live-social-evidence';
 
 export interface ActionActivityIndex {
   traffic: number[];
@@ -96,9 +106,17 @@ interface ProjectPressureEvidenceDescriptorIndex {
   byId: Map<string, RetainedProjectPressureEvidenceDescriptor>;
 }
 
+interface LiveSocialEvidenceDescriptorIndex {
+  byOwnerId: Map<PersonId, Map<string, RetainedLiveSocialEvidenceDescriptor>>;
+}
+
 /** Body-free project-pressure evidence; deliberately separate from generic cold facts. */
 const projectPressureEvidenceDescriptorIndexes =
   new WeakMap<WorldEvent[], ProjectPressureEvidenceDescriptorIndex>();
+
+/** Body-free, owner-scoped social evidence; never registered in generic by-id lookup. */
+const liveSocialEvidenceDescriptorIndexes =
+  new WeakMap<WorldEvent[], LiveSocialEvidenceDescriptorIndex>();
 
 /** Current social obligations use exact leases rather than a synthetic full history. */
 export const GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS = 6;
@@ -193,10 +211,6 @@ export function parseWaterAssistanceFulfillmentMembershipGroupKey(value: string)
 
 export function liveIntentHistoryLeaseKey(intentId: string): string {
   return `live-intent:${intentId}:anchors`;
-}
-
-export function livePersonSocialEvidenceLeaseKey(personId: string): string {
-  return `gameplay:live-person-social:${encodeURIComponent(personId)}:sources`;
 }
 
 export function groundedConversationWindowLeaseKey(listenerId: string, eventMonth: number): string {
@@ -397,6 +411,204 @@ function projectPressureDescriptorIndexFor(
   state: SimulationState,
 ): ProjectPressureEvidenceDescriptorIndex | undefined {
   return projectPressureEvidenceDescriptorIndexes.get(authoritativeHistoryBase(state));
+}
+
+/**
+ * Replace the process-local owner-scoped social descriptor registry after an
+ * exact-root ordinal join. A shared event may appear for multiple owners, but
+ * no owner can query another owner's retained membership.
+ */
+export function registerLiveSocialEvidenceDescriptors(
+  state: SimulationState,
+  retained: readonly RetainedLiveSocialEvidenceDescriptor[],
+  verifiedIdentities: readonly { absoluteIndex: number; eventId: string }[],
+): void {
+  const cursor = state.world.historyCursor;
+  if (!cursor
+    || cursor.version !== 1
+    || !Number.isSafeInteger(cursor.eventCount)
+    || cursor.eventCount < 0
+    || !Number.isSafeInteger(cursor.hotStartIndex)
+    || cursor.hotStartIndex < 0
+    || cursor.hotStartIndex > cursor.eventCount
+    || state.world.past.length !== cursor.eventCount - cursor.hotStartIndex) {
+    throw new Error('注册 live social descriptor 前必须具备有效的 bounded history cursor');
+  }
+  const livingById = new Map(state.people.filter(isAlive).map((person) => [person.id, person]));
+  const membershipByOwnerId = new Map([...livingById].map(([ownerId, person]) => (
+    [ownerId, new Set(livePersonSocialSourceEventIds(person))]
+  )));
+  const verifiedByOrdinal = new Map<number, string>();
+  for (const identity of verifiedIdentities) {
+    if (!Number.isSafeInteger(identity.absoluteIndex)
+      || identity.absoluteIndex < 0
+      || identity.absoluteIndex >= cursor.eventCount
+      || typeof identity.eventId !== 'string'
+      || identity.eventId.length === 0
+      || verifiedByOrdinal.has(identity.absoluteIndex)) {
+      throw new Error('live social verified ordinal identity 非法或重复');
+    }
+    verifiedByOrdinal.set(identity.absoluteIndex, identity.eventId);
+  }
+  const byOwnerId = new Map<PersonId, Map<string, RetainedLiveSocialEvidenceDescriptor>>();
+  const seenOwnerOrdinals = new Set<string>();
+  for (const input of retained) {
+    const owner = livingById.get(input.ownerId);
+    const descriptor = cloneValidatedLiveSocialEvidenceDescriptor(input.descriptor);
+    const ownerOrdinalKey = JSON.stringify([input.ownerId, input.absoluteIndex]);
+    if (!owner
+      || !Number.isSafeInteger(input.absoluteIndex)
+      || input.absoluteIndex < 0
+      || input.absoluteIndex >= cursor.eventCount
+      || !membershipByOwnerId.get(owner.id)?.has(descriptor.eventId)
+      || seenOwnerOrdinals.has(ownerOrdinalKey)) {
+      throw new Error('live social descriptor owner/identity/ordinal 非法或不再属于当前来源');
+    }
+    if (input.absoluteIndex >= cursor.hotStartIndex) {
+      const hot = state.world.past[input.absoluteIndex - cursor.hotStartIndex];
+      if (hot?.id !== descriptor.eventId) {
+        throw new Error(`live social hot descriptor ${input.absoluteIndex}/${descriptor.eventId} 与热窗口不一致`);
+      }
+    } else if (verifiedByOrdinal.get(input.absoluteIndex) !== descriptor.eventId) {
+      throw new Error(
+        `live social cold descriptor ${input.absoluteIndex}/${descriptor.eventId} 缺少 exact ordinal identity`,
+      );
+    }
+    const byId = byOwnerId.get(owner.id) ?? new Map<string, RetainedLiveSocialEvidenceDescriptor>();
+    if (byId.has(descriptor.eventId)) {
+      throw new Error(`live social descriptor ${owner.id}/${descriptor.eventId} 重复`);
+    }
+    seenOwnerOrdinals.add(ownerOrdinalKey);
+    byId.set(descriptor.eventId, Object.freeze({
+      ownerId: owner.id,
+      absoluteIndex: input.absoluteIndex,
+      descriptor,
+    }));
+    byOwnerId.set(owner.id, byId);
+  }
+  liveSocialEvidenceDescriptorIndexes.set(authoritativeHistoryBase(state), { byOwnerId });
+}
+
+function liveSocialDescriptorIndexFor(
+  state: SimulationState,
+): LiveSocialEvidenceDescriptorIndex | undefined {
+  return liveSocialEvidenceDescriptorIndexes.get(authoritativeHistoryBase(state));
+}
+
+function assertCurrentLivingLiveSocialOwner(
+  state: SimulationState,
+  person: PersonState,
+): PersonState {
+  const owner = state.people.find((candidate) => candidate.id === person.id);
+  if (owner !== person || !isAlive(owner)) {
+    throw new Error('live social descriptor owner 不是当前存活人物');
+  }
+  return owner;
+}
+
+/** Match the historical full-body reader: intent basis is current state, not event payload. */
+function liveSocialEvidenceWithCurrentIntentBasis(
+  state: SimulationState,
+  descriptor: LiveSocialEvidenceDescriptor,
+): LiveSocialEvidenceDescriptor {
+  const communication = descriptor.action?.communication;
+  const intentId = descriptor.action?.intentId;
+  if (!communication || !intentId) return descriptor;
+  const currentIntentSources = state.intents.find((intent) => intent.id === intentId)
+    ?.sourceFactIds ?? [];
+  const basisSourceEventIds = [...new Set([
+    ...communication.basisSourceEventIds,
+    ...currentIntentSources,
+  ])].sort();
+  if (basisSourceEventIds.length === communication.basisSourceEventIds.length
+    && basisSourceEventIds.every((eventId, index) => (
+      eventId === communication.basisSourceEventIds[index]
+    ))) return descriptor;
+  return Object.freeze({
+    ...descriptor,
+    action: Object.freeze({
+      ...descriptor.action!,
+      communication: Object.freeze({
+        ...communication,
+        basisSourceEventIds: Object.freeze(basisSourceEventIds),
+      }),
+    }),
+  });
+}
+
+/** overlay > hot > exact owner descriptor; generic cold facts are deliberately ignored. */
+function liveSocialEvidenceForCurrentOwnerSource(
+  state: SimulationState,
+  owner: PersonState,
+  membership: ReadonlySet<string>,
+  eventId: string,
+): LiveSocialEvidenceDescriptor | undefined {
+  if (!membership.has(eventId)) return undefined;
+  const event = planningOverlays.get(state)?.byId.get(eventId)
+    ?? indexFor(state).byId.get(eventId);
+  const descriptor = event
+    ? liveSocialEvidenceDescriptorFromWorldEvent(event)
+    : liveSocialDescriptorIndexFor(state)?.byOwnerId.get(owner.id)?.get(eventId)?.descriptor;
+  return descriptor ? liveSocialEvidenceWithCurrentIntentBasis(state, descriptor) : undefined;
+}
+
+export function liveSocialEvidenceForPersonSource(
+  state: SimulationState,
+  person: PersonState,
+  eventId: string,
+): LiveSocialEvidenceDescriptor | undefined {
+  const owner = assertCurrentLivingLiveSocialOwner(state, person);
+  return liveSocialEvidenceForCurrentOwnerSource(
+    state,
+    owner,
+    new Set(livePersonSocialSourceEventIds(owner)),
+    eventId,
+  );
+}
+
+export function compareLiveSocialEvidenceDescriptors(
+  left: LiveSocialEvidenceDescriptor,
+  right: LiveSocialEvidenceDescriptor,
+): number {
+  return left.atMonth - right.atMonth
+    || left.orderInMonth - right.orderInMonth
+    || left.planningTick - right.planningTick
+    || left.orderInTick - right.orderInTick
+    || left.eventId.localeCompare(right.eventId);
+}
+
+export function liveSocialEvidenceForPersonSources(
+  state: SimulationState,
+  person: PersonState,
+  eventIds: Iterable<string>,
+): LiveSocialEvidenceDescriptor[] {
+  const owner = assertCurrentLivingLiveSocialOwner(state, person);
+  const membership = new Set(livePersonSocialSourceEventIds(owner));
+  return [...new Set(eventIds)]
+    .flatMap((eventId) => (
+      liveSocialEvidenceForCurrentOwnerSource(state, owner, membership, eventId) ?? []
+    ))
+    .sort(compareLiveSocialEvidenceDescriptors);
+}
+
+/** Storage-facing reuse scoped by both the current living owner and exact membership. */
+export function retainedLiveSocialEvidenceForLivingSources(
+  state: SimulationState,
+): readonly RetainedLiveSocialEvidenceDescriptor[] {
+  const index = liveSocialDescriptorIndexFor(state);
+  if (!index) return [];
+  const retained: RetainedLiveSocialEvidenceDescriptor[] = [];
+  for (const person of state.people.filter(isAlive)) {
+    const byId = index.byOwnerId.get(person.id);
+    if (!byId) continue;
+    for (const eventId of livePersonSocialSourceEventIds(person)) {
+      const item = byId.get(eventId);
+      if (item) retained.push(item);
+    }
+  }
+  return retained.sort((left, right) => left.ownerId.localeCompare(right.ownerId)
+    || left.absoluteIndex - right.absoluteIndex
+    || left.descriptor.eventId.localeCompare(right.descriptor.eventId));
 }
 
 /**
@@ -869,7 +1081,7 @@ function isGroundedConversationAction(event: WorldEvent): event is GroundedConve
     && Boolean(event.action.content.conversation);
 }
 
-function currentPersonalSocialSourceIds(
+function currentRememberedConversationSourceIds(
   state: SimulationState,
   personId: PersonId,
 ): Set<string> {
@@ -900,7 +1112,10 @@ export interface RememberedGroundedOpeningBasisSnapshot {
     speakerId: PersonId,
     listenerId: PersonId,
   ): boolean;
-  eventForPersonSource(personId: PersonId, eventId: string): WorldEvent | undefined;
+  evidenceForPersonSource(
+    personId: PersonId,
+    eventId: string,
+  ): LiveSocialEvidenceDescriptor | undefined;
 }
 
 function groundedOpeningIdentity(
@@ -932,7 +1147,7 @@ export function createRememberedGroundedOpeningBasisSnapshot(
   }
 
   const overlay = planningOverlays.get(state);
-  const resolvedByPersonId = new Map<PersonId, Map<string, WorldEvent>>();
+  const resolvedByPersonId = new Map<PersonId, Map<string, LiveSocialEvidenceDescriptor>>();
   const openingIdentitiesByPersonId = new Map<PersonId, Set<string>>();
   const initializedPersonIds = new Set<PersonId>();
   const ensurePersonSnapshot = (personId: PersonId): boolean => {
@@ -940,17 +1155,16 @@ export function createRememberedGroundedOpeningBasisSnapshot(
     if (initializedPersonIds.has(personId)) return true;
     initializedPersonIds.add(personId);
     if (diagnostics) diagnostics.personSourceSnapshots += 1;
-    const sourceIds = currentPersonalSocialSourceIds(state, personId);
-    const coldById = new Map<string, WorldEvent>();
+    const owner = participantById.get(personId)!;
+    const sourceIds = currentRememberedConversationSourceIds(state, personId);
     if (diagnostics) diagnostics.exactLeaseIndexes += 1;
-    for (const fact of retainedColdIndexFor(state)?.byLeaseKey
-      .get(livePersonSocialEvidenceLeaseKey(personId)) ?? []) {
-      if (!coldById.has(fact.eventId)) coldById.set(fact.eventId, fact.event);
-    }
-
-    const hotById = indexFor(state).byId;
-    const resolvedById = new Map<string, WorldEvent>();
+    const resolvedById = new Map<string, LiveSocialEvidenceDescriptor>();
     const openingIdentities = new Set<string>();
+    const evidenceById = new Map(liveSocialEvidenceForPersonSources(
+      state,
+      owner,
+      sourceIds,
+    ).map((evidence) => [evidence.eventId, evidence]));
     for (const eventId of sourceIds) {
       if (diagnostics) {
         diagnostics.sourceResolutions += 1;
@@ -958,13 +1172,11 @@ export function createRememberedGroundedOpeningBasisSnapshot(
         diagnostics.sourceResolutionsByPersonAndId[diagnosticKey] =
           (diagnostics.sourceResolutionsByPersonAndId[diagnosticKey] ?? 0) + 1;
       }
-      const event = overlay?.byId.get(eventId)
-        ?? hotById.get(eventId)
-        ?? coldById.get(eventId);
-      if (!event) continue;
-      resolvedById.set(eventId, event);
-      if (!isGroundedConversationAction(event)) continue;
-      const conversation = event.action.content.conversation;
+      const evidence = evidenceById.get(eventId);
+      if (!evidence) continue;
+      resolvedById.set(eventId, evidence);
+      const conversation = evidence.action?.communication?.groundedConversation;
+      if (!evidence.action?.completed || !conversation) continue;
       if (conversation.turn !== 'opening') continue;
       openingIdentities.add(groundedOpeningIdentity(
         conversation.basisKey,
@@ -989,7 +1201,10 @@ export function createRememberedGroundedOpeningBasisSnapshot(
       }
       return false;
     },
-    eventForPersonSource: (personId: PersonId, eventId: string): WorldEvent | undefined => {
+    evidenceForPersonSource: (
+      personId: PersonId,
+      eventId: string,
+    ): LiveSocialEvidenceDescriptor | undefined => {
       if (!ensurePersonSnapshot(personId)) return undefined;
       return resolvedByPersonId.get(personId)?.get(eventId);
     },
@@ -1009,11 +1224,11 @@ export function hasRememberedGroundedConversationOpeningBasis(
 ): boolean {
   if (planningOverlays.get(state)?.groundedOpeningBasisKeys.has(basisKey)) return true;
   for (const personId of [speakerId, listenerId]) {
-    const leaseKey = livePersonSocialEvidenceLeaseKey(personId);
-    for (const eventId of currentPersonalSocialSourceIds(state, personId)) {
-      const event = worldEventByIdWithRetainedLease(state, eventId, leaseKey);
-      if (!event || !isGroundedConversationAction(event)) continue;
-      const conversation = event.action.content.conversation;
+    const person = state.people.find((candidate) => candidate.id === personId && isAlive(candidate));
+    if (!person) continue;
+    const sources = currentRememberedConversationSourceIds(state, personId);
+    for (const evidence of liveSocialEvidenceForPersonSources(state, person, sources)) {
+      const conversation = evidence.action?.communication?.groundedConversation;
       if (conversation?.turn === 'opening'
         && conversation.basisKey === basisKey
         && conversation.speakerId === speakerId

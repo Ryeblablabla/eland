@@ -1,7 +1,7 @@
 import type { ActionOption } from '../domain/action';
 import type { SimulationState } from '../domain/model';
 import type { PersonState } from '../domain/person';
-import { inventoryQuantity, sameLocation } from '../domain/person';
+import { inventoryQuantity, isAlive, sameLocation } from '../domain/person';
 import { materialDefinition, materialHas } from '../domain/material';
 import {
   acceptedAssistFor,
@@ -33,8 +33,8 @@ import {
 import { buildGroundedConversationOptions } from './conversation-options';
 import { personalityScore } from '../domain/personality';
 import {
-  livePersonSocialEvidenceLeaseKey,
-  worldEventByIdWithRetainedLease,
+  liveSocialEvidenceForPersonSource,
+  liveSocialEvidenceForPersonSources,
 } from '../domain/event-index';
 import { agreementById, agreementsForPerson } from '../domain/agreement';
 import { intentsOwnedBy, personById } from '../domain/state-index';
@@ -78,12 +78,13 @@ function commitmentActionSemantics(
 }
 
 function groundedRelationSourceIds(state: SimulationState, person: PersonState, otherId: string): string[] {
-  return (relationTo(person, otherId)?.sourceEventIds ?? [])
-    .filter((eventId) => worldEventByIdWithRetainedLease(
-      state,
-      eventId,
-      livePersonSocialEvidenceLeaseKey(person.id),
-    ));
+  const sourceEventIds = relationTo(person, otherId)?.sourceEventIds ?? [];
+  const resolved = new Set(liveSocialEvidenceForPersonSources(
+    state,
+    person,
+    sourceEventIds,
+  ).map((evidence) => evidence.eventId));
+  return sourceEventIds.filter((eventId) => resolved.has(eventId));
 }
 
 function reachableWater(state: SimulationState, person: PersonState) {
@@ -165,11 +166,10 @@ function canRequestCompanyWithCurrentBasis(
   const resolvedAtMonth = previous.resolvedAtMonth ?? previous.proposedAtMonth;
   if (atMonth - resolvedAtMonth < COMPANY_REQUEST_REOFFER_MONTHS) return false;
   return relationshipSourceFactIds.some((eventId) => {
-    const event = worldEventByIdWithRetainedLease(
-      state,
-      eventId,
-      livePersonSocialEvidenceLeaseKey(requesterId),
-    );
+    const requester = state.people.find((candidate) => candidate.id === requesterId && isAlive(candidate));
+    const event = requester
+      ? liveSocialEvidenceForPersonSource(state, requester, eventId)
+      : undefined;
     return Boolean(event && event.atMonth > previous.proposedAtMonth);
   });
 }

@@ -9,12 +9,12 @@ import {
   groundedConversationOpeningsForListener,
   hasRecentGroundedConversationResponseForListener,
   hasRememberedGroundedConversationOpeningBasis,
-  compareWorldEventsInCanonicalOrder,
-  livePersonSocialEvidenceLeaseKey,
+  compareLiveSocialEvidenceDescriptors,
+  liveSocialEvidenceForPersonSource,
+  liveSocialEvidenceForPersonSources,
   planningOverlayEvents,
   retainedColdWorldEventsForLease,
   worldEventById,
-  worldEventByIdWithRetainedLease,
   type RememberedGroundedOpeningBasisCompilationDiagnostics,
   type RememberedGroundedOpeningBasisSnapshot,
 } from '../domain/event-index';
@@ -27,6 +27,7 @@ import { latestSharedProjectBetween } from '../domain/project-participant-index'
 import { conversationalRendezvous, positionsWithinVoiceRange } from '../domain/social-space';
 import { relationTo } from '../domain/relation';
 import { agreementsForPerson } from '../domain/agreement';
+import { livePersonSocialSourceEventIds, type LiveSocialEvidenceDescriptor } from '../domain/live-social-evidence';
 
 interface ConversationCandidate {
   topic: GroundedConversationTopic;
@@ -71,8 +72,21 @@ const TOPIC_LABEL: Record<GroundedConversationTopic, string> = {
   loss: '死亡与失去',
 };
 
-function resolvedSourceIds(state: SimulationState, sourceIds: string[]): string[] {
-  return [...new Set(sourceIds)].filter((sourceId) => Boolean(worldEventById(state, sourceId))).sort();
+function resolvedSourceIds(
+  state: SimulationState,
+  owner: PersonState,
+  sourceIds: string[],
+): string[] {
+  const owned = new Set(livePersonSocialSourceEventIds(owner));
+  const uniqueSourceIds = [...new Set(sourceIds)];
+  const resolvedOwned = new Set(liveSocialEvidenceForPersonSources(
+    state,
+    owner,
+    uniqueSourceIds.filter((sourceId) => owned.has(sourceId)),
+  ).map((evidence) => evidence.eventId));
+  return uniqueSourceIds.filter((sourceId) => owned.has(sourceId)
+    ? resolvedOwned.has(sourceId)
+    : Boolean(worldEventById(state, sourceId))).sort();
 }
 
 function alreadyUsedBasis(
@@ -100,11 +114,10 @@ function legacyRememberedGroundedOpeningBasisResolution(
         listenerId,
       )
     ),
-    eventForPersonSource: (personId, eventId) => worldEventByIdWithRetainedLease(
-      state,
-      eventId,
-      livePersonSocialEvidenceLeaseKey(personId),
-    ),
+    evidenceForPersonSource: (personId, eventId) => {
+      const person = state.people.find((candidate) => candidate.id === personId && isAlive(candidate));
+      return person ? liveSocialEvidenceForPersonSource(state, person, eventId) : undefined;
+    },
   };
 }
 
@@ -179,7 +192,7 @@ function gratitudeEvent(
   person: PersonState,
   other: PersonState,
   rememberedSources: RememberedGroundedOpeningBasisSnapshot,
-): WorldEvent | undefined {
+): LiveSocialEvidenceDescriptor | undefined {
   const personallyHeldSourceIds = new Set([
     ...person.memories
       .filter((memory) => memory.personIds.includes(other.id))
@@ -191,18 +204,14 @@ function gratitudeEvent(
       && agreement.partyIds.includes(other.id)
       && agreement.fulfilledByPersonIds.includes(other.id));
   return [...personallyHeldSourceIds]
-    .flatMap((eventId) => rememberedSources.eventForPersonSource(person.id, eventId) ?? [])
-    .sort(compareWorldEventsInCanonicalOrder)
+    .flatMap((eventId) => rememberedSources.evidenceForPersonSource(person.id, eventId) ?? [])
+    .sort(compareLiveSocialEvidenceDescriptors)
     .filter((event) => {
-      if (event.kind !== 'action' || event.status !== 'completed') return false;
-      const directSupport = event.who === other.id && (
-        event.diff.caredPersonId === person.id
-        || event.action.kind === 'transfer'
-          && event.action.to.kind === 'person'
-          && event.action.to.personId === person.id
-      );
+      if (!event.action?.completed) return false;
+      const directSupport = event.action.actorId === other.id
+        && event.action.supportRecipientIds.includes(person.id);
       const fulfilledSupport = fulfilledAgreements.some((agreement) => (
-        agreement.fulfillmentEventIds.includes(event.id)
+        agreement.fulfillmentEventIds.includes(event.eventId)
       ));
       return directSupport || fulfilledSupport;
     })
@@ -243,7 +252,7 @@ function openingCandidates(
     topic: 'care',
     summary: `向${other.name}表达对其${otherCondition.summary}的关心，并邀请对方共同寻找缓解办法`,
     reason: `${other.name}眼下有真实的身体不适，关心可以从正在发生的处境开始`,
-    sourceFactIds: resolvedSourceIds(state, otherCondition.sourceFactIds),
+    sourceFactIds: resolvedSourceIds(state, other, otherCondition.sourceFactIds),
     priority: 90,
   });
 
@@ -252,7 +261,7 @@ function openingCandidates(
     topic: 'hardship',
     summary: `向${other.name}说明自己${ownCondition.summary}，并邀请对方回应当前困境`,
     reason: '本人正在承受有事件来源的身体压力，可以向身边人坦白自己的感受',
-    sourceFactIds: resolvedSourceIds(state, ownCondition.sourceFactIds),
+    sourceFactIds: resolvedSourceIds(state, person, ownCondition.sourceFactIds),
     priority: 68,
   });
 
@@ -261,13 +270,13 @@ function openingCandidates(
     topic: 'gratitude',
     summary: `感谢${other.name}此前在本人需要帮助时给予物质、照护或履约支持`,
     reason: '对方曾真实给予物质、照护或完成双方约定，感谢有共同经历可追溯',
-    sourceFactIds: [gratitude.id],
+    sourceFactIds: [gratitude.eventId],
     priority: 86,
   });
 
   const project = sharedProject(state, person, other);
   if (project) {
-    const sourceFactIds = resolvedSourceIds(state, [
+    const sourceFactIds = resolvedSourceIds(state, person, [
       ...project.completionEventIds,
       ...project.actionEventIds,
     ]).slice(-4);
@@ -292,14 +301,17 @@ function openingCandidates(
     topic: 'failure',
     summary: `向${other.name}说明本人记得的失败“${failure.summary}”，并邀请对方一起复盘`,
     reason: '本人记得一次真实失败，可以向身边人表达挫折并寻求理解',
-    sourceFactIds: resolvedSourceIds(state, failure.sourceEventIds),
+    sourceFactIds: resolvedSourceIds(state, person, failure.sourceEventIds),
     priority: 62,
   });
 
   const loss = [...(person.bereavements ?? [])]
     .filter((bereavement) => {
       const remains = remainsById(state, bereavement.remainsId);
-      return Boolean(remains && !knowsDeath(other, remains.id) && worldEventById(state, bereavement.deathEventId));
+      return Boolean(remains
+        && !knowsDeath(other, remains.id)
+        && liveSocialEvidenceForPersonSource(state, person, bereavement.deathEventId)
+          ?.environment?.change === 'death');
     })
     .sort((left, right) => right.learnedAtMonth - left.learnedAtMonth || right.intensity - left.intensity)[0];
   if (loss) {
@@ -323,7 +335,7 @@ function openingCandidates(
     topic: 'discovery',
     summary: `向${other.name}分享本人可靠掌握、对方尚未可靠掌握的发现“${discovery.summary}”`,
     reason: '本人有一项可靠且对方尚未可靠掌握的观察，可以把发现变成有回应的交谈',
-    sourceFactIds: resolvedSourceIds(state, discovery.sourceEventIds),
+    sourceFactIds: resolvedSourceIds(state, person, discovery.sourceEventIds),
     factId: discovery.id,
     priority: 58,
   });

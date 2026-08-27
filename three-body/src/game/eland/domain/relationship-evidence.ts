@@ -1,7 +1,12 @@
 import type { RelationshipCausalBasis } from './action';
-import type { SimulationState, WorldEvent } from './model';
+import type { SimulationState } from './model';
 import { ageMonths, type PersonState } from './person';
-import { worldEventById } from './event-index';
+import {
+  liveSocialEvidenceForPersonSource,
+  liveSocialEvidenceForPersonSources,
+  worldEventById,
+} from './event-index';
+import type { LiveSocialEvidenceDescriptor } from './live-social-evidence';
 import {
   REPRODUCTION_REOFFER_MONTHS_AFTER_CONCEPTION,
   REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION,
@@ -38,31 +43,28 @@ function femaleAgeBand(person: PersonState, partner: PersonState, atMonth: numbe
 }
 
 function qualifiesAsRelationshipEvidence(
-  event: WorldEvent | undefined,
+  event: LiveSocialEvidenceDescriptor | undefined,
   proposerId: string,
   partnerId: string,
 ): boolean {
   if (!event) return false;
-  if (event.kind === 'action') {
-    if (event.status !== 'completed') return false;
-    if (event.action.kind !== 'communicate') return true;
-    const conversation = event.action.content.kind === 'claim' ? event.action.content.conversation : undefined;
-    if (!conversation || event.diff.groundedConversationBasisKey !== conversation.basisKey) return false;
+  if (event.action) {
+    if (!event.action.completed) return false;
+    if (event.action.actionKind !== 'communicate') return true;
+    const conversation = event.action.communication?.groundedConversation;
+    if (!conversation?.basisVerified) return false;
     const participants = new Set([conversation.speakerId, conversation.listenerId]);
     return participants.has(proposerId) && participants.has(partnerId);
   }
-  if (event.kind === 'agreement') return event.change === 'fulfilled';
-  if (event.kind !== 'environment') return false;
-  if (event.change === 'prediction') return true;
-  const participantIds = event.change === 'founding' || event.change === 'relationship'
-    ? event.diff.participantIds
-    : undefined;
-  if (event.change === 'relationship'
-    && Array.isArray(event.diff.excludedPairKeys)
-    && event.diff.excludedPairKeys.includes(relationshipPairKey(proposerId, partnerId))) return false;
-  return Array.isArray(participantIds)
-    && participantIds.includes(proposerId)
-    && participantIds.includes(partnerId);
+  if (event.agreementFulfilled) return true;
+  if (!event.environment) return false;
+  if (event.environment.change === 'prediction') return true;
+  if (event.environment.change === 'relationship'
+    && event.environment.excludedPairKeys.includes(
+      relationshipPairKey(proposerId, partnerId),
+    )) return false;
+  return event.environment.participantIds.includes(proposerId)
+    && event.environment.participantIds.includes(partnerId);
 }
 
 function relationshipEvidenceIds(
@@ -71,8 +73,17 @@ function relationshipEvidenceIds(
   partner: PersonState,
 ): string[] {
   const relation = relationTo(proposer, partner.id);
-  return [...new Set((relation?.sourceEventIds ?? [])
-    .filter((eventId) => qualifiesAsRelationshipEvidence(worldEventById(state, eventId), proposer.id, partner.id)))].sort();
+  return liveSocialEvidenceForPersonSources(
+    state,
+    proposer,
+    relation?.sourceEventIds ?? [],
+  ).filter((event) => qualifiesAsRelationshipEvidence(
+      event,
+      proposer.id,
+      partner.id,
+    ))
+    .map((event) => event.eventId)
+    .sort();
 }
 
 export function buildRelationshipCausalBasis(
@@ -159,7 +170,10 @@ function legacyBasisHasNewEvidence(
   resolvedAtMonth?: number,
 ): boolean {
   const cutoff = resolvedAtMonth ?? proposedAtMonth;
-  if (current.relationshipKeys.some((eventId) => (worldEventById(state, eventId)?.atMonth ?? Number.NEGATIVE_INFINITY) > cutoff)) return true;
+  if (current.relationshipKeys.some((eventId) => (
+    liveSocialEvidenceForPersonSource(state, proposer, eventId)?.atMonth
+      ?? Number.NEGATIVE_INFINITY
+  ) > cutoff)) return true;
   const previousAgeBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, proposedAtMonth) : null;
   return Boolean(previousAgeBand && current.bodyKeys.some((key) => key !== `female-age:${previousAgeBand}`));
 }

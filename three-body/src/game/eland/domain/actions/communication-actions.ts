@@ -12,11 +12,15 @@ import type { ProjectState } from '../project';
 import {
   hasRecentGroundedConversationResponseForListener,
   hasRememberedGroundedConversationOpeningBasis,
-  livePersonSocialEvidenceLeaseKey,
+  liveSocialEvidenceForPersonSource,
   planningOverlayEvents,
   worldEventById,
-  worldEventByIdWithRetainedLease,
 } from '../event-index';
+import {
+  livePersonSocialSourceEventIds,
+  liveSocialEvidenceDescriptorFromWorldEvent,
+  type LiveSocialEvidenceDescriptor,
+} from '../live-social-evidence';
 import { agreementsForPerson } from '../agreement';
 import {
   techniqueOutputMaterialId,
@@ -68,13 +72,15 @@ function groundedConversationSourceMatches(
   content: Extract<PrimitiveAction, { kind: 'communicate' }>['content'] & { kind: 'claim' },
   conversation: GroundedConversationRef,
 ): boolean {
-  const sources = conversation.sourceFactIds.map((sourceId) => conversation.topic === 'gratitude'
-    ? worldEventByIdWithRetainedLease(
-      state,
-      sourceId,
-      livePersonSocialEvidenceLeaseKey(person.id),
-    )
-    : worldEventById(state, sourceId));
+  const sourceOwner = conversation.topic === 'care' ? listener : person;
+  const ownerSourceIds = new Set(livePersonSocialSourceEventIds(sourceOwner));
+  const sources = conversation.sourceFactIds.map((sourceId): LiveSocialEvidenceDescriptor | undefined => {
+    if (ownerSourceIds.has(sourceId)) {
+      return liveSocialEvidenceForPersonSource(state, sourceOwner, sourceId);
+    }
+    const event = worldEventById(state, sourceId);
+    return event ? liveSocialEvidenceDescriptorFromWorldEvent(event) : undefined;
+  });
   if (!sources.length || sources.some((source) => !source)) return false;
   if (conversation.topic === 'care') {
     const conditionSources = new Set(listener.conditions.flatMap((condition) => condition.sourceEventIds));
@@ -85,18 +91,14 @@ function groundedConversationSourceMatches(
     return conversation.sourceFactIds.every((sourceId) => conditionSources.has(sourceId));
   }
   if (conversation.topic === 'gratitude') return sources.every((source) => {
-    if (source?.kind !== 'action' || source.status !== 'completed') return false;
-    const directSupport = source.who === listener.id && (
-      source.diff.caredPersonId === person.id
-      || source.action.kind === 'transfer'
-        && source.action.to.kind === 'person'
-        && source.action.to.personId === person.id
-    );
+    if (!source?.action?.completed) return false;
+    const directSupport = source.action.actorId === listener.id
+      && source.action.supportRecipientIds.includes(person.id);
     const fulfilledSupport = agreementsForPerson(state, person.id).some((agreement) => (
       agreement.status === 'fulfilled'
       && agreement.partyIds.includes(listener.id)
       && agreement.fulfilledByPersonIds.includes(listener.id)
-      && agreement.fulfillmentEventIds.includes(source.id)
+      && agreement.fulfillmentEventIds.includes(source!.eventId)
     ));
     return directSupport || fulfilledSupport;
   });
@@ -122,14 +124,12 @@ function groundedConversationSourceMatches(
   }
   if (conversation.topic === 'loss') {
     const knownDeathIds = new Set((person.bereavements ?? []).map((bereavement) => bereavement.deathEventId));
-    return sources.every((source) => source?.kind === 'environment'
-      && source.change === 'death'
-      && knownDeathIds.has(source.id));
+    return sources.every((source) => source?.environment?.change === 'death'
+      && knownDeathIds.has(source.eventId));
   }
-  return sources.every((source) => source?.kind === 'environment'
-    && source.change === 'body'
-    && typeof source.diff.bornPersonId === 'string'
-    && state.people.some((child) => child.id === source.diff.bornPersonId
+  return sources.every((source) => source?.environment?.change === 'body'
+    && typeof source.environment.bornPersonId === 'string'
+    && state.people.some((child) => child.id === source.environment!.bornPersonId
       && isAlive(child)
       && child.geneticParents.includes(person.id)
       && child.geneticParents.includes(listener.id)));
@@ -583,10 +583,10 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
     && groundedConversation.conversation.topic === 'loss'
     && groundedConversation.conversation.turn === 'opening') {
     const deathSource = groundedConversation.conversation.sourceFactIds
-      .map((sourceId) => worldEventById(state, sourceId))
-      .find((source) => source?.kind === 'environment' && source.change === 'death');
+      .map((sourceId) => liveSocialEvidenceForPersonSource(state, person, sourceId))
+      .find((source) => source?.environment?.change === 'death');
     const remains = deathSource
-      ? (state.world.remains ?? []).find((candidate) => candidate.deathEventId === deathSource.id)
+      ? (state.world.remains ?? []).find((candidate) => candidate.deathEventId === deathSource.eventId)
       : undefined;
     if (remains) {
       for (const listener of reached) {

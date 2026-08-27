@@ -1,5 +1,5 @@
 import type { ActionFact, SimulationState } from './model';
-import { worldEventById } from './event-index';
+import { liveSocialEvidenceForPersonSource, worldEventById } from './event-index';
 import type { MaterialId } from './material';
 import { isAlive, type PersonState } from './person';
 import type {
@@ -119,16 +119,13 @@ export function personRemembersProjectMaterialDeliveryRestriction(
   if (!person) return false;
   return person.memories.some((memory) => memory.kind === 'failure'
     && memory.sourceEventIds.some((eventId) => {
-      const event = worldEventById(state, eventId);
-      return event?.kind === 'action'
-        && event.who === personId
-        && event.status === 'blocked'
-        && event.action.kind === 'transfer'
-        && event.action.from.kind === 'ground'
-        && event.action.dropId === drop.id
-        && event.diff.projectMaterialDeliveryRestricted === true
-        && event.diff.projectId === delivery.projectId
-        && event.diff.requestEventId === delivery.requestEventId;
+      const evidence = liveSocialEvidenceForPersonSource(state, person, eventId);
+      const blocked = evidence?.action?.blockedDelivery;
+      return Boolean(evidence?.action?.actorId === personId
+        && blocked
+        && blocked.dropId === drop.id
+        && blocked.projectId === delivery.projectId
+        && blocked.requestEventId === delivery.requestEventId);
     }));
 }
 

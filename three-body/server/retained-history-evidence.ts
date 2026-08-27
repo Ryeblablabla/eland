@@ -3,6 +3,8 @@ import {
   liveAgreementHistoryLeaseKey,
   liveIntentHistoryLeaseKey,
   parseWaterAssistanceEvidenceLeaseKey,
+  liveSocialEvidenceForPersonSources,
+  registerLiveSocialEvidenceDescriptors,
   registerProjectPressureEvidenceDescriptors,
   registerRetainedColdWorldEventFacts,
   waterAssistanceEvidenceLeaseKey,
@@ -14,6 +16,17 @@ import {
   isRequesterWaterAssistanceEvidence,
 } from '../src/game/eland/domain/agreement';
 import type { SimulationState } from '../src/game/eland/domain/model';
+import { isAlive } from '../src/game/eland/domain/person';
+import {
+  livePersonSocialSourceEventIds,
+  livePersonSocialStrictEvidenceLeaseKey,
+  liveSocialEvidenceDescriptorFromWorldEvent,
+  measurementUncertaintyRawSourceEventIds,
+  parseLivePersonSocialEvidenceGroupKey,
+  parseLivePersonSocialEvidenceLeaseKey,
+  selectLivePersonSocialStrictEvidenceEventIds,
+  type RetainedLiveSocialEvidenceDescriptor,
+} from '../src/game/eland/domain/live-social-evidence';
 import {
   LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
   projectPressureEvidenceDescriptorFromWorldEvent,
@@ -78,6 +91,60 @@ export function projectPressureColdMaterializationOrdinals(
     if (match.absoluteIndex >= hotStartIndex) return [];
     return available.get(match.absoluteIndex) === eventId ? [] : [match.absoluteIndex];
   }).sort((left, right) => left - right);
+}
+
+function liveSocialBroadGroups(projection: HistoryRetentionProjectionResult) {
+  const owners = new Set<string>();
+  return projection.demandGroups.flatMap((group) => {
+    const parsed = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+    if (parsed?.kind !== 'broad') return [];
+    if (owners.has(parsed.ownerId)) {
+      throw new Error(`retention projection live social broad owner ${parsed.ownerId} 重复`);
+    }
+    owners.add(parsed.ownerId);
+    return [{ ownerId: parsed.ownerId, group }];
+  });
+}
+
+/** Cold broad social descriptors missing from exact body pins and reusable owner descriptors. */
+export function liveSocialColdMaterializationOrdinals(
+  state: SimulationState,
+  projection: HistoryRetentionProjectionResult,
+  alreadyDecoded: readonly RunStatePinnedEvent[],
+  reusableDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[] = [],
+  hotStartIndexOverride?: number,
+): number[] {
+  const cursor = state.world.historyCursor;
+  if (!cursor || cursor.version !== 1) {
+    throw new Error('计算 live social descriptor 物化范围时缺少 history cursor');
+  }
+  const matches = new Map(
+    projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
+  );
+  const decoded = new Map(alreadyDecoded.map((item) => [item.absoluteIndex, item.event.id]));
+  const reusable = new Set(reusableDescriptors.map((item) => (
+    JSON.stringify([item.ownerId, item.absoluteIndex, item.descriptor.eventId])
+  )));
+  const hotStartIndex = hotStartIndexOverride ?? cursor.hotStartIndex;
+  if (!Number.isSafeInteger(hotStartIndex)
+    || hotStartIndex < cursor.hotStartIndex
+    || hotStartIndex > cursor.eventCount) {
+    throw new Error('live social descriptor 目标 hotStartIndex 无效');
+  }
+  const needed = new Set<number>();
+  for (const { ownerId, group } of liveSocialBroadGroups(projection)) {
+    for (const eventId of group.resolvedEventIds) {
+      const match = matches.get(eventId);
+      if (!match || match.eventId !== eventId) {
+        throw new Error(`live social resolved source ${ownerId}/${eventId} 缺少 direct match`);
+      }
+      if (match.absoluteIndex >= hotStartIndex
+        || decoded.get(match.absoluteIndex) === eventId
+        || reusable.has(JSON.stringify([ownerId, match.absoluteIndex, eventId]))) continue;
+      needed.add(match.absoluteIndex);
+    }
+  }
+  return [...needed].sort((left, right) => left - right);
 }
 
 function assertRetentionDemandSemantics(projection: HistoryRetentionProjectionResult): void {
@@ -201,6 +268,41 @@ function isLegacyIntentSupportingSourceOnlyBlocker(
     && group.unresolvedEventIds.every((eventId) => supporting.has(eventId));
 }
 
+function currentLiveSocialStrictLeaseKeysByEventId(
+  state: SimulationState,
+): Map<string, Set<string>> {
+  const leaseKeysByEventId = new Map<string, Set<string>>();
+  const add = (eventIds: readonly string[], leaseKey: string) => {
+    for (const eventId of eventIds) {
+      const leaseKeys = leaseKeysByEventId.get(eventId) ?? new Set<string>();
+      leaseKeys.add(leaseKey);
+      leaseKeysByEventId.set(eventId, leaseKeys);
+    }
+  };
+  for (const person of state.people.filter(isAlive)) {
+    const rememberedEventIds = [...new Set(person.memories
+      .flatMap((memory) => memory.sourceEventIds))];
+    const rememberedDescriptors = liveSocialEvidenceForPersonSources(
+      state,
+      person,
+      rememberedEventIds,
+    );
+    const remote = selectLivePersonSocialStrictEvidenceEventIds(
+      person.id,
+      rememberedDescriptors,
+    )['electrical-remote-work'];
+    add(remote, livePersonSocialStrictEvidenceLeaseKey(person.id, 'electrical-remote-work'));
+    const measurementCandidateIds = measurementUncertaintyRawSourceEventIds(person);
+    const measurement = selectLivePersonSocialStrictEvidenceEventIds(
+      person.id,
+      [],
+      measurementCandidateIds,
+    )['measurement-uncertainty'];
+    add(measurement, livePersonSocialStrictEvidenceLeaseKey(person.id, 'measurement-uncertainty'));
+  }
+  return leaseKeysByEventId;
+}
+
 /**
  * Join a sealed retention projection to facts returned by the bounded decoder,
  * then install only the cold subset in the process-local domain lookup. Hot
@@ -213,6 +315,8 @@ export function installVerifiedHistoryRetentionEvidence(
   decodedColdPins: readonly RunStatePinnedEvent[],
   decodedProjectPressureSources: readonly RunStatePinnedEvent[] = [],
   reusableProjectPressureDescriptors: readonly RetainedProjectPressureEvidenceDescriptor[] = [],
+  decodedLiveSocialSources: readonly RunStatePinnedEvent[] = [],
+  reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[] = [],
 ): readonly RetainedColdWorldEventFact[] {
   const cursor = state.world.historyCursor;
   if (!cursor || cursor.version !== 1) throw new Error('安装 retention evidence 时缺少 history cursor');
@@ -223,15 +327,8 @@ export function installVerifiedHistoryRetentionEvidence(
     || projection.target.tailEventId !== cursor.tailEventId) {
     throw new Error('retention projection authority/seal 与 bounded state 不一致');
   }
-  assertHistoryRetentionProjectionMatchesShell(state, projection);
   assertRetentionDemandSemantics(projection);
   assertRetentionGroupPins(projection);
-  const blocking = projection.demandGroups.filter((group) => group.blocking
-    && !isLegacyAgreementSupportingSourceOnlyBlocker(state, group)
-    && !isLegacyIntentSupportingSourceOnlyBlocker(state, group));
-  if (blocking.length) {
-    throw new Error(`retention projection 仍有 ${blocking.length} 个阻断证据组`);
-  }
   if (state.world.past.length !== cursor.eventCount - cursor.hotStartIndex) {
     throw new Error('安装 retention evidence 时 world.past 不是完整热窗口');
   }
@@ -246,7 +343,7 @@ export function installVerifiedHistoryRetentionEvidence(
 
   const expectedColdOrdinals = new Set<number>();
   const seenProjectionOrdinals = new Set<number>();
-  const retained: RetainedColdWorldEventFact[] = [];
+  const retainedByOrdinal = new Map<number, RetainedColdWorldEventFact>();
   const legacyWaterAgreementLeaseKeysByFulfillmentEventId = new Map<string, Set<string>>();
   for (const agreement of state.agreements ?? []) {
     if (agreement.status !== 'active'
@@ -296,9 +393,10 @@ export function installVerifiedHistoryRetentionEvidence(
         && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
         && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null
         && !legacyWaterAgreementLeaseKeysByFulfillmentEventId
-          .get(pin.eventId)?.has(leaseKey),
+          .get(pin.eventId)?.has(leaseKey)
+        && parseLivePersonSocialEvidenceLeaseKey(leaseKey)?.kind !== 'broad',
     );
-    if (gameplayLeaseKeys.length > 0) retained.push({
+    if (gameplayLeaseKeys.length > 0) retainedByOrdinal.set(pin.absoluteIndex, {
       absoluteIndex: pin.absoluteIndex,
       eventId: pin.eventId,
       event: decoded.event,
@@ -310,12 +408,10 @@ export function installVerifiedHistoryRetentionEvidence(
       throw new Error(`bounded decoder 返回 projection 未请求的冷 pin ${absoluteIndex}`);
     }
   }
-
-  const directByEventId = new Map(
+  const directById = new Map(
     projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
   );
   const pinByOrdinal = new Map(projection.pins.map((pin) => [pin.absoluteIndex, pin]));
-  const retainedByOrdinal = new Map(retained.map((fact) => [fact.absoluteIndex, fact]));
   for (const agreement of state.agreements ?? []) {
     if (agreement.status !== 'active'
       || agreement.proposal.kind !== 'assist'
@@ -340,7 +436,7 @@ export function installVerifiedHistoryRetentionEvidence(
     let latestRequester: { event: NonNullable<RunStatePinnedEvent['event']>; absoluteIndex: number } | undefined;
     for (const eventId of new Set(agreement.fulfillmentEventIds)) {
       if (!projectedMembership.has(eventId)) continue;
-      const match = directByEventId.get(eventId);
+      const match = directById.get(eventId);
       if (!match || pinByOrdinal.get(match.absoluteIndex)?.eventId !== eventId) continue;
       const event = match.absoluteIndex >= cursor.hotStartIndex
         ? state.world.past[match.absoluteIndex - cursor.hotStartIndex]
@@ -391,6 +487,101 @@ export function installVerifiedHistoryRetentionEvidence(
     .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
   registerRetainedColdWorldEventFacts(state, retainedWithWaterAnchors);
 
+  const expectedLiveSocialOrdinals = liveSocialColdMaterializationOrdinals(
+    state,
+    projection,
+    decodedColdPins,
+    reusableLiveSocialDescriptors,
+  );
+  const expectedLiveSocialOrdinalSet = new Set(expectedLiveSocialOrdinals);
+  const liveSocialByOrdinal = new Map<number, RunStatePinnedEvent>();
+  for (const decoded of decodedLiveSocialSources) {
+    if (!expectedLiveSocialOrdinalSet.has(decoded.absoluteIndex)
+      || liveSocialByOrdinal.has(decoded.absoluteIndex)) {
+      throw new Error(`live social descriptor 返回未请求或重复 ordinal ${decoded.absoluteIndex}`);
+    }
+    liveSocialByOrdinal.set(decoded.absoluteIndex, decoded);
+  }
+  if (liveSocialByOrdinal.size !== expectedLiveSocialOrdinals.length) {
+    throw new Error('live social descriptor 冷事实物化不完整');
+  }
+  const reusableLiveSocialByOwnerOrdinal = new Map<string, RetainedLiveSocialEvidenceDescriptor>();
+  for (const item of reusableLiveSocialDescriptors) {
+    const key = JSON.stringify([item.ownerId, item.absoluteIndex]);
+    if (reusableLiveSocialByOwnerOrdinal.has(key)) {
+      throw new Error(`live social reusable descriptor ${item.ownerId}/${item.absoluteIndex} 重复`);
+    }
+    reusableLiveSocialByOwnerOrdinal.set(key, item);
+  }
+  const liveSocialDescriptorFacts: RetainedLiveSocialEvidenceDescriptor[] = [];
+  for (const { ownerId, group: socialGroup } of liveSocialBroadGroups(projection)) {
+    for (const eventId of socialGroup.resolvedEventIds) {
+      const match = directById.get(eventId);
+      if (!match) throw new Error(`live social source ${ownerId}/${eventId} 缺少 ordinal`);
+      const event = match.absoluteIndex >= cursor.hotStartIndex
+        ? state.world.past[match.absoluteIndex - cursor.hotStartIndex]
+        : decodedByOrdinal.get(match.absoluteIndex)?.event
+          ?? liveSocialByOrdinal.get(match.absoluteIndex)?.event;
+      const reusable = reusableLiveSocialByOwnerOrdinal.get(
+        JSON.stringify([ownerId, match.absoluteIndex]),
+      );
+      if (event && event.id !== eventId) {
+        throw new Error(`live social source ${ownerId}/${match.absoluteIndex}/${eventId} 身份不一致`);
+      }
+      if (!event && reusable?.descriptor.eventId !== eventId) {
+        throw new Error(`live social source ${ownerId}/${match.absoluteIndex}/${eventId} 缺少 descriptor`);
+      }
+      liveSocialDescriptorFacts.push(Object.freeze({
+        ownerId,
+        absoluteIndex: match.absoluteIndex,
+        descriptor: event
+          ? liveSocialEvidenceDescriptorFromWorldEvent(event)
+          : reusable!.descriptor,
+      }));
+    }
+  }
+  registerLiveSocialEvidenceDescriptors(
+    state,
+    liveSocialDescriptorFacts,
+    projection.continuationBasis.directMatches,
+  );
+
+  // A legacy broad-all group may be the only source of a body now selected by
+  // one strict subgroup. Promote only that deterministic typed subset; every
+  // other broad body remains descriptor-only and cannot enter generic lookup.
+  const strictLeaseKeysByEventId = currentLiveSocialStrictLeaseKeysByEventId(state);
+  for (const [eventId, strictLeaseKeys] of strictLeaseKeysByEventId) {
+    const match = directById.get(eventId);
+    if (!match || match.absoluteIndex >= cursor.hotStartIndex) continue;
+    const decoded = decodedByOrdinal.get(match.absoluteIndex)
+      ?? liveSocialByOrdinal.get(match.absoluteIndex);
+    if (!decoded || decoded.event.id !== eventId) {
+      throw new Error(`live social strict source ${match.absoluteIndex}/${eventId} 缺少真实 ActionFact`);
+    }
+    const previous = retainedByOrdinal.get(match.absoluteIndex);
+    retainedByOrdinal.set(match.absoluteIndex, {
+      absoluteIndex: match.absoluteIndex,
+      eventId,
+      event: decoded.event,
+      leaseKeys: [...new Set([
+        ...(previous?.leaseKeys ?? []),
+        ...strictLeaseKeys,
+      ])].sort(),
+    });
+  }
+  registerRetainedColdWorldEventFacts(state, [...retainedByOrdinal.values()]);
+
+  // Descriptor and exact strict registries are now available, so the current
+  // shell can reproduce its canonical demand even while opening a legacy all
+  // checkpoint. Any owner/membership/selector drift still fails closed here.
+  assertHistoryRetentionProjectionMatchesShell(state, projection);
+  const blocking = projection.demandGroups.filter((group) => group.blocking
+    && !isLegacyAgreementSupportingSourceOnlyBlocker(state, group)
+    && !isLegacyIntentSupportingSourceOnlyBlocker(state, group));
+  if (blocking.length) {
+    throw new Error(`retention projection 仍有 ${blocking.length} 个阻断证据组`);
+  }
+
   const expectedProjectPressureOrdinals = projectPressureColdMaterializationOrdinals(
     state,
     projection,
@@ -411,9 +602,6 @@ export function installVerifiedHistoryRetentionEvidence(
   }
 
   const group = projectPressureSourceGroup(projection);
-  const directById = new Map(
-    projection.continuationBasis.directMatches.map((match) => [match.eventId, match]),
-  );
   const reusableByOrdinal = new Map<number, RetainedProjectPressureEvidenceDescriptor>();
   for (const item of reusableProjectPressureDescriptors) {
     if (reusableByOrdinal.has(item.absoluteIndex)) {
@@ -443,5 +631,6 @@ export function installVerifiedHistoryRetentionEvidence(
     });
   });
   registerProjectPressureEvidenceDescriptors(state, descriptorFacts);
-  return retainedWithWaterAnchors;
+  return [...retainedByOrdinal.values()]
+    .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
 }

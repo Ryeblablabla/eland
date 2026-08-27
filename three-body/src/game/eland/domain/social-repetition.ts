@@ -1,12 +1,27 @@
-import type { ActionOption, PrimitiveAction, RepresentationInput } from './action';
-import { worldEventById } from './event-index';
-import type { ActionFact, SimulationState } from './model';
+import type { ActionOption, PrimitiveAction } from './action';
+import {
+  liveSocialEvidenceForPersonSources,
+} from './event-index';
+import type { SimulationState } from './model';
 import type { PersonState } from './person';
 import { agreementByProposalEventId } from './agreement';
-import { intentById, personById } from './state-index';
+import { personById } from './state-index';
 import { actionOptionSemantics } from './action-option-semantics';
+import {
+  liveSocialCommunicationSubjectKey,
+  type LiveSocialEvidenceDescriptor,
+} from './live-social-evidence';
 
 type SocialOutcome = 'unanswered' | 'supportive' | 'guarded' | 'proposed' | 'accepted' | 'rejected' | 'fulfilled' | 'expired' | 'breached' | 'cancelled';
+
+function rememberedCommunicationOrder(
+  left: LiveSocialEvidenceDescriptor,
+  right: LiveSocialEvidenceDescriptor,
+): number {
+  return right.atMonth - left.atMonth
+    || right.planningTick - left.planningTick
+    || right.orderInMonth - left.orderInMonth;
+}
 
 export interface SocialRepetitionAssessment {
   score: number;
@@ -23,47 +38,8 @@ function communicationAction(option: ActionOption): Extract<PrimitiveAction, { k
   return option.completionAction?.kind === 'communicate' ? option.completionAction : undefined;
 }
 
-function proposalSubject(content: Extract<RepresentationInput, { kind: 'request' | 'offer' }>): string | null {
-  if (content.kind === 'request' && content.techniqueDemonstration) {
-    return `request:technique:${content.techniqueDemonstration.projectId}:${content.techniqueDemonstration.desiredFunction}`;
-  }
-  if (content.kind === 'request' && content.projectKnowledgeRequest) {
-    return `request:project-knowledge:${content.projectKnowledgeRequest.projectId}:${content.projectKnowledgeRequest.outputMaterialId}`;
-  }
-  if (content.kind === 'request' && content.projectMaterialContribution) {
-    const request = content.projectMaterialContribution;
-    return `request:project-material:${request.projectId}:${request.materialId}`;
-  }
-  const proposal = content.proposal;
-  if (!proposal) return null;
-  if (proposal.kind === 'assist') return `${content.kind}:assist:${proposal.need}`;
-  if (proposal.kind === 'membership') return `${content.kind}:membership:${proposal.collectiveId}:${proposal.candidateId}`;
-  if (proposal.kind === 'permission') return `${content.kind}:permission:${proposal.collectiveId}:${proposal.materialId}:${proposal.granteeId}`;
-  if (proposal.kind === 'decision-rule') return `${content.kind}:decision-rule:${proposal.collectiveId}:${proposal.scope}:${proposal.materialId}`;
-  if (proposal.kind === 'mandate') return `${content.kind}:mandate:${proposal.collectiveId}:${proposal.decisionRuleId}:${proposal.holderId}`;
-  if (proposal.kind === 'exchange') {
-    const materials = [proposal.offererMaterialId, proposal.partnerMaterialId].sort((left, right) => left - right);
-    return `${content.kind}:exchange:${materials.join(':')}`;
-  }
-  return `${content.kind}:${proposal.kind}`;
-}
-
-function semanticSubject(action: Extract<PrimitiveAction, { kind: 'communicate' }>): string | null {
-  const content = action.content;
-  if (content.kind === 'claim') {
-    if (content.conversation) return `claim:conversation:${content.conversation.topic}`;
-    if (content.factId) return `claim:fact:${content.factId}`;
-    return `claim:${content.id.split(':')[0] ?? 'situation'}`;
-  }
-  if (content.kind === 'prediction') return `prediction:${content.prediction.targetEpoch}`;
-  if (content.kind === 'request' || content.kind === 'offer') return proposalSubject(content) ?? `${content.kind}:${content.id.split(':')[0] ?? 'situation'}`;
-  return null;
-}
-
 function socialSubjectKey(action: Extract<PrimitiveAction, { kind: 'communicate' }>): string | null {
-  const subject = semanticSubject(action);
-  if (!subject) return null;
-  return `${subject}|audience=${[...action.audience].sort().join(',')}`;
+  return liveSocialCommunicationSubjectKey(action);
 }
 
 function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'communicate' }>): boolean {
@@ -75,41 +51,22 @@ function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAct
     || action.content.kind === 'offer';
 }
 
-function rememberedCommunications(state: SimulationState, person: PersonState): ActionFact[] {
-  const seen = new Set<string>();
-  return person.memories
-    .flatMap((memory) => memory.sourceEventIds)
-    .flatMap((eventId) => {
-      if (seen.has(eventId)) return [];
-      seen.add(eventId);
-      const event = worldEventById(state, eventId);
-      return event?.kind === 'action'
-        && event.status === 'completed'
-        && event.who === person.id
-        && event.action.kind === 'communicate'
-        ? [event]
-        : [];
-    })
-    .sort((left, right) => right.atMonth - left.atMonth
-      || (right.planningTick ?? 0) - (left.planningTick ?? 0)
-      || right.orderInMonth - left.orderInMonth);
+function rememberedCommunications(
+  state: SimulationState,
+  person: PersonState,
+): LiveSocialEvidenceDescriptor[] {
+  return liveSocialEvidenceForPersonSources(
+    state,
+    person,
+    person.memories.flatMap((memory) => memory.sourceEventIds),
+  ).filter((event) => event.action?.completed
+    && event.action.actorId === person.id
+    && Boolean(event.action.communication))
+    .sort(rememberedCommunicationOrder);
 }
 
-function actionBasisSourceIds(state: SimulationState, event: ActionFact): string[] {
-  if (event.action.kind !== 'communicate') return [];
-  const content = event.action.content;
-  const conversationSources = content.kind === 'claim' ? content.conversation?.sourceFactIds ?? [] : [];
-  const relationshipSources = (content.kind === 'request' || content.kind === 'offer')
-    && (content.proposal?.kind === 'companion' || content.proposal?.kind === 'reproduce')
-    ? content.proposal.basis?.sourceFactIds ?? []
-    : [];
-  const assertedSources = Array.isArray(event.diff.assertedFactSourceEventIds)
-    ? event.diff.assertedFactSourceEventIds.filter((eventId): eventId is string => typeof eventId === 'string')
-    : [];
-  const intentSources = event.intentId
-    ? intentById(state, event.intentId)?.sourceFactIds ?? []
-    : [];
-  return [...new Set([...conversationSources, ...relationshipSources, ...assertedSources, ...intentSources])];
+function actionBasisSourceIds(event: LiveSocialEvidenceDescriptor): string[] {
+  return [...(event.action?.communication?.basisSourceEventIds ?? [])];
 }
 
 function currentBasisSourceIds(option: ActionOption, action: Extract<PrimitiveAction, { kind: 'communicate' }>): string[] {
@@ -126,30 +83,23 @@ function rememberedResponseTo(
   state: SimulationState,
   person: PersonState,
   openingEventId: string,
-): ActionFact | undefined {
-  const seen = new Set<string>();
-  return person.memories
-    .flatMap((memory) => memory.sourceEventIds)
-    .flatMap((eventId) => {
-      if (seen.has(eventId)) return [];
-      seen.add(eventId);
-      const event = worldEventById(state, eventId);
-      return event?.kind === 'action'
-        && event.status === 'completed'
-        && event.action.kind === 'communicate'
-        && event.action.content.kind === 'claim'
-        && event.action.content.conversation?.turn === 'response'
-        && event.action.content.conversation.referenceEventId === openingEventId
-        ? [event]
-        : [];
-    })
-    .sort((left, right) => right.atMonth - left.atMonth
-      || (right.planningTick ?? 0) - (left.planningTick ?? 0)
-      || right.orderInMonth - left.orderInMonth)[0];
+): LiveSocialEvidenceDescriptor | undefined {
+  return liveSocialEvidenceForPersonSources(
+    state,
+    person,
+    person.memories.flatMap((memory) => memory.sourceEventIds),
+  ).filter((event) => event.action?.completed
+    && event.action.communication?.groundedConversation?.turn === 'response'
+    && event.action.communication.groundedConversation.referenceEventId === openingEventId)
+    .sort(rememberedCommunicationOrder)[0];
 }
 
-function outcomeFor(state: SimulationState, person: PersonState, event: ActionFact): { outcome: SocialOutcome; sourceFactIds: string[] } {
-  const agreement = agreementByProposalEventId(state, event.id);
+function outcomeFor(
+  state: SimulationState,
+  person: PersonState,
+  event: LiveSocialEvidenceDescriptor,
+): { outcome: SocialOutcome; sourceFactIds: string[] } {
+  const agreement = agreementByProposalEventId(state, event.eventId);
   if (agreement) {
     const outcome = agreement.status === 'proposed'
       ? 'proposed'
@@ -158,15 +108,13 @@ function outcomeFor(state: SimulationState, person: PersonState, event: ActionFa
         : agreement.status;
     return { outcome, sourceFactIds: [...agreement.sourceEventIds] };
   }
-  if (event.action.kind === 'communicate'
-    && event.action.content.kind === 'claim'
-    && event.action.content.conversation?.turn === 'opening') {
-    const response = rememberedResponseTo(state, person, event.id);
-    const stance = response?.action.kind === 'communicate'
-      && response.action.content.kind === 'claim'
-      ? response.action.content.conversation?.stance
-      : undefined;
-    if (response) return { outcome: stance === 'guarded' ? 'guarded' : 'supportive', sourceFactIds: [response.id] };
+  if (event.action?.communication?.groundedConversation?.turn === 'opening') {
+    const response = rememberedResponseTo(state, person, event.eventId);
+    const stance = response?.action?.communication?.groundedConversation?.stance;
+    if (response) return {
+      outcome: stance === 'guarded' ? 'guarded' : 'supportive',
+      sourceFactIds: [response.eventId],
+    };
   }
   return { outcome: 'unanswered', sourceFactIds: [] };
 }
@@ -231,7 +179,7 @@ export function assessSocialRepetition(
   const subjectKey = socialSubjectKey(action);
   if (!subjectKey) return { score: 0, reasons: [], sourceFactIds: [], newEvidenceEventIds: [] };
   const previous = rememberedCommunications(state, person)
-    .find((event) => event.action.kind === 'communicate' && socialSubjectKey(event.action) === subjectKey);
+    .find((event) => event.action?.communication?.subjectKey === subjectKey);
   const currentSources = currentBasisSourceIds(option, action);
   if (!previous) {
     return {
@@ -242,16 +190,16 @@ export function assessSocialRepetition(
       newEvidenceEventIds: currentSources,
     };
   }
-  const previousSources = new Set(actionBasisSourceIds(state, previous));
+  const previousSources = new Set(actionBasisSourceIds(previous));
   const newEvidenceEventIds = currentSources.filter((eventId) => !previousSources.has(eventId));
   const outcome = outcomeFor(state, person, previous);
   if (newEvidenceEventIds.length > 0) {
     return {
       score: Math.min(16, newEvidenceEventIds.length * 4),
       reasons: ['同一主题出现了本人可追溯的新情况，可以重新判断是否开口'],
-      sourceFactIds: [...new Set([previous.id, ...newEvidenceEventIds, ...outcome.sourceFactIds])],
+      sourceFactIds: [...new Set([previous.eventId, ...newEvidenceEventIds, ...outcome.sourceFactIds])],
       subjectKey,
-      previousCommunicationEventId: previous.id,
+      previousCommunicationEventId: previous.eventId,
       newEvidenceEventIds,
       outcome: outcome.outcome,
     };
@@ -268,9 +216,9 @@ export function assessSocialRepetition(
       `本人记得刚向同一组听者谈过同一主题，且没有新的事实依据（上次结果：${outcome.outcome}）`,
       ...(urgency > 0 ? ['这项求助或生活话题直接涉及的显著生存危险提高了再次开口的价值'] : []),
     ],
-    sourceFactIds: [...new Set([previous.id, ...outcome.sourceFactIds])],
+    sourceFactIds: [...new Set([previous.eventId, ...outcome.sourceFactIds])],
     subjectKey,
-    previousCommunicationEventId: previous.id,
+    previousCommunicationEventId: previous.eventId,
     newEvidenceEventIds: [],
     outcome: outcome.outcome,
   };

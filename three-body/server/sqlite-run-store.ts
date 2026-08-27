@@ -16,6 +16,7 @@ import {
   type WorldEvent,
 } from "../src/game/eland/simulation";
 import {
+  retainedLiveSocialEvidenceForLivingSources,
   retainedProjectPressureEvidenceForLivingSources,
   worldEventById,
 } from "../src/game/eland/domain/event-index";
@@ -88,7 +89,10 @@ import {
   assertVerifiedHistoryRetentionSuccessor,
   projectHistoryRetentionFromVerifiedSuccessor,
 } from "./history-retention-successor";
-import { projectPressureColdMaterializationOrdinals } from "./retained-history-evidence";
+import {
+  liveSocialColdMaterializationOrdinals,
+  projectPressureColdMaterializationOrdinals,
+} from "./retained-history-evidence";
 import type { NarrativeEnhancementArtifact } from "./narrative-enhancements";
 import {
   decodeObserverDerivedHistorySidecar,
@@ -3305,6 +3309,8 @@ export class SqliteRunStore implements RunStore {
     });
     const reusableProjectPressureDescriptors =
       retainedProjectPressureEvidenceForLivingSources(nextState);
+    const reusableLiveSocialDescriptors =
+      retainedLiveSocialEvidenceForLivingSources(nextState);
     const nextHotStartIndex = Math.max(
       0,
       nextRoot.eventCount - source.continuation.hotEventLimit,
@@ -3518,6 +3524,17 @@ export class SqliteRunStore implements RunStore {
           nextHotStartIndex,
         ),
       );
+      const warmLiveSocialSources = materializeVerifiedRunHistoryPinnedEvents(
+        nextRoot,
+        readPublicationChunk,
+        liveSocialColdMaterializationOrdinals(
+          nextState,
+          warmArtifacts.retention,
+          warmPinnedEvents,
+          reusableLiveSocialDescriptors,
+          nextHotStartIndex,
+        ),
+      );
       trimCommittedHistoryAfterPersistedCursor(
         nextState,
         {
@@ -3533,6 +3550,8 @@ export class SqliteRunStore implements RunStore {
         warmPinnedEvents,
         warmProjectPressureSources,
         reusableProjectPressureDescriptors,
+        warmLiveSocialSources,
+        reusableLiveSocialDescriptors,
         warmArtifacts.physical,
       );
 
@@ -4515,7 +4534,6 @@ export class SqliteRunStore implements RunStore {
       sidecars[name] = snapshotContinuationChunkIdentity(chunk);
       return artifact;
     })();
-    assertHistoryRetentionProjectionMatchesShell(decoded.state, retention);
     assertRetentionPinsMatchBundle(normalizedId, retention, bundle);
 
     const physicalSidecar = (() => {
@@ -4611,12 +4629,23 @@ export class SqliteRunStore implements RunStore {
         decoded.pinnedEvents,
       ),
     );
+    const liveSocialSources = materializeVerifiedRunHistoryPinnedEvents(
+      rootMetadata,
+      (chunkHash) => this.chunkRow(chunkHash),
+      liveSocialColdMaterializationOrdinals(
+        decoded.state,
+        retention,
+        decoded.pinnedEvents,
+      ),
+    );
     adoptStoreDecodedBoundedSimulationState(
       decoded.state,
       runSnapshot.stateHash,
       retention,
       decoded.pinnedEvents,
       projectPressureSources,
+      [],
+      liveSocialSources,
       [],
       physicalSidecar,
     );

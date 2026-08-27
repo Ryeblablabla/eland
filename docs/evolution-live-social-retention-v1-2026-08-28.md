@@ -1,6 +1,6 @@
 # 活人社交历史的分层保留 v1（预登记）
 
-状态：实现前预登记；尚无候选长程结论。
+状态：定向机制验收通过（ACCEPT）；尚无候选长程结论，未启动长程。
 
 ## 可证伪假设
 
@@ -26,3 +26,11 @@
 4. foreign owner、错误 root、错误 ordinal、错误事件类型和 legacy 形状漂移全部 fail-closed。
 5. 通过真实 SQLite cold open 与 warm successor 重建 registry；不得沿用上一月或另一 history base 的 descriptor。
 6. 定向机制验收后才合入新的 runtime SHA，并用全新 prefix 从 genesis 进行 terminal 演算；不得续跑第 818 月 fail-closed 目录。
+
+## 定向结果
+
+单一真实 SQLite 夹具完成了 cold open → successor publication → warm successor 的同一路径验证。364 个权威事件中，活人 broad membership 为 38 个 ID 且不产生正文 pin；电气远程工作与测量不确定性分别只保留 6 与 3 个 strict 正文。旧 broad `all` 能按 exact owner/key/eventIds/ordinal 迁移，新 successor 只发布 `index-only` broad 与两个规范 strict 子组。
+
+代表性社交消费者的 full/bounded 结果逐字一致；owner、history base 与 ordinal 隔离、遗忘/条件清除/关系替换/死亡退租、共享 source 最后 owner 释放均通过。交叉审查发现并修正了机械动力动作误入电气 strict lease 的超集，反证确认仅携带 `mechanicalPowerBasis` 的 install/repair 动作不会获得正文 lease。
+
+验证仅包括 `node scripts/test-live-social-retention-layering.mjs`、`npm run --silent backend:build` 与 `git diff --check`；这些结果只接受分层保留机制，不代表长期文明演化或 terminal 运行已经验收。

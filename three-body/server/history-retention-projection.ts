@@ -58,7 +58,7 @@ import {
   hasRecentGroundedConversationResponseForListener,
   liveAgreementHistoryLeaseKey,
   liveIntentHistoryLeaseKey,
-  livePersonSocialEvidenceLeaseKey,
+  liveSocialEvidenceForPersonSources,
   parseGroundedConversationWindowLeaseKey,
   parseWaterAssistanceEvidenceLeaseKey,
   parseWaterAssistanceFulfillmentMembershipGroupKey,
@@ -71,6 +71,17 @@ import {
   isRequesterWaterAssistanceEvidence,
   type AssistanceProposal,
 } from '../src/game/eland/domain/agreement';
+import {
+  LIVE_PERSON_SOCIAL_EVENT_ID_LIMIT,
+  livePersonSocialEvidenceGroupKey,
+  livePersonSocialEvidenceLeaseKey,
+  livePersonSocialSourceEventIds,
+  livePersonSocialStrictEvidenceGroupKey,
+  livePersonSocialStrictEvidenceLeaseKey,
+  parseLivePersonSocialEvidenceGroupKey,
+  measurementUncertaintyRawSourceEventIds,
+  selectLivePersonSocialStrictEvidenceEventIds,
+} from '../src/game/eland/domain/live-social-evidence';
 import {
   LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
   rememberedProjectPressureSourceEventIds,
@@ -337,7 +348,8 @@ export const HISTORY_RETENTION_MAX_CALIBRATION_INSTRUMENTS = 4_096;
 export const HISTORY_RETENTION_MAX_CALIBRATION_INSTRUMENTS_PER_PERSON = 64;
 export const HISTORY_RETENTION_MAX_MEASUREMENT_STACK_SOURCE_EVENT_IDS = 24;
 /** Personally held social evidence remains exact but must not create an unbounded sidecar. */
-export const HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS = 4_096;
+export const HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS =
+  LIVE_PERSON_SOCIAL_EVENT_ID_LIMIT;
 /** Active water help retains full index identity, but only two typed bodies. */
 export const HISTORY_RETENTION_MAX_ACTIVE_WATER_ASSISTANCE_AGREEMENTS = 4_096;
 export const HISTORY_RETENTION_MAX_WATER_ASSISTANCE_FULFILLMENT_EVENT_IDS = 4_096;
@@ -692,6 +704,72 @@ function assertWaterAssistanceStorageRefinementMatches(
   }
 }
 
+/**
+ * Legacy checkpoints pinned every body in one owner group. The only admitted
+ * migration keeps that exact owner membership while refining storage to an
+ * index plus the two deterministic strict body subsets.
+ */
+function assertLivePersonSocialStorageRefinementMatches(
+  projected: readonly ProjectPressureDemandGroupShape[],
+  demanded: readonly ProjectPressureDemandGroupShape[],
+): void {
+  const relevant = (groups: readonly ProjectPressureDemandGroupShape[]) => groups
+    .flatMap((group) => {
+      const parsed = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+      return parsed ? [{ group, parsed }] : [];
+    });
+  const projectedRelevant = relevant(projected);
+  const demandedRelevant = relevant(demanded);
+  const projectedByKey = new Map(projectedRelevant.map((item) => [item.group.groupKey, item.group]));
+  const demandedByKey = new Map(demandedRelevant.map((item) => [item.group.groupKey, item.group]));
+  if (projectedByKey.size !== projectedRelevant.length
+    || demandedByKey.size !== demandedRelevant.length) {
+    throw new Error('retention live social groups 重复');
+  }
+  for (const { group: current, parsed } of demandedRelevant) {
+    if (parsed.kind === 'broad') {
+      const previous = projectedByKey.get(current.groupKey);
+      if (!previous
+        || current.requirement !== 'index-only'
+        || (previous.requirement !== 'all' && previous.requirement !== 'index-only')
+        || !sameStringSet(previous.leaseKeys, current.leaseKeys)
+        || !sameStringSet(previous.eventIds, current.eventIds)) {
+        throw new Error(`retention live social ${parsed.ownerId} broad storage refinement 不一致`);
+      }
+      continue;
+    }
+    const previous = projectedByKey.get(current.groupKey);
+    if (previous) {
+      if (previous.requirement !== 'all'
+        || current.requirement !== 'all'
+        || !sameStringSet(previous.leaseKeys, current.leaseKeys)
+        || !sameStringSet(previous.eventIds, current.eventIds)) {
+        throw new Error(`retention live social ${parsed.ownerId}/${parsed.kind} strict selector 不一致`);
+      }
+    } else {
+      // A legacy broad-all checkpoint has no strict subgroups. It may refine
+      // only bodies already named and pinned by that exact owner membership;
+      // unrelated current-shell IDs require a new verified successor/root.
+      const legacyBroad = projectedByKey.get(livePersonSocialEvidenceGroupKey(parsed.ownerId));
+      const legacyIds = new Set(legacyBroad?.eventIds ?? []);
+      if (legacyBroad?.requirement !== 'all'
+        || current.eventIds.some((eventId) => !legacyIds.has(eventId))) {
+        throw new Error(
+          `retention legacy live social ${parsed.ownerId}/${parsed.kind} strict selector 无 broad exact body`,
+        );
+      }
+    }
+  }
+  for (const { group: previous, parsed } of projectedRelevant) {
+    if (parsed.kind === 'broad' && !demandedByKey.has(previous.groupKey)) {
+      throw new Error(`retention legacy live social ${parsed.ownerId} broad owner 已漂移`);
+    }
+    if (parsed.kind !== 'broad' && !demandedByKey.has(previous.groupKey)) {
+      throw new Error(`retention live social ${parsed.ownerId}/${parsed.kind} strict group 已漂移`);
+    }
+  }
+}
+
 export function recentPersonalProductionWindowGroupKey(atMonth: number): string {
   return `${RECENT_PRODUCTION_WINDOW_GROUP_PREFIX}${atMonth}`;
 }
@@ -908,27 +986,7 @@ function boundedElectricalFactEventIds(
 function boundedLivePersonSocialEventIds(
   person: SimulationState['people'][number],
 ): string[] {
-  const values = [
-    ...person.memories.flatMap((memory) => memory.sourceEventIds),
-    ...person.conditions.flatMap((condition) => condition.sourceEventIds),
-    ...person.relations.flatMap((relation) => relation.sourceEventIds),
-    ...(person.bereavements ?? []).flatMap((bereavement) => [
-      bereavement.deathEventId,
-      ...bereavement.sourceEventIds,
-    ]),
-    ...(person.maternalTeachingSourceEventIds ?? []),
-  ];
-  const eventIds = [...new Set(values.map((value) => requiredEventId(
-    value,
-    `living person ${person.id} social sources`,
-  )))].sort();
-  if (eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
-    throw new Error(
-      `living person ${person.id} social source IDs 超出有界续接上限`
-      + ` ${HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS}`,
-    );
-  }
-  return eventIds;
+  return livePersonSocialSourceEventIds(person);
 }
 
 function boundedLiveProjectPressureSourceEventIds(
@@ -1662,11 +1720,40 @@ function collectDemand(state: SimulationState) {
     }
     const socialSourceEventIds = boundedLivePersonSocialEventIds(person);
     addDemandGroup(demandGroupsByKey, directDemandEventIds, {
-      groupKey: `live-person-social:${encodeURIComponent(person.id)}:sources`,
-      requirement: 'all',
+      groupKey: livePersonSocialEvidenceGroupKey(person.id),
+      requirement: 'index-only',
       leaseKey: livePersonSocialEvidenceLeaseKey(person.id),
       eventIds: socialSourceEventIds,
     });
+    const rememberedSourceEventIds = [...new Set(person.memories
+      .flatMap((memory) => memory.sourceEventIds))];
+    const rememberedDescriptors = liveSocialEvidenceForPersonSources(
+      state,
+      person,
+      rememberedSourceEventIds,
+    );
+    const electricalStrictEventIds = selectLivePersonSocialStrictEvidenceEventIds(
+      person.id,
+      rememberedDescriptors,
+    )['electrical-remote-work'];
+    const measurementCandidateEventIds = measurementUncertaintyRawSourceEventIds(person);
+    const measurementStrictEventIds = selectLivePersonSocialStrictEvidenceEventIds(
+      person.id,
+      [],
+      measurementCandidateEventIds,
+    )['measurement-uncertainty'];
+    for (const [kind, eventIds] of [
+      ['electrical-remote-work', electricalStrictEventIds],
+      ['measurement-uncertainty', measurementStrictEventIds],
+    ] as const) {
+      const leaseKey = livePersonSocialStrictEvidenceLeaseKey(person.id, kind);
+      addDemandGroup(demandGroupsByKey, directDemandEventIds, {
+        groupKey: livePersonSocialStrictEvidenceGroupKey(person.id, kind),
+        requirement: 'all',
+        leaseKey,
+        eventIds,
+      });
+    }
     const socialLearningSourceEventIds = boundedSocialLearningSourceEventIds(person);
     socialLearningEventIdMembershipCount += socialLearningSourceEventIds.length;
     if (socialLearningEventIdMembershipCount
@@ -2417,12 +2504,14 @@ function compatibilityCanonicalDemandGroups(
 ): HistoryRetentionContinuationDemandGroup[] {
   const canonical = new Map<string, HistoryRetentionContinuationDemandGroup>();
   for (const group of groups) {
+    const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
     if (liveSupportingSourceCoreGroupKey(group.groupKey) !== null
       || parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null
       || group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
       || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
-      || parseSocialLearningSourceLeaseKey(group.groupKey)) continue;
+      || parseSocialLearningSourceLeaseKey(group.groupKey)
+      || (liveSocial?.kind !== undefined && liveSocial.kind !== 'broad')) continue;
     if (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
       && group.eventIds.length === 0) continue;
     canonical.set(group.groupKey, {
@@ -2432,7 +2521,9 @@ function compatibilityCanonicalDemandGroups(
           || group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY)
         && group.requirement === 'index-only'
         ? 'audit-only'
-        : group.requirement,
+        : liveSocial?.kind === 'broad' && group.requirement === 'index-only'
+          ? 'all'
+          : group.requirement,
       leaseKeys: [...new Set(group.leaseKeys)].sort(),
       eventIds: [...new Set(group.eventIds)].sort(),
     });
@@ -2647,6 +2738,10 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     demand.groups,
   );
   assertWaterAssistanceStorageRefinementMatches(projection.demandGroups, demand.groups);
+  assertLivePersonSocialStorageRefinementMatches(
+    projection.demandGroups,
+    demand.groups,
+  );
   assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
@@ -3390,10 +3485,20 @@ function validateHistoryRetentionContinuationBasis(
           > HISTORY_RETENTION_MAX_FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_EVENT_IDS)) {
       throw new Error(`retention continuation demand group ${group.groupKey} logistics selector 无效或超界`);
     }
-    if (group.groupKey.startsWith('live-person-social:')
-      && group.groupKey.endsWith(':sources')
-      && group.eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
-      throw new Error(`retention continuation demand group ${group.groupKey} social sources 超出有界上限`);
+    const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+    if (liveSocial) {
+      const expectedLeaseKey = liveSocial.kind === 'broad'
+        ? livePersonSocialEvidenceLeaseKey(liveSocial.ownerId)
+        : livePersonSocialStrictEvidenceLeaseKey(liveSocial.ownerId, liveSocial.kind);
+      const validRequirement = liveSocial.kind === 'broad'
+        ? group.requirement === 'index-only' || group.requirement === 'all'
+        : group.requirement === 'all';
+      if (!validRequirement
+        || group.leaseKeys.length !== 1
+        || group.leaseKeys[0] !== expectedLeaseKey
+        || group.eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
+        throw new Error(`retention continuation demand group ${group.groupKey} social selector 无效或超界`);
+      }
     }
     if (group.groupKey.startsWith('gameplay:completed-live-project:')
       && group.groupKey.endsWith(':completion-events')) {

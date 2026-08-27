@@ -63,6 +63,11 @@ import {
   parseWaterAssistanceFulfillmentMembershipGroupKey,
 } from '../src/game/eland/domain/event-index';
 import {
+  livePersonSocialEvidenceLeaseKey,
+  livePersonSocialStrictEvidenceLeaseKey,
+  parseLivePersonSocialEvidenceGroupKey,
+} from '../src/game/eland/domain/live-social-evidence';
+import {
   parseRecentPersonalProductionLaborSelectorLeaseKey,
   RECENT_PERSONAL_PRODUCTION_MONTHS,
   recentPersonalProductionLaborLeaseKey,
@@ -572,6 +577,7 @@ function normalizeSourceDemand(
   options: {
     allowLegacyMissingProjectPressure?: boolean;
     allowLegacyFutureSocialRepetitionAudit?: boolean;
+    allowLegacyLivePersonSocialAll?: boolean;
   } = {},
 ): HistoryRetentionContinuationDemand {
   assertRecord(value, 'retention continuation sourceDemand');
@@ -622,10 +628,21 @@ function normalizeSourceDemand(
       && eventIds.length > HISTORY_RETENTION_MAX_LIVE_INTENT_CORE_EVENT_IDS) {
       throw new Error(`${label}.eventIds 超出 live intent 有界上限`);
     }
-    if (candidate.groupKey.startsWith('live-person-social:')
-      && candidate.groupKey.endsWith(':sources')
-      && eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
-      throw new Error(`${label}.eventIds 超出 living person social source 有界上限`);
+    const liveSocial = parseLivePersonSocialEvidenceGroupKey(candidate.groupKey);
+    if (liveSocial) {
+      const expectedLeaseKey = liveSocial.kind === 'broad'
+        ? livePersonSocialEvidenceLeaseKey(liveSocial.ownerId)
+        : livePersonSocialStrictEvidenceLeaseKey(liveSocial.ownerId, liveSocial.kind);
+      const validRequirement = liveSocial.kind === 'broad'
+        ? candidate.requirement === 'index-only'
+          || options.allowLegacyLivePersonSocialAll && candidate.requirement === 'all'
+        : candidate.requirement === 'all';
+      if (!validRequirement
+        || leaseKeys.length !== 1
+        || leaseKeys[0] !== expectedLeaseKey
+        || eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
+        throw new Error(`${label} 的 living person social selector 无效或超界`);
+      }
     }
     if (parseGroundedConversationResponseSourceLeaseKey(candidate.groupKey)) {
       groundedResponseSourceGroupCount += 1;
@@ -973,6 +990,7 @@ function normalizeContinuationBasis(
   options: {
     allowLegacyMissingProjectPressure?: boolean;
     allowLegacyFutureSocialRepetitionAudit?: boolean;
+    allowLegacyLivePersonSocialAll?: boolean;
   } = {},
 ): HistoryRetentionProjectionResult['continuationBasis'] {
   assertRecord(value, 'retention projection.continuationBasis');
@@ -1471,6 +1489,7 @@ function normalizeProjection(
   options: {
     allowLegacyMissingProjectPressure?: boolean;
     allowLegacyFutureSocialRepetitionAudit?: boolean;
+    allowLegacyLivePersonSocialAll?: boolean;
   } = {},
 ): HistoryRetentionProjectionResult {
   assertRecord(value, 'retention projection');
@@ -1502,6 +1521,23 @@ function normalizeProjection(
   );
   const pins = normalizePins(value.pins, target);
   const demandGroups = normalizeDemandGroups(value.demandGroups);
+  for (const group of demandGroups) {
+    const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
+    if (!liveSocial) continue;
+    const expectedLeaseKey = liveSocial.kind === 'broad'
+      ? livePersonSocialEvidenceLeaseKey(liveSocial.ownerId)
+      : livePersonSocialStrictEvidenceLeaseKey(liveSocial.ownerId, liveSocial.kind);
+    const validRequirement = liveSocial.kind === 'broad'
+      ? group.requirement === 'index-only'
+        || options.allowLegacyLivePersonSocialAll && group.requirement === 'all'
+      : group.requirement === 'all';
+    if (!validRequirement
+      || group.leaseKeys.length !== 1
+      || group.leaseKeys[0] !== expectedLeaseKey
+      || group.eventIds.length > HISTORY_RETENTION_MAX_LIVE_PERSON_SOCIAL_EVENT_IDS) {
+      throw new Error(`retention projection demand group ${group.groupKey} social selector 无效或超界`);
+    }
+  }
   assertProjectPressureHistoryRetentionDemandGroups(
     demandGroups,
     'retention projection demand group',
@@ -1747,6 +1783,7 @@ export function decodeHistoryRetentionSidecar(
   const projection = normalizeProjection(parsed, {
     allowLegacyMissingProjectPressure: true,
     allowLegacyFutureSocialRepetitionAudit: true,
+    allowLegacyLivePersonSocialAll: true,
   });
   if (!canonical.equals(canonicalBytes(projection))) {
     throw new Error('retention sidecar payload 不是 canonical 编码');

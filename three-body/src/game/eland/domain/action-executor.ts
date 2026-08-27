@@ -159,6 +159,34 @@ function conditionWorkMultiplier(person: PersonState): number {
   return Math.max(0.2, Math.min(1.5, multiplier));
 }
 
+export function actionSatisfiesRecordReplicationReceipt(
+  fact: ActionFact,
+  goal: Extract<FactPredicate, { kind: 'record-replication-receipt' }>,
+): boolean {
+  return fact.status === 'completed'
+    && fact.who === goal.readerId
+    && fact.action.kind === 'act'
+    && (fact.action.operation === 'combine'
+      || fact.action.operation === 'exert'
+      || fact.action.operation === 'expose')
+    && fact.diff.recordUseReplicationReceipt === true
+    && fact.diff.recordUsePurpose === 'replicate'
+    && fact.diff.recordUseStage === 'replicate'
+    && fact.diff.recordUseBasisKey === goal.basisKey
+    && fact.diff.recordUseReaderId === goal.readerId
+    && fact.diff.recordUseProjectId === goal.projectId
+    && fact.diff.recordUseRecordId === goal.recordId
+    && fact.diff.recordUseRecordVersion === goal.recordVersion
+    && fact.diff.recordUseTechniqueId === goal.techniqueId
+    && fact.diff.recordUseRuleSignature === goal.ruleSignature
+    && Number(fact.diff.recordUseExpectedOutputMaterialId) === goal.expectedOutputMaterialId
+    && Number(fact.diff.outputMaterialId) === goal.expectedOutputMaterialId
+    && fact.diff.techniqueId === goal.techniqueId
+    && fact.diff.sourceEventId === fact.id
+    && Array.isArray(fact.diff.recordUseInputSourceEventIds)
+    && fact.diff.recordUseInputSourceEventIds.every((sourceEventId) => typeof sourceEventId === 'string');
+}
+
 export function goalSatisfied(state: SimulationState, person: PersonState, goal: FactPredicate): boolean {
   if (goal.kind === 'body-at-least') return person.body[goal.field] >= goal.value;
   if (goal.kind === 'body-at-most') return (personById(state, goal.personId)?.body[goal.field] ?? Number.POSITIVE_INFINITY) <= goal.value;
@@ -178,6 +206,19 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
   if (goal.kind === 'sheltered') return Boolean(shelterGeometryAt(state.world.grid, person.position));
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
   if (goal.kind === 'knowledge') return (goal.personId ? personById(state, goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId && fact.confidence >= (goal.minConfidence ?? 0)) ?? false;
+  if (goal.kind === 'record-replication-receipt') {
+    const project = projectById(state, goal.projectId);
+    const record = state.records.find((candidate) => candidate.id === goal.recordId);
+    if (person.id !== goal.readerId
+      || project?.ownerId !== goal.readerId
+      || record?.version !== goal.recordVersion
+      || record.authorId === goal.readerId
+      || record.knowledgeId !== goal.techniqueId) return false;
+    return project.actionEventIds.some((eventId) => {
+      const event = worldEventById(state, eventId);
+      return event?.kind === 'action' && actionSatisfiesRecordReplicationReceipt(event, goal);
+    });
+  }
   if (goal.kind === 'near-person') {
     const other = personById(state, goal.personId);
     return Boolean(other && sameLocation(person, other));
@@ -1563,9 +1604,15 @@ function executeAttend(
         diff: { recordPayloadId: record.id, understood: false },
       };
       const known = person.knowledge.find((fact) => fact.id === record.knowledgeId);
+      const preservesReliableTechnique = selfDecodeBasis?.version === 'record-use-basis-v3'
+        && selfDecodeBasis.purpose === 'replicate'
+        && known?.kind === 'technique'
+        && known.confidence >= 55;
       if (known) {
         known.confidence = known.kind === 'technique'
-          ? Math.min(54, Math.max(46, known.confidence + 8))
+          ? preservesReliableTechnique
+            ? known.confidence
+            : Math.min(54, Math.max(46, known.confidence + 8))
           : clamp(known.confidence + 8);
         known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId, record.id])].slice(-24);
       } else person.knowledge.push({

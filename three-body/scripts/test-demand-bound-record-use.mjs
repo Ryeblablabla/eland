@@ -25,7 +25,10 @@ try {
       recompileRecordUseNextAction,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/record-use-options.ts'))};
     export { deriveProjectProposals } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-proposals.ts'))};
-    export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export {
+      executePrimitiveAction,
+      goalSatisfied,
+    } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
     export {
       inventoryCombinationForOutput,
       inventoryCombinationTechniqueId,
@@ -52,6 +55,7 @@ try {
     executePrimitiveAction,
     findStandingPath,
     followUpSemanticallyMatches,
+    goalSatisfied,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
     planLocallyForTick,
@@ -814,8 +818,119 @@ try {
       id: fixture.techniqueId, kind: 'technique', summary: '已经可靠掌握', confidence: 55,
       learnedAtMonth: 11, sourceEventIds: ['own-experiment'],
     });
-    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, [fixture.publicDrop]).length, 0,
-      'already reliable knowledge has no record-use deficit');
+    const [replication] = buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      [fixture.publicDrop],
+    );
+    assert.equal(replication?.recordUseBasis?.version, 'record-use-basis-v3');
+    assert.equal(replication.recordUseBasis.purpose, 'replicate');
+    assert.equal(replication.goal.kind, 'record-replication-receipt',
+      'reliable knowledge must use a source-bound receipt instead of an already-satisfied knowledge goal');
+    const swappedState = structuredClone(fixture.state);
+    swappedState.world.drops = [];
+    const swappedReader = swappedState.people.find((person) => person.id === fixture.reader.id);
+    assert.ok(swappedReader);
+    swappedReader.inventory.push({
+      id: 'replacement-replication-carrier', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['replacement-replication-publication'],
+    });
+    const [swappedCarrierReplication] = buildDemandBoundRecordUseOptions(swappedState, swappedReader, []);
+    assert.equal(swappedCarrierReplication?.recordUseBasis?.basisKey, replication.recordUseBasis.basisKey,
+      'changing only the physical carrier must not mint a fresh replication basis');
+    assert.deepEqual(swappedCarrierReplication?.goal, replication.goal);
+
+    const noProjectState = structuredClone(fixture.state);
+    noProjectState.projects[0].status = 'blocked';
+    const noProjectReader = noProjectState.people.find((person) => person.id === fixture.reader.id);
+    assert.ok(noProjectReader);
+    assert.equal(buildDemandBoundRecordUseOptions(
+      noProjectState,
+      noProjectReader,
+      noProjectState.world.drops,
+    ).length, 0, 'reliable knowledge alone cannot create replication without an owned active project');
+  }
+
+  {
+    const fixture = makeFixture({ publicAtReader: false });
+    fixture.reader.knowledge.push({
+      id: fixture.techniqueId, kind: 'technique', summary: '可靠的本人制矛经验', confidence: 70,
+      learnedAtMonth: 11, sourceEventIds: ['cooldown-own-experiment'],
+    });
+    fixture.reader.inventory.push({
+      id: 'cooldown-record-carrier-a', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['cooldown-carrier-a'],
+    });
+    const [replication] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    assert.ok(replication);
+    const child = startRecordUseChild(fixture, replication);
+    const read = appendIntentAction(fixture, 13, 2);
+    assert.equal(read.diff.recordUseKnowledgeConfidenceAfter, 70);
+    fixture.project.need = 'reserve-security';
+    fixture.project.desiredFunction = 'reserve-storage';
+    assert.equal(executeActiveIntent(fixture.state, fixture.reader, 13, 1, 3), null);
+    assert.equal(child.status, 'blocked');
+    fixture.project.need = 'hunting-safety';
+    fixture.project.desiredFunction = 'safer-hunting';
+    fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.recordPayloadId !== fixture.record.id);
+    fixture.reader.inventory.push({
+      id: 'cooldown-record-carrier-b', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['cooldown-carrier-b'],
+    });
+    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []).length, 0,
+      'a blocked replication basis stays cold even when the physical carrier changes');
+    fixture.state.clock.elapsedMonths = 19;
+    const [reopened] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    assert.equal(reopened?.recordUseBasis?.basisKey, replication.recordUseBasis.basisKey,
+      'real elapsed cooldown may reopen the same stable basis after month 6');
+  }
+
+  {
+    const fixture = makeFixture();
+    fixture.reader.knowledge.push({
+      id: fixture.techniqueId, kind: 'technique', summary: '可靠的本人制矛经验', confidence: 70,
+      learnedAtMonth: 11, sourceEventIds: ['wrong-output-own-experiment'],
+    });
+    const [replication] = buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      [fixture.publicDrop],
+    );
+    assert.equal(replication.goal.kind, 'record-replication-receipt');
+    const forgedId = 'e-13-action-forged-replication-0';
+    const forgedWrongOutput = {
+      id: forgedId, kind: 'action', actionTick: 1, atMonth: 13, orderInMonth: 0,
+      cellId: fixture.reader.position.cellId, who: fixture.reader.id, cause: 'intent',
+      action: structuredClone(fixture.parent.nextAction),
+      fromCellId: fixture.reader.position.cellId, toCellId: fixture.reader.position.cellId,
+      fromZ: fixture.reader.position.z, toZ: fixture.reader.position.z, pathSegment: [fixture.reader.position.cellId],
+      status: 'completed', result: '伪造的错误产物',
+      diff: {
+        techniqueId: fixture.techniqueId,
+        outputMaterialId: Material.Wood,
+        sourceEventId: forgedId,
+        recordUseBasisKey: replication.recordUseBasis.basisKey,
+        recordUseStage: 'replicate', recordUsePurpose: 'replicate',
+        recordUseReplicationReceipt: true,
+        recordUseProjectId: fixture.project.id,
+        recordUseRecordId: fixture.record.id,
+        recordUseRecordVersion: fixture.record.version,
+        recordUseKnowledgeId: fixture.techniqueId,
+        recordUseTechniqueId: fixture.techniqueId,
+        recordUseRuleSignature: fixture.techniqueId,
+        recordUseReaderId: fixture.reader.id,
+        recordUseExpectedOutputMaterialId: Material.Spear,
+        recordUseInputSourceEventIds: ['made-stone-tool', 'gathered-wood'],
+      },
+    };
+    fixture.project.actionEventIds.push(forgedId);
+    fixture.state.world.past.push(forgedWrongOutput);
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, replication.goal), false,
+      'a completed action with the wrong physical output cannot satisfy the receipt goal');
+    forgedWrongOutput.status = 'blocked';
+    forgedWrongOutput.diff.outputMaterialId = Material.Spear;
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, replication.goal), false,
+      'a blocked action cannot satisfy the receipt goal even if its claimed output matches');
   }
 
   {

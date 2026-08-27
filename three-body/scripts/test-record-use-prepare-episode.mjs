@@ -219,6 +219,83 @@ try {
   }
 
   {
+    const fixture = makeFixture();
+    fixture.reader.knowledge.push({
+      id: fixture.techniqueId, kind: 'technique', summary: '本人此前已经可靠掌握制矛', confidence: 70,
+      learnedAtMonth: 11, sourceEventIds: ['prepare-reader-own-trial'],
+    });
+    const [option] = buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      visibleDrops(fixture),
+    );
+    assert.equal(option?.recordUseBasis?.version, 'record-use-basis-v3');
+    assert.equal(option.recordUseBasis.purpose, 'replicate');
+    assert.equal(option.goal.kind, 'record-replication-receipt');
+    assert.equal(option.recordUseStage, 'acquire');
+    const context = {
+      state: fixture.state,
+      person: fixture.reader,
+      visibleCells: visibleCellsFor(fixture.reader),
+      visiblePeople: [fixture.author],
+      visibleDrops: visibleDrops(fixture),
+      visibleAnimals: [],
+      options: [option], followUpOptions: [], activeIntent: fixture.parent,
+    };
+    const child = startInterruptIntent(
+      fixture.state, fixture.reader, context, option.id,
+      'record-replication-interrupt', 13, 'record-use',
+    );
+    assert.ok(child);
+    const acquire = appendAction(fixture, 2);
+    assert.equal(acquire.diff.recordUseStage, 'acquire');
+    const read = appendAction(fixture, 3);
+    assert.equal(read.diff.recordUseStage, 'read');
+    assert.equal(read.diff.recordUsePurpose, 'replicate');
+    assert.equal(read.diff.recordUseKnowledgeConfidenceBefore, 70);
+    assert.equal(read.diff.recordUseKnowledgeConfidenceAfter, 70,
+      'reading an outsider record must not lower reliable personal knowledge');
+    const prepare = appendAction(fixture, 4);
+    assert.equal(prepare.action.kind, 'transfer');
+    assert.equal(prepare.diff.recordUsePreparation, true);
+    assert.equal(prepare.diff.recordUseReplicationReceipt, undefined,
+      'ordinary logistics is not a replication receipt');
+    const replicate = appendAction(fixture, 5);
+    assert.equal(replicate.action.kind, 'act');
+    assert.equal(replicate.diff.recordUseStage, 'replicate');
+    assert.equal(replicate.diff.recordUsePurpose, 'replicate');
+    assert.equal(replicate.diff.recordUseReplicationReceipt, true);
+    assert.equal(replicate.diff.outputMaterialId, Material.Spear);
+    assert.deepEqual(replicate.diff.recordUseInputSourceEventIds,
+      ['e-13-action-ran-mouri-2', 'prepare-stone-tool-source', 'prepare-visible-wood']);
+    assert.equal(child.status, 'completed');
+    assert.equal(child.goalOutcome?.kind, 'achieved');
+    assert.deepEqual(child.goalOutcome?.sourceEventIds, [replicate.id]);
+    assert.equal(fixture.reader.inventory.some((stack) => stack.id === 'prepare-stone-tool'), false,
+      'the physical replication consumes its real tool/input stack');
+    assert.equal(fixture.reader.inventory.some((stack) => stack.materialId === Material.Wood), false,
+      'the acquired preparation input is physically consumed');
+    const output = fixture.reader.inventory.find((stack) => stack.materialId === Material.Spear);
+    assert.ok(output?.sourceEventIds.includes(replicate.id),
+      'the exact output keeps the authoritative replication action in its lineage');
+    assert.equal(fixture.project.status, 'completed');
+    fixture.project.status = 'active';
+    delete fixture.project.completedAtMonth;
+    fixture.project.completionEventIds = [];
+    fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.materialId !== Material.Spear);
+    fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.recordPayloadId !== fixture.record.id);
+    fixture.reader.inventory.push({
+      id: 'post-success-replacement-carrier', materialId: Material.WoodTablet, quantity: 1,
+      recordPayloadId: fixture.record.id, sourceEventIds: ['post-success-replacement-publication'],
+    });
+    assert.equal(buildDemandBoundRecordUseOptions(
+      fixture.state,
+      fixture.reader,
+      visibleDrops(fixture),
+    ).length, 0, 'one successful source-bound receipt suppresses a carrier-swapped duplicate basis');
+  }
+
+  {
     const fixture = makeFixture({ groundCarrier: false, includeWood: true });
     fixture.record.authorId = fixture.reader.id;
     assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, visibleDrops(fixture)).length, 0);

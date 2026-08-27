@@ -331,6 +331,12 @@ export interface RecordUseBasisV3 extends RecordUseBasisFields {
   carrierSource: RecordCarrierSource;
   acquisitionRequired: boolean;
   expectedOutputMaterialId: MaterialId;
+  /** Missing on persisted v3 episodes means the original low-confidence learning path. */
+  purpose?: 'learn' | 'replicate';
+  /** Replication binds to the authored payload version, not a replaceable physical carrier. */
+  recordVersion?: number;
+  /** Stable opening/renewal evidence for the active project; it excludes mutable progress arrays. */
+  projectRenewalBasisKey?: string;
 }
 
 export type RecordUseBasis = RecordUseBasisV1 | RecordUseBasisV2 | RecordUseBasisV3;
@@ -341,7 +347,8 @@ export type RecordUseStage = 'share'
   | 'acquire'
   | 'read'
   | 'prepare-experiment'
-  | 'experiment';
+  | 'experiment'
+  | 'replicate';
 
 export type FactPredicate =
   | { kind: 'body-at-least'; field: 'health' | 'hydration' | 'nutrition'; value: number }
@@ -353,6 +360,17 @@ export type FactPredicate =
   | { kind: 'sheltered' }
   | { kind: 'voxel-is'; position: VoxelPosition; materialId: MaterialId }
   | { kind: 'knowledge'; factId: string; minConfidence?: number; personId?: PersonId }
+  | {
+      kind: 'record-replication-receipt';
+      basisKey: string;
+      readerId: PersonId;
+      projectId: string;
+      recordId: string;
+      recordVersion: number;
+      techniqueId: string;
+      ruleSignature: string;
+      expectedOutputMaterialId: MaterialId;
+    }
   | { kind: 'near-person'; personId: PersonId }
   | { kind: 'condition'; personId: PersonId; condition: ConditionKind; present: boolean; phase?: HibernationPhase }
   | { kind: 'project-completed'; projectId: string }

@@ -21,6 +21,7 @@ import { isAlive, type PersonState } from '../domain/person';
 import { inspectProjectKnowledgeRequest } from '../domain/project-knowledge-request';
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
 import { inheritPlanningEventOverlay } from '../domain/event-index';
+import { goalSatisfied } from '../domain/action-executor';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { previewOwnedProjectStep, recompileProjectNextAction } from './project-options';
 import { projectById, projectsOwnedBy } from '../domain/state-index';
@@ -33,8 +34,61 @@ interface ResolvedTechniqueAction {
   inputSourceEventIds: string[];
 }
 
+type RecordUsePurpose = NonNullable<RecordUseBasisV3['purpose']>;
+
 function unique(values: string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+function stableBasisPart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function projectRenewalBasisKey(project: SimulationState['projects'][number]): string {
+  const openingBasis = project.inquiryOpportunityBasis?.basisKey
+    ?? `triggers=${unique(project.triggerFactIds).map(stableBasisPart).join(',')}`;
+  return `project-opening:${stableBasisPart(project.id)}:${project.createdAtMonth}:${stableBasisPart(openingBasis)}`;
+}
+
+function recordUsePurpose(basis: RecordUseBasisV3): RecordUsePurpose {
+  return basis.purpose ?? 'learn';
+}
+
+function replicationGoal(basis: RecordUseBasisV3): Extract<ActionOption['goal'], { kind: 'record-replication-receipt' }> | null {
+  if (recordUsePurpose(basis) !== 'replicate'
+    || basis.recordVersion === undefined
+    || basis.expectedOutputMaterialId === undefined) return null;
+  return {
+    kind: 'record-replication-receipt',
+    basisKey: basis.basisKey,
+    readerId: basis.readerId,
+    projectId: basis.projectId,
+    recordId: basis.recordId,
+    recordVersion: basis.recordVersion,
+    techniqueId: basis.techniqueId,
+    ruleSignature: basis.ruleSignature,
+    expectedOutputMaterialId: basis.expectedOutputMaterialId,
+  };
+}
+
+function recordUseBasisInCooldown(
+  state: SimulationState,
+  reader: PersonState,
+  basisKey: string,
+  atMonth: number,
+): boolean {
+  return state.intents.some((intent) => {
+    if (intent.ownerId !== reader.id || intent.recordUseBasis?.basisKey !== basisKey) return false;
+    if (intent.status === 'active' || intent.status === 'suspended') return true;
+    if (intent.status !== 'blocked' && intent.status !== 'failed') return false;
+    const resolvedAtMonth = intent.goalOutcome?.resolvedAtMonth ?? intent.lastProgressAtMonth;
+    return resolvedAtMonth <= atMonth && atMonth - resolvedAtMonth <= 6;
+  });
+}
+
+function bindResolvedInputs(basis: RecordUseBasisV3, resolved: ResolvedTechniqueAction): void {
+  basis.inputSourceEventIds = unique(resolved.inputSourceEventIds);
+  basis.sourceFactIds = unique([...basis.sourceFactIds, ...basis.inputSourceEventIds]);
 }
 
 function distanceToPosition(person: PersonState, position: VoxelPosition): number {
@@ -240,6 +294,7 @@ function buildBasis(
   reader: PersonState,
   record: SimulationState['records'][number],
   project: SimulationState['projects'][number],
+  purpose: RecordUsePurpose,
   expectedOutputMaterialId: MaterialId,
   carrierSource: RecordCarrierSource,
   carrierSourceEventIds: string[],
@@ -264,9 +319,22 @@ function buildBasis(
     ...inputSourceEventIds,
     ...carrierSourceEventIds,
   ]);
+  const renewalBasisKey = projectRenewalBasisKey(project);
+  const ruleSignature = record.knowledgeId;
+  const basisKey = purpose === 'replicate'
+    ? [
+        'record-use:replicate',
+        stableBasisPart(reader.id),
+        stableBasisPart(project.id),
+        stableBasisPart(renewalBasisKey),
+        stableBasisPart(record.id),
+        `v${record.version}`,
+        stableBasisPart(ruleSignature),
+      ].join(':')
+    : `record-use:${reader.id}:${project.id}:${record.id}:${record.knowledgeId}:${carrierSource.kind}:${carrierSource.kind === 'inventory' ? carrierSource.stackId : carrierSource.dropId}:${carrierSource.kind === 'ground' ? `${carrierSource.cellId}:${carrierSource.z}` : reader.id}:${carrierSource.kind === 'ground'}`;
   return {
     version: 'record-use-basis-v3',
-    basisKey: `record-use:${reader.id}:${project.id}:${record.id}:${record.knowledgeId}:${carrierSource.kind}:${carrierSource.kind === 'inventory' ? carrierSource.stackId : carrierSource.dropId}:${carrierSource.kind === 'ground' ? `${carrierSource.cellId}:${carrierSource.z}` : reader.id}:${carrierSource.kind === 'ground'}`,
+    basisKey,
     projectId: project.id,
     projectOwnerId: project.ownerId,
     readerId: reader.id,
@@ -276,7 +344,7 @@ function buildBasis(
     knowledgeId: record.knowledgeId,
     codebookId: record.codebookId,
     techniqueId: record.knowledgeId,
-    ruleSignature: record.knowledgeId,
+    ruleSignature,
     projectPressure: project.pressure,
     expectedOutputMaterialId,
     createdAtMonth: state.clock.elapsedMonths + 1,
@@ -287,6 +355,9 @@ function buildBasis(
     sourceFactIds,
     carrierSource: structuredClone(carrierSource),
     acquisitionRequired: carrierSource.kind === 'ground',
+    purpose,
+    recordVersion: record.version,
+    projectRenewalBasisKey: renewalBasisKey,
   };
 }
 
@@ -338,7 +409,7 @@ export function buildDemandBoundRecordUseOptions(
       && fact.kind === 'codebook'
       && fact.confidence >= 55);
     const technique = reader.knowledge.find((fact) => fact.id === record.knowledgeId && fact.kind === 'technique');
-    if ((technique?.confidence ?? 0) >= 55) continue;
+    const purpose: RecordUsePurpose = (technique?.confidence ?? 0) >= 55 ? 'replicate' : 'learn';
     const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));
     const expectedOutputMaterialId = techniqueOutputMaterialId(record.knowledgeId);
     if (expectedOutputMaterialId === undefined) continue;
@@ -372,10 +443,19 @@ export function buildDemandBoundRecordUseOptions(
       reader,
       record,
       matched.project,
+      purpose,
       expectedOutputMaterialId,
       source.carrierSource,
       source.sourceEventIds,
     );
+    const goal = purpose === 'replicate'
+      ? replicationGoal(basis)
+      : { kind: 'knowledge' as const, factId: record.knowledgeId, minConfidence: 55 };
+    if (!goal) continue;
+    const optionMonth = state.clock.elapsedMonths + 1;
+    if (purpose === 'replicate'
+      && (goalSatisfied(state, reader, goal)
+        || recordUseBasisInCooldown(state, reader, basis.basisKey, optionMonth))) continue;
     const atGroundSource = source.carrierSource.kind === 'ground'
       && reader.position.cellId === source.carrierSource.cellId
       && reader.position.z === source.carrierSource.z;
@@ -396,16 +476,26 @@ export function buildDemandBoundRecordUseOptions(
     options.push({
       id: `use-demand-record:${record.id}:${matched.project.id}:${source.carrierSource.kind === 'inventory' ? source.carrierSource.stackId : source.carrierSource.dropId}`,
       summary: source.carrierSource.kind === 'ground'
-        ? `取得公共记录并亲自复现“${record.summary}”`
+        ? purpose === 'replicate'
+          ? `取得异人记录并独立复现“${record.summary}”`
+          : `取得公共记录并亲自复现“${record.summary}”`
         : alreadyRead
-          ? `按已读记录复现“${record.summary}”`
-          : `${codebook ? '阅读' : '辨认并阅读'}记录，再亲自复现“${record.summary}”`,
+          ? purpose === 'replicate'
+            ? `按异人记录独立复现“${record.summary}”`
+            : `按已读记录复现“${record.summary}”`
+          : `${codebook ? '阅读' : '辨认并阅读'}${purpose === 'replicate' ? '异人' : ''}记录，再亲自复现“${record.summary}”`,
       reason: source.carrierSource.kind === 'ground'
-        ? `可见公共记录精确对应“${matched.project.summary}”的当前知识缺口；本人可先取得、${codebook ? '读懂' : '辨认刻痕'}，再按普通项目步骤准备核验材料`
+        ? purpose === 'replicate'
+          ? `可见异人记录精确对应“${matched.project.summary}”即将使用的本人已知技术；先取得、${codebook ? '读懂' : '辨认刻痕'}，再按普通项目步骤做一次来源独立的实体复现`
+          : `可见公共记录精确对应“${matched.project.summary}”的当前知识缺口；本人可先取得、${codebook ? '读懂' : '辨认刻痕'}，再按普通项目步骤准备核验材料`
         : alreadyRead
-          ? `这项暂定知识仍低于可靠阈值，并精确控制“${matched.project.summary}”当前步骤；先准备缺失材料再亲自核验`
-          : `本人持有的实体记录精确对应“${matched.project.summary}”当前知识缺口，${codebook ? '可以先阅读' : '可先观察实体刻痕并辨认'}，不要求核验材料已经齐备`,
-      goal: { kind: 'knowledge', factId: record.knowledgeId, minConfidence: 55 },
+          ? purpose === 'replicate'
+            ? `异人记录与“${matched.project.summary}”即将使用的本人已知技术一致；按普通物流准备真实输入并留下来源绑定的复现结果`
+            : `这项暂定知识仍低于可靠阈值，并精确控制“${matched.project.summary}”当前步骤；先准备缺失材料再亲自核验`
+          : purpose === 'replicate'
+            ? `本人持有的异人实体记录对应“${matched.project.summary}”即将使用的同一技术；先阅读该具体版本，再以真实材料独立复现`
+            : `本人持有的实体记录精确对应“${matched.project.summary}”当前知识缺口，${codebook ? '可以先阅读' : '可先观察实体刻痕并辨认'}，不要求核验材料已经齐备`,
+      goal,
       nextAction,
       target: source.carrierSource.kind === 'inventory'
         ? { kind: 'inventory-stack', personId: reader.id, stackId: source.carrierSource.stackId }
@@ -418,7 +508,7 @@ export function buildDemandBoundRecordUseOptions(
         ? 'acquire'
         : alreadyRead
           ? matched.experimentReady
-            ? 'experiment'
+            ? purpose === 'replicate' ? 'replicate' : 'experiment'
             : 'prepare-experiment'
           : 'read',
     });
@@ -461,7 +551,17 @@ export function recompileRecordUseNextAction(
   if (!project || !record) return null;
 
   const knowledge = person.knowledge.find((fact) => fact.id === basis.knowledgeId && fact.kind === 'technique');
-  if ((knowledge?.confidence ?? 0) >= 55) return null;
+  const purpose = basis.version === 'record-use-basis-v3' ? recordUsePurpose(basis) : 'learn';
+  if (purpose === 'replicate') {
+    if (basis.version !== 'record-use-basis-v3') return null;
+    const goal = replicationGoal(basis);
+    if (!goal
+      || (knowledge?.confidence ?? 0) < 55
+      || basis.recordVersion !== record.version
+      || basis.ruleSignature !== record.knowledgeId
+      || basis.projectRenewalBasisKey !== projectRenewalBasisKey(project)
+      || goalSatisfied(state, person, goal)) return null;
+  } else if ((knowledge?.confidence ?? 0) >= 55) return null;
 
   let carrier: PersonState['inventory'][number] | undefined;
   if (basis.version === 'record-use-basis-v1') {
@@ -515,7 +615,8 @@ export function recompileRecordUseNextAction(
       return { kind: 'attend', target: { kind: 'inventory-stack', personId: person.id, stackId: carrier.id } };
     }
     if (intent.recordUseStage !== 'prepare-experiment'
-      && intent.recordUseStage !== 'experiment') return null;
+      && intent.recordUseStage !== 'experiment'
+      && intent.recordUseStage !== 'replicate') return null;
     const step = previewProjectStepWithRecordKnowledge(
       state,
       person,
@@ -529,7 +630,8 @@ export function recompileRecordUseNextAction(
       && resolved.techniqueId === basis.techniqueId
       && resolved.techniqueId === record.knowledgeId
       && resolved.expectedOutputMaterialId === basis.expectedOutputMaterialId) {
-      intent.recordUseStage = 'experiment';
+      bindResolvedInputs(basis, resolved);
+      intent.recordUseStage = purpose === 'replicate' ? 'replicate' : 'experiment';
       return structuredClone(resolved.action);
     }
     intent.recordUseStage = 'prepare-experiment';

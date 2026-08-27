@@ -1,4 +1,9 @@
-import { executeIntentAction, executePrimitiveAction, goalSatisfied } from '../../domain/action-executor';
+import {
+  actionSatisfiesRecordReplicationReceipt,
+  executeIntentAction,
+  executePrimitiveAction,
+  goalSatisfied,
+} from '../../domain/action-executor';
 import type { ActionOption } from '../../domain/action';
 import { agreementById, agreementsForPerson } from '../../domain/agreement';
 import { recordIntentGoalOutcome } from '../../domain/cognition';
@@ -1035,6 +1040,7 @@ export function executeActiveIntent(
     ? person.knowledge.find((knowledge) => knowledge.id === intent.recordUseBasis?.knowledgeId)?.confidence
     : undefined;
   const fact = executeWithCurrentEvidence(() => executeIntentAction(state, person, intent, atMonth, orderInMonth, actionTick));
+  let recordReplicationReceiptCompleted = false;
   if (intent.recordUseBasis && intent.recordUseStage) {
     const basis = intent.recordUseBasis;
     const physicalGroundSource = basis.version !== 'record-use-basis-v1'
@@ -1063,12 +1069,14 @@ export function executeActiveIntent(
         ? 'acquire'
         : intent.recordUseStage === 'read' && fact.action.kind === 'attend'
           ? 'read'
+          : intent.recordUseStage === 'replicate' && fact.action.kind === 'act'
+            ? 'replicate'
           : intent.recordUseStage === 'experiment' && fact.action.kind === 'act'
             ? 'experiment'
             : undefined;
     if (stage) {
       const confidenceAfter = person.knowledge.find((knowledge) => knowledge.id === basis.knowledgeId)?.confidence;
-      fact.diff = {
+      const recordUseDiff = {
         ...fact.diff,
         recordUseBasisKey: basis.basisKey,
         recordUseStage: stage,
@@ -1097,6 +1105,14 @@ export function executeActiveIntent(
         ...(basis.expectedOutputMaterialId !== undefined
           ? { recordUseExpectedOutputMaterialId: basis.expectedOutputMaterialId }
           : {}),
+        ...(basis.version === 'record-use-basis-v3' ? {
+          recordUsePurpose: basis.purpose ?? 'learn',
+          ...(basis.recordVersion !== undefined ? { recordUseRecordVersion: basis.recordVersion } : {}),
+          ...(basis.projectRenewalBasisKey
+            ? { recordUseProjectRenewalBasisKey: basis.projectRenewalBasisKey }
+            : {}),
+          recordUseInputSourceEventIds: [...basis.inputSourceEventIds],
+        } : {}),
         ...(recordUseConfidenceBefore !== undefined
           ? { recordUseKnowledgeConfidenceBefore: recordUseConfidenceBefore }
           : {}),
@@ -1104,6 +1120,22 @@ export function executeActiveIntent(
           ? { recordUseKnowledgeConfidenceAfter: confidenceAfter }
           : {}),
       };
+      if (basis.version === 'record-use-basis-v3'
+        && basis.purpose === 'replicate'
+        && stage === 'replicate'
+        && intent.goal.kind === 'record-replication-receipt') {
+        const candidateFact: ActionFact = {
+          ...fact,
+          diff: { ...recordUseDiff, recordUseReplicationReceipt: true },
+        };
+        recordReplicationReceiptCompleted = actionSatisfiesRecordReplicationReceipt(
+          candidateFact,
+          intent.goal,
+        );
+        fact.diff = recordReplicationReceiptCompleted
+          ? candidateFact.diff
+          : recordUseDiff;
+      } else fact.diff = recordUseDiff;
       if (basis.version !== 'record-use-basis-v1' && fact.status === 'completed') {
         if (stage === 'acquire') intent.recordUseStage = 'read';
         else if (stage === 'read' && fact.diff.understood === true) {
@@ -1125,6 +1157,7 @@ export function executeActiveIntent(
   intent.actionEventIds.push(fact.id);
   if (intent.projectId) recordProjectAction(state, intent.projectId, fact);
   else if (intent.recordUseBasis && (fact.diff.recordUseStage === 'experiment'
+    || fact.diff.recordUseStage === 'replicate'
     || fact.diff.recordUsePreparation === true)) {
     recordProjectAction(state, intent.recordUseBasis.projectId, fact);
   } else if (fact.diff.projectKnowledgeResponse === true
@@ -1174,7 +1207,8 @@ export function executeActiveIntent(
       && satisfiedAfterAction
       && atMonth >= maintainUntilMonth;
     const recordUseProcessCompleted = !intent.recordUseBasis
-      || fact.diff.recordUseStage === 'experiment';
+      || fact.diff.recordUseStage === 'experiment'
+      || recordReplicationReceiptCompleted;
     const lifecycleAchievementCompleted = intent.lifecycle?.completion === 'on-achievement'
       && (representationCompleted
         || (processAttemptCompleted && recordUseProcessCompleted)
@@ -1197,7 +1231,7 @@ export function executeActiveIntent(
       recordIntentGoalOutcome(
         state,
         intent,
-        satisfiedAfterAction || representationCompleted
+        satisfiedAfterAction || representationCompleted || recordReplicationReceiptCompleted
           ? !reproductionGoal || conceptionFact
             ? 'achieved'
             : 'not-evaluated'

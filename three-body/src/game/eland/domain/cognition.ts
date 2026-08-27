@@ -80,6 +80,7 @@ function goalFamilyKey(goal?: FactPredicate): string {
     case 'sheltered': return goal.kind;
     case 'voxel-is': return `${goal.kind}:material-${goal.materialId}`;
     case 'knowledge': return goal.kind;
+    case 'record-replication-receipt': return goal.kind;
     case 'near-person': return goal.kind;
     case 'condition': return `${goal.kind}:${goal.condition}:${goal.present ? 'present' : 'absent'}`;
     case 'project-completed': return goal.kind;

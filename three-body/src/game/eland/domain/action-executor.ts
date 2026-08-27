@@ -1,4 +1,4 @@
-import { waterCurrentObservationFactId, type FactPredicate, type Intent, type PrimitiveAction, type VoxelPosition, type WorldRef } from './action';
+import { waterCurrentObservationFactId, type FactPredicate, type Intent, type PrimitiveAction, type RecordUseInputWitnessV1, type VoxelPosition, type WorldRef } from './action';
 import { Material, materialDefinition, materialHas, type MaterialId } from './material';
 import {
   ageMonths,
@@ -47,7 +47,7 @@ import { recordInteractionFailureKnowledge } from './interaction-knowledge';
 import { recordWitnessedDeclarationFulfillment } from './declaration';
 import { separationTechniqueId, separationTechniqueSummary, separationToolFits, voxelSeparationRuleFor } from './separation-rules';
 import { canAccessContainer, containerById, containerIdAt, containerQuantity, containerRemainingCapacity, GRANARY_CAPACITY, type ContainerState } from './container';
-import { worldEventById } from './event-index';
+import { compareWorldEventsInCanonicalOrder, worldEventById } from './event-index';
 import { animalSpecies, isAnimalAlive } from './animal';
 import {
   canPersonCollectProjectMaterialDrop,
@@ -159,32 +159,265 @@ function conditionWorkMultiplier(person: PersonState): number {
   return Math.max(0.2, Math.min(1.5, multiplier));
 }
 
+function canonicalStringIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) return null;
+  const canonical = [...new Set(value as string[])].sort();
+  return canonical.length === value.length
+    && canonical.every((item, index) => item === value[index])
+    ? canonical
+    : null;
+}
+
+function inputWitnesses(value: unknown): RecordUseInputWitnessV1[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const witnesses: RecordUseInputWitnessV1[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') return null;
+    const raw = candidate as Record<string, unknown>;
+    const sourceEventIds = canonicalStringIds(raw.sourceEventIds);
+    if (raw.version !== 'record-use-input-witness-v1'
+      || (raw.role !== 'input' && raw.role !== 'tool')
+      || typeof raw.personId !== 'string'
+      || typeof raw.stackId !== 'string'
+      || !Number.isInteger(raw.materialId)
+      || !Number.isInteger(raw.quantity)
+      || Number(raw.quantity) < 1
+      || !sourceEventIds) return null;
+    let genesisEntity: RecordUseInputWitnessV1['genesisEntity'];
+    if (raw.genesisEntity !== undefined) {
+      if (!raw.genesisEntity || typeof raw.genesisEntity !== 'object') return null;
+      const genesis = raw.genesisEntity as Record<string, unknown>;
+      if (genesis.kind !== 'founder-ration'
+        || typeof genesis.personId !== 'string'
+        || typeof genesis.stackId !== 'string'
+        || !Number.isInteger(genesis.materialId)) return null;
+      genesisEntity = {
+        kind: 'founder-ration',
+        personId: genesis.personId,
+        stackId: genesis.stackId,
+        materialId: Number(genesis.materialId) as MaterialId,
+      };
+    }
+    witnesses.push({
+      version: 'record-use-input-witness-v1',
+      role: raw.role,
+      personId: raw.personId,
+      stackId: raw.stackId,
+      materialId: Number(raw.materialId) as MaterialId,
+      quantity: Number(raw.quantity),
+      sourceEventIds,
+      ...(genesisEntity ? { genesisEntity } : {}),
+    });
+  }
+  const keys = witnesses.map((witness) => `${witness.role}:${witness.stackId}`);
+  return new Set(keys).size === keys.length ? witnesses : null;
+}
+
+function sameInputWitnesses(
+  left: RecordUseInputWitnessV1[],
+  right: RecordUseInputWitnessV1[],
+): boolean {
+  return left.length === right.length && left.every((witness, index) => {
+    const other = right[index];
+    return witness.version === other.version
+      && witness.role === other.role
+      && witness.personId === other.personId
+      && witness.stackId === other.stackId
+      && witness.materialId === other.materialId
+      && witness.quantity === other.quantity
+      && witness.sourceEventIds.length === other.sourceEventIds.length
+      && witness.sourceEventIds.every((sourceEventId, sourceIndex) => sourceEventId === other.sourceEventIds[sourceIndex])
+      && witness.genesisEntity?.kind === other.genesisEntity?.kind
+      && witness.genesisEntity?.personId === other.genesisEntity?.personId
+      && witness.genesisEntity?.stackId === other.genesisEntity?.stackId
+      && witness.genesisEntity?.materialId === other.genesisEntity?.materialId;
+  });
+}
+
+function eventProducesOrTransfersMaterial(event: NonNullable<ReturnType<typeof worldEventById>>, materialId: MaterialId): boolean {
+  const listedMaterial = (value: unknown): boolean => Array.isArray(value)
+    && value.some((item) => item && typeof item === 'object'
+      && Number((item as Record<string, unknown>).materialId) === materialId);
+  if (event.kind === 'action') {
+    if (event.status !== 'completed') return false;
+    if (event.action.kind === 'transfer') return event.action.materialId === materialId
+      && Number(event.diff.materialId) === materialId;
+    return Number(event.diff.outputMaterialId) === materialId
+      || Number(event.diff.materialId) === materialId
+      || listedMaterial(event.diff.outputs)
+      || listedMaterial(event.diff.products);
+  }
+  if (event.kind !== 'environment') return false;
+  return Number(event.diff.materialId) === materialId
+    || Number(event.diff.outputMaterialId) === materialId
+    || listedMaterial(event.diff.outputs)
+    || listedMaterial(event.diff.products);
+}
+
+function canonicalFounderRationWitness(
+  person: PersonState,
+  witness: RecordUseInputWitnessV1,
+): boolean {
+  return witness.sourceEventIds.length === 0
+    && witness.genesisEntity?.kind === 'founder-ration'
+    && person.generation === 0
+    && witness.role === 'input'
+    && witness.stackId === `stack-${person.id}-ration`
+    && witness.materialId === Material.Food
+    && witness.genesisEntity.personId === person.id
+    && witness.genesisEntity.stackId === witness.stackId
+    && witness.genesisEntity.materialId === witness.materialId;
+}
+
+function sameReplicationGoal(
+  left: FactPredicate,
+  right: Extract<FactPredicate, { kind: 'record-replication-receipt' }>,
+): boolean {
+  return left.kind === 'record-replication-receipt'
+    && left.basisKey === right.basisKey
+    && left.readerId === right.readerId
+    && left.projectId === right.projectId
+    && left.recordId === right.recordId
+    && left.recordVersion === right.recordVersion
+    && left.techniqueId === right.techniqueId
+    && left.ruleSignature === right.ruleSignature
+    && left.expectedOutputMaterialId === right.expectedOutputMaterialId;
+}
+
 export function actionSatisfiesRecordReplicationReceipt(
+  state: SimulationState,
   fact: ActionFact,
   goal: Extract<FactPredicate, { kind: 'record-replication-receipt' }>,
 ): boolean {
-  return fact.status === 'completed'
-    && fact.who === goal.readerId
-    && fact.action.kind === 'act'
-    && (fact.action.operation === 'combine'
-      || fact.action.operation === 'exert'
-      || fact.action.operation === 'expose')
-    && fact.diff.recordUseReplicationReceipt === true
-    && fact.diff.recordUsePurpose === 'replicate'
-    && fact.diff.recordUseStage === 'replicate'
-    && fact.diff.recordUseBasisKey === goal.basisKey
-    && fact.diff.recordUseReaderId === goal.readerId
-    && fact.diff.recordUseProjectId === goal.projectId
-    && fact.diff.recordUseRecordId === goal.recordId
-    && fact.diff.recordUseRecordVersion === goal.recordVersion
-    && fact.diff.recordUseTechniqueId === goal.techniqueId
-    && fact.diff.recordUseRuleSignature === goal.ruleSignature
-    && Number(fact.diff.recordUseExpectedOutputMaterialId) === goal.expectedOutputMaterialId
-    && Number(fact.diff.outputMaterialId) === goal.expectedOutputMaterialId
-    && fact.diff.techniqueId === goal.techniqueId
-    && fact.diff.sourceEventId === fact.id
-    && Array.isArray(fact.diff.recordUseInputSourceEventIds)
-    && fact.diff.recordUseInputSourceEventIds.every((sourceEventId) => typeof sourceEventId === 'string');
+  if (fact.status !== 'completed'
+    || fact.who !== goal.readerId
+    || !fact.intentId
+    || fact.action.kind !== 'act'
+    || (fact.action.operation !== 'combine'
+      && fact.action.operation !== 'exert'
+      && fact.action.operation !== 'expose')
+    || fact.diff.recordUseReplicationReceipt !== true
+    || fact.diff.recordUsePurpose !== 'replicate'
+    || fact.diff.recordUseStage !== 'replicate'
+    || fact.diff.recordUseBasisKey !== goal.basisKey
+    || fact.diff.recordUseReaderId !== goal.readerId
+    || fact.diff.recordUseProjectId !== goal.projectId
+    || fact.diff.recordUseRecordId !== goal.recordId
+    || fact.diff.recordUseRecordVersion !== goal.recordVersion
+    || fact.diff.recordUseTechniqueId !== goal.techniqueId
+    || fact.diff.recordUseRuleSignature !== goal.ruleSignature
+    || Number(fact.diff.recordUseExpectedOutputMaterialId) !== goal.expectedOutputMaterialId
+    || Number(fact.diff.outputMaterialId) !== goal.expectedOutputMaterialId
+    || fact.diff.techniqueId !== goal.techniqueId
+    || fact.diff.sourceEventId !== fact.id) return false;
+
+  const person = personById(state, goal.readerId);
+  const intent = intentById(state, fact.intentId);
+  const basis = intent?.recordUseBasis;
+  const project = projectById(state, goal.projectId);
+  const record = state.records.find((candidate) => candidate.id === goal.recordId && candidate.kind === 'technique');
+  const reliableTechnique = person?.knowledge.find((knowledge) => knowledge.id === goal.techniqueId
+    && knowledge.kind === 'technique'
+    && knowledge.confidence >= 55);
+  if (!person
+    || !intent
+    || (intent.status !== 'active' && intent.status !== 'completed')
+    || intent.ownerId !== person.id
+    || intent.recordUseStage !== 'replicate'
+    || basis?.version !== 'record-use-basis-v3'
+    || (basis.purpose ?? 'learn') !== 'replicate'
+    || !sameReplicationGoal(intent.goal, goal)
+    || basis.basisKey !== goal.basisKey
+    || basis.readerId !== goal.readerId
+    || basis.projectId !== goal.projectId
+    || basis.demand.projectId !== goal.projectId
+    || basis.recordId !== goal.recordId
+    || basis.recordVersion !== goal.recordVersion
+    || basis.knowledgeId !== goal.techniqueId
+    || basis.techniqueId !== goal.techniqueId
+    || basis.ruleSignature !== goal.ruleSignature
+    || basis.expectedOutputMaterialId !== goal.expectedOutputMaterialId
+    || basis.projectRenewalBasisKey !== fact.diff.recordUseProjectRenewalBasisKey
+    || !intent.actionEventIds.includes(fact.id)
+    || project?.ownerId !== person.id
+    || !project.actionEventIds.includes(fact.id)
+    || !record
+    || record.authorId === person.id
+    || record.authorId !== basis.recordAuthorId
+    || record.version !== goal.recordVersion
+    || record.knowledgeId !== goal.techniqueId
+    || record.codebookId !== basis.codebookId
+    || !reliableTechnique) return false;
+
+  const carrierSource = basis.carrierSource;
+  const carrierPresent = carrierSource.kind === 'inventory'
+    ? person.inventory.some((stack) => stack.id === carrierSource.stackId
+      && stack.quantity > 0
+      && stack.recordPayloadId === record.id)
+    : person.inventory.some((stack) => stack.quantity > 0
+      && stack.recordPayloadId === record.id
+      && stack.sourceLineageKeys?.includes(`drop:${carrierSource.dropId}`));
+  if (!carrierPresent) return false;
+
+  const basisWitnesses = inputWitnesses(basis.inputWitnesses);
+  const factWitnesses = inputWitnesses(fact.diff.recordUseInputWitnesses);
+  const factInputSources = canonicalStringIds(fact.diff.recordUseInputSourceEventIds);
+  const basisInputSources = canonicalStringIds(basis.inputSourceEventIds);
+  if (!basisWitnesses || !factWitnesses || !factInputSources || !basisInputSources
+    || !sameInputWitnesses(basisWitnesses, factWitnesses)) return false;
+
+  const stackRefs = fact.action.targets.filter((target): target is Extract<WorldRef, { kind: 'inventory-stack' }> => (
+    target.kind === 'inventory-stack'
+  ));
+  if (stackRefs.some((ref) => ref.personId !== person.id)) return false;
+  const expectedWitnessQuantities = new Map<string, number>();
+  for (const ref of stackRefs) {
+    const key = `input:${ref.stackId}`;
+    expectedWitnessQuantities.set(key, (expectedWitnessQuantities.get(key) ?? 0) + 1);
+  }
+  const voxelTarget = fact.action.targets.some((target) => target.kind === 'voxel');
+  if ((fact.action.operation === 'combine' && !voxelTarget && stackRefs.length < 2)
+    || ((fact.action.operation === 'combine' && voxelTarget) || fact.action.operation === 'expose') && stackRefs.length !== 1) return false;
+  if (fact.action.operation === 'exert') {
+    if (stackRefs.length !== 1 || !fact.action.toolStackId) return false;
+    expectedWitnessQuantities.set(`tool:${fact.action.toolStackId}`, 1);
+  }
+  if (basisWitnesses.length !== expectedWitnessQuantities.size
+    || basisWitnesses.some((witness) => (
+      witness.personId !== person.id
+      || expectedWitnessQuantities.get(`${witness.role}:${witness.stackId}`) !== witness.quantity
+    ))) return false;
+
+  const inputMaterials = stackRefs.map((ref) => basisWitnesses.find((witness) => (
+    witness.role === 'input' && witness.stackId === ref.stackId
+  ))?.materialId);
+  if (inputMaterials.some((materialId) => materialId === undefined)) return false;
+  if (fact.action.operation === 'combine' && !voxelTarget) {
+    const inputMaterialIds = fact.diff.inputMaterialIds;
+    if (!Array.isArray(inputMaterialIds)
+      || inputMaterialIds.length !== inputMaterials.length
+      || inputMaterials.some((materialId, index) => Number(inputMaterialIds[index]) !== materialId)) return false;
+  } else if (Number(fact.diff.inputMaterialId) !== inputMaterials[0]) return false;
+  if (fact.action.operation === 'exert') {
+    const toolWitness = basisWitnesses.find((witness) => witness.role === 'tool');
+    if (!toolWitness || Number(fact.diff.toolMaterialId) !== toolWitness.materialId) return false;
+  }
+
+  const witnessedSources = [...new Set(basisWitnesses.flatMap((witness) => witness.sourceEventIds))].sort();
+  if (witnessedSources.length !== basisInputSources.length
+    || witnessedSources.some((sourceEventId, index) => sourceEventId !== basisInputSources[index])
+    || witnessedSources.length !== factInputSources.length
+    || witnessedSources.some((sourceEventId, index) => sourceEventId !== factInputSources[index])
+    || witnessedSources.some((sourceEventId) => !basis.sourceFactIds.includes(sourceEventId))) return false;
+  return basisWitnesses.every((witness) => {
+    if (witness.sourceEventIds.length === 0) return canonicalFounderRationWitness(person, witness);
+    if (witness.genesisEntity !== undefined) return false;
+    const sources = witness.sourceEventIds.map((sourceEventId) => worldEventById(state, sourceEventId));
+    return sources.every((source) => Boolean(source
+      && compareWorldEventsInCanonicalOrder(source, fact) < 0))
+      && sources.some((source) => Boolean(source
+        && eventProducesOrTransfersMaterial(source, witness.materialId)));
+  });
 }
 
 export function goalSatisfied(state: SimulationState, person: PersonState, goal: FactPredicate): boolean {
@@ -216,7 +449,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
       || record.knowledgeId !== goal.techniqueId) return false;
     return project.actionEventIds.some((eventId) => {
       const event = worldEventById(state, eventId);
-      return event?.kind === 'action' && actionSatisfiesRecordReplicationReceipt(event, goal);
+      return event?.kind === 'action' && actionSatisfiesRecordReplicationReceipt(state, event, goal);
     });
   }
   if (goal.kind === 'near-person') {

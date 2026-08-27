@@ -1041,6 +1041,7 @@ export function executeActiveIntent(
     : undefined;
   const fact = executeWithCurrentEvidence(() => executeIntentAction(state, person, intent, atMonth, orderInMonth, actionTick));
   let recordReplicationReceiptCompleted = false;
+  let recordReplicationReceiptCandidate = false;
   if (intent.recordUseBasis && intent.recordUseStage) {
     const basis = intent.recordUseBasis;
     const physicalGroundSource = basis.version !== 'record-use-basis-v1'
@@ -1112,6 +1113,7 @@ export function executeActiveIntent(
             ? { recordUseProjectRenewalBasisKey: basis.projectRenewalBasisKey }
             : {}),
           recordUseInputSourceEventIds: [...basis.inputSourceEventIds],
+          recordUseInputWitnesses: structuredClone(basis.inputWitnesses ?? []),
         } : {}),
         ...(recordUseConfidenceBefore !== undefined
           ? { recordUseKnowledgeConfidenceBefore: recordUseConfidenceBefore }
@@ -1128,13 +1130,8 @@ export function executeActiveIntent(
           ...fact,
           diff: { ...recordUseDiff, recordUseReplicationReceipt: true },
         };
-        recordReplicationReceiptCompleted = actionSatisfiesRecordReplicationReceipt(
-          candidateFact,
-          intent.goal,
-        );
-        fact.diff = recordReplicationReceiptCompleted
-          ? candidateFact.diff
-          : recordUseDiff;
+        fact.diff = candidateFact.diff;
+        recordReplicationReceiptCandidate = true;
       } else fact.diff = recordUseDiff;
       if (basis.version !== 'record-use-basis-v1' && fact.status === 'completed') {
         if (stage === 'acquire') intent.recordUseStage = 'read';
@@ -1163,6 +1160,13 @@ export function executeActiveIntent(
   } else if (fact.diff.projectKnowledgeResponse === true
     && typeof fact.diff.projectKnowledgeProjectId === 'string') {
     recordProjectAction(state, fact.diff.projectKnowledgeProjectId, fact);
+  }
+  if (recordReplicationReceiptCandidate && intent.goal.kind === 'record-replication-receipt') {
+    const receiptGoal = intent.goal;
+    recordReplicationReceiptCompleted = executeWithCurrentEvidence(() => (
+      actionSatisfiesRecordReplicationReceipt(state, fact, receiptGoal)
+    ));
+    if (!recordReplicationReceiptCompleted) delete fact.diff.recordUseReplicationReceipt;
   }
   if (fact.action.kind === 'act' && fact.action.operation === 'reproduce') intent.lastReproductionAttemptAtMonth = atMonth;
   person.currentActionText = fact.result;

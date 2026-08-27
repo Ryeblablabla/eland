@@ -24,10 +24,15 @@ try {
     } from ${JSON.stringify(path.resolve('src/game/eland/application/record-use-options.ts'))};
     export { previewOwnedProjectStep } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
     export {
+      exposureRuleFor,
+      exposureTechniqueId,
       inventoryCombinationForOutput,
       inventoryCombinationTechniqueId,
     } from ${JSON.stringify(path.resolve('src/game/eland/domain/interaction-rules.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
+    export { goalSatisfied } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
+    export { cellX, cellY, setVoxel } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -37,14 +42,21 @@ try {
   const {
     Material,
     RulePlanner,
+    appendCommittedEvents,
     buildDemandBoundRecordUseOptions,
+    cellX,
+    cellY,
     createInitialState,
     executeActiveIntent,
+    exposureRuleFor,
+    exposureTechniqueId,
+    goalSatisfied,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
     planLocallyForTick,
     previewOwnedProjectStep,
     recompileRecordUseNextAction,
+    setVoxel,
     startInterruptIntent,
     visibleCellsFor,
   } = simulation;
@@ -53,6 +65,7 @@ try {
     const state = createInitialState(824, { endpoint: { kind: 'months', value: 36 }, chaosIntensity: 0 });
     state.clock.elapsedMonths = 12;
     state.world.past = [];
+    state.world.historyCursor = { version: 1, eventCount: 0, hotStartIndex: 0, tailEventId: null };
     state.projects = [];
     state.intents = [];
     state.records = [];
@@ -69,6 +82,23 @@ try {
       delete person.activeIntentId;
     }
     author.position = structuredClone(reader.position);
+    appendCommittedEvents(state, [
+      {
+        id: 'prepare-stone-tool-source', kind: 'environment', atMonth: 11, orderInMonth: 0,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实石制工具来源', diff: { materialId: Material.StoneTool },
+      },
+      {
+        id: 'prepare-owned-wood-source', kind: 'environment', atMonth: 11, orderInMonth: 1,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实自有木材来源', diff: { materialId: Material.Wood },
+      },
+      {
+        id: 'prepare-visible-wood', kind: 'environment', atMonth: 11, orderInMonth: 2,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实可见木材来源', diff: { materialId: Material.Wood },
+      },
+    ]);
     reader.inventory.push({
       id: 'prepare-stone-tool', materialId: Material.StoneTool, quantity: 1,
       sourceEventIds: ['prepare-stone-tool-source'],
@@ -140,15 +170,18 @@ try {
 
   const visibleDrops = (fixture) => fixture.state.world.drops.filter((drop) => drop.quantity > 0);
   const appendAction = (fixture, actionTick) => {
+    const nextOrderInMonth = fixture.state.world.past
+      .filter((event) => event.atMonth === 13)
+      .reduce((highest, event) => Math.max(highest, event.orderInMonth), -1) + 1;
     const fact = executeActiveIntent(
       fixture.state,
       fixture.reader,
       13,
-      fixture.state.world.past.length,
+      nextOrderInMonth,
       actionTick,
     );
     assert.ok(fact?.kind === 'action');
-    fixture.state.world.past.push(fact);
+    appendCommittedEvents(fixture.state, [fact]);
     return fact;
   };
 
@@ -198,6 +231,10 @@ try {
     assert.ok(child);
     assert.equal(child.returnToIntentId, fixture.parent.id);
     assert.equal(child.projectId, undefined);
+    delete child.recordUseBasis.purpose;
+    delete child.recordUseBasis.recordVersion;
+    delete child.recordUseBasis.projectRenewalBasisKey;
+    delete child.recordUseBasis.inputWitnesses;
 
     const acquire = appendAction(fixture, 2);
     assert.equal(acquire.diff.recordUseStage, 'acquire');
@@ -216,6 +253,8 @@ try {
     assert.equal(experiment.diff.outputMaterialId, Material.Spear);
     assert.ok(fixture.reader.knowledge.find((fact) => fact.id === fixture.techniqueId)?.confidence >= 55);
     assert.equal(child.status, 'completed');
+    assert.equal(child.recordUseBasis.purpose, undefined,
+      'persisted v3 bases without replication fields keep the legacy low-confidence learn path');
   }
 
   {
@@ -268,6 +307,21 @@ try {
     assert.equal(replicate.diff.outputMaterialId, Material.Spear);
     assert.deepEqual(replicate.diff.recordUseInputSourceEventIds,
       ['e-13-action-ran-mouri-2', 'prepare-stone-tool-source', 'prepare-visible-wood']);
+    assert.deepEqual(replicate.diff.recordUseInputWitnesses.map((witness) => ({
+      role: witness.role,
+      materialId: witness.materialId,
+      quantity: witness.quantity,
+      sourceEventIds: witness.sourceEventIds,
+    })), [
+      {
+        role: 'input', materialId: Material.StoneTool, quantity: 1,
+        sourceEventIds: ['prepare-stone-tool-source'],
+      },
+      {
+        role: 'input', materialId: Material.Wood, quantity: 1,
+        sourceEventIds: ['e-13-action-ran-mouri-2', 'prepare-visible-wood'],
+      },
+    ], 'the receipt freezes each actually consumed stack, material, quantity, and lineage');
     assert.equal(child.status, 'completed');
     assert.equal(child.goalOutcome?.kind, 'achieved');
     assert.deepEqual(child.goalOutcome?.sourceEventIds, [replicate.id]);
@@ -278,10 +332,67 @@ try {
     const output = fixture.reader.inventory.find((stack) => stack.materialId === Material.Spear);
     assert.ok(output?.sourceEventIds.includes(replicate.id),
       'the exact output keeps the authoritative replication action in its lineage');
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), true,
+      'the real completed action with exact input lineage satisfies the receipt');
+
+    const originalBasis = structuredClone(child.recordUseBasis);
+    const originalDiff = structuredClone(replicate.diff);
+    const setLineage = (sourceIdsForWitness) => {
+      child.recordUseBasis.inputWitnesses = child.recordUseBasis.inputWitnesses.map((witness) => {
+        const sourceEventIds = sourceIdsForWitness(witness);
+        return { ...witness, sourceEventIds, genesisEntity: undefined };
+      });
+      child.recordUseBasis.inputSourceEventIds = [...new Set(
+        child.recordUseBasis.inputWitnesses.flatMap((witness) => witness.sourceEventIds),
+      )].sort();
+      child.recordUseBasis.sourceFactIds = [...new Set([
+        ...child.recordUseBasis.sourceFactIds,
+        ...child.recordUseBasis.inputSourceEventIds,
+      ])].sort();
+      replicate.diff.recordUseInputWitnesses = structuredClone(child.recordUseBasis.inputWitnesses);
+      replicate.diff.recordUseInputSourceEventIds = [...child.recordUseBasis.inputSourceEventIds];
+    };
+    setLineage(() => []);
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), false,
+      'empty input lineage cannot be relabelled as a receipt without a canonical genesis entity witness');
+    setLineage((witness) => [`fake-${witness.materialId}-source`]);
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), false,
+      'unresolved fabricated input lineage cannot satisfy the receipt');
+    appendCommittedEvents(fixture.state, [
+      {
+        id: 'future-stone-tool-source', kind: 'environment', atMonth: 14, orderInMonth: 0,
+        cellId: fixture.reader.position.cellId, change: 'resource', who: fixture.reader.id,
+        result: '专项反证：未来石制工具来源', diff: { materialId: Material.StoneTool },
+      },
+      {
+        id: 'future-wood-source', kind: 'environment', atMonth: 14, orderInMonth: 1,
+        cellId: fixture.reader.position.cellId, change: 'resource', who: fixture.reader.id,
+        result: '专项反证：未来木材来源', diff: { materialId: Material.Wood },
+      },
+    ]);
+    setLineage((witness) => [witness.materialId === Material.StoneTool
+      ? 'future-stone-tool-source'
+      : 'future-wood-source']);
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), false,
+      'a real material event after the claimed action cannot be its input lineage');
+    child.recordUseBasis = originalBasis;
+    replicate.diff = originalDiff;
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), true);
+
     assert.equal(fixture.project.status, 'completed');
-    fixture.project.status = 'active';
-    delete fixture.project.completedAtMonth;
-    fixture.project.completionEventIds = [];
+    const renewedProject = {
+      ...structuredClone(fixture.project),
+      id: 'project-record-prepare-renewed',
+      createdAtMonth: 18,
+      status: 'active',
+      lastProgressAtMonth: 18,
+      actionEventIds: [],
+      failureEventIds: ['prepare-failed-hunt'],
+      completionEventIds: [],
+      progressEvidence: [],
+    };
+    delete renewedProject.completedAtMonth;
+    fixture.state.projects.push(renewedProject);
     fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.materialId !== Material.Spear);
     fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.recordPayloadId !== fixture.record.id);
     fixture.reader.inventory.push({
@@ -292,7 +403,83 @@ try {
       fixture.state,
       fixture.reader,
       visibleDrops(fixture),
-    ).length, 0, 'one successful source-bound receipt suppresses a carrier-swapped duplicate basis');
+    ).length, 0,
+    'one successful semantic receipt permanently suppresses a carrier- and project-id-swapped duplicate basis');
+  }
+
+  {
+    const fixture = makeFixture({ groundCarrier: false, includeWood: true });
+    const cookRule = exposureRuleFor(Material.Food, Material.Fire);
+    assert.ok(cookRule);
+    const cookTechniqueId = exposureTechniqueId(cookRule);
+    fixture.project.kind = 'inquiry';
+    fixture.project.need = 'food-preparation';
+    fixture.project.desiredFunction = 'prepared-food';
+    fixture.project.summary = '把先民口粮在真实火源上制成熟食';
+    fixture.record.knowledgeId = cookTechniqueId;
+    fixture.record.summary = '食物暴露于火可制成熟食';
+    fixture.reader.knowledge.push({
+      id: cookTechniqueId, kind: 'technique', summary: fixture.record.summary, confidence: 70,
+      learnedAtMonth: 11, sourceEventIds: [fixture.record.id, 'prepare-reader-cook-trial'],
+    });
+    fixture.author.knowledge = [{
+      id: cookTechniqueId, kind: 'technique', summary: fixture.record.summary, confidence: 80,
+      learnedAtMonth: 8, sourceEventIds: ['prepare-author-cook-trial'],
+    }];
+    fixture.reader.inventory = [
+      {
+        id: `stack-${fixture.reader.id}-ration`, materialId: Material.Food,
+        quantity: 2, sourceEventIds: [],
+      },
+      {
+        id: 'prepare-founder-cook-record', materialId: Material.WoodTablet, quantity: 1,
+        recordPayloadId: fixture.record.id, sourceEventIds: ['prepare-owned-carrier-source'],
+      },
+    ];
+    fixture.state.world.drops = [];
+    setVoxel(
+      fixture.state.world.grid,
+      cellX(fixture.reader.position.cellId),
+      cellY(fixture.reader.position.cellId),
+      fixture.reader.position.z,
+      Material.Fire,
+    );
+    const [option] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
+    assert.equal(option?.recordUseBasis?.purpose, 'replicate');
+    assert.equal(option.recordUseStage, 'replicate');
+    const context = {
+      state: fixture.state,
+      person: fixture.reader,
+      visibleCells: visibleCellsFor(fixture.reader),
+      visiblePeople: [fixture.author],
+      visibleDrops: [], visibleAnimals: [],
+      options: [option], followUpOptions: [], activeIntent: fixture.parent,
+    };
+    const child = startInterruptIntent(
+      fixture.state, fixture.reader, context, option.id,
+      'record-founder-ration-replication', 13, 'record-use',
+    );
+    assert.ok(child);
+    const replicate = appendAction(fixture, 2);
+    assert.equal(replicate.diff.recordUseReplicationReceipt, true);
+    assert.equal(replicate.diff.outputMaterialId, Material.CookedFood);
+    assert.deepEqual(replicate.diff.recordUseInputSourceEventIds, []);
+    assert.deepEqual(replicate.diff.recordUseInputWitnesses, [{
+      version: 'record-use-input-witness-v1',
+      role: 'input',
+      personId: fixture.reader.id,
+      stackId: `stack-${fixture.reader.id}-ration`,
+      materialId: Material.Food,
+      quantity: 1,
+      sourceEventIds: [],
+      genesisEntity: {
+        kind: 'founder-ration',
+        personId: fixture.reader.id,
+        stackId: `stack-${fixture.reader.id}-ration`,
+        materialId: Material.Food,
+      },
+    }], 'the only accepted empty lineage is an explicit canonical founder-ration entity witness');
+    assert.equal(child.goalOutcome?.kind, 'achieved');
   }
 
   {

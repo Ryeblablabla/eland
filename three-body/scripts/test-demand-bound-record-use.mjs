@@ -35,6 +35,7 @@ try {
     } from ${JSON.stringify(path.resolve('src/game/eland/domain/interaction-rules.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
     export { followUpSemanticallyMatches } from ${JSON.stringify(path.resolve('src/game/eland/domain/intent-follow-up.ts'))};
+    export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
     export { findStandingPath, surfaceStandingPosition } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
     export { buildEvolutionFactsReport } from ${JSON.stringify(path.resolve('server/evolution-artifacts.ts'))};
   `;
@@ -46,6 +47,7 @@ try {
   const {
     Material,
     RulePlanner,
+    appendCommittedEvents,
     buildDecisionContext,
     buildDemandBoundRecordUseOptions,
     buildEvolutionFactsReport,
@@ -75,6 +77,23 @@ try {
     reader.bornAtMonth = -20 * 12;
     author.bornAtMonth = -20 * 12;
     author.position = structuredClone(reader.position);
+    appendCommittedEvents(state, [
+      {
+        id: 'made-stone-tool', kind: 'environment', atMonth: 11, orderInMonth: 0,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实石制工具来源', diff: { materialId: Material.StoneTool },
+      },
+      {
+        id: 'gathered-wood', kind: 'environment', atMonth: 11, orderInMonth: 1,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实木材来源', diff: { materialId: Material.Wood },
+      },
+      {
+        id: 'record-prepare-visible-wood', kind: 'environment', atMonth: 11, orderInMonth: 2,
+        cellId: reader.position.cellId, change: 'resource', who: reader.id,
+        result: '专项夹具：真实备料木材来源', diff: { materialId: Material.Wood },
+      },
+    ]);
     reader.inventory = [
       { id: 'reader-stone-tool', materialId: Material.StoneTool, quantity: 1, sourceEventIds: ['made-stone-tool'] },
       { id: 'reader-wood', materialId: Material.Wood, quantity: 1, sourceEventIds: ['gathered-wood'] },
@@ -155,11 +174,14 @@ try {
   };
 
   const appendIntentAction = (fixture, atMonth, actionTick) => {
+    const nextOrderInMonth = fixture.state.world.past
+      .filter((event) => event.atMonth === atMonth)
+      .reduce((highest, event) => Math.max(highest, event.orderInMonth), -1) + 1;
     const fact = executeActiveIntent(
-      fixture.state, fixture.reader, atMonth, fixture.state.world.past.length, actionTick,
+      fixture.state, fixture.reader, atMonth, nextOrderInMonth, actionTick,
     );
     assert.ok(fact && fact.kind === 'action');
-    fixture.state.world.past.push(fact);
+    appendCommittedEvents(fixture.state, [fact]);
     return fact;
   };
 
@@ -196,6 +218,7 @@ try {
     const state = createInitialState(822, { endpoint: { kind: 'months', value: 36 }, chaosIntensity: 0 });
     state.clock.elapsedMonths = 12;
     state.world.past = [];
+    state.world.historyCursor = { version: 1, eventCount: 0, hotStartIndex: 0, tailEventId: null };
     state.projects = [];
     state.intents = [];
     state.records = [];
@@ -257,7 +280,7 @@ try {
       audience: [author.id], channel: 'voice',
     }, 13, 0, { cause: 'intent', actionTick: 1 });
     assert.equal(requestFact.status, 'completed');
-    state.world.past.push(requestFact);
+    appendCommittedEvents(state, [requestFact]);
     project.actionEventIds.push(requestFact.id);
     project.lastProgressAtMonth = 13;
     state.clock.elapsedMonths = 13;
@@ -414,6 +437,7 @@ try {
     const fixture = makeRequestBoundRecordFixture();
     fixture.state.projects = [];
     fixture.state.world.past = [];
+    fixture.state.world.historyCursor = { version: 1, eventCount: 0, hotStartIndex: 0, tailEventId: null };
     fixture.author.bornAtMonth = -61 * 12;
     const cappedFallback = durableRecordProposalsFor(fixture.state, fixture.author)
       .find((candidate) => candidate.targetKnowledgeId === fixture.techniqueId);
@@ -496,7 +520,7 @@ try {
       pathSegment: [fixture.reader.position.cellId], status: 'completed',
       result: '双方在共同项目中完成了一项真实行动', diff: {},
     };
-    fixture.state.world.past.push(sharedAction);
+    appendCommittedEvents(fixture.state, [sharedAction]);
     fixture.project.actionEventIds.push(sharedAction.id);
     fixture.project.contributorIds.push(fixture.author.id);
     const context = buildDecisionContext(fixture.state, fixture.reader, 13);
@@ -872,17 +896,32 @@ try {
     assert.equal(child.status, 'blocked');
     fixture.project.need = 'hunting-safety';
     fixture.project.desiredFunction = 'safer-hunting';
+    const renewedProject = {
+      ...structuredClone(fixture.project),
+      id: 'project-record-use-renewed-after-failure',
+      createdAtMonth: 14,
+      status: 'active',
+      lastProgressAtMonth: 13,
+      actionEventIds: [], failureEventIds: ['failed-hunt'], completionEventIds: [],
+      progressEvidence: [],
+    };
+    fixture.project.status = 'blocked';
+    fixture.state.projects.push(renewedProject);
     fixture.reader.inventory = fixture.reader.inventory.filter((stack) => stack.recordPayloadId !== fixture.record.id);
     fixture.reader.inventory.push({
       id: 'cooldown-record-carrier-b', materialId: Material.WoodTablet, quantity: 1,
       recordPayloadId: fixture.record.id, sourceEventIds: ['cooldown-carrier-b'],
     });
-    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []).length, 0,
-      'a blocked replication basis stays cold even when the physical carrier changes');
+    for (let elapsedMonths = 13; elapsedMonths <= 18; elapsedMonths += 1) {
+      fixture.state.clock.elapsedMonths = elapsedMonths;
+      assert.equal(buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []).length, 0,
+        `the same semantic basis stays cold ${elapsedMonths - 12} month(s) after failure even when carrier and project id change`);
+    }
     fixture.state.clock.elapsedMonths = 19;
     const [reopened] = buildDemandBoundRecordUseOptions(fixture.state, fixture.reader, []);
     assert.equal(reopened?.recordUseBasis?.basisKey, replication.recordUseBasis.basisKey,
-      'real elapsed cooldown may reopen the same stable basis after month 6');
+      'real elapsed cooldown may reopen the same cross-project stable basis only after month 6');
+    assert.equal(reopened?.recordUseBasis?.projectId, renewedProject.id);
   }
 
   {
@@ -924,11 +963,13 @@ try {
       },
     };
     fixture.project.actionEventIds.push(forgedId);
-    fixture.state.world.past.push(forgedWrongOutput);
+    appendCommittedEvents(fixture.state, [forgedWrongOutput]);
     assert.equal(goalSatisfied(fixture.state, fixture.reader, replication.goal), false,
       'a completed action with the wrong physical output cannot satisfy the receipt goal');
-    forgedWrongOutput.status = 'blocked';
     forgedWrongOutput.diff.outputMaterialId = Material.Spear;
+    assert.equal(goalSatisfied(fixture.state, fixture.reader, replication.goal), false,
+      'a correct output from an action with no matching v3 replicate intent cannot forge a receipt');
+    forgedWrongOutput.status = 'blocked';
     assert.equal(goalSatisfied(fixture.state, fixture.reader, replication.goal), false,
       'a blocked action cannot satisfy the receipt goal even if its claimed output matches');
   }
@@ -1003,7 +1044,7 @@ try {
       { intentId: 'legacy-composite-intent', cause: 'intent', actionTick: 1 },
     );
     assert.equal(openingFact.status, 'completed');
-    fixture.state.world.past.push(openingFact);
+    appendCommittedEvents(fixture.state, [openingFact]);
     const legacyComposite = {
       ...structuredClone(fixture.parent),
       id: 'legacy-composite-intent', projectId: undefined,
@@ -1068,7 +1109,7 @@ try {
     fixture.author.activeIntentId = legacyShare.id;
     const shareFact = executeActiveIntent(fixture.state, fixture.author, 13, 0, 1);
     assert.equal(shareFact?.kind, 'action');
-    fixture.state.world.past.push(shareFact);
+    appendCommittedEvents(fixture.state, [shareFact]);
     assert.equal(reportFor(fixture.state, 'legacy-record-share').recordUseShares, 1,
       'the report keeps counting legacy v1 share actions');
   }
@@ -1085,7 +1126,7 @@ try {
       },
       audience: [fixture.reader.id], channel: 'voice',
     }, 13, 0, { cause: 'intent', actionTick: 2 });
-    fixture.state.world.past.push(teaching);
+    appendCommittedEvents(fixture.state, [teaching]);
     assert.equal(fixture.reader.knowledge.find((fact) => fact.id === fixture.techniqueId)?.confidence, 60);
     assert.equal(executeActiveIntent(fixture.state, fixture.reader, 13, 1, 3), null,
       'reliable direct teaching terminates the record-use child without a fake record action');

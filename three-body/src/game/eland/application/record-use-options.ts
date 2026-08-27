@@ -3,6 +3,7 @@ import type {
   Intent,
   PrimitiveAction,
   RecordCarrierSource,
+  RecordUseInputWitnessV1,
   RecordUseBasisV3,
   VoxelPosition,
   WorldRef,
@@ -20,7 +21,7 @@ import type { DropState, SimulationState } from '../domain/model';
 import { isAlive, type PersonState } from '../domain/person';
 import { inspectProjectKnowledgeRequest } from '../domain/project-knowledge-request';
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
-import { inheritPlanningEventOverlay } from '../domain/event-index';
+import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-index';
 import { goalSatisfied } from '../domain/action-executor';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { previewOwnedProjectStep, recompileProjectNextAction } from './project-options';
@@ -32,6 +33,7 @@ interface ResolvedTechniqueAction {
   techniqueId: string;
   expectedOutputMaterialId: MaterialId;
   inputSourceEventIds: string[];
+  inputWitnesses: RecordUseInputWitnessV1[];
 }
 
 type RecordUsePurpose = NonNullable<RecordUseBasisV3['purpose']>;
@@ -45,9 +47,16 @@ function stableBasisPart(value: string): string {
 }
 
 function projectRenewalBasisKey(project: SimulationState['projects'][number]): string {
-  const openingBasis = project.inquiryOpportunityBasis?.basisKey
-    ?? `triggers=${unique(project.triggerFactIds).map(stableBasisPart).join(',')}`;
-  return `project-opening:${stableBasisPart(project.id)}:${project.createdAtMonth}:${stableBasisPart(openingBasis)}`;
+  const inquiry = project.inquiryOpportunityBasis;
+  const renewalEvidence = inquiry
+    ? [
+        `opening=${stableBasisPart(inquiry.basisKey)}`,
+        `renewals=${unique(inquiry.renewalKeys).map(stableBasisPart).join(',')}`,
+        `sources=${unique(inquiry.sourceFactIds).map(stableBasisPart).join(',')}`,
+        `source-keys=${unique(inquiry.sourceKeys).map(stableBasisPart).join(',')}`,
+      ].join(':')
+    : `triggers=${unique(project.triggerFactIds).map(stableBasisPart).join(',')}`;
+  return `project-opening:function=${stableBasisPart(project.desiredFunction)}:evidence=${renewalEvidence}`;
 }
 
 function recordUsePurpose(basis: RecordUseBasisV3): RecordUsePurpose {
@@ -71,15 +80,21 @@ function replicationGoal(basis: RecordUseBasisV3): Extract<ActionOption['goal'],
   };
 }
 
-function recordUseBasisInCooldown(
+function recordUseBasisUnavailable(
   state: SimulationState,
   reader: PersonState,
   basisKey: string,
   atMonth: number,
 ): boolean {
   return state.intents.some((intent) => {
-    if (intent.ownerId !== reader.id || intent.recordUseBasis?.basisKey !== basisKey) return false;
+    if (intent.ownerId !== reader.id
+      || intent.recordUseBasis?.version !== 'record-use-basis-v3'
+      || recordUsePurpose(intent.recordUseBasis) !== 'replicate'
+      || intent.recordUseBasis.basisKey !== basisKey) return false;
     if (intent.status === 'active' || intent.status === 'suspended') return true;
+    if (intent.status === 'completed') return intent.goal.kind === 'record-replication-receipt'
+      && intent.goal.basisKey === basisKey
+      && intent.goalOutcome?.kind === 'achieved';
     if (intent.status !== 'blocked' && intent.status !== 'failed') return false;
     const resolvedAtMonth = intent.goalOutcome?.resolvedAtMonth ?? intent.lastProgressAtMonth;
     return resolvedAtMonth <= atMonth && atMonth - resolvedAtMonth <= 6;
@@ -88,7 +103,59 @@ function recordUseBasisInCooldown(
 
 function bindResolvedInputs(basis: RecordUseBasisV3, resolved: ResolvedTechniqueAction): void {
   basis.inputSourceEventIds = unique(resolved.inputSourceEventIds);
+  basis.inputWitnesses = structuredClone(resolved.inputWitnesses);
   basis.sourceFactIds = unique([...basis.sourceFactIds, ...basis.inputSourceEventIds]);
+}
+
+function inputWitnessForStack(
+  person: PersonState,
+  stack: PersonState['inventory'][number],
+  role: RecordUseInputWitnessV1['role'],
+  quantity: number,
+): RecordUseInputWitnessV1 {
+  const sourceEventIds = unique(stack.sourceEventIds);
+  const isFounderRation = sourceEventIds.length === 0
+    && person.generation === 0
+    && stack.id === `stack-${person.id}-ration`
+    && stack.materialId === Material.Food;
+  return {
+    version: 'record-use-input-witness-v1',
+    role,
+    personId: person.id,
+    stackId: stack.id,
+    materialId: stack.materialId,
+    quantity,
+    sourceEventIds,
+    ...(isFounderRation ? {
+      genesisEntity: {
+        kind: 'founder-ration' as const,
+        personId: person.id,
+        stackId: stack.id,
+        materialId: stack.materialId,
+      },
+    } : {}),
+  };
+}
+
+function inputWitnessesAuditable(
+  state: SimulationState,
+  person: PersonState,
+  witnesses: RecordUseInputWitnessV1[],
+): boolean {
+  return witnesses.length > 0 && witnesses.every((witness) => {
+    if (witness.personId !== person.id || witness.quantity < 1 || !Number.isInteger(witness.quantity)) return false;
+    if (witness.sourceEventIds.length > 0) {
+      return witness.genesisEntity === undefined
+        && witness.sourceEventIds.every((sourceEventId) => Boolean(worldEventById(state, sourceEventId)));
+    }
+    return witness.genesisEntity?.kind === 'founder-ration'
+      && person.generation === 0
+      && witness.stackId === `stack-${person.id}-ration`
+      && witness.materialId === Material.Food
+      && witness.genesisEntity.personId === person.id
+      && witness.genesisEntity.stackId === witness.stackId
+      && witness.genesisEntity.materialId === witness.materialId;
+  });
 }
 
 function distanceToPosition(person: PersonState, position: VoxelPosition): number {
@@ -145,15 +212,22 @@ function resolveTechniqueAction(
     if (stacks.some((stack) => !stack)) return null;
     const rule = inventoryCombinationFor(stacks.map((stack) => stack?.materialId ?? Material.Air));
     if (!rule) return null;
+    const requested = new Map<string, number>();
+    for (const ref of stackRefs) requested.set(ref.stackId, (requested.get(ref.stackId) ?? 0) + 1);
+    const inputWitnesses = [...requested].map(([stackId, quantity]) => {
+      const stack = person.inventory.find((candidate) => candidate.id === stackId)!;
+      return inputWitnessForStack(person, stack, 'input', quantity);
+    }).sort((left, right) => left.stackId.localeCompare(right.stackId));
     return {
       action,
       techniqueId: inventoryCombinationTechniqueId(rule),
       expectedOutputMaterialId: rule.output.materialId,
       inputSourceEventIds: unique(stacks.flatMap((stack) => stack?.sourceEventIds ?? [])),
+      inputWitnesses,
     };
   }
 
-  if (!voxelRef || distanceToPosition(person, voxelRef.position) > 1) return null;
+  if (!voxelRef || stackRefs.length !== 1 || distanceToPosition(person, voxelRef.position) > 1) return null;
   const stackRef = stackRefs[0];
   const stack = stackRef ? inventoryStack(person, stackRef) : undefined;
   if (!stack) return null;
@@ -182,6 +256,7 @@ function resolveTechniqueAction(
       techniqueId: `technique:combine:${stack.materialId}:${targetMaterialId}:${outputMaterialId}`,
       expectedOutputMaterialId: outputMaterialId,
       inputSourceEventIds: unique(stack.sourceEventIds),
+      inputWitnesses: [inputWitnessForStack(person, stack, 'input', 1)],
     };
   }
 
@@ -197,6 +272,10 @@ function resolveTechniqueAction(
       techniqueId: exertionTechniqueId(rule),
       expectedOutputMaterialId: rule.outputMaterialId,
       inputSourceEventIds: unique([...tool.sourceEventIds, ...stack.sourceEventIds]),
+      inputWitnesses: [
+        inputWitnessForStack(person, stack, 'input', 1),
+        inputWitnessForStack(person, tool, 'tool', 1),
+      ].sort((left, right) => left.role.localeCompare(right.role) || left.stackId.localeCompare(right.stackId)),
     };
   }
 
@@ -207,6 +286,7 @@ function resolveTechniqueAction(
     techniqueId: exposureTechniqueId(rule),
     expectedOutputMaterialId: rule.outputMaterialId,
     inputSourceEventIds: unique(stack.sourceEventIds),
+    inputWitnesses: [inputWitnessForStack(person, stack, 'input', 1)],
   };
 }
 
@@ -325,7 +405,6 @@ function buildBasis(
     ? [
         'record-use:replicate',
         stableBasisPart(reader.id),
-        stableBasisPart(project.id),
         stableBasisPart(renewalBasisKey),
         stableBasisPart(record.id),
         `v${record.version}`,
@@ -358,6 +437,7 @@ function buildBasis(
     purpose,
     recordVersion: record.version,
     projectRenewalBasisKey: renewalBasisKey,
+    inputWitnesses: [],
   };
 }
 
@@ -425,7 +505,8 @@ export function buildDemandBoundRecordUseOptions(
       const resolved = resolveTechniqueAction(state, reader, step.action);
       const experimentReady = Boolean(resolved
         && resolved.techniqueId === record.knowledgeId
-        && resolved.expectedOutputMaterialId === expectedOutputMaterialId);
+        && resolved.expectedOutputMaterialId === expectedOutputMaterialId
+        && inputWitnessesAuditable(state, reader, resolved.inputWitnesses));
       return [{
         project,
         step,
@@ -455,7 +536,7 @@ export function buildDemandBoundRecordUseOptions(
     const optionMonth = state.clock.elapsedMonths + 1;
     if (purpose === 'replicate'
       && (goalSatisfied(state, reader, goal)
-        || recordUseBasisInCooldown(state, reader, basis.basisKey, optionMonth))) continue;
+        || recordUseBasisUnavailable(state, reader, basis.basisKey, optionMonth))) continue;
     const atGroundSource = source.carrierSource.kind === 'ground'
       && reader.position.cellId === source.carrierSource.cellId
       && reader.position.z === source.carrierSource.z;
@@ -630,6 +711,7 @@ export function recompileRecordUseNextAction(
       && resolved.techniqueId === basis.techniqueId
       && resolved.techniqueId === record.knowledgeId
       && resolved.expectedOutputMaterialId === basis.expectedOutputMaterialId) {
+      if (purpose === 'replicate' && !inputWitnessesAuditable(state, person, resolved.inputWitnesses)) return null;
       bindResolvedInputs(basis, resolved);
       intent.recordUseStage = purpose === 'replicate' ? 'replicate' : 'experiment';
       return structuredClone(resolved.action);

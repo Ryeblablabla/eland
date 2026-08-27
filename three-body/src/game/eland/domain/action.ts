@@ -314,6 +314,24 @@ export type RecordCarrierSource =
   | { kind: 'inventory'; personId: PersonId; stackId: string }
   | { kind: 'ground'; dropId: string; cellId: number; z: number };
 
+/** Exact pre-action inventory evidence frozen for one record-bound replication. */
+export interface RecordUseInputWitnessV1 {
+  version: 'record-use-input-witness-v1';
+  role: 'input' | 'tool';
+  personId: PersonId;
+  stackId: string;
+  materialId: MaterialId;
+  quantity: number;
+  sourceEventIds: string[];
+  /** Genesis inventory has no producing event; only the canonical founder ration may use this witness. */
+  genesisEntity?: {
+    kind: 'founder-ration';
+    personId: PersonId;
+    stackId: string;
+    materialId: MaterialId;
+  };
+}
+
 /** Reader-owned record-use basis. A ground source must be acquired before it can be read. */
 export interface RecordUseBasisV2 extends FrozenRecordUseBasisFields {
   version: 'record-use-basis-v2';
@@ -337,6 +355,8 @@ export interface RecordUseBasisV3 extends RecordUseBasisFields {
   recordVersion?: number;
   /** Stable opening/renewal evidence for the active project; it excludes mutable progress arrays. */
   projectRenewalBasisKey?: string;
+  /** Optional only so persisted v3 learning episodes remain readable. New replication binds every input. */
+  inputWitnesses?: RecordUseInputWitnessV1[];
 }
 
 export type RecordUseBasis = RecordUseBasisV1 | RecordUseBasisV2 | RecordUseBasisV3;

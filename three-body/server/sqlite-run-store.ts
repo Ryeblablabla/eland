@@ -47,6 +47,7 @@ import {
 } from "./bounded-gameplay-shell";
 import { adoptStoreDecodedBoundedSimulationState } from "./bounded-simulation-adoption";
 import {
+  CHECKPOINT_ACCUMULATOR_CODEC,
   decodeCheckpointAccumulator,
   encodeCheckpointAccumulator,
   projectCheckpointAccumulatorFromVerifiedRunRoot,
@@ -56,6 +57,7 @@ import {
 import {
   decodeObserverCivilizationHistorySidecar,
   encodeObserverCivilizationHistorySidecar,
+  OBSERVER_CIVILIZATION_HISTORY_SIDECAR_CODEC,
   type ObserverCivilizationHistorySidecarPayloadV1,
 } from "./civilization-history-codec";
 import {
@@ -71,6 +73,8 @@ import type { EvolutionPath, EvolutionReport } from "./evolution-artifacts";
 import {
   decodeHistoryRetentionSidecar,
   encodeHistoryRetentionSidecar,
+  HISTORY_RETENTION_SIDECAR_CODEC,
+  HISTORY_RETENTION_SIDECAR_LEGACY_CODEC,
 } from "./history-retention-codec";
 import {
   assertHistoryRetentionProjectionMatchesShell,
@@ -89,6 +93,7 @@ import type { NarrativeEnhancementArtifact } from "./narrative-enhancements";
 import {
   decodeObserverDerivedHistorySidecar,
   encodeObserverDerivedHistorySidecar,
+  OBSERVER_DERIVED_HISTORY_SIDECAR_CODEC,
   type ObserverDerivedHistorySidecarPayloadV1,
 } from "./observer-derived-history-codec";
 import {
@@ -106,6 +111,7 @@ import {
 import {
   decodePhysicalStructureLedgerSidecar,
   encodePhysicalStructureLedgerSidecar,
+  PHYSICAL_STRUCTURE_LEDGER_SIDECAR_CODEC,
 } from "./physical-structure-ledger-codec";
 import {
   bootstrapPhysicalStructureLedgerFromStrictDecodedSidecar,
@@ -118,6 +124,7 @@ import {
   encodeRunContinuationBundle,
   hashRunContinuationStoredContent,
   MAX_RUN_CONTINUATION_HOT_EVENTS,
+  RUN_CONTINUATION_BUNDLE_CODEC,
   RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
   snapshotRunContinuationBundleChunk,
   type RunContinuationBundleV1,
@@ -189,6 +196,15 @@ const V8_BROTLI_CODEC = "v8-br-v1";
 const ARTIFACT_EVOLUTION_PATH = "evolution-path";
 const ARTIFACT_EVOLUTION_REPORT = "evolution-report";
 const ARTIFACT_NARRATIVE_ENHANCEMENTS = "narrative-enhancements";
+const RUN_CONTINUATION_COLLECTIBLE_CODECS = [
+  RUN_CONTINUATION_BUNDLE_CODEC,
+  HISTORY_RETENTION_SIDECAR_LEGACY_CODEC,
+  HISTORY_RETENTION_SIDECAR_CODEC,
+  PHYSICAL_STRUCTURE_LEDGER_SIDECAR_CODEC,
+  OBSERVER_DERIVED_HISTORY_SIDECAR_CODEC,
+  OBSERVER_CIVILIZATION_HISTORY_SIDECAR_CODEC,
+  CHECKPOINT_ACCUMULATOR_CODEC,
+] as const;
 /** Do not retain an accidentally unbounded encoded shell behind an opaque receipt. */
 const MAX_BOUNDED_SUCCESSOR_STAGED_BYTES = 256 * 1_024 * 1_024;
 export const DEFAULT_BOUNDED_CONTINUATION_HOT_EVENT_LIMIT = 4_096;
@@ -2022,21 +2038,67 @@ export class SqliteRunStore implements RunStore {
     return Number(result.changes) > 0;
   }
 
-  private collectUnreferencedRunStateChunks(): void {
-    const codecSet = new Set<string>(RUN_STATE_CODECS);
-    const codecPlaceholders = RUN_STATE_CODECS.map(() => "?").join(", ");
+  private collectUnreferencedRunStateChunks(
+    activeContinuation?: Readonly<BoundedContinuationTokenRecord>,
+  ): void {
+    const collectibleCodecs = [
+      ...RUN_STATE_CODECS,
+      ...RUN_CONTINUATION_COLLECTIBLE_CODECS,
+    ];
+    const codecPlaceholders = collectibleCodecs.map(() => "?").join(", ");
     const memo: RunStateReachabilityMemo = {
       chunks: new Set<string>(),
       historyNodes: new Set<string>(),
+    };
+    const markStateRoot = (hash: string, label: string): void => {
+      const chunk = this.chunkRow(hash);
+      if (chunk.codec !== RUN_STATE_ROOT_CODEC) {
+        throw new Error(`${label} ${hash} 不是 run-state root`);
+      }
+      markReachableRunStateChunks(
+        chunk,
+        (childHash) => this.chunkRow(childHash),
+        memo,
+      );
+    };
+    const markContinuationReferences = (
+      bundleHash: string,
+      runId: string,
+    ): void => {
+      // Mark before decoding so any fail-closed exit retains the manifest. The
+      // surrounding write transaction rolls back every attempted collection.
+      memo.chunks.add(bundleHash);
+      const bundle = decodeRunContinuationBundle(
+        snapshotRunContinuationBundleChunk(this.chunkRow(bundleHash)),
+      );
+      for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
+        const reference = contentHashReferenceFor(bundle.sidecars[name], runId, name);
+        const sidecar = this.chunkRow(reference.hash);
+        if (sidecar.codec !== reference.codec) {
+          throw new Error(
+            `运行 ${runId} 的 continuation sidecar ${name} codec 与引用不一致`,
+          );
+        }
+        memo.chunks.add(reference.hash);
+      }
+      if (bundle.observerMaterializationSource) {
+        markStateRoot(
+          bundle.observerMaterializationSource.stateHash,
+          `运行 ${runId} 的 observer materialization source`,
+        );
+      }
     };
     const stateRoots = this.database.prepare(`
       SELECT state_hash AS hash FROM runs
       UNION
       SELECT state_hash AS hash FROM run_checkpoints
+      UNION
+      SELECT state_hash AS hash FROM run_continuations
     `).all();
     for (const row of stateRoots) {
       const hash = String(row.hash);
       const chunk = this.chunkRow(hash);
+      memo.chunks.add(hash);
       if (chunk.codec === RUN_STATE_ROOT_CODEC) {
         markReachableRunStateChunks(chunk, (childHash) => this.chunkRow(childHash), memo);
       } else if (chunk.codec !== V8_BROTLI_CODEC) {
@@ -2044,39 +2106,37 @@ export class SqliteRunStore implements RunStore {
       }
     }
 
-    // A materialized continuation may retain a private same-month fact root A
-    // outside runs/checkpoints. Decode only current manifests and mark A's full
-    // content-addressed graph before deleting any run-state chunk.
+    // Current manifests are roots in their own right: retain the bundle, all
+    // five typed content references, and any private same-month fact root A.
     for (const row of this.database.prepare(`
-      SELECT bundle_hash AS hash FROM run_continuations
+      SELECT run_id, bundle_hash AS hash FROM run_continuations
     `).all()) {
-      const bundleHash = String(row.hash);
-      const bundle = decodeRunContinuationBundle(
-        snapshotRunContinuationBundleChunk(this.chunkRow(bundleHash)),
-      );
-      const observerSource = bundle.observerMaterializationSource;
-      if (!observerSource) continue;
-      const sourceRoot = this.chunkRow(observerSource.stateHash);
-      if (sourceRoot.codec !== RUN_STATE_ROOT_CODEC) {
-        throw new Error(
-          `observer materialization source ${observerSource.stateHash} 不是 run-state root`,
+      markContinuationReferences(String(row.hash), String(row.run_id));
+    }
+
+    // Publication invokes GC after its new CAS but before COMMIT can consume
+    // the source token. Keep that still-live process-local snapshot intact;
+    // the following sweep may reclaim it after a later generation advances.
+    if (activeContinuation) {
+      memo.chunks.add(activeContinuation.bundle.hash);
+      for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
+        memo.chunks.add(activeContinuation.sidecars[name].hash);
+      }
+      markStateRoot(activeContinuation.root.hash, "active continuation root");
+      if (activeContinuation.observerMaterializationSourceRoot) {
+        markStateRoot(
+          activeContinuation.observerMaterializationSourceRoot.hash,
+          "active continuation observer materialization source",
         );
       }
-      markReachableRunStateChunks(
-        sourceRoot,
-        (childHash) => this.chunkRow(childHash),
-        memo,
-      );
     }
 
     for (const row of this.database.prepare(`SELECT chunk_hash AS hash FROM artifacts`).all()) {
       const hash = String(row.hash);
       const chunk = this.chunkRow(hash);
+      memo.chunks.add(hash);
       if (chunk.codec === RUN_STATE_ROOT_CODEC) {
         markReachableRunStateChunks(chunk, (childHash) => this.chunkRow(childHash), memo);
-      } else if (codecSet.has(chunk.codec)) {
-        // Artifacts normally use v8-br-v1, but any direct reference is still a root of reachability.
-        memo.chunks.add(hash);
       }
     }
 
@@ -2085,9 +2145,9 @@ export class SqliteRunStore implements RunStore {
     `);
     for (const row of this.database.prepare(`
       SELECT hash FROM chunks WHERE codec IN (${codecPlaceholders})
-    `).all(...RUN_STATE_CODECS)) {
+    `).all(...collectibleCodecs)) {
       const hash = String(row.hash);
-      if (!memo.chunks.has(hash)) deleteChunk.run(hash, ...RUN_STATE_CODECS);
+      if (!memo.chunks.has(hash)) deleteChunk.run(hash, ...collectibleCodecs);
     }
   }
 
@@ -3410,7 +3470,7 @@ export class SqliteRunStore implements RunStore {
         }
       }
       if (this.pruneRunCheckpoints(source.run.id)) {
-        this.collectUnreferencedRunStateChunks();
+        this.collectUnreferencedRunStateChunks(source);
       }
       });
     } catch (error) {

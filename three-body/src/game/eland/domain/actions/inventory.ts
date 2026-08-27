@@ -4,6 +4,12 @@ import type { DropState, SimulationState } from '../model';
 import type { ItemStack, PersonState } from '../person';
 import { surfaceStandingPosition } from '../../world/grid';
 
+export const ITEM_SOURCE_EVENT_LIMIT = 24;
+
+export function boundedItemSourceEventIds(sourceEventIds: readonly string[]): string[] {
+  return [...new Set(sourceEventIds)].slice(-ITEM_SOURCE_EVENT_LIMIT);
+}
+
 export function removeEmptyStacks(person: PersonState): void {
   person.inventory = person.inventory.filter((stack) => stack.quantity > 0);
 }
@@ -21,7 +27,10 @@ export function addInventory(
     && stack.recordPayloadId === recordPayloadId);
   if (existing) {
     existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
+    existing.sourceEventIds = boundedItemSourceEventIds([
+      ...existing.sourceEventIds,
+      ...sourceEventIds,
+    ]);
     existing.sourceLineageKeys = [...new Set([
       ...(existing.sourceLineageKeys ?? []),
       ...sourceLineageKeys,
@@ -32,7 +41,7 @@ export function addInventory(
     id: stackId,
     materialId,
     quantity,
-    sourceEventIds: [...sourceEventIds],
+    sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
     ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
     ...(recordPayloadId ? { recordPayloadId } : {}),
   };
@@ -53,7 +62,10 @@ export function addContainerInventory(
     && stack.recordPayloadId === recordPayloadId);
   if (existing) {
     existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
+    existing.sourceEventIds = boundedItemSourceEventIds([
+      ...existing.sourceEventIds,
+      ...sourceEventIds,
+    ]);
     existing.sourceLineageKeys = [...new Set([
       ...(existing.sourceLineageKeys ?? []),
       ...sourceLineageKeys,
@@ -64,7 +76,7 @@ export function addContainerInventory(
     id: stackId,
     materialId,
     quantity,
-    sourceEventIds: [...sourceEventIds],
+    sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
     ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
     ...(recordPayloadId ? { recordPayloadId } : {}),
   };
@@ -99,7 +111,10 @@ export function addDrop(
     && drop.quantity > 0);
   if (existing) {
     existing.quantity += quantity;
-    existing.sourceEventIds = [...new Set([...existing.sourceEventIds, ...sourceEventIds])].slice(-24);
+    existing.sourceEventIds = boundedItemSourceEventIds([
+      ...existing.sourceEventIds,
+      ...sourceEventIds,
+    ]);
     existing.sourceLineageKeys = [...new Set([
       ...(existing.sourceLineageKeys ?? []),
       ...sourceLineageKeys,
@@ -113,7 +128,7 @@ export function addDrop(
     z: resolvedZ,
     quantity,
     createdAtMonth: atMonth,
-    sourceEventIds: [...sourceEventIds],
+    sourceEventIds: boundedItemSourceEventIds(sourceEventIds),
     ...(sourceLineageKeys.length ? { sourceLineageKeys: [...new Set(sourceLineageKeys)].slice(-32) } : {}),
     ...(recordPayloadId ? { recordPayloadId } : {}),
     ...(estateOfPersonId ? { estateOfPersonId } : {}),

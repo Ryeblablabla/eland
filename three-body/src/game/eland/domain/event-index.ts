@@ -3,8 +3,10 @@ import { Material } from './material';
 import { isAlive, type PersonId, type PersonState } from './person';
 import {
   cloneValidatedProjectPressureEvidenceDescriptor,
+  projectPressureEvidenceDescriptorFromWorldEvent,
   rememberedProjectPressureSourceEventIds,
   type ProjectPressureEvidenceDescriptor,
+  type ProjectPressureSourceEventIdSnapshot,
   type RetainedProjectPressureEvidenceDescriptor,
 } from './project-pressure-evidence';
 import { WORLD_CELL_COUNT } from '../world/grid';
@@ -138,6 +140,42 @@ export function parseGroundedConversationWindowLeaseKey(
 
 function authoritativeHistoryBase(state: SimulationState): WorldEvent[] {
   return indexedHistoryBases.get(state.world.past) ?? state.world.past;
+}
+
+export interface ProjectPressureEvidenceResolutionSnapshot {
+  readonly historyBaseIdentity: readonly WorldEvent[];
+  readonly historyBaseLength: number;
+  readonly historyBaseTailIdentity?: WorldEvent;
+  readonly planningOverlayIdentity?: object;
+  readonly retainedColdIndexIdentity?: object;
+  readonly descriptorIndexIdentity?: object;
+}
+
+export function snapshotProjectPressureEvidenceResolution(
+  state: SimulationState,
+): ProjectPressureEvidenceResolutionSnapshot {
+  const historyBase = authoritativeHistoryBase(state);
+  return Object.freeze({
+    historyBaseIdentity: historyBase,
+    historyBaseLength: historyBase.length,
+    historyBaseTailIdentity: historyBase.at(-1),
+    planningOverlayIdentity: planningOverlays.get(state),
+    retainedColdIndexIdentity: retainedColdIndexes.get(historyBase),
+    descriptorIndexIdentity: projectPressureEvidenceDescriptorIndexes.get(historyBase),
+  });
+}
+
+export function projectPressureEvidenceResolutionSnapshotIsCurrent(
+  state: SimulationState,
+  snapshot: ProjectPressureEvidenceResolutionSnapshot,
+): boolean {
+  const historyBase = authoritativeHistoryBase(state);
+  return snapshot.historyBaseIdentity === historyBase
+    && snapshot.historyBaseLength === historyBase.length
+    && snapshot.historyBaseTailIdentity === historyBase.at(-1)
+    && snapshot.planningOverlayIdentity === planningOverlays.get(state)
+    && snapshot.retainedColdIndexIdentity === retainedColdIndexes.get(historyBase)
+    && snapshot.descriptorIndexIdentity === projectPressureEvidenceDescriptorIndexes.get(historyBase);
 }
 
 function retainedColdIndexFor(state: SimulationState): RetainedColdEventIndex | undefined {
@@ -282,21 +320,67 @@ function projectPressureDescriptorIndexFor(
  * Planner-facing read is intrinsically owner-scoped: callers cannot provide
  * arbitrary IDs, and a detached/foreign PersonState is rejected.
  */
-export function projectPressureEvidenceDescriptorsForPerson(
+function assertCurrentLivingProjectPressureOwner(
   state: SimulationState,
   person: PersonState,
-): readonly ProjectPressureEvidenceDescriptor[] {
+): PersonState {
   const owner = state.people.find((candidate) => candidate.id === person.id);
   if (owner !== person || !isAlive(owner)) {
     throw new Error('project-pressure descriptor owner 不是当前存活人物');
   }
+  return owner;
+}
+
+export function projectPressureEvidenceDescriptorsForPersonSourceSnapshot(
+  state: SimulationState,
+  person: PersonState,
+  sourceSnapshot: ProjectPressureSourceEventIdSnapshot,
+): readonly ProjectPressureEvidenceDescriptor[] {
+  const owner = assertCurrentLivingProjectPressureOwner(state, person);
+  if (sourceSnapshot.ownerId !== owner.id) {
+    throw new Error('project-pressure source snapshot owner 不匹配');
+  }
   const byId = projectPressureDescriptorIndexFor(state)?.byId;
   if (!byId) return [];
-  return rememberedProjectPressureSourceEventIds(owner)
+  return sourceSnapshot.sourceEventIds
     .flatMap((eventId) => {
       const item = byId.get(eventId);
       return item ? [item.descriptor] : [];
     });
+}
+
+export function projectPressureEvidenceDescriptorsForPerson(
+  state: SimulationState,
+  person: PersonState,
+): readonly ProjectPressureEvidenceDescriptor[] {
+  const owner = assertCurrentLivingProjectPressureOwner(state, person);
+  return projectPressureEvidenceDescriptorsForPersonSourceSnapshot(state, owner, {
+    ownerId: owner.id,
+    sourceEventIds: rememberedProjectPressureSourceEventIds(owner),
+    snapshotKey: '',
+  });
+}
+
+/**
+ * Resolve one remembered source snapshot once. Descriptor-only cold evidence is
+ * listed first and exact bodies second so overlay/hot/exact facts retain the
+ * existing last-write precedence when the selector de-duplicates event IDs.
+ */
+export function projectPressureEvidenceDescriptorCandidatesForPerson(
+  state: SimulationState,
+  person: PersonState,
+  sourceSnapshot: ProjectPressureSourceEventIdSnapshot,
+): readonly ProjectPressureEvidenceDescriptor[] {
+  const coldDescriptors = projectPressureEvidenceDescriptorsForPersonSourceSnapshot(
+    state,
+    person,
+    sourceSnapshot,
+  );
+  const hotAndExactlyPinned = worldEventsByIdsInHistoryOrder(
+    state,
+    sourceSnapshot.sourceEventIds,
+  ).map(projectPressureEvidenceDescriptorFromWorldEvent);
+  return [...coldDescriptors, ...hotAndExactlyPinned];
 }
 
 /** Storage-facing reuse of descriptors still named by the current living shell. */

@@ -12,14 +12,25 @@ try {
   const testEntry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { refreshProjectPressure } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
-    export { buildProjectPressureBasis } from ${JSON.stringify(path.resolve('src/game/eland/application/project-pressure.ts'))};
+    export {
+      buildProjectPressureBasis,
+      createProjectPressureCompilationDiagnostics,
+    } from ${JSON.stringify(path.resolve('src/game/eland/application/project-pressure.ts'))};
+    export { deriveProjectProposals } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-proposals.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
     '--sourcefile=project-pressure-test-entry.ts', `--outfile=${bundlePath}`,
   ], { input: testEntry, stdio: ['pipe', 'pipe', 'pipe'] });
-  const { buildProjectPressureBasis, createInitialState, Material, refreshProjectPressure } = await import(
+  const {
+    buildProjectPressureBasis,
+    createInitialState,
+    createProjectPressureCompilationDiagnostics,
+    deriveProjectProposals,
+    Material,
+    refreshProjectPressure,
+  } = await import(
     `${pathToFileURL(bundlePath).href}?test=${Date.now()}`
   );
 
@@ -152,6 +163,92 @@ try {
   assert.ok(toolingPressure.pressure >= 42, '已有青铜应成为制作生产工具的正向依据');
   assert.ok(toolingPressure.reasonKeys.includes('bronze-ready-for-tooling'));
   assert.notEqual(toolingPressure.basisKey, alloyingPressure.basisKey, '同一需求下的不同功能项目必须保留不同压力依据');
+
+  const compilationState = createInitialState(815, { endpoint: { kind: 'months', value: 24 }, chaosIntensity: 0 });
+  compilationState.clock.elapsedMonths = 12;
+  compilationState.world.past = [];
+  compilationState.world.animals = [];
+  compilationState.projects = [];
+  const compilationOwner = compilationState.people[0];
+  const compilationOther = compilationState.people[1];
+  compilationOwner.inventory = [];
+  compilationOwner.memories = [];
+  compilationOther.position = structuredClone(compilationOwner.position);
+  const compilationVisibleCells = [compilationOwner.position.cellId];
+  const compilationVisiblePeople = [compilationOwner, compilationOther];
+  const compilationFailureA = huntFact(
+    'test-compilation-hunt-failure-a',
+    compilationOwner.id,
+    10,
+    'test-compilation-deer-a',
+  );
+  compilationState.world.past.push(compilationFailureA);
+  const compilationMemory = {
+    id: 'memory-compilation-hunt-failures', kind: 'failure', summary: '编译期捕猎失败', importance: 72,
+    createdAtMonth: 10, lastRecalledAtMonth: 10, personIds: [],
+    sourceEventIds: [compilationFailureA.id],
+  };
+  compilationOwner.memories.push(compilationMemory);
+
+  const cachedDiagnostics = createProjectPressureCompilationDiagnostics();
+  const cachedProposals = deriveProjectProposals(
+    compilationState,
+    compilationOwner,
+    compilationVisibleCells,
+    [],
+    compilationVisiblePeople,
+    { pressureDiagnostics: cachedDiagnostics },
+  );
+  const directDiagnostics = createProjectPressureCompilationDiagnostics();
+  const directProposals = deriveProjectProposals(
+    compilationState,
+    compilationOwner,
+    compilationVisibleCells,
+    [],
+    compilationVisiblePeople,
+    { reuseProjectPressureContext: false, pressureDiagnostics: directDiagnostics },
+  );
+  assert.equal(
+    JSON.stringify(cachedProposals),
+    JSON.stringify(directProposals),
+    '缓存开关前后提案 options、basis 与排序决策必须逐字相等',
+  );
+  assert.deepEqual(cachedDiagnostics, {
+    rememberedSourceSnapshotBuilds: 1,
+    rememberedCandidateResolutions: 1,
+    rememberedSelections: 1,
+  }, '一次 proposal compilation 只能构建一次 remembered evidence');
+  assert.ok(
+    directDiagnostics.rememberedSourceSnapshotBuilds > cachedDiagnostics.rememberedSourceSnapshotBuilds
+      && directDiagnostics.rememberedCandidateResolutions > cachedDiagnostics.rememberedCandidateResolutions
+      && directDiagnostics.rememberedSelections > cachedDiagnostics.rememberedSelections,
+    '关闭 compilation cache 后应暴露重复 flatten/resolve/sort，证明默认路径已消除重复工作',
+  );
+
+  const compilationFailureB = huntFact(
+    'test-compilation-hunt-failure-b',
+    compilationOwner.id,
+    11,
+    'test-compilation-deer-b',
+  );
+  compilationState.world.past.push(compilationFailureB);
+  compilationMemory.sourceEventIds.push(compilationFailureB.id);
+  const refreshedDiagnostics = createProjectPressureCompilationDiagnostics();
+  const refreshedProposals = deriveProjectProposals(
+    compilationState,
+    compilationOwner,
+    compilationVisibleCells,
+    [],
+    compilationVisiblePeople,
+    { pressureDiagnostics: refreshedDiagnostics },
+  );
+  const refreshedHunting = refreshedProposals.find((candidate) => candidate.need === 'hunting-safety');
+  assert.ok(refreshedHunting, '新增 remembered 捕猎失败后仍应保留 hunting proposal');
+  assert.ok(
+    refreshedHunting.pressureBasis.sourceFactIds.includes(compilationFailureB.id),
+    '同 elapsedMonth 原地修改 sourceEventIds 后，下一次 derive 必须重建并看到新证据',
+  );
+  assert.deepEqual(refreshedDiagnostics, cachedDiagnostics, '第二次 derive 应拥有全新的单次 compilation context');
 
   process.stdout.write('project pressure tests passed\n');
 } finally {

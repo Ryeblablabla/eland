@@ -6,13 +6,19 @@ import { ageMonths, inventoryQuantity, isAlive } from '../domain/person';
 import type { ProjectPressureBasis, ProjectProposal } from '../domain/project';
 import { shelterGeometryAt } from '../domain/structure';
 import {
-  projectPressureEvidenceDescriptorsForPerson,
+  projectPressureEvidenceDescriptorCandidatesForPerson,
+  projectPressureEvidenceResolutionSnapshotIsCurrent,
+  snapshotProjectPressureEvidenceResolution,
+  type ProjectPressureEvidenceResolutionSnapshot,
   worldEventsByIdsInHistoryOrder,
 } from '../domain/event-index';
 import {
   projectPressureEvidenceDescriptorFromWorldEvent,
-  rememberedProjectPressureSourceEventIds,
   selectProjectPressureEvidenceDescriptors,
+  snapshotRememberedProjectPressureSources,
+  type ProjectPressureEvidenceDescriptor,
+  type ProjectPressureEvidenceSelection,
+  type ProjectPressureSourceEventIdSnapshot,
 } from '../domain/project-pressure-evidence';
 import { cellsInRadius } from '../world/grid';
 import { personalityScore } from '../domain/personality';
@@ -52,6 +58,72 @@ export interface ProjectPressureView {
   visibleCells?: number[];
   visibleDrops?: DropState[];
   visiblePeople?: PersonState[];
+}
+
+export interface ProjectPressureCompilationDiagnostics {
+  rememberedSourceSnapshotBuilds: number;
+  rememberedCandidateResolutions: number;
+  rememberedSelections: number;
+}
+
+/** Cache owned by exactly one synchronous proposal compilation. */
+export interface ProjectPressureCompilationContext {
+  readonly ownerId: PersonState['id'];
+  readonly atMonth: number;
+  readonly sourceSnapshot: ProjectPressureSourceEventIdSnapshot;
+  readonly resolutionSnapshot: ProjectPressureEvidenceResolutionSnapshot;
+  readonly rememberedCandidates: readonly ProjectPressureEvidenceDescriptor[];
+  readonly rememberedSelection: ProjectPressureEvidenceSelection;
+  readonly stateIdentity: SimulationState;
+  readonly ownerIdentity: PersonState;
+}
+
+export function createProjectPressureCompilationDiagnostics(): ProjectPressureCompilationDiagnostics {
+  return {
+    rememberedSourceSnapshotBuilds: 0,
+    rememberedCandidateResolutions: 0,
+    rememberedSelections: 0,
+  };
+}
+
+export function createProjectPressureCompilationContext(
+  state: SimulationState,
+  owner: PersonState,
+  atMonth: number,
+  diagnostics?: ProjectPressureCompilationDiagnostics,
+): ProjectPressureCompilationContext {
+  if (diagnostics) diagnostics.rememberedSourceSnapshotBuilds += 1;
+  const sourceSnapshot = snapshotRememberedProjectPressureSources(owner);
+  const resolutionSnapshot = snapshotProjectPressureEvidenceResolution(state);
+  if (diagnostics) diagnostics.rememberedCandidateResolutions += 1;
+  const rememberedCandidates = [...projectPressureEvidenceDescriptorCandidatesForPerson(
+    state,
+    owner,
+    sourceSnapshot,
+  )];
+  if (diagnostics) diagnostics.rememberedSelections += 1;
+  const rememberedSelection = selectProjectPressureEvidenceDescriptors(
+    rememberedCandidates,
+    owner.id,
+    atMonth,
+  );
+  Object.freeze(rememberedCandidates);
+  Object.freeze(rememberedSelection.huntFailures);
+  Object.freeze(rememberedSelection.animalAttacks);
+  Object.freeze(rememberedSelection.dehydrations);
+  Object.freeze(rememberedSelection.developmentProvenance);
+  Object.freeze(rememberedSelection.descriptors);
+  Object.freeze(rememberedSelection);
+  return Object.freeze({
+    ownerId: owner.id,
+    atMonth,
+    sourceSnapshot,
+    resolutionSnapshot,
+    rememberedCandidates,
+    rememberedSelection,
+    stateIdentity: state,
+    ownerIdentity: owner,
+  });
 }
 
 function clamp(value: number, min = 0, max = 100): number {
@@ -107,18 +179,22 @@ function resolvedView(state: SimulationState, owner: PersonState, input: Project
   };
 }
 
-function rememberedProjectPressureEvidence(
+function resolvedProjectPressureCompilationContext(
   state: SimulationState,
   owner: PersonState,
-) {
-  const hotAndExactlyPinned = worldEventsByIdsInHistoryOrder(
-    state,
-    rememberedProjectPressureSourceEventIds(owner),
-  ).map(projectPressureEvidenceDescriptorFromWorldEvent);
-  return [
-    ...projectPressureEvidenceDescriptorsForPerson(state, owner),
-    ...hotAndExactlyPinned,
-  ];
+  atMonth: number,
+  input?: ProjectPressureCompilationContext,
+): ProjectPressureCompilationContext {
+  if (!input) return createProjectPressureCompilationContext(state, owner, atMonth);
+  if (input.stateIdentity !== state
+    || input.ownerIdentity !== owner
+    || input.ownerId !== owner.id
+    || input.sourceSnapshot.ownerId !== owner.id
+    || input.atMonth !== atMonth
+    || !projectPressureEvidenceResolutionSnapshotIsCurrent(state, input.resolutionSnapshot)) {
+    throw new Error('project-pressure compilation context 与当前人物/月/state 不匹配');
+  }
+  return input;
 }
 
 function projectPressureEvidence(
@@ -126,16 +202,24 @@ function projectPressureEvidence(
   owner: PersonState,
   subject: ProjectPressureSubject,
   atMonth: number,
-) {
-  const remembered = rememberedProjectPressureEvidence(state, owner);
+  inputContext?: ProjectPressureCompilationContext,
+): ProjectPressureEvidenceSelection {
+  const context = resolvedProjectPressureCompilationContext(
+    state,
+    owner,
+    atMonth,
+    inputContext,
+  );
+  const activeSourceFactIds = subject.pressureBasis?.sourceFactIds ?? [];
+  if (activeSourceFactIds.length === 0) return context.rememberedSelection;
   // An active project's prior basis is an independent exact retention anchor;
   // do not require it to be reclassified as remembered person-local evidence.
   const activeBasis = worldEventsByIdsInHistoryOrder(
     state,
-    subject.pressureBasis?.sourceFactIds ?? [],
+    activeSourceFactIds,
   ).map(projectPressureEvidenceDescriptorFromWorldEvent);
   return selectProjectPressureEvidenceDescriptors(
-    [...remembered, ...activeBasis],
+    [...context.rememberedCandidates, ...activeBasis],
     owner.id,
     atMonth,
   );
@@ -161,10 +245,17 @@ function thermalBasis(state: SimulationState, owner: PersonState, subject: Proje
   return makeBasis(subject, owner, atMonth, pressure, edgeKeys, reasons, cold?.sourceEventIds ?? []);
 }
 
-function huntingBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number, view: Required<ProjectPressureView>) {
+function huntingBasis(
+  state: SimulationState,
+  owner: PersonState,
+  subject: ProjectPressureSubject,
+  atMonth: number,
+  view: Required<ProjectPressureView>,
+  context?: ProjectPressureCompilationContext,
+) {
   const failureEdges = new Map<string, string>();
   const attackEdges = new Map<string, string>();
-  const witnesses = projectPressureEvidence(state, owner, subject, atMonth);
+  const witnesses = projectPressureEvidence(state, owner, subject, atMonth, context);
   for (const event of witnesses.huntFailures) {
     failureEdges.set(
       `event:hunt-failure:${event.atMonth}:${event.huntFailure!.animalId}`,
@@ -321,12 +412,18 @@ function ageBand(person: PersonState, atMonth: number): 'under-40' | '40-49' | '
   return '60-plus';
 }
 
-function knowledgeBasis(state: SimulationState, owner: PersonState, subject: ProjectPressureSubject, atMonth: number) {
+function knowledgeBasis(
+  state: SimulationState,
+  owner: PersonState,
+  subject: ProjectPressureSubject,
+  atMonth: number,
+  context?: ProjectPressureCompilationContext,
+) {
   const target = subject.targetKnowledgeId
     ? owner.knowledge.find((fact) => fact.id === subject.targetKnowledgeId)
     : undefined;
   const disruptions = new Map<string, string>();
-  for (const event of projectPressureEvidence(state, owner, subject, atMonth).dehydrations) {
+  for (const event of projectPressureEvidence(state, owner, subject, atMonth, context).dehydrations) {
     disruptions.set(`event:personal-dehydration:${event.eventId}`, event.eventId);
   }
   const band = ageBand(owner, atMonth);
@@ -429,6 +526,7 @@ function developmentBasis(
   subject: ProjectPressureSubject,
   atMonth: number,
   view: Required<ProjectPressureView>,
+  inputContext?: ProjectPressureCompilationContext,
 ) {
   // The caller passes other visible people; the observer is still part of the
   // local resource and body pressure. Omitting the owner made development
@@ -479,11 +577,12 @@ function developmentBasis(
   const jointPartnerIds = new Set(completedJointProjects.flatMap((project) => (
     project.contributorIds.filter((personId) => personId !== owner.id)
   )));
-  const sourceFactIds = selectProjectPressureEvidenceDescriptors(
-    rememberedProjectPressureEvidence(state, owner),
-    owner.id,
+  const sourceFactIds = resolvedProjectPressureCompilationContext(
+    state,
+    owner,
     atMonth,
-  ).developmentProvenance.map((event) => event.eventId);
+    inputContext,
+  ).rememberedSelection.developmentProvenance.map((event) => event.eventId);
   const commonEdges = [
     `project:function:${subject.desiredFunction ?? 'unspecified'}`,
     `state:visible-population:${visiblePopulation}`,
@@ -706,21 +805,26 @@ export function buildProjectPressureBasis(
   subject: ProjectPressureSubject,
   atMonth: number,
   inputView: ProjectPressureView = {},
+  compilationContext?: ProjectPressureCompilationContext,
 ): ProjectPressureBasis {
   if (subject.need === 'remote-work-power') {
     return remoteWorkPowerBasis(state, owner, subject, atMonth);
   }
   const view = resolvedView(state, owner, inputView);
   if (subject.need === 'thermal-safety') return thermalBasis(state, owner, subject, atMonth);
-  if (subject.need === 'hunting-safety') return huntingBasis(state, owner, subject, atMonth, view);
+  if (subject.need === 'hunting-safety') {
+    return huntingBasis(state, owner, subject, atMonth, view, compilationContext);
+  }
   if (subject.need === 'care-capability') return careBasis(owner, subject, atMonth, view);
   if (subject.need === 'food-preparation') return foodBasis(owner, subject, atMonth, view);
   if (subject.need === 'shelter-capacity') return shelterBasis(state, owner, subject, atMonth, view);
-  if (subject.need === 'knowledge-preservation') return knowledgeBasis(state, owner, subject, atMonth);
+  if (subject.need === 'knowledge-preservation') {
+    return knowledgeBasis(state, owner, subject, atMonth, compilationContext);
+  }
   if (subject.need === 'measurement-uncertainty') {
     return measurementComparisonBasis(state, owner, subject, atMonth);
   }
-  return developmentBasis(state, owner, subject, atMonth, view);
+  return developmentBasis(state, owner, subject, atMonth, view, compilationContext);
 }
 
 export function projectPressureReasonPresent(basis: ProjectPressureBasis, reason: string): boolean {

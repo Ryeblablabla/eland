@@ -15,12 +15,38 @@ export const LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY =
   'gameplay:live-person-project-pressure:remembered-sources' as const;
 
 export function rememberedProjectPressureSourceEventIds(person: PersonState): string[] {
-  return [...new Set([
-    ...person.memories.flatMap((memory) => memory.sourceEventIds),
-    ...person.conditions.flatMap((condition) => condition.sourceEventIds),
-    ...person.knowledge.flatMap((fact) => fact.sourceEventIds),
-    ...person.inventory.flatMap((stack) => stack.sourceEventIds),
-  ])].sort();
+  const sourceEventIds = new Set<string>();
+  for (const memory of person.memories) {
+    for (const eventId of memory.sourceEventIds) sourceEventIds.add(eventId);
+  }
+  for (const condition of person.conditions) {
+    for (const eventId of condition.sourceEventIds) sourceEventIds.add(eventId);
+  }
+  for (const fact of person.knowledge) {
+    for (const eventId of fact.sourceEventIds) sourceEventIds.add(eventId);
+  }
+  for (const stack of person.inventory) {
+    for (const eventId of stack.sourceEventIds) sourceEventIds.add(eventId);
+  }
+  return [...sourceEventIds].sort();
+}
+
+/** Immutable owner/source identity for one synchronous proposal compilation. */
+export interface ProjectPressureSourceEventIdSnapshot {
+  ownerId: PersonId;
+  sourceEventIds: readonly string[];
+  snapshotKey: string;
+}
+
+export function snapshotRememberedProjectPressureSources(
+  person: PersonState,
+): ProjectPressureSourceEventIdSnapshot {
+  const sourceEventIds = Object.freeze(rememberedProjectPressureSourceEventIds(person));
+  return Object.freeze({
+    ownerId: person.id,
+    sourceEventIds,
+    snapshotKey: JSON.stringify([person.id, sourceEventIds]),
+  });
 }
 
 /**

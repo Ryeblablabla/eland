@@ -38,7 +38,9 @@ import {
 import { seededFraction } from '../../world/generator';
 import {
   buildProjectPressureBasis,
+  createProjectPressureCompilationContext,
   projectPressureReasonPresent,
+  type ProjectPressureCompilationDiagnostics,
   type ProjectPressureView,
 } from '../project-pressure';
 import { buildLocalMaterialEvidence } from '../local-material-evidence';
@@ -347,51 +349,93 @@ function cropProcessingFacilitySite(
     .map((candidate) => ({ cellId: candidate.site.cellId, z: candidate.site.z }))[0];
 }
 
+export interface ProjectProposalCompilationOptions {
+  reuseProjectPressureContext?: boolean;
+  pressureDiagnostics?: ProjectPressureCompilationDiagnostics;
+}
+
 export function deriveProjectProposals(
   state: SimulationState,
   person: PersonState,
   visibleCells: number[],
   visibleDrops: DropState[],
   visiblePeople: PersonState[],
+  compilationOptions: ProjectProposalCompilationOptions = {},
 ): ProjectProposal[] {
   if (projectsOwnedBy(state, person.id).some((project) => project.status === 'active')) return [];
   const visible = new Set(visibleCells);
   const pressureView: ProjectPressureView = { visibleCells, visibleDrops, visiblePeople };
+  const proposalMonth = state.clock.elapsedMonths + 1;
+  const sharedPressureContext = compilationOptions.reuseProjectPressureContext === false
+    ? undefined
+    : createProjectPressureCompilationContext(
+      state,
+      person,
+      proposalMonth,
+      compilationOptions.pressureDiagnostics,
+    );
+  const pressureContextForNeed = (need: ProjectNeed) => {
+    if ([
+      'thermal-safety',
+      'care-capability',
+      'food-preparation',
+      'shelter-capacity',
+      'measurement-uncertainty',
+      'remote-work-power',
+    ].includes(need)) return undefined;
+    return sharedPressureContext ?? createProjectPressureCompilationContext(
+      state,
+      person,
+      proposalMonth,
+      compilationOptions.pressureDiagnostics,
+    );
+  };
+  const compileProposal = (
+    need: ProjectNeed,
+    input: Parameters<typeof proposal>[3],
+    pressureBasis?: ProjectPressureBasis,
+  ) => proposal(state, person, need, input, pressureView, pressureBasis);
   const proposals: ProjectProposal[] = [];
   const cold = person.conditions.find((condition) => condition.kind === 'cold');
   const climateCold = state.civilization.climate.kind === 'cold' && state.civilization.climate.severity >= 3;
   const hasInsulation = person.inventory.some((stack) => stack.quantity > 0 && materialHas(stack.materialId, 'insulating'));
-  if ((cold || climateCold) && !hasInsulation) proposals.push(proposal(state, person, 'thermal-safety', {
+  if ((cold || climateCold) && !hasInsulation) proposals.push(compileProposal('thermal-safety', {
     kind: 'production', desiredFunction: 'insulation', summary: '减少反复寒冷造成的身体损耗',
     beneficiaryIds: [person.id],
-  }, pressureView));
+  }));
 
-  const proposalMonth = state.clock.elapsedMonths + 1;
   const huntingSubject = { need: 'hunting-safety' as const, beneficiaryIds: [person.id], createdAtMonth: proposalMonth };
-  const huntingBasis = buildProjectPressureBasis(state, person, huntingSubject, proposalMonth, pressureView);
+  const huntingBasis = buildProjectPressureBasis(
+    state,
+    person,
+    huntingSubject,
+    proposalMonth,
+    pressureView,
+    pressureContextForNeed('hunting-safety'),
+  );
   const ownHuntFailure = projectPressureReasonPresent(huntingBasis, 'own-hunt-failure');
   const personalAttack = projectPressureReasonPresent(huntingBasis, 'personal-animal-attack');
   const visibleThreat = projectPressureReasonPresent(huntingBasis, 'visible-aggressive-animal');
-  if ((ownHuntFailure || personalAttack || visibleThreat) && inventoryQuantity(person, Material.Spear) === 0) proposals.push(proposal(state, person, 'hunting-safety', {
+  if ((ownHuntFailure || personalAttack || visibleThreat) && inventoryQuantity(person, Material.Spear) === 0) proposals.push(compileProposal('hunting-safety', {
     kind: ownHuntFailure || personalAttack ? 'production' : 'inquiry', desiredFunction: 'safer-hunting', summary: '降低下一次捕猎或应对猛兽的受伤风险',
     beneficiaryIds: [person.id],
-  }, pressureView, huntingBasis));
+  }, huntingBasis));
 
   const injured = [person, ...visiblePeople]
     .filter((candidate) => candidate.conditions.some((condition) => condition.kind === 'wound' || condition.kind === 'illness'))
     .sort((a, b) => a.body.health - b.body.health)[0];
   if (injured && inventoryQuantity(person, Material.HerbalMedicine) === 0) {
-    proposals.push(proposal(state, person, 'care-capability', {
+    proposals.push(compileProposal('care-capability', {
       kind: 'inquiry', desiredFunction: 'healing', summary: `为${injured.name}寻找比临时包扎更有效的照护材料`,
       beneficiaryIds: [injured.id],
-    }, pressureView));
+    }));
   }
 
   const rawMeat = inventoryQuantity(person, Material.RawMeat) + visibleDrops.filter((drop) => drop.materialId === Material.RawMeat).reduce((sum, drop) => sum + drop.quantity, 0);
-  if (rawMeat > 0 && inventoryQuantity(person, Material.CookedFood) === 0) proposals.push(proposal(state, person, 'food-preparation', {
+  if (rawMeat > 0 && inventoryQuantity(person, Material.CookedFood) === 0) proposals.push(compileProposal('food-preparation', {
     kind: 'inquiry', desiredFunction: 'prepared-food', summary: '把容易伤身的生肉变成更可靠的食物',
     beneficiaryIds: [person.id],
-  }, pressureView));
+  }));
 
   const exposed = person.conditions.find((condition) => condition.kind === 'cold' || condition.kind === 'heat');
   const severeWeather = (state.civilization.weather.kind === 'storm' && state.civilization.weather.intensity >= 2)
@@ -402,11 +446,11 @@ export function deriveProjectProposals(
   const adaptation = shelterAdaptationProposal(state, person, visiblePeople, pressureView);
   if (adaptation) proposals.push(adaptation);
   const visibleCompleteShelter = hasLocallyVisibleShelter(state, visible);
-  if (!adaptation && (exposed || severeWeather) && !sheltered && !visibleCompleteShelter) proposals.push(proposal(state, person, 'shelter-capacity', {
+  if (!adaptation && (exposed || severeWeather) && !sheltered && !visibleCompleteShelter) proposals.push(compileProposal('shelter-capacity', {
     kind: 'construction', desiredFunction: 'weather-shelter', summary: '把同一处材料连接成能进入并遮蔽天气的住所',
     beneficiaryIds: [person.id],
     site: { cellId: person.position.cellId, z: person.position.z },
-  }, pressureView));
+  }));
 
   const authoredRecords = state.records.filter((record) => record.authorId === person.id);
   const requestBoundKnowledge = openProjectKnowledgeRequestsFor(state, person, proposalMonth)
@@ -455,6 +499,7 @@ export function deriveProjectProposals(
     knowledgeSubject,
     proposalMonth,
     pressureView,
+    pressureContextForNeed('knowledge-preservation'),
   );
   const knowledgeBasis: ProjectPressureBasis = requestBoundKnowledge
     ? (() => {
@@ -480,7 +525,7 @@ export function deriveProjectProposals(
     || projectPressureReasonPresent(knowledgeBasis, 'personal-memory-disruption');
   if ((requestBoundKnowledge || (continuityPressure && authoredRecords.length < 1))
     && selectedDurableKnowledge) {
-    proposals.push(proposal(state, person, 'knowledge-preservation', {
+    proposals.push(compileProposal('knowledge-preservation', {
       kind: 'inquiry', desiredFunction: 'durable-record',
       summary: requestBoundKnowledge
         ? `把“${selectedDurableKnowledge.summary}”留在${requestBoundKnowledge.requester.name}的项目地点，异步回应其知识缺口`
@@ -488,7 +533,7 @@ export function deriveProjectProposals(
       beneficiaryIds: knowledgeBeneficiaryIds,
       ...(requestBoundKnowledge ? { site: { ...requestBoundKnowledge.project.site! } } : {}),
       targetKnowledgeId: selectedDurableKnowledge.id,
-    }, pressureView, knowledgeBasis));
+    }, knowledgeBasis));
   }
 
   const measurementUncertainty = measurementUncertaintyBasisFor(state, person, proposalMonth);
@@ -505,14 +550,16 @@ export function deriveProjectProposals(
       createdAtMonth: proposalMonth,
       measurementUncertaintyBasis: measurementUncertainty,
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'measurement-uncertainty', {
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView,
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('measurement-uncertainty', {
       kind: 'inquiry',
       desiredFunction: 'comparable-mass-measurement',
       summary: '把本人反复制作却只能凭同一粗手感判断的实体批次，变成可复核的局部质量比较',
       beneficiaryIds: [person.id],
       measurementUncertaintyBasis: structuredClone(measurementUncertainty),
-    }, pressureView, basis));
+    }, basis));
   }
 
   const remoteWorkPower = remoteWorkPowerTransmissionBasisFor(state, person, proposalMonth);
@@ -531,15 +578,17 @@ export function deriveProjectProposals(
       createdAtMonth: proposalMonth,
       remoteWorkPowerBasis: remoteWorkPower,
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'remote-work-power', {
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView,
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('remote-work-power', {
       kind: 'inquiry',
       desiredFunction: 'remote-work-power-delivery',
       summary: '尝试把本人反复使用的水力功送到往返负担较重的固定工位',
       beneficiaryIds: [person.id],
       site: { ...remoteWorkPower.remoteWorkPosition },
       remoteWorkPowerBasis: structuredClone(remoteWorkPower),
-    }, pressureView, basis));
+    }, basis));
   }
 
   const electricalMaintenance = electricalPowerMaintenanceProposalCandidate(
@@ -561,8 +610,10 @@ export function deriveProjectProposals(
       createdAtMonth: proposalMonth,
       electricalPowerMaintenanceBasis: electricalMaintenance.basis,
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'equipment-reliability', {
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView, pressureContextForNeed('equipment-reliability'),
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('equipment-reliability', {
       kind: 'production',
       desiredFunction: 'restore-electrical-power-delivery',
       summary: '依据本人对眼前熔断导体的诊断，制造并核验替换件以恢复实体电力交付',
@@ -575,7 +626,7 @@ export function deriveProjectProposals(
       electricalPowerPlanKey: electricalMaintenance.network.planKey,
       electricalPowerNetworkId: electricalMaintenance.network.id,
       electricalPowerMaintenanceBasis: structuredClone(electricalMaintenance.basis),
-    }, pressureView, basis));
+    }, basis));
   }
 
   const reliabilityCandidate = mechanicalPowerReliabilityProposalCandidate(state, person, visibleCells);
@@ -591,8 +642,10 @@ export function deriveProjectProposals(
       createdAtMonth: proposalMonth,
       mechanicalReliabilityBasis: reliabilityCandidate.reliabilityBasis,
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'equipment-reliability', {
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView, pressureContextForNeed('equipment-reliability'),
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('equipment-reliability', {
       kind: 'inquiry',
       desiredFunction: 'durable-power-transmission',
       summary: '针对本人在同一带载网络反复经历的断轴，有限试验可观察材料并复核更长服役',
@@ -606,7 +659,7 @@ export function deriveProjectProposals(
       mechanicalPowerNetworkId: reliabilityCandidate.network.id,
       mechanicalPowerFaultEventId: reliabilityCandidate.faultEvent.id,
       mechanicalReliabilityBasis: structuredClone(reliabilityCandidate.reliabilityBasis),
-    }, pressureView, basis));
+    }, basis));
   }
 
   const maintenanceCandidate = mechanicalPowerMaintenanceProposalCandidate(state, person, visibleCells);
@@ -621,8 +674,10 @@ export function deriveProjectProposals(
       beneficiaryIds: [person.id],
       createdAtMonth: proposalMonth,
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-    if (basis.pressure >= 42) proposals.push(proposal(state, person, 'mechanical-power-capability', {
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView, pressureContextForNeed('mechanical-power-capability'),
+    );
+    if (basis.pressure >= 42) proposals.push(compileProposal('mechanical-power-capability', {
       kind: 'production',
       desiredFunction: 'restore-water-powered-crop-processing',
       summary: '诊断停转机械网络并用故障后新制备件恢复真实负载作业',
@@ -635,7 +690,7 @@ export function deriveProjectProposals(
       mechanicalPowerPlanKey: maintenanceCandidate.planKey,
       mechanicalPowerNetworkId: maintenanceCandidate.network.id,
       mechanicalPowerFaultEventId: maintenanceCandidate.faultEvent.id,
-    }, pressureView, {
+    }, {
       ...basis,
       sourceFactIds: [...new Set([
         maintenanceCandidate.faultEvent.id,
@@ -655,8 +710,10 @@ export function deriveProjectProposals(
         beneficiaryIds: [person.id],
         createdAtMonth: proposalMonth,
       };
-      const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
-      if (basis.pressure >= 42) proposals.push(proposal(state, person, 'mechanical-power-capability', {
+      const basis = buildProjectPressureBasis(
+        state, person, subject, proposalMonth, pressureView, pressureContextForNeed('mechanical-power-capability'),
+      );
+      if (basis.pressure >= 42) proposals.push(compileProposal('mechanical-power-capability', {
         kind: 'production',
         desiredFunction: 'water-powered-crop-processing',
         summary: '在本人观察的流水旁，以三处可见、可达且有承托的空位试建最短动力磨坊',
@@ -668,7 +725,7 @@ export function deriveProjectProposals(
         mechanicalPowerPlan: structuredClone(mechanicalCandidate.plan),
         mechanicalPowerPlanKey: mechanicalCandidate.planKey,
         mechanicalPowerNetworkId: mechanicalCandidate.networkId,
-      }, pressureView, {
+      }, {
         ...basis,
         sourceFactIds: [mechanicalCandidate.millLaborFact.id, mechanicalCandidate.observationFact.id],
       }));
@@ -741,16 +798,18 @@ export function deriveProjectProposals(
       createdAtMonth: proposalMonth,
       ...(productionToolBaselineRank !== undefined ? { productionToolBaselineRank } : {}),
     };
-    const basis = buildProjectPressureBasis(state, person, subject, proposalMonth, pressureView);
+    const basis = buildProjectPressureBasis(
+      state, person, subject, proposalMonth, pressureView, pressureContextForNeed(need),
+    );
     if (basis.pressure < 42) return;
-    proposals.push(proposal(state, person, need, {
+    proposals.push(compileProposal(need, {
       kind,
       desiredFunction,
       summary,
       beneficiaryIds,
       ...(productionToolBaselineRank !== undefined ? { productionToolBaselineRank } : {}),
       ...(proposalSite ? { site: { ...proposalSite } } : {}),
-    }, pressureView, basis));
+    }, basis));
   };
 
   const accessibleProductionToolRank = [...materialEvidence.accessiblePortableMaterialIds]

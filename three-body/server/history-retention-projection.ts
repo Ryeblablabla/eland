@@ -325,6 +325,7 @@ let historyRetentionDemandCollectionCount = 0;
 let historyRetentionIntentFullTraversalCount = 0;
 let historyRetentionIntentSnapshotClassificationCount = 0;
 let historyRetentionIntentReferenceCollectionCount = 0;
+let historyRetentionResumeDemandGroupMembershipCheckCount = 0;
 
 /**
  * Agreement lifecycle allows at most one sample per month and fixes the
@@ -2532,6 +2533,20 @@ export function historyRetentionIntentTraversalStatsForTests(): Readonly<{
   });
 }
 
+/** Test/benchmark observability only; counters never enter authoritative state. */
+export function resetHistoryRetentionResumeLookupStatsForTests(): void {
+  historyRetentionResumeDemandGroupMembershipCheckCount = 0;
+}
+
+/** Test/benchmark observability only; counters never enter authoritative state. */
+export function historyRetentionResumeLookupStatsForTests(): Readonly<{
+  demandGroupMembershipChecks: number;
+}> {
+  return Object.freeze({
+    demandGroupMembershipChecks: historyRetentionResumeDemandGroupMembershipCheckCount,
+  });
+}
+
 function continuationDemandFromCollected(
   demand: ReturnType<typeof collectDemand>,
 ): HistoryRetentionContinuationDemand {
@@ -3929,8 +3944,16 @@ export function resumeHistoryRetentionProjection(
   const previousDemandedIds = new Set(basis.sourceDemand.groups.flatMap((group) => group.eventIds));
   const previousDirectMatches = new Map(basis.directMatches.map((match) => [match.eventId, match]));
   for (const eventId of fold.directDemandEventIds) {
+    const previousMatch = previousDirectMatches.get(eventId);
+    if (previousDemandedIds.has(eventId) && previousMatch) {
+      fold.directMatchesByEventId.set(eventId, { ...previousMatch });
+      continue;
+    }
     const groups = [...fold.demandGroupsByKey.values()]
-      .filter((group) => group.eventIds.has(eventId));
+      .filter((group) => {
+        historyRetentionResumeDemandGroupMembershipCheckCount += 1;
+        return group.eventIds.has(eventId);
+      });
     const requiresVerifiedPrefixLookup = groups.some((group) => {
       const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
       return ((group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
@@ -3938,20 +3961,15 @@ export function resumeHistoryRetentionProjection(
         || liveSocial?.kind === 'broad')
         && group.requirement === 'index-only';
     });
-    const previousMatch = previousDirectMatches.get(eventId);
-    if (previousDemandedIds.has(eventId) && previousMatch) {
-      fold.directMatchesByEventId.set(eventId, { ...previousMatch });
-    } else {
-      // A match retained for another selector does not prove that it was the
-      // latest occurrence of this ID in the cold prefix. New direct demand is
-      // therefore suffix-only; otherwise continuation fails closed. Audit-only
-      // selectors deliberately admit non-event source IDs (for example record
-      // payload IDs), so a new member is matched when it occurs in the suffix
-      // but is not blocking when no event exists.
-      if (requiresVerifiedPrefixLookup
-        || groups.some((group) => historyRetentionRequirementBlocks(group.requirement))) {
-        fold.requiredSuffixDirectDemandEventIds.add(eventId);
-      }
+    // A match retained for another selector does not prove that it was the
+    // latest occurrence of this ID in the cold prefix. New direct demand is
+    // therefore suffix-only; otherwise continuation fails closed. Audit-only
+    // selectors deliberately admit non-event source IDs (for example record
+    // payload IDs), so a new member is matched when it occurs in the suffix
+    // but is not blocking when no event exists.
+    if (requiresVerifiedPrefixLookup
+      || groups.some((group) => historyRetentionRequirementBlocks(group.requirement))) {
+      fold.requiredSuffixDirectDemandEventIds.add(eventId);
     }
   }
 

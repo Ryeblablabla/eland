@@ -17,6 +17,7 @@ import {
   type LiveSocialEvidenceDescriptor,
   type RetainedLiveSocialEvidenceDescriptor,
 } from './live-social-evidence';
+import { intentById } from './state-index';
 import { WORLD_CELL_COUNT } from '../world/grid';
 
 export { livePersonSocialEvidenceLeaseKey } from './live-social-evidence';
@@ -514,8 +515,7 @@ function liveSocialEvidenceWithCurrentIntentBasis(
   const communication = descriptor.action?.communication;
   const intentId = descriptor.action?.intentId;
   if (!communication || !intentId) return descriptor;
-  const currentIntentSources = state.intents.find((intent) => intent.id === intentId)
-    ?.sourceFactIds ?? [];
+  const currentIntentSources = intentById(state, intentId)?.sourceFactIds ?? [];
   const basisSourceEventIds = [...new Set([
     ...communication.basisSourceEventIds,
     ...currentIntentSources,

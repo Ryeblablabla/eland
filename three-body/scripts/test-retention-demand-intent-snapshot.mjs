@@ -228,6 +228,7 @@ try {
   writeFileSync(entryPath, [
     `export * from ${JSON.stringify(path.resolve('server/history-retention-projection.ts'))};`,
     `export * from ${JSON.stringify(path.resolve('server/history-retention-codec.ts'))};`,
+    `export { liveSocialEvidenceForPersonSource } from ${JSON.stringify(path.resolve('src/game/eland/domain/event-index.ts'))};`,
   ].join('\n'));
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     entryPath,
@@ -313,6 +314,122 @@ try {
     optimizedEncoded.chunk.data,
     referenceEncoded.chunk.data,
     'snapshot/reference canonical sidecar bytes 必须一致',
+  );
+
+  api.resetHistoryRetentionResumeLookupStatsForTests();
+  const reusedFold = api.resumeHistoryRetentionProjection(optimized, shell, authority);
+  const reusedProjection = api.finishHistoryRetentionProjection(reusedFold);
+  const reusedStats = api.historyRetentionResumeLookupStatsForTests();
+  assert.ok(reusedFold.directDemandEventIds.size > 0, 'fixture 必须覆盖 direct demand resume');
+  assert.equal([...reusedFold.directDemandEventIds].every(
+    (eventId) => reusedFold.directMatchesByEventId.has(eventId),
+  ), true, '同 demand 的 direct IDs 必须全部复用 previous exact matches');
+  assert.equal(
+    reusedStats.demandGroupMembershipChecks,
+    0,
+    '已匹配 direct IDs 不得扫描 demand groups',
+  );
+  assert.deepEqual(
+    reusedProjection,
+    optimized,
+    'matched fast path 的 resume projection 必须与原 projection 逐字一致',
+  );
+
+  shell.people[0].maternalTeachingSourceEventIds.push('new-unmatched-live-social-source');
+  api.resetHistoryRetentionResumeLookupStatsForTests();
+  const unmatchedFold = api.resumeHistoryRetentionProjection(optimized, shell, authority);
+  const unmatchedStats = api.historyRetentionResumeLookupStatsForTests();
+  assert.equal(unmatchedFold.directDemandEventIds.size, reusedFold.directDemandEventIds.size + 1);
+  assert.equal(
+    unmatchedStats.demandGroupMembershipChecks,
+    unmatchedFold.demandGroupsByKey.size,
+    '仅新增的 unmatched direct ID 扫描一次完整 demand group 集合',
+  );
+  assert.equal(
+    unmatchedFold.requiredSuffixDirectDemandEventIds.has('new-unmatched-live-social-source'),
+    true,
+    '新增 broad index-only ID 仍须走原 exact suffix/prefix 续接路径',
+  );
+  shell.people[0].maternalTeachingSourceEventIds.pop();
+
+  const firstDuplicateIntent = {
+    ...baseIntent('descriptor-intent', 'p1', 'active', 'descriptor-decision'),
+    sourceFactIds: ['first-intent-source'],
+  };
+  const secondDuplicateIntent = {
+    ...baseIntent('descriptor-intent', 'p1', 'active', 'descriptor-decision'),
+    sourceFactIds: ['second-intent-source'],
+  };
+  const descriptorAction = (id, intentId) => ({
+    ...action(id, 9, 'p1', {
+      kind: 'communicate',
+      channel: 'voice',
+      audience: ['p2'],
+      content: {
+        kind: 'claim',
+        id: `${id}:claim`,
+        factId: `${id}:fact`,
+        summary: id,
+      },
+    }),
+    intentId,
+  });
+  const firstDescriptorEvent = descriptorAction('descriptor-event-first', 'descriptor-intent');
+  const descriptorOwner = person('p1');
+  descriptorOwner.maternalTeachingSourceEventIds.push(firstDescriptorEvent.id);
+  const descriptorState = {
+    ...shell,
+    world: {
+      past: [firstDescriptorEvent],
+      historyCursor: {
+        version: 1,
+        eventCount: 1,
+        hotStartIndex: 0,
+        tailEventId: firstDescriptorEvent.id,
+      },
+    },
+    people: [descriptorOwner],
+    intents: [firstDuplicateIntent, secondDuplicateIntent],
+  };
+  Object.defineProperty(descriptorState.intents, 'find', {
+    configurable: true,
+    value: () => {
+      throw new Error('live social descriptor 不得线性调用 intents.find');
+    },
+  });
+  const duplicateDescriptor = api.liveSocialEvidenceForPersonSource(
+    descriptorState,
+    descriptorOwner,
+    firstDescriptorEvent.id,
+  );
+  assert.deepEqual(
+    duplicateDescriptor.action.communication.basisSourceEventIds,
+    ['first-intent-source'],
+    'indexed descriptor lookup 必须保持 duplicate intent ID 的 Array.find first-wins 语义',
+  );
+
+  const appendedIntent = {
+    ...baseIntent('appended-descriptor-intent', 'p1', 'active', 'descriptor-decision'),
+    sourceFactIds: ['appended-intent-source'],
+  };
+  const appendedDescriptorEvent = descriptorAction(
+    'descriptor-event-appended',
+    appendedIntent.id,
+  );
+  descriptorState.intents.push(appendedIntent);
+  descriptorState.world.past.push(appendedDescriptorEvent);
+  descriptorState.world.historyCursor.eventCount += 1;
+  descriptorState.world.historyCursor.tailEventId = appendedDescriptorEvent.id;
+  descriptorOwner.maternalTeachingSourceEventIds.push(appendedDescriptorEvent.id);
+  const appendedDescriptor = api.liveSocialEvidenceForPersonSource(
+    descriptorState,
+    descriptorOwner,
+    appendedDescriptorEvent.id,
+  );
+  assert.deepEqual(
+    appendedDescriptor.action.communication.basisSourceEventIds,
+    ['appended-intent-source'],
+    'append-only intent index 必须在下一次 descriptor lookup 看见新 intent',
   );
 
   const addedIntent = baseIntent(

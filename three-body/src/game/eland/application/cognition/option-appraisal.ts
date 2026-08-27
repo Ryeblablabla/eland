@@ -29,6 +29,7 @@ import { assessFamilyReadiness, type FamilyReadinessAssessment } from './family-
 import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { appraiseSocialExpectation } from './social-expectation';
+import { recurringDutyMandateForExistingOption } from '../../domain/governance';
 
 export type CognitiveFactorName =
   | 'need'
@@ -222,6 +223,21 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
   if (goal.kind === 'project-completed' || option.projectId || option.projectProposal) {
     add('commitment', option.projectId ? 1 : 0.72, option.projectId ? '候选推进一个已存在项目' : '候选可建立有复核点的持续项目');
     const project = option.projectProposal ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
+    const recurringDutyMandate = recurringDutyMandateForExistingOption(
+      context.state,
+      context.person.id,
+      option,
+      atMonth,
+    );
+    if (recurringDutyMandate && project) {
+      add(
+        'commitment',
+        1,
+        '候选是本人已接受的限期共同职责中、原本就存在的合法项目步骤',
+        undefined,
+        project.id,
+      );
+    }
     add(
       projectNeedKind(project?.need),
       clamp((option.projectPressure ?? project?.pressure ?? 35) / 70),
@@ -604,7 +620,10 @@ export function evaluateCognitiveOption(
   const factors = [
     factor('need', needActivation * 100, motivatingAlignments.map((alignment) => alignment.reason), addressedNeeds.flatMap((need) => need.sourceFactIds)),
     factor('care', Math.max(activationFor('care'), activationFor('bereavement')) * carePersonality * 100, ['情绪性与宜人性门控有来源的照护与悲恸需要'], addressedNeeds.filter((need) => need.kind === 'care' || need.kind === 'bereavement').flatMap((need) => need.sourceFactIds)),
-    factor('commitment', activationFor('commitment') * commitmentPersonality * continuityGate * 100, ['尽责性与真实进度门控意图持续'], context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
+    factor('commitment', activationFor('commitment') * commitmentPersonality * continuityGate * 100, ['尽责性、真实进度与本人已接受的有限职责门控意图持续'], [
+      ...(context.activeIntent?.sourceFactIds ?? option.sourceFactIds),
+      ...addressedNeeds.filter((need) => need.kind === 'commitment').flatMap((need) => need.sourceFactIds),
+    ]),
     factor('learning', union([activationFor('inquiry'), activationFor('capability')]) * learningPersonality * 100, ['开放性调节对未知结果的探索，而不创造知识'], addressedNeeds.filter((need) => need.kind === 'inquiry' || need.kind === 'capability').flatMap((need) => need.sourceFactIds)),
     factor('relationship', activationFor('belonging') * socialPersonality * 100 + (relationship.gate - 1) * 40, relationship.reasons, relationship.sourceFactIds),
     factor('social-expectation', (socialExpectation.gate - 1) * 100, socialExpectation.reasons, socialExpectation.sourceFactIds),

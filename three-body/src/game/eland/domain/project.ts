@@ -365,6 +365,26 @@ export type ProjectProgressKind =
   | 'logistics-advance'
   | 'action-progress';
 
+/** Stable semantic precedence when one authoritative action proves several roles. */
+export function projectProgressKindPriority(kind: ProjectProgressKind): number {
+  if (kind === 'knowledge-contribution') return 4;
+  if (kind === 'logistics-advance') return 3;
+  if (kind === 'material-contribution') return 2;
+  return 1;
+}
+
+/**
+ * Person-observable meaning of one recurring project duty. It names neither a
+ * recipe nor an observer milestone: only the kind of shared project, its
+ * already-declared functional goal, and the contributor's real progress role.
+ */
+export interface RecurringProjectDutySubject {
+  version: 'recurring-project-duty-subject-v1';
+  projectKind: ProjectKind;
+  desiredFunction: ProjectFunction;
+  progressKind: ProjectProgressKind;
+}
+
 export interface ProjectProgressEvidence {
   eventId: string;
   atMonth: number;

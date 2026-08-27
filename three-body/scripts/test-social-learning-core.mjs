@@ -376,12 +376,18 @@ try {
   assert.equal(socialLearningStateOf(requester).beliefs.length, beliefCountBeforeReproduction,
     'reproduction rejection is never converted into cooperation reputation');
 
-  function jointProject(id, completedAtMonth, evidenceCount = 1) {
+  function jointProject(
+    id,
+    completedAtMonth,
+    evidenceCount = 1,
+    desiredFunction = 'prepared-food',
+    progressKind = 'material-contribution',
+  ) {
     const project = instantiateProject({
       id,
       kind: 'production',
       need: 'food-preparation',
-      desiredFunction: 'prepared-food',
+      desiredFunction,
       summary: '共同加工食物',
       ownerId: requester.id,
       beneficiaryIds: [requester.id, helper.id],
@@ -404,12 +410,20 @@ try {
       orderInMonth: index,
     }));
     appendCommittedEvents(state, [...progressEvents, ...completionEvents]);
-    project.progressEvidence = progressEvents.map((event) => ({
-      eventId: event.id,
-      atMonth: event.atMonth,
-      kind: 'material-contribution',
-      actorId: third.id,
-    })).reverse();
+    project.progressEvidence = progressEvents.flatMap((event) => [
+      ...(progressKind === 'material-contribution' ? [{
+        eventId: event.id,
+        atMonth: event.atMonth,
+        kind: 'action-progress',
+        actorId: third.id,
+      }] : []),
+      {
+        eventId: event.id,
+        atMonth: event.atMonth,
+        kind: progressKind,
+        actorId: third.id,
+      },
+    ]).reverse();
     project.actionEventIds = project.progressEvidence.map((evidence) => evidence.eventId);
     completeProject(
       state,
@@ -435,11 +449,66 @@ try {
   ], '共同项目的单次 success episode 只引用该贡献者末尾进度和项目末尾完成锚点');
   assert.ok((highVolumeReceipt?.sourceEventIds.length ?? 0) <= 2,
     '共同项目 receipt 必须保持至多两个真实权威来源');
+  const preparedFoodDuty = {
+    version: 'recurring-project-duty-subject-v1',
+    projectKind: 'production',
+    desiredFunction: 'prepared-food',
+    progressKind: 'material-contribution',
+  };
+  assert.deepEqual(highVolumeReceipt?.projectDuty, {
+    projectId: 'joint-project-1',
+    subject: preparedFoodDuty,
+  }, 'episode must preserve the project function and the contributor progress role');
   assert.equal(projectBelief?.reliability.positiveObservations, 1,
     '32个进度 tick 仍只能让 reliability 增加一次');
   jointProject('joint-project-2', 36);
-  assert.ok(coordinationPracticeBasisFor(requester, third.id, 'joint-project-production'),
+  const recurringDuty = coordinationPracticeBasisFor(
+    requester,
+    third.id,
+    'joint-project-production',
+    preparedFoodDuty,
+  );
+  assert.ok(recurringDuty,
     'two completed progress-backed joint projects can form a practice basis');
+  assert.deepEqual(recurringDuty.successes.map((success) => success.atMonth), [30, 36]);
+  assert.equal(new Set(recurringDuty.successes.flatMap((success) => success.receiptIds)).size, 2,
+    'the recurring duty requires two different project episodes');
+  jointProject('joint-project-other-function', 42, 1, 'durable-record');
+  assert.equal(recurringDuty.successes.length, 2,
+    'a different desired function must not merge into the learned duty');
+  jointProject('joint-project-same-month-a', 48, 1, 'efficient-production');
+  jointProject('joint-project-same-month-b', 48, 1, 'efficient-production');
+  assert.equal(coordinationPracticeBasisFor(requester, third.id, 'joint-project-production', {
+    ...preparedFoodDuty,
+    desiredFunction: 'efficient-production',
+  }), undefined, 'two projects completed in the same month do not establish a recurring duty');
+  const projectReceiptCountBeforeInvalid = projectBelief.receipts.length;
+  for (const [id, contributorIds] of [
+    ['joint-project-no-progress', [requester.id, third.id]],
+    ['joint-project-solo', [third.id]],
+  ]) {
+    const invalid = instantiateProject({
+      id,
+      kind: 'production',
+      need: 'food-preparation',
+      desiredFunction: 'prepared-food',
+      summary: '缺少真实共同进度的项目',
+      ownerId: requester.id,
+      beneficiaryIds: [requester.id, third.id],
+      triggerFactIds: [`trigger:${id}`],
+      pressure: 60,
+      createdAtMonth: 49,
+      reviewAtMonth: 60,
+    });
+    invalid.contributorIds = contributorIds;
+    const completion = actionFact(`complete:${id}`, 50, requester.id, {
+      kind: 'act', operation: 'wait', targets: [],
+    });
+    appendCommittedEvents(state, [completion]);
+    completeProject(state, invalid, 50, [completion.id]);
+  }
+  assert.equal(projectBelief.receipts.length, projectReceiptCountBeforeInvalid,
+    'solo completion or contributor names without a real progress witness create no duty episode');
 
   const collectiveId = 'collective:social-learning';
   const mandateId = 'mandate:social-learning';

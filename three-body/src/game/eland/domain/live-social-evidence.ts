@@ -145,8 +145,10 @@ function proposalSubject(content: Extract<RepresentationInput, { kind: 'request'
   if (proposal.kind === 'assist') return `${content.kind}:assist:${proposal.need}`;
   if (proposal.kind === 'membership') return `${content.kind}:membership:${proposal.collectiveId}:${proposal.candidateId}`;
   if (proposal.kind === 'permission') return `${content.kind}:permission:${proposal.collectiveId}:${proposal.materialId}:${proposal.granteeId}`;
-  if (proposal.kind === 'decision-rule') return `${content.kind}:decision-rule:${proposal.collectiveId}:${proposal.scope}:${proposal.materialId}`;
-  if (proposal.kind === 'mandate') return `${content.kind}:mandate:${proposal.collectiveId}:${proposal.decisionRuleId}:${proposal.holderId}`;
+  if (proposal.kind === 'decision-rule') return proposal.scope === 'coordinate-material'
+    ? `${content.kind}:decision-rule:${proposal.collectiveId}:${proposal.scope}:${proposal.materialId}`
+    : `${content.kind}:decision-rule:${proposal.collectiveId}:${proposal.scope}:${proposal.projectDuty.projectKind}:${proposal.projectDuty.desiredFunction}:${proposal.projectDuty.progressKind}`;
+  if (proposal.kind === 'mandate') return `${content.kind}:mandate:${proposal.collectiveId}:${proposal.decisionRuleId}:${proposal.holderId}:${proposal.projectId ?? 'material'}`;
   if (proposal.kind === 'exchange') {
     const materials = [proposal.offererMaterialId, proposal.partnerMaterialId]
       .sort((left, right) => left - right);

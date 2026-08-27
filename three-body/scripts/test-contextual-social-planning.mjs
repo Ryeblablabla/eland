@@ -12,13 +12,21 @@ try {
   const entry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildSocialOptions } from ${JSON.stringify(path.resolve('src/game/eland/application/social-options.ts'))};
+    export { recordProjectAction } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
+    export { completeProject } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-lifecycle.ts'))};
     export { evaluateCognitiveOption } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/option-appraisal.ts'))};
+    export { rankCognitiveOptionsWithoutForesight } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/bdi-deliberation.ts'))};
     export {
       appraiseSocialExpectation,
       applyContextualSocialAttention,
       cooperationContextForOption,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/cognition/social-expectation.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
+    export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
+    export { instantiateProject } from ${JSON.stringify(path.resolve('src/game/eland/domain/project.ts'))};
+    export { recordAgreementAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/agreement.ts'))};
+    export { recordGovernanceAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/governance.ts'))};
+    export { deriveObservations } from ${JSON.stringify(path.resolve('src/game/eland/projection/derived-observations.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',
@@ -28,12 +36,41 @@ try {
   const {
     appraiseSocialExpectation,
     applyContextualSocialAttention,
+    appendCommittedEvents,
     buildSocialOptions,
+    completeProject,
     cooperationContextForOption,
     createInitialState,
     evaluateCognitiveOption,
+    deriveObservations,
+    instantiateProject,
     Material,
+    rankCognitiveOptionsWithoutForesight,
+    recordAgreementAction,
+    recordGovernanceAction,
+    recordProjectAction,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
+
+  function actionFact(id, atMonth, who, action, diff = {}, status = 'completed') {
+    return {
+      id,
+      kind: 'action',
+      atMonth,
+      orderInMonth: 0,
+      cellId: 0,
+      who,
+      cause: 'contextual-social-planning-test',
+      action,
+      fromCellId: 0,
+      toCellId: 0,
+      fromZ: 1,
+      toZ: 1,
+      pathSegment: [0],
+      status,
+      result: id,
+      diff,
+    };
+  }
 
   function dimension(alpha, beta, atMonth = 20) {
     return {
@@ -293,6 +330,285 @@ try {
   assert.ok(supportedRule.sourceFactIds.includes('practice:one') && supportedRule.sourceFactIds.includes('practice:two'));
   assert.equal(supportedFormation.state.collectives[0].decisionRules.length, 0,
     'proposal generation does not skip unanimous acceptance or instantiate a rule');
+
+  function completedJointDutyProject(state, observer, contributor, id, progressMonth, completedMonth) {
+    const trigger = actionFact(`trigger:${id}`, progressMonth - 1, observer.id, {
+      kind: 'communicate',
+      content: { id: `trigger:${id}`, kind: 'claim', summary: '共同项目需要继续处理' },
+      audience: [contributor.id],
+      channel: 'voice',
+    }, { audience: [contributor.id] });
+    const progress = actionFact(`progress:${id}`, progressMonth, contributor.id, {
+      kind: 'act', operation: 'exert', targets: [],
+    });
+    const completion = actionFact(`completion:${id}`, completedMonth, observer.id, {
+      kind: 'act', operation: 'exert', targets: [],
+    });
+    appendCommittedEvents(state, [trigger, progress, completion]);
+    const project = instantiateProject({
+      id,
+      kind: 'production',
+      need: 'food-preparation',
+      desiredFunction: 'prepared-food',
+      summary: '共同加工食物',
+      ownerId: observer.id,
+      beneficiaryIds: [observer.id, contributor.id],
+      triggerFactIds: [trigger.id],
+      pressure: 58,
+      createdAtMonth: progressMonth - 1,
+      reviewAtMonth: completedMonth + 6,
+    });
+    project.contributorIds = [observer.id, contributor.id];
+    project.progressEvidence = [
+      { eventId: progress.id, atMonth: progressMonth, kind: 'action-progress', actorId: contributor.id },
+      { eventId: progress.id, atMonth: progressMonth, kind: 'material-contribution', actorId: contributor.id },
+    ];
+    project.actionEventIds = [progress.id];
+    state.projects.push(project);
+    completeProject(state, project, completedMonth, [completion.id]);
+    return project;
+  }
+
+  function commitSocialOffer(state, actor, option, atMonth, orderInMonth) {
+    const action = option.completionAction ?? option.nextAction;
+    assert.equal(action.kind, 'communicate');
+    const intentId = `intent:${action.content.id}:${actor.id}`;
+    state.intents.push({ id: intentId, ownerId: actor.id, sourceFactIds: [...option.sourceFactIds] });
+    const fact = actionFact(`event:${action.content.id}:${actor.id}`, atMonth, actor.id, action, {
+      audience: [...action.audience],
+    });
+    fact.orderInMonth = orderInMonth;
+    fact.intentId = intentId;
+    appendCommittedEvents(state, [fact]);
+    recordAgreementAction(state, fact);
+    return action.content.id;
+  }
+
+  function acceptGovernanceOffer(state, responder, proposer, referenceId, atMonth, orderInMonth) {
+    const fact = actionFact(`accept:${referenceId}:${responder.id}`, atMonth, responder.id, {
+      kind: 'communicate',
+      content: { id: `accept:${referenceId}:${responder.id}`, kind: 'accept', referenceId },
+      audience: [proposer.id],
+      channel: 'voice',
+    }, { audience: [proposer.id] });
+    fact.orderInMonth = orderInMonth;
+    appendCommittedEvents(state, [fact]);
+    recordAgreementAction(state, fact);
+    recordGovernanceAction(state, fact);
+  }
+
+  const dutyState = createInitialState(26082743, {
+    endpoint: { kind: 'months', value: 60 }, chaosIntensity: 0,
+  });
+  const [dutyObserver, dutyHolder] = dutyState.people;
+  dutyState.people = [dutyObserver, dutyHolder];
+  dutyObserver.position = structuredClone(dutyHolder.position);
+  dutyObserver.bornAtMonth = dutyHolder.bornAtMonth = -30 * 12;
+  completedJointDutyProject(dutyState, dutyObserver, dutyHolder, 'duty-project-1', 6, 7);
+  completedJointDutyProject(dutyState, dutyObserver, dutyHolder, 'duty-project-2', 13, 14);
+  const collectiveSource = actionFact('collective:duty:source', 17, dutyObserver.id, {
+    kind: 'communicate',
+    content: { id: 'collective:duty:source', kind: 'claim', summary: '共同体已经形成' },
+    audience: [dutyHolder.id], channel: 'voice',
+  }, { audience: [dutyHolder.id] });
+  appendCommittedEvents(dutyState, [collectiveSource]);
+  dutyState.collectives = [{
+    id: 'collective:duty', purposeSummary: '延续反复共同劳动', status: 'active',
+    foundedAtMonth: 17, formationAgreementId: 'agreement:duty:formation',
+    memberships: [dutyObserver, dutyHolder].map((member) => ({
+      id: `membership:duty:${member.id}`,
+      collectiveId: 'collective:duty',
+      personId: member.id,
+      status: 'active',
+      joinedAtMonth: 17,
+      sourceEventIds: [collectiveSource.id],
+    })),
+    decisionRules: [], mandates: [], sourceEventIds: [collectiveSource.id],
+  }];
+  dutyState.clock.elapsedMonths = 20;
+  const beforeThirdProject = buildSocialOptions(
+    dutyState, dutyObserver, [dutyHolder], 20,
+  ).filter((option) => {
+    const action = option.completionAction ?? option.nextAction;
+    return action.kind === 'communicate'
+      && (action.content.kind === 'offer' || action.content.kind === 'request')
+      && action.content.proposal?.kind === 'decision-rule'
+      && action.content.proposal.scope === 'assign-recurring-duty';
+  });
+  assert.equal(beforeThirdProject.length, 0,
+    'two past duty episodes alone do not auto-institutionalize without a third current pressure');
+
+  const thirdTrigger = actionFact('trigger:duty-project-3', 21, dutyHolder.id, {
+    kind: 'communicate',
+    content: { id: 'trigger:duty-project-3', kind: 'claim', summary: '当前同类项目需要继续处理' },
+    audience: [dutyObserver.id], channel: 'voice',
+  }, { audience: [dutyObserver.id] });
+  const competingTrigger = actionFact('trigger:duty-project-competitor', 21, dutyHolder.id, {
+    kind: 'communicate',
+    content: { id: 'trigger:duty-project-competitor', kind: 'claim', summary: '另一个现有项目需要处理' },
+    audience: [dutyObserver.id], channel: 'voice',
+  }, { audience: [dutyObserver.id] });
+  competingTrigger.orderInMonth = 1;
+  appendCommittedEvents(dutyState, [thirdTrigger, competingTrigger]);
+  const thirdProject = instantiateProject({
+    id: 'duty-project-3', kind: 'production', need: 'food-preparation',
+    desiredFunction: 'prepared-food', summary: '第三次共同加工食物',
+    ownerId: dutyHolder.id, beneficiaryIds: [dutyObserver.id, dutyHolder.id],
+    triggerFactIds: [thirdTrigger.id], pressure: 52, createdAtMonth: 21, reviewAtMonth: 32,
+  });
+  thirdProject.contributorIds = [dutyHolder.id];
+  const competingProject = instantiateProject({
+    id: 'duty-project-competitor', kind: 'production', need: 'production-efficiency',
+    desiredFunction: 'efficient-production', summary: '另一个既有生产项目',
+    ownerId: dutyHolder.id, beneficiaryIds: [dutyHolder.id],
+    triggerFactIds: [competingTrigger.id], pressure: 52, createdAtMonth: 21, reviewAtMonth: 32,
+  });
+  competingProject.contributorIds = [dutyHolder.id];
+  dutyState.projects.push(thirdProject, competingProject);
+  dutyState.clock.elapsedMonths = 21;
+
+  const dutyRuleOption = buildSocialOptions(
+    dutyState, dutyObserver, [dutyHolder], 21,
+  ).find((option) => {
+    const action = option.completionAction ?? option.nextAction;
+    return action.kind === 'communicate'
+      && (action.content.kind === 'offer' || action.content.kind === 'request')
+      && action.content.proposal?.kind === 'decision-rule'
+      && action.content.proposal.scope === 'assign-recurring-duty';
+  });
+  assert.ok(dutyRuleOption, 'two real cross-month episodes plus a third active matching project expose one duty rule option');
+  assert.ok(dutyRuleOption.sourceFactIds.includes('progress:duty-project-1')
+    && dutyRuleOption.sourceFactIds.includes('completion:duty-project-2')
+    && dutyRuleOption.sourceFactIds.includes(thirdTrigger.id));
+  assert.equal(dutyState.collectives[0].decisionRules.length, 0,
+    'option exposure still creates neither a rule nor a mandate');
+
+  const ruleReferenceId = commitSocialOffer(dutyState, dutyObserver, dutyRuleOption, 22, 0);
+  assert.equal(dutyState.collectives[0].decisionRules.length, 0,
+    'the proposal alone cannot create the duty rule');
+  acceptGovernanceOffer(dutyState, dutyHolder, dutyObserver, ruleReferenceId, 22, 1);
+  const dutyRule = dutyState.collectives[0].decisionRules.find((rule) => (
+    rule.scope === 'assign-recurring-duty'
+  ));
+  assert.ok(dutyRule, 'all current members explicitly accepting creates the typed duty rule');
+
+  function existingProjectOption(id, project, pressure = 52) {
+    return {
+      id,
+      summary: `推进${project.summary}`,
+      reason: 'fixture represents an option already emitted by the legal project compiler',
+      goal: { kind: 'project-completed', projectId: project.id },
+      nextAction: { kind: 'act', operation: 'exert', targets: [] },
+      estimatedDuration: 'one-month', estimatedMonths: 1,
+      risks: [], domain: 'strategic', sourceFactIds: [...project.triggerFactIds],
+      projectId: project.id, projectPressure: pressure,
+      semantics: {
+        version: 'action-option-semantics-v1', obligation: 'optional', planningChannel: 'ordinary',
+        purpose: 'project', minimumLifeStage: 'adolescent', needKinds: ['commitment', 'capability'],
+      },
+    };
+  }
+  const dutyStepOption = existingProjectOption('z-existing-duty-step', thirdProject, 52);
+  const competingStepOption = existingProjectOption('a-existing-competing-step', competingProject, 52);
+  const priorityContext = {
+    state: dutyState,
+    person: dutyHolder,
+    visibleCells: [dutyHolder.position.cellId],
+    visiblePeople: [dutyObserver],
+    visibleDrops: [], visibleAnimals: [],
+    options: [competingStepOption, dutyStepOption], followUpOptions: [],
+  };
+  const rankingWithoutMandate = rankCognitiveOptionsWithoutForesight(
+    priorityContext, priorityContext.options, { atMonth: 23, planningTick: 1 },
+  );
+  const repeatedRankingWithoutMandate = rankCognitiveOptionsWithoutForesight(
+    priorityContext, priorityContext.options, { atMonth: 23, planningTick: 1 },
+  );
+  assert.deepEqual(
+    rankingWithoutMandate.map(({ option, rankScore }) => [option.id, rankScore]),
+    repeatedRankingWithoutMandate.map(({ option, rankScore }) => [option.id, rankScore]),
+    'without an active mandate the existing legal option ranking is unchanged',
+  );
+  assert.equal(rankingWithoutMandate[0].option.id, competingStepOption.id,
+    'before authorization the matching duty receives no hidden ordering advantage');
+
+  dutyState.clock.elapsedMonths = 23;
+  const dutyMandateOption = buildSocialOptions(
+    dutyState, dutyObserver, [dutyHolder], 23,
+  ).find((option) => {
+    const action = option.completionAction ?? option.nextAction;
+    return action.kind === 'communicate'
+      && (action.content.kind === 'offer' || action.content.kind === 'request')
+      && action.content.proposal?.kind === 'mandate'
+      && action.content.proposal.projectId === thirdProject.id;
+  });
+  assert.ok(dutyMandateOption, 'the holder must have the supported duty and an existing matching project before mandate proposal');
+  const mandateReferenceId = commitSocialOffer(dutyState, dutyObserver, dutyMandateOption, 23, 0);
+  acceptGovernanceOffer(dutyState, dutyHolder, dutyObserver, mandateReferenceId, 23, 1);
+  const dutyMandate = dutyState.collectives[0].mandates.find((mandate) => (
+    mandate.scope === 'assign-recurring-duty'
+  ));
+  assert.ok(dutyMandate && dutyMandate.projectId === thirdProject.id);
+  assert.ok(thirdProject.triggerFactIds.includes(`accept:${mandateReferenceId}:${dutyHolder.id}`),
+    'acceptance becomes a sourced commitment on the same pre-existing project');
+
+  const rankingWithMandate = rankCognitiveOptionsWithoutForesight(
+    priorityContext, priorityContext.options, { atMonth: 23, planningTick: 1 },
+  );
+  const dutyAppraisal = rankingWithMandate.find(({ option }) => option.id === dutyStepOption.id);
+  const competingAppraisal = rankingWithMandate.find(({ option }) => option.id === competingStepOption.id);
+  assert.ok(dutyAppraisal.factors.find((factor) => factor.kind === 'commitment')
+    ?.sourceFactIds.includes(`accept:${mandateReferenceId}:${dutyHolder.id}`),
+  'the mandate raises only the already compiled matching step through a sourced commitment factor');
+  assert.equal(competingAppraisal.factors.find((factor) => factor.kind === 'commitment')
+    ?.sourceFactIds.includes(`accept:${mandateReferenceId}:${dutyHolder.id}`), false,
+  'an unrelated existing project step receives no duty priority');
+  assert.ok(dutyAppraisal.rankScore > rankingWithoutMandate
+    .find(({ option }) => option.id === dutyStepOption.id).rankScore,
+  'the accepted duty materially raises the matching option priority');
+  assert.equal(rankingWithMandate[0].option.id, dutyStepOption.id,
+    'the sourced mandate reorders, rather than merely relabels, the existing legal matching option');
+  assert.equal(priorityContext.options.length, 2,
+    'the mandate reorders existing legal options and creates no option or primitive action');
+  const noMatchingStep = rankCognitiveOptionsWithoutForesight(
+    { ...priorityContext, options: [competingStepOption] },
+    [competingStepOption],
+    { atMonth: 23, planningTick: 1 },
+  )[0];
+  assert.equal(noMatchingStep.factors.find((factor) => factor.kind === 'commitment')
+    ?.sourceFactIds.includes(`accept:${mandateReferenceId}:${dutyHolder.id}`), false,
+  'a mandate cannot make a missing or non-matching project step executable');
+
+  const realProgress = actionFact('progress:duty-project-3:mandated', 24, dutyHolder.id, {
+    kind: 'act', operation: 'exert', targets: [],
+  });
+  appendCommittedEvents(dutyState, [realProgress]);
+  recordProjectAction(dutyState, thirdProject.id, realProgress);
+  assert.deepEqual(dutyMandate.dutyProgressEventIds, [realProgress.id]);
+  assert.equal(dutyMandate.dutyCompletionEventIds.length, 0);
+  assert.equal(deriveObservations(dutyState).institutions.some((institution) => (
+    institution.key.includes(dutyRule.id)
+  )), false, 'progress alone is not a functional institution');
+
+  const unrelatedProgress = actionFact('progress:duty-project-competitor', 24, dutyHolder.id, {
+    kind: 'act', operation: 'exert', targets: [],
+  });
+  unrelatedProgress.orderInMonth = 1;
+  appendCommittedEvents(dutyState, [unrelatedProgress]);
+  recordProjectAction(dutyState, competingProject.id, unrelatedProgress);
+  assert.deepEqual(dutyMandate.dutyProgressEventIds, [realProgress.id],
+    'an unrelated project action cannot exercise the duty');
+
+  const realCompletion = actionFact('completion:duty-project-3:mandated', 25, dutyHolder.id, {
+    kind: 'act', operation: 'exert', targets: [],
+  });
+  appendCommittedEvents(dutyState, [realCompletion]);
+  completeProject(dutyState, thirdProject, 25, [realCompletion.id]);
+  assert.deepEqual(dutyMandate.dutyCompletionEventIds, [realCompletion.id]);
+  assert.ok(deriveObservations(dutyState).institutions.some((institution) => (
+    institution.key.includes(dutyRule.id)
+      && institution.label === '共同体反复项目职责'
+  )), 'only real matching progress plus project completion makes the duty a functional institution');
 
   console.log('contextual social planning: PASS');
 } finally {

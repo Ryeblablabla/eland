@@ -1,10 +1,17 @@
 import type { PersonId, PersonState } from '../../domain/person';
+import type {
+  ProjectFunction,
+  ProjectKind,
+  ProjectProgressKind,
+  RecurringProjectDutySubject,
+} from '../../domain/project';
 import {
   MAX_COORDINATION_PRACTICES,
   MAX_PRACTICE_EPISODES,
   MAX_SOCIAL_BELIEF_RECEIPTS,
   MAX_SOCIAL_BELIEF_SOURCES,
   MAX_SOCIAL_COOPERATION_BELIEFS,
+  recurringProjectDutySubjectKey,
   SOCIAL_LEARNING_VERSION,
   type CooperationContext,
   type CoordinationPracticeBasis,
@@ -17,6 +24,26 @@ import {
 } from '../../domain/social-learning';
 
 const MAX_SOCIAL_IDENTIFIER_LENGTH = 4_096;
+
+const PROJECT_KINDS = new Set<ProjectKind>(['production', 'construction', 'inquiry']);
+const PROJECT_PROGRESS_KINDS = new Set<ProjectProgressKind>([
+  'material-contribution',
+  'knowledge-contribution',
+  'logistics-advance',
+  'action-progress',
+]);
+const PROJECT_FUNCTIONS = new Set<ProjectFunction>([
+  'insulation', 'safer-hunting', 'healing', 'prepared-food', 'weather-shelter',
+  'durable-record', 'efficient-production', 'workshop-production', 'reserve-storage',
+  'reliable-water', 'settled-cultivation', 'crop-processing', 'community-coordination',
+  'high-heat-processing', 'brick-firing', 'copper-charge', 'copper-smelting',
+  'tin-charge', 'tin-smelting', 'bronze-alloying', 'bronze-tooling', 'bronze-workshop',
+  'civic-coordination', 'iron-workshop', 'iron-charge', 'iron-reduction', 'iron-working',
+  'iron-tooling', 'fortified-coordination', 'water-powered-crop-processing',
+  'restore-water-powered-crop-processing', 'durable-power-transmission',
+  'remote-work-power-delivery', 'restore-electrical-power-delivery',
+  'comparable-mass-measurement',
+]);
 
 const COOPERATION_CONTEXTS = new Set<CooperationContext>([
   'assist-water',
@@ -115,6 +142,39 @@ function cooperationContext(value: unknown, label: string): CooperationContext {
   return value as CooperationContext;
 }
 
+function projectDutySubject(value: unknown, label: string): RecurringProjectDutySubject {
+  record(value, label);
+  exactKeys(value, ['version', 'projectKind', 'desiredFunction', 'progressKind'], label);
+  if (value.version !== 'recurring-project-duty-subject-v1'
+    || typeof value.projectKind !== 'string'
+    || !PROJECT_KINDS.has(value.projectKind as ProjectKind)
+    || typeof value.desiredFunction !== 'string'
+    || !PROJECT_FUNCTIONS.has(value.desiredFunction as ProjectFunction)
+    || typeof value.progressKind !== 'string'
+    || !PROJECT_PROGRESS_KINDS.has(value.progressKind as ProjectProgressKind)) {
+    throw new Error(`${label} 无效`);
+  }
+  return {
+    version: 'recurring-project-duty-subject-v1',
+    projectKind: value.projectKind as ProjectKind,
+    desiredFunction: value.desiredFunction as ProjectFunction,
+    progressKind: value.progressKind as ProjectProgressKind,
+  };
+}
+
+function receiptProjectDuty(
+  value: unknown,
+  label: string,
+): SocialLearningReceipt['projectDuty'] {
+  if (value === undefined) return undefined;
+  record(value, label);
+  exactKeys(value, ['projectId', 'subject'], label);
+  return {
+    projectId: identifier(value.projectId, `${label}.projectId`),
+    subject: projectDutySubject(value.subject, `${label}.subject`),
+  };
+}
+
 function betaDimension(
   value: unknown,
   currentMonth: number,
@@ -157,7 +217,7 @@ function receipt(
   label: string,
 ): SocialLearningReceipt {
   record(value, label);
-  const optionalKeys = ['response', 'willingness', 'reliability']
+  const optionalKeys = ['response', 'willingness', 'reliability', 'projectDuty']
     .filter((key) => Object.prototype.hasOwnProperty.call(value, key));
   exactKeys(value, [
     'version',
@@ -175,7 +235,11 @@ function receipt(
   const response = evidenceResult(value.response, `${label}.response`);
   const willingness = evidenceResult(value.willingness, `${label}.willingness`);
   const reliability = evidenceResult(value.reliability, `${label}.reliability`);
+  const projectDuty = receiptProjectDuty(value.projectDuty, `${label}.projectDuty`);
   if (!response && !willingness && !reliability) throw new Error(`${label} 缺少证据维度`);
+  if (projectDuty && value.kind !== 'joint-project-progress') {
+    throw new Error(`${label}.projectDuty 只能来自共同项目进度`);
+  }
   return {
     version: 'social-learning-receipt-v1',
     id: identifier(value.id, `${label}.id`),
@@ -184,6 +248,7 @@ function receipt(
     ...(response ? { response } : {}),
     ...(willingness ? { willingness } : {}),
     ...(reliability ? { reliability } : {}),
+    ...(projectDuty ? { projectDuty } : {}),
     sourceEventIds: uniqueIdentifiers(
       value.sourceEventIds,
       MAX_SOCIAL_BELIEF_SOURCES,
@@ -259,9 +324,11 @@ function practiceBasisKey(
   observerId: PersonId,
   targetPersonId: PersonId,
   context: CooperationContext,
+  projectDuty?: RecurringProjectDutySubject,
 ): string {
   return `coordination-practice-v1|observer=${encodeURIComponent(observerId)}`
-    + `|target=${encodeURIComponent(targetPersonId)}|context=${context}`;
+    + `|target=${encodeURIComponent(targetPersonId)}|context=${context}`
+    + (projectDuty ? `|project-duty=${recurringProjectDutySubjectKey(projectDuty)}` : '');
 }
 
 function coordinationPractice(
@@ -272,6 +339,7 @@ function coordinationPractice(
   label: string,
 ): CoordinationPracticeBasis {
   record(value, label);
+  const hasProjectDuty = Object.prototype.hasOwnProperty.call(value, 'projectDuty');
   exactKeys(value, [
     'version',
     'basisKey',
@@ -279,6 +347,7 @@ function coordinationPractice(
     'targetPersonId',
     'participantIds',
     'context',
+    ...(hasProjectDuty ? ['projectDuty'] : []),
     'formedAtMonth',
     'lastUpdatedAtMonth',
     'support',
@@ -293,7 +362,13 @@ function coordinationPractice(
     throw new Error(`${label}.targetPersonId 不属于另一位已知人物`);
   }
   const context = cooperationContext(value.context, `${label}.context`);
-  const expectedBasisKey = practiceBasisKey(observerId, targetPersonId, context);
+  const projectDuty = hasProjectDuty
+    ? projectDutySubject(value.projectDuty, `${label}.projectDuty`)
+    : undefined;
+  if (projectDuty && context !== `joint-project-${projectDuty.projectKind}`) {
+    throw new Error(`${label}.projectDuty 与合作情境不一致`);
+  }
+  const expectedBasisKey = practiceBasisKey(observerId, targetPersonId, context, projectDuty);
   if (value.basisKey !== expectedBasisKey) throw new Error(`${label}.basisKey 与人物/情境不一致`);
   if (!Array.isArray(value.participantIds)
     || value.participantIds.length !== 2
@@ -369,6 +444,7 @@ function coordinationPractice(
     targetPersonId,
     participantIds: [observerId, targetPersonId],
     context,
+    ...(projectDuty ? { projectDuty } : {}),
     formedAtMonth,
     lastUpdatedAtMonth,
     support: value.support,

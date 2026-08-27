@@ -22,7 +22,11 @@ import { cellX, cellY, cellsInRadius, findStandingPath } from '../world/grid';
 import { RULE_ACTION_TICKS_PER_MONTH } from '../domain/calendar';
 import { canAcceptAssist, compileAgreementContinuations } from './agreement-continuation';
 import { activeCollectivesFor, activeMemberIds } from '../domain/collective';
-import { activeMandatesFor } from '../domain/governance';
+import {
+  activeMandatesFor,
+  recurringDutyProjectMatchesSubject,
+  type DecisionRule,
+} from '../domain/governance';
 import { activePermissionsFor } from '../domain/permission';
 import { findReachableWater } from '../domain/water-access';
 import {
@@ -56,9 +60,12 @@ import {
   socialCooperationBeliefFor,
   socialDimensionExpectation,
   socialLearningStateOf,
+  recurringProjectDutySubjectKey,
+  recurringProjectDutySubjectsEqual,
   type CooperationContext,
   type CoordinationPracticeBasis,
 } from '../domain/social-learning';
+import type { RecurringProjectDutySubject } from '../domain/project';
 import { applyContextualSocialAttention } from './cognition/social-expectation';
 
 function commitmentActionSemantics(
@@ -150,6 +157,51 @@ function supportedMemberPractices(
       || left.basisKey.localeCompare(right.basisKey));
 }
 
+type RecurringDutyPractice = CoordinationPracticeBasis & {
+  projectDuty: RecurringProjectDutySubject;
+};
+type RecurringDutyDecisionRule = Extract<DecisionRule, { scope: 'assign-recurring-duty' }>;
+type MaterialDecisionRule = Extract<DecisionRule, { scope: 'coordinate-material' }>;
+
+function supportedRecurringDutyPractices(
+  person: PersonState,
+  memberIds: ReadonlySet<string>,
+  subject?: RecurringProjectDutySubject,
+): RecurringDutyPractice[] {
+  return (socialLearningStateOf(person)?.coordinationPractices ?? [])
+    .filter((practice): practice is RecurringDutyPractice => Boolean(
+      practice.support === 'supported'
+      && practice.projectDuty
+      && memberIds.has(practice.targetPersonId)
+      && (!subject || recurringProjectDutySubjectsEqual(practice.projectDuty, subject)),
+    ))
+    .sort((left, right) => right.successes.length - left.successes.length
+      || right.lastUpdatedAtMonth - left.lastUpdatedAtMonth
+      || left.basisKey.localeCompare(right.basisKey));
+}
+
+function currentProjectForRecurringDuty(
+  state: SimulationState,
+  practice: RecurringDutyPractice,
+) {
+  return state.projects
+    .filter((project) => project.status === 'active'
+      && recurringDutyProjectMatchesSubject(project, practice.projectDuty)
+      && (project.ownerId === practice.targetPersonId
+        || project.contributorIds.includes(practice.targetPersonId))
+      && [...project.triggerFactIds, ...(project.pressureBasis?.sourceFactIds ?? [])].length > 0)
+    .sort((left, right) => right.pressure - left.pressure
+      || left.createdAtMonth - right.createdAtMonth
+      || left.id.localeCompare(right.id))[0];
+}
+
+function currentProjectDutySources(project: SimulationState['projects'][number]): string[] {
+  return [...new Set([
+    ...project.triggerFactIds,
+    ...(project.pressureBasis?.sourceFactIds ?? []),
+  ])];
+}
+
 function canRequestCompanyWithCurrentBasis(
   state: SimulationState,
   requesterId: string,
@@ -222,8 +274,12 @@ function responseOption(state: SimulationState, person: PersonState, referenceId
         counterpartIds: [other.id],
         referenceId,
         ...(proposal?.kind === 'assist' ? { assistNeed: proposal.need } : {}),
-        ...(proposal?.kind === 'permission' || proposal?.kind === 'decision-rule'
+        ...(proposal?.kind === 'permission'
+          || (proposal?.kind === 'decision-rule' && proposal.scope === 'coordinate-material')
           ? { materialId: proposal.materialId }
+          : {}),
+        ...(proposal?.kind === 'mandate' && proposal.projectId
+          ? { projectId: proposal.projectId, projectKind: 'recurring-duty' }
           : {}),
       },
     }),
@@ -695,9 +751,71 @@ export function buildSocialOptions(
     const pendingDecisionRule = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'decision-rule'
       && agreement.proposal.collectiveId === collective.id);
+    const recurringDutyOpportunity = supportedRecurringDutyPractices(person, memberIds)
+      .flatMap((practice) => {
+        const project = currentProjectForRecurringDuty(state, practice);
+        return project ? [{ practice, project }] : [];
+      })[0];
+    if (allMembersHere
+      && !pendingDecisionRule
+      && recurringDutyOpportunity
+      && !collective.decisionRules.some((rule) => rule.status === 'active'
+        && rule.scope === 'assign-recurring-duty'
+        && recurringProjectDutySubjectsEqual(rule.projectDuty, recurringDutyOpportunity.practice.projectDuty))) {
+      const { practice, project } = recurringDutyOpportunity;
+      const dutyKey = recurringProjectDutySubjectKey(practice.projectDuty);
+      const representationId = `offer-recurring-duty-rule:${atMonth}:${collective.id}:${dutyKey}:${project.id}`;
+      options.push({
+        id: representationId,
+        summary: `提议以全体同意为反复承担${project.summary}职责建立限期授权规则`,
+        reason: '本人在不同月份亲历同一成员两次完成相同项目职责，且现在已有第三个同类项目需要继续承担；规则只约定如何限期授权',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: {
+            id: representationId,
+            kind: 'offer',
+            summary: `今后为${practice.projectDuty.desiredFunction}项目限期指定承担者，必须每位成员都明确同意`,
+            proposal: {
+              kind: 'decision-rule',
+              proposerId: person.id,
+              partnerId: requiredMemberApprovals[0]!,
+              collectiveId: collective.id,
+              requiredApproverIds: requiredMemberApprovals,
+              method: 'unanimous',
+              scope: 'assign-recurring-duty',
+              projectDuty: structuredClone(practice.projectDuty),
+              mandateDurationMonths: 12,
+              expiresAtMonth: atMonth + 6,
+            },
+          },
+          audience: requiredMemberApprovals,
+          channel: 'voice',
+        },
+        target: { kind: 'person', personId: practice.targetPersonId },
+        estimatedDuration: 'one-month',
+        estimatedMonths: 1,
+        risks: ['任何一名成员拒绝都会使规则提议终止'],
+        domain: 'social',
+        sourceFactIds: [...new Set([
+          ...collective.sourceEventIds,
+          ...practice.sourceFactIds,
+          ...currentProjectDutySources(project),
+        ])],
+        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+          cooperationKind: 'governance',
+          phase: 'proposal',
+          counterpartIds: requiredMemberApprovals,
+          referenceId: representationId,
+          projectId: project.id,
+          projectKind: dutyKey,
+        }),
+      });
+    }
     if (allMembersHere
       && initiativeMember?.id === person.id
-      && !collective.decisionRules.some((rule) => rule.status === 'active')
+      && !collective.decisionRules.some((rule) => rule.status === 'active'
+        && rule.scope === 'coordinate-material')
       && !pendingDecisionRule
       && governancePractice) {
       const groupMaterials = new Map<number, number>();
@@ -742,11 +860,84 @@ export function buildSocialOptions(
         });
       }
     }
-    const rule = collective.decisionRules.find((candidate) => candidate.status === 'active');
-    const activeMandate = collective.mandates.find((candidate) => candidate.status === 'active' && candidate.decisionRuleId === rule?.id);
     const pendingMandate = agreementsForPerson(state, person.id).some((agreement) => agreement.status === 'proposed'
       && agreement.proposal.kind === 'mandate'
       && agreement.proposal.collectiveId === collective.id);
+    const dutyMandateOpportunity = collective.decisionRules
+      .filter((candidate): candidate is RecurringDutyDecisionRule => (
+        candidate.status === 'active' && candidate.scope === 'assign-recurring-duty'
+      ))
+      .flatMap((dutyRule) => supportedRecurringDutyPractices(person, memberIds, dutyRule.projectDuty)
+        .flatMap((practice) => {
+          const project = currentProjectForRecurringDuty(state, practice);
+          const activeMandate = collective.mandates.some((candidate) => candidate.status === 'active'
+            && candidate.decisionRuleId === dutyRule.id);
+          const lastMandate = [...collective.mandates]
+            .filter((candidate) => candidate.decisionRuleId === dutyRule.id)
+            .sort((a, b) => (b.endedAtMonth ?? b.validUntilMonth)
+              - (a.endedAtMonth ?? a.validUntilMonth))[0];
+          const renewalReady = !lastMandate
+            || atMonth - (lastMandate.endedAtMonth ?? lastMandate.validUntilMonth) >= 24;
+          return project && !activeMandate && renewalReady
+            ? [{ rule: dutyRule, practice, project }]
+            : [];
+        }))[0];
+    if (allMembersHere && !pendingMandate && dutyMandateOpportunity) {
+      const { rule: dutyRule, practice, project } = dutyMandateOpportunity;
+      const holder = personById(state, practice.targetPersonId)!;
+      const dutyKey = recurringProjectDutySubjectKey(dutyRule.projectDuty);
+      const representationId = `offer-recurring-duty-mandate:${atMonth}:${collective.id}:${dutyRule.id}:${holder.id}:${project.id}`;
+      options.push({
+        id: representationId,
+        summary: `提议由${holder.name}限期承担${project.summary}中的既有职责`,
+        reason: '成员已经全体接受职责授权规则；本人对候选人有两个不同月份、不同项目的真实履约证据，且候选人已在当前同类项目中',
+        goal: { kind: 'representation-made', representationId },
+        nextAction: {
+          kind: 'communicate',
+          content: {
+            id: representationId,
+            kind: 'offer',
+            summary: `我提议由${holder.name}在未来${dutyRule.mandateDurationMonths}个月承担当前${project.summary}的同类职责`,
+            proposal: {
+              kind: 'mandate',
+              proposerId: person.id,
+              partnerId: requiredMemberApprovals[0]!,
+              collectiveId: collective.id,
+              decisionRuleId: dutyRule.id,
+              holderId: holder.id,
+              projectId: project.id,
+              requiredApproverIds: requiredMemberApprovals,
+              expiresAtMonth: atMonth + 6,
+            },
+          },
+          audience: requiredMemberApprovals,
+          channel: 'voice',
+        },
+        target: { kind: 'person', personId: holder.id },
+        estimatedDuration: 'one-month',
+        estimatedMonths: 1,
+        risks: ['授权只绑定已经存在的合法项目；没有真实进度与完成就不算履行'],
+        domain: 'social',
+        sourceFactIds: [...new Set([
+          ...dutyRule.sourceEventIds,
+          ...practice.sourceFactIds,
+          ...currentProjectDutySources(project),
+        ])],
+        semantics: commitmentActionSemantics('adult', ['commitment', 'belonging'], {
+          cooperationKind: 'governance',
+          phase: 'proposal',
+          counterpartIds: requiredMemberApprovals,
+          referenceId: representationId,
+          projectId: project.id,
+          projectKind: dutyKey,
+        }),
+      });
+    }
+    const rule = collective.decisionRules.find((candidate): candidate is MaterialDecisionRule => (
+      candidate.status === 'active' && candidate.scope === 'coordinate-material'
+    ));
+    const activeMandate = collective.mandates.find((candidate) => candidate.status === 'active'
+      && candidate.decisionRuleId === rule?.id);
     const lastMandate = [...collective.mandates]
       .filter((candidate) => candidate.decisionRuleId === rule?.id)
       .sort((a, b) => (b.endedAtMonth ?? b.validUntilMonth) - (a.endedAtMonth ?? a.validUntilMonth))[0];
@@ -830,6 +1021,7 @@ export function buildSocialOptions(
 
   for (const mandate of activeMandatesFor(state, person.id)
     .filter((candidate) => atMonth >= candidate.validFromMonth && atMonth <= candidate.validUntilMonth)) {
+    if (mandate.scope !== 'coordinate-material') continue;
     const holder = personById(state, mandate.holderId);
     if (!holder) continue;
     if (person.id !== holder.id

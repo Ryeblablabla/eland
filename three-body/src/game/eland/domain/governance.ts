@@ -1,18 +1,23 @@
-import type { PrimitiveAction } from './action';
+import type { ActionOption, PrimitiveAction } from './action';
 import { agreementById, type Agreement } from './agreement';
 import { activeMemberIds, activeMembership } from './collective';
 import { worldEventById } from './event-index';
 import type { MaterialId } from './material';
 import type { ActionFact, SimulationState } from './model';
 import type { PersonId } from './person';
-import { recordMandateCoordinationClosureSocialLearning } from './social-learning';
+import type { ProjectProgressEvidence, ProjectState, RecurringProjectDutySubject } from './project';
+import { projectProgressKindPriority } from './project';
+import {
+  coordinationPracticeBasisFor,
+  recordMandateCoordinationClosureSocialLearning,
+  recurringProjectDutySubjectsEqual,
+} from './social-learning';
+import { personById, projectById } from './state-index';
 
-export interface DecisionRule {
+interface DecisionRuleBase {
   id: string;
   collectiveId: string;
   method: 'unanimous';
-  scope: 'coordinate-material';
-  materialId: MaterialId;
   mandateDurationMonths: number;
   status: 'active' | 'retired';
   acceptedAtMonth: number;
@@ -21,13 +26,16 @@ export interface DecisionRule {
   endedAtMonth?: number;
 }
 
-export interface Mandate {
+export type DecisionRule = DecisionRuleBase & (
+  | { scope: 'coordinate-material'; materialId: MaterialId }
+  | { scope: 'assign-recurring-duty'; projectDuty: RecurringProjectDutySubject }
+);
+
+interface MandateBase {
   id: string;
   collectiveId: string;
   decisionRuleId: string;
   holderId: PersonId;
-  scope: 'coordinate-material';
-  materialId: MaterialId;
   validFromMonth: number;
   validUntilMonth: number;
   status: 'active' | 'expired' | 'ended';
@@ -41,6 +49,21 @@ export interface Mandate {
   coordinationClosures?: MandateCoordinationClosure[];
   endedAtMonth?: number;
 }
+
+export type Mandate = MandateBase & (
+  | {
+      scope: 'coordinate-material';
+      materialId: MaterialId;
+    }
+  | {
+      scope: 'assign-recurring-duty';
+      projectDuty: RecurringProjectDutySubject;
+      /** The pre-existing active project accepted with this finite duty. */
+      projectId: string;
+      dutyProgressEventIds: string[];
+      dutyCompletionEventIds: string[];
+    }
+);
 
 export interface MandateCoordinationClosure {
   version: 'mandate-coordination-closure-v1';
@@ -65,6 +88,71 @@ export function mandateById(state: SimulationState, id: string): Mandate | undef
   return state.collectives.flatMap((collective) => collective.mandates).find((mandate) => mandate.id === id);
 }
 
+export function recurringDutyProjectMatchesSubject(
+  project: Pick<ProjectState, 'kind' | 'desiredFunction'>,
+  subject: RecurringProjectDutySubject,
+): boolean {
+  return project.kind === subject.projectKind && project.desiredFunction === subject.desiredFunction;
+}
+
+export function mandateWasExercised(mandate: Mandate): boolean {
+  return mandate.scope === 'coordinate-material'
+    ? mandate.contributionEventIds.length > 0 && mandate.distributionEventIds.length > 0
+    : mandate.dutyProgressEventIds.length > 0 && mandate.dutyCompletionEventIds.length > 0;
+}
+
+function optionProgressKinds(option: ActionOption): Set<ProjectProgressEvidence['kind']> {
+  const kinds = new Set<ProjectProgressEvidence['kind']>();
+  const actions = [option.nextAction, ...(option.completionAction ? [option.completionAction] : [])];
+  for (const action of actions) {
+    if (action.kind === 'move') {
+      kinds.add('logistics-advance');
+      continue;
+    }
+    if (action.kind === 'communicate') {
+      if (action.content.kind === 'claim' && action.content.projectKnowledgeResponse) {
+        kinds.add('knowledge-contribution');
+      }
+      if (action.channel === 'record') kinds.add('material-contribution');
+      continue;
+    }
+    // These existing project actions are recorded as material contribution on
+    // completion by recordProjectAction. This classifier grants no legality.
+    kinds.add('material-contribution');
+  }
+  const preferred = [...kinds].sort((left, right) => (
+    projectProgressKindPriority(right) - projectProgressKindPriority(left)
+  ))[0];
+  return new Set(preferred ? [preferred] : []);
+}
+
+/**
+ * Returns the exact active mandate that may raise commitment for an option
+ * already compiled as legal. It never creates or rewrites an option/action.
+ */
+export function recurringDutyMandateForExistingOption(
+  state: SimulationState,
+  personId: PersonId,
+  option: ActionOption,
+  atMonth: number,
+): Extract<Mandate, { scope: 'assign-recurring-duty' }> | undefined {
+  if (!option.projectId) return undefined;
+  const project = projectById(state, option.projectId);
+  if (!project || project.status !== 'active'
+    || (project.ownerId !== personId && !project.contributorIds.includes(personId))) return undefined;
+  const progressKinds = optionProgressKinds(option);
+  return activeMandatesFor(state, personId).find((candidate): candidate is Extract<
+    Mandate,
+    { scope: 'assign-recurring-duty' }
+  > => candidate.scope === 'assign-recurring-duty'
+    && candidate.holderId === personId
+    && candidate.projectId === project.id
+    && atMonth >= candidate.validFromMonth
+    && atMonth <= candidate.validUntilMonth
+    && recurringDutyProjectMatchesSubject(project, candidate.projectDuty)
+    && progressKinds.has(candidate.projectDuty.progressKind));
+}
+
 /** 授权只赋予协调目的；它不允许协调者从成员背包强取物质。 */
 export function mandateSupportsTransfer(
   state: SimulationState,
@@ -74,12 +162,67 @@ export function mandateSupportsTransfer(
   atMonth: number,
 ): 'contribution' | 'distribution' | null {
   if (!mandate || mandate.status !== 'active' || atMonth < mandate.validFromMonth || atMonth > mandate.validUntilMonth) return null;
+  if (mandate.scope !== 'coordinate-material') return null;
   if (action.from.kind !== 'person' || action.from.personId !== actorId || action.to.kind !== 'person' || action.materialId !== mandate.materialId) return null;
   const collective = state.collectives.find((candidate) => candidate.id === mandate.collectiveId);
   if (!collective || !activeMembership(collective, actorId) || !activeMembership(collective, action.to.personId)) return null;
   if (actorId !== mandate.holderId && action.to.personId === mandate.holderId) return 'contribution';
   if (actorId === mandate.holderId && action.to.personId !== mandate.holderId) return 'distribution';
   return null;
+}
+
+/** A duty is exercised only by the holder's real matching project progress. */
+export function recordRecurringDutyProjectProgress(
+  state: SimulationState,
+  project: ProjectState,
+  fact: ActionFact,
+  evidence: ProjectProgressEvidence,
+): void {
+  if (fact.who !== evidence.actorId
+    || fact.id !== evidence.eventId
+    || (fact.status !== 'progressed' && fact.status !== 'completed')) return;
+  const preferredEvidence = (project.progressEvidence ?? [])
+    .filter((candidate) => candidate.eventId === fact.id && candidate.actorId === fact.who)
+    .sort((left, right) => projectProgressKindPriority(right.kind)
+      - projectProgressKindPriority(left.kind))[0];
+  if (!preferredEvidence || preferredEvidence.kind !== evidence.kind) return;
+  for (const mandate of state.collectives.flatMap((collective) => collective.mandates)) {
+    if (mandate.scope !== 'assign-recurring-duty'
+      || mandate.status !== 'active'
+      || mandate.holderId !== fact.who
+      || mandate.projectId !== project.id
+      || fact.atMonth < mandate.validFromMonth
+      || fact.atMonth > mandate.validUntilMonth
+      || !recurringDutyProjectMatchesSubject(project, mandate.projectDuty)
+      || mandate.projectDuty.progressKind !== evidence.kind) continue;
+    mandate.dutyProgressEventIds = [...new Set([...mandate.dutyProgressEventIds, fact.id])];
+    mandate.sourceEventIds = [...new Set([...mandate.sourceEventIds, fact.id])];
+  }
+}
+
+/** Completion closes the same project episode; progress alone is not an institution. */
+export function recordRecurringDutyProjectCompletion(
+  state: SimulationState,
+  project: ProjectState,
+): void {
+  if (project.status !== 'completed' || project.completionEventIds.length === 0) return;
+  for (const mandate of state.collectives.flatMap((collective) => collective.mandates)) {
+    if (mandate.scope !== 'assign-recurring-duty'
+      || mandate.status !== 'active'
+      || mandate.projectId !== project.id
+      || mandate.dutyProgressEventIds.length === 0
+      || !recurringDutyProjectMatchesSubject(project, mandate.projectDuty)
+      || (project.completedAtMonth ?? Number.POSITIVE_INFINITY) < mandate.validFromMonth
+      || (project.completedAtMonth ?? Number.POSITIVE_INFINITY) > mandate.validUntilMonth) continue;
+    mandate.dutyCompletionEventIds = [...new Set([
+      ...mandate.dutyCompletionEventIds,
+      ...project.completionEventIds,
+    ])];
+    mandate.sourceEventIds = [...new Set([
+      ...mandate.sourceEventIds,
+      ...project.completionEventIds,
+    ])];
+  }
 }
 
 function activeProposal<T extends 'decision-rule' | 'mandate'>(state: SimulationState, referenceId: string, kind: T) {
@@ -177,18 +320,30 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
     const match = matchesCurrentMembers(state, ruleAgreement);
     if (!match || ruleAgreement.proposal.method !== 'unanimous') return;
     const id = `decision-rule:${ruleAgreement.id}`;
-    if (!match.collective.decisionRules.some((rule) => rule.id === id)) match.collective.decisionRules.push({
-      id,
-      collectiveId: match.collective.id,
-      method: ruleAgreement.proposal.method,
-      scope: ruleAgreement.proposal.scope,
-      materialId: ruleAgreement.proposal.materialId,
-      mandateDurationMonths: ruleAgreement.proposal.mandateDurationMonths,
-      status: 'active',
-      acceptedAtMonth: fact.atMonth,
-      proposalAgreementId: ruleAgreement.id,
-      sourceEventIds: [...new Set([...ruleAgreement.sourceEventIds, fact.id])],
-    });
+    if (!match.collective.decisionRules.some((rule) => rule.id === id)) {
+      const common = {
+        id,
+        collectiveId: match.collective.id,
+        method: ruleAgreement.proposal.method,
+        mandateDurationMonths: ruleAgreement.proposal.mandateDurationMonths,
+        status: 'active' as const,
+        acceptedAtMonth: fact.atMonth,
+        proposalAgreementId: ruleAgreement.id,
+        sourceEventIds: [...new Set([...ruleAgreement.sourceEventIds, fact.id])],
+      };
+      const rule: DecisionRule = ruleAgreement.proposal.scope === 'coordinate-material'
+        ? {
+            ...common,
+            scope: 'coordinate-material',
+            materialId: ruleAgreement.proposal.materialId,
+          }
+        : {
+            ...common,
+            scope: 'assign-recurring-duty',
+            projectDuty: structuredClone(ruleAgreement.proposal.projectDuty),
+          };
+      match.collective.decisionRules.push(rule);
+    }
     fulfillAgreement(ruleAgreement, fact);
     match.collective.sourceEventIds = [...new Set([...match.collective.sourceEventIds, ...ruleAgreement.sourceEventIds, fact.id])];
     return;
@@ -199,27 +354,62 @@ export function recordGovernanceAction(state: SimulationState, fact: ActionFact)
   const match = matchesCurrentMembers(state, mandateAgreement);
   const rule = match?.collective.decisionRules.find((candidate) => candidate.id === mandateAgreement.proposal.decisionRuleId && candidate.status === 'active');
   if (!match || !rule || !match.members.includes(mandateAgreement.proposal.holderId)) return;
+  let dutyProject: ProjectState | undefined;
+  if (rule.scope === 'assign-recurring-duty') {
+    dutyProject = mandateAgreement.proposal.projectId
+      ? projectById(state, mandateAgreement.proposal.projectId)
+      : undefined;
+    const proposer = personById(state, mandateAgreement.proposal.proposerId);
+    const holderHasExistingProjectStep = Boolean(dutyProject
+      && dutyProject.status === 'active'
+      && recurringDutyProjectMatchesSubject(dutyProject, rule.projectDuty)
+      && (dutyProject.ownerId === mandateAgreement.proposal.holderId
+        || dutyProject.contributorIds.includes(mandateAgreement.proposal.holderId)));
+    const supportedDuty = proposer ? coordinationPracticeBasisFor(
+      proposer,
+      mandateAgreement.proposal.holderId,
+      `joint-project-${rule.projectDuty.projectKind}`,
+      rule.projectDuty,
+    ) : undefined;
+    if (!holderHasExistingProjectStep || supportedDuty?.support !== 'supported') return;
+  }
   for (const mandate of match.collective.mandates.filter((candidate) => candidate.status === 'active' && candidate.decisionRuleId === rule.id)) {
     mandate.status = 'ended';
     mandate.endedAtMonth = fact.atMonth;
   }
-  match.collective.mandates.push({
+  const common = {
     id: `mandate:${mandateAgreement.id}`,
     collectiveId: match.collective.id,
     decisionRuleId: rule.id,
     holderId: mandateAgreement.proposal.holderId,
-    scope: rule.scope,
-    materialId: rule.materialId,
     validFromMonth: fact.atMonth,
     validUntilMonth: fact.atMonth + rule.mandateDurationMonths,
-    status: 'active',
+    status: 'active' as const,
     proposalAgreementId: mandateAgreement.id,
     sourceEventIds: [...new Set([...mandateAgreement.sourceEventIds, fact.id])],
     contributionEventIds: [],
     distributionEventIds: [],
     coordinationContributionCursor: 0,
     coordinationClosures: [],
-  });
+  };
+  const mandate: Mandate = rule.scope === 'coordinate-material'
+    ? {
+        ...common,
+        scope: 'coordinate-material',
+        materialId: rule.materialId,
+      }
+    : {
+        ...common,
+        scope: 'assign-recurring-duty',
+        projectDuty: structuredClone(rule.projectDuty),
+        projectId: dutyProject!.id,
+        dutyProgressEventIds: [],
+        dutyCompletionEventIds: [],
+      };
+  match.collective.mandates.push(mandate);
+  if (dutyProject && !dutyProject.triggerFactIds.includes(fact.id)) {
+    dutyProject.triggerFactIds.push(fact.id);
+  }
   fulfillAgreement(mandateAgreement, fact);
   match.collective.sourceEventIds = [...new Set([...match.collective.sourceEventIds, ...mandateAgreement.sourceEventIds, fact.id])];
 }

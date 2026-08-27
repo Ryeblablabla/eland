@@ -321,8 +321,12 @@ function inferredSocialContext(
       referenceId: content.id,
       ...(proposal.kind === 'assist' ? { assistNeed: proposal.need } : {}),
       ...(proposal.kind === 'exchange' ? { materialId: proposal.offererMaterialId } : {}),
-      ...(proposal.kind === 'decision-rule' || proposal.kind === 'permission'
+      ...(proposal.kind === 'permission'
+        || (proposal.kind === 'decision-rule' && proposal.scope === 'coordinate-material')
         ? { materialId: proposal.materialId }
+        : {}),
+      ...(proposal.kind === 'mandate' && proposal.projectId
+        ? { projectId: proposal.projectId, projectKind: 'recurring-duty' }
         : {}),
     });
   }
@@ -651,8 +655,9 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
     throw new Error('Conversation topic requires conversation cooperation context');
   }
   if ((socialContext?.projectId || socialContext?.projectKind)
-    && socialContext.cooperationKind !== 'joint-project') {
-    throw new Error('Project reference requires joint-project cooperation context');
+    && socialContext.cooperationKind !== 'joint-project'
+    && socialContext.cooperationKind !== 'governance') {
+    throw new Error('Project reference requires joint-project or governance cooperation context');
   }
   if (conversation && socialContext) {
     if (socialContext.cooperationKind !== 'conversation') {

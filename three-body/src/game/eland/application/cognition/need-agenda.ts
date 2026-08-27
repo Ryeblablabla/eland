@@ -17,6 +17,7 @@ import { assessFamilyReadiness } from './family-readiness';
 import { crowdingUrgency } from '../../domain/social-space';
 import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
+import { recurringDutyMandateForExistingOption } from '../../domain/governance';
 
 export type NeedKind =
   | 'homeostasis'
@@ -351,6 +352,21 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
     commitmentUrgency = Math.max(commitmentUrgency, continuity);
     commitmentReasons.push(project ? '本人已经承担一个有真实进度的项目' : '本人已有尚未完成的长期意图');
     commitmentSources.push(...(active.sourceFactIds ?? []), ...(project?.triggerFactIds ?? []));
+  }
+
+  const recurringDutyMandates = [...new Map(context.options.flatMap((option) => {
+    const mandate = recurringDutyMandateForExistingOption(context.state, person.id, option, atMonth);
+    return mandate ? [[mandate.id, mandate] as const] : [];
+  })).values()];
+  for (const mandate of recurringDutyMandates) {
+    needs.push(signal(
+      'commitment',
+      0.72,
+      ['本人已明确接受一项有期限、绑定现有项目的共同职责'],
+      mandate.sourceEventIds,
+      undefined,
+      mandate.projectId,
+    ));
   }
 
   const dueCompanionCommitments = agreementsForPerson(context.state, person.id).filter((agreement) => {

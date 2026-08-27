@@ -95,8 +95,14 @@ export interface DecisionRequestContext {
   }>;
   collectives: Array<{
     id: string; purposeSummary: string; status: string; activeMemberIds: string[]; joinedAtMonth: number;
-    decisionRules: Array<{ id: string; method: string; scope: string; materialId: number }>;
-    mandates: Array<{ id: string; holderId: string; materialId: number; validUntilMonth: number; status: string }>;
+    decisionRules: Array<{
+      id: string; method: string; scope: string; materialId?: number;
+      projectDuty?: { projectKind: string; desiredFunction: string; progressKind: string };
+    }>;
+    mandates: Array<{
+      id: string; holderId: string; materialId?: number; projectId?: string;
+      validUntilMonth: number; status: string;
+    }>;
   }>;
   permissions: Array<{ id: string; grantorId: string; granteeId: string; materialId: number; validUntilMonth: number; status: string }>;
   options: Array<{
@@ -349,8 +355,23 @@ export function buildDecisionRequestContext(context: DecisionContext): DecisionR
         status: collective.status,
         activeMemberIds: collective.memberships.filter((membership) => membership.status === 'active').map((membership) => membership.personId),
         joinedAtMonth: own.joinedAtMonth,
-        decisionRules: collective.decisionRules.filter((rule) => rule.status === 'active').map(({ id, method, scope, materialId }) => ({ id, method, scope, materialId })),
-        mandates: collective.mandates.filter((mandate) => mandate.status === 'active').map(({ id, holderId, materialId, validUntilMonth, status }) => ({ id, holderId, materialId, validUntilMonth, status })),
+        decisionRules: collective.decisionRules.filter((rule) => rule.status === 'active').map((rule) => ({
+          id: rule.id,
+          method: rule.method,
+          scope: rule.scope,
+          ...(rule.scope === 'coordinate-material'
+            ? { materialId: rule.materialId }
+            : { projectDuty: { ...rule.projectDuty } }),
+        })),
+        mandates: collective.mandates.filter((mandate) => mandate.status === 'active').map((mandate) => ({
+          id: mandate.id,
+          holderId: mandate.holderId,
+          validUntilMonth: mandate.validUntilMonth,
+          status: mandate.status,
+          ...(mandate.scope === 'coordinate-material'
+            ? { materialId: mandate.materialId }
+            : { projectId: mandate.projectId }),
+        })),
       }] : [];
     }),
     permissions: state.permissions

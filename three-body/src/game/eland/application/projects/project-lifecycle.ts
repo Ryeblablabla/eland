@@ -9,6 +9,7 @@ import { buildProjectPressureBasis } from '../project-pressure';
 import { closeProjectHypothesisCampaign } from '../project-hypotheses';
 import { recordJointProjectSocialLearning } from '../../domain/social-learning';
 import { projectCurrentLeadId } from '../../domain/project-leadership';
+import { recordRecurringDutyProjectCompletion } from '../../domain/governance';
 import {
   closeProjectSearchCampaigns,
   endActiveLogisticsEpisode,
@@ -95,5 +96,6 @@ export function completeProject(
   const completionActor = finalCompletionActor(state, project);
   if (completionActor) recordProjectNeedResolution(completionActor, project, atMonth);
   recordJointProjectSocialLearning(state, project, atMonth);
+  recordRecurringDutyProjectCompletion(state, project);
   rememberJointCompletion(state, project);
 }

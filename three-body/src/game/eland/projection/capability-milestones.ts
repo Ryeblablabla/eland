@@ -8,6 +8,7 @@ import type {
   WorldEvent,
 } from '../domain/model';
 import { Material, materialHas } from '../domain/material';
+import { mandateWasExercised } from '../domain/governance';
 import { isAlive, type PersonId } from '../domain/person';
 import {
   actionFacts,
@@ -962,19 +963,26 @@ function detect(key: DetectorKey, state: SimulationState, index: ObserverIndex):
     case 'decision-rule':
       return state.collectives.flatMap((collective) => collective.decisionRules.flatMap((rule) => episode(resolvedEvents(index, rule.sourceEventIds), collective.memberships.map((item) => item.personId)) ?? []));
     case 'exercised-mandate':
-      return state.collectives.flatMap((collective) => collective.mandates.filter((mandate) => mandate.contributionEventIds.length > 0 && mandate.distributionEventIds.length > 0)
+      return state.collectives.flatMap((collective) => collective.mandates.filter(mandateWasExercised)
         .flatMap((mandate) => episode(resolvedEvents(index, [
           ...mandate.sourceEventIds,
           ...mandate.contributionEventIds,
           ...mandate.distributionEventIds,
+          ...(mandate.scope === 'assign-recurring-duty' ? mandate.dutyProgressEventIds : []),
+          ...(mandate.scope === 'assign-recurring-duty' ? mandate.dutyCompletionEventIds : []),
         ]), collective.memberships.map((item) => item.personId), [mandate.holderId]) ?? []));
     case 'returned-mandate':
       return state.collectives.flatMap((collective) => collective.mandates.filter((mandate) => mandate.status !== 'active'
-        && (mandate.contributionEventIds.length > 0 || mandate.distributionEventIds.length > 0))
+        && (mandate.contributionEventIds.length > 0
+          || mandate.distributionEventIds.length > 0
+          || (mandate.scope === 'assign-recurring-duty'
+            && (mandate.dutyProgressEventIds.length > 0 || mandate.dutyCompletionEventIds.length > 0))))
         .flatMap((mandate) => episode(resolvedEvents(index, [
           ...mandate.sourceEventIds,
           ...mandate.contributionEventIds,
           ...mandate.distributionEventIds,
+          ...(mandate.scope === 'assign-recurring-duty' ? mandate.dutyProgressEventIds : []),
+          ...(mandate.scope === 'assign-recurring-duty' ? mandate.dutyCompletionEventIds : []),
         ]), collective.memberships.map((item) => item.personId), [mandate.holderId]) ?? []));
     case 'prediction':
       return state.eraPredictions.flatMap((prediction) => episode(resolvedEvents(index, prediction.sourceEventIds), [prediction.predictorId, ...prediction.audienceIds]) ?? []);

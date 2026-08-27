@@ -47,6 +47,7 @@ import {
   projectCurrentLeadId,
   projectSupportsLeadershipSuccession,
 } from '../domain/project-leadership';
+import { recordRecurringDutyProjectProgress } from '../domain/governance';
 import {
   closeProjectHypothesisCampaign,
   recordProjectHypothesisAttempt,
@@ -600,6 +601,11 @@ export function recordProjectAction(state: SimulationState, projectId: string, f
     kind: 'knowledge-contribution',
     actorId: fact.who,
   });
+  for (const evidence of (project.progressEvidence ?? []).filter((candidate) => (
+    candidate.eventId === fact.id && candidate.actorId === fact.who
+  ))) {
+    recordRecurringDutyProjectProgress(state, project, fact, evidence);
+  }
   if ((materialContribution || knowledgeContribution) && !project.contributorIds.includes(fact.who)) {
     project.contributorIds.push(fact.who);
     registerProjectParticipantMembership(state, project);

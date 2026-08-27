@@ -11,6 +11,7 @@ import {
   worldEventById,
 } from '../domain/event-index';
 import { Material } from '../domain/material';
+import { mandateWasExercised } from '../domain/governance';
 import type {
   EmergentRegion,
   InstitutionObservation,
@@ -83,12 +84,11 @@ export function observeSimulation(
   ].filter((item): item is PracticeObservation => Boolean(item));
   const governanceInstitutions: InstitutionObservation[] = state.collectives.flatMap((collective) => collective.decisionRules.flatMap((rule) => {
     const exercisedMandates = collective.mandates.filter((mandate) => mandate.decisionRuleId === rule.id
-      && mandate.contributionEventIds.length > 0
-      && mandate.distributionEventIds.length > 0);
+      && mandateWasExercised(mandate));
     if (!exercisedMandates.length) return [];
     return [{
       key: `collective-coordination:${collective.id}:${rule.id}`,
-      label: '共同体物质协调职责',
+      label: rule.scope === 'coordinate-material' ? '共同体物质协调职责' : '共同体反复项目职责',
       evidenceEventIds: [...new Set([...rule.sourceEventIds, ...exercisedMandates.flatMap((mandate) => mandate.sourceEventIds)])],
       note: `共同规则至少经过 ${exercisedMandates.length} 次限期授权实践；续任是同一制度的历史，不重复计作新制度。`,
     }];

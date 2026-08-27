@@ -8,7 +8,11 @@ import type {
   ElectricalPowerFaultObservationRef,
 } from './electrical-power';
 import type { ConditionKind, HibernationPhase, PersonId } from './person';
-import type { ProjectFunction, ProjectProposal } from './project';
+import type {
+  ProjectFunction,
+  ProjectProposal,
+  RecurringProjectDutySubject,
+} from './project';
 import type { WildlifeThreatBasis } from './wildlife-threat';
 import type { MortuaryPhase } from './mortuary';
 import type { SourcedMassMeasurementAction } from './measurement';
@@ -185,16 +189,21 @@ export type SocialProposal =
       collectiveId: string; candidateId: PersonId; requiredApproverIds: PersonId[];
       expiresAtMonth: number;
     }
-  | {
+  | ({
       kind: 'decision-rule'; proposerId: PersonId; partnerId: PersonId;
       collectiveId: string; requiredApproverIds: PersonId[];
-      method: 'unanimous'; scope: 'coordinate-material'; materialId: MaterialId;
+      method: 'unanimous';
       mandateDurationMonths: number; expiresAtMonth: number;
-    }
+    } & (
+      | { scope: 'coordinate-material'; materialId: MaterialId }
+      | { scope: 'assign-recurring-duty'; projectDuty: RecurringProjectDutySubject }
+    ))
   | {
       kind: 'mandate'; proposerId: PersonId; partnerId: PersonId;
       collectiveId: string; decisionRuleId: string; holderId: PersonId;
       requiredApproverIds: PersonId[]; expiresAtMonth: number;
+      /** Required only when the governing rule assigns a recurring project duty. */
+      projectId?: string;
     }
   | {
       kind: 'permission'; proposerId: PersonId; partnerId: PersonId;

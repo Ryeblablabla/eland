@@ -4,7 +4,13 @@ import { ensureCognitionState } from './cognition';
 import { worldEventById } from './event-index';
 import type { SimulationState, WorldEvent } from './model';
 import { isAlive, type PersonId, type PersonState } from './person';
-import type { ProjectKind, ProjectState } from './project';
+import type {
+  ProjectKind,
+  ProjectProgressEvidence,
+  ProjectState,
+  RecurringProjectDutySubject,
+} from './project';
+import { projectProgressKindPriority } from './project';
 import { personById } from './state-index';
 
 export const SOCIAL_LEARNING_VERSION = 'social-learning-v1' as const;
@@ -62,6 +68,11 @@ export interface SocialLearningReceipt {
   response?: SocialEvidenceResult;
   willingness?: SocialEvidenceResult;
   reliability?: SocialEvidenceResult;
+  /** One completed project/target episode; never inferred from raw action volume. */
+  projectDuty?: {
+    projectId: string;
+    subject: RecurringProjectDutySubject;
+  };
   sourceEventIds: string[];
 }
 
@@ -101,6 +112,8 @@ export interface CoordinationPracticeBasis {
   targetPersonId: PersonId;
   participantIds: [PersonId, PersonId];
   context: CooperationContext;
+  /** Present only for repeated progress-backed joint projects of one exact duty. */
+  projectDuty?: RecurringProjectDutySubject;
   formedAtMonth: number;
   lastUpdatedAtMonth: number;
   support: 'supported' | 'contested';
@@ -125,6 +138,10 @@ export interface RecordSocialLearningEvidenceInput {
   response?: SocialEvidenceResult;
   willingness?: SocialEvidenceResult;
   reliability?: SocialEvidenceResult;
+  projectDuty?: {
+    projectId: string;
+    subject: RecurringProjectDutySubject;
+  };
 }
 
 function uniqueSources(sourceEventIds: readonly string[]): string[] {
@@ -135,8 +152,25 @@ function beliefKey(targetPersonId: PersonId, context: CooperationContext): strin
   return `${SOCIAL_LEARNING_VERSION}|target=${encodeURIComponent(targetPersonId)}|context=${context}`;
 }
 
-function practiceKey(observerId: PersonId, targetPersonId: PersonId, context: CooperationContext): string {
-  return `coordination-practice-v1|observer=${encodeURIComponent(observerId)}|target=${encodeURIComponent(targetPersonId)}|context=${context}`;
+export function recurringProjectDutySubjectKey(subject: RecurringProjectDutySubject): string {
+  return `${subject.projectKind}:${encodeURIComponent(subject.desiredFunction)}:${subject.progressKind}`;
+}
+
+export function recurringProjectDutySubjectsEqual(
+  left: RecurringProjectDutySubject | undefined,
+  right: RecurringProjectDutySubject | undefined,
+): boolean {
+  return Boolean(left && right && recurringProjectDutySubjectKey(left) === recurringProjectDutySubjectKey(right));
+}
+
+function practiceKey(
+  observerId: PersonId,
+  targetPersonId: PersonId,
+  context: CooperationContext,
+  projectDuty?: RecurringProjectDutySubject,
+): string {
+  return `coordination-practice-v1|observer=${encodeURIComponent(observerId)}|target=${encodeURIComponent(targetPersonId)}|context=${context}`
+    + (projectDuty ? `|project-duty=${recurringProjectDutySubjectKey(projectDuty)}` : '');
 }
 
 function freshDimension(atMonth: number): SocialBetaDimension {
@@ -207,9 +241,14 @@ export function coordinationPracticeBasisFor(
   person: PersonState,
   targetPersonId: PersonId,
   context: CooperationContext,
+  projectDuty?: RecurringProjectDutySubject,
 ): CoordinationPracticeBasis | undefined {
   return socialLearningStateOf(person)?.coordinationPractices.find((practice) => (
-    practice.targetPersonId === targetPersonId && practice.context === context
+    practice.targetPersonId === targetPersonId
+      && practice.context === context
+      && (projectDuty
+        ? recurringProjectDutySubjectsEqual(practice.projectDuty, projectDuty)
+        : true)
   ));
 }
 
@@ -285,7 +324,8 @@ function updateCoordinationPractice(
   receipt: SocialLearningReceipt,
 ): void {
   if (!receipt.reliability) return;
-  const key = practiceKey(person.id, belief.targetPersonId, belief.context);
+  const dutySubject = receipt.projectDuty?.subject;
+  const key = practiceKey(person.id, belief.targetPersonId, belief.context, dutySubject);
   let practice = state.coordinationPractices.find((candidate) => candidate.basisKey === key);
   if (receipt.reliability === 'negative') {
     if (!practice) return;
@@ -303,10 +343,15 @@ function updateCoordinationPractice(
     practice.successes = mergePracticeSuccess(practice.successes, receipt);
   } else {
     const positiveReceipts = belief.receipts
-      .filter((candidate) => candidate.reliability === 'positive')
+      .filter((candidate) => candidate.reliability === 'positive'
+        && (dutySubject
+          ? recurringProjectDutySubjectsEqual(candidate.projectDuty?.subject, dutySubject)
+          : candidate.projectDuty === undefined))
       .sort((left, right) => left.atMonth - right.atMonth || left.id.localeCompare(right.id));
     const distinctMonths = new Set(positiveReceipts.map((candidate) => candidate.atMonth));
     if (distinctMonths.size < 2) return;
+    if (dutySubject
+      && new Set(positiveReceipts.flatMap((candidate) => candidate.projectDuty?.projectId ?? [])).size < 2) return;
     const successes: CoordinationPracticeSuccessBasis[] = [];
     for (const successReceipt of positiveReceipts) mergePracticeSuccess(successes, successReceipt);
     const formedAtMonth = successes[1]?.atMonth;
@@ -318,6 +363,7 @@ function updateCoordinationPractice(
       targetPersonId: belief.targetPersonId,
       participantIds: [person.id, belief.targetPersonId],
       context: belief.context,
+      ...(dutySubject ? { projectDuty: structuredClone(dutySubject) } : {}),
       formedAtMonth,
       lastUpdatedAtMonth: receipt.atMonth,
       support: 'supported',
@@ -380,6 +426,7 @@ export function recordSocialLearningEvidence(
     ...(input.response ? { response: input.response } : {}),
     ...(input.willingness ? { willingness: input.willingness } : {}),
     ...(input.reliability ? { reliability: input.reliability } : {}),
+    ...(input.projectDuty ? { projectDuty: structuredClone(input.projectDuty) } : {}),
     sourceEventIds,
   };
   if (receipt.response) applyDimensionEvidence(belief.response, receipt.response, receipt.atMonth);
@@ -554,12 +601,15 @@ function compareAuthoritativeEventOrder(left: WorldEvent, right: WorldEvent): nu
  */
 export function recordJointProjectSocialLearning(
   state: SimulationState,
-  project: Pick<ProjectState, 'id' | 'kind' | 'contributorIds' | 'progressEvidence' | 'completionEventIds'>,
+  project: Pick<ProjectState, 'id' | 'kind' | 'desiredFunction' | 'contributorIds' | 'progressEvidence' | 'completionEventIds'>,
   atMonth: number,
 ): void {
   const participants = [...new Set(project.contributorIds)];
   if (participants.length < 2) return;
-  const latestProgressEventByActor = new Map<PersonId, WorldEvent>();
+  const latestProgressByActor = new Map<PersonId, {
+    event: WorldEvent;
+    evidence: ProjectProgressEvidence;
+  }>();
   for (const evidence of project.progressEvidence ?? []) {
     if (!participants.includes(evidence.actorId)) continue;
     const event = worldEventById(state, evidence.eventId);
@@ -567,9 +617,14 @@ export function recordJointProjectSocialLearning(
       || event.who !== evidence.actorId
       || event.atMonth !== evidence.atMonth
       || (event.status !== 'progressed' && event.status !== 'completed')) continue;
-    const latest = latestProgressEventByActor.get(evidence.actorId);
-    if (!latest || compareAuthoritativeEventOrder(latest, event) < 0) {
-      latestProgressEventByActor.set(evidence.actorId, event);
+    const latest = latestProgressByActor.get(evidence.actorId);
+    const eventOrder = latest ? compareAuthoritativeEventOrder(latest.event, event) : 1;
+    if (!latest
+      || eventOrder < 0
+      || (eventOrder === 0
+        && projectProgressKindPriority(evidence.kind)
+          > projectProgressKindPriority(latest.evidence.kind))) {
+      latestProgressByActor.set(evidence.actorId, { event, evidence });
     }
   }
   let completionEvent: WorldEvent | undefined;
@@ -579,13 +634,14 @@ export function recordJointProjectSocialLearning(
       completionEvent = event;
     }
   }
+  if (!completionEvent) return;
   const context = projectCooperationContext(project.kind);
-  for (const [targetPersonId, progressEvent] of latestProgressEventByActor) {
+  for (const [targetPersonId, progress] of latestProgressByActor) {
     for (const observerId of participants) {
       if (observerId === targetPersonId) continue;
       const sourceEventIds = uniqueSources([
-        progressEvent,
-        ...(completionEvent ? [completionEvent] : []),
+        progress.event,
+        completionEvent,
       ].sort(compareAuthoritativeEventOrder).map((event) => event.id));
       recordPairReliability(state, observerId, targetPersonId, context, {
         receiptId: `joint-project:${project.id}:${observerId}:${targetPersonId}`,
@@ -593,6 +649,15 @@ export function recordJointProjectSocialLearning(
         atMonth,
         sourceEventIds,
         reliability: 'positive',
+        projectDuty: {
+          projectId: project.id,
+          subject: {
+            version: 'recurring-project-duty-subject-v1',
+            projectKind: project.kind,
+            desiredFunction: project.desiredFunction,
+            progressKind: progress.evidence.kind,
+          },
+        },
       });
     }
   }

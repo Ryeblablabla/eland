@@ -92,16 +92,30 @@ function cleanPerson(person, position) {
 }
 
 function firstWaterPosition(api, grid) {
-  for (let z = 0; z < grid.levels; z += 1) {
-    for (let y = 0; y < grid.depth; y += 1) {
-      for (let x = 0; x < grid.width; x += 1) {
-        if (api.voxelAt(grid, x, y, z) === api.Material.Water) {
+  for (let y = 0; y < grid.depth; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      for (let z = grid.levels - 1; z >= 0; z -= 1) {
+        const materialId = api.voxelAt(grid, x, y, z);
+        if (materialId === api.Material.Air) continue;
+        if (materialId === api.Material.Water) {
           return { x, y, z, cellId: y * grid.width + x };
         }
+        break;
       }
     }
   }
   throw new Error('fixture world 缺少 water voxel');
+}
+
+function setSurfaceMaterial(api, grid, targetCellId, materialId) {
+  const x = targetCellId % grid.width;
+  const y = Math.floor(targetCellId / grid.width);
+  for (let z = grid.levels - 1; z >= 0; z -= 1) {
+    if (api.voxelAt(grid, x, y, z) === api.Material.Air) continue;
+    api.setVoxel(grid, x, y, z, materialId);
+    return;
+  }
+  throw new Error(`fixture cell ${targetCellId} 缺少 surface voxel`);
 }
 
 function buildFixtureState(api) {
@@ -192,6 +206,9 @@ function buildFixtureState(api) {
     change: 'condition', result: 'retention fixture tail', diff: {},
   };
   history.push(wrongActor, wrongMaterial, tail);
+  assert.equal(api.voxelAt(state.world.grid, water.x, water.y, water.z), api.Material.Water,
+    'helper 事实发生时目标必须是真实 Water');
+  api.setVoxel(state.world.grid, water.x, water.y, water.z, api.Material.Ice);
   const fulfillmentEventIds = [
     ...helperFacts.map((fact) => fact.id),
     ...requesterFacts.map((fact) => fact.id),
@@ -371,7 +388,7 @@ function appendSuccessorEvidence(api, state, fixture, prefix) {
     id: `${prefix}-requester`, atMonth: 861, planningTick: 81,
     who: fixture.requesterId, cellId: fixture.standing.cellId, z: fixture.standing.z,
     action: { kind: 'act', operation: 'ingest', targets: [] },
-    diff: { materialId: api.Material.Water, hydration: 21 },
+    diff: { materialId: api.Material.Ice, hydration: 21 },
   });
   state.world.past.push(helperFact, requesterFact);
   cursor.eventCount += 2;
@@ -389,14 +406,14 @@ try {
     `export { SqliteRunStore } from ${JSON.stringify(path.join(workspace, 'server/sqlite-run-store.ts'))};`,
     `export { createInitialState } from ${JSON.stringify(path.join(workspace, 'src/game/eland/simulation-runtime.ts'))};`,
     `export { Material } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/material.ts'))};`,
-    `export { voxelAt } from ${JSON.stringify(path.join(workspace, 'src/game/eland/world/grid.ts'))};`,
+    `export { neighbors4, setVoxel, surfaceMaterial, voxelAt } from ${JSON.stringify(path.join(workspace, 'src/game/eland/world/grid.ts'))};`,
     `export { beginHistoryRetentionProjection, foldHistoryRetentionSegment, finishHistoryRetentionProjection, resumeHistoryRetentionProjection } from ${JSON.stringify(path.join(workspace, 'server/history-retention-projection.ts'))};`,
     `export { installVerifiedHistoryRetentionEvidence } from ${JSON.stringify(path.join(workspace, 'server/retained-history-evidence.ts'))};`,
     `export { decodeRunContinuationBundle } from ${JSON.stringify(path.join(workspace, 'server/run-continuation-bundle.ts'))};`,
     `export { decodeHistoryRetentionSidecar, encodeHistoryRetentionSidecar, hashHistoryRetentionStoredContent, HISTORY_RETENTION_SIDECAR_CODEC } from ${JSON.stringify(path.join(workspace, 'server/history-retention-codec.ts'))};`,
     `export { liveAgreementHistoryLeaseKey, retainedColdWorldEventsForLease, waterAssistanceEvidenceLeaseKey, waterAssistanceFulfillmentMembershipGroupKey, worldEventById, worldEventByIdWithRetainedLease } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/event-index.ts'))};`,
     `export { livePersonSocialStrictEvidenceLeaseKey } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/live-social-evidence.ts'))};`,
-    `export { recordAgreementAction, verifiedWaterAssistanceEvidenceAnchors } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/agreement.ts'))};`,
+    `export { isHelperWaterAssistanceEvidence, isRequesterWaterAssistanceEvidence, recordAgreementAction, verifiedWaterAssistanceEvidenceAnchors } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/agreement.ts'))};`,
     `export { socialCooperationBeliefFor } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/social-learning.ts'))};`,
   ].join('\n'));
   execFileSync(path.join(workspace, 'node_modules/.bin/esbuild'), [
@@ -408,6 +425,85 @@ try {
   ], { cwd: workspace, env: childEnvironment, stdio: 'pipe' });
   const api = await import(`${pathToFileURL(bundlePath).href}?v=${Date.now()}`);
   const fixture = buildFixtureState(api);
+  assert.equal(api.voxelAt(
+    fixture.state.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+  ), api.Material.Ice, 'Water helper 事实之后目标应已自然变为 Ice');
+  assert.equal(api.isHelperWaterAssistanceEvidence(
+    fixture.state,
+    fixture.state.agreements[0].proposal,
+    fixture.helperFacts.at(-1),
+  ), true, '历史 Water 到达事实必须在当前 Ice 目标上保持可验证');
+  const proposal = fixture.state.agreements[0].proposal;
+  const branchState = structuredClone(fixture.state);
+  const probeCellId = api.neighbors4(fixture.water.cellId)[0];
+  assert.notEqual(probeCellId, undefined, 'fixture water 必须有相邻站位');
+  for (const cellId of api.neighbors4(probeCellId)) {
+    setSurfaceMaterial(api, branchState.world.grid, cellId, api.Material.Sand);
+  }
+  api.setVoxel(
+    branchState.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+    api.Material.Ice,
+  );
+  assert.equal(api.surfaceMaterial(branchState.world.grid, fixture.water.cellId), api.Material.Ice,
+    '分支夹具必须由唯一相邻 Ice 提供 drinkable 证据');
+  const moveToIce = actionFact({
+    id: 'water-retention-ice-move', atMonth: 860, planningTick: 70,
+    who: fixture.helperId, cellId: probeCellId, z: fixture.standing.z,
+    action: { kind: 'move', toCellId: probeCellId, toZ: fixture.standing.z },
+  });
+  const communicateAtIce = actionFact({
+    id: 'water-retention-ice-communicate', atMonth: 860, planningTick: 71,
+    who: fixture.helperId, cellId: probeCellId, z: fixture.standing.z,
+    action: {
+      kind: 'communicate',
+      content: { id: 'water-retention-ice-notice', kind: 'claim', summary: '冰可饮用' },
+      audience: [fixture.requesterId], channel: 'voice',
+    },
+    diff: { audience: [fixture.requesterId] },
+  });
+  const attendIce = actionFact({
+    id: 'water-retention-ice-attend', atMonth: 860, planningTick: 72,
+    who: fixture.helperId, cellId: probeCellId, z: fixture.standing.z,
+    action: {
+      kind: 'attend',
+      target: {
+        kind: 'voxel',
+        position: { x: fixture.water.x, y: fixture.water.y, z: fixture.water.z },
+      },
+    },
+  });
+  for (const fact of [moveToIce, communicateAtIce, attendIce]) {
+    assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, fact), true,
+      `${fact.action.kind} 必须接受 drinkable Ice`);
+  }
+  for (const materialId of [api.Material.Sand, api.Material.Stone]) {
+    const nonDrinkableState = structuredClone(branchState);
+    api.setVoxel(
+      nonDrinkableState.world.grid,
+      fixture.water.x,
+      fixture.water.y,
+      fixture.water.z,
+      materialId,
+    );
+    for (const fact of [moveToIce, communicateAtIce, attendIce]) {
+      assert.equal(api.isHelperWaterAssistanceEvidence(nonDrinkableState, proposal, fact), false,
+        `${fact.action.kind} 不得把 ${materialId} 当作可饮用援助证据`);
+    }
+    const ingestNonDrinkable = actionFact({
+      id: `water-retention-ingest-${materialId}`, atMonth: 860, planningTick: 73,
+      who: fixture.requesterId, cellId: fixture.standing.cellId, z: fixture.standing.z,
+      action: { kind: 'act', operation: 'ingest', targets: [] },
+      diff: { materialId, hydration: 99 },
+    });
+    assert.equal(api.isRequesterWaterAssistanceEvidence(proposal, ingestNonDrinkable), false,
+      `ingest ${materialId} 不得成为取水履约证据`);
+  }
   const fullHistory = fixture.state.world.past;
   const projection = projectAll(api, fixture.state);
   api.encodeHistoryRetentionSidecar(projection);
@@ -628,6 +724,12 @@ try {
   store = new api.SqliteRunStore(dataDirectory);
   const opened = await store.openBoundedEvolutionContinuation(created.meta.id);
   assert.equal(opened.state.world.past.length, 2, '真实 SQLite cold open 只应载入 hot tail');
+  assert.equal(api.voxelAt(
+    opened.state.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+  ), api.Material.Ice, 'cold open 必须保留当前 Ice 世界状态');
   assert.deepEqual(api.verifiedWaterAssistanceEvidenceAnchors(
     opened.state,
     opened.state.agreements[0],
@@ -691,7 +793,7 @@ try {
     id: 'water-retention-final-drink', atMonth: 861, planningTick: 90,
     who: fixture.requesterId, cellId: fixture.standing.cellId, z: fixture.standing.z,
     action: { kind: 'act', operation: 'ingest', targets: [] },
-    diff: { materialId: api.Material.Water, hydration: 25 },
+    diff: { materialId: api.Material.Ice, hydration: 25 },
   });
   api.recordAgreementAction(fulfillmentState, finalDrink);
   const fulfilled = fulfillmentState.agreements[0];

@@ -3,7 +3,7 @@ import type { ActionFact, AgreementFact, SimulationState, WorldEvent } from './m
 import type { PersonId } from './person';
 import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
-import { Material, materialHas } from './material';
+import { materialHas } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 import {
@@ -274,18 +274,24 @@ export function isHelperWaterAssistanceEvidence(
   return fact.status === 'completed'
     && fact.who === proposal.helperId
     && ((action.kind === 'move'
-      && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+      && neighbors4(fact.cellId).some((cell) => materialHas(
+        surfaceMaterial(state.world.grid, cell),
+        'drinkable',
+      )))
       || (action.kind === 'communicate'
         && action.audience.includes(proposal.requesterId)
-        && neighbors4(fact.cellId).some((cell) => surfaceMaterial(state.world.grid, cell) === Material.Water))
+        && neighbors4(fact.cellId).some((cell) => materialHas(
+          surfaceMaterial(state.world.grid, cell),
+          'drinkable',
+        )))
       || (action.kind === 'attend'
         && action.target.kind === 'voxel'
-        && voxelAt(
+        && materialHas(voxelAt(
           state.world.grid,
           action.target.position.x,
           action.target.position.y,
           action.target.position.z,
-        ) === Material.Water));
+        ), 'drinkable')));
 }
 
 export function isRequesterWaterAssistanceEvidence(

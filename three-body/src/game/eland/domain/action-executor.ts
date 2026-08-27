@@ -104,6 +104,7 @@ import {
 import { executeCommunicate } from './actions/communication-actions';
 import { executeMeasurementAttend } from './actions/measurement-actions';
 import {
+  projectEventHasEventTimeLead,
   projectIsLedBy,
   projectLeadershipInspectionFactId,
   validateProjectLeadershipSuccessionAction,
@@ -344,7 +345,8 @@ export function actionSatisfiesRecordReplicationReceipt(
     || basis.expectedOutputMaterialId !== goal.expectedOutputMaterialId
     || basis.projectRenewalBasisKey !== fact.diff.recordUseProjectRenewalBasisKey
     || !intent.actionEventIds.includes(fact.id)
-    || project?.ownerId !== person.id
+    || !project
+    || !projectEventHasEventTimeLead(project, fact)
     || !project.actionEventIds.includes(fact.id)
     || !record
     || record.authorId === person.id
@@ -448,7 +450,7 @@ export function goalSatisfied(state: SimulationState, person: PersonState, goal:
     const project = projectById(state, goal.projectId);
     const record = state.records.find((candidate) => candidate.id === goal.recordId);
     if (person.id !== goal.readerId
-      || project?.ownerId !== goal.readerId
+      || !project
       || record?.version !== goal.recordVersion
       || record.authorId === goal.readerId
       || record.knowledgeId !== goal.techniqueId) return false;

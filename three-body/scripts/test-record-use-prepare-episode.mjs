@@ -22,7 +22,7 @@ try {
       buildDemandBoundRecordUseOptions,
       recompileRecordUseNextAction,
     } from ${JSON.stringify(path.resolve('src/game/eland/application/record-use-options.ts'))};
-    export { previewOwnedProjectStep } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
+    export { previewOwnedProjectStep, synchronizeProject } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
     export {
       exposureRuleFor,
       exposureTechniqueId,
@@ -31,6 +31,7 @@ try {
     } from ${JSON.stringify(path.resolve('src/game/eland/domain/interaction-rules.ts'))};
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
     export { goalSatisfied } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export { isIndependentRecordReplicationReceiptFact } from ${JSON.stringify(path.resolve('src/game/eland/domain/era-progression.ts'))};
     export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
     export { cellX, cellY, setVoxel } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
@@ -53,11 +54,13 @@ try {
     goalSatisfied,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
+    isIndependentRecordReplicationReceiptFact,
     planLocallyForTick,
     previewOwnedProjectStep,
     recompileRecordUseNextAction,
     setVoxel,
     startInterruptIntent,
+    synchronizeProject,
     visibleCellsFor,
   } = simulation;
 
@@ -183,6 +186,50 @@ try {
     assert.ok(fact?.kind === 'action');
     appendCommittedEvents(fixture.state, [fact]);
     return fact;
+  };
+
+  const appendLeadershipPair = (state, project, predecessorId, successorId, prefix, atMonth) => {
+    assert.ok(project.site);
+    const deathEventId = `${prefix}-death`;
+    const vacancyTransitionId = `${prefix}-vacancy`;
+    const contributionEventId = `${prefix}-contribution`;
+    const successionEventId = `${prefix}-succession-action`;
+    project.leadershipTransitions ??= [];
+    project.leadershipTransitions.push(
+      {
+        version: 'project-leadership-v1',
+        id: vacancyTransitionId,
+        kind: 'vacancy',
+        projectId: project.id,
+        predecessorId,
+        deathEventId,
+        atMonth,
+        orderInMonth: 0,
+        planningTick: 0,
+        orderInTick: 0,
+        expiresAtMonth: atMonth + 120,
+        sourceEventIds: [deathEventId],
+      },
+      {
+        version: 'project-leadership-v1',
+        id: `${prefix}-succession`,
+        kind: 'succession',
+        projectId: project.id,
+        predecessorId,
+        successorId,
+        vacancyTransitionId,
+        deathEventId,
+        contributionEventId,
+        successionEventId,
+        site: { ...project.site },
+        atMonth,
+        orderInMonth: 1,
+        planningTick: 0,
+        orderInTick: 0,
+        sourceEventIds: [deathEventId, contributionEventId, successionEventId],
+      },
+    );
+    state.projects = [...state.projects];
   };
 
   {
@@ -379,6 +426,7 @@ try {
     replicate.diff = originalDiff;
     assert.equal(goalSatisfied(fixture.state, fixture.reader, child.goal), true);
 
+    synchronizeProject(fixture.state, fixture.project, 13);
     assert.equal(fixture.project.status, 'completed');
     const renewedProject = {
       ...structuredClone(fixture.project),
@@ -405,6 +453,115 @@ try {
       visibleDrops(fixture),
     ).length, 0,
     'one successful semantic receipt permanently suppresses a carrier- and project-id-swapped duplicate basis');
+  }
+
+  {
+    const fixture = makeFixture();
+    const founder = fixture.author;
+    const firstSuccessor = fixture.reader;
+    const secondSuccessor = fixture.state.people[2];
+    assert.ok(secondSuccessor);
+    secondSuccessor.diedAtMonth = undefined;
+    secondSuccessor.bornAtMonth = -20 * 12;
+    secondSuccessor.conditions = [];
+    secondSuccessor.body = { health: 100, hydration: 100, nutrition: 100 };
+    secondSuccessor.position = structuredClone(firstSuccessor.position);
+    secondSuccessor.inventory = [];
+    secondSuccessor.knowledge = [];
+    delete secondSuccessor.activeIntentId;
+
+    fixture.project.ownerId = founder.id;
+    fixture.project.site = {
+      cellId: firstSuccessor.position.cellId,
+      z: firstSuccessor.position.z,
+    };
+    fixture.project.beneficiaryIds = [founder.id, firstSuccessor.id, secondSuccessor.id];
+    fixture.project.contributorIds = [firstSuccessor.id, secondSuccessor.id];
+    appendLeadershipPair(
+      fixture.state, fixture.project, founder.id, firstSuccessor.id,
+      'record-founder', 10,
+    );
+    founder.diedAtMonth = 10;
+    founder.body.health = 0;
+    firstSuccessor.knowledge.push({
+      id: fixture.techniqueId, kind: 'technique', summary: '本人此前已经可靠掌握制矛', confidence: 70,
+      learnedAtMonth: 11, sourceEventIds: ['record-first-successor-own-trial'],
+    });
+
+    assert.equal(buildDemandBoundRecordUseOptions(
+      fixture.state, founder, visibleDrops(fixture),
+    ).length, 0, 'immutable founder ownership cannot retain current record-use authority after succession');
+    assert.equal(buildDemandBoundRecordUseOptions(
+      fixture.state, secondSuccessor, visibleDrops(fixture),
+    ).length, 0, 'a living contributor who is not the current lead cannot form a record-use option');
+
+    const [option] = buildDemandBoundRecordUseOptions(
+      fixture.state, firstSuccessor, visibleDrops(fixture),
+    );
+    assert.equal(option?.recordUseBasis?.purpose, 'replicate');
+    assert.equal(option.recordUseBasis.projectOwnerId, founder.id,
+      'the record basis preserves immutable founder ownership while authority follows the lead');
+    const context = {
+      state: fixture.state,
+      person: firstSuccessor,
+      visibleCells: visibleCellsFor(firstSuccessor),
+      visiblePeople: [],
+      visibleDrops: visibleDrops(fixture),
+      visibleAnimals: [],
+      options: [option], followUpOptions: [], activeIntent: fixture.parent,
+    };
+    const child = startInterruptIntent(
+      fixture.state, firstSuccessor, context, option.id,
+      'record-first-successor-replication', 13, 'record-use',
+    );
+    assert.ok(child);
+    assert.equal(recompileRecordUseNextAction(fixture.state, firstSuccessor, child)?.kind, 'transfer',
+      'the current successor can recompile the same physical record chain');
+    appendAction(fixture, 2);
+    appendAction(fixture, 3);
+    appendAction(fixture, 4);
+    const receipt = appendAction(fixture, 5);
+    assert.equal(receipt.diff.recordUseReplicationReceipt, true);
+    assert.equal(goalSatisfied(fixture.state, firstSuccessor, child.goal), true);
+    assert.equal(isIndependentRecordReplicationReceiptFact(fixture.state, receipt), true);
+
+    // The receipt remains valid even if its portable output is no longer held;
+    // this also keeps the unfinished public project eligible for another real
+    // leadership transition instead of turning observer replay into authority.
+    firstSuccessor.inventory = firstSuccessor.inventory.filter((stack) => stack.materialId !== Material.Spear);
+    appendLeadershipPair(
+      fixture.state, fixture.project, firstSuccessor.id, secondSuccessor.id,
+      'record-first-successor', 14,
+    );
+    firstSuccessor.diedAtMonth = 14;
+    firstSuccessor.body.health = 0;
+    fixture.state.clock.elapsedMonths = 14;
+
+    assert.equal(goalSatisfied(fixture.state, firstSuccessor, child.goal), true,
+      'a later succession cannot invalidate the first successor historical receipt');
+    assert.equal(isIndependentRecordReplicationReceiptFact(fixture.state, receipt), true,
+      'the modern observer replays event-time leadership instead of current leadership');
+
+    secondSuccessor.knowledge = structuredClone(firstSuccessor.knowledge);
+    secondSuccessor.inventory = [
+      {
+        id: 'record-second-successor-stone-tool', materialId: Material.StoneTool, quantity: 1,
+        sourceEventIds: ['prepare-stone-tool-source'],
+      },
+      {
+        id: 'record-second-successor-wood', materialId: Material.Wood, quantity: 1,
+        sourceEventIds: ['prepare-owned-wood-source'],
+      },
+      {
+        id: 'record-second-successor-carrier', materialId: Material.WoodTablet, quantity: 1,
+        recordPayloadId: fixture.record.id, sourceEventIds: ['prepare-record-publication'],
+      },
+    ];
+    const [secondOption] = buildDemandBoundRecordUseOptions(fixture.state, secondSuccessor, []);
+    assert.equal(secondOption?.recordUseBasis?.purpose, 'replicate',
+      'after the second succession only the second current lead receives a new candidate');
+    assert.equal(buildDemandBoundRecordUseOptions(fixture.state, firstSuccessor, []).length, 0);
+    assert.equal(fixture.project.ownerId, founder.id, 'both successions leave founder ownership immutable');
   }
 
   {

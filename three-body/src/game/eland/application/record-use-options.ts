@@ -25,7 +25,8 @@ import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-ind
 import { goalSatisfied } from '../domain/action-executor';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { previewOwnedProjectStep, recompileProjectNextAction } from './project-options';
-import { projectById, projectsOwnedBy } from '../domain/state-index';
+import { projectById, projectsLedBy } from '../domain/state-index';
+import { projectIsLedBy } from '../domain/project-leadership';
 import type { ProjectStep } from './projects/project-step';
 
 interface ResolvedTechniqueAction {
@@ -345,8 +346,8 @@ function previewProjectStepWithRecordKnowledge(
   return previewOwnedProjectStep(state, planningReader, projectId);
 }
 
-function activeOwnedProjects(state: SimulationState, reader: PersonState) {
-  return projectsOwnedBy(state, reader.id)
+function activeLedProjects(state: SimulationState, reader: PersonState) {
+  return projectsLedBy(state, reader.id)
     .filter((project) => project.status === 'active')
     .sort((left, right) => right.pressure - left.pressure
       || left.createdAtMonth - right.createdAtMonth
@@ -447,8 +448,8 @@ export function buildDemandBoundRecordUseOptions(
   visibleDrops: DropState[],
 ): ActionOption[] {
   if (!isAlive(reader)) return [];
-  const ownedProjects = activeOwnedProjects(state, reader);
-  if (!ownedProjects.length) return [];
+  const ledProjects = activeLedProjects(state, reader);
+  if (!ledProjects.length) return [];
   const sources = [
     ...reader.inventory
       .filter((stack) => stack.quantity > 0
@@ -493,7 +494,7 @@ export function buildDemandBoundRecordUseOptions(
     const alreadyRead = Boolean(technique?.sourceEventIds.includes(record.id));
     const expectedOutputMaterialId = techniqueOutputMaterialId(record.knowledgeId);
     if (expectedOutputMaterialId === undefined) continue;
-    const matches = ownedProjects.flatMap((project) => {
+    const matches = ledProjects.flatMap((project) => {
       const step = previewProjectStepWithRecordKnowledge(
         state,
         reader,
@@ -618,7 +619,7 @@ export function recompileRecordUseNextAction(
   if (basis.readerId !== person.id) return null;
   if (basis.version === 'record-use-basis-v1' && intent.recordUseStage !== 'read-experiment') return null;
   const projectCandidate = projectById(state, basis.projectId);
-  const project = projectCandidate?.ownerId === person.id && projectCandidate.status === 'active'
+  const project = projectCandidate && projectIsLedBy(projectCandidate, person.id) && projectCandidate.status === 'active'
     ? projectCandidate
     : undefined;
   const record = state.records.find((candidate) => candidate.id === basis.recordId

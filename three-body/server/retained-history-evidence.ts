@@ -303,6 +303,67 @@ function currentLiveSocialStrictLeaseKeysByEventId(
   return leaseKeysByEventId;
 }
 
+function legacyWaterAgreementLeaseKeysByFulfillmentEventId(
+  state: SimulationState,
+): Map<string, Set<string>> {
+  const leaseKeysByEventId = new Map<string, Set<string>>();
+  for (const agreement of state.agreements ?? []) {
+    if (agreement.status !== 'active'
+      || agreement.proposal.kind !== 'assist'
+      || agreement.proposal.need !== 'water') continue;
+    const leaseKey = liveAgreementHistoryLeaseKey(agreement.id);
+    const coreEventIds = new Set([
+      agreement.proposalEventId,
+      ...(agreement.responseEventId ? [agreement.responseEventId] : []),
+    ]);
+    for (const eventId of new Set(agreement.fulfillmentEventIds)) {
+      // Proposal/response remain the executable agreement core even if a
+      // malformed legacy array repeats their IDs as fulfillment membership.
+      if (coreEventIds.has(eventId)) continue;
+      const leaseKeys = leaseKeysByEventId.get(eventId) ?? new Set<string>();
+      leaseKeys.add(leaseKey);
+      leaseKeysByEventId.set(eventId, leaseKeys);
+    }
+  }
+  return leaseKeysByEventId;
+}
+
+function genericColdLeaseKeys(
+  eventId: string,
+  leaseKeys: readonly string[],
+  legacyWaterLeaseKeysByEventId: ReadonlyMap<string, ReadonlySet<string>>,
+): string[] {
+  return leaseKeys.filter(
+    (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+      && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+      && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null
+      && !legacyWaterLeaseKeysByEventId.get(eventId)?.has(leaseKey)
+      && parseLivePersonSocialEvidenceLeaseKey(leaseKey)?.kind !== 'broad',
+  );
+}
+
+/**
+ * Classify a bounded pin batch once. Descriptor-only and typed-promotion
+ * leases remain excluded from the generic event index. Successor publication
+ * uses the same classification as reopen without rescanning agreements for
+ * every candidate pin.
+ */
+export function genericColdHistoryRetentionLeaseKeysByEventId(
+  state: SimulationState,
+  pins: readonly Readonly<{ eventId: string; leaseKeys: readonly string[] }>[],
+): ReadonlyMap<string, readonly string[]> {
+  const legacyWaterLeaseKeysByEventId =
+    legacyWaterAgreementLeaseKeysByFulfillmentEventId(state);
+  return new Map(pins.map((pin) => [
+    pin.eventId,
+    genericColdLeaseKeys(
+      pin.eventId,
+      pin.leaseKeys,
+      legacyWaterLeaseKeysByEventId,
+    ),
+  ]));
+}
+
 /**
  * Join a sealed retention projection to facts returned by the bounded decoder,
  * then install only the cold subset in the process-local domain lookup. Hot
@@ -344,26 +405,8 @@ export function installVerifiedHistoryRetentionEvidence(
   const expectedColdOrdinals = new Set<number>();
   const seenProjectionOrdinals = new Set<number>();
   const retainedByOrdinal = new Map<number, RetainedColdWorldEventFact>();
-  const legacyWaterAgreementLeaseKeysByFulfillmentEventId = new Map<string, Set<string>>();
-  for (const agreement of state.agreements ?? []) {
-    if (agreement.status !== 'active'
-      || agreement.proposal.kind !== 'assist'
-      || agreement.proposal.need !== 'water') continue;
-    const leaseKey = liveAgreementHistoryLeaseKey(agreement.id);
-    const coreEventIds = new Set([
-      agreement.proposalEventId,
-      ...(agreement.responseEventId ? [agreement.responseEventId] : []),
-    ]);
-    for (const eventId of new Set(agreement.fulfillmentEventIds)) {
-      // Proposal/response remain the executable agreement core even if a
-      // malformed legacy array repeats their IDs as fulfillment membership.
-      if (coreEventIds.has(eventId)) continue;
-      const leaseKeys = legacyWaterAgreementLeaseKeysByFulfillmentEventId.get(eventId)
-        ?? new Set<string>();
-      leaseKeys.add(leaseKey);
-      legacyWaterAgreementLeaseKeysByFulfillmentEventId.set(eventId, leaseKeys);
-    }
-  }
+  const legacyWaterLeaseKeysByEventId =
+    legacyWaterAgreementLeaseKeysByFulfillmentEventId(state);
   for (const pin of projection.pins) {
     if (!Number.isSafeInteger(pin.absoluteIndex)
       || pin.absoluteIndex < 0
@@ -388,13 +431,10 @@ export function installVerifiedHistoryRetentionEvidence(
     if (!decoded || decoded.event.id !== pin.eventId) {
       throw new Error(`retention cold pin ${pin.absoluteIndex}/${pin.eventId} 未被准确解码`);
     }
-    const gameplayLeaseKeys = pin.leaseKeys.filter(
-      (leaseKey) => leaseKey !== LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
-        && leaseKey !== FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
-        && parseWaterAssistanceEvidenceLeaseKey(leaseKey) === null
-        && !legacyWaterAgreementLeaseKeysByFulfillmentEventId
-          .get(pin.eventId)?.has(leaseKey)
-        && parseLivePersonSocialEvidenceLeaseKey(leaseKey)?.kind !== 'broad',
+    const gameplayLeaseKeys = genericColdLeaseKeys(
+      pin.eventId,
+      pin.leaseKeys,
+      legacyWaterLeaseKeysByEventId,
     );
     if (gameplayLeaseKeys.length > 0) retainedByOrdinal.set(pin.absoluteIndex, {
       absoluteIndex: pin.absoluteIndex,

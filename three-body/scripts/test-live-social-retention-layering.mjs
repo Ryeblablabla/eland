@@ -911,6 +911,22 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
   const prefixSourceState = structuredClone(state);
   const prefixSourceObserver = prefixSourceState.people
     .find((person) => person.id === observer.id);
+  const prefixDeceased = prefixSourceState.people.find((person) => (
+    person.id !== observer.id && person.id !== partner.id
+  ));
+  assert.ok(prefixDeceased);
+  prefixDeceased.diedAtMonth = 29;
+  prefixDeceased.body.health = 0;
+  const prefixHotTailDeath = {
+    ...environment(
+      'prefix-hot-tail-death',
+      29,
+      320,
+      'death',
+      { personId: prefixDeceased.id },
+    ),
+    who: prefixDeceased.id,
+  };
   const prefixFirstDemandAttend = action(
     'prefix-first-any-demand-attend',
     18,
@@ -934,6 +950,10 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     prefixFirstDemandAttend,
     prefixLegacyUnresolvedAttend,
   );
+  const prefixTailIndex = prefixSourceState.world.past
+    .findIndex((event) => event.id === tail.id);
+  assert.ok(prefixTailIndex > prefixInsertAt);
+  prefixSourceState.world.past.splice(prefixTailIndex, 0, prefixHotTailDeath);
   prefixSourceObserver.memories.push(memory(
     'prefix-legacy-unresolved-owner-memory',
     'episode',
@@ -973,6 +993,9 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
   assert.equal(canonicalPrefixSource.continuationBasis.directMatches.some(
     (match) => match.eventId === prefixFirstDemandAttend.id,
   ), false, '旧冷 attend 在 source shell 中不得已属于任何 demand/directMatch');
+  assert.equal(canonicalPrefixSource.continuationBasis.directMatches.some(
+    (match) => match.eventId === prefixHotTailDeath.id,
+  ), false, 'previous root 的未引用 death 不得预建 live-social identity');
 
   // Model an older index-only sidecar which carried membership but never
   // proved that its raw prefix was searched. The current decoder accepts this
@@ -1038,6 +1061,13 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     [partner.id],
     [prefixFirstDemandAttend.id, persistentNonEventId],
   ));
+  prefixNextObserver.memories.push(memory(
+    'prefix-hot-tail-death-first-reference',
+    'episode',
+    31,
+    [prefixDeceased.id],
+    [prefixHotTailDeath.id],
+  ));
   prefixNextPartner.memories.push(memory(
     'prefix-cross-owner-new-memory',
     'episode',
@@ -1067,16 +1097,20 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     { maxEventsPerSegmentForTests: 32 },
   ));
   const prefixNextBoundedState = structuredClone(prefixNextFullState);
-  prefixNextBoundedState.world.past = [
-    prefixNextBoundedState.world.past.at(-1),
-  ];
+  const prefixHotTailStart = prefixNextBoundedState.world.past.findIndex((event) => (
+    event.id === prefixHotTailDeath.id
+  ));
+  assert.ok(prefixHotTailStart >= 0
+    && prefixHotTailStart < prefixSourceRoot.metadata.eventCount);
+  prefixNextBoundedState.world.past = prefixNextBoundedState.world.past
+    .slice(prefixHotTailStart);
   prefixNextBoundedState.world.historyCursor = {
     version: 1,
     eventCount: prefixNextRoot.metadata.eventCount,
-    hotStartIndex: prefixSourceRoot.metadata.eventCount,
+    hotStartIndex: prefixHotTailStart,
     tailEventId: prefixSuffix.id,
   };
-  prefixNextBoundedState.lastStep = [prefixNextBoundedState.world.past[0]];
+  prefixNextBoundedState.lastStep = [prefixNextBoundedState.world.past.at(-1)];
   const prefixExpected = canonicalProjection(
     api,
     prefixNextFullState,
@@ -1118,6 +1152,32 @@ export function __testRemoteWorkEvidence(state: SimulationState, person: PersonS
     '旧 sidecar unresolved 真实 prefix ID 必须经 exact scan 迁移',
   );
   const persistedPrefixBroad = broadGroupFor(persistedPrefixProjection, observer.id);
+  assert.ok(persistedPrefixBroad.resolvedEventIds.includes(prefixHotTailDeath.id),
+    'next suffix 首次引用的 previous-root hot death 必须解析进 owner broad membership');
+  const prefixDeathMatch = persistedPrefixProjection.continuationBasis.directMatches
+    .find((match) => match.eventId === prefixHotTailDeath.id);
+  assert.ok(prefixDeathMatch
+    && prefixDeathMatch.absoluteIndex < prefixSourceRoot.metadata.eventCount,
+  'previous-root hot death 必须经 exact prefix bridge 保留 verified ordinal');
+  assert.equal(persistedPrefixProjection.pins.some((pin) => (
+    pin.eventId === prefixHotTailDeath.id
+      && pin.leaseKeys.includes(api.livePersonSocialEvidenceLeaseKey(observer.id))
+  )), false, 'live-social broad previous-hot identity 不得获得 body pin');
+  const prefixBoundedObserver = prefixNextBoundedState.people
+    .find((person) => person.id === observer.id);
+  const prefixBoundedPartner = prefixNextBoundedState.people
+    .find((person) => person.id === partner.id);
+  assert.ok(prefixBoundedObserver && prefixBoundedPartner);
+  assert.ok(api.liveSocialEvidenceForPersonSource(
+    prefixNextBoundedState,
+    prefixBoundedObserver,
+    prefixHotTailDeath.id,
+  ), 'owner 必须能读取自己首次引用的 previous-hot death descriptor');
+  assert.equal(api.liveSocialEvidenceForPersonSource(
+    prefixNextBoundedState,
+    prefixBoundedPartner,
+    prefixHotTailDeath.id,
+  ), undefined, 'foreign owner 不得读取 previous-hot death descriptor');
   assert.ok(persistedPrefixBroad.unresolvedEventIds.includes(persistentNonEventId));
   assert.equal(persistedPrefixBroad.blocking, false);
   assert.equal([...persistedPrefixProjection.demandGroups]

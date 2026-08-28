@@ -280,15 +280,7 @@ function retainedColdIndexFor(state: SimulationState): RetainedColdEventIndex | 
   return retainedColdIndexes.get(authoritativeHistoryBase(state));
 }
 
-/**
- * Install already decoded and ledger-verified cold facts on the stable hot
- * history array. This registry is deliberately process-local and cannot alter
- * serialized state or make a selective retention set look like full history.
- */
-export function registerRetainedColdWorldEventFacts(
-  state: SimulationState,
-  retained: readonly RetainedColdWorldEventFact[],
-): void {
+function assertRetainedColdHistoryCursor(state: SimulationState): number {
   const cursor = state.world.historyCursor;
   if (!cursor
     || cursor.version !== 1
@@ -309,14 +301,19 @@ export function registerRetainedColdWorldEventFacts(
       || (hotEventCount > 0 && state.world.past.at(-1)?.id !== cursor.tailEventId)) {
     throw new Error('注册冷历史事实时热窗口尾事实与 history cursor 不一致');
   }
+  return cursor.hotStartIndex;
+}
 
+function normalizeRetainedColdWorldEventFacts(
+  state: SimulationState,
+  retained: readonly RetainedColdWorldEventFact[],
+): RetainedColdWorldEventFact[] {
+  const hotStartIndex = assertRetainedColdHistoryCursor(state);
   const seenOrdinals = new Set<number>();
-  const byId = new Map<string, RetainedColdWorldEventFact>();
-  const byLeaseKey = new Map<string, RetainedColdWorldEventFact[]>();
-  for (const input of retained) {
+  return retained.map((input) => {
     if (!Number.isSafeInteger(input.absoluteIndex)
       || input.absoluteIndex < 0
-      || input.absoluteIndex >= cursor.hotStartIndex) {
+      || input.absoluteIndex >= hotStartIndex) {
       throw new Error(`冷历史事实绝对序号 ${input.absoluteIndex} 不在冷区间`);
     }
     if (seenOrdinals.has(input.absoluteIndex)) {
@@ -329,15 +326,25 @@ export function registerRetainedColdWorldEventFacts(
       throw new Error(`冷历史事实绝对序号 ${input.absoluteIndex} 的事件 ID 不一致`);
     }
     const leaseKeys = [...new Set(input.leaseKeys)];
-    if (!leaseKeys.length || leaseKeys.some((leaseKey) => typeof leaseKey !== 'string' || leaseKey.length === 0)) {
+    if (!leaseKeys.length
+      || leaseKeys.some((leaseKey) => typeof leaseKey !== 'string' || leaseKey.length === 0)) {
       throw new Error(`冷历史事实 ${input.eventId} 缺少有效 lease`);
     }
-    const fact: RetainedColdWorldEventFact = {
+    return Object.freeze({
       absoluteIndex: input.absoluteIndex,
       eventId: input.eventId,
       event: input.event,
-      leaseKeys: leaseKeys.sort(),
-    };
+      leaseKeys: Object.freeze(leaseKeys.sort()),
+    });
+  });
+}
+
+function retainedColdEventIndexFromFacts(
+  retained: readonly RetainedColdWorldEventFact[],
+): RetainedColdEventIndex {
+  const byId = new Map<string, RetainedColdWorldEventFact>();
+  const byLeaseKey = new Map<string, RetainedColdWorldEventFact[]>();
+  for (const fact of retained) {
     const previous = byId.get(fact.eventId);
     if (!previous || previous.absoluteIndex < fact.absoluteIndex) byId.set(fact.eventId, fact);
     for (const leaseKey of fact.leaseKeys) {
@@ -349,7 +356,83 @@ export function registerRetainedColdWorldEventFacts(
   for (const facts of byLeaseKey.values()) {
     facts.sort((left, right) => left.absoluteIndex - right.absoluteIndex);
   }
-  retainedColdIndexes.set(authoritativeHistoryBase(state), { byId, byLeaseKey });
+  return { byId, byLeaseKey };
+}
+
+/**
+ * Install already decoded and ledger-verified cold facts on the stable hot
+ * history array. This registry is deliberately process-local and cannot alter
+ * serialized state or make a selective retention set look like full history.
+ */
+export function registerRetainedColdWorldEventFacts(
+  state: SimulationState,
+  retained: readonly RetainedColdWorldEventFact[],
+): void {
+  retainedColdIndexes.set(
+    authoritativeHistoryBase(state),
+    retainedColdEventIndexFromFacts(normalizeRetainedColdWorldEventFacts(state, retained)),
+  );
+}
+
+/**
+ * Add exact-root cold facts without discarding an already adopted registry on
+ * the same authoritative history base. Matching identities merge leases;
+ * either an ordinal or event-ID collision fails closed.
+ */
+export function augmentRetainedColdWorldEventFacts(
+  state: SimulationState,
+  retained: readonly RetainedColdWorldEventFact[],
+): void {
+  const incoming = normalizeRetainedColdWorldEventFacts(state, retained);
+  const existing = retainedColdIndexFor(state);
+  if (!existing || existing.byId.size === 0) {
+    retainedColdIndexes.set(
+      authoritativeHistoryBase(state),
+      retainedColdEventIndexFromFacts(incoming),
+    );
+    return;
+  }
+
+  const byOrdinal = new Map<number, RetainedColdWorldEventFact>();
+  const byId = new Map<string, RetainedColdWorldEventFact>();
+  for (const facts of existing.byLeaseKey.values()) {
+    for (const fact of facts) {
+      const ordinalIdentity = byOrdinal.get(fact.absoluteIndex);
+      const idIdentity = byId.get(fact.eventId);
+      if ((ordinalIdentity && ordinalIdentity.eventId !== fact.eventId)
+        || (idIdentity && idIdentity.absoluteIndex !== fact.absoluteIndex)) {
+        throw new Error('既有冷历史 registry identity 冲突');
+      }
+      byOrdinal.set(fact.absoluteIndex, fact);
+      byId.set(fact.eventId, fact);
+    }
+  }
+  for (const fact of incoming) {
+    const ordinalIdentity = byOrdinal.get(fact.absoluteIndex);
+    const idIdentity = byId.get(fact.eventId);
+    if ((ordinalIdentity && ordinalIdentity.eventId !== fact.eventId)
+      || (idIdentity && idIdentity.absoluteIndex !== fact.absoluteIndex)) {
+      throw new Error(`冷历史事实 ${fact.absoluteIndex}/${fact.eventId} identity 冲突`);
+    }
+    const previous = ordinalIdentity ?? idIdentity;
+    const merged = previous ? Object.freeze({
+      absoluteIndex: previous.absoluteIndex,
+      eventId: previous.eventId,
+      event: previous.event,
+      leaseKeys: Object.freeze([...new Set([
+        ...previous.leaseKeys,
+        ...fact.leaseKeys,
+      ])].sort()),
+    }) : fact;
+    byOrdinal.set(merged.absoluteIndex, merged);
+    byId.set(merged.eventId, merged);
+  }
+  retainedColdIndexes.set(
+    authoritativeHistoryBase(state),
+    retainedColdEventIndexFromFacts(
+      [...byOrdinal.values()].sort((left, right) => left.absoluteIndex - right.absoluteIndex),
+    ),
+  );
 }
 
 /** Exact cold facts for one domain lease; never includes unrelated history. */

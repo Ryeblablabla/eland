@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import {
+  augmentRetainedColdWorldEventFacts,
   registerLiveSocialEvidenceDescriptors,
   retainedLiveSocialEvidenceForLivingSources,
 } from '../src/game/eland/domain/event-index';
@@ -12,6 +13,7 @@ import {
   type LiveSocialEvidenceDescriptor,
   type RetainedLiveSocialEvidenceDescriptor,
 } from '../src/game/eland/domain/live-social-evidence';
+import { MODERN_RECORD_EXPERIMENT_LEASE_KEY } from '../src/game/eland/domain/era-progression';
 import {
   assertDecodedHistoryRetentionSidecar,
   encodeHistoryRetentionSidecar,
@@ -40,6 +42,10 @@ import {
   type HistoryRetentionProjectionResult,
   type HistoryRetentionSeal,
 } from './history-retention-projection';
+import {
+  genericColdHistoryRetentionLeaseKeysByEventId,
+} from './retained-history-evidence';
+import { MAX_RUN_CONTINUATION_COLD_PINS } from './run-continuation-bundle';
 import {
   parseRunStateRoot,
   materializeVerifiedRunHistoryPinnedEvents,
@@ -83,6 +89,176 @@ interface VerifiedLiveSocialDescriptorPoolItem {
 interface VerifiedSuccessorLiveSocialPrefixLookup {
   readonly searchedEventIds: readonly string[];
   readonly matches: readonly HistoryRetentionContinuationMatch[];
+}
+
+const RECORD_REPLICATION_VALIDATION_BRIDGE_LEASE_KEY =
+  'server:retention-successor:record-replication-validation';
+
+function candidateRecordReplicationInputSourceIds(
+  state: SimulationState,
+  previousPinnedEventIds: ReadonlySet<string>,
+): string[] {
+  const result = new Set<string>();
+  for (const event of state.world.past) {
+    if (event.kind !== 'action'
+      || event.diff.recordUseReplicationReceipt !== true
+      || !Array.isArray(event.diff.recordUseInputSourceEventIds)) continue;
+    for (const eventId of event.diff.recordUseInputSourceEventIds) {
+      if (typeof eventId === 'string'
+        && eventId.length > 0
+        && previousPinnedEventIds.has(eventId)) result.add(eventId);
+    }
+  }
+  return [...result].sort();
+}
+
+function exactMatchesByEventId(
+  matches: readonly HistoryRetentionContinuationMatch[],
+  label: string,
+): Map<string, HistoryRetentionContinuationMatch> {
+  const result = new Map<string, HistoryRetentionContinuationMatch>();
+  for (const match of matches) {
+    const existing = result.get(match.eventId);
+    if (existing && existing.absoluteIndex !== match.absoluteIndex) {
+      throw new Error(`${label} ${match.eventId} ordinal 身份冲突`);
+    }
+    result.set(match.eventId, match);
+  }
+  return result;
+}
+
+/**
+ * The next private shell is decoded on a new history-array identity, so it
+ * cannot inherit the source continuation's process-local cold registry. Before
+ * collecting its canonical demand, restore the previous verified record
+ * witness plus candidate replication inputs that already have an exact prior
+ * pin plus direct match. An already retained modern witness may instead use
+ * only that observer lease's exact selector identity. The ordinary receipt
+ * validator still decides whether any candidate is a real modern-record
+ * witness; a marker, an unknown ID, or unrelated selective membership cannot
+ * manufacture evidence here.
+ */
+function installVerifiedSuccessorRecordValidationEvidence(
+  previous: Readonly<HistoryRetentionProjectionResult>,
+  previousRoot: ReturnType<typeof stableRoot>,
+  nextState: SimulationState,
+  readChunk: (hash: string) => RunStateChunk,
+): void {
+  const cursor = nextState.world.historyCursor;
+  if (!cursor || cursor.version !== 1) {
+    throw new Error('retention successor record input bridge 缺少 next history cursor');
+  }
+  const pinsById = new Map(previous.pins.map((pin) => [pin.eventId, pin]));
+  if (pinsById.size !== previous.pins.length) {
+    throw new Error('retention successor record input bridge pin ID 身份冲突');
+  }
+  // Candidate publication work is an intersection with the sealed previous
+  // pin set. It is never truncated; the cold subset materialized below is
+  // bounded by the continuation bundle's global cold-pin cap.
+  const candidateInputIds = new Set(candidateRecordReplicationInputSourceIds(
+    nextState,
+    new Set(pinsById.keys()),
+  ));
+  const candidateIds = new Set([
+    ...candidateInputIds,
+    ...previous.pins.filter((pin) => (
+      pin.leaseKeys.includes(MODERN_RECORD_EXPERIMENT_LEASE_KEY)
+    )).map((pin) => pin.eventId),
+  ]);
+  if (candidateIds.size === 0) return;
+
+  const directMatchesById = exactMatchesByEventId(
+    previous.continuationBasis.directMatches,
+    'retention successor record direct match',
+  );
+  const modernSelectors = previous.continuationBasis.selectiveMatches.filter((item) => (
+    item.leaseKey === MODERN_RECORD_EXPERIMENT_LEASE_KEY
+  ));
+  if (modernSelectors.length > 1) {
+    throw new Error('retention successor record selector lease 重复');
+  }
+  const modernSelectorMatchesById = exactMatchesByEventId(
+    modernSelectors[0]?.matches ?? [],
+    'retention successor modern record selector',
+  );
+  const eligibleLeaseKeysByEventId = genericColdHistoryRetentionLeaseKeysByEventId(
+    nextState,
+    [...candidateIds].flatMap((eventId) => {
+      const pin = pinsById.get(eventId);
+      return pin ? [pin] : [];
+    }),
+  );
+  const requested = [...candidateIds].flatMap((eventId) => {
+    const pin = pinsById.get(eventId);
+    const directMatch = directMatchesById.get(eventId);
+    const selectiveMatch = modernSelectorMatchesById.get(eventId);
+    if (!pin) return [];
+    if (directMatch && selectiveMatch
+      && directMatch.absoluteIndex !== selectiveMatch.absoluteIndex) {
+      throw new Error(`retention successor record identity ${eventId} 来源冲突`);
+    }
+    // A currently hot receipt may only promote its declared input from a
+    // previous exact direct match. The narrowly allowed selector fallback is
+    // reserved for already retained modern-record evidence whose identity was
+    // carried under the observer's verified selector lease.
+    const match = candidateInputIds.has(eventId)
+      ? directMatch
+      : directMatch ?? selectiveMatch;
+    if (!match || pin.absoluteIndex !== match.absoluteIndex) return [];
+    const eligibleLeaseKeys = eligibleLeaseKeysByEventId.get(eventId) ?? [];
+    if (eligibleLeaseKeys.length === 0) return [];
+    if (pin.absoluteIndex >= cursor.hotStartIndex) {
+      const hot = nextState.world.past[pin.absoluteIndex - cursor.hotStartIndex];
+      if (hot?.id !== eventId) {
+        throw new Error(
+          `retention successor record input hot identity ${pin.absoluteIndex}/${eventId} 不一致`,
+        );
+      }
+      return [];
+    }
+    if (pin.absoluteIndex >= previousRoot.eventCount) {
+      throw new Error(
+        `retention successor record input ${pin.absoluteIndex}/${eventId} 超出 previous root`,
+      );
+    }
+    return [{
+      absoluteIndex: pin.absoluteIndex,
+      eventId,
+      leaseKeys: pin.leaseKeys.includes(MODERN_RECORD_EXPERIMENT_LEASE_KEY)
+        ? [MODERN_RECORD_EXPERIMENT_LEASE_KEY]
+        : [RECORD_REPLICATION_VALIDATION_BRIDGE_LEASE_KEY],
+    }];
+  }).sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+  if (requested.length === 0) return;
+  if (requested.length > MAX_RUN_CONTINUATION_COLD_PINS) {
+    throw new Error('retention successor record input bridge 超出 continuation cold pin 上限');
+  }
+  for (let index = 1; index < requested.length; index += 1) {
+    if (requested[index - 1]!.absoluteIndex === requested[index]!.absoluteIndex) {
+      throw new Error('retention successor record input bridge ordinal 身份冲突');
+    }
+  }
+  const decoded = materializeVerifiedRunHistoryPinnedEvents(
+    previousRoot,
+    readChunk,
+    requested.map((item) => item.absoluteIndex),
+  );
+  augmentRetainedColdWorldEventFacts(nextState, requested.map((item, index) => {
+    const actual = decoded[index];
+    if (!actual
+      || actual.absoluteIndex !== item.absoluteIndex
+      || actual.event.id !== item.eventId) {
+      throw new Error(
+        `retention successor record input ${item.absoluteIndex}/${item.eventId} 无法精确物化`,
+      );
+    }
+    return Object.freeze({
+      absoluteIndex: item.absoluteIndex,
+      eventId: item.eventId,
+      event: actual.event,
+      leaseKeys: Object.freeze([...item.leaseKeys]),
+    });
+  }));
 }
 
 function stableRoot(chunk: RunStateChunk, label: string) {
@@ -408,6 +584,12 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     readChunk,
     reusableLiveSocialDescriptors,
   );
+  installVerifiedSuccessorRecordValidationEvidence(
+    previous,
+    previousRoot,
+    nextState,
+    readChunk,
+  );
   const demandSnapshot = prepareHistoryRetentionDemandSnapshot(nextState);
   const fold = resumeHistoryRetentionProjection(
     previous,
@@ -453,6 +635,8 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       searchedPrefixLiveSocialIdSet.has(match.eventId)
     )),
   );
+  const residualPrefixLiveSocialIds =
+    unresolvedVerifiedPrefixLiveSocialIndexEventIds(fold);
 
   const unresolvedPrefixLogisticsIds = unresolvedVerifiedPrefixLogisticsIndexEventIds(fold);
   const unresolvedPrefixTerminalFailureIds =
@@ -475,6 +659,7 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     unresolvedVerifiedPrefixProjectPressureIndexEventIds(fold)
       .filter((eventId) => !stricterPrefixIds.has(eventId));
   const unresolvedPrefixIds = [...new Set([
+    ...residualPrefixLiveSocialIds,
     ...unresolvedPrefixLogisticsIds,
     ...unresolvedPrefixProjectPressureIds,
     ...unresolvedPrefixTerminalFailureIds,
@@ -548,6 +733,20 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       fold,
       verifiedPrefix.eventCount,
       unresolvedPrefixSocialRepetitionIds.flatMap((eventId) => {
+        const match = matchesByEventId.get(eventId);
+        return match ? [match] : [];
+      }).sort((left, right) => (
+        left.eventId.localeCompare(right.eventId) || left.absoluteIndex - right.absoluteIndex
+      )),
+    );
+    // Seed broad live-social last: the same source may also belong to a
+    // stricter gameplay group whose bridge must consume the unresolved token
+    // first. Existing exact identity is accepted by the owner-scoped seeder.
+    seedVerifiedPrefixLiveSocialIndexMatches(
+      fold,
+      verifiedPrefix.eventCount,
+      residualPrefixLiveSocialIds,
+      residualPrefixLiveSocialIds.flatMap((eventId) => {
         const match = matchesByEventId.get(eventId);
         return match ? [match] : [];
       }).sort((left, right) => (

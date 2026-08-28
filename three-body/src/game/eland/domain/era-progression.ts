@@ -24,6 +24,7 @@ import {
 } from './measurement';
 import { validateElectricalPowerTopology } from './electrical-power';
 import type { MeasurementUncertaintyBasis, ProjectFunction, ProjectState } from './project';
+import { projectEventHasEventTimeLead } from './project-leadership';
 import { livingPeople } from './state-index';
 import { actionSatisfiesRecordReplicationReceipt } from './action-executor';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
@@ -858,7 +859,7 @@ export function isIndependentRecordExperimentFact(
   const readerId = event.diff.recordUseReaderId;
   const authorId = event.diff.recordUseRecordAuthorId;
   const project = state.projects.find((candidate) => candidate.id === event.diff.recordUseProjectId
-    && candidate.ownerId === readerId
+    && projectEventHasEventTimeLead(candidate, event)
     && (candidate.status === 'active' || candidate.status === 'completed')
     && candidate.actionEventIds.includes(event.id));
   const record = state.records.find((candidate) => candidate.id === event.diff.recordUseRecordId

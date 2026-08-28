@@ -396,6 +396,49 @@ try {
     };
   }
 
+  function makeRecordProjectSuccessor(state, vacancyAtMonth, successionAtMonth) {
+    const project = state.projects.find((candidate) => candidate.id === 'record-use-project');
+    assert.ok(project);
+    const projectSite = { cellId: cellId(1, 1), z: 2 };
+    const vacancyId = `record-project-vacancy:${vacancyAtMonth}`;
+    const deathEventId = `record-project-founder-death:${vacancyAtMonth}`;
+    const successionEventId = `record-project-succession:${successionAtMonth}`;
+    const contributionEventId = `record-project-contribution:${successionAtMonth}`;
+    project.ownerId = authorId;
+    project.site = projectSite;
+    project.leadershipTransitions = [{
+      version: 'project-leadership-v1',
+      id: vacancyId,
+      kind: 'vacancy',
+      projectId: project.id,
+      predecessorId: authorId,
+      deathEventId,
+      expiresAtMonth: vacancyAtMonth + 120,
+      atMonth: vacancyAtMonth,
+      orderInMonth: 0,
+      planningTick: 0,
+      orderInTick: 0,
+      sourceEventIds: [deathEventId],
+    }, {
+      version: 'project-leadership-v1',
+      id: successionEventId,
+      kind: 'succession',
+      projectId: project.id,
+      predecessorId: authorId,
+      successorId: readerId,
+      vacancyTransitionId: vacancyId,
+      deathEventId,
+      contributionEventId,
+      successionEventId,
+      site: { ...projectSite },
+      atMonth: successionAtMonth,
+      orderInMonth: 0,
+      planningTick: 0,
+      orderInTick: 0,
+      sourceEventIds: [deathEventId, contributionEventId, successionEventId],
+    }];
+  }
+
   function replicationModernState() {
     const state = modernState();
     const reader = state.people.find((person) => person.id === readerId);
@@ -552,6 +595,8 @@ try {
   const complete = modernState();
   const completeEvidence = observeModernCivilizationEvidence(complete);
   assert.equal(completeEvidence.satisfied, true, '三束现代事实各一次即应满足低门槛');
+  assert.equal(completeEvidence.independentRecordExperiment?.readerId, readerId,
+    '原项目负责人亲自完成的记录实验仍须被观察');
   assert.deepEqual(
     {
       projectId: completeEvidence.independentRecordExperiment?.projectId,
@@ -804,6 +849,24 @@ try {
   assert.equal(missingRecordEvidence.independentRecordExperiment, null);
   assert.ok(missingRecordEvidence.electricalPower && missingRecordEvidence.comparableMeasurement);
   assert.equal(missingRecordEvidence.satisfied, false);
+
+  const successorLedRecord = modernState();
+  makeRecordProjectSuccessor(successorLedRecord, 4, 5);
+  assert.equal(
+    observeModernCivilizationEvidence(successorLedRecord).independentRecordExperiment?.readerId,
+    readerId,
+    '项目合法接任者在接任后的记录实验应满足同一观察条件',
+  );
+
+  const nonLeadRecord = modernState();
+  nonLeadRecord.projects.find((project) => project.id === 'record-use-project').ownerId = authorId;
+  assert.equal(observeModernCivilizationEvidence(nonLeadRecord).independentRecordExperiment, null,
+    '不是项目事件时点负责人的读者不得借项目实验满足记录门槛');
+
+  const futureSuccessorRecord = modernState();
+  makeRecordProjectSuccessor(futureSuccessorRecord, 7, 8);
+  assert.equal(observeModernCivilizationEvidence(futureSuccessorRecord).independentRecordExperiment, null,
+    '实验发生后才接任项目不能追溯改写当时的项目负责人');
 
   const sameAuthor = modernState();
   const sameAuthorFact = sameAuthor.world.past.find((event) => event.id === 'independent-record-experiment');

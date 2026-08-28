@@ -23,7 +23,7 @@ import {
   sameMeasurementStackIdentity,
 } from './measurement';
 import { validateElectricalPowerTopology } from './electrical-power';
-import type { MeasurementUncertaintyBasis, ProjectState } from './project';
+import type { MeasurementUncertaintyBasis, ProjectFunction, ProjectState } from './project';
 import { livingPeople } from './state-index';
 import { actionSatisfiesRecordReplicationReceipt } from './action-executor';
 import { cellId, cellsInRadius, voxelAt } from '../world/grid';
@@ -237,6 +237,72 @@ interface CapabilityDefinition {
   institutionFragments: string[];
 }
 
+const RECURRING_DUTY_CAPABILITY_INSTITUTION_PREFIX = 'recurring-duty-capability' as const;
+const LEGACY_RECURRING_DUTY_INSTITUTION_MARKER = ':decision-rule:offer-recurring-duty-rule:' as const;
+const BRONZE_RECURRING_DUTIES = new Set<ProjectFunction>([
+  'copper-charge',
+  'copper-smelting',
+  'tin-charge',
+  'tin-smelting',
+  'bronze-alloying',
+  'bronze-tooling',
+  'bronze-workshop',
+]);
+const IRON_RECURRING_DUTIES = new Set<ProjectFunction>([
+  'iron-charge',
+  'iron-reduction',
+  'iron-working',
+  'iron-tooling',
+  'iron-workshop',
+]);
+
+type RecurringDutyCapabilityClass = 'bronze' | 'iron' | 'other';
+
+function recurringDutyCapabilityClass(
+  desiredFunction: ProjectFunction,
+): RecurringDutyCapabilityClass {
+  if (BRONZE_RECURRING_DUTIES.has(desiredFunction)) return 'bronze';
+  if (IRON_RECURRING_DUTIES.has(desiredFunction)) return 'iron';
+  return 'other';
+}
+
+/**
+ * Observer-only institution identity. The material class comes from the typed
+ * duty subject, never from a collective/rule ID or an era target.
+ */
+export function recurringDutyCapabilityInstitutionKey(
+  collectiveId: string,
+  ruleId: string,
+  desiredFunction: ProjectFunction,
+): string {
+  const capability = recurringDutyCapabilityClass(desiredFunction);
+  return [
+    RECURRING_DUTY_CAPABILITY_INSTITUTION_PREFIX,
+    'v1',
+    capability,
+    desiredFunction,
+    encodeURIComponent(collectiveId),
+    encodeURIComponent(ruleId),
+  ].join(':');
+}
+
+function recurringDutyCapabilityFromInstitutionKey(
+  institutionKey: string,
+): RecurringDutyCapabilityClass | null {
+  const segments = institutionKey.split(':');
+  if (segments.length !== 6
+    || segments[0] !== RECURRING_DUTY_CAPABILITY_INSTITUTION_PREFIX
+    || segments[1] !== 'v1'
+    || !segments[4]
+    || !segments[5]) return null;
+  const capability = segments[2];
+  const desiredFunction = segments[3] as ProjectFunction;
+  if (capability !== recurringDutyCapabilityClass(desiredFunction)) return null;
+  return capability === 'bronze' || capability === 'iron' || capability === 'other'
+    ? capability
+    : null;
+}
+
 const CAPABILITIES: CapabilityDefinition[] = [
   {
     key: 'processed-wood',
@@ -377,7 +443,12 @@ export function supportingMaterialCapabilityInstitutionKeys(
 ): string[] {
   const fragments = exactCapabilityDefinition(key).institutionFragments;
   return institutionKeys.filter((institutionKey) => (
-    fragments.some((fragment) => institutionKey.includes(fragment))
+    institutionKey.startsWith(`${RECURRING_DUTY_CAPABILITY_INSTITUTION_PREFIX}:`)
+      ? recurringDutyCapabilityFromInstitutionKey(institutionKey) === key
+      : institutionKey.startsWith('collective-coordination:')
+          && institutionKey.includes(LEGACY_RECURRING_DUTY_INSTITUTION_MARKER)
+        ? false
+        : fragments.some((fragment) => institutionKey.includes(fragment))
   ));
 }
 

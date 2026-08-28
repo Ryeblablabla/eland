@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { committedHistoryView } from '../src/game/eland/domain/history';
 import { Material, type MaterialId } from '../src/game/eland/domain/material';
 import { mandateWasExercised } from '../src/game/eland/domain/governance';
+import { recurringDutyCapabilityInstitutionKey } from '../src/game/eland/domain/era-progression';
 import type {
   EmergentRegion,
   FunctionalBuildingObservation,
@@ -289,7 +290,13 @@ function materializeInstitutions(
         && mandateWasExercised(mandate));
       if (exercised.length === 0) return [];
       return [{
-        key: `collective-coordination:${collective.id}:${rule.id}`,
+        key: rule.scope === 'assign-recurring-duty'
+          ? recurringDutyCapabilityInstitutionKey(
+            collective.id,
+            rule.id,
+            rule.projectDuty.desiredFunction,
+          )
+          : `collective-coordination:${collective.id}:${rule.id}`,
         label: rule.scope === 'coordinate-material' ? '共同体物质协调职责' : '共同体反复项目职责',
         evidenceEventIds: uniqueBoundedEvidence([
           ...rule.sourceEventIds,

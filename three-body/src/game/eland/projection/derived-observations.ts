@@ -5,6 +5,7 @@ import {
   DEVELOPMENT_ERA_LABELS,
   observeCivilizationDevelopment,
   observeFunctionalBuildings,
+  recurringDutyCapabilityInstitutionKey,
 } from '../domain/era-progression';
 import {
   actionFacts,
@@ -87,7 +88,13 @@ export function observeSimulation(
       && mandateWasExercised(mandate));
     if (!exercisedMandates.length) return [];
     return [{
-      key: `collective-coordination:${collective.id}:${rule.id}`,
+      key: rule.scope === 'assign-recurring-duty'
+        ? recurringDutyCapabilityInstitutionKey(
+          collective.id,
+          rule.id,
+          rule.projectDuty.desiredFunction,
+        )
+        : `collective-coordination:${collective.id}:${rule.id}`,
       label: rule.scope === 'coordinate-material' ? '共同体物质协调职责' : '共同体反复项目职责',
       evidenceEventIds: [...new Set([...rule.sourceEventIds, ...exercisedMandates.flatMap((mandate) => mandate.sourceEventIds)])],
       note: `共同规则至少经过 ${exercisedMandates.length} 次限期授权实践；续任是同一制度的历史，不重复计作新制度。`,

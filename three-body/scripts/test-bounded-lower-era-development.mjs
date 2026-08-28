@@ -63,13 +63,184 @@ try {
   const output = path.join(temporaryDirectory, 'fixture.mjs');
   writeFileSync(entry, [
     `export * from ${JSON.stringify(path.join(workspace, 'server/bounded-observer-civilization-materializer.ts'))};`,
+    `export * from ${JSON.stringify(path.join(workspace, 'server/bounded-observer-derived-materializer.ts'))};`,
+    `export * from ${JSON.stringify(path.join(workspace, 'server/observer-derived-history-projection.ts'))};`,
+    `export * from ${JSON.stringify(path.join(workspace, 'server/observer-derived-history-codec.ts'))};`,
     `export { calculateCivilizationIndex, calculateCertifiedCivilizationIndexFloor } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/civilization-index.ts'))};`,
-    `export { observeFunctionalBuildings, observeMaterialCapabilities } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/era-progression.ts'))};`,
+    `export { observeFunctionalBuildings, observeMaterialCapabilities, supportingMaterialCapabilityInstitutionKeys } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/era-progression.ts'))};`,
+    `export { observeSimulation } from ${JSON.stringify(path.join(workspace, 'src/game/eland/projection/derived-observations.ts'))};`,
     `export { createInitialState } from ${JSON.stringify(path.join(workspace, 'src/game/eland/application/simulation/state-lifecycle.ts'))};`,
+    `export { derivePhysicalStructureIndex } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/physical-structure-index.ts'))};`,
     `export { Material } from ${JSON.stringify(path.join(workspace, 'src/game/eland/domain/material.ts'))};`,
   ].join('\n'));
   buildSync({ entryPoints: [entry], outfile: output, bundle: true, platform: 'node', format: 'esm' });
   const api = await import(`${pathToFileURL(output).href}?v=${Date.now()}`);
+
+  const bronzeDutyFunctions = [
+    'copper-charge',
+    'copper-smelting',
+    'tin-charge',
+    'tin-smelting',
+    'bronze-alloying',
+    'bronze-tooling',
+    'bronze-workshop',
+  ];
+  const ironDutyFunctions = [
+    'iron-charge',
+    'iron-reduction',
+    'iron-working',
+    'iron-tooling',
+    'iron-workshop',
+  ];
+
+  function exercisedDutyFixture() {
+    const state = api.createInitialState(
+      { project() {} },
+      81_000,
+      { endpoint: { kind: 'months', value: 120 } },
+    );
+    const collectiveId = 'collective:workshop-metalwork-name-must-not-classify';
+    const rules = [];
+    const mandates = [];
+    const addDuty = (desiredFunction, exercise, ruleId) => {
+      const projectDuty = {
+        version: 'recurring-project-duty-subject-v1',
+        projectKind: 'production',
+        desiredFunction,
+        progressKind: 'action-progress',
+      };
+      rules.push({
+        id: ruleId,
+        collectiveId,
+        method: 'unanimous',
+        mandateDurationMonths: 12,
+        status: 'active',
+        acceptedAtMonth: 1,
+        proposalAgreementId: `agreement:${ruleId}`,
+        sourceEventIds: [`rule-source:${ruleId}`],
+        scope: 'assign-recurring-duty',
+        projectDuty,
+      });
+      mandates.push({
+        id: `mandate:${ruleId}`,
+        collectiveId,
+        decisionRuleId: ruleId,
+        holderId: 'duty-holder',
+        validFromMonth: 1,
+        validUntilMonth: 24,
+        status: 'active',
+        proposalAgreementId: `mandate-agreement:${ruleId}`,
+        sourceEventIds: [`mandate-source:${ruleId}`],
+        contributionEventIds: [],
+        distributionEventIds: [],
+        scope: 'assign-recurring-duty',
+        projectDuty,
+        projectId: `project:${ruleId}`,
+        dutyProgressEventIds: exercise === 'completion-only' ? [] : [`progress:${ruleId}`],
+        dutyCompletionEventIds: exercise === 'progress-only' ? [] : [`completion:${ruleId}`],
+      });
+    };
+    for (const desiredFunction of [...bronzeDutyFunctions, ...ironDutyFunctions]) {
+      addDuty(desiredFunction, 'exercised', `rule:${desiredFunction}`);
+    }
+    addDuty('bronze-tooling', 'progress-only', 'rule:progress-only');
+    addDuty('iron-tooling', 'completion-only', 'rule:completion-only');
+    addDuty(
+      'prepared-food',
+      'exercised',
+      'rule:unrelated-bronze-workshop-iron-workshop-metalwork-apprentice',
+    );
+    const coordinateRuleId = 'rule:coordinate-metalwork';
+    rules.push({
+      id: coordinateRuleId,
+      collectiveId,
+      method: 'unanimous',
+      mandateDurationMonths: 12,
+      status: 'active',
+      acceptedAtMonth: 1,
+      proposalAgreementId: 'agreement:coordinate',
+      sourceEventIds: ['rule-source:coordinate'],
+      scope: 'coordinate-material',
+      materialId: api.Material.Bronze,
+    });
+    mandates.push({
+      id: 'mandate:coordinate',
+      collectiveId,
+      decisionRuleId: coordinateRuleId,
+      holderId: 'duty-holder',
+      validFromMonth: 1,
+      validUntilMonth: 24,
+      status: 'active',
+      proposalAgreementId: 'mandate-agreement:coordinate',
+      sourceEventIds: ['mandate-source:coordinate'],
+      contributionEventIds: ['coordinate-contribution'],
+      distributionEventIds: ['coordinate-distribution'],
+      scope: 'coordinate-material',
+      materialId: api.Material.Bronze,
+    });
+    state.collectives = [{
+      id: collectiveId,
+      purposeSummary: 'fixture recurring duties',
+      status: 'active',
+      foundedAtMonth: 1,
+      formationAgreementId: 'agreement:formation',
+      memberships: [],
+      decisionRules: rules,
+      mandates,
+      sourceEventIds: ['collective-source'],
+    }];
+    const fullInstitutions = api.observeSimulation(state, { structures: [] }).institutions;
+    const target = {
+      stateHash: '9'.repeat(64),
+      eventCount: state.world.historyCursor.eventCount,
+      tailEventId: state.world.historyCursor.tailEventId,
+    };
+    const demand = {
+      settledCultivationProjects: [],
+      residentialStructures: [],
+      retainedEventIds: [],
+      futureEventIds: [],
+    };
+    const projection = api.projectObserverDerivedHistoryFromFullHistory(
+      state.world.past,
+      target,
+      demand,
+    );
+    const encoded = api.encodeObserverDerivedHistorySidecar({ sourceDemand: demand, projection });
+    const decoded = api.decodeObserverDerivedHistorySidecar(encoded.chunk, {
+      reference: encoded.reference,
+      boundary: { target },
+    });
+    state.world.physicalStructureIndex = api.derivePhysicalStructureIndex(state);
+    const bounded = api.materializeDecodedBoundedObserverDerivedSubset(state, decoded, target);
+    assert.deepEqual(bounded.institutions, fullInstitutions,
+      'the public bounded-derived materializer must emit the exact full observer institution keys');
+    return { collectiveId, institutions: bounded.institutions };
+  }
+
+  function materialAction(id, atMonth, who, diff, orderInMonth = 0) {
+    return {
+      id,
+      kind: 'action',
+      actionTick: 1,
+      atMonth,
+      orderInMonth,
+      planningTick: 1,
+      orderInTick: orderInMonth,
+      cellId: 0,
+      who,
+      cause: 'intent',
+      action: { kind: 'act', operation: 'exert', targets: [] },
+      fromCellId: 0,
+      toCellId: 0,
+      fromZ: 1,
+      toZ: 1,
+      pathSegment: [0],
+      status: 'completed',
+      result: id,
+      diff,
+    };
+  }
 
   function facility({ id, materialId, useCount, users = ['person-a', 'person-b'] }) {
     return {
@@ -156,6 +327,151 @@ try {
       target: { stateHash: source.stateHash, eventCount, tailEventId: event.id },
     };
   }
+
+  const dutyFixture = exercisedDutyFixture();
+  const dutyKeys = dutyFixture.institutions.map((institution) => institution.key);
+  assert.equal(dutyKeys.some((key) => key.includes('rule%3Aprogress-only')), false,
+    'progress without completion is not an exercised institution');
+  assert.equal(dutyKeys.some((key) => key.includes('rule%3Acompletion-only')), false,
+    'completion without matching progress is not an exercised institution');
+  for (const desiredFunction of bronzeDutyFunctions) {
+    assert.ok(dutyKeys.includes([
+      'recurring-duty-capability',
+      'v1',
+      'bronze',
+      desiredFunction,
+      encodeURIComponent(dutyFixture.collectiveId),
+      encodeURIComponent(`rule:${desiredFunction}`),
+    ].join(':')), `bronze duty ${desiredFunction} must be classified from the typed subject`);
+  }
+  for (const desiredFunction of ironDutyFunctions) {
+    assert.ok(dutyKeys.includes([
+      'recurring-duty-capability',
+      'v1',
+      'iron',
+      desiredFunction,
+      encodeURIComponent(dutyFixture.collectiveId),
+      encodeURIComponent(`rule:${desiredFunction}`),
+    ].join(':')), `iron duty ${desiredFunction} must be classified from the typed subject`);
+  }
+  const unrelatedDutyKey = dutyKeys.find((key) => key.includes(encodeURIComponent(
+    'rule:unrelated-bronze-workshop-iron-workshop-metalwork-apprentice',
+  )));
+  assert.ok(unrelatedDutyKey?.startsWith('recurring-duty-capability:v1:other:prepared-food:'),
+    'an unrelated exercised duty remains an institution but carries an explicit non-capability class');
+  assert.deepEqual(api.supportingMaterialCapabilityInstitutionKeys('bronze', [unrelatedDutyKey]), []);
+  assert.deepEqual(api.supportingMaterialCapabilityInstitutionKeys('iron', [unrelatedDutyKey]), [],
+    'collective and rule ID substrings cannot classify a recurring duty');
+  assert.deepEqual(api.supportingMaterialCapabilityInstitutionKeys('bronze', [
+    'recurring-duty-capability:v1:bronze-extra:bronze-tooling:collective:rule',
+    'recurring-duty-capability:v1:bronze:iron-workshop:collective:rule',
+    'recurring-duty-capability:v1:bronze:bronze-tooling:collective:rule:extra',
+  ]), [], 'the controlled recurring-duty prefix requires exact complete segments');
+  const legacyRecurringDutyKey = [
+    'collective-coordination',
+    'collective-with-metalwork-name',
+    'decision-rule',
+    'offer-recurring-duty-rule',
+    '12',
+    'collective',
+    'production',
+    'bronze-workshop',
+    'action-progress',
+    'project-with-apprentice-name',
+  ].join(':');
+  assert.deepEqual(
+    api.supportingMaterialCapabilityInstitutionKeys('bronze', [legacyRecurringDutyKey]),
+    [],
+    'legacy generic recurring-duty IDs cannot classify metallurgy by embedded text',
+  );
+  assert.deepEqual(api.supportingMaterialCapabilityInstitutionKeys('iron', [legacyRecurringDutyKey]), []);
+  const coordinateKey = dutyKeys.find((key) => key.startsWith('collective-coordination:'));
+  assert.ok(coordinateKey);
+  assert.deepEqual(api.supportingMaterialCapabilityInstitutionKeys('bronze', [coordinateKey]), [coordinateKey],
+    'coordinate-material keeps its existing institution-fragment path');
+  assert.deepEqual(
+    api.supportingMaterialCapabilityInstitutionKeys('iron', ['metalwork-standard:smithy']),
+    ['metalwork-standard:smithy'],
+  );
+  assert.deepEqual(
+    api.supportingMaterialCapabilityInstitutionKeys('bronze', ['apprentice-craft:distributed-teaching']),
+    ['apprentice-craft:distributed-teaching'],
+    'existing metalwork-standard and apprentice paths remain unchanged',
+  );
+
+  const metallurgicalInstitutions = dutyFixture.institutions.filter((institution) => (
+    institution.key.includes(':bronze:bronze-tooling:')
+      || institution.key.includes(':iron:iron-tooling:')
+  ));
+  assert.equal(metallurgicalInstitutions.length, 2);
+  const metallurgicalCapabilities = capabilitySet({
+    bronze: {
+      successfulBatchCount: 8,
+      adoptedActionCount: 20,
+      firstSuccessfulMonth: 1,
+      lastSuccessfulMonth: 12,
+      producerIds: ['smith-a', 'smith-b'],
+      productionSiteMaterialIds: [api.Material.Foundry],
+      successfulBatchEvidence: [ref('cold-bronze-batch', 1)],
+      adoptedActionEvidence: [ref('cold-bronze-use', 2)],
+    },
+    iron: {
+      successfulBatchCount: 10,
+      adoptedActionCount: 28,
+      firstSuccessfulMonth: 1,
+      lastSuccessfulMonth: 18,
+      producerIds: ['smith-a', 'smith-b'],
+      productionSiteMaterialIds: [api.Material.Smithy],
+      successfulBatchEvidence: [ref('cold-iron-batch', 3)],
+      adoptedActionEvidence: [ref('cold-iron-use', 4)],
+    },
+  });
+
+  const fullMetallurgy = api.createInitialState(
+    { project() {} },
+    81_005,
+    { endpoint: { kind: 'months', value: 120 } },
+  );
+  const bronzeBatches = Array.from({ length: 8 }, (_, index) => materialAction(
+    `full-bronze-batch:${index}`,
+    index === 7 ? 12 : index + 1,
+    index % 2 === 0 ? 'smith-a' : 'smith-b',
+    { outputMaterialId: index === 0 ? api.Material.Foundry : api.Material.Bronze },
+    index,
+  ));
+  const bronzeUses = Array.from({ length: 20 }, (_, index) => materialAction(
+    `full-bronze-use:${index}`,
+    12 + Math.floor(index / 10),
+    index % 2 === 0 ? 'smith-a' : 'smith-b',
+    { toolMaterialId: api.Material.BronzeTool },
+    index,
+  ));
+  const ironBatches = Array.from({ length: 10 }, (_, index) => materialAction(
+    `full-iron-batch:${index}`,
+    index === 9 ? 18 : 1 + index * 2,
+    index % 2 === 0 ? 'smith-a' : 'smith-b',
+    { outputMaterialId: index === 0 ? api.Material.Smithy : api.Material.Iron },
+    index,
+  ));
+  const ironUses = Array.from({ length: 28 }, (_, index) => materialAction(
+    `full-iron-use:${index}`,
+    18 + Math.floor(index / 14),
+    index % 2 === 0 ? 'smith-a' : 'smith-b',
+    { toolMaterialId: api.Material.IronTool },
+    index,
+  ));
+  fullMetallurgy.world.past.push(...bronzeBatches, ...bronzeUses, ...ironBatches, ...ironUses);
+  fullMetallurgy.world.historyCursor = {
+    version: 1,
+    eventCount: fullMetallurgy.world.past.length,
+    hotStartIndex: 0,
+    tailEventId: fullMetallurgy.world.past.at(-1).id,
+  };
+  fullMetallurgy.clock.elapsedMonths = 30;
+  fullMetallurgy.derived.institutions = structuredClone(metallurgicalInstitutions);
+  const fullMetallurgicalObservations = api.observeMaterialCapabilities(fullMetallurgy);
+  assert.equal(fullMetallurgicalObservations.find((item) => item.key === 'bronze').stage, 'institutional');
+  assert.equal(fullMetallurgicalObservations.find((item) => item.key === 'iron').stage, 'institutional');
 
   const masonry = capabilitySet({
     'masonry-stone': {
@@ -279,18 +595,6 @@ try {
   assert.equal(unknownResult.observation.currentEra, 'primitive-tribe');
   assert.ok(unknownResult.observation.missingGateIds.includes('index:120'));
 
-  const iron = capabilitySet({
-    iron: {
-      successfulBatchCount: 10,
-      adoptedActionCount: 28,
-      firstSuccessfulMonth: 1,
-      lastSuccessfulMonth: 18,
-      producerIds: ['smith-a', 'smith-b'],
-      productionSiteMaterialIds: [api.Material.Smithy],
-      successfulBatchEvidence: [ref('cold-iron-batch', 2)],
-      adoptedActionEvidence: [ref('cold-iron-use', 3)],
-    },
-  });
   const ancientState = api.createInitialState(
     { project() {} },
     81_003,
@@ -298,10 +602,8 @@ try {
   );
   const ancientBoundary = bind(ancientState, 18, 'd');
   const ancientDerived = derivedBundle(ancientState, ancientBoundary.target, {
-    capabilities: iron,
-    institutions: [{
-      key: 'metalwork-standard:smithy', label: 'metalwork', evidenceEventIds: ['cold-metalwork'], note: '',
-    }],
+    capabilities: metallurgicalCapabilities,
+    institutions: metallurgicalInstitutions,
   });
   const ancient = api.materializeBoundedCertifiedCivilizationDevelopment(
     ancientState,
@@ -310,9 +612,16 @@ try {
     ancientDerived.materialization,
     ancientDerived.projection,
   );
-  assert.equal(ancient.observation.materialCapabilities.find((item) => item.key === 'iron').stage, 'institutional');
+  for (const key of ['bronze', 'iron']) {
+    const fullCapability = fullMetallurgicalObservations.find((item) => item.key === key);
+    const boundedCapability = ancient.observation.materialCapabilities.find((item) => item.key === key);
+    assert.equal(boundedCapability.stage, fullCapability.stage,
+      `${key} recurring-duty classification must have full/bounded stage parity`);
+    assert.equal(boundedCapability.stage, 'institutional');
+    assert.deepEqual(boundedCapability.supportingInstitutionKeys, fullCapability.supportingInstitutionKeys);
+  }
   assert.equal(ancient.observation.currentEra, 'ancient-civilization',
-    'institutional iron must directly prove ancient without an agrarian sequence prerequisite');
+    'institutional metallurgy must directly prove ancient without an agrarian sequence prerequisite');
   assert.equal(ancientState.civilization.stage, '古代文明');
 
   const full = api.createInitialState(

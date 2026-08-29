@@ -290,6 +290,8 @@ export const RECENT_PRODUCTION_WINDOW_LEASE = 'retention:recent-personal-product
 const RECENT_PRODUCTION_WINDOW_GROUP_PREFIX = 'recent-personal-production-window:';
 export const CALIBRATION_SOURCE_GROUP_SUFFIX = ':instrument-sources';
 export const LIVE_SUPPORTING_SOURCE_GROUP_SUFFIX = ':supporting-sources';
+export const ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX =
+  ':record-payload-identities';
 const GROUNDED_RESPONSE_SOURCE_GROUP_PREFIX =
   'gameplay:grounded-conversation-response:';
 const RECENT_TERMINAL_FAILURE_ACTION_GROUP_PREFIX =
@@ -379,6 +381,48 @@ export function sameStringSet(left: readonly string[], right: readonly string[])
   const leftSet = new Set(left);
   const rightSet = new Set(right);
   return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
+}
+
+export function activeProjectRecordPayloadIdentityCoreGroupKey(groupKey: string): string | null {
+  if (!groupKey.endsWith(ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX)) return null;
+  const coreKey = groupKey.slice(0, -ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX.length);
+  if (!coreKey.startsWith('active-project:')
+    || (!coreKey.endsWith(':triggers')
+      && !coreKey.endsWith(':pressure-basis')
+      && !coreKey.endsWith(':inquiry-basis'))) return null;
+  return coreKey;
+}
+
+export function splittableActiveProjectRecordPayloadIdentityCoreGroup(
+  group: Pick<HistoryRetentionContinuationDemandGroup, 'groupKey' | 'requirement'>,
+): boolean {
+  return group.requirement === 'all'
+    && activeProjectRecordPayloadIdentityCoreGroupKey(
+      `${group.groupKey}${ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX}`,
+    ) === group.groupKey;
+}
+
+export function assertActiveProjectRecordPayloadIdentitySplitGroups(
+  groups: readonly HistoryRetentionDemandGroupShape[],
+  context: string,
+): void {
+  const groupsByKey = new Map(groups.map((group) => [group.groupKey, group]));
+  for (const split of groups) {
+    const coreKey = activeProjectRecordPayloadIdentityCoreGroupKey(split.groupKey);
+    if (!coreKey) continue;
+    const core = groupsByKey.get(coreKey);
+    const coreEventIds = new Set(core?.eventIds ?? []);
+    if (!core
+      || core.requirement !== 'all'
+      || split.requirement !== 'index-only'
+      || split.eventIds.length === 0
+      || !sameStringSet(split.leaseKeys, core.leaseKeys)
+      || split.eventIds.some((eventId) => coreEventIds.has(eventId))
+      || core.eventIds.length + split.eventIds.length
+        > HISTORY_RETENTION_MAX_ACTIVE_PROJECT_ACTION_EVENT_IDS) {
+      throw new Error(`${context} ${split.groupKey} 的 record payload storage split 无效`);
+    }
+  }
 }
 
 export function waterAssistanceSelectiveLeaseKeysFromDemandGroups(
@@ -482,6 +526,10 @@ export function calibrationLeaseKeysFromDemandGroups(
 }
 
 export function historyRetentionDemandFingerprint(demand: HistoryRetentionContinuationDemand): string {
+  assertActiveProjectRecordPayloadIdentitySplitGroups(
+    demand.groups,
+    'retention demand fingerprint',
+  );
   const fingerprintGroups = compatibilityCanonicalDemandGroups(demand.groups);
   return createHash('sha256')
     .update('eland-history-retention-demand-v1\0')
@@ -512,6 +560,7 @@ export function compatibilityCanonicalDemandGroups(
     const liveSocial = parseLivePersonSocialEvidenceGroupKey(group.groupKey);
     if (liveSupportingSourceCoreGroupKey(group.groupKey) !== null
       || parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null
+      || activeProjectRecordPayloadIdentityCoreGroupKey(group.groupKey) !== null
       || group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
       || parseGroundedConversationResponseSourceLeaseKey(group.groupKey)
       || parseRecentTerminalFailureActionLeaseKey(group.groupKey)
@@ -531,6 +580,26 @@ export function compatibilityCanonicalDemandGroups(
           : group.requirement,
       leaseKeys: [...new Set(group.leaseKeys)].sort(),
       eventIds: [...new Set(group.eventIds)].sort(),
+    });
+  }
+  for (const group of groups) {
+    const coreKey = activeProjectRecordPayloadIdentityCoreGroupKey(group.groupKey);
+    if (!coreKey) continue;
+    const core = canonical.get(coreKey);
+    if (!core || core.requirement !== 'all'
+      || group.requirement !== 'index-only'
+      || !sameStringSet(group.leaseKeys, core.leaseKeys)) {
+      canonical.set(group.groupKey, {
+        groupKey: group.groupKey,
+        requirement: group.requirement,
+        leaseKeys: [...new Set(group.leaseKeys)].sort(),
+        eventIds: [...new Set(group.eventIds)].sort(),
+      });
+      continue;
+    }
+    canonical.set(coreKey, {
+      ...core,
+      eventIds: [...new Set([...core.eventIds, ...group.eventIds])].sort(),
     });
   }
   for (const group of groups) {

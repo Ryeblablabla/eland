@@ -836,7 +836,11 @@ try {
   function mixedRecordIdentitySuccessor(
     sourceIdentity,
     label,
-    { addRecordAlias = false } = {},
+    {
+      addRecordAlias = false,
+      strictActionAlias = false,
+      strictDecisionAlias = false,
+    } = {},
   ) {
     const state = structuredClone(stateD);
     const actor = state.people.find((person) => person.id === mixedActor.id);
@@ -870,8 +874,44 @@ try {
       summary: 'mixed record identity active logistics',
       ownerId: actor.id,
       beneficiaryIds: [],
-      triggerFactIds: [],
+      // A written/read record can legitimately flow through a known fact into
+      // all three project provenance fields. Each basis mixes the body-free
+      // record identity with one real read event whose body must remain strict.
+      triggerFactIds: mixedSources,
       pressure: 60,
+      pressureBasis: {
+        version: 'project-pressure-basis-v1',
+        need: 'production-efficiency',
+        observerId: actor.id,
+        atMonth: 13,
+        pressure: 60,
+        edgeKeys: ['state:knowledge:mixed-record'],
+        reasonKeys: ['knowledge-preservation'],
+        sourceFactIds: mixedSources,
+        basisKey: `mixed-record-pressure-basis-${label}`,
+      },
+      inquiryOpportunityBasis: {
+        version: 'project-inquiry-opportunity-basis-v1',
+        actorId: actor.id,
+        desiredFunction: 'efficient-production',
+        atMonth: 13,
+        materialIds: [],
+        techniqueIds: [],
+        targetSourceKeys: [],
+        verifiedResponseEventIds: [],
+        opportunityKeys: ['knowledge:mixed-record'],
+        opportunitySources: [{
+          opportunityKey: 'knowledge:mixed-record',
+          kind: 'knowledge',
+          sourceKeys: ['knowledge:mixed-record'],
+          sourceFactIds: mixedSources,
+        }],
+        sourceFactIds: mixedSources,
+        sourceKeys: ['knowledge:mixed-record'],
+        basisKey: `mixed-record-inquiry-basis-${label}`,
+        inheritedProjectIds: [],
+        renewalKeys: ['knowledge:mixed-record'],
+      },
       createdAtMonth: 13,
       reviewAtMonth: 15,
       status: 'active',
@@ -880,7 +920,7 @@ try {
       materialDemands: [],
       reservations: [],
       contributorIds: [actor.id],
-      actionEventIds: [],
+      actionEventIds: strictActionAlias ? [sourceIdentity] : [],
       failureEventIds: [],
       completionEventIds: [],
       activeLogisticsEpisodeId: `mixed-record-logistics-${label}`,
@@ -920,7 +960,7 @@ try {
       createdAtMonth: 13,
       lastProgressAtMonth: 13,
       progress: 0,
-      sourceDecisionEventId: suffix.id,
+      sourceDecisionEventId: strictDecisionAlias ? sourceIdentity : suffix.id,
       sourceFactIds: mixedSources,
       actionEventIds: [],
       replanCount: 0,
@@ -964,9 +1004,18 @@ try {
   const mixedGroups = mixedProjection.demandGroups.filter((group) => (
     group.eventIds.includes(payloadIdentity)
   ));
+  const strictProjectGroupKeys = [
+    `active-project:${mixed.projectId}:triggers`,
+    `active-project:${mixed.projectId}:pressure-basis`,
+    `active-project:${mixed.projectId}:inquiry-basis`,
+  ];
+  const recordPayloadProjectGroupKeys = strictProjectGroupKeys.map((groupKey) => (
+    `${groupKey}:record-payload-identities`
+  ));
   assert.deepEqual(
     mixedGroups.map((group) => group.groupKey).sort(),
     [
+      ...recordPayloadProjectGroupKeys,
       'gameplay:future-active-project-logistics:source-facts',
       'gameplay:live-person-project-pressure:remembered-sources',
       `live-intent:mixed-record-active-intent-valid:anchors:supporting-sources`,
@@ -977,6 +1026,28 @@ try {
   assert.ok(mixedGroups.every((group) => (
     group.unresolvedEventIds.includes(payloadIdentity) && group.blocking === false
   )), 'record payload identity must remain unresolved and non-blocking after exact scans miss');
+  for (const groupKey of recordPayloadProjectGroupKeys) {
+    const group = mixedProjection.demandGroups.find((candidate) => (
+      candidate.groupKey === groupKey
+    ));
+    assert.ok(group);
+    assert.equal(group.requirement, 'index-only');
+    assert.deepEqual(group.eventIds, [payloadIdentity]);
+  }
+  for (const groupKey of strictProjectGroupKeys) {
+    const group = mixedProjection.demandGroups.find((candidate) => (
+      candidate.groupKey === groupKey
+    ));
+    assert.ok(group);
+    assert.equal(group.requirement, 'all');
+    assert.deepEqual(group.eventIds, [valid.receipt.id],
+      'real WorldEvent provenance must remain in its original strict group');
+    assert.deepEqual(group.resolvedEventIds, [valid.receipt.id]);
+    assert.equal(group.blocking, false);
+    assert.ok(mixedProjection.pins.some((pin) => (
+      pin.eventId === valid.receipt.id && pin.leaseKeys.includes(groupKey)
+    )), 'each strict project provenance lease must retain the real event body');
+  }
   assert.equal(mixedProjection.continuationBasis.directMatches.some((match) => (
     match.eventId === payloadIdentity
   )), false, 'record payload identity must not become a fabricated WorldEvent match');
@@ -1034,6 +1105,70 @@ try {
     'mixed record identity successor must reopen with exact demand parity',
   );
 
+  const mixedCarryState = structuredClone(mixed.state);
+  const mixedCarrySuffix = {
+    id: 'mixed-record-carry-successor',
+    kind: 'environment',
+    atMonth: 15,
+    orderInMonth: 0,
+    planningTick: 0,
+    orderInTick: 0,
+    cellId: mixedActor.position.cellId,
+    change: 'material',
+    result: 'mixed record storage split carry successor',
+    diff: { fixtureKind: 'mixed-record-storage-split-carry' },
+  };
+  api.appendCommittedEvents(mixedCarryState, [mixedCarrySuffix]);
+  mixedCarryState.clock.elapsedMonths = 15;
+  mixedCarryState.lastStep = [mixedCarrySuffix];
+  const mixedCarryEncoded = await api.encodeSegmentedRunState(
+    mixedCarryState,
+    { mode: 'append', previous: mixedEncoded.encoded.metadata },
+    { maxEventsPerSegmentForTests: 4 },
+  );
+  retainEncoded(mixedCarryEncoded);
+  const mixedCarryPublication = (await decodeBounded(
+    mixedCarryEncoded,
+    [],
+    5,
+    15,
+  )).state;
+  const mixedCarrySuccessor = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    mixedProjection,
+    mixedEncoded.encoded.root,
+    mixedCarryPublication,
+    mixedCarryEncoded.root,
+    readChunk,
+  );
+  const mixedCarryProjection = api.decodeHistoryRetentionSidecar(
+    mixedCarrySuccessor.encoded.chunk,
+    {
+      reference: mixedCarrySuccessor.encoded.reference,
+      boundary: {
+        authority: { stateHash: mixedCarryEncoded.root.hash },
+        target: {
+          eventCount: mixedCarryEncoded.metadata.eventCount,
+          tailEventId: mixedCarryPublication.world.historyCursor.tailEventId,
+        },
+      },
+    },
+  );
+  assert.equal(
+    api.historyRetentionDemandFingerprintForShell(mixedCarryPublication),
+    mixedCarryProjection.demandFingerprint,
+    'storage split continuation must reproduce its next canonical shell demand',
+  );
+  assert.equal(mixedCarryProjection.pins.some((pin) => pin.eventId === payloadIdentity), false,
+    'storage split continuation must not promote a record identity to a body pin');
+  for (const groupKey of recordPayloadProjectGroupKeys) {
+    const group = mixedCarryProjection.demandGroups.find((candidate) => (
+      candidate.groupKey === groupKey
+    ));
+    assert.ok(group);
+    assert.deepEqual(group.eventIds, [payloadIdentity]);
+    assert.equal(group.requirement, 'index-only');
+  }
+
   const unknown = mixedRecordIdentitySuccessor('mixed-record-unknown-id', 'unknown');
   const unknownEncoded = await encodeMixedSuccessor(unknown);
   await assert.rejects(() => api.projectHistoryRetentionFromVerifiedSuccessor(
@@ -1044,6 +1179,29 @@ try {
     readChunk,
   ), /新 demand mixed-record-unknown-id 无法由 suffix 解析/u,
   'an unknown non-event source identity must fail closed');
+
+  for (const [label, option, strictGroupPattern] of [[
+    'action-alias',
+    { strictActionAlias: true },
+    /active-project:.*:actions/u,
+  ], [
+    'decision-alias',
+    { strictDecisionAlias: true },
+    /live-intent:.*:anchors/u,
+  ]]) {
+    const strictAlias = mixedRecordIdentitySuccessor(payloadIdentity, label, option);
+    const strictAliasEncoded = await encodeMixedSuccessor(strictAlias);
+    await assert.rejects(() => api.projectHistoryRetentionFromVerifiedSuccessor(
+      projectionD,
+      rootD.root,
+      strictAliasEncoded.publication,
+      strictAliasEncoded.encoded.root,
+      readChunk,
+    ), (error) => (
+      /同时属于必须事件的严格 demand/u.test(String(error))
+      && strictGroupPattern.test(String(error))
+    ), `record payload identity must not loosen ${label} WorldEvent semantics`);
+  }
 
   const collision = mixedRecordIdentitySuccessor(
     valid.receipt.id,
@@ -1060,6 +1218,21 @@ try {
   ), /record payload\/event identity .* 冲突/u,
   'a real WorldEvent and record payload with the same ID must fail closed');
 
+  const duplicateRecord = mixedRecordIdentitySuccessor(
+    payloadIdentity,
+    'duplicate-record',
+    { addRecordAlias: true },
+  );
+  const duplicateRecordEncoded = await encodeMixedSuccessor(duplicateRecord);
+  await assert.rejects(() => api.projectHistoryRetentionFromVerifiedSuccessor(
+    projectionD,
+    rootD.root,
+    duplicateRecordEncoded.publication,
+    duplicateRecordEncoded.encoded.root,
+    readChunk,
+  ), /record payload identity .* 重复/u,
+  'a duplicate shell record identity must fail closed before storage refinement');
+
   console.log(JSON.stringify({
     result: 'passed',
     previousEventCount: rootA.metadata.eventCount,
@@ -1072,8 +1245,12 @@ try {
     forgedReceiptRetained: false,
     unleasedInputRetained: false,
     mixedRecordIdentityReopened: true,
+    mixedRecordIdentityContinued: true,
+    mixedActiveProjectProvenanceSplit: strictProjectGroupKeys,
+    strictActionAndDecisionAliasesRejected: true,
     unknownRecordIdentityRejected: true,
     recordEventCollisionRejected: true,
+    duplicateRecordIdentityRejected: true,
   }));
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

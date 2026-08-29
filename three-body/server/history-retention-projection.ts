@@ -47,6 +47,7 @@ import {
   parseModernElectricalUsefulLoadLeaseKey,
 } from '../src/game/eland/domain/era-progression';
 import {
+  ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX,
   FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY,
   FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY,
   CALIBRATION_SOURCE_GROUP_SUFFIX,
@@ -70,6 +71,8 @@ import {
   HISTORY_RETENTION_MAX_SOCIAL_LEARNING_EVENT_IDS_TOTAL,
   HISTORY_RETENTION_REQUIREMENTS,
   LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY,
+  activeProjectRecordPayloadIdentityCoreGroupKey,
+  assertActiveProjectRecordPayloadIdentitySplitGroups,
   assertLiveIntentHistoryRetentionDemandGroups,
   assertLiveIntentRawSplitMatchesCanonicalDemand,
   assertProjectPressureHistoryRetentionDemandGroups,
@@ -84,6 +87,7 @@ import {
   parseSocialLearningSourceLeaseKey,
   productionWindowMonthFromDemandGroups,
   sameStringSet,
+  splittableActiveProjectRecordPayloadIdentityCoreGroup,
   waterAssistanceSelectiveLeaseKeysFromDemandGroups,
   type HistoryRetentionAuthority,
   type HistoryRetentionContinuationBasis,
@@ -600,6 +604,14 @@ function assertHistoryRetentionProjectionMatchesCanonicalDemand(
     demand.groups,
   );
   assertLiveIntentRawSplitMatchesCanonicalDemand(projection.demandGroups, demand.groups);
+  assertActiveProjectRecordPayloadIdentitySplitGroups(
+    projection.demandGroups,
+    'retention projection raw demand',
+  );
+  assertActiveProjectRecordPayloadIdentitySplitGroups(
+    demand.groups,
+    'retention shell raw demand',
+  );
   const projectedGroups = new Map(compatibilityCanonicalDemandGroups(projection.demandGroups)
     .map((group) => [group.groupKey, group]));
   const canonicalDemandGroups = compatibilityCanonicalDemandGroups(demand.groups);
@@ -2198,6 +2210,8 @@ function bodyFreeRecordPayloadIdentityGroup(group: DirectDemandGroup): boolean {
       && group.requirement === 'index-only')
     || (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
       && group.requirement === 'index-only')
+    || (activeProjectRecordPayloadIdentityCoreGroupKey(group.groupKey) !== null
+      && group.requirement === 'index-only')
     || (group.groupKey.startsWith('live-intent:')
       && liveSupportingSourceCoreGroupKey(group.groupKey) !== null
       && group.requirement === 'audit-only');
@@ -2210,6 +2224,35 @@ function groupRequiresWorldEventIdentity(group: DirectDemandGroup): boolean {
     || group.requirement === 'audit-only') return true;
   return group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
     || parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null;
+}
+
+function splitVerifiedRecordPayloadIdentityFromActiveProjectGroup(
+  fold: HistoryRetentionProjectionFold,
+  group: DirectDemandGroup,
+  eventId: string,
+): void {
+  if (!splittableActiveProjectRecordPayloadIdentityCoreGroup(group)
+    || !group.eventIds.has(eventId)) {
+    throw new Error(
+      `retention record payload identity ${eventId} 不能从 ${group.groupKey} 精确分层`,
+    );
+  }
+  const splitKey = `${group.groupKey}${ACTIVE_PROJECT_RECORD_PAYLOAD_IDENTITY_GROUP_SUFFIX}`;
+  let split = fold.demandGroupsByKey.get(splitKey);
+  if (!split) {
+    split = {
+      groupKey: splitKey,
+      requirement: 'index-only',
+      leaseKeys: new Set(group.leaseKeys),
+      eventIds: new Set(),
+    };
+    fold.demandGroupsByKey.set(splitKey, split);
+  } else if (split.requirement !== 'index-only'
+    || !sameStringSet([...split.leaseKeys], [...group.leaseKeys])) {
+    throw new Error(`retention record payload storage split ${splitKey} 已漂移`);
+  }
+  group.eventIds.delete(eventId);
+  split.eventIds.add(eventId);
 }
 
 /**
@@ -2291,9 +2334,29 @@ export function seedVerifiedPrefixRecordPayloadIdentityMisses(
     const groups = [...fold.demandGroupsByKey.values()].filter((group) => (
       group.eventIds.has(eventId)
     ));
-    if (!groups.some(bodyFreeRecordPayloadIdentityGroup)
-      || groups.some(groupRequiresWorldEventIdentity)) {
+    if (!groups.some(bodyFreeRecordPayloadIdentityGroup)) {
       throw new Error(`retention record payload identity ${eventId} 同时属于必须事件的严格 demand`);
+    }
+    const strictGroups = groups.filter(groupRequiresWorldEventIdentity);
+    const unsplittableStrictGroups = strictGroups.filter((group) => (
+      !splittableActiveProjectRecordPayloadIdentityCoreGroup(group)
+    ));
+    if (unsplittableStrictGroups.length > 0) {
+      throw new Error(
+        `retention record payload identity ${eventId} 同时属于必须事件的严格 demand`
+        + `（groups=${unsplittableStrictGroups.map((group) => group.groupKey).sort().join(',')}）`,
+      );
+    }
+    for (const group of strictGroups) {
+      splitVerifiedRecordPayloadIdentityFromActiveProjectGroup(fold, group, eventId);
+    }
+    const remainingStrictGroups = [...fold.demandGroupsByKey.values()].filter((group) => (
+      group.eventIds.has(eventId) && groupRequiresWorldEventIdentity(group)
+    ));
+    if (remainingStrictGroups.length > 0) {
+      throw new Error(
+        `retention record payload identity ${eventId} storage split 后仍属于严格 demand`,
+      );
     }
     if (fold.directMatchesByEventId.has(eventId)) {
       throw new Error(`retention record payload/event identity ${eventId} 冲突`);

@@ -426,6 +426,37 @@ function verifiedResponseEvidence(campaign: ProjectHypothesisCampaign): Map<stri
   return evidence;
 }
 
+function tangibleCandidateSourceKeys(
+  candidate: ProjectHypothesisCandidate,
+  evidence: readonly LocalMaterialEvidence[],
+): string[] {
+  const tangible = new Set(evidence.flatMap((item) => item.sourceKeys));
+  return [...new Set(candidate.sourceKeys.filter((sourceKey) => tangible.has(sourceKey)))].sort();
+}
+
+function exactAttemptLearnedEvidence(
+  campaign: ProjectHypothesisCampaign,
+  candidate: ProjectHypothesisCandidate,
+  evidence: readonly LocalMaterialEvidence[],
+): { score: number; sourceFactIds: string[] } {
+  const sourceTuple = tangibleCandidateSourceKeys(candidate, evidence);
+  if (!sourceTuple.length) return { score: 0, sourceFactIds: [] };
+  const currentSourceKeys = new Set(evidence.flatMap((item) => item.sourceKeys));
+  const matching = campaign.attempts.filter((attempt) => attempt.operation === candidate.operation
+    && attempt.questionKind === candidate.questionKind
+    && attempt.candidateKey === candidate.key
+    && [...new Set(attempt.sourceKeys.filter((sourceKey) => currentSourceKeys.has(sourceKey)))]
+      .sort()
+      .join('\u0000') === sourceTuple.join('\u0000'));
+  const responses = matching.filter((attempt) => attempt.outcome === 'response');
+  return {
+    score: responses.some((attempt) => attempt.verifiedEventId) ? 2 : responses.length ? 1 : 0,
+    sourceFactIds: [...new Set(responses.flatMap((attempt) => [attempt.eventId, ...(attempt.verifiedEventId
+      ? [attempt.verifiedEventId]
+      : [])]))],
+  };
+}
+
 function toolRoleBasis(
   person: PersonState,
   questionKind: ProjectHypothesisQuestionKind,
@@ -450,11 +481,8 @@ function toolRoleBasis(
   );
   reasons.push(...assessment.reasonKeys);
   const experience = directionalRoleExperience(person, 'exert-air', materialId, inputMaterialId, targetMaterialId);
-  let learnedEvidence = experience.toolScore;
-  if (verified) {
-    learnedEvidence += 2;
-    reasons.push('exact-verified-response-as-tool');
-  }
+  const learnedEvidence = experience.toolScore;
+  if (verified) reasons.push('locally-verified-response-profile');
   const roleFit = requiredRoleFit(assessment);
   const score = roleFit * 10 + learnedEvidence * 3 + assessment.optionalMatched;
   return {
@@ -503,11 +531,8 @@ function inputRoleBasis(
   const sourceBound = sourceKey !== undefined && subjectSourceKeys.has(sourceKey);
   if (sourceBound) reasons.push('project-source-bound-subject');
   const experience = directionalRoleExperience(person, operation, toolMaterialId, materialId, targetMaterialId);
-  let learnedEvidence = experience.inputScore;
-  if (verified) {
-    learnedEvidence += 2;
-    reasons.push('exact-verified-response-as-input');
-  }
+  const learnedEvidence = experience.inputScore;
+  if (verified) reasons.push('locally-verified-response-profile');
   const roleFit = requiredRoleFit(assessment);
   const informationRelevance = sourceBound ? 1 : 0;
   const score = roleFit * 10 + learnedEvidence * 3 + informationRelevance * 2 + assessment.optionalMatched;
@@ -621,8 +646,7 @@ function observableAssemblyBasis(
         && (primaryAssessment.requiredMismatched > 0 || secondaryAssessment.requiredMismatched > 0)) continue;
       const primaryFit = requiredRoleFit(primaryAssessment);
       const secondaryFit = requiredRoleFit(secondaryAssessment);
-      const learnedEvidence = (primarySource.sourceKey && verifiedResponses.has(primarySource.sourceKey) ? 2 : 0)
-        + (secondarySource.sourceKey && verifiedResponses.has(secondarySource.sourceKey) ? 2 : 0);
+      const learnedEvidence = 0;
       const informationRelevance = primarySource.sourceKey && preferred.has(primarySource.sourceKey) ? 1 : 0;
       const optionalTraitFit = primaryAssessment.optionalMatched + secondaryAssessment.optionalMatched;
       const primaryScore = primaryFit * 10 + primaryAssessment.optionalMatched;
@@ -644,7 +668,9 @@ function observableAssemblyBasis(
           ...secondaryAssessment.reasonKeys,
           ...(questionKind === 'assemble-balanced-suspension' ? ['role-symmetric-rigid-members'] : []),
           ...(informationRelevance ? ['project-source-bound-primary-role'] : []),
-          ...(learnedEvidence ? ['verified-response-material'] : []),
+          ...(primarySource.sourceKey && verifiedResponses.has(primarySource.sourceKey)
+            || secondarySource.sourceKey && verifiedResponses.has(secondarySource.sourceKey)
+            ? ['locally-verified-response-profile'] : []),
         ])],
         sourceFactIds: [...new Set([
           ...primarySource.sourceFactIds,
@@ -880,9 +906,6 @@ function combineCandidates(
       }
       ensureAggregateNoFitReason(roleReasonKeys, roleScore);
       const reasons = [...new Set(['grounded-operation-question', ...roleReasonKeys])];
-      if (roleReasonKeys.some((reason) => reason.startsWith('exact-verified-response-as-'))) {
-        reasons.push('verified-response-material');
-      }
       const inventoryVariants: Array<[MaterialId, MaterialId] | [MaterialId, MaterialId, MaterialId]> =
         request.questionKind === 'assemble-balanced-suspension' ? [] : [pair];
       if (project.desiredFunction === 'comparable-mass-measurement') {
@@ -1016,9 +1039,6 @@ function exertCandidates(
       ensureAggregateNoFitReason(roleReasons, roleScore);
       const reasons = [...new Set(['grounded-operation-question', 'held-role-tool', 'adjacent-supported-target', ...roleReasons])];
       const materialIds: [MaterialId, MaterialId] = [tool.materialId, input.materialId];
-      if (roleReasons.some((reason) => reason.startsWith('exact-verified-response-as-'))) {
-        reasons.push('verified-response-material');
-      }
       const key = projectHypothesisCandidateKey('exert-air', materialIds, request.targetMaterialId);
       candidates.push(rankedCandidate(seed, person, project, {
         key,
@@ -1090,8 +1110,7 @@ function exposeCandidates(
       .map((sourceKey) => verifiedResponses.get(sourceKey))
       .find((response) => response?.materialId === request.targetMaterialId);
     if (targetVerified) {
-      roleScore += 2;
-      reasons.push('verified-response-material', 'exact-verified-response-as-target');
+      reasons.push('locally-verified-response-profile');
     }
     roleScore = rounded(roleScore);
     const roleReasons = [...inputBasis.reasonKeys];
@@ -1123,7 +1142,7 @@ function exposeCandidates(
       ])],
     }, roleScore, {
       requiredRoleFit: inputBasis.requiredRoleFit,
-      learnedEvidence: inputBasis.learnedEvidence + (targetVerified ? 2 : 0),
+      learnedEvidence: inputBasis.learnedEvidence,
       informationRelevance: inputBasis.informationRelevance + ((request.targetSourceKeys?.length ?? 0) > 0 ? 1 : 0),
       optionalTraitFit: inputBasis.optionalTraitFit,
     });
@@ -1145,26 +1164,36 @@ function observableCandidates(
       ? exertCandidates(seed, person, project, evidence, request, verifiedResponses)
       : exposeCandidates(seed, person, project, evidence, request, verifiedResponses);
   return candidates.map((candidate) => {
-    if (!candidateUsesRenewalOpportunity(project, candidate, evidence)) return candidate;
-    const matchedSources = matchingRenewalOpportunitySources(project, candidate, evidence);
+    const exactAttempt = exactAttemptLearnedEvidence(campaign, candidate, evidence);
+    const renewal = candidateUsesRenewalOpportunity(project, candidate, evidence);
+    if (!exactAttempt.score && !renewal) return candidate;
+    const matchedSources = renewal ? matchingRenewalOpportunitySources(project, candidate, evidence) : [];
     return {
       ...candidate,
       ...(candidate.rankBasis ? {
         rankBasis: {
           ...candidate.rankBasis,
-          informationRelevance: candidate.rankBasis.informationRelevance + 1,
+          learnedEvidence: exactAttempt.score
+            ? Math.max(candidate.rankBasis.learnedEvidence, exactAttempt.score)
+            : candidate.rankBasis.learnedEvidence,
+          informationRelevance: candidate.rankBasis.informationRelevance + (renewal ? 1 : 0),
         },
       } : {}),
-      reasonKeys: [...new Set([...candidate.reasonKeys, 'cross-project-renewal-opportunity'])],
+      reasonKeys: [...new Set([
+        ...candidate.reasonKeys,
+        ...(exactAttempt.score ? ['exact-attempt-source-tuple-response'] : []),
+        ...(renewal ? ['cross-project-renewal-opportunity'] : []),
+      ])],
       sourceFactIds: [...new Set([
         ...candidate.sourceFactIds,
-        ...(matchedSources.length
+        ...exactAttempt.sourceFactIds,
+        ...(renewal && matchedSources.length
           ? matchedSources.flatMap((source) => source.sourceFactIds)
-          : project.inquiryOpportunityBasis?.sourceFactIds ?? []),
+          : renewal ? project.inquiryOpportunityBasis?.sourceFactIds ?? [] : []),
       ])],
       sourceKeys: [...new Set([
         ...candidate.sourceKeys,
-        ...matchedSources.flatMap((source) => source.sourceKeys),
+        ...(renewal ? matchedSources.flatMap((source) => source.sourceKeys) : []),
       ])],
     };
   }).sort(compareCandidates);
@@ -1173,13 +1202,6 @@ function observableCandidates(
 function candidateGrounded(candidate: ProjectHypothesisCandidate, evidence: LocalMaterialEvidence[]): boolean {
   const quantities = new Map(evidence.map((item) => [item.materialId, item.quantity]));
   const held = new Map(evidence.map((item) => [item.materialId, item.heldQuantity]));
-  const sourceKeys = new Set(evidence.flatMap((item) => item.sourceKeys));
-  if (candidate.reasonKeys.includes('verified-response-material')) {
-    if (candidate.roleReasonKeys.includes('exact-verified-response-as-tool')
-      && (!candidate.toolSourceKey || !sourceKeys.has(candidate.toolSourceKey))) return false;
-    if (candidate.roleReasonKeys.includes('exact-verified-response-as-input')
-      && (!candidate.inputSourceKey || !sourceKeys.has(candidate.inputSourceKey))) return false;
-  }
   if (candidate.operation === 'combine-inventory') {
     const required = new Map<MaterialId, number>();
     for (const materialId of candidate.inventoryMaterialIds ?? candidate.materialIds) {

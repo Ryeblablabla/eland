@@ -17,6 +17,10 @@ assert.ok(!hypothesisSource.includes('project-material-focus'));
 assert.ok(!hypothesisSource.includes('interaction-rules'));
 assert.ok(!/\bMaterial\./.test(hypothesisSource), 'hypothesis ranking must not name exact materials');
 assert.ok(!/seededRank\s*:\s*[^,\n]+\+\s*100/.test(hypothesisSource));
+assert.ok(!hypothesisSource.includes('verified-response-material'),
+  'a verified output entity must not be a generic learned-evidence reward');
+assert.ok(!hypothesisSource.includes('post-opening-untested-source'),
+  'the decheat-only variant must not include the marginal source frontier');
 assert.ok(!/materialId|ruleId|outputMaterial|expectedOutput/i.test(questionSource),
   'functional questions must only contain roles and perceptible traits');
 
@@ -174,9 +178,18 @@ try {
   }
 
   {
-    const actor = person('verified', [[Material.FiredBrick, 2], [Material.Steel, 2], [Material.Iron, 2]]);
-    const steelStack = actor.inventory.find((stack) => stack.materialId === Material.Steel);
-    const currentProject = project('verified-project', 'water-powered-crop-processing');
+    const actor = person('verified', [
+      [Material.Wood, 2],
+      [Material.Fiber, 2],
+      [Material.Plank, 2],
+      [Material.Mill, 2],
+    ]);
+    const woodStack = actor.inventory.find((stack) => stack.materialId === Material.Wood);
+    const fiberStack = actor.inventory.find((stack) => stack.materialId === Material.Fiber);
+    const millStack = actor.inventory.find((stack) => stack.materialId === Material.Mill);
+    const questionKind = 'connect-manipulator-shapes';
+    const exactCandidateKey = [Material.Wood, Material.Fiber].sort((a, b) => a - b).join('+');
+    const currentProject = project('verified-project', 'efficient-production');
     currentProject.hypothesisCampaign = {
       version: 'project-hypothesis-campaign-v2',
       id: 'verified-campaign',
@@ -191,24 +204,101 @@ try {
       sourceKeys: [],
       candidates: [],
       attempts: [{
-        candidateKey: 'older-response',
+        candidateKey: exactCandidateKey,
+        operation: 'combine-inventory',
+        questionKind,
+        materialIds: [Material.Wood, Material.Fiber].sort((a, b) => a - b),
+        roleScore: 0,
+        roleReasonKeys: [],
         outcome: 'response',
         eventId: 'response-event',
+        atMonth: 0,
+        ordinal: 1,
+        candidateRank: 1,
         verifiedEventId: 'verification-event',
-        outputMaterialId: Material.Steel,
-        responseRef: { kind: 'inventory-stack', stackId: steelStack.id, materialId: Material.Steel },
+        verifiedAtMonth: 0,
+        outputMaterialId: Material.Mill,
+        responseRef: { kind: 'inventory-stack', stackId: millStack.id, materialId: Material.Mill },
+        sourceFactIds: ['response-event', 'verification-event'],
+        sourceKeys: [
+          `inventory:${actor.id}:${woodStack.id}`,
+          `inventory:${actor.id}:${fiberStack.id}`,
+        ],
       }],
       status: 'active',
     };
-    const result = campaign(46, actor, currentProject, 'shape-rigid-rotating-connector');
-    const steel = result.candidates.find((item) => item.materialIds.includes(Material.FiredBrick)
-      && item.materialIds.includes(Material.Steel));
-    const iron = result.candidates.find((item) => item.materialIds.includes(Material.FiredBrick)
-      && item.materialIds.includes(Material.Iron));
-    assert.ok(steel?.rankBasis && iron?.rankBasis);
-    assert.ok(steel.rankBasis.learnedEvidence > iron.rankBasis.learnedEvidence);
-    assert.ok(steel.sourceFactIds.includes('response-event'));
-    assert.ok(steel.sourceFactIds.includes('verification-event'));
+    const result = campaign(46, actor, currentProject, questionKind);
+    const exact = result.candidates.find((item) => item.key === exactCandidateKey);
+    assert.equal(exact?.rankBasis?.learnedEvidence, 2,
+      'only the same operation, question, candidate and tangible source tuple may reuse a verified response');
+    assert.ok(exact.reasonKeys.includes('exact-attempt-source-tuple-response'));
+    assert.ok(exact.sourceFactIds.includes('response-event'));
+    assert.ok(exact.sourceFactIds.includes('verification-event'));
+    const untriedOutputPartners = result.candidates.filter((item) => (
+      item.materialIds.includes(Material.Mill) && item.key !== exactCandidateKey
+    ));
+    assert.ok(untriedOutputPartners.length > 1, 'the fixture must exercise several untried output-entity partners');
+    assert.ok(untriedOutputPartners.every((item) => item.rankBasis?.learnedEvidence === 0),
+      'one verified output entity must not clone learned evidence into untried tuples');
+
+    const mismatchActor = person('verified-mismatch', [
+      [Material.Wood, 2],
+      [Material.Fiber, 2],
+      [Material.Mill, 2],
+    ]);
+    const mismatchMill = mismatchActor.inventory.find((stack) => stack.materialId === Material.Mill);
+    const mismatchProject = project('verified-mismatch-project', 'efficient-production');
+    mismatchProject.hypothesisCampaign = {
+      ...currentProject.hypothesisCampaign,
+      id: 'verified-mismatch-campaign',
+      projectId: mismatchProject.id,
+      actorId: mismatchActor.id,
+      sourceFactIds: [],
+      sourceKeys: [],
+      candidates: [],
+      attempts: [{
+        ...currentProject.hypothesisCampaign.attempts[0],
+        responseRef: {
+          kind: 'inventory-stack',
+          stackId: mismatchMill.id,
+          materialId: Material.Mill,
+        },
+        sourceKeys: [
+          `inventory:${mismatchActor.id}:retired-wood-stack`,
+          `inventory:${mismatchActor.id}:retired-fiber-stack`,
+        ],
+      }],
+    };
+    const mismatch = campaign(46, mismatchActor, mismatchProject, questionKind)
+      .candidates.find((item) => item.key === exactCandidateKey);
+    assert.equal(mismatch?.rankBasis?.learnedEvidence, 0,
+      'the same material pair with a different tangible source tuple is not the same learned episode');
+    assert.ok(!mismatch?.reasonKeys.includes('exact-attempt-source-tuple-response'));
+  }
+
+  {
+    const materialSet = [[Material.Wood, 2], [Material.Fiber, 2], [Material.Plank, 2], [Material.Hide, 2]];
+    const ranked = (materials, outputMaterialId) => {
+      const actor = person('permuted', materials);
+      actor.knowledge.push({
+        id: `technique:combine-inventory:${Material.Wood}x1+${Material.Fiber}x1:${outputMaterialId}`,
+        kind: 'technique',
+        summary: '相同输入、置换结果的暂定演示',
+        confidence: 54,
+        learnedAtMonth: 0,
+        sourceEventIds: ['permuted-demonstration'],
+      });
+      return campaign(91, actor, project('permuted-project', 'efficient-production'),
+        'connect-manipulator-shapes').candidates.map((candidate) => ({
+        key: candidate.key,
+        rankBasis: { ...candidate.rankBasis, seedTieBreak: 0 },
+      }));
+    };
+    const baseline = ranked(materialSet, Material.Mill);
+    assert.deepEqual(baseline, ranked([...materialSet].reverse(), Material.Mill),
+      'source ordering must not change causal ranking');
+    assert.deepEqual(baseline, ranked(materialSet, Material.WaterWheel),
+      'a technique output permutation must not change input-role evidence');
   }
 
   {

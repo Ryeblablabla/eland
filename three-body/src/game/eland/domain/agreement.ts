@@ -173,9 +173,22 @@ interface AgreementIdIndex {
   byId: Map<string, Agreement>;
   byProposalEventId: Map<string, Agreement>;
   byParticipantId: Map<PersonId, Agreement[]>;
+  /** Ordered status candidates; every read still checks mutable agreement fields. */
+  openCandidatesByParticipantId: Map<PersonId, Agreement[]>;
 }
 
 const agreementIdIndexes = new WeakMap<SimulationState['agreements'], AgreementIdIndex>();
+const linearOpenAgreementLookupDepths = new WeakMap<SimulationState['agreements'], number>();
+
+function mayRequirePendingWork(agreement: Agreement): boolean {
+  const status = agreement.status;
+  return status === 'proposed'
+    || status === 'active'
+    // Older saves may reactivate a fulfilled companionship during lifecycle
+    // synchronization. Keep that compatibility candidate until it is read as
+    // active instead of treating the stored terminal-looking status as final.
+    || (status === 'fulfilled' && agreement.proposal.kind === 'companion');
+}
 
 function agreementIdIndex(state: Pick<DecisionAuthorityState, 'agreements'>): AgreementIdIndex {
   const agreements = state.agreements;
@@ -183,7 +196,13 @@ function agreementIdIndex(state: Pick<DecisionAuthorityState, 'agreements'>): Ag
   if (!index
     || index.indexedLength > agreements.length
     || (index.indexedLength > 0 && agreements[index.indexedLength - 1] !== index.lastIndexedAgreement)) {
-    index = { indexedLength: 0, byId: new Map(), byProposalEventId: new Map(), byParticipantId: new Map() };
+    index = {
+      indexedLength: 0,
+      byId: new Map(),
+      byProposalEventId: new Map(),
+      byParticipantId: new Map(),
+      openCandidatesByParticipantId: new Map(),
+    };
     agreementIdIndexes.set(agreements, index);
   }
   for (let offset = index.indexedLength; offset < agreements.length; offset += 1) {
@@ -199,10 +218,16 @@ function agreementIdIndex(state: Pick<DecisionAuthorityState, 'agreements'>): Ag
       ...(agreement.partyIds ?? []),
       ...(agreement.requiredResponderIds ?? []),
     ].filter((personId): personId is PersonId => typeof personId === 'string'));
+    const openCandidate = mayRequirePendingWork(agreement);
     for (const participantId of participantIds) {
       const participantAgreements = index.byParticipantId.get(participantId) ?? [];
       participantAgreements.push(agreement);
       index.byParticipantId.set(participantId, participantAgreements);
+      if (openCandidate) {
+        const openCandidates = index.openCandidatesByParticipantId.get(participantId) ?? [];
+        openCandidates.push(agreement);
+        index.openCandidatesByParticipantId.set(participantId, openCandidates);
+      }
     }
   }
   index.indexedLength = agreements.length;
@@ -230,6 +255,52 @@ export function agreementsForPerson(
   personId: PersonId,
 ): readonly Agreement[] {
   return agreementIdIndex(state).byParticipantId.get(personId) ?? [];
+}
+
+/**
+ * Ordered conservative candidates for per-tick agreement work. Membership is
+ * append-only in authoritative simulation, while mutable status and deadlines
+ * remain query-time facts. Terminal candidates are removed lazily; fulfilled
+ * legacy companionship remains because lifecycle synchronization can reactivate
+ * it without replacing the agreement object.
+ */
+export function openAgreementCandidatesForPerson(
+  state: Pick<DecisionAuthorityState, 'agreements'>,
+  personId: PersonId,
+): readonly Agreement[] {
+  const index = agreementIdIndex(state);
+  if ((linearOpenAgreementLookupDepths.get(state.agreements) ?? 0) > 0) {
+    return index.byParticipantId.get(personId) ?? [];
+  }
+  const candidates = index.openCandidatesByParticipantId.get(personId);
+  if (!candidates?.length) return [];
+  let retainedCount = 0;
+  for (const candidate of candidates) {
+    if (!mayRequirePendingWork(candidate)) continue;
+    candidates[retainedCount] = candidate;
+    retainedCount += 1;
+  }
+  if (retainedCount < candidates.length) candidates.length = retainedCount;
+  return candidates;
+}
+
+/** Synchronous process-local test seam; never serialized or hashed. */
+export function withLinearOpenAgreementLookupsForDiagnostics<T>(
+  state: Pick<DecisionAuthorityState, 'agreements'>,
+  work: () => T,
+): T {
+  const agreements = state.agreements;
+  linearOpenAgreementLookupDepths.set(
+    agreements,
+    (linearOpenAgreementLookupDepths.get(agreements) ?? 0) + 1,
+  );
+  try {
+    return work();
+  } finally {
+    const depth = linearOpenAgreementLookupDepths.get(agreements) ?? 0;
+    if (depth <= 1) linearOpenAgreementLookupDepths.delete(agreements);
+    else linearOpenAgreementLookupDepths.set(agreements, depth - 1);
+  }
 }
 
 /**

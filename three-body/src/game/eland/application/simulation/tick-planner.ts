@@ -1,5 +1,5 @@
 import { goalSatisfied } from '../../domain/action-executor';
-import { agreementsForPerson } from '../../domain/agreement';
+import { openAgreementCandidatesForPerson } from '../../domain/agreement';
 import { ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH } from '../../domain/decision-budget';
 import { inheritPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
 import { intentReviewAtMonth } from '../../domain/intent';
@@ -166,22 +166,23 @@ function localDeliberationCadence(
   return cadence;
 }
 
-function hasPendingAgreementWork(
+export function hasPendingAgreementWork(
   state: SimulationState,
   person: PersonState,
   active: Intent | undefined,
   atMonth: number,
 ): boolean {
-  return agreementsForPerson(state, person.id).some((agreement) => {
+  return openAgreementCandidatesForPerson(state, person.id).some((agreement) => {
+    const status = agreement.status;
     const coveredByActiveIntent = active?.agreementId === agreement.id
       || Boolean(active?.sourceFactIds?.some((factId) => agreement.sourceEventIds.includes(factId)));
-    if (agreement.status === 'proposed') {
+    if (status === 'proposed') {
       return agreement.requiredResponderIds.includes(person.id)
         && !agreement.acceptedByPersonIds.includes(person.id)
         && !agreement.rejectedByPersonIds.includes(person.id)
         && !coveredByActiveIntent;
     }
-    if (agreement.status !== 'active'
+    if (status !== 'active'
       || !agreement.partyIds.includes(person.id)
       || agreement.fulfilledByPersonIds.includes(person.id)
       || coveredByActiveIntent) return false;

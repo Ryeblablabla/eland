@@ -243,9 +243,14 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
       return [{ option, project, matchingResolution, pressure: rawPressure * (1 - relief) }];
     })
     .sort((left, right) => right.pressure - left.pressure || left.option.id.localeCompare(right.option.id));
-  const strongestProjectCandidate = projectCandidates[0];
-  if (strongestProjectCandidate) {
-    const { option: strongestProjectOption, project, matchingResolution, pressure } = strongestProjectCandidate;
+  const seenProjectIds = new Set<string>();
+  const distinctProjectCandidates = projectCandidates.filter((candidate) => {
+    if (seenProjectIds.has(candidate.project.id)) return false;
+    seenProjectIds.add(candidate.project.id);
+    return true;
+  });
+  for (const projectCandidate of distinctProjectCandidates) {
+    const { option: projectOption, project, matchingResolution, pressure } = projectCandidate;
     const projectNeed = project?.need;
     const kind: NeedKind = projectNeed === 'thermal-safety'
       || projectNeed === 'hunting-safety'
@@ -259,7 +264,9 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
           ? 'reserve'
           : projectNeed === 'coordination-capacity'
             ? 'belonging'
-            : 'capability';
+            : projectNeed === 'knowledge-preservation'
+              ? 'inquiry'
+              : 'capability';
     const resource: ReserveResource | undefined = projectNeed === 'water-security'
       ? 'water'
       : projectNeed === 'reserve-security' || projectNeed === 'food-preparation'
@@ -271,7 +278,7 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
       [matchingResolution
         ? `本人近期亲手完成过同类${projectNeed ?? '持续项目'}，新建压力暂时缓解但仍可重新出现`
         : `一个由局部事实触发的${projectNeed ?? '持续项目'}正在等待投入`],
-      [...strongestProjectOption.sourceFactIds, ...(matchingResolution?.sourceFactIds ?? [])],
+      [...projectOption.sourceFactIds, ...(matchingResolution?.sourceFactIds ?? [])],
       resource,
       project?.id,
     ));

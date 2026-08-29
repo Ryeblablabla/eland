@@ -154,7 +154,7 @@ const RULES_PAGE_MARKUP = `
             </section>
             <section class="bdi-node" data-tone="agent">
               <span>D · DESIRE</span><strong>此刻什么值得做</strong>
-              <p><b>NeedAgenda</b>：身体、安全、照护、储备、能力、承诺、归属、自主与探究九类动态压力；食物与饮水储备各自计算，健康、营养与水分也精确分维，项目需要再绑定 projectId，候选不能拿另一资源、身体维度或项目的压力抬高动机。</p>
+              <p><b>NeedAgenda</b>：身体、安全、照护、储备、能力、承诺、归属、自主与探究九类动态压力；食物与饮水储备各自计算，健康、营养与水分也精确分维。每个已被规则证明可执行的不同项目候选都从自己的压力与来源形成绑定 projectId 的需要，再进入同一套人格、经验与可行性竞争；知识保存项目与其候选一致使用探究需要，候选不能拿另一资源、身体维度或项目的压力抬高动机。</p>
               <small>ActionOption 经人格、经验、关系、伦理和可行性门控后形成 motivation。</small>
             </section>
             <section class="bdi-node" data-tone="social">

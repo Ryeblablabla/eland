@@ -11,13 +11,17 @@ import {
   type PersonState,
 } from '../domain/person';
 import { ageMonths, MIN_TEACHING_AGE_MONTHS } from '../domain/person';
-import type { DecisionContext, DropState, SimulationState } from '../domain/model';
+import type {
+  DecisionAuthorityState,
+  DecisionContext,
+  DropState,
+  SimulationState,
+} from '../domain/model';
 import {
   acceptedExchangeFor,
   exchangeTermFulfilled,
   hasOpenExchangeOfferBetween,
   openExchangeOfferFor,
-  openReproductionOfferFor,
 } from '../domain/social-facts';
 import {
   cellsInRadius,
@@ -46,7 +50,6 @@ import { findReachableShelter } from '../domain/shelter-access';
 import { mandateById } from '../domain/governance';
 import { buildMaterialSeparationOptions } from './separation-options';
 import { separationToolFits, voxelSeparationRuleFor } from '../domain/separation-rules';
-import { hasTrait, reproductiveUpperAgeMonths } from '../domain/trait';
 import { buildContainerOptions, findContainerAccess } from './container-options';
 import { canAccessContainer, containerById, containerQuantity } from '../domain/container';
 import {
@@ -54,7 +57,6 @@ import {
   knowsReliableNoResponse,
   voxelNoResponseFactId,
 } from '../domain/interaction-knowledge';
-import { inventoryVoxelCombinationOutput } from '../domain/interaction-rules';
 import {
   eraForecastTransitionFacts,
   recentEraForecastEnvironmentFacts,
@@ -69,24 +71,18 @@ import {
   buildDemandBoundRecordUseOptions,
   recompileRecordUseNextAction,
 } from './record-use-options';
-import {
-  buildRelationshipCausalBasis,
-  canOfferRelationshipProposal,
-} from '../domain/relationship-evidence';
 import { cloneProjectForPlanning } from '../domain/project';
 import { lifePlanningStage } from '../domain/life-stage';
 import { optionAllowedForLearningChildCareRadius, optionAllowedForLifeStage } from './age-planning';
 import { followUpSemanticallyMatches, isGroundedConversationOpening } from '../domain/intent-follow-up';
-import { hasReproductiveRecoveryCondition } from '../domain/dependent-care';
-import { agreementById, agreementsForPerson, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
+import { agreementById, reproductionAttemptedBetweenInMonth } from '../domain/agreement';
 import {
   isActionableChaosPrediction,
   MAX_ERA_PREDICTION_HORIZON_MONTHS,
   personTrustsEraPrediction,
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
-import { bodyOccupies } from '../domain/actions/execution-helpers';
-import { intentById, intentsOwnedBy, livingPeople, personById } from '../domain/state-index';
+import { intentById, livingPeople, personById } from '../domain/state-index';
 import {
   buildMechanicalPowerServiceOptions,
   buildWaterCurrentObservationOptions,
@@ -101,7 +97,6 @@ import {
   productionToolRank,
   recentPersonalProductionLaborEvents,
 } from '../domain/production-tool';
-import { perceivedKinshipRisk } from './reproductive-risk';
 import { knowsDeath, remainsForPerson, type HumanRemainsState } from '../domain/mortuary';
 import { buildMortuaryOptions, recompileMortuaryNextAction } from './mortuary-options';
 import { techniqueOutputMaterialId } from '../domain/technique-demonstration';
@@ -122,6 +117,20 @@ import {
   isCommitmentActionOption,
   isRequiredResponseOption,
 } from '../domain/action-option-semantics';
+import {
+  buildFailureRetryContext,
+  isCurrentlyBodyBlockedPlacement,
+  isFailureRetryCoolingDown,
+  optionHasCurrentlyBodyBlockedPlacement,
+  type FailureRetryContext,
+} from './action-failure-retry';
+import { buildReproductionOptions } from './reproduction-options';
+
+export {
+  isCurrentlyBodyBlockedPlacement,
+  isFailureRetryCoolingDown,
+  optionHasCurrentlyBodyBlockedPlacement,
+};
 
 function distance(a: number, b: number): number {
   return Math.abs(cellX(a) - cellX(b)) + Math.abs(cellY(a) - cellY(b));
@@ -261,342 +270,6 @@ function optionForDrop(state: SimulationState, person: PersonState, drop: DropSt
   };
 }
 
-const FAILURE_MEMORY_PREFIXES = [
-  'memory:intent-opening-failed:',
-  'memory:intent-review-due:',
-  'memory:intent-blocked:',
-  'memory:intent-action-failed:',
-] as const;
-
-type FailureMemoryPrefix = typeof FAILURE_MEMORY_PREFIXES[number];
-
-function stableSemanticValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableSemanticValue);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => [key, stableSemanticValue(entry)]));
-}
-
-function stableSemanticKey(value: unknown): string {
-  return JSON.stringify(stableSemanticValue(value));
-}
-
-function semanticGoal(goal: ActionOption['goal']): unknown {
-  if (goal.kind === 'representation-made') return { kind: goal.kind };
-  if (goal.kind === 'knowledge' && goal.factId.startsWith('attempt:')) return {
-    kind: goal.kind,
-    ...(goal.minConfidence !== undefined ? { minConfidence: goal.minConfidence } : {}),
-    ...(goal.personId ? { personId: goal.personId } : {}),
-  };
-  return structuredClone(goal);
-}
-
-function semanticAction(action: PrimitiveAction): unknown {
-  if (action.kind !== 'communicate') return structuredClone(action);
-  const normalized = structuredClone(action) as unknown as Record<string, unknown>;
-  const content = normalized.content as Record<string, unknown>;
-  delete content.id;
-  delete content.summary;
-  const proposal = content.proposal as Record<string, unknown> | undefined;
-  if (proposal) {
-    delete proposal.expiresAtMonth;
-    delete proposal.validUntilMonth;
-    delete proposal.basis;
-  }
-  const prediction = content.prediction as Record<string, unknown> | undefined;
-  if (prediction) {
-    delete prediction.predictedStartMonth;
-    delete prediction.expiresAtMonth;
-  }
-  const conversation = content.conversation as Record<string, unknown> | undefined;
-  if (conversation) {
-    delete conversation.basisKey;
-    delete conversation.referenceEventId;
-    delete conversation.sourceFactIds;
-  }
-  const techniqueDemonstration = content.techniqueDemonstration as Record<string, unknown> | undefined;
-  if (techniqueDemonstration) delete techniqueDemonstration.expiresAtMonth;
-  const projectContribution = content.projectMaterialContribution as Record<string, unknown> | undefined;
-  if (projectContribution) delete projectContribution.expiresAtMonth;
-  const projectKnowledgeRequest = content.projectKnowledgeRequest as Record<string, unknown> | undefined;
-  if (projectKnowledgeRequest) delete projectKnowledgeRequest.expiresAtMonth;
-  return normalized;
-}
-
-function semanticRecordUseBasis(basis: ActionOption['recordUseBasis']): unknown {
-  if (!basis) return null;
-  return {
-    version: basis.version,
-    basisKey: basis.basisKey,
-    projectId: basis.projectId,
-    projectOwnerId: basis.projectOwnerId,
-    readerId: basis.readerId,
-    recordAuthorId: basis.recordAuthorId,
-    demand: { kind: basis.demand.kind, projectId: basis.demand.projectId },
-    recordId: basis.recordId,
-    knowledgeId: basis.knowledgeId,
-    codebookId: basis.codebookId,
-    techniqueId: basis.techniqueId,
-    ruleSignature: basis.ruleSignature,
-    expectedOutputMaterialId: basis.expectedOutputMaterialId,
-    ...(basis.version !== 'record-use-basis-v3' ? {
-      experimentAction: semanticAction(basis.experimentAction),
-    } : {}),
-    ...(basis.version !== 'record-use-basis-v1' ? {
-      carrierSource: structuredClone(basis.carrierSource),
-      acquisitionRequired: basis.acquisitionRequired,
-    } : {}),
-  };
-}
-
-function retryBasisForOption(option: ActionOption, openingFailure: boolean): string {
-  const shared = {
-    action: semanticAction(openingFailure ? option.nextAction : option.completionAction ?? option.nextAction),
-    projectId: option.projectId ?? null,
-    recordUseBasis: semanticRecordUseBasis(option.recordUseBasis),
-    relationshipBasis: option.relationshipBasis?.basisKey ?? null,
-  };
-  return stableSemanticKey(openingFailure
-    ? shared
-    : { ...shared, goal: semanticGoal(option.goal) });
-}
-
-function retryBasisForIntentAction(
-  intent: Intent,
-  action: PrimitiveAction,
-  openingFailure: boolean,
-): string {
-  const shared = {
-    action: semanticAction(action),
-    projectId: intent.projectId ?? null,
-    recordUseBasis: semanticRecordUseBasis(intent.recordUseBasis),
-    relationshipBasis: intent.relationshipBasis?.basisKey ?? null,
-  };
-  return stableSemanticKey(openingFailure
-    ? shared
-    // Project recompilation replaces the executable action while the intent's
-    // top-level target may still describe an earlier logistics step. The
-    // action already carries its actual person/drop/voxel targets, so routing
-    // metadata must not make an identical failed action look novel.
-    : { ...shared, goal: semanticGoal(intent.goal) });
-}
-
-function retryBasisForIntent(intent: Intent, prefix: FailureMemoryPrefix): string {
-  const openingFailure = prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
-  return retryBasisForIntentAction(
-    intent,
-    openingFailure ? intent.openingAction! : intent.completionAction ?? intent.nextAction,
-    openingFailure,
-  );
-}
-
-function parseFailureMemory(
-  memory: PersonState['memories'][number],
-): { memory: PersonState['memories'][number]; intentId: string; prefix: FailureMemoryPrefix } | null {
-  if (memory.kind !== 'failure') return null;
-  const prefix = FAILURE_MEMORY_PREFIXES.find((candidate) => memory.id.startsWith(candidate));
-  if (!prefix) return null;
-  const encodedIntentAndMonth = memory.id.slice(prefix.length);
-  const monthSuffix = `:${memory.createdAtMonth}`;
-  if (!encodedIntentAndMonth.endsWith(monthSuffix)) return null;
-  const intentId = encodedIntentAndMonth.slice(0, -monthSuffix.length);
-  return intentId ? { memory, intentId, prefix } : null;
-}
-
-interface FailureRetryEntry {
-  openingFailure: boolean;
-  actionBasis: string;
-  basis: string;
-  failedAtMonth: number;
-  previousSources: ReadonlySet<string>;
-}
-
-interface FailureRetryContext {
-  entries: FailureRetryEntry[];
-}
-
-function sameSemanticAction(left: PrimitiveAction, right: PrimitiveAction): boolean {
-  return stableSemanticKey(semanticAction(left)) === stableSemanticKey(semanticAction(right));
-}
-
-function authoritativeFailureRetryEntry(
-  state: SimulationState,
-  intent: Intent,
-  atMonth: number,
-): FailureRetryEntry | null {
-  if (intent.status !== 'blocked' && intent.status !== 'failed') return null;
-  const outcome = intent.goalOutcome;
-  const age = outcome ? atMonth - outcome.resolvedAtMonth : Number.POSITIVE_INFINITY;
-  if (!outcome || age < 0 || age > 6) return null;
-  const outcomeSources = new Set(outcome.sourceEventIds);
-  const fact = [...intent.actionEventIds].reverse().flatMap((eventId) => {
-    if (!outcomeSources.has(eventId)) return [];
-    const event = worldEventById(state, eventId);
-    return event?.kind === 'action' ? [event] : [];
-  }).find((event) => event.who === intent.ownerId
-    && (event.intentId === undefined || event.intentId === intent.id)
-    && event.atMonth === outcome.resolvedAtMonth
-    && (event.status === 'blocked' || event.status === 'failed'));
-  if (!fact) return null;
-  const openingFailure = Boolean(intent.openingAction
-    && !intent.openingActionCompleted
-    && sameSemanticAction(intent.openingAction, fact.action));
-  return {
-    openingFailure,
-    actionBasis: stableSemanticKey(semanticAction(fact.action)),
-    // The executed ActionFact is authoritative. A project may recompile or
-    // rewrite intent routing fields after the attempt, so those fields cannot
-    // safely stand in for what actually failed.
-    basis: retryBasisForIntentAction(intent, fact.action, openingFailure),
-    failedAtMonth: fact.atMonth,
-    previousSources: new Set([
-      ...(intent.sourceFactIds ?? []),
-      ...intent.actionEventIds,
-      ...outcome.sourceEventIds,
-      fact.id,
-    ].filter(Boolean)),
-  };
-}
-
-function buildFailureRetryContext(
-  state: SimulationState,
-  person: PersonState,
-  atMonth: number,
-): FailureRetryContext {
-  const recent = person.memories.flatMap((memory) => {
-    const age = atMonth - memory.createdAtMonth;
-    if (memory.kind !== 'failure' || age < 0 || age > 6) return [];
-    const parsed = parseFailureMemory(memory);
-    return parsed ? [parsed] : [];
-  });
-  const entriesByKey = new Map<string, FailureRetryEntry>();
-  const addEntry = (entry: FailureRetryEntry) => {
-    const key = `${entry.openingFailure ? 'opening' : 'regular'}\u0000${entry.failedAtMonth}\u0000${entry.basis}`;
-    const existing = entriesByKey.get(key);
-    entriesByKey.set(key, existing ? {
-      ...entry,
-      previousSources: new Set([...existing.previousSources, ...entry.previousSources]),
-    } : entry);
-  };
-  const authoritativeIntentFailures = new Set<string>();
-  for (const intent of intentsOwnedBy(state, person.id)) {
-    const entry = authoritativeFailureRetryEntry(state, intent, atMonth);
-    if (!entry) continue;
-    addEntry(entry);
-    authoritativeIntentFailures.add(`${intent.id}\u0000${entry.failedAtMonth}`);
-  }
-  for (const item of recent) {
-    const intent = intentById(state, item.intentId);
-    if (!intent || intent.ownerId !== person.id) continue;
-    const openingFailure = item.prefix === 'memory:intent-opening-failed:' && Boolean(intent.openingAction);
-    const failedAction = openingFailure
-      ? intent.openingAction!
-      : intent.completionAction ?? intent.nextAction;
-    // New states retain an exact ActionFact link on the terminal intent. Use
-    // bounded memory only as a compatibility fallback for older snapshots and
-    // review/compile failures that did not execute an action.
-    if (authoritativeIntentFailures.has(`${intent.id}\u0000${item.memory.createdAtMonth}`)) continue;
-    addEntry({
-      openingFailure,
-      actionBasis: stableSemanticKey(semanticAction(failedAction)),
-      basis: retryBasisForIntent(intent, item.prefix),
-      failedAtMonth: item.memory.createdAtMonth,
-      previousSources: new Set([
-        ...(intent.sourceFactIds ?? []),
-        ...intent.actionEventIds,
-        ...item.memory.sourceEventIds,
-      ].filter(Boolean)),
-    });
-  }
-  return { entries: [...entriesByKey.values()] };
-}
-
-export function isFailureRetryCoolingDown(
-  state: SimulationState,
-  person: PersonState,
-  option: ActionOption,
-  atMonth: number,
-  prepared = buildFailureRetryContext(state, person, atMonth),
-): boolean {
-  if (isRequiredResponseOption(option) || isCommitmentActionOption(option)) return false;
-  let regularBasis: string | undefined;
-  let openingBasis: string | undefined;
-  let regularActionBasis: string | undefined;
-  let openingActionBasis: string | undefined;
-  return prepared.entries.some((entry) => {
-    const optionActionBasis = entry.openingFailure
-      ? openingActionBasis ??= stableSemanticKey(semanticAction(option.nextAction))
-      : regularActionBasis ??= stableSemanticKey(semanticAction(option.completionAction ?? option.nextAction));
-    // A root failure may grant one more ordinary deliberation in the same
-    // month, but the already committed ActionFact is present-tense physical
-    // evidence. The exact same action is not newly plausible merely because a
-    // different goal or project now asks for it. A changed action remains
-    // eligible, while later months return to the full causal basis below.
-    if (atMonth === entry.failedAtMonth && optionActionBasis === entry.actionBasis) return true;
-    const optionBasis = entry.openingFailure
-      ? openingBasis ??= retryBasisForOption(option, true)
-      : regularBasis ??= retryBasisForOption(option, false);
-    if (optionBasis !== entry.basis) return false;
-    return !option.sourceFactIds.some((sourceId) => Boolean(sourceId) && !entry.previousSources.has(sourceId));
-  });
-}
-
-function sameVoxelPosition(
-  left: { x: number; y: number; z: number },
-  right: { x: number; y: number; z: number },
-): boolean {
-  return left.x === right.x && left.y === right.y && left.z === right.z;
-}
-
-export function isCurrentlyBodyBlockedPlacement(
-  state: SimulationState,
-  person: PersonState,
-  action: PrimitiveAction,
-): boolean {
-  if (action.kind !== 'act') return false;
-  const installationPosition = action.mechanicalPowerBasis?.mode === 'install'
-    ? action.mechanicalPowerBasis.componentPosition
-    : action.electricalPowerBasis?.mode === 'install'
-      ? action.electricalPowerBasis.componentPosition
-      : null;
-  if (installationPosition) {
-    const exactVoxelTarget = action.targets.some((target) => target.kind === 'voxel'
-      && sameVoxelPosition(target.position, installationPosition));
-    return exactVoxelTarget
-      && voxelAt(state.world.grid, installationPosition.x, installationPosition.y, installationPosition.z) === Material.Air
-      && bodyOccupies(state, installationPosition);
-  }
-  if (action.operation !== 'combine') return false;
-  const stackRef = action.targets.find((target) => target.kind === 'inventory-stack'
-    && target.personId === person.id);
-  const voxelRef = action.targets.find((target) => target.kind === 'voxel');
-  if (!stackRef || stackRef.kind !== 'inventory-stack' || !voxelRef || voxelRef.kind !== 'voxel') return false;
-  const stack = person.inventory.find((candidate) => candidate.id === stackRef.stackId && candidate.quantity > 0);
-  if (!stack) return false;
-  const targetMaterialId = voxelAt(
-    state.world.grid,
-    voxelRef.position.x,
-    voxelRef.position.y,
-    voxelRef.position.z,
-  );
-  const outputMaterialId = inventoryVoxelCombinationOutput(stack.materialId, targetMaterialId);
-  return outputMaterialId !== null
-    && materialHas(outputMaterialId, 'solid')
-    && bodyOccupies(state, voxelRef.position);
-}
-
-export function optionHasCurrentlyBodyBlockedPlacement(
-  state: SimulationState,
-  person: PersonState,
-  option: Pick<ActionOption, 'nextAction' | 'completionAction'>,
-): boolean {
-  return isCurrentlyBodyBlockedPlacement(state, person, option.nextAction)
-    || Boolean(option.completionAction
-      && isCurrentlyBodyBlockedPlacement(state, person, option.completionAction));
-}
-
 function withPlanning(
   state: SimulationState,
   person: PersonState,
@@ -684,7 +357,7 @@ function decisionOptionPriority(option: ActionOption): number {
 }
 
 export function isObservedEmergencyHibernationOption(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'civilization' | 'world'>,
   person: PersonState,
   option: ActionOption,
 ): boolean {
@@ -756,30 +429,6 @@ function nextFirePosition(state: SimulationState, person: PersonState): { x: num
     });
   if (targetCell === undefined) return null;
   return { x: cellX(targetCell), y: cellY(targetCell), z: topZ(state.world.grid, targetCell) + 1 };
-}
-
-function reproductivePairEligible(first: PersonState, second: PersonState, atMonth: number): boolean {
-  if (first.sex === second.sex) return false;
-  const female = first.sex === 'female' ? first : second;
-  const male = first.sex === 'male' ? first : second;
-  if (ageMonths(female, atMonth) < 16 * 12
-    || ageMonths(female, atMonth) > reproductiveUpperAgeMonths(female)
-    || ageMonths(male, atMonth) < 16 * 12) return false;
-  if (hasReproductiveRecoveryCondition(female)) return false;
-  return Math.min(
-    first.body.health, first.body.hydration, first.body.nutrition,
-    second.body.health, second.body.hydration, second.body.nutrition,
-  ) >= 55;
-}
-
-function succubusPairEligible(actor: PersonState, partner: PersonState, atMonth: number): boolean {
-  if (!isAlive(actor) || !isAlive(partner)
-    || actor.id === partner.id
-    || actor.sex !== 'female'
-    || partner.sex !== 'male'
-    || !hasTrait(actor, 'succubus')) return false;
-  if (ageMonths(actor, atMonth) < 16 * 12 || ageMonths(partner, atMonth) < 16 * 12) return false;
-  return !actor.conditions.some((condition) => condition.kind === 'pregnancy');
 }
 
 function buildOptions(
@@ -1530,213 +1179,7 @@ function buildOptions(
     }),
   });
 
-  const activeReproductionAgreement = [...agreementsForPerson(state, person.id)].reverse().find((agreement) => agreement.status === 'active'
-    && agreement.proposal.kind === 'reproduce'
-    && agreement.partyIds.includes(person.id)
-    && (agreement.acceptedAtMonth ?? Number.POSITIVE_INFINITY) <= atMonth
-    && (agreement.dueAtMonth ?? Number.NEGATIVE_INFINITY) >= atMonth);
-  const activeReproductionPartnerId = activeReproductionAgreement?.partyIds.find((personId) => personId !== person.id);
-  const activeReproductionPartnerCandidate = activeReproductionPartnerId
-    ? personById(state, activeReproductionPartnerId)
-    : undefined;
-  const activeReproductionPartner = activeReproductionPartnerCandidate && isAlive(activeReproductionPartnerCandidate)
-    ? activeReproductionPartnerCandidate
-    : undefined;
-  if (activeReproductionAgreement?.proposal.kind === 'reproduce' && activeReproductionPartner) {
-    const together = sameLocation(activeReproductionPartner, person);
-    const revokeId = `revoke-reproduce:${activeReproductionAgreement.id}:${person.id}:${atMonth}`;
-    const revokeAction = {
-      kind: 'communicate' as const,
-      content: {
-        id: revokeId,
-        kind: 'revoke-agreement' as const,
-        referenceId: activeReproductionAgreement.id,
-        summary: '撤回这一次生殖尝试的同意',
-      },
-      audience: [activeReproductionPartner.id],
-      channel: 'voice' as const,
-    };
-    options.push({
-      id: `withdraw-reproduce:${activeReproductionAgreement.id}`,
-      summary: `向${activeReproductionPartner.name}撤回本次生殖同意`,
-      reason: '已经接受的单次生殖尝试在实际发生前仍可重新评估并撤回',
-      goal: { kind: 'representation-made', representationId: revokeId },
-      nextAction: together
-        ? revokeAction
-        : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
-      ...(!together ? { completionAction: revokeAction } : {}),
-      target: { kind: 'person', personId: activeReproductionPartner.id },
-      estimatedDuration: together ? 'one-month' : 'several-months',
-      sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
-      semantics: defineActionOptionSemantics({
-        obligation: 'commitment-action',
-        planningChannel: 'edge',
-        purpose: 'reproduction',
-        minimumLifeStage: 'adult',
-        needKinds: ['commitment', 'generativity', 'autonomy'],
-        reproduction: { direction: 'refuse', phase: 'withdrawal', mode: 'mutual' },
-        edgeTrigger: 'commitment-action',
-        socialContext: {
-          cooperationKind: 'reproduction', phase: 'withdrawal',
-          counterpartIds: [activeReproductionPartner.id], referenceId: activeReproductionAgreement.id,
-        },
-      }),
-    });
-    if (!reproductionAttemptedBetweenInMonth(state, person.id, activeReproductionPartner.id, atMonth)
-      && reproductivePairEligible(person, activeReproductionPartner, atMonth)) {
-      const female = person.sex === 'female' ? person : activeReproductionPartner;
-      options.push({
-        id: `reproduce:${activeReproductionAgreement.id}:${activeReproductionPartner.id}`,
-        summary: `与${activeReproductionPartner.name}进行已同意的一次生殖尝试`,
-        reason: '双方已形成可追溯的单次授权，且行动前仍可重新评估',
-        goal: { kind: 'condition', personId: female.id, condition: 'pregnancy', present: true },
-        nextAction: together
-          ? { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id }
-          : { kind: 'move', toCellId: activeReproductionPartner.position.cellId, toZ: activeReproductionPartner.position.z },
-        ...(!together ? { completionAction: { kind: 'act' as const, operation: 'reproduce' as const, targets: [{ kind: 'person' as const, personId: activeReproductionPartner.id }], authorizationRef: activeReproductionAgreement.id } } : {}),
-        target: { kind: 'person', personId: activeReproductionPartner.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [...activeReproductionAgreement.sourceEventIds],
-      });
-    }
-  }
-
-  const incomingOffer = openReproductionOfferFor(state, person.id);
-  if (incomingOffer) {
-    const proposer = personById(state, incomingOffer.fact.who);
-    if (proposer) {
-      const responseBasis = buildRelationshipCausalBasis(state, person, proposer, 'reproduce', atMonth);
-      const representationId = `accept:${incomingOffer.content.id}:${person.id}`;
-      const together = sameLocation(proposer, person);
-      const acceptAction = { kind: 'communicate' as const, content: { id: representationId, kind: 'accept' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
-      const perceivedRisk = perceivedKinshipRisk(state, person, proposer);
-      const learnedRisk = perceivedRisk.cost > 0;
-      const responseSourceFactIds = [...new Set([
-        incomingOffer.fact.id,
-        ...responseBasis.sourceFactIds,
-        ...perceivedRisk.sourceFactIds,
-      ])];
-      if (reproductivePairEligible(person, proposer, atMonth)) options.push({
-        id: `accept-reproduce:${incomingOffer.content.id}`,
-        summary: `接受${proposer.name}的共同生殖提议`,
-        reason: learnedRisk ? '过去的后代体弱或疾病记忆会进入本人的同意判断' : '本人将依据关系、人格和当前责任自行判断是否接受',
-        goal: { kind: 'representation-made', representationId },
-        nextAction: together ? acceptAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
-        ...(!together ? { completionAction: acceptAction } : {}),
-        target: { kind: 'person', personId: proposer.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: responseSourceFactIds,
-        relationshipBasis: responseBasis,
-        semantics: defineActionOptionSemantics({
-          obligation: 'required-response', planningChannel: 'edge',
-          purpose: 'reproduction', minimumLifeStage: 'adult',
-          needKinds: ['autonomy', 'generativity'], edgeTrigger: 'required-response',
-          reproduction: { direction: 'proceed', phase: 'response', mode: 'mutual' },
-          socialContext: {
-            cooperationKind: 'reproduction', phase: 'response', counterpartIds: [proposer.id],
-            referenceId: incomingOffer.content.id,
-          },
-        }),
-      });
-      const rejectId = `reject:${incomingOffer.content.id}:${person.id}`;
-      const rejectAction = { kind: 'communicate' as const, content: { id: rejectId, kind: 'reject' as const, referenceId: incomingOffer.content.id }, audience: [proposer.id], channel: 'voice' as const };
-      options.push({
-        id: `reject-reproduce:${incomingOffer.content.id}`,
-        summary: '拒绝共同生殖提议',
-        reason: learnedRisk
-          ? '记忆中已有近亲后代体弱或疾病的可追溯经验'
-          : responseBasis.relationshipKeys.length
-            ? '本人将依据这段有来源关系和当前责任自行判断是否拒绝'
-            : '本人没有自己的共同经历，但仍须明确回应对方的提议',
-        goal: { kind: 'representation-made', representationId: rejectId },
-        nextAction: together ? rejectAction : { kind: 'move', toCellId: proposer.position.cellId, toZ: proposer.position.z },
-        ...(!together ? { completionAction: rejectAction } : {}),
-        target: { kind: 'person', personId: proposer.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: responseSourceFactIds,
-        relationshipBasis: responseBasis,
-        semantics: defineActionOptionSemantics({
-          obligation: 'required-response', planningChannel: 'edge',
-          purpose: 'reproduction', minimumLifeStage: 'adult',
-          needKinds: ['autonomy', 'generativity'], edgeTrigger: 'required-response',
-          reproduction: { direction: 'refuse', phase: 'response', mode: 'mutual' },
-          socialContext: {
-            cooperationKind: 'reproduction', phase: 'response', counterpartIds: [proposer.id],
-            referenceId: incomingOffer.content.id,
-          },
-        }),
-      });
-    }
-  }
-
-  const succubusTrait = person.traits?.find((trait) => trait.id === 'succubus');
-  if (succubusTrait) {
-    const unilateralCandidates = visiblePeople
-      .filter((other) => succubusPairEligible(person, other, atMonth))
-      .filter((other) => !reproductionAttemptedBetweenInMonth(state, person.id, other.id, atMonth))
-      .sort((left, right) => left.id.localeCompare(right.id));
-    for (const reproductivePartner of unilateralCandidates) {
-      const together = sameLocation(reproductivePartner, person);
-      const reproduceAction = {
-        kind: 'act' as const,
-        operation: 'reproduce' as const,
-        targets: [{ kind: 'person' as const, personId: reproductivePartner.id }],
-      };
-      options.push({
-        id: `reproduce:succubus:${person.id}:${reproductivePartner.id}`,
-        summary: `以魅魔特质与${reproductivePartner.name}进行单方生殖尝试`,
-        reason: '魅魔特质让本人能够以单方同意越过关系、协议、家庭准备度与身体储备门槛',
-        goal: { kind: 'condition', personId: person.id, condition: 'pregnancy', present: true },
-        nextAction: together
-          ? reproduceAction
-          : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
-        ...(!together ? { completionAction: reproduceAction } : {}),
-        target: { kind: 'person', personId: reproductivePartner.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [...succubusTrait.sourceEventIds],
-      });
-    }
-  }
-
-  const reproductiveCandidates = visiblePeople.filter((other) => {
-    if (activeReproductionAgreement) return false;
-    return reproductivePairEligible(person, other, atMonth);
-  }).map((other) => ({
-    other,
-    basis: buildRelationshipCausalBasis(state, person, other, 'reproduce', atMonth),
-  })).filter((candidate) => canOfferRelationshipProposal(state, person, candidate.other, candidate.basis))
-    .sort((a, b) => a.other.id.localeCompare(b.other.id));
-  for (const { other: reproductivePartner, basis } of reproductiveCandidates) {
-    const together = sameLocation(reproductivePartner, person);
-    if (!incomingOffer) {
-      const representationId = `offer-reproduce:${atMonth}:${person.id}:${reproductivePartner.id}`;
-      const perceivedRisk = perceivedKinshipRisk(state, person, reproductivePartner);
-      options.push({
-        id: representationId,
-        summary: `向${reproductivePartner.name}提出共同生殖`,
-        reason: perceivedRisk.cost > 0
-          ? '本人记得这段亲缘可能增加后代风险，是否提议仍由本人权衡'
-          : together
-            ? '彼此已有可追溯的共同经历，且身体条件允许本人考虑生殖'
-            : '彼此已有可追溯的共同经历，对方可见且身体条件允许本人考虑生殖',
-        goal: { kind: 'representation-made', representationId },
-        nextAction: together ? {
-          kind: 'communicate',
-          content: { id: representationId, kind: 'offer', summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce', proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
-          audience: [reproductivePartner.id], channel: 'voice',
-        } : { kind: 'move', toCellId: reproductivePartner.position.cellId, toZ: reproductivePartner.position.z },
-        ...(!together ? { completionAction: {
-          kind: 'communicate' as const,
-          content: { id: representationId, kind: 'offer' as const, summary: '是否愿意共同生育后代', proposal: { kind: 'reproduce' as const, proposerId: person.id, partnerId: reproductivePartner.id, expiresAtMonth: atMonth + 4, basis } },
-          audience: [reproductivePartner.id], channel: 'voice' as const,
-        } } : {}),
-        target: { kind: 'person', personId: reproductivePartner.id },
-        estimatedDuration: together ? 'one-month' : 'several-months',
-        sourceFactIds: [...new Set([...basis.sourceFactIds, ...perceivedRisk.sourceFactIds])],
-        relationshipBasis: basis,
-      });
-    }
-  }
+  options.push(...buildReproductionOptions(state, person, visiblePeople, atMonth));
 
   const vulnerableCarrier = localPeople.find((other) => other.inventory.some((stack) => stack.materialId === Material.Food && stack.quantity > 0));
   if (vulnerableCarrier && person.body.nutrition < 24 && inventoryQuantity(person, Material.Food) === 0) {

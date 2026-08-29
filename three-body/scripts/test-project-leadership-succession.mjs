@@ -25,7 +25,7 @@ try {
     export { projectCurrentLeadId, projectLeadershipVacancy, PROJECT_LEADERSHIP_VACANCY_MONTHS } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-leadership.ts'))};
     export { inspectProjectLeadership, projectLeadIdAtEvent } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-leadership.ts'))};
     export { worldEventById } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/event-index.ts'))};
-    export { projectsLedBy } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/state-index.ts'))};
+    export { projectsLedBy } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project-leadership-index.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export { cellId, cellX, cellY, setVoxel } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};

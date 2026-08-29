@@ -56,7 +56,7 @@ import {
   parseRecentTerminalFailureActionLeaseKey,
   parseSocialLearningSourceLeaseKey,
   productionWindowMonthFromDemandGroups,
-} from './history-retention-projection';
+} from './history-retention-contract';
 import {
   GROUNDED_CONVERSATION_RESPONSE_WINDOW_MONTHS,
   parseGroundedConversationWindowLeaseKey,

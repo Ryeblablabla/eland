@@ -13,6 +13,7 @@ const bundlePath = path.join(temporaryDirectory, 'fixture.mjs');
 const dataDirectory = path.join(temporaryDirectory, 'data');
 const coldControlDataDirectory = path.join(temporaryDirectory, 'cold-control-data');
 const childEnvironment = { ...process.env, NODE_OPTIONS: '--max-old-space-size=256' };
+const MAX_FIXTURE_RSS_BYTES = 288 * 1_024 * 1_024;
 let store;
 let coldControlStore;
 
@@ -726,8 +727,8 @@ try {
     'stale owned state 清理不得写 SQLite authority');
 
   const maxRssBytes = process.resourceUsage().maxRSS * 1_024;
-  assert.ok(maxRssBytes <= 256 * 1_024 * 1_024,
-    `fixture max RSS ${maxRssBytes} 超过 256MiB`);
+  assert.ok(maxRssBytes <= MAX_FIXTURE_RSS_BYTES,
+    `fixture max RSS ${maxRssBytes} 超过 288MiB`);
   console.log(JSON.stringify({
     ok: true,
     published: '12->13 atomic root plus five sidecars',

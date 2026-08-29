@@ -20,7 +20,7 @@ try {
       startIntent,
       startInterruptIntent,
     } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/simulation/intent-execution.ts'))};
-    const projector = { project() {} };
+    const projector = { project() { return { kind: 'deferred', reason: 'identity fixture owns no observer materialization' }; } };
     export const createInitialState = (seed, config) => createApplicationState(projector, seed, config);
     export const adoptSimulationState = (state) => adoptApplicationState(projector, state);
   `;

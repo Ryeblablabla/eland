@@ -1,4 +1,4 @@
-import type { ActionFact, SimulationState } from './model';
+import type { ActionFact, DecisionAuthorityState, SimulationState } from './model';
 import type { PersonId } from './person';
 import type { RepresentationInput } from './action';
 import {
@@ -23,7 +23,10 @@ export function completedCommunicationFacts(state: SimulationState): ActionFact[
   return [...completedCommunications(state)];
 }
 
-export function communicationById(state: SimulationState, representationId: string): ActionFact | undefined {
+export function communicationById(
+  state: Pick<DecisionAuthorityState, 'agreements' | 'intents' | 'world'>,
+  representationId: string,
+): ActionFact | undefined {
   return communicationByRepresentationId(state, representationId);
 }
 

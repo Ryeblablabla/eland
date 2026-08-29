@@ -1,6 +1,6 @@
 import type { PrimitiveAction } from './action';
 import { materialHas } from './material';
-import type { DropState, SimulationState } from './model';
+import type { DecisionAuthorityState, DropState, SimulationState } from './model';
 import {
   ageMonths,
   canEnterDehydratedHibernation,
@@ -62,7 +62,7 @@ function coLocatedYoungDependents(state: SimulationState, caregiver: PersonState
  * co-located, so the decision never reads remote health.
  */
 export function reproductiveResponsibility(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'clock' | 'people'>,
   caregiver: PersonState,
   atMonth = state.clock.elapsedMonths,
 ): ReproductiveResponsibility {

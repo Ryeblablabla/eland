@@ -596,6 +596,155 @@ export default function ThreeBodyCanvas(props: Props) {
       geo.setDrawRange(0, n);
     };
 
+    // ---- 慢速环境层：尘埃带 / 周期陨石流 ----
+    // 纯表现层：不参与引力积分，不读取也不影响行星命运与文明事实；
+    // 陨石流的形态随 resetToken 重排，同一宇宙每次打开一致；
+    // 彗星保留为远景背景层（skyPhenomena 的相机锁定拖尾彗星），不进入系统内部。
+    const makeAmbientRng = (seed: number) => {
+      let state = (Math.trunc(seed) >>> 0) || 0x9e3779b9;
+      return () => {
+        state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+        return (state >>>= 0) / 0x1_0000_0000;
+      };
+    };
+
+    // 尘埃带：三个同心环层以不同角速度缓慢公转，近似开普勒差速；
+    // 只旋转 Object3D，不做逐点更新。半径以系统张跨为单位，逐帧按 scale 贴合。
+    const dustBelt = new THREE.Group();
+    const dustLayers: { omega: number; points: THREE.Points; baseOpacity: number }[] = [];
+    const dustRings = [
+      { r: 1.5, width: 0.16, count: 1500, tint: '#96a5c0', size: 0.011, omega: 0.02, opacity: 0.5 },
+      { r: 1.95, width: 0.22, count: 2200, tint: '#8294b6', size: 0.009, omega: 0.014, opacity: 0.42 },
+      { r: 2.5, width: 0.3, count: 1500, tint: '#6f81a8', size: 0.008, omega: 0.01, opacity: 0.34 },
+    ];
+    for (const ring of dustRings) {
+      const rng = makeAmbientRng(0xd0570000 + Math.round(ring.r * 1000));
+      const positions = new Float32Array(ring.count * 3);
+      const colors = new Float32Array(ring.count * 3);
+      const tint = new THREE.Color(ring.tint);
+      const color = new THREE.Color();
+      for (let i = 0; i < ring.count; i++) {
+        const angle = rng() * Math.PI * 2;
+        // 角向聚集 + 半径高斯：带内呈团块感而非均匀圆环
+        const clump = Math.sin(angle * 7 + ring.r * 13) * 0.5 + Math.sin(angle * 3 - ring.r * 5) * 0.5;
+        const radius = ring.r + (rng() + rng() - 1) * ring.width + clump * ring.width * 0.35;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = Math.sin(angle) * radius;
+        positions[i * 3 + 2] = (rng() - 0.5) * ring.width * 0.22;
+        color.copy(tint).multiplyScalar(0.55 + rng() * 0.45);
+        colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const mat = new THREE.PointsMaterial({
+        size: ring.size, sizeAttenuation: true, vertexColors: true, transparent: true,
+        opacity: ring.opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+      });
+      const points = new THREE.Points(geo, mat);
+      points.renderOrder = -6;
+      points.frustumCulled = false;
+      dustBelt.add(points);
+      dustLayers.push({ omega: ring.omega, points, baseOpacity: ring.opacity });
+    }
+    scene.add(dustBelt);
+
+    // 周期陨石流：稀疏掠过系统外围的短促亮纹；对象池复用，不逐帧分配。
+    interface MeteorStreak {
+      sprite: THREE.Sprite;
+      active: boolean; start: number; life: number;
+      x: number; y: number; vx: number; vy: number; length: number;
+    }
+    const METEOR_POOL = 7;
+    const meteorTexture = makeGlowTexture('#e6f1ff');
+    const meteors: MeteorStreak[] = [];
+    for (let i = 0; i < METEOR_POOL; i++) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: meteorTexture, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+        depthWrite: false, fog: false,
+      }));
+      sprite.visible = false;
+      sprite.frustumCulled = false;
+      sprite.renderOrder = 3;
+      scene.add(sprite);
+      meteors.push({ sprite, active: false, start: 0, life: 0, x: 0, y: 0, vx: 0, vy: 0, length: 1 });
+    }
+    const meteorScreenA = new THREE.Vector3();
+    const meteorScreenB = new THREE.Vector3();
+    let ambientSeed = Number.NaN;
+    let ambientTime = 0;
+    let nextShowerAt = 40;
+    let showerRng: (() => number) | null = null;
+
+    const updateAmbientLayers = (
+      deltaSeconds: number,
+      camera: THREE.PerspectiveCamera,
+      resetToken: number,
+      spread: number,
+    ) => {
+      ambientTime += deltaSeconds;
+      if (ambientSeed !== resetToken) {
+        ambientSeed = resetToken;
+        showerRng = makeAmbientRng((resetToken ^ 0x5eed5) >>> 0);
+        nextShowerAt = ambientTime + 22 + (showerRng?.() ?? 0.5) * 40;
+      }
+      // 尘埃带：贴合系统尺度 + 差速公转 + 极慢亮度呼吸
+      dustBelt.scale.setScalar(Math.max(spread, 0.001));
+      for (const layer of dustLayers) {
+        layer.points.rotation.z += layer.omega * deltaSeconds;
+        (layer.points.material as THREE.PointsMaterial).opacity =
+          layer.baseOpacity * (0.85 + 0.15 * Math.sin(ambientTime * 0.05));
+      }
+      // 陨石流：从外围辐射点成批掠过，落幕后重新排期
+      if (showerRng && ambientTime >= nextShowerAt) {
+        const radiantA = showerRng() * Math.PI * 2;
+        const radiantR = 2.2 + showerRng() * 0.9;
+        const travelA = radiantA + Math.PI / 2 + (showerRng() - 0.5) * 0.9; // 大致切向
+        const want = 3 + Math.floor(showerRng() * 4);
+        let launched = 0;
+        for (const meteor of meteors) {
+          if (meteor.active || launched >= want) continue;
+          const jitter = (showerRng() - 0.5) * 0.5;
+          const speed = spread * (1.1 + showerRng() * 0.7);
+          meteor.active = true;
+          meteor.start = ambientTime + launched * (0.14 + showerRng() * 0.3);
+          meteor.life = 1.0 + showerRng() * 0.6;
+          meteor.x = Math.cos(radiantA + jitter) * radiantR * spread;
+          meteor.y = Math.sin(radiantA + jitter) * radiantR * spread;
+          meteor.vx = Math.cos(travelA + jitter * 0.4) * speed;
+          meteor.vy = Math.sin(travelA + jitter * 0.4) * speed;
+          meteor.length = 0.16 + showerRng() * 0.12;
+          launched++;
+        }
+        nextShowerAt = ambientTime + 55 + showerRng() * 70;
+      }
+      for (const meteor of meteors) {
+        if (!meteor.active) continue;
+        const t = ambientTime - meteor.start;
+        if (t < 0) continue;
+        const progress = t / meteor.life;
+        if (progress >= 1) {
+          meteor.active = false;
+          meteor.sprite.visible = false;
+          meteor.sprite.material.opacity = 0;
+          continue;
+        }
+        const x = meteor.x + meteor.vx * t;
+        const y = meteor.y + meteor.vy * t;
+        const length = meteor.length * spread;
+        meteor.sprite.position.set(x, y, 0.02);
+        meteor.sprite.scale.set(length, length * 0.045, 1);
+        meteorScreenA.set(x, y, 0).project(camera);
+        meteorScreenB.set(x + meteor.vx * 0.05, y + meteor.vy * 0.05, 0).project(camera);
+        meteor.sprite.material.rotation = Math.atan2(
+          meteorScreenB.y - meteorScreenA.y,
+          meteorScreenB.x - meteorScreenA.x,
+        );
+        meteor.sprite.material.opacity = Math.sin(progress * Math.PI) * 0.75;
+        meteor.sprite.visible = true;
+      }
+    };
+
     let W = 0, H = 0, dpr = 1;
     const resize = () => {
       const rect = canvas.parentElement!.getBoundingClientRect();
@@ -857,6 +1006,7 @@ export default function ThreeBodyCanvas(props: Props) {
       const px2w = (px: number) => px / pxPerUnit;
       distantSky.group.position.copy(camera.position);
       distantComet.update(frameDt, camera, w.t, p.resetToken);
+      updateAmbientLayers(frameDt, camera, p.resetToken, Math.max(maxRadiusFromCOM(w.sys), 0.5));
 
       // ---- 轨迹写缓冲 ----
       for (let i = 0; i < N_BODIES; i++) {

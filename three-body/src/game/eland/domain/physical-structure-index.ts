@@ -6,7 +6,7 @@ import type {
   PhysicalConstructionRecord,
   PhysicalStructure,
   PhysicalStructureIndex,
-  SimulationState,
+  DecisionAuthorityState,
   WorldEvent,
 } from './model';
 import { shelterGeometryAt } from './structure';
@@ -41,6 +41,8 @@ interface HistorySeal {
   eventCount: number;
   tailEventId: string | null;
 }
+
+type PhysicalStructureState = Pick<DecisionAuthorityState, 'clock' | 'world'>;
 
 function positionKey(x: number, y: number, z: number): string {
   return `${x}:${y}:${z}`;
@@ -211,7 +213,7 @@ function activeConstructionRecords(
 }
 
 function deriveStructuresFromRecords(
-  state: SimulationState,
+  state: PhysicalStructureState,
   records: readonly PhysicalConstructionRecord[],
 ): PhysicalStructure[] {
   const all: StructureComponent[] = activeConstructionRecords(state.world.grid, records, false)
@@ -276,7 +278,7 @@ function deriveStructuresFromRecords(
 }
 
 function materializePhysicalStructureIndex(
-  state: SimulationState,
+  state: PhysicalStructureState,
   fold: PhysicalStructureFold,
 ): PhysicalStructureIndex {
   const constructionRecords = orderedRecords(fold);
@@ -304,7 +306,7 @@ function assertFoldMatchesSeal(fold: PhysicalStructureFold, seal: HistorySeal): 
 
 /** Seal a staged fold only after its complete ledger has been verified. */
 export function finishPhysicalStructureFold(
-  state: SimulationState,
+  state: PhysicalStructureState,
   fold: PhysicalStructureFold,
 ): PhysicalStructureIndex {
   const history = committedHistoryView(state);
@@ -319,7 +321,7 @@ export function finishPhysicalStructureFold(
 }
 
 /** Full-history compatibility path. A bounded hot suffix must never impersonate a ledger. */
-export function derivePhysicalStructureIndex(state: SimulationState): PhysicalStructureIndex {
+export function derivePhysicalStructureIndex(state: PhysicalStructureState): PhysicalStructureIndex {
   const history = committedHistoryView(state);
   if (history.hotStartIndex !== 0 || history.events.length !== history.hotEventCount) {
     throw new Error('bounded 或 planning 历史不能全量重建物理结构索引');
@@ -331,7 +333,7 @@ export function derivePhysicalStructureIndex(state: SimulationState): PhysicalSt
 
 /** Advance exactly one committed suffix without revisiting its historical prefix. */
 export function advancePhysicalStructureIndex(
-  state: SimulationState,
+  state: PhysicalStructureState,
   previous: PhysicalStructureIndex,
   events: readonly WorldEvent[],
   previousSeal: HistorySeal,
@@ -355,7 +357,10 @@ export function advancePhysicalStructureIndex(
   return finishPhysicalStructureFold(state, priorFold);
 }
 
-function cacheMatchesCommittedSeal(state: SimulationState, index: PhysicalStructureIndex): boolean {
+function cacheMatchesCommittedSeal(
+  state: PhysicalStructureState,
+  index: PhysicalStructureIndex,
+): boolean {
   try {
     assertPhysicalStructureIndexV2(index, state.world.grid);
     const history = committedHistoryView(state);
@@ -367,7 +372,7 @@ function cacheMatchesCommittedSeal(state: SimulationState, index: PhysicalStruct
 }
 
 function legacyFullHistoryCacheIsFresh(
-  state: SimulationState,
+  state: PhysicalStructureState,
   index: PhysicalStructureIndex,
   hotStartIndex: number,
   hasOverlay: boolean,
@@ -382,7 +387,7 @@ function legacyFullHistoryCacheIsFresh(
 }
 
 function previewPhysicalStructureIndex(
-  state: SimulationState,
+  state: PhysicalStructureState,
   base: PhysicalStructureIndex,
   overlay: readonly WorldEvent[],
 ): PhysicalStructureIndex {
@@ -392,7 +397,7 @@ function previewPhysicalStructureIndex(
 }
 
 /** Narrow read boundary returning a fresh authoritative or planning-preview index. */
-export function physicalStructureIndexOf(state: SimulationState): PhysicalStructureIndex {
+export function physicalStructureIndexOf(state: PhysicalStructureState): PhysicalStructureIndex {
   const history = committedHistoryView(state);
   const overlay = planningOverlayEvents(state);
   let base = state.world.physicalStructureIndex;
@@ -423,7 +428,7 @@ export function physicalStructureIndexOf(state: SimulationState): PhysicalStruct
   return refreshed;
 }
 
-export function physicalStructuresOf(state: SimulationState): readonly PhysicalStructure[] {
+export function physicalStructuresOf(state: PhysicalStructureState): readonly PhysicalStructure[] {
   return physicalStructureIndexOf(state).structures;
 }
 
@@ -433,7 +438,7 @@ export function physicalStructuresOf(state: SimulationState): readonly PhysicalS
  * the resident hot history.
  */
 export function rematerializePhysicalStructureIndex(
-  state: SimulationState,
+  state: PhysicalStructureState,
   authenticated: PhysicalStructureIndex,
 ): PhysicalStructureIndex {
   assertPhysicalStructureIndexV2(authenticated, state.world.grid);
@@ -450,7 +455,9 @@ export function rematerializePhysicalStructureIndex(
 }
 
 /** Construction connectivity includes placeable building materials by design. */
-export function constructedConnectionPositionsOf(state: SimulationState): ReadonlySet<string> {
+export function constructedConnectionPositionsOf(
+  state: PhysicalStructureState,
+): ReadonlySet<string> {
   let index = physicalStructureIndexOf(state);
   if (!index.constructionRecords) {
     index = derivePhysicalStructureIndex(state);
@@ -477,6 +484,6 @@ export function copyPhysicalStructures(
 }
 
 /** Compatibility helper for callers that historically consumed an array. */
-export function derivePhysicalStructures(state: SimulationState): PhysicalStructure[] {
+export function derivePhysicalStructures(state: PhysicalStructureState): PhysicalStructure[] {
   return derivePhysicalStructureIndex(state).structures;
 }

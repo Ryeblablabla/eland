@@ -1,7 +1,6 @@
-import type { Intent, SimulationState } from './model';
+import type { DecisionAuthorityState, Intent, SimulationState } from './model';
 import { isAlive, type PersonId, type PersonState } from './person';
 import type { ProjectState } from './project';
-import { projectCurrentLeadId } from './project-leadership';
 
 interface AppendOnlyIdIndex<T extends { id: string }> {
   indexedLength: number;
@@ -30,12 +29,6 @@ interface ProjectLifecycleIndex {
   candidates: ProjectState[];
 }
 
-interface ProjectLeadershipIndex {
-  indexedLength: number;
-  lastIndexedProject?: ProjectState;
-  byLeadId: Map<PersonId, ProjectState[]>;
-}
-
 interface AgreementLifecycleIndex {
   itemRefs: AgreementState[];
   signatures: string[];
@@ -47,7 +40,6 @@ const personIndexes = new WeakMap<SimulationState['people'], PersonIndex>();
 const projectIndexes = new WeakMap<SimulationState['projects'], ProjectIndex>();
 const intentIndexes = new WeakMap<SimulationState['intents'], IntentIndex>();
 const projectLifecycleIndexes = new WeakMap<SimulationState['projects'], ProjectLifecycleIndex>();
-const projectLeadershipIndexes = new WeakMap<SimulationState['projects'], ProjectLeadershipIndex>();
 const agreementLifecycleIndexes = new WeakMap<SimulationState['agreements'], AgreementLifecycleIndex>();
 
 function indexInvalid<T extends { id: string }>(items: T[], index: AppendOnlyIdIndex<T>): boolean {
@@ -139,7 +131,7 @@ function agreementLifecycleIndex(state: SimulationState): AgreementLifecycleInde
   return index;
 }
 
-function personIndex(state: SimulationState): PersonIndex {
+function personIndex(state: Pick<DecisionAuthorityState, 'people'>): PersonIndex {
   const people = state.people;
   let index = personIndexes.get(people);
   if (!index || indexInvalid(people, index)) {
@@ -169,7 +161,7 @@ export function invalidatePeopleIndex(state: SimulationState): void {
   personIndexes.delete(state.people);
 }
 
-function projectIndex(state: SimulationState): ProjectIndex {
+function projectIndex(state: Pick<DecisionAuthorityState, 'projects'>): ProjectIndex {
   const projects = state.projects;
   let index = projectIndexes.get(projects);
   if (!index || indexInvalid(projects, index)) {
@@ -188,7 +180,7 @@ function projectIndex(state: SimulationState): ProjectIndex {
   return index;
 }
 
-function intentIndex(state: SimulationState): IntentIndex {
+function intentIndex(state: Pick<DecisionAuthorityState, 'intents'>): IntentIndex {
   const intents = state.intents;
   let index = intentIndexes.get(intents);
   if (!index || indexInvalid(intents, index)) {
@@ -207,7 +199,10 @@ function intentIndex(state: SimulationState): IntentIndex {
   return index;
 }
 
-export function personById(state: SimulationState, personId: PersonId): PersonState | undefined {
+export function personById(
+  state: Pick<DecisionAuthorityState, 'people'>,
+  personId: PersonId,
+): PersonState | undefined {
   return personIndex(state).byId.get(personId);
 }
 
@@ -222,7 +217,10 @@ export function livingPeople(state: SimulationState): readonly PersonState[] {
   return index.living;
 }
 
-export function projectById(state: SimulationState, projectId: string): ProjectState | undefined {
+export function projectById(
+  state: Pick<DecisionAuthorityState, 'projects'>,
+  projectId: string,
+): ProjectState | undefined {
   return projectIndex(state).byId.get(projectId);
 }
 
@@ -230,41 +228,17 @@ export function projectsOwnedBy(state: SimulationState, ownerId: PersonId): read
   return projectIndex(state).byOwnerId.get(ownerId) ?? [];
 }
 
-/** Founder ownership remains immutable; this view follows the append-only current lead. */
-export function projectsLedBy(state: SimulationState, leadId: PersonId): readonly ProjectState[] {
-  const projects = state.projects;
-  let index = projectLeadershipIndexes.get(projects);
-  if (!index
-    || index.indexedLength !== projects.length
-    || index.lastIndexedProject !== projects.at(-1)) {
-    const byLeadId = new Map<PersonId, ProjectState[]>();
-    for (const project of projects) {
-      const currentLeadId = projectCurrentLeadId(project);
-      if (!currentLeadId) continue;
-      const owned = byLeadId.get(currentLeadId) ?? [];
-      owned.push(project);
-      byLeadId.set(currentLeadId, owned);
-    }
-    index = {
-      indexedLength: projects.length,
-      lastIndexedProject: projects.at(-1),
-      byLeadId,
-    };
-    projectLeadershipIndexes.set(projects, index);
-  }
-  return index.byLeadId.get(leadId) ?? [];
-}
-
-/** Leadership transitions mutate project shells in place, so callers invalidate explicitly after an append. */
-export function invalidateProjectLeadershipIndex(state: SimulationState): void {
-  projectLeadershipIndexes.delete(state.projects);
-}
-
-export function intentById(state: SimulationState, intentId: string): Intent | undefined {
+export function intentById(
+  state: Pick<DecisionAuthorityState, 'intents'>,
+  intentId: string,
+): Intent | undefined {
   return intentIndex(state).byId.get(intentId);
 }
 
-export function intentsOwnedBy(state: SimulationState, ownerId: PersonId): readonly Intent[] {
+export function intentsOwnedBy(
+  state: Pick<DecisionAuthorityState, 'intents'>,
+  ownerId: PersonId,
+): readonly Intent[] {
   return intentIndex(state).byOwnerId.get(ownerId) ?? [];
 }
 

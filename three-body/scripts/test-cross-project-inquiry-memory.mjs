@@ -227,19 +227,21 @@ try {
 
   {
     const { state, actor } = fixture(2605);
-    actor.inventory = [{ id: 'fiber-two', materialId: Material.Fiber, quantity: 2, sourceEventIds: ['fiber-source'] }];
+    actor.inventory = [{ id: 'raw-meat-two', materialId: Material.RawMeat, quantity: 2, sourceEventIds: ['raw-meat-source'] }];
     actor.knowledge = [
-      { id: `technique:exert:${Material.StoneTool}:${Material.Fiber}:${Material.Air}:${Material.Fire}`, kind: 'technique', summary: '一次输入方向响应', confidence: 46, learnedAtMonth: 10, sourceEventIds: ['response-a'] },
-      { id: `observation:no-response:exert:${Material.Stone}:${Material.Fiber}:${Material.Air}`, kind: 'observation', summary: '两次输入方向无响应', confidence: 64, learnedAtMonth: 11, sourceEventIds: ['no-a', 'no-b'] },
-      { id: `observation:no-response:exert:${Material.Leaves}:${Material.Fiber}:${Material.Air}`, kind: 'observation', summary: '一次输入方向无响应', confidence: 46, learnedAtMonth: 12, sourceEventIds: ['no-c'] },
+      { id: `technique:exert:${Material.StoneTool}:${Material.RawMeat}:${Material.Air}:${Material.Fire}`, kind: 'technique', summary: '一次输入方向响应', confidence: 46, learnedAtMonth: 10, sourceEventIds: ['response-a'] },
+      { id: `observation:no-response:exert:${Material.Stone}:${Material.RawMeat}:${Material.Air}`, kind: 'observation', summary: '三次输入方向无响应', confidence: 64, learnedAtMonth: 11, sourceEventIds: ['no-a', 'no-b', 'no-d'] },
+      { id: `observation:no-response:exert:${Material.Leaves}:${Material.RawMeat}:${Material.Air}`, kind: 'observation', summary: '一次输入方向无响应', confidence: 46, learnedAtMonth: 12, sourceEventIds: ['no-c'] },
     ];
     const project = activeInquiry(actor, 'zero-score-basis');
     const campaign = refreshProjectHypothesisCampaign(state.seed, 21, actor, project, [], {
-      operation: 'combine-inventory', questionKind: 'connect-manipulator-shapes',
+      operation: 'combine-inventory', questionKind: 'connect-flexible-layers',
     });
-    const candidate = campaign.candidates.find((item) => item.key === `${Material.Fiber}+${Material.Fiber}`);
+    const candidate = campaign.candidates.find((item) => item.key === `${Material.RawMeat}+${Material.RawMeat}`);
     assert.ok(candidate);
     assert.equal(candidate.roleScore, 0, 'fixture must exercise the aggregate-zero role basis');
+    assert.equal(candidate.rankBasis.learnedEvidence, -8,
+      '零分 fixture 必须由当前可观察形态与本人方向经验共同给出，不得凭调整材料 ID 碰巧归零');
     assert.ok(candidate.roleReasonKeys.includes('role-aggregate-no-observed-fit'), 'aggregate zero must retain an explicit no-fit basis');
   }
 

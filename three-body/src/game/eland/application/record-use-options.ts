@@ -25,7 +25,8 @@ import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-ind
 import { goalSatisfied } from '../domain/action-executor';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 import { previewOwnedProjectStep, recompileProjectNextAction } from './project-options';
-import { projectById, projectsLedBy } from '../domain/state-index';
+import { projectById } from '../domain/state-index';
+import { projectsLedBy } from '../domain/project-leadership-index';
 import { projectIsLedBy } from '../domain/project-leadership';
 import type { ProjectStep } from './projects/project-step';
 

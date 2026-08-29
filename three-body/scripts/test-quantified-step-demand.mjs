@@ -12,7 +12,7 @@ const bundlePath = path.join(temporaryDirectory, 'quantified-step-demand.mjs');
 try {
   const entry = `
     export { createInitialState } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/monthly-simulation.ts'))};
-    export { buildProjectOptions } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
+    export { buildProjectOptions, recompileProjectNextAction } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/project-options.ts'))};
     export { instantiateProject } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/project.ts'))};
     export { Material } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/material.ts'))};
     export {
@@ -34,6 +34,7 @@ try {
     instantiateProject,
     inventoryCombinationForOutput,
     inventoryCombinationTechniqueId,
+    recompileProjectNextAction,
     exertionRuleFor,
     exertionTechniqueId,
   } = await import(`${pathToFileURL(bundlePath).href}?test=${Date.now()}`);
@@ -124,6 +125,7 @@ try {
   }
 
   function projectOption(state, actor, project) {
+    const authoritativeEpisodeCount = project.logisticsEpisodes?.length ?? 0;
     const options = buildProjectOptions(
       state,
       actor,
@@ -133,6 +135,11 @@ try {
     );
     const option = options.find((candidate) => candidate.projectId === project.id);
     assert.ok(option, `项目 ${project.id} 应编译出下一步`);
+    assert.equal(project.logisticsEpisodes?.length ?? 0, authoritativeEpisodeCount,
+      '未选中的规划预览不得把 logistics episode 写入权威项目');
+    const committedAction = recompileProjectNextAction(state, actor, project.id);
+    assert.deepEqual(committedAction, option.nextAction,
+      '权威重编译必须落下与规划预览相同的原子行动');
     return option;
   }
 

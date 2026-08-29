@@ -3,15 +3,13 @@ import type { BatchDecider, Decision, DecisionContext } from "../src/game/eland/
 import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
 import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
-  validatePlayerInteractionChoice,
-  isPlayerInteractionEmergencyContext,
-  type PlayerInteractionChoiceFailure,
-} from '../src/game/eland/application/player-interaction-choice';
-import {
   hasFulfillmentOpportunity,
+  isPlayerInteractionEmergencyContext,
   isFulfillmentOption,
   isRequiredSocialOption,
-} from '../src/game/eland/application/rule-planner';
+  validatePlayerInteractionChoice,
+  type PlayerInteractionChoiceFailure,
+} from '../src/game/eland/infrastructure-api';
 import { handleDecide } from "./model-decision-gateway";
 
 export interface PendingPlayerInteraction {

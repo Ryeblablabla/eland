@@ -1,7 +1,7 @@
 import type { Agreement } from './agreement';
 import type { SharedLivingAnchor } from './action';
 import { worldEventById } from './event-index';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import type { PersonState } from './person';
 import { livingPeople } from './state-index';
 import {
@@ -35,7 +35,10 @@ function validAnchor(value: SharedLivingAnchor | undefined): value is SharedLivi
 }
 
 /** Legacy active agreements recover the same stable place from their offer fact. */
-export function companionLivingAnchor(state: SimulationState, agreement: Agreement): SharedLivingAnchor | null {
+export function companionLivingAnchor(
+  state: Pick<DecisionAuthorityState, 'world'>,
+  agreement: Agreement,
+): SharedLivingAnchor | null {
   if (agreement.proposal.kind !== 'companion') return null;
   if (validAnchor(agreement.proposal.sharedLivingAnchor)) {
     return { ...agreement.proposal.sharedLivingAnchor };

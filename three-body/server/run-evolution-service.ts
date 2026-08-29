@@ -5,11 +5,20 @@ import {
   type EvolutionRunRequest,
 } from './evolution-request';
 import { HttpError } from './http-error';
-import {
-  executeLongEvolutionInWorker,
-  type EvolutionWorkerExecution,
-} from './run-evolution-worker-client';
-import type { SqliteRunStore } from './sqlite-run-store';
+
+export interface EvolutionWorkerExecution {
+  ready: Promise<EvolutionPath>;
+  completion: Promise<void>;
+}
+
+export interface EvolutionStatusStore {
+  loadEvolutionPath(id: string): Promise<EvolutionPath | null>;
+}
+
+export type EvolutionWorkerLauncher = (
+  id: string,
+  request: EvolutionRunRequest,
+) => EvolutionWorkerExecution;
 
 // One server process owns one shell-part cache in the API isolate and one in
 // each evolution Worker isolate. Serializing Workers keeps their combined
@@ -88,7 +97,10 @@ export class RunEvolutionService {
   private readonly runQueues = new Map<string, Promise<unknown>>();
   private readonly evolutionJobs = new Map<string, EvolutionJob>();
 
-  constructor(private readonly store: SqliteRunStore) {}
+  constructor(
+    private readonly store: EvolutionStatusStore,
+    private readonly launchWorker: EvolutionWorkerLauncher,
+  ) {}
 
   async serializeRun<T>(id: string, task: () => Promise<T>): Promise<T> {
     const previous = this.runQueues.get(id) ?? Promise.resolve();
@@ -148,11 +160,7 @@ export class RunEvolutionService {
     const ready = deferred<EvolutionPath>();
     const promise = this.serializeRun(id, async () => {
       const queued = enqueueEvolutionWorker(
-        () => executeLongEvolutionInWorker(
-          this.store.dataDirectory(),
-          id,
-          request,
-        ),
+        () => this.launchWorker(id, request),
       );
       void queued.ready.then((path) => {
         job.requestedEndMonth = path.requestedEndMonth;

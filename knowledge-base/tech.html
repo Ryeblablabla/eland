@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技术架构 · ELAND</title>
+<meta name="description" content="ELAND 技术架构：规则优先的涌现式文明模拟引擎。确定性本地规则裁定一切因果，大模型只做表达与协商；权威状态可回放、可审计、可长跑。">
+<link rel="stylesheet" href="./site.css">
+<style>
+  .tech-hero { padding: 84px 0 40px; }
+  .tech-hero h1 { font-size: clamp(30px, 4.6vw, 52px); margin: 8px 0 16px; font-weight: 900; }
+  .tech-hero .lede { color: var(--ink-dim); font-size: 16px; line-height: 2; max-width: 760px; }
+  .tech-hero .lede b { color: var(--ink); }
+  section { padding: 56px 0; }
+  h2.section-h { font-size: clamp(21px, 2.8vw, 28px); font-weight: 800; margin: 0 0 8px; }
+  .section-note { color: var(--ink-dim); font-size: 14px; line-height: 1.9; max-width: 760px; margin-bottom: 30px; }
+
+  /* 架构流水线 */
+  .pipeline { display: flex; flex-direction: column; gap: 0; margin-top: 34px; }
+  .pipe-layer {
+    display: grid; grid-template-columns: 210px 1fr; gap: 20px;
+    padding: 20px 24px;
+    border: 1px solid var(--line); border-bottom: 0;
+    background: linear-gradient(170deg, rgba(17,26,46,.55), rgba(8,12,24,.55));
+  }
+  .pipe-layer:first-child { border-radius: 14px 14px 0 0; }
+  .pipe-layer:last-child { border-bottom: 1px solid var(--line); border-radius: 0 0 14px 14px; }
+  .pipe-layer .lname { font-weight: 700; font-size: 15px; }
+  .pipe-layer .lname small { display: block; margin-top: 4px; font-weight: 400; font-size: 10.5px; letter-spacing: .18em; color: var(--ink-faint); text-transform: uppercase; }
+  .pipe-layer .ldesc { color: var(--ink-dim); font-size: 13.5px; line-height: 1.9; }
+  .pipe-layer .ldesc b { color: var(--ink); font-weight: 600; }
+  .pipe-arrow { text-align: center; color: var(--star-blue); font-size: 14px; padding: 3px 0; letter-spacing: .3em; }
+  @media (max-width: 720px) { .pipe-layer { grid-template-columns: 1fr; gap: 6px; } }
+
+  /* 数字 */
+  .num-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .num-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: rgba(13,20,36,.5); }
+  .num-card .n { font-size: 26px; font-weight: 900; color: #fff; }
+  .num-card .n span { color: var(--sun); }
+  .num-card .d { margin-top: 6px; font-size: 12px; color: var(--ink-dim); line-height: 1.7; }
+
+  /* BDI 链 */
+  .bdi-chain { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 26px; }
+  .bdi-node {
+    padding: 9px 14px; border-radius: 999px; font-size: 13px;
+    border: 1px solid var(--line-strong); background: rgba(20,32,56,.55);
+  }
+  .bdi-node.hot { border-color: rgba(255,180,84,.55); color: #ffd9a0; }
+  .bdi-arrow { color: var(--ink-faint); font-size: 12px; }
+
+  /* 防线 */
+  .guard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 28px; }
+  .guard-card { border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; background: linear-gradient(175deg, rgba(15,23,41,.6), rgba(7,10,20,.6)); }
+  .guard-card .idx { font-size: 11px; letter-spacing: .3em; color: var(--sun); margin-bottom: 10px; }
+  .guard-card h3 { margin: 0 0 8px; font-size: 15.5px; }
+  .guard-card p { margin: 0; font-size: 13px; color: var(--ink-dim); line-height: 1.85; }
+
+  /* 路线图 */
+  .roadmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 28px; }
+  .mile { border-top: 2px solid var(--star-blue); padding: 14px 16px; background: rgba(13,20,36,.45); border-radius: 0 0 10px 10px; }
+  .mile.done { border-top-color: #57c98a; }
+  .mile.active { border-top-color: var(--sun); }
+  .mile .m-id { font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--star-blue); }
+  .mile.done .m-id { color: #57c98a; }
+  .mile.active .m-id { color: var(--sun); }
+  .mile h4 { margin: 8px 0 6px; font-size: 14.5px; }
+  .mile p { margin: 0; font-size: 12px; color: var(--ink-dim); line-height: 1.75; }
+
+  .fact-list { margin: 22px 0 0; padding: 0; list-style: none; }
+  .fact-list li { padding: 10px 0 10px 26px; position: relative; color: var(--ink-dim); font-size: 14px; line-height: 1.85; border-bottom: 1px dashed rgba(127,179,255,.12); }
+  .fact-list li::before { content: '◆'; position: absolute; left: 0; color: var(--star-blue); font-size: 10px; top: 14px; }
+  .fact-list b { color: var(--ink); }
+</style>
+</head>
+<body data-site-page="tech">
+
+<div class="page-wrap">
+  <div class="tech-hero">
+    <p class="kicker">Architecture · For Technical Review</p>
+    <h1>因果归规则，表达归模型</h1>
+    <p class="lede">ELAND 是一台<b>规则优先的涌现式文明模拟引擎</b>：世界里每个行动能否发生、
+      造成什么后果，由确定性本地规则裁定；大模型只参与对话、表达与协商，且所有建议必须重新通过规则验证。
+      这让我们既能给出 AI 驱动的鲜活人物，又能对投资人、评审与玩家承诺一件事——<b>模拟不撒谎</b>。</p>
+  </div>
+
+  <hr class="divider-glow">
+
+  <section>
+    <h2 class="section-h">单向权威流水线</h2>
+    <p class="section-note">表现层永远不拥有事实。UI、HTTP 与模型基础设施只能提交"候选"，
+      领域内核裁定后写入可回放的权威事件，观察器与投影只做只读观察。</p>
+    <div class="pipeline">
+      <div class="pipe-layer">
+        <div class="lname">表现与接口<small>UI · HTTP · LLM</small></div>
+        <div class="ldesc">Three.js 场景、HTTP API、可选大模型端点。<b>不成为任何领域事实的权威来源</b>；模型只能在当前合法候选中重选，领域层重新校验。</div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-layer">
+        <div class="lname">应用用例<small>Application</small></div>
+        <div class="ldesc">编排规划刻度、项目、合法行动候选与玩家交互；<b>不复制领域规则</b>。每月固定 15 个规划刻度，无模型密钥时规则链仍完整运行。</div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-layer">
+        <div class="lname">模拟内核<small>Domain ↔ World</small></div>
+        <div class="ldesc">84×52×12 体素权威世界；实体、协议、项目、知识、关系与社会事实。<b>不依赖 React / Three.js / HTTP / 模型供应商</b>，可纯命令行回放。</div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-layer">
+        <div class="lname">权威状态与事件<small>Authoritative History</small></div>
+        <div class="ldesc">SQLite WAL 单一日志库：长程运行、检查点、会话时间线、文明编号高水位同库事务。<b>每个动机都能回溯到具体事件 ID</b>。</div>
+      </div>
+      <div class="pipe-arrow">↓</div>
+      <div class="pipe-layer">
+        <div class="lname">只读投影<small>Projection · Observer</small></div>
+        <div class="ldesc">文明指数、里程碑、报告与 UI 读模型。<b>观察器永不反向指挥人物</b>——文明阶段不是人物的目标或奖励。</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-h">人物智能：因果 BDI</h2>
+    <p class="section-note">每个人物由一条完整因果链驱动；任何环节都可审计。模型失效时，本地规划器始终给出完整决定。</p>
+    <div class="bdi-chain">
+      <span class="bdi-node hot">压力</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">感知</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">记忆</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node hot">需要</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">项目</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">计划</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node hot">合法行动</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">后果</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">学习</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node">传承</span><span class="bdi-arrow">→</span>
+      <span class="bdi-node hot">制度</span>
+    </div>
+    <ul class="fact-list">
+      <li><b>12 类动态需要</b>（稳态、安全、照护、丧亲、储备、能力、承诺、归属、繁衍、自主、探究、空间舒适），按资源、身体字段与项目精确作用域——食物动机不能冒领饮水候选。</li>
+      <li><b>HEXACO 六维人格</b> + 13 种终身特质，只调节已有合法候选的转化效率，不凭空创造动机。</li>
+      <li><b>意图惯性</b>：承诺度由尽责性、真实进度、项目压力与成功预期构成；急性需要可打断，停滞会自然松手。</li>
+      <li><b>经验学习</b>：动作努力/伤害与目标成败的 Beta 后验，全部只从本人已提交的行动事实学习。</li>
+      <li><b>有界前瞻</b>：深度 3、24 节点的主观后果推演 + 信息价值评估，调整封顶，不能越过生存义务。</li>
+      <li><b>社会智能</b>：协议、信任后验、教学与制度提议；协商有来源，拒绝可撤回。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="section-h">模型不越权的四道防线</h2>
+    <div class="guard-grid">
+      <div class="guard-card">
+        <div class="idx">GATE 1</div>
+        <h3>只在合法候选中重选</h3>
+        <p>模型看到的不是开放世界，而是本地规则已经生成的合法行动候选；它只能重排，不能发明。</p>
+      </div>
+      <div class="guard-card">
+        <div class="idx">GATE 2</div>
+        <h3>领域层重新校验</h3>
+        <p>即使模型选中候选，执行前仍按完整类型化语义重新验证：材料、路径、权限、协议、年龄门禁一样不少。</p>
+      </div>
+      <div class="guard-card">
+        <div class="idx">GATE 3</div>
+        <h3>无模型仍可完整运行</h3>
+        <p>没有密钥、网络失败或返回非法建议时，本地规则规划器是始终成立的回退——后台演化从不等待模型。</p>
+      </div>
+      <div class="guard-card">
+        <div class="idx">GATE 4</div>
+        <h3>全程审计</h3>
+        <p>每次模型重选写入 DecisionFact：临时候选 ID、来源、额度与 token 消耗可查；长期意图保存规则目标而非模型文本。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-h">规模与工程纪律</h2>
+    <div class="num-grid">
+      <div class="num-card"><div class="n">84×52×12</div><div class="d">体素权威世界；通行、结构与生产全部发生在真实网格上</div></div>
+      <div class="num-card"><div class="n">15<span>/月</span></div><div class="d">每月固定规划刻度；人物每月 15 次完整决策</div></div>
+      <div class="num-card"><div class="n">300<span> 年</span></div><div class="d">单次最长连续模拟（3600 个月），全程可回放</div></div>
+      <div class="num-card"><div class="n">1193</div><div class="d">已存档实验运行；灭绝、停滞与失败样本一律保留</div></div>
+      <div class="num-card"><div class="n">95+</div><div class="d">带日期的演化实验报告：可证伪假设 + 同种子配对矩阵</div></div>
+      <div class="num-card"><div class="n">17</div><div class="d">持久化 schema 版本；SQLite WAL 唯一事实源</div></div>
+      <div class="num-card"><div class="n">0</div><div class="d">内核对外部框架的运行时依赖：无 React / Three / HTTP / 模型 SDK</div></div>
+      <div class="num-card"><div class="n">AST</div><div class="d">架构边界自动检查：依赖方向与层间渗透是 CI 门禁</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-h">发行路线</h2>
+    <p class="section-note">与 <code>docs/steam-desktop-release-roadmap-v1.md</code> 对齐；本地桌面壳 + Steam depot。</p>
+    <div class="roadmap">
+      <div class="mile done"><div class="m-id">M0</div><h4>发行基线</h4><p>后端可独立启动、数据目录可迁移、无密钥可玩</p></div>
+      <div class="mile active"><div class="m-id">M1</div><h4>本地桌面壳</h4><p>单进程内嵌前后端，双击即玩</p></div>
+      <div class="mile"><div class="m-id">M2</div><h4>Windows 候选包</h4><p>签名、安装器与冒烟矩阵</p></div>
+      <div class="mile"><div class="m-id">M3</div><h4>macOS 候选包</h4><p>公证、Universal 二进制</p></div>
+      <div class="mile"><div class="m-id">M4</div><h4>Steam 私有分支</h4><p>depot 上传与内部测试</p></div>
+      <div class="mile"><div class="m-id">M5</div><h4>商店发行候选</h4><p>商店页、评测版本与发行窗口</p></div>
+    </div>
+  </section>
+
+  <section style="padding-bottom:20px">
+    <h2 class="section-h">在哪里验证这些说法</h2>
+    <ul class="fact-list">
+      <li><a href="./codex.html#rules"><b>规则导览</b></a>：规则树、人物决策树与权威边界——手写导览，但每处改动必须随代码同步。</li>
+      <li><a href="./codex.html#docs"><b>核心文档</b></a>：14 份当前规范（模块边界、人物架构、时间模型、持久化等），由同步脚本直接取自仓库。</li>
+      <li><a href="./codex.html#assets"><b>素材图鉴</b></a>：每个素材标注"游戏已接入 / 视觉原型 / 待接入"，状态与生产代码一致。</li>
+    </ul>
+  </section>
+</div>
+
+<script src="./site.js" defer></script>
+</body>
+</html>

@@ -290,9 +290,25 @@ try {
   assert.equal(cooling(baseOption, 11, openingSetup), true,
     'opening-failed 必须按旧 intent 的 openingAction 匹配候选 nextAction，而不是误用尚未执行的后续动作');
 
-  assert.equal(cooling({ ...structuredClone(baseOption), id: 'accept-exchange:agreement:with:colons' }, 11), false,
+  const requiredResponseOption = {
+    ...structuredClone(baseOption),
+    id: 'opaque-required-response-handle',
+    goal: { kind: 'representation-made', representationId: 'accept-exchange-content' },
+    nextAction: {
+      kind: 'communicate',
+      content: { id: 'accept-exchange-content', kind: 'accept', referenceId: 'agreement:with:colons' },
+      audience: [receiverId],
+      channel: 'voice',
+    },
+    projectId: undefined,
+    recordUseBasis: undefined,
+  };
+  assert.equal(cooling(requiredResponseOption, 11), false,
     '交换的 required response 必须绕过失败冷却');
-  assert.equal(cooling({ ...structuredClone(baseOption), id: 'settle-exchange:agreement:with:colons' }, 11), false,
+  const commitmentOption = structuredClone(baseOption);
+  commitmentOption.id = 'opaque-commitment-handle';
+  commitmentOption.nextAction.authorizationRef = 'agreement:with:colons';
+  assert.equal(cooling(commitmentOption, 11), false,
     '交换履约候选必须绕过失败冷却');
 
   const placementState = createInitialState(9127, { endpoint: { kind: 'months', value: 12 } });

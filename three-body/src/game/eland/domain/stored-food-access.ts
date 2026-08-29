@@ -6,7 +6,7 @@ import {
   containerCell,
   type ContainerState,
 } from './container';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState } from './model';
 import type { ItemStack, PersonState } from './person';
 import {
   cellsInRadius,
@@ -33,7 +33,7 @@ export function currentPerceptionRadius(person: PersonState): number {
  * consulted because they cannot reveal current stock.
  */
 export function findCurrentVisibleStoredMaterialAccess(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'containers' | 'world'>,
   person: PersonState,
   accepts: (stack: ItemStack) => boolean,
 ): CurrentVisibleStoredMaterialAccess | null {

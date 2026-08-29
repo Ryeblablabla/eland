@@ -10,7 +10,7 @@ import {
 } from './evolution-artifacts';
 import { logPerf, perfElapsed, perfNow } from './perf';
 import { loadServerEnvValue } from './env';
-import type { SqliteRunStore } from './sqlite-run-store';
+import type { EvolutionExecutionStore } from './run-persistence';
 
 const RULE_PLANNER_MODEL = 'rule-planner-v1';
 const DEFAULT_LONG_EVOLUTION_CHECKPOINT_MONTHS = 12;
@@ -23,7 +23,7 @@ export function longEvolutionCheckpointMonths(): number {
 }
 
 export async function completeLongEvolution(
-  store: SqliteRunStore,
+  store: EvolutionExecutionStore,
   id: string,
   state: SimulationState,
   previous: EvolutionPath,
@@ -63,7 +63,7 @@ export async function completeLongEvolution(
  * synchronous SQLite encoding cannot block request handling.
  */
 export async function executeLongEvolution(
-  store: SqliteRunStore,
+  store: EvolutionExecutionStore,
   id: string,
   requestedEndMonth: number,
   initialPath: EvolutionPath,
@@ -79,7 +79,7 @@ export async function executeLongEvolution(
  * one authoritative state instance.
  */
 export async function executeLongEvolutionFromOwnedState(
-  store: SqliteRunStore,
+  store: EvolutionExecutionStore,
   id: string,
   requestedEndMonth: number,
   initialPath: EvolutionPath,

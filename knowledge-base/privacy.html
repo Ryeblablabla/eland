@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>隐私政策 · ELAND</title>
+<meta name="description" content="ELAND 隐私政策：单机离线运行，无账号、无遥测；可选模型端点密钥仅存本地。">
+<link rel="stylesheet" href="./site.css">
+<style>
+  .privacy { max-width: 760px; margin: 0 auto; padding: 84px 24px 40px; }
+  .privacy h1 { font-size: clamp(26px, 3.6vw, 38px); margin: 8px 0 10px; font-weight: 900; }
+  .privacy .updated { color: var(--ink-faint); font-size: 12.5px; margin-bottom: 36px; }
+  .privacy h2 { font-size: 17px; margin: 34px 0 10px; }
+  .privacy p, .privacy li { color: var(--ink-dim); font-size: 14px; line-height: 2; }
+  .privacy ul { padding-left: 22px; }
+  .privacy b { color: var(--ink); }
+  .privacy code { background: rgba(127,179,255,.1); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+</style>
+</head>
+<body data-site-page="privacy">
+<div class="privacy">
+  <p class="kicker">Privacy Policy</p>
+  <h1>隐私政策</h1>
+  <p class="updated">最后更新：2026 年 8 月 30 日</p>
+
+  <h2>一句话版本</h2>
+  <p>ELAND 是<b>单机离线</b>游戏：没有账号、没有遥测、没有广告追踪。你的世界只活在你自己的机器上。</p>
+
+  <h2>我们收集什么</h2>
+  <p><b>什么都不收集。</b>ELAND 不内置任何分析、统计或崩溃上报组件，游戏运行数据不会离开你的设备。</p>
+
+  <h2>你的存档在哪里</h2>
+  <p>全部游戏数据（文明运行、会话时间线、手动存档）保存在你本机的 SQLite 数据库中
+    （默认 <code>three-body/data/eland.sqlite3</code>）。删除该文件即删除全部本地数据；它不会上传到任何服务器。</p>
+
+  <h2>可选的大模型功能</h2>
+  <p>ELAND 的规则主链<b>不需要联网</b>即可完整运行。如果你选择自行配置第三方大模型端点来增强人物对话与叙事：</p>
+  <ul>
+    <li>API 密钥仅保存在你的本机配置中，我们不会接收；</li>
+    <li>发送给模型的内容仅限于游戏内人物的局部事实（档案、身体、关系与近期经历），由你配置的端点服务商按其隐私政策处理；</li>
+    <li>不配置或密钥失效时，游戏仅失去部分台词与叙事增强，核心模拟不受影响。</li>
+  </ul>
+
+  <h2>官网</h2>
+  <p>本官网为纯静态站点，不使用 Cookie，不嵌入第三方分析脚本。</p>
+
+  <h2>政策变更</h2>
+  <p>如本政策发生变化，我们会在此页面更新并注明日期。由于我们不收集联系方式，无法逐一通知，请在版本更新时留意。</p>
+
+  <h2>联系</h2>
+  <p>对本政策有疑问，请通过官网页脚列出的社区渠道与我们联系。</p>
+</div>
+<script src="./site.js" defer></script>
+</body>
+</html>

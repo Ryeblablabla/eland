@@ -1,5 +1,5 @@
 import { materialHas } from './material';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import type { PersonState } from './person';
 import {
   cellId,
@@ -30,7 +30,7 @@ function defaultVisibleCells(person: PersonState): number[] {
 
 /** 返回本人看见或记得、且此刻物质仍为水并可实际走到岸边的最近水源。 */
 export function findReachableWater(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   visibleCellIds: Iterable<number> = defaultVisibleCells(person),
 ): WaterAccess | null {

@@ -1,10 +1,13 @@
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import type { PersonState } from './person';
 import { personById } from './state-index';
 
 export const KINSHIP_RISK_KNOWLEDGE_ID = 'claim:close-kin-offspring-risk';
 
-function ancestorDepths(state: SimulationState, person: PersonState): Map<string, number> {
+function ancestorDepths(
+  state: Pick<DecisionAuthorityState, 'people'>,
+  person: PersonState,
+): Map<string, number> {
   const depths = new Map<string, number>();
   const pending = person.geneticParents.map((parentId) => ({ personId: parentId, depth: 1 }));
   while (pending.length) {
@@ -18,7 +21,11 @@ function ancestorDepths(state: SimulationState, person: PersonState): Map<string
 }
 
 /** Biological relatedness is a risk input, never an action prohibition. */
-export function geneticKinshipRisk(state: SimulationState, first: PersonState, second: PersonState): number {
+export function geneticKinshipRisk(
+  state: Pick<DecisionAuthorityState, 'people'>,
+  first: PersonState,
+  second: PersonState,
+): number {
   if (first.id === second.id) return 1;
   const firstAncestors = ancestorDepths(state, first);
   const secondAncestors = ancestorDepths(state, second);

@@ -1,5 +1,5 @@
 import { Material, type MaterialId } from './material';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState } from './model';
 import { inventoryQuantity, type PersonState } from './person';
 import {
   personallyKnownTechniquePrerequisitesForOutput,
@@ -47,7 +47,7 @@ export interface PersonKnownProcessOptions {
 }
 
 function targetReachableFrom(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   target: { x: number; y: number; z: number },
 ): boolean {
@@ -62,7 +62,7 @@ function targetReachableFrom(
 
 /** Spatial targets are preconditions, never portable recipe inputs. */
 export function personKnowsReachableTechniqueTarget(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   targetMaterialId: MaterialId,
 ): boolean {
@@ -83,7 +83,7 @@ export function personKnowsReachableTechniqueTarget(
 }
 
 function usableTechnique(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   outputMaterialId: MaterialId,
 ): PersonallyKnownTechniquePrerequisite | undefined {
@@ -93,7 +93,7 @@ function usableTechnique(
 }
 
 export function resolvePersonKnownProcess(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   rootOutputMaterialId: MaterialId,
   options: PersonKnownProcessOptions = {},

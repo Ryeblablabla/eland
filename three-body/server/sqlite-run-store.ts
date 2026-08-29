@@ -15,122 +15,39 @@ import {
   type SimulationState,
   type WorldEvent,
 } from "../src/game/eland/simulation";
-import {
-  registerLiveSocialEvidenceDescriptors,
-  retainedLiveSocialEvidenceForLivingSources,
-  retainedProjectPressureEvidenceForLivingSources,
-  worldEventById,
-} from "../src/game/eland/domain/event-index";
-import {
-  livePersonSocialSourceEventIds,
-  type RetainedLiveSocialEvidenceDescriptor,
-} from "../src/game/eland/domain/live-social-evidence";
-import { trimCommittedHistoryAfterPersistedCursor } from "../src/game/eland/domain/history";
-import { rematerializePhysicalStructureIndex } from "../src/game/eland/domain/physical-structure-index";
+import type { RetainedLiveSocialEvidenceDescriptor } from "../src/game/eland/domain/live-social-evidence";
 import { livingPeople } from "../src/game/eland/domain/state-index";
-import { hydrateWorld } from "../src/game/eland/world/grid";
-import { stepOwnedBoundedNonProjectionMonth } from "./bounded-nonprojection-month-controller";
 import {
-  stepOwnedBoundedObserverBoundaryMonth,
-  stepOwnedBoundedTerminalMonth,
   type BoundedObserverBoundaryKind,
-  type BoundedObserverBoundaryMonthResult,
 } from "./bounded-observer-boundary-month-controller";
 import {
-  materializeBoundedCertifiedCivilizationDevelopment,
-} from "./bounded-observer-civilization-materializer";
-import {
-  materializeDecodedBoundedObserverDerivedSubset,
-} from "./bounded-observer-derived-materializer";
-import {
-  assertLastMaterializedObserverBasis,
-  materializeBoundedObserverHotShell,
-  type LastMaterializedObserverBasis,
-} from "./bounded-observer-hot-shell";
-import {
-  LAST_MATERIALIZED_OBSERVER_BASIS_FIELD,
   materializedObserverMilestoneCount,
 } from "./bounded-gameplay-shell";
-import { adoptStoreDecodedBoundedSimulationState } from "./bounded-simulation-adoption";
 import {
   CHECKPOINT_ACCUMULATOR_CODEC,
-  decodeCheckpointAccumulator,
-  encodeCheckpointAccumulator,
-  projectCheckpointAccumulatorFromVerifiedRunRoot,
-  projectCheckpointAccumulatorFromVerifiedSuccessor,
   type CheckpointAccumulatorV1,
 } from "./checkpoint-accumulator";
 import {
-  decodeObserverCivilizationHistorySidecar,
-  encodeObserverCivilizationHistorySidecar,
   OBSERVER_CIVILIZATION_HISTORY_SIDECAR_CODEC,
   type ObserverCivilizationHistorySidecarPayloadV1,
 } from "./civilization-history-codec";
-import {
-  beginObserverCivilizationHistoryProjection,
-  finishObserverCivilizationHistoryProjection,
-  foldVerifiedObserverCivilizationHistorySegment,
-} from "./observer-civilization-history-projection";
-import {
-  assertVerifiedObserverCivilizationHistorySuccessor,
-  projectObserverCivilizationHistoryFromVerifiedSuccessor,
-} from "./observer-civilization-history-successor";
 import type { EvolutionPath, EvolutionReport } from "./evolution-artifacts";
 import {
-  decodeHistoryRetentionSidecar,
-  encodeHistoryRetentionSidecar,
   HISTORY_RETENTION_SIDECAR_CODEC,
   HISTORY_RETENTION_SIDECAR_LEGACY_CODEC,
 } from "./history-retention-codec";
-import {
-  assertHistoryRetentionProjectionMatchesShell,
-  beginHistoryRetentionProjection,
-  finishHistoryRetentionProjection,
-  foldHistoryRetentionSegment,
-  type HistoryRetentionProjectionResult,
-} from "./history-retention-projection";
-import {
-  assertHistoryRetentionProjectionMatchesVerifiedSuccessor,
-  assertVerifiedHistoryRetentionSuccessor,
-  projectHistoryRetentionFromVerifiedSuccessor,
-} from "./history-retention-successor";
-import {
-  liveSocialColdMaterializationOrdinals,
-  projectPressureColdMaterializationOrdinals,
-} from "./retained-history-evidence";
+import type { HistoryRetentionProjectionResult } from "./history-retention-projection";
 import type { NarrativeEnhancementArtifact } from "./narrative-enhancements";
 import {
-  decodeObserverDerivedHistorySidecar,
-  encodeObserverDerivedHistorySidecar,
   OBSERVER_DERIVED_HISTORY_SIDECAR_CODEC,
   type ObserverDerivedHistorySidecarPayloadV1,
 } from "./observer-derived-history-codec";
 import {
-  collectObserverDerivedHistoryGenesisDemandFromVerifiedShell,
-} from "./observer-derived-history-demand";
-import {
-  beginObserverDerivedHistoryProjection,
-  finishObserverDerivedHistoryProjection,
-  foldVerifiedObserverDerivedHistorySegment,
-} from "./observer-derived-history-projection";
-import {
-  assertVerifiedObserverDerivedHistorySuccessor,
-  projectObserverDerivedHistoryFromVerifiedSuccessor,
-} from "./observer-derived-history-successor";
-import {
-  decodePhysicalStructureLedgerSidecar,
-  encodePhysicalStructureLedgerSidecar,
   PHYSICAL_STRUCTURE_LEDGER_SIDECAR_CODEC,
 } from "./physical-structure-ledger-codec";
-import {
-  bootstrapPhysicalStructureLedgerFromStrictDecodedSidecar,
-  decodeBoundedGameplayRunStateWithPhysicalProjection,
-  projectPhysicalStructureLedgerFromVerifiedSuccessor,
-  type PhysicalStructureLedgerProjectionResult,
-} from "./physical-structure-ledger-projection";
+import type { PhysicalStructureLedgerProjectionResult } from "./physical-structure-ledger-projection";
 import {
   decodeRunContinuationBundle,
-  encodeRunContinuationBundle,
   hashRunContinuationStoredContent,
   MAX_RUN_CONTINUATION_HOT_EVENTS,
   RUN_CONTINUATION_BUNDLE_CODEC,
@@ -156,13 +73,11 @@ import {
   decodeSegmentedRunState,
   encodeSegmentedRunState,
   encodeSegmentedRunStateFromHistorySuffix,
-  materializeVerifiedRunHistoryPinnedEvents,
   markReachableRunStateChunks,
   parseRunStateRoot,
   runHistoryCursorFromRootMetadata,
   snapshotRunStateChunk,
   stabilizeCompletedProjectsForRunStateShellReuse,
-  streamVerifiedRunHistorySegments,
   streamVerifiedRunHistorySuccessorSegments,
   verifyRunStateSameHistoryShellSuccessor,
   RUN_STATE_CODECS,
@@ -182,6 +97,36 @@ import {
   sqliteUserVersion,
   withSqliteSchemaTransaction,
 } from "./sqlite-schema";
+import {
+  ARTIFACT_EVOLUTION_PATH,
+  ARTIFACT_EVOLUTION_REPORT,
+  ARTIFACT_NARRATIVE_ENHANCEMENTS,
+  SqliteRunOutputArtifactStore,
+} from "./sqlite-run-output-artifact-store";
+import {
+  RUN_CONTINUATION_SIDECAR_NAMES,
+  SqliteBoundedContinuationArtifactMaterialization,
+  type BoundedContinuationBootstrapSourceSnapshot,
+  type BoundedContinuationRefreshSourceSnapshot,
+  type RunContinuationSidecarName,
+} from "./sqlite-bounded-continuation-artifact-materialization";
+import {
+  SqliteBoundedObserverBoundaryPublication,
+  type BoundedObserverBoundaryMonthPublishedReceipt,
+  type BoundedObserverBoundaryMonthStagingReceipt,
+  type ObserverBoundaryPublicationCommit,
+  type ObserverBoundaryPublicationFinalization,
+  type ObserverBoundaryStagingContext,
+} from "./sqlite-bounded-observer-boundary-publication";
+import {
+  SqliteBoundedNonProjectionPublication,
+  type BoundedNonProjectionMonthPublishedReceipt,
+  type BoundedNonProjectionMonthStagingReceipt,
+  type NonProjectionMonthStagingRecord,
+  type NonProjectionPublicationCommit,
+  type NonProjectionPublicationFinalization,
+  type NonProjectionStagingCandidate,
+} from "./sqlite-bounded-nonprojection-publication";
 
 export {
   RunAlreadyExistsError,
@@ -196,6 +141,14 @@ export {
   ELAND_DATABASE_FILENAME,
   ELAND_DATABASE_SCHEMA_VERSION,
 } from "./sqlite-schema";
+export type {
+  BoundedObserverBoundaryMonthPublishedReceipt,
+  BoundedObserverBoundaryMonthStagingReceipt,
+} from "./sqlite-bounded-observer-boundary-publication";
+export type {
+  BoundedNonProjectionMonthPublishedReceipt,
+  BoundedNonProjectionMonthStagingReceipt,
+} from "./sqlite-bounded-nonprojection-publication";
 
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 /** Batch pruning keeps a 128-checkpoint recovery floor without running global GC every year. */
@@ -204,9 +157,6 @@ export const RUN_CHECKPOINT_PRUNE_THRESHOLD = RUN_CHECKPOINT_RETENTION * 2;
 
 const RUN_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const V8_BROTLI_CODEC = "v8-br-v1";
-const ARTIFACT_EVOLUTION_PATH = "evolution-path";
-const ARTIFACT_EVOLUTION_REPORT = "evolution-report";
-const ARTIFACT_NARRATIVE_ENHANCEMENTS = "narrative-enhancements";
 const RUN_CONTINUATION_COLLECTIBLE_CODECS = [
   RUN_CONTINUATION_BUNDLE_CODEC,
   HISTORY_RETENTION_SIDECAR_LEGACY_CODEC,
@@ -333,20 +283,7 @@ interface BoundedEvolutionSuccessorStagingRecord {
   readonly shellReuseIdentity?: Readonly<VerifiedRunStateShellReuseIdentity>;
 }
 
-interface BoundedNonProjectionMonthStagingRecord {
-  readonly sourceToken: object;
-  readonly sourceGeneration: number;
-  readonly runId: string;
-  readonly sourceRootHash: string;
-  readonly sourceMonth: number;
-  readonly nextMonth: number;
-  readonly nextRootHash: string;
-  readonly successorReceipt: object;
-  /** Store-owned state produced by the controller; never exposed by a receipt. */
-  readonly ownedNextState: SimulationState;
-  /** Body-free source descriptors captured before the owned month changes membership. */
-  readonly reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[];
-}
+type BoundedNonProjectionMonthStagingRecord = NonProjectionMonthStagingRecord;
 
 interface WarmBoundedContinuationRecord {
   readonly runId: string;
@@ -364,7 +301,7 @@ interface BoundedObserverBoundaryMonthStagingRecord {
   readonly sourceMonth: number;
   readonly targetMonth: number;
   readonly boundaryKind: BoundedObserverBoundaryKind;
-  readonly factSuccessorReceipt: BoundedEvolutionSuccessorStagingReceipt;
+  readonly factSuccessorReceipt: object;
   /** Body-free source descriptors captured before the owned boundary step changes history base. */
   readonly reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[];
 }
@@ -394,54 +331,12 @@ interface BoundedObserverBoundaryMonthPublishedRecord {
   readonly status: SimulationState["civilization"]["status"];
 }
 
-interface BoundedContinuationBootstrapSourceSnapshot {
-  readonly run: RunRow;
-  readonly checkpoint: ExactRunCheckpointRow;
-  readonly root: RunStateChunk;
-  readonly metadata: Readonly<RunStateRootMetadata>;
-}
-
-interface BoundedContinuationRefreshSourceSnapshot
-  extends BoundedContinuationBootstrapSourceSnapshot {
-  readonly continuation: RunContinuationRow;
-  readonly bundleChunk: ReturnType<typeof snapshotRunContinuationBundleChunk>;
-  readonly bundle: Readonly<RunContinuationBundleV1>;
-  readonly sidecars: Readonly<Record<RunContinuationSidecarName, ContinuationChunkIdentity>>;
-  readonly observerMaterializationSourceRoot?: RunStateChunk;
-}
-
-interface BuiltBoundedContinuationArtifacts {
-  readonly continuation: RunContinuationRow;
-  readonly encodedSidecars: Readonly<{
-    retention: ReturnType<typeof encodeHistoryRetentionSidecar>;
-    physical: ReturnType<typeof encodePhysicalStructureLedgerSidecar>;
-    derivedObserver: ReturnType<typeof encodeObserverDerivedHistorySidecar>;
-    civilizationObserver: ReturnType<typeof encodeObserverCivilizationHistorySidecar>;
-    checkpoint: ReturnType<typeof encodeCheckpointAccumulator>;
-  }>;
-  readonly encodedBundle: ReturnType<typeof encodeRunContinuationBundle>;
-  readonly physicalProjection: Readonly<PhysicalStructureLedgerProjectionResult>;
-}
-
-const RUN_CONTINUATION_SIDECAR_NAMES = [
-  "retention",
-  "physical",
-  "derivedObserver",
-  "civilizationObserver",
-  "checkpoint",
-] as const;
-type RunContinuationSidecarName = typeof RUN_CONTINUATION_SIDECAR_NAMES[number];
-
 const boundedContinuationTokenRegistries = new WeakMap<object, BoundedContinuationTokenRegistry>();
 /** Module-private capability; a runtime caller cannot forge it with a string flag. */
 const storeOwnedSingleMonthSuccessorAuthority = Object.freeze({});
 
 declare const boundedEvolutionContinuationTokenBrand: unique symbol;
 declare const boundedEvolutionSuccessorStagingReceiptBrand: unique symbol;
-declare const boundedNonProjectionMonthStagingReceiptBrand: unique symbol;
-declare const boundedNonProjectionMonthPublishedReceiptBrand: unique symbol;
-declare const boundedObserverBoundaryMonthStagingReceiptBrand: unique symbol;
-declare const boundedObserverBoundaryMonthPublishedReceiptBrand: unique symbol;
 declare const boundedEvolutionContinuationBootstrapReceiptBrand: unique symbol;
 declare const boundedEvolutionContinuationRefreshReceiptBrand: unique symbol;
 
@@ -481,62 +376,6 @@ export interface BoundedEvolutionSuccessorStagingReceipt {
   readonly persisted: false;
   readonly continuationReady: false;
   readonly [boundedEvolutionSuccessorStagingReceiptBrand]: true;
-}
-
-/**
- * Opaque proof that the store itself opened, rule-stepped and staged exactly one
- * non-observation month. It is not a publication receipt and writes no SQLite
- * authority. The ordinary caller-supplied-state staging receipt stays private.
- */
-export interface BoundedNonProjectionMonthStagingReceipt {
-  readonly kind: "bounded-nonprojection-month-staging-receipt-v1";
-  readonly persisted: false;
-  readonly continuationReady: false;
-  readonly [boundedNonProjectionMonthStagingReceiptBrand]: true;
-}
-
-/**
- * Store-owned proof that one controller-approved non-observation month and all
- * five successor sidecars were committed under one SQLite CAS transaction.
- * It grants no continuation authority and exposes no state or sidecar bytes.
- */
-export interface BoundedNonProjectionMonthPublishedReceipt {
-  readonly persisted: true;
-  readonly continuationReady: false;
-  readonly revision: number;
-  readonly month: number;
-  readonly stateHash: string;
-  readonly [boundedNonProjectionMonthPublishedReceiptBrand]: true;
-}
-
-/**
- * Opaque store-owned join between one annual fact root A and its still-current
- * continuation token. It writes no SQLite authority and exposes neither root.
- */
-export interface BoundedObserverBoundaryMonthStagingReceipt {
-  readonly kind: "bounded-observer-boundary-month-staging-receipt-v1";
-  readonly persisted: false;
-  readonly continuationReady: false;
-  readonly [boundedObserverBoundaryMonthStagingReceiptBrand]: true;
-}
-
-/**
- * Store-owned proof that one scheduled observer boundary or a closed
- * non-annual extinction probe was atomically published through private fact
- * root A and final materialized root B.
- */
-export interface BoundedObserverBoundaryMonthPublishedReceipt {
-  readonly kind: "bounded-observer-boundary-month-published-receipt-v1";
-  readonly boundaryKind: BoundedObserverBoundaryKind;
-  readonly persisted: true;
-  readonly continuationReady: false;
-  readonly revision: number;
-  readonly month: number;
-  readonly stateHash: string;
-  readonly status: SimulationState["civilization"]["status"];
-  /** Materialized stage read from authority root B, never inferred from index. */
-  readonly stage: string;
-  readonly [boundedObserverBoundaryMonthPublishedReceiptBrand]: true;
 }
 
 export interface SqliteRunStoreOptions {
@@ -919,48 +758,6 @@ function assertDecodedRunSummary(run: RunRow, state: SimulationState): void {
   }
 }
 
-function attachedLastMaterializedObserverBasis(
-  state: SimulationState,
-): Readonly<LastMaterializedObserverBasis> {
-  const basis = (state as unknown as Record<string, unknown>)[
-    LAST_MATERIALIZED_OBSERVER_BASIS_FIELD
-  ];
-  assertLastMaterializedObserverBasis(basis);
-  return basis;
-}
-
-function bindObserverBasisToPrivateFactRoot(
-  state: SimulationState,
-  source: Readonly<RunContinuationObserverMaterializationSourceV1>,
-): Readonly<LastMaterializedObserverBasis> {
-  const previous = attachedLastMaterializedObserverBasis(state);
-  const rebound = structuredClone({
-    ...previous,
-    source: { ...source },
-  }) as LastMaterializedObserverBasis;
-  assertLastMaterializedObserverBasis(rebound);
-  (state as unknown as Record<string, unknown>)[LAST_MATERIALIZED_OBSERVER_BASIS_FIELD] = rebound;
-  return rebound;
-}
-
-function installBoundedObserverHotShell(
-  state: SimulationState,
-  source: Readonly<RunContinuationObserverMaterializationSourceV1>,
-  lastMaterializedMilestoneCount: number,
-  basis: Readonly<LastMaterializedObserverBasis>,
-): void {
-  const shell = materializeBoundedObserverHotShell({
-    civilization: state.civilization,
-    source,
-    lastMaterializedMilestoneCount,
-    lastMaterializedObserverBasis: basis,
-  });
-  state.civilization = structuredClone(shell.civilization) as SimulationState["civilization"];
-  state.derived = structuredClone(shell.derived) as SimulationState["derived"];
-  (state as unknown as Record<string, unknown>)[LAST_MATERIALIZED_OBSERVER_BASIS_FIELD] =
-    structuredClone(shell.lastMaterializedObserverBasis);
-}
-
 function sameHistoryCursor(
   left: Readonly<RunHistoryCursor>,
   right: Readonly<RunHistoryCursor>,
@@ -985,49 +782,6 @@ function stagedHistoryTransitionMatchesSource(
       && sameHistoryCursor(sourceCursor, nextCursor);
   }
   return successor.historyTransition === "appended-events";
-}
-
-function boundedObserverBoundaryMatchesState(
-  kind: BoundedObserverBoundaryKind,
-  state: SimulationState,
-  targetMonth: number,
-): boolean {
-  const endpoint = state.civilization.conditions.endpoint;
-  if (endpoint.kind !== "months"
-    || state.clock.elapsedMonths !== targetMonth
-    || state.civilization.outcome?.atMonth !== (
-      kind === "annual" ? undefined : targetMonth
-    )) {
-    return false;
-  }
-  if (kind === "annual") {
-    return targetMonth % 12 === 0
-      && targetMonth < endpoint.value
-      && state.civilization.status === "running"
-      && state.civilization.outcome === undefined;
-  }
-  if (kind === "extinction") {
-    return state.civilization.status === "ended"
-      && state.civilization.outcome?.kind === "destroyed"
-      && livingPeople(state).length === 0;
-  }
-  return targetMonth === endpoint.value
-    && state.civilization.status === "ended"
-    && state.civilization.outcome?.kind === "boundary"
-    && livingPeople(state).length > 0;
-}
-
-function reusableLiveSocialDescriptorsForCurrentOwners(
-  state: SimulationState,
-  reusable: readonly RetainedLiveSocialEvidenceDescriptor[],
-): readonly RetainedLiveSocialEvidenceDescriptor[] {
-  const membershipByOwnerId = new Map(livingPeople(state).map((person) => [
-    person.id,
-    new Set(livePersonSocialSourceEventIds(person)),
-  ]));
-  return reusable.filter((item) => (
-    membershipByOwnerId.get(item.ownerId)?.has(item.descriptor.eventId) === true
-  ));
 }
 
 function evolutionBasisFor(
@@ -1111,10 +865,11 @@ export class SqliteRunStore implements RunStore {
   private readonly insertCheckpoint: StatementSync;
   private readonly insertRunContinuation: StatementSync;
   private readonly updateRunContinuationCas: StatementSync;
-  private readonly selectArtifactChunk: StatementSync;
-  private readonly selectArtifactHash: StatementSync;
-  private readonly upsertArtifact: StatementSync;
-  private readonly deleteUnreferencedArtifactChunk: StatementSync;
+  private readonly outputArtifacts: SqliteRunOutputArtifactStore;
+  private readonly continuationArtifactMaterialization:
+    SqliteBoundedContinuationArtifactMaterialization;
+  private readonly observerBoundaryPublication: SqliteBoundedObserverBoundaryPublication;
+  private readonly nonProjectionPublication: SqliteBoundedNonProjectionPublication;
   private readonly readOnly: boolean;
   private failNextBoundedPublicationAfterChunkWrites = false;
   private readonly boundedGameplayDecodePhaseCounts = {
@@ -1313,29 +1068,20 @@ export class SqliteRunStore implements RunStore {
       WHERE run_id = ? AND revision = ? AND state_hash = ?
         AND bundle_hash = ? AND updated_at = ?
     `);
-    this.selectArtifactChunk = this.database.prepare(`
-      SELECT chunks.hash, chunks.codec, chunks.raw_size, chunks.data
-      FROM artifacts
-      JOIN chunks ON chunks.hash = artifacts.chunk_hash
-      WHERE artifacts.run_id = ? AND artifacts.kind = ?
-    `);
-    this.selectArtifactHash = this.database.prepare(`
-      SELECT chunk_hash FROM artifacts WHERE run_id = ? AND kind = ?
-    `);
-    this.upsertArtifact = this.database.prepare(`
-      INSERT INTO artifacts(run_id, kind, chunk_hash, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(run_id, kind) DO UPDATE SET
-        chunk_hash = excluded.chunk_hash,
-        updated_at = excluded.updated_at
-    `);
-    this.deleteUnreferencedArtifactChunk = this.database.prepare(`
-      DELETE FROM chunks
-      WHERE hash = ? AND codec = ?
-        AND NOT EXISTS (SELECT 1 FROM runs WHERE state_hash = chunks.hash)
-        AND NOT EXISTS (SELECT 1 FROM run_checkpoints WHERE state_hash = chunks.hash)
-        AND NOT EXISTS (SELECT 1 FROM artifacts WHERE chunk_hash = chunks.hash)
-    `);
+    this.outputArtifacts = new SqliteRunOutputArtifactStore(
+      this.database,
+      V8_BROTLI_CODEC,
+      {
+        normalizeRunId: normalizeId,
+        assertRunExists: (id) => {
+          this.assertRunExists(id);
+        },
+        encodeValue,
+        decodeValue,
+        storeChunk: (chunk) => this.storeChunk(chunk),
+        transaction: (operation) => this.transaction(operation),
+      },
+    );
     boundedContinuationTokenRegistries.set(this, {
       generationsByRun: new Map<string, number>(),
       tokens: new WeakMap<object, BoundedContinuationTokenRecord>(),
@@ -1347,6 +1093,172 @@ export class SqliteRunStore implements RunStore {
       stagedObserverBoundaryMonths: new WeakMap<object, BoundedObserverBoundaryMonthStagingRecord>(),
       publishedObserverBoundaryMonths: new WeakMap<object, BoundedObserverBoundaryMonthPublishedRecord>(),
       physicalByRun: new Map<string, VerifiedPhysicalContinuationCacheRecord>(),
+    });
+    this.continuationArtifactMaterialization =
+      new SqliteBoundedContinuationArtifactMaterialization({
+        readRunStateChunk: (hash) => this.chunkRow(hash),
+        decodeContinuationOpenGameplay: (root, readChunk, decodeOptions) => (
+          this.decodeBoundedGameplayForPhase(
+            "continuationOpen",
+            root,
+            readChunk,
+            decodeOptions,
+          )
+        ),
+        selectCachedPhysicalProjection: ({ runId, revision, stateHash, sidecar }) => {
+          const cached = this.continuationTokenRegistry().physicalByRun.get(runId);
+          if (cached
+            && cached.runId === runId
+            && cached.revision === revision
+            && cached.stateHash === stateHash
+            && cached.sidecar.hash === sidecar.hash
+            && cached.sidecar.codec === sidecar.codec
+            && cached.sidecar.rawSize === sidecar.rawSize) {
+            return cached.projection;
+          }
+          return null;
+        },
+        assertDecodedRunSummary,
+        assertContinuationAuthority,
+        assertRetentionPinsMatchBundle,
+        contentHashReferenceFor,
+        snapshotContinuationChunkIdentity,
+      });
+    this.observerBoundaryPublication = new SqliteBoundedObserverBoundaryPublication({
+      openBoundedEvolutionContinuation: async (id) => this.openBoundedEvolutionContinuation(id),
+      stageOwnedSingleMonthSuccessor: async (
+        token,
+        state,
+        label,
+        exactHistoryOwnerReceipt,
+      ) => {
+        const receipt = await this.stageBoundedEvolutionSuccessorInternal(
+          token as BoundedEvolutionContinuationToken,
+          state,
+          label,
+          storeOwnedSingleMonthSuccessorAuthority,
+          exactHistoryOwnerReceipt as BoundedEvolutionSuccessorStagingReceipt | undefined,
+        );
+        const current = this.currentContinuationTokenRecord(token);
+        return {
+          receipt,
+          sourceToken: current.token,
+          source: current.record,
+          successor: this.continuationTokenRegistry().stagedSuccessors.get(receipt),
+        };
+      },
+      registerObserverBoundaryStaging: (receipt, record) => {
+        this.continuationTokenRegistry().stagedObserverBoundaryMonths.set(receipt, {
+          ...record,
+          factSuccessorReceipt:
+            record.factSuccessorReceipt as BoundedEvolutionSuccessorStagingReceipt,
+        });
+      },
+      currentObserverBoundaryStaging: (receipt) => (
+        this.currentBoundedObserverBoundaryMonthStaging(receipt)
+      ),
+      assertObserverBoundaryStagingCurrent: (receipt, expected) => {
+        this.assertBoundedObserverBoundaryStagingCurrent(receipt, expected);
+      },
+      assertOwnedSuccessorCurrent: (
+        receipt,
+        successor,
+        sourceToken,
+        sourceGeneration,
+      ) => {
+        const registered = this.continuationTokenRegistry().stagedSuccessors.get(receipt);
+        if (registered !== successor
+          || registered?.sourceToken !== sourceToken
+          || registered.sourceGeneration !== sourceGeneration) {
+          throw new RunWriteConflictError(
+            "bounded 年度观察 live-social descriptor 重绑缺少当前 exact successor authority",
+          );
+        }
+      },
+      hasPublishedObserverBoundaryReceipt: (receipt) => {
+        if (this.closed
+          || (typeof receipt !== "object" && typeof receipt !== "function")
+          || receipt === null) {
+          return false;
+        }
+        return this.continuationTokenRegistry().publishedObserverBoundaryMonths.has(receipt);
+      },
+      readRunStateChunk: (hash) => this.chunkRow(hash),
+      assertContinuationAuthority,
+      assertRetentionPinsMatchBundle,
+      commitObserverBoundaryPublication: (input) => {
+        this.commitObserverBoundaryPublication(input);
+      },
+      completeObserverBoundaryPublication: (input) => {
+        this.completeObserverBoundaryPublication(input);
+      },
+    });
+    this.nonProjectionPublication = new SqliteBoundedNonProjectionPublication({
+      openOwnedMonth: async (id) => {
+        const normalizedId = normalizeId(id);
+        const warm = this.takeWarmNonProjectionContinuation(normalizedId);
+        if (warm) {
+          return { state: warm.state, continuationToken: warm.token };
+        }
+        const opened = await this.openBoundedEvolutionContinuation(normalizedId);
+        return { state: opened.state, continuationToken: opened.continuationToken };
+      },
+      stageOwnedSingleMonthSuccessor: async (token, state, label) => {
+        const receipt = await this.stageBoundedEvolutionSuccessorInternal(
+          token as BoundedEvolutionContinuationToken,
+          state,
+          label,
+          storeOwnedSingleMonthSuccessorAuthority,
+        );
+        const current = this.currentContinuationTokenRecord(token);
+        return {
+          receipt,
+          sourceToken: current.token,
+          source: current.record,
+          successor: this.continuationTokenRegistry().stagedSuccessors.get(receipt),
+        };
+      },
+      registerStaging: (receipt, record) => {
+        const registry = this.continuationTokenRegistry();
+        registry.stagedNonProjectionMonths.set(receipt, record);
+        registry.ownedNonProjectionByRun.set(record.runId, {
+          receipt,
+          staging: record,
+        });
+      },
+      resolveStaging: (receipt) => this.resolveBoundedNonProjectionMonthStaging(receipt),
+      discardStaging: (receipt, staging) => {
+        this.discardOwnedNonProjectionStaging(
+          this.continuationTokenRegistry(),
+          receipt,
+          staging,
+        );
+      },
+      assertSourceSnapshotCurrent: (sourceToken, source) => {
+        this.assertContinuationTokenSnapshotCurrent(
+          sourceToken,
+          source as BoundedContinuationTokenRecord,
+        );
+      },
+      hasPublishedReceipt: (receipt) => {
+        if (this.closed
+          || (typeof receipt !== "object" && typeof receipt !== "function")
+          || receipt === null) {
+          return false;
+        }
+        return this.continuationTokenRegistry().publishedNonProjectionMonths.has(receipt);
+      },
+      readRunStateChunk: (hash) => this.chunkRow(hash),
+      assertDecodedRunSummary,
+      assertContinuationAuthority,
+      assertRetentionPinsMatchBundle,
+      snapshotContinuationChunkIdentity,
+      commitPublication: (input) => {
+        this.commitNonProjectionPublication(input);
+      },
+      completePublication: (input) => {
+        this.completeNonProjectionPublication(input);
+      },
     });
   }
 
@@ -1494,15 +1406,9 @@ export class SqliteRunStore implements RunStore {
     }
   }
 
-  private currentBoundedNonProjectionMonthStaging(
+  private resolveBoundedNonProjectionMonthStaging(
     receiptInput: unknown,
-  ): {
-    receipt: object;
-    stagedMonth: BoundedNonProjectionMonthStagingRecord;
-    successor: BoundedEvolutionSuccessorStagingRecord;
-    sourceToken: object;
-    source: BoundedContinuationTokenRecord;
-  } {
+  ): NonProjectionStagingCandidate {
     if ((typeof receiptInput !== "object" && typeof receiptInput !== "function")
       || receiptInput === null) {
       throw new RunWriteConflictError(
@@ -1533,28 +1439,6 @@ export class SqliteRunStore implements RunStore {
       throw error;
     }
     const successor = registry.stagedSuccessors.get(stagedMonth.successorReceipt);
-    const sourceRoot = parseRunStateRoot(current.record.root);
-    if (!successor
-      || current.record.runId !== stagedMonth.runId
-      || current.record.generation !== stagedMonth.sourceGeneration
-      || current.record.root.hash !== stagedMonth.sourceRootHash
-      || successor.sourceToken !== current.token
-      || successor.sourceGeneration !== current.record.generation
-      || current.record.run.meta.elapsedMonths !== stagedMonth.sourceMonth
-      || successor.run.id !== current.record.runId
-      || successor.run.meta.revision !== current.record.run.meta.revision + 1
-      || successor.run.meta.elapsedMonths !== stagedMonth.nextMonth
-      || successor.run.stateHash !== successor.root.hash
-      || successor.root.hash !== stagedMonth.nextRootHash
-      || stagedMonth.ownedNextState.clock.elapsedMonths !== stagedMonth.nextMonth
-      || stagedMonth.nextMonth !== stagedMonth.sourceMonth + 1
-      || stagedMonth.nextMonth % 12 === 0
-      || !stagedHistoryTransitionMatchesSource(sourceRoot, successor)) {
-      this.discardOwnedNonProjectionStaging(registry, receiptInput, stagedMonth);
-      throw new RunWriteConflictError(
-        "bounded 非投影单月 receipt 与 source token/exact successor staging 失配",
-      );
-    }
     return {
       receipt: receiptInput,
       stagedMonth,
@@ -1562,27 +1446,6 @@ export class SqliteRunStore implements RunStore {
       sourceToken: current.token,
       source: current.record,
     };
-  }
-
-  private assertBoundedPublicationStagingCurrent(
-    receipt: object,
-    expected: {
-      readonly stagedMonth: BoundedNonProjectionMonthStagingRecord;
-      readonly successor: BoundedEvolutionSuccessorStagingRecord;
-      readonly sourceToken: object;
-      readonly source: BoundedContinuationTokenRecord;
-    },
-  ): void {
-    const current = this.currentBoundedNonProjectionMonthStaging(receipt);
-    if (current.stagedMonth !== expected.stagedMonth
-      || current.successor !== expected.successor
-      || current.sourceToken !== expected.sourceToken
-      || current.source !== expected.source) {
-      throw new RunWriteConflictError(
-        "bounded 非投影单月 staging join 在异步投影期间发生替换",
-      );
-    }
-    this.assertContinuationTokenSnapshotCurrent(current.sourceToken, current.source);
   }
 
   private currentBoundedObserverBoundaryMonthStaging(
@@ -1642,12 +1505,7 @@ export class SqliteRunStore implements RunStore {
 
   private assertBoundedObserverBoundaryStagingCurrent(
     receipt: object,
-    expected: {
-      readonly stagedMonth: BoundedObserverBoundaryMonthStagingRecord;
-      readonly factSuccessor: BoundedEvolutionSuccessorStagingRecord;
-      readonly sourceToken: object;
-      readonly source: BoundedContinuationTokenRecord;
-    },
+    expected: ObserverBoundaryStagingContext,
   ): void {
     const current = this.currentBoundedObserverBoundaryMonthStaging(receipt);
     if (current.stagedMonth !== expected.stagedMonth
@@ -2271,45 +2129,25 @@ export class SqliteRunStore implements RunStore {
   ownsBoundedNonProjectionMonthStagingReceipt(
     receipt: unknown,
   ): receipt is BoundedNonProjectionMonthStagingReceipt {
-    try {
-      this.currentBoundedNonProjectionMonthStaging(receipt);
-      return true;
-    } catch {
-      return false;
-    }
+    return this.nonProjectionPublication.ownsStagingReceipt(receipt);
   }
 
   ownsBoundedNonProjectionMonthPublishedReceipt(
     receipt: unknown,
   ): receipt is BoundedNonProjectionMonthPublishedReceipt {
-    if (this.closed
-      || (typeof receipt !== "object" && typeof receipt !== "function")
-      || receipt === null) {
-      return false;
-    }
-    return this.continuationTokenRegistry().publishedNonProjectionMonths.has(receipt);
+    return this.nonProjectionPublication.ownsPublishedReceipt(receipt);
   }
 
   ownsBoundedObserverBoundaryMonthStagingReceipt(
     receipt: unknown,
   ): receipt is BoundedObserverBoundaryMonthStagingReceipt {
-    try {
-      this.currentBoundedObserverBoundaryMonthStaging(receipt);
-      return true;
-    } catch {
-      return false;
-    }
+    return this.observerBoundaryPublication.ownsStagingReceipt(receipt);
   }
 
   ownsBoundedObserverBoundaryMonthPublishedReceipt(
     receipt: unknown,
   ): receipt is BoundedObserverBoundaryMonthPublishedReceipt {
-    if (this.closed
-      || (typeof receipt !== "object" && typeof receipt !== "function")
-      || receipt === null) {
-      return false;
-    }
-    return this.continuationTokenRegistry().publishedObserverBoundaryMonths.has(receipt);
+    return this.observerBoundaryPublication.ownsPublishedReceipt(receipt);
   }
 
   /**
@@ -2336,563 +2174,45 @@ export class SqliteRunStore implements RunStore {
     id: string,
     label?: string,
   ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
-    const opened = await this.openBoundedEvolutionContinuation(id);
-    const reusableLiveSocialDescriptors = Object.freeze([
-      ...retainedLiveSocialEvidenceForLivingSources(opened.state),
-    ]);
-    const boundary = stepOwnedBoundedObserverBoundaryMonth(opened.state);
-    return this.stageOwnedBoundedObserverBoundaryMonth(
-      opened,
-      boundary,
-      reusableLiveSocialDescriptors,
-      label,
-    );
+    return this.observerBoundaryPublication.stageScheduled(id, label);
   }
 
   /**
-   * Closed replay of one otherwise ordinary source month. It can stage only a
-   * naturally produced, non-annual extinction; a still-running replay and every
-   * configured observer boundary fail closed inside the controller.
+   * Closed replay of one otherwise ordinary source month. Only a naturally
+   * produced, non-annual extinction can become a staging receipt.
    */
   async stageBoundedTerminalMonth(
     id: string,
     label?: string,
   ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
-    const opened = await this.openBoundedEvolutionContinuation(id);
-    const reusableLiveSocialDescriptors = Object.freeze([
-      ...retainedLiveSocialEvidenceForLivingSources(opened.state),
-    ]);
-    const boundary = stepOwnedBoundedTerminalMonth(opened.state);
-    if (boundary.receipt.kind !== "extinction") {
-      throw new Error(
-        `bounded terminal probe 不接受 ${boundary.receipt.kind} 边界`,
-      );
-    }
-    return this.stageOwnedBoundedObserverBoundaryMonth(
-      opened,
-      boundary,
-      reusableLiveSocialDescriptors,
-      label,
-    );
+    return this.observerBoundaryPublication.stageTerminal(id, label);
   }
 
-  private async stageOwnedBoundedObserverBoundaryMonth(
-    opened: OpenedBoundedEvolutionContinuation,
-    boundary: Readonly<BoundedObserverBoundaryMonthResult>,
-    reusableLiveSocialDescriptors: readonly RetainedLiveSocialEvidenceDescriptor[],
-    label?: string,
-  ): Promise<BoundedObserverBoundaryMonthStagingReceipt> {
-    const sourceMonth = boundary.receipt.sourceMonth;
-    if (opened.meta.elapsedMonths !== sourceMonth
-      || boundary.receipt.projectCallCount !== 1
-      || !boundedObserverBoundaryMatchesState(
-        boundary.receipt.kind,
-        boundary.state,
-        boundary.receipt.targetMonth,
-      )) {
-      throw new Error(
-        `bounded 观察边界 publication 的 ${boundary.receipt.kind} fact month 无效`,
-      );
-    }
-    const factSuccessorReceipt = await this.stageBoundedEvolutionSuccessorInternal(
-      opened.continuationToken,
-      boundary.state,
-      label,
-      storeOwnedSingleMonthSuccessorAuthority,
-    );
-    const { token, record } = this.currentContinuationTokenRecord(opened.continuationToken);
-    const factSuccessor = this.continuationTokenRegistry().stagedSuccessors.get(
-      factSuccessorReceipt,
-    );
-    if (!factSuccessor
-      || factSuccessor.sourceToken !== token
-      || factSuccessor.sourceGeneration !== record.generation
-      || factSuccessor.run.meta.status !== boundary.state.civilization.status
-      || factSuccessor.run.meta.elapsedMonths !== boundary.receipt.targetMonth) {
-      throw new Error(
-        "bounded 观察边界月没有生成同一 store generation 的 private fact root A",
-      );
-    }
-    const sourceDirectIdentityByOrdinal = new Map(
-      record.artifacts.retention.continuationBasis.directMatches
-        .map((match) => [match.absoluteIndex, match.eventId]),
-    );
-    if (reusableLiveSocialDescriptors.some((item) => (
-      sourceDirectIdentityByOrdinal.get(item.absoluteIndex) !== item.descriptor.eventId
-    ))) {
-      throw new Error(
-        "bounded 观察边界 source live-social descriptor 缺少 retention exact identity",
-      );
-    }
-    const receipt = Object.freeze({
-      kind: "bounded-observer-boundary-month-staging-receipt-v1",
-      persisted: false,
-      continuationReady: false,
-    }) as BoundedObserverBoundaryMonthStagingReceipt;
-    this.continuationTokenRegistry().stagedObserverBoundaryMonths.set(receipt, {
-      sourceToken: token,
-      sourceGeneration: record.generation,
-      runId: record.runId,
-      sourceMonth,
-      targetMonth: boundary.receipt.targetMonth,
-      boundaryKind: boundary.receipt.kind,
-      factSuccessorReceipt,
-      reusableLiveSocialDescriptors,
-    });
-    return receipt;
+  async publishBoundedObserverBoundaryMonth(
+    receipt: BoundedObserverBoundaryMonthStagingReceipt,
+  ): Promise<BoundedObserverBoundaryMonthPublishedReceipt> {
+    return this.observerBoundaryPublication.publish(receipt);
   }
 
   /**
-   * Publish one scheduled or proven-terminal observer boundary through two
-   * immutable roots. Root A contains only the rule-produced fact month and is
-   * retained as the observer input. Root B contains the compact materialized
-   * observer shell and alone becomes run/continuation/checkpoint authority.
+   * Purpose-built atomic SQLite adapter for the two-root observer publication.
+   * The coordinator cannot access the database, transaction or generic chunk
+   * writer through this seam.
    */
-  async publishBoundedObserverBoundaryMonth(
-    receiptInput: BoundedObserverBoundaryMonthStagingReceipt,
-  ): Promise<BoundedObserverBoundaryMonthPublishedReceipt> {
-    const staged = this.currentBoundedObserverBoundaryMonthStaging(receiptInput);
-    this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-    const { source, sourceToken, factSuccessor } = staged;
-    if (factSuccessor.metadata.schemaVersion !== 3) {
-      throw new Error("bounded 年度观察 publication 只接受 schema 3 private fact root A");
-    }
-
-    const privateChunkReader = (
-      successor: BoundedEvolutionSuccessorStagingRecord,
-      exactHistoryOwner?: BoundedEvolutionSuccessorStagingRecord,
-    ): ((hash: string) => RunStateChunk) => {
-      const chunks = new Map<string, RunStateChunk>();
-      chunks.set(successor.root.hash, successor.root);
-      const addPart = (part: RunStateChunk): void => {
-        const existing = chunks.get(part.hash);
-        if (existing
-          && (existing.codec !== part.codec
-            || existing.rawSize !== part.rawSize
-            || !sameBytes(existing.data, part.data))) {
-          throw new Error(`bounded 年度观察 staged chunk ${part.hash} 内容寻址冲突`);
-        }
-        chunks.set(part.hash, part);
-      };
-      for (const part of successor.parts) addPart(part);
-      if (exactHistoryOwner) {
-        for (const part of exactHistoryOwner.parts) addPart(part);
-      }
-      return (hash: string): RunStateChunk => chunks.get(hash) ?? this.chunkRow(hash);
-    };
-
-    const decodePrivateSuccessor = async (
-      successor: BoundedEvolutionSuccessorStagingRecord,
-      readChunk: (hash: string) => RunStateChunk,
-      label: string,
-    ) => {
-      const decoded = await decodeSegmentedRunStateGameplayBounded(
-        successor.root,
-        readChunk,
-        {
-          hotEventLimit: source.continuation.hotEventLimit,
-          observerAuthority: {
-            stateHash: successor.root.hash,
-            revision: successor.run.meta.revision,
-            month: successor.run.meta.elapsedMonths,
-            lastMaterializedMilestoneCount: source.run.meta.milestoneCount,
-          },
-        },
-      );
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-      const state = decoded.state;
-      const root = parseRunStateRoot(successor.root);
-      const cursor = state.world.historyCursor;
-      if (root.schemaVersion !== 3
-        || root.schemaVersion !== successor.metadata.schemaVersion
-        || root.shellHash !== successor.metadata.shellHash
-        || root.lineageId !== successor.metadata.lineageId
-        || root.historyHeadHash !== successor.metadata.historyHeadHash
-        || root.eventCount !== successor.metadata.eventCount
-        || root.tailEventContentHash !== successor.metadata.tailEventContentHash
-        || !cursor
-        || cursor.eventCount !== root.eventCount
-        || cursor.eventCount - cursor.hotStartIndex !== state.world.past.length
-        || cursor.tailEventId !== state.world.past.at(-1)?.id
-        || successor.run.meta.eventCount !== root.eventCount
-        || successor.run.meta.milestoneCount !== source.run.meta.milestoneCount
-        || successor.run.meta.revision !== source.run.meta.revision + 1
-        || successor.run.meta.elapsedMonths !== staged.stagedMonth.targetMonth
-        || state.clock.elapsedMonths !== staged.stagedMonth.targetMonth
-        || !boundedObserverBoundaryMatchesState(
-          staged.stagedMonth.boundaryKind,
-          state,
-          staged.stagedMonth.targetMonth,
-        )) {
-        throw new Error(`bounded 观察边界 ${label} 的 root/shell/cursor/运行边界失配`);
-      }
-      assertDecodedRunSummary(successor.run, state);
-      const authenticatedPhysicalIndex = state.world.physicalStructureIndex;
-      if (!authenticatedPhysicalIndex) {
-        throw new Error(`bounded 年度观察 ${label} 缺少 physicalStructureIndex v2 provenance`);
-      }
-      state.world.grid = hydrateWorld(state.world.grid);
-      state.world.physicalStructureIndex = rematerializePhysicalStructureIndex(
-        state,
-        authenticatedPhysicalIndex,
-      );
-      return { state, root, cursor };
-    };
-
-    const projectSuccessors = async (
-      successor: BoundedEvolutionSuccessorStagingRecord,
-      state: SimulationState,
-      root: Readonly<RunStateRootMetadata>,
-      cursor: NonNullable<SimulationState["world"]["historyCursor"]>,
-      readChunk: (hash: string) => RunStateChunk,
-    ) => {
-      const retention = await projectHistoryRetentionFromVerifiedSuccessor(
-        source.artifacts.retention,
-        source.root,
-        state,
-        successor.root,
-        readChunk,
-        staged.stagedMonth.reusableLiveSocialDescriptors,
-      );
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-      assertVerifiedHistoryRetentionSuccessor(
-        retention,
-        state,
-        source.root.hash,
-        successor.root.hash,
-      );
-
-      const physical = await projectPhysicalStructureLedgerFromVerifiedSuccessor(
-        source.artifacts.physical,
-        source.root,
-        state,
-        successor.root,
-        readChunk,
-      );
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-
-      const derived = await projectObserverDerivedHistoryFromVerifiedSuccessor({
-        previous: source.artifacts.derivedObserver,
-        previousRootChunk: source.root,
-        nextState: state,
-        nextRootChunk: successor.root,
-        nextPhysicalProjection: physical,
-        readChunk,
-      });
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-      assertVerifiedObserverDerivedHistorySuccessor(derived);
-
-      const civilization = await projectObserverCivilizationHistoryFromVerifiedSuccessor({
-        previous: source.artifacts.civilizationObserver,
-        previousRevision: source.run.meta.revision,
-        previousRootChunk: source.root,
-        nextRevision: successor.run.meta.revision,
-        nextRootChunk: successor.root,
-        nextState: state,
-        readChunk,
-      });
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-      assertVerifiedObserverCivilizationHistorySuccessor(civilization);
-
-      const authority = Object.freeze({
-        runId: successor.run.id,
-        revision: successor.run.meta.revision,
-        stateHash: successor.root.hash,
-        rootSchemaVersion: root.schemaVersion,
-        shellHash: root.shellHash,
-        historyLineageId: root.lineageId,
-        historyHeadHash: root.historyHeadHash,
-        eventCount: root.eventCount,
-        tailEventId: cursor.tailEventId,
-        tailEventContentHash: root.tailEventContentHash,
-      });
-      const checkpoint = await projectCheckpointAccumulatorFromVerifiedSuccessor(
-        source.artifacts.checkpoint,
-        source.root,
-        state,
-        successor.root,
-        readChunk,
-        Object.freeze({ ...authority, month: successor.run.meta.elapsedMonths }),
-      );
-      this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-      return { retention, physical, derived, civilization, checkpoint, authority };
-    };
-
-    const rebindLiveSocialDescriptorsToVerifiedSuccessor = (
-      successorReceipt: object,
-      successor: BoundedEvolutionSuccessorStagingRecord,
-      state: SimulationState,
-    ): void => {
-      const current = this.currentBoundedObserverBoundaryMonthStaging(staged.receipt);
-      const registeredSuccessor = this.continuationTokenRegistry().stagedSuccessors.get(
-        successorReceipt,
-      );
-      if (current.stagedMonth !== staged.stagedMonth
-        || current.source !== source
-        || current.sourceToken !== sourceToken
-        || registeredSuccessor !== successor
-        || successor.sourceToken !== sourceToken
-        || successor.sourceGeneration !== source.generation
-        || successor.run.stateHash !== successor.root.hash
-        || !stagedHistoryTransitionMatchesSource(parseRunStateRoot(source.root), successor)) {
-        throw new RunWriteConflictError(
-          "bounded 年度观察 live-social descriptor 重绑缺少当前 exact successor authority",
-        );
-      }
-      registerLiveSocialEvidenceDescriptors(
-        state,
-        reusableLiveSocialDescriptorsForCurrentOwners(
-          state,
-          staged.stagedMonth.reusableLiveSocialDescriptors,
-        ),
-        source.artifacts.retention.continuationBasis.directMatches,
-      );
-    };
-
-    const observerMaterializationSource = Object.freeze({
-      stateHash: factSuccessor.root.hash,
-      revision: factSuccessor.run.meta.revision,
-      month: factSuccessor.run.meta.elapsedMonths,
-    }) satisfies Readonly<RunContinuationObserverMaterializationSourceV1>;
-    let finalSuccessorReceipt!: BoundedEvolutionSuccessorStagingReceipt;
-    {
-      // Keep root A's decoded state and projection lifetimes inside this block.
-      // Once B is staged, neither complete state is retained in the registry or
-      // concurrently held while B is decoded below.
-      const readFactChunk = privateChunkReader(factSuccessor);
-      const decodedFact = await decodePrivateSuccessor(
-        factSuccessor,
-        readFactChunk,
-        "private fact root A",
-      );
-      rebindLiveSocialDescriptorsToVerifiedSuccessor(
-        staged.stagedMonth.factSuccessorReceipt,
-        factSuccessor,
-        decodedFact.state,
-      );
-      const factProjection = await projectSuccessors(
-        factSuccessor,
-        decodedFact.state,
-        decodedFact.root,
-        decodedFact.cursor,
-        readFactChunk,
-      );
-      const factTarget = Object.freeze({
-        stateHash: factSuccessor.root.hash,
-        eventCount: decodedFact.root.eventCount,
-        tailEventId: decodedFact.cursor.tailEventId,
-      });
-      const decodedFactDerived = decodeObserverDerivedHistorySidecar(
-        factProjection.derived.encoded.chunk,
-        {
-          reference: factProjection.derived.encoded.reference,
-          boundary: { target: factTarget },
-        },
-      );
-      const factDerivedMaterialization = materializeDecodedBoundedObserverDerivedSubset(
-        decodedFact.state,
-        decodedFactDerived,
-        factTarget,
-      );
-      const reboundBasis = bindObserverBasisToPrivateFactRoot(
-        decodedFact.state,
-        observerMaterializationSource,
-      );
-      const development = materializeBoundedCertifiedCivilizationDevelopment(
-        decodedFact.state,
-        reboundBasis,
-        factTarget,
-        factDerivedMaterialization,
-        decodedFactDerived.projection,
-      );
-      installBoundedObserverHotShell(
-        decodedFact.state,
-        observerMaterializationSource,
-        source.run.meta.milestoneCount,
-        development.nextBasis,
-      );
-      if (materializedObserverMilestoneCount(decodedFact.state)
-          !== source.run.meta.milestoneCount
-        || !isDeepStrictEqual(
-          attachedLastMaterializedObserverBasis(decodedFact.state).source,
-          observerMaterializationSource,
-        )) {
-        throw new Error(
-          "bounded 年度观察 root B hot shell 改写 milestone authority 或丢失 root A basis",
-        );
-      }
-
-      // Root B is encoded from the same exact source token/history suffix. Its
-      // only permitted difference from A is the observer-owned compact shell.
-      finalSuccessorReceipt = await this.stageBoundedEvolutionSuccessorInternal(
-        sourceToken as BoundedEvolutionContinuationToken,
-        decodedFact.state,
-        factSuccessor.run.meta.label,
-        storeOwnedSingleMonthSuccessorAuthority,
-        staged.stagedMonth.factSuccessorReceipt,
-      );
-    }
-    this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
-    const finalSuccessor = this.continuationTokenRegistry().stagedSuccessors.get(
-      finalSuccessorReceipt,
-    );
-    if (!finalSuccessor
-      || finalSuccessor.sourceToken !== sourceToken
-      || finalSuccessor.sourceGeneration !== source.generation
-      || finalSuccessor.root.hash === factSuccessor.root.hash
-      || finalSuccessor.metadata.lineageId !== factSuccessor.metadata.lineageId
-      || finalSuccessor.metadata.historyHeadHash !== factSuccessor.metadata.historyHeadHash
-      || finalSuccessor.metadata.eventCount !== factSuccessor.metadata.eventCount
-      || finalSuccessor.metadata.tailEventContentHash
-        !== factSuccessor.metadata.tailEventContentHash
-      || finalSuccessor.suffixEventCount !== factSuccessor.suffixEventCount) {
-      throw new Error(
-        "bounded 年度观察 final root B 没有严格复用 root A 的事实历史"
-        + ` A=${JSON.stringify({
-          hash: factSuccessor.root.hash,
-          lineageId: factSuccessor.metadata.lineageId,
-          historyHeadHash: factSuccessor.metadata.historyHeadHash,
-          eventCount: factSuccessor.metadata.eventCount,
-          tailEventContentHash: factSuccessor.metadata.tailEventContentHash,
-          suffixEventCount: factSuccessor.suffixEventCount,
-        })}`
-        + ` B=${JSON.stringify({
-          hash: finalSuccessor?.root.hash,
-          lineageId: finalSuccessor?.metadata.lineageId,
-          historyHeadHash: finalSuccessor?.metadata.historyHeadHash,
-          eventCount: finalSuccessor?.metadata.eventCount,
-          tailEventContentHash: finalSuccessor?.metadata.tailEventContentHash,
-          suffixEventCount: finalSuccessor?.suffixEventCount,
-        })}`,
-      );
-    }
-
-    // Never reuse an A-target sidecar for authority B. Re-decode B and fold all
-    // five exact successors from the original source token/root.
-    const readFinalChunk = privateChunkReader(finalSuccessor, factSuccessor);
-    const decodedFinal = await decodePrivateSuccessor(
+  private commitObserverBoundaryPublication(
+    input: ObserverBoundaryPublicationCommit,
+  ): void {
+    const {
+      staged,
+      factSuccessor,
       finalSuccessor,
-      readFinalChunk,
-      "final materialized root B",
-    );
-    const finalBasis = attachedLastMaterializedObserverBasis(decodedFinal.state);
-    if (!isDeepStrictEqual(finalBasis.source, observerMaterializationSource)
-      || finalBasis.milestoneCount !== source.run.meta.milestoneCount
-      || finalBasis.stage !== decodedFinal.state.civilization.stage) {
-      throw new Error("bounded 年度观察 final root B 的 materialization basis 无效");
-    }
-    rebindLiveSocialDescriptorsToVerifiedSuccessor(
-      finalSuccessorReceipt,
-      finalSuccessor,
-      decodedFinal.state,
-    );
-    const finalProjection = await projectSuccessors(
-      finalSuccessor,
-      decodedFinal.state,
-      decodedFinal.root,
-      decodedFinal.cursor,
-      readFinalChunk,
-    );
-    const encodedSidecars = Object.freeze({
-      retention: finalProjection.retention.encoded,
-      physical: encodePhysicalStructureLedgerSidecar(finalProjection.physical),
-      derivedObserver: finalProjection.derived.encoded,
-      civilizationObserver: finalProjection.civilization.encoded,
-      checkpoint: encodeCheckpointAccumulator(finalProjection.checkpoint),
-    });
-
-    const hotStartIndex = Math.max(
-      0,
-      decodedFinal.root.eventCount - source.continuation.hotEventLimit,
-    );
-    const coldPins = finalProjection.retention.projection.pins
-      .filter((pin) => pin.absoluteIndex < hotStartIndex)
-      .map((pin) => Object.freeze({
-        absoluteIndex: pin.absoluteIndex,
-        eventId: pin.eventId,
-        leaseKeys: Object.freeze([...pin.leaseKeys]),
-      }));
-    const reopenableEventIds = new Set([
-      ...decodedFinal.state.world.past.map((event) => event.id),
-      ...coldPins.map((pin) => pin.eventId),
-    ]);
-    if (decodedFinal.state.lastStep.some((event) => !reopenableEventIds.has(event.id))) {
-      throw new Error(
-        "bounded 年度观察 final root B 的 hot window/retention pins 无法重开完整 lastStep",
-      );
-    }
-    const encodedBundle = encodeRunContinuationBundle({
-      schemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      historyMode: "bounded-hot-tail-plus-cold-pins-v1",
-      authority: finalProjection.authority,
-      hotEventLimit: source.continuation.hotEventLimit,
-      hotStartIndex,
-      coldPins,
-      sidecars: {
-        retention: encodedSidecars.retention.reference,
-        physical: encodedSidecars.physical.reference,
-        derivedObserver: encodedSidecars.derivedObserver.reference,
-        civilizationObserver: encodedSidecars.civilizationObserver.reference,
-        checkpoint: encodedSidecars.checkpoint.reference,
-      },
-      observerMaterializationSource,
-    });
-    assertRetentionPinsMatchBundle(
-      finalSuccessor.run.id,
-      finalProjection.retention.projection,
-      encodedBundle.bundle,
-    );
-
-    const nextCheckpoint: ExactRunCheckpointRow = Object.freeze({
-      runId: finalSuccessor.run.id,
-      revision: finalSuccessor.run.meta.revision,
-      month: finalSuccessor.run.meta.elapsedMonths,
-      stateHash: finalSuccessor.root.hash,
-      createdAt: finalSuccessor.run.meta.updatedAt,
-    });
-    const nextContinuation: RunContinuationRow = Object.freeze({
-      runId: finalSuccessor.run.id,
-      revision: finalSuccessor.run.meta.revision,
-      stateHash: finalSuccessor.root.hash,
-      rootSchemaVersion: decodedFinal.root.schemaVersion,
-      shellHash: decodedFinal.root.shellHash,
-      historyLineageId: decodedFinal.root.lineageId,
-      historyHeadHash: decodedFinal.root.historyHeadHash,
-      eventCount: decodedFinal.root.eventCount,
-      tailEventId: decodedFinal.cursor.tailEventId,
-      tailEventContentHash: decodedFinal.root.tailEventContentHash,
-      hotEventLimit: source.continuation.hotEventLimit,
-      bundleSchemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      bundleHash: encodedBundle.chunk.hash,
-      updatedAt: finalSuccessor.run.meta.updatedAt,
-    });
-    assertContinuationAuthority(
-      finalSuccessor.run,
-      nextContinuation,
+      encodedSidecars,
+      encodedBundle,
       nextCheckpoint,
-      finalSuccessor.root,
-      decodedFinal.root,
-      encodedBundle.bundle,
-    );
-
-    const nextPhysicalIdentity = snapshotContinuationChunkIdentity({
-      hash: encodedSidecars.physical.chunk.hash,
-      codec: encodedSidecars.physical.chunk.codec,
-      rawSize: encodedSidecars.physical.chunk.rawSize,
-      data: encodedSidecars.physical.chunk.data,
-    });
-    const publishedReceipt = Object.freeze({
-      kind: "bounded-observer-boundary-month-published-receipt-v1" as const,
-      boundaryKind: staged.stagedMonth.boundaryKind,
-      persisted: true as const,
-      continuationReady: false as const,
-      revision: finalSuccessor.run.meta.revision,
-      month: finalSuccessor.run.meta.elapsedMonths,
-      stateHash: finalSuccessor.root.hash,
-      status: decodedFinal.state.civilization.status,
-      stage: decodedFinal.state.civilization.stage,
-    }) as BoundedObserverBoundaryMonthPublishedReceipt;
-
+      nextContinuation,
+      observerMaterializationSource,
+    } = input;
+    const { source } = staged;
     this.transaction(() => {
       this.assertBoundedObserverBoundaryStagingCurrent(staged.receipt, staged);
       for (const part of factSuccessor.parts) this.storeChunk(part);
@@ -3031,562 +2351,181 @@ export class SqliteRunStore implements RunStore {
         }
       }
     });
+  }
 
-    // Only COMMIT consumes the source generation. A rollback keeps A staging
-    // live, so the same opaque receipt can rebuild B and retry deterministically.
+  /**
+   * Consumes process-local capabilities only after the SQLite transaction
+   * commits. A rollback therefore leaves the original staging receipt retryable.
+   */
+  private completeObserverBoundaryPublication(
+    input: ObserverBoundaryPublicationFinalization,
+  ): void {
+    const source = input.staged.source as BoundedContinuationTokenRecord;
     source.spent = true;
     const registry = this.continuationTokenRegistry();
     registry.generationsByRun.set(source.runId, source.generation + 1);
     registry.physicalByRun.set(source.runId, Object.freeze({
       runId: source.runId,
-      revision: finalSuccessor.run.meta.revision,
-      stateHash: finalSuccessor.root.hash,
-      sidecar: nextPhysicalIdentity,
-      projection: finalProjection.physical,
+      revision: input.finalSuccessor.run.meta.revision,
+      stateHash: input.finalSuccessor.root.hash,
+      sidecar: input.nextPhysicalIdentity,
+      projection: input.finalPhysicalProjection,
     }));
-    registry.stagedObserverBoundaryMonths.delete(staged.receipt);
-    registry.stagedSuccessors.delete(staged.stagedMonth.factSuccessorReceipt);
-    registry.stagedSuccessors.delete(finalSuccessorReceipt);
-    registry.publishedObserverBoundaryMonths.set(publishedReceipt, Object.freeze({
-      runId: source.runId,
-      revision: finalSuccessor.run.meta.revision,
-      month: finalSuccessor.run.meta.elapsedMonths,
-      stateHash: finalSuccessor.root.hash,
-      stage: decodedFinal.state.civilization.stage,
-      boundaryKind: staged.stagedMonth.boundaryKind,
-      status: decodedFinal.state.civilization.status,
-    }));
-    return publishedReceipt;
+    registry.stagedObserverBoundaryMonths.delete(input.staged.receipt);
+    registry.stagedSuccessors.delete(input.factSuccessorReceipt);
+    registry.stagedSuccessors.delete(input.finalSuccessorReceipt);
+    registry.publishedObserverBoundaryMonths.set(
+      input.publishedReceipt,
+      input.publishedRecord,
+    );
   }
 
-  /**
-   * Closed, non-persisting controller slice. The bounded state and continuation
-   * token never leave this method: callers receive only a controller-branded
-   * receipt privately joined to the ordinary exact-successor staging receipt.
-   * Only `publishBoundedNonProjectionMonth` accepts that controller receipt;
-   * the ordinary caller-state staging receipt remains non-authoritative.
-   */
   async stageBoundedNonProjectionMonth(
     id: string,
     label?: string,
   ): Promise<BoundedNonProjectionMonthStagingReceipt> {
-    const normalizedId = normalizeId(id);
-    const warm = this.takeWarmNonProjectionContinuation(normalizedId);
-    let ownedState: SimulationState;
-    let continuationToken: BoundedEvolutionContinuationToken;
-    if (warm) {
-      ownedState = warm.state;
-      continuationToken = warm.token;
-    } else {
-      const opened = await this.openBoundedEvolutionContinuation(normalizedId);
-      ownedState = opened.state;
-      continuationToken = opened.continuationToken;
-    }
-    const sourceMonth = ownedState.clock.elapsedMonths;
-    const reusableLiveSocialDescriptors = Object.freeze([
-      ...retainedLiveSocialEvidenceForLivingSources(ownedState),
-    ]);
-    const stepped = stepOwnedBoundedNonProjectionMonth(ownedState);
-    const successorReceipt = await this.stageBoundedEvolutionSuccessorInternal(
-      continuationToken,
-      stepped,
-      label,
-      storeOwnedSingleMonthSuccessorAuthority,
-    );
-    const { token, record } = this.currentContinuationTokenRecord(continuationToken);
-    const stagedSuccessor = this.continuationTokenRegistry().stagedSuccessors.get(successorReceipt);
-    if (!stagedSuccessor
-      || stagedSuccessor.sourceToken !== token
-      || stagedSuccessor.sourceGeneration !== record.generation) {
-      throw new Error("bounded 非投影单月没有生成同一 store generation 的 exact successor staging");
-    }
-    const receipt = Object.freeze({
-      kind: "bounded-nonprojection-month-staging-receipt-v1",
-      persisted: false,
-      continuationReady: false,
-    }) as BoundedNonProjectionMonthStagingReceipt;
-    const staging: BoundedNonProjectionMonthStagingRecord = Object.freeze({
-      sourceToken: token,
-      sourceGeneration: record.generation,
-      runId: record.runId,
-      sourceRootHash: record.root.hash,
-      sourceMonth,
-      nextMonth: stepped.clock.elapsedMonths,
-      nextRootHash: stagedSuccessor.root.hash,
-      successorReceipt,
-      ownedNextState: stepped,
-      reusableLiveSocialDescriptors,
-    });
-    const registry = this.continuationTokenRegistry();
-    registry.stagedNonProjectionMonths.set(receipt, staging);
-    registry.ownedNonProjectionByRun.set(record.runId, { receipt, staging });
-    return receipt;
+    return this.nonProjectionPublication.stage(id, label);
   }
 
-  /**
-   * Publish one store-stepped, non-observation month. The exact-successor root
-   * and the controller-produced state are retained only behind the same private
-   * receipt/source-generation join; callers cannot pair a receipt with a state
-   * or any sidecar. Expensive exact-root folds finish before the synchronous
-   * SQLite transaction, while rollback keeps the unchanged owned state retryable.
-   */
   async publishBoundedNonProjectionMonth(
-    receiptInput: BoundedNonProjectionMonthStagingReceipt,
+    receipt: BoundedNonProjectionMonthStagingReceipt,
   ): Promise<BoundedNonProjectionMonthPublishedReceipt> {
-    const staged = this.currentBoundedNonProjectionMonthStaging(receiptInput);
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-    const { source, successor } = staged;
-    if (successor.metadata.schemaVersion !== 2 && successor.metadata.schemaVersion !== 3) {
-      throw new Error("bounded 非投影单月 publication 只接受 schema 2/3 staged root");
-    }
+    return this.nonProjectionPublication.publish(receipt);
+  }
 
-    const stagedChunks = new Map<string, RunStateChunk>();
-    stagedChunks.set(successor.root.hash, successor.root);
-    for (const part of successor.parts) {
-      const existing = stagedChunks.get(part.hash);
-      if (existing
-        && (existing.codec !== part.codec
-          || existing.rawSize !== part.rawSize
-          || !sameBytes(existing.data, part.data))) {
-        throw new Error(`bounded publication staged chunk ${part.hash} 内容寻址冲突`);
-      }
-      stagedChunks.set(part.hash, part);
-    }
-    const readPublicationChunk = (hash: string): RunStateChunk => {
-      const privateChunk = stagedChunks.get(hash);
-      // Staged chunks are store-owned immutable values and persisted chunks
-      // are returned from this private synchronous reader. Each async codec or
-      // projection boundary takes the authority snapshot it needs, so copying
-      // here would double every streamed part for no additional isolation.
-      return privateChunk ?? this.chunkRow(hash);
-    };
-
-    const nextState = staged.stagedMonth.ownedNextState;
-    const nextRoot = parseRunStateRoot(successor.root);
-    const nextCursor = nextState.world.historyCursor;
-    if ((nextRoot.schemaVersion !== 2 && nextRoot.schemaVersion !== 3)
-      || nextRoot.schemaVersion !== successor.metadata.schemaVersion
-      || nextRoot.shellHash !== successor.metadata.shellHash
-      || nextRoot.lineageId !== successor.metadata.lineageId
-      || nextRoot.historyHeadHash !== successor.metadata.historyHeadHash
-      || nextRoot.eventCount !== successor.metadata.eventCount
-      || nextRoot.tailEventContentHash !== successor.metadata.tailEventContentHash
-      || !nextCursor
-      || !Number.isSafeInteger(nextCursor.hotStartIndex)
-      || nextCursor.hotStartIndex < 0
-      || nextCursor.hotStartIndex > nextCursor.eventCount
-      || nextCursor.eventCount !== nextRoot.eventCount
-      || nextCursor.eventCount - nextCursor.hotStartIndex !== nextState.world.past.length
-      || (nextCursor.eventCount === 0
-        ? nextCursor.tailEventId !== null
-        : typeof nextCursor.tailEventId !== "string")
-      || (nextState.world.past.length > 0
-        && nextCursor.tailEventId !== nextState.world.past.at(-1)?.id)
-      || successor.run.meta.eventCount !== nextRoot.eventCount
-      || successor.run.meta.milestoneCount !== source.run.meta.milestoneCount) {
-      throw new Error("bounded publication 的 owned state/root/shell/cursor 失配");
-    }
-    if (nextState.civilization.status !== "running"
-      || nextState.civilization.conditions.endpoint.kind !== "months"
-      || staged.stagedMonth.nextMonth >= nextState.civilization.conditions.endpoint.value
-      || staged.stagedMonth.nextMonth % 12 === 0
-      || nextState.clock.elapsedMonths !== staged.stagedMonth.nextMonth) {
-      throw new Error("bounded publication staged root 不再满足非投影单月资格");
-    }
-    assertDecodedRunSummary(successor.run, nextState);
-
-    // Canonical sidecars must survive process restart, where a voxel grid has
-    // revision zero. Re-hydrate only this grid buffer and rematerialize its
-    // authenticated index; this is bounded shell normalization, not a second
-    // gameplay/history decode.
-    const authenticatedPhysicalIndex = nextState.world.physicalStructureIndex;
-    if (!authenticatedPhysicalIndex) {
-      throw new Error("bounded publication owned state 缺少 physicalStructureIndex v2 provenance");
-    }
-    nextState.world.grid = hydrateWorld(nextState.world.grid);
-    nextState.world.physicalStructureIndex = rematerializePhysicalStructureIndex(
-      nextState,
-      authenticatedPhysicalIndex,
-    );
-
-    const retentionSuccessor = await projectHistoryRetentionFromVerifiedSuccessor(
-      source.artifacts.retention,
-      source.root,
-      nextState,
-      successor.root,
-      readPublicationChunk,
-      staged.stagedMonth.reusableLiveSocialDescriptors,
-    );
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-    assertVerifiedHistoryRetentionSuccessor(
-      retentionSuccessor,
-      nextState,
-      source.root.hash,
-      successor.root.hash,
-    );
-
-    const physicalSuccessor = await projectPhysicalStructureLedgerFromVerifiedSuccessor(
-      source.artifacts.physical,
-      source.root,
-      nextState,
-      successor.root,
-      readPublicationChunk,
-    );
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-
-    const derivedSuccessor = await projectObserverDerivedHistoryFromVerifiedSuccessor({
-      previous: source.artifacts.derivedObserver,
-      previousRootChunk: source.root,
-      nextState,
-      nextRootChunk: successor.root,
-      nextPhysicalProjection: physicalSuccessor,
-      readChunk: readPublicationChunk,
-    });
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-    assertVerifiedObserverDerivedHistorySuccessor(derivedSuccessor);
-
-    const civilizationSuccessor = await projectObserverCivilizationHistoryFromVerifiedSuccessor({
-      previous: source.artifacts.civilizationObserver,
-      previousRevision: source.run.meta.revision,
-      previousRootChunk: source.root,
-      nextRevision: successor.run.meta.revision,
-      nextRootChunk: successor.root,
-      nextState,
-      readChunk: readPublicationChunk,
-    });
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-    assertVerifiedObserverCivilizationHistorySuccessor(civilizationSuccessor);
-
-    const nextAuthority = Object.freeze({
-      runId: successor.run.id,
-      revision: successor.run.meta.revision,
-      stateHash: successor.root.hash,
-      rootSchemaVersion: nextRoot.schemaVersion,
-      shellHash: nextRoot.shellHash,
-      historyLineageId: nextRoot.lineageId,
-      historyHeadHash: nextRoot.historyHeadHash,
-      eventCount: nextRoot.eventCount,
-      tailEventId: nextCursor.tailEventId,
-      tailEventContentHash: nextRoot.tailEventContentHash,
-    });
-    const nextBoundary = Object.freeze({
-      ...nextAuthority,
-      month: successor.run.meta.elapsedMonths,
-    });
-    const checkpointSuccessor = await projectCheckpointAccumulatorFromVerifiedSuccessor(
-      source.artifacts.checkpoint,
-      source.root,
-      nextState,
-      successor.root,
-      readPublicationChunk,
-      nextBoundary,
-    );
-    this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-
-    const encodedSidecars = Object.freeze({
-      retention: retentionSuccessor.encoded,
-      physical: encodePhysicalStructureLedgerSidecar(physicalSuccessor),
-      derivedObserver: derivedSuccessor.encoded,
-      civilizationObserver: civilizationSuccessor.encoded,
-      checkpoint: encodeCheckpointAccumulator(checkpointSuccessor),
-    });
-    const hotStartIndex = Math.max(
-      0,
-      nextRoot.eventCount - source.continuation.hotEventLimit,
-    );
-    const coldPins = retentionSuccessor.projection.pins
-      .filter((pin) => pin.absoluteIndex < hotStartIndex)
-      .map((pin) => Object.freeze({
-        absoluteIndex: pin.absoluteIndex,
-        eventId: pin.eventId,
-        leaseKeys: Object.freeze([...pin.leaseKeys]),
-      }));
-    const reopenableEventIds = new Set([
-      ...nextState.world.past.map((event) => event.id),
-      ...coldPins.map((pin) => pin.eventId),
-    ]);
-    if (nextState.lastStep.some((event) => !reopenableEventIds.has(event.id))) {
-      throw new Error(
-        "bounded publication 的 hot window/retention pins 无法重开完整 lastStep，拒绝持久化",
-      );
-    }
-    const encodedBundle = encodeRunContinuationBundle({
-      schemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      historyMode: "bounded-hot-tail-plus-cold-pins-v1",
-      authority: nextAuthority,
-      hotEventLimit: source.continuation.hotEventLimit,
-      hotStartIndex,
-      coldPins,
-      sidecars: {
-        retention: encodedSidecars.retention.reference,
-        physical: encodedSidecars.physical.reference,
-        derivedObserver: encodedSidecars.derivedObserver.reference,
-        civilizationObserver: encodedSidecars.civilizationObserver.reference,
-        checkpoint: encodedSidecars.checkpoint.reference,
-      },
-      ...(source.observerMaterializationSource
-        ? { observerMaterializationSource: source.observerMaterializationSource }
-        : {}),
-    });
-    assertRetentionPinsMatchBundle(
-      successor.run.id,
-      retentionSuccessor.projection,
-      encodedBundle.bundle,
-    );
-
-    // Seal strict-decoder identities before publication so a successful COMMIT
-    // can mint the next private generation without reopening the full root.
-    const retentionBoundary = Object.freeze({
-      authority: Object.freeze({ stateHash: successor.root.hash }),
-      target: Object.freeze({
-        eventCount: nextRoot.eventCount,
-        tailEventId: nextCursor.tailEventId,
-      }),
-    });
-    const observerTarget = Object.freeze({
-      stateHash: successor.root.hash,
-      eventCount: nextRoot.eventCount,
-      tailEventId: nextCursor.tailEventId,
-    });
-    const warmArtifacts: BoundedContinuationVerifiedArtifacts = Object.freeze({
-      retention: decodeHistoryRetentionSidecar(encodedSidecars.retention.chunk, {
-        reference: encodedSidecars.retention.reference,
-        boundary: retentionBoundary,
-      }),
-      physical: physicalSuccessor,
-      derivedObserver: decodeObserverDerivedHistorySidecar(
-        encodedSidecars.derivedObserver.chunk,
-        {
-          reference: encodedSidecars.derivedObserver.reference,
-          boundary: { target: observerTarget },
-        },
-      ),
-      civilizationObserver: decodeObserverCivilizationHistorySidecar(
-        encodedSidecars.civilizationObserver.chunk,
-        {
-          reference: encodedSidecars.civilizationObserver.reference,
-          boundary: { target: observerTarget },
-        },
-      ),
-      checkpoint: decodeCheckpointAccumulator(encodedSidecars.checkpoint.chunk, {
-        reference: encodedSidecars.checkpoint.reference,
-        boundary: nextBoundary,
-      }),
-    });
-    assertHistoryRetentionProjectionMatchesVerifiedSuccessor(
-      retentionSuccessor,
-      nextState,
-      warmArtifacts.retention,
-    );
-    const warmEventsByAbsoluteIndex = new Map<number, WorldEvent>();
-    const missingWarmPins = encodedBundle.bundle.coldPins.filter((pin) => {
-      const event = worldEventById(nextState, pin.eventId);
-      if (!event || event.id !== pin.eventId) return true;
-      warmEventsByAbsoluteIndex.set(pin.absoluteIndex, event);
-      return false;
-    });
-    const materializedWarmPins = materializeVerifiedRunHistoryPinnedEvents(
-      nextRoot,
-      readPublicationChunk,
-      missingWarmPins.map((pin) => pin.absoluteIndex),
-    );
-    for (let offset = 0; offset < missingWarmPins.length; offset += 1) {
-      const expected = missingWarmPins[offset];
-      const actual = materializedWarmPins[offset];
-      if (!actual
-        || actual.absoluteIndex !== expected.absoluteIndex
-        || actual.event.id !== expected.eventId) {
-        throw new Error(
-          `bounded publication warm pin ${expected.absoluteIndex}/${expected.eventId} 与 exact successor history 不一致`,
-        );
-      }
-      warmEventsByAbsoluteIndex.set(actual.absoluteIndex, actual.event);
-    }
-    const warmPinnedEvents = encodedBundle.bundle.coldPins.map((pin) => {
-      const event = warmEventsByAbsoluteIndex.get(pin.absoluteIndex);
-      if (!event || event.id !== pin.eventId) {
-        throw new Error(
-          `bounded publication warm pin ${pin.absoluteIndex}/${pin.eventId} 无法物化`,
-        );
-      }
-      return Object.freeze({ absoluteIndex: pin.absoluteIndex, event });
-    });
-    const reusableProjectPressureDescriptors =
-      retainedProjectPressureEvidenceForLivingSources(nextState);
-    const reusableLiveSocialDescriptors =
-      retainedLiveSocialEvidenceForLivingSources(nextState);
-    const nextHotStartIndex = Math.max(
-      0,
-      nextRoot.eventCount - source.continuation.hotEventLimit,
-    );
-
-    const nextCheckpoint: ExactRunCheckpointRow = Object.freeze({
-      runId: successor.run.id,
-      revision: successor.run.meta.revision,
-      month: successor.run.meta.elapsedMonths,
-      stateHash: successor.root.hash,
-      createdAt: successor.run.meta.updatedAt,
-    });
-    const nextContinuation: RunContinuationRow = Object.freeze({
-      runId: successor.run.id,
-      revision: successor.run.meta.revision,
-      stateHash: successor.root.hash,
-      rootSchemaVersion: nextRoot.schemaVersion,
-      shellHash: nextRoot.shellHash,
-      historyLineageId: nextRoot.lineageId,
-      historyHeadHash: nextRoot.historyHeadHash,
-      eventCount: nextRoot.eventCount,
-      tailEventId: nextCursor.tailEventId,
-      tailEventContentHash: nextRoot.tailEventContentHash,
-      hotEventLimit: source.continuation.hotEventLimit,
-      bundleSchemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      bundleHash: encodedBundle.chunk.hash,
-      updatedAt: successor.run.meta.updatedAt,
-    });
-    assertContinuationAuthority(
-      successor.run,
-      nextContinuation,
+  /** Dedicated atomic adapter; generic SQLite capabilities stay private here. */
+  private commitNonProjectionPublication(
+    input: NonProjectionPublicationCommit,
+  ): void {
+    const {
+      staged,
+      successor,
+      encodedSidecars,
+      encodedBundle,
       nextCheckpoint,
-      successor.root,
-      nextRoot,
-      encodedBundle.bundle,
-    );
-
-    const nextPhysicalIdentity = snapshotContinuationChunkIdentity({
-      hash: encodedSidecars.physical.chunk.hash,
-      codec: encodedSidecars.physical.chunk.codec,
-      rawSize: encodedSidecars.physical.chunk.rawSize,
-      data: encodedSidecars.physical.chunk.data,
-    });
-    const publishedReceipt = Object.freeze({
-      persisted: true as const,
-      continuationReady: false as const,
-      revision: successor.run.meta.revision,
-      month: successor.run.meta.elapsedMonths,
-      stateHash: successor.root.hash,
-    }) as BoundedNonProjectionMonthPublishedReceipt;
-
+      nextContinuation,
+    } = input;
+    const { source } = staged;
     try {
       this.transaction(() => {
-        this.assertBoundedPublicationStagingCurrent(staged.receipt, staged);
-      for (const part of successor.parts) this.storeChunk(part);
-      this.storeChunk(successor.root);
-      for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
-        this.storeChunk(encodedSidecars[name].chunk);
-      }
-      this.storeChunk(encodedBundle.chunk);
+        this.nonProjectionPublication.assertCurrentStaging(staged.receipt, staged);
+        for (const part of successor.parts) this.storeChunk(part);
+        this.storeChunk(successor.root);
+        for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
+          this.storeChunk(encodedSidecars[name].chunk);
+        }
+        this.storeChunk(encodedBundle.chunk);
 
-      if (this.failNextBoundedPublicationAfterChunkWrites) {
-        this.failNextBoundedPublicationAfterChunkWrites = false;
-        throw new Error("fixture injected bounded publication failure after chunk writes");
-      }
+        if (this.failNextBoundedPublicationAfterChunkWrites) {
+          this.failNextBoundedPublicationAfterChunkWrites = false;
+          throw new Error("fixture injected bounded publication failure after chunk writes");
+        }
 
-      this.insertCheckpoint.run(
-        nextCheckpoint.runId,
-        nextCheckpoint.revision,
-        nextCheckpoint.month,
-        nextCheckpoint.stateHash,
-        nextCheckpoint.createdAt,
-      );
-      const runUpdate = this.updateRun.run(
-        successor.root.hash,
-        ...runColumnValues(successor.run.meta),
-        source.run.id,
-        source.run.meta.revision,
-        source.run.stateHash,
-      );
-      if (Number(runUpdate.changes) !== 1) {
-        throw new RunWriteConflictError(
-          `运行 ${source.run.id} 的 bounded publication run CAS 失败`,
+        this.insertCheckpoint.run(
+          nextCheckpoint.runId,
+          nextCheckpoint.revision,
+          nextCheckpoint.month,
+          nextCheckpoint.stateHash,
+          nextCheckpoint.createdAt,
         );
-      }
-      const continuationUpdate = this.updateRunContinuationCas.run(
-        nextContinuation.revision,
-        nextContinuation.stateHash,
-        nextContinuation.rootSchemaVersion,
-        nextContinuation.shellHash,
-        nextContinuation.historyLineageId,
-        nextContinuation.historyHeadHash,
-        nextContinuation.eventCount,
-        nextContinuation.tailEventId,
-        nextContinuation.tailEventContentHash,
-        nextContinuation.hotEventLimit,
-        nextContinuation.bundleSchemaVersion,
-        nextContinuation.bundleHash,
-        nextContinuation.updatedAt,
-        source.continuation.runId,
-        source.continuation.revision,
-        source.continuation.stateHash,
-        source.continuation.bundleHash,
-        source.continuation.updatedAt,
-      );
-      if (Number(continuationUpdate.changes) !== 1) {
-        throw new RunWriteConflictError(
-          `运行 ${source.run.id} 的 bounded publication continuation CAS 失败`,
+        const runUpdate = this.updateRun.run(
+          successor.root.hash,
+          ...runColumnValues(successor.run.meta),
+          source.run.id,
+          source.run.meta.revision,
+          source.run.stateHash,
         );
-      }
-
-      const persistedRun = this.runRow(successor.run.id);
-      const persistedContinuation = this.continuationRow(successor.run.id);
-      const persistedCheckpoint = this.exactCheckpointRow(
-        nextCheckpoint.runId,
-        nextCheckpoint.revision,
-        nextCheckpoint.stateHash,
-      );
-      if (!persistedRun
-        || !persistedContinuation
-        || !persistedCheckpoint
-        || !sameRunRow(successor.run, persistedRun)
-        || !sameRunContinuationRow(nextContinuation, persistedContinuation)
-        || !sameExactRunCheckpointRow(nextCheckpoint, persistedCheckpoint)) {
-        throw new RunWriteConflictError(
-          `运行 ${source.run.id} 的 bounded publication authority 回读失配`,
-        );
-      }
-      const persistedRoot = snapshotRunStateChunk(this.chunkRow(successor.root.hash));
-      if (!sameChunkSnapshot(successor.root, persistedRoot)) {
-        throw new RunWriteConflictError(
-          `运行 ${source.run.id} 的 bounded publication root 回读失配`,
-        );
-      }
-      const persistedBundleChunk = snapshotRunContinuationBundleChunk(
-        this.chunkRow(nextContinuation.bundleHash),
-      );
-      const persistedBundle = decodeRunContinuationBundle(persistedBundleChunk);
-      assertContinuationAuthority(
-        persistedRun,
-        persistedContinuation,
-        persistedCheckpoint,
-        persistedRoot,
-        parseRunStateRoot(persistedRoot),
-        persistedBundle,
-      );
-      for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
-        const reference = contentHashReferenceFor(
-          persistedBundle.sidecars[name],
-          successor.run.id,
-          name,
-        );
-        const persistedSidecar = snapshotContinuationChunkIdentity(
-          this.chunkRow(reference.hash),
-        );
-        const encoded = encodedSidecars[name];
-        if (persistedSidecar.hash !== encoded.reference.hash
-          || persistedSidecar.codec !== encoded.reference.codec
-          || persistedSidecar.rawSize !== encoded.chunk.rawSize) {
+        if (Number(runUpdate.changes) !== 1) {
           throw new RunWriteConflictError(
-            `运行 ${source.run.id} 的 bounded publication sidecar ${name} 回读失配`,
+            `运行 ${source.run.id} 的 bounded publication run CAS 失败`,
           );
         }
-      }
-      if (this.pruneRunCheckpoints(source.run.id)) {
-        this.collectUnreferencedRunStateChunks(source);
-      }
+        const continuationUpdate = this.updateRunContinuationCas.run(
+          nextContinuation.revision,
+          nextContinuation.stateHash,
+          nextContinuation.rootSchemaVersion,
+          nextContinuation.shellHash,
+          nextContinuation.historyLineageId,
+          nextContinuation.historyHeadHash,
+          nextContinuation.eventCount,
+          nextContinuation.tailEventId,
+          nextContinuation.tailEventContentHash,
+          nextContinuation.hotEventLimit,
+          nextContinuation.bundleSchemaVersion,
+          nextContinuation.bundleHash,
+          nextContinuation.updatedAt,
+          source.continuation.runId,
+          source.continuation.revision,
+          source.continuation.stateHash,
+          source.continuation.bundleHash,
+          source.continuation.updatedAt,
+        );
+        if (Number(continuationUpdate.changes) !== 1) {
+          throw new RunWriteConflictError(
+            `运行 ${source.run.id} 的 bounded publication continuation CAS 失败`,
+          );
+        }
+
+        const persistedRun = this.runRow(successor.run.id);
+        const persistedContinuation = this.continuationRow(successor.run.id);
+        const persistedCheckpoint = this.exactCheckpointRow(
+          nextCheckpoint.runId,
+          nextCheckpoint.revision,
+          nextCheckpoint.stateHash,
+        );
+        if (!persistedRun
+          || !persistedContinuation
+          || !persistedCheckpoint
+          || !sameRunRow(successor.run, persistedRun)
+          || !sameRunContinuationRow(nextContinuation, persistedContinuation)
+          || !sameExactRunCheckpointRow(nextCheckpoint, persistedCheckpoint)) {
+          throw new RunWriteConflictError(
+            `运行 ${source.run.id} 的 bounded publication authority 回读失配`,
+          );
+        }
+        const persistedRoot = snapshotRunStateChunk(this.chunkRow(successor.root.hash));
+        if (!sameChunkSnapshot(successor.root, persistedRoot)) {
+          throw new RunWriteConflictError(
+            `运行 ${source.run.id} 的 bounded publication root 回读失配`,
+          );
+        }
+        const persistedBundleChunk = snapshotRunContinuationBundleChunk(
+          this.chunkRow(nextContinuation.bundleHash),
+        );
+        const persistedBundle = decodeRunContinuationBundle(persistedBundleChunk);
+        assertContinuationAuthority(
+          persistedRun,
+          persistedContinuation,
+          persistedCheckpoint,
+          persistedRoot,
+          parseRunStateRoot(persistedRoot),
+          persistedBundle,
+        );
+        for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
+          const reference = contentHashReferenceFor(
+            persistedBundle.sidecars[name],
+            successor.run.id,
+            name,
+          );
+          const persistedSidecar = snapshotContinuationChunkIdentity(
+            this.chunkRow(reference.hash),
+          );
+          const encoded = encodedSidecars[name];
+          if (persistedSidecar.hash !== encoded.reference.hash
+            || persistedSidecar.codec !== encoded.reference.codec
+            || persistedSidecar.rawSize !== encoded.chunk.rawSize) {
+            throw new RunWriteConflictError(
+              `运行 ${source.run.id} 的 bounded publication sidecar ${name} 回读失配`,
+            );
+          }
+        }
+        if (this.pruneRunCheckpoints(source.run.id)) {
+          this.collectUnreferencedRunStateChunks(source as BoundedContinuationTokenRecord);
+        }
       });
     } catch (error) {
-      // A genuine stale/CAS conflict permanently severs this owned state from
-      // authority. Fixture/IO rollback errors keep the exact unchanged join so
-      // the existing retry contract remains intact.
+      // Stale/CAS conflicts sever owned state; fixture/IO rollback keeps the
+      // exact unchanged join, including its retryable receipt.
       if (error instanceof RunWriteConflictError) {
         const registry = this.continuationTokenRegistry();
         this.discardOwnedNonProjectionStaging(
@@ -3597,75 +2536,38 @@ export class SqliteRunStore implements RunStore {
       }
       throw error;
     }
+  }
 
-    // Nothing below runs until COMMIT has succeeded. Rollback leaves the token
-    // and both staging joins intact; successful publication spends them once.
+  /** Consume and optionally warm process-local authority only after COMMIT. */
+  private completeNonProjectionPublication(
+    input: NonProjectionPublicationFinalization,
+  ): void {
+    const source = input.staged.source as BoundedContinuationTokenRecord;
     source.spent = true;
     const registry = this.continuationTokenRegistry();
     registry.generationsByRun.set(source.runId, source.generation + 1);
     registry.physicalByRun.set(source.runId, Object.freeze({
       runId: source.runId,
-      revision: successor.run.meta.revision,
-      stateHash: successor.root.hash,
-      sidecar: nextPhysicalIdentity,
-      projection: physicalSuccessor,
+      revision: input.successor.run.meta.revision,
+      stateHash: input.successor.root.hash,
+      sidecar: input.nextPhysicalIdentity,
+      projection: input.physicalProjection,
     }));
     this.discardOwnedNonProjectionStaging(
       registry,
-      staged.receipt,
-      staged.stagedMonth,
+      input.staged.receipt,
+      input.staged.stagedMonth,
     );
     this.discardWarmNonProjectionContinuation(registry, source.runId);
     try {
-      const warmProjectPressureSources = materializeVerifiedRunHistoryPinnedEvents(
-        nextRoot,
-        readPublicationChunk,
-        projectPressureColdMaterializationOrdinals(
-          nextState,
-          warmArtifacts.retention,
-          warmPinnedEvents,
-          reusableProjectPressureDescriptors,
-          nextHotStartIndex,
-        ),
-      );
-      const warmLiveSocialSources = materializeVerifiedRunHistoryPinnedEvents(
-        nextRoot,
-        readPublicationChunk,
-        liveSocialColdMaterializationOrdinals(
-          nextState,
-          warmArtifacts.retention,
-          warmPinnedEvents,
-          reusableLiveSocialDescriptors,
-          nextHotStartIndex,
-        ),
-      );
-      trimCommittedHistoryAfterPersistedCursor(
-        nextState,
-        {
-          eventCount: nextRoot.eventCount,
-          tailEventId: nextCursor.tailEventId,
-        },
-        nextContinuation.hotEventLimit,
-      );
-      adoptStoreDecodedBoundedSimulationState(
-        nextState,
-        successor.root.hash,
-        warmArtifacts.retention,
-        warmPinnedEvents,
-        warmProjectPressureSources,
-        reusableProjectPressureDescriptors,
-        warmLiveSocialSources,
-        reusableLiveSocialDescriptors,
-        warmArtifacts.physical,
-      );
-
+      const prepared = input.prepareWarmContinuation();
       const sidecars = {} as Record<RunContinuationSidecarName, ContinuationChunkIdentity>;
       for (const name of RUN_CONTINUATION_SIDECAR_NAMES) {
         sidecars[name] = snapshotContinuationChunkIdentity({
-          hash: encodedSidecars[name].chunk.hash,
-          codec: encodedSidecars[name].chunk.codec,
-          rawSize: encodedSidecars[name].chunk.rawSize,
-          data: encodedSidecars[name].chunk.data,
+          hash: input.encodedSidecars[name].chunk.hash,
+          codec: input.encodedSidecars[name].chunk.codec,
+          rawSize: input.encodedSidecars[name].chunk.rawSize,
+          data: input.encodedSidecars[name].chunk.data,
         });
       }
       const generation = source.generation + 1;
@@ -3677,15 +2579,15 @@ export class SqliteRunStore implements RunStore {
         runId: source.runId,
         generation,
         spent: false,
-        run: successor.run,
-        continuation: nextContinuation,
-        checkpoint: nextCheckpoint,
-        root: successor.root,
+        run: input.successor.run,
+        continuation: input.nextContinuation,
+        checkpoint: input.nextCheckpoint,
+        root: input.successor.root,
         bundle: snapshotContinuationChunkIdentity({
-          hash: encodedBundle.chunk.hash,
-          codec: encodedBundle.chunk.codec,
-          rawSize: encodedBundle.chunk.rawSize,
-          data: encodedBundle.chunk.data,
+          hash: input.encodedBundle.chunk.hash,
+          codec: input.encodedBundle.chunk.codec,
+          rawSize: input.encodedBundle.chunk.rawSize,
+          data: input.encodedBundle.chunk.data,
         }),
         ...(source.observerMaterializationSource
           ? {
@@ -3694,30 +2596,26 @@ export class SqliteRunStore implements RunStore {
           }
           : {}),
         sidecars: Object.freeze(sidecars),
-        artifacts: warmArtifacts,
+        artifacts: prepared.artifacts,
         shellReuseAuthority: source.shellReuseAuthority,
-        shellReuseIdentity: successor.shellReuseIdentity,
+        shellReuseIdentity: input.successor.shellReuseIdentity,
       });
       registry.warmNonProjectionByRun.set(source.runId, Object.freeze({
         runId: source.runId,
         generation,
-        revision: successor.run.meta.revision,
-        stateHash: successor.root.hash,
+        revision: input.successor.run.meta.revision,
+        stateHash: input.successor.root.hash,
         token: warmToken,
-        state: nextState,
+        state: prepared.state,
       }));
     } catch {
-      // Authority is already committed. Any warm-state normalization failure
-      // degrades to the existing cold-open path instead of misreporting COMMIT.
+      // Authority is committed; warm normalization degrades to cold-open.
       this.discardWarmNonProjectionContinuation(registry, source.runId);
     }
-    registry.publishedNonProjectionMonths.set(publishedReceipt, Object.freeze({
-      runId: source.runId,
-      revision: successor.run.meta.revision,
-      month: successor.run.meta.elapsedMonths,
-      stateHash: successor.root.hash,
-    }));
-    return publishedReceipt;
+    registry.publishedNonProjectionMonths.set(
+      input.publishedReceipt,
+      input.publishedRecord,
+    );
   }
 
   /**
@@ -3944,233 +2842,6 @@ export class SqliteRunStore implements RunStore {
     });
     return receipt;
   }
-
-  /**
-   * Build all continuation projections from one immutable schema-3 root. This
-   * does no SQLite writes; bootstrap and same-root refresh supply their own
-   * source-current assertion and short publication transaction.
-   */
-  private async buildBoundedContinuationArtifacts(
-    source: Readonly<BoundedContinuationBootstrapSourceSnapshot>,
-    hotEventLimit: number,
-    assertSourceCurrent: () => void,
-    operationName: "bootstrap" | "refresh",
-    observerMaterializationSource?: Readonly<RunContinuationObserverMaterializationSourceV1>,
-  ): Promise<BuiltBoundedContinuationArtifacts> {
-    const rootMetadata = source.metadata;
-    if (rootMetadata.schemaVersion !== 3) {
-      throw new Error(
-        `运行 ${source.run.id} 不是可流式${operationName === "bootstrap" ? "建立" : "刷新"}`
-        + " continuation 的 schema 3 root",
-      );
-    }
-    // Codec/projection boundaries synchronously take owned snapshots before
-    // crossing awaits. The store reader therefore retains no duplicate full
-    // history while all reducers share one verified stream.
-    const readSourceChunk = (hash: string): RunStateChunk => this.chunkRow(hash);
-    const decodedPhysical = await decodeBoundedGameplayRunStateWithPhysicalProjection(
-      source.root,
-      readSourceChunk,
-      {
-        hotEventLimit,
-        observerAuthority: {
-          stateHash: source.root.hash,
-          revision: source.run.meta.revision,
-          month: source.run.meta.elapsedMonths,
-          lastMaterializedMilestoneCount: source.run.meta.milestoneCount,
-        },
-      },
-    );
-    assertSourceCurrent();
-
-    const state = decodedPhysical.state;
-    const cursor = state.world.historyCursor;
-    const expectedHotStartIndex = Math.max(0, rootMetadata.eventCount - hotEventLimit);
-    const expectedHotEventCount = rootMetadata.eventCount - expectedHotStartIndex;
-    if (decodedPhysical.metadata.schemaVersion !== rootMetadata.schemaVersion
-      || decodedPhysical.metadata.shellHash !== rootMetadata.shellHash
-      || decodedPhysical.metadata.lineageId !== rootMetadata.lineageId
-      || decodedPhysical.metadata.historyHeadHash !== rootMetadata.historyHeadHash
-      || decodedPhysical.metadata.eventCount !== rootMetadata.eventCount
-      || decodedPhysical.metadata.tailEventContentHash !== rootMetadata.tailEventContentHash
-      || !cursor
-      || cursor.eventCount !== rootMetadata.eventCount
-      || cursor.hotStartIndex !== expectedHotStartIndex
-      || cursor.tailEventId !== state.world.past.at(-1)?.id
-      || state.world.past.length !== expectedHotEventCount) {
-      throw new Error(`运行 ${source.run.id} 的 bounded shell/physical root join 失配`);
-    }
-    if (observerMaterializationSource
-      && !isDeepStrictEqual(
-        attachedLastMaterializedObserverBasis(state).source,
-        observerMaterializationSource,
-      )) {
-      throw new Error(
-        `运行 ${source.run.id} 的 observer materialization source 与 refresh shell 失配`,
-      );
-    }
-    assertDecodedRunSummary(source.run, state);
-
-    const observerTarget = Object.freeze({
-      stateHash: source.root.hash,
-      eventCount: rootMetadata.eventCount,
-      tailEventId: cursor.tailEventId,
-    });
-    const derivedDemand = collectObserverDerivedHistoryGenesisDemandFromVerifiedShell({
-      state,
-      stateHash: source.root.hash,
-      physicalProjection: decodedPhysical.physicalProjection,
-    });
-    const retentionFold = beginHistoryRetentionProjection(
-      state,
-      { stateHash: source.root.hash },
-    );
-    const derivedFold = beginObserverDerivedHistoryProjection(observerTarget, derivedDemand);
-    const civilizationFold = beginObserverCivilizationHistoryProjection(observerTarget);
-    const verifiedHistory = await streamVerifiedRunHistorySegments(
-      rootMetadata,
-      readSourceChunk,
-      (events, position) => {
-        foldHistoryRetentionSegment(retentionFold, events, position.startEventIndex);
-        foldVerifiedObserverDerivedHistorySegment(
-          derivedFold,
-          events,
-          position.startEventIndex,
-        );
-        foldVerifiedObserverCivilizationHistorySegment(
-          civilizationFold,
-          events,
-          position.startEventIndex,
-        );
-      },
-    );
-    assertSourceCurrent();
-    if (!sameHistoryCursor(
-      verifiedHistory,
-      runHistoryCursorFromRootMetadata(rootMetadata),
-    )) {
-      throw new Error(`运行 ${source.run.id} 的 ${operationName} verified history seal 失配`);
-    }
-
-    const retention = finishHistoryRetentionProjection(retentionFold);
-    assertHistoryRetentionProjectionMatchesShell(state, retention);
-    const derivedObserver = finishObserverDerivedHistoryProjection(derivedFold);
-    const civilizationObserver = finishObserverCivilizationHistoryProjection(civilizationFold);
-    const checkpointBoundary = Object.freeze({
-      runId: source.run.id,
-      revision: source.run.meta.revision,
-      month: source.run.meta.elapsedMonths,
-      stateHash: source.root.hash,
-      rootSchemaVersion: rootMetadata.schemaVersion,
-      shellHash: rootMetadata.shellHash,
-      historyLineageId: rootMetadata.lineageId,
-      historyHeadHash: rootMetadata.historyHeadHash,
-      eventCount: rootMetadata.eventCount,
-      tailEventId: cursor.tailEventId,
-      tailEventContentHash: rootMetadata.tailEventContentHash,
-    });
-    const checkpoint = await projectCheckpointAccumulatorFromVerifiedRunRoot(
-      state,
-      source.root,
-      readSourceChunk,
-      checkpointBoundary,
-    );
-    assertSourceCurrent();
-
-    const encodedSidecars = Object.freeze({
-      retention: encodeHistoryRetentionSidecar(retention),
-      physical: encodePhysicalStructureLedgerSidecar(decodedPhysical.physicalProjection),
-      derivedObserver: encodeObserverDerivedHistorySidecar({
-        sourceDemand: derivedDemand,
-        projection: derivedObserver,
-      }),
-      civilizationObserver: encodeObserverCivilizationHistorySidecar(civilizationObserver),
-      checkpoint: encodeCheckpointAccumulator(checkpoint),
-    });
-    const hotStartIndex = Math.max(0, rootMetadata.eventCount - hotEventLimit);
-    const coldPins = encodedSidecars.retention.projection.pins
-      .filter((pin) => pin.absoluteIndex < hotStartIndex)
-      .map((pin) => Object.freeze({
-        absoluteIndex: pin.absoluteIndex,
-        eventId: pin.eventId,
-        leaseKeys: Object.freeze([...pin.leaseKeys]),
-      }));
-    const reopenableEventIds = new Set([
-      ...state.world.past.map((event) => event.id),
-      ...coldPins.map((pin) => pin.eventId),
-    ]);
-    if (state.lastStep.some((event) => !reopenableEventIds.has(event.id))) {
-      throw new Error(
-        `运行 ${source.run.id} 的 hot window/retention pins 无法重开完整 lastStep`,
-      );
-    }
-
-    const authority = Object.freeze({
-      runId: source.run.id,
-      revision: source.run.meta.revision,
-      stateHash: source.root.hash,
-      rootSchemaVersion: rootMetadata.schemaVersion,
-      shellHash: rootMetadata.shellHash,
-      historyLineageId: rootMetadata.lineageId,
-      historyHeadHash: rootMetadata.historyHeadHash,
-      eventCount: rootMetadata.eventCount,
-      tailEventId: cursor.tailEventId,
-      tailEventContentHash: rootMetadata.tailEventContentHash,
-    });
-    const encodedBundle = encodeRunContinuationBundle({
-      schemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      historyMode: "bounded-hot-tail-plus-cold-pins-v1",
-      authority,
-      hotEventLimit,
-      hotStartIndex,
-      coldPins,
-      sidecars: {
-        retention: encodedSidecars.retention.reference,
-        physical: encodedSidecars.physical.reference,
-        derivedObserver: encodedSidecars.derivedObserver.reference,
-        civilizationObserver: encodedSidecars.civilizationObserver.reference,
-        checkpoint: encodedSidecars.checkpoint.reference,
-      },
-      ...(observerMaterializationSource ? { observerMaterializationSource } : {}),
-    });
-    assertRetentionPinsMatchBundle(
-      source.run.id,
-      encodedSidecars.retention.projection,
-      encodedBundle.bundle,
-    );
-
-    const continuation: RunContinuationRow = Object.freeze({
-      runId: source.run.id,
-      revision: source.run.meta.revision,
-      stateHash: source.root.hash,
-      rootSchemaVersion: rootMetadata.schemaVersion,
-      shellHash: rootMetadata.shellHash,
-      historyLineageId: rootMetadata.lineageId,
-      historyHeadHash: rootMetadata.historyHeadHash,
-      eventCount: rootMetadata.eventCount,
-      tailEventId: cursor.tailEventId,
-      tailEventContentHash: rootMetadata.tailEventContentHash,
-      hotEventLimit,
-      bundleSchemaVersion: RUN_CONTINUATION_BUNDLE_SCHEMA_VERSION,
-      bundleHash: encodedBundle.chunk.hash,
-      updatedAt: source.run.meta.updatedAt,
-    });
-    assertContinuationAuthority(
-      source.run,
-      continuation,
-      source.checkpoint,
-      source.root,
-      rootMetadata,
-      encodedBundle.bundle,
-    );
-    return Object.freeze({
-      continuation,
-      encodedSidecars,
-      encodedBundle,
-      physicalProjection: decodedPhysical.physicalProjection,
-    });
-  }
-
   /**
    * Establish the first bounded continuation for the current exact run root
    * without advancing time or rewriting any run/checkpoint/root authority.
@@ -4200,7 +2871,7 @@ export class SqliteRunStore implements RunStore {
       encodedSidecars,
       encodedBundle,
       physicalProjection,
-    } = await this.buildBoundedContinuationArtifacts(
+    } = await this.continuationArtifactMaterialization.buildBoundedContinuationArtifacts(
       source,
       hotEventLimit,
       () => this.assertBoundedContinuationBootstrapSourceCurrent(source),
@@ -4330,7 +3001,7 @@ export class SqliteRunStore implements RunStore {
       encodedSidecars,
       encodedBundle,
       physicalProjection,
-    } = await this.buildBoundedContinuationArtifacts(
+    } = await this.continuationArtifactMaterialization.buildBoundedContinuationArtifacts(
       source,
       selectedHotEventLimit,
       () => this.assertBoundedContinuationRefreshSourceCurrent(source),
@@ -4536,250 +3207,27 @@ export class SqliteRunStore implements RunStore {
       bundle,
     );
 
-    // The manifest alone selects every retained cold ordinal. There is no
-    // caller-provided option merge or event-id lookup on this authority path.
-    const decoded = await this.decodeBoundedGameplayForPhase(
-      "continuationOpen",
-      rootSnapshot,
-      (chunkHash) => this.chunkRow(chunkHash),
-      {
-        hotEventLimit: bundle.hotEventLimit,
-        pinnedEventIndexes: bundle.coldPins.map((pin) => pin.absoluteIndex),
-        observerAuthority: {
-          stateHash: rootSnapshot.hash,
-          revision: runSnapshot.meta.revision,
-          month: runSnapshot.meta.elapsedMonths,
-          lastMaterializedMilestoneCount: runSnapshot.meta.milestoneCount,
-        },
+    const materialized = await this.continuationArtifactMaterialization
+      .materializeBoundedContinuationOpen({
+        run: runSnapshot,
+        checkpoint: checkpointSnapshot,
+        root: rootSnapshot,
+        metadata: rootMetadata,
+        bundle,
+      });
+    const {
+      state: openedState,
+      pinnedEvents,
+      observerMaterializationSourceRoot,
+      sidecars,
+      artifacts: {
+        retention,
+        physical,
+        derivedObserver,
+        civilizationObserver,
+        checkpoint,
       },
-    );
-    const cursor = decoded.state.world.historyCursor;
-    if (!cursor
-      || cursor.eventCount !== bundle.authority.eventCount
-      || cursor.hotStartIndex !== bundle.hotStartIndex
-      || cursor.tailEventId !== bundle.authority.tailEventId
-      || decoded.state.world.past.length !== cursor.eventCount - cursor.hotStartIndex) {
-      throw new Error(`运行 ${normalizedId} 的 bounded tail 与 continuation bundle 不一致`);
-    }
-    assertDecodedRunSummary(runSnapshot, decoded.state);
-    let observerMaterializationSourceRoot: RunStateChunk | undefined;
-    if (bundle.observerMaterializationSource) {
-      const observerSource = bundle.observerMaterializationSource;
-      const basis = attachedLastMaterializedObserverBasis(decoded.state);
-      const terminalBoundaryKind = decoded.state.civilization.outcome?.kind === "destroyed"
-        ? "extinction"
-        : decoded.state.civilization.outcome?.kind === "boundary"
-          ? "months-endpoint"
-          : null;
-      const nonAnnualTerminalMaterialization = terminalBoundaryKind !== null
-        && runSnapshot.meta.status === "ended"
-        && decoded.state.civilization.status === "ended"
-        && boundedObserverBoundaryMatchesState(
-          terminalBoundaryKind,
-          decoded.state,
-          runSnapshot.meta.elapsedMonths,
-        )
-        && observerSource.revision === runSnapshot.meta.revision
-        && observerSource.month === runSnapshot.meta.elapsedMonths;
-      if (observerSource.revision > runSnapshot.meta.revision
-        || observerSource.month > runSnapshot.meta.elapsedMonths
-        || (observerSource.month % 12 !== 0 && !nonAnnualTerminalMaterialization)
-        || observerSource.stateHash === runSnapshot.stateHash
-        || !isDeepStrictEqual(basis.source, observerSource)) {
-        throw new Error(
-          `运行 ${normalizedId} 的 observer materialization source 与 final root basis 不一致`,
-        );
-      }
-      observerMaterializationSourceRoot = snapshotRunStateChunk(
-        this.chunkRow(observerSource.stateHash),
-      );
-      if (observerMaterializationSourceRoot.codec !== RUN_STATE_ROOT_CODEC) {
-        throw new Error(
-          `运行 ${normalizedId} 的 observer materialization source 不是 segmented root`,
-        );
-      }
-      const observerSourceMetadata = parseRunStateRoot(observerMaterializationSourceRoot);
-      if (observerSourceMetadata.schemaVersion !== 3
-        || observerSourceMetadata.lineageId !== rootMetadata.lineageId
-        || observerSourceMetadata.eventCount > rootMetadata.eventCount
-        || (observerSourceMetadata.eventCount === rootMetadata.eventCount
-          && observerSourceMetadata.tailEventContentHash !== rootMetadata.tailEventContentHash)) {
-        throw new Error(
-          `运行 ${normalizedId} 的 observer materialization source 与 final root 历史失配`,
-        );
-      }
-    }
-    if (decoded.pinnedEvents.length !== bundle.coldPins.length) {
-      throw new Error(`运行 ${normalizedId} 的 bounded cold pins 数量不一致`);
-    }
-    for (let offset = 0; offset < bundle.coldPins.length; offset += 1) {
-      const expected = bundle.coldPins[offset];
-      const actual = decoded.pinnedEvents[offset];
-      if (!actual
-        || actual.absoluteIndex !== expected.absoluteIndex
-        || actual.event.id !== expected.eventId) {
-        throw new Error(
-          `运行 ${normalizedId} 的 bounded cold pin ${expected.absoluteIndex} 与 manifest 不一致`,
-        );
-      }
-    }
-
-    const retentionBoundary = Object.freeze({
-      authority: Object.freeze({ stateHash: runSnapshot.stateHash }),
-      target: Object.freeze({
-        eventCount: bundle.authority.eventCount,
-        tailEventId: bundle.authority.tailEventId,
-      }),
-    });
-    const observerTarget = Object.freeze({
-      stateHash: runSnapshot.stateHash,
-      eventCount: bundle.authority.eventCount,
-      tailEventId: bundle.authority.tailEventId,
-    });
-    const checkpointBoundary = Object.freeze({
-      runId: runSnapshot.id,
-      revision: runSnapshot.meta.revision,
-      month: checkpointSnapshot.month,
-      stateHash: runSnapshot.stateHash,
-      rootSchemaVersion: rootMetadata.schemaVersion,
-      shellHash: rootMetadata.shellHash,
-      historyLineageId: rootMetadata.lineageId,
-      historyHeadHash: rootMetadata.historyHeadHash,
-      eventCount: rootMetadata.eventCount,
-      tailEventId: bundle.authority.tailEventId,
-      tailEventContentHash: rootMetadata.tailEventContentHash,
-    });
-    const sidecars = {} as Record<RunContinuationSidecarName, ContinuationChunkIdentity>;
-
-    // Decode one store-selected sidecar at a time. Only its scalar content
-    // identity and normalized artifact survive the local scope; raw bytes are
-    // eligible for collection before the next potentially large sidecar opens.
-    const retention = (() => {
-      const name = "retention" as const;
-      const reference = contentHashReferenceFor(bundle.sidecars[name], normalizedId, name);
-      const chunk = this.chunkRow(reference.hash);
-      const artifact = decodeHistoryRetentionSidecar(chunk, {
-        reference,
-        boundary: retentionBoundary,
-      });
-      sidecars[name] = snapshotContinuationChunkIdentity(chunk);
-      return artifact;
-    })();
-    assertRetentionPinsMatchBundle(normalizedId, retention, bundle);
-
-    const physicalSidecar = (() => {
-      const name = "physical" as const;
-      const reference = contentHashReferenceFor(bundle.sidecars[name], normalizedId, name);
-      const chunk = this.chunkRow(reference.hash);
-      const artifact = decodePhysicalStructureLedgerSidecar(chunk, {
-        reference,
-        boundary: retentionBoundary,
-      });
-      sidecars[name] = snapshotContinuationChunkIdentity(chunk);
-      return artifact;
-    })();
-
-    const derivedObserver = (() => {
-      const name = "derivedObserver" as const;
-      const reference = contentHashReferenceFor(bundle.sidecars[name], normalizedId, name);
-      const chunk = this.chunkRow(reference.hash);
-      const artifact = decodeObserverDerivedHistorySidecar(chunk, {
-        reference,
-        boundary: { target: observerTarget },
-      });
-      sidecars[name] = snapshotContinuationChunkIdentity(chunk);
-      return artifact;
-    })();
-
-    const civilizationObserver = (() => {
-      const name = "civilizationObserver" as const;
-      const reference = contentHashReferenceFor(bundle.sidecars[name], normalizedId, name);
-      const chunk = this.chunkRow(reference.hash);
-      const artifact = decodeObserverCivilizationHistorySidecar(chunk, {
-        reference,
-        boundary: { target: observerTarget },
-      });
-      sidecars[name] = snapshotContinuationChunkIdentity(chunk);
-      return artifact;
-    })();
-
-    const checkpoint = (() => {
-      const name = "checkpoint" as const;
-      const reference = contentHashReferenceFor(bundle.sidecars[name], normalizedId, name);
-      const chunk = this.chunkRow(reference.hash);
-      const artifact = decodeCheckpointAccumulator(chunk, {
-        reference,
-        boundary: checkpointBoundary,
-      });
-      sidecars[name] = snapshotContinuationChunkIdentity(chunk);
-      return artifact;
-    })();
-
-    const registry = this.continuationTokenRegistry();
-    const cachedPhysical = registry.physicalByRun.get(normalizedId);
-    let physical: Readonly<PhysicalStructureLedgerProjectionResult>;
-    if (cachedPhysical
-      && cachedPhysical.runId === normalizedId
-      && cachedPhysical.revision === runSnapshot.meta.revision
-      && cachedPhysical.stateHash === runSnapshot.stateHash
-      && cachedPhysical.sidecar.hash === sidecars.physical.hash
-      && cachedPhysical.sidecar.codec === sidecars.physical.codec
-      && cachedPhysical.sidecar.rawSize === sidecars.physical.rawSize) {
-      physical = cachedPhysical.projection;
-    } else {
-      // Bootstrap seals only the exact root/history/grid scalars. It does not
-      // retain the decoded state, so the controller may advance this same
-      // object in place without an expensive restart-only clone.
-      physical = await bootstrapPhysicalStructureLedgerFromStrictDecodedSidecar(
-        physicalSidecar,
-        decoded.state,
-        rootSnapshot,
-        (chunkHash) => this.chunkRow(chunkHash),
-      );
-    }
-    const canonicalPhysical = encodePhysicalStructureLedgerSidecar(physical);
-    const selectedPhysicalReference = contentHashReferenceFor(
-      bundle.sidecars.physical,
-      normalizedId,
-      "physical",
-    );
-    if (canonicalPhysical.reference.codec !== selectedPhysicalReference.codec
-      || canonicalPhysical.reference.hash !== selectedPhysicalReference.hash
-      || canonicalPhysical.chunk.rawSize !== sidecars.physical.rawSize) {
-      throw new Error(
-        `运行 ${normalizedId} 的 physical bootstrap/cache 未重现 store-selected canonical sidecar`,
-      );
-    }
-
-    const projectPressureSources = materializeVerifiedRunHistoryPinnedEvents(
-      rootMetadata,
-      (chunkHash) => this.chunkRow(chunkHash),
-      projectPressureColdMaterializationOrdinals(
-        decoded.state,
-        retention,
-        decoded.pinnedEvents,
-      ),
-    );
-    const liveSocialSources = materializeVerifiedRunHistoryPinnedEvents(
-      rootMetadata,
-      (chunkHash) => this.chunkRow(chunkHash),
-      liveSocialColdMaterializationOrdinals(
-        decoded.state,
-        retention,
-        decoded.pinnedEvents,
-      ),
-    );
-    adoptStoreDecodedBoundedSimulationState(
-      decoded.state,
-      runSnapshot.stateHash,
-      retention,
-      decoded.pinnedEvents,
-      projectPressureSources,
-      [],
-      liveSocialSources,
-      [],
-      physicalSidecar,
-    );
+    } = materialized;
 
     // The decoder is an async boundary. Re-read every authority row and every
     // bounded snapshot before minting; a coherent old read never authorizes a
@@ -4824,6 +3272,7 @@ export class SqliteRunStore implements RunStore {
       }
     }
 
+    const registry = this.continuationTokenRegistry();
     registry.physicalByRun.set(normalizedId, Object.freeze({
       runId: normalizedId,
       revision: runSnapshot.meta.revision,
@@ -4880,8 +3329,8 @@ export class SqliteRunStore implements RunStore {
 
     return {
       meta: { ...runSnapshot.meta },
-      state: decoded.state,
-      pinnedEvents: decoded.pinnedEvents,
+      state: openedState,
+      pinnedEvents,
       basis: evolutionBasisFor(runSnapshot, rootMetadata),
       continuationReady: false,
       continuationToken: token,
@@ -5058,50 +3507,28 @@ export class SqliteRunStore implements RunStore {
     };
   }
 
-  private async loadArtifact<T>(id: string, kind: string): Promise<T | null> {
-    const normalizedId = normalizeId(id);
-    const chunk = parseChunkRow(this.selectArtifactChunk.get(normalizedId, kind));
-    return chunk ? decodeValue<T>(chunk) : null;
-  }
-
-  private async saveArtifact(id: string, kind: string, value: unknown): Promise<void> {
-    const normalizedId = normalizeId(id);
-    this.assertRunExists(normalizedId);
-    const chunk = await encodeValue(value);
-    this.transaction(() => {
-      this.assertRunExists(normalizedId);
-      const previous = this.selectArtifactHash.get(normalizedId, kind);
-      const previousHash = previous ? String(previous.chunk_hash) : null;
-      this.storeChunk(chunk);
-      this.upsertArtifact.run(normalizedId, kind, chunk.hash, new Date().toISOString());
-      if (previousHash) {
-        this.deleteUnreferencedArtifactChunk.run(previousHash, V8_BROTLI_CODEC);
-      }
-    });
-  }
-
   async loadEvolutionPath(id: string): Promise<EvolutionPath | null> {
-    return this.loadArtifact<EvolutionPath>(id, ARTIFACT_EVOLUTION_PATH);
+    return this.outputArtifacts.loadEvolutionPath(id);
   }
 
   async saveEvolutionPath(id: string, evolution: EvolutionPath): Promise<void> {
-    await this.saveArtifact(id, ARTIFACT_EVOLUTION_PATH, evolution);
+    await this.outputArtifacts.saveEvolutionPath(id, evolution);
   }
 
   async loadEvolutionReport(id: string): Promise<EvolutionReport | null> {
-    return this.loadArtifact<EvolutionReport>(id, ARTIFACT_EVOLUTION_REPORT);
+    return this.outputArtifacts.loadEvolutionReport(id);
   }
 
   async saveEvolutionReport(id: string, report: EvolutionReport): Promise<void> {
-    await this.saveArtifact(id, ARTIFACT_EVOLUTION_REPORT, report);
+    await this.outputArtifacts.saveEvolutionReport(id, report);
   }
 
   async loadNarrativeEnhancements(id: string): Promise<NarrativeEnhancementArtifact | null> {
-    return this.loadArtifact<NarrativeEnhancementArtifact>(id, ARTIFACT_NARRATIVE_ENHANCEMENTS);
+    return this.outputArtifacts.loadNarrativeEnhancements(id);
   }
 
   async saveNarrativeEnhancements(id: string, artifact: NarrativeEnhancementArtifact): Promise<void> {
-    await this.saveArtifact(id, ARTIFACT_NARRATIVE_ENHANCEMENTS, artifact);
+    await this.outputArtifacts.saveNarrativeEnhancements(id, artifact);
   }
 }
 

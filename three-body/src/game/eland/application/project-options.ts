@@ -6,10 +6,8 @@ import { isAlive, type PersonState } from '../domain/person';
 import { inheritPlanningEventOverlay, worldEventById } from '../domain/event-index';
 import {
   intentsOwnedBy,
-  invalidateProjectLeadershipIndex,
   personById,
   projectById,
-  projectsLedBy,
   projectsRequiringMonthlySynchronization,
 } from '../domain/state-index';
 import {
@@ -47,6 +45,10 @@ import {
   projectCurrentLeadId,
   projectSupportsLeadershipSuccession,
 } from '../domain/project-leadership';
+import {
+  invalidateProjectLeadershipIndex,
+  projectsLedBy,
+} from '../domain/project-leadership-index';
 import { recordRecurringDutyProjectProgress } from '../domain/governance';
 import {
   closeProjectHypothesisCampaign,

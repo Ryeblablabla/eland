@@ -12,9 +12,8 @@ import {
   narrativeEnhancementCounts,
   type NarrativeEnhancementKind,
 } from './narrative-enhancements';
-import type { PersistedRun } from './run-persistence';
+import type { PersistedRun, RunAccessStore } from './run-persistence';
 import type { RunEvolutionService } from './run-evolution-service';
-import type { SqliteRunStore } from './sqlite-run-store';
 
 export interface RunApiResponse {
   status: number;
@@ -70,7 +69,7 @@ function enhancementTaskLimit(value: unknown): number {
 /** HTTP adapter for persisted runs. It does not own simulation or storage policy. */
 export class RunApi {
   constructor(
-    private readonly store: SqliteRunStore,
+    private readonly store: RunAccessStore,
     private readonly evolution: RunEvolutionService,
     private readonly narrativeEnhancements: NarrativeEnhancementService,
   ) {}

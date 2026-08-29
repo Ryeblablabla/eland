@@ -461,8 +461,9 @@ try {
     assert.equal(readerPlanningCalls[0]?.decision.interruptionKind, 'life-review',
       'the deterministic month must begin with one real life review of the active project');
     assert.ok(result.agreements.some((agreement) => agreement.proposerId === fixture.reader.id
-      && agreement.proposal.kind === 'companion'),
-      'that first review must create a same-month proposal before the parent project resumes');
+      && (agreement.proposal.kind === 'companion'
+        || (agreement.proposal.kind === 'assist' && agreement.proposal.need === 'company'))),
+      'that first review must create a same-month companionship proposal before the parent project resumes');
     assert.equal(readerPlanningCalls.some((call) => call.hasRecordOption), false,
       'without any perceived written carrier, later obligation or terminal reviews must not fabricate record use');
     assert.equal(result.lastStep.filter((event) => event.kind === 'decision'

@@ -807,11 +807,11 @@ export function executeActiveIntent(
 ): WorldEvent | null {
   const intent = activeIntent(state, person);
   if (!intent) return null;
-  const executeWithCurrentEvidence = <T>(operation: () => T): T => {
-    if (!currentMonthEvents.length) return operation();
+  const executeWithEvidence = <T>(events: WorldEvent[], operation: () => T): T => {
+    if (!events.length) return operation();
     const committedPast = state.world.past;
-    state.world.past = currentEvidenceHistory(currentMonthEvents, committedPast);
-    registerPlanningEventOverlay(state, currentMonthEvents, committedPast);
+    state.world.past = currentEvidenceHistory(events, committedPast);
+    registerPlanningEventOverlay(state, events, committedPast);
     try {
       return operation();
     } finally {
@@ -819,6 +819,9 @@ export function executeActiveIntent(
       state.world.past = committedPast;
     }
   };
+  const executeWithCurrentEvidence = <T>(operation: () => T): T => (
+    executeWithEvidence(currentMonthEvents, operation)
+  );
   const project = intent.projectId ? projectById(state, intent.projectId) : undefined;
   if (project) executeWithCurrentEvidence(() => synchronizeProject(state, project, atMonth));
   if (project && project.status === 'blocked') {
@@ -1153,18 +1156,23 @@ export function executeActiveIntent(
     }
   }
   intent.actionEventIds.push(fact.id);
-  if (intent.projectId) recordProjectAction(state, intent.projectId, fact);
-  else if (fact.diff.projectLeadershipSuccession === true
-    && typeof fact.diff.projectLeadershipProjectId === 'string') {
-    recordProjectAction(state, fact.diff.projectLeadershipProjectId, fact);
-  } else if (intent.recordUseBasis && (fact.diff.recordUseStage === 'experiment'
-    || fact.diff.recordUseStage === 'replicate'
-    || fact.diff.recordUsePreparation === true)) {
-    recordProjectAction(state, intent.recordUseBasis.projectId, fact);
-  } else if (fact.diff.projectKnowledgeResponse === true
-    && typeof fact.diff.projectKnowledgeProjectId === 'string') {
-    recordProjectAction(state, fact.diff.projectKnowledgeProjectId, fact);
-  }
+  // The produced fact is not appended by the month controller until this call
+  // returns. Project synchronization still needs to validate that exact fact
+  // now so completion and interruption return semantics settle in one tick.
+  executeWithEvidence([...currentMonthEvents, fact], () => {
+    if (intent.projectId) recordProjectAction(state, intent.projectId, fact);
+    else if (fact.diff.projectLeadershipSuccession === true
+      && typeof fact.diff.projectLeadershipProjectId === 'string') {
+      recordProjectAction(state, fact.diff.projectLeadershipProjectId, fact);
+    } else if (intent.recordUseBasis && (fact.diff.recordUseStage === 'experiment'
+      || fact.diff.recordUseStage === 'replicate'
+      || fact.diff.recordUsePreparation === true)) {
+      recordProjectAction(state, intent.recordUseBasis.projectId, fact);
+    } else if (fact.diff.projectKnowledgeResponse === true
+      && typeof fact.diff.projectKnowledgeProjectId === 'string') {
+      recordProjectAction(state, fact.diff.projectKnowledgeProjectId, fact);
+    }
+  });
   if (recordReplicationReceiptCandidate && intent.goal.kind === 'record-replication-receipt') {
     const receiptGoal = intent.goal;
     recordReplicationReceiptCompleted = executeWithCurrentEvidence(() => (

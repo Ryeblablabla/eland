@@ -292,7 +292,7 @@ try {
 
   function freshState({ modernFacts = true } = {}) {
     const state = api.createInitialState(
-      { project() {} },
+      { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
       71,
       { endpoint: { kind: 'months', value: 1_000 } },
     );

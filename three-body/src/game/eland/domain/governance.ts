@@ -3,14 +3,13 @@ import { agreementById, type Agreement } from './agreement';
 import { activeMemberIds, activeMembership } from './collective';
 import { worldEventById } from './event-index';
 import type { MaterialId } from './material';
-import type { ActionFact, SimulationState } from './model';
+import type { ActionFact, DecisionAuthorityState, SimulationState } from './model';
 import type { PersonId } from './person';
 import type { ProjectProgressEvidence, ProjectState, RecurringProjectDutySubject } from './project';
 import { projectProgressKindPriority } from './project';
 import {
   coordinationPracticeBasisFor,
   recordMandateCoordinationClosureSocialLearning,
-  recurringProjectDutySubjectsEqual,
 } from './social-learning';
 import { personById, projectById } from './state-index';
 
@@ -76,7 +75,10 @@ export interface MandateCoordinationClosure {
   sourceEventIds: string[];
 }
 
-export function activeMandatesFor(state: SimulationState, personId: PersonId): Mandate[] {
+export function activeMandatesFor(
+  state: Pick<DecisionAuthorityState, 'clock' | 'collectives'>,
+  personId: PersonId,
+): Mandate[] {
   return state.collectives.flatMap((collective) => {
     if (!activeMembership(collective, personId)) return [];
     return collective.mandates.filter((mandate) => mandate.status === 'active'
@@ -131,7 +133,7 @@ function optionProgressKinds(option: ActionOption): Set<ProjectProgressEvidence[
  * already compiled as legal. It never creates or rewrites an option/action.
  */
 export function recurringDutyMandateForExistingOption(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'clock' | 'collectives' | 'projects'>,
   personId: PersonId,
   option: ActionOption,
   atMonth: number,

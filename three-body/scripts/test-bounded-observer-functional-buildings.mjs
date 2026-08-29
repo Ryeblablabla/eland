@@ -80,7 +80,7 @@ try {
   const api = await import(`${pathToFileURL(output).href}?v=${Date.now()}`);
 
   const state = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded observer fixture' }; } },
     34_091,
     { endpoint: { kind: 'months', value: 120 } },
   );

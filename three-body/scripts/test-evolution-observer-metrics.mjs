@@ -52,6 +52,14 @@ try {
     result: id,
     diff,
   });
+  const synchronizeFullHistoryCursor = (candidate) => {
+    candidate.world.historyCursor = {
+      version: 1,
+      eventCount: candidate.world.past.length,
+      hotStartIndex: 0,
+      tailEventId: candidate.world.past.at(-1)?.id ?? null,
+    };
+  };
   const communicate = (content) => ({ kind: 'communicate', content, audience: [], channel: 'voice' });
   const reproduce = { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: firstPerson.id }] };
   state.world.past = [
@@ -81,6 +89,7 @@ try {
     actionFact({ id: 'reproduction-blocked', atMonth: 2, who: secondPerson.id, intentId: 'intent-plain-b', action: reproduce, status: 'blocked', diff: { consent: false } }),
     actionFact({ id: 'reproduction-conception', atMonth: 2, who: secondPerson.id, intentId: 'intent-plain-b', action: reproduce, diff: { conceived: true } }),
   ];
+  synchronizeFullHistoryCursor(state);
 
   const pathFixture = {
     schemaVersion: 2,
@@ -398,6 +407,7 @@ try {
       },
     }));
     searchState.projects.push(constructionSourceRenewal);
+    synchronizeFullHistoryCursor(searchState);
 
     const searchReport = buildEvolutionFactsReport(searchState, {
       ...pathFixture, runId: 'search-reopen-observer-fixture', requestedEndMonth: 12, reachedMonth: 12,
@@ -453,6 +463,7 @@ try {
         projectHypothesisSourceFactIds: [],
       },
     }));
+    synchronizeFullHistoryCursor(lineageOnlyCommitmentState);
     const lineageOnlyCommitmentReport = buildEvolutionFactsReport(lineageOnlyCommitmentState, {
       ...pathFixture, runId: 'search-source-lineage-only-commitment-fixture',
       requestedEndMonth: 12, reachedMonth: 12,
@@ -469,6 +480,7 @@ try {
       action: { kind: 'attend', target: { kind: 'self' } },
       diff: {},
     }));
+    synchronizeFullHistoryCursor(legacySourceFactState);
     const legacyPrior = legacySourceFactState.projects.find((candidate) => candidate.id === priorId);
     assert.ok(legacyPrior);
     legacyPrior.searchCampaigns[0].sourceFactIds = [legacySourceFactId];

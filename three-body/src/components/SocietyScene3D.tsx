@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -8,21 +7,12 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import type {
-  ActionVisualView,
   EraKey,
-  IntentView,
-  SocietyAgent,
   SocietyState,
   SpeechLineView,
 } from '@/game/societyContract';
 import type { EmbodimentOptionView, EmbodimentTargetView } from '@/game/embodimentContract';
-import { Material } from '@/game/eland/domain/material';
-import { createDistantSkyLayer } from '@/game/distantSky';
-import { PinchTransitionGesture } from '@/game/pinch-transition-gesture';
-import { cellColor, cellCoordinates, interpolatePath } from '@/game/pixelworld';
-import { bakeProceduralGalaxy } from '@/game/proceduralGalaxy';
-import { makeStarSurfaceTexture, mulberry32 } from '@/game/proceduralTextures';
-import { createHumanMeteorLayer } from '@/game/skyPhenomena';
+import { cellColor, cellCoordinates } from '@/game/pixelworld';
 import {
   shorelinePatches,
   surfaceTransitionKind,
@@ -32,12 +22,33 @@ import {
   type SurfaceTransitionKind,
   type SurfaceTransitionNeighbors,
 } from '@/game/surfaceTransitions';
-import { collectDecor, featureDepth, featureUnderlayMaterialId, type DecorBucket, type DecorInstance } from '@/game/voxelKits';
-import { N_STARS, STAR_STYLES } from '@/lib/threebody';
 import {
-  EmbodimentCameraController,
-  type EmbodimentMoveDirection,
-} from './society-scene/EmbodimentCameraController';
+  featureDepth,
+  featureUnderlayMaterialId,
+  WORLD_CELL_HEIGHT,
+} from '@/game/voxelKits';
+import type { EmbodimentMoveDirection } from './society-scene/EmbodimentCameraController';
+import {
+  createCameraRuntime,
+  type SocietyCameraMode,
+} from './society-scene/cameraRuntime';
+import { createDecorLayer } from './society-scene/decorLayer';
+import {
+  createEnvironmentRuntime,
+  type HumanSkySnapshot,
+} from './society-scene/environmentRuntime';
+import {
+  createFigureLayer,
+  latestSpeechBySpeaker,
+} from './society-scene/figureLayer';
+import {
+  sameSelectionVisuals,
+  sameTerrainVisuals,
+} from './society-scene/visualInvalidation';
+import { visualSmoothNoise, visualSpatialHash } from './society-scene/visualNoise';
+
+export type { HumanSkySnapshot } from './society-scene/environmentRuntime';
+export type { SocietyCameraMode } from './society-scene/cameraRuntime';
 
 /**
  * GTAO 内部用 overrideMaterial 重渲染场景取深度/法线，
@@ -135,25 +146,6 @@ const AdaptiveTiltShiftShader = {
  * 数据全部来自权威 SocietyState，只读不改。
  */
 
-export interface HumanSkySnapshot {
-  t: number;
-  fluxRel: number;
-  bodies: readonly number[]; // [三颗恒星 x/y, 行星 x/y]，与 SimStats.bodies 一致
-}
-
-export type SocietyCameraMode =
-  | { kind: 'overview' }
-  | {
-      kind: 'embodiment';
-      agentId: string;
-      /**
-       * Presentation-only camera anchor used while an already-legal movement
-       * command is awaiting authority. It never moves the projected person or
-       * participates in target raycasts / option legality.
-       */
-      presentationPosition?: { cellId: number; z: number };
-    };
-
 interface Props {
   society: SocietyState;
   era: EraKey;
@@ -180,241 +172,12 @@ export type SocietySceneSelection =
   | { kind: 'structure'; id: string }
   | null;
 
-const CELL_H = 0.3; // 每层体素的视觉高度（世界单位）
-const RULE_TICKS = 15;
+const CELL_H = WORLD_CELL_HEIGHT; // 每层体素的视觉高度（世界单位）
 const MONTH_PLAYBACK_MS = 3_000; // 与 2D 地图一致的月度播放时长
-const NAME_TAG_TARGET_GLYPH_PX = 10.5;
-const NAME_TAG_MIN_WORLD_H = 0.55;
-const NAME_TAG_MAX_WORLD_H = 3;
-const FIGURE_SCALE = 0.5; // 比当前版本放大一倍；仍保留半格尺度以容纳同格编组
-const MAX_VISIBLE_SPEAKERS = 3;
-const SPEECH_FONT_PX = 32;
-const SPEECH_TARGET_FONT_PX = 11.5;
-const SPEECH_MAX_LINE_WIDTH_PX = 400;
-const SPEECH_MAX_LINES = 3;
-const SPEECH_COLLISION_GAP_PX = 8;
 const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参与规则、寻路或选择
-const SOCIETY_MAX_PIXEL_RATIO = 1.5;
-const EMBODIMENT_MAX_PIXEL_RATIO = 1.15;
-const CAMERA_TARGET_INSET_X = 12;
-const CAMERA_TARGET_INSET_Z = 10;
-const EMBODIMENT_EYE_HEIGHT = 0.44;
 // Highest current human perception projection is eight cells; the half-cell
 // margin accounts for the eye-to-proxy vertical offset at that boundary.
 const EMBODIMENT_INTERACTION_DISTANCE = 8.5;
-
-type Primitive = string | number | boolean | null | undefined;
-
-function cachedObjectPair<T extends object>(
-  cache: WeakMap<T, WeakMap<T, boolean>>,
-  left: T,
-  right: T,
-  compare: () => boolean,
-): boolean {
-  let comparisons = cache.get(left);
-  if (!comparisons) {
-    comparisons = new WeakMap<T, boolean>();
-    cache.set(left, comparisons);
-  }
-  if (comparisons.has(right)) return comparisons.get(right)!;
-  const result = compare();
-  comparisons.set(right, result);
-  return result;
-}
-
-const terrainWorldComparisonCache = new WeakMap<
-  SocietyState['world'],
-  WeakMap<SocietyState['world'], boolean>
->();
-const terrainVisualComparisonCache = new WeakMap<SocietyState, WeakMap<SocietyState, boolean>>();
-const activeDecorFacilityCache = new WeakMap<SocietyState, number[]>();
-
-function samePrimitiveArray<T extends Primitive>(left: readonly T[] | undefined, right: readonly T[] | undefined): boolean {
-  if (left === right) return true;
-  if (!left || !right || left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index++) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
-}
-
-function sameArrayBy<T>(left: readonly T[], right: readonly T[], same: (a: T, b: T) => boolean): boolean {
-  if (left === right) return true;
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index++) {
-    if (!same(left[index], right[index])) return false;
-  }
-  return true;
-}
-
-function samePalette(left: SocietyState['world']['palette'], right: SocietyState['world']['palette']): boolean {
-  return sameArrayBy(left, right, (a, b) => a.id === b.id
-    && a.key === b.key
-    && samePrimitiveArray(a.color, b.color)
-    && samePrimitiveArray(a.tags, b.tags));
-}
-
-/** Exact comparison of the facts consumed by terrainApi; activity/HUD data is intentionally absent. */
-function sameTerrainWorld(left: SocietyState['world'], right: SocietyState['world']): boolean {
-  if (left === right) return true;
-  return cachedObjectPair(terrainWorldComparisonCache, left, right, () => left.width === right.width
-    && left.height === right.height
-    && left.levels === right.levels
-    && left.generator.seed === right.generator.seed
-    && left.generator.version === right.generator.version
-    && samePalette(left.palette, right.palette)
-    && samePrimitiveArray(left.surface, right.surface)
-    && samePrimitiveArray(left.elevation, right.elevation)
-    && sameArrayBy(left.columns, right.columns, samePrimitiveArray));
-}
-
-function sameTerrainStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
-  return sameArrayBy(left, right, (a, b) => a.id === b.id
-    && a.complete === b.complete
-    && samePrimitiveArray(a.occupiedCells, b.occupiedCells)
-    && sameArrayBy(a.interiorPositions, b.interiorPositions, (p, q) => p.cellId === q.cellId && p.z === q.z));
-}
-
-function sameTerrainVisuals(left: SocietyState, right: SocietyState): boolean {
-  if (left === right) return true;
-  return cachedObjectPair(terrainVisualComparisonCache, left, right, () => sameTerrainWorld(left.world, right.world)
-    && sameTerrainStructures(left.structures, right.structures));
-}
-
-function sameSelectionVisuals(left: SocietyState, right: SocietyState): boolean {
-  // Proxy bounds use exactly the same structure facts as terrain plus column
-  // lengths/elevation, all of which are covered by this comparison.
-  return sameTerrainVisuals(left, right);
-}
-
-function sameDecorStructures(left: SocietyState['structures'], right: SocietyState['structures']): boolean {
-  return sameArrayBy(left, right, (a, b) => a.id === b.id
-    && a.complete === b.complete
-    && a.componentCount === b.componentCount
-    && a.effects.weatherProtection === b.effects.weatherProtection
-    && a.effects.thermalInsulation === b.effects.thermalInsulation
-    && a.effects.capacity === b.effects.capacity
-    && samePrimitiveArray(a.occupiedCells, b.occupiedCells)
-    && samePrimitiveArray(a.interiorCells, b.interiorCells)
-    && sameArrayBy(a.interiorPositions, b.interiorPositions, (p, q) => p.cellId === q.cellId && p.z === q.z)
-    && samePrimitiveArray(a.materialIds, b.materialIds));
-}
-
-function sameTrailRegions(left: SocietyState['regions'], right: SocietyState['regions']): boolean {
-  let leftIndex = 0;
-  let rightIndex = 0;
-  while (true) {
-    while (leftIndex < left.length && left[leftIndex].kind !== 'trail') leftIndex++;
-    while (rightIndex < right.length && right[rightIndex].kind !== 'trail') rightIndex++;
-    const a = left[leftIndex];
-    const b = right[rightIndex];
-    if (!a || !b) return !a && !b;
-    if (a.id !== b.id || !samePrimitiveArray(a.cells, b.cells)) return false;
-    leftIndex++;
-    rightIndex++;
-  }
-}
-
-function sameDecorObservations(left: SocietyState['observations'], right: SocietyState['observations']): boolean {
-  if (left === right) return true;
-  if (left.civilizationIndex?.stage !== right.civilizationIndex?.stage) return false;
-  if (!sameArrayBy(left.practices, right.practices, (a, b) => a.key === b.key && a.count === b.count)) return false;
-  if (!sameArrayBy(left.institutions, right.institutions, (a, b) => a.key === b.key)) return false;
-  return sameArrayBy(left.milestones, right.milestones, (a, b) => a.id === b.id);
-}
-
-const DECOR_FUNCTIONAL_MODEL_KEYS = new Set([
-  'council_hearth', 'workshop', 'granary', 'cistern', 'kiln', 'mill',
-  'civic_hall', 'foundry', 'smithy', 'keep_core',
-  'water_wheel', 'drive_shaft', 'broken_drive_shaft', 'steel_drive_shaft',
-  'mechanical_dynamo', 'copper_conductor', 'broken_copper_conductor', 'resistive_load',
-]);
-
-/**
- * collectDecor only consumes agent state to decide which authoritative
- * facilities are active. Comparing that projection (instead of whole agents)
- * lets ordinary walking update figures without rebuilding every decor batch.
- */
-function activeDecorFacilityCells(society: SocietyState): number[] {
-  const cached = activeDecorFacilityCache.get(society);
-  if (cached) return cached;
-  const { world } = society;
-  const cellsByMaterial = new Map<number, number[]>();
-  const functionalCells = new Set<number>();
-  for (let cellId = 0; cellId < world.surface.length; cellId++) {
-    const materialId = world.surface[cellId];
-    if (!DECOR_FUNCTIONAL_MODEL_KEYS.has(world.palette[materialId]?.key ?? '')) continue;
-    functionalCells.add(cellId);
-    const cells = cellsByMaterial.get(materialId);
-    if (cells) cells.push(cellId);
-    else cellsByMaterial.set(materialId, [cellId]);
-  }
-  const result = new Set<number>();
-  const distance = (left: number, right: number): number => Math.abs(left % world.width - right % world.width)
-    + Math.abs(Math.floor(left / world.width) - Math.floor(right / world.width));
-  for (const agent of society.agents) {
-    const action = agent.visualAction;
-    if (!action?.sourceEventId) continue;
-    const anchor = action.targetCellId ?? action.sourceCellId ?? agent.cellId;
-    if (functionalCells.has(anchor)) result.add(anchor);
-    if (action.facilityMaterialId !== undefined) {
-      let nearestCell: number | undefined;
-      let nearestDistance = 3;
-      for (const cellId of cellsByMaterial.get(action.facilityMaterialId) ?? []) {
-        const candidateDistance = distance(anchor, cellId);
-        if (candidateDistance > 2
-          || candidateDistance > nearestDistance
-          || (candidateDistance === nearestDistance && nearestCell !== undefined && cellId >= nearestCell)) continue;
-        nearestCell = cellId;
-        nearestDistance = candidateDistance;
-      }
-      if (nearestCell !== undefined) result.add(nearestCell);
-    }
-    if (action.mechanicalPowerOperation) {
-      for (const cellId of action.linkedFacilityCellIds ?? []) {
-        const key = world.palette[world.surface[cellId]]?.key;
-        if (key === 'mill' || key === 'water_wheel' || key === 'drive_shaft' || key === 'steel_drive_shaft') result.add(cellId);
-      }
-    }
-  }
-  for (const network of society.electricalPower?.networks ?? []) {
-    if (network.activity?.kind !== 'operation' || !network.activity.delivered) continue;
-    for (const component of network.components) result.add(component.cellId);
-  }
-  const cells = [...result].sort((a, b) => a - b);
-  activeDecorFacilityCache.set(society, cells);
-  return cells;
-}
-
-function sameDecorVisuals(left: SocietyState, leftEra: EraKey, right: SocietyState, rightEra: EraKey): boolean {
-  if (leftEra !== rightEra
-    || left.weather?.kind !== right.weather?.kind
-    || !sameTerrainWorld(left.world, right.world)
-    || !samePrimitiveArray(left.world.biomes, right.world.biomes)
-    || !sameDecorStructures(left.structures, right.structures)
-    || !sameArrayBy(left.electricalPower?.networks ?? [], right.electricalPower?.networks ?? [], (a, b) => a.id === b.id
-      && sameArrayBy(a.planPath, b.planPath, (p, q) => p.cellId === q.cellId && p.z === q.z)
-      && sameArrayBy(a.components, b.components, (p, q) => p.role === q.role
-        && p.materialId === q.materialId && p.cellId === q.cellId && p.z === q.z)
-      && a.fault?.cellId === b.fault?.cellId && a.fault?.z === b.fault?.z
-      && a.fault?.atMonth === b.fault?.atMonth && a.fault?.sourceEventId === b.fault?.sourceEventId
-      && a.activity?.kind === b.activity?.kind && a.activity?.sourceEventId === b.activity?.sourceEventId
-      && a.activity?.delivered === b.activity?.delivered)
-    || !sameTrailRegions(left.regions, right.regions)
-    || !sameDecorObservations(left.observations, right.observations)) return false;
-  if (!sameArrayBy(left.drops, right.drops, (a, b) => a.id === b.id
-    && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z && a.quantity === b.quantity)) return false;
-  if (!sameArrayBy(left.containers, right.containers, (a, b) => a.id === b.id
-    && a.materialId === b.materialId && a.cellId === b.cellId && a.z === b.z
-    && a.capacity === b.capacity && a.usedCapacity === b.usedCapacity)) return false;
-  if (!sameArrayBy(left.graves ?? [], right.graves ?? [], (a, b) => a.id === b.id
-    && a.cellId === b.cellId && a.z === b.z && a.marked === b.marked
-    && a.markerMaterialId === b.markerMaterialId)) return false;
-  if (!sameArrayBy(left.animals, right.animals, (a, b) => a.id === b.id
-    && a.speciesId === b.speciesId && a.sex === b.sex && a.ageBand === b.ageBand
-    && a.cellId === b.cellId && a.z === b.z)) return false;
-  return samePrimitiveArray(activeDecorFacilityCells(left), activeDecorFacilityCells(right));
-}
 
 function embodimentTargetKey(target: EmbodimentTargetView): string {
   if (target.kind === 'person') return `person:${target.personId}`;
@@ -425,818 +188,6 @@ function embodimentTargetKey(target: EmbodimentTargetView): string {
   if (target.kind === 'container') return `container:${target.containerId}`;
   if (target.kind === 'animal') return `animal:${target.animalId}`;
   return `remains:${target.remainsId}`;
-}
-
-function visualSpatialHash(seed: number, x: number, z: number, salt: number): number {
-  let value = (
-    Math.imul(Math.trunc(seed) + salt, 0x45d9f3b)
-    ^ Math.imul(x, 0x27d4eb2d)
-    ^ Math.imul(z, 0x165667b1)
-  ) >>> 0;
-  value ^= value >>> 16;
-  value = Math.imul(value, 0x7feb352d) >>> 0;
-  value ^= value >>> 15;
-  return (value >>> 0) / 0x100000000;
-}
-
-function visualSmoothNoise(seed: number, x: number, z: number, scale: number, salt: number): number {
-  const gridX = Math.floor(x / scale);
-  const gridZ = Math.floor(z / scale);
-  const localX = x / scale - gridX;
-  const localZ = z / scale - gridZ;
-  const smoothX = localX * localX * (3 - 2 * localX);
-  const smoothZ = localZ * localZ * (3 - 2 * localZ);
-  const top = THREE.MathUtils.lerp(
-    visualSpatialHash(seed, gridX, gridZ, salt),
-    visualSpatialHash(seed, gridX + 1, gridZ, salt),
-    smoothX,
-  );
-  const bottom = THREE.MathUtils.lerp(
-    visualSpatialHash(seed, gridX, gridZ + 1, salt),
-    visualSpatialHash(seed, gridX + 1, gridZ + 1, salt),
-    smoothX,
-  );
-  return THREE.MathUtils.lerp(top, bottom, smoothZ);
-}
-
-function tileableCloudNoise(seed: number, u: number, v: number, cells: number, salt: number): number {
-  const x = u * cells;
-  const z = v * cells;
-  const x0 = Math.floor(x);
-  const z0 = Math.floor(z);
-  const tx = x - x0;
-  const tz = z - z0;
-  const smoothX = tx * tx * (3 - 2 * tx);
-  const smoothZ = tz * tz * (3 - 2 * tz);
-  const wrappedHash = (ix: number, iz: number) => visualSpatialHash(
-    seed,
-    ((ix % cells) + cells) % cells,
-    ((iz % cells) + cells) % cells,
-    salt,
-  );
-  const top = THREE.MathUtils.lerp(wrappedHash(x0, z0), wrappedHash(x0 + 1, z0), smoothX);
-  const bottom = THREE.MathUtils.lerp(wrappedHash(x0, z0 + 1), wrappedHash(x0 + 1, z0 + 1), smoothX);
-  return THREE.MathUtils.lerp(top, bottom, smoothZ);
-}
-
-/** 世界种子决定的可平铺云密度；同一权威状态重进场景会得到同一片云系。 */
-function makeCloudNoiseTexture(seed: number): THREE.DataTexture {
-  const size = 256;
-  const data = new Uint8Array(size * size * 4);
-  const octaves = [4, 8, 16, 32] as const;
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const u = x / size;
-      const v = y / size;
-      let amplitude = 1;
-      let total = 0;
-      let weight = 0;
-      octaves.forEach((cells, octave) => {
-        total += tileableCloudNoise(seed, u, v, cells, 0x41c64e6d + octave * 977) * amplitude;
-        weight += amplitude;
-        amplitude *= 0.52;
-      });
-      const broad = tileableCloudNoise(seed, u, v, 3, 0x2d93f06b);
-      const density = THREE.MathUtils.clamp((total / weight) * 0.78 + broad * 0.22, 0, 1);
-      const value = Math.round(density * 255);
-      const offset = (y * size + x) * 4;
-      data[offset] = value;
-      data[offset + 1] = value;
-      data[offset + 2] = value;
-      data[offset + 3] = 255;
-    }
-  }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = true;
-  texture.needsUpdate = true;
-  return texture;
-}
-
-type SocietyWeatherKind = NonNullable<SocietyState['weather']>['kind'];
-
-const CLOUD_WEATHER: Record<SocietyWeatherKind, {
-  opacity: number;
-  presence: number;
-  shadowOpacity: number;
-  shadowThreshold: number;
-  speed: number;
-  light: string;
-  shade: string;
-}> = {
-  clear:   { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.68, speed: 0.48, light: '#f7f9fb', shade: '#7f8c9a' },
-  rain:    { opacity: 0.46, presence: 0.72, shadowOpacity: 0.30, shadowThreshold: 0.52, speed: 1.15, light: '#aebac2', shade: '#46535e' },
-  storm:   { opacity: 0.58, presence: 1, shadowOpacity: 0.46, shadowThreshold: 0.44, speed: 2.30, light: '#7f8b94', shade: '#2d3943' },
-  drought: { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.78, speed: 0.90, light: '#e0d0b2', shade: '#8b755b' },
-  snow:    { opacity: 0.52, presence: 0.82, shadowOpacity: 0.26, shadowThreshold: 0.51, speed: 0.75, light: '#eef2f4', shade: '#87949f' },
-  fog:     { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.70, speed: 0.28, light: '#ccd2d2', shade: '#858f92' },
-};
-
-/** 有真实厚度的软边云团材质；几何轮廓负责体积，噪声只用于内部明暗而不裁出硬边。 */
-function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uNoiseMap: { value: noiseMap },
-      uOffset: { value: new THREE.Vector2() },
-      uOpacity: { value: 0 },
-      uDaylight: { value: 1 },
-      uLightColor: { value: new THREE.Color(CLOUD_WEATHER.clear.light) },
-      uShadeColor: { value: new THREE.Color(CLOUD_WEATHER.clear.shade) },
-    }]),
-    vertexShader: /* glsl */`
-      varying vec3 vCloudLocal;
-      varying vec3 vCloudNormal;
-      varying vec3 vViewNormal;
-      #include <fog_pars_vertex>
-      void main() {
-        vCloudLocal = position;
-        vCloudNormal = normal;
-        vViewNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
-      }
-    `,
-    fragmentShader: /* glsl */`
-      uniform sampler2D uNoiseMap;
-      uniform vec2 uOffset;
-      uniform float uOpacity;
-      uniform float uDaylight;
-      uniform vec3 uLightColor;
-      uniform vec3 uShadeColor;
-      varying vec3 vCloudLocal;
-      varying vec3 vCloudNormal;
-      varying vec3 vViewNormal;
-      #include <common>
-      #include <fog_pars_fragment>
-
-      void main() {
-        vec2 cloudUvA = vCloudLocal.xz * 0.22 + vec2(0.5) + uOffset;
-        vec2 cloudUvB = vCloudLocal.xy * 0.31 + vec2(0.5) - uOffset * 0.37;
-        float detailA = texture2D(uNoiseMap, cloudUvA).r;
-        float detailB = texture2D(uNoiseMap, cloudUvB).r;
-        float detail = detailA * 0.62 + detailB * 0.38;
-
-        // 球体掠射角连续趋于透明，因此任何观察角度都不会出现矩形或硬切边。
-        float facing = clamp(abs(vViewNormal.z), 0.0, 1.0);
-        float edgeFade = smoothstep(0.035, 0.72, facing);
-        float density = 0.70 + detail * 0.30;
-        float alpha = uOpacity * edgeFade * density;
-        if (alpha < 0.004) discard;
-
-        float topLight = clamp(vCloudNormal.y * 0.5 + 0.5, 0.0, 1.0);
-        float lightMix = clamp(0.24 + uDaylight * 0.38 + topLight * 0.22 + detail * 0.13, 0.0, 1.0);
-        vec3 color = mix(uShadeColor, uLightColor, lightMix);
-        color *= 0.94 + detail * 0.08;
-        gl_FragColor = vec4(color, alpha);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-        #include <fog_fragment>
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.FrontSide,
-    fog: true,
-  });
-}
-
-type SpeechBubblePlacement = 'body-left' | 'center' | 'body-right';
-
-function makeHumanSkyGlowTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 128;
-  const context = canvas.getContext('2d')!;
-  const gradient = context.createRadialGradient(64, 64, 4, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(255,255,255,0.94)');
-  gradient.addColorStop(0.18, 'rgba(255,255,255,0.58)');
-  gradient.addColorStop(0.48, 'rgba(255,255,255,0.16)');
-  gradient.addColorStop(1, 'rgba(255,255,255,0)');
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, 128, 128);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-/** 纪元 → 基础渲染状态；日照循环只在演示层内调制这些参数。 */
-const ERA_LIGHT: Record<EraKey, {
-  sun: string; sunI: number; hemi: number; rim: number; env: number;
-  exposure: number; fog: string;
-}> = {
-  stable:         { sun: '#fff1d6', sunI: 2.2, hemi: 0.92, rim: 0.38, env: 1.00, exposure: 1.15, fog: '#070d1c' },
-  chaotic:        { sun: '#ffe9c9', sunI: 2.0, hemi: 0.85, rim: 0.36, env: 0.92, exposure: 1.12, fog: '#080b18' },
-  'chaotic-heat': { sun: '#ffc890', sunI: 2.7, hemi: 0.92, rim: 0.30, env: 0.85, exposure: 1.22, fog: '#160b09' },
-  'chaotic-cold': { sun: '#bcd4ff', sunI: 1.5, hemi: 0.82, rim: 0.52, env: 1.05, exposure: 1.12, fog: '#08101d' },
-  burned:         { sun: '#ff9a5e', sunI: 3.0, hemi: 0.88, rim: 0.26, env: 0.78, exposure: 1.25, fog: '#1a0907' },
-  frozen:         { sun: '#9fb8e8', sunI: 1.15, hemi: 0.78, rim: 0.58, env: 1.10, exposure: 1.08, fog: '#07101d' },
-  extinct:        { sun: '#a394d8', sunI: 1.2, hemi: 0.72, rim: 0.48, env: 0.90, exposure: 1.05, fog: '#0b0918' },
-};
-
-/** 纪元只改变天空的色彩倾向；可见亮度继续由同一套日照循环平滑调制。 */
-const ERA_SKY: Record<EraKey, {
-  dayZenith: string; dayHorizon: string;
-  nightZenith: string; nightHorizon: string;
-  nadir: string; haze: string;
-}> = {
-  stable: {
-    dayZenith: '#173f73', dayHorizon: '#416b97',
-    nightZenith: '#04091a', nightHorizon: '#14213a', nadir: '#030611', haze: '#e6a56a',
-  },
-  chaotic: {
-    dayZenith: '#263454', dayHorizon: '#555c72',
-    nightZenith: '#050719', nightHorizon: '#1a1930', nadir: '#050510', haze: '#d99463',
-  },
-  'chaotic-heat': {
-    dayZenith: '#4e2d23', dayHorizon: '#995238',
-    nightZenith: '#160706', nightHorizon: '#3b180f', nadir: '#0b0404', haze: '#e77c4d',
-  },
-  'chaotic-cold': {
-    dayZenith: '#244a70', dayHorizon: '#5c82a6',
-    nightZenith: '#030a18', nightHorizon: '#14273d', nadir: '#030710', haze: '#8fb7e8',
-  },
-  burned: {
-    dayZenith: '#51271c', dayHorizon: '#9f4a31',
-    nightZenith: '#170604', nightHorizon: '#40130b', nadir: '#0b0303', haze: '#df7044',
-  },
-  frozen: {
-    dayZenith: '#244462', dayHorizon: '#587a99',
-    nightZenith: '#030918', nightHorizon: '#16283d', nadir: '#030710', haze: '#91b3dd',
-  },
-  extinct: {
-    dayZenith: '#342d49', dayHorizon: '#605675',
-    nightZenith: '#090617', nightHorizon: '#21192f', nadir: '#05040d', haze: '#9882bd',
-  },
-};
-
-interface DaylightKeyframe {
-  at: number;
-  position: THREE.Vector3;
-  color: THREE.Color;
-  direct: number;
-  ambient: number;
-  exposure: number;
-}
-
-const DAYLIGHT_CYCLE_SECONDS = 120;
-// 90% 的追随约需 2.7 秒；纪元、雾和日照目标统一通过这层阻尼落到画面。
-const LIGHT_DAMPING = 0.86;
-const DAYLIGHT_KEYFRAMES: readonly DaylightKeyframe[] = [
-  { at: 0.00, position: new THREE.Vector3(-62, 28, 24), color: new THREE.Color('#ffbd7d'), direct: 0.68, ambient: 0.94, exposure: 0.96 },
-  { at: 0.32, position: new THREE.Vector3(-10, 82, 28), color: new THREE.Color('#fff4dc'), direct: 1.04, ambient: 1.04, exposure: 1.02 },
-  { at: 0.62, position: new THREE.Vector3(38, 54, 34), color: new THREE.Color('#ffd19a'), direct: 0.90, ambient: 1.00, exposure: 1.00 },
-  { at: 0.82, position: new THREE.Vector3(64, 21, 18), color: new THREE.Color('#ff8758'), direct: 0.50, ambient: 0.91, exposure: 0.94 },
-  // 黄昏后从地图背面低位回到清晨，保持循环连续，同时不把演示层做成完整昼夜系统。
-  { at: 0.92, position: new THREE.Vector3(4, 15, -58), color: new THREE.Color('#9fabc9'), direct: 0.34, ambient: 0.86, exposure: 0.91 },
-  { at: 1.00, position: new THREE.Vector3(-62, 28, 24), color: new THREE.Color('#ffbd7d'), direct: 0.68, ambient: 0.94, exposure: 0.96 },
-];
-
-function isChaoticLightEra(era: EraKey): boolean {
-  return era === 'chaotic' || era === 'chaotic-heat' || era === 'chaotic-cold';
-}
-
-function sampleDaylight(
-  phase: number,
-  position: THREE.Vector3,
-  color: THREE.Color,
-): { direct: number; ambient: number; exposure: number } {
-  let rightIndex = 1;
-  while (rightIndex < DAYLIGHT_KEYFRAMES.length - 1 && phase > DAYLIGHT_KEYFRAMES[rightIndex].at) rightIndex += 1;
-  const left = DAYLIGHT_KEYFRAMES[rightIndex - 1];
-  const right = DAYLIGHT_KEYFRAMES[rightIndex];
-  const interval = Math.max(0.0001, right.at - left.at);
-  const linear = THREE.MathUtils.clamp((phase - left.at) / interval, 0, 1);
-  const eased = linear * linear * (3 - 2 * linear);
-  position.copy(left.position).lerp(right.position, eased);
-  color.copy(left.color).lerp(right.color, eased);
-  return {
-    direct: THREE.MathUtils.lerp(left.direct, right.direct, eased),
-    ambient: THREE.MathUtils.lerp(left.ambient, right.ambient, eased),
-    exposure: THREE.MathUtils.lerp(left.exposure, right.exposure, eased),
-  };
-}
-
-/** id → 稳定的衣色色相 */
-function hueOf(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return (((h % 360) + 360) % 360) / 360;
-}
-
-// ---------------------------------------------------------------------------
-// 名牌贴图（文本 sprite，模块级缓存共享）
-// ---------------------------------------------------------------------------
-
-const nameTextureCache = new Map<string, THREE.CanvasTexture>();
-
-function nameTexture(text: string, color: string): THREE.CanvasTexture {
-  const key = `${text}|${color}`;
-  const hit = nameTextureCache.get(key);
-  if (hit) return hit;
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 64;
-  const g = c.getContext('2d')!;
-  g.font = '600 30px ui-sans-serif, system-ui, "PingFang SC", sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.shadowColor = 'rgba(0,0,0,0.85)';
-  g.shadowBlur = 8;
-  g.fillStyle = color;
-  g.fillText(text, 128, 34);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  nameTextureCache.set(key, tex);
-  return tex;
-}
-
-interface SpeechBubbleTexture {
-  texture: THREE.CanvasTexture;
-  aspect: number;
-  pixelWidth: number;
-  pixelHeight: number;
-  anchorX: number;
-}
-
-/** 每位人物只保留本帧最后一句，再取最近三位说话者，避免场景被气泡铺满。 */
-function latestSpeechBySpeaker(lines: readonly SpeechLineView[]): SpeechLineView[] {
-  const result: SpeechLineView[] = [];
-  const speakers = new Set<string>();
-  for (let index = lines.length - 1; index >= 0 && result.length < MAX_VISIBLE_SPEAKERS; index -= 1) {
-    const line = lines[index];
-    const source = (line as SpeechLineView & { source?: string }).source;
-    if (source !== 'decision-model' && source !== 'speech-model') continue;
-    if (!line.text.trim() || speakers.has(line.speakerId)) continue;
-    speakers.add(line.speakerId);
-    result.push(line);
-  }
-  return result.reverse();
-}
-
-function speechLinesForCanvas(
-  context: CanvasRenderingContext2D,
-  text: string,
-): string[] {
-  const glyphs = Array.from(text.trim().replace(/\s+/gu, ' '));
-  const lines: string[] = [];
-  let current = '';
-  let truncated = false;
-  for (const glyph of glyphs) {
-    const candidate = `${current}${glyph}`;
-    if (!current || context.measureText(candidate).width <= SPEECH_MAX_LINE_WIDTH_PX) {
-      current = candidate;
-      continue;
-    }
-    lines.push(current);
-    current = glyph;
-    if (lines.length >= SPEECH_MAX_LINES) {
-      truncated = true;
-      break;
-    }
-  }
-  if (!truncated && current && lines.length < SPEECH_MAX_LINES) lines.push(current);
-  if (truncated && lines.length) {
-    let last = lines[lines.length - 1];
-    while (last && context.measureText(`${last}…`).width > SPEECH_MAX_LINE_WIDTH_PX) {
-      last = Array.from(last).slice(0, -1).join('');
-    }
-    lines[lines.length - 1] = `${last}…`;
-  }
-  return lines.length ? lines : ['……'];
-}
-
-function speechBubbleAnchorX(width: number, placement: SpeechBubblePlacement): number {
-  if (placement === 'center') return 0.5;
-  const edgeInset = Math.max(18, Math.min(28, width * 0.1));
-  return placement === 'body-left' ? 1 - edgeInset / width : edgeInset / width;
-}
-
-function speechBubbleTexture(text: string, placement: SpeechBubblePlacement): SpeechBubbleTexture {
-  const measureCanvas = document.createElement('canvas');
-  const measure = measureCanvas.getContext('2d')!;
-  measure.font = `400 ${SPEECH_FONT_PX}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`;
-  const lines = speechLinesForCanvas(measure, text);
-  const paddingX = 22;
-  const paddingTop = 17;
-  const paddingBottom = 15;
-  const lineHeight = 39;
-  const tailHeight = 12;
-  const contentWidth = Math.max(...lines.map((line) => measure.measureText(line).width));
-  const width = Math.ceil(Math.max(164, Math.min(SPEECH_MAX_LINE_WIDTH_PX, contentWidth) + paddingX * 2));
-  const bodyHeight = paddingTop + paddingBottom + lines.length * lineHeight;
-  const height = bodyHeight + tailHeight;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d')!;
-  const radius = 16;
-  const anchorX = speechBubbleAnchorX(width, placement);
-  const tailX = anchorX * width;
-  context.beginPath();
-  context.moveTo(radius, 1);
-  context.lineTo(width - radius, 1);
-  context.quadraticCurveTo(width - 1, 1, width - 1, radius);
-  context.lineTo(width - 1, bodyHeight - radius);
-  context.quadraticCurveTo(width - 1, bodyHeight - 1, width - radius, bodyHeight - 1);
-  context.lineTo(tailX + 9, bodyHeight - 1);
-  context.lineTo(tailX, height - 2);
-  context.lineTo(tailX - 9, bodyHeight - 1);
-  context.lineTo(radius, bodyHeight - 1);
-  context.quadraticCurveTo(1, bodyHeight - 1, 1, bodyHeight - radius);
-  context.lineTo(1, radius);
-  context.quadraticCurveTo(1, 1, radius, 1);
-  context.closePath();
-  context.fillStyle = 'rgba(9, 15, 23, 0.72)';
-  context.fill();
-  context.strokeStyle = 'rgba(226, 232, 240, 0.22)';
-  context.lineWidth = 1.25;
-  context.stroke();
-  context.font = `400 ${SPEECH_FONT_PX}px ui-sans-serif, system-ui, "PingFang SC", sans-serif`;
-  context.fillStyle = 'rgba(241, 245, 249, 0.88)';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  lines.forEach((line, index) => {
-    context.fillText(line, width / 2, paddingTop + lineHeight * (index + 0.5));
-  });
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  return { texture, aspect: width / height, pixelWidth: width, pixelHeight: height, anchorX };
-}
-
-// ---------------------------------------------------------------------------
-// 3D 像素小人
-// ---------------------------------------------------------------------------
-
-type FigureAction = 'idle' | 'walk' | 'gather' | 'harvest' | 'attack' | 'carry' | 'ingest'
-  | 'craft' | 'work' | 'tend-fire' | 'attend' | 'communicate' | 'care' | 'reproduce';
-type FigureAge = 'child' | 'adult' | 'elder';
-
-interface FigureParts {
-  group: THREE.Group;
-  pickProxy: THREE.Mesh;
-  upright: THREE.Group;
-  upperBody: THREE.Group;
-  dehydrated: THREE.Group;
-  legL: THREE.Mesh;
-  legR: THREE.Mesh;
-  armL: THREE.Mesh;
-  armR: THREE.Mesh;
-  spear: THREE.Group;
-  handTool: THREE.Group;
-  toolHead: THREE.Mesh;
-  heldLoad: THREE.Group;
-  heldLoadFill: THREE.Mesh;
-  balance: THREE.Group;
-  balanceBeam: THREE.Group;
-  balanceLoad: THREE.Mesh;
-  tablet: THREE.Group;
-  heldFood: THREE.Mesh;
-  outerwear: THREE.Mesh;
-  bandage: THREE.Mesh;
-  belly: THREE.Mesh;
-  sprite: THREE.Sprite;
-  spriteKey: string;
-  speechBubble: THREE.Sprite;
-  speechKey: string;
-  speechTexture: THREE.CanvasTexture | null;
-  speechAspect: number;
-  speechPixelWidth: number;
-  speechPixelHeight: number;
-  speechPlacement: SpeechBubblePlacement;
-  visualKey: string;
-}
-
-function setSpeechBubbleTexture(
-  figure: FigureParts,
-  text: string,
-  placement: SpeechBubblePlacement,
-): void {
-  figure.speechTexture?.dispose();
-  const bubble = speechBubbleTexture(text, placement);
-  figure.speechTexture = bubble.texture;
-  figure.speechAspect = bubble.aspect;
-  figure.speechPixelWidth = bubble.pixelWidth;
-  figure.speechPixelHeight = bubble.pixelHeight;
-  figure.speechPlacement = placement;
-  figure.speechBubble.center.x = bubble.anchorX;
-  figure.speechBubble.material.map = bubble.texture;
-  figure.speechBubble.material.needsUpdate = true;
-}
-
-function figureAgeOf(agent: SocietyAgent): FigureAge {
-  if (agent.body.ageMonths < 12 * 12) return 'child';
-  if (agent.conditions.some((condition) => condition.kind === 'aging')
-    || agent.body.ageMonths >= agent.lifespanMonths * 0.66) return 'elder';
-  return 'adult';
-}
-
-function figureVisualKey(agent: SocietyAgent): string {
-  return `${agent.sex}|${figureAgeOf(agent)}`;
-}
-
-/** 一格内的稳定局部槽位；人物按 id 排序后取槽位，避免都压在格心。 */
-function sharedCellOffset(index: number, count: number): { x: number; z: number } {
-  if (count <= 1) return { x: 0, z: 0 };
-  if (count === 2) return { x: index ? 0.18 : -0.18, z: 0 };
-  if (count === 3) {
-    const slots = [{ x: 0, z: -0.21 }, { x: -0.19, z: 0.13 }, { x: 0.19, z: 0.13 }];
-    return slots[index];
-  }
-  if (count === 4) {
-    const slots = [
-      { x: -0.18, z: -0.18 }, { x: 0.18, z: -0.18 },
-      { x: -0.18, z: 0.18 }, { x: 0.18, z: 0.18 },
-    ];
-    return slots[index];
-  }
-  if (count <= 6) {
-    const angle = -Math.PI / 2 + index * Math.PI * 2 / count;
-    return { x: Math.cos(angle) * 0.29, z: Math.sin(angle) * 0.29 };
-  }
-  // 大群体改用格内规则阵列；0.82 格的安全区会随人数自动收紧。
-  const columns = Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / columns);
-  const spacing = Math.min(0.17, 0.82 / Math.max(1, columns - 1, rows - 1));
-  return {
-    x: (index % columns - (columns - 1) / 2) * spacing,
-    z: (Math.floor(index / columns) - (rows - 1) / 2) * spacing,
-  };
-}
-
-function figureActionView(agent: SocietyAgent, intent: IntentView | undefined): ActionVisualView | undefined {
-  return agent.visualAction ?? intent;
-}
-
-function figureActionOf(agent: SocietyAgent, intent: IntentView | undefined, moving: boolean): FigureAction {
-  if (moving) return 'walk';
-  const view = figureActionView(agent, intent);
-  if (!view) return 'idle';
-  if (view.actionKind === 'move') return 'walk';
-  if (view.actionKind === 'transfer') return 'carry';
-  if (view.actionKind === 'attend') return 'attend';
-  if (view.actionKind === 'communicate') return view.channel === 'record' ? 'attend' : 'communicate';
-  if (view.operation === 'ingest') return 'ingest';
-  if (view.operation === 'hunt') return 'attack';
-  if (view.operation === 'separate') {
-    const sourceMaterialId = view.sourceMaterialId ?? view.materialId;
-    if (sourceMaterialId === Material.BerryBush) return 'gather';
-    if (sourceMaterialId === Material.CropMature) return 'harvest';
-    return view.toolMaterialId !== undefined ? 'work' : 'gather';
-  }
-  if (view.operation === 'exert') return view.targetKind === 'person' ? 'attack' : 'work';
-  if (view.operation === 'combine') return view.targetKind === 'person' ? 'care' : 'craft';
-  if (view.operation === 'expose') return 'tend-fire';
-  if (view.operation === 'rehydrate' || view.operation === 'dehydrate') return 'care';
-  if (view.operation === 'inter') {
-    if (view.mortuaryPhase === 'lift') return 'carry';
-    if (view.mortuaryPhase === 'prepare-grave' || view.mortuaryPhase === 'cover-grave' || view.mortuaryPhase === 'mark') return 'work';
-    return 'attend';
-  }
-  if (view.operation === 'reproduce') return 'reproduce';
-  return 'idle';
-}
-
-function buildFigure(agent: SocietyAgent): FigureParts {
-  const group = new THREE.Group();
-  group.userData.agentId = agent.id;
-  group.scale.setScalar(FIGURE_SCALE);
-  const hue = hueOf(agent.id);
-  const age = figureAgeOf(agent);
-  const ageScale = age === 'child' ? 0.72 : age === 'elder' ? 0.9 : 1;
-  const clothLightness = agent.sex === 'female' ? 0.55 : 0.48;
-  const cloth = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.42, clothLightness) });
-  const pants = new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(hue, 0.4, 0.32) });
-  const skin = new THREE.MeshLambertMaterial({ color: '#e8c39e' });
-  const hair = new THREE.MeshLambertMaterial({ color: age === 'elder' ? '#b8bec5' : '#2c2420' });
-  const wood = new THREE.MeshLambertMaterial({ color: '#755235' });
-  const stone = new THREE.MeshLambertMaterial({ color: '#a9afb5' });
-  const drySkin = new THREE.MeshLambertMaterial({ color: '#9b7657' });
-  const dryBand = new THREE.MeshLambertMaterial({ color: '#6f8fa8' });
-  const leather = new THREE.MeshLambertMaterial({ color: '#6f4c35' });
-  const linen = new THREE.MeshLambertMaterial({ color: '#d8ccb6' });
-  const loadMat = new THREE.MeshLambertMaterial({ color: '#a98055' });
-
-  const upright = new THREE.Group();
-  upright.scale.setScalar(ageScale);
-  const upperBody = new THREE.Group();
-  upperBody.position.y = 0.3;
-
-  // 腿：pivot 在胯部（几何体先下移半高）
-  const legGeo = new THREE.BoxGeometry(0.11, 0.3, 0.11);
-  legGeo.translate(0, -0.15, 0);
-  const legL = new THREE.Mesh(legGeo, pants);
-  legL.position.set(-0.075, 0.3, 0);
-  const legR = new THREE.Mesh(legGeo, pants);
-  legR.position.set(0.075, 0.3, 0);
-  // 躯干：女性使用稍窄躯干与披衣，儿童靠头身比、老人靠前倾与灰发区分。
-  const torsoWidth = agent.sex === 'female' ? 0.29 : 0.34;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth, 0.34, 0.18), cloth);
-  torso.position.y = 0.17;
-  const shoulderBand = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth + 0.03, 0.055, 0.19), cloth);
-  shoulderBand.position.y = 0.31;
-  const outerwear = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth + 0.055, 0.37, 0.205), leather);
-  outerwear.position.y = 0.16;
-  outerwear.visible = false;
-  const bandage = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth + 0.075, 0.075, 0.225), linen);
-  bandage.position.y = 0.18;
-  bandage.rotation.z = -0.18;
-  bandage.visible = false;
-  const belly = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth * 0.75, 0.19, 0.16), cloth);
-  belly.position.set(0, 0.08, 0.15);
-  belly.visible = false;
-  // 手臂：pivot 在肩
-  const armGeo = new THREE.BoxGeometry(0.08, 0.3, 0.08);
-  armGeo.translate(0, -0.14, 0);
-  const armL = new THREE.Mesh(armGeo, cloth);
-  armL.position.set(-torsoWidth / 2 - 0.07, 0.3, 0);
-  const armR = new THREE.Mesh(armGeo, cloth);
-  armR.position.set(torsoWidth / 2 + 0.07, 0.3, 0);
-  // 头 + 发顶
-  const headScale = age === 'child' ? 1.12 : 1;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24 * headScale, 0.24 * headScale, 0.24 * headScale), skin);
-  head.position.y = 0.51;
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.26 * headScale, 0.07, 0.26 * headScale), hair);
-  cap.position.y = 0.645;
-  upperBody.add(torso, shoulderBand, outerwear, bandage, belly, armL, armR, head, cap);
-  // 仅改变发型轮廓，不凭空增加权威装备；稳定 id 让人物在年月切换后仍可辨认。
-  if (Math.floor(hue * 12) % 3 === 0 && age !== 'elder') {
-    const hairTuft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.1), hair);
-    hairTuft.position.set(-0.055, 0.72, -0.025);
-    hairTuft.rotation.z = -0.24;
-    upperBody.add(hairTuft);
-  }
-  if (agent.sex === 'female') {
-    const backHair = new THREE.Mesh(new THREE.BoxGeometry(0.25 * headScale, 0.23, 0.07), hair);
-    backHair.position.set(0, 0.49, -0.135);
-    const sideHairL = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.22), hair);
-    sideHairL.position.set(-0.145 * headScale, 0.49, -0.015);
-    const sideHairR = sideHairL.clone();
-    sideHairR.position.x *= -1;
-    upperBody.add(backHair, sideHairL, sideHairR);
-  }
-  if (age === 'elder') {
-    const cane = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.57, 0.035), wood);
-    cane.position.set(torsoWidth / 2 + 0.14, 0.285, 0.12);
-    const caneGrip = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.035, 0.035), wood);
-    caneGrip.position.set(torsoWidth / 2 + 0.09, 0.57, 0.12);
-    upright.add(cane, caneGrip);
-  }
-
-  const spear = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.78, 0.035), wood);
-  shaft.position.y = -0.43;
-  const spearTip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.09), stone);
-  spearTip.position.y = -0.86;
-  spear.add(shaft, spearTip);
-  spear.visible = false;
-  armR.add(spear);
-
-  const handTool = new THREE.Group();
-  const toolHandle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.04), wood);
-  toolHandle.position.y = -0.35;
-  const toolHead = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.11, 0.1), stone);
-  toolHead.position.set(0.06, -0.62, 0);
-  toolHead.rotation.z = 0.28;
-  handTool.add(toolHandle, toolHead);
-  handTool.visible = false;
-  armR.add(handTool);
-
-  const tablet = new THREE.Group();
-  const tabletBoard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.055), wood);
-  tabletBoard.position.set(0, -0.33, 0.1);
-  tablet.add(tabletBoard);
-  for (const y of [-0.26, -0.34, -0.42]) {
-    const line = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.062), hair);
-    line.position.set(0, y, 0.1);
-    tablet.add(line);
-  }
-  tablet.visible = false;
-  armL.add(tablet);
-
-  const heldFood = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.13, 0.14), loadMat);
-  heldFood.position.set(0, -0.34, 0.08);
-  heldFood.visible = false;
-  armR.add(heldFood);
-
-  const heldLoad = new THREE.Group();
-  const parcel = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.24), linen);
-  const heldLoadFill = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.09, 0.18), loadMat);
-  heldLoadFill.position.y = 0.14;
-  const bindingX = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.26), wood);
-  const bindingZ = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.26, 0.05), wood);
-  heldLoad.add(parcel, heldLoadFill, bindingX, bindingZ);
-  heldLoad.position.set(0, 0.44, 0.33);
-  heldLoad.visible = false;
-
-  // 等臂秤只在已提交称量事实中显示；右盘实体颜色来自本次真实称量对象。
-  const balance = new THREE.Group();
-  balance.position.set(0, 0.52, 0.42);
-  const balanceStem = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.27, 0.045), wood);
-  balanceStem.position.y = 0.08;
-  const balanceGrip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.045, 0.055), wood);
-  balanceGrip.position.y = -0.045;
-  const balanceBeam = new THREE.Group();
-  balanceBeam.position.y = 0.22;
-  const beamBar = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.04, 0.05), wood);
-  const beamPointer = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.15, 0.035), stone);
-  beamPointer.position.y = -0.075;
-  balanceBeam.add(beamBar, beamPointer);
-  for (const side of [-1, 1]) {
-    const cord = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.19, 0.025), linen);
-    cord.position.set(side * 0.255, -0.11, 0);
-    const pan = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.025, 0.18), stone);
-    pan.position.set(side * 0.255, -0.215, 0);
-    balanceBeam.add(cord, pan);
-  }
-  const balanceLoad = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.095, 0.105), loadMat);
-  balanceLoad.position.set(0.255, -0.275, 0);
-  balanceBeam.add(balanceLoad);
-  balance.add(balanceStem, balanceGrip, balanceBeam);
-  balance.visible = false;
-  upright.add(legL, legR, upperBody, heldLoad, balance);
-
-  // 脱水 / 脱水冬眠：收束成干燥卷，不再只是人物换色。
-  const dehydrated = new THREE.Group();
-  dehydrated.scale.setScalar(ageScale);
-  const dryBody = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.13, 0.72), drySkin);
-  dryBody.position.set(0, 0.09, 0);
-  dehydrated.add(dryBody);
-  for (const z of [-0.22, 0, 0.22]) {
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.025, 0.055), dryBand);
-    band.position.set(0, 0.16, z);
-    dehydrated.add(band);
-  }
-  const dryHead = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.17, 0.18), skin);
-  dryHead.position.set(0, 0.12, 0.43);
-  const dryHair = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.19), hair);
-  dryHair.position.set(0, 0.22, 0.43);
-  dehydrated.add(dryHead, dryHair);
-
-  // 名牌
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: nameTexture(agent.name, '#e2e8f0'),
-      transparent: true,
-      alphaTest: 0.04,
-      depthTest: true,
-      depthWrite: false,
-    }),
-  );
-  // 每帧按相机距离更新；这里只提供创建后的安全初值。
-  sprite.scale.set(3.2, 0.8, 1);
-  sprite.position.y = 1.18;
-  sprite.renderOrder = 5;
-
-  const speechBubble = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      transparent: true,
-      opacity: 0.9,
-      alphaTest: 0.02,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  speechBubble.visible = false;
-  speechBubble.renderOrder = 30;
-
-  group.add(upright, dehydrated, sprite, speechBubble);
-  // 身体部件投阴影；名牌不参与阴影与 AO。
-  group.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh) mesh.castShadow = true;
-  });
-  // 视觉体素很小，增加不参与渲染的点选体积，让鼠标无需精确落在手脚上。
-  const pickMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-  pickMaterial.colorWrite = false;
-  const pickProxy = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.1, 1.35), pickMaterial);
-  pickProxy.position.y = 0.72;
-  pickProxy.castShadow = false;
-  pickProxy.userData.agentId = agent.id;
-  group.add(pickProxy);
-  return {
-    group, pickProxy, upright, upperBody, dehydrated, legL, legR, armL, armR,
-    spear, handTool, toolHead, heldLoad, heldLoadFill, balance, balanceBeam, balanceLoad,
-    tablet, heldFood, outerwear, bandage, belly, sprite,
-    spriteKey: '', speechBubble, speechKey: '', speechTexture: null, speechAspect: 1,
-    speechPixelWidth: 1, speechPixelHeight: 1, speechPlacement: 'center',
-    visualKey: figureVisualKey(agent),
-  };
-}
-
-/** 卸载一个人物（名牌贴图在模块缓存中共享，不随个体销毁） */
-function disposeFigure(f: FigureParts): void {
-  f.speechTexture?.dispose();
-  f.speechTexture = null;
-  f.group.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (mesh.geometry) mesh.geometry.dispose();
-    const mat = mesh.material as THREE.Material | undefined;
-    if (mat) mat.dispose();
-  });
 }
 
 export default function SocietyScene3D({
@@ -1343,930 +294,55 @@ export default function SocietyScene3D({
     renderer.toneMappingExposure = 1.06;
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog('#070d1c', 175, 460);
-    const cameraTarget = new THREE.Vector3(0, 1.5, 0);
-    const cameraElevation = THREE.MathUtils.degToRad(34);
-    const cameraDirection = new THREE.Vector3(
-      Math.cos(cameraElevation) / Math.SQRT2,
-      Math.sin(cameraElevation),
-      Math.cos(cameraElevation) / Math.SQRT2,
-    );
-    const cameraRight = new THREE.Vector3(1 / Math.SQRT2, 0, -1 / Math.SQRT2);
-    const cameraForward = cameraDirection.clone().negate();
-    const cameraUp = new THREE.Vector3().crossVectors(cameraRight, cameraForward).normalize();
-    const cameraFinal = cameraTarget.clone().addScaledVector(cameraDirection, 150);
-    const cameraEntry = cameraTarget.clone().addScaledVector(cameraDirection, 250);
-    const camera = new THREE.PerspectiveCamera(31, 1, 0.1, 1_200);
-    camera.position.copy(cameraEntry); // 沿最终 45° 对角视线从太空入场
-    const mountedAt = performance.now();
-
-    // 环境贴图只为 PBR 材质提供稳定反射源；可见天空由下方天空球单独渲染，
-    // 避免为了渐变动画每帧重建昂贵的 PMREM。
-    let environmentTarget: THREE.WebGLRenderTarget | null = null;
-    let skyTexture: THREE.CanvasTexture | null = null;
-    {
-      const c = document.createElement('canvas');
-      c.width = 512; c.height = 256;
-      const g = c.getContext('2d')!;
-      const grad = g.createLinearGradient(0, 0, 0, c.height);
-      grad.addColorStop(0, '#344a70');
-      grad.addColorStop(0.42, '#172849');
-      grad.addColorStop(0.72, '#0d1730');
-      grad.addColorStop(1, '#070b17');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, c.width, c.height);
-      const envTex = new THREE.CanvasTexture(c);
-      envTex.mapping = THREE.EquirectangularReflectionMapping;
-      envTex.colorSpace = THREE.SRGBColorSpace;
-      skyTexture = envTex;
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      environmentTarget = pmrem.fromEquirectangular(envTex);
-      scene.environment = environmentTarget.texture;
-      scene.environmentIntensity = 1;
-      pmrem.dispose();
-    }
+    const cameraRuntime = createCameraRuntime({
+      canvas,
+      world: world0,
+      cellHeight: CELL_H,
+      readViewport: () => ({ width: mount.clientWidth, height: mount.clientHeight }),
+      readFrame: () => {
+        const current = propsRef.current;
+        return {
+          cameraMode: current.cameraMode,
+          onZoomOutRequest: current.onZoomOutRequest,
+          onEmbodimentMove: current.onEmbodimentMove,
+          onEmbodimentMoveHoldChange: current.onEmbodimentMoveHoldChange,
+          onEmbodimentTargetChange: current.onEmbodimentTargetChange,
+          onEmbodimentPointerLockChange: current.onEmbodimentPointerLockChange,
+          onEmbodimentCameraSettled: current.onEmbodimentCameraSettled,
+        };
+      },
+    });
+    const {
+      camera,
+      cameraForward,
+      cameraRight,
+      cameraUp,
+    } = cameraRuntime;
+    cameraModeApiRef.current = cameraRuntime.setMode;
 
     // 非遮蔽体注册表：GTAO 计算期间临时隐藏（见 ScopedGTAOPass）
     const aoExcluded: THREE.Object3D[] = [];
-
-    const controls = new OrbitControls(camera, canvas);
-    controls.enabled = false; // 入场动画期间锁定，结束后开放
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.enablePan = false;
-    controls.minPolarAngle = THREE.MathUtils.degToRad(38); // 最高约 52° 俯视，避免翻到纯顶视
-    controls.maxPolarAngle = THREE.MathUtils.degToRad(78); // 最低约 12° 俯角，可抬高视线观察天空
-    controls.minDistance = 7;
-    controls.maxDistance = 245;
-    controls.target.copy(cameraTarget);
-
-    const embodimentCamera = new EmbodimentCameraController({
+    const environmentRuntime = createEnvironmentRuntime({
+      scene,
+      renderer,
       camera,
-      canvas,
-      onPointerLockChange: (locked) => propsRef.current.onEmbodimentPointerLockChange?.(locked),
-      onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
-    });
-    let embodiedAgentId: string | null = null;
-    const lastEmbodimentAnchor = new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN);
-    const actorCameraAnchor = (
-      s: SocietyState,
-      agentId: string,
-      presentationPosition?: { cellId: number; z: number },
-    ) => {
-      const actor = s.agents.find((agent) => agent.id === agentId);
-      if (!actor || actor.state === 'dead') return null;
-      const cellId = presentationPosition?.cellId ?? actor.cellId;
-      const standingZ = presentationPosition?.z ?? actor.z;
-      const occupants = s.agents
-        .filter((agent) => (agent.id === actor.id ? cellId : agent.cellId) === cellId
-          && agent.bodyDisposition !== 'interred')
-        .sort((left, right) => left.id.localeCompare(right.id));
-      const occupantIndex = occupants.findIndex((agent) => agent.id === actor.id);
-      const offset = occupantIndex >= 0
-        ? sharedCellOffset(occupantIndex, occupants.length)
-        : { x: 0, z: 0 };
-      const ageScale = figureAgeOf(actor) === 'child' ? 0.72 : figureAgeOf(actor) === 'elder' ? 0.9 : 1;
-      return {
-        x: cellId % s.world.width - s.world.width / 2 + 0.5 + offset.x,
-        y: standingZ * CELL_H + EMBODIMENT_EYE_HEIGHT * ageScale,
-        z: Math.floor(cellId / s.world.width) - s.world.height / 2 + 0.5 + offset.z,
-      };
-    };
-    cameraModeApiRef.current = (s, mode) => {
-      embodimentCamera.setCallbacks({
-        onPointerLockChange: (locked) => propsRef.current.onEmbodimentPointerLockChange?.(locked),
-        onSettled: () => propsRef.current.onEmbodimentCameraSettled?.(),
-      });
-      if (mode.kind === 'embodiment') {
-        const anchor = actorCameraAnchor(s, mode.agentId, mode.presentationPosition);
-        if (!anchor) return;
-        controls.enabled = false;
-        if (embodiedAgentId !== mode.agentId || !embodimentCamera.isActive()) {
-          embodiedAgentId = mode.agentId;
-          lastEmbodimentAnchor.set(anchor.x, anchor.y, anchor.z);
-          embodimentCamera.enter(anchor);
-        } else if (lastEmbodimentAnchor.distanceToSquared(anchor) > 1e-8) {
-          lastEmbodimentAnchor.set(anchor.x, anchor.y, anchor.z);
-          embodimentCamera.setAnchor(anchor, true);
-        }
-        return;
-      }
-      if (!embodimentCamera.isActive()) return;
-      embodiedAgentId = null;
-      lastEmbodimentAnchor.set(Number.NaN, Number.NaN, Number.NaN);
-      embodimentCamera.leave();
-      const width = mount.clientWidth;
-      const height = mount.clientHeight;
-      if (width > 0 && height > 0) {
-        camera.setViewOffset(width, height, 0, height * 0.07, width, height);
-        camera.updateProjectionMatrix();
-      }
-      controls.enabled = true;
-      controls.update();
-      propsRef.current.onEmbodimentTargetChange?.(null);
-    };
-
-    // 以实际世界包围盒求透视相机所需距离。横向使用 viewport aspect，纵向额外
-    // 预留树冠/建筑高度；resize 时保留用户当前的缩放比例和旋转方位。
-    let cameraFitDistance = 150;
-    const fittedDistanceFor = (width: number, height: number): number => {
-      const aspect = Math.max(0.45, width / Math.max(1, height));
-      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
-      const tanH = tanV * aspect;
-      const halfX = world0.width * 0.5 + 0.75;
-      const halfZ = world0.height * 0.5 + 0.75;
-      const minY = -1.5;
-      const maxY = world0.levels * CELL_H + 2.5;
-      const relative = new THREE.Vector3();
-      let required = 0;
-      for (const x of [-halfX, halfX]) {
-        for (const y of [minY, maxY]) {
-          for (const z of [-halfZ, halfZ]) {
-            relative.set(x, y, z).sub(cameraTarget);
-            const towardCamera = relative.dot(cameraDirection);
-            const horizontal = Math.abs(relative.dot(cameraRight));
-            const vertical = Math.abs(relative.dot(cameraUp));
-            required = Math.max(
-              required,
-              towardCamera + horizontal / (tanH * 0.93),
-              towardCamera + vertical / (tanV * 0.92),
-            );
-          }
-        }
-      }
-      // 入场不再展示完整沙盘轮廓：核心聚落填满画面，外围山脉只作为远景框景。
-      // 极少边角允许越出屏幕，继续缩远时再逐步展示更大的地理轮廓。
-      return Math.max(46, required * 0.44);
-    };
-    const updateCameraFit = (width: number, height: number) => {
-      const previousFit = cameraFitDistance;
-      const previousDistance = camera.position.distanceTo(cameraTarget);
-      const currentDirection = camera.position.clone().sub(cameraTarget).normalize();
-      cameraFitDistance = fittedDistanceFor(width, height);
-      cameraFinal.copy(cameraTarget).addScaledVector(cameraDirection, cameraFitDistance);
-      cameraEntry.copy(cameraTarget).addScaledVector(cameraDirection, cameraFitDistance * 1.32);
-      // 近景需要能看清单个人物与建筑细节；极角限制仍保证相机不会钻入地面。
-      controls.minDistance = Math.max(7, cameraFitDistance * 0.055);
-      // 正常人间视角在装饰缓冲带耗尽前停住；继续缩小则进入返回宇宙的过场。
-      if (controls.maxDistance < 600) controls.maxDistance = Math.max(88, cameraFitDistance * 1.5);
-      if (controls.enabled && previousFit > 0) {
-        const minZoomRatio = controls.minDistance / cameraFitDistance;
-        const maxZoomRatio = controls.maxDistance / cameraFitDistance;
-        const zoomRatio = THREE.MathUtils.clamp(previousDistance / previousFit, minZoomRatio, maxZoomRatio);
-        camera.position.copy(cameraTarget).addScaledVector(currentDirection, cameraFitDistance * zoomRatio);
-        controls.update();
-      }
-    };
-
-    // 银河噪声只在挂载时烘焙一次；天空球每帧只采样 Cubemap。
-    const galaxyTarget = bakeProceduralGalaxy(renderer);
-
-    // ---- 天空球：天顶、银河、地平线和三颗可见恒星附近的散射均可连续调色 ----
-    const skyStarDirections = Array.from({ length: N_STARS }, () => new THREE.Vector3(0, 1, 0));
-    const skyStarColors = STAR_STYLES.map((style) => new THREE.Color(style.glow));
-    const skyStarStrengths = new Float32Array(N_STARS);
-    const skyAtmosphereUniforms = {
-      uZenithColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nightZenith) },
-      uHorizonColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nightHorizon) },
-      uNadirColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].nadir) },
-      uHazeColor: { value: new THREE.Color(ERA_SKY[propsRef.current.era].haze) },
-      uHazeStrength: { value: 0.12 },
-      // 沙盘相机始终俯视；把构图中心映射到地平线附近，保留可见的天顶—地平线层次。
-      uVerticalBias: { value: -cameraForward.y },
-      uStarDirections: { value: skyStarDirections },
-      uStarColors: { value: skyStarColors },
-      uStarStrengths: { value: skyStarStrengths },
-      uGalaxyMap: { value: galaxyTarget.texture },
-      uGalaxyVisibility: { value: 0 },
-      uGalaxyRotation: { value: 0 },
-    };
-    const skyDome = new THREE.Mesh(
-      new THREE.SphereGeometry(700, 48, 28),
-      new THREE.ShaderMaterial({
-        uniforms: skyAtmosphereUniforms,
-        vertexShader: `
-          varying vec3 vSkyDirection;
-
-          void main() {
-            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-            vSkyDirection = normalize(worldPosition.xyz - cameraPosition);
-            vec4 clipPosition = projectionMatrix * viewMatrix * worldPosition;
-            clipPosition.z = clipPosition.w;
-            gl_Position = clipPosition;
-          }
-        `,
-        fragmentShader: `
-          uniform vec3 uZenithColor;
-          uniform vec3 uHorizonColor;
-          uniform vec3 uNadirColor;
-          uniform vec3 uHazeColor;
-          uniform float uHazeStrength;
-          uniform float uVerticalBias;
-          uniform vec3 uStarDirections[3];
-          uniform vec3 uStarColors[3];
-          uniform float uStarStrengths[3];
-          uniform samplerCube uGalaxyMap;
-          uniform float uGalaxyVisibility;
-          uniform float uGalaxyRotation;
-          varying vec3 vSkyDirection;
-
-          void main() {
-            vec3 direction = normalize(vSkyDirection);
-            float altitude = clamp(direction.y + uVerticalBias, -1.0, 1.0);
-            float upper = pow(smoothstep(0.0, 0.84, max(0.0, altitude)), 0.72);
-            float lower = smoothstep(0.0, 0.62, max(0.0, -altitude));
-            float horizonBand = pow(max(0.0, 1.0 - abs(altitude)), 3.4);
-            vec3 color = mix(uHorizonColor, uZenithColor, upper);
-            color = mix(color, uNadirColor, lower);
-            color = mix(color, uHazeColor, horizonBand * uHazeStrength * 0.22);
-
-            // 沙盘相机始终俯视，因此用校正后的视高度重建天空方向；银河随观察者
-            // 自转缓慢横移，并在地平线附近受到大气消光。
-            float galaxyCos = cos(uGalaxyRotation);
-            float galaxySin = sin(uGalaxyRotation);
-            vec3 galaxyDirection = normalize(vec3(direction.x, altitude, direction.z));
-            galaxyDirection.xz = mat2(
-              galaxyCos, -galaxySin,
-              galaxySin, galaxyCos
-            ) * galaxyDirection.xz;
-            vec3 galaxy = textureCube(uGalaxyMap, galaxyDirection).rgb;
-            float atmosphericClarity = smoothstep(0.015, 0.34, max(0.0, altitude));
-            color += galaxy * uGalaxyVisibility * atmosphericClarity;
-
-            for (int i = 0; i < 3; i++) {
-              float alignment = max(0.0, dot(direction, normalize(uStarDirections[i])));
-              float broadScatter = pow(alignment, 28.0);
-              float nearScatter = pow(alignment, 220.0);
-              color += uStarColors[i]
-                * (broadScatter * 0.055 + nearScatter * 0.12)
-                * uStarStrengths[i];
-            }
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `,
-        side: THREE.BackSide,
-        depthTest: false,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
+      cameraForward,
+      cameraRight,
+      cameraUp,
+      world: world0,
+      initialEra: propsRef.current.era,
+      initialSky: propsRef.current.sky,
+      terrainApronCells: TERRAIN_APRON_CELLS,
+      aoExcluded,
+      readFrame: () => ({
+        society: propsRef.current.society,
+        era: propsRef.current.era,
       }),
-    );
-    skyDome.renderOrder = -100;
-    const distantSky = createDistantSkyLayer({ mode: 'surface', radius: 625, renderOrder: -95 });
-
-    // ---- 稳定星野：准均匀球面分布 + 三层尺寸/亮度，避免少量随机点像坏点 ----
-    const skyBackdrop = new THREE.Group();
-    const liveCameraDirection = new THREE.Vector3();
-    const skyStarMaterials: Array<{ material: THREE.PointsMaterial; baseOpacity: number }> = [];
-    skyBackdrop.add(skyDome, distantSky.group);
-    const starLayerDefinitions = [
-      { count: 1_800, size: 0.82, opacity: 0.30, warmChance: 0.10, seed: 0x7e1a4d31 },
-      { count: 420, size: 1.22, opacity: 0.54, warmChance: 0.16, seed: 0x51c0b8a7 },
-      { count: 72, size: 1.85, opacity: 0.78, warmChance: 0.24, seed: 0x2d93f06b },
-    ] as const;
-    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-    starLayerDefinitions.forEach((definition, layerIndex) => {
-      const rng = mulberry32(definition.seed);
-      const pos = new Float32Array(definition.count * 3);
-      const col3 = new Float32Array(definition.count * 3);
-      const cool = new THREE.Color('#cdd8ff');
-      const warm = new THREE.Color('#ffe2bd');
-      for (let i = 0; i < definition.count; i++) {
-        const y = 1 - ((i + 0.5) / definition.count) * 2;
-        const radial = Math.sqrt(Math.max(0, 1 - y * y));
-        const theta = i * goldenAngle + layerIndex * 1.37 + (rng() - 0.5) * 0.24;
-        const radius = 470 + rng() * 120;
-        pos[i * 3] = radius * radial * Math.cos(theta);
-        pos[i * 3 + 1] = radius * y;
-        pos[i * 3 + 2] = radius * radial * Math.sin(theta);
-        const base = rng() < definition.warmChance ? warm : cool;
-        const brightness = 0.48 + Math.pow(rng(), 1.8) * 0.52;
-        col3[i * 3] = base.r * brightness;
-        col3[i * 3 + 1] = base.g * brightness;
-        col3[i * 3 + 2] = base.b * brightness;
-      }
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geometry.setAttribute('color', new THREE.BufferAttribute(col3, 3));
-      const material = new THREE.PointsMaterial({
-        size: definition.size,
-        sizeAttenuation: false,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0,
-        depthTest: true,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
-      });
-      const layer = new THREE.Points(geometry, material);
-      layer.frustumCulled = false;
-      layer.renderOrder = -90 + layerIndex;
-      skyBackdrop.add(layer);
-      skyStarMaterials.push({ material, baseOpacity: definition.opacity });
     });
-    const skyStars = skyBackdrop;
-    scene.add(skyBackdrop);
-    aoExcluded.push(skyBackdrop);
-    const humanMeteors = createHumanMeteorLayer(scene, world0.generator.seed);
-    aoExcluded.push(humanMeteors.object);
-
-    // ---- 人间天穹：把当前三体系统的相对方位投影成可辨认的恒星圆面 ----
-    const skyGlowTexture = makeHumanSkyGlowTexture();
-    const skySurfaceTextures: THREE.CanvasTexture[] = [];
-    const skySpinRates = [0.014, -0.011, 0.021];
-    const skySuns: Array<{
-      core: THREE.Mesh;
-      glow: THREE.Sprite;
-      angle: number;
-      targetAngle: number;
-      apparentScale: number;
-      targetScale: number;
-      glowOpacity: number;
-      targetGlowOpacity: number;
-      horizonOpacity: number;
-      enabled: boolean;
-    }> = [];
-    for (let i = 0; i < N_STARS; i++) {
-      const surface = makeStarSurfaceTexture(STAR_STYLES[i].core, STAR_STYLES[i].glow, 3100 + i * 131);
-      skySurfaceTextures.push(surface);
-      const core = new THREE.Mesh(
-        new THREE.SphereGeometry(2.15, 32, 24),
-        new THREE.MeshBasicMaterial({
-          map: surface,
-          color: '#e8e8e8',
-          transparent: true,
-          opacity: 0,
-          depthTest: true,
-          depthWrite: false,
-          fog: false,
-          toneMapped: false,
-        }),
-      );
-      core.renderOrder = 42;
-      core.visible = false;
-      core.rotation.x = 0.18 + i * 0.23;
-      core.rotation.z = -0.12 + i * 0.17;
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: skyGlowTexture,
-        color: STAR_STYLES[i].glow,
-        transparent: true,
-        opacity: 0.48,
-        blending: THREE.AdditiveBlending,
-        depthTest: true,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
-      }));
-      glow.renderOrder = 41;
-      glow.visible = false;
-      scene.add(glow);
-      scene.add(core);
-      aoExcluded.push(glow, core);
-      skySuns.push({
-        core,
-        glow,
-        angle: 0,
-        targetAngle: 0,
-        apparentScale: 1,
-        targetScale: 1,
-        glowOpacity: 0.48,
-        targetGlowOpacity: 0.48,
-        horizonOpacity: 0,
-        enabled: false,
-      });
-    }
-
-    // 世界空间中的天穹基底：平移时会跟随观察点，旋转视角时不会跟随相机转动。
-    const skyForward = cameraForward.clone();
-    const skyRight = cameraRight.clone();
-    const skyUp = cameraUp.clone();
-    const skyDirection = new THREE.Vector3();
-    let skyObserverPhase = 0;
-    let skyElapsedSeconds = 0;
-    let skyInitialized = false;
-
-    skyApiRef.current = (snapshot) => {
-      if (!snapshot || snapshot.bodies.length < 8) {
-        skySuns.forEach((star, index) => {
-          star.enabled = false;
-          star.core.visible = star.glow.visible = false;
-          skyStarStrengths[index] = 0;
-        });
-        return;
-      }
-
-      const planetX = snapshot.bodies[6];
-      const planetY = snapshot.bodies[7];
-      const stars = Array.from({ length: N_STARS }, (_, index) => {
-        const dx = snapshot.bodies[index * 2] - planetX;
-        const dy = snapshot.bodies[index * 2 + 1] - planetY;
-        return { index, angle: Math.atan2(dy, dx), distance: Math.max(0.001, Math.hypot(dx, dy)) };
-      });
-      const nearest = stars.reduce((best, current) => current.distance < best.distance ? current : best);
-      const fluxGlow = THREE.MathUtils.clamp(0.44 + Math.log2(Math.max(0.15, snapshot.fluxRel)) * 0.035, 0.34, 0.62);
-      if (!skyInitialized) {
-        // 初次进入落在昼半球；随后由人间自转连续推进，不在每次 React 更新时重置太阳位置。
-        skyObserverPhase = nearest.angle - Math.PI / 3 + Math.sin(snapshot.t * 0.09) * 0.08;
-        skyElapsedSeconds = 0;
-        skyInitialized = true;
-      }
-      stars.forEach((star) => {
-        const skySun = skySuns[star.index];
-        const nextScale = THREE.MathUtils.clamp(Math.sqrt(nearest.distance / star.distance), 0.68, 1.18)
-          * (star.index === 2 ? 0.78 : 1);
-        if (!skySun.enabled) {
-          skySun.angle = star.angle;
-          skySun.targetAngle = star.angle;
-          skySun.apparentScale = nextScale;
-          skySun.targetScale = nextScale;
-          skySun.glowOpacity = fluxGlow;
-          skySun.targetGlowOpacity = fluxGlow;
-        } else {
-          // 新物理快照只更新目标值；渲染帧负责走最短圆弧追上，避免月度上报造成瞬移。
-          skySun.targetAngle = star.angle;
-          skySun.targetScale = nextScale;
-          skySun.targetGlowOpacity = fluxGlow;
-        }
-        skySun.enabled = true;
-      });
-    };
-    skyApiRef.current(propsRef.current.sky);
-
-    const updateHumanSky = (deltaSeconds: number) => {
-      if (!skyInitialized) return;
-      // 只累计实际渲染过的帧时间；页面隐藏时 RAF 停止，回来后不会追赶后台时间而跳位。
-      skyElapsedSeconds += deltaSeconds;
-      // 恒速自转承载主要运动，极轻的长周期岁差打破完全匀速、匀弧的机械感。
-      const observerPhase = skyObserverPhase
-        + skyElapsedSeconds * 0.01
-        + Math.sin(skyElapsedSeconds * 0.0065) * 0.022;
-      skyAtmosphereUniforms.uGalaxyRotation.value = observerPhase * 0.72;
-      distantSky.group.rotation.y = observerPhase * 0.72;
-      skySuns.forEach((star, index) => {
-        if (!star.enabled) return;
-        const angleBlend = 1 - Math.exp(-deltaSeconds * 2.4);
-        const shortestAngle = Math.atan2(
-          Math.sin(star.targetAngle - star.angle),
-          Math.cos(star.targetAngle - star.angle),
-        );
-        star.angle += shortestAngle * angleBlend;
-        star.apparentScale = THREE.MathUtils.damp(star.apparentScale, star.targetScale, 3.2, deltaSeconds);
-        star.glowOpacity = THREE.MathUtils.damp(star.glowOpacity, star.targetGlowOpacity, 3.2, deltaSeconds);
-        const localAngle = star.angle - observerPhase;
-        const altitude = Math.sin(localAngle);
-        const targetHorizonOpacity = THREE.MathUtils.smoothstep(altitude, -0.045, 0.11);
-        star.horizonOpacity = THREE.MathUtils.damp(star.horizonOpacity, targetHorizonOpacity, 5.5, deltaSeconds);
-        const visible = star.horizonOpacity > 0.002;
-        star.core.visible = star.glow.visible = visible;
-
-        const horizontal = Math.cos(localAngle);
-        // 三体引擎是二维轨道；微小纬度偏移只用于避免方向近乎重合时三个圆面完全叠在一起。
-        const declination = (index - 1) * 0.025;
-        skyDirection.copy(skyForward)
-          .addScaledVector(skyRight, horizontal * 0.16 + declination)
-          // 沙盘相机始终俯视，实际可见天空只在地图上沿；把昼弧落入这条窄天空带。
-          .addScaledVector(skyUp, 0.13 + altitude * 0.12)
-          .normalize();
-        skyStarDirections[index].copy(skyDirection);
-        skyStarStrengths[index] = star.horizonOpacity
-          * star.glowOpacity
-          * star.apparentScale
-          * (0.34 + skyDaylightStrength * 0.66);
-        star.core.position.copy(camera.position).addScaledVector(skyDirection, 180);
-        star.glow.position.copy(star.core.position);
-        star.core.scale.setScalar(star.apparentScale);
-        (star.core.material as THREE.MeshBasicMaterial).opacity = star.horizonOpacity;
-
-        const slowPulse = 1
-          + Math.sin(skyElapsedSeconds * 0.72 + index * 2.1) * 0.035
-          + Math.sin(skyElapsedSeconds * 1.83 + index * 1.3) * 0.014;
-        star.glow.scale.setScalar(16 * star.apparentScale * slowPulse);
-        (star.glow.material as THREE.SpriteMaterial).opacity = star.glowOpacity
-          * (0.97 + Math.sin(skyElapsedSeconds * 0.91 + index * 2.35) * 0.045)
-          * star.horizonOpacity;
-        star.core.rotation.y += skySpinRates[index] * deltaSeconds;
-        star.core.rotation.x += Math.sin(skyElapsedSeconds * 0.31 + index) * deltaSeconds * 0.0015;
-      });
-    };
-
-    // ---- 光照：独立的人间日照循环 + 纪元调制，不从天穹恒星位置推导 ----
-    let activeLightEra = propsRef.current.era;
-    let lightingElapsedSeconds = 0;
-    const sunlightTargetPosition = new THREE.Vector3();
-    const daylightTone = new THREE.Color();
-    const sunlightTargetColor = new THREE.Color();
-    const eraSunColor = new THREE.Color();
-    const chaosTone = new THREE.Color();
-    const fogTargetColor = new THREE.Color(ERA_LIGHT[activeLightEra].fog);
-    const skyZenithTarget = new THREE.Color(ERA_SKY[activeLightEra].nightZenith);
-    const skyHorizonTarget = new THREE.Color(ERA_SKY[activeLightEra].nightHorizon);
-    const skyNadirTarget = new THREE.Color(ERA_SKY[activeLightEra].nadir);
-    const skyHazeTarget = new THREE.Color(ERA_SKY[activeLightEra].haze);
-    const skyColorScratch = new THREE.Color();
-    let skyDaylightStrength = 0;
-    let skyStarVisibility = 0;
-    let fogTargetNear = 175;
-    let fogTargetFar = 460;
-
-    const hemi = new THREE.HemisphereLight('#d5e3f3', '#66705d', 0.92);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight('#fff1d6', 1.15);
-    const initialDaylight = sampleDaylight(0, sunlightTargetPosition, daylightTone);
-    const initialEraLight = ERA_LIGHT[activeLightEra];
-    sunlightTargetColor.set(initialEraLight.sun).lerp(daylightTone, 0.56);
-    sun.position.copy(sunlightTargetPosition);
-    sun.color.copy(sunlightTargetColor);
-    sun.intensity = initialEraLight.sunI * initialDaylight.direct * 0.82;
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    const shadowExtent = Math.max(world0.width, world0.height) / 2 + 8;
-    sun.shadow.camera.left = -shadowExtent;
-    sun.shadow.camera.right = shadowExtent;
-    sun.shadow.camera.top = shadowExtent;
-    sun.shadow.camera.bottom = -shadowExtent;
-    sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 260;
-    sun.shadow.bias = -0.00008;
-    sun.shadow.normalBias = 0.032;
-    sun.shadow.radius = 3.2;
-    scene.add(sun);
-    // 少量无阴影直射光模拟天空与地表的多次散射，避免体素背光面和云影落成纯黑。
-    const sunScatter = new THREE.DirectionalLight(sun.color, initialEraLight.sunI * initialDaylight.direct * 0.18);
-    sunScatter.position.copy(sun.position);
-    scene.add(sunScatter);
-    const rim = new THREE.DirectionalLight('#9fb8e8', 0.62);
-    rim.position.set(44, 34, 50); // 镜头侧冷填光只抬暗面，不与主光争夺形体
-    scene.add(rim);
-
-    // ---- 火光点光源池：只照亮权威火焰事实映射出的装饰实例，不写回任何状态 ----
-    // 灯位在 syncAnimatedDecor 中按 'fire' 动画实例逐帧重绑；超过池容量时取离相机最近者。
-    const FIRE_LIGHT_POOL_SIZE = 8;
-    const fireLights: THREE.PointLight[] = [];
-    for (let index = 0; index < FIRE_LIGHT_POOL_SIZE; index += 1) {
-      const light = new THREE.PointLight('#ffa54d', 0, 7.5, 2);
-      light.castShadow = false;
-      light.visible = false;
-      scene.add(light);
-      fireLights.push(light);
-    }
-
-    // ---- 稳定世界种子驱动的双层云；下层进入太阳深度图，形成随风移动的真实云影 ----
-    const cloudNoiseTexture = makeCloudNoiseTexture(world0.generator.seed);
-    const cloudShadowTexture = cloudNoiseTexture.clone();
-    cloudShadowTexture.repeat.set(1, 1);
-    cloudShadowTexture.offset.set(0, 0);
-    cloudShadowTexture.needsUpdate = true;
-    const cloudShadowMaterial = new THREE.MeshDepthMaterial({
-      depthPacking: THREE.RGBADepthPacking,
-      alphaMap: cloudShadowTexture,
-      alphaTest: 0.50,
-      side: THREE.DoubleSide,
-    });
-    const cloudShadowUniforms = {
-      threshold: { value: CLOUD_WEATHER.clear.shadowThreshold },
-      presence: { value: 0 },
-      opacity: { value: 0 },
-    };
-    cloudShadowMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.uCloudThreshold = cloudShadowUniforms.threshold;
-      shader.uniforms.uCloudPresence = cloudShadowUniforms.presence;
-      shader.uniforms.uCloudShadowOpacity = cloudShadowUniforms.opacity;
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          'void main() {',
-          `uniform float uCloudThreshold;
-uniform float uCloudPresence;
-uniform float uCloudShadowOpacity;
-void main() {`,
-        )
-        .replace(
-          '#include <alphamap_fragment>',
-          `#ifdef USE_ALPHAMAP
-  vec2 centeredUv = vAlphaMapUv * 2.0 - 1.0;
-  float radialFade = 1.0 - smoothstep(0.30, 0.94, length(centeredUv));
-  float cloudA = texture2D(alphaMap, vAlphaMapUv).g;
-  float cloudB = texture2D(alphaMap, vAlphaMapUv * 0.72 + vec2(0.14, 0.18)).g;
-  float cloudDensity = cloudA * 0.68 + cloudB * 0.32;
-  float densityMask = smoothstep(uCloudThreshold - 0.11, uCloudThreshold + 0.09, cloudDensity);
-  float shadowCoverage = clamp(
-    uCloudPresence * uCloudShadowOpacity * radialFade * densityMask,
-    0.0,
-    1.0
-  );
-  float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  diffuseColor.a *= step(dither, shadowCoverage);
-#endif`,
-        );
-    };
-    cloudShadowMaterial.customProgramCacheKey = () => 'cloud-shadow-dithered-opacity-v6';
-    const cloudShadowGeometry = new THREE.CircleGeometry(1, 24);
-    const cloudShadowSurfaceMaterial = new THREE.MeshBasicMaterial({
-      colorWrite: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-
-    // 可见云由多个椭球体组成真实空间云团：近景因位于世界外缘而不遮住聚落，
-    // 拉远或升空后可从下方、侧面和上方观察；移动始终是同一世界风向的直线平移。
-    const cloudVisualGroup = new THREE.Group();
-    const cloudBlobGeometry = new THREE.SphereGeometry(1, 16, 10);
-    const cloudFieldHalfX = world0.width * 0.5 + TERRAIN_APRON_CELLS + 24;
-    const cloudFieldHalfZ = world0.height * 0.5 + TERRAIN_APRON_CELLS + 24;
-    const cloudBoundaryFadeWidth = 24;
-    const cloudCellSize = 6;
-    const cloudWindDirection = new THREE.Vector2(1, 0.34).normalize();
-    const cloudClusters = Array.from({ length: 14 }, (_, index) => {
-      const angleJitter = (visualSpatialHash(world0.generator.seed, index, 3, 0x1b873593) - 0.5) * 0.22;
-      const angle = index / 14 * Math.PI * 2 + angleJitter;
-      const radialScale = 0.52 + visualSpatialHash(world0.generator.seed, index, 7, 0x85ebca6b) * 0.26;
-      const baseY = 19 + visualSpatialHash(world0.generator.seed, index, 11, 0xc2b2ae35) * 7;
-      const material = makeCloudVolumeMaterial(cloudNoiseTexture);
-      const cluster = new THREE.Group();
-      const clusterShadowCasters: THREE.Mesh[] = [];
-      const blobCount = 4 + Math.floor(visualSpatialHash(world0.generator.seed, index, 13, 0x27d4eb2f) * 3);
-      for (let blobIndex = 0; blobIndex < blobCount; blobIndex += 1) {
-        const blob = new THREE.Mesh(cloudBlobGeometry, material);
-        const horizontal = (visualSpatialHash(world0.generator.seed, index, blobIndex, 0x165667b1) - 0.5) * 9;
-        const depth = (visualSpatialHash(world0.generator.seed, blobIndex, index, 0x9e3779b9) - 0.5) * 6;
-        const lift = (visualSpatialHash(world0.generator.seed, index + blobIndex, 17, 0x7f4a7c15) - 0.5) * 2.8;
-        blob.position.set(horizontal, lift, depth);
-        blob.scale.set(
-          4.2 + visualSpatialHash(world0.generator.seed, index, blobIndex, 0x72e4a19b) * 3.1,
-          1.45 + visualSpatialHash(world0.generator.seed, blobIndex, index, 0x18c6d2f1) * 1.15,
-          3.1 + visualSpatialHash(world0.generator.seed, index + 5, blobIndex, 0x3e7a91d5) * 2.3,
-        );
-        blob.castShadow = false;
-        blob.receiveShadow = false;
-        blob.renderOrder = -18 + index * 0.001 + blobIndex * 0.0001;
-        cluster.add(blob);
-
-        // 每个云泡对应一个椭圆投影，重叠后形成不规则云影；几何本身不再含矩形轮廓。
-        const shadowCaster = new THREE.Mesh(cloudShadowGeometry, cloudShadowSurfaceMaterial);
-        shadowCaster.rotation.x = -Math.PI / 2;
-        shadowCaster.position.set(horizontal, -1.1, depth);
-        shadowCaster.scale.set(blob.scale.x * 0.78, blob.scale.z * 0.78, 1);
-        shadowCaster.castShadow = true;
-        shadowCaster.receiveShadow = false;
-        shadowCaster.customDepthMaterial = cloudShadowMaterial;
-        clusterShadowCasters.push(shadowCaster);
-        cluster.add(shadowCaster);
-      }
-      cluster.position.set(
-        Math.round(Math.cos(angle) * cloudFieldHalfX * radialScale / cloudCellSize) * cloudCellSize,
-        baseY,
-        Math.round(Math.sin(angle) * cloudFieldHalfZ * radialScale / cloudCellSize) * cloudCellSize,
-      );
-      cluster.userData.cloudBaseY = baseY;
-      cluster.userData.cloudPhase = visualSpatialHash(world0.generator.seed, index, 19, 0x27d4eb2d) * Math.PI * 2;
-      cluster.userData.cloudDrift = 0.78 + visualSpatialHash(world0.generator.seed, index, 23, 0x6bc2a483) * 0.46;
-      cluster.userData.cloudActivation = 0.14 + visualSpatialHash(world0.generator.seed, index, 29, 0x5f356495) * 0.66;
-      cluster.userData.cloudMaterial = material;
-      cluster.userData.cloudShadowCasters = clusterShadowCasters;
-      cloudVisualGroup.add(cluster);
-      return cluster;
-    });
-    const cloudGroup = new THREE.Group();
-    cloudGroup.add(cloudVisualGroup);
-    scene.add(cloudGroup);
-    aoExcluded.push(cloudGroup);
-
-    const cloudOffset = new THREE.Vector2(
-      visualSpatialHash(world0.generator.seed, 11, 17, 0x72e4a19b),
-      visualSpatialHash(world0.generator.seed, 23, 5, 0x18c6d2f1),
-    );
-    let cloudMorphPhase = visualSpatialHash(world0.generator.seed, 3, 19, 0x27d4eb2d) * Math.PI * 2;
-    let cloudOpacity = CLOUD_WEATHER.clear.opacity;
-    let cloudPresence = CLOUD_WEATHER.clear.presence;
-    let cloudShadowOpacity = CLOUD_WEATHER.clear.shadowOpacity;
-    let cloudShadowThreshold = CLOUD_WEATHER.clear.shadowThreshold;
-    let cloudSpeed = CLOUD_WEATHER.clear.speed;
-    const cloudLightTarget = new THREE.Color(CLOUD_WEATHER.clear.light);
-    const cloudShadeTarget = new THREE.Color(CLOUD_WEATHER.clear.shade);
-
-    lightApiRef.current = (eraKey) => {
-      activeLightEra = eraKey;
-    };
-
-    const updateLighting = (deltaSeconds: number) => {
-      lightingElapsedSeconds += deltaSeconds;
-      const phase = (lightingElapsedSeconds % DAYLIGHT_CYCLE_SECONDS) / DAYLIGHT_CYCLE_SECONDS;
-      const daylight = sampleDaylight(phase, sunlightTargetPosition, daylightTone);
-      const eraLight = ERA_LIGHT[activeLightEra];
-      const chaotic = isChaoticLightEra(activeLightEra);
-      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
-      const weatherStrength = THREE.MathUtils.clamp(weather.intensity / 10, 0, 1);
-      let directMultiplier = daylight.direct;
-      let ambientMultiplier = daylight.ambient;
-      let exposureMultiplier = daylight.exposure;
-
-      eraSunColor.set(eraLight.sun);
-      sunlightTargetColor.copy(eraSunColor).lerp(daylightTone, chaotic ? 0.38 : 0.56);
-
-      if (chaotic) {
-        // 多个非整数周期叠加出不可预测但连续的乱纪元光变；不读取恒星位置，也不制造领域事实。
-        const chaosA = Math.sin(lightingElapsedSeconds * 0.41 + Math.sin(lightingElapsedSeconds * 0.13) * 1.8);
-        const chaosB = Math.sin(lightingElapsedSeconds * 0.73 + 1.4);
-        const thermalShift = Math.sin(lightingElapsedSeconds * 0.19 - 0.7);
-        sunlightTargetPosition.x += chaosA * 44 + chaosB * 16;
-        sunlightTargetPosition.y = THREE.MathUtils.clamp(
-          sunlightTargetPosition.y + chaosA * 18 - chaosB * 10,
-          12,
-          96,
-        );
-        sunlightTargetPosition.z += chaosB * 42 - chaosA * 12;
-        directMultiplier *= THREE.MathUtils.clamp(0.94 + chaosA * 0.46 + chaosB * 0.24, 0.34, 1.64);
-        ambientMultiplier *= THREE.MathUtils.clamp(0.88 - chaosA * 0.16 + chaosB * 0.08, 0.68, 1.12);
-        exposureMultiplier *= THREE.MathUtils.clamp(0.96 + chaosA * 0.10 + chaosB * 0.05, 0.82, 1.12);
-
-        if (activeLightEra === 'chaotic-heat') chaosTone.set('#ff8a48');
-        else if (activeLightEra === 'chaotic-cold') chaosTone.set('#91b7ff');
-        else chaosTone.set(thermalShift >= 0 ? '#ff9a56' : '#91b9ff');
-        sunlightTargetColor.lerp(chaosTone, 0.28 + Math.abs(thermalShift) * 0.30);
-      }
-
-      // 阴雨、雪与雾减少直射但保留大气散射；云影负责局部明暗，不伪造天气事实。
-      const overcast = weather.kind === 'storm' ? 0.38 + weatherStrength * 0.30
-        : weather.kind === 'rain' ? 0.20 + weatherStrength * 0.22
-          : weather.kind === 'snow' ? 0.24 + weatherStrength * 0.20
-            : weather.kind === 'fog' ? 0.32 + weatherStrength * 0.24 : 0;
-      directMultiplier *= 1 - overcast;
-      ambientMultiplier *= 1 - overcast * 0.10;
-      exposureMultiplier *= 1 - overcast * 0.06;
-
-      const blend = 1 - Math.exp(-LIGHT_DAMPING * deltaSeconds);
-      sun.position.lerp(sunlightTargetPosition, blend);
-      sun.color.lerp(sunlightTargetColor, blend);
-      sunScatter.position.copy(sun.position);
-      sunScatter.color.copy(sun.color);
-      const targetDirectIntensity = eraLight.sunI * directMultiplier;
-      sun.intensity = THREE.MathUtils.damp(sun.intensity, targetDirectIntensity * 0.82, LIGHT_DAMPING, deltaSeconds);
-      sunScatter.intensity = THREE.MathUtils.damp(sunScatter.intensity, targetDirectIntensity * 0.18, LIGHT_DAMPING, deltaSeconds);
-      hemi.intensity = THREE.MathUtils.damp(hemi.intensity, eraLight.hemi * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
-      rim.intensity = THREE.MathUtils.damp(rim.intensity, eraLight.rim * ambientMultiplier, LIGHT_DAMPING, deltaSeconds);
-      scene.environmentIntensity = THREE.MathUtils.damp(
-        scene.environmentIntensity,
-        eraLight.env * ambientMultiplier,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-      renderer.toneMappingExposure = THREE.MathUtils.damp(
-        renderer.toneMappingExposure,
-        eraLight.exposure * exposureMultiplier,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-
-      // 可见天空与日照、纪元和天气共享目标状态；这只改变表现层，不反向影响模拟。
-      const skyPalette = ERA_SKY[activeLightEra];
-      const daylightStrength = THREE.MathUtils.smoothstep(directMultiplier, 0.30, 0.94);
-      skyZenithTarget.set(skyPalette.nightZenith)
-        .lerp(skyColorScratch.set(skyPalette.dayZenith), daylightStrength);
-      skyHorizonTarget.set(skyPalette.nightHorizon)
-        .lerp(skyColorScratch.set(skyPalette.dayHorizon), daylightStrength);
-      skyNadirTarget.set(skyPalette.nadir);
-      skyHazeTarget.set(skyPalette.haze);
-      let hazeStrength = THREE.MathUtils.lerp(0.08, 0.34, daylightStrength);
-      let starWeatherVisibility = 1;
-
-      if (weather.kind === 'fog') {
-        const veil = 0.48 + weatherStrength * 0.30;
-        skyZenithTarget.lerp(skyColorScratch.set('#758188'), veil * 0.72);
-        skyHorizonTarget.lerp(skyColorScratch.set('#aab5b5'), veil);
-        skyNadirTarget.lerp(skyColorScratch.set('#5f696c'), veil * 0.64);
-        hazeStrength = 0.88;
-        starWeatherVisibility = 0.03;
-      } else if (weather.kind === 'storm') {
-        skyZenithTarget.lerp(skyColorScratch.set('#172431'), 0.54 + weatherStrength * 0.24);
-        skyHorizonTarget.lerp(skyColorScratch.set('#3d5362'), 0.48 + weatherStrength * 0.24);
-        hazeStrength = 0.62;
-        starWeatherVisibility = 0.10;
-      } else if (weather.kind === 'rain') {
-        skyZenithTarget.lerp(skyColorScratch.set('#263747'), 0.38 + weatherStrength * 0.22);
-        skyHorizonTarget.lerp(skyColorScratch.set('#526574'), 0.34 + weatherStrength * 0.20);
-        hazeStrength = 0.58;
-        starWeatherVisibility = 0.24;
-      } else if (weather.kind === 'snow') {
-        skyZenithTarget.lerp(skyColorScratch.set('#677887'), 0.32 + weatherStrength * 0.22);
-        skyHorizonTarget.lerp(skyColorScratch.set('#abb8c1'), 0.42 + weatherStrength * 0.22);
-        hazeStrength = 0.66;
-        starWeatherVisibility = 0.16;
-      } else if (weather.kind === 'drought') {
-        skyZenithTarget.lerp(skyColorScratch.set('#62503b'), 0.20 + weatherStrength * 0.20);
-        skyHorizonTarget.lerp(skyColorScratch.set('#9f8059'), 0.32 + weatherStrength * 0.24);
-        hazeStrength = 0.62;
-        starWeatherVisibility = 0.56;
-      }
-
-      skyDaylightStrength = THREE.MathUtils.damp(
-        skyDaylightStrength,
-        daylightStrength,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-      const starVisibilityTarget = Math.pow(1 - daylightStrength, 1.65) * starWeatherVisibility;
-      skyStarVisibility = THREE.MathUtils.damp(
-        skyStarVisibility,
-        starVisibilityTarget,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-      skyAtmosphereUniforms.uGalaxyVisibility.value = THREE.MathUtils.damp(
-        skyAtmosphereUniforms.uGalaxyVisibility.value,
-        starVisibilityTarget * 0.72,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-      distantSky.setVisibility(starVisibilityTarget);
-      skyAtmosphereUniforms.uZenithColor.value.lerp(skyZenithTarget, blend);
-      skyAtmosphereUniforms.uHorizonColor.value.lerp(skyHorizonTarget, blend);
-      skyAtmosphereUniforms.uNadirColor.value.lerp(skyNadirTarget, blend);
-      skyAtmosphereUniforms.uHazeColor.value.lerp(skyHazeTarget, blend);
-      skyAtmosphereUniforms.uHazeStrength.value = THREE.MathUtils.damp(
-        skyAtmosphereUniforms.uHazeStrength.value,
-        hazeStrength,
-        LIGHT_DAMPING,
-        deltaSeconds,
-      );
-      skyStarMaterials.forEach(({ material, baseOpacity }) => {
-        material.opacity = baseOpacity * skyStarVisibility;
-      });
-
-      const fog = scene.fog as THREE.Fog;
-      fog.color.lerp(fogTargetColor, blend);
-      fog.near = THREE.MathUtils.damp(fog.near, fogTargetNear, LIGHT_DAMPING, deltaSeconds);
-      fog.far = THREE.MathUtils.damp(fog.far, fogTargetFar, LIGHT_DAMPING, deltaSeconds);
-      renderer.setClearColor(fog.color);
-    };
-
-    const updateClouds = (deltaSeconds: number) => {
-      const weather = propsRef.current.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
-      const profile = CLOUD_WEATHER[weather.kind];
-      const severity = THREE.MathUtils.clamp((weather.intensity - 1) / 9, 0, 1);
-      const targetOpacity = THREE.MathUtils.clamp(profile.opacity + severity * 0.06, 0, 1);
-      const targetPresence = profile.presence * THREE.MathUtils.lerp(0.72, 1, severity);
-      const targetShadowOpacity = THREE.MathUtils.clamp(profile.shadowOpacity + severity * 0.06, 0, 0.56);
-      const targetShadowThreshold = profile.shadowThreshold - (weather.kind === 'clear' || weather.kind === 'drought' ? 0 : severity * 0.045);
-
-      // 生成和消散都保留数秒过渡，但晴天、旱天与雾天最终会彻底无云。
-      cloudOpacity = THREE.MathUtils.damp(cloudOpacity, targetOpacity, 0.46, deltaSeconds);
-      cloudPresence = THREE.MathUtils.damp(cloudPresence, targetPresence, 0.38, deltaSeconds);
-      cloudShadowOpacity = THREE.MathUtils.damp(cloudShadowOpacity, targetShadowOpacity, 0.46, deltaSeconds);
-      cloudShadowThreshold = THREE.MathUtils.damp(cloudShadowThreshold, targetShadowThreshold, 0.46, deltaSeconds);
-      cloudSpeed = THREE.MathUtils.damp(cloudSpeed, profile.speed, 0.72, deltaSeconds);
-      cloudLightTarget.set(profile.light);
-      cloudShadeTarget.set(profile.shade);
-
-      cloudMorphPhase += deltaSeconds * (0.18 + cloudSpeed * 0.075);
-      const shadowWindX = deltaSeconds * cloudSpeed * 0.0016;
-      const shadowWindY = deltaSeconds * cloudSpeed * 0.00052;
-      cloudOffset.x = (cloudOffset.x + shadowWindX) % 1;
-      cloudOffset.y = (cloudOffset.y + shadowWindY) % 1;
-      cloudNoiseTexture.offset.copy(cloudOffset);
-      cloudShadowUniforms.threshold.value = cloudShadowThreshold;
-      cloudShadowUniforms.presence.value = cloudPresence;
-      cloudShadowUniforms.opacity.value = cloudShadowOpacity;
-
-      const nightVisibility = THREE.MathUtils.lerp(0.52, 1, skyDaylightStrength);
-      const colorBlend = 1 - Math.exp(-0.9 * deltaSeconds);
-      cloudClusters.forEach((cluster, index) => {
-        const material = cluster.userData.cloudMaterial as THREE.ShaderMaterial;
-        const layerOffset = material.uniforms.uOffset.value as THREE.Vector2;
-        layerOffset.set(
-          (cloudOffset.x * (0.82 + index * 0.07) + index * 0.19) % 1,
-          (cloudOffset.y * (1.08 - index * 0.06) + index * 0.23) % 1,
-        );
-        const activation = cluster.userData.cloudActivation as number;
-        const activationFade = THREE.MathUtils.smoothstep(cloudPresence, activation - 0.16, activation + 0.08);
-        material.uniforms.uDaylight.value = skyDaylightStrength;
-        (material.uniforms.uLightColor.value as THREE.Color).lerp(cloudLightTarget, colorBlend);
-        (material.uniforms.uShadeColor.value as THREE.Color).lerp(cloudShadeTarget, colorBlend);
-
-        // Minecraft 式世界云场：统一高度层、固定世界朝向、按 ticks 沿风向平移并在边界循环。
-        const drift = cluster.userData.cloudDrift as number;
-        const travel = deltaSeconds * (0.72 + cloudSpeed * 0.62) * drift;
-        cluster.position.x += cloudWindDirection.x * travel;
-        cluster.position.z += cloudWindDirection.y * travel;
-        if (cluster.position.x > cloudFieldHalfX) cluster.position.x -= cloudFieldHalfX * 2;
-        if (cluster.position.x < -cloudFieldHalfX) cluster.position.x += cloudFieldHalfX * 2;
-        if (cluster.position.z > cloudFieldHalfZ) cluster.position.z -= cloudFieldHalfZ * 2;
-        if (cluster.position.z < -cloudFieldHalfZ) cluster.position.z += cloudFieldHalfZ * 2;
-        cluster.position.y = (cluster.userData.cloudBaseY as number)
-          + Math.sin(cloudMorphPhase * 0.36 + (cluster.userData.cloudPhase as number)) * 0.18;
-        const boundaryDistance = Math.min(
-          cloudFieldHalfX - Math.abs(cluster.position.x),
-          cloudFieldHalfZ - Math.abs(cluster.position.z),
-        );
-        const boundaryFade = THREE.MathUtils.smoothstep(boundaryDistance, 0, cloudBoundaryFadeWidth);
-        material.uniforms.uOpacity.value = cloudOpacity
-          * activationFade
-          * boundaryFade
-          * nightVisibility
-          * 0.72;
-        const shadowCasters = cluster.userData.cloudShadowCasters as THREE.Mesh[];
-        shadowCasters.forEach((caster) => { caster.visible = boundaryFade > 0.08; });
-        cluster.visible = activationFade > 0.006 && cloudOpacity > 0.006 && boundaryFade > 0.002;
-      });
-    };
+    lightApiRef.current = environmentRuntime.setEra;
+    skyApiRef.current = environmentRuntime.setSky;
+    const sun = environmentRuntime.sunlight;
+    const fireLights = environmentRuntime.fireLights;
 
     // ---- 地形体素柱（InstancedMesh，逐实例颜色；PBR 材质）----
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -2388,7 +464,7 @@ void main() {`,
     scene.add(shoreLip);
     aoExcluded.push(shoreLip);
 
-    const waterFlowUniforms = { uTime: { value: 0 }, uRain: { value: 0 } };
+    const waterFlowUniforms = { uTime: { value: 0 }, uRain: { value: 0 }, uSunGlint: { value: 0 } };
     const waterFlow = new THREE.Mesh(
       new THREE.BufferGeometry(),
       new THREE.ShaderMaterial({
@@ -2414,6 +490,7 @@ void main() {`,
         fragmentShader: `
           uniform float uTime;
           uniform float uRain;
+          uniform float uSunGlint;
           varying vec2 vFlowCoord;
           varying vec2 vFlowDirection;
           varying vec2 vFlowLocal;
@@ -2433,8 +510,16 @@ void main() {`,
             float crossBand = 0.5 + 0.5 * sin(
               along * 7.6 - time * 2.05 + across * 2.1
             );
-            float flow = smoothstep(0.38, 0.94, mainBand) * (0.72 + crossBand * 0.28);
-            vec3 flowColor = mix(vec3(0.12, 0.36, 0.42), vec3(0.31, 0.58, 0.62), flow);
+            // 高频碎波：近景读出细密涌动，远观融为整体流向。
+            float ripple = 0.5 + 0.5 * sin(along * 13.4 - time * 3.05 + sin(across * 9.2) * 1.35);
+            float flow = smoothstep(0.34, 0.92, mainBand) * (0.66 + crossBand * 0.26 + ripple * 0.14);
+            vec3 flowColor = mix(vec3(0.13, 0.37, 0.43), vec3(0.33, 0.6, 0.64), flow);
+            // 波峰线提亮：近白色只落在主波峰上，强化"正在流动"的读感。
+            float crest = smoothstep(0.82, 0.985, mainBand * (0.72 + crossBand * 0.28));
+            flowColor = mix(flowColor, vec3(0.66, 0.82, 0.84), crest * 0.42);
+            // 日光碎金：波峰镜面闪烁，夜间与阴雨自动退场。
+            float glint = smoothstep(0.93, 1.0, mainBand * ripple) * uSunGlint;
+            flowColor += vec3(1.0, 0.93, 0.78) * glint * 0.85;
             // 没有相邻水格的一侧是真实河岸。流纹在岸边两微格内退去，
             // 避免透明高光盖到湿土/湿沙的岸缘台阶上。
             float bankDistance = 1.0;
@@ -2442,8 +527,13 @@ void main() {`,
             if (vFlowNeighbors.y < 0.5) bankDistance = min(bankDistance, 1.0 - vFlowLocal.x);
             if (vFlowNeighbors.z < 0.5) bankDistance = min(bankDistance, 1.0 - vFlowLocal.y);
             if (vFlowNeighbors.w < 0.5) bankDistance = min(bankDistance, vFlowLocal.x);
-            float bankFade = smoothstep(0.22, 0.38, bankDistance);
-            float alpha = (0.012 + flow * (0.058 + uRain * 0.014)) * bankFade;
+            float bankFade = smoothstep(0.2, 0.36, bankDistance);
+            // 岸缘泡沫：紧贴岸线内侧一圈缓慢脉动的白沫。
+            float foamRing = smoothstep(0.16, 0.27, bankDistance) * (1.0 - smoothstep(0.3, 0.46, bankDistance));
+            float foam = foamRing * (0.5 + 0.3 * sin(time * 1.1 + along * 8.6) * sin(across * 10.4 - time * 0.7));
+            flowColor = mix(flowColor, vec3(0.8, 0.88, 0.88), clamp(foam, 0.0, 1.0) * 0.55);
+            float alpha = (0.02 + flow * (0.105 + uRain * 0.03) + crest * 0.03 + glint * 0.1) * bankFade
+              + foam * 0.085;
             gl_FragColor = vec4(flowColor, alpha);
           }
         `,
@@ -2458,137 +548,11 @@ void main() {`,
     scene.add(waterFlow);
     aoExcluded.push(waterFlow);
 
-    // ---- 权威天气的动态投影：雨/雪/扬尘粒子与雾距离，不改写世界状态 ----
-    const weatherHash = (index: number, salt: number): number => {
-      const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453;
-      return value - Math.floor(value);
-    };
-    const WEATHER_HEIGHT = 18;
-    const RAIN_COUNT = 900;
-    const rainPositions = new Float32Array(RAIN_COUNT * 2 * 3);
-    for (let i = 0; i < RAIN_COUNT; i++) {
-      const x = (weatherHash(i, 1) - 0.5) * world0.width;
-      const y = 1.5 + weatherHash(i, 2) * WEATHER_HEIGHT;
-      const z = (weatherHash(i, 3) - 0.5) * world0.height;
-      const offset = i * 6;
-      rainPositions[offset] = x; rainPositions[offset + 1] = y; rainPositions[offset + 2] = z;
-      rainPositions[offset + 3] = x + 0.07; rainPositions[offset + 4] = y - 0.55; rainPositions[offset + 5] = z + 0.03;
-    }
-    const rainGeo = new THREE.BufferGeometry();
-    const rainAttribute = new THREE.BufferAttribute(rainPositions, 3);
-    rainAttribute.setUsage(THREE.DynamicDrawUsage);
-    rainGeo.setAttribute('position', rainAttribute);
-    const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({
-      color: '#b8d8ec', transparent: true, opacity: 0.42, depthWrite: false, fog: true,
-    }));
-    rain.visible = false;
-    rain.renderOrder = 12;
-    scene.add(rain);
-    aoExcluded.push(rain);
-
-    const SNOW_COUNT = 650;
-    const snowPositions = new Float32Array(SNOW_COUNT * 3);
-    for (let i = 0; i < SNOW_COUNT; i++) {
-      snowPositions[i * 3] = (weatherHash(i, 4) - 0.5) * world0.width;
-      snowPositions[i * 3 + 1] = 1 + weatherHash(i, 5) * WEATHER_HEIGHT;
-      snowPositions[i * 3 + 2] = (weatherHash(i, 6) - 0.5) * world0.height;
-    }
-    const snowGeo = new THREE.BufferGeometry();
-    const snowAttribute = new THREE.BufferAttribute(snowPositions, 3);
-    snowAttribute.setUsage(THREE.DynamicDrawUsage);
-    snowGeo.setAttribute('position', snowAttribute);
-    const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({
-      color: '#f3f7fb', size: 2.1, sizeAttenuation: false, transparent: true, opacity: 0.72,
-      depthWrite: false, fog: true,
-    }));
-    snow.visible = false;
-    snow.renderOrder = 12;
-    scene.add(snow);
-    aoExcluded.push(snow);
-
-    const DUST_COUNT = 320;
-    const dustPositions = new Float32Array(DUST_COUNT * 3);
-    for (let i = 0; i < DUST_COUNT; i++) {
-      dustPositions[i * 3] = (weatherHash(i, 7) - 0.5) * world0.width;
-      dustPositions[i * 3 + 1] = 0.2 + weatherHash(i, 8) * 4.2;
-      dustPositions[i * 3 + 2] = (weatherHash(i, 9) - 0.5) * world0.height;
-    }
-    const dustGeo = new THREE.BufferGeometry();
-    const dustAttribute = new THREE.BufferAttribute(dustPositions, 3);
-    dustAttribute.setUsage(THREE.DynamicDrawUsage);
-    dustGeo.setAttribute('position', dustAttribute);
-    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
-      color: '#c8aa75', size: 1.45, sizeAttenuation: false, transparent: true, opacity: 0.34,
-      depthWrite: false, fog: true,
-    }));
-    dust.visible = false;
-    dust.renderOrder = 11;
-    scene.add(dust);
-    aoExcluded.push(dust);
-
-    const wrapWeatherAxis = (value: number, half: number): number => {
-      if (value < -half) return half;
-      if (value > half) return -half;
-      return value;
-    };
-    const updateWeather = (now: number, deltaSeconds: number) => {
-      const p = propsRef.current;
-      const weather = p.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
-      const strength = THREE.MathUtils.clamp(weather.intensity, 1, 10);
-      rain.visible = weather.kind === 'rain' || weather.kind === 'storm';
-      snow.visible = weather.kind === 'snow';
-      dust.visible = weather.kind === 'drought';
-      waterFlowUniforms.uRain.value = rain.visible ? Math.min(1, 0.35 + strength * 0.09) : 0;
-
-      const eraFog = ERA_LIGHT[p.era].fog;
-      fogTargetColor.set(weather.kind === 'fog' ? '#aab5b5'
-        : weather.kind === 'rain' || weather.kind === 'storm' ? '#34495d'
-          : weather.kind === 'snow' ? '#9cabb8'
-            : weather.kind === 'drought' ? '#806d50' : eraFog);
-      if (weather.kind === 'fog') { fogTargetNear = 36; fogTargetFar = 115 + (10 - strength) * 7; }
-      else if (weather.kind === 'storm') { fogTargetNear = 65; fogTargetFar = 185 + (10 - strength) * 6; }
-      else if (weather.kind === 'rain' || weather.kind === 'snow') { fogTargetNear = 90; fogTargetFar = 245; }
-      else if (weather.kind === 'drought') { fogTargetNear = 115; fogTargetFar = 330; }
-      else { fogTargetNear = 175; fogTargetFar = 460; }
-
-      if (rain.visible) {
-        const speed = 10 + strength * 1.1;
-        const wind = weather.kind === 'storm' ? 2.4 + strength * 0.28 : 0.55;
-        for (let i = 0; i < RAIN_COUNT; i++) {
-          const offset = i * 6;
-          let x = rainPositions[offset] + wind * deltaSeconds;
-          let y = rainPositions[offset + 1] - speed * deltaSeconds;
-          let z = rainPositions[offset + 2] + wind * 0.38 * deltaSeconds;
-          if (y < 0) y += WEATHER_HEIGHT;
-          x = wrapWeatherAxis(x, world0.width / 2);
-          z = wrapWeatherAxis(z, world0.height / 2);
-          rainPositions[offset] = x; rainPositions[offset + 1] = y; rainPositions[offset + 2] = z;
-          rainPositions[offset + 3] = x + wind * 0.045; rainPositions[offset + 4] = y - 0.55; rainPositions[offset + 5] = z + wind * 0.018;
-        }
-        rainAttribute.needsUpdate = true;
-      }
-      if (snow.visible) {
-        for (let i = 0; i < SNOW_COUNT; i++) {
-          const offset = i * 3;
-          snowPositions[offset] = wrapWeatherAxis(
-            snowPositions[offset] + Math.sin(now * 0.0012 + i * 1.73) * deltaSeconds * (0.35 + strength * 0.04),
-            world0.width / 2,
-          );
-          snowPositions[offset + 1] -= deltaSeconds * (0.65 + strength * 0.08);
-          if (snowPositions[offset + 1] < 0) snowPositions[offset + 1] += WEATHER_HEIGHT;
-        }
-        snowAttribute.needsUpdate = true;
-      }
-      if (dust.visible) {
-        for (let i = 0; i < DUST_COUNT; i++) {
-          const offset = i * 3;
-          dustPositions[offset] = wrapWeatherAxis(dustPositions[offset] + deltaSeconds * (0.5 + strength * 0.12), world0.width / 2);
-          dustPositions[offset + 1] += Math.sin(now * 0.0015 + i) * deltaSeconds * 0.08;
-          dustPositions[offset + 2] = wrapWeatherAxis(dustPositions[offset + 2] + deltaSeconds * 0.18, world0.height / 2);
-        }
-        dustAttribute.needsUpdate = true;
-      }
-    };
+    // 天气粒子保持在水面之后加入场景；环境层只借用两项水面表现 uniform。
+    environmentRuntime.attachWeatherProjection({
+      rain: waterFlowUniforms.uRain,
+      sunGlint: waterFlowUniforms.uSunGlint,
+    });
     // 掉落物、建筑与动物统一由装饰层渲染，不保留旧占位网格。
 
     // ---- 立方体星球化 ----
@@ -2617,7 +581,6 @@ void main() {`,
     const q = new THREE.Quaternion();
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
-    const decorAxisY = new THREE.Vector3(0, 1, 0);
     const col = new THREE.Color();
     const structureSelectionGroup = new THREE.Group();
     structureSelectionGroup.name = 'structure-selection-proxies';
@@ -3496,1073 +1459,48 @@ void main() {`,
 
     };
 
-    // ---- 装饰层：微缩体素素材（树/作物/道路贴花/物资堆/建筑印章/动物/纪元状态）----
-    // 素材来自 voxelKits.ts（与 knowledge-base 素材页同源），按材质桶 InstancedMesh 合批
-    // 颜色仍走实例色；材质桶只承载真实表面响应。Record<string> 让素材库可渐进新增语义桶。
-    const DECOR_MATS: Record<string, THREE.MeshStandardMaterial> = {
-      leaf: new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, envMapIntensity: 0.92 }),
-      wood: new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, envMapIntensity: 0.74 }),
-      groundMark: new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.28 }),
-      stone: new THREE.MeshStandardMaterial({ roughness: 0.87, metalness: 0.025, envMapIntensity: 0.86 }),
-      plaster: new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.54 }),
-      glowWarm: new THREE.MeshStandardMaterial({
-        color: 0xffffff, emissive: 0xff7a24, emissiveIntensity: 1.2,
-        roughness: 0.48, metalness: 0, envMapIntensity: 0.35,
+    // ---- 装饰层：权威装饰实例批次 / 时代淡入淡出 / 动物与火焰动画 ----
+    const decorLayer = createDecorLayer({
+      scene,
+      camera,
+      sunlight: sun,
+      fireLights,
+      boxGeometry: boxGeo,
+      cellHeight: CELL_H,
+      monthPlaybackMs: MONTH_PLAYBACK_MS,
+      readFrame: () => ({
+        society: propsRef.current.society,
+        animationStartedAt: animStart.current,
       }),
-      glowRed: new THREE.MeshStandardMaterial({
-        color: 0xffffff, emissive: 0xe62f18, emissiveIntensity: 1.35,
-        roughness: 0.48, metalness: 0, envMapIntensity: 0.35,
-      }),
-      accent: new THREE.MeshPhysicalMaterial({
-        roughness: 0.5, metalness: 0.03, clearcoat: 0.22, clearcoatRoughness: 0.52, envMapIntensity: 0.9,
-      }),
-      // `dark` 只承担金属/深色硬质件；有机暗部由素材层的 organicDark 单独承载。
-      dark: new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.9, envMapIntensity: 1.25 }),
-      organicDark: new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, envMapIntensity: 0.62 }),
-      thatch: new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0.52 }),
-      roofTile: new THREE.MeshPhysicalMaterial({
-        roughness: 0.74, metalness: 0.02, clearcoat: 0.1, clearcoatRoughness: 0.7, envMapIntensity: 0.82,
-      }),
-    };
-    type DecorRenderLayer = 'stable' | 'settlement-era';
-    type DecorMaterialSet = Record<string, THREE.MeshStandardMaterial>;
-    const SETTLEMENT_ERA_TRANSITION_MS = 1_000;
-    const cloneDecorMaterials = (opacity = 1, fading = false): DecorMaterialSet => Object.fromEntries(
-      Object.entries(DECOR_MATS).map(([key, source]) => {
-        const material = source.clone();
-        material.opacity = opacity;
-        material.transparent = fading;
-        material.depthWrite = !fading;
-        material.needsUpdate = true;
-        return [key, material];
-      }),
-    );
-    const setDecorMaterialOpacity = (materials: DecorMaterialSet, opacity: number, fading: boolean) => {
-      for (const material of Object.values(materials)) {
-        const nextTransparent = fading;
-        const nextDepthWrite = !fading;
-        if (material.transparent !== nextTransparent || material.depthWrite !== nextDepthWrite) {
-          material.transparent = nextTransparent;
-          material.depthWrite = nextDepthWrite;
-          material.needsUpdate = true;
-        }
-        material.opacity = opacity;
-      }
-    };
-    const decorGroup = new THREE.Group();
-    interface DecorBatch {
-      mesh: THREE.InstancedMesh;
-      bucket: DecorBucket;
-      layer: DecorRenderLayer;
-      capacity: number;
-      keys: Array<string | null>;
-      instances: Array<DecorInstance | null>;
-      signatures: Array<string | null>;
-      slotByKey: Map<string, number>;
-    }
-    const decorBatches = new Map<string, DecorBatch>();
-    let settlementDecorMaterials = cloneDecorMaterials();
-    let renderedDevelopmentStage: string | undefined;
-    let settlementEraTransition: {
-      startedAt: number;
-      outgoingGroup: THREE.Group;
-      outgoingMaterials: DecorMaterialSet;
-    } | null = null;
-    let animatedDecorBatches: Array<{
-      mesh: THREE.InstancedMesh;
-      instances: Array<{ index: number; instance: DecorInstance }>;
-    }> = [];
-    scene.add(decorGroup);
-
-    const decorBatchKey = (bucket: DecorBucket, layer: DecorRenderLayer): string => `${layer}:${bucket}`;
-    const disposeOutgoingSettlementDecor = (group: THREE.Group, materials: DecorMaterialSet) => {
-      scene.remove(group);
-      for (const child of [...group.children]) (child as THREE.InstancedMesh).dispose();
-      for (const material of Object.values(materials)) material.dispose();
-    };
-    const finishSettlementEraTransition = () => {
-      if (!settlementEraTransition) return;
-      setDecorMaterialOpacity(settlementDecorMaterials, 1, false);
-      disposeOutgoingSettlementDecor(
-        settlementEraTransition.outgoingGroup,
-        settlementEraTransition.outgoingMaterials,
-      );
-      settlementEraTransition = null;
-    };
-    const beginSettlementEraTransition = (startedAt: number) => {
-      finishSettlementEraTransition();
-      const outgoingGroup = new THREE.Group();
-      const outgoingMaterials = settlementDecorMaterials;
-      setDecorMaterialOpacity(outgoingMaterials, 1, true);
-      for (const [key, batch] of [...decorBatches]) {
-        if (batch.layer !== 'settlement-era') continue;
-        decorGroup.remove(batch.mesh);
-        outgoingGroup.add(batch.mesh);
-        decorBatches.delete(key);
-      }
-      scene.add(outgoingGroup);
-      settlementDecorMaterials = cloneDecorMaterials(0, true);
-      settlementEraTransition = { startedAt, outgoingGroup, outgoingMaterials };
-    };
-    const updateSettlementEraTransition = (now: number) => {
-      if (!settlementEraTransition) return;
-      const progress = THREE.MathUtils.clamp(
-        (now - settlementEraTransition.startedAt) / SETTLEMENT_ERA_TRANSITION_MS,
-        0,
-        1,
-      );
-      const eased = progress * progress * (3 - 2 * progress);
-      setDecorMaterialOpacity(settlementEraTransition.outgoingMaterials, 1 - eased, true);
-      setDecorMaterialOpacity(settlementDecorMaterials, eased, true);
-      if (progress >= 1) finishSettlementEraTransition();
-    };
-
-    const decorInstanceBaseKey = (instance: DecorInstance): string => {
-      const entityAnchored = instance.entityId !== undefined;
-      const anchorX = instance.entityX ?? instance.x;
-      const anchorY = instance.entityY ?? instance.y;
-      const anchorZ = instance.entityZ ?? instance.z;
-      return [
-        entityAnchored ? `entity:${instance.entityId}` : 'static',
-        instance.b,
-        instance.part ?? '',
-        entityAnchored ? instance.x - anchorX : instance.x,
-        entityAnchored ? instance.y - anchorY : instance.y,
-        entityAnchored ? instance.z - anchorZ : instance.z,
-        instance.sx,
-        instance.sy,
-        instance.sz,
-      ].join('|');
-    };
-    const keyedDecorInstances = (instances: DecorInstance[]) => {
-      const occurrences = new Map<string, number>();
-      return instances.map((instance) => {
-        const base = decorInstanceBaseKey(instance);
-        const occurrence = occurrences.get(base) ?? 0;
-        occurrences.set(base, occurrence + 1);
-        return { key: `${base}|${occurrence}`, instance };
-      });
-    };
-    const decorInstanceSignature = (instance: DecorInstance): string => [
-      instance.x, instance.y, instance.z,
-      instance.sx, instance.sy, instance.sz,
-      instance.ry ?? '', instance.c,
-      instance.entityId ?? '',
-      instance.entityX ?? '', instance.entityY ?? '', instance.entityZ ?? '',
-      instance.entityRotation ?? '', instance.part ?? '', instance.animation ?? '',
-      instance.visualLayer ?? '',
-    ].join('|');
-    const decorCapacityFor = (required: number): number => {
-      let capacity = 16;
-      while (capacity < required) capacity *= 2;
-      return capacity;
-    };
-    const createDecorBatch = (bucket: DecorBucket, layer: DecorRenderLayer, capacity: number): DecorBatch => {
-      const materials = layer === 'settlement-era' ? settlementDecorMaterials : DECOR_MATS;
-      const material = materials[bucket] ?? materials.plaster;
-      const mesh = new THREE.InstancedMesh(boxGeo, material, capacity);
-      mesh.count = 0;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
-      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-      // 叶簇保留 AO 接触层次，但不再让数百个微体素互相投出致黑阴影。
-      mesh.castShadow = bucket !== 'leaf' && bucket !== 'groundMark' && bucket !== 'glowWarm' && bucket !== 'glowRed';
-      mesh.receiveShadow = true;
-      decorGroup.add(mesh);
-      return {
-        mesh,
-        bucket,
-        layer,
-        capacity,
-        keys: new Array<string | null>(capacity).fill(null),
-        instances: new Array<DecorInstance | null>(capacity).fill(null),
-        signatures: new Array<string | null>(capacity).fill(null),
-        slotByKey: new Map<string, number>(),
-      };
-    };
-    const ensureDecorBatch = (bucket: DecorBucket, layer: DecorRenderLayer, required: number): DecorBatch => {
-      const key = decorBatchKey(bucket, layer);
-      const current = decorBatches.get(key);
-      if (current && current.capacity >= required) return current;
-      const replacement = createDecorBatch(bucket, layer, decorCapacityFor(required));
-      if (current) {
-        decorGroup.remove(current.mesh);
-        current.mesh.dispose();
-      }
-      decorBatches.set(key, replacement);
-      return replacement;
-    };
-    const writeDecorInstance = (mesh: THREE.InstancedMesh, index: number, instance: DecorInstance, bucket: DecorBucket) => {
-      const rotation = instance.ry === undefined
-        ? q.identity()
-        : q.setFromAxisAngle(decorAxisY, instance.ry);
-      m4.compose(v.set(instance.x, instance.y, instance.z), rotation, sc.set(instance.sx, instance.sy, instance.sz));
-      mesh.setMatrixAt(index, m4);
-      col.setHex(instance.c);
-      if (bucket === 'leaf' || bucket === 'wood') {
-        // 连续空间波形让同一树冠形成成片明暗，而不是每个微体素独立闪烁。
-        const cluster = (
-          Math.sin(instance.x * 2.13 + instance.z * 1.37 + instance.y * 0.71)
-          + Math.sin(instance.x * 0.83 - instance.z * 1.91 + instance.y * 1.17)
-        ) * 0.25;
-        col.multiplyScalar(1 + cluster * (bucket === 'leaf' ? 0.12 : 0.055));
-      }
-      mesh.setColorAt(index, col);
-    };
-
-    let renderedDecorSociety: SocietyState | null = null;
-    let renderedDecorEra: EraKey | null = null;
-    decorApiRef.current = (s, era) => {
-      if (renderedDecorSociety && renderedDecorEra
-        && sameDecorVisuals(renderedDecorSociety, renderedDecorEra, s, era)) {
-        renderedDecorSociety = s;
-        renderedDecorEra = era;
-        return;
-      }
-      renderedDecorSociety = s;
-      renderedDecorEra = era;
-      const nextDevelopmentStage = s.observations.civilizationIndex?.stage ?? '原始部落';
-      if (renderedDevelopmentStage !== undefined && renderedDevelopmentStage !== nextDevelopmentStage)
-        beginSettlementEraTransition(performance.now());
-      renderedDevelopmentStage = nextDevelopmentStage;
-      const instances = collectDecor(s, era);
-      animatedDecorBatches = [];
-      const byBatch = new Map<string, {
-        bucket: DecorBucket;
-        layer: DecorRenderLayer;
-        instances: DecorInstance[];
-      }>();
-      for (const inst of instances) {
-        const layer: DecorRenderLayer = inst.visualLayer ?? 'stable';
-        const key = decorBatchKey(inst.b, layer);
-        const batch = byBatch.get(key);
-        if (batch) batch.instances.push(inst);
-        else byBatch.set(key, { bucket: inst.b, layer, instances: [inst] });
-      }
-      const activeBatchKeys = new Set<string>([...decorBatches.keys(), ...byBatch.keys()]);
-      for (const batchKey of activeBatchKeys) {
-        const definition = byBatch.get(batchKey);
-        const current = decorBatches.get(batchKey);
-        const bucket = definition?.bucket ?? current?.bucket;
-        const layer = definition?.layer ?? current?.layer;
-        if (!bucket || !layer) continue;
-        const list = definition?.instances ?? [];
-        const batch = list.length > 0
-          ? ensureDecorBatch(bucket, layer, list.length)
-          : current;
-        if (!batch) continue;
-
-        const keyed = keyedDecorInstances(list);
-        const nextByKey = new Map(keyed.map((entry) => [entry.key, entry.instance]));
-        let matrixMin = Number.POSITIVE_INFINITY;
-        let matrixMax = -1;
-        let colorMin = Number.POSITIVE_INFINITY;
-        let colorMax = -1;
-        const markMatrixChanged = (index: number) => {
-          matrixMin = Math.min(matrixMin, index);
-          matrixMax = Math.max(matrixMax, index);
-        };
-        const markColorChanged = (index: number) => {
-          colorMin = Math.min(colorMin, index);
-          colorMax = Math.max(colorMax, index);
-        };
-
-        for (const [key, slot] of [...batch.slotByKey]) {
-          if (nextByKey.has(key)) continue;
-          batch.slotByKey.delete(key);
-          batch.keys[slot] = null;
-          batch.instances[slot] = null;
-          batch.signatures[slot] = null;
-          m4.makeScale(0, 0, 0);
-          batch.mesh.setMatrixAt(slot, m4);
-          markMatrixChanged(slot);
-        }
-
-        const freeSlots: number[] = [];
-        for (let slot = 0; slot < batch.capacity; slot++) {
-          if (batch.keys[slot] === null) freeSlots.push(slot);
-        }
-        let freeSlotIndex = 0;
-        for (const { key, instance } of keyed) {
-          let slot = batch.slotByKey.get(key);
-          if (slot === undefined) {
-            slot = freeSlots[freeSlotIndex++];
-            batch.slotByKey.set(key, slot);
-            batch.keys[slot] = key;
-          }
-          const signature = decorInstanceSignature(instance);
-          batch.instances[slot] = instance;
-          if (batch.signatures[slot] === signature) continue;
-          batch.signatures[slot] = signature;
-          writeDecorInstance(batch.mesh, slot, instance, bucket);
-          markMatrixChanged(slot);
-          markColorChanged(slot);
-        }
-
-        let highWater = batch.capacity - 1;
-        while (highWater >= 0 && batch.keys[highWater] === null) highWater--;
-        batch.mesh.count = highWater + 1;
-        if (matrixMax >= matrixMin) {
-          batch.mesh.instanceMatrix.clearUpdateRanges();
-          batch.mesh.instanceMatrix.addUpdateRange(matrixMin * 16, (matrixMax - matrixMin + 1) * 16);
-          batch.mesh.instanceMatrix.needsUpdate = true;
-        }
-        if (batch.mesh.instanceColor && colorMax >= colorMin) {
-          batch.mesh.instanceColor.clearUpdateRanges();
-          batch.mesh.instanceColor.addUpdateRange(colorMin * 3, (colorMax - colorMin + 1) * 3);
-          batch.mesh.instanceColor.needsUpdate = true;
-        }
-
-        const animatedInstances = batch.instances.flatMap((instance, index) => (
-          instance && (instance.entityId || instance.animation) ? [{ index, instance }] : []
-        ));
-        if (animatedInstances.length > 0) animatedDecorBatches.push({ mesh: batch.mesh, instances: animatedInstances });
-      }
-    };
-
-    // 动物和火焰仍与其他装饰共享 InstancedMesh 合批；带 entityId / animation 的构件逐帧更新矩阵。
-    // 这样无需为每个动态素材创建独立 Mesh，也能获得动物步态与火舌、火星循环。
-    const animalAxisY = new THREE.Vector3(0, 1, 0);
-    const facilityAxisX = new THREE.Vector3(1, 0, 0);
-    const facilityAxisZ = new THREE.Vector3(0, 0, 1);
-    const animalRollX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-    const animalPhaseCache = new Map<string, number>();
-    const animalIdleYawCache = new Map<string, number>();
-    const animalSeed = (id: string): number => {
-      let hash = 2166136261;
-      for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
-      return (hash >>> 0) / 0x100000000;
-    };
-    // 火光池逐帧重绑：强度随昼夜（夜间为主、白天熄灭），闪烁相位与火舌动画同源。
-    const updateFireLights = (now: number, fireSites: Map<string, { x: number; y: number; z: number }>) => {
-      const nightFactor = THREE.MathUtils.clamp(1 - sun.intensity / 1.4, 0, 1);
-      const sites = [...fireSites.values()].map((site) => {
-        const dx = site.x - camera.position.x;
-        const dz = site.z - camera.position.z;
-        return { ...site, d2: dx * dx + dz * dz };
-      }).sort((left, right) => left.d2 - right.d2);
-      fireLights.forEach((light, index) => {
-        const site = sites[index];
-        if (!site || nightFactor <= 0.02) {
-          light.visible = false;
-          light.intensity = 0;
-          return;
-        }
-        const seed = site.x * 7.31 + site.y * 11.17 + site.z * 5.83;
-        const wave = Math.sin(now * 0.009 + seed) + Math.sin(now * 0.015 - seed * 1.7);
-        light.visible = true;
-        light.position.set(site.x, site.y + 0.38, site.z);
-        light.intensity = nightFactor * 2.6 * (0.85 + wave * 0.08);
-      });
-    };
-
-    const syncAnimatedDecor = (now: number) => {
-      // 逐帧收集权威火焰装饰的锚点（同一格内的焰心/余烬合并为一个灯位），供火光池使用。
-      const fireSites = new Map<string, { x: number; y: number; z: number }>();
-      if (!animatedDecorBatches.length) {
-        updateFireLights(now, fireSites);
-        return;
-      }
-      const p = propsRef.current;
-      const w = p.society.world;
-      const animals = new Map(p.society.animals.map((animal) => [animal.id, animal]));
-      const motion = Math.min(1, (now - animStart.current) / MONTH_PLAYBACK_MS);
-
-      for (const { mesh, instances } of animatedDecorBatches) {
-        let touched = false;
-        instances.forEach(({ index, instance: inst }) => {
-          if (inst.animation === 'wind') {
-            const intensity = Math.max(1, p.society.weather?.intensity ?? 1);
-            const seed = inst.x * 1.83 + inst.z * 2.37 + inst.y * 0.71;
-            const sway = Math.sin(now * 0.0028 * (1 + intensity * 0.05) + seed) * Math.min(0.055, 0.012 + intensity * 0.004);
-            const heightFactor = THREE.MathUtils.clamp(inst.y * 0.035, 0.2, 1);
-            q.setFromEuler(new THREE.Euler(sway * heightFactor, 0, sway * 0.7 * heightFactor));
-            m4.compose(
-              v.set(inst.x + sway * heightFactor * 0.5, inst.y, inst.z + sway * heightFactor * 0.25),
-              q,
-              sc.set(inst.sx, inst.sy, inst.sz),
-            );
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (inst.animation === 'fire') {
-            const seed = inst.x * 7.31 + inst.y * 11.17 + inst.z * 5.83;
-            const waveA = Math.sin(now * 0.009 + seed);
-            const waveB = Math.sin(now * 0.015 - seed * 1.7);
-            if (inst.part !== 'fire-spark') {
-              const siteKey = `${Math.round(inst.x)}:${Math.round(inst.z)}`;
-              const prev = fireSites.get(siteKey);
-              if (!prev || inst.y > prev.y) fireSites.set(siteKey, { x: inst.x, y: inst.y, z: inst.z });
-            }
-            const isSpark = inst.part === 'fire-spark';
-            const isEmber = inst.part === 'fire-ember';
-            if (isSpark) {
-              const rise = ((now * 0.00042 + seed * 0.13) % 1 + 1) % 1;
-              const sparkScale = Math.max(0.08, 1 - rise * 0.86);
-              m4.compose(
-                v.set(inst.x + waveA * 0.025, inst.y + rise * 0.24, inst.z + waveB * 0.018),
-                q.identity(),
-                sc.set(inst.sx * sparkScale, inst.sy * sparkScale, inst.sz * sparkScale),
-              );
-            } else if (isEmber) {
-              const pulse = 0.9 + (waveA + waveB) * 0.06;
-              m4.compose(v.set(inst.x, inst.y, inst.z), q.identity(), sc.set(inst.sx * pulse, inst.sy, inst.sz * pulse));
-            } else {
-              const tipFactor = inst.part === 'fire-tip' ? 1.65 : inst.part === 'fire-mid' ? 1.15 : 0.72;
-              const stretch = 1 + waveA * 0.12 + waveB * 0.07;
-              const width = 1 - waveA * 0.055;
-              m4.compose(
-                v.set(inst.x + waveB * 0.018 * tipFactor, inst.y + (stretch - 1) * inst.sy * 0.34, inst.z + waveA * 0.012 * tipFactor),
-                q.identity(),
-                sc.set(inst.sx * width, inst.sy * stretch, inst.sz * (2 - width)),
-              );
-            }
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (inst.animation === 'facility-smoke') {
-            const seed = inst.x * 5.31 + inst.z * 7.17 + inst.y * 3.83;
-            const wave = Math.sin(now * 0.0026 + seed);
-            const drift = Math.sin(now * 0.0017 - seed * 1.3);
-            const pulse = 0.9 + wave * 0.08;
-            m4.compose(
-              v.set(inst.x + drift * 0.035, inst.y + wave * 0.025, inst.z + wave * 0.02),
-              q.identity(),
-              sc.set(inst.sx * pulse, inst.sy * (1.04 + wave * 0.08), inst.sz * pulse),
-            );
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (inst.animation === 'facility-lift') {
-            const lift = (Math.sin(now * 0.0034 + inst.x * 2.1 + inst.z * 1.7) + 1) * 0.055;
-            m4.compose(
-              v.set(inst.x, inst.y + lift, inst.z),
-              q.identity(),
-              sc.set(inst.sx, inst.sy, inst.sz),
-            );
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (inst.animation === 'wheel-spin') {
-            const angle = now * 0.0021;
-            const originX = inst.entityX ?? inst.x;
-            const originY = (inst.entityY ?? inst.y) + 0.5;
-            const originZ = inst.entityZ ?? inst.z;
-            let localX = inst.x - originX;
-            let localY = inst.y - originY;
-            let localZ = inst.z - originZ;
-            const alongZ = (inst.entityRotation ?? 0) % 2 === 1;
-            if (alongZ) {
-              const rotatedX = localX * Math.cos(angle) - localY * Math.sin(angle);
-              localY = localX * Math.sin(angle) + localY * Math.cos(angle);
-              localX = rotatedX;
-              q.setFromAxisAngle(facilityAxisZ, angle);
-            } else {
-              const rotatedY = localY * Math.cos(angle) - localZ * Math.sin(angle);
-              localZ = localY * Math.sin(angle) + localZ * Math.cos(angle);
-              localY = rotatedY;
-              q.setFromAxisAngle(facilityAxisX, angle);
-            }
-            m4.compose(
-              v.set(originX + localX, originY + localY, originZ + localZ),
-              q,
-              sc.set(inst.sx, inst.sy, inst.sz),
-            );
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (inst.animation === 'mill-turn') {
-            const angle = now * 0.0018;
-            const originX = inst.entityX ?? inst.x;
-            const originZ = inst.entityZ ?? inst.z;
-            const localX = inst.x - originX;
-            const localZ = inst.z - originZ;
-            const rotatedX = localX * Math.cos(angle) + localZ * Math.sin(angle);
-            const rotatedZ = -localX * Math.sin(angle) + localZ * Math.cos(angle);
-            m4.compose(
-              v.set(originX + rotatedX, inst.y, originZ + rotatedZ),
-              q.setFromAxisAngle(animalAxisY, angle),
-              sc.set(inst.sx, inst.sy, inst.sz),
-            );
-            mesh.setMatrixAt(index, m4);
-            touched = true;
-            return;
-          }
-          if (!inst.entityId) return;
-          const animal = animals.get(inst.entityId);
-          if (!animal) return;
-
-          const currentX = animal.cellId % w.width;
-          const currentZ = Math.floor(animal.cellId / w.width);
-          const previousX = animal.previousCellId % w.width;
-          const previousZ = Math.floor(animal.previousCellId / w.width);
-          const dx = currentX - previousX;
-          const dz = currentZ - previousZ;
-          const moved = dx !== 0 || dz !== 0 || animal.z !== animal.previousZ;
-          const originX = THREE.MathUtils.lerp(previousX, currentX, motion) - w.width / 2 + 0.5;
-          const originY = THREE.MathUtils.lerp(animal.previousZ, animal.z, motion) * CELL_H;
-          const originZ = THREE.MathUtils.lerp(previousZ, currentZ, motion) - w.height / 2 + 0.5;
-
-          let seed = animalPhaseCache.get(animal.id);
-          if (seed === undefined) {
-            seed = animalSeed(animal.id) * Math.PI * 2;
-            animalPhaseCache.set(animal.id, seed);
-            animalIdleYawCache.set(animal.id, Math.floor(animalSeed(`${animal.id}:yaw`) * 4) * -Math.PI / 2);
-          }
-          const yaw = moved ? -Math.atan2(dz, dx) : (animalIdleYawCache.get(animal.id) ?? 0);
-          const activity = animal.activity ?? (moved ? 'walk' : 'idle');
-          const activitySpeed = activity === 'flee' ? 1.55 : activity === 'chase' ? 1.42
-            : activity === 'attack' ? 1.35 : activity === 'injured' ? 0.58 : 1;
-          const phase = now * 0.012 * activitySpeed + seed;
-          const walking = moved && motion < 1 && activity !== 'dead';
-
-          let localX = inst.x - (inst.entityX ?? inst.x);
-          const localY = inst.y - (inst.entityY ?? inst.y);
-          let localZ = inst.z - (inst.entityZ ?? inst.z);
-          let partOffsetY = 0;
-          if (walking && inst.part?.startsWith('leg-')) {
-            const legIndex = Number(inst.part.slice(4)) || 0;
-            if (animal.speciesId === 'rabbit') {
-              const rabbitStride = Math.sin(phase);
-              localX += rabbitStride * (legIndex < 2 ? -0.02 : 0.02);
-              partOffsetY += Math.max(0, rabbitStride) * 0.012;
-            } else {
-              const legPhase = phase + (legIndex % 2 ? Math.PI : 0);
-              localX += Math.sin(legPhase) * 0.014;
-              partOffsetY += Math.max(0, Math.sin(legPhase)) * 0.009;
-            }
-          } else if (inst.part === 'head') {
-            if (activity === 'graze' || activity === 'feed') {
-              partOffsetY -= animal.speciesId === 'deer' ? 0.11 : 0.045;
-              localX += animal.speciesId === 'deer' ? 0.025 : 0.012;
-            } else partOffsetY += Math.sin(now * 0.0028 + seed) * 0.002;
-          } else if (inst.part === 'tail') {
-            localZ += Math.sin(now * (activity === 'attack' || activity === 'chase' || activity === 'flee' ? 0.012 : 0.006) + seed) * 0.006;
-          }
-          if (activity === 'attack') localX += Math.max(0, Math.sin(phase)) * 0.025;
-          if (activity === 'injured' && inst.part === 'leg-0') partOffsetY += 0.012;
-          const bob = walking
-            ? Math.abs(Math.sin(phase)) * (animal.speciesId === 'rabbit' ? 0.022 : 0.007)
-            : activity === 'birth' ? Math.abs(Math.sin(now * 0.005 + seed)) * 0.012
-              : Math.sin(now * 0.0022 + seed) * 0.001;
-          const dead = activity === 'dead';
-          if (dead) {
-            const rolledY = localZ + 0.09;
-            localZ = -localY;
-            partOffsetY = rolledY - localY;
-          }
-          const cos = Math.cos(yaw), sin = Math.sin(yaw);
-          const rotatedX = localX * cos + localZ * sin;
-          const rotatedZ = -localX * sin + localZ * cos;
-          q.setFromAxisAngle(animalAxisY, yaw);
-          if (dead) q.multiply(animalRollX);
-          m4.compose(
-            v.set(originX + rotatedX, originY + localY + bob + partOffsetY, originZ + rotatedZ),
-            q,
-            sc.set(inst.sx, inst.sy, inst.sz),
-          );
-          mesh.setMatrixAt(index, m4);
-          touched = true;
-        });
-        if (touched) mesh.instanceMatrix.needsUpdate = true;
-      }
-      updateFireLights(now, fireSites);
-    };
+    });
+    decorApiRef.current = decorLayer.sync;
 
     // ---- 人物：按需创建 / 更新 / 回收 ----
-    const figures = new Map<string, FigureParts>();
-    const removeFigure = (figure: FigureParts) => {
-      scene.remove(figure.group);
-      for (const excluded of [figure.sprite, figure.speechBubble]) {
-        const excludedIndex = aoExcluded.indexOf(excluded);
-        if (excludedIndex >= 0) aoExcluded.splice(excludedIndex, 1);
-      }
-      disposeFigure(figure);
-    };
-    const syncAgents = (now: number) => {
-      const p = propsRef.current;
-      const w = p.society.world;
-      const agents = p.society.agents;
-      const embodiedAgent = p.cameraMode.kind === 'embodiment' ? p.cameraMode.agentId : null;
-      const speechBySpeaker = p.speechBySpeaker;
-      const motion = Math.min(1, (now - animStart.current) / MONTH_PLAYBACK_MS);
-      const activeIntentByOwner = new Map(p.society.intents
-        .filter((intent) => intent.status === 'active')
-        .map((intent) => [intent.ownerId, intent]));
-      const agentsByCell = new Map<number, SocietyAgent[]>();
-      for (const agent of agents) {
-        if (agent.bodyDisposition === 'interred') continue;
-        const occupants = agentsByCell.get(agent.cellId);
-        if (occupants) occupants.push(agent);
-        else agentsByCell.set(agent.cellId, [agent]);
-      }
-      const cellOffsetByAgent = new Map<string, { x: number; z: number }>();
-      for (const occupants of agentsByCell.values()) {
-        occupants.sort((left, right) => left.id.localeCompare(right.id));
-        occupants.forEach((agent, index) => {
-          cellOffsetByAgent.set(agent.id, sharedCellOffset(index, occupants.length));
-        });
-      }
-      type IncomingInteraction = {
-        actorId: string;
-        kind: 'handoff' | 'care' | 'listen' | 'companion';
-        sourceOrderInMonth: number;
-      };
-      const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-      const incomingInteractionByAgent = new Map<string, IncomingInteraction>();
-      for (const actor of agents) {
-        const view = actor.visualAction;
-        if (!view?.sourceEventId || !view.targetPersonId || view.targetPersonId === actor.id) continue;
-        const target = agentsById.get(view.targetPersonId);
-        if (!target || target.state === 'dead') continue;
-        const distance = Math.abs(actor.cellId % w.width - target.cellId % w.width)
-          + Math.abs(Math.floor(actor.cellId / w.width) - Math.floor(target.cellId / w.width));
-        if (distance > 1) continue;
-        const kind: IncomingInteraction['kind'] | undefined = view.actionKind === 'transfer'
-          ? 'handoff'
-          : view.actionKind === 'communicate'
-            ? 'listen'
-            : view.operation === 'combine' || view.operation === 'rehydrate' || view.operation === 'dehydrate'
-              ? 'care'
-              : view.operation === 'reproduce' ? 'companion' : undefined;
-        if (!kind) continue;
-        const order = view.sourceOrderInMonth ?? 0;
-        if ((target.visualAction?.sourceOrderInMonth ?? -1) > order) continue;
-        const current = incomingInteractionByAgent.get(target.id);
-        if (!current || current.sourceOrderInMonth <= order) {
-          incomingInteractionByAgent.set(target.id, { actorId: actor.id, kind, sourceOrderInMonth: order });
-        }
-      }
-      for (const agent of agents) {
-        let f = figures.get(agent.id);
-        const visualKey = figureVisualKey(agent);
-        if (f && f.visualKey !== visualKey) {
-          removeFigure(f);
-          figures.delete(agent.id);
-          f = undefined;
-        }
-        if (!f) {
-          f = buildFigure(agent);
-          scene.add(f.group);
-          figures.set(agent.id, f);
-          aoExcluded.push(f.sprite, f.speechBubble); // 名牌和台词气泡都不参与 AO
-        }
-        f.group.visible = agent.bodyDisposition !== 'interred' && agent.id !== embodiedAgent;
-        f.sprite.visible = embodiedAgent === null;
-        if (!f.group.visible) continue;
-        const path = agent.tickPath.length === RULE_TICKS + 1 ? agent.tickPath : agent.lastPath.length ? agent.lastPath : [agent.cellId];
-        const point = embodiedAgent
-          ? { x: agent.cellId % w.width, y: Math.floor(agent.cellId / w.width) }
-          : interpolatePath(path, w.width, motion);
-        const prev = embodiedAgent
-          ? point
-          : interpolatePath(path, w.width, Math.max(0, motion - 0.08));
-        const dx = point.x - prev.x;
-        const dz = point.y - prev.y;
-        const moving = Math.hypot(dx, dz) > 1e-4;
-        const dead = agent.state === 'dead';
-        const sleeping = agent.state === 'dehydrated' || agent.state === 'hibernating';
-        const activeIntent = activeIntentByOwner.get(agent.id);
-        const actionView = figureActionView(agent, activeIntent);
-        const incomingInteraction = incomingInteractionByAgent.get(agent.id);
-        const action = figureActionOf(agent, activeIntent, moving);
-        const phase = hueOf(agent.id) * Math.PI * 2;
-        const cycle = now * 0.012 + phase;
-        const bob = action === 'walk' && !dead && !sleeping ? Math.abs(Math.sin(cycle)) * 0.013 : 0;
-        const offset = cellOffsetByAgent.get(agent.id) ?? { x: 0, z: 0 };
-        f.group.position.set(
-          point.x - w.width / 2 + 0.5 + offset.x,
-          agent.z * CELL_H + (dead ? 0.025 : bob),
-          point.y - w.height / 2 + 0.5 + offset.z,
-        );
-        if (moving && !dead) f.group.rotation.y = Math.atan2(dx, dz);
-        else if (!dead && (agent.visualAction?.targetPersonId || incomingInteraction?.actorId || actionView?.targetPersonId)) {
-          const facingPersonId = agent.visualAction?.targetPersonId ?? incomingInteraction?.actorId ?? actionView?.targetPersonId;
-          const target = agentsById.get(facingPersonId!);
-          if (target) {
-            const targetOffset = cellOffsetByAgent.get(target.id) ?? { x: 0, z: 0 };
-            const tx = target.cellId % w.width - w.width / 2 + 0.5 + targetOffset.x;
-            const tz = Math.floor(target.cellId / w.width) - w.height / 2 + 0.5 + targetOffset.z;
-            f.group.rotation.y = Math.atan2(tx - f.group.position.x, tz - f.group.position.z);
-          }
-        }
-        f.group.rotation.x = dead ? -Math.PI * 0.45 : 0; // 死亡倒地
-        f.upright.visible = !sleeping;
-        f.dehydrated.visible = sleeping;
-        // Canvas 中 30px 字体只占 64px 贴图高度的 30/64；先反算出约 10.5px
-        // 正文字高对应的 Sprite 高度，再限制近、远景的世界尺寸。
-        const labelDepth = Math.max(1, camera.position.distanceTo(f.group.position));
-        const worldUnitsPerPixel = 2 * labelDepth * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5))
-          / Math.max(1, mount.clientHeight);
-        const labelHeight = THREE.MathUtils.clamp(
-          NAME_TAG_TARGET_GLYPH_PX * (64 / 30) * worldUnitsPerPixel,
-          NAME_TAG_MIN_WORLD_H,
-          NAME_TAG_MAX_WORLD_H,
-        );
-        f.sprite.scale.set(labelHeight * 4, labelHeight, 1);
-        // 随缩放同步抬高中心，保证真正有字的区域始终落在头顶，而非覆盖人物。
-        f.sprite.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.25;
-
-        const speechLine = speechBySpeaker.get(agent.id);
-        const speechKey = speechLine ? `${speechLine.id}|${speechLine.text}` : '';
-        if (speechKey !== f.speechKey) {
-          if (speechLine) {
-            setSpeechBubbleTexture(f, speechLine.text, 'center');
-            f.speechBubble.center.y = 0;
-          } else {
-            f.speechTexture?.dispose();
-            f.speechTexture = null;
-            f.speechBubble.material.map = null;
-            f.speechBubble.material.needsUpdate = true;
-            f.speechBubble.center.set(0.5, 0);
-            f.speechPlacement = 'center';
-          }
-          f.speechBubble.visible = Boolean(speechLine) && embodiedAgent === null;
-          f.speechKey = speechKey;
-        }
-        if (speechLine) {
-          const bubbleWorldHeight = THREE.MathUtils.clamp(
-            SPEECH_TARGET_FONT_PX * (f.speechPixelHeight / SPEECH_FONT_PX) * worldUnitsPerPixel,
-            0.35,
-            11,
-          );
-          const bubbleLocalHeight = bubbleWorldHeight / FIGURE_SCALE;
-          f.speechBubble.scale.set(bubbleLocalHeight * f.speechAspect, bubbleLocalHeight, 1);
-          f.speechBubble.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.84;
-        }
-
-        // 每帧先回到站立基准，再叠加权威状态对应的动作姿态。
-        f.upperBody.position.y = 0.3;
-        f.upperBody.rotation.set(0, 0, 0);
-        f.legL.rotation.set(0, 0, 0);
-        f.legR.rotation.set(0, 0, 0);
-        f.armL.rotation.set(0, 0, 0);
-        f.armR.rotation.set(0, 0, 0);
-        f.spear.visible = false;
-        f.handTool.visible = false;
-        f.heldLoad.visible = false;
-        f.heldLoad.position.z = 0.33;
-        f.balance.visible = false;
-        f.balanceBeam.rotation.z = 0;
-        f.tablet.visible = false;
-        f.heldFood.visible = false;
-        const toolKey = actionView?.toolMaterialId !== undefined ? w.palette[actionView.toolMaterialId]?.key : undefined;
-        const materialKey = actionView?.materialId !== undefined ? w.palette[actionView.materialId]?.key : undefined;
-        const toolColor = actionView?.toolMaterialId !== undefined ? w.palette[actionView.toolMaterialId]?.color : undefined;
-        const carriedColor = actionView?.materialId !== undefined ? w.palette[actionView.materialId]?.color : undefined;
-        if (toolColor) (f.toolHead.material as THREE.MeshLambertMaterial).color.setRGB(
-          toolColor[0] / 255, toolColor[1] / 255, toolColor[2] / 255, THREE.SRGBColorSpace,
-        );
-        if (carriedColor) {
-          for (const mesh of [f.heldLoadFill, f.heldFood]) (mesh.material as THREE.MeshLambertMaterial).color.setRGB(
-            carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
-          );
-          (f.balanceLoad.material as THREE.MeshLambertMaterial).color.setRGB(
-            carriedColor[0] / 255, carriedColor[1] / 255, carriedColor[2] / 255, THREE.SRGBColorSpace,
-          );
-        }
-        const clothing = agent.inventory.find((stack) => stack.materialId === Material.LeatherClothing)
-          ?? agent.inventory.find((stack) => stack.materialId === Material.Clothing);
-        f.outerwear.visible = Boolean(clothing);
-        if (clothing) {
-          const color = w.palette[clothing.materialId]?.color;
-          if (color) (f.outerwear.material as THREE.MeshLambertMaterial).color.setRGB(
-            color[0] / 255, color[1] / 255, color[2] / 255, THREE.SRGBColorSpace,
-          );
-        }
-        f.bandage.visible = agent.conditions.some((condition) => condition.kind === 'wound');
-        f.belly.visible = agent.conditions.some((condition) => condition.kind === 'pregnancy');
-        if (!dead && !sleeping) {
-          if (action === 'walk') {
-            const swing = Math.sin(cycle) * 0.55;
-            f.legL.rotation.x = swing;
-            f.legR.rotation.x = -swing;
-            f.armL.rotation.x = -swing * 0.7;
-            f.armR.rotation.x = swing * 0.7;
-          } else if (action === 'gather') {
-            const reach = 0.92 + Math.sin(cycle * 0.8) * 0.12;
-            f.upperBody.position.y = 0.25;
-            f.upperBody.rotation.x = 0.32;
-            f.legL.rotation.x = 0.22;
-            f.legR.rotation.x = -0.18;
-            f.armL.rotation.x = -reach;
-            f.armR.rotation.x = -reach;
-          } else if (action === 'harvest') {
-            const sweep = Math.sin(cycle * 0.72);
-            f.upperBody.position.y = 0.26;
-            f.upperBody.rotation.x = 0.28;
-            f.upperBody.rotation.y = sweep * 0.16;
-            f.legL.rotation.x = 0.24;
-            f.legR.rotation.x = -0.2;
-            f.armL.rotation.x = -0.78 - sweep * 0.18;
-            f.armR.rotation.x = -1.08 + sweep * 0.34;
-            f.handTool.visible = actionView?.toolMaterialId !== undefined;
-          } else if (action === 'attack') {
-            const thrust = Math.sin(cycle * 1.2) * 0.16;
-            f.upperBody.rotation.y = thrust * 0.35;
-            f.legL.rotation.x = 0.22;
-            f.legR.rotation.x = -0.22;
-            f.armL.rotation.x = -1.02 - thrust;
-            f.armR.rotation.x = -1.18 - thrust;
-            f.spear.visible = toolKey === 'spear';
-            f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
-          } else if (action === 'carry') {
-            f.armL.rotation.x = -0.98;
-            f.armR.rotation.x = -0.98;
-            f.heldLoad.position.y = 0.44 + Math.sin(cycle) * 0.015;
-            if (agent.visualAction?.sourceEventId && agent.visualAction.targetPersonId) {
-              const target = agentsById.get(agent.visualAction.targetPersonId);
-              if (target) {
-                const targetOffset = cellOffsetByAgent.get(target.id) ?? { x: 0, z: 0 };
-                const tx = target.cellId % w.width - w.width / 2 + 0.5 + targetOffset.x;
-                const tz = Math.floor(target.cellId / w.width) - w.height / 2 + 0.5 + targetOffset.z;
-                const distance = Math.hypot(tx - f.group.position.x, tz - f.group.position.z);
-                f.heldLoad.position.z = THREE.MathUtils.clamp(distance / (FIGURE_SCALE * 2), 0.36, 0.9);
-              }
-            }
-            f.heldLoad.visible = true;
-          } else if (action === 'ingest') {
-            const sip = 0.08 + Math.abs(Math.sin(cycle * 0.65)) * 0.14;
-            f.armR.rotation.x = -1.65 + sip;
-            f.armR.rotation.z = -0.18;
-            f.armL.rotation.x = -1.18;
-            f.heldFood.visible = true;
-          } else if (action === 'work') {
-            const strike = 0.45 + (Math.sin(cycle * 0.8) + 1) * 0.65;
-            f.upperBody.rotation.x = 0.16;
-            f.legL.rotation.x = 0.2;
-            f.legR.rotation.x = -0.16;
-            f.armL.rotation.x = -0.7;
-            f.armR.rotation.x = -strike;
-            f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
-          } else if (action === 'craft') {
-            const work = 0.92 + Math.sin(cycle * 0.7) * 0.22;
-            f.upperBody.position.y = 0.24;
-            f.upperBody.rotation.x = 0.38;
-            f.legL.rotation.x = 0.34;
-            f.legR.rotation.x = -0.28;
-            f.armL.rotation.x = -work;
-            f.armR.rotation.x = -work * 1.08;
-            f.handTool.visible = toolKey === 'stone_tool' || toolKey === 'bone_tool';
-          } else if (action === 'tend-fire') {
-            f.upperBody.position.y = 0.25;
-            f.upperBody.rotation.x = 0.32;
-            f.armL.rotation.x = -1.02 + Math.sin(cycle * 0.55) * 0.08;
-            f.armR.rotation.x = -1.12 - Math.sin(cycle * 0.55) * 0.08;
-            f.legL.rotation.x = 0.28;
-            f.legR.rotation.x = -0.2;
-          } else if (action === 'attend') {
-            const hasBalance = Boolean(agent.visualAction?.sourceEventId
-              && actionView?.measurementMode
-              && toolKey === 'beam_balance');
-            const hasTablet = !hasBalance && (toolKey === 'wood_tablet' || materialKey === 'wood_tablet'
-              || actionView?.channel === 'record');
-            f.balance.visible = hasBalance;
-            if (hasBalance) f.balanceBeam.rotation.z = Math.sin(cycle * 0.45) * 0.045;
-            f.tablet.visible = hasTablet;
-            f.armL.rotation.x = hasBalance ? -1.18 : hasTablet ? -1.05 : -0.22;
-            f.armR.rotation.x = hasBalance ? -1.18 : hasTablet ? -0.72 : -1.48;
-            f.armR.rotation.z = hasTablet ? 0.08 : -0.42;
-            f.upperBody.rotation.x = hasBalance ? 0.08 : hasTablet ? 0.12 : -0.03;
-          } else if (action === 'communicate') {
-            const gesture = Math.sin(cycle * 0.52);
-            f.armL.rotation.x = -0.45 - gesture * 0.32;
-            f.armL.rotation.z = 0.42;
-            f.armR.rotation.x = -0.72 + gesture * 0.28;
-            f.armR.rotation.z = -0.36;
-          } else if (action === 'care') {
-            f.upperBody.rotation.x = 0.28;
-            f.armL.rotation.x = -1.08 + Math.sin(cycle * 0.45) * 0.08;
-            f.armR.rotation.x = -1.08 - Math.sin(cycle * 0.45) * 0.08;
-            f.heldFood.visible = materialKey === 'herbal_medicine' || materialKey === 'water' || materialKey === 'ice';
-          } else if (action === 'reproduce') {
-            f.armL.rotation.x = -0.52;
-            f.armL.rotation.z = 0.3;
-            f.armR.rotation.x = -0.52;
-            f.armR.rotation.z = -0.3;
-            f.upperBody.position.y = 0.3 + Math.sin(cycle * 0.32) * 0.008;
-          } else if (agent.conditions.some((condition) => condition.kind === 'cold')) {
-            f.upperBody.rotation.x = 0.18;
-            f.armL.rotation.x = -0.88;
-            f.armL.rotation.z = -0.42;
-            f.armR.rotation.x = -0.88;
-            f.armR.rotation.z = 0.42;
-          } else if (agent.conditions.some((condition) => condition.kind === 'heat' || condition.kind === 'illness')) {
-            f.upperBody.position.y = 0.26;
-            f.upperBody.rotation.x = 0.22;
-            f.armL.rotation.x = -0.25;
-            f.armR.rotation.x = -0.18;
-          }
-          // 接收方姿态只来自同月已提交、且没有被自己更晚动作覆盖的互动事实。
-          if (incomingInteraction?.kind === 'handoff') {
-            f.upperBody.rotation.x = 0.08;
-            f.armL.rotation.x = -1.08;
-            f.armR.rotation.x = -1.08;
-            f.armL.rotation.z = 0.16;
-            f.armR.rotation.z = -0.16;
-          } else if (incomingInteraction?.kind === 'care') {
-            f.upperBody.position.y = 0.27;
-            f.upperBody.rotation.x = 0.18;
-            f.armL.rotation.x = -0.38;
-            f.armR.rotation.x = -0.34;
-          } else if (incomingInteraction?.kind === 'listen') {
-            f.upperBody.rotation.y = Math.sin(cycle * 0.28) * 0.035;
-            f.armL.rotation.x = -0.18;
-            f.armR.rotation.x = -0.28;
-          } else if (incomingInteraction?.kind === 'companion') {
-            f.armL.rotation.x = -0.48;
-            f.armL.rotation.z = 0.24;
-            f.armR.rotation.x = -0.48;
-            f.armR.rotation.z = -0.24;
-          }
-        }
-        const selected = p.selectedAgentId === agent.id
-          || (p.selectedObject?.kind === 'agent' && p.selectedObject.id === agent.id);
-        const highlighted = agent.name === p.speaker || selected;
-        const key = `${agent.name}|${highlighted}|${selected}`;
-        if (key !== f.spriteKey) {
-          f.sprite.material.map = nameTexture(agent.name, selected ? '#ffffff' : highlighted ? '#fde68a' : '#e2e8f0');
-          // 常态名牌服从场景遮挡；仅当前说话者允许穿透，避免整片树林上漂满文字。
-          f.sprite.material.depthTest = !highlighted;
-          f.sprite.material.opacity = highlighted ? 1 : 0.9;
-          f.sprite.renderOrder = highlighted ? 20 : 5;
-          f.spriteKey = key;
-        }
-      }
-      for (const [id, f] of figures) {
-        if (!agents.some((a) => a.id === id)) {
-          removeFigure(f);
-          figures.delete(id);
-        }
-      }
-    };
-
-    interface SpeechLayoutRect {
-      left: number;
-      right: number;
-      top: number;
-      bottom: number;
-    }
-    interface SpeechLayoutItem {
-      figure: FigureParts;
-      text: string;
-      anchorX: number;
-      anchorY: number;
-      width: number;
-      height: number;
-    }
-    interface SpeechLayoutCandidate {
-      placement: SpeechBubblePlacement;
-      lane: number;
-      lift: number;
-      rect: SpeechLayoutRect;
-      cost: number;
-    }
-    const speechAnchorWorld = new THREE.Vector3();
-    const speechAnchorView = new THREE.Vector3();
-    const speechProjected = new THREE.Vector3();
-    const speechWorldScale = new THREE.Vector3();
-    const overlapArea = (left: SpeechLayoutRect, right: SpeechLayoutRect): number => Math.max(
-      0,
-      Math.min(left.right, right.right) - Math.max(left.left, right.left),
-    ) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
-    const layoutSpeechBubbles = () => {
-      const viewportWidth = mount.clientWidth;
-      const viewportHeight = mount.clientHeight;
-      if (viewportWidth <= 0 || viewportHeight <= 0) return;
-      camera.updateMatrixWorld();
-      const items: SpeechLayoutItem[] = [];
-      for (const line of propsRef.current.speechBySpeaker.values()) {
-        const figure = figures.get(line.speakerId);
-        if (!figure?.speechBubble.visible) continue;
-        figure.group.updateWorldMatrix(true, false);
-        figure.speechBubble.getWorldPosition(speechAnchorWorld);
-        speechProjected.copy(speechAnchorWorld).project(camera);
-        if (speechProjected.z < -1 || speechProjected.z > 1) continue;
-        speechAnchorView.copy(speechAnchorWorld).applyMatrix4(camera.matrixWorldInverse);
-        const depth = Math.max(0.01, -speechAnchorView.z);
-        const worldUnitsPerPixel = 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5))
-          / viewportHeight;
-        figure.speechBubble.getWorldScale(speechWorldScale);
-        items.push({
-          figure,
-          text: line.text,
-          anchorX: (speechProjected.x + 1) * 0.5 * viewportWidth,
-          anchorY: (1 - speechProjected.y) * 0.5 * viewportHeight,
-          width: speechWorldScale.x / worldUnitsPerPixel,
-          height: speechWorldScale.y / worldUnitsPerPixel,
-        });
-      }
-      if (!items.length) return;
-
-      const laneStep = Math.max(...items.map((item) => item.height)) + SPEECH_COLLISION_GAP_PX;
-      const meanAnchorX = items.reduce((sum, item) => sum + item.anchorX, 0) / items.length;
-      const candidates = items.map((item): SpeechLayoutCandidate[] => {
-        const outwardFirst: SpeechBubblePlacement = item.anchorX <= meanAnchorX ? 'body-left' : 'body-right';
-        const placements: SpeechBubblePlacement[] = ['center', outwardFirst,
-          outwardFirst === 'body-left' ? 'body-right' : 'body-left'];
-        return Array.from({ length: items.length }, (_, lane) => placements.map((placement) => {
-          const anchorRatio = speechBubbleAnchorX(item.figure.speechPixelWidth, placement);
-          const lift = lane * laneStep;
-          const left = item.anchorX - anchorRatio * item.width;
-          const bottom = item.anchorY - lift;
-          const rect = { left, right: left + item.width, top: bottom - item.height, bottom };
-          const overflow = Math.max(0, 10 - rect.left)
-            + Math.max(0, rect.right - viewportWidth + 10)
-            + Math.max(0, 10 - rect.top)
-            + Math.max(0, rect.bottom - viewportHeight + 10);
-          const pointsAway = placement === outwardFirst;
-          return {
-            placement,
-            lane,
-            lift,
-            rect,
-            cost: lane * 140 + (placement === 'center' ? 0 : pointsAway ? 14 : 42) + overflow * 1_000,
-          };
-        })).flat();
-      });
-
-      let bestCost = Number.POSITIVE_INFINITY;
-      let best: SpeechLayoutCandidate[] = [];
-      const chosen: SpeechLayoutCandidate[] = [];
-      const search = (index: number, cost: number) => {
-        if (cost >= bestCost) return;
-        if (index >= candidates.length) {
-          bestCost = cost;
-          best = [...chosen];
-          return;
-        }
-        for (const candidate of candidates[index]) {
-          const collisionCost = chosen.reduce(
-            (sum, placed) => sum + overlapArea(candidate.rect, placed.rect) * 10_000,
-            0,
-          );
-          chosen.push(candidate);
-          search(index + 1, cost + candidate.cost + collisionCost);
-          chosen.pop();
-        }
-      };
-      search(0, 0);
-
-      items.forEach((item, index) => {
-        const placement = best[index] ?? candidates[index][0];
-        if (placement.placement !== item.figure.speechPlacement) {
-          setSpeechBubbleTexture(item.figure, item.text, placement.placement);
-        }
-        const anchorRatio = speechBubbleAnchorX(item.figure.speechPixelWidth, placement.placement);
-        item.figure.speechBubble.center.set(anchorRatio, -placement.lift / Math.max(1, item.height));
-      });
-    };
+    const figureLayer = createFigureLayer({
+      scene,
+      camera,
+      aoExcluded,
+      cellHeight: CELL_H,
+      readViewport: () => ({ width: mount.clientWidth, height: mount.clientHeight }),
+      readFrame: () => {
+        const current = propsRef.current;
+        return {
+          society: current.society,
+          embodiedAgentId: current.cameraMode.kind === 'embodiment'
+            ? current.cameraMode.agentId
+            : null,
+          speechBySpeaker: current.speechBySpeaker,
+          speaker: current.speaker,
+          selectedAgentId: current.selectedAgentId,
+          selectedObject: current.selectedObject,
+          animationStartedAt: animStart.current,
+        };
+      },
+    });
 
     // ---- 点选人物 / 权威结构；拖拽镜头不会触发选择，点击空白收起信息 ----
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
-    const risePinch = new PinchTransitionGesture('zoom-out');
     let selectionPointerDown: { x: number; y: number } | null = null;
     const emitSelection = (selection: SocietySceneSelection) => {
       const p = propsRef.current;
@@ -4590,7 +1528,7 @@ void main() {`,
         selectionPointerDown = null;
         return;
       }
-      if (event.pointerType === 'touch' && risePinch.consumeTapSuppression(event.pointerId)) {
+      if (event.pointerType === 'touch' && cameraRuntime.consumeSelectionTapSuppression(event.pointerId)) {
         selectionPointerDown = null;
         return;
       }
@@ -4606,9 +1544,9 @@ void main() {`,
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const figureHits = raycaster.intersectObjects([...figures.values()].map((figure) => figure.group), true);
-      if (figureHits.length) {
-        emitSelection(selectionFromHit(figureHits[0].object));
+      const figureHit = figureLayer.intersect(raycaster);
+      if (figureHit) {
+        emitSelection(selectionFromHit(figureHit.object));
         return;
       }
       const structureHits = raycaster.intersectObjects(structureSelectionGroup.children, true);
@@ -4642,7 +1580,7 @@ void main() {`,
     let nextReticleUpdateAt = 0;
     let lastReticleHitAt = Number.NEGATIVE_INFINITY;
     const updateEmbodimentReticle = (now: number) => {
-      if (!embodimentCamera.isActive()) {
+      if (!cameraRuntime.isEmbodimentActive()) {
         nextReticleUpdateAt = 0;
         lastReticleHitAt = Number.NEGATIVE_INFINITY;
         emitEmbodimentTarget(null);
@@ -4652,8 +1590,8 @@ void main() {`,
       nextReticleUpdateAt = now + 1_000 / 30;
       reticleCandidates.length = 0;
       for (const [agentId] of embodimentPersonTargetById) {
-        const figure = figures.get(agentId);
-        if (figure?.group.visible) reticleCandidates.push(figure.pickProxy);
+        const pickProxy = figureLayer.visiblePickProxy(agentId);
+        if (pickProxy) reticleCandidates.push(pickProxy);
       }
       for (const child of structureSelectionGroup.children) {
         if (typeof child.userData.structureId === 'string'
@@ -4682,175 +1620,11 @@ void main() {`,
       if (now - lastReticleHitAt >= 110) emitEmbodimentTarget(null);
     };
 
-    // ---- 滚轮 / 键盘 / 双指缩放持续越过阈值 → 请求升起返回宇宙 ----
-    let zoomOutAcc = 0;
-    let zoomOutAsked = false;
-    const requestZoomOut = () => {
-      if (propsRef.current.cameraMode.kind === 'embodiment') return;
-      if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
-      zoomOutAsked = true;
-      controls.maxDistance = Math.max(600, controls.maxDistance * 1.8); // 过场期间允许继续升高
-      propsRef.current.onZoomOutRequest();
-    };
-    const accumulateZoomOut = (deltaY: number) => {
-      if (propsRef.current.cameraMode.kind === 'embodiment') return;
-      if (zoomOutAsked || !propsRef.current.onZoomOutRequest) return;
-      if (deltaY > 0 && camera.position.distanceTo(controls.target) >= controls.maxDistance - 0.6) {
-        zoomOutAcc += deltaY;
-        if (zoomOutAcc > 300) requestZoomOut();
-      } else {
-        zoomOutAcc = 0;
-      }
-    };
-    const onWheelOut = (ev: WheelEvent) => { accumulateZoomOut(ev.deltaY); };
-    const onRisePinchPointerDown = (ev: PointerEvent) => {
-      if (propsRef.current.cameraMode.kind === 'embodiment') return;
-      if (ev.pointerType !== 'touch') return;
-      risePinch.pointerDown(ev.pointerId, ev.clientX, ev.clientY);
-    };
-    const onRisePinchPointerMove = (ev: PointerEvent) => {
-      if (propsRef.current.cameraMode.kind === 'embodiment') return;
-      if (ev.pointerType !== 'touch') return;
-      const update = risePinch.pointerMove(ev.pointerId, ev.clientX, ev.clientY);
-      if (update.triggered) requestZoomOut();
-    };
-    const onRisePinchPointerUp = (ev: PointerEvent) => {
-      if (ev.pointerType === 'touch') risePinch.pointerUp(ev.pointerId);
-    };
-    const onRisePinchPointerCancel = (ev: PointerEvent) => {
-      if (ev.pointerType !== 'touch') return;
-      risePinch.pointerCancel(ev.pointerId);
-      risePinch.consumeTapSuppression(ev.pointerId);
-      selectionPointerDown = null;
-    };
-    canvas.addEventListener('pointerdown', onRisePinchPointerDown);
-    canvas.addEventListener('pointermove', onRisePinchPointerMove);
-    canvas.addEventListener('pointerup', onRisePinchPointerUp);
-    canvas.addEventListener('pointercancel', onRisePinchPointerCancel);
+    cameraRuntime.attachInput({
+      onSelectionGestureCancel: () => { selectionPointerDown = null; },
+    });
     canvas.addEventListener('pointerdown', onSelectionPointerDown);
     canvas.addEventListener('pointerup', onSelectionPointerUp);
-    canvas.addEventListener('wheel', onWheelOut, { passive: true });
-
-    // ---- 键盘镜头：WASD 沿当前视角平移，↑↓ 复用滚轮的距离语义 ----
-    const pressedKeys = new Set<string>();
-    const embodimentPressedKeys = new Set<'KeyW' | 'KeyA' | 'KeyS' | 'KeyD'>();
-    type EmbodimentMovementKey = 'KeyW' | 'KeyA' | 'KeyS' | 'KeyD';
-    let emittedEmbodimentHoldDirection: EmbodimentMoveDirection | null = null;
-    let emittedEmbodimentHoldCode: EmbodimentMovementKey | null = null;
-    const emitEmbodimentHoldDirection = (
-      direction: EmbodimentMoveDirection | null,
-      requestStep: boolean,
-      code: EmbodimentMovementKey | null,
-    ) => {
-      if (direction === emittedEmbodimentHoldDirection && code === emittedEmbodimentHoldCode) return;
-      const directionChanged = direction !== emittedEmbodimentHoldDirection;
-      emittedEmbodimentHoldDirection = direction;
-      emittedEmbodimentHoldCode = code;
-      if (directionChanged) propsRef.current.onEmbodimentMoveHoldChange?.(direction);
-      if (requestStep && direction && directionChanged) propsRef.current.onEmbodimentMove?.(direction);
-    };
-    const cameraMove = new THREE.Vector3();
-    const viewForward = new THREE.Vector3();
-    const viewRight = new THREE.Vector3();
-    const cameraOffset = new THREE.Vector3();
-    const handledKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown']);
-    const isEditableTarget = (target: EventTarget | null) => target instanceof HTMLElement
-      && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (propsRef.current.cameraMode.kind === 'embodiment') {
-        if (!['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(ev.code)
-          || ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
-        ev.preventDefault();
-        const code = ev.code as EmbodimentMovementKey;
-        embodimentPressedKeys.delete(code);
-        embodimentPressedKeys.add(code);
-        const direction = embodimentCamera.directionForKey(
-          code,
-          emittedEmbodimentHoldCode === code ? emittedEmbodimentHoldDirection ?? undefined : undefined,
-        );
-        // Always forward a deliberate key press. The parent serializes
-        // authority commands and retains at most one next direction, including
-        // while this presentation-only camera interpolation is still running.
-        propsRef.current.onEmbodimentMove?.(direction);
-        emitEmbodimentHoldDirection(direction, false, code);
-        return;
-      }
-      if (!handledKeys.has(ev.code) || ev.metaKey || ev.ctrlKey || ev.altKey || isEditableTarget(ev.target)) return;
-      ev.preventDefault();
-      pressedKeys.add(ev.code);
-    };
-    const onKeyUp = (ev: KeyboardEvent) => {
-      if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(ev.code)) {
-        embodimentPressedKeys.delete(ev.code as EmbodimentMovementKey);
-        const remainingCode = [...embodimentPressedKeys].at(-1);
-        emitEmbodimentHoldDirection(remainingCode
-          ? embodimentCamera.directionForKey(
-            remainingCode,
-            emittedEmbodimentHoldCode === remainingCode
-              ? emittedEmbodimentHoldDirection ?? undefined
-              : undefined,
-          )
-          : null, false, remainingCode ?? null);
-      }
-      pressedKeys.delete(ev.code);
-      if (ev.code === 'ArrowDown' && !zoomOutAsked) zoomOutAcc = 0;
-    };
-    const clearPressedKeys = () => {
-      pressedKeys.clear();
-      embodimentPressedKeys.clear();
-      emitEmbodimentHoldDirection(null, false, null);
-      if (!zoomOutAsked) zoomOutAcc = 0;
-    };
-    const updateKeyboardCamera = (deltaSeconds: number) => {
-      if (embodimentCamera.isActive()) {
-        pressedKeys.clear();
-        return;
-      }
-      if (!controls.enabled || pressedKeys.size === 0) return;
-
-      const forwardAxis = Number(pressedKeys.has('KeyW')) - Number(pressedKeys.has('KeyS'));
-      const rightAxis = Number(pressedKeys.has('KeyD')) - Number(pressedKeys.has('KeyA'));
-      if (forwardAxis !== 0 || rightAxis !== 0) {
-        viewForward.subVectors(controls.target, camera.position);
-        viewForward.y = 0;
-        if (viewForward.lengthSq() < 1e-6) camera.getWorldDirection(viewForward).setY(0);
-        viewForward.normalize();
-        viewRight.crossVectors(viewForward, camera.up).normalize();
-        cameraMove.set(0, 0, 0)
-          .addScaledVector(viewForward, forwardAxis)
-          .addScaledVector(viewRight, rightAxis);
-        if (cameraMove.lengthSq() > 0) {
-          const distance = camera.position.distanceTo(controls.target);
-          const speed = THREE.MathUtils.clamp(distance * 0.28, 7, 36);
-          cameraMove.normalize().multiplyScalar(speed * deltaSeconds);
-          const halfX = Math.max(1, world0.width * 0.5 - CAMERA_TARGET_INSET_X);
-          const halfZ = Math.max(1, world0.height * 0.5 - CAMERA_TARGET_INSET_Z);
-          const nextX = THREE.MathUtils.clamp(cameraTarget.x + cameraMove.x, -halfX, halfX);
-          const nextZ = THREE.MathUtils.clamp(cameraTarget.z + cameraMove.z, -halfZ, halfZ);
-          cameraMove.set(nextX - cameraTarget.x, 0, nextZ - cameraTarget.z);
-          cameraTarget.add(cameraMove);
-          controls.target.add(cameraMove);
-          camera.position.add(cameraMove);
-        }
-      }
-
-      const zoomAxis = Number(pressedKeys.has('ArrowDown')) - Number(pressedKeys.has('ArrowUp'));
-      if (zoomAxis !== 0) {
-        cameraOffset.subVectors(camera.position, controls.target);
-        const distance = cameraOffset.length();
-        const nextDistance = THREE.MathUtils.clamp(
-          distance * Math.exp(zoomAxis * 1.1 * deltaSeconds),
-          controls.minDistance,
-          controls.maxDistance,
-        );
-        if (distance > 1e-6) camera.position.copy(controls.target).addScaledVector(cameraOffset.normalize(), nextDistance);
-        if (zoomAxis > 0) accumulateZoomOut(520 * deltaSeconds);
-        else if (!zoomOutAsked) zoomOutAcc = 0;
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', clearPressedKeys);
 
     // ---- 后处理管线：Render → 轻量 GTAO → 自适应移轴 → ACES 输出 → FXAA ----
     const composer = new EffectComposer(renderer);
@@ -4875,22 +1649,12 @@ void main() {`,
     composer.addPass(fxaaPass);
 
     // 交互时优先保证镜头跟手；松手后恢复环境遮蔽和景深表现。
-    let overviewControlsActive = false;
-    const onControlsStart = () => {
-      overviewControlsActive = true;
-      gtaoPass.enabled = false;
-      tiltShiftPass.enabled = false;
-    };
-    const onControlsEnd = () => {
-      overviewControlsActive = false;
-      gtaoPass.enabled = !embodimentCamera.isActive();
-      tiltShiftPass.enabled = !embodimentCamera.isActive();
-    };
-    controls.addEventListener('start', onControlsStart);
-    controls.addEventListener('end', onControlsEnd);
+    cameraRuntime.setOverviewInteractionListener((active, embodimentActive) => {
+      gtaoPass.enabled = !active && !embodimentActive;
+      tiltShiftPass.enabled = !active && !embodimentActive;
+    });
 
     const tiltFocusWorld = new THREE.Vector3();
-    const tiltCandidateWorld = new THREE.Vector3();
     const tiltFocusProjected = new THREE.Vector3();
     let tiltFocusY = 0.5;
     let tiltStrength = 0;
@@ -4901,10 +1665,7 @@ void main() {`,
       let hasSubject = false;
 
       if (selection?.kind === 'agent') {
-        const figure = figures.get(selection.id);
-        if (figure) {
-          figure.group.updateWorldMatrix(true, false);
-          figure.group.getWorldPosition(tiltFocusWorld);
+        if (figureLayer.writeWorldPosition(selection.id, tiltFocusWorld)) {
           tiltFocusWorld.y += 0.8;
           hasSubject = true;
         }
@@ -4920,33 +1681,19 @@ void main() {`,
       }
 
       // 没有显式选择时让清晰带照顾正在发生的对话；多个说话者取平均位置。
-      if (!hasSubject) {
-        let speakerCount = 0;
-        tiltFocusWorld.set(0, 0, 0);
-        for (const speakerId of propsRef.current.speechBySpeaker.keys()) {
-          const figure = figures.get(speakerId);
-          if (!figure?.speechBubble.visible) continue;
-          figure.group.updateWorldMatrix(true, false);
-          figure.group.getWorldPosition(tiltCandidateWorld);
-          tiltCandidateWorld.y += 0.9;
-          tiltFocusWorld.add(tiltCandidateWorld);
-          speakerCount++;
-        }
-        if (speakerCount > 0) {
-          tiltFocusWorld.multiplyScalar(1 / speakerCount);
-          hasSubject = true;
-        }
-      }
+      if (!hasSubject) hasSubject = figureLayer.writeSpeechFocus(tiltFocusWorld);
 
-      if (!hasSubject) tiltFocusWorld.copy(controls.target);
+      if (!hasSubject) cameraRuntime.copyOverviewTarget(tiltFocusWorld);
       camera.updateMatrixWorld();
       tiltFocusProjected.copy(tiltFocusWorld).project(camera);
       const desiredFocusY = THREE.MathUtils.clamp(tiltFocusProjected.y * 0.5 + 0.5, 0.18, 0.82);
       tiltFocusY = THREE.MathUtils.damp(tiltFocusY, desiredFocusY, 8, deltaSeconds);
 
-      const distanceRatio = camera.position.distanceTo(controls.target) / Math.max(1, cameraFitDistance);
+      const distanceRatio = cameraRuntime.overviewDistanceRatio();
       const overviewMix = THREE.MathUtils.smoothstep(distanceRatio, 0.18, 1.05);
-      const transitionVisibility = zoomOutAsked ? 0 : THREE.MathUtils.smoothstep(entryT, 0.5, 1);
+      const transitionVisibility = cameraRuntime.isZoomOutTransitionRequested()
+        ? 0
+        : THREE.MathUtils.smoothstep(entryT, 0.5, 1);
       const desiredStrength = (0.12 + overviewMix * 0.88) * transitionVisibility;
       const desiredBand = THREE.MathUtils.lerp(0.24, hasSubject ? 0.155 : 0.135, overviewMix);
       const desiredBlurCssPixels = THREE.MathUtils.lerp(0.8, hasSubject ? 4.5 : 5.5, overviewMix);
@@ -4965,20 +1712,10 @@ void main() {`,
       const wpx = mount.clientWidth;
       const hpx = mount.clientHeight;
       if (wpx <= 0 || hpx <= 0) return;
-      const maxPixelRatio = embodimentCamera.isActive()
-        ? EMBODIMENT_MAX_PIXEL_RATIO
-        : SOCIETY_MAX_PIXEL_RATIO;
+      const maxPixelRatio = cameraRuntime.pixelRatioCap();
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
       renderer.setSize(wpx, hpx, false);
-      camera.aspect = wpx / hpx;
-      if (embodimentCamera.isActive()) {
-        camera.clearViewOffset();
-        camera.updateProjectionMatrix();
-      } else {
-        // 选择完整画幅下方 7% 的视窗，相当于把地表主体稳定上提 7%，且不改变旋转中心。
-        camera.setViewOffset(wpx, hpx, 0, hpx * 0.07, wpx, hpx);
-        updateCameraFit(wpx, hpx);
-      }
+      cameraRuntime.resizeCamera(wpx, hpx);
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(wpx, hpx); // 内部会把 GTAO 等 Pass 按 pixelRatio 换算
       const pr = renderer.getPixelRatio();
@@ -4988,7 +1725,7 @@ void main() {`,
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
     resize();
-    let resizedForEmbodiment = embodimentCamera.isActive();
+    let resizedForEmbodiment = cameraRuntime.isEmbodimentActive();
 
     // ---- 主循环 ----
     let raf = 0;
@@ -5000,81 +1737,30 @@ void main() {`,
       const now = performance.now();
       const deltaSeconds = Math.min(0.05, Math.max(0, (now - previousFrameAt) / 1_000));
       previousFrameAt = now;
-      syncAgents(now);
-      syncAnimatedDecor(now);
+      figureLayer.sync(now);
+      decorLayer.animate(now);
       waterFlowUniforms.uTime.value = now * 0.001;
-      updateWeather(now, deltaSeconds);
-      updateLighting(deltaSeconds);
-      updateClouds(deltaSeconds);
-      humanMeteors.update(deltaSeconds, camera, skyStarVisibility);
+      environmentRuntime.updateBeforeCamera(now, deltaSeconds);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
-      const warmGlow = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
-      const redGlow = 1.35 + 0.2 * Math.sin(now * 0.014 + 1) + 0.08 * Math.sin(now * 0.031);
-      const decorMaterialSets = new Set<DecorMaterialSet>([
-        DECOR_MATS,
-        settlementDecorMaterials,
-        ...(settlementEraTransition ? [settlementEraTransition.outgoingMaterials] : []),
-      ]);
-      for (const materials of decorMaterialSets) {
-        materials.glowWarm.emissiveIntensity = warmGlow;
-        materials.glowRed.emissiveIntensity = redGlow;
-      }
-      updateSettlementEraTransition(now);
-      // 入场：从太空高位丝滑下降（easeOutCubic），结束后开放相机控制
-      const entryT = Math.min(1, (now - mountedAt) / 1100);
-      const entryE = 1 - Math.pow(1 - entryT, 3);
-      const embodimentActive = embodimentCamera.isActive();
+      decorLayer.updateTransition(now);
+      const embodimentActive = cameraRuntime.isEmbodimentActive();
       if (resizedForEmbodiment !== embodimentActive) {
         resizedForEmbodiment = embodimentActive;
         resize();
       }
-      if (embodimentActive) {
-        controls.enabled = false;
-        embodimentCamera.update(now);
-        const heldCode = [...embodimentPressedKeys].at(-1);
-        if (heldCode) emitEmbodimentHoldDirection(
-          embodimentCamera.directionForKey(
-            heldCode,
-            emittedEmbodimentHoldCode === heldCode
-              ? emittedEmbodimentHoldDirection ?? undefined
-              : undefined,
-          ),
-          true,
-          heldCode,
-        );
+      const cameraFrame = cameraRuntime.update(now, deltaSeconds);
+      if (cameraFrame.embodimentActive) {
         gtaoPass.enabled = false;
         tiltShiftPass.enabled = false;
-        updateEmbodimentReticle(now);
       } else {
-        if (embodimentPressedKeys.size) {
-          embodimentPressedKeys.clear();
-          emitEmbodimentHoldDirection(null, false, null);
-        }
-        if (entryT < 1) {
-          camera.position.lerpVectors(cameraEntry, cameraFinal, entryE);
-          camera.lookAt(cameraTarget);
-        } else if (!controls.enabled) {
-          camera.position.copy(cameraFinal);
-          camera.lookAt(cameraTarget);
-          controls.enabled = true;
-          controls.saveState(); // “复位视角”落到入场后的机位
-        }
-        updateKeyboardCamera(deltaSeconds);
-        controls.update();
-        gtaoPass.enabled = !overviewControlsActive;
-        tiltShiftPass.enabled = !overviewControlsActive;
-        updateTiltShift(deltaSeconds, entryT);
-        updateEmbodimentReticle(now);
+        gtaoPass.enabled = !cameraFrame.overviewControlsActive;
+        tiltShiftPass.enabled = !cameraFrame.overviewControlsActive;
+        updateTiltShift(deltaSeconds, cameraFrame.entryProgress);
       }
-      layoutSpeechBubbles();
-      // 天体距离视为无限远：平移镜头时只移动观察点，不让星野产生近景视差。
-      if (skyStars) {
-        skyStars.position.copy(camera.position);
-        camera.getWorldDirection(liveCameraDirection);
-        skyAtmosphereUniforms.uVerticalBias.value = -liveCameraDirection.y;
-      }
-      updateHumanSky(deltaSeconds);
+      updateEmbodimentReticle(now);
+      figureLayer.layoutSpeechBubbles();
+      environmentRuntime.updateAfterCamera(deltaSeconds);
       composer.render();
     };
     const onVisibilityChange = () => {
@@ -5092,21 +1778,10 @@ void main() {`,
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', clearPressedKeys);
       ro.disconnect();
-      canvas.removeEventListener('wheel', onWheelOut);
-      canvas.removeEventListener('pointerdown', onRisePinchPointerDown);
-      canvas.removeEventListener('pointermove', onRisePinchPointerMove);
-      canvas.removeEventListener('pointerup', onRisePinchPointerUp);
-      canvas.removeEventListener('pointercancel', onRisePinchPointerCancel);
       canvas.removeEventListener('pointerdown', onSelectionPointerDown);
       canvas.removeEventListener('pointerup', onSelectionPointerUp);
-      controls.removeEventListener('start', onControlsStart);
-      controls.removeEventListener('end', onControlsEnd);
-      controls.dispose();
-      embodimentCamera.dispose();
+      cameraRuntime.dispose();
       terrainApiRef.current = null;
       lightApiRef.current = null;
       decorApiRef.current = null;
@@ -5114,17 +1789,8 @@ void main() {`,
       selectionApiRef.current = null;
       cameraModeApiRef.current = null;
       embodimentTargetsApiRef.current = null;
-      animatedDecorBatches = [];
-      if (settlementEraTransition) {
-        disposeOutgoingSettlementDecor(
-          settlementEraTransition.outgoingGroup,
-          settlementEraTransition.outgoingMaterials,
-        );
-        settlementEraTransition = null;
-      }
-      for (const f of figures.values()) disposeFigure(f);
-      figures.clear();
-      for (const child of [...decorGroup.children]) (child as THREE.InstancedMesh).dispose(); // 释放装饰层实例缓冲
+      decorLayer.dispose();
+      figureLayer.dispose();
       for (const entry of structureSelectionById.values()) entry.mesh.geometry.dispose();
       structureSelectionById.clear();
       structureSelectionGroup.clear();
@@ -5133,18 +1799,7 @@ void main() {`,
       embodimentTargetGroup.clear();
       embodimentTargetGeometry.dispose();
       embodimentTargetMaterial.dispose();
-      scene.environment = null;
-      scene.background = null;
-      skyGlowTexture.dispose();
-      skySurfaceTextures.forEach((texture) => texture.dispose());
-      cloudNoiseTexture.dispose();
-      cloudShadowTexture.dispose();
-      cloudShadowMaterial.dispose();
-      skyTexture?.dispose();
-      environmentTarget?.dispose();
-      humanMeteors.dispose();
-      distantSky.dispose();
-      galaxyTarget.dispose();
+      environmentRuntime.dispose();
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();

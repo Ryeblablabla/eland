@@ -48,7 +48,9 @@ try {
   await build({ entryPoints: [entry], outfile: output, bundle: true, platform: 'node', format: 'esm' });
   const api = await import(`${pathToFileURL(output).href}?v=${Date.now()}`);
 
-  const state = api.createInitialState({ project() {} }, 9182, { endpoint: { kind: 'months', value: 120 } });
+  const state = api.createInitialState({
+    project() { return { kind: 'deferred', reason: 'bounded observer fixture' }; },
+  }, 9182, { endpoint: { kind: 'months', value: 120 } });
   const founding = state.world.past[0];
   const trailCell = api.cellId(2, 2);
   const cropCell = api.cellId(3, 2);

@@ -1,4 +1,4 @@
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import { isAlive, type PersonState } from './person';
 import {
   cellX,
@@ -33,7 +33,7 @@ export function peopleWithinVoiceRange(person: PersonState, people: PersonState[
 }
 
 export function standingOccupancy(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'people'>,
   position: StandingPosition,
   excludePersonId?: string,
 ): number {
@@ -86,7 +86,10 @@ export function conversationalRendezvous(
   return candidates[0] ?? null;
 }
 
-export function crowdingUrgency(state: SimulationState, person: PersonState): number {
+export function crowdingUrgency(
+  state: Pick<DecisionAuthorityState, 'people'>,
+  person: PersonState,
+): number {
   const excess = Math.max(0, standingOccupancy(state, person.position) - SOFT_STANDING_CAPACITY);
   return excess <= 0 ? 0 : Math.min(0.72, 0.16 + excess / (excess + 6) * 0.56);
 }

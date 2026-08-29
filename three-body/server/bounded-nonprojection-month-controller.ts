@@ -1,7 +1,14 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { stepOwnedSimulation } from '../src/game/eland/application/simulation/tick-executor';
-import type { ObservationProjector } from '../src/game/eland/application/simulation/observation-projector';
+import {
+  captureSimulationObservationState,
+  deferredSimulationObservationProjection,
+  type ObservationProjectionMode,
+  type ObservationProjector,
+  stepOwnedSimulationWithObservationProjector,
+  type SimulationObservationSnapshot,
+  type SimulationObservationState,
+} from '../src/game/eland/infrastructure-api';
 import type { SimulationState } from '../src/game/eland/domain/model';
 import { LAST_MATERIALIZED_OBSERVER_BASIS_FIELD } from './bounded-gameplay-shell';
 
@@ -9,9 +16,10 @@ export const BOUNDED_NONPROJECTION_MONTH_CONTROLLER_VERSION =
   'bounded-nonprojection-month-controller-v1' as const;
 
 /**
- * A projection call means this month crossed a boundary that the incomplete
- * bounded observer sidecars cannot yet materialize. The working state is
- * isolated in the store and must be discarded rather than partially staged.
+ * A full/development projection call means this month crossed a boundary that
+ * the incomplete bounded observer sidecars cannot yet materialize. The normal
+ * monthly structures mirror request is explicitly deferred, preserving the
+ * last materialized observer shell while physical facts advance separately.
  */
 export class BoundedNonProjectionMonthRejectedError extends Error {
   constructor(message: string) {
@@ -34,8 +42,16 @@ export class BoundedNonProjectionTerminalBoundaryRequiredError
   }
 }
 
-const failClosedObservationProjector: ObservationProjector = Object.freeze({
-  project(_state: SimulationState, mode: 'development-only' | 'full'): never {
+const boundedNonMaterializingProjector: ObservationProjector = Object.freeze({
+  project(
+    _snapshot: SimulationObservationSnapshot,
+    mode: ObservationProjectionMode,
+  ) {
+    if (mode === 'structures-only') {
+      return deferredSimulationObservationProjection(
+        'bounded 非投影月保持上次已物化 observer shell',
+      );
+    }
     if (mode === 'full') {
       throw new BoundedNonProjectionTerminalBoundaryRequiredError(
         'bounded 非投影单月触发 full 观察边界，需要从同源权威状态执行 terminal probe',
@@ -48,20 +64,13 @@ const failClosedObservationProjector: ObservationProjector = Object.freeze({
 });
 
 interface ObserverOwnedSnapshot {
-  civilizationIndex: SimulationState['civilization']['civilizationIndex'];
-  stage: SimulationState['civilization']['stage'];
-  development: SimulationState['civilization']['development'];
-  derivedWithoutStructures: Omit<SimulationState['derived'], 'structures'>;
+  observations: SimulationObservationState;
   lastMaterializedObserverBasis: unknown;
 }
 
 function observerOwnedSnapshot(state: SimulationState): ObserverOwnedSnapshot {
-  const { structures: _structures, ...derivedWithoutStructures } = state.derived;
   return structuredClone({
-    civilizationIndex: state.civilization.civilizationIndex,
-    stage: state.civilization.stage,
-    development: state.civilization.development,
-    derivedWithoutStructures,
+    observations: captureSimulationObservationState(state),
     lastMaterializedObserverBasis: (state as unknown as Record<string, unknown>)[
       LAST_MATERIALIZED_OBSERVER_BASIS_FIELD
     ],
@@ -106,8 +115,10 @@ export function stepOwnedBoundedNonProjectionMonth(state: SimulationState): Simu
   const sourceMonth = state.clock.elapsedMonths;
   const expectedNextMonth = assertEligibleNonProjectionMonth(state);
   const observerBefore = observerOwnedSnapshot(state);
-  const exactDerivedBefore = structuredClone(state.derived);
-  const stepped = stepOwnedSimulation(failClosedObservationProjector, state);
+  const stepped = stepOwnedSimulationWithObservationProjector(
+    boundedNonMaterializingProjector,
+    state,
+  );
 
   if (stepped !== state) {
     throw new Error('bounded 非投影单月规则推进意外替换了 store-owned state 对象');
@@ -127,10 +138,5 @@ export function stepOwnedBoundedNonProjectionMonth(state: SimulationState): Simu
       'bounded 非投影单月改写了 observer-owned hot shell/basis',
     );
   }
-  // Month commit refreshes the compatibility `derived.structures` mirror from
-  // the authoritative physical index. In the bounded profile that mirror is
-  // observer-owned, so restore the exact pre-step observer shell before the
-  // successor root is staged; gameplay keeps the new physical index in world.
-  stepped.derived = exactDerivedBefore;
   return stepped;
 }

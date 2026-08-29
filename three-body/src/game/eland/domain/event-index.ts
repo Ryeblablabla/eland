@@ -1,4 +1,11 @@
-import type { ActionFact, AgreementFact, EnvironmentFact, SimulationState, WorldEvent } from './model';
+import type {
+  ActionFact,
+  AgreementFact,
+  DecisionAuthorityState,
+  EnvironmentFact,
+  SimulationState,
+  WorldEvent,
+} from './model';
 import { Material } from './material';
 import { isAlive, type PersonId, type PersonState } from './person';
 import {
@@ -11,7 +18,6 @@ import {
 } from './project-pressure-evidence';
 import {
   cloneValidatedLiveSocialEvidenceDescriptor,
-  livePersonSocialEvidenceLeaseKey,
   livePersonSocialSourceEventIds,
   liveSocialEvidenceDescriptorFromWorldEvent,
   type LiveSocialEvidenceDescriptor,
@@ -78,7 +84,7 @@ interface PlanningEventOverlay {
   completedConstructionActions: ActionFact[];
 }
 
-const planningOverlays = new WeakMap<SimulationState, PlanningEventOverlay>();
+const planningOverlays = new WeakMap<Pick<DecisionAuthorityState, 'world'>, PlanningEventOverlay>();
 // Some execution paths expose committed facts plus the current-month suffix as
 // one temporary history array for legacy direct readers. Index the stable
 // committed prefix and merge the suffix through the overlay instead.
@@ -128,6 +134,8 @@ export function liveAgreementHistoryLeaseKey(agreementId: string): string {
 }
 
 export type WaterAssistanceEvidenceRole = 'helper' | 'requester';
+
+type EventReadState = Pick<DecisionAuthorityState, 'intents' | 'people' | 'world'>;
 
 const WATER_ASSISTANCE_RETENTION_PREFIX = 'gameplay:water-assistance:';
 
@@ -236,7 +244,7 @@ export function parseGroundedConversationWindowLeaseKey(
   }
 }
 
-function authoritativeHistoryBase(state: SimulationState): WorldEvent[] {
+function authoritativeHistoryBase(state: Pick<EventReadState, 'world'>): WorldEvent[] {
   return indexedHistoryBases.get(state.world.past) ?? state.world.past;
 }
 
@@ -276,7 +284,9 @@ export function projectPressureEvidenceResolutionSnapshotIsCurrent(
     && snapshot.descriptorIndexIdentity === projectPressureEvidenceDescriptorIndexes.get(historyBase);
 }
 
-function retainedColdIndexFor(state: SimulationState): RetainedColdEventIndex | undefined {
+function retainedColdIndexFor(
+  state: Pick<EventReadState, 'world'>,
+): RetainedColdEventIndex | undefined {
   return retainedColdIndexes.get(authoritativeHistoryBase(state));
 }
 
@@ -437,7 +447,7 @@ export function augmentRetainedColdWorldEventFacts(
 
 /** Exact cold facts for one domain lease; never includes unrelated history. */
 export function retainedColdWorldEventsForLease(
-  state: SimulationState,
+  state: Pick<EventReadState, 'world'>,
   leaseKey: string,
 ): readonly WorldEvent[] {
   return retainedColdIndexFor(state)?.byLeaseKey.get(leaseKey)?.map((fact) => fact.event) ?? [];
@@ -574,13 +584,13 @@ export function registerLiveSocialEvidenceDescriptors(
 }
 
 function liveSocialDescriptorIndexFor(
-  state: SimulationState,
+  state: Pick<EventReadState, 'world'>,
 ): LiveSocialEvidenceDescriptorIndex | undefined {
   return liveSocialEvidenceDescriptorIndexes.get(authoritativeHistoryBase(state));
 }
 
 function assertCurrentLivingLiveSocialOwner(
-  state: SimulationState,
+  state: Pick<EventReadState, 'people'>,
   person: PersonState,
 ): PersonState {
   const owner = state.people.find((candidate) => candidate.id === person.id);
@@ -592,7 +602,7 @@ function assertCurrentLivingLiveSocialOwner(
 
 /** Match the historical full-body reader: intent basis is current state, not event payload. */
 function liveSocialEvidenceWithCurrentIntentBasis(
-  state: SimulationState,
+  state: Pick<EventReadState, 'intents'>,
   descriptor: LiveSocialEvidenceDescriptor,
 ): LiveSocialEvidenceDescriptor {
   const communication = descriptor.action?.communication;
@@ -621,7 +631,7 @@ function liveSocialEvidenceWithCurrentIntentBasis(
 
 /** overlay > hot > exact owner descriptor; generic cold facts are deliberately ignored. */
 function liveSocialEvidenceForCurrentOwnerSource(
-  state: SimulationState,
+  state: EventReadState,
   owner: PersonState,
   membership: ReadonlySet<string>,
   eventId: string,
@@ -636,7 +646,7 @@ function liveSocialEvidenceForCurrentOwnerSource(
 }
 
 export function liveSocialEvidenceForPersonSource(
-  state: SimulationState,
+  state: EventReadState,
   person: PersonState,
   eventId: string,
 ): LiveSocialEvidenceDescriptor | undefined {
@@ -661,7 +671,7 @@ export function compareLiveSocialEvidenceDescriptors(
 }
 
 export function liveSocialEvidenceForPersonSources(
-  state: SimulationState,
+  state: EventReadState,
   person: PersonState,
   eventIds: Iterable<string>,
 ): LiveSocialEvidenceDescriptor[] {
@@ -778,7 +788,7 @@ export function retainedProjectPressureEvidenceForLivingSources(
 
 /** Resolve one exact ID, but admit cold storage only through the named lease. */
 export function worldEventByIdWithRetainedLease(
-  state: SimulationState,
+  state: Pick<EventReadState, 'world'>,
   eventId: string,
   leaseKey: string,
 ): WorldEvent | undefined {
@@ -802,7 +812,7 @@ export function compareWorldEventsInCanonicalOrder(left: WorldEvent, right: Worl
  * unrelated cold history, and hot/overlay facts take precedence on duplicate IDs.
  */
 export function actionFactsForPersonWithRetainedLease(
-  state: SimulationState,
+  state: Pick<EventReadState, 'world'>,
   personId: PersonId,
   leaseKey: string,
 ): ActionFact[] {
@@ -911,7 +921,9 @@ export function clearPlanningEventOverlay(state: SimulationState): void {
   planningOverlays.delete(state);
 }
 
-export function planningOverlayEvents(state: SimulationState): readonly WorldEvent[] {
+export function planningOverlayEvents(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): readonly WorldEvent[] {
   return planningOverlays.get(state)?.events ?? [];
 }
 
@@ -935,7 +947,9 @@ export function inheritPlanningEventOverlay(
 }
 
 /** Exact runtime presence check used by destructive committed-history maintenance. */
-export function hasPlanningEventOverlay(state: SimulationState): boolean {
+export function hasPlanningEventOverlay(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): boolean {
   return planningOverlays.has(state);
 }
 
@@ -955,7 +969,11 @@ export function invalidateHotEventIndexAfterCommittedHistoryTrim(
   planningOverlays.delete(state);
 }
 
-function withOverlay<T>(state: SimulationState, base: readonly T[], select: (overlay: PlanningEventOverlay) => readonly T[]): readonly T[] {
+function withOverlay<T>(
+  state: Pick<DecisionAuthorityState, 'world'>,
+  base: readonly T[],
+  select: (overlay: PlanningEventOverlay) => readonly T[],
+): readonly T[] {
   const extra = planningOverlays.get(state);
   if (!extra) return base;
   const selected = select(extra);
@@ -1009,7 +1027,7 @@ function appendActivity(activity: ActionActivityIndex, event: ActionFact): void 
   else activity.action[event.cellId] += 1;
 }
 
-function indexFor(state: SimulationState): CachedEventIndex {
+function indexFor(state: Pick<EventReadState, 'world'>): CachedEventIndex {
   const history = indexedHistoryBases.get(state.world.past) ?? state.world.past;
   let index = indexes.get(history);
   if (!index
@@ -1092,7 +1110,10 @@ export function actionActivityIndex(state: SimulationState): ActionActivityIndex
   return indexFor(state).activity;
 }
 
-export function worldEventById(state: SimulationState, eventId: string): WorldEvent | undefined {
+export function worldEventById(
+  state: Pick<EventReadState, 'world'>,
+  eventId: string,
+): WorldEvent | undefined {
   return planningOverlays.get(state)?.byId.get(eventId)
     ?? indexFor(state).byId.get(eventId)
     ?? retainedColdIndexFor(state)?.byId.get(eventId)?.event;
@@ -1411,7 +1432,10 @@ export function actionFacts(state: SimulationState): readonly ActionFact[] {
   return withOverlay(state, indexFor(state).actions, (overlay) => overlay.actions);
 }
 
-export function actionFactsForPerson(state: SimulationState, personId: PersonId): readonly ActionFact[] {
+export function actionFactsForPerson(
+  state: Pick<EventReadState, 'world'>,
+  personId: PersonId,
+): readonly ActionFact[] {
   const base = indexFor(state).actionsByPersonId.get(personId) ?? [];
   const extra = planningOverlays.get(state)?.actionsByPersonId.get(personId) ?? [];
   return extra.length ? [...base, ...extra] : base;
@@ -1444,7 +1468,10 @@ export function recentEraForecastEnvironmentFacts(
   return [...(remaining > 0 ? base.slice(-remaining) : []), ...recentExtra];
 }
 
-export function communicationByRepresentationId(state: SimulationState, representationId: string): ActionFact | undefined {
+export function communicationByRepresentationId(
+  state: Pick<DecisionAuthorityState, 'agreements' | 'intents' | 'world'>,
+  representationId: string,
+): ActionFact | undefined {
   const hot = planningOverlays.get(state)?.communicationByRepresentationId.get(representationId)
     ?? indexFor(state).communicationByRepresentationId.get(representationId);
   if (hot) return hot;
@@ -1486,6 +1513,8 @@ export function communicationByRepresentationId(state: SimulationState, represen
   return undefined;
 }
 
-export function completedConstructionActions(state: SimulationState): readonly ActionFact[] {
+export function completedConstructionActions(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): readonly ActionFact[] {
   return withOverlay(state, indexFor(state).completedConstructionActions, (overlay) => overlay.completedConstructionActions);
 }

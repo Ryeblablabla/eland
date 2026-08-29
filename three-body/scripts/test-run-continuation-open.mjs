@@ -678,12 +678,23 @@ try {
     alteredDemandShell.world.past,
     0,
   );
-  const alteredRetention = sidecarApi.encodeHistoryRetentionSidecar(
-    sidecarApi.finishHistoryRetentionProjection(alteredDemandFold),
+  const alteredRetentionProjection = sidecarApi.finishHistoryRetentionProjection(
+    alteredDemandFold,
   );
+  const alteredRetention = sidecarApi.encodeHistoryRetentionSidecar(
+    alteredRetentionProjection,
+  );
+  const alteredColdPins = alteredRetentionProjection.pins
+    .filter((pin) => pin.absoluteIndex < hotStartIndex)
+    .map((pin) => ({
+      absoluteIndex: pin.absoluteIndex,
+      eventId: pin.eventId,
+      leaseKeys: [...pin.leaseKeys],
+    }));
   insertChunk(alteredRetention.chunk);
   selectBundle({
     ...baseBundleInput,
+    coldPins: alteredColdPins,
     sidecars: { ...sidecars, retention: alteredRetention.reference },
   });
   await assert.rejects(

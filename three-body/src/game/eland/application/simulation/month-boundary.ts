@@ -26,7 +26,6 @@ import {
 import { advancePermissionLifecycle } from '../../domain/permission';
 import {
   advancePhysicalStructureIndex,
-  copyPhysicalStructures,
   derivePhysicalStructureIndex,
 } from '../../domain/physical-structure-index';
 import { type PersonId, type PersonState } from '../../domain/person';
@@ -37,6 +36,10 @@ import { advanceProjects } from '../project-options';
 import { decisionBudgetExemption, decisionProbability } from './model-review';
 import { drainInterruptedIntentReturns } from './intent-execution';
 import type { ObservationProjector } from './observation-projector';
+import {
+  applySimulationObservationProjection,
+  captureSimulationObservationSnapshot,
+} from './observation-state';
 import { copyState } from './state-utils';
 import { buildDecisionContexts } from './tick-planner';
 
@@ -281,8 +284,13 @@ export function finishMonth(
     )
     : derivePhysicalStructureIndex(state);
   state.world.physicalStructureIndex = physicalStructureIndex;
-  state.derived = { ...state.derived, structures: copyPhysicalStructures(physicalStructureIndex) };
-  if (fullProjection) observationProjector.project(state, 'full');
+  applySimulationObservationProjection(
+    state,
+    observationProjector.project(
+      captureSimulationObservationSnapshot(state),
+      fullProjection ? 'full' : 'structures-only',
+    ),
+  );
   if (!living.length) {
     const ending = destructionOutcome(state, atMonth, events);
     state.civilization.status = 'ended';

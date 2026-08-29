@@ -243,7 +243,7 @@ try {
   ageBandState.clock.elapsedMonths = 132;
   const crossedAgeBand = buildRelationshipCausalBasis(ageBandState, ageBandActor, ageBandPartner, 'reproduce', 132);
   assert.equal(canOfferRelationshipProposal(ageBandState, ageBandActor, ageBandPartner, crossedAgeBand), true,
-    'crossing a declared reproductive age band may reopen the proposal');
+    'crossing a real reproductive age band may reopen appraisal without pretending that the relationship itself changed');
   ageBandState.agreements.push({
     ...structuredClone(ageBandState.agreements.at(-1)), id: 'age-band-offer',
     proposal: { kind: 'reproduce', proposerId: ageBandActor.id, partnerId: ageBandPartner.id, expiresAtMonth: 136, basis: crossedAgeBand },
@@ -265,8 +265,45 @@ try {
   });
   rejectedActor.relations.find((candidate) => candidate.personId === rejectedPartner.id).sourceEventIds.push(sharedExperienceId);
   const afterSharedExperience = buildRelationshipCausalBasis(rejectedState, rejectedActor, rejectedPartner, 'reproduce', 127);
-  assert.equal(canOfferRelationshipProposal(rejectedState, rejectedActor, rejectedPartner, afterSharedExperience), true,
-    'new non-communication relationship evidence may reopen the proposal once');
+  assert.equal(canOfferRelationshipProposal(rejectedState, rejectedActor, rejectedPartner, afterSharedExperience), false,
+    'new generic coactivity must not reopen a rejected reproduction proposal');
+
+  const addDirectExchange = (month) => {
+    const basisKey = `grounded-conversation-v1|topic=care|speaker=${rejectedActor.id}|listener=${rejectedPartner.id}|sources=relationship-evidence`;
+    const openingId = `renewed-intimacy-${month}-opening`;
+    const responseId = `renewed-intimacy-${month}-response`;
+    const actionFact = (id, orderInMonth, who, action) => ({
+      id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
+      cellId: rejectedActor.position.cellId, who, cause: 'intent', action,
+      fromCellId: rejectedActor.position.cellId, toCellId: rejectedActor.position.cellId,
+      fromZ: rejectedActor.position.z, toZ: rejectedActor.position.z,
+      pathSegment: [rejectedActor.position.cellId], status: 'completed', result: '新的直接生活交流',
+      diff: { groundedConversationBasisKey: basisKey },
+    });
+    rejectedState.world.past.push(
+      actionFact(openingId, 0, rejectedActor.id, {
+        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '问问照护近况', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'opening',
+          speakerId: rejectedActor.id, listenerId: rejectedPartner.id, sourceFactIds: ['relationship-evidence'],
+        } }, audience: [rejectedPartner.id], channel: 'voice',
+      }),
+      actionFact(responseId, 1, rejectedPartner.id, {
+        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应照护近况', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'response',
+          speakerId: rejectedPartner.id, listenerId: rejectedActor.id, sourceFactIds: ['relationship-evidence'],
+          referenceEventId: openingId, stance: 'supportive',
+        } }, audience: [rejectedActor.id], channel: 'voice',
+      }),
+    );
+    const directed = rejectedActor.relations.find((candidate) => candidate.personId === rejectedPartner.id);
+    directed.sourceEventIds.push(openingId, responseId);
+  };
+  addDirectExchange(128);
+  addDirectExchange(129);
+  rejectedState.clock.elapsedMonths = 129;
+  const afterRenewedIntimacy = buildRelationshipCausalBasis(rejectedState, rejectedActor, rejectedPartner, 'reproduce', 129);
+  assert.equal(canOfferRelationshipProposal(rejectedState, rejectedActor, rejectedPartner, afterRenewedIntimacy), true,
+    'rejected reproduction proposal may reopen once after new direct interpersonal evidence');
 
   const inFlightState = structuredClone(state);
   const inFlightActor = inFlightState.people.find((person) => person.id === actor.id);

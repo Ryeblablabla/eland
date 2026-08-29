@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Press Kit · ELAND</title>
+<meta name="description" content="ELAND 媒体资料包：游戏简介、特性、主视觉与真实截图、事实表与联系方式。">
+<link rel="stylesheet" href="./site.css">
+<style>
+  .pk-hero { padding: 84px 0 40px; }
+  .pk-hero h1 { font-size: clamp(30px, 4.6vw, 52px); margin: 8px 0 16px; font-weight: 900; }
+  .pk-hero .lede { color: var(--ink-dim); font-size: 15.5px; line-height: 2; max-width: 720px; }
+  section { padding: 52px 0; }
+  h2.section-h { font-size: clamp(20px, 2.6vw, 27px); font-weight: 800; margin: 0 0 24px; }
+
+  .fact-table { width: 100%; border-collapse: collapse; max-width: 680px; }
+  .fact-table th, .fact-table td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: top; }
+  .fact-table th { color: var(--ink-faint); font-weight: 500; width: 160px; letter-spacing: .06em; }
+  .fact-table td { color: var(--ink); }
+
+  .desc-block { border-left: 2px solid var(--star-blue); padding: 4px 0 4px 22px; margin: 0 0 26px; max-width: 760px; }
+  .desc-block h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: .2em; color: var(--star-blue); text-transform: uppercase; }
+  .desc-block p { margin: 0; color: var(--ink-dim); font-size: 14.5px; line-height: 2; }
+
+  .feature-list { columns: 2; column-gap: 40px; max-width: 860px; }
+  .feature-list li { break-inside: avoid; margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; line-height: 1.85; list-style: none; padding-left: 20px; position: relative; }
+  .feature-list li::before { content: '◆'; position: absolute; left: 0; top: 2px; color: var(--sun); font-size: 9px; }
+  @media (max-width: 680px) { .feature-list { columns: 1; } }
+
+  .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .asset-grid a { display: block; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0a0f1c; }
+  .asset-grid img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; transition: transform .3s; }
+  .asset-grid a:hover img { transform: scale(1.04); }
+  .asset-grid .cap { padding: 10px 14px; font-size: 12px; color: var(--ink-dim); display: flex; justify-content: space-between; }
+  .asset-grid .cap span:last-child { color: var(--star-blue); }
+  .keyart { grid-column: 1 / -1; }
+  .keyart img { aspect-ratio: auto; max-height: 460px; }
+
+  .wishlist-box {
+    margin-top: 8px; padding: 34px 30px; border-radius: 16px; text-align: center;
+    border: 1px solid rgba(255,180,84,.35);
+    background: radial-gradient(ellipse 70% 100% at 50% 0%, rgba(255,180,84,.09), rgba(10,14,26,.6));
+  }
+  .wishlist-box h2 { margin: 0 0 10px; font-size: clamp(20px, 2.6vw, 28px); }
+  .wishlist-box p { color: var(--ink-dim); font-size: 14px; margin: 0 0 22px; }
+  .wishlist-btn {
+    display: inline-block; padding: 13px 34px; border-radius: 999px;
+    background: linear-gradient(135deg, #ffc97a, var(--sun));
+    color: #120c04; font-weight: 700; font-size: 15px;
+    box-shadow: 0 6px 30px rgba(255,180,84,.32);
+  }
+  .wishlist-note { margin-top: 14px !important; font-size: 12px !important; color: var(--ink-faint) !important; }
+</style>
+</head>
+<body data-site-page="presskit">
+
+<div class="page-wrap">
+  <div class="pk-hero">
+    <p class="kicker">Press Kit · 媒体资料包</p>
+    <h1>ELAND</h1>
+    <p class="lede">规则优先的涌现式文明模拟。灵感来自《三体》中的三体游戏：
+      文明在恒纪元与乱纪元中诞生、发展并留下结局——每个文明的编号、成就与毁灭原因，都来自真实模拟历史。</p>
+  </div>
+
+  <hr class="divider-glow">
+
+  <section id="facts">
+    <h2 class="section-h">事实表</h2>
+    <table class="fact-table">
+      <tr><th>名称</th><td>ELAND</td></tr>
+      <tr><th>类型</th><td>涌现式文明模拟 / 上帝视角沙盒 / AI 社会实验</td></tr>
+      <tr><th>平台</th><td>Windows · macOS（Steam，发行准备中）</td></tr>
+      <tr><th>玩家人数</th><td>单人</td></tr>
+      <tr><th>核心机制</th><td>规则优先的 Agent 社会模拟 · 三体纪元气候 · 玩家对话与第一人称化身</td></tr>
+      <tr><th>开发</th><td>ELAND Team（开源项目）</td></tr>
+      <tr><th>状态</th><td>积极开发中，Steam 商店页筹备中</td></tr>
+      <tr><th>联系</th><td>press@eland.game（筹备中，暂请通过社区渠道联系）</td></tr>
+    </table>
+  </section>
+
+  <section id="description">
+    <h2 class="section-h">游戏简介</h2>
+    <div class="desc-block">
+      <h3>一句话</h3>
+      <p>没有写好的历史：一群先民在三颗太阳之下从一无所有开始，建起文明，或在某个清晨归零。</p>
+    </div>
+    <div class="desc-block">
+      <h3>一段话</h3>
+      <p>ELAND 是一款规则优先的涌现式文明模拟。先民 Agent 在三维体素沙盒中采集、制造、建造、结成家庭、
+        传承知识；三颗太阳带来无法预测的恒纪元与乱纪元。玩家是他们口中的"主"：可以交谈、示警、误导，
+        也可以化身其中亲历生存。每个文明的编号、成就与毁灭原因都来自真实模拟。</p>
+    </div>
+    <div class="desc-block">
+      <h3>详细介绍</h3>
+      <p>在 ELAND 的三维沙盒世界里，森林覆盖大地，河流穿过荒野。一群以历史人物为代号的先民在此醒来，
+        没有工具，没有房屋，也没有现成的文明答案。他们寻找食物、制造工具、修筑居所；也会相爱、争吵、
+        结成家庭，把经验传给后来者。技术不是菜单里的科技树，而是从观察、试错、学习和传承中生长出来的。
+        文明的道路从不平静：饥饿、野兽与同伴间的冲突随时可能终结生命，而无情的三星系统还会带来无法预测的
+        恒纪元与乱纪元——一次漫长严寒、一场失控野火，或某个三日凌空的清晨，都可能让数百年的积累顷刻归零。
+        大模型参与对话、表达与协商；但行动能否发生、造成什么后果，始终由同一套世界规则裁定。
+        有些文明会制造农具、建立聚落，走向制度与传承；另一些还未熬过第一个乱纪元，便只剩下一行纪年。
+        世界终会重启，而下一次，又会长出另一段历史。</p>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2 class="section-h">特性</h2>
+    <ul class="feature-list">
+      <li>规则优先的涌现社会：需要、人格、记忆与关系驱动的先民 Agent</li>
+      <li>三体纪元系统：恒纪元与乱纪元不可预测，预言、脱水休眠与复苏</li>
+      <li>从石器到电力与信息：技术由观察、实验、记录与教学真实生长</li>
+      <li>与先民自由交谈：建议进入真实记忆，但他们未必服从</li>
+      <li>第一人称化身：以某个先民的身体、知识与关系亲历世界</li>
+      <li>大模型只做表达：所有行动与后果由确定性本地规则裁定</li>
+      <li>文明编年：编号、成就与毁灭原因全部来自真实模拟历史</li>
+      <li>连续缩放：从三体宇宙无缝俯冲进入人间体素世界</li>
+    </ul>
+  </section>
+
+  <section id="assets">
+    <h2 class="section-h">美术与截图（点击下载原图）</h2>
+    <div class="asset-grid">
+      <a class="keyart" href="./assets/gallery/promo-keyart.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/promo-keyart.png" alt="ELAND 主视觉：三颗太阳之下的河畔文明">
+        <div class="cap"><span>主视觉 Key Art · 三颗太阳之下，河畔文明在劳作与灾变之间生长</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/cosmos-orbits.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/cosmos-orbits.png" alt="三体宇宙" loading="lazy">
+        <div class="cap"><span>三体宇宙 · 轨道</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/cosmos-dust.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/cosmos-dust.png" alt="系统尘埃带" loading="lazy">
+        <div class="cap"><span>宇宙 · 尘埃带</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/world-arrival.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/world-arrival.png" alt="文明抵达" loading="lazy">
+        <div class="cap"><span>人间 · 文明抵达</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/world-dialogue.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/world-dialogue.png" alt="先民交谈" loading="lazy">
+        <div class="cap"><span>人间 · 先民交谈</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/world-forest.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/world-forest.png" alt="林间聚落" loading="lazy">
+        <div class="cap"><span>人间 · 林间</span><span>PNG ↓</span></div>
+      </a>
+      <a href="./assets/gallery/world-river.png" target="_blank" rel="noopener">
+        <img src="./assets/gallery/world-river.png" alt="河流" loading="lazy">
+        <div class="cap"><span>人间 · 河流</span><span>PNG ↓</span></div>
+      </a>
+    </div>
+    <p style="color:var(--ink-faint);font-size:12.5px;margin-top:18px;line-height:1.8">
+      以上画面均为当前开发版本实时截取，未做后期修饰。欢迎媒体与内容创作者在报道、评测与视频中自由使用，注明出处即可。</p>
+  </section>
+
+  <section id="wishlist" style="padding-bottom:30px">
+    <div class="wishlist-box">
+      <h2>把下一段历史加入愿望单</h2>
+      <p>ELAND 正在积极开发中。加入愿望单，第一时间见证下一个文明的诞生。</p>
+      <a class="wishlist-btn" href="#" onclick="alert('Steam 商店页面筹备中，即将开放。');return false;">Steam 愿望单</a>
+      <p class="wishlist-note">商店页面筹备中 — 按钮将在上架后指向真实商店地址。</p>
+    </div>
+  </section>
+</div>
+
+<script src="./site.js" defer></script>
+</body>
+</html>

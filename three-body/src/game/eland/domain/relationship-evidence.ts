@@ -2,7 +2,6 @@ import type { RelationshipCausalBasis } from './action';
 import type { SimulationState } from './model';
 import { ageMonths, type PersonState } from './person';
 import {
-  liveSocialEvidenceForPersonSource,
   liveSocialEvidenceForPersonSources,
   worldEventById,
 } from './event-index';
@@ -22,6 +21,9 @@ import { agreementsForPerson } from './agreement';
 import { intentsOwnedBy } from './state-index';
 
 export type RelationshipProposalKind = RelationshipCausalBasis['kind'];
+
+const COMPANION_REOFFER_MONTHS_AFTER_REJECTION = 6;
+const REPRODUCTION_REOFFER_MONTHS_AFTER_SHARED_LIFE = 3;
 
 function femaleAgeBand(person: PersonState, partner: PersonState, atMonth: number): string | null {
   const female = person.sex === 'female' ? person : partner.sex === 'female' ? partner : undefined;
@@ -46,6 +48,7 @@ function qualifiesAsRelationshipEvidence(
   event: LiveSocialEvidenceDescriptor | undefined,
   proposerId: string,
   partnerId: string,
+  includeFounding: boolean,
 ): boolean {
   if (!event) return false;
   if (event.action) {
@@ -58,6 +61,7 @@ function qualifiesAsRelationshipEvidence(
   }
   if (event.agreementFulfilled) return true;
   if (!event.environment) return false;
+  if (event.environment.change === 'founding' && !includeFounding) return false;
   if (event.environment.change === 'prediction') return true;
   if (event.environment.change === 'relationship'
     && event.environment.excludedPairKeys.includes(
@@ -67,11 +71,12 @@ function qualifiesAsRelationshipEvidence(
     && event.environment.participantIds.includes(partnerId);
 }
 
-function relationshipEvidenceIds(
+function relationshipEvidenceDescriptors(
   state: SimulationState,
   proposer: PersonState,
   partner: PersonState,
-): string[] {
+  includeFounding = false,
+): LiveSocialEvidenceDescriptor[] {
   const relation = relationTo(proposer, partner.id);
   return liveSocialEvidenceForPersonSources(
     state,
@@ -81,9 +86,67 @@ function relationshipEvidenceIds(
       event,
       proposer.id,
       partner.id,
+      includeFounding,
     ))
+    .sort((left, right) => left.atMonth - right.atMonth
+      || left.orderInMonth - right.orderInMonth
+      || left.eventId.localeCompare(right.eventId));
+}
+
+function relationshipEvidenceIds(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  includeFounding = false,
+): string[] {
+  return relationshipEvidenceDescriptors(state, proposer, partner, includeFounding)
     .map((event) => event.eventId)
     .sort();
+}
+
+function isDirectIntimacyEvidence(
+  state: SimulationState,
+  event: LiveSocialEvidenceDescriptor,
+  proposer: PersonState,
+  partner: PersonState,
+): boolean {
+  if (event.action) {
+    if (!event.action.completed) return false;
+    if (event.action.actionKind !== 'communicate') {
+      return (event.action.actorId === partner.id
+          && event.action.supportRecipientIds.includes(proposer.id))
+        || (event.action.actorId === proposer.id
+          && event.action.supportRecipientIds.includes(partner.id));
+    }
+    const conversation = event.action.communication?.groundedConversation;
+    if (!conversation?.basisVerified
+      || conversation.turn !== 'response'
+      || ['discovery', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return false;
+    const participants = new Set([conversation.speakerId, conversation.listenerId]);
+    return participants.has(proposer.id) && participants.has(partner.id);
+  }
+  if (event.agreementFulfilled) return true;
+  const childId = event.environment?.change === 'body'
+    ? event.environment.bornPersonId
+    : undefined;
+  if (!childId) return false;
+  const child = state.people.find((person) => person.id === childId);
+  return Boolean(child
+    && child.geneticParents.includes(proposer.id)
+    && child.geneticParents.includes(partner.id));
+}
+
+function evidenceMonths(events: readonly LiveSocialEvidenceDescriptor[]): Set<number> {
+  return new Set(events.map((event) => event.atMonth));
+}
+
+function directIntimacyEvidence(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+): LiveSocialEvidenceDescriptor[] {
+  return relationshipEvidenceDescriptors(state, proposer, partner)
+    .filter((event) => isDirectIntimacyEvidence(state, event, proposer, partner));
 }
 
 export function buildRelationshipCausalBasis(
@@ -95,7 +158,7 @@ export function buildRelationshipCausalBasis(
 ): RelationshipCausalBasis {
   const pair = [proposer.id, partner.id].sort();
   const subjectKey = `relationship:${kind}:${pair[0]}:${pair[1]}`;
-  const relationshipKeys = relationshipEvidenceIds(state, proposer, partner);
+  const relationshipKeys = relationshipEvidenceIds(state, proposer, partner, kind === 'reproduce');
   const ageBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, atMonth) : null;
   const responsibility = kind === 'reproduce'
     ? reproductiveResponsibility(state, proposer, atMonth)
@@ -127,7 +190,7 @@ export function buildRelationshipCausalBasis(
   };
 }
 
-/** A person may consider reproduction only with someone in their sourced relationship history. */
+/** Founding familiarity preserves the original first-offer window; retries need stronger evidence below. */
 export function hasSourcedReproductiveRelationship(
   state: SimulationState,
   person: PersonState,
@@ -135,7 +198,9 @@ export function hasSourcedReproductiveRelationship(
   basis = buildRelationshipCausalBasis(state, person, partner, 'reproduce'),
 ): boolean {
   if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  return basis.relationshipKeys.length > 0;
+  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner, true)
+    .filter((event) => basis.relationshipKeys.includes(event.eventId));
+  return relationshipEvents.some((event) => event.atMonth < state.clock.elapsedMonths);
 }
 
 export function hasCultivatedCompanionRelationship(
@@ -146,10 +211,15 @@ export function hasCultivatedCompanionRelationship(
 ): boolean {
   if (basis.kind !== 'companion' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
   const relation = relationTo(person, partner.id);
+  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner)
+    .filter((event) => basis.relationshipKeys.includes(event.eventId));
+  const intimateEvents = relationshipEvents
+    .filter((event) => isDirectIntimacyEvidence(state, event, person, partner));
   return Boolean(relation
     && relation.trust >= COMPANION_RELATION_THRESHOLD
     && relation.bond >= COMPANION_RELATION_THRESHOLD
-    && basis.relationshipKeys.length > 0);
+    && evidenceMonths(relationshipEvents).size >= 2
+    && intimateEvents.length > 0);
 }
 
 export function hasNewRelationshipEvidence(
@@ -158,6 +228,36 @@ export function hasNewRelationshipEvidence(
 ): boolean {
   const previousKeys = new Set([...previous.relationshipKeys, ...previous.bodyKeys]);
   return [...current.relationshipKeys, ...current.bodyKeys].some((key) => !previousKeys.has(key));
+}
+
+function hasNewProposalRelevantEvidence(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  previous: RelationshipCausalBasis,
+  current: RelationshipCausalBasis,
+): boolean {
+  const previousRelationshipKeys = new Set(previous.relationshipKeys);
+  const newRelevantRelationship = directIntimacyEvidence(state, proposer, partner)
+    .some((event) => current.relationshipKeys.includes(event.eventId)
+      && !previousRelationshipKeys.has(event.eventId));
+  const previousBodyKeys = new Set(previous.bodyKeys);
+  return newRelevantRelationship
+    || current.bodyKeys.some((key) => !previousBodyKeys.has(key));
+}
+
+function hasNewSharedLifeEvidence(
+  state: SimulationState,
+  proposer: PersonState,
+  partner: PersonState,
+  previous: RelationshipCausalBasis,
+  current: RelationshipCausalBasis,
+): boolean {
+  const previousRelationshipKeys = new Set(previous.relationshipKeys);
+  return relationshipEvidenceDescriptors(state, proposer, partner)
+    .some((event) => event.environment?.change === 'relationship'
+      && current.relationshipKeys.includes(event.eventId)
+      && !previousRelationshipKeys.has(event.eventId));
 }
 
 function legacyBasisHasNewEvidence(
@@ -170,12 +270,10 @@ function legacyBasisHasNewEvidence(
   resolvedAtMonth?: number,
 ): boolean {
   const cutoff = resolvedAtMonth ?? proposedAtMonth;
-  if (current.relationshipKeys.some((eventId) => (
-    liveSocialEvidenceForPersonSource(state, proposer, eventId)?.atMonth
-      ?? Number.NEGATIVE_INFINITY
-  ) > cutoff)) return true;
-  const previousAgeBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, proposedAtMonth) : null;
-  return Boolean(previousAgeBand && current.bodyKeys.some((key) => key !== `female-age:${previousAgeBand}`));
+  if (directIntimacyEvidence(state, proposer, partner).some((event) => (
+    current.relationshipKeys.includes(event.eventId) && event.atMonth > cutoff
+  ))) return true;
+  return kind === 'reproduce' && current.bodyKeys.some((key) => !key.startsWith('female-age:'));
 }
 
 export function canOfferRelationshipProposal(
@@ -196,6 +294,20 @@ export function canOfferRelationshipProposal(
     && agreement.responderId === partner.id);
   if (!previous) return true;
   if (previous.status === 'proposed' || previous.status === 'active') return false;
+  const previousBasis = previous.proposal.kind === 'companion' || previous.proposal.kind === 'reproduce'
+    ? previous.proposal.basis
+    : undefined;
+  const hasRelevantRenewal = previousBasis
+    ? hasNewProposalRelevantEvidence(state, proposer, partner, previousBasis, basis)
+    : legacyBasisHasNewEvidence(
+      state,
+      proposer,
+      partner,
+      basis.kind,
+      basis,
+      previous.proposedAtMonth,
+      previous.resolvedAtMonth,
+    );
   if (basis.kind === 'reproduce' && typeof previous.resolvedAtMonth === 'number') {
     if (previous.status === 'fulfilled') {
       const conceived = previous.fulfillmentEventIds.some((eventId) => {
@@ -210,20 +322,19 @@ export function canOfferRelationshipProposal(
         : REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION;
       return state.clock.elapsedMonths - previous.resolvedAtMonth >= cooldown;
     }
-    if (previous.status === 'expired') return state.clock.elapsedMonths - previous.resolvedAtMonth >= REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION;
+    if (previous.status === 'expired') {
+      return state.clock.elapsedMonths - previous.resolvedAtMonth >= REPRODUCTION_REOFFER_MONTHS_AFTER_NO_CONCEPTION;
+    }
   }
-  const previousBasis = previous.proposal.kind === 'companion' || previous.proposal.kind === 'reproduce'
-    ? previous.proposal.basis
-    : undefined;
-  return previousBasis
-    ? hasNewRelationshipEvidence(previousBasis, basis)
-    : legacyBasisHasNewEvidence(
-      state,
-      proposer,
-      partner,
-      basis.kind,
-      basis,
-      previous.proposedAtMonth,
-      previous.resolvedAtMonth,
-    );
+  if ((previous.status === 'rejected' || previous.status === 'cancelled')
+    && typeof previous.resolvedAtMonth === 'number') {
+    if (basis.kind === 'reproduce') {
+      return hasRelevantRenewal
+        || (state.clock.elapsedMonths - previous.resolvedAtMonth >= REPRODUCTION_REOFFER_MONTHS_AFTER_SHARED_LIFE
+          && hasNewSharedLifeEvidence(state, proposer, partner, previousBasis ?? basis, basis));
+    }
+    return state.clock.elapsedMonths - previous.resolvedAtMonth >= COMPANION_REOFFER_MONTHS_AFTER_REJECTION
+      && hasRelevantRenewal;
+  }
+  return hasRelevantRenewal;
 }

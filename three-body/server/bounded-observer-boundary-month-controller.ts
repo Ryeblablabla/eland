@@ -1,7 +1,14 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { stepOwnedSimulation } from '../src/game/eland/application/simulation/tick-executor';
-import type { ObservationProjector } from '../src/game/eland/application/simulation/observation-projector';
+import {
+  captureSimulationObservationState,
+  deferredSimulationObservationProjection,
+  type ObservationProjectionMode,
+  type ObservationProjector,
+  stepOwnedSimulationWithObservationProjector,
+  type SimulationObservationSnapshot,
+  type SimulationObservationState,
+} from '../src/game/eland/infrastructure-api';
 import type { SimulationState } from '../src/game/eland/domain/model';
 import { isAlive } from '../src/game/eland/domain/person';
 import { LAST_MATERIALIZED_OBSERVER_BASIS_FIELD } from './bounded-gameplay-shell';
@@ -36,22 +43,15 @@ export class BoundedObserverBoundaryMonthRejectedError extends Error {
 }
 
 interface ObserverOwnedSnapshot {
-  civilizationIndex: SimulationState['civilization']['civilizationIndex'];
-  stage: SimulationState['civilization']['stage'];
-  development: SimulationState['civilization']['development'];
-  derivedWithoutStructures: Omit<SimulationState['derived'], 'structures'>;
+  observations: SimulationObservationState;
   hasLastMaterializedObserverBasis: boolean;
   lastMaterializedObserverBasis: unknown;
 }
 
 function observerOwnedSnapshot(state: SimulationState): ObserverOwnedSnapshot {
-  const { structures: _structures, ...derivedWithoutStructures } = state.derived;
   const stateRecord = state as unknown as Record<string, unknown>;
   return structuredClone({
-    civilizationIndex: state.civilization.civilizationIndex,
-    stage: state.civilization.stage,
-    development: state.civilization.development,
-    derivedWithoutStructures,
+    observations: captureSimulationObservationState(state),
     hasLastMaterializedObserverBasis: Object.prototype.hasOwnProperty.call(
       stateRecord,
       LAST_MATERIALIZED_OBSERVER_BASIS_FIELD,
@@ -192,34 +192,44 @@ function stepOwnedBoundaryMonth(
 ): BoundedObserverBoundaryMonthResult {
   const boundary = eligibleBoundary(state, mode);
   const observerBefore = observerOwnedSnapshot(state);
-  const exactDerivedBefore = structuredClone(state.derived);
   let projectCallCount = 0;
 
   const recordingProjector: ObservationProjector = Object.freeze({
-    project(projectedState: SimulationState, mode: 'development-only' | 'full'): void {
+    project(
+      snapshot: SimulationObservationSnapshot,
+      projectionMode: ObservationProjectionMode,
+    ) {
       projectCallCount += 1;
       if (projectCallCount !== 1) {
         throw new BoundedObserverBoundaryMonthRejectedError(
           'bounded 观察边界月触发了多次观察投影',
         );
       }
-      if (mode !== 'full') {
+      const deferredRunningProbe = mode === 'nonannual-extinction-probe'
+        && projectionMode === 'structures-only';
+      if (projectionMode !== 'full' && !deferredRunningProbe) {
         throw new BoundedObserverBoundaryMonthRejectedError(
-          `bounded 观察边界月意外触发 ${mode} 观察投影`,
+          `bounded 观察边界月意外触发 ${projectionMode} 观察投影`,
         );
       }
-      if (projectedState !== state) {
+      if (!isDeepStrictEqual(
+        snapshot.previousObservations,
+        observerBefore.observations,
+      )) {
         throw new BoundedObserverBoundaryMonthRejectedError(
-          'bounded 观察边界月向 projector 传入了替换后的 state 对象',
+          'bounded 观察边界月 projector snapshot 与 observer-owned state 不一致',
         );
       }
-      assertObserverOwnedUnchanged(observerBefore, projectedState, 'projector 回调前');
+      assertObserverOwnedUnchanged(observerBefore, state, 'projector 回调前');
       // Intentionally deferred. A later materializer observes private fact root A.
-      assertObserverOwnedUnchanged(observerBefore, projectedState, 'projector 回调后');
+      assertObserverOwnedUnchanged(observerBefore, state, 'projector 回调后');
+      return deferredSimulationObservationProjection(
+        'bounded 边界月等待累计观察 sidecar 物化',
+      );
     },
   });
 
-  const stepped = stepOwnedSimulation(recordingProjector, state);
+  const stepped = stepOwnedSimulationWithObservationProjector(recordingProjector, state);
   if (stepped !== state) {
     throw new BoundedObserverBoundaryMonthRejectedError(
       'bounded 观察边界月规则推进意外替换了 store-owned state 对象',
@@ -232,15 +242,6 @@ function stepOwnedBoundaryMonth(
     );
   }
   assertObserverOwnedUnchanged(observerBefore, stepped, '规则月末结束后');
-  // Month commit refreshes the compatibility `derived.structures` mirror from
-  // the authoritative physical index before invoking the deferred full
-  // projector. In the bounded profile that mirror is observer-owned. Restore
-  // the exact pre-step observer snapshot before root A is staged, while the
-  // month's physical facts remain authoritative in `world.physicalStructureIndex`.
-  // This keeps both a legacy materialized observer and a canonical bounded hot
-  // shell valid inputs without allowing the compatibility mirror to become a
-  // planner-facing fact or to make root A non-canonical by accident.
-  stepped.derived = exactDerivedBefore;
   const kind = classifyCompletedBoundary(stepped, boundary);
   if (projectCallCount !== 1) {
     throw new BoundedObserverBoundaryMonthRejectedError(
@@ -273,4 +274,39 @@ export function stepOwnedBoundedTerminalMonth(
   state: SimulationState,
 ): BoundedObserverBoundaryMonthResult {
   return stepOwnedBoundaryMonth(state, 'nonannual-extinction-probe');
+}
+
+/**
+ * Shared fact-boundary predicate for staging, publication and continuation
+ * reopen checks. It observes only rule-produced state and never materialized
+ * civilization indices.
+ */
+export function boundedObserverBoundaryMatchesState(
+  kind: BoundedObserverBoundaryKind,
+  state: SimulationState,
+  targetMonth: number,
+): boolean {
+  const endpoint = state.civilization.conditions.endpoint;
+  if (endpoint.kind !== 'months'
+    || state.clock.elapsedMonths !== targetMonth
+    || state.civilization.outcome?.atMonth !== (
+      kind === 'annual' ? undefined : targetMonth
+    )) {
+    return false;
+  }
+  if (kind === 'annual') {
+    return targetMonth % 12 === 0
+      && targetMonth < endpoint.value
+      && state.civilization.status === 'running'
+      && state.civilization.outcome === undefined;
+  }
+  if (kind === 'extinction') {
+    return state.civilization.status === 'ended'
+      && state.civilization.outcome?.kind === 'destroyed'
+      && state.people.filter(isAlive).length === 0;
+  }
+  return targetMonth === endpoint.value
+    && state.civilization.status === 'ended'
+    && state.civilization.outcome?.kind === 'boundary'
+    && state.people.some(isAlive);
 }

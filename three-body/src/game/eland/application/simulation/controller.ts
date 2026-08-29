@@ -54,7 +54,7 @@ export interface SimulationController {
 
 export type SimulationOptions = { seed?: number; config?: Partial<SimulationConfig>; state?: SimulationState };
 
-function applyExternalClimate(state: SimulationState, climate: ExternalClimateInput): void {
+export function applyExternalClimate(state: SimulationState, climate: ExternalClimateInput): void {
   state.civilization.externalClimate = {
     epoch: climate.epoch,
     kind: climate.kind,

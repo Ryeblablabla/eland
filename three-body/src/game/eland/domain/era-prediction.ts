@@ -1,11 +1,11 @@
-import type { EraPrediction, SimulationState } from './model';
+import type { DecisionAuthorityState, EraPrediction } from './model';
 import type { PersonState } from './person';
 import { relationTo } from './relation';
 
 export const MAX_ERA_PREDICTION_HORIZON_MONTHS = 6;
 
 export function personTrustsEraPrediction(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'eraPredictions'>,
   person: PersonState,
   prediction: EraPrediction,
 ): boolean {

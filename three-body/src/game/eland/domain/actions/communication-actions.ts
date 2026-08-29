@@ -34,7 +34,7 @@ import {
 } from '../project-knowledge-request';
 import { MAX_ERA_PREDICTION_HORIZON_MONTHS } from '../era-prediction';
 import { learnOfDeath } from '../mortuary';
-import { applyRelationEvidence } from '../relation';
+import { applyRelationEvidence, relationTo } from '../relation';
 import { rememberMaterialPlace } from '../spatial-knowledge';
 import { projectById } from '../state-index';
 import { projectIsLedBy } from '../project-leadership';
@@ -82,6 +82,29 @@ function groundedConversationSourceMatches(
     return event ? liveSocialEvidenceDescriptorFromWorldEvent(event) : undefined;
   });
   if (!sources.length || sources.some((source) => !source)) return false;
+  if (conversation.topic === 'everyday'
+    || conversation.topic === 'reminiscence'
+    || conversation.topic === 'playful') {
+    const relationSources = new Set(relationTo(person, listener.id)?.sourceEventIds ?? []);
+    return sources.every((source) => {
+      if (!source || !relationSources.has(source.eventId)) return false;
+      if (source.action) {
+        return source.action.completed
+          && source.action.actionKind !== 'communicate'
+          && source.action.actorId === listener.id
+          && source.action.supportRecipientIds.includes(person.id);
+      }
+      if (source.agreementFulfilled) return true;
+      if (!source.environment
+        || (source.environment.change !== 'founding' && source.environment.change !== 'relationship')) return false;
+      const participants = new Set(source.environment.participantIds);
+      return participants.has(person.id)
+        && participants.has(listener.id)
+        && !source.environment.excludedPairKeys.includes(
+          [person.id, listener.id].sort().join('|'),
+        );
+    });
+  }
   if (conversation.topic === 'care') {
     const conditionSources = new Set(listener.conditions.flatMap((condition) => condition.sourceEventIds));
     return conversation.sourceFactIds.every((sourceId) => conditionSources.has(sourceId));
@@ -165,8 +188,14 @@ function validateGroundedConversation(
     if (duplicate || !groundedConversationSourceMatches(state, person, listener, action.content, conversation)) {
       return { kind: 'blocked', reason: duplicate ? '同一段生活经历已经谈过' : '生活对话没有可解析且属于双方的真实来源' };
     }
+    const lowStakesTopic = ['everyday', 'reminiscence', 'playful'].includes(conversation.topic);
     const warmTopic = ['care', 'gratitude', 'shared-work', 'family', 'loss'].includes(conversation.topic);
-    return { kind: 'valid', conversation, trustDelta: warmTopic ? 1 : 0, bondDelta: conversation.topic === 'discovery' ? 1 : 2 };
+    return {
+      kind: 'valid',
+      conversation,
+      trustDelta: warmTopic ? 1 : 0,
+      bondDelta: lowStakesTopic ? 0 : conversation.topic === 'discovery' ? 1 : 2,
+    };
   }
   const referenceId = conversation.referenceEventId;
   const opening = referenceId ? worldEventById(state, referenceId) : undefined;
@@ -192,7 +221,13 @@ function validateGroundedConversation(
     return { kind: 'blocked', reason: duplicateResponse ? '这段生活对话已经回应过' : '回应没有引用人员与来源一致的生活对话开场' };
   }
   const supportive = conversation.stance !== 'guarded';
-  return { kind: 'valid', conversation, trustDelta: supportive ? 1 : 0, bondDelta: supportive ? 2 : 1 };
+  const lowStakesTopic = ['everyday', 'reminiscence', 'playful'].includes(conversation.topic);
+  return {
+    kind: 'valid',
+    conversation,
+    trustDelta: supportive && !lowStakesTopic ? 1 : 0,
+    bondDelta: supportive && !lowStakesTopic ? 2 : 0,
+  };
 }
 
 

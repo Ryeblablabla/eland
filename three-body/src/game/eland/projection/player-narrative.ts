@@ -649,7 +649,14 @@ function decisionText(state: SimulationState, event: DecisionEvent): string {
 function actionImportance(event: ActionEvent): number {
   if (event.status === 'blocked' || event.status === 'failed') return 104;
   if (event.diff.victimId || event.diff.restrainedPersonId) return 102;
-  if (event.action.kind === 'communicate') return 88;
+  if (event.action.kind === 'communicate') {
+    const conversation = event.action.content.kind === 'claim'
+      ? event.action.content.conversation
+      : undefined;
+    if (conversation?.turn === 'response'
+      && ['everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return 96;
+    return 88;
+  }
   if (event.action.kind === 'act') {
     if (event.action.operation === 'ingest' || event.action.operation === 'rehydrate') return 86;
     if (event.action.operation === 'hunt') return 84;
@@ -883,6 +890,12 @@ function isMajorHistoricalAction(state: SimulationState, event: ActionEvent): bo
     || typeof event.diff.restrainedPersonId === 'string'
     || typeof event.diff.releasedPersonId === 'string') return true;
   if (event.diff.verifiedTechnique === true) return true;
+  if (event.action.kind === 'communicate'
+    && event.action.content.kind === 'claim'
+    && event.action.content.conversation?.turn === 'response'
+    && ['everyday', 'reminiscence', 'playful'].includes(
+      event.action.content.conversation.topic,
+    )) return true;
   if (event.action.kind !== 'act') return false;
   if (event.action.operation === 'reproduce') return event.diff.conceived === true;
   if (event.action.operation === 'dehydrate') return event.diff.entered === true;

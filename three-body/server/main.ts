@@ -16,6 +16,7 @@ import {
 } from "./run-persistence";
 import { RunApi } from './run-api';
 import { RunEvolutionService } from './run-evolution-service';
+import { executeLongEvolutionInWorker } from './run-evolution-worker-client';
 import { SqliteRunStore } from './sqlite-run-store';
 
 const HOST = process.env.THREEBODY_HOST ?? "127.0.0.1";
@@ -26,7 +27,10 @@ const MAX_BODY_BYTES = 50 * 1024 * 1024;
 const store = new SqliteRunStore(DATA_DIR);
 const narrativeEnhancements = new NarrativeEnhancementService(store);
 const elandWorker = new ElandWorkerClient();
-const runEvolution = new RunEvolutionService(store);
+const runEvolution = new RunEvolutionService(
+  store,
+  (id, request) => executeLongEvolutionInWorker(store.dataDirectory(), id, request),
+);
 const runApi = new RunApi(store, runEvolution, narrativeEnhancements);
 
 function setCommonHeaders(response: ServerResponse): void {

@@ -1,5 +1,11 @@
 import type { PrimitiveAction, SocialProposal } from './action';
-import type { ActionFact, AgreementFact, SimulationState, WorldEvent } from './model';
+import type {
+  ActionFact,
+  AgreementFact,
+  DecisionAuthorityState,
+  SimulationState,
+  WorldEvent,
+} from './model';
 import type { PersonId } from './person';
 import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
@@ -171,7 +177,7 @@ interface AgreementIdIndex {
 
 const agreementIdIndexes = new WeakMap<SimulationState['agreements'], AgreementIdIndex>();
 
-function agreementIdIndex(state: SimulationState): AgreementIdIndex {
+function agreementIdIndex(state: Pick<DecisionAuthorityState, 'agreements'>): AgreementIdIndex {
   const agreements = state.agreements;
   let index = agreementIdIndexes.get(agreements);
   if (!index
@@ -204,16 +210,25 @@ function agreementIdIndex(state: SimulationState): AgreementIdIndex {
   return index;
 }
 
-export function agreementById(state: SimulationState, id: string): Agreement | undefined {
+export function agreementById(
+  state: Pick<DecisionAuthorityState, 'agreements'>,
+  id: string,
+): Agreement | undefined {
   return agreementIdIndex(state).byId.get(id);
 }
 
-export function agreementByProposalEventId(state: SimulationState, eventId: string): Agreement | undefined {
+export function agreementByProposalEventId(
+  state: Pick<DecisionAuthorityState, 'agreements'>,
+  eventId: string,
+): Agreement | undefined {
   return agreementIdIndex(state).byProposalEventId.get(eventId);
 }
 
 /** Agreement membership is immutable after creation; status fields remain live. */
-export function agreementsForPerson(state: SimulationState, personId: PersonId): readonly Agreement[] {
+export function agreementsForPerson(
+  state: Pick<DecisionAuthorityState, 'agreements'>,
+  personId: PersonId,
+): readonly Agreement[] {
   return agreementIdIndex(state).byParticipantId.get(personId) ?? [];
 }
 

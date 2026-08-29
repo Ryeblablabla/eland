@@ -1,4 +1,4 @@
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState, SimulationState } from './model';
 import type { PersonState } from './person';
 import { worldEventById } from './event-index';
 
@@ -17,7 +17,7 @@ function exposureMatchesClimate(
  * caregiver acts for a dependent.
  */
 export function observedHibernationEntryEvidence(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'civilization' | 'world'>,
   person: PersonState,
 ): string[] {
   if (state.civilization.epoch !== 'chaotic' || state.civilization.climate.severity < 4) return [];

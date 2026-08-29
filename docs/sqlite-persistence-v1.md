@@ -23,6 +23,8 @@ SQLite 当前完整运行 schema 使用 `user_version=3`、WAL、`foreign_keys=O
 
 run 删除时其 checkpoint 与 artifact 由外键级联删除；内容块不携带领域含义，只有引用它的行决定用途。
 
+HTTP、长程演进与非权威叙事增强分别依赖 `RunAccessStore`、`EvolutionExecutionStore` 与 `NarrativeEnhancementStore` 端口；只有 `server/main.ts` 组装具体 SQLite store 与 Worker launcher。`SqliteRunStore` 继续拥有 run 根、checkpoint、continuation、CAS 事务与 rollback seam；普通 bounded 月和 observer-boundary 月的高层 staging / publication 分别由 `SqliteBoundedNonProjectionPublication` 与 `SqliteBoundedObserverBoundaryPublication` 编排。两者只共享数据库无关的 publication contract，通过窄 host port 请求主 store 完成原子提交，不直接持有 SQLite 或彼此。三类输出 artifact 的 prepared statements、codec 委托和孤块回收另由同数据库上的 `SqliteRunOutputArtifactStore` 组件承接；主 store 的既有公开方法保持为薄委托。
+
 ## 编码与事务
 
 长程状态使用增量历史 codec，artifact 继续使用 `v8-br-v1`。一个当前状态由以下内容块组成：

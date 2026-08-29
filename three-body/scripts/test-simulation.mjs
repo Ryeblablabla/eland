@@ -247,22 +247,50 @@ try {
   const cultivatedReproductionActor = cultivatedReproductionState.people.find((person) => person.id === feasibleActor.id);
   const cultivatedReproductionPartner = cultivatedReproductionState.people.find((person) => person.id === feasiblePartner.id);
   assert.ok(cultivatedReproductionActor && cultivatedReproductionPartner, '关系培养测试需要完整人物对');
-  const cultivatedRelationshipEventId = 'test-feasible-cultivated-relationship';
   const cultivatedRelationship = cultivatedReproductionActor.relations.find((relation) => relation.personId === cultivatedReproductionPartner.id);
   const cultivatedReciprocalRelationship = cultivatedReproductionPartner.relations.find((relation) => relation.personId === cultivatedReproductionActor.id);
   assert.ok(cultivatedRelationship && cultivatedReciprocalRelationship, '关系培养测试需要双向关系');
-  Object.assign(cultivatedRelationship, { trust: 5, bond: 5, sourceEventIds: [cultivatedRelationshipEventId] });
+  const cultivatedConversationFacts = [0, 1].flatMap((month) => {
+    const basisKey = `grounded-conversation-v1|topic=everyday|speaker=${cultivatedReproductionActor.id}|listener=${cultivatedReproductionPartner.id}|sources=${foundingFact.id}`;
+    const openingId = `test-feasible-cultivated-opening-${month}`;
+    const responseId = `test-feasible-cultivated-response-${month}`;
+    const shell = (id, orderInMonth, who, action) => ({
+      id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
+      cellId: cultivatedReproductionActor.position.cellId, who, cause: 'intent', action,
+      fromCellId: cultivatedReproductionActor.position.cellId, toCellId: cultivatedReproductionActor.position.cellId,
+      fromZ: cultivatedReproductionActor.position.z, toZ: cultivatedReproductionActor.position.z,
+      pathSegment: [cultivatedReproductionActor.position.cellId], status: 'completed',
+      result: '双方完成有来源的生活交流', diff: { groundedConversationBasisKey: basisKey },
+    });
+    return [
+      shell(openingId, 0, cultivatedReproductionActor.id, {
+        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '聊聊近况', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'everyday', turn: 'opening',
+          speakerId: cultivatedReproductionActor.id, listenerId: cultivatedReproductionPartner.id, sourceFactIds: [foundingFact.id],
+        } }, audience: [cultivatedReproductionPartner.id], channel: 'voice',
+      }),
+      shell(responseId, 1, cultivatedReproductionPartner.id, {
+        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应近况', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'everyday', turn: 'response',
+          speakerId: cultivatedReproductionPartner.id, listenerId: cultivatedReproductionActor.id,
+          sourceFactIds: [foundingFact.id], referenceEventId: openingId, stance: 'supportive',
+        } }, audience: [cultivatedReproductionActor.id], channel: 'voice',
+      }),
+    ];
+  });
+  const cultivatedSharedLifeFact = {
+    id: 'test-feasible-cultivated-shared-life-2', kind: 'environment', change: 'relationship',
+    atMonth: 2, orderInMonth: 0, cellId: cultivatedReproductionActor.position.cellId,
+    result: '第三个月仍有普通共同生活经历',
+    diff: { process: 'shared-action-ticks', participantIds: [cultivatedReproductionActor.id, cultivatedReproductionPartner.id], excludedPairKeys: [] },
+  };
+  const cultivatedSourceIds = [...cultivatedConversationFacts.map((event) => event.id), cultivatedSharedLifeFact.id];
+  Object.assign(cultivatedRelationship, { trust: 5, bond: 5, sourceEventIds: cultivatedSourceIds });
   Object.assign(cultivatedReciprocalRelationship, { trust: 0, bond: 0, sourceEventIds: [] });
-  appendFixtureEvents(cultivatedReproductionState, [{
-    id: cultivatedRelationshipEventId, kind: 'action', actionTick: 1, atMonth: 0, orderInMonth: 0,
-    cellId: cultivatedReproductionActor.position.cellId, who: cultivatedReproductionActor.id, cause: 'intent',
-    action: { kind: 'attend', target: { kind: 'person', personId: cultivatedReproductionPartner.id } },
-    fromCellId: cultivatedReproductionActor.position.cellId, toCellId: cultivatedReproductionActor.position.cellId,
-    fromZ: cultivatedReproductionActor.position.z, toZ: cultivatedReproductionActor.position.z, pathSegment: [cultivatedReproductionActor.position.cellId],
-    status: 'completed', result: '共同经历形成了足够的信任与亲近', diff: {},
-  }]);
+  appendFixtureEvents(cultivatedReproductionState, [...cultivatedConversationFacts, cultivatedSharedLifeFact]);
+  cultivatedReproductionState.clock.elapsedMonths = 2;
   const cultivatedReproductionContext = buildDecisionContexts(cultivatedReproductionState).find((context) => context.person.id === cultivatedReproductionActor.id);
-  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者有可追溯共同经历后，应由本人评估是否提出生殖，不要求固定或双向关系分数');
+  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者跨月形成直接生活交流后，应由本人评估是否提出生殖，不要求固定或双向关系分数');
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 6, bond: 6, sourceEventIds: [foundingFact.id] });
   feasibleActor.inventory = [
     { id: 'test-feasible-food', materialId: 21, quantity: 3, sourceEventIds: [] },
@@ -622,8 +650,10 @@ try {
   assert.ok(buildDecisionContexts(waterAssistState).find((context) => context.person.id === waterHelper.id)?.options.some((option) => option.id.startsWith('accept-assist:')), '求助者仍然缺水且存在可达水源时，帮助者才能接受');
   const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'communicate', content: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, audience: [waterRequester.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterAcceptance);
+  appendFixtureEvents(waterAssistState, [waterAcceptance]);
   const helperArrival = { ...actionFact('test-water-helper-arrival', 3, waterHelper.id, { kind: 'move', toCellId: waterBank }), cellId: waterBank, toCellId: waterBank };
   recordAgreementAction(waterAssistState, helperArrival);
+  appendFixtureEvents(waterAssistState, [helperArrival]);
   assert.equal(waterAssistState.agreements[0]?.status, 'active', '帮助者独自到达水边还不能算完成求助');
   const requesterDrink = { ...actionFact('test-water-requester-drink', 3, waterRequester.id, { kind: 'act', operation: 'ingest', targets: [] }), cellId: waterBank, diff: { materialId: 7, hydration: 58 } };
   recordAgreementAction(waterAssistState, requesterDrink);
@@ -1329,6 +1359,16 @@ try {
   placeWith(partner, founder);
   founder.personality.baseline.emotionality = 90;
   founder.personality.baseline.extraversion = 90;
+  const earlierAssistId = 'test-earlier-fulfilled-assist';
+  const earlierRequest = actionFact('test-earlier-assist-request', 0, founder.id, { kind: 'communicate', content: { id: earlierAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 1 } }, audience: [partner.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, earlierRequest);
+  appendFixtureEvents(collectiveState, [earlierRequest]);
+  const earlierAcceptance = actionFact('test-earlier-assist-acceptance', 0, partner.id, { kind: 'communicate', content: { id: 'test-earlier-assist-acceptance-content', kind: 'accept', referenceId: earlierAssistId }, audience: [founder.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, earlierAcceptance);
+  appendFixtureEvents(collectiveState, [earlierAcceptance]);
+  const earlierFulfillment = actionFact('test-earlier-assist-fulfillment', 0, partner.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: partner.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: earlierAssistId });
+  recordAgreementAction(collectiveState, earlierFulfillment);
+  appendFixtureEvents(collectiveState, [earlierFulfillment]);
   const priorAssistId = 'test-prior-fulfilled-assist';
   const priorRequest = actionFact('test-prior-assist-request', 1, founder.id, { kind: 'communicate', content: { id: priorAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: partner.id, need: 'food', expiresAtMonth: 2 } }, audience: [partner.id], channel: 'voice' });
   recordAgreementAction(collectiveState, priorRequest);
@@ -1470,21 +1510,32 @@ try {
   placeWith(currentPartner, currentFounder);
   placeWith(candidate, currentFounder);
   const candidateAssistId = 'test-candidate-fulfilled-assist';
-  const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: candidate.id, helperId: founder.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [founder.id], channel: 'voice' });
+  const candidateRequest = actionFact('test-candidate-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: candidateAssistId, kind: 'request', summary: '请给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [candidate.id], channel: 'voice' });
   recordAgreementAction(collectiveState, candidateRequest);
   appendFixtureEvents(collectiveState, [candidateRequest]);
-  const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, audience: [candidate.id], channel: 'voice' });
+  const candidateAcceptance = actionFact('test-candidate-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: 'test-candidate-assist-acceptance-content', kind: 'accept', referenceId: candidateAssistId }, audience: [founder.id], channel: 'voice' });
   recordAgreementAction(collectiveState, candidateAcceptance);
   appendFixtureEvents(collectiveState, [candidateAcceptance]);
-  const candidateFulfillment = actionFact('test-candidate-assist-fulfillment', collectiveState.clock.elapsedMonths, founder.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: founder.id }, to: { kind: 'person', personId: candidate.id }, authorizationRef: candidateAssistId });
+  const candidateFulfillment = actionFact('test-candidate-assist-fulfillment', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: candidate.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: candidateAssistId });
   recordAgreementAction(collectiveState, candidateFulfillment);
   appendFixtureEvents(collectiveState, [candidateFulfillment]);
+  collectiveState.clock.elapsedMonths += 1;
+  const repeatedCandidateAssistId = 'test-candidate-repeated-fulfilled-assist';
+  const repeatedCandidateRequest = actionFact('test-candidate-repeated-assist-request', collectiveState.clock.elapsedMonths, founder.id, { kind: 'communicate', content: { id: repeatedCandidateAssistId, kind: 'request', summary: '请再给我一份食物', proposal: { kind: 'assist', requesterId: founder.id, helperId: candidate.id, need: 'food', expiresAtMonth: collectiveState.clock.elapsedMonths + 2 } }, audience: [candidate.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, repeatedCandidateRequest);
+  appendFixtureEvents(collectiveState, [repeatedCandidateRequest]);
+  const repeatedCandidateAcceptance = actionFact('test-candidate-repeated-assist-acceptance', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'communicate', content: { id: 'test-candidate-repeated-assist-acceptance-content', kind: 'accept', referenceId: repeatedCandidateAssistId }, audience: [founder.id], channel: 'voice' });
+  recordAgreementAction(collectiveState, repeatedCandidateAcceptance);
+  appendFixtureEvents(collectiveState, [repeatedCandidateAcceptance]);
+  const repeatedCandidateFulfillment = actionFact('test-candidate-repeated-assist-fulfillment', collectiveState.clock.elapsedMonths, candidate.id, { kind: 'transfer', materialId: 21, quantity: 1, from: { kind: 'person', personId: candidate.id }, to: { kind: 'person', personId: founder.id }, authorizationRef: repeatedCandidateAssistId });
+  recordAgreementAction(collectiveState, repeatedCandidateFulfillment);
+  appendFixtureEvents(collectiveState, [repeatedCandidateFulfillment]);
   const membershipContext = buildDecisionContexts(collectiveState).find((context) => context.person.id === founder.id);
   const offerMembership = membershipContext?.options.find((option) => option.id.startsWith('offer-membership:')
     && option.nextAction.kind === 'communicate'
     && option.nextAction.content.proposal?.kind === 'membership'
     && option.nextAction.content.proposal.candidateId === candidate.id);
-  assert.ok(offerMembership, `已有共同体应能吸收有合作事实的第三人；options=${JSON.stringify(membershipContext?.options.map((option) => option.id))}`);
+  assert.ok(offerMembership, `已有共同体应能吸收有跨月重复合作事实的第三人；options=${JSON.stringify(membershipContext?.options.map((option) => option.id))}`);
   collectiveState = runRecordOption(collectiveState, founder.id, offerMembership, 'offer-third-membership');
   const membershipAgreement = collectiveState.agreements.find((agreement) => agreement.proposal.kind === 'membership');
   assert.deepEqual(new Set(membershipAgreement?.requiredResponderIds), new Set([partner.id, candidate.id]), '成员扩张必须同时要求所有既有成员和候选人回应');

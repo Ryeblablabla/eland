@@ -1,6 +1,6 @@
 import type { VoxelPosition } from './action';
 import { remember } from './memory';
-import type { EnvironmentFact, SimulationState } from './model';
+import type { DecisionAuthorityState, EnvironmentFact, SimulationState } from './model';
 import { isAlive, type PersonId, type PersonState } from './person';
 import { personalityScore } from './personality';
 import { cellsInRadius } from '../world/grid';
@@ -95,7 +95,9 @@ interface MortuaryPerceptionIndex {
   stableMarkedByCell: Map<number, IndexedPerceivableRemains[]>;
 }
 
-const mortuaryPerceptionIndexes = new WeakMap<SimulationState, MortuaryPerceptionIndex>();
+type MortuaryReadState = Pick<DecisionAuthorityState, 'world'>;
+
+const mortuaryPerceptionIndexes = new WeakMap<MortuaryReadState, MortuaryPerceptionIndex>();
 
 /**
  * `world.remains` and `world.memorials` are append-only during ordinary play;
@@ -154,7 +156,7 @@ function promoteMarkedInterments(index: MortuaryPerceptionIndex, remainsId: stri
   index.unmarkedInterredById.delete(remainsId);
 }
 
-function buildMortuaryPerceptionIndex(state: SimulationState): MortuaryPerceptionIndex {
+function buildMortuaryPerceptionIndex(state: MortuaryReadState): MortuaryPerceptionIndex {
   const remains = state.world.remains ?? [];
   const memorials = state.world.memorials ?? [];
   const markedRemainsIds = new Set(memorials.map((marker) => marker.remainsId));
@@ -193,7 +195,7 @@ function appendOnlyPrefixChanged<T>(items: T[], indexedLength: number, lastIndex
     || (indexedLength > 0 && items[indexedLength - 1] !== lastIndexed);
 }
 
-function currentMortuaryPerceptionIndex(state: SimulationState): MortuaryPerceptionIndex {
+function currentMortuaryPerceptionIndex(state: MortuaryReadState): MortuaryPerceptionIndex {
   const remains = state.world.remains ?? [];
   const memorials = state.world.memorials ?? [];
   const index = mortuaryPerceptionIndexes.get(state);
@@ -285,7 +287,10 @@ function indexedPerceivableRemains(
     .map((entry) => entry.remains);
 }
 
-export function remainsById(state: SimulationState, remainsId: string): HumanRemainsState | undefined {
+export function remainsById(
+  state: MortuaryReadState,
+  remainsId: string,
+): HumanRemainsState | undefined {
   return currentMortuaryPerceptionIndex(state).remainsById.get(remainsId);
 }
 
@@ -293,7 +298,10 @@ export function remainsForPerson(state: SimulationState, personId: PersonId): Hu
   return currentMortuaryPerceptionIndex(state).remainsByPersonId.get(personId);
 }
 
-export function memorialForRemains(state: SimulationState, remainsId: string): MemorialMarkerState | undefined {
+export function memorialForRemains(
+  state: MortuaryReadState,
+  remainsId: string,
+): MemorialMarkerState | undefined {
   return currentMortuaryPerceptionIndex(state).memorialByRemainsId.get(remainsId);
 }
 
@@ -399,7 +407,7 @@ export interface StrongestBereavementUrgency {
  * authoritative bereavement-array entry.
  */
 export function strongestBereavement(
-  state: SimulationState,
+  state: MortuaryReadState,
   person: PersonState,
   atMonth: number,
 ): StrongestBereavementUrgency | undefined {

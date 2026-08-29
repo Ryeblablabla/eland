@@ -10,7 +10,7 @@ import type { RetainedLiveSocialEvidenceDescriptor } from '../src/game/eland/dom
 import type { RetainedProjectPressureEvidenceDescriptor } from '../src/game/eland/domain/project-pressure-evidence';
 import { rematerializePhysicalStructureIndex } from '../src/game/eland/domain/physical-structure-index';
 import { WILDLIFE_ECOLOGY_VERSION } from '../src/game/eland/domain/wildlife-ecology';
-import { cloneValidatedSocialLearningState } from '../src/game/eland/application/simulation/social-learning-state';
+import { cloneValidatedSocialLearningState } from '../src/game/eland/infrastructure-api';
 import { hydrateWorld, voxelWorldRevision } from '../src/game/eland/world/grid';
 import {
   beginHistoryRetentionProjection,

@@ -59,7 +59,9 @@ try {
   await build({ entryPoints: [entry], outfile: output, bundle: true, platform: 'node', format: 'esm' });
   const api = await import(`${pathToFileURL(output).href}?v=${Date.now()}`);
 
-  const state = api.createInitialState({ project() {} }, 11939, { endpoint: { kind: 'months', value: 120 } });
+  const state = api.createInitialState({
+    project() { return { kind: 'deferred', reason: 'bounded observer fixture' }; },
+  }, 11939, { endpoint: { kind: 'months', value: 120 } });
   const founding = state.world.past[0];
   const prefix = [
     founding,

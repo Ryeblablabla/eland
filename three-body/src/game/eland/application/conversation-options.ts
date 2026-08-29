@@ -62,6 +62,9 @@ export function createGroundedConversationCompilationDiagnostics(): GroundedConv
 }
 
 const TOPIC_LABEL: Record<GroundedConversationTopic, string> = {
+  everyday: '眼前的日常',
+  reminiscence: '一起经历过的小事',
+  playful: '轻松的玩笑',
   care: '身体与照护',
   hardship: '自己的难处',
   gratitude: '感谢',
@@ -71,6 +74,72 @@ const TOPIC_LABEL: Record<GroundedConversationTopic, string> = {
   family: '共同养育',
   loss: '死亡与失去',
 };
+
+const LOW_STAKES_TOPICS = ['everyday', 'reminiscence', 'playful'] as const;
+
+function sharedLifeMomentMatches(
+  event: LiveSocialEvidenceDescriptor,
+  person: PersonState,
+  other: PersonState,
+): boolean {
+  if (event.action) {
+    return event.action.completed
+      && event.action.actionKind !== 'communicate'
+      && event.action.actorId === other.id
+      && event.action.supportRecipientIds.includes(person.id);
+  }
+  if (event.agreementFulfilled) return true;
+  if (!event.environment) return false;
+  if (event.environment.change !== 'founding' && event.environment.change !== 'relationship') return false;
+  const participants = new Set(event.environment.participantIds);
+  return participants.has(person.id)
+    && participants.has(other.id)
+    && !event.environment.excludedPairKeys.includes([person.id, other.id].sort().join('|'));
+}
+
+function latestSharedLifeMoment(
+  person: PersonState,
+  other: PersonState,
+  rememberedSources: RememberedGroundedOpeningBasisSnapshot,
+): LiveSocialEvidenceDescriptor | undefined {
+  return (relationTo(person, other.id)?.sourceEventIds ?? [])
+    .flatMap((eventId) => rememberedSources.evidenceForPersonSource(person.id, eventId) ?? [])
+    .filter((event) => sharedLifeMomentMatches(event, person, other))
+    .sort(compareLiveSocialEvidenceDescriptors)
+    .at(-1);
+}
+
+function lowStakesCandidate(
+  person: PersonState,
+  other: PersonState,
+  moment: LiveSocialEvidenceDescriptor,
+): ConversationCandidate {
+  const ordinal = [...`${moment.eventId}:${person.id}:${other.id}`]
+    .reduce((sum, character) => sum + (character.codePointAt(0) ?? 0), 0)
+    % LOW_STAKES_TOPICS.length;
+  const topic = LOW_STAKES_TOPICS[ordinal]!;
+  if (topic === 'reminiscence') return {
+    topic,
+    summary: `与${other.name}想起此前一起生活或忙碌的一小段经历，问问对方还记得什么`,
+    reason: '双方有一段可回放的共同生活经历，可以聊它留下的普通记忆，而不必讨论任务或承诺',
+    sourceFactIds: [moment.eventId],
+    priority: 52,
+  };
+  if (topic === 'playful') return {
+    topic,
+    summary: `拿双方经历过的小插曲开一个不伤人的玩笑，看看${other.name}愿不愿意一起笑一笑`,
+    reason: '双方已有共同经历，轻松回应也可以成为生活的一部分，不需要服务于求偶或生产',
+    sourceFactIds: [moment.eventId],
+    priority: 50,
+  };
+  return {
+    topic,
+    summary: `问问${other.name}近来过得怎么样，也聊聊眼前的天气、吃食、休息和周围景象`,
+    reason: '双方此刻自然相遇，又有可回放的共同生活来源，可以聊没有任务目的的日常近况',
+    sourceFactIds: [moment.eventId],
+    priority: 54,
+  };
+}
 
 function resolvedSourceIds(
   state: SimulationState,
@@ -247,6 +316,8 @@ function openingCandidates(
   rememberedSources: RememberedGroundedOpeningBasisSnapshot,
 ): ConversationCandidate[] {
   const candidates: ConversationCandidate[] = [];
+  const sharedMoment = latestSharedLifeMoment(person, other, rememberedSources);
+  if (sharedMoment) candidates.push(lowStakesCandidate(person, other, sharedMoment));
   const otherCondition = conditionPhrase(other);
   if (otherCondition) candidates.push({
     topic: 'care',
@@ -390,6 +461,8 @@ function openingOption(
     channel: 'voice' as const,
   };
   const together = positionsWithinVoiceRange(person.position, other.position);
+  if (LOW_STAKES_TOPICS.includes(candidate.topic as typeof LOW_STAKES_TOPICS[number])
+    && !together) return null;
   const rendezvous = rendezvousForPair();
   if (!rendezvous) return null;
   const path = rendezvous.path;
@@ -415,6 +488,9 @@ function openingOption(
 
 function responseMeaning(topic: GroundedConversationTopic, guarded: boolean): string {
   if (guarded) return '已听见开场，但因当前恐惧和低信任保持戒备并暂缓深入回应';
+  if (topic === 'everyday') return '说说自己近来的吃食、休息和心情，也问问对方今天过得怎样';
+  if (topic === 'reminiscence') return '接住这段普通回忆，补上一件自己仍然记得的小事';
+  if (topic === 'playful') return '听懂这个没有恶意的玩笑，也用一句轻松的话回应对方';
   if (topic === 'care') return '接受对方的关心，并愿意共同寻找缓解身体不适的办法';
   if (topic === 'hardship') return '愿意倾听对方当前的困境，并共同考虑下一步';
   if (topic === 'gratitude') return '回应对方的感谢，并确认此前的帮助不构成债务';

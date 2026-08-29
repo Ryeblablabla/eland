@@ -51,7 +51,16 @@ import {
   generateVoxelWorld,
   mechanicalPowerWorldForSeed,
 } from '../../world/generator';
-import type { ObservationProjector } from './observation-projector';
+import type {
+  ObservationProjectionMode,
+  ObservationProjector,
+} from './observation-projector';
+import {
+  applySimulationObservationProjection,
+  captureSimulationObservationSnapshot,
+  captureSimulationObservationState,
+  materializedSimulationObservationPatch,
+} from './observation-state';
 import { cloneValidatedSocialLearningState } from './social-learning-state';
 import { clamp, copyState } from './state-utils';
 
@@ -59,6 +68,37 @@ export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
 const MIN_FOUNDER_COUNT = 5;
 const MAX_FOUNDER_COUNT = 12;
+
+function projectObservations(
+  state: SimulationState,
+  observationProjector: ObservationProjector,
+  mode: ObservationProjectionMode,
+): boolean {
+  return applySimulationObservationProjection(
+    state,
+    observationProjector.project(
+      captureSimulationObservationSnapshot(state),
+      mode,
+    ),
+  );
+}
+
+function refreshStructureCompatibilityMirror(
+  state: SimulationState,
+  physicalStructureIndex: NonNullable<SimulationState['world']['physicalStructureIndex']>,
+): void {
+  const previous = captureSimulationObservationState(state);
+  applySimulationObservationProjection(
+    state,
+    materializedSimulationObservationPatch({
+      ...previous,
+      derived: {
+        ...previous.derived,
+        structures: copyPhysicalStructures(physicalStructureIndex),
+      },
+    }),
+  );
+}
 
 function chooseProfiles(seed: number, civilizationNo: number, characterIds?: string[]): CharacterProfile[] {
   if (characterIds?.length) {
@@ -247,8 +287,8 @@ export function createInitialState(
   };
   const physicalStructureIndex = derivePhysicalStructureIndex(state);
   state.world.physicalStructureIndex = physicalStructureIndex;
-  state.derived.structures = copyPhysicalStructures(physicalStructureIndex);
-  observationProjector.project(state, 'development-only');
+  refreshStructureCompatibilityMirror(state, physicalStructureIndex);
+  projectObservations(state, observationProjector, 'development-only');
   return state;
 }
 
@@ -413,8 +453,8 @@ export function adoptSimulationState(
   }
   const physicalStructureIndex = derivePhysicalStructureIndex(state);
   state.world.physicalStructureIndex = physicalStructureIndex;
-  state.derived = { ...state.derived, structures: copyPhysicalStructures(physicalStructureIndex) };
-  observationProjector.project(state, 'full');
+  refreshStructureCompatibilityMirror(state, physicalStructureIndex);
+  projectObservations(state, observationProjector, 'full');
   primeEventIndex(state);
   return state;
 }

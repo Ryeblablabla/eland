@@ -1,4 +1,4 @@
-import type { PhysicalStructure, SimulationState } from './model';
+import type { DecisionAuthorityState, PhysicalStructure } from './model';
 import { physicalStructuresOf } from './physical-structure-index';
 import type { PersonState } from './person';
 import { shelterGeometryAt } from './structure';
@@ -23,7 +23,13 @@ function defaultVisibleCells(person: PersonState): number[] {
   return cellsInRadius(person.position.cellId, radius);
 }
 
-function rememberedEvidence(state: SimulationState, person: PersonState, structure: PhysicalStructure): string[] {
+type ShelterReadState = Pick<DecisionAuthorityState, 'clock' | 'world'>;
+
+function rememberedEvidence(
+  state: ShelterReadState,
+  person: PersonState,
+  structure: PhysicalStructure,
+): string[] {
   const placeEvidence = person.knownPlaces.flatMap((place) => {
     const placeCell = cellId(place.position.x, place.position.y);
     if (!structure.occupiedCells.includes(placeCell) || !structure.materialIds.includes(place.materialId)) return [];
@@ -48,7 +54,7 @@ function rememberedEvidence(state: SimulationState, person: PersonState, structu
  * 候选内部位置还会重新核验当前体素拓扑，已损坏的旧投影不会继续提供保护。
  */
 export function findReachableShelter(
-  state: SimulationState,
+  state: ShelterReadState,
   person: PersonState,
   visibleCellIds: Iterable<number> = defaultVisibleCells(person),
 ): ShelterAccess | null {

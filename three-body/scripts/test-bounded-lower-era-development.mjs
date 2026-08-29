@@ -95,7 +95,7 @@ try {
 
   function exercisedDutyFixture() {
     const state = api.createInitialState(
-      { project() {} },
+      { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
       81_000,
       { endpoint: { kind: 'months', value: 120 } },
     );
@@ -428,7 +428,7 @@ try {
   });
 
   const fullMetallurgy = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
     81_005,
     { endpoint: { kind: 'months', value: 120 } },
   );
@@ -506,7 +506,7 @@ try {
   };
 
   const agrarian = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
     81_001,
     { endpoint: { kind: 'months', value: 120 } },
   );
@@ -566,7 +566,7 @@ try {
   assert.equal(agrarian.civilization.stage, '农耕定居');
 
   const unknown = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
     81_002,
     { endpoint: { kind: 'months', value: 120 } },
   );
@@ -596,7 +596,7 @@ try {
   assert.ok(unknownResult.observation.missingGateIds.includes('index:120'));
 
   const ancientState = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
     81_003,
     { endpoint: { kind: 'months', value: 120 } },
   );
@@ -625,7 +625,7 @@ try {
   assert.equal(ancientState.civilization.stage, '古代文明');
 
   const full = api.createInitialState(
-    { project() {} },
+    { project() { return { kind: 'deferred', reason: 'bounded development fixture' }; } },
     81_004,
     { endpoint: { kind: 'months', value: 120 } },
   );

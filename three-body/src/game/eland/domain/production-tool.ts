@@ -3,7 +3,7 @@ import {
   actionFactsForPersonWithRetainedLease,
   compareWorldEventsInCanonicalOrder,
 } from './event-index';
-import type { ActionFact, SimulationState } from './model';
+import type { ActionFact, DecisionAuthorityState, SimulationState } from './model';
 import type { ItemStack, PersonId, PersonState } from './person';
 
 export const RECENT_PERSONAL_PRODUCTION_MONTHS = 12;
@@ -115,7 +115,7 @@ export function isCompletedPersonalProductionLaborEvent(
 
 /** Replayable evidence that this exact person recently completed material-producing labor. */
 export function recentPersonalProductionLaborEvents(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'clock' | 'world'>,
   personId: PersonId,
   atMonth = state.clock.elapsedMonths,
   maxAgeMonths = RECENT_PERSONAL_PRODUCTION_MONTHS,

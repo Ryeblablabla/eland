@@ -1,5 +1,5 @@
 import { worldEventById } from '../../domain/event-index';
-import type { SimulationState } from '../../domain/model';
+import type { DecisionAuthorityState } from '../../domain/model';
 import type { PersonState } from '../../domain/person';
 import { resolvePersonKnownProcess } from '../../domain/person-known-process';
 import type { ProjectState } from '../../domain/project';
@@ -42,7 +42,7 @@ export function auditedTechniqueMaterialPlanProvenance(
  * of the project's tangible outputs. Missing retained evidence fails closed.
  */
 export function projectMaterialPlanProvenance(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'world'>,
   person: PersonState,
   project: ProjectState,
 ): ProjectMaterialPlanProvenance | null {

@@ -81,6 +81,41 @@ try {
   }
   state.people = [female, male];
 
+  const appendGroundedExchange = (targetState, first, second, month, prefix) => {
+    const basisKey = `grounded-conversation-v1|topic=care|speaker=${first.id}|listener=${second.id}|sources=${founding.id}`;
+    const openingId = `${prefix}-opening`;
+    const responseId = `${prefix}-response`;
+    const shell = (id, orderInMonth, who, action) => ({
+      id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
+      cellId: first.position.cellId, who, cause: 'intent', action,
+      fromCellId: first.position.cellId, toCellId: first.position.cellId,
+      fromZ: first.position.z, toZ: first.position.z, pathSegment: [first.position.cellId],
+      status: 'completed', result: '完成有来源的照护交流',
+      diff: { groundedConversationBasisKey: basisKey },
+    });
+    const conversation = {
+      version: 'grounded-conversation-v1', basisKey, topic: 'care',
+      speakerId: first.id, listenerId: second.id, sourceFactIds: [founding.id],
+    };
+    const opening = shell(openingId, 90, first.id, {
+      kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '问问身体与照护近况', conversation: { ...conversation, turn: 'opening' } },
+      audience: [second.id], channel: 'voice',
+    });
+    const response = shell(responseId, 91, second.id, {
+      kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应身体与照护近况', conversation: {
+        ...conversation, turn: 'response', speakerId: second.id, listenerId: first.id,
+        referenceEventId: openingId, stance: 'supportive',
+      } },
+      audience: [first.id], channel: 'voice',
+    });
+    appendCommittedEvents(targetState, [opening, response]);
+    for (const [owner, other] of [[first, second], [second, first]]) {
+      const directed = owner.relations.find((relation) => relation.personId === other.id);
+      directed.sourceEventIds = [...new Set([...directed.sourceEventIds, openingId, responseId])];
+    }
+    return [opening, response];
+  };
+
   const directedRelation = female.relations.find((relation) => relation.personId === male.id);
   const reciprocalRelation = male.relations.find((relation) => relation.personId === female.id);
   Object.assign(directedRelation, { trust: 19, bond: 19, sourceEventIds: [founding.id] });
@@ -90,20 +125,43 @@ try {
   Object.assign(directedRelation, { trust: 20, bond: 20 });
   Object.assign(reciprocalRelation, { trust: 20, bond: 20 });
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.ok(context?.options.some((option) => option.id.startsWith('offer-companion:')), '关系 20/20 且有共同事实时应允许提出结伴');
+  assert.equal(context?.options.some((option) => option.id.startsWith('offer-companion:')), false,
+    '关系 20/20 加开局共同抵达仍只是同群熟悉，不得直接提出结伴');
 
   Object.assign(directedRelation, { trust: 5, bond: 5, sourceEventIds: [founding.id] });
   Object.assign(reciprocalRelation, { trust: 0, bond: 0, sourceEventIds: [] });
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  const lowRelationshipOffer = context?.options.find((option) => option.id.startsWith('offer-reproduce:'));
-  assert.ok(context && lowRelationshipOffer, '只要提议者拥有可追溯关系，低分和非对称关系也不得被系统硬门槛裁掉');
-  const lowRelationshipConsent = evaluateDecisionOption(context, lowRelationshipOffer, { atMonth: 0, planningTick: 1 })
+  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false,
+    '开局共同抵达不能成为生育提议的充分关系依据');
+
+  const appraisalState = structuredClone(state);
+  const appraisalFemale = appraisalState.people.find((person) => person.id === female.id);
+  const appraisalMale = appraisalState.people.find((person) => person.id === male.id);
+  const appraisalRelation = appraisalFemale.relations.find((relation) => relation.personId === appraisalMale.id);
+  const appraisalReciprocal = appraisalMale.relations.find((relation) => relation.personId === appraisalFemale.id);
+  Object.assign(appraisalRelation, { trust: 5, bond: 5, sourceEventIds: [] });
+  Object.assign(appraisalReciprocal, { trust: 5, bond: 5, sourceEventIds: [] });
+  appendGroundedExchange(appraisalState, appraisalFemale, appraisalMale, 1, 'appraisal-month-1');
+  appendGroundedExchange(appraisalState, appraisalFemale, appraisalMale, 2, 'appraisal-month-2');
+  const appraisalShared = {
+    id: 'appraisal-shared-month-3', kind: 'environment', change: 'relationship', atMonth: 3, orderInMonth: 0,
+    cellId: appraisalFemale.position.cellId, result: '第三个月仍在共同生活',
+    diff: { process: 'shared-action-ticks', participantIds: [appraisalFemale.id, appraisalMale.id], excludedPairKeys: [] },
+  };
+  appendCommittedEvents(appraisalState, [appraisalShared]);
+  appraisalRelation.sourceEventIds.push(appraisalShared.id);
+  appraisalReciprocal.sourceEventIds.push(appraisalShared.id);
+  appraisalState.clock.elapsedMonths = 3;
+  let appraisalContext = buildDecisionContexts(appraisalState).find((candidate) => candidate.person.id === appraisalFemale.id);
+  const lowRelationshipOffer = appraisalContext?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+  assert.ok(appraisalContext && lowRelationshipOffer, '跨月直接交流形成资格后，低分关系仍由人物连续评估而非固定分数裁掉');
+  const lowRelationshipConsent = evaluateDecisionOption(appraisalContext, lowRelationshipOffer, { atMonth: 3, planningTick: 1 })
     .votes.find((vote) => vote.tree === 'consent');
-  Object.assign(directedRelation, { trust: 90, bond: 90 });
-  context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  const highRelationshipOffer = context?.options.find((option) => option.id.startsWith('offer-reproduce:'));
-  const highRelationshipConsent = context && highRelationshipOffer
-    ? evaluateDecisionOption(context, highRelationshipOffer, { atMonth: 0, planningTick: 1 }).votes.find((vote) => vote.tree === 'consent')
+  Object.assign(appraisalRelation, { trust: 90, bond: 90 });
+  appraisalContext = buildDecisionContexts(appraisalState).find((candidate) => candidate.person.id === appraisalFemale.id);
+  const highRelationshipOffer = appraisalContext?.options.find((option) => option.id.startsWith('offer-reproduce:'));
+  const highRelationshipConsent = appraisalContext && highRelationshipOffer
+    ? evaluateDecisionOption(appraisalContext, highRelationshipOffer, { atMonth: 3, planningTick: 1 }).votes.find((vote) => vote.tree === 'consent')
     : undefined;
   assert.ok(lowRelationshipConsent && highRelationshipConsent && highRelationshipConsent.score > lowRelationshipConsent.score,
     '关系质量应连续改变人物愿不愿提出生殖，而不是充当固定资格线');
@@ -165,7 +223,13 @@ try {
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.equal(directedRelation.trust, 63);
   assert.equal(directedRelation.bond, 59);
-  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '关系 63/59 时仍应允许人物自行评估是否提出生殖');
+  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), true,
+    '非开局共同活动跨过自然月后应保留首次生育协商，避免把真实繁衍频率绑死在对话调度上');
+  appendGroundedExchange(state, female, male, 3, 'cultivated-month-3');
+  appendGroundedExchange(state, female, male, 4, 'cultivated-month-4');
+  context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')),
+    '后续直接交流仍应保留人物自行评估生殖的选项，并可作为拒绝后重提的新依据');
   const fifthMonthActions = sharedActionTicks(5, 5);
   const fifthMonthFacts = advanceSharedRelationshipExperience(state, fifthMonthActions, 5);
   appendCommittedEvents(state, [...fifthMonthActions, ...fifthMonthFacts]);
@@ -174,14 +238,19 @@ try {
   assert.equal(directedRelation.trust, 65);
   assert.equal(directedRelation.bond, 60);
   assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), `共同活动提高关系后仍应保留人物评估选项；实际选项：${context?.options.map((option) => option.id).join(',')}`);
+  const preRejectionBasis = structuredClone(
+    context?.options.find((option) => option.id.startsWith('offer-reproduce:'))?.relationshipBasis,
+  );
+  assert.ok(preRejectionBasis, '固定夹具必须保留一次有来源的生育提议 basis');
   reciprocalRelation.trust = 59;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '对方的关系分数不应替代提议者的个人判断');
   reciprocalRelation.trust = 60;
+  const cultivatedRelationshipSources = [...directedRelation.sourceEventIds];
   Object.assign(directedRelation, { trust: 60, bond: 60, sourceEventIds: [] });
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '没有真实来源时关系分数仍不得解锁生殖');
-  directedRelation.sourceEventIds = [founding.id];
+  directedRelation.sourceEventIds = cultivatedRelationshipSources;
   for (const person of [female, male]) {
     const original = originalSocialPersonality.get(person.id);
     person.personality.baseline.agreeableness = original.agreeableness;
@@ -369,6 +438,29 @@ try {
     content: { id: 'test-reproduction-acceptance-content', kind: 'accept', referenceId: agreementId },
     audience: [female.id], channel: 'voice',
   }));
+
+  const rejectedProposalState = structuredClone(state);
+  const rejectedProposal = rejectedProposalState.agreements[0];
+  rejectedProposal.proposal.basis = preRejectionBasis;
+  rejectedProposal.proposedAtMonth = 5;
+  rejectedProposal.status = 'rejected';
+  rejectedProposal.resolvedAtMonth = 5;
+  rejectedProposal.acceptedByPersonIds = [female.id];
+  rejectedProposal.rejectedByPersonIds = [male.id];
+  delete rejectedProposal.acceptedAtMonth;
+  rejectedProposalState.clock.elapsedMonths = 5;
+  let rejectedProposalContext = buildDecisionContexts(rejectedProposalState)
+    .find((candidate) => candidate.person.id === female.id);
+  assert.equal(rejectedProposalContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), false,
+    '明确拒绝后，同一份旧关系依据不得立刻生成另一份生育提议');
+  const rejectedFemale = rejectedProposalState.people.find((person) => person.id === female.id);
+  const rejectedMale = rejectedProposalState.people.find((person) => person.id === male.id);
+  appendGroundedExchange(rejectedProposalState, rejectedFemale, rejectedMale, 6, 'post-rejection-renewed-intimacy');
+  rejectedProposalState.clock.elapsedMonths = 6;
+  rejectedProposalContext = buildDecisionContexts(rejectedProposalState)
+    .find((candidate) => candidate.person.id === female.id);
+  assert.ok(rejectedProposalContext?.options.some((option) => option.id.startsWith('offer-reproduce:')),
+    '拒绝后出现新的直接亲密证据即可重新评估，不应再被统一三个月冷却错过生育窗口');
 
   const reproduceAction = { kind: 'act', operation: 'reproduce', targets: [{ kind: 'person', personId: male.id }], authorizationRef: agreementId };
   const fullTickAttemptState = structuredClone(state);
@@ -614,7 +706,8 @@ try {
   assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false, '未受孕窗口到期后仍必须经过冷却期才能再次提议');
   state.clock.elapsedMonths = 11;
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
-  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), '未受孕窗口到期六个月后可重新评估，不必等待偶然的新共同事件');
+  assert.ok(context?.options.some((option) => option.id.startsWith('offer-reproduce:')),
+    '未受孕窗口的原有生理间隔届满后，应恢复双方重新评估机会以保持长期繁衍节律');
 
   const responsibilityState = structuredClone(state);
   responsibilityState.clock.elapsedMonths = 2;
@@ -792,6 +885,9 @@ try {
       const facts = advanceSharedRelationshipExperience(relationshipState, sharedActions, month);
       appendCommittedEvents(relationshipState, [...sharedActions, ...facts]);
       relationshipState.clock.elapsedMonths = month;
+      if (month === 10 || month === 19 || month === 40 || month === 59) {
+        appendGroundedExchange(relationshipState, first, second, month, `seed-${seed}-relationship-month-${month}`);
+      }
       if (month === 20) {
         const monthTwenty = buildDecisionContexts(relationshipState).find((candidate) => candidate.person.id === first.id);
         assert.ok(

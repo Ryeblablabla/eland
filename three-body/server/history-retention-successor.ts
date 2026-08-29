@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   augmentRetainedColdWorldEventFacts,
   registerLiveSocialEvidenceDescriptors,
-  retainedLiveSocialEvidenceForLivingSources,
 } from '../src/game/eland/domain/event-index';
 import type { SimulationState, WorldEvent } from '../src/game/eland/domain/model';
 import { isAlive } from '../src/game/eland/domain/person';
@@ -362,10 +361,12 @@ async function installVerifiedSuccessorLiveSocialDescriptors(
     });
   };
 
-  const reusable = [
-    ...sourceDescriptors,
-    ...retainedLiveSocialEvidenceForLivingSources(nextState),
-  ];
+  // Only descriptors captured from the previous, already-authenticated shell
+  // may enter the reusable pool. The stepped state can already contain
+  // descriptors for events created by the successor month; those identities
+  // are deliberately established below from the verified hot window or the
+  // exact successor suffix, never by treating them as previous-root facts.
+  const reusable = sourceDescriptors;
   const seenReusableOwnerOrdinal = new Set<string>();
   for (const item of reusable) {
     const ownerOrdinal = JSON.stringify([item.ownerId, item.absoluteIndex]);

@@ -10,7 +10,7 @@ import type {
 } from '../../src/game/embodimentContract';
 import { PLANNING_TICKS_PER_MONTH } from '../../src/game/eland/domain/calendar';
 import type { CosmosSnapshot, GameFrame, SkySample } from '../../src/game/societyContract';
-import type { ModelAttemptSummary } from '../../src/game/eland/application/simulation/month-execution';
+import type { ModelAttemptSummary } from '../../src/game/eland/infrastructure-api';
 import { normalizeConversationTurn } from './conversation-coordinator';
 import type { BranchTimeline } from './timeline';
 

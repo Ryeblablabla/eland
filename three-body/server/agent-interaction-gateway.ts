@@ -2,13 +2,15 @@ import { buildDecisionRequestContext } from '../src/game/eland/kimi-decider';
 import type { DecisionContext } from '../src/game/eland/simulation';
 import {
   isPlayerInteractionEmergencyContext,
+  isFulfillmentOption,
+  isRequiredSocialOption,
   validatePlayerInteractionChoice,
-} from '../src/game/eland/application/player-interaction-choice';
+} from '../src/game/eland/infrastructure-api';
 import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
-import { isFulfillmentOption, isRequiredSocialOption } from '../src/game/eland/application/rule-planner';
 import { animalSpecies } from '../src/game/eland/domain/animal';
 import { canAccessContainer, CONTAINER_CAPACITY, containerUsedCapacity } from '../src/game/eland/domain/container';
 import { Material, materialDefinition, materialHas } from '../src/game/eland/domain/material';
+import { physicalStructuresOf } from '../src/game/eland/domain/physical-structure-index';
 import { cellX, cellY, columnMaterials, voxelAt } from '../src/game/eland/world/grid';
 import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
@@ -275,7 +277,7 @@ export function buildAgentInteractionContext(
         } : {}),
       });
     });
-  const structures = state.derived.structures
+  const structures = physicalStructuresOf(state)
     .filter((structure) => structure.occupiedCells.some((cell) => visible.has(cell)))
     .slice(0, 6)
     .map((structure, index) => source(`visible-structure:${index + 1}`, {

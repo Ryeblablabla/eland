@@ -1,4 +1,9 @@
-import type { SimulationState, WorldEvent, WorldHistoryCursorV1 } from './model';
+import type {
+  DecisionAuthorityState,
+  SimulationState,
+  WorldEvent,
+  WorldHistoryCursorV1,
+} from './model';
 import {
   hasPlanningEventOverlay,
   invalidateHotEventIndexAfterCommittedHistoryTrim,
@@ -71,7 +76,9 @@ export function initializeHistoryCursorFromFullHistory(
   return cursor;
 }
 
-function requiredHistoryCursor(state: SimulationState): WorldHistoryCursorV1 {
+function requiredHistoryCursor(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): WorldHistoryCursorV1 {
   const cursor = state.world.historyCursor;
   if (!cursor) {
     throw new Error('运行状态缺少 history cursor；旧状态必须先经可信恢复边界迁移');
@@ -80,7 +87,9 @@ function requiredHistoryCursor(state: SimulationState): WorldHistoryCursorV1 {
   return cursor;
 }
 
-export function historyEventCount(state: SimulationState): number {
+export function historyEventCount(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): number {
   return requiredHistoryCursor(state).eventCount;
 }
 
@@ -88,7 +97,9 @@ export function historyEventCount(state: SimulationState): number {
  * Return a zero-copy committed view. Any temporary planning suffix in the same
  * array is excluded by `hotEventCount` and is not part of the absolute cursor.
  */
-export function committedHistoryView(state: SimulationState): CommittedHistoryView {
+export function committedHistoryView(
+  state: Pick<DecisionAuthorityState, 'world'>,
+): CommittedHistoryView {
   const cursor = requiredHistoryCursor(state);
   const hotEventCount = assertHistoryCursor(cursor, state.world.past);
   const events = state.world.past;

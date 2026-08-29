@@ -117,6 +117,9 @@ export interface TechniqueImitationRef {
 }
 
 export type GroundedConversationTopic =
+  | 'everyday'
+  | 'reminiscence'
+  | 'playful'
   | 'care'
   | 'hardship'
   | 'gratitude'
@@ -426,7 +429,7 @@ export type IntentReturnOutcome = 'resumed' | 'parent-completed' | 'parent-block
 export interface LifeReviewEvidence {
   version: 'causal-edge-v1' | 'causal-edge-v2';
   basisKey: string;
-  optionKind: 'offer-reproduce' | 'offer-companion';
+  optionKind: 'offer-reproduce' | 'offer-companion' | 'request-company';
   targetPersonId: PersonId;
   projectId: string;
   relationSourceEventIds: string[];

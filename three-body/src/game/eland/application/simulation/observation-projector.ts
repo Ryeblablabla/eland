@@ -1,4 +1,12 @@
-import type { SimulationState } from '../../domain/model';
+import type {
+  SimulationObservationProjection,
+  SimulationObservationSnapshot,
+} from './observation-state';
+
+export type ObservationProjectionMode =
+  | 'structures-only'
+  | 'development-only'
+  | 'full';
 
 /**
  * Output port invoked only after authoritative facts and physical indexes have
@@ -6,5 +14,8 @@ import type { SimulationState } from '../../domain/model';
  * state cannot enter planning or rule evaluation through this dependency.
  */
 export interface ObservationProjector {
-  project(state: SimulationState, mode: 'development-only' | 'full'): void;
+  project(
+    snapshot: SimulationObservationSnapshot,
+    mode: ObservationProjectionMode,
+  ): SimulationObservationProjection;
 }

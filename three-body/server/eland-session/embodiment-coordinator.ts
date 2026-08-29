@@ -3,15 +3,13 @@ import { createHash } from 'node:crypto';
 import { toSocietyState } from '../../src/game/eland/adapter';
 import {
   buildPlayerEmbodimentOptions,
-  resolvePlayerEmbodimentCommand,
-  type PlayerEmbodimentCommandFailure,
-} from '../../src/game/eland/application/player-embodiment';
-import {
   executePlanningTick,
   finishMonthExecution,
+  resolvePlayerEmbodimentCommand,
   type MonthExecution,
+  type PlayerEmbodimentCommandFailure,
   type TickExecutionResult,
-} from '../../src/game/eland/application/simulation/month-execution';
+} from '../../src/game/eland/infrastructure-api';
 import type { SimulationState, WorldEvent } from '../../src/game/eland/simulation';
 import { PLANNING_TICKS_PER_MONTH } from '../../src/game/eland/domain/calendar';
 import { isAlive } from '../../src/game/eland/domain/person';

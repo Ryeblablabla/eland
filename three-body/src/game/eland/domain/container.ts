@@ -1,5 +1,5 @@
 import type { ItemStack, PersonState } from './person';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState } from './model';
 import { Material } from './material';
 import { cellId, cellX, cellY, voxelAt } from '../world/grid';
 
@@ -20,7 +20,10 @@ export function containerIdAt(position: { x: number; y: number; z: number }): st
   return `container:${position.x}:${position.y}:${position.z}`;
 }
 
-export function containerById(state: SimulationState, id: string): ContainerState | undefined {
+export function containerById(
+  state: Pick<DecisionAuthorityState, 'containers' | 'world'>,
+  id: string,
+): ContainerState | undefined {
   const container = state.containers.find((candidate) => candidate.id === id);
   if (!container) return undefined;
   const materialId = voxelAt(state.world.grid, container.position.x, container.position.y, container.position.z);

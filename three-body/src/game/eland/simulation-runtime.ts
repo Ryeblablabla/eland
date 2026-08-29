@@ -28,6 +28,10 @@ import {
   stepSimulation as stepApplicationSimulation,
   stepSimulationAsync as stepApplicationSimulationAsync,
 } from './application/simulation/tick-executor';
+import {
+  preparePlayerEmbodimentMonth as prepareApplicationPlayerEmbodimentMonth,
+  type PlayerEmbodimentMonthInput,
+} from './application/player-embodiment-month';
 import { simulationObservationProjector } from './projection/simulation-observation-projector';
 
 export * from './domain/model';
@@ -57,6 +61,11 @@ export type {
   SimulationController,
   SimulationOptions,
 } from './application/simulation/controller';
+export type {
+  FrozenPlayerEmbodimentDecision,
+  PlayerEmbodimentMonthInput,
+  PreparedPlayerEmbodimentMonth,
+} from './application/player-embodiment-month';
 
 export function createInitialState(
   seed = 17,
@@ -111,4 +120,8 @@ export function createSimulation(options: SimulationOptions = {}) {
 
 export function createSimulationFromOwnedState(state: SimulationState) {
   return createApplicationSimulationFromOwnedState(simulationObservationProjector, state);
+}
+
+export function preparePlayerEmbodimentMonth(input: PlayerEmbodimentMonthInput) {
+  return prepareApplicationPlayerEmbodimentMonth(simulationObservationProjector, input);
 }

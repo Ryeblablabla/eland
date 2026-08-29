@@ -2,7 +2,7 @@ import type { ActionOption, PrimitiveAction } from './action';
 import {
   liveSocialEvidenceForPersonSources,
 } from './event-index';
-import type { SimulationState } from './model';
+import type { DecisionAuthorityState } from './model';
 import type { PersonState } from './person';
 import { agreementByProposalEventId } from './agreement';
 import { personById } from './state-index';
@@ -13,6 +13,10 @@ import {
 } from './live-social-evidence';
 
 type SocialOutcome = 'unanswered' | 'supportive' | 'guarded' | 'proposed' | 'accepted' | 'rejected' | 'fulfilled' | 'expired' | 'breached' | 'cancelled';
+type SocialRepetitionState = Pick<
+  DecisionAuthorityState,
+  'agreements' | 'intents' | 'people' | 'world'
+>;
 
 function rememberedCommunicationOrder(
   left: LiveSocialEvidenceDescriptor,
@@ -52,7 +56,7 @@ function isOptionalInitiation(option: ActionOption, action: Extract<PrimitiveAct
 }
 
 function rememberedCommunications(
-  state: SimulationState,
+  state: SocialRepetitionState,
   person: PersonState,
 ): LiveSocialEvidenceDescriptor[] {
   return liveSocialEvidenceForPersonSources(
@@ -80,7 +84,7 @@ function currentBasisSourceIds(option: ActionOption, action: Extract<PrimitiveAc
 }
 
 function rememberedResponseTo(
-  state: SimulationState,
+  state: SocialRepetitionState,
   person: PersonState,
   openingEventId: string,
 ): LiveSocialEvidenceDescriptor | undefined {
@@ -95,7 +99,7 @@ function rememberedResponseTo(
 }
 
 function outcomeFor(
-  state: SimulationState,
+  state: SocialRepetitionState,
   person: PersonState,
   event: LiveSocialEvidenceDescriptor,
 ): { outcome: SocialOutcome; sourceFactIds: string[] } {
@@ -133,7 +137,7 @@ function acuteBodyUrgency(person: PersonState): number {
 }
 
 function survivalUrgency(
-  state: SimulationState,
+  state: SocialRepetitionState,
   person: PersonState,
   action: Extract<PrimitiveAction, { kind: 'communicate' }>,
 ): number {
@@ -168,7 +172,7 @@ function survivalUrgency(
  * and fulfillment never enter this vote.
  */
 export function assessSocialRepetition(
-  state: SimulationState,
+  state: SocialRepetitionState,
   person: PersonState,
   option: ActionOption,
 ): SocialRepetitionAssessment {
@@ -194,8 +198,9 @@ export function assessSocialRepetition(
   const newEvidenceEventIds = currentSources.filter((eventId) => !previousSources.has(eventId));
   const outcome = outcomeFor(state, person, previous);
   if (newEvidenceEventIds.length > 0) {
+    const evidenceValue = Math.min(16, newEvidenceEventIds.length * 4);
     return {
-      score: Math.min(16, newEvidenceEventIds.length * 4),
+      score: evidenceValue,
       reasons: ['同一主题出现了本人可追溯的新情况，可以重新判断是否开口'],
       sourceFactIds: [...new Set([previous.eventId, ...newEvidenceEventIds, ...outcome.sourceFactIds])],
       subjectKey,

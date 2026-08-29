@@ -59,8 +59,22 @@ export interface DropState {
   };
 }
 
+/**
+ * Authoritative facts available while an agent is choosing what to do.
+ *
+ * Observer-owned projections are deliberately absent. A complete
+ * `SimulationState` remains structurally assignable to this view, so planning
+ * does not need a clone, wrapper, cast, or second state identity at runtime.
+ */
+export type DecisionAuthorityState = Omit<SimulationState, 'civilization' | 'derived'> & {
+  civilization: Omit<
+    SimulationState['civilization'],
+    'stage' | 'civilizationIndex' | 'development'
+  >;
+};
+
 export interface DecisionContext {
-  state: SimulationState;
+  state: DecisionAuthorityState;
   person: PersonState;
   visibleCells: number[];
   visiblePeople: PersonState[];

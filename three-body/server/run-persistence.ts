@@ -31,9 +31,21 @@ export interface SaveRunOptions {
   expectedStateHash?: string;
 }
 
-export interface RunStore {
-  dataDirectory(): string;
-  filePath(): string;
+/** Persistence capabilities required by the authoritative long-evolution use case. */
+export interface EvolutionExecutionStore {
+  load(id: string): Promise<PersistedRun>;
+  save(
+    id: string,
+    state: SimulationState,
+    label?: string,
+    options?: SaveRunOptions,
+  ): Promise<PersistedRun>;
+  saveEvolutionPath(id: string, evolution: EvolutionPath): Promise<void>;
+  saveEvolutionReport(id: string, report: EvolutionReport): Promise<void>;
+}
+
+/** Persistence capabilities exposed to the HTTP run adapter. */
+export interface RunAccessStore {
   list(): Promise<RunSummary[]>;
   load(id: string): Promise<PersistedRun>;
   create(input: { id?: string; label?: string; state: SimulationState }): Promise<PersistedRun>;
@@ -44,11 +56,22 @@ export interface RunStore {
     options?: SaveRunOptions,
   ): Promise<PersistedRun>;
   loadEvolutionPath(id: string): Promise<EvolutionPath | null>;
-  saveEvolutionPath(id: string, evolution: EvolutionPath): Promise<void>;
   loadEvolutionReport(id: string): Promise<EvolutionReport | null>;
-  saveEvolutionReport(id: string, report: EvolutionReport): Promise<void>;
+}
+
+/** Persistence capabilities exposed to non-authoritative narrative enhancement. */
+export interface NarrativeEnhancementStore {
+  load(id: string): Promise<PersistedRun>;
   loadNarrativeEnhancements(id: string): Promise<NarrativeEnhancementArtifact | null>;
   saveNarrativeEnhancements(id: string, artifact: NarrativeEnhancementArtifact): Promise<void>;
+}
+
+export interface RunStore extends
+  EvolutionExecutionStore,
+  RunAccessStore,
+  NarrativeEnhancementStore {
+  dataDirectory(): string;
+  filePath(): string;
   close(): void;
 }
 

@@ -4,9 +4,11 @@
   "private": true,
   "description": "ELAND 世界素材、规则与核心文档知识库",
   "scripts": {
-    "sync": "npm run sync:docs && npm run sync:recipes",
+    "sync": "npm run sync:docs && npm run sync:recipes && npm run sync:assets",
     "sync:docs": "node scripts/sync-docs.mjs",
     "sync:recipes": "node scripts/sync-recipes.mjs",
+    "sync:assets": "node scripts/sync-assets.mjs",
+    "check:assets": "node scripts/sync-assets.mjs --check",
     "dev": "npm run sync && python3 -m http.server 7100 --bind 127.0.0.1"
   }
 }

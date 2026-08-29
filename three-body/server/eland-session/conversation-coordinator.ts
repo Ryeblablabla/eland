@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { SimulationState } from '../../src/game/eland/simulation';
 import { worldEventById } from '../../src/game/eland/domain/event-index';
-import type { PlayerInteractionChoiceFailure } from '../../src/game/eland/application/player-interaction-choice';
+import type { PlayerInteractionChoiceFailure } from '../../src/game/eland/infrastructure-api';
 import type {
   AgentInteractionRequestKind,
   AgentInteractionStance,

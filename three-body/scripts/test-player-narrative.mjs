@@ -634,6 +634,28 @@ try {
   assert.equal(founding[0].text, '第 141 号文明在自然地表上开始，3 位先民共同抵达。');
   assert.deepEqual(founding[0].actorIds, ['galileo', 'freyja', 'artemis']);
 
+  const everydayResponse = {
+    id: 'everyday-response-51', kind: 'action', atMonth: 51, orderInMonth: 8, actionTick: 3, cellId: 4,
+    who: 'freyja', cause: 'intent',
+    action: {
+      kind: 'communicate',
+      content: {
+        id: 'everyday-response-51-content', kind: 'claim', summary: '说起今天吃了什么，也问对方昨夜睡得怎样',
+        conversation: {
+          version: 'grounded-conversation-v1', basisKey: 'everyday-basis-51', topic: 'everyday', turn: 'response',
+          speakerId: 'freyja', listenerId: 'galileo', sourceFactIds: ['shared-life-50'],
+          referenceEventId: 'everyday-opening-51', stance: 'supportive',
+        },
+      },
+      audience: ['galileo'], channel: 'voice',
+    },
+    fromCellId: 4, toCellId: 4, fromZ: 1, toZ: 1, pathSegment: [], status: 'completed',
+    result: '完成日常回应', diff: { groundedConversationBasisKey: 'everyday-basis-51' },
+  };
+  const everydayNarrative = projectPlayerNarrative(state, [everydayResponse], 4);
+  assert.equal(everydayNarrative.length, 1, '完整的低压力对话回应应进入近期文明纪事');
+  assert.equal(everydayNarrative[0].text, '芙蕾雅对伽利略说：说起今天吃了什么，也问对方昨夜睡得怎样。');
+
   const previousHeat = {
     id: 'heat-50', kind: 'environment', change: 'condition', atMonth: 50, orderInMonth: 9, cellId: 4,
     who: 'galileo', result: '伽利略的炎热加重', diff: { condition: 'heat', stage: 3 },

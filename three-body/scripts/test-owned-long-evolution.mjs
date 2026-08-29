@@ -12,6 +12,7 @@ const controllerBundlePath = path.join(temporaryDirectory, 'controller.mjs');
 const lifecycleBundlePath = path.join(temporaryDirectory, 'state-lifecycle.mjs');
 const storeBundlePath = path.join(temporaryDirectory, 'sqlite-run-store.mjs');
 const serviceBundlePath = path.join(temporaryDirectory, 'run-evolution-service.mjs');
+const workerClientBundlePath = path.join(temporaryDirectory, 'run-evolution-worker-client.mjs');
 const workerBundlePath = path.join(temporaryDirectory, 'run-evolution-worker.mjs');
 const legacyDataDirectory = path.join(temporaryDirectory, 'legacy-data');
 const ownedDataDirectory = path.join(temporaryDirectory, 'owned-data');
@@ -31,6 +32,28 @@ function eventOrder(state) {
     planningTick: event.planningTick,
     orderInTick: event.orderInTick,
   }));
+}
+
+function firstDifference(actual, expected, pathLabel = '$') {
+  if (Object.is(actual, expected)) return null;
+  if (typeof actual !== 'object' || actual === null
+    || typeof expected !== 'object' || expected === null) {
+    return `${pathLabel}: actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`;
+  }
+  if (Array.isArray(actual) !== Array.isArray(expected)) {
+    return `${pathLabel}: container kinds differ`;
+  }
+  if (Array.isArray(actual) && actual.length !== expected.length) {
+    return `${pathLabel}.length: actual=${actual.length} expected=${expected.length}`;
+  }
+  const keys = new Set([...Reflect.ownKeys(actual), ...Reflect.ownKeys(expected)]);
+  for (const key of keys) {
+    if (!Object.hasOwn(actual, key)) return `${pathLabel}.${String(key)}: missing from actual`;
+    if (!Object.hasOwn(expected, key)) return `${pathLabel}.${String(key)}: missing from expected`;
+    const difference = firstDifference(actual[key], expected[key], `${pathLabel}.${String(key)}`);
+    if (difference) return difference;
+  }
+  return null;
 }
 
 function assertEquivalent(legacy, owned, label) {
@@ -74,6 +97,10 @@ try {
     'server/run-evolution-service.ts',
     '--bundle', '--platform=node', '--format=esm', `--outfile=${serviceBundlePath}`,
   ], { stdio: 'pipe' });
+  execFileSync(esbuild, [
+    'server/run-evolution-worker-client.ts',
+    '--bundle', '--platform=node', '--format=esm', `--outfile=${workerClientBundlePath}`,
+  ], { stdio: 'pipe' });
 
   const { createSimulation, createSimulationFromOwnedState } = await import(
     `${pathToFileURL(controllerBundlePath).href}?test=${Date.now()}`
@@ -86,6 +113,9 @@ try {
   );
   const { RunEvolutionService } = await import(
     `${pathToFileURL(serviceBundlePath).href}?test=${Date.now()}`
+  );
+  const { executeLongEvolutionInWorker } = await import(
+    `${pathToFileURL(workerClientBundlePath).href}?test=${Date.now()}`
   );
 
   const fixture = createInitialState(20260815, {
@@ -152,17 +182,23 @@ try {
       ownedStore.load('paired'),
     ]);
     assertEquivalent(legacyReloaded.state, ownedReloaded.state, `第 ${throughMonth} 月重载后`);
-    assert.deepEqual(ownedReloaded.state, ownedState, 'append save/reload 必须保留全部权威状态');
+    const reloadDifference = firstDifference(ownedReloaded.state, ownedState);
+    assert.equal(
+      reloadDifference,
+      null,
+      `append save/reload 必须保留全部权威状态：${reloadDifference ?? ''}`,
+    );
   }
 
-  const service = new RunEvolutionService(ownedStore);
+  let serviceExecution;
+  const service = new RunEvolutionService(ownedStore, (id, request) => {
+    serviceExecution = executeLongEvolutionInWorker(ownedStore.dataDirectory(), id, request);
+    return serviceExecution;
+  });
   await service.evolve('paired', { months: 1 });
-  let servicePath;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    servicePath = await ownedStore.loadEvolutionPath('paired');
-    if (servicePath?.status !== 'running') break;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
-  }
+  assert.ok(serviceExecution, 'service 必须通过注入端口启动真实 Worker');
+  await serviceExecution.completion;
+  const servicePath = await ownedStore.loadEvolutionPath('paired');
   assert.equal(servicePath?.status, 'completed', servicePath?.failure ?? 'owned service 必须完成推进');
   assert.equal(servicePath.reachedMonth, 25, 'owned service 不得因同一状态引用误判为未推进');
   assert.equal((await ownedStore.load('paired')).state.clock.elapsedMonths, 25);

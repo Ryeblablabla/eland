@@ -85,6 +85,10 @@ function optionalLifeReviewKind(option: ActionOption): LifeReviewEvidence['optio
   if (action.kind === 'communicate'
     && (action.content.kind === 'request' || action.content.kind === 'offer')
     && action.content.proposal?.kind === 'companion') return 'offer-companion';
+  if (action.kind === 'communicate'
+    && action.content.kind === 'request'
+    && action.content.proposal?.kind === 'assist'
+    && action.content.proposal.need === 'company') return 'request-company';
   return undefined;
 }
 

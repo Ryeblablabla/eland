@@ -4,15 +4,17 @@ import path from 'node:path';
 import {
   buildDecisionContextForPerson,
   createSimulationFromOwnedState,
-  RulePlanner,
-  type Decision,
+  preparePlayerEmbodimentMonth,
   type SimulationController,
   type SimulationState,
   type WorldEvent,
 } from '../src/game/eland/simulation';
-import { concludeOwnedCivilization } from '../src/game/eland/application/civilization-settlement';
+import {
+  concludeOwnedCivilization,
+  validatePlayerInteractionChoice,
+} from '../src/game/eland/infrastructure-api';
 import { calendarDate } from '../src/game/eland/domain/calendar';
-import { isAlive, type PersonId } from '../src/game/eland/domain/person';
+import { isAlive } from '../src/game/eland/domain/person';
 import {
   civilizationRequiemKey,
   type CivilizationRequiem,
@@ -23,13 +25,6 @@ import {
   toSocietyState,
   type WorldEventLookup,
 } from '../src/game/eland/adapter';
-import { prepareMonth } from '../src/game/eland/application/simulation/month-boundary';
-import { createMonthExecution } from '../src/game/eland/application/simulation/month-execution';
-import { copyState } from '../src/game/eland/application/simulation/state-utils';
-import { simulationObservationProjector } from '../src/game/eland/projection/simulation-observation-projector';
-import {
-  validatePlayerInteractionChoice,
-} from '../src/game/eland/application/player-interaction-choice';
 import type {
   CivilizationIndexHistoryPoint,
   CosmosSnapshot,
@@ -109,7 +104,6 @@ import {
   validateRecoverySnapshot,
   type ElandSessionRecoverySnapshot,
   type CompletedEmbodimentSnapshot,
-  type FrozenEmbodimentDecision,
 } from './eland-session/recovery';
 import {
   EmbodimentCommandRejectedError,
@@ -326,51 +320,13 @@ export class ElandSession {
         skySample,
         frozenInitialDecisions,
       }) => {
-        const working = copyState(state);
         const climate = ERA_TO_ENV[skySample.fate];
-        working.civilization.externalClimate = {
-          epoch: climate.epoch,
-          kind: climate.kind,
-          severity: Math.max(1, Math.min(10, climate.severity)),
-          ...(climate.terminalCatastrophe
-            ? { terminalCatastrophe: climate.terminalCatastrophe }
-            : {}),
-        };
-        const prepared = prepareMonth(working, false, true);
-        const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
-        const frozen: FrozenEmbodimentDecision[] = [];
-        if (frozenInitialDecisions) {
-          for (const item of frozenInitialDecisions) {
-            decisions.set(item.personId as PersonId, {
-              decision: structuredClone(item.decision),
-              usedModel: item.usedModel,
-            });
-            frozen.push(structuredClone(item));
-          }
-        } else {
-          const planner = new RulePlanner();
-          for (const context of prepared.candidates) {
-            if (context.person.id === actorId) continue;
-            const decision = planner.decideAt(context, {
-              atMonth: prepared.atMonth,
-              planningTick: 1,
-            });
-            decisions.set(context.person.id, { decision, usedModel: false });
-            frozen.push({ personId: context.person.id, decision, usedModel: false });
-          }
-        }
-        return {
-          execution: createMonthExecution({
-            observationProjector: simulationObservationProjector,
-            prepared,
-            decisions,
-            usage: { inputTokens: 0, outputTokens: 0 },
-            attempted: { total: 0, ordinary: 0, exempt: 0 },
-            controlledPersonId: actorId as PersonId,
-            projectionCadence: 'monthly',
-          }),
-          frozenInitialDecisions: frozen,
-        };
+        return preparePlayerEmbodimentMonth({
+          state,
+          controlledPersonId: actorId,
+          climate,
+          ...(frozenInitialDecisions ? { frozenInitialDecisions } : {}),
+        });
       },
       commitMonth: ({ state, skySample, cosmosSnapshot }) => {
         if (!this.controller) throw new EmbodimentConflictError('当前没有可提交的文明');

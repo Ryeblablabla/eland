@@ -1180,6 +1180,7 @@ export function buildSocialOptions(
         estimatedDuration: 'one-month', estimatedMonths: 1,
         risks: ['对方可以拒绝或在关系恶化时撤回'], domain: 'social',
         sourceFactIds: [...relationshipSourceFactIds],
+        relationshipBasis: companionBasis,
       });
     }
     if (!hasOpenCompanionOfferBetween(state, person.id, other.id)

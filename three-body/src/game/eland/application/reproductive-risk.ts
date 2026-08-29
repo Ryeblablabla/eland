@@ -1,5 +1,5 @@
 import { geneticKinshipRisk, kinshipRiskAwareness, kinshipRiskKnowledge } from '../domain/kinship';
-import type { SimulationState } from '../domain/model';
+import type { DecisionAuthorityState } from '../domain/model';
 import type { PersonState } from '../domain/person';
 
 /**
@@ -17,7 +17,7 @@ export interface PerceivedKinshipRisk {
 }
 
 export function perceivedKinshipRisk(
-  state: SimulationState,
+  state: Pick<DecisionAuthorityState, 'people'>,
   person: PersonState,
   other: PersonState,
 ): PerceivedKinshipRisk {

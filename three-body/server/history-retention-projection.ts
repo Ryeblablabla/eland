@@ -881,8 +881,9 @@ function foldGameplayFactSelectors(
         fold.waterAssistanceValidationState,
         selector.proposal,
         event,
+        selector.agreementId,
       )) setLatestSelectiveMatch(fold, selector.helperLeaseKey, match);
-      if (isRequesterWaterAssistanceEvidence(selector.proposal, event)) {
+      if (isRequesterWaterAssistanceEvidence(selector.proposal, event, selector.agreementId)) {
         setLatestSelectiveMatch(fold, selector.requesterLeaseKey, match);
       }
     }
@@ -1859,10 +1860,10 @@ export function resumeHistoryRetentionProjection(
         selector.requesterLeaseKey,
       );
       if (event?.kind !== 'action') continue;
-      if (isHelperWaterAssistanceEvidence(newShell, selector.proposal, event)) {
+      if (isHelperWaterAssistanceEvidence(newShell, selector.proposal, event, selector.agreementId)) {
         setLatestSelectiveMatch(fold, selector.helperLeaseKey, { ...match });
       }
-      if (isRequesterWaterAssistanceEvidence(selector.proposal, event)) {
+      if (isRequesterWaterAssistanceEvidence(selector.proposal, event, selector.agreementId)) {
         setLatestSelectiveMatch(fold, selector.requesterLeaseKey, { ...match });
       }
     }

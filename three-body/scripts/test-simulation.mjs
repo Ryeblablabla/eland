@@ -651,11 +651,17 @@ try {
   const waterAcceptance = { ...actionFact('test-water-acceptance', 2, waterHelper.id, { kind: 'communicate', content: { id: 'test-water-acceptance-content', kind: 'accept', referenceId: waterAssistId }, audience: [waterRequester.id], channel: 'voice' }), cellId: waterBank };
   recordAgreementAction(waterAssistState, waterAcceptance);
   appendFixtureEvents(waterAssistState, [waterAcceptance]);
-  const helperArrival = { ...actionFact('test-water-helper-arrival', 3, waterHelper.id, { kind: 'move', toCellId: waterBank }), cellId: waterBank, toCellId: waterBank };
+  const helperWaterIntentId = 'intent-test-water-helper';
+  const requesterWaterIntentId = 'intent-test-water-requester';
+  waterAssistState.intents.push(
+    { id: helperWaterIntentId, ownerId: waterHelper.id, agreementId: waterAssistId, status: 'active' },
+    { id: requesterWaterIntentId, ownerId: waterRequester.id, agreementId: waterAssistId, status: 'active' },
+  );
+  const helperArrival = { ...actionFact('test-water-helper-arrival', 3, waterHelper.id, { kind: 'move', toCellId: waterBank }), intentId: helperWaterIntentId, cellId: waterBank, toCellId: waterBank };
   recordAgreementAction(waterAssistState, helperArrival);
   appendFixtureEvents(waterAssistState, [helperArrival]);
   assert.equal(waterAssistState.agreements[0]?.status, 'active', '帮助者独自到达水边还不能算完成求助');
-  const requesterDrink = { ...actionFact('test-water-requester-drink', 3, waterRequester.id, { kind: 'act', operation: 'ingest', targets: [] }), cellId: waterBank, diff: { materialId: 7, hydration: 58 } };
+  const requesterDrink = { ...actionFact('test-water-requester-drink', 3, waterRequester.id, { kind: 'act', operation: 'ingest', targets: [] }), intentId: requesterWaterIntentId, cellId: waterBank, diff: { materialId: 7, hydration: 58 } };
   recordAgreementAction(waterAssistState, requesterDrink);
   assert.equal(waterAssistState.agreements[0]?.status, 'fulfilled', '帮助者到场且求助者真实饮水后，水求助才履约');
 

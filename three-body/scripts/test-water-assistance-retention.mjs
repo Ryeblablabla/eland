@@ -45,7 +45,7 @@ function rawSidecar(api, projection) {
   };
 }
 
-function actionFact({ id, atMonth, planningTick, who, cellId, z, action, diff = {} }) {
+function actionFact({ id, atMonth, planningTick, who, cellId, z, action, diff = {}, intentId }) {
   return {
     id,
     kind: 'action',
@@ -55,6 +55,7 @@ function actionFact({ id, atMonth, planningTick, who, cellId, z, action, diff = 
     orderInTick: 0,
     cellId,
     who,
+    ...(intentId ? { intentId } : {}),
     cause: 'water-assistance-retention-fixture',
     action,
     fromCellId: cellId,
@@ -170,6 +171,7 @@ function buildFixtureState(api) {
         kind: 'attend',
         target: { kind: 'voxel', position: { x: water.x, y: water.y, z: water.z } },
       },
+      diff: { factId: `material:${api.Material.Water}` },
     });
     planningTick += 1;
     const requesterFact = actionFact({
@@ -383,6 +385,7 @@ function appendSuccessorEvidence(api, state, fixture, prefix) {
         position: { x: fixture.water.x, y: fixture.water.y, z: fixture.water.z },
       },
     },
+    diff: { factId: `material:${api.Material.Ice}` },
   });
   const requesterFact = actionFact({
     id: `${prefix}-requester`, atMonth: 861, planningTick: 81,
@@ -425,6 +428,112 @@ try {
   ], { cwd: workspace, env: childEnvironment, stdio: 'pipe' });
   const api = await import(`${pathToFileURL(bundlePath).href}?v=${Date.now()}`);
   const fixture = buildFixtureState(api);
+
+  const receiptState = structuredClone(fixture.state);
+  const receiptAgreement = receiptState.agreements[0];
+  receiptAgreement.fulfillmentEventIds = [];
+  receiptAgreement.fulfilledByPersonIds = [];
+  receiptAgreement.sourceEventIds = [receiptAgreement.proposalEventId, receiptAgreement.responseEventId];
+  const helperIntentId = 'water-retention-helper-intent';
+  receiptState.intents = [{
+    id: helperIntentId,
+    ownerId: fixture.helperId,
+    agreementId: fixture.agreementId,
+    status: 'active',
+  }];
+  api.setVoxel(
+    receiptState.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+    api.Material.Water,
+  );
+  const receiptFact = actionFact({
+    id: 'water-retention-receipt-helper', atMonth: 861, planningTick: 60,
+    who: fixture.helperId, cellId: fixture.standing.cellId, z: fixture.standing.z,
+    intentId: helperIntentId,
+    action: { kind: 'move', toCellId: fixture.standing.cellId, toZ: fixture.standing.z },
+  });
+  api.recordAgreementAction(receiptState, receiptFact);
+  assert.deepEqual(receiptAgreement.fulfilledByPersonIds, [fixture.helperId]);
+  assert.equal(receiptFact.diff.waterAssistanceEvidenceReceipt?.version,
+    'water-assistance-evidence-receipt-v1');
+  assert.equal(receiptFact.diff.waterAssistanceEvidenceReceipt?.agreementId, fixture.agreementId);
+  api.setVoxel(
+    receiptState.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+    api.Material.Sand,
+  );
+  assert.equal(api.isHelperWaterAssistanceEvidence(
+    receiptState,
+    receiptAgreement.proposal,
+    receiptFact,
+    fixture.agreementId,
+  ), true, '事件时写入的 water receipt 不得被后来 Sand 地表推翻');
+  for (const [label, mutate] of [
+    ['agreement', (fact) => { fact.diff.waterAssistanceEvidenceReceipt.agreementId = 'other-agreement'; }],
+    ['material', (fact) => { fact.diff.waterAssistanceEvidenceReceipt.materialId = api.Material.Stone; }],
+    ['location', (fact) => { fact.diff.waterAssistanceEvidenceReceipt.waterCellId = fact.cellId; }],
+    ['actor', (fact) => { fact.who = fixture.requesterId; }],
+  ]) {
+    const forged = structuredClone(receiptFact);
+    mutate(forged);
+    assert.equal(api.isHelperWaterAssistanceEvidence(
+      receiptState,
+      receiptAgreement.proposal,
+      forged,
+      fixture.agreementId,
+    ), false, `伪造 ${label} 的 water receipt 必须拒绝`);
+  }
+
+  const ambiguousState = structuredClone(fixture.state);
+  const firstAgreement = ambiguousState.agreements[0];
+  firstAgreement.fulfillmentEventIds = [];
+  firstAgreement.fulfilledByPersonIds = [];
+  firstAgreement.sourceEventIds = [firstAgreement.proposalEventId, firstAgreement.responseEventId];
+  const secondAgreement = structuredClone(firstAgreement);
+  secondAgreement.id = 'water-retention-second-agreement';
+  secondAgreement.proposalEventId = 'water-retention-second-proposal';
+  secondAgreement.responseEventId = 'water-retention-second-response';
+  secondAgreement.sourceEventIds = [secondAgreement.proposalEventId, secondAgreement.responseEventId];
+  ambiguousState.agreements.push(secondAgreement);
+  const boundIntentId = 'water-retention-bound-first';
+  ambiguousState.intents = [{
+    id: boundIntentId,
+    ownerId: fixture.helperId,
+    agreementId: firstAgreement.id,
+    status: 'active',
+  }];
+  const boundFact = actionFact({
+    id: 'water-retention-bound-helper', atMonth: 861, planningTick: 61,
+    who: fixture.helperId, cellId: fixture.standing.cellId, z: fixture.standing.z,
+    intentId: boundIntentId,
+    action: {
+      kind: 'attend',
+      target: {
+        kind: 'voxel',
+        position: { x: fixture.water.x, y: fixture.water.y, z: fixture.water.z },
+      },
+    },
+    diff: { factId: `material:${api.Material.Ice}` },
+  });
+  api.recordAgreementAction(ambiguousState, boundFact);
+  assert.deepEqual(firstAgreement.fulfillmentEventIds, [boundFact.id]);
+  assert.deepEqual(secondAgreement.fulfillmentEventIds, [],
+    'exact intent agreement A 的事实不得写入协议 B');
+  const noIntentFact = actionFact({
+    id: 'water-retention-unbound-reflex', atMonth: 861, planningTick: 62,
+    who: fixture.helperId, cellId: fixture.standing.cellId, z: fixture.standing.z,
+    action: { kind: 'move', toCellId: fixture.standing.cellId, toZ: fixture.standing.z },
+  });
+  api.recordAgreementAction(ambiguousState, noIntentFact);
+  assert.deepEqual(firstAgreement.fulfillmentEventIds, [boundFact.id]);
+  assert.deepEqual(secondAgreement.fulfillmentEventIds, []);
+  assert.equal(noIntentFact.diff.waterAssistanceEvidenceReceipt, undefined,
+    '无 agreement-bound intent 的 survival/reflex 事实不得污染任意 water agreement');
+
   assert.equal(api.voxelAt(
     fixture.state.world.grid,
     fixture.water.x,
@@ -478,10 +587,15 @@ try {
       },
     },
   });
-  for (const fact of [moveToIce, communicateAtIce, attendIce]) {
-    assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, fact), true,
-      `${fact.action.kind} 必须接受 drinkable Ice`);
-  }
+  assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, moveToIce), false,
+    '缺少 event-time receipt 的 legacy move 不得用当前 Ice 反推历史履约');
+  assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, communicateAtIce), false,
+    '缺少 event-time receipt 的 legacy communicate 不得用当前 Ice 反推历史履约');
+  assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, attendIce), false,
+    '缺少 canonical material fact 的 synthetic legacy attend 不得用当前 Ice 反推历史履约');
+  attendIce.diff.factId = `material:${api.Material.Ice}`;
+  assert.equal(api.isHelperWaterAssistanceEvidence(branchState, proposal, attendIce), true,
+    'legacy attend 只有精确 event-time material fact 时才可恢复履约证据');
   for (const materialId of [api.Material.Sand, api.Material.Stone]) {
     const nonDrinkableState = structuredClone(branchState);
     api.setVoxel(
@@ -491,10 +605,17 @@ try {
       fixture.water.z,
       materialId,
     );
-    for (const fact of [moveToIce, communicateAtIce, attendIce]) {
+    for (const fact of [moveToIce, communicateAtIce]) {
       assert.equal(api.isHelperWaterAssistanceEvidence(nonDrinkableState, proposal, fact), false,
         `${fact.action.kind} 不得把 ${materialId} 当作可饮用援助证据`);
     }
+    const attendNonDrinkable = structuredClone(attendIce);
+    attendNonDrinkable.diff.factId = `material:${materialId}`;
+    assert.equal(api.isHelperWaterAssistanceEvidence(
+      nonDrinkableState,
+      proposal,
+      attendNonDrinkable,
+    ), false, `attend 不得把 event-time ${materialId} 当作可饮用援助证据`);
     const ingestNonDrinkable = actionFact({
       id: `water-retention-ingest-${materialId}`, atMonth: 860, planningTick: 73,
       who: fixture.requesterId, cellId: fixture.standing.cellId, z: fixture.standing.z,
@@ -526,6 +647,42 @@ try {
     helper: [fixture.expectedHelperId],
     requester: [fixture.expectedRequesterId],
   });
+  const driftState = structuredClone(fixture.state);
+  api.setVoxel(
+    driftState.world.grid,
+    fixture.water.x,
+    fixture.water.y,
+    fixture.water.z,
+    api.Material.Sand,
+  );
+  assert.equal(api.isHelperWaterAssistanceEvidence(
+    driftState,
+    driftState.agreements[0].proposal,
+    driftState.world.past.find((event) => event.id === fixture.expectedHelperId),
+    fixture.agreementId,
+  ), true, 'legacy attend 的 canonical material fact 必须保留动作发生时的水证据');
+  const driftProjection = projectAll(api, driftState);
+  assert.deepEqual(typedPinIds(driftProjection, helperLeaseKey, requesterLeaseKey), {
+    helper: [fixture.expectedHelperId],
+    requester: [fixture.expectedRequesterId],
+  }, 'Water→Sand 后 full selector 仍须选中同一事件时 helper anchor');
+  const driftBounded = boundedClone(driftState);
+  api.installVerifiedHistoryRetentionEvidence(
+    driftBounded,
+    sourceStateHash,
+    driftProjection,
+    decodedColdPins(
+      driftProjection,
+      driftState.world.past,
+      driftBounded.world.historyCursor.hotStartIndex,
+    ),
+  );
+  assert.deepEqual(api.verifiedWaterAssistanceEvidenceAnchors(
+    driftBounded,
+    driftBounded.agreements[0],
+    driftBounded.agreements[0].proposal,
+  ).sourceEventIds, [fixture.expectedHelperId, fixture.expectedRequesterId],
+  'Water→Sand 后 bounded selector/lease 必须与 full 保持一致');
   assert.equal(projection.pins.some((pin) => (
     membership.eventIds.includes(pin.eventId)
       && ![fixture.expectedHelperId, fixture.expectedRequesterId].includes(pin.eventId)
@@ -789,9 +946,17 @@ try {
     projection,
     decodedColdPins(projection, fullHistory, fulfillmentState.world.historyCursor.hotStartIndex),
   );
+  const requesterIntentId = 'water-retention-requester-fulfillment-intent';
+  fulfillmentState.intents.push({
+    id: requesterIntentId,
+    ownerId: fixture.requesterId,
+    agreementId: fixture.agreementId,
+    status: 'active',
+  });
   const finalDrink = actionFact({
     id: 'water-retention-final-drink', atMonth: 861, planningTick: 90,
     who: fixture.requesterId, cellId: fixture.standing.cellId, z: fixture.standing.z,
+    intentId: requesterIntentId,
     action: { kind: 'act', operation: 'ingest', targets: [] },
     diff: { materialId: api.Material.Ice, hydration: 25 },
   });

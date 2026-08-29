@@ -9,7 +9,7 @@ import type {
 import type { PersonId } from './person';
 import { isAlive, sameLocation } from './person';
 import { applyRelationEvidence } from './relation';
-import { materialHas } from './material';
+import { materialHas, type MaterialId } from './material';
 import { neighbors4, surfaceMaterial, voxelAt } from '../world/grid';
 import { REPRODUCTION_CONSENT_WINDOW_MONTHS } from './population-capacity';
 import {
@@ -280,48 +280,224 @@ export function agreementAuthorizesTransfer(
 
 export type AssistanceProposal = Extract<SocialProposal, { kind: 'assist' }>;
 
+const WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION = 'water-assistance-evidence-receipt-v1' as const;
+
+type WaterAssistanceEvidenceReceiptV1 = {
+  version: typeof WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION;
+  agreementId: string;
+  requesterId: PersonId;
+  helperId: PersonId;
+  role: 'helper' | 'requester';
+  actionKind: PrimitiveAction['kind'];
+  evidenceKind: 'adjacent-surface' | 'attended-voxel' | 'ingested-water';
+  materialId: MaterialId;
+  cellId: number;
+  waterCellId?: number;
+  targetPosition?: { x: number; y: number; z: number };
+};
+
+function safeMaterialId(value: unknown): MaterialId | undefined {
+  return Number.isSafeInteger(value) && Number(value) >= 0
+    ? Number(value)
+    : undefined;
+}
+
+function sameVoxelPosition(
+  left: unknown,
+  right: { x: number; y: number; z: number },
+): boolean {
+  if (!left || typeof left !== 'object') return false;
+  const value = left as Record<string, unknown>;
+  return value.x === right.x && value.y === right.y && value.z === right.z;
+}
+
+function legacyAttendedMaterialId(fact: ActionFact): MaterialId | undefined {
+  if (fact.action.kind !== 'attend' || fact.action.target.kind !== 'voxel') return undefined;
+  const verifiedMaterialId = safeMaterialId(fact.diff.verifiedMaterialId);
+  if (verifiedMaterialId !== undefined
+    && sameVoxelPosition(fact.diff.verifiedPosition, fact.action.target.position)) {
+    return verifiedMaterialId;
+  }
+  if (typeof fact.diff.factId !== 'string') return undefined;
+  const match = /^material:(0|[1-9]\d*)$/u.exec(fact.diff.factId);
+  return match ? safeMaterialId(Number(match[1])) : undefined;
+}
+
+function rawWaterAssistanceReceipt(fact: ActionFact): unknown {
+  return fact.diff.waterAssistanceEvidenceReceipt;
+}
+
+function verifiedStoredWaterAssistanceReceipt(
+  fact: ActionFact,
+  proposal: AssistanceProposal,
+  role: WaterAssistanceEvidenceReceiptV1['role'],
+  agreementId?: string,
+): WaterAssistanceEvidenceReceiptV1 | undefined {
+  const raw = rawWaterAssistanceReceipt(fact);
+  if (!raw || typeof raw !== 'object') return undefined;
+  const receipt = raw as Record<string, unknown>;
+  const materialId = safeMaterialId(receipt.materialId);
+  if (receipt.version !== WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION
+    || typeof receipt.agreementId !== 'string'
+    || (agreementId !== undefined && receipt.agreementId !== agreementId)
+    || receipt.requesterId !== proposal.requesterId
+    || receipt.helperId !== proposal.helperId
+    || receipt.role !== role
+    || receipt.actionKind !== fact.action.kind
+    || materialId === undefined
+    || !materialHas(materialId, 'drinkable')
+    || receipt.cellId !== fact.cellId) return undefined;
+  if (role === 'helper') {
+    if (fact.who !== proposal.helperId) return undefined;
+    if (fact.action.kind === 'move' || fact.action.kind === 'communicate') {
+      if (receipt.evidenceKind !== 'adjacent-surface'
+        || !Number.isSafeInteger(receipt.waterCellId)
+        || !neighbors4(fact.cellId).includes(Number(receipt.waterCellId))) return undefined;
+      if (fact.action.kind === 'communicate'
+        && !fact.action.audience.includes(proposal.requesterId)) return undefined;
+    } else if (fact.action.kind === 'attend' && fact.action.target.kind === 'voxel') {
+      if (receipt.evidenceKind !== 'attended-voxel'
+        || !sameVoxelPosition(receipt.targetPosition, fact.action.target.position)) return undefined;
+    } else return undefined;
+  } else {
+    if (fact.who !== proposal.requesterId
+      || fact.action.kind !== 'act'
+      || fact.action.operation !== 'ingest'
+      || receipt.evidenceKind !== 'ingested-water'
+      || safeMaterialId(fact.diff.materialId) !== materialId
+      || Number(fact.diff.hydration ?? 0) <= 0) return undefined;
+  }
+  return {
+    version: WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION,
+    agreementId: receipt.agreementId,
+    requesterId: proposal.requesterId,
+    helperId: proposal.helperId,
+    role,
+    actionKind: fact.action.kind,
+    evidenceKind: receipt.evidenceKind as WaterAssistanceEvidenceReceiptV1['evidenceKind'],
+    materialId,
+    cellId: fact.cellId,
+    ...(Number.isSafeInteger(receipt.waterCellId) ? { waterCellId: Number(receipt.waterCellId) } : {}),
+    ...(receipt.targetPosition && typeof receipt.targetPosition === 'object'
+      ? { targetPosition: { ...(receipt.targetPosition as { x: number; y: number; z: number }) } }
+      : {}),
+  };
+}
+
+function helperWaterAssistanceEvidenceReceipt(
+  state: SimulationState,
+  agreementId: string | undefined,
+  proposal: AssistanceProposal,
+  fact: ActionFact,
+  allowCurrentWorldEvidence = false,
+): WaterAssistanceEvidenceReceiptV1 | undefined {
+  if (fact.status !== 'completed' || fact.who !== proposal.helperId) return undefined;
+  if (rawWaterAssistanceReceipt(fact) !== undefined) {
+    return verifiedStoredWaterAssistanceReceipt(fact, proposal, 'helper', agreementId);
+  }
+  const action = fact.action;
+  if (action.kind === 'communicate' && !action.audience.includes(proposal.requesterId)) return undefined;
+  if (action.kind === 'move' || action.kind === 'communicate') {
+    if (!allowCurrentWorldEvidence) return undefined;
+    const water = neighbors4(fact.cellId)
+      .map((waterCellId) => ({ waterCellId, materialId: surfaceMaterial(state.world.grid, waterCellId) }))
+      .find((candidate) => materialHas(candidate.materialId, 'drinkable'));
+    if (!water) return undefined;
+    return {
+      version: WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION,
+      agreementId: agreementId ?? '',
+      requesterId: proposal.requesterId,
+      helperId: proposal.helperId,
+      role: 'helper',
+      actionKind: action.kind,
+      evidenceKind: 'adjacent-surface',
+      materialId: water.materialId,
+      cellId: fact.cellId,
+      waterCellId: water.waterCellId,
+    };
+  }
+  if (action.kind !== 'attend' || action.target.kind !== 'voxel') return undefined;
+  const eventMaterialId = legacyAttendedMaterialId(fact);
+  if (eventMaterialId === undefined && !allowCurrentWorldEvidence) return undefined;
+  const currentMaterialId = allowCurrentWorldEvidence ? voxelAt(
+    state.world.grid,
+    action.target.position.x,
+    action.target.position.y,
+    action.target.position.z,
+  ) : undefined;
+  if (eventMaterialId !== undefined
+    && currentMaterialId !== undefined
+    && eventMaterialId !== currentMaterialId) return undefined;
+  const materialId = currentMaterialId ?? eventMaterialId;
+  if (materialId === undefined) return undefined;
+  if (!materialHas(materialId, 'drinkable')) return undefined;
+  return {
+    version: WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION,
+    agreementId: agreementId ?? '',
+    requesterId: proposal.requesterId,
+    helperId: proposal.helperId,
+    role: 'helper',
+    actionKind: action.kind,
+    evidenceKind: 'attended-voxel',
+    materialId,
+    cellId: fact.cellId,
+    targetPosition: { ...action.target.position },
+  };
+}
+
+function requesterWaterAssistanceEvidenceReceipt(
+  agreementId: string | undefined,
+  proposal: AssistanceProposal,
+  fact: ActionFact,
+): WaterAssistanceEvidenceReceiptV1 | undefined {
+  if (fact.status !== 'completed' || fact.who !== proposal.requesterId) return undefined;
+  if (rawWaterAssistanceReceipt(fact) !== undefined) {
+    return verifiedStoredWaterAssistanceReceipt(fact, proposal, 'requester', agreementId);
+  }
+  const action = fact.action;
+  const materialId = safeMaterialId(fact.diff.materialId);
+  if (action.kind !== 'act'
+    || action.operation !== 'ingest'
+    || materialId === undefined
+    || !materialHas(materialId, 'drinkable')
+    || Number(fact.diff.hydration ?? 0) <= 0) return undefined;
+  return {
+    version: WATER_ASSISTANCE_EVIDENCE_RECEIPT_VERSION,
+    agreementId: agreementId ?? '',
+    requesterId: proposal.requesterId,
+    helperId: proposal.helperId,
+    role: 'requester',
+    actionKind: action.kind,
+    evidenceKind: 'ingested-water',
+    materialId,
+    cellId: fact.cellId,
+  };
+}
+
 export function isHelperWaterAssistanceEvidence(
   state: SimulationState,
   proposal: AssistanceProposal,
   fact: ActionFact,
+  agreementId?: string,
 ): boolean {
-  const action = fact.action;
-  return fact.status === 'completed'
-    && fact.who === proposal.helperId
-    && ((action.kind === 'move'
-      && neighbors4(fact.cellId).some((cell) => materialHas(
-        surfaceMaterial(state.world.grid, cell),
-        'drinkable',
-      )))
-      || (action.kind === 'communicate'
-        && action.audience.includes(proposal.requesterId)
-        && neighbors4(fact.cellId).some((cell) => materialHas(
-          surfaceMaterial(state.world.grid, cell),
-          'drinkable',
-        )))
-      || (action.kind === 'attend'
-        && action.target.kind === 'voxel'
-        && materialHas(voxelAt(
-          state.world.grid,
-          action.target.position.x,
-          action.target.position.y,
-          action.target.position.z,
-        ), 'drinkable')));
+  return Boolean(helperWaterAssistanceEvidenceReceipt(
+    state,
+    agreementId,
+    proposal,
+    fact,
+  ));
 }
 
 export function isRequesterWaterAssistanceEvidence(
   proposal: AssistanceProposal,
   fact: ActionFact,
+  agreementId?: string,
 ): boolean {
-  const action = fact.action;
-  const materialId = Number(fact.diff.materialId);
-  return fact.status === 'completed'
-    && fact.who === proposal.requesterId
-    && action.kind === 'act'
-    && action.operation === 'ingest'
-    && Number.isFinite(materialId)
-    && materialHas(materialId, 'drinkable')
-    && Number(fact.diff.hydration ?? 0) > 0;
+  return Boolean(requesterWaterAssistanceEvidenceReceipt(
+    agreementId,
+    proposal,
+    fact,
+  ));
 }
 
 export interface VerifiedWaterAssistanceEvidenceAnchors {
@@ -361,11 +537,11 @@ export function verifiedWaterAssistanceEvidenceAnchors(
       : worldEventByIdWithRetainedLease(state, eventId, helperLeaseKey)
         ?? worldEventByIdWithRetainedLease(state, eventId, requesterLeaseKey);
     if (event?.kind !== 'action') continue;
-    if (isHelperWaterAssistanceEvidence(state, proposal, event)
+    if (isHelperWaterAssistanceEvidence(state, proposal, event, agreement.id)
       && (!latestHelper || compareWorldEventsInCanonicalOrder(latestHelper, event) < 0)) {
       latestHelper = event;
     }
-    if (isRequesterWaterAssistanceEvidence(proposal, event)
+    if (isRequesterWaterAssistanceEvidence(proposal, event, agreement.id)
       && (!latestRequester || compareWorldEventsInCanonicalOrder(latestRequester, event) < 0)) {
       latestRequester = event;
     }
@@ -384,19 +560,43 @@ export function verifiedWaterAssistanceEvidenceAnchors(
 export function recordAgreementAction(state: SimulationState, fact: ActionFact): void {
   if (fact.status !== 'completed') return;
   const action = fact.action;
-  const waterAssistance = agreementsForPerson(state, fact.who).find((agreement) => agreement.status === 'active'
-    && agreement.proposal.kind === 'assist'
-    && agreement.proposal.need === 'water'
-    && agreement.partyIds.includes(fact.who));
+  const sourceIntent = fact.intentId ? intentById(state, fact.intentId) : undefined;
+  const intentAgreement = sourceIntent?.agreementId
+    ? agreementById(state, sourceIntent.agreementId)
+    : undefined;
+  const waterAssistance = sourceIntent?.ownerId === fact.who
+    && sourceIntent.status === 'active'
+    && intentAgreement?.status === 'active'
+    && intentAgreement.proposal.kind === 'assist'
+    && intentAgreement.proposal.need === 'water'
+    && intentAgreement.partyIds.includes(fact.who)
+    ? intentAgreement
+    : undefined;
   if (waterAssistance?.proposal.kind === 'assist' && waterAssistance.proposal.need === 'water') {
     const proposal = waterAssistance.proposal;
     const helperCandidate = personById(state, proposal.helperId);
     const requesterCandidate = personById(state, proposal.requesterId);
     const helper = helperCandidate && isAlive(helperCandidate) ? helperCandidate : undefined;
     const requester = requesterCandidate && isAlive(requesterCandidate) ? requesterCandidate : undefined;
-    const helperReachedWater = isHelperWaterAssistanceEvidence(state, proposal, fact);
-    const requesterDrank = isRequesterWaterAssistanceEvidence(proposal, fact);
+    const helperReceipt = helperWaterAssistanceEvidenceReceipt(
+      state,
+      waterAssistance.id,
+      proposal,
+      fact,
+      true,
+    );
+    const requesterReceipt = requesterWaterAssistanceEvidenceReceipt(
+      waterAssistance.id,
+      proposal,
+      fact,
+    );
+    const helperReachedWater = Boolean(helperReceipt);
+    const requesterDrank = Boolean(requesterReceipt);
     if (helperReachedWater || requesterDrank) {
+      const receipt = helperReceipt ?? requesterReceipt;
+      if (receipt && rawWaterAssistanceReceipt(fact) === undefined) {
+        fact.diff.waterAssistanceEvidenceReceipt = structuredClone(receipt);
+      }
       const contributorId = helperReachedWater ? proposal.helperId : proposal.requesterId;
       if (!waterAssistance.fulfilledByPersonIds.includes(contributorId)) waterAssistance.fulfilledByPersonIds.push(contributorId);
       if (!waterAssistance.fulfillmentEventIds.includes(fact.id)) waterAssistance.fulfillmentEventIds.push(fact.id);
@@ -420,7 +620,6 @@ export function recordAgreementAction(state: SimulationState, fact: ActionFact):
       }
     }
   }
-  const sourceIntent = fact.intentId ? intentById(state, fact.intentId) : undefined;
   const companyAssistance = sourceIntent?.agreementId
     ? agreementById(state, sourceIntent.agreementId)
     : undefined;

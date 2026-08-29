@@ -222,6 +222,19 @@ try {
     need: 'water', expiresAtMonth: 862,
   }, waterRequester.id, waterHelper.id, 'active', 860);
   waterState.agreements.push(waterAgreement);
+  const waterHelperIntent = {
+    id: 'intent:assist-water-long-fulfillment:helper',
+    ownerId: waterHelper.id,
+    agreementId: waterAgreement.id,
+    status: 'active',
+  };
+  const waterRequesterIntent = {
+    id: 'intent:assist-water-long-fulfillment:requester',
+    ownerId: waterRequester.id,
+    agreementId: waterAgreement.id,
+    status: 'active',
+  };
+  waterState.intents.push(waterHelperIntent, waterRequesterIntent);
 
   const interleavedWaterFacts = Array.from({ length: 25 }, (_, index) => {
     const helperEvidence = index % 2 === 0;
@@ -238,6 +251,7 @@ try {
     fact.cellId = helperEvidence ? 1 : 2;
     fact.fromCellId = fact.cellId;
     fact.toCellId = fact.cellId;
+    fact.intentId = helperEvidence ? waterHelperIntent.id : waterRequesterIntent.id;
     if (!helperEvidence) {
       fact.fromZ = 2;
       fact.toZ = 2;
@@ -262,6 +276,7 @@ try {
   finalRequesterDrink.cellId = 1;
   finalRequesterDrink.fromCellId = 1;
   finalRequesterDrink.toCellId = 1;
+  finalRequesterDrink.intentId = waterRequesterIntent.id;
   appendCommittedEvents(waterState, [finalRequesterDrink]);
   recordAgreementAction(waterState, finalRequesterDrink);
 
@@ -287,10 +302,18 @@ try {
   partialWaterAgreement.fulfilledByPersonIds = [waterHelper.id, waterRequester.id];
   partialWaterAgreement.fulfillmentEventIds = ['water-helper:not-retained'];
   waterState.agreements.push(partialWaterAgreement);
+  const partialWaterRequesterIntent = {
+    id: 'intent:assist-water-partial-retention:requester',
+    ownerId: waterRequester.id,
+    agreementId: partialWaterAgreement.id,
+    status: 'active',
+  };
+  waterState.intents.push(partialWaterRequesterIntent);
   waterHelper.position = { cellId: 4, z: 1, previousCellId: 3, previousZ: 1 };
   const retainedRequesterDrink = actionFact('water-requester:retained-only', 862, waterRequester.id, {
     kind: 'act', operation: 'ingest', targets: [],
   }, { materialId: Material.Water, hydration: 16 });
+  retainedRequesterDrink.intentId = partialWaterRequesterIntent.id;
   appendCommittedEvents(waterState, [retainedRequesterDrink]);
   const waterReceiptCountBeforePartial = waterBelief.receipts.length;
   assert.throws(
@@ -308,9 +331,17 @@ try {
   unverifiedWaterAgreement.fulfilledByPersonIds = [waterHelper.id, waterRequester.id];
   unverifiedWaterAgreement.fulfillmentEventIds = ['water-helper:missing', 'water-requester:missing'];
   waterState.agreements.push(unverifiedWaterAgreement);
+  const unverifiedWaterRequesterIntent = {
+    id: 'intent:assist-water-unverified:requester',
+    ownerId: waterRequester.id,
+    agreementId: unverifiedWaterAgreement.id,
+    status: 'active',
+  };
+  waterState.intents.push(unverifiedWaterRequesterIntent);
   const uncommittedRequesterDrink = actionFact('water-requester:uncommitted', 863, waterRequester.id, {
     kind: 'act', operation: 'ingest', targets: [],
   }, { materialId: Material.Water, hydration: 14 });
+  uncommittedRequesterDrink.intentId = unverifiedWaterRequesterIntent.id;
   const waterReceiptCountBeforeUnverified = waterBelief.receipts.length;
   assert.throws(
     () => recordAgreementAction(waterState, uncommittedRequesterDrink),

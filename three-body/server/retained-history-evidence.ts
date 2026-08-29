@@ -482,12 +482,12 @@ export function installVerifiedHistoryRetentionEvidence(
         ? state.world.past[match.absoluteIndex - cursor.hotStartIndex]
         : decodedByOrdinal.get(match.absoluteIndex)?.event;
       if (!event || event.id !== eventId || event.kind !== 'action') continue;
-      if (isHelperWaterAssistanceEvidence(state, proposal, event)
+      if (isHelperWaterAssistanceEvidence(state, proposal, event, agreement.id)
         && (!latestHelper
           || compareWorldEventsInCanonicalOrder(latestHelper.event, event) < 0)) {
         latestHelper = { event, absoluteIndex: match.absoluteIndex };
       }
-      if (isRequesterWaterAssistanceEvidence(proposal, event)
+      if (isRequesterWaterAssistanceEvidence(proposal, event, agreement.id)
         && (!latestRequester
           || compareWorldEventsInCanonicalOrder(latestRequester.event, event) < 0)) {
         latestRequester = { event, absoluteIndex: match.absoluteIndex };

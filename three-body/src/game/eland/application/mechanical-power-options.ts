@@ -1033,7 +1033,7 @@ function approachPosition(
   interactionRange = 1,
 ): StandingPosition | null {
   const targetCellId = cellId(target.x, target.y);
-  const candidates = cellsInRadius(cellId(target.x, target.y), 1)
+  const candidates = cellsInRadius(cellId(target.x, target.y), interactionRange)
     .flatMap((candidateCellId) => standingPositions(state.world.grid, candidateCellId))
     .filter((position) => position.cellId !== targetCellId)
     .filter((position) => distanceToPosition({ ...person, position: { ...person.position, ...position } }, target) <= interactionRange)

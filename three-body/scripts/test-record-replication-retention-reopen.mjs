@@ -826,6 +826,240 @@ try {
     'strict reopen must not expose an unleased cold body through generic by-id lookup',
   );
 
+  const payloadIdentity = valid.receipt.diff.recordUseRecordId;
+  assert.equal(typeof payloadIdentity, 'string');
+  const mixedActor = stateD.people.find((person) => (
+    person.diedAtMonth === undefined && person.body.health > 0
+  ));
+  assert.ok(mixedActor);
+
+  function mixedRecordIdentitySuccessor(
+    sourceIdentity,
+    label,
+    { addRecordAlias = false } = {},
+  ) {
+    const state = structuredClone(stateD);
+    const actor = state.people.find((person) => person.id === mixedActor.id);
+    assert.ok(actor);
+    if (addRecordAlias) state.records.push({
+      id: sourceIdentity,
+      authorId: actor.id,
+      knowledgeId: `mixed-record-knowledge-${label}`,
+      codebookId: `mixed-record-codebook-${label}`,
+      kind: 'claim',
+      summary: 'collision control record payload',
+      version: 1,
+      createdAtMonth: 13,
+      sourceEventIds: [],
+    });
+    const mixedSources = [...new Set([sourceIdentity, valid.receipt.id])].sort();
+    actor.knowledge.push({
+      id: `mixed-record-pressure-${label}`,
+      kind: 'claim',
+      summary: 'remembered mixed record and read provenance',
+      confidence: 70,
+      learnedAtMonth: 13,
+      sourceEventIds: mixedSources,
+    });
+    const projectId = `mixed-record-project-${label}`;
+    state.projects.push({
+      id: projectId,
+      kind: 'production',
+      need: 'production-efficiency',
+      desiredFunction: 'efficient-production',
+      summary: 'mixed record identity active logistics',
+      ownerId: actor.id,
+      beneficiaryIds: [],
+      triggerFactIds: [],
+      pressure: 60,
+      createdAtMonth: 13,
+      reviewAtMonth: 15,
+      status: 'active',
+      lastProgressAtMonth: 13,
+      missingMaterialIds: [api.Material.Wood],
+      materialDemands: [],
+      reservations: [],
+      contributorIds: [actor.id],
+      actionEventIds: [],
+      failureEventIds: [],
+      completionEventIds: [],
+      activeLogisticsEpisodeId: `mixed-record-logistics-${label}`,
+      logisticsEpisodes: [{
+        id: `mixed-record-logistics-${label}`,
+        kind: 'drop',
+        actorId: actor.id,
+        materialIds: [api.Material.Wood],
+        target: { cellId: actor.position.cellId, z: actor.position.z },
+        sourceRef: { kind: 'drop', dropId: `mixed-record-drop-${label}` },
+        sourceEventIds: mixedSources,
+        createdAt: 13,
+        status: 'active',
+        actionEventIds: [],
+      }],
+    });
+    const suffix = {
+      id: `mixed-record-suffix-${label}`,
+      kind: 'environment',
+      atMonth: 14,
+      orderInMonth: 0,
+      planningTick: 0,
+      orderInTick: 0,
+      cellId: actor.position.cellId,
+      change: 'material',
+      result: 'mixed record successor suffix',
+      diff: { fixtureKind: 'mixed-record-identity-successor', label },
+    };
+    for (const status of ['active', 'suspended']) state.intents.push({
+      id: `mixed-record-${status}-intent-${label}`,
+      ownerId: actor.id,
+      summary: `mixed record ${status} intent`,
+      domain: 'strategic',
+      goal: { kind: 'project-completed', projectId },
+      nextAction: { kind: 'act', operation: 'wait', targets: [] },
+      status,
+      createdAtMonth: 13,
+      lastProgressAtMonth: 13,
+      progress: 0,
+      sourceDecisionEventId: suffix.id,
+      sourceFactIds: mixedSources,
+      actionEventIds: [],
+      replanCount: 0,
+    });
+    api.appendCommittedEvents(state, [suffix]);
+    state.clock.elapsedMonths = 14;
+    state.lastStep = [suffix];
+    return { state, actorId: actor.id, projectId, mixedSources, suffix };
+  }
+
+  async function encodeMixedSuccessor(fixture) {
+    const encoded = await api.encodeSegmentedRunState(
+      fixture.state,
+      { mode: 'append', previous: rootD.metadata },
+      { maxEventsPerSegmentForTests: 4 },
+    );
+    retainEncoded(encoded);
+    const publication = (await decodeBounded(encoded, [], 5, 14)).state;
+    return { encoded, publication };
+  }
+
+  const mixed = mixedRecordIdentitySuccessor(payloadIdentity, 'valid');
+  const mixedEncoded = await encodeMixedSuccessor(mixed);
+  const mixedSuccessor = await api.projectHistoryRetentionFromVerifiedSuccessor(
+    projectionD,
+    rootD.root,
+    mixedEncoded.publication,
+    mixedEncoded.encoded.root,
+    readChunk,
+  );
+  const mixedProjection = api.decodeHistoryRetentionSidecar(mixedSuccessor.encoded.chunk, {
+    reference: mixedSuccessor.encoded.reference,
+    boundary: {
+      authority: { stateHash: mixedEncoded.encoded.root.hash },
+      target: {
+        eventCount: mixedEncoded.encoded.metadata.eventCount,
+        tailEventId: mixedEncoded.publication.world.historyCursor.tailEventId,
+      },
+    },
+  });
+  const mixedGroups = mixedProjection.demandGroups.filter((group) => (
+    group.eventIds.includes(payloadIdentity)
+  ));
+  assert.deepEqual(
+    mixedGroups.map((group) => group.groupKey).sort(),
+    [
+      'gameplay:future-active-project-logistics:source-facts',
+      'gameplay:live-person-project-pressure:remembered-sources',
+      `live-intent:mixed-record-active-intent-valid:anchors:supporting-sources`,
+      `live-intent:mixed-record-suspended-intent-valid:anchors:supporting-sources`,
+    ].sort(),
+    'record identity must remain scoped to typed body-free source groups',
+  );
+  assert.ok(mixedGroups.every((group) => (
+    group.unresolvedEventIds.includes(payloadIdentity) && group.blocking === false
+  )), 'record payload identity must remain unresolved and non-blocking after exact scans miss');
+  assert.equal(mixedProjection.continuationBasis.directMatches.some((match) => (
+    match.eventId === payloadIdentity
+  )), false, 'record payload identity must not become a fabricated WorldEvent match');
+  assert.equal(mixedProjection.pins.some((pin) => pin.eventId === payloadIdentity), false,
+    'record payload identity must not consume a cold body pin');
+  assert.ok(mixedProjection.continuationBasis.directMatches.some((match) => (
+    match.eventId === valid.receipt.id
+  )), 'the mixed real read event must retain its exact ordinal');
+
+  const mixedRoot = api.parseRunStateRoot(mixedEncoded.encoded.root);
+  const mixedReopen = await decodeBounded(
+    mixedEncoded.encoded,
+    mixedProjection.pins.filter((pin) => (
+      pin.absoluteIndex < Math.max(0, mixedRoot.eventCount - 1)
+    )).map((pin) => pin.absoluteIndex),
+    5,
+    14,
+  );
+  const mixedPressureSources = api.materializeVerifiedRunHistoryPinnedEvents(
+    mixedRoot,
+    readChunk,
+    api.projectPressureColdMaterializationOrdinals(
+      mixedReopen.state,
+      mixedProjection,
+      mixedReopen.pinnedEvents,
+    ),
+  );
+  const mixedSocialSources = api.materializeVerifiedRunHistoryPinnedEvents(
+    mixedRoot,
+    readChunk,
+    api.liveSocialColdMaterializationOrdinals(
+      mixedReopen.state,
+      mixedProjection,
+      mixedReopen.pinnedEvents,
+    ),
+  );
+  api.adoptStoreDecodedBoundedSimulationState(
+    mixedReopen.state,
+    mixedEncoded.encoded.root.hash,
+    mixedProjection,
+    mixedReopen.pinnedEvents,
+    mixedPressureSources,
+    [],
+    mixedSocialSources,
+    [],
+    mixedReopen.physicalProjection,
+  );
+  assert.equal(api.worldEventById(mixedReopen.state, payloadIdentity), undefined,
+    'strict reopen must not expose a record payload through WorldEvent lookup');
+  assert.ok(mixedReopen.state.records.some((record) => record.id === payloadIdentity),
+    'strict reopen must preserve the canonical record payload itself');
+  assert.equal(
+    api.historyRetentionDemandFingerprintForShell(mixedReopen.state),
+    mixedProjection.demandFingerprint,
+    'mixed record identity successor must reopen with exact demand parity',
+  );
+
+  const unknown = mixedRecordIdentitySuccessor('mixed-record-unknown-id', 'unknown');
+  const unknownEncoded = await encodeMixedSuccessor(unknown);
+  await assert.rejects(() => api.projectHistoryRetentionFromVerifiedSuccessor(
+    projectionD,
+    rootD.root,
+    unknownEncoded.publication,
+    unknownEncoded.encoded.root,
+    readChunk,
+  ), /新 demand mixed-record-unknown-id 无法由 suffix 解析/u,
+  'an unknown non-event source identity must fail closed');
+
+  const collision = mixedRecordIdentitySuccessor(
+    valid.receipt.id,
+    'collision',
+    { addRecordAlias: true },
+  );
+  const collisionEncoded = await encodeMixedSuccessor(collision);
+  await assert.rejects(() => api.projectHistoryRetentionFromVerifiedSuccessor(
+    projectionD,
+    rootD.root,
+    collisionEncoded.publication,
+    collisionEncoded.encoded.root,
+    readChunk,
+  ), /record payload\/event identity .* 冲突/u,
+  'a real WorldEvent and record payload with the same ID must fail closed');
+
   console.log(JSON.stringify({
     result: 'passed',
     previousEventCount: rootA.metadata.eventCount,
@@ -837,6 +1071,9 @@ try {
     warmGenericRegistryPreserved: true,
     forgedReceiptRetained: false,
     unleasedInputRetained: false,
+    mixedRecordIdentityReopened: true,
+    unknownRecordIdentityRejected: true,
+    recordEventCollisionRejected: true,
   }));
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

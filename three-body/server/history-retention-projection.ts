@@ -4368,7 +4368,16 @@ export function seedVerifiedPrefixLiveSocialIndexMatches(
     const belongsToBlockingDemand = [...fold.demandGroupsByKey.values()].some((group) => (
       group.eventIds.has(eventId) && historyRetentionRequirementBlocks(group.requirement)
     ));
-    if (!belongsToBlockingDemand) fold.requiredSuffixDirectDemandEventIds.delete(eventId);
+    const belongsToTypedRecordIdentityDemand = [...fold.demandGroupsByKey.values()].some((group) => (
+      group.eventIds.has(eventId)
+      && (group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
+        || group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+        || (group.groupKey.startsWith('live-intent:')
+          && liveSupportingSourceCoreGroupKey(group.groupKey) !== null))
+    ));
+    if (!belongsToBlockingDemand && !belongsToTypedRecordIdentityDemand) {
+      fold.requiredSuffixDirectDemandEventIds.delete(eventId);
+    }
   }
 }
 
@@ -4432,7 +4441,116 @@ export function seedVerifiedPrefixProjectPressureIndexMatches(
     matched.add(match.eventId);
     fold.directMatchesByEventId.set(match.eventId, { ...match });
   }
-  for (const eventId of searched) fold.requiredSuffixDirectDemandEventIds.delete(eventId);
+  for (const eventId of matched) fold.requiredSuffixDirectDemandEventIds.delete(eventId);
+}
+
+function bodyFreeRecordPayloadIdentityGroup(group: DirectDemandGroup): boolean {
+  return (group.groupKey === FUTURE_ACTIVE_PROJECT_LOGISTICS_SOURCE_LEASE_KEY
+      && group.requirement === 'index-only')
+    || (group.groupKey === LIVE_PERSON_PROJECT_PRESSURE_SOURCE_LEASE_KEY
+      && group.requirement === 'index-only')
+    || (group.groupKey.startsWith('live-intent:')
+      && liveSupportingSourceCoreGroupKey(group.groupKey) !== null
+      && group.requirement === 'audit-only');
+}
+
+function groupRequiresWorldEventIdentity(group: DirectDemandGroup): boolean {
+  if (bodyFreeRecordPayloadIdentityGroup(group)) return false;
+  if (group.requirement === 'all'
+    || group.requirement === 'any'
+    || group.requirement === 'audit-only') return true;
+  return group.groupKey === FUTURE_SOCIAL_REPETITION_SOURCE_LEASE_KEY
+    || parseWaterAssistanceFulfillmentMembershipGroupKey(group.groupKey) !== null;
+}
+
+/**
+ * Return only canonical record payload identities that overlap a typed
+ * logistics/project-pressure/live-intent source group and still have no event
+ * identity after the successor suffix was folded. This does not release the
+ * demand: the successor wrapper must first search the exact previous root.
+ */
+export function unresolvedVerifiedPrefixRecordPayloadIdentityIds(
+  fold: HistoryRetentionProjectionFold,
+): string[] {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix record payload bridge 只接受 open fold');
+  }
+  const recordCounts = new Map<string, number>();
+  for (const record of fold.modernRecordValidationState.records) {
+    const recordId = requiredEventId(record.id, 'retention next shell record payload identity');
+    recordCounts.set(recordId, (recordCounts.get(recordId) ?? 0) + 1);
+  }
+  const candidates = new Set<string>();
+  for (const group of fold.demandGroupsByKey.values()) {
+    if (!bodyFreeRecordPayloadIdentityGroup(group)) continue;
+    for (const eventId of group.eventIds) {
+      const count = recordCounts.get(eventId) ?? 0;
+      if (count > 1) {
+        throw new Error(`retention next shell record payload identity ${eventId} 重复`);
+      }
+      if (count === 1) candidates.add(eventId);
+    }
+  }
+  for (const eventId of candidates) {
+    if (fold.directMatchesByEventId.has(eventId)) {
+      throw new Error(`retention record payload/event identity ${eventId} 冲突`);
+    }
+  }
+  return [...candidates]
+    .filter((eventId) => fold.requiredSuffixDirectDemandEventIds.has(eventId))
+    .sort();
+}
+
+/**
+ * Admit a body-free record identity only after an exact previous-root scan
+ * searched it and found no WorldEvent. The suffix has already been folded, so
+ * an existing direct match is an event/record collision and fails closed.
+ */
+export function seedVerifiedPrefixRecordPayloadIdentityMisses(
+  fold: HistoryRetentionProjectionFold,
+  verifiedSourceEventCount: number,
+  searchedEventIds: readonly string[],
+  matches: readonly HistoryRetentionContinuationMatch[],
+): void {
+  if (fold.status !== 'open') {
+    throw new Error('retention prefix record payload bridge 只接受 open fold');
+  }
+  const sourceTarget = fold.continuationSourceTarget;
+  if (!sourceTarget || verifiedSourceEventCount !== sourceTarget.eventCount) {
+    throw new Error('retention prefix record payload bridge 与 continuation source seal 不一致');
+  }
+  const expected = unresolvedVerifiedPrefixRecordPayloadIdentityIds(fold);
+  if (!sameStringSet(searchedEventIds, expected)
+    || new Set(searchedEventIds).size !== searchedEventIds.length) {
+    throw new Error('retention prefix record payload bridge searched identity 不完整');
+  }
+  const matchedIds = new Set<string>();
+  for (const match of matches) {
+    if (matchedIds.has(match.eventId)
+      || !expected.includes(match.eventId)
+      || !Number.isSafeInteger(match.absoluteIndex)
+      || match.absoluteIndex < 0
+      || match.absoluteIndex >= sourceTarget.eventCount) {
+      throw new Error(`retention prefix record payload bridge match ${match.eventId} 无效`);
+    }
+    matchedIds.add(match.eventId);
+  }
+  if (matchedIds.size > 0) {
+    throw new Error(`retention record payload/event identity ${[...matchedIds].sort().join(',')} 冲突`);
+  }
+  for (const eventId of expected) {
+    const groups = [...fold.demandGroupsByKey.values()].filter((group) => (
+      group.eventIds.has(eventId)
+    ));
+    if (!groups.some(bodyFreeRecordPayloadIdentityGroup)
+      || groups.some(groupRequiresWorldEventIdentity)) {
+      throw new Error(`retention record payload identity ${eventId} 同时属于必须事件的严格 demand`);
+    }
+    if (fold.directMatchesByEventId.has(eventId)) {
+      throw new Error(`retention record payload/event identity ${eventId} 冲突`);
+    }
+    fold.requiredSuffixDirectDemandEventIds.delete(eventId);
+  }
 }
 
 /**

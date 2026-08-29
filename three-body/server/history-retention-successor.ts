@@ -28,12 +28,14 @@ import {
   seedVerifiedPrefixLiveSocialIndexMatches,
   seedVerifiedPrefixLogisticsIndexMatches,
   seedVerifiedPrefixProjectPressureIndexMatches,
+  seedVerifiedPrefixRecordPayloadIdentityMisses,
   seedVerifiedPrefixRecentTerminalFailureActionMatches,
   seedVerifiedPrefixSocialLearningSourceMatches,
   seedVerifiedPrefixSocialRepetitionIndexMatches,
   unresolvedVerifiedPrefixLogisticsIndexEventIds,
   unresolvedVerifiedPrefixLiveSocialIndexEventIds,
   unresolvedVerifiedPrefixProjectPressureIndexEventIds,
+  unresolvedVerifiedPrefixRecordPayloadIdentityIds,
   unresolvedVerifiedPrefixRecentTerminalFailureActionEventIds,
   unresolvedVerifiedPrefixSocialLearningSourceEventIds,
   unresolvedVerifiedPrefixSocialRepetitionIndexEventIds,
@@ -658,6 +660,8 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
   const unresolvedPrefixProjectPressureIds =
     unresolvedVerifiedPrefixProjectPressureIndexEventIds(fold)
       .filter((eventId) => !stricterPrefixIds.has(eventId));
+  const unresolvedPrefixRecordPayloadIds =
+    unresolvedVerifiedPrefixRecordPayloadIdentityIds(fold);
   const unresolvedPrefixIds = [...new Set([
     ...residualPrefixLiveSocialIds,
     ...unresolvedPrefixLogisticsIds,
@@ -665,6 +669,7 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
     ...unresolvedPrefixTerminalFailureIds,
     ...unresolvedPrefixSocialLearningIds,
     ...unresolvedPrefixSocialRepetitionIds,
+    ...unresolvedPrefixRecordPayloadIds,
   ])].sort();
   if (unresolvedPrefixIds.length > 0) {
     const required = new Set(unresolvedPrefixIds);
@@ -703,6 +708,17 @@ export async function projectHistoryRetentionFromVerifiedSuccessor(
       verifiedPrefix.eventCount,
       unresolvedPrefixProjectPressureIds,
       unresolvedPrefixProjectPressureIds.flatMap((eventId) => {
+        const match = matchesByEventId.get(eventId);
+        return match ? [match] : [];
+      }).sort((left, right) => (
+        left.eventId.localeCompare(right.eventId) || left.absoluteIndex - right.absoluteIndex
+      )),
+    );
+    seedVerifiedPrefixRecordPayloadIdentityMisses(
+      fold,
+      verifiedPrefix.eventCount,
+      unresolvedPrefixRecordPayloadIds,
+      unresolvedPrefixRecordPayloadIds.flatMap((eventId) => {
         const match = matchesByEventId.get(eventId);
         return match ? [match] : [];
       }).sort((left, right) => (

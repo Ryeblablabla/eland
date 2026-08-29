@@ -1729,54 +1729,80 @@ function genDeerFamily(B){
   add(-4.2,0.78,false); add(4.5,0.58,true);
 }
 
-/** 兔：短促跳跃和长耳剪影，对应生产规则中的 rabbit。 */
+/** 兔：以生产端地面为零点设计；素材页额外抬高两微体素避开草皮底座。 */
 function genRabbit(B, options={}){
-  const s=options.scale||1, ox=options.x||0, oz=options.z||0;
-  const p=animalAnimPhase+(options.phaseOffset||0), hop=options.activity==='dead'?0:Math.max(0,Math.sin(p))*1.1;
-  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
-  const low=options.activity==='injured'?0.45:options.activity==='dead'?0.15:1;
-  put('plaster',-1,low+hop,0,5,3,4,vary(0xc9bfa8,0.01,0.06,0.05));
-  put('plaster',2.2,low+1+hop,0,3,3,3,0xbfb59e);
-  put('plaster',2.1,low+4+hop,-0.85,1,4,1,0xc9bfa8);
-  put('plaster',2.1,low+4+hop,0.85,1,4,1,0xb8ad96);
-  put('plaster',-4,low+1.2+hop,0,2,2,2,0xe8e4da);
-  put('darkMetal',3.1,low+3.1+hop,-1.55,0.7,0.7,0.5,0x171411);
-  put('darkMetal',3.1,low+3.1+hop, 1.55,0.7,0.7,0.5,0x171411);
+  const s=(options.juvenile?0.76:1)*(options.scale||1), ox=options.x||0, oz=options.z||0;
+  const p=animalAnimPhase+(options.phaseOffset||0);
+  const alive=options.activity!=='dead', hop=alive?Math.max(0,Math.sin(p))*0.9:0;
+  const ground=2, crouch=options.activity==='injured'?0.32:options.activity==='dead'?0.08:0.95;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,ground+(y+hop)*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  const fur=vary(0xc9bfa8,0.01,0.06,0.05);
+  put('plaster',-1.2,crouch,0,5.4,3.3,4.2,fur);                 // 主躯干
+  put('plaster',-3.35,crouch+0.25,0,2.5,3.6,4.5,0xbfb59e);   // 高起后臀
+  put('plaster',1.3,crouch+0.5,0,2.2,3.2,3.8,0xd4cbb8);      // 胸颈
+  put('plaster',3,crouch+1.55,0,3.2,3.1,3.3,0xc9bfa8);       // 方头
+  put('plaster',4.55,crouch+1.45,0,1.5,1.5,2.4,0xb9ad95);    // 短吻
+  for(const z of [-1.05,1.05]){
+    put('plaster',2.25,crouch+4.25,z,1,4.2,1.15,z<0?0xd1c7b2:0xbfb59e); // 分离长耳
+    put('darkMetal',3.75,crouch+3.1,z<0?-1.72:1.72,0.7,0.7,0.5,0x171411); // 双眼
+  }
+  put('darkMetal',5.3,crouch+2,0,0.55,0.55,1.25,0x302820);    // 鼻头
+  put('plaster',-4.75,crouch+1.4,0,1.8,1.8,1.8,0xe8e4da);    // 白尾
+  const stride=alive?Math.sin(p)*0.38:0;
+  for(const [x,z,q] of [[-3.1,-1.5,1],[-3.1,1.5,-1],[1.35,-1.25,-1],[1.35,1.25,1]])
+    put('plaster',x+stride*q,0.05,z,2.2,0.9,1.15,0xb9ad95);    // 四只长脚掌
 }
 
-/** 野猪：成年雄性才显示獠牙；奔跑时腿部错相。 */
+/** 野猪：低重心肩峰、楔形吻部、分离耳眼和成年雄性獠牙。 */
 function genBoar(B, options={}){
   const s=(options.juvenile?0.72:1)*(options.scale||1), ox=options.x||0, oz=options.z||0;
-  const p=animalAnimPhase+(options.phaseOffset||0), stride=options.activity==='dead'?0:Math.sin(p)*0.55;
-  const low=options.activity==='injured'?0.7:options.activity==='dead'?0.2:1.8;
-  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
-  put('woodDark',-1,low,0,7,4,5,vary(0x4a3a2c,0.01,0.06,0.05));
-  put('woodDark',3.5,low+0.4,0,3.4,3.6,4.4,0x523e31);
-  put('woodDark',6,low+0.1,0,2.4,2.2,3.2,0x5b4636);
-  for(const [x,z,q] of [[-3,-1.6,1],[-3,1.6,-1],[1,-1.6,-1],[1,1.6,1]])
-    put('darkMetal',x+stride*q,0,z,1.4,low+0.2,1.4,0x302720);
-  for(let x=-3;x<=2;x+=1.25) put('darkMetal',x,low+4.1,0,0.8,1.4,1,0x312820);
+  const p=animalAnimPhase+(options.phaseOffset||0), alive=options.activity!=='dead';
+  const stride=alive?Math.sin(p)*(options.activity==='flee'?0.72:0.48):0;
+  const ground=2, low=options.activity==='injured'?1.25:options.activity==='dead'?0.2:1.9;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,ground+y*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  const hide=vary(0x4a3a2c,0.01,0.06,0.05);
+  put('woodDark',-1,low,0,7.2,4.2,5.2,hide);                 // 粗壮躯干
+  put('woodDark',1.8,low+0.25,0,3.2,4.7,5.35,0x503d30);    // 高肩
+  put('woodDark',3.8,low+0.1,0,3.4,3.7,4.4,0x523e31);     // 头
+  put('woodDark',6.05,low-0.05,0,2.4,2.25,3.35,0x654d3a); // 楔形吻部
+  put('darkMetal',7.25,low+0.18,0,0.45,1.55,2.6,0x241d19); // 鼻镜
+  for(const z of [-1.55,1.55]){
+    put('woodDark',3.05,low+4.45,z,1.3,1.7,1.15,0x3a2e25); // 耳
+    put('darkMetal',4.65,low+2.9,z<0?-2.25:2.25,0.65,0.65,0.5,0x171411); // 眼
+  }
+  for(const [x,z,q] of [[-3,-1.65,1],[-3,1.65,-1],[1.25,-1.65,-1],[1.25,1.65,1]])
+    put('darkMetal',x+stride*q,0.05,z,1.35,low+0.15,1.35,0x302720);     // 四腿
+  for(let x=-3.3;x<=2.2;x+=1.1) put('darkMetal',x,low+4.05,0,0.72,1.55,1.05,0x2f2721); // 鬃脊
+  put('woodDark',-4.85,low+2.9,0,1.5,0.8,0.85,0x3b2f27);    // 短尾
   if((options.sex||'male')==='male'&&!options.juvenile){
-    put('plaster',6.4,low-0.1,-2.1,0.9,2.2,0.9,0xd8cfc0);
-    put('plaster',6.4,low-0.1, 2.1,0.9,2.2,0.9,0xd8cfc0);
+    put('plaster',6.35,low-0.15,-2.05,0.85,2.15,0.85,0xd8cfc0);
+    put('plaster',6.35,low-0.15, 2.05,0.85,2.15,0.85,0xd8cfc0);
   }
 }
 
-/** 狼：长吻、竖耳、低尾；追逐状态加大步幅。 */
+/** 狼：收窄腰腹、突出胸颈与长吻，并以双段低尾保持捕食者剪影。 */
 function genWolf(B, options={}){
   const s=(options.juvenile?0.76:1)*(options.scale||1), ox=options.x||0, oz=options.z||0;
-  const p=animalAnimPhase+(options.phaseOffset||0), stride=options.activity==='dead'?0:Math.sin(p)*(options.activity==='chase'?0.9:0.48);
-  const low=options.activity==='injured'?0.7:options.activity==='dead'?0.2:2;
-  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,y*s,oz+z*s,sx*s,sy*s,sz*s,c);
-  put('stone',-1,low,0,7,3.8,4.2,vary(0x73777c,0,0.04,0.06));
-  put('stone',3.2,low+1,0,3.4,3.4,3.6,0x7d8288);
-  put('stone',5.6,low+0.7,0,2.5,1.8,2.5,0x686d72);
-  for(const [x,z,q] of [[-3,-1.4,1],[-3,1.4,-1],[1,-1.4,-1],[1,1.4,1]])
-    put('darkMetal',x+stride*q,0,z,1.25,low+0.4,1.25,0x41464b);
-  put('darkMetal',3.1,low+4.3,-1.2,1.2,2.5,1.1,0x4a4f58);
-  put('darkMetal',3.1,low+4.3, 1.2,1.2,2.5,1.1,0x4a4f58);
-  put('stone',-5,low+1,-Math.sin(p)*0.5,3.2,1.3,1.4,0x686d72);
-  put('darkMetal',6.9,low+1,0,0.8,0.8,1.5,0x25282b);
+  const p=animalAnimPhase+(options.phaseOffset||0), alive=options.activity!=='dead';
+  const stride=alive?Math.sin(p)*(options.activity==='chase'?0.82:0.45):0;
+  const ground=2, low=options.activity==='injured'?1.15:options.activity==='dead'?0.18:2;
+  const put=(t,x,y,z,sx,sy,sz,c)=>B.microCuboid(t,ox+x*s,ground+y*s,oz+z*s,sx*s,sy*s,sz*s,c);
+  const coat=vary(0x73777c,0,0.04,0.06);
+  put('stone',-1.1,low,0,6.8,3.6,3.9,coat);                 // 收窄躯干
+  put('stone',1.75,low+0.2,0,2.5,4.1,4.15,0x7c8085);      // 深胸
+  put('stone',3.25,low+1.35,0,2.7,3.2,3.5,0x81858a);     // 颈与头
+  put('stone',5.35,low+1.05,0,2.8,1.85,2.45,0x666b70);   // 长吻
+  put('darkMetal',6.8,low+1.3,0,0.6,0.75,1.45,0x25282b);// 鼻头
+  put('plaster',3.95,low+1.35,0,1.9,1.3,2.7,0xa8aaab);   // 浅色颊部
+  for(const z of [-1.2,1.2]){
+    put('darkMetal',2.7,low+4.25,z,1.15,2.35,1.05,0x474c52); // 竖耳
+    put('accent',4.3,low+3.15,z<0?-1.82:1.82,0.62,0.62,0.45,0xc89b45); // 琥珀眼
+  }
+  for(const [x,z,q] of [[-3,-1.35,1],[-3,1.35,-1],[1.05,-1.35,-1],[1.05,1.35,1]])
+    put('darkMetal',x+stride*q,0.05,z,1.2,low+0.4,1.2,0x41464b);       // 四腿
+  put('stone',-4.9,low+1.35,0,2.8,1.35,1.55,0x686d72);     // 尾根
+  put('darkMetal',-6.55,low+0.65,0,1.55,1.2,1.35,0x4c5055);// 低垂尾尖
+  put('plaster',-0.1,low-0.05,0,3.9,0.7,2.7,0x989b9e);     // 浅色腹毛
 }
 
 function genAnimalChase(B){
@@ -3155,9 +3181,9 @@ const STYLES = [
   // 野外 · 植被与动物
   { key:'deer',       cat:'n', group:'动 物', name:'成年雄鹿', en:'Adult Male Deer', gen:genDeer, tags:'雄性 · 成年 · 鹿角 · 行走' },
   { key:'deer-family',cat:'n', group:'动 物', name:'雌鹿与幼鹿', en:'Doe & Fawn',    gen:genDeerFamily, tags:'雌性/幼年 · 无鹿角 · 年龄缩放' },
-  { key:'rabbit',     cat:'n', group:'动 物', name:'兔',       en:'Rabbit',         gen:genRabbit },
-  { key:'boar',       cat:'n', group:'动 物', name:'野猪',     en:'Boar',           gen:genBoar, tags:'成年雄性 · 獠牙 · 奔跑' },
-  { key:'wolf',       cat:'n', group:'动 物', name:'狼',       en:'Wolf',           gen:genWolf, tags:'捕食者 · 追逐 · 低尾' },
+  { key:'rabbit',     cat:'n', group:'动 物', name:'兔',       en:'Rabbit',         gen:genRabbit, status:'live', tags:'游戏已接入 · 后臀 · 长耳 · 跳跃', note:'生产端按同一组微体素尺寸生成躯干、后臀、胸颈、短吻、分离长耳、眼鼻、白尾与四只长脚掌；位置、年龄和活动仍读取真实 rabbit 实体。', authorityKeys:['animal.speciesId=rabbit','animal.id','animal.position','animal.ageBand','animal.activity'], integrationTarget:'voxelKits.kitRabbit' },
+  { key:'boar',       cat:'n', group:'动 物', name:'野猪',     en:'Boar',           gen:genBoar, status:'live', tags:'游戏已接入 · 高肩 · 楔形吻部 · 成年雄性獠牙', note:'生产端复用高肩、鬃脊、耳眼、鼻镜和短尾构型；獠牙严格由真实 sex=male 且非幼年决定，不凭外观生成攻击事实。', authorityKeys:['animal.speciesId=boar','animal.sex','animal.ageBand','animal.activity'], integrationTarget:'voxelKits.kitBoar' },
+  { key:'wolf',       cat:'n', group:'动 物', name:'狼',       en:'Wolf',           gen:genWolf, status:'live', tags:'游戏已接入 · 窄腰深胸 · 长吻 · 双段低尾', note:'生产端复用收窄腰腹、深胸、长吻、琥珀眼和双段低尾构型；追逐、攻击与进食姿态只响应权威 activity。', authorityKeys:['animal.speciesId=wolf','animal.position','animal.activity'], integrationTarget:'voxelKits.kitWolf' },
   { key:'animal-chase',cat:'n',group:'动物状态', name:'追逐与逃跑', en:'Chase & Flee', gen:genAnimalChase, tags:'狼追逐 · 兔逃跑 · 动态步态' },
   { key:'animal-state',cat:'n',group:'动物状态', name:'受伤与死亡', en:'Injured & Dead',gen:genAnimalCondition, tags:'受伤 · 死亡 · 逃跑' },
   { key:'sheep',      cat:'n', group:'动 物', name:'羊',       en:'Sheep',          gen:genSheep },

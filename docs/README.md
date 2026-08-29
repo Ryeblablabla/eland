@@ -31,6 +31,7 @@
 
 这些文档可以同时含有已实现机制和未来目标，必须在开头明确两者，不得让目标设计冒充运行时事实：
 
+- [Steam 桌面发行路线 v1](./steam-desktop-release-roadmap-v1.md)：未来以 Electron / Electron Forge 构建 Windows x64 与 macOS universal 双平台包，接入独立 Steam depot 的目标架构、里程碑和验收标准；当前尚未实现。
 - [有限化身与逐刻度建造技术设计 v1](./limited-embodiment-technical-design-v1.md)：已实现第一人称局部操控、15 tick 暂存月份、真实移动 / 建造、恢复与交还自主；文档同时标明增量协议等后续边界。
 - [涌现能力底座](./emergent-capability-substrate-v1.md)：规则扩展原则；冲突时以 `domain/` 和应用用例为准。
 - [物质与文明能力演进](./material-era-progression-v1.md)：已实现至“现代文明（含信息能力）”的只读观察门槛；钢、混凝土、信号与计算等作为其内部后续能力设计。

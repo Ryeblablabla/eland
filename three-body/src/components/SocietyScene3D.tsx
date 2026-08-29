@@ -1898,6 +1898,18 @@ export default function SocietyScene3D({
     rim.position.set(44, 34, 50); // 镜头侧冷填光只抬暗面，不与主光争夺形体
     scene.add(rim);
 
+    // ---- 火光点光源池：只照亮权威火焰事实映射出的装饰实例，不写回任何状态 ----
+    // 灯位在 syncAnimatedDecor 中按 'fire' 动画实例逐帧重绑；超过池容量时取离相机最近者。
+    const FIRE_LIGHT_POOL_SIZE = 8;
+    const fireLights: THREE.PointLight[] = [];
+    for (let index = 0; index < FIRE_LIGHT_POOL_SIZE; index += 1) {
+      const light = new THREE.PointLight('#ffa54d', 0, 7.5, 2);
+      light.castShadow = false;
+      light.visible = false;
+      scene.add(light);
+      fireLights.push(light);
+    }
+
     // ---- 稳定世界种子驱动的双层云；下层进入太阳深度图，形成随风移动的真实云影 ----
     const cloudNoiseTexture = makeCloudNoiseTexture(world0.generator.seed);
     const cloudShadowTexture = cloudNoiseTexture.clone();
@@ -3821,8 +3833,36 @@ void main() {`,
       for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
       return (hash >>> 0) / 0x100000000;
     };
+    // 火光池逐帧重绑：强度随昼夜（夜间为主、白天熄灭），闪烁相位与火舌动画同源。
+    const updateFireLights = (now: number, fireSites: Map<string, { x: number; y: number; z: number }>) => {
+      const nightFactor = THREE.MathUtils.clamp(1 - sun.intensity / 1.4, 0, 1);
+      const sites = [...fireSites.values()].map((site) => {
+        const dx = site.x - camera.position.x;
+        const dz = site.z - camera.position.z;
+        return { ...site, d2: dx * dx + dz * dz };
+      }).sort((left, right) => left.d2 - right.d2);
+      fireLights.forEach((light, index) => {
+        const site = sites[index];
+        if (!site || nightFactor <= 0.02) {
+          light.visible = false;
+          light.intensity = 0;
+          return;
+        }
+        const seed = site.x * 7.31 + site.y * 11.17 + site.z * 5.83;
+        const wave = Math.sin(now * 0.009 + seed) + Math.sin(now * 0.015 - seed * 1.7);
+        light.visible = true;
+        light.position.set(site.x, site.y + 0.38, site.z);
+        light.intensity = nightFactor * 2.6 * (0.85 + wave * 0.08);
+      });
+    };
+
     const syncAnimatedDecor = (now: number) => {
-      if (!animatedDecorBatches.length) return;
+      // 逐帧收集权威火焰装饰的锚点（同一格内的焰心/余烬合并为一个灯位），供火光池使用。
+      const fireSites = new Map<string, { x: number; y: number; z: number }>();
+      if (!animatedDecorBatches.length) {
+        updateFireLights(now, fireSites);
+        return;
+      }
       const p = propsRef.current;
       const w = p.society.world;
       const animals = new Map(p.society.animals.map((animal) => [animal.id, animal]));
@@ -3850,6 +3890,11 @@ void main() {`,
             const seed = inst.x * 7.31 + inst.y * 11.17 + inst.z * 5.83;
             const waveA = Math.sin(now * 0.009 + seed);
             const waveB = Math.sin(now * 0.015 - seed * 1.7);
+            if (inst.part !== 'fire-spark') {
+              const siteKey = `${Math.round(inst.x)}:${Math.round(inst.z)}`;
+              const prev = fireSites.get(siteKey);
+              if (!prev || inst.y > prev.y) fireSites.set(siteKey, { x: inst.x, y: inst.y, z: inst.z });
+            }
             const isSpark = inst.part === 'fire-spark';
             const isEmber = inst.part === 'fire-ember';
             if (isSpark) {
@@ -3982,9 +4027,15 @@ void main() {`,
           let partOffsetY = 0;
           if (walking && inst.part?.startsWith('leg-')) {
             const legIndex = Number(inst.part.slice(4)) || 0;
-            const legPhase = phase + (legIndex % 2 ? Math.PI : 0);
-            localX += Math.sin(legPhase) * 0.014;
-            partOffsetY += Math.max(0, Math.sin(legPhase)) * 0.009;
+            if (animal.speciesId === 'rabbit') {
+              const rabbitStride = Math.sin(phase);
+              localX += rabbitStride * (legIndex < 2 ? -0.02 : 0.02);
+              partOffsetY += Math.max(0, rabbitStride) * 0.012;
+            } else {
+              const legPhase = phase + (legIndex % 2 ? Math.PI : 0);
+              localX += Math.sin(legPhase) * 0.014;
+              partOffsetY += Math.max(0, Math.sin(legPhase)) * 0.009;
+            }
           } else if (inst.part === 'head') {
             if (activity === 'graze' || activity === 'feed') {
               partOffsetY -= animal.speciesId === 'deer' ? 0.11 : 0.045;
@@ -3996,7 +4047,7 @@ void main() {`,
           if (activity === 'attack') localX += Math.max(0, Math.sin(phase)) * 0.025;
           if (activity === 'injured' && inst.part === 'leg-0') partOffsetY += 0.012;
           const bob = walking
-            ? Math.abs(Math.sin(phase)) * 0.007
+            ? Math.abs(Math.sin(phase)) * (animal.speciesId === 'rabbit' ? 0.022 : 0.007)
             : activity === 'birth' ? Math.abs(Math.sin(now * 0.005 + seed)) * 0.012
               : Math.sin(now * 0.0022 + seed) * 0.001;
           const dead = activity === 'dead';
@@ -4020,6 +4071,7 @@ void main() {`,
         });
         if (touched) mesh.instanceMatrix.needsUpdate = true;
       }
+      updateFireLights(now, fireSites);
     };
 
     // ---- 人物：按需创建 / 更新 / 回收 ----
@@ -4805,7 +4857,7 @@ void main() {`,
     composer.addPass(new RenderPass(scene, camera)); // 先渲染 beauty（GTAO 在 readBuffer 上合成 AO）
     const gtaoPass = new ScopedGTAOPass(scene, camera, 1, 1);
     gtaoPass.updateGtaoMaterial({
-      radius: 0.08,
+      radius: 0.18, // 覆盖约 1.5 个微体素棱，让贴地接触处真正暗下来
       distanceExponent: 1,
       thickness: 0.12,
       scale: 1,
@@ -4813,7 +4865,7 @@ void main() {`,
       distanceFallOff: 1,
       screenSpaceRadius: false,
     });
-    gtaoPass.blendIntensity = 0.52;
+    gtaoPass.blendIntensity = 0.7;
     gtaoPass.excluded = aoExcluded;
     composer.addPass(gtaoPass);
     const tiltShiftPass = new ShaderPass(AdaptiveTiltShiftShader);

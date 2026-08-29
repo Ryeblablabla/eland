@@ -45,6 +45,18 @@ function hash01(n: number, salt = 0): number {
   return (v >>> 0) / 0x100000000;
 }
 
+/** 动态实体外观使用自身 ID，而不是当前位置，避免移动后毛色跳变。 */
+function hashText01(value: string, salt = 0): number {
+  let hash = (0x811c9dc5 ^ Math.imul(salt + 1, 0x01000193)) >>> 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d) >>> 0;
+  hash ^= hash >>> 15;
+  return (hash >>> 0) / 0x100000000;
+}
+
 /** 颜色亮度抖动 */
 function jit(hex: number, r: number): number {
   const f = 0.9 + r * 0.2;
@@ -1938,33 +1950,70 @@ function kitDeer(k: Kit, r: number, sex: 'female' | 'male' = 'male', juvenile = 
 }
 
 function kitRabbit(k: Kit, r: number): void {
-  k.v('plaster', 0, 0, 0, jit(0xc9bfa8, r), 'body'); k.v('plaster', 1, 0, 0, jit(0xc9bfa8, r), 'body');
-  k.v('plaster', 0, 1, 0, 0xbfb59e, 'body');
-  k.v('plaster', 1, 1, 0, 0xc9bfa8, 'head');                              // 头
-  k.v('plaster', 1, 2, 0, 0xc9bfa8, 'head'); k.v('plaster', 1, 2, 1, 0xbfb59e, 'head'); // 长耳
-  k.v('plaster', -1, 0, 0, 0xe8e4da, 'tail');                             // 尾
+  const fur = jit(0xc9bfa8, r);
+  k.m('plaster', -1.2, 0.95, 0, 5.4, 3.3, 4.2, fur, 'body');                  // 主躯干
+  k.m('plaster', -3.35, 1.2, 0, 2.5, 3.6, 4.5, 0xbfb59e, 'body');            // 高起后臀
+  k.m('plaster', 1.3, 1.45, 0, 2.2, 3.2, 3.8, 0xd4cbb8, 'body');             // 胸颈
+  k.m('plaster', 3, 2.5, 0, 3.2, 3.1, 3.3, 0xc9bfa8, 'head');                // 方头
+  k.m('plaster', 4.55, 2.4, 0, 1.5, 1.5, 2.4, 0xb9ad95, 'head');             // 短吻
+  for (const z of [-1.05, 1.05] as const) {
+    k.m('plaster', 2.25, 5.2, z, 1, 4.2, 1.15, z < 0 ? 0xd1c7b2 : 0xbfb59e, 'head'); // 分离长耳
+    k.m('dark', 3.75, 4.05, z < 0 ? -1.72 : 1.72, 0.7, 0.7, 0.5, 0x171411, 'head'); // 双眼
+  }
+  k.m('dark', 5.3, 2.95, 0, 0.55, 0.55, 1.25, 0x302820, 'head');              // 鼻头
+  k.m('plaster', -4.75, 2.35, 0, 1.8, 1.8, 1.8, 0xe8e4da, 'tail');           // 白尾
+  const rabbitFeet = [[-3.1, -1.5], [-3.1, 1.5], [1.35, -1.25], [1.35, 1.25]] as const;
+  rabbitFeet.forEach(([x, z], index) => {
+    k.m('plaster', x, 0.05, z, 2.2, 0.9, 1.15, 0xb9ad95, `leg-${index}`);     // 四只长脚掌
+  });
 }
 
 function kitBoar(k: Kit, r: number, sex: 'female' | 'male' = 'male', juvenile = false): void {
-  for (let x = -1; x <= 1; x++) for (let z = 0; z <= 1; z++) k.v('organicDark', x, 1, z, jit(0x4a3a2c, r), 'body');
-  const boarLegs = [[-1, 0], [-1, 1], [1, 0], [1, 1]] as const;
-  boarLegs.forEach(([lx, lz], index) => k.v('organicDark', lx, 0, lz, 0x3a2e22, `leg-${index}`));
-  for (let x = -1; x <= 1; x++) k.v('organicDark', x, 2, 0, 0x3a2e22, 'body'); // 鬃毛
-  k.v('organicDark', 2, 1, 0, 0x4a3a2c, 'head');                      // 头
-  k.m('organicDark', 6, 2, 0, 2.4, 2, 3, jit(0x5b4636, r), 'head'); // 吻部
+  const hide = jit(0x4a3a2c, r);
+  const low = 1.9;
+  k.m('organicDark', -1, low, 0, 7.2, 4.2, 5.2, hide, 'body');                  // 粗壮躯干
+  k.m('organicDark', 1.8, low + 0.25, 0, 3.2, 4.7, 5.35, 0x503d30, 'body');   // 高肩
+  k.m('organicDark', 3.8, low + 0.1, 0, 3.4, 3.7, 4.4, 0x523e31, 'head');     // 头
+  k.m('organicDark', 6.05, low - 0.05, 0, 2.4, 2.25, 3.35, jit(0x654d3a, r), 'head'); // 楔形吻部
+  k.m('dark', 7.25, low + 0.18, 0, 0.45, 1.55, 2.6, 0x241d19, 'head');         // 鼻镜
+  for (const z of [-1.55, 1.55] as const) {
+    k.m('organicDark', 3.05, low + 4.45, z, 1.3, 1.7, 1.15, 0x3a2e25, 'head'); // 耳
+    k.m('dark', 4.65, low + 2.9, z < 0 ? -2.25 : 2.25, 0.65, 0.65, 0.5, 0x171411, 'head'); // 眼
+  }
+  const boarLegs = [[-3, -1.65], [-3, 1.65], [1.25, -1.65], [1.25, 1.65]] as const;
+  boarLegs.forEach(([x, z], index) => {
+    k.m('dark', x, 0.05, z, 1.35, low + 0.15, 1.35, 0x302720, `leg-${index}`); // 四腿
+  });
+  for (let x = -3.3; x <= 2.2; x += 1.1) {
+    k.m('dark', x, low + 4.05, 0, 0.72, 1.55, 1.05, 0x2f2721, 'body');          // 鬃脊
+  }
+  k.m('organicDark', -4.85, low + 2.9, 0, 1.5, 0.8, 0.85, 0x3b2f27, 'tail'); // 短尾
   if (sex === 'male' && !juvenile) {
-    k.m('plaster', 6.5, 2, -2, 1, 2, 1, 0xd8cfc0, 'head');
-    k.m('plaster', 6.5, 2, 2, 1, 2, 1, 0xd8cfc0, 'head');
+    k.m('plaster', 6.35, low - 0.15, -2.05, 0.85, 2.15, 0.85, 0xd8cfc0, 'head');
+    k.m('plaster', 6.35, low - 0.15, 2.05, 0.85, 2.15, 0.85, 0xd8cfc0, 'head');
   }
 }
 
 function kitWolf(k: Kit, r: number): void {
-  for (let x = -1; x <= 1; x++) for (let z = 0; z <= 1; z++) k.v('stone', x, 1, z, jit(0x7d8288, r), 'body');
-  const wolfLegs = [[-1, 0], [-1, 1], [1, 0], [1, 1]] as const;
-  wolfLegs.forEach(([lx, lz], index) => k.v('organicDark', lx, 0, lz, 0x4a4f58, `leg-${index}`));
-  k.v('stone', 2, 1, 0, 0x7d8288, 'head'); k.v('stone', 2, 2, 0, 0x84888d, 'head'); // 头
-  k.v('organicDark', 2, 3, 0, 0x4a4f58, 'head');                      // 耳
-  k.v('stone', -2, 2, 0, 0x7d8288, 'tail');                          // 尾
+  const coat = jit(0x73777c, r);
+  const low = 2;
+  k.m('stone', -1.1, low, 0, 6.8, 3.6, 3.9, coat, 'body');                   // 收窄躯干
+  k.m('stone', 1.75, low + 0.2, 0, 2.5, 4.1, 4.15, 0x7c8085, 'body');       // 深胸
+  k.m('stone', 3.25, low + 1.35, 0, 2.7, 3.2, 3.5, 0x81858a, 'head');       // 颈与头
+  k.m('stone', 5.35, low + 1.05, 0, 2.8, 1.85, 2.45, 0x666b70, 'head');     // 长吻
+  k.m('dark', 6.8, low + 1.3, 0, 0.6, 0.75, 1.45, 0x25282b, 'head');        // 鼻头
+  k.m('plaster', 3.95, low + 1.35, 0, 1.9, 1.3, 2.7, 0xa8aaab, 'head');     // 浅色颊部
+  for (const z of [-1.2, 1.2] as const) {
+    k.m('dark', 2.7, low + 4.25, z, 1.15, 2.35, 1.05, 0x474c52, 'head');    // 竖耳
+    k.m('accent', 4.3, low + 3.15, z < 0 ? -1.82 : 1.82, 0.62, 0.62, 0.45, 0xc89b45, 'head'); // 琥珀眼
+  }
+  const wolfLegs = [[-3, -1.35], [-3, 1.35], [1.05, -1.35], [1.05, 1.35]] as const;
+  wolfLegs.forEach(([x, z], index) => {
+    k.m('dark', x, 0.05, z, 1.2, low + 0.4, 1.2, 0x41464b, `leg-${index}`);  // 四腿
+  });
+  k.m('stone', -4.9, low + 1.35, 0, 2.8, 1.35, 1.55, 0x686d72, 'tail');     // 尾根
+  k.m('dark', -6.55, low + 0.65, 0, 1.55, 1.2, 1.35, 0x4c5055, 'tail');     // 低垂尾尖
+  k.m('plaster', -0.1, low - 0.05, 0, 3.9, 0.7, 2.7, 0x989b9e, 'body');     // 浅色腹毛
 }
 
 /* ------------------------------------------------------------------ */
@@ -3278,7 +3327,7 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
       : a.speciesId === 'rabbit' ? kitRabbit
         : a.speciesId === 'boar' ? (k, r) => kitBoar(k, r, a.sex ?? 'male', juvenile) : kitWolf;
     build(new Kit(out, x - w.width / 2 + 0.5, a.z * CELL_H, y - w.height / 2 + 0.5,
-      scale, 0, a.id), hash01(a.cellId, 15));
+      scale, 0, a.id), hashText01(a.id, 15));
   }
 
   return out;

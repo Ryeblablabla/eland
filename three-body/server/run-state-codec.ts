@@ -712,10 +712,17 @@ function assertFullDomainHistoryCursor(state: SimulationState): void {
   );
 }
 
-function completedProjectIsClosedArchive(value: unknown): value is Record<string, unknown> {
+function terminalProjectIsClosedArchive(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const project = value as Record<string, unknown>;
-  if (project.status !== 'completed'
+  const terminalInquiryBasis = project.terminalInquiryOpportunityBasis;
+  const isClosedBlocked = project.status === 'blocked'
+    && Boolean(terminalInquiryBasis)
+    && typeof terminalInquiryBasis === 'object'
+    && !Array.isArray(terminalInquiryBasis);
+  if ((project.status !== 'completed'
+      && project.status !== 'abandoned'
+      && !isClosedBlocked)
     || Object.prototype.hasOwnProperty.call(project, 'activeLogisticsEpisodeId')) return false;
   const hasActive = (items: unknown): boolean => Array.isArray(items)
     && items.some((item) => item
@@ -769,17 +776,20 @@ function recursivelyFreezeOwnedValue(
 }
 
 /**
- * Canonicalize only closed completed-project archives after a rule month has
- * finished. Replacing the whole array invalidates every array-keyed domain
- * index; the isolated clone prevents recursive freeze from touching any shared
- * mutable value elsewhere in the state graph.
+ * Canonicalize only genuinely closed terminal-project archives after a rule
+ * month has finished. A blocked project is terminal only after its inquiry
+ * opportunity basis has been frozen; abandoned/completed projects still miss
+ * while any internal logistics, search, or hypothesis work is active.
+ * Replacing the whole array invalidates every array-keyed domain index; the
+ * isolated clone prevents recursive freeze from touching any shared mutable
+ * value elsewhere in the state graph.
  */
 export function stabilizeCompletedProjectsForRunStateShellReuse(
   state: SimulationState,
 ): number {
   let stabilized = 0;
   const projects = state.projects.map((project) => {
-    if (!completedProjectIsClosedArchive(project)
+    if (!terminalProjectIsClosedArchive(project)
       || stabilizedCompletedProjects.has(project)) return project;
     const owned = structuredClone(project) as typeof project;
     if (!recursivelyPlainOwnedValue(owned)) return project;
@@ -872,7 +882,7 @@ function shellArrayItemsPerSegment(
   scope: RunStateShellFieldScope,
   fieldName: string,
 ): number {
-  // A completed project may carry substantially more closed planning history
+  // A terminal project may carry substantially more closed planning history
   // than other shell members. Keeping projects content-addressed one at a time
   // prevents one changed/live project from forcing a 64-project decode peak,
   // while every other collection retains the established positional layout.
@@ -927,7 +937,7 @@ function reusableCompletedProjectSegment(
   if (scope !== 'state'
     || fieldName !== 'projects'
     || segment.length !== 1
-    || !completedProjectIsClosedArchive(segment[0])
+    || !terminalProjectIsClosedArchive(segment[0])
     || !stabilizedCompletedProjects.has(segment[0])) return undefined;
   const previous = reuse?.previous?.completedProjectSegments.get(segmentIndex);
   if (!reuse?.previous) return undefined;
@@ -956,7 +966,7 @@ function capturedCompletedProjectSegment(
   if (scope !== 'state'
     || fieldName !== 'projects'
     || segment.length !== 1
-    || !completedProjectIsClosedArchive(segment[0])
+    || !terminalProjectIsClosedArchive(segment[0])
     || !stabilizedCompletedProjects.has(segment[0])) return undefined;
   return Object.freeze({
     scope: 'state' as const,

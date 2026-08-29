@@ -36,6 +36,55 @@ function completedProject(index, ownerId, extra = {}) {
   };
 }
 
+function terminalInquiryOpportunityBasis(ownerId, index) {
+  return {
+    version: 'project-inquiry-opportunity-basis-v1',
+    actorId: ownerId,
+    desiredFunction: 'efficient-production',
+    atMonth: 0,
+    materialIds: [],
+    techniqueIds: [],
+    targetSourceKeys: [],
+    verifiedResponseEventIds: [],
+    opportunityKeys: [],
+    opportunitySources: [],
+    sourceFactIds: [],
+    sourceKeys: [],
+    basisKey: `terminal-basis-${index}`,
+    inheritedProjectIds: [],
+    renewalKeys: [],
+  };
+}
+
+function blockedProject(index, ownerId, extra = {}) {
+  const project = completedProject(index, ownerId, {
+    status: 'blocked',
+    blockedAtMonth: 0,
+    blockedReason: 'closed bounded inquiry',
+    terminalInquiryOpportunityBasis: terminalInquiryOpportunityBasis(ownerId, index),
+    ...extra,
+  });
+  delete project.completedAtMonth;
+  return project;
+}
+
+function abandonedProject(index, ownerId, extra = {}) {
+  const project = completedProject(index, ownerId, {
+    status: 'abandoned',
+    abandonedAtMonth: 0,
+    blockedReason: 'need resolved before completion',
+    ...extra,
+  });
+  delete project.completedAtMonth;
+  return project;
+}
+
+function closedTerminalProject(index, ownerId, variant) {
+  if (variant % 3 === 1) return blockedProject(index, ownerId);
+  if (variant % 3 === 2) return abandonedProject(index, ownerId);
+  return completedProject(index, ownerId);
+}
+
 function addChunks(target, snapshot) {
   for (const chunk of [snapshot.root, ...snapshot.parts]) {
     const existing = target.get(chunk.hash);
@@ -85,13 +134,25 @@ try {
     tailEventContentHash: null,
   });
 
-  // The eligibility gate is deliberately narrower than the domain's terminal union.
+  // The eligibility gate accepts only terminal projects with no remaining
+  // monthly synchronization path. In particular, a blocked project needs its
+  // frozen inquiry basis; merely having a terminal-looking status is not enough.
   const predicateState = simulation.createInitialState(91_001, {
     endpoint: { kind: 'months', value: 12_000 },
   });
   const ownerId = predicateState.people[0].id;
   const clean = completedProject('clean', ownerId, {
     logisticsEpisodes: [{ status: 'fulfilled' }],
+    searchCampaigns: [{ status: 'closed' }],
+    hypothesisCampaign: { status: 'closed' },
+  });
+  const closedBlocked = blockedProject('closed-blocked', ownerId, {
+    logisticsEpisodes: [{ status: 'exhausted' }],
+    searchCampaigns: [{ status: 'exhausted' }],
+    hypothesisCampaign: { status: 'exhausted' },
+  });
+  const closedAbandoned = abandonedProject('closed-abandoned', ownerId, {
+    logisticsEpisodes: [{ status: 'invalidated' }],
     searchCampaigns: [{ status: 'closed' }],
     hypothesisCampaign: { status: 'closed' },
   });
@@ -107,27 +168,46 @@ try {
   const activeHypothesis = completedProject('active-hypothesis', ownerId, {
     hypothesisCampaign: { status: 'active' },
   });
-  const blocked = { ...completedProject('blocked', ownerId), status: 'blocked' };
+  const continuableBlocked = {
+    ...completedProject('continuable-blocked', ownerId),
+    status: 'blocked',
+    searchCampaigns: [{ status: 'exhausted' }],
+  };
+  const blockedWithActiveWork = blockedProject('blocked-active-work', ownerId, {
+    searchCampaigns: [{ status: 'active' }],
+  });
+  const abandonedWithActiveWork = abandonedProject('abandoned-active-work', ownerId, {
+    hypothesisCampaign: { status: 'active' },
+  });
+  const active = { ...completedProject('active', ownerId), status: 'active' };
+  const proposed = { ...completedProject('proposed', ownerId), status: 'proposed' };
   const nonPlain = completedProject('non-plain', ownerId, { compatibilityScratch: new Map() });
   predicateState.projects = [
     clean,
+    closedBlocked,
+    closedAbandoned,
     staleCompatibilityId,
     activeLogistics,
     activeSearch,
     activeHypothesis,
-    blocked,
+    continuableBlocked,
+    blockedWithActiveWork,
+    abandonedWithActiveWork,
+    active,
+    proposed,
     nonPlain,
   ];
-  assert.equal(codec.stabilizeCompletedProjectsForRunStateShellReuse(predicateState), 1);
-  assert.ok(Object.isFrozen(predicateState.projects[0]));
+  assert.equal(codec.stabilizeCompletedProjectsForRunStateShellReuse(predicateState), 3);
+  for (const project of predicateState.projects.slice(0, 3)) assert.ok(Object.isFrozen(project));
   assert.ok(Object.isFrozen(predicateState.projects[0].logisticsEpisodes));
-  for (const project of predicateState.projects.slice(1)) assert.equal(Object.isFrozen(project), false);
+  assert.ok(Object.isFrozen(predicateState.projects[1].terminalInquiryOpportunityBasis));
+  for (const project of predicateState.projects.slice(3)) assert.equal(Object.isFrozen(project), false);
   assert.throws(() => {
     predicateState.projects[0].summary = 'illegal post-completion mutation';
   }, TypeError, 'future writes to a stabilized completed archive must fail loudly');
 
-  // A real 12-month rule advance proves that clean completion archives have no
-  // legitimate post-completion writer and that freezing changes no decisions/events.
+  // A real 12-month rule advance proves that the three closed terminal forms
+  // have no legitimate writer and that freezing changes no decisions/events.
   const frozenController = simulation.createSimulation({
     seed: 91_002,
     config: { endpoint: { kind: 'months', value: 12_000 }, chaosIntensity: 0 },
@@ -139,7 +219,7 @@ try {
   const ruleOwnerId = frozenController.ownedState().people[0].id;
   const ruleProjects = Array.from(
     { length: 30 },
-    (_, index) => completedProject(`rule-${index}`, ruleOwnerId),
+    (_, index) => closedTerminalProject(`rule-${index}`, ruleOwnerId, index),
   );
   frozenController.ownedState().projects.push(...structuredClone(ruleProjects));
   controlController.ownedState().projects.push(...structuredClone(ruleProjects));
@@ -168,7 +248,7 @@ try {
   const storeOwnerId = storeState.people[0].id;
   storeState.projects.push(...Array.from(
     { length: 30 },
-    (_, index) => completedProject(`store-${index}`, storeOwnerId),
+    (_, index) => closedTerminalProject(`store-${index}`, storeOwnerId, index),
   ));
   let store = new api.SqliteRunStore(storeDirectory);
   await store.create({ id: 'shell-reuse-store-probe', state: storeState });
@@ -191,7 +271,7 @@ try {
   assert.equal(
     publicStepped.projects.find((project) => project.id === publicProject.id),
     publicProject,
-    'public staging must not replace completed project objects',
+    'public staging must not replace closed terminal project objects',
   );
   assert.equal(Object.isFrozen(publicProject), false, 'public staging must not freeze caller state');
   store.close();
@@ -228,7 +308,7 @@ try {
     const projectOwnerId = state.people[0].id;
     state.projects = Array.from(
       { length: projectCount },
-      (_, index) => completedProject(`${projectCount}-${index}`, projectOwnerId),
+      (_, index) => closedTerminalProject(`${projectCount}-${index}`, projectOwnerId, index),
     );
     const enabledAuthority = Object.freeze({ variant: `enabled-${projectCount}` });
     const disabledAuthority = Object.freeze({ variant: `disabled-${projectCount}` });
@@ -340,8 +420,145 @@ try {
     return { projectCount, cold: coldStats, enabled, disabled };
   }
 
+  async function terminalIdentityGuardProbe() {
+    const state = simulation.createInitialState(92_901, {
+      endpoint: { kind: 'months', value: 12_000 },
+    });
+    state.world.past = [];
+    delete state.world.historyCursor;
+    const projectOwnerId = state.people[0].id;
+    state.projects = [
+      completedProject('guard-completed', projectOwnerId),
+      blockedProject('guard-blocked', projectOwnerId),
+      abandonedProject('guard-abandoned', projectOwnerId),
+      { ...completedProject('guard-active', projectOwnerId), status: 'active' },
+      {
+        ...completedProject('guard-continuable-blocked', projectOwnerId),
+        status: 'blocked',
+        searchCampaigns: [{ status: 'exhausted' }],
+      },
+      blockedProject('guard-blocked-active', projectOwnerId, {
+        logisticsEpisodes: [{ status: 'active' }],
+      }),
+      abandonedProject('guard-abandoned-active', projectOwnerId, {
+        hypothesisCampaign: { status: 'active' },
+      }),
+      { ...completedProject('guard-proposed', projectOwnerId), status: 'proposed' },
+    ];
+    const authority = Object.freeze({ variant: 'terminal-identity-guards' });
+    codec.configureRunStateShellPartEncodeCacheForTests({
+      enabled: false,
+      clear: true,
+      resetStatistics: true,
+    });
+    codec.configureRunStateShellSegmentIdentityReuseForTests({
+      enabled: true,
+      resetStatistics: true,
+    });
+    const cold = await codec.encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      fixedHistory,
+      [],
+      { shellReuse: { authority } },
+    );
+    assert.equal(
+      cold.shellReuseIdentity.reusableCompletedProjectSegments,
+      3,
+      'only completed, closed blocked, and closed abandoned are reusable',
+    );
+
+    state.projects[0] = {
+      ...structuredClone(state.projects[0]),
+      summary: 'changed completed project object',
+    };
+    state.projects[1] = {
+      ...structuredClone(state.projects[1]),
+      searchCampaigns: [{ status: 'active' }],
+    };
+    state.clock.elapsedMonths = 1;
+    codec.configureRunStateShellSegmentIdentityReuseForTests({
+      enabled: true,
+      resetStatistics: true,
+    });
+    const enabled = await codec.encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      fixedHistory,
+      [],
+      {
+        shellReuse: {
+          authority,
+          previousRoot: cold.root,
+          previousIdentity: cold.shellReuseIdentity,
+        },
+      },
+    );
+    const enabledStats = codec.runStateShellPartEncodeCacheStatsForTests();
+    assert.equal(enabledStats.identityReuseHits, 1, 'unchanged frozen abandoned project must hit');
+    assert.equal(enabledStats.identityReuseMisses, 1, 'replaced completed object must miss by identity');
+    assert.equal(
+      enabled.shellReuseIdentity.reusableCompletedProjectSegments,
+      2,
+      'blocked project with newly active internal work must not be captured',
+    );
+
+    codec.configureRunStateShellSegmentIdentityReuseForTests({
+      enabled: false,
+      resetStatistics: true,
+    });
+    const disabled = await codec.encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      fixedHistory,
+      [],
+      {
+        shellReuse: {
+          authority,
+          previousRoot: cold.root,
+          previousIdentity: cold.shellReuseIdentity,
+        },
+      },
+    );
+    const disabledStats = codec.runStateShellPartEncodeCacheStatsForTests();
+    assert.equal(enabled.root.hash, disabled.root.hash, 'identity reuse must not change root hash');
+    assert.equal(
+      enabled.metadata.shellHash,
+      disabled.metadata.shellHash,
+      'identity reuse must not change shell manifest hash',
+    );
+    assert.equal(
+      disabledStats.serializeCalls - enabledStats.serializeCalls,
+      1,
+      'only the unchanged frozen terminal project may skip serialization',
+    );
+    await assert.rejects(codec.encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      fixedHistory,
+      [],
+      {
+        shellReuse: {
+          authority,
+          previousRoot: cold.root,
+          previousIdentity: enabled.shellReuseIdentity,
+        },
+      },
+    ), /run\/exact previous root\/manifest/u, 'wrong previous root must be rejected');
+    await assert.rejects(codec.encodeSegmentedRunStateFromHistorySuffix(
+      state,
+      fixedHistory,
+      [],
+      {
+        shellReuse: {
+          authority: Object.freeze({ wrong: true }),
+          previousRoot: enabled.root,
+          previousIdentity: enabled.shellReuseIdentity,
+        },
+      },
+    ), /run\/exact previous root\/manifest/u, 'wrong authority must be rejected');
+    return { enabled: enabledStats, disabled: disabledStats };
+  }
+
   const scale30 = await twelveLowChangeMonths(30);
   const scale300 = await twelveLowChangeMonths(300);
+  const terminalGuards = await terminalIdentityGuardProbe();
   assert.equal(
     scale300.disabled.serializeCalls - scale300.enabled.serializeCalls,
     10 * (scale30.disabled.serializeCalls - scale30.enabled.serializeCalls),
@@ -354,6 +571,7 @@ try {
     ruleProjectCount: 30,
     boundedStoreWarmIdentityHits: secondStoreMonth.identityReuseHits,
     scales: [scale30, scale300],
+    terminalGuards,
     threeThousandProjection: {
       projectSegments: 3_000,
       months: 12,

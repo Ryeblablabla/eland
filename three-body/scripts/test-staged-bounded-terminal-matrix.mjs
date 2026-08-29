@@ -303,4 +303,3 @@ try {
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }
-

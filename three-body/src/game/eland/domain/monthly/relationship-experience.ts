@@ -44,6 +44,7 @@ export function advanceSharedRelationshipExperience(
   currentMonthEvents: readonly WorldEvent[],
   atMonth: number,
 ): EnvironmentFact[] {
+  const orderOffset = currentMonthEvents.length;
   const adversePairs = new Set(currentMonthEvents.flatMap((fact) => {
     const pair = adverseRelationshipPair(fact);
     return pair ? [pair] : [];
@@ -129,10 +130,10 @@ export function advanceSharedRelationshipExperience(
     const mutualTrustDelta = Math.min(...relationshipDeltas.map((delta) => delta.trustDelta));
     const mutualBondDelta = Math.min(...relationshipDeltas.map((delta) => delta.bondDelta));
     const fact: EnvironmentFact = {
-      id: `e-${atMonth}-environment-relationship-${facts.length}`,
+      id: `e-${atMonth}-environment-relationship-${orderOffset + facts.length}`,
       kind: 'environment',
       atMonth,
-      orderInMonth: facts.length,
+      orderInMonth: orderOffset + facts.length,
       cellId: activity.cellId,
       change: 'relationship',
       result: `${participants.map((person) => person.name).join('、')}本月共同活动 ${qualifyingTicks.length} 个规划刻度，按各自性格与年龄形成可追溯的共同经历`,
@@ -180,10 +181,10 @@ export function advanceSharedRelationshipExperience(
     const creditedThrough = lastCredited + relationshipDelta * SHARED_LIVING_RELATION_EVIDENCE_INTERVAL_MONTHS;
     const sourceEventIds = [...agreement.sourceEventIds].slice(-24);
     const fact: EnvironmentFact = {
-      id: `e-${atMonth}-environment-relationship-${facts.length}`,
+      id: `e-${atMonth}-environment-relationship-${orderOffset + facts.length}`,
       kind: 'environment',
       atMonth,
-      orderInMonth: facts.length,
+      orderInMonth: orderOffset + facts.length,
       cellId: companionLivingAnchor(state, agreement)?.cellId ?? participants[0].position.cellId,
       change: 'relationship',
       result: `${participants.map((person) => person.name).join('、')}继续履行共同生活约定，累计 ${agreement.coLocatedMonths} 个真实共同生活月`,

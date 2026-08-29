@@ -180,7 +180,26 @@ try {
     })));
   assert.equal(advanceSharedRelationshipExperience(state, sharedActionTicks(0, 4), 0).length, 0, '同月不足五个共同活动刻度不得增加关系');
   const fullMonthSharedState = structuredClone(state);
-  const fullMonthFacts = advanceSharedRelationshipExperience(fullMonthSharedState, sharedActionTicks(0, 15), 0);
+  const fullMonthSharedActions = sharedActionTicks(0, 15);
+  const existingRelationshipEvent = {
+    id: `e-0-environment-relationship-${fullMonthSharedActions.length}`,
+    kind: 'environment',
+    atMonth: 0,
+    orderInMonth: fullMonthSharedActions.length,
+    cellId: female.position.cellId,
+    change: 'relationship',
+    result: '同月较早的墓葬关系感知事实',
+    diff: { process: 'mortuary-perception' },
+  };
+  const fullMonthPrefix = [...fullMonthSharedActions, existingRelationshipEvent];
+  const fullMonthFacts = advanceSharedRelationshipExperience(fullMonthSharedState, fullMonthPrefix, 0);
+  assert.equal(fullMonthFacts[0]?.id, `e-0-environment-relationship-${fullMonthPrefix.length}`,
+    '共享关系事实必须继承本月已有事件的全局序号，不能与较早的关系事实复用 ID');
+  assert.equal(fullMonthFacts[0]?.orderInMonth, fullMonthPrefix.length,
+    '共享关系事实的 provisional order 必须使用同一个全局月内 offset');
+  assert.equal(new Set([...fullMonthPrefix, ...fullMonthFacts].map((fact) => fact.id)).size,
+    fullMonthPrefix.length + fullMonthFacts.length,
+    '同一权威月份合并后的事件 ID 必须全部唯一');
   assert.equal(fullMonthFacts[0]?.diff.trustDelta, 4, '二十四岁人物的十五个共同活动刻度应形成三点基础信任和一点年轻加成');
   assert.equal(fullMonthFacts[0]?.diff.bondDelta, 3, '年轻加成只作用于信任，不增加羁绊');
   assert.ok(fullMonthFacts[0]?.diff.relationshipDeltas.every((delta) => (

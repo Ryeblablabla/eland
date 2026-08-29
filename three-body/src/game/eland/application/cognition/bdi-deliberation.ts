@@ -18,6 +18,7 @@ import {
   compareBoundedForesight,
   type BoundedForesightComparison,
 } from './foresight-deliberation';
+import { currentRecordUseProject } from './record-use-project';
 
 export interface RankedCognitiveAppraisal extends CognitiveOptionAppraisal {
   /** Tiny deterministic value used only after the causal appraisal. */
@@ -210,9 +211,16 @@ export function takeDecisionDeliberation(
   return handoff.deliberation;
 }
 
-function sameIntention(active: Intent, challenger?: CognitiveOptionAppraisal): boolean {
+function sameIntention(
+  context: DecisionContext,
+  active: Intent,
+  challenger?: CognitiveOptionAppraisal,
+): boolean {
   if (!challenger) return false;
-  if (active.projectId && challenger.option.projectId === active.projectId) return true;
+  const challengerProjectId = challenger.option.recordUseBasis
+    ? currentRecordUseProject(context, challenger.option)?.id
+    : challenger.option.projectId;
+  if (active.projectId && challengerProjectId === active.projectId) return true;
   return active.goal.kind === challenger.option.goal.kind
     && active.nextAction.kind === challenger.option.nextAction.kind;
 }
@@ -228,7 +236,7 @@ export function assessIntentionPersistence(
   challenger: CognitiveOptionAppraisal | undefined,
   moment: { atMonth: number; planningTick: number },
 ): IntentionPersistenceAssessment {
-  if (sameIntention(active, challenger)) return {
+  if (sameIntention(context, active, challenger)) return {
     keep: true,
     commitment: 1,
     challengerStrength: challenger?.motivation ?? 0,

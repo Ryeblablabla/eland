@@ -11,6 +11,7 @@ import {
   type KnownForesightRoot,
 } from './bounded-foresight';
 import type { CognitiveFrame, CognitiveOptionAppraisal } from './option-appraisal';
+import { currentRecordUseProject } from './record-use-project';
 
 const MAX_FORESIGHT_ADJUSTMENT = 0.08;
 const MAX_INFORMATION_ADJUSTMENT = 0.04;
@@ -47,9 +48,11 @@ function hypothesisOutlook(
   context: DecisionContext,
   appraisal: CognitiveOptionAppraisal,
 ): HypothesisOutlook | undefined {
-  const project = appraisal.option.projectId
-    ? projectById(context.state, appraisal.option.projectId)
-    : undefined;
+  const project = appraisal.option.recordUseBasis
+    ? currentRecordUseProject(context, appraisal.option)
+    : appraisal.option.projectId
+      ? projectById(context.state, appraisal.option.projectId)
+      : undefined;
   const campaign = project?.hypothesisCampaign;
   if (!campaign || campaign.status !== 'active' || campaign.actorId !== context.person.id) return undefined;
   const activeCandidate = campaign.activeCandidateKey

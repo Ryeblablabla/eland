@@ -30,6 +30,7 @@ import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { appraiseSocialExpectation } from './social-expectation';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
+import { currentRecordUseProject } from './record-use-project';
 
 export type CognitiveFactorName =
   | 'need'
@@ -177,6 +178,8 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     ...(projectId ? { projectId } : {}),
   });
   const goal = option.goal;
+  const recordUseProject = currentRecordUseProject(context, option);
+  const existingProjectId = option.recordUseBasis ? recordUseProject?.id : option.projectId;
   const semantics = actionOptionSemantics(option);
   const returnsToSharedLiving = semantics.obligation === 'commitment-action'
     && semantics.socialContext?.cooperationKind === 'companion'
@@ -218,11 +221,14 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     if (materialHas(goal.materialId, 'drinkable')) add('reserve', 1, '候选建立或使用真实饮水储备能力', 'water');
   }
   if (goal.kind === 'knowledge' || option.nextAction.kind === 'attend' || option.recordUseBasis) {
-    add('inquiry', option.projectId || option.recordUseBasis ? 1 : 0.7, '候选回应一个有来源的观察或知识缺口');
+    add('inquiry', existingProjectId || option.recordUseBasis ? 1 : 0.7, '候选回应一个有来源的观察或知识缺口');
   }
-  if (goal.kind === 'project-completed' || option.projectId || option.projectProposal) {
-    add('commitment', option.projectId ? 1 : 0.72, option.projectId ? '候选推进一个已存在项目' : '候选可建立有复核点的持续项目');
-    const project = option.projectProposal ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
+  if (goal.kind === 'project-completed' || existingProjectId || option.projectProposal) {
+    add('commitment', existingProjectId ? 1 : 0.72, existingProjectId ? '候选推进一个已存在项目' : '候选可建立有复核点的持续项目');
+    const project = option.recordUseBasis
+      ? recordUseProject
+      : option.projectProposal
+        ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
     const recurringDutyMandate = recurringDutyMandateForExistingOption(
       context.state,
       context.person.id,
@@ -240,7 +246,9 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
     }
     add(
       projectNeedKind(project?.need),
-      clamp((option.projectPressure ?? project?.pressure ?? 35) / 70),
+      clamp(((option.recordUseBasis ? recordUseProject?.pressure : option.projectPressure)
+        ?? project?.pressure
+        ?? 35) / 70),
       `项目回应${project?.need ?? '局部能力缺口'}`,
       projectReserveResource(project?.need),
       project?.id,
@@ -258,7 +266,7 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
   if (returnsToSharedLiving) {
     add('commitment', 1, '候选返回协议中的固定共同生活地点，履行已到维护时点的长期承诺');
   }
-  if (option.nextAction.kind === 'move' && option.sourceFactIds.length && !option.projectId && !returnsToSharedLiving) {
+  if (option.nextAction.kind === 'move' && option.sourceFactIds.length && !existingProjectId && !returnsToSharedLiving) {
     add('inquiry', 0.35, '移动目标来自当前可追溯线索');
   }
 
@@ -516,7 +524,10 @@ function feasibilityAppraisal(context: DecisionContext, option: ActionOption, ex
 function continuityAppraisal(context: DecisionContext, option: ActionOption): number {
   const active = context.activeIntent;
   if (!active) return 1;
-  const sameProject = Boolean(active.projectId && option.projectId === active.projectId);
+  const optionProjectId = option.recordUseBasis
+    ? currentRecordUseProject(context, option)?.id
+    : option.projectId;
+  const sameProject = Boolean(active.projectId && optionProjectId === active.projectId);
   const sameGoal = active.goal.kind === option.goal.kind;
   if (!sameProject && !sameGoal) return 1;
   return 1.15 + trait(context, 'conscientiousness') * 0.32 + active.progress * 0.18;

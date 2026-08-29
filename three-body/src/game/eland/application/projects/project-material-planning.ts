@@ -53,7 +53,9 @@ export function dropStep(
     `direct:${drop.materialId}`,
   ),
 ): ProjectStep | null {
-  if (demand.materialId !== drop.materialId || demand.outstandingQuantity <= 0) return null;
+  if (drop.recordPayloadId
+    || demand.materialId !== drop.materialId
+    || demand.outstandingQuantity <= 0) return null;
   const material = materialDefinition(drop.materialId).name;
   const together = person.position.cellId === drop.cellId && person.position.z === drop.z;
   const requestedQuantity = Math.min(demand.outstandingQuantity, drop.quantity);
@@ -84,7 +86,8 @@ export function nearestDrop(
 ): DropState | undefined {
   const wanted = new Set(materialIds);
   return drops
-    .filter((drop) => wanted.has(drop.materialId)
+    .filter((drop) => !drop.recordPayloadId
+      && wanted.has(drop.materialId)
       && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, state.clock.elapsedMonths + 1))
     .flatMap((drop) => {
       const path = findStandingPath(state.world.grid, person.position, { cellId: drop.cellId, z: drop.z });
@@ -102,6 +105,7 @@ export function nearestRememberedDrop(
   const remembered = person.knownPlaces.filter((place) => wanted.has(place.materialId));
   return state.world.drops
     .filter((drop) => drop.quantity > 0
+      && !drop.recordPayloadId
       && wanted.has(drop.materialId)
       && canPersonPlanToCollectProjectMaterialDrop(state, person.id, drop, state.clock.elapsedMonths + 1))
     .filter((drop) => remembered.some((place) => place.materialId === drop.materialId

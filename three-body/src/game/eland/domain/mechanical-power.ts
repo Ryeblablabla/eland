@@ -1,4 +1,4 @@
-import { Material, type MaterialId } from './material';
+import { Material, materialDefinition, type MaterialId } from './material';
 import {
   voxelAt,
   type VoxelWorld,
@@ -208,6 +208,18 @@ export type MechanicalPowerActionBasis =
     componentRole: MechanicalPowerComponentInstallation['role'];
     componentMaterialId: MaterialId;
     componentPosition: MechanicalVoxelPosition;
+  }
+  | MechanicalPowerActionBasisBase & {
+    mode: 'revise-site';
+    projectId: string;
+    /** The still-current plan that produced the exact physical conflict. */
+    planKey: string;
+    networkId: string;
+    conflictEventId: string;
+    revisedPlan: MechanicalPowerProjectPlan;
+    revisedPlanKey: string;
+    revisedNetworkId: string;
+    contributionSite: { cellId: number; z: number };
   }
   | MechanicalPowerActionBasisBase & {
     mode: 'operate';
@@ -484,6 +496,73 @@ export function mechanicalPowerPlanKey(plan: MechanicalPowerProjectPlan): string
     `shaft=${plan.shaftPositions.map(canonicalPosition).join('>')}`,
     `load=${canonicalPosition(plan.loadPosition)}`,
   ].join('|');
+}
+
+export interface MechanicalPowerInstallationSiteValidation {
+  valid: boolean;
+  reason?:
+    | 'invalid-plan'
+    | 'missing-source'
+    | 'source-mismatch'
+    | 'invalid-axis'
+    | 'duplicate-position'
+    | 'component-position-unavailable'
+    | 'wheel-not-over-bound-current'
+    | 'component-unsupported';
+}
+
+/**
+ * Validate the physical site of a not-yet-installed one-shaft network. This is
+ * shared by proposal compilation and authoritative plan revision so the
+ * planner cannot offer geometry that the domain would later reject. It reads
+ * only the current grid and the plan's already-observed current segment.
+ */
+export function validateMechanicalPowerInstallationSite(
+  world: VoxelWorld,
+  mechanicalPower: MechanicalPowerWorldState | undefined,
+  plan: MechanicalPowerProjectPlan,
+): MechanicalPowerInstallationSiteValidation {
+  if (plan.version !== MECHANICAL_POWER_PLAN_VERSION
+    || !plan.projectId
+    || plan.shaftPositions.length !== 1) return { valid: false, reason: 'invalid-plan' };
+  const source = mechanicalPower?.version === MECHANICAL_POWER_WORLD_VERSION
+    ? mechanicalPower.sources.find((candidate) => candidate.id === plan.sourceSegmentId)
+    : undefined;
+  if (!source) return { valid: false, reason: 'missing-source' };
+  if (source.sourceKeys.length !== plan.sourceKeys.length
+    || source.sourceKeys.some((sourceKey, index) => sourceKey !== plan.sourceKeys[index])) {
+    return { valid: false, reason: 'source-mismatch' };
+  }
+  const shaft = plan.shaftPositions[0];
+  const wheelToShaft = axisStep(plan.wheelPosition, shaft);
+  const shaftToLoad = axisStep(shaft, plan.loadPosition);
+  if (!isUnitAxisStep(wheelToShaft)
+    || wheelToShaft.dz !== 0
+    || !sameStep(wheelToShaft, shaftToLoad)) return { valid: false, reason: 'invalid-axis' };
+  const positions = [plan.wheelPosition, shaft, plan.loadPosition];
+  if (new Set(positions.map(positionKey)).size !== positions.length) {
+    return { valid: false, reason: 'duplicate-position' };
+  }
+  if (positions.some((position) => position.x < 0
+    || position.x >= world.width
+    || position.y < 0
+    || position.y >= world.depth
+    || position.z <= 0
+    || position.z >= world.levels
+    || voxelAt(world, position.x, position.y, position.z) !== Material.Air)) {
+    return { valid: false, reason: 'component-position-unavailable' };
+  }
+  const wheelIsOverBoundCurrent = source.requiredWaterVoxels.some((position) => (
+    position.x === plan.wheelPosition.x
+      && position.y === plan.wheelPosition.y
+      && position.z + 1 === plan.wheelPosition.z
+      && voxelAt(world, position.x, position.y, position.z) === Material.Water
+  ));
+  if (!wheelIsOverBoundCurrent) return { valid: false, reason: 'wheel-not-over-bound-current' };
+  if ([shaft, plan.loadPosition].some((position) => materialDefinition(
+    voxelAt(world, position.x, position.y, position.z - 1),
+  ).phase !== 'solid')) return { valid: false, reason: 'component-unsupported' };
+  return { valid: true };
 }
 
 /**

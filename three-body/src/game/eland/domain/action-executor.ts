@@ -708,6 +708,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       ? [`container:${sourceContainer.id}:${sourceStack.id}`, ...(sourceStack.sourceLineageKeys ?? [])]
       : []),
   ])];
+  const recordPayloadId = sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId;
   if (sourceDrop) {
     rememberMineralDeposit(person, sourceDrop.materialId, {
       x: cellX(sourceDrop.cellId),
@@ -721,8 +722,10 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       action.materialId,
       quantity,
       sourceEventIds,
-      `stack-${destinationPerson.id}-${action.materialId}-${atMonth}`,
-      sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
+      recordPayloadId
+        ? `stack-${destinationPerson.id}-${action.materialId}-${eventId}`
+        : `stack-${destinationPerson.id}-${action.materialId}-${atMonth}`,
+      recordPayloadId,
       sourceLineageKeys,
     );
     if (destinationPerson.id !== person.id && !referencedNorm) {
@@ -734,8 +737,10 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       action.materialId,
       quantity,
       sourceEventIds,
-      `stack-${destinationContainer.id}-${action.materialId}-${atMonth}`,
-      sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
+      recordPayloadId
+        ? `stack-${destinationContainer.id}-${action.materialId}-${eventId}`
+        : `stack-${destinationContainer.id}-${action.materialId}-${atMonth}`,
+      recordPayloadId,
       sourceLineageKeys,
     );
     destinationContainer.sourceEventIds = [...new Set([...destinationContainer.sourceEventIds, eventId])].slice(-24);
@@ -748,7 +753,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       atMonth,
       sourceEventIds,
       `${person.id}-put`,
-      sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId,
+      recordPayloadId,
       action.to.z ?? person.position.z,
       sourceLineageKeys,
       undefined,
@@ -772,7 +777,7 @@ function executeTransfer(state: SimulationState, person: PersonState, action: Ex
       witnessedBy,
       sourceEventIds: sourceEventIds.slice(-24),
       sourceLineageKeys: sourceLineageKeys.slice(-32),
-      ...((sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId) ? { recordPayloadId: sourceStack?.recordPayloadId ?? sourceDrop?.recordPayloadId } : {}),
+      ...(recordPayloadId ? { recordPayloadId } : {}),
       ...(sourceDrop?.estateOfPersonId ? { estateOfPersonId: sourceDrop.estateOfPersonId } : {}),
       ...(action.estateCarePersonId ? { estateCare: true, estateCarePersonId: action.estateCarePersonId } : {}),
       ...(projectMaterialDelivery ? { projectMaterialDelivery } : {}),

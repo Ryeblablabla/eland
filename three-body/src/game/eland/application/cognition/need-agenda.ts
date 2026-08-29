@@ -18,6 +18,7 @@ import { crowdingUrgency } from '../../domain/social-space';
 import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
+import { currentRecordUseProject } from './record-use-project';
 
 export type NeedKind =
   | 'homeostasis'
@@ -218,12 +219,18 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
 
   const recentNeedResolutions = cognitionStateOf(person).needResolutionEpisodes ?? [];
   const projectCandidates = context.options
-    .filter((option) => option.projectId || option.projectProposal)
-    .map((option) => {
-      const project = option.projectProposal
-        ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
-      const rawPressure = option.projectPressure ?? project?.pressure ?? 0;
-      const matchingResolution = !option.projectId && project
+    .flatMap((option) => {
+      const recordUseProject = currentRecordUseProject(context, option);
+      const project = option.recordUseBasis
+        ? recordUseProject
+        : option.projectProposal
+          ?? (option.projectId ? projectById(context.state, option.projectId) : undefined);
+      if (!project) return [];
+      const existingProject = Boolean(option.recordUseBasis ? recordUseProject : option.projectId);
+      const rawPressure = option.recordUseBasis
+        ? recordUseProject?.pressure ?? 0
+        : option.projectPressure ?? project.pressure;
+      const matchingResolution = !existingProject
         ? recentNeedResolutions
           .filter((episode) => episode.projectNeed === project.need
             && episode.desiredFunction === project.desiredFunction
@@ -233,7 +240,7 @@ export function deriveNeedAgenda(context: DecisionContext, atMonth: number): Nee
         : undefined;
       const resolutionAge = matchingResolution ? atMonth - matchingResolution.observedAtMonth : 12;
       const relief = matchingResolution ? 0.45 * (1 - resolutionAge / 12) : 0;
-      return { option, project, matchingResolution, pressure: rawPressure * (1 - relief) };
+      return [{ option, project, matchingResolution, pressure: rawPressure * (1 - relief) }];
     })
     .sort((left, right) => right.pressure - left.pressure || left.option.id.localeCompare(right.option.id));
   const strongestProjectCandidate = projectCandidates[0];

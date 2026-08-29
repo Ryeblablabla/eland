@@ -1,7 +1,7 @@
 import type { ActionFact, DropState, SimulationState } from '../../domain/model';
 import { Material, materialDefinition, type MaterialId } from '../../domain/material';
 import { bestProductionToolStack } from '../../domain/production-tool';
-import { inventoryQuantity, isAlive, type PersonState } from '../../domain/person';
+import { isAlive, type PersonState } from '../../domain/person';
 import type {
   ProjectLogisticsEndingReason,
   ProjectLogisticsEpisode,
@@ -27,6 +27,10 @@ import {
 import { seededFraction } from '../../world/generator';
 import { visibleCellsFor } from './project-perception';
 import type { ProjectStep } from './project-step';
+import {
+  consumableInventoryQuantity,
+  isConsumableProjectStack,
+} from './project-material-planning';
 
 export interface ProjectSearchDestination {
   target: StandingPosition;
@@ -567,7 +571,7 @@ export function startDropLogisticsEpisode(
     createdAt,
     status: 'active',
     actionEventIds: [],
-    startingQuantity: inventoryQuantity(person, drop.materialId),
+    startingQuantity: consumableInventoryQuantity(person, drop.materialId),
     materialDemand: structuredClone(demand),
     requestedQuantity: Math.min(demand.outstandingQuantity, drop.quantity),
   };
@@ -606,7 +610,7 @@ export function startSourceLogisticsEpisode(
     actionEventIds: [],
     visibleSourceCountAtCreation: 1,
     sourcePathLengthAtCreation: source.pathLength,
-    startingQuantity: inventoryQuantity(person, source.outputMaterialId),
+    startingQuantity: consumableInventoryQuantity(person, source.outputMaterialId),
     materialDemand: structuredClone(demand),
   };
   episodes.push(episode);
@@ -663,25 +667,31 @@ function dropEpisodeStep(
     return null;
   }
   const requestedQuantity = Math.max(0, Math.floor(episode.requestedQuantity ?? 1));
+  const dropId = episode.sourceRef.dropId;
+  const authoritativeSource = state.world.drops.find((drop) => drop.id === dropId && drop.quantity > 0);
+  if (authoritativeSource?.recordPayloadId) {
+    endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');
+    return null;
+  }
   const gainedQuantity = episode.startingQuantity === undefined
     ? 0
-    : Math.max(0, inventoryQuantity(person, materialId) - episode.startingQuantity);
+    : Math.max(0, consumableInventoryQuantity(person, materialId) - episode.startingQuantity);
   if (requestedQuantity <= 0) {
     endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'invalidated', 'source-invalidated');
     return null;
   }
   if (episode.startingQuantity !== undefined && gainedQuantity >= requestedQuantity) {
     const newEvidence = person.inventory
-      .filter((stack) => stack.materialId === materialId)
+      .filter((stack) => stack.materialId === materialId && isConsumableProjectStack(stack))
       .flatMap((stack) => stack.sourceEventIds)
       .filter((eventId) => !episode.sourceEventIds.includes(eventId) && !episode.actionEventIds.includes(eventId));
     episode.actionEventIds.push(...newEvidence);
     endLogisticsEpisode(project, episode, state.clock.elapsedMonths + 1, 'fulfilled', 'material-acquired');
     return null;
   }
-  const dropId = episode.sourceRef.dropId;
   const source = visibleDrops.find((drop) => drop.id === dropId
     && drop.quantity > 0
+    && !drop.recordPayloadId
     && drop.materialId === materialId
     && drop.cellId === episode.target.cellId
     && drop.z === episode.target.z);

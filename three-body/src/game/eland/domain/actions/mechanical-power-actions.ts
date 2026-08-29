@@ -30,6 +30,7 @@ import {
   recordMechanicalPowerInstallation,
   recordMechanicalPowerOperation,
   recordMechanicalPowerRepair,
+  validateMechanicalPowerInstallationSite,
   validateMechanicalPowerTopology,
   waterCurrentAvailabilityFor,
   type MechanicalPowerActionBasis,
@@ -39,7 +40,14 @@ import {
   type MechanicalPowerProjectPlan,
   type MechanicalPowerWorldState,
 } from '../mechanical-power';
-import { setVoxel, voxelAt } from '../../world/grid';
+import {
+  cellId,
+  cellsInRadius,
+  findStandingPath,
+  setVoxel,
+  standingPositions,
+  voxelAt,
+} from '../../world/grid';
 import { bodyOccupies, clamp, distanceToPosition, sameIds, samePosition } from './execution-helpers';
 import { addInventory, removeEmptyStacks } from './inventory';
 
@@ -58,6 +66,12 @@ interface MechanicalActionBlock {
   currentUnavailable?: {
     reason: string;
   };
+}
+
+function isMechanicalVoxelPosition(value: unknown): value is MechanicalPowerProjectPlan['wheelPosition'] {
+  if (!value || typeof value !== 'object') return false;
+  const position = value as { x?: unknown; y?: unknown; z?: unknown };
+  return Number.isInteger(position.x) && Number.isInteger(position.y) && Number.isInteger(position.z);
 }
 
 function actionHappenedAfter(candidate: ActionFact, basis: ActionFact): boolean {
@@ -97,7 +111,7 @@ function personalWaterCurrentObservationEvent(
 function mechanicalActionContext(
   state: SimulationState,
   person: PersonState,
-  basis: Extract<MechanicalPowerActionBasis, { mode: 'install' | 'operate' | 'repair' }>,
+  basis: Extract<MechanicalPowerActionBasis, { mode: 'install' | 'revise-site' | 'operate' | 'repair' }>,
   requireFlow: boolean,
 ): MechanicalActionContext | MechanicalActionBlock {
   if (basis.version !== MECHANICAL_POWER_ACTION_BASIS_VERSION) {
@@ -447,14 +461,42 @@ function mechanicalInstall(
     && samePosition(component.position, planned.position))) {
     return { status: 'blocked' as const, result: '这个冻结位置已经登记过机械构件', diff: {} };
   }
-  if (voxelAt(state.world.grid, planned.position.x, planned.position.y, planned.position.z) !== Material.Air
-    || bodyOccupies(state, planned.position)) {
-    return { status: 'blocked' as const, result: '冻结安装位置不再是可用空气体素', diff: {} };
-  }
   const evidence = verifiedComponentEvidence(
     state, person, context.project, stackRef.stackId, planned.materialId,
   );
   if (!evidence) return { status: 'blocked' as const, result: '构件不是本项目中由本人真实制造并源绑定核验的成品', diff: {} };
+  const observedMaterialId = voxelAt(
+    state.world.grid, planned.position.x, planned.position.y, planned.position.z,
+  );
+  if (observedMaterialId !== Material.Air) {
+    return {
+      status: 'blocked' as const,
+      result: '冻结安装位置已经被实体材料占用',
+      diff: {
+        mechanicalPowerSiteConflict: true,
+        mode: 'install',
+        projectId: context.project.id,
+        planKey: basis.planKey,
+        networkId: basis.networkId,
+        sourceSegmentId: basis.sourceSegmentId,
+        componentRole: planned.role,
+        componentMaterialId: planned.materialId,
+        componentPosition: { ...planned.position },
+        observedMaterialId,
+        componentManufactureEventId: evidence.manufacture.id,
+        componentVerificationEventId: evidence.verification.id,
+        conflictSourceEventIds: [
+          evidence.manufacture.id,
+          evidence.verification.id,
+          context.observationEvent!.id,
+        ],
+        mechanicalPowerBasis: structuredClone(basis),
+      },
+    };
+  }
+  if (bodyOccupies(state, planned.position)) {
+    return { status: 'blocked' as const, result: '冻结安装位置正被人物身体临时占用', diff: {} };
+  }
   const supportMaterialId = voxelAt(
     state.world.grid, planned.position.x, planned.position.y, planned.position.z - 1,
   );
@@ -505,6 +547,198 @@ function mechanicalInstall(
         shaftInstallationEventId: eventId,
         shaftInstallationSourceEventIds: installationSourceEventIds,
       } : {}),
+      mechanicalPowerBasis: structuredClone(basis),
+    },
+  };
+}
+
+function reachableMechanicalWorkPosition(
+  state: SimulationState,
+  person: PersonState,
+  target: MechanicalPowerProjectPlan['wheelPosition'],
+  interactionRange: number,
+): boolean {
+  const targetCellId = cellId(target.x, target.y);
+  return cellsInRadius(targetCellId, interactionRange)
+    .flatMap((candidateCellId) => standingPositions(state.world.grid, candidateCellId))
+    .filter((position) => position.cellId !== targetCellId)
+    .some((position) => distanceToPosition({
+      ...person,
+      position: { ...person.position, cellId: position.cellId, z: position.z },
+    }, target) <= interactionRange
+      && findStandingPath(state.world.grid, person.position, position).length > 0);
+}
+
+function mechanicalReviseSite(
+  state: SimulationState,
+  person: PersonState,
+  action: Extract<PrimitiveAction, { kind: 'act' }>,
+  basis: Extract<MechanicalPowerActionBasis, { mode: 'revise-site' }>,
+) {
+  const context = mechanicalActionContext(state, person, basis, false);
+  if ('blocked' in context) return { status: 'blocked' as const, result: context.blocked, diff: {} };
+  const conflict = worldEventById(state, basis.conflictEventId);
+  const conflictBasis = conflict?.kind === 'action' && conflict.action.kind === 'act'
+    ? conflict.action.mechanicalPowerBasis
+    : undefined;
+  const conflictPosition = conflictBasis?.mode === 'install'
+    ? conflictBasis.componentPosition
+    : undefined;
+  const conflictDiffPositionValue = conflict?.kind === 'action'
+    ? conflict.diff.componentPosition
+    : undefined;
+  const conflictDiffPosition = isMechanicalVoxelPosition(conflictDiffPositionValue)
+    ? conflictDiffPositionValue
+    : undefined;
+  const observedConflictMaterialId = conflict?.kind === 'action'
+    ? Number(conflict.diff.observedMaterialId)
+    : Number.NaN;
+  const conflictManufactureEventId = conflict?.kind === 'action'
+    && typeof conflict.diff.componentManufactureEventId === 'string'
+    ? conflict.diff.componentManufactureEventId
+    : undefined;
+  const conflictVerificationEventId = conflict?.kind === 'action'
+    && typeof conflict.diff.componentVerificationEventId === 'string'
+    ? conflict.diff.componentVerificationEventId
+    : undefined;
+  const conflictSourceEventIds = conflict?.kind === 'action'
+    && Array.isArray(conflict.diff.conflictSourceEventIds)
+    && conflict.diff.conflictSourceEventIds.every((eventId) => typeof eventId === 'string')
+    ? conflict.diff.conflictSourceEventIds
+    : undefined;
+  const conflictManufacture = conflictManufactureEventId
+    ? worldEventById(state, conflictManufactureEventId)
+    : undefined;
+  const conflictVerification = conflictVerificationEventId
+    ? worldEventById(state, conflictVerificationEventId)
+    : undefined;
+  const conflictObservation = conflictSourceEventIds?.[2]
+    ? worldEventById(state, conflictSourceEventIds[2])
+    : undefined;
+  const conflictTarget = action.targets.find((target): target is Extract<WorldRef, { kind: 'voxel' }> => (
+    target.kind === 'voxel'
+  ));
+  const revisedPlan = basis.revisedPlan;
+  const priorPlan = context.plan;
+  const currentNetworks = context.mechanicalPower.networks.filter((network) => (
+    network.installationProjectId === context.project.id
+  ));
+  const conflictRange = conflictBasis?.mode === 'install' && conflictBasis.componentRole === 'converter' ? 2 : 1;
+  if (conflict?.kind !== 'action'
+    || conflict.status !== 'blocked'
+    || !context.project.actionEventIds.includes(conflict.id)
+    || !projectEventHasEventTimeLead(context.project, conflict)
+    || conflictBasis?.mode !== 'install'
+    || conflictBasis.projectId !== context.project.id
+    || conflictBasis.planKey !== basis.planKey
+    || conflictBasis.networkId !== basis.networkId
+    || conflict.diff.mechanicalPowerSiteConflict !== true
+    || conflict.diff.projectId !== context.project.id
+    || conflict.diff.planKey !== basis.planKey
+    || conflict.diff.componentRole !== conflictBasis.componentRole
+    || Number(conflict.diff.componentMaterialId) !== conflictBasis.componentMaterialId
+    || !conflictDiffPosition
+    || !samePosition(conflictDiffPosition, conflictBasis.componentPosition)
+    || !Number.isSafeInteger(observedConflictMaterialId)
+    || observedConflictMaterialId === Material.Air
+    || !conflictManufactureEventId
+    || !conflictVerificationEventId
+    || !conflictSourceEventIds
+    || !sameIds(conflictSourceEventIds, [
+      conflictManufactureEventId,
+      conflictVerificationEventId,
+      conflictSourceEventIds[2],
+    ])
+    || conflictManufacture?.kind !== 'action'
+    || conflictManufacture.status !== 'completed'
+    || conflictManufacture.who !== conflict.who
+    || !context.project.actionEventIds.includes(conflictManufacture.id)
+    || !projectEventHasEventTimeLead(context.project, conflictManufacture)
+    || conflictManufacture.action.kind !== 'act'
+    || conflictManufacture.action.operation !== 'combine'
+    || Number(conflictManufacture.diff.outputMaterialId) !== conflictBasis.componentMaterialId
+    || conflictVerification?.kind !== 'action'
+    || conflictVerification.status !== 'completed'
+    || conflictVerification.who !== conflict.who
+    || !context.project.actionEventIds.includes(conflictVerification.id)
+    || !projectEventHasEventTimeLead(context.project, conflictVerification)
+    || conflictVerification.action.kind !== 'attend'
+    || conflictVerification.diff.verifiedSourceEventId !== conflictManufacture.id
+    || Number(conflictVerification.diff.verifiedMaterialId) !== conflictBasis.componentMaterialId
+    || conflictObservation?.kind !== 'action'
+    || conflictObservation.status !== 'completed'
+    || conflictObservation.who !== conflict.who
+    || !context.project.triggerFactIds.includes(conflictObservation.id)
+    || !projectEventHasEventTimeLead(context.project, conflictObservation)
+    || conflictObservation.action.kind !== 'attend'
+    || conflictObservation.action.waterCurrentSegmentId !== priorPlan.sourceSegmentId
+    || conflictObservation.diff.mechanicalPowerObservation !== true
+    || !conflictPosition
+    || !conflictTarget
+    || !samePosition(conflictTarget.position, conflictPosition)
+    || distanceToPosition(person, conflictPosition) > conflictRange
+    || currentNetworks.some((network) => network.components.some((component) => (
+      component.projectId === context.project.id
+    )))
+    || revisedPlan.version !== MECHANICAL_POWER_PLAN_VERSION
+    || revisedPlan.projectId !== context.project.id
+    || revisedPlan.sourceSegmentId !== priorPlan.sourceSegmentId
+    || !sameIds(revisedPlan.sourceKeys, priorPlan.sourceKeys)
+    || basis.revisedPlanKey !== mechanicalPowerPlanKey(revisedPlan)
+    || basis.revisedNetworkId !== mechanicalPowerNetworkId(revisedPlan)
+    || basis.revisedPlanKey === basis.planKey
+    || !validateMechanicalPowerInstallationSite(
+      state.world.grid, context.mechanicalPower, revisedPlan,
+    ).valid) {
+    return { status: 'blocked' as const, result: '机械改址没有绑定当前冲突、空白工地或同一局部水流计划', diff: {} };
+  }
+  const perceptionRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  const visible = new Set(cellsInRadius(person.position.cellId, perceptionRadius));
+  const revisedPositions = [
+    revisedPlan.wheelPosition,
+    ...revisedPlan.shaftPositions,
+    revisedPlan.loadPosition,
+  ];
+  const contributionStanding = standingPositions(
+    state.world.grid, basis.contributionSite.cellId,
+  ).some((position) => position.z === basis.contributionSite.z);
+  const contributionPosition = {
+    cellId: basis.contributionSite.cellId,
+    z: basis.contributionSite.z,
+  };
+  if (revisedPositions.some((position) => !visible.has(cellId(position.x, position.y))
+    || bodyOccupies(state, position))
+    || !reachableMechanicalWorkPosition(state, person, revisedPlan.wheelPosition, 2)
+    || revisedPlan.shaftPositions.some((position) => !reachableMechanicalWorkPosition(
+      state, person, position, 1,
+    ))
+    || !reachableMechanicalWorkPosition(state, person, revisedPlan.loadPosition, 1)
+    || !contributionStanding
+    || basis.contributionSite.cellId === cellId(revisedPlan.loadPosition.x, revisedPlan.loadPosition.y)
+    || distanceToPosition({
+      ...person,
+      position: { ...person.position, ...contributionPosition },
+    }, revisedPlan.loadPosition) > 1
+    || findStandingPath(state.world.grid, person.position, contributionPosition).length === 0) {
+    return { status: 'blocked' as const, result: '机械改址的当前可见性、可达工位或实体空闲条件已经失效', diff: {} };
+  }
+  context.project.mechanicalPowerPlan = structuredClone(revisedPlan);
+  context.project.mechanicalPowerPlanKey = basis.revisedPlanKey;
+  context.project.mechanicalPowerNetworkId = basis.revisedNetworkId;
+  return {
+    status: 'completed' as const,
+    result: '依据真实实体占位冲突重新标定了同一机械项目的安装工地',
+    diff: {
+      mechanicalPowerPlanRevision: true,
+      projectId: context.project.id,
+      conflictEventId: conflict.id,
+      priorPlanKey: basis.planKey,
+      priorNetworkId: basis.networkId,
+      revisedPlanKey: basis.revisedPlanKey,
+      revisedNetworkId: basis.revisedNetworkId,
+      priorPlan: structuredClone(priorPlan),
+      revisedPlan: structuredClone(revisedPlan),
+      candidateWorkSite: { ...basis.contributionSite },
       mechanicalPowerBasis: structuredClone(basis),
     },
   };
@@ -911,6 +1145,7 @@ export function executeMechanicalPowerAction(
     return { status: 'blocked' as const, result: '机械动力只能通过带版本依据的通用施力动作执行', diff: {} };
   }
   if (basis.mode === 'install') return mechanicalInstall(state, person, action, basis, atMonth, eventId);
+  if (basis.mode === 'revise-site') return mechanicalReviseSite(state, person, action, basis);
   if (basis.mode === 'operate' || basis.mode === 'operate-service') {
     return mechanicalOperate(state, person, action, basis, atMonth, eventId);
   }

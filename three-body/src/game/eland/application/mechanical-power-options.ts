@@ -28,6 +28,7 @@ import {
   plannedMechanicalPowerComponents,
   resolveWaterCurrentAvailability,
   validatedMechanicalPowerReliabilityCycleReceipts,
+  validateMechanicalPowerInstallationSite,
   validateMechanicalPowerTopology,
   waterCurrentAvailabilityFor,
   type MechanicalPowerActionBasis,
@@ -51,6 +52,7 @@ import {
   projectEventHasEventTimeLead,
   projectIsLedBy,
 } from '../domain/project-leadership';
+import { bodyOccupies } from '../domain/actions/execution-helpers';
 import { pendingProjectKnowledgeOutput } from '../domain/project-knowledge-request';
 import {
   cellId,
@@ -81,6 +83,14 @@ export interface MechanicalPowerProposalCandidate {
   networkId: string;
   contributionSite: StandingPosition;
   millLaborFact: ActionFact;
+  observationFact: ActionFact;
+}
+
+interface MechanicalPowerSiteCandidate {
+  plan: MechanicalPowerProjectPlan;
+  planKey: string;
+  networkId: string;
+  contributionSite: StandingPosition;
   observationFact: ActionFact;
 }
 
@@ -300,23 +310,25 @@ export function buildWaterCurrentObservationOptions(
   }];
 }
 
-export function mechanicalPowerProposalCandidate(
+function mechanicalPowerSiteCandidates(
   state: SimulationState,
   person: PersonState,
   visibleCells: number[],
-): MechanicalPowerProposalCandidate | null {
-  const millLaborFact = ownMillLaborFacts(state, person).at(-1);
+  projectId: string,
+  observationForSegment: (segmentId: string) => ActionFact | null,
+  onlySegmentId?: string,
+  excludedPlanKeys: ReadonlySet<string> = new Set(),
+  requireBodyFree = false,
+): MechanicalPowerSiteCandidate[] {
   const mechanicalPower = state.world.mechanicalPower;
-  if (!millLaborFact || !mechanicalPower) return null;
+  if (!mechanicalPower) return [];
   const visible = new Set(visibleCells);
-  const proposalMonth = state.clock.elapsedMonths + 1;
-  const projectId = `project-${proposalMonth}-${person.id}-mechanical-power-capability`;
   const availableIds = new Set(resolveWaterCurrentAvailability(state.world.grid, mechanicalPower)
     .filter((candidate) => candidate.available)
     .map((candidate) => candidate.segmentId));
   const candidates = mechanicalPower.sources.flatMap((segment) => {
-    if (!availableIds.has(segment.id)) return [];
-    const observationFact = personalWaterCurrentObservation(state, person, segment.id);
+    if ((onlySegmentId && segment.id !== onlySegmentId) || !availableIds.has(segment.id)) return [];
+    const observationFact = observationForSegment(segment.id);
     if (!observationFact || !segment.requiredWaterVoxels.some((position) => visible.has(cellId(position.x, position.y)))) return [];
     return segment.requiredWaterVoxels.flatMap((waterPosition) => {
       const wheelPosition = { x: waterPosition.x, y: waterPosition.y, z: waterPosition.z + 1 };
@@ -330,16 +342,9 @@ export function mechanicalPowerProposalCandidate(
         const wheelApproach = approachPosition(state, person, wheelPosition);
         const shaftApproach = approachPosition(state, person, shaftPosition);
         const loadApproach = approachPosition(state, person, loadPosition);
-        if ([shaftPosition, loadPosition].some((position) => position.x < 0
-          || position.x >= state.world.grid.width
-          || position.y < 0
-          || position.y >= state.world.grid.depth
-          || !visible.has(cellId(position.x, position.y))
-          || voxelAt(state.world.grid, position.x, position.y, position.z) !== Material.Air
-          || materialDefinition(voxelAt(state.world.grid, position.x, position.y, position.z - 1)).phase !== 'solid')
-          || !wheelApproach
-          || !shaftApproach
-          || !loadApproach) return [];
+        if ([wheelPosition, shaftPosition, loadPosition].some((position) => (
+          !visible.has(cellId(position.x, position.y)) || (requireBodyFree && bodyOccupies(state, position))
+        )) || !wheelApproach || !shaftApproach || !loadApproach) return [];
         const plan: MechanicalPowerProjectPlan = {
           version: MECHANICAL_POWER_PLAN_VERSION,
           projectId,
@@ -349,12 +354,14 @@ export function mechanicalPowerProposalCandidate(
           loadPosition: { ...loadPosition },
           sourceKeys: [...segment.sourceKeys],
         };
+        const planKey = mechanicalPowerPlanKey(plan);
+        if (excludedPlanKeys.has(planKey)
+          || !validateMechanicalPowerInstallationSite(state.world.grid, mechanicalPower, plan).valid) return [];
         return [{
           plan,
-          planKey: mechanicalPowerPlanKey(plan),
+          planKey,
           networkId: mechanicalPowerNetworkId(plan),
           contributionSite: { ...loadApproach },
-          millLaborFact,
           observationFact,
         }];
       });
@@ -362,7 +369,26 @@ export function mechanicalPowerProposalCandidate(
   }).sort((left, right) => left.plan.shaftPositions.length - right.plan.shaftPositions.length
     || positionKey(left.plan.loadPosition).localeCompare(positionKey(right.plan.loadPosition))
     || left.plan.sourceSegmentId.localeCompare(right.plan.sourceSegmentId));
-  return candidates[0] ?? null;
+  return candidates;
+}
+
+export function mechanicalPowerProposalCandidate(
+  state: SimulationState,
+  person: PersonState,
+  visibleCells: number[],
+): MechanicalPowerProposalCandidate | null {
+  const millLaborFact = ownMillLaborFacts(state, person).at(-1);
+  if (!millLaborFact) return null;
+  const proposalMonth = state.clock.elapsedMonths + 1;
+  const projectId = `project-${proposalMonth}-${person.id}-mechanical-power-capability`;
+  const candidate = mechanicalPowerSiteCandidates(
+    state,
+    person,
+    visibleCells,
+    projectId,
+    (segmentId) => personalWaterCurrentObservation(state, person, segmentId),
+  )[0];
+  return candidate ? { ...candidate, millLaborFact } : null;
 }
 
 export function mechanicalPowerPressureEvidence(
@@ -1114,6 +1140,101 @@ function installedAt(
     && samePosition(component.position, position)));
 }
 
+function mechanicalPowerSiteConflictFacts(
+  state: SimulationState,
+  project: ProjectState,
+): ActionFact[] {
+  return projectFacts(state, project).filter((fact) => {
+    const basis = fact.action.kind === 'act' ? fact.action.mechanicalPowerBasis : undefined;
+    return fact.status === 'blocked'
+      && projectEventHasEventTimeLead(project, fact)
+      && basis?.mode === 'install'
+      && basis.projectId === project.id
+      && fact.diff.mechanicalPowerSiteConflict === true
+      && fact.diff.projectId === project.id
+      && fact.diff.planKey === basis.planKey
+      && fact.diff.componentRole === basis.componentRole
+      && Number.isSafeInteger(Number(fact.diff.observedMaterialId))
+      && Number(fact.diff.observedMaterialId) !== Material.Air;
+  });
+}
+
+function currentMechanicalPowerSiteConflict(
+  state: SimulationState,
+  project: ProjectState,
+): ActionFact | null {
+  return mechanicalPowerSiteConflictFacts(state, project)
+    .filter((fact) => fact.diff.planKey === project.mechanicalPowerPlanKey)
+    .at(-1) ?? null;
+}
+
+function mechanicalPowerProjectHasAnyInstalledComponent(
+  state: SimulationState,
+  project: ProjectState,
+): boolean {
+  return Boolean(state.world.mechanicalPower?.networks.some((network) => (
+    network.installationProjectId === project.id
+      && network.components.some((component) => component.projectId === project.id)
+  )));
+}
+
+function mechanicalPowerSiteRevisionStep(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+  conflict: ActionFact,
+): MechanicalPowerProjectStep | null {
+  if (mechanicalPowerProjectHasAnyInstalledComponent(state, project)) return null;
+  const oldInstallBasis = conflict.action.kind === 'act'
+    ? conflict.action.mechanicalPowerBasis
+    : undefined;
+  if (oldInstallBasis?.mode !== 'install') return null;
+  const observation = projectLeadWaterCurrentObservation(state, person, project);
+  if (!observation) return null;
+  const excludedPlanKeys = new Set(mechanicalPowerSiteConflictFacts(state, project)
+    .flatMap((fact) => typeof fact.diff.planKey === 'string' ? [fact.diff.planKey] : []));
+  if (project.mechanicalPowerPlanKey) excludedPlanKeys.add(project.mechanicalPowerPlanKey);
+  const visibleCells = cellsInRadius(
+    person.position.cellId,
+    4 + Math.floor(person.baselineCapacities.perception / 25),
+  );
+  const candidate = mechanicalPowerSiteCandidates(
+    state,
+    person,
+    visibleCells,
+    project.id,
+    (segmentId) => segmentId === project.mechanicalPowerPlan?.sourceSegmentId ? observation : null,
+    project.mechanicalPowerPlan?.sourceSegmentId,
+    excludedPlanKeys,
+    true,
+  )[0];
+  if (!candidate) return null;
+  const basis = basisFor(project, 'revise-site', {
+    conflictEventId: conflict.id,
+    revisedPlan: structuredClone(candidate.plan),
+    revisedPlanKey: candidate.planKey,
+    revisedNetworkId: candidate.networkId,
+    contributionSite: { cellId: candidate.contributionSite.cellId, z: candidate.contributionSite.z },
+  });
+  return moveOrActStep(
+    state,
+    person,
+    oldInstallBasis.componentPosition,
+    `mechanical-revise-site-${conflict.id}-${candidate.planKey}`,
+    '依据实体占位冲突重新标定机械工地',
+    '第一次真实安装失败已经证明旧位置不可用；负责人只在当前看得见、能到达且有承托的空气位置中显式改址，不丢弃本项目已制造和核验的构件',
+    {
+      kind: 'act',
+      operation: 'exert',
+      targets: [{ kind: 'voxel', position: { ...oldInstallBasis.componentPosition } }],
+      mechanicalPowerBasis: basis,
+    },
+    [...project.triggerFactIds, conflict.id, observation.id],
+    [],
+    oldInstallBasis.componentRole === 'converter' ? 2 : 1,
+  );
+}
+
 function initialOperationAttemptMatchesProject(
   fact: ActionFact,
   project: ProjectState,
@@ -1709,6 +1830,8 @@ export function mechanicalPowerProjectStep(
   if (!projectLeadWaterCurrentObservation(state, person, project)) {
     return mechanicalPowerLeadObservationStep(state, person, project);
   }
+  const siteConflict = currentMechanicalPowerSiteConflict(state, project);
+  if (siteConflict) return mechanicalPowerSiteRevisionStep(state, person, project, siteConflict);
   const plan = project.mechanicalPowerPlan!;
   for (const materialId of [Material.Mill, Material.WaterWheel, Material.DriveShaft]) {
     const unverified = manufacturedFacts(state, person, project, materialId).reverse().find((manufacture) => (

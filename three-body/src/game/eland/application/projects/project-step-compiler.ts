@@ -100,6 +100,7 @@ import {
 import {
   exertionInputQuantities,
   projectMaterialRequirement,
+  projectPrefersLocalFinishedOutput,
   projectSupportsMaterialContribution,
   reliableHeatTechnique,
   reliableMissingManipulatorRecipe,
@@ -140,6 +141,9 @@ import {
   compileKnownOutput,
   knownRecipe,
   localFinishedOutputAccess,
+  personCanProvideProjectMaterial,
+  visibleProjectMaterialHolders,
+  type KnownOutputAccessOptions,
 } from './steps/known-material-production';
 
 const IRON_WORKPLACE_MATERIALS = [Material.Smithy] as const;
@@ -165,6 +169,68 @@ function fixedProjectWorkplace(
     project.need === 'iron-capability' ? IRON_WORKPLACE_MATERIALS : undefined,
   );
 }
+
+function projectMaterialContributionDestination(
+  state: SimulationState,
+  holder: PersonState,
+  project: Pick<ProjectState, 'need' | 'desiredFunction' | 'site'>,
+): { cellId: number; z: number } | null {
+  if (!project.site) return null;
+  if (projectUsesFixedMetallurgyWorkplace(project)) {
+    return fixedProjectWorkplace(state, holder, project)?.workingPosition ?? null;
+  }
+  return { ...project.site };
+}
+
+function visibleHolderHasContributionRoute(
+  state: SimulationState,
+  observer: PersonState,
+  project: Pick<ProjectState, 'need' | 'desiredFunction' | 'site'>,
+  holder: PersonState,
+): boolean {
+  const visibleRadius = 4 + Math.floor(observer.baselineCapacities.perception / 25);
+  if (!visibleCellsFor(observer).includes(holder.position.cellId)
+    || Math.abs(holder.position.z - observer.position.z) > visibleRadius
+    || Math.abs(holder.position.z - observer.position.z) > 2) return false;
+  const destination = projectMaterialContributionDestination(state, holder, project);
+  return Boolean(destination
+    && findStandingPath(state.world.grid, holder.position, destination).length > 0);
+}
+
+function visibleHolderCanContribute(
+  state: SimulationState,
+  observer: PersonState,
+  project: Pick<ProjectState, 'need' | 'desiredFunction' | 'site'>,
+  holder: PersonState,
+): boolean {
+  return visibleHolderHasContributionRoute(state, observer, project, holder)
+    && personCanProvideProjectMaterial(state, holder);
+}
+
+function knownOutputAccessOptionsForProject(
+  state: SimulationState,
+  person: PersonState,
+  project: Pick<ProjectState, 'need' | 'desiredFunction' | 'site'>,
+  preferLocalFinishedOutput: boolean,
+): KnownOutputAccessOptions {
+  return {
+    preferLocalFinishedOutput,
+    allowVisibleHolder: projectSupportsMaterialContribution(project),
+    visibleHolderHasContributionRoute: (holder) => visibleHolderHasContributionRoute(
+      state,
+      person,
+      project,
+      holder,
+    ),
+    visibleHolderCanContribute: (holder) => visibleHolderCanContribute(
+      state,
+      person,
+      project,
+      holder,
+    ),
+  };
+}
+
 function localFinishedIronWorkshopOutputs(
   state: SimulationState,
   person: PersonState,
@@ -173,10 +239,12 @@ function localFinishedIronWorkshopOutputs(
   if (project.desiredFunction !== 'iron-workshop') return [];
   return IRON_WORKSHOP_DIRECT_OUTPUTS.filter((materialId) => (
     consumableInventoryQuantity(person, materialId) === 0
-    && localFinishedOutputAccess(state, person, materialId, {
-      preferLocalFinishedOutput: true,
-      allowVisibleHolder: projectSupportsMaterialContribution(project),
-    }) !== null
+    && localFinishedOutputAccess(
+      state,
+      person,
+      materialId,
+      knownOutputAccessOptionsForProject(state, person, project, true),
+    ) !== null
   ));
 }
 
@@ -488,10 +556,12 @@ function compileKnownExertionStep(
         visibleDrops,
         materialId,
         project.summary,
-        {
-          preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop',
-          allowVisibleHolder: projectSupportsMaterialContribution(project),
-        },
+        knownOutputAccessOptionsForProject(
+          state,
+          person,
+          project,
+          project.desiredFunction === 'iron-workshop',
+        ),
       );
       if (nested) return { ...nested, missingMaterialIds: missing };
     }
@@ -539,7 +609,17 @@ function metallurgyWorkStep(
   const workplace = fixedProjectWorkplace(state, person, project);
   if (!workplace) return null;
   if (!projectMaterialPlanProvenance(state, person, project)) return null;
-  const requirement = projectMaterialRequirement(state, person, project);
+  const requirement = projectMaterialRequirement(
+    state,
+    person,
+    project,
+    knownOutputAccessOptionsForProject(
+      state,
+      person,
+      project,
+      projectPrefersLocalFinishedOutput(project),
+    ),
+  );
   const visibleCharcoal = nearestDrop(state, person, visibleDrops, [Material.Charcoal]);
   const canMakeMissingCharcoalAtWorkplace = (
     project.desiredFunction === 'copper-charge' || project.desiredFunction === 'tin-charge'
@@ -818,7 +898,7 @@ function mechanicalReliabilityInquiryStep(
       visibleDrops,
       personallyKnownOutput,
       project.summary,
-      { preferLocalFinishedOutput: true, allowVisibleHolder: projectSupportsMaterialContribution(project) },
+      knownOutputAccessOptionsForProject(state, person, project, true),
     );
     if (knownStep) return knownStep;
   }
@@ -1307,10 +1387,7 @@ function compileProjectWorkStep(
         visibleDrops,
         outputMaterialId,
         project.summary,
-        {
-          preferLocalFinishedOutput: true,
-          allowVisibleHolder: projectSupportsMaterialContribution(project),
-        },
+        knownOutputAccessOptionsForProject(state, person, project, true),
       );
       if (known) return known;
     }
@@ -1359,10 +1436,7 @@ function compileProjectWorkStep(
         visibleDrops,
         outputMaterialId,
         project.summary,
-        {
-          preferLocalFinishedOutput: true,
-          allowVisibleHolder: projectSupportsMaterialContribution(project),
-        },
+        knownOutputAccessOptionsForProject(state, person, project, true),
       );
       if (known) return known;
     }
@@ -1379,10 +1453,7 @@ function compileProjectWorkStep(
         visibleDrops,
         outputMaterialId,
         project.summary,
-        {
-          preferLocalFinishedOutput: true,
-          allowVisibleHolder: projectSupportsMaterialContribution(project),
-        },
+        knownOutputAccessOptionsForProject(state, person, project, true),
       );
       if (known) return known;
     }
@@ -1461,10 +1532,7 @@ function compileProjectWorkStep(
           visibleDrops,
           output,
           project.summary,
-          {
-            preferLocalFinishedOutput: true,
-            allowVisibleHolder: projectSupportsMaterialContribution(project),
-          },
+          knownOutputAccessOptionsForProject(state, person, project, true),
         );
         if (known) return known;
       }
@@ -1490,10 +1558,12 @@ function compileProjectWorkStep(
       visibleDrops,
       output,
       project.summary,
-      {
-        preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop',
-        allowVisibleHolder: projectSupportsMaterialContribution(project),
-      },
+      knownOutputAccessOptionsForProject(
+        state,
+        person,
+        project,
+        project.desiredFunction === 'iron-workshop',
+      ),
     );
     if (known) return known;
   }
@@ -1508,7 +1578,17 @@ function compileProjectWorkStep(
     'bronze-alloying', 'bronze-tooling', 'bronze-workshop', 'civic-coordination',
     'iron-workshop', 'iron-charge', 'iron-reduction', 'iron-working', 'iron-tooling',
   ].includes(project.desiredFunction)
-    && Boolean(projectMaterialRequirement(state, person, project)?.demands.length);
+    && Boolean(projectMaterialRequirement(
+      state,
+      person,
+      project,
+      knownOutputAccessOptionsForProject(
+        state,
+        person,
+        project,
+        projectPrefersLocalFinishedOutput(project),
+      ),
+    )?.demands.length);
   if (pendingSubassembly) return null;
   return hypothesisStep(state, person, visibleDrops, project);
 }
@@ -1684,7 +1764,9 @@ function materialContributionRequestStep(
   const visible = new Set(visibleCellsFor(person));
   const possibleContributors = state.people.filter((candidate) => candidate.id !== person.id
     && isAlive(candidate)
-    && visible.has(candidate.position.cellId));
+    && visible.has(candidate.position.cellId)
+    && Math.abs(candidate.position.z - person.position.z) <= 2
+    && visibleHolderCanContribute(state, person, project, candidate));
   const selected = activeDemands.flatMap((demand) => {
     if (demand.outstandingQuantity <= 0
       || project.materialContributionRequests?.some((request) => request.materialId === demand.materialId
@@ -1979,7 +2061,13 @@ export function compileProjectStep(
     }
   }
 
-  const requirement = projectMaterialRequirement(state, person, project);
+  const projectAccessOptions = knownOutputAccessOptionsForProject(
+    state,
+    person,
+    project,
+    projectPrefersLocalFinishedOutput(project),
+  );
+  const requirement = projectMaterialRequirement(state, person, project, projectAccessOptions);
   if (!requirement?.materialIds.length) return null;
   // Keep the exact current branch on the authoritative project even when the
   // finite source search has no next step. Lifecycle release can then compare
@@ -2106,6 +2194,14 @@ export function compileProjectStep(
       );
       return activeEpisodeStep(state, person, visibleDrops, project, episode);
     }
+  }
+  if (activeDemands.some((demand) => demand.outstandingQuantity > 0
+    && visibleProjectMaterialHolders(state, person, demand.materialId)
+      .some((holder) => projectAccessOptions.visibleHolderHasContributionRoute?.(holder) ?? true))) {
+    // The material is locally witnessed but no current holder can accept and
+    // transport a contribution request. Preserve that honest wait instead of
+    // turning a temporary inability to hand off into blind source search.
+    return null;
   }
   const renewableSourceDemand = activeDemands.find((demand) => (
     demand.materialId === Material.Wood || demand.materialId === Material.Fiber || demand.materialId === Material.Seed

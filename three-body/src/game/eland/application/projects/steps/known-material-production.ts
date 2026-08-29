@@ -7,7 +7,13 @@ import {
 } from '../../../domain/interaction-rules';
 import { materialDefinition, type MaterialId } from '../../../domain/material';
 import type { DropState, SimulationState } from '../../../domain/model';
-import { isAlive, type ItemStack, type PersonState } from '../../../domain/person';
+import { lifePlanningStage } from '../../../domain/life-stage';
+import {
+  isAlive,
+  isDehydratedHibernating,
+  type ItemStack,
+  type PersonState,
+} from '../../../domain/person';
 import { canPersonPlanToCollectProjectMaterialDrop } from '../../../domain/project-material-request';
 import { findCurrentVisibleStoredMaterialAccess } from '../../../domain/stored-food-access';
 import {
@@ -57,6 +63,60 @@ export function knownRecipe(
 export interface KnownOutputAccessOptions {
   preferLocalFinishedOutput?: boolean;
   allowVisibleHolder?: boolean;
+  visibleHolderHasContributionRoute?: (holder: PersonState) => boolean;
+  visibleHolderCanContribute?: (holder: PersonState) => boolean;
+}
+
+/** Match the minimum person-side eligibility of a real project contribution option. */
+export function personCanProvideProjectMaterial(
+  state: SimulationState,
+  person: PersonState,
+  atMonth = state.clock.elapsedMonths + 1,
+): boolean {
+  const stage = lifePlanningStage(person, atMonth);
+  return (stage === 'adolescent-worker' || stage === 'adult')
+    && isAlive(person)
+    && !isDehydratedHibernating(person)
+    && !person.conditions.some((condition) => condition.kind === 'restrained');
+}
+
+export function visibleProjectMaterialHolders(
+  state: SimulationState,
+  person: PersonState,
+  outputMaterialId: MaterialId,
+): PersonState[] {
+  const visible = new Set(visibleCellsFor(person));
+  const visibleRadius = 4 + Math.floor(person.baselineCapacities.perception / 25);
+  return state.people.filter((candidate) => candidate.id !== person.id
+    && isAlive(candidate)
+    && visible.has(candidate.position.cellId)
+    && Math.abs(candidate.position.z - person.position.z) <= visibleRadius
+    && consumableInventoryQuantity(candidate, outputMaterialId) > 0);
+}
+
+function visibleActionableHolder(
+  state: SimulationState,
+  person: PersonState,
+  outputMaterialId: MaterialId,
+  options: KnownOutputAccessOptions,
+): PersonState | undefined {
+  if (!options.preferLocalFinishedOutput || !options.allowVisibleHolder) return undefined;
+  return visibleProjectMaterialHolders(state, person, outputMaterialId)
+    .filter((candidate) => options.visibleHolderHasContributionRoute?.(candidate) ?? true)
+    .find((candidate) => options.visibleHolderCanContribute?.(candidate)
+      ?? personCanProvideProjectMaterial(state, candidate));
+}
+
+function hasVisibleWaitingHolder(
+  state: SimulationState,
+  person: PersonState,
+  outputMaterialId: MaterialId,
+  options: KnownOutputAccessOptions,
+): boolean {
+  return Boolean(options.preferLocalFinishedOutput
+    && options.allowVisibleHolder
+    && visibleProjectMaterialHolders(state, person, outputMaterialId)
+      .some((candidate) => options.visibleHolderHasContributionRoute?.(candidate) ?? true));
 }
 
 export function localFinishedOutputAccess(
@@ -77,11 +137,12 @@ export function localFinishedOutputAccess(
   };
 
   const visible = new Set(visibleCellsFor(person));
+  const holders = options.allowVisibleHolder
+    ? visibleProjectMaterialHolders(state, person, outputMaterialId)
+      .filter((candidate) => options.visibleHolderHasContributionRoute?.(candidate) ?? true)
+    : [];
   if (options.allowVisibleHolder) {
-    const holder = state.people.find((candidate) => candidate.id !== person.id
-      && isAlive(candidate)
-      && visible.has(candidate.position.cellId)
-      && consumableInventoryQuantity(candidate, outputMaterialId) > 0);
+    const holder = visibleActionableHolder(state, person, outputMaterialId, options);
     if (holder) return {
       kind: 'holder',
       sourceFactIds: [...new Set(holder.inventory
@@ -103,7 +164,18 @@ export function localFinishedOutputAccess(
       )),
     [outputMaterialId],
   );
-  return drop ? { kind: 'drop', sourceFactIds: [...drop.sourceEventIds] } : null;
+  if (drop) return { kind: 'drop', sourceFactIds: [...drop.sourceEventIds] };
+
+  // A visible but temporarily inactive owner still proves that the finished
+  // object exists locally. It may keep the project waiting, but it must not
+  // hide a directly collectable drop when one is present.
+  const waitingHolder = holders[0];
+  return waitingHolder ? {
+    kind: 'holder',
+    sourceFactIds: [...new Set(waitingHolder.inventory
+      .filter((stack) => stack.materialId === outputMaterialId && isConsumableProjectStack(stack))
+      .flatMap((stack) => stack.sourceEventIds))],
+  } : null;
 }
 
 export function knownExposurePlan(
@@ -176,6 +248,12 @@ export function compileKnownOutput(
       .filter((input) => consumableInventoryQuantity(person, input.materialId) < input.quantity);
     const missing = deficits.map((input) => input.materialId);
     if (missing.length) {
+      if (missing.some((materialId) => visibleActionableHolder(
+        state,
+        person,
+        materialId,
+        accessOptions,
+      ))) return null;
       const drop = nearestDrop(state, person, visibleDrops, missing);
       if (drop) {
         const input = deficits.find((candidate) => candidate.materialId === drop.materialId);
@@ -189,6 +267,12 @@ export function compileKnownOutput(
         const step = dropStep(person, drop, purpose, demand);
         if (step) return { ...step, planKnowledgeId: known.knowledgeId, missingMaterialIds: missing };
       }
+      if (missing.some((materialId) => hasVisibleWaitingHolder(
+        state,
+        person,
+        materialId,
+        accessOptions,
+      ))) return null;
       for (const materialId of missing) {
         const nested = compileKnownOutput(
           state,
@@ -230,6 +314,12 @@ export function compileKnownOutput(
   const subject = person.inventory.find((stack) => stack.materialId === inputMaterialId
     && isConsumableProjectStack(stack));
   if (!subject) {
+    if (visibleActionableHolder(
+      state,
+      person,
+      inputMaterialId,
+      accessOptions,
+    )) return null;
     const drop = nearestDrop(state, person, visibleDrops, [inputMaterialId]);
     if (drop) {
       const demand = materialDemand(
@@ -246,6 +336,7 @@ export function compileKnownOutput(
         missingMaterialIds: [inputMaterialId],
       };
     }
+    if (hasVisibleWaitingHolder(state, person, inputMaterialId, accessOptions)) return null;
     const nested = compileKnownOutput(
       state,
       person,

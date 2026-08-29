@@ -49,6 +49,18 @@ export function projectSupportsMaterialContribution(project: Pick<ProjectState, 
     || (project.need === 'coordination-capacity' && project.desiredFunction === 'civic-coordination');
 }
 
+export function projectPrefersLocalFinishedOutput(
+  project: Pick<ProjectState, 'desiredFunction'>,
+): boolean {
+  return project.desiredFunction === 'iron-workshop'
+    || project.desiredFunction === 'water-powered-crop-processing'
+    || project.desiredFunction === 'restore-water-powered-crop-processing'
+    || project.desiredFunction === 'durable-power-transmission'
+    || project.desiredFunction === 'remote-work-power-delivery'
+    || project.desiredFunction === 'restore-electrical-power-delivery'
+    || project.desiredFunction === 'comparable-mass-measurement';
+}
+
 export interface ProjectMaterialRequirement {
   materialIds: MaterialId[];
   demands: ProjectMaterialDemand[];
@@ -240,19 +252,19 @@ export function reliableMissingManipulatorRecipe(person: PersonState): { rule: I
     && inventoryQuantity(person, materialId) === 0);
 }
 
-export function projectMaterialRequirement(state: SimulationState, person: PersonState, project: ProjectState): ProjectMaterialRequirement | null {
+export function projectMaterialRequirement(
+  state: SimulationState,
+  person: PersonState,
+  project: ProjectState,
+  accessOptions: KnownOutputAccessOptions = {},
+): ProjectMaterialRequirement | null {
   const rawRequirements = new Map<MaterialId, number>();
   const knownIntermediateRequirements: ProjectMaterialRequirement[] = [];
   let exactPlanProvenance = projectMaterialPlanProvenance(state, person, project);
-  const knownOutputAccess = {
-    preferLocalFinishedOutput: project.desiredFunction === 'iron-workshop'
-      || project.desiredFunction === 'water-powered-crop-processing'
-      || project.desiredFunction === 'restore-water-powered-crop-processing'
-      || project.desiredFunction === 'durable-power-transmission'
-      || project.desiredFunction === 'remote-work-power-delivery'
-      || project.desiredFunction === 'restore-electrical-power-delivery'
-      || project.desiredFunction === 'comparable-mass-measurement',
+  const knownOutputAccess: KnownOutputAccessOptions = {
+    preferLocalFinishedOutput: projectPrefersLocalFinishedOutput(project),
     allowVisibleHolder: projectSupportsMaterialContribution(project),
+    ...accessOptions,
   };
   let explicitRequirementPlanKnowledgeId: string | undefined;
   let explicitRequirementSourceFactIds: string[] = [];

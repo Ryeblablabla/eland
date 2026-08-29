@@ -39,7 +39,10 @@ export const RECIPE_KNOWLEDGE = {
         111,
         108,
         102
-      ]
+      ],
+      "perceptual": {
+        "form": "compact-body"
+      }
     },
     {
       "id": 2,
@@ -163,7 +166,10 @@ export const RECIPE_KNOWLEDGE = {
         76,
         106,
         58
-      ]
+      ],
+      "perceptual": {
+        "form": "plant-bundle"
+      }
     },
     {
       "id": 9,
@@ -180,7 +186,10 @@ export const RECIPE_KNOWLEDGE = {
         52,
         91,
         45
-      ]
+      ],
+      "perceptual": {
+        "form": "plant-bundle"
+      }
     },
     {
       "id": 10,
@@ -197,7 +206,10 @@ export const RECIPE_KNOWLEDGE = {
         55,
         103,
         51
-      ]
+      ],
+      "perceptual": {
+        "form": "plant-bundle"
+      }
     },
     {
       "id": 11,
@@ -213,7 +225,10 @@ export const RECIPE_KNOWLEDGE = {
         119,
         137,
         62
-      ]
+      ],
+      "perceptual": {
+        "form": "plant-bundle"
+      }
     },
     {
       "id": 12,
@@ -229,7 +244,10 @@ export const RECIPE_KNOWLEDGE = {
         183,
         157,
         63
-      ]
+      ],
+      "perceptual": {
+        "form": "plant-bundle"
+      }
     },
     {
       "id": 13,
@@ -249,7 +267,10 @@ export const RECIPE_KNOWLEDGE = {
         91,
         61,
         38
-      ]
+      ],
+      "perceptual": {
+        "form": "structural-member"
+      }
     },
     {
       "id": 14,
@@ -266,7 +287,10 @@ export const RECIPE_KNOWLEDGE = {
         44,
         78,
         42
-      ]
+      ],
+      "perceptual": {
+        "form": "flexible-sheet"
+      }
     },
     {
       "id": 15,
@@ -355,7 +379,10 @@ export const RECIPE_KNOWLEDGE = {
         155,
         111,
         65
-      ]
+      ],
+      "perceptual": {
+        "form": "structural-member"
+      }
     },
     {
       "id": 20,
@@ -372,7 +399,10 @@ export const RECIPE_KNOWLEDGE = {
         173,
         158,
         116
-      ]
+      ],
+      "perceptual": {
+        "form": "flexible-strand"
+      }
     },
     {
       "id": 21,
@@ -426,7 +456,10 @@ export const RECIPE_KNOWLEDGE = {
         167,
         139,
         91
-      ]
+      ],
+      "perceptual": {
+        "form": "flexible-strand"
+      }
     },
     {
       "id": 24,
@@ -553,7 +586,10 @@ export const RECIPE_KNOWLEDGE = {
         111,
         78,
         54
-      ]
+      ],
+      "perceptual": {
+        "form": "flexible-sheet"
+      }
     },
     {
       "id": 31,
@@ -958,7 +994,10 @@ export const RECIPE_KNOWLEDGE = {
         159,
         78,
         52
-      ]
+      ],
+      "perceptual": {
+        "form": "structural-member"
+      }
     },
     {
       "id": 54,

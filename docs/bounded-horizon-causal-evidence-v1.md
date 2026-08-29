@@ -29,6 +29,12 @@ node scripts/test-extract-bounded-horizon-evidence.mjs \
 
 - exact run/checkpoint/continuation/root/bundle 的 revision、month、lineage、head、event count 与 tail 联合封印；
 - 完整权威事件链的流式计数：事件类别、行动状态与操作、intent 归属、出生、死亡和死因；project 归属不从 payload 猜测，而是先从 exact shell 的每个 `project.actionEventIds` 建立去重 membership，再与完整权威历史中的 action fact 精确连接；
+- `history.modernPrerequisiteCausalFunnel` 是现代前置因果漏斗，不读取文明指数或代表样本：
+  - `mechanical.basisActions` 覆盖完整历史中每个显式携带 `action.mechanicalPowerBasis` 的 action，分别按 basis mode、事实 status、mode/status 组合、所有 `diff.mechanicalPower*=true` outcome flag，以及 mode/flag 组合计数；
+  - `mechanical.exactOwningProjects` 只用 shell reducer 返回的 `projectId -> desiredFunction/need/status` 元数据筛选 `water-powered-crop-processing` 与 `restore-water-powered-crop-processing`，再通过 exact action membership 连接完整历史。它逐项目、事实 status、operation 和 `install/operate/fault/repair/revise-site/observe-source/other` phase 计数；blocked result 以完整文本 SHA 和至多 512 bytes 摘要分组；每项目只保存 canonical first/last，至多 2 条 witness；
+  - `electrical.basisActions` 对 `action.electricalPowerBasis` 使用同一套 mode/status/outcome 计数；`electrical.exactOwningProjects` 只接受 `remote-work-power-delivery` 与 `restore-electrical-power-delivery` 的 exact owner。电力尚未出现时仍输出显式 `total: 0` 与空计数对象，不把 absence 当作 missing data；
+  - `recordUse.markedActions` 覆盖所有 action diff 中出现的 `recordUseStage`、`recordUsePreparation` 或 `recordUseReplicationReceipt` 字段。每条相关 action 恰好进入一次 stage/status/purpose/project/record/reader 计数，同时另计三个 marker field relationship；`recordUsePreparation=true` 且没有显式 stage 时归入 `prepare-experiment`，reader 只可取显式 `recordUseReaderId`，或对 preparation action 使用权威 actor `who`，并在 `byReaderSource` 标明来源；每个 stage 只保留 canonical first/last witness；
+  - `recordUse.exactDurableRecordOwningProjects` 单独统计 shell 中 `desiredFunction=durable-record` 项目的全部 exact owning action，不拿 `diff.recordUseProjectId` 冒充项目归属。payload project ID 只用于 record-use 维度计数；
 - payload 内出现的 project ID 仅作为 `embeddedProjectReferences` 诊断计数，不称为归属；每类至多 24 条 mechanical、electrical、measurement、record 代表事件分别保留 canonical ordinal、`owningProjectIds`、`embeddedProjectIds` 和有界来源 ID；
 - 当前 shell 的人物、项目 lifecycle、意图、协议、记录、制度、设施、机械和电力摘要；
 - 时代账本中与 exact authority 对应的时代、现代门槛、witness ordinal、source/runner/config hash；账本没有记录耗时或 RSS 时明确写 `null`，不从别处猜测；
@@ -41,5 +47,6 @@ node scripts/test-extract-bounded-horizon-evidence.mjs \
 
 - 工具拒绝取得 runner/evidence 互斥 lease、非 schema-3 root、非 exact month、缺少 exact 账本记录、权威或 verifier 来源变化、同一 project 内重复 action ID、project action 未解析/错类型/在历史中重复解析，或容量越界。finally 只有在 lock 内容 token 仍属于本进程时才释放它。
 - 项目 lifecycle 最多 16,384 条，出生和死亡各最多 16,384 条；exact shell 的去重 project/action membership 最多 262,144 条，payload embedded project reference key 最多 16,384 个。超过即失败，不截断核心计数。
+- 现代前置漏斗最多接受 4,194,304 条相关 action fact、262,144 条 exact project/action membership 和 65,536 个核心计数 unique key；任一总量或 unique key 越界都 fail-closed，计数不会截断。只有 first/last witness 的 `result` 展示摘要受 512-byte 上限约束，同时保存原文 byte length 与 SHA-256；它不影响核心计数。
 - observer 时代、指数和现代门槛只在证据包中下游展示，绝不进入人物 planner。
 - 代表事件是诊断样本，不代替完整流式计数，也不单独证明文明能力。

@@ -59,6 +59,92 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalValue(value));
 }
 
+function sumCounts(value) {
+  assert.equal(value && typeof value === 'object' && !Array.isArray(value), true);
+  return Object.values(value).reduce((sum, count) => {
+    assert.equal(Number.isSafeInteger(count) && count >= 0, true, `无效 count: ${count}`);
+    return sum + count;
+  }, 0);
+}
+
+function sumNestedCounts(value) {
+  assert.equal(value && typeof value === 'object' && !Array.isArray(value), true);
+  return Object.values(value).reduce((sum, counts) => sum + sumCounts(counts), 0);
+}
+
+function assertBoundedWitness(witness, label) {
+  assert.equal(typeof witness.eventId === 'string' && witness.eventId.length > 0, true, `${label} eventId 无效`);
+  assert.equal(Number.isSafeInteger(witness.ordinal) && witness.ordinal >= 0, true, `${label} ordinal 无效`);
+  assert.equal(Number.isSafeInteger(witness.atMonth) && witness.atMonth >= 0, true, `${label} month 无效`);
+  assert.equal(Number.isSafeInteger(witness.orderInMonth) && witness.orderInMonth >= 0, true, `${label} order 无效`);
+  assert.equal(['first', 'last', 'first-and-last'].includes(witness.boundary), true, `${label} boundary 无效`);
+  if (witness.result !== null) {
+    assert.match(witness.result.sha256, /^[0-9a-f]{64}$/u, `${label} result hash 无效`);
+    assert.equal(Number.isSafeInteger(witness.result.byteLength) && witness.result.byteLength >= 0, true);
+    assert.equal(Buffer.byteLength(witness.result.text, 'utf8') <= 512, true, `${label} result 摘要越界`);
+    assert.equal(typeof witness.result.truncated, 'boolean');
+  }
+  if (witness.status === 'blocked') assert.notEqual(witness.blockedReason, null, `${label} 缺 blocked reason`);
+}
+
+function assertFirstLastWitnesses(witnesses, actionCount, label) {
+  assert.equal(Array.isArray(witnesses), true, `${label} witnesses 不是数组`);
+  assert.equal(witnesses.length <= 2, true, `${label} witnesses 超过 2`);
+  assert.equal(witnesses.length === 0, actionCount === 0, `${label} witness/action 空值关系失配`);
+  for (const witness of witnesses) assertBoundedWitness(witness, label);
+  if (witnesses.length === 1) assert.equal(witnesses[0].boundary, 'first-and-last');
+  if (witnesses.length === 2) {
+    assert.equal(witnesses[0].boundary, 'first');
+    assert.equal(witnesses[1].boundary, 'last');
+    assert.ok(witnesses[0].ordinal < witnesses[1].ordinal, `${label} first/last 顺序无效`);
+  }
+}
+
+function assertPowerBasisCounts(basis, label) {
+  assert.equal(Number.isSafeInteger(basis.total) && basis.total >= 0, true, `${label} total missing`);
+  assert.equal(sumCounts(basis.byMode), basis.total, `${label} mode total 失配`);
+  assert.equal(sumCounts(basis.byStatus), basis.total, `${label} status total 失配`);
+  assert.equal(sumNestedCounts(basis.byModeAndStatus), basis.total, `${label} mode/status total 失配`);
+  assert.equal(basis.withOutcomeFlags + basis.withoutOutcomeFlags, basis.total, `${label} flag presence 失配`);
+  assert.equal(sumCounts(basis.byOutcomeFlag), basis.outcomeFlagRelationshipCount, `${label} flag total 失配`);
+  assert.equal(
+    sumNestedCounts(basis.byModeAndOutcomeFlag),
+    basis.outcomeFlagRelationshipCount,
+    `${label} mode/flag total 失配`,
+  );
+}
+
+function assertExactProjectCounts(funnel, shellLifecycles, label, hasPowerPhase) {
+  const projects = Object.entries(funnel.byProjectId);
+  assert.equal(projects.length, funnel.projectCount, `${label} project count 失配`);
+  assert.equal(sumCounts(funnel.projectCountByDesiredFunction), funnel.projectCount, `${label} function project count 失配`);
+  assert.equal(sumCounts(funnel.actionCountByDesiredFunction), funnel.actionMembershipCount, `${label} function action count 失配`);
+  assert.equal(sumCounts(funnel.byActionStatus), funnel.actionMembershipCount, `${label} status count 失配`);
+  assert.equal(sumCounts(funnel.byOperation), funnel.actionMembershipCount, `${label} operation count 失配`);
+  if (hasPowerPhase) assert.equal(sumCounts(funnel.byPowerPhase), funnel.actionMembershipCount, `${label} phase count 失配`);
+  assert.equal(sumCounts(funnel.blocked.byReasonSha256), funnel.blocked.actionMembershipCount, `${label} blocked count 失配`);
+  assert.ok(funnel.uniqueActionEventIdCount <= funnel.actionMembershipCount, `${label} unique actions 越界`);
+  let projectActionTotal = 0;
+  let projectBlockedTotal = 0;
+  for (const [projectId, project] of projects) {
+    projectActionTotal += project.actionCount;
+    projectBlockedTotal += project.blocked.count;
+    assert.equal(sumCounts(project.byActionStatus), project.actionCount, `${label}/${projectId} status count 失配`);
+    assert.equal(sumCounts(project.byOperation), project.actionCount, `${label}/${projectId} operation count 失配`);
+    if (hasPowerPhase) assert.equal(sumCounts(project.byPowerPhase), project.actionCount, `${label}/${projectId} phase count 失配`);
+    assert.equal(sumCounts(project.blocked.byReasonSha256), project.blocked.count, `${label}/${projectId} blocked count 失配`);
+    assertFirstLastWitnesses(project.witnesses, project.actionCount, `${label}/${projectId}`);
+    const shellProject = shellLifecycles.find((candidate) => candidate.projectId === projectId);
+    assert.ok(shellProject, `${label}/${projectId} 不在 exact shell lifecycle`);
+    assert.equal(project.desiredFunction, shellProject.desiredFunction);
+    assert.equal(project.need, shellProject.need);
+    assert.equal(project.status, shellProject.status);
+    assert.equal(funnel.desiredFunctions.includes(project.desiredFunction), true);
+  }
+  assert.equal(projectActionTotal, funnel.actionMembershipCount, `${label} project action 汇总失配`);
+  assert.equal(projectBlockedTotal, funnel.blocked.actionMembershipCount, `${label} project blocked 汇总失配`);
+}
+
 function fileSeal(filePath) {
   const stat = statSync(filePath);
   return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs };
@@ -99,6 +185,11 @@ function actionEvent(id) {
   };
 }
 
+const fixtureProjectMetadata = new Map([[
+  'fixture-project',
+  { desiredFunction: 'water-powered-crop-processing', need: 'capability', status: 'active' },
+]]);
+
 assert.throws(
   () => exactProjectActionEventIds('fixture-project', ['fixture-action', 'fixture-action']),
   /actionEventIds 含重复 ID/u,
@@ -109,6 +200,7 @@ assert.throws(
     new Set(),
     new Map([['fixture-action', ['fixture-project']]]),
     1,
+    fixtureProjectMetadata,
   );
   assert.throws(
     () => reducer.visit([{ id: 'fixture-action', kind: 'environment', atMonth: 0 }], { startEventIndex: 0 }),
@@ -121,6 +213,7 @@ assert.throws(
     new Set(),
     new Map([['missing-action', ['fixture-project']]]),
     1,
+    fixtureProjectMetadata,
   );
   assert.throws(
     () => reducer.finish({}),
@@ -133,6 +226,7 @@ assert.throws(
     new Set(),
     new Map([['fixture-action', ['fixture-project']]]),
     1,
+    fixtureProjectMetadata,
   );
   assert.throws(
     () => reducer.visit(
@@ -221,6 +315,97 @@ try {
       assert.equal(Array.isArray(event.embeddedProjectIds), true);
     }
   }
+
+  const causalFunnel = pack.history.modernPrerequisiteCausalFunnel;
+  assert.equal(causalFunnel?.semantics?.authority,
+    'full-authoritative-history-stream-not-representative-samples-or-observer-index');
+  assert.equal(causalFunnel?.semantics?.projectOwnership,
+    'exact-shell-project.actionEventIds-joined-through-shell-project-metadata');
+  assert.equal(Number.isSafeInteger(causalFunnel?.countBounds?.causalFacts), true);
+  assert.equal(Number.isSafeInteger(causalFunnel?.countBounds?.causalCountUniqueKeys), true);
+  assert.ok(
+    causalFunnel.countBounds.usedUniqueCountKeys <= causalFunnel.countBounds.causalCountUniqueKeys,
+    'causal count unique key budget 越界',
+  );
+  assertPowerBasisCounts(causalFunnel.mechanical.basisActions, 'mechanical basis');
+  assertPowerBasisCounts(causalFunnel.electrical.basisActions, 'electrical basis');
+  assertExactProjectCounts(
+    causalFunnel.mechanical.exactOwningProjects,
+    projectSummary.lifecycles,
+    'mechanical projects',
+    true,
+  );
+  assertExactProjectCounts(
+    causalFunnel.electrical.exactOwningProjects,
+    projectSummary.lifecycles,
+    'electrical projects',
+    true,
+  );
+  assertExactProjectCounts(
+    causalFunnel.recordUse.exactDurableRecordOwningProjects,
+    projectSummary.lifecycles,
+    'durable-record projects',
+    false,
+  );
+  assert.ok(
+    causalFunnel.mechanical.exactOwningProjects.actionMembershipCount > 0,
+    '冻结 m1200 必须存在 exact owning mechanical project actions',
+  );
+  assert.equal(
+    Number.isSafeInteger(causalFunnel.electrical.basisActions.total),
+    true,
+    'electrical basis total 即使为 0 也必须显式存在',
+  );
+  assert.equal(
+    Number.isSafeInteger(causalFunnel.electrical.exactOwningProjects.actionMembershipCount),
+    true,
+    'electrical project action total 即使为 0 也必须显式存在',
+  );
+
+  const recordUse = causalFunnel.recordUse.markedActions;
+  assert.equal(sumCounts(recordUse.byStage), recordUse.eventCount, 'record-use stage total 失配');
+  assert.equal(sumCounts(recordUse.byStatus), recordUse.eventCount, 'record-use status total 失配');
+  assert.equal(sumCounts(recordUse.byPurpose), recordUse.eventCount, 'record-use purpose total 失配');
+  assert.equal(sumCounts(recordUse.byProjectId), recordUse.eventCount, 'record-use project total 失配');
+  assert.equal(sumCounts(recordUse.byRecordId), recordUse.eventCount, 'record-use record total 失配');
+  assert.equal(sumCounts(recordUse.byReaderId), recordUse.eventCount, 'record-use reader total 失配');
+  assert.equal(sumCounts(recordUse.byReaderSource), recordUse.eventCount, 'record-use reader source total 失配');
+  assert.equal(
+    recordUse.explicitStageFieldCount
+      + recordUse.preparationFieldCount
+      + recordUse.replicationReceiptFieldCount,
+    recordUse.markerFieldRelationshipCount,
+    'record-use marker field total 失配',
+  );
+  assert.equal(sumCounts(recordUse.byMarkerValue), recordUse.markerFieldRelationshipCount,
+    'record-use marker value total 失配');
+  const validRecordStages = new Set([
+    'share',
+    'read-experiment',
+    'acquire',
+    'read',
+    'prepare-experiment',
+    'experiment',
+    'replicate',
+  ]);
+  for (const [stage, count] of Object.entries(recordUse.byStage)) {
+    assert.equal(validRecordStages.has(stage), true, `冻结 m1200 出现非法 record-use stage: ${stage}`);
+    const witnesses = recordUse.witnessesByStage[stage];
+    assertFirstLastWitnesses(witnesses, count, `record-use/${stage}`);
+  }
+  assert.deepEqual(
+    Object.keys(recordUse.witnessesByStage).sort(),
+    Object.keys(recordUse.byStage).sort(),
+    'record-use stage witness keys 失配',
+  );
+  assert.ok(
+    recordUse.preparationTrueCount <= (recordUse.byStage['prepare-experiment'] ?? 0),
+    'record-use preparation 未归入 prepare-experiment',
+  );
+  assert.ok(
+    recordUse.replicationReceiptTrueCount <= (recordUse.byStage.replicate ?? 0),
+    'record-use replication receipt 未归入 replicate',
+  );
 
   const provenance = pack.verifierProvenance;
   assert.equal(provenance.extractorSourceSha256, sha256(readFileSync(extractor)));
@@ -325,6 +510,16 @@ try {
     packHash: first.packHash,
     packBytes: bytes.byteLength,
     preservedChunkCount: chunks.length,
+    causalFunnel: {
+      mechanicalBasisActions: causalFunnel.mechanical.basisActions.total,
+      mechanicalProjectActions: causalFunnel.mechanical.exactOwningProjects.actionMembershipCount,
+      electricalBasisActions: causalFunnel.electrical.basisActions.total,
+      electricalProjectActions: causalFunnel.electrical.exactOwningProjects.actionMembershipCount,
+      recordUseEvents: recordUse.eventCount,
+      recordUseByStage: recordUse.byStage,
+      durableRecordProjectActions:
+        causalFunnel.recordUse.exactDurableRecordOwningProjects.actionMembershipCount,
+    },
   })}\n`);
 } finally {
   if (existsSync(lockFile) && readFileSync(lockFile, 'utf8') === fixtureLockContents) {

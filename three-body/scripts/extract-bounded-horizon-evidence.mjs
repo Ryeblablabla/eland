@@ -36,9 +36,21 @@ const MAX_PROJECT_LIFECYCLES = 16_384;
 const MAX_LIFE_EVENTS = 16_384;
 const MAX_PROJECT_ACTION_MEMBERSHIPS = 262_144;
 const MAX_EMBEDDED_PROJECT_REFERENCE_KEYS = 16_384;
+const MAX_CAUSAL_FACTS = 4_194_304;
+const MAX_CAUSAL_COUNT_KEYS = 65_536;
+const MAX_CAUSAL_WITNESS_RESULT_BYTES = 512;
 const MAX_REPRESENTATIVE_EVENTS = 24;
 const MAX_REFERENCED_EVENT_IDS = 24;
 const MAX_WALK_NODES = 256;
+const MECHANICAL_PROJECT_FUNCTIONS = Object.freeze([
+  'restore-water-powered-crop-processing',
+  'water-powered-crop-processing',
+]);
+const ELECTRICAL_PROJECT_FUNCTIONS = Object.freeze([
+  'remote-work-power-delivery',
+  'restore-electrical-power-delivery',
+]);
+const DURABLE_RECORD_PROJECT_FUNCTIONS = Object.freeze(['durable-record']);
 const ESBUILD_VERIFIER_ARGUMENTS = Object.freeze([
   '--bundle',
   '--platform=node',
@@ -666,11 +678,516 @@ export function exactProjectActionEventIds(projectId, values) {
   return uniqueActionEventIds;
 }
 
+function createCausalCountKeyBudget() {
+  let uniqueKeyCount = 0;
+  return {
+    increment(map, key, label, amount = 1) {
+      assert.equal(Number.isSafeInteger(amount) && amount >= 0, true, `${label} count amount 无效`);
+      const normalized = String(key ?? 'unknown');
+      if (!map.has(normalized)) {
+        uniqueKeyCount += 1;
+        assert.equal(
+          uniqueKeyCount <= MAX_CAUSAL_COUNT_KEYS,
+          true,
+          `modern prerequisite causal count unique keys 超过硬上限 ${MAX_CAUSAL_COUNT_KEYS}`,
+        );
+      }
+      const next = (map.get(normalized) ?? 0) + amount;
+      assert.equal(Number.isSafeInteger(next), true, `${label} count 超过安全整数`);
+      map.set(normalized, next);
+    },
+    get uniqueKeyCount() {
+      return uniqueKeyCount;
+    },
+  };
+}
+
+function incrementNestedCount(map, outerKey, innerKey, budget, label) {
+  const normalizedOuter = String(outerKey ?? 'unknown');
+  let inner = map.get(normalizedOuter);
+  if (!inner) {
+    inner = new Map();
+    map.set(normalizedOuter, inner);
+  }
+  budget.increment(inner, innerKey, label);
+}
+
+function sortedNestedCountObject(map) {
+  return Object.fromEntries([...map.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([outerKey, inner]) => [outerKey, sortedCountObject(inner)]));
+}
+
+function boundedTextSummary(value) {
+  if (typeof value !== 'string') return null;
+  const bytes = Buffer.from(value, 'utf8');
+  const truncated = bytes.byteLength > MAX_CAUSAL_WITNESS_RESULT_BYTES;
+  let text = value;
+  if (truncated) {
+    text = bytes.subarray(0, MAX_CAUSAL_WITNESS_RESULT_BYTES).toString('utf8');
+    if (text.endsWith('\uFFFD')) text = text.slice(0, -1);
+  }
+  return {
+    text,
+    byteLength: bytes.byteLength,
+    sha256: sha256(bytes),
+    truncated,
+  };
+}
+
+function outcomeFlagsOf(diffValue, prefix) {
+  const diff = recordOf(diffValue) ?? {};
+  return Object.entries(diff)
+    .filter(([key, value]) => key.startsWith(prefix) && value === true)
+    .map(([key]) => key)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function operationOfActionEvent(event) {
+  const action = recordOf(event.action);
+  return action?.kind === 'act'
+    ? stringValue(action.operation) ?? 'act:unknown'
+    : stringValue(action?.kind) ?? 'unknown';
+}
+
+function powerModeOfAction(event, prefix) {
+  const action = recordOf(event.action);
+  const basisKey = `${prefix}Basis`;
+  if (!action || !Object.hasOwn(action, basisKey)) return null;
+  const basis = recordOf(action[basisKey]);
+  return stringValue(basis?.mode) ?? 'unknown';
+}
+
+function powerPhase(mode, outcomeFlags, prefix) {
+  if (outcomeFlags.includes(`${prefix}Fault`)) return 'fault';
+  if (mode === 'repair' || mode === 'repair-service'
+    || outcomeFlags.includes(`${prefix}Repair`)) return 'repair';
+  if (mode === 'install' || outcomeFlags.includes(`${prefix}Installation`)) return 'install';
+  if (mode === 'operate' || mode === 'operate-service'
+    || outcomeFlags.includes(`${prefix}Operation`)) return 'operate';
+  if (mode === 'revise-site') return 'revise-site';
+  if (mode === 'observe-source') return 'observe-source';
+  return mode === null ? 'other' : `mode:${mode}`;
+}
+
+function causalWitness(event, ordinal, details = {}) {
+  const result = boundedTextSummary(event.result);
+  const status = stringValue(event.status) ?? 'unknown';
+  return {
+    eventId: event.id,
+    ordinal,
+    atMonth: safeInteger(event.atMonth),
+    orderInMonth: safeInteger(event.orderInMonth),
+    planningTick: safeInteger(event.planningTick),
+    orderInTick: safeInteger(event.orderInTick),
+    status,
+    operation: operationOfActionEvent(event),
+    result,
+    blockedReason: status === 'blocked' ? result : null,
+    ...details,
+  };
+}
+
+function recordFirstLast(pair, witness, label) {
+  if (pair.first === null) pair.first = witness;
+  if (pair.last !== null) {
+    assert.equal(witness.ordinal > pair.last.ordinal, true, `${label} witness ordinal 非递增`);
+  }
+  pair.last = witness;
+}
+
+function firstLastWitnesses(pair) {
+  if (pair.first === null) return [];
+  if (pair.first.eventId === pair.last.eventId) {
+    return [{ boundary: 'first-and-last', ...pair.first }];
+  }
+  return [
+    { boundary: 'first', ...pair.first },
+    { boundary: 'last', ...pair.last },
+  ];
+}
+
+function createPowerBasisActionAccumulator(prefix, budget) {
+  const byMode = new Map();
+  const byStatus = new Map();
+  const byModeAndStatus = new Map();
+  const byOutcomeFlag = new Map();
+  const byModeAndOutcomeFlag = new Map();
+  let total = 0;
+  let withOutcomeFlags = 0;
+  let withoutOutcomeFlags = 0;
+  let outcomeFlagRelationshipCount = 0;
+
+  function record(event) {
+    const mode = powerModeOfAction(event, prefix);
+    if (mode === null) return;
+    total += 1;
+    assert.equal(total <= MAX_CAUSAL_FACTS, true, `${prefix} basis actions 超过硬上限 ${MAX_CAUSAL_FACTS}`);
+    const status = stringValue(event.status) ?? 'unknown';
+    budget.increment(byMode, mode, `${prefix}.byMode`);
+    budget.increment(byStatus, status, `${prefix}.byStatus`);
+    incrementNestedCount(byModeAndStatus, mode, status, budget, `${prefix}.byModeAndStatus`);
+    const outcomeFlags = outcomeFlagsOf(event.diff, prefix);
+    if (outcomeFlags.length === 0) withoutOutcomeFlags += 1;
+    else withOutcomeFlags += 1;
+    for (const flag of outcomeFlags) {
+      outcomeFlagRelationshipCount += 1;
+      assert.equal(
+        outcomeFlagRelationshipCount <= MAX_CAUSAL_FACTS * 16,
+        true,
+        `${prefix} outcome flag relationships 超过硬上限`,
+      );
+      budget.increment(byOutcomeFlag, flag, `${prefix}.byOutcomeFlag`);
+      incrementNestedCount(
+        byModeAndOutcomeFlag,
+        mode,
+        flag,
+        budget,
+        `${prefix}.byModeAndOutcomeFlag`,
+      );
+    }
+  }
+
+  function finish() {
+    return {
+      source: `all-full-history-action-facts-with-action.${prefix}Basis`,
+      total,
+      withOutcomeFlags,
+      withoutOutcomeFlags,
+      outcomeFlagRelationshipCount,
+      byMode: sortedCountObject(byMode),
+      byStatus: sortedCountObject(byStatus),
+      byModeAndStatus: sortedNestedCountObject(byModeAndStatus),
+      byOutcomeFlag: sortedCountObject(byOutcomeFlag),
+      byModeAndOutcomeFlag: sortedNestedCountObject(byModeAndOutcomeFlag),
+    };
+  }
+
+  return { record, finish };
+}
+
+function createExactOwningProjectActionAccumulator(
+  label,
+  desiredFunctions,
+  projectMetadataById,
+  budget,
+  powerPrefix = null,
+) {
+  const desiredFunctionSet = new Set(desiredFunctions);
+  const projects = new Map();
+  const projectCountByDesiredFunction = new Map();
+  const actionCountByDesiredFunction = new Map();
+  const byActionStatus = new Map();
+  const byOperation = new Map();
+  const byPowerPhase = new Map();
+  const blockedByReasonSha256 = new Map();
+  const blockedReasonsBySha256 = new Map();
+  const uniqueActionEventIds = new Set();
+  let actionMembershipCount = 0;
+  let blockedActionMembershipCount = 0;
+
+  for (const [projectId, metadataValue] of projectMetadataById) {
+    const metadata = recordOf(metadataValue);
+    assert.ok(metadata, `project metadata ${projectId} 必须是对象`);
+    if (!desiredFunctionSet.has(metadata.desiredFunction)) continue;
+    assert.equal(projects.size < MAX_PROJECT_LIFECYCLES, true, `${label} projects 超过硬上限`);
+    budget.increment(
+      projectCountByDesiredFunction,
+      metadata.desiredFunction,
+      `${label}.projectCountByDesiredFunction`,
+    );
+    projects.set(projectId, {
+      metadata: {
+        desiredFunction: metadata.desiredFunction,
+        need: metadata.need,
+        status: metadata.status,
+      },
+      actionCount: 0,
+      byActionStatus: new Map(),
+      byOperation: new Map(),
+      byPowerPhase: new Map(),
+      blockedCount: 0,
+      blockedByReasonSha256: new Map(),
+      blockedReasonsBySha256: new Map(),
+      witnessPair: { first: null, last: null },
+    });
+  }
+
+  function recordBlockedReason(project, event) {
+    if (event.status !== 'blocked') return;
+    const summary = boundedTextSummary(event.result);
+    const reasonKey = summary?.sha256 ?? 'missing';
+    project.blockedCount += 1;
+    blockedActionMembershipCount += 1;
+    budget.increment(
+      project.blockedByReasonSha256,
+      reasonKey,
+      `${label}.project.blockedByReasonSha256`,
+    );
+    budget.increment(blockedByReasonSha256, reasonKey, `${label}.blockedByReasonSha256`);
+    if (!project.blockedReasonsBySha256.has(reasonKey)) project.blockedReasonsBySha256.set(reasonKey, summary);
+    if (!blockedReasonsBySha256.has(reasonKey)) blockedReasonsBySha256.set(reasonKey, summary);
+  }
+
+  function record(event, ordinal, owningProjectIds) {
+    const status = stringValue(event.status) ?? 'unknown';
+    const operation = operationOfActionEvent(event);
+    const mode = powerPrefix === null ? null : powerModeOfAction(event, powerPrefix);
+    const outcomeFlags = powerPrefix === null ? [] : outcomeFlagsOf(event.diff, powerPrefix);
+    const phase = powerPrefix === null ? null : powerPhase(mode, outcomeFlags, powerPrefix);
+    for (const projectId of owningProjectIds) {
+      const metadata = projectMetadataById.get(projectId);
+      assert.ok(metadata, `exact owning project ${projectId} 缺少 shell metadata`);
+      if (!desiredFunctionSet.has(metadata.desiredFunction)) continue;
+      const project = projects.get(projectId);
+      assert.ok(project, `${label} project ${projectId} 未初始化`);
+      actionMembershipCount += 1;
+      assert.equal(
+        actionMembershipCount <= MAX_PROJECT_ACTION_MEMBERSHIPS,
+        true,
+        `${label} action memberships 超过硬上限 ${MAX_PROJECT_ACTION_MEMBERSHIPS}`,
+      );
+      uniqueActionEventIds.add(event.id);
+      assert.equal(
+        uniqueActionEventIds.size <= MAX_PROJECT_ACTION_MEMBERSHIPS,
+        true,
+        `${label} unique action ids 超过硬上限 ${MAX_PROJECT_ACTION_MEMBERSHIPS}`,
+      );
+      project.actionCount += 1;
+      budget.increment(
+        actionCountByDesiredFunction,
+        metadata.desiredFunction,
+        `${label}.actionCountByDesiredFunction`,
+      );
+      budget.increment(byActionStatus, status, `${label}.byActionStatus`);
+      budget.increment(byOperation, operation, `${label}.byOperation`);
+      budget.increment(project.byActionStatus, status, `${label}.project.byActionStatus`);
+      budget.increment(project.byOperation, operation, `${label}.project.byOperation`);
+      if (phase !== null) {
+        budget.increment(byPowerPhase, phase, `${label}.byPowerPhase`);
+        budget.increment(project.byPowerPhase, phase, `${label}.project.byPowerPhase`);
+      }
+      recordBlockedReason(project, event);
+      recordFirstLast(
+        project.witnessPair,
+        causalWitness(event, ordinal, {
+          powerMode: mode,
+          powerPhase: phase,
+          outcomeFlags,
+        }),
+        `${label} project ${projectId}`,
+      );
+    }
+  }
+
+  function finish() {
+    const byProjectId = Object.fromEntries([...projects.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([projectId, project]) => [projectId, {
+        ...project.metadata,
+        actionCount: project.actionCount,
+        byActionStatus: sortedCountObject(project.byActionStatus),
+        byOperation: sortedCountObject(project.byOperation),
+        ...(powerPrefix === null ? {} : { byPowerPhase: sortedCountObject(project.byPowerPhase) }),
+        blocked: {
+          count: project.blockedCount,
+          byReasonSha256: sortedCountObject(project.blockedByReasonSha256),
+          reasonsBySha256: Object.fromEntries([...project.blockedReasonsBySha256.entries()]
+            .sort(([left], [right]) => left.localeCompare(right))),
+        },
+        witnesses: firstLastWitnesses(project.witnessPair),
+      }]));
+    return {
+      source: 'exact-shell-project.actionEventIds-joined-to-full-authoritative-history',
+      desiredFunctions: [...desiredFunctions],
+      projectCount: projects.size,
+      projectCountByDesiredFunction: sortedCountObject(projectCountByDesiredFunction),
+      actionMembershipCount,
+      uniqueActionEventIdCount: uniqueActionEventIds.size,
+      actionCountByDesiredFunction: sortedCountObject(actionCountByDesiredFunction),
+      byActionStatus: sortedCountObject(byActionStatus),
+      byOperation: sortedCountObject(byOperation),
+      ...(powerPrefix === null ? {} : { byPowerPhase: sortedCountObject(byPowerPhase) }),
+      blocked: {
+        actionMembershipCount: blockedActionMembershipCount,
+        byReasonSha256: sortedCountObject(blockedByReasonSha256),
+        reasonsBySha256: Object.fromEntries([...blockedReasonsBySha256.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))),
+      },
+      byProjectId,
+    };
+  }
+
+  return { record, finish };
+}
+
+function createRecordUseAccumulator(budget) {
+  const byStage = new Map();
+  const byStatus = new Map();
+  const byPurpose = new Map();
+  const byProjectId = new Map();
+  const byRecordId = new Map();
+  const byReaderId = new Map();
+  const byReaderSource = new Map();
+  const byMarkerValue = new Map();
+  const stageWitnesses = new Map();
+  let eventCount = 0;
+  let markerFieldRelationshipCount = 0;
+  let explicitStageFieldCount = 0;
+  let preparationFieldCount = 0;
+  let preparationTrueCount = 0;
+  let replicationReceiptFieldCount = 0;
+  let replicationReceiptTrueCount = 0;
+
+  function record(event, ordinal) {
+    const diff = recordOf(event.diff) ?? {};
+    const hasStage = Object.hasOwn(diff, 'recordUseStage');
+    const hasPreparation = Object.hasOwn(diff, 'recordUsePreparation');
+    const hasReplicationReceipt = Object.hasOwn(diff, 'recordUseReplicationReceipt');
+    if (!hasStage && !hasPreparation && !hasReplicationReceipt) return;
+    eventCount += 1;
+    assert.equal(eventCount <= MAX_CAUSAL_FACTS, true, `record-use events 超过硬上限 ${MAX_CAUSAL_FACTS}`);
+    const explicitStage = hasStage ? stringValue(diff.recordUseStage) : null;
+    const preparationIsTrue = diff.recordUsePreparation === true;
+    const replicationReceiptIsTrue = diff.recordUseReplicationReceipt === true;
+    const stage = explicitStage
+      ?? (preparationIsTrue
+        ? 'prepare-experiment'
+        : replicationReceiptIsTrue
+          ? 'replication-receipt-without-stage'
+          : 'marker-without-valid-stage');
+    const status = stringValue(event.status) ?? 'unknown';
+    const purpose = stringValue(diff.recordUsePurpose) ?? 'unknown';
+    const projectId = stringValue(diff.recordUseProjectId)
+      ?? stringValue(diff.recordUsePreparationProjectId)
+      ?? 'unknown';
+    const recordId = stringValue(diff.recordUseRecordId) ?? 'unknown';
+    const explicitReaderId = stringValue(diff.recordUseReaderId);
+    const readerId = explicitReaderId ?? (preparationIsTrue ? stringValue(event.who) : null) ?? 'unknown';
+    const readerSource = explicitReaderId !== null
+      ? 'diff.recordUseReaderId'
+      : preparationIsTrue && typeof event.who === 'string'
+        ? 'preparation-action.who'
+        : 'unknown';
+    budget.increment(byStage, stage, 'recordUse.byStage');
+    budget.increment(byStatus, status, 'recordUse.byStatus');
+    budget.increment(byPurpose, purpose, 'recordUse.byPurpose');
+    budget.increment(byProjectId, projectId, 'recordUse.byProjectId');
+    budget.increment(byRecordId, recordId, 'recordUse.byRecordId');
+    budget.increment(byReaderId, readerId, 'recordUse.byReaderId');
+    budget.increment(byReaderSource, readerSource, 'recordUse.byReaderSource');
+    if (hasStage) {
+      explicitStageFieldCount += 1;
+      markerFieldRelationshipCount += 1;
+      budget.increment(
+        byMarkerValue,
+        `recordUseStage:${explicitStage ?? 'invalid'}`,
+        'recordUse.byMarkerValue',
+      );
+    }
+    if (hasPreparation) {
+      preparationFieldCount += 1;
+      if (preparationIsTrue) preparationTrueCount += 1;
+      markerFieldRelationshipCount += 1;
+      budget.increment(
+        byMarkerValue,
+        `recordUsePreparation:${String(diff.recordUsePreparation)}`,
+        'recordUse.byMarkerValue',
+      );
+    }
+    if (hasReplicationReceipt) {
+      replicationReceiptFieldCount += 1;
+      if (replicationReceiptIsTrue) replicationReceiptTrueCount += 1;
+      markerFieldRelationshipCount += 1;
+      budget.increment(
+        byMarkerValue,
+        `recordUseReplicationReceipt:${String(diff.recordUseReplicationReceipt)}`,
+        'recordUse.byMarkerValue',
+      );
+    }
+    let witnessPair = stageWitnesses.get(stage);
+    if (!witnessPair) {
+      witnessPair = { first: null, last: null };
+      stageWitnesses.set(stage, witnessPair);
+    }
+    recordFirstLast(
+      witnessPair,
+      causalWitness(event, ordinal, {
+        stage,
+        purpose,
+        projectId,
+        recordId,
+        readerId,
+        readerSource,
+        markers: {
+          recordUseStage: hasStage ? diff.recordUseStage : null,
+          recordUsePreparation: hasPreparation ? diff.recordUsePreparation : null,
+          recordUseReplicationReceipt: hasReplicationReceipt ? diff.recordUseReplicationReceipt : null,
+        },
+      }),
+      `record-use stage ${stage}`,
+    );
+  }
+
+  function finish() {
+    const witnessesByStage = Object.fromEntries([...stageWitnesses.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([stage, pair]) => [stage, firstLastWitnesses(pair)]));
+    return {
+      source: 'all-full-history-action-facts-carrying-record-use-diff-markers',
+      eventCount,
+      markerFieldRelationshipCount,
+      explicitStageFieldCount,
+      preparationFieldCount,
+      preparationTrueCount,
+      replicationReceiptFieldCount,
+      replicationReceiptTrueCount,
+      byMarkerValue: sortedCountObject(byMarkerValue),
+      byStage: sortedCountObject(byStage),
+      byStatus: sortedCountObject(byStatus),
+      byPurpose: sortedCountObject(byPurpose),
+      byProjectId: sortedCountObject(byProjectId),
+      byRecordId: sortedCountObject(byRecordId),
+      byReaderId: sortedCountObject(byReaderId),
+      byReaderSource: sortedCountObject(byReaderSource),
+      witnessesByStage,
+    };
+  }
+
+  return { record, finish };
+}
+
 export function createHistoryReducer(
   witnessIds,
   owningProjectsByActionEventId,
   expectedProjectActionMembershipCount,
+  projectMetadataById,
 ) {
+  assert.equal(projectMetadataById instanceof Map, true, 'history join 缺少 exact shell project metadata map');
+  const causalCountBudget = createCausalCountKeyBudget();
+  const mechanicalBasisActions = createPowerBasisActionAccumulator('mechanicalPower', causalCountBudget);
+  const electricalBasisActions = createPowerBasisActionAccumulator('electricalPower', causalCountBudget);
+  const mechanicalOwningProjects = createExactOwningProjectActionAccumulator(
+    'mechanicalOwningProjects',
+    MECHANICAL_PROJECT_FUNCTIONS,
+    projectMetadataById,
+    causalCountBudget,
+    'mechanicalPower',
+  );
+  const electricalOwningProjects = createExactOwningProjectActionAccumulator(
+    'electricalOwningProjects',
+    ELECTRICAL_PROJECT_FUNCTIONS,
+    projectMetadataById,
+    causalCountBudget,
+    'electricalPower',
+  );
+  const durableRecordOwningProjects = createExactOwningProjectActionAccumulator(
+    'durableRecordOwningProjects',
+    DURABLE_RECORD_PROJECT_FUNCTIONS,
+    projectMetadataById,
+    causalCountBudget,
+  );
+  const recordUseActions = createRecordUseAccumulator(causalCountBudget);
   const eventKinds = new Map();
   const environmentChanges = new Map();
   const agreementChanges = new Map();
@@ -724,6 +1241,12 @@ export function createHistoryReducer(
         );
         resolvedProjectActionEventIds.add(event.id);
         owningProjectRelationshipCount += owningProjectIds.length;
+        for (const projectId of owningProjectIds) {
+          assert.ok(
+            projectMetadataById.has(projectId),
+            `project.actionEventIds owner ${projectId} 缺少 exact shell metadata`,
+          );
+        }
       }
       if (event.kind === 'environment') {
         increment(environmentChanges, event.change);
@@ -791,6 +1314,12 @@ export function createHistoryReducer(
           );
         }
       } else actionWithoutEmbeddedProjectReference += 1;
+      mechanicalBasisActions.record(event);
+      electricalBasisActions.record(event);
+      mechanicalOwningProjects.record(event, ordinal, owningProjectIds);
+      electricalOwningProjects.record(event, ordinal, owningProjectIds);
+      durableRecordOwningProjects.record(event, ordinal, owningProjectIds);
+      recordUseActions.record(event, ordinal);
       const tags = semanticTagsOf(event);
       for (const tag of tags) {
         pushBounded(
@@ -869,6 +1398,32 @@ export function createHistoryReducer(
         byCause: sortedCountObject(deathCauses),
         events: deathEvents,
       },
+      modernPrerequisiteCausalFunnel: {
+        semantics: {
+          authority: 'full-authoritative-history-stream-not-representative-samples-or-observer-index',
+          projectOwnership: 'exact-shell-project.actionEventIds-joined-through-shell-project-metadata',
+          payloadProjectIds: 'record-use-dimensions-only-never-used-as-owning-project-membership',
+        },
+        countBounds: {
+          causalFacts: MAX_CAUSAL_FACTS,
+          causalCountUniqueKeys: MAX_CAUSAL_COUNT_KEYS,
+          projectActionMemberships: MAX_PROJECT_ACTION_MEMBERSHIPS,
+          witnessResultBytes: MAX_CAUSAL_WITNESS_RESULT_BYTES,
+          usedUniqueCountKeys: causalCountBudget.uniqueKeyCount,
+        },
+        mechanical: {
+          basisActions: mechanicalBasisActions.finish(),
+          exactOwningProjects: mechanicalOwningProjects.finish(),
+        },
+        electrical: {
+          basisActions: electricalBasisActions.finish(),
+          exactOwningProjects: electricalOwningProjects.finish(),
+        },
+        recordUse: {
+          markedActions: recordUseActions.finish(),
+          exactDurableRecordOwningProjects: durableRecordOwningProjects.finish(),
+        },
+      },
       representativeChains: representatives,
       witnessOrdinals: Object.fromEntries([...witnessed.entries()]
         .sort(([left], [right]) => left.localeCompare(right))),
@@ -904,6 +1459,7 @@ function createShellReducer() {
   const projectLifecycles = [];
   const seenProjectIds = new Set();
   const owningProjectsByActionEventId = new Map();
+  const projectMetadataById = new Map();
   const intentStatuses = new Map();
   const agreementStatuses = new Map();
   const agreementKinds = new Map();
@@ -1011,6 +1567,7 @@ function createShellReducer() {
     const kind = stringValue(project.kind) ?? 'unknown';
     const need = stringValue(project.need) ?? 'unknown';
     const desiredFunction = stringValue(project.desiredFunction) ?? 'unknown';
+    projectMetadataById.set(projectId, Object.freeze({ desiredFunction, need, status }));
     increment(projectCounts.byStatus, status);
     increment(projectCounts.byKind, kind);
     increment(projectCounts.byNeed, need);
@@ -1235,6 +1792,8 @@ function createShellReducer() {
     return {
       evidence,
       owningProjectsByActionEventId: canonicalOwnership,
+      projectMetadataById: new Map([...projectMetadataById.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))),
       projectActionMembershipCount,
     };
   }
@@ -1453,6 +2012,7 @@ async function run() {
         witnessIds,
         shellResult.owningProjectsByActionEventId,
         shellResult.projectActionMembershipCount,
+        shellResult.projectMetadataById,
       );
       const cursor = await api.streamVerifiedRunHistorySegments(
         root,
@@ -1517,6 +2077,9 @@ async function run() {
           lifeEventsPerKind: MAX_LIFE_EVENTS,
           projectActionMemberships: MAX_PROJECT_ACTION_MEMBERSHIPS,
           embeddedProjectReferenceKeys: MAX_EMBEDDED_PROJECT_REFERENCE_KEYS,
+          causalFacts: MAX_CAUSAL_FACTS,
+          causalCountUniqueKeys: MAX_CAUSAL_COUNT_KEYS,
+          causalWitnessResultBytes: MAX_CAUSAL_WITNESS_RESULT_BYTES,
           representativeEventsPerCategory: MAX_REPRESENTATIVE_EVENTS,
           referencedEventIdsPerRepresentative: MAX_REFERENCED_EVENT_IDS,
         },

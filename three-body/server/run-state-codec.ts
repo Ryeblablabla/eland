@@ -230,6 +230,8 @@ export interface EncodedRunState {
   root: RunStateChunk;
   parts: RunStateChunk[];
   metadata: RunStateRootMetadata;
+  /** Present only when the caller supplied a run-scoped shell reuse authority. */
+  shellReuseIdentity?: Readonly<VerifiedRunStateShellReuseIdentity>;
 }
 
 export interface EncodedRunHistorySuffix {
@@ -240,6 +242,34 @@ export interface EncodedRunHistorySuffix {
 export interface RunStateEncodeOptions {
   /** Synthetic-test seam; authoritative persistence always uses 2,048. */
   maxEventsPerSegmentForTests?: number;
+  /**
+   * Process-local authority for exact previous-root shell segment reuse.
+   * The opaque authority must be unique to one run and retained by its store.
+   */
+  shellReuse?: RunStateShellReuseOptions;
+}
+
+declare const verifiedRunStateShellReuseIdentityBrand: unique symbol;
+
+/**
+ * Opaque receipt minted by this codec after one complete schema-3 encode.
+ * Its scalar fields are diagnostic only; the reusable segment bindings live
+ * in a module-private WeakMap and cannot be forged from this public shape.
+ */
+export interface VerifiedRunStateShellReuseIdentity {
+  readonly kind: 'verified-run-state-shell-reuse-identity-v1';
+  readonly rootHash: string;
+  readonly manifestHash: string;
+  readonly reusableCompletedProjectSegments: number;
+  readonly [verifiedRunStateShellReuseIdentityBrand]: true;
+}
+
+export interface RunStateShellReuseOptions {
+  /** Store-owned object unique to one run/process lifetime. */
+  authority: object;
+  /** Both previous fields are required together; omission starts a cold identity. */
+  previousRoot?: RunStateChunk;
+  previousIdentity?: Readonly<VerifiedRunStateShellReuseIdentity>;
 }
 
 export interface RunHistorySegmentPosition {
@@ -333,6 +363,20 @@ export interface RunStateShellPartEncodeCacheStats {
   shellEncodes: number;
   totalShellEncodeMilliseconds: number;
   lastShellEncodeMilliseconds: number;
+  serializeCalls: number;
+  serializedRawBytes: number;
+  compressedOutputBytes: number;
+  identityReuseEnabled: boolean;
+  identityReuseChecks: number;
+  identityReuseHits: number;
+  identityReuseMisses: number;
+  stabilizedCompletedProjects: number;
+  capturedReusableCompletedProjectSegments: number;
+}
+
+export interface RunStateShellSegmentIdentityReuseControl {
+  enabled?: boolean;
+  resetStatistics?: boolean;
 }
 
 export interface RunStateReachabilityMemo {
@@ -391,9 +435,42 @@ interface ShellPartEncodeCacheEntry {
   bytes: number;
 }
 
+interface ReusableCompletedProjectSegmentBinding {
+  readonly scope: 'state';
+  readonly fieldName: 'projects';
+  readonly segmentIndex: number;
+  readonly itemCount: 1;
+  readonly project: object;
+  readonly chunk: RunStateChunk;
+}
+
+interface VerifiedRunStateShellReuseIdentityRecord {
+  readonly authority: object;
+  readonly rootHash: string;
+  readonly manifestHash: string;
+  readonly completedProjectSegments: ReadonlyMap<number, ReusableCompletedProjectSegmentBinding>;
+}
+
+interface PreparedRunStateShellReuse {
+  readonly authority: object;
+  readonly previous?: VerifiedRunStateShellReuseIdentityRecord;
+}
+
+interface EncodedShellFieldGroup {
+  chunks: RunStateChunk[];
+  references: RunStateShellFieldReference[];
+  reusableCompletedProjectSegments: Map<number, ReusableCompletedProjectSegmentBinding>;
+}
+
 const shellPartEncodeCache = new Map<string, ShellPartEncodeCacheEntry>();
 const verifiedSchema3RunStateShellReceipts = new WeakSet<object>();
+const verifiedRunStateShellReuseIdentities = new WeakMap<
+object,
+VerifiedRunStateShellReuseIdentityRecord
+>();
+const stabilizedCompletedProjects = new WeakSet<object>();
 let shellPartEncodeCacheEnabled = true;
+let shellSegmentIdentityReuseEnabled = true;
 let shellPartEncodeCacheMaxEntries = DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_ENTRIES;
 let shellPartEncodeCacheMaxBytes = DEFAULT_SHELL_PART_ENCODE_CACHE_MAX_BYTES;
 let shellPartEncodeCacheBytes = 0;
@@ -408,6 +485,14 @@ let shellPartEncodeCacheSkippedOversize = 0;
 let shellPartEncodes = 0;
 let shellPartTotalEncodeMilliseconds = 0;
 let shellPartLastEncodeMilliseconds = 0;
+let shellPartSerializeCalls = 0;
+let shellPartSerializedRawBytes = 0;
+let shellPartCompressedOutputBytes = 0;
+let shellSegmentIdentityReuseChecks = 0;
+let shellSegmentIdentityReuseHits = 0;
+let shellSegmentIdentityReuseMisses = 0;
+let shellSegmentStabilizedCompletedProjects = 0;
+let shellSegmentCapturedReusableCompletedProjectSegments = 0;
 
 function asBuffer(data: Buffer | Uint8Array): Buffer {
   return Buffer.isBuffer(data)
@@ -450,6 +535,14 @@ function resetShellPartEncodeCacheStatistics(): void {
   shellPartEncodes = 0;
   shellPartTotalEncodeMilliseconds = 0;
   shellPartLastEncodeMilliseconds = 0;
+  shellPartSerializeCalls = 0;
+  shellPartSerializedRawBytes = 0;
+  shellPartCompressedOutputBytes = 0;
+  shellSegmentIdentityReuseChecks = 0;
+  shellSegmentIdentityReuseHits = 0;
+  shellSegmentIdentityReuseMisses = 0;
+  shellSegmentStabilizedCompletedProjects = 0;
+  shellSegmentCapturedReusableCompletedProjectSegments = 0;
 }
 
 function evictShellPartEncodeCacheToBounds(): void {
@@ -493,6 +586,14 @@ export function configureRunStateShellPartEncodeCacheForTests(
   if (control.resetStatistics) resetShellPartEncodeCacheStatistics();
 }
 
+/** Synthetic-test control; production keeps exact-root identity reuse enabled. */
+export function configureRunStateShellSegmentIdentityReuseForTests(
+  control: RunStateShellSegmentIdentityReuseControl = {},
+): void {
+  if (control.enabled !== undefined) shellSegmentIdentityReuseEnabled = control.enabled;
+  if (control.resetStatistics) resetShellPartEncodeCacheStatistics();
+}
+
 export function runStateShellPartEncodeCacheStatsForTests(): RunStateShellPartEncodeCacheStats {
   return {
     enabled: shellPartEncodeCacheEnabled,
@@ -511,6 +612,16 @@ export function runStateShellPartEncodeCacheStatsForTests(): RunStateShellPartEn
     shellEncodes: shellPartEncodes,
     totalShellEncodeMilliseconds: shellPartTotalEncodeMilliseconds,
     lastShellEncodeMilliseconds: shellPartLastEncodeMilliseconds,
+    serializeCalls: shellPartSerializeCalls,
+    serializedRawBytes: shellPartSerializedRawBytes,
+    compressedOutputBytes: shellPartCompressedOutputBytes,
+    identityReuseEnabled: shellSegmentIdentityReuseEnabled,
+    identityReuseChecks: shellSegmentIdentityReuseChecks,
+    identityReuseHits: shellSegmentIdentityReuseHits,
+    identityReuseMisses: shellSegmentIdentityReuseMisses,
+    stabilizedCompletedProjects: shellSegmentStabilizedCompletedProjects,
+    capturedReusableCompletedProjectSegments:
+      shellSegmentCapturedReusableCompletedProjectSegments,
   };
 }
 
@@ -601,6 +712,87 @@ function assertFullDomainHistoryCursor(state: SimulationState): void {
   );
 }
 
+function completedProjectIsClosedArchive(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const project = value as Record<string, unknown>;
+  if (project.status !== 'completed'
+    || Object.prototype.hasOwnProperty.call(project, 'activeLogisticsEpisodeId')) return false;
+  const hasActive = (items: unknown): boolean => Array.isArray(items)
+    && items.some((item) => item
+      && typeof item === 'object'
+      && !Array.isArray(item)
+      && (item as Record<string, unknown>).status === 'active');
+  if (hasActive(project.logisticsEpisodes) || hasActive(project.searchCampaigns)) return false;
+  const hypothesis = project.hypothesisCampaign;
+  return !hypothesis
+    || typeof hypothesis !== 'object'
+    || Array.isArray(hypothesis)
+    || (hypothesis as Record<string, unknown>).status !== 'active';
+}
+
+function recursivelyPlainOwnedValue(
+  value: unknown,
+  visited = new WeakSet<object>(),
+): boolean {
+  if (value === null
+    || value === undefined
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+    || typeof value === 'bigint') return true;
+  if (typeof value !== 'object' || visited.has(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype
+    && prototype !== Array.prototype
+    && prototype !== null) return false;
+  visited.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') return false;
+    if (Array.isArray(value) && key === 'length') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) return false;
+    if (!recursivelyPlainOwnedValue(descriptor.value, visited)) return false;
+  }
+  return true;
+}
+
+function recursivelyFreezeOwnedValue(
+  value: unknown,
+  visited = new WeakSet<object>(),
+): void {
+  if (!value || typeof value !== 'object' || visited.has(value)) return;
+  visited.add(value);
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    recursivelyFreezeOwnedValue(child, visited);
+  }
+  Object.freeze(value);
+}
+
+/**
+ * Canonicalize only closed completed-project archives after a rule month has
+ * finished. Replacing the whole array invalidates every array-keyed domain
+ * index; the isolated clone prevents recursive freeze from touching any shared
+ * mutable value elsewhere in the state graph.
+ */
+export function stabilizeCompletedProjectsForRunStateShellReuse(
+  state: SimulationState,
+): number {
+  let stabilized = 0;
+  const projects = state.projects.map((project) => {
+    if (!completedProjectIsClosedArchive(project)
+      || stabilizedCompletedProjects.has(project)) return project;
+    const owned = structuredClone(project) as typeof project;
+    if (!recursivelyPlainOwnedValue(owned)) return project;
+    recursivelyFreezeOwnedValue(owned);
+    stabilizedCompletedProjects.add(owned);
+    stabilized += 1;
+    return owned;
+  });
+  if (stabilized > 0) state.projects = projects;
+  shellSegmentStabilizedCompletedProjects += stabilized;
+  return stabilized;
+}
+
 function stateShell(state: SimulationState): SimulationStateShell {
   const { past: _past, ...world } = state.world;
   return { ...state, world };
@@ -624,7 +816,9 @@ async function compressedV8Chunk(codec: string, value: unknown): Promise<RunStat
 }
 
 async function compressedShellPartV8Chunk(value: unknown): Promise<RunStateChunk> {
+  shellPartSerializeCalls += 1;
   const raw = serialize(value);
+  shellPartSerializedRawBytes += raw.byteLength;
   shellPartEncodeCacheRequests += 1;
   const cacheKey = shellPartEncodeCacheEnabled
     ? hashRawV8Chunk(RUN_STATE_SHELL_PART_CODEC, raw)
@@ -644,6 +838,7 @@ async function compressedShellPartV8Chunk(value: unknown): Promise<RunStateChunk
   const data = await compress(raw, {
     params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
   });
+  shellPartCompressedOutputBytes += data.byteLength;
   const chunk = storedChunk(RUN_STATE_SHELL_PART_CODEC, data);
   if (!shellPartEncodeCacheEnabled || cacheKey === null) return chunk;
   if (data.byteLength > shellPartEncodeCacheMaxBytes) {
@@ -686,15 +881,104 @@ function shellArrayItemsPerSegment(
     : MAX_SHELL_ARRAY_ITEMS_PER_SEGMENT;
 }
 
+function preparedRunStateShellReuse(
+  options: RunStateEncodeOptions,
+): PreparedRunStateShellReuse | undefined {
+  const reuse = options.shellReuse;
+  if (!reuse) return undefined;
+  if ((!reuse.authority || typeof reuse.authority !== 'object')
+    && typeof reuse.authority !== 'function') {
+    throw new Error('shell segment reuse authority 必须是对象');
+  }
+  const hasPreviousRoot = reuse.previousRoot !== undefined;
+  const hasPreviousIdentity = reuse.previousIdentity !== undefined;
+  if (hasPreviousRoot !== hasPreviousIdentity) {
+    throw new Error('shell segment reuse previous root/identity 必须成对提供');
+  }
+  if (!reuse.previousRoot || !reuse.previousIdentity) {
+    return { authority: reuse.authority };
+  }
+  const previousRootChunk = snapshotRunStateChunk(reuse.previousRoot);
+  const previousRoot = parseRunStateRoot(previousRootChunk);
+  if (previousRoot.schemaVersion !== 3) {
+    throw new Error('shell segment reuse previous root 必须是 schemaVersion 3');
+  }
+  const identity = verifiedRunStateShellReuseIdentities.get(reuse.previousIdentity);
+  if (!identity
+    || identity.authority !== reuse.authority
+    || identity.rootHash !== previousRootChunk.hash
+    || identity.manifestHash !== previousRoot.shellHash
+    || reuse.previousIdentity.rootHash !== identity.rootHash
+    || reuse.previousIdentity.manifestHash !== identity.manifestHash
+    || reuse.previousIdentity.reusableCompletedProjectSegments
+      !== identity.completedProjectSegments.size) {
+    throw new Error('shell segment reuse identity 未绑定当前 run/exact previous root/manifest');
+  }
+  return { authority: reuse.authority, previous: identity };
+}
+
+function reusableCompletedProjectSegment(
+  scope: RunStateShellFieldScope,
+  fieldName: string,
+  segmentIndex: number,
+  segment: readonly unknown[],
+  reuse: PreparedRunStateShellReuse | undefined,
+): ReusableCompletedProjectSegmentBinding | undefined {
+  if (scope !== 'state'
+    || fieldName !== 'projects'
+    || segment.length !== 1
+    || !completedProjectIsClosedArchive(segment[0])
+    || !stabilizedCompletedProjects.has(segment[0])) return undefined;
+  const previous = reuse?.previous?.completedProjectSegments.get(segmentIndex);
+  if (!reuse?.previous) return undefined;
+  shellSegmentIdentityReuseChecks += 1;
+  if (shellSegmentIdentityReuseEnabled
+    && previous
+    && previous.scope === scope
+    && previous.fieldName === fieldName
+    && previous.segmentIndex === segmentIndex
+    && previous.itemCount === segment.length
+    && previous.project === segment[0]) {
+    shellSegmentIdentityReuseHits += 1;
+    return previous;
+  }
+  shellSegmentIdentityReuseMisses += 1;
+  return undefined;
+}
+
+function capturedCompletedProjectSegment(
+  scope: RunStateShellFieldScope,
+  fieldName: string,
+  segmentIndex: number,
+  segment: readonly unknown[],
+  chunk: RunStateChunk,
+): ReusableCompletedProjectSegmentBinding | undefined {
+  if (scope !== 'state'
+    || fieldName !== 'projects'
+    || segment.length !== 1
+    || !completedProjectIsClosedArchive(segment[0])
+    || !stabilizedCompletedProjects.has(segment[0])) return undefined;
+  return Object.freeze({
+    scope: 'state' as const,
+    fieldName: 'projects' as const,
+    segmentIndex,
+    itemCount: 1 as const,
+    project: segment[0],
+    chunk,
+  });
+}
+
 async function encodeShellFieldReferences(
   fields: Record<string, unknown>,
   scope: RunStateShellFieldScope,
-): Promise<{
-  chunks: RunStateChunk[];
-  references: RunStateShellFieldReference[];
-}> {
+  reuse?: PreparedRunStateShellReuse,
+): Promise<EncodedShellFieldGroup> {
   const chunks: RunStateChunk[] = [];
   const references: RunStateShellFieldReference[] = [];
+  const reusableCompletedProjectSegments = new Map<
+    number,
+    ReusableCompletedProjectSegmentBinding
+  >();
   for (const [name, value] of Object.entries(fields)) {
     if (!Array.isArray(value)) {
       const chunk = await compressedShellPartV8Chunk(value);
@@ -707,23 +991,43 @@ async function encodeShellFieldReferences(
     const segmentSize = shellArrayItemsPerSegment(scope, name);
     for (let offset = 0; offset < value.length; offset += segmentSize) {
       const segment = value.slice(offset, offset + segmentSize);
-      const chunk = await compressedShellPartV8Chunk(segment);
-      chunks.push(chunk);
+      const segmentIndex = segments.length;
+      const reused = reusableCompletedProjectSegment(
+        scope,
+        name,
+        segmentIndex,
+        segment,
+        reuse,
+      );
+      const chunk = reused?.chunk ?? await compressedShellPartV8Chunk(segment);
+      if (!reused) chunks.push(chunk);
       segments.push({ hash: chunk.hash, itemCount: segment.length });
+      const captured = reused ?? capturedCompletedProjectSegment(
+        scope,
+        name,
+        segmentIndex,
+        segment,
+        chunk,
+      );
+      if (captured) reusableCompletedProjectSegments.set(segmentIndex, captured);
     }
     references.push({ name, kind: 'array', length: value.length, segments });
   }
-  return { chunks, references };
+  return { chunks, references, reusableCompletedProjectSegments };
 }
 
-async function encodeSegmentedShell(state: SimulationState): Promise<{
+async function encodeSegmentedShell(
+  state: SimulationState,
+  reuse?: PreparedRunStateShellReuse,
+): Promise<{
   manifest: RunStateChunk;
   parts: RunStateChunk[];
+  reusableCompletedProjectSegments: Map<number, ReusableCompletedProjectSegmentBinding>;
 }> {
   const startedAt = performance.now();
   const groups = stateShellFieldGroups(state);
-  const fields = await encodeShellFieldReferences(groups.fields, 'state');
-  const worldFields = await encodeShellFieldReferences(groups.worldFields, 'world');
+  const fields = await encodeShellFieldReferences(groups.fields, 'state', reuse);
+  const worldFields = await encodeShellFieldReferences(groups.worldFields, 'world', reuse);
   const metadata: RunStateShellManifestMetadata = {
     schemaVersion: 1,
     fields: fields.references,
@@ -732,6 +1036,7 @@ async function encodeSegmentedShell(state: SimulationState): Promise<{
   const encoded = {
     manifest: storedChunk(RUN_STATE_SHELL_MANIFEST_CODEC, serialize(metadata)),
     parts: [...fields.chunks, ...worldFields.chunks],
+    reusableCompletedProjectSegments: fields.reusableCompletedProjectSegments,
   };
   shellPartLastEncodeMilliseconds = performance.now() - startedAt;
   shellPartTotalEncodeMilliseconds += shellPartLastEncodeMilliseconds;
@@ -1064,6 +1369,11 @@ export async function encodeSegmentedRunStateFromHistorySuffix(
   suffix: readonly WorldEvent[],
   options: RunStateEncodeOptions = {},
 ): Promise<EncodedRunState> {
+  // Snapshot and authenticate the exact previous root before the first await.
+  // Stabilization happens after the caller's rule month and before encoding;
+  // planners never observe a partially frozen project graph.
+  const shellReuse = preparedRunStateShellReuse(options);
+  if (shellReuse) stabilizeCompletedProjectsForRunStateShellReuse(state);
   const history = await encodeRunHistorySuffix(previous, suffix, options);
   if (state.world.historyCursor) {
     const expectedTailEventId = suffix.at(-1)?.id ?? state.world.historyCursor.tailEventId;
@@ -1075,7 +1385,7 @@ export async function encodeSegmentedRunStateFromHistorySuffix(
       'suffix 编码 shell',
     );
   }
-  const shell = await encodeSegmentedShell(state);
+  const shell = await encodeSegmentedShell(state, shellReuse);
   const metadata: RunStateRootMetadata = {
     schemaVersion: 3,
     shellHash: shell.manifest.hash,
@@ -1085,11 +1395,29 @@ export async function encodeSegmentedRunStateFromHistorySuffix(
     tailEventContentHash: history.cursor.tailEventContentHash,
   };
   const root = storedChunk(RUN_STATE_ROOT_CODEC, serialize(metadata));
-  return {
+  const encoded: EncodedRunState = {
     root,
     parts: [...shell.parts, shell.manifest, ...history.parts],
     metadata,
   };
+  if (shellReuse) {
+    const completedProjectSegments = new Map(shell.reusableCompletedProjectSegments);
+    const identity = Object.freeze({
+      kind: 'verified-run-state-shell-reuse-identity-v1' as const,
+      rootHash: root.hash,
+      manifestHash: shell.manifest.hash,
+      reusableCompletedProjectSegments: completedProjectSegments.size,
+    }) as Readonly<VerifiedRunStateShellReuseIdentity>;
+    verifiedRunStateShellReuseIdentities.set(identity, {
+      authority: shellReuse.authority,
+      rootHash: root.hash,
+      manifestHash: shell.manifest.hash,
+      completedProjectSegments,
+    });
+    shellSegmentCapturedReusableCompletedProjectSegments += completedProjectSegments.size;
+    encoded.shellReuseIdentity = identity;
+  }
+  return encoded;
 }
 
 /**

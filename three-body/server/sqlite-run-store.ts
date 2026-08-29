@@ -161,6 +161,7 @@ import {
   parseRunStateRoot,
   runHistoryCursorFromRootMetadata,
   snapshotRunStateChunk,
+  stabilizeCompletedProjectsForRunStateShellReuse,
   streamVerifiedRunHistorySegments,
   streamVerifiedRunHistorySuccessorSegments,
   verifyRunStateSameHistoryShellSuccessor,
@@ -173,6 +174,7 @@ import {
   type RunStatePinnedEvent,
   type RunStateReachabilityMemo,
   type RunStateRootMetadata,
+  type VerifiedRunStateShellReuseIdentity,
 } from "./run-state-codec";
 import {
   ELAND_DATABASE_FILENAME,
@@ -298,6 +300,9 @@ interface BoundedContinuationTokenRecord {
   readonly observerMaterializationSourceRoot?: RunStateChunk;
   readonly sidecars: Readonly<Record<RunContinuationSidecarName, ContinuationChunkIdentity>>;
   readonly artifacts: Readonly<BoundedContinuationVerifiedArtifacts>;
+  /** Opaque, process-local and unique to this run's continuation generation chain. */
+  readonly shellReuseAuthority: object;
+  readonly shellReuseIdentity?: Readonly<VerifiedRunStateShellReuseIdentity>;
 }
 
 interface BoundedContinuationTokenRegistry {
@@ -325,6 +330,7 @@ interface BoundedEvolutionSuccessorStagingRecord {
   readonly metadata: Readonly<RunStateRootMetadata>;
   readonly suffixEventCount: number;
   readonly historyTransition: "appended-events" | "same-history-shell";
+  readonly shellReuseIdentity?: Readonly<VerifiedRunStateShellReuseIdentity>;
 }
 
 interface BoundedNonProjectionMonthStagingRecord {
@@ -3689,6 +3695,8 @@ export class SqliteRunStore implements RunStore {
           : {}),
         sidecars: Object.freeze(sidecars),
         artifacts: warmArtifacts,
+        shellReuseAuthority: source.shellReuseAuthority,
+        shellReuseIdentity: successor.shellReuseIdentity,
       });
       registry.warmNonProjectionByRun.set(source.runId, Object.freeze({
         runId: source.runId,
@@ -3790,6 +3798,10 @@ export class SqliteRunStore implements RunStore {
         "bounded successor exact-history reuse 不是当前 store generation 的 private fact root",
       );
     }
+    const ownsMutableSuccessor = authority === storeOwnedSingleMonthSuccessorAuthority;
+    // Freeze/replace only behind the closed store-owned controller. The public
+    // staging seam remains observational and must never mutate caller state.
+    if (ownsMutableSuccessor) stabilizeCompletedProjectsForRunStateShellReuse(state);
     let stateForEncoding = state;
     if ((state.world.historyCursor?.hotStartIndex ?? 0) > 0) {
       const world = { ...state.world };
@@ -3797,13 +3809,31 @@ export class SqliteRunStore implements RunStore {
       stateForEncoding = { ...state, world };
     }
 
+    const previousShellOwner = exactHistoryOwner ?? record;
+    const previousShellReuseIdentity = previousShellOwner.shellReuseIdentity;
     const encoded = await encodeSegmentedRunStateFromHistorySuffix(
       stateForEncoding,
       exactHistoryOwner
         ? { ...runHistoryCursorFromRootMetadata(exactHistoryOwner.metadata) }
         : { ...sourceBasis.history },
       exactHistoryOwner ? [] : suffix,
+      ownsMutableSuccessor
+        ? {
+          shellReuse: {
+            authority: record.shellReuseAuthority,
+            ...(previousShellReuseIdentity
+              ? {
+                previousRoot: previousShellOwner.root,
+                previousIdentity: previousShellReuseIdentity,
+              }
+              : {}),
+          },
+        }
+        : {},
     );
+    if (ownsMutableSuccessor && !encoded.shellReuseIdentity) {
+      throw new Error("bounded successor shell encode 未生成 run-scoped reuse identity");
+    }
     this.assertContinuationTokenSnapshotCurrent(token, record);
 
     // These codec-owned compressed chunks are never exposed to the caller.
@@ -3908,6 +3938,9 @@ export class SqliteRunStore implements RunStore {
       metadata,
       suffixEventCount: verified.suffixEventCount,
       historyTransition: sameHistoryShell ? "same-history-shell" : "appended-events",
+      ...(encoded.shellReuseIdentity
+        ? { shellReuseIdentity: encoded.shellReuseIdentity }
+        : {}),
     });
     return receipt;
   }
@@ -4842,6 +4875,7 @@ export class SqliteRunStore implements RunStore {
         civilizationObserver,
         checkpoint,
       }),
+      shellReuseAuthority: Object.freeze({ runId: normalizedId }),
     });
 
     return {

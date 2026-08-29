@@ -82,7 +82,13 @@ import {
   personTrustsEraPrediction,
 } from '../domain/era-prediction';
 import { observedHibernationEntryEvidence } from '../domain/hibernation-entry';
-import { intentById, livingPeople, personById } from '../domain/state-index';
+import {
+  hasKnowledgeFact,
+  intentById,
+  knowledgeFactById,
+  livingPeople,
+  personById,
+} from '../domain/state-index';
 import {
   buildMechanicalPowerServiceOptions,
   buildWaterCurrentObservationOptions,
@@ -738,7 +744,7 @@ function buildOptions(
       risks: species.aggression > 0 ? ['动物可能反击'] : [],
     });
   }
-  const unknownAnimal = nearbyAnimals.find((animal) => !person.knowledge.some((fact) => fact.id === `animal:${animal.speciesId}`));
+  const unknownAnimal = nearbyAnimals.find((animal) => !hasKnowledgeFact(person, `animal:${animal.speciesId}`));
   if (unknownAnimal) options.push({
     id: `attend-animal:${unknownAnimal.id}`,
     summary: `持续观察${animalSpecies(unknownAnimal.speciesId).name}`,
@@ -963,7 +969,7 @@ function buildOptions(
       }).slice(0, 3);
     for (const [targetMaterial, soilCell] of candidates) {
       const position = topPosition(state.world.grid, soilCell);
-      const technique = person.knowledge.find((fact) => fact.id === `technique:combine:${Material.Seed}:${targetMaterial}:${Material.CropSprout}`);
+      const technique = knowledgeFactById(person, `technique:combine:${Material.Seed}:${targetMaterial}:${Material.CropSprout}`);
       options.push({
         id: `${technique ? 'repeat-combine' : 'try-combine'}:${Material.Seed}:${targetMaterial}:${soilCell}:${seed.id}`,
         summary: technique
@@ -1265,7 +1271,7 @@ function buildOptions(
         || fact.kind !== 'technique'
         || fact.confidence < 55) return [];
       const learner = conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55));
+        && !hasKnowledgeFact(other, fact.id, (known) => known.confidence >= 55));
       return learner ? [{ fact, learner }] : [];
     })[0]
     : undefined;
@@ -1273,7 +1279,7 @@ function buildOptions(
     .filter((fact) => (fact.kind === 'codebook' || fact.kind === 'technique')
       && fact.confidence >= 55
       && conversationalPeople.some((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !other.knowledge.some((known) => known.id === fact.id && known.confidence >= 55)))
+        && !hasKnowledgeFact(other, fact.id, (known) => known.confidence >= 55)))
     .sort((a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id));
   const teachableFacts = [
     ...(projectTeaching ? [projectTeaching.fact] : []),
@@ -1289,7 +1295,7 @@ function buildOptions(
       : undefined;
     const learner = prioritizedProjectTeaching?.learner ?? prioritizedMechanicalTeaching?.learner
       ?? conversationalPeople.find((other) => ageMonths(other, atMonth) >= MIN_TEACHING_AGE_MONTHS
-        && !other.knowledge.some((known) => known.id === teachable.id && known.confidence >= learnedThreshold));
+        && !hasKnowledgeFact(other, teachable.id, (known) => known.confidence >= learnedThreshold));
     if (!learner) continue;
     const representationId = prioritizedProjectTeaching
       ? `teach:${atMonth}:${person.id}:${teachable.id}:${learner.id}:${prioritizedProjectTeaching.request.requestEventId}`
@@ -1376,7 +1382,7 @@ function buildOptions(
 
   const unknown = visibleCells.find((cellId) => {
     const material = materialDefinition(surfaceMaterial(state.world.grid, cellId));
-    return !person.knowledge.some((fact) => fact.id === `material:${material.id}`);
+    return !hasKnowledgeFact(person, `material:${material.id}`);
   });
   if (unknown !== undefined) {
     const position = topPosition(state.world.grid, unknown);

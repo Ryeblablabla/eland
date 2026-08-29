@@ -21,6 +21,15 @@ interface IntentIndex extends AppendOnlyIdIndex<Intent> {
   byOwnerId: Map<PersonId, Intent[]>;
 }
 
+type KnowledgeFact = PersonState['knowledge'][number];
+
+interface KnowledgeIndex {
+  indexedLength: number;
+  lastIndexedFact?: KnowledgeFact;
+  /** Unique ids keep one ref; only malformed duplicates allocate a candidate array. */
+  byId: Map<string, KnowledgeFact | KnowledgeFact[]>;
+}
+
 type AgreementState = SimulationState['agreements'][number];
 
 interface ProjectLifecycleIndex {
@@ -39,6 +48,8 @@ interface AgreementLifecycleIndex {
 const personIndexes = new WeakMap<SimulationState['people'], PersonIndex>();
 const projectIndexes = new WeakMap<SimulationState['projects'], ProjectIndex>();
 const intentIndexes = new WeakMap<SimulationState['intents'], IntentIndex>();
+const knowledgeIndexes = new WeakMap<PersonState['knowledge'], KnowledgeIndex>();
+const linearKnowledgeLookupDepths = new WeakMap<PersonState['knowledge'], number>();
 const projectLifecycleIndexes = new WeakMap<SimulationState['projects'], ProjectLifecycleIndex>();
 const agreementLifecycleIndexes = new WeakMap<SimulationState['agreements'], AgreementLifecycleIndex>();
 
@@ -199,6 +210,27 @@ function intentIndex(state: Pick<DecisionAuthorityState, 'intents'>): IntentInde
   return index;
 }
 
+function knowledgeIndex(person: Pick<PersonState, 'knowledge'>): KnowledgeIndex {
+  const knowledge = person.knowledge;
+  let index = knowledgeIndexes.get(knowledge);
+  if (!index
+    || index.indexedLength > knowledge.length
+    || (index.indexedLength > 0 && knowledge[index.indexedLength - 1] !== index.lastIndexedFact)) {
+    index = { indexedLength: 0, byId: new Map() };
+    knowledgeIndexes.set(knowledge, index);
+  }
+  for (let offset = index.indexedLength; offset < knowledge.length; offset += 1) {
+    const fact = knowledge[offset];
+    const matching = index.byId.get(fact.id);
+    if (!matching) index.byId.set(fact.id, fact);
+    else if (Array.isArray(matching)) matching.push(fact);
+    else index.byId.set(fact.id, [matching, fact]);
+  }
+  index.indexedLength = knowledge.length;
+  index.lastIndexedFact = knowledge.at(-1);
+  return index;
+}
+
 export function personById(
   state: Pick<DecisionAuthorityState, 'people'>,
   personId: PersonId,
@@ -240,6 +272,62 @@ export function intentsOwnedBy(
   ownerId: PersonId,
 ): readonly Intent[] {
   return intentIndex(state).byOwnerId.get(ownerId) ?? [];
+}
+
+/**
+ * Exact knowledge-id lookup in authoritative insertion order. Knowledge is
+ * append-only in normal simulation; confidence and sources remain live on the
+ * returned fact. Keeping every same-id candidate preserves Array.find/some
+ * semantics for malformed legacy duplicates when a predicate is supplied.
+ */
+export function knowledgeFactById(
+  person: Pick<PersonState, 'knowledge'>,
+  factId: string,
+  predicate: (fact: KnowledgeFact) => boolean = () => true,
+): KnowledgeFact | undefined {
+  if ((linearKnowledgeLookupDepths.get(person.knowledge) ?? 0) > 0) {
+    return person.knowledge.find((fact) => fact.id === factId && predicate(fact));
+  }
+  const matching = knowledgeIndex(person).byId.get(factId);
+  if (!matching) return undefined;
+  if (Array.isArray(matching)) return matching.find(predicate);
+  return predicate(matching) ? matching : undefined;
+}
+
+export function hasKnowledgeFact(
+  person: Pick<PersonState, 'knowledge'>,
+  factId: string,
+  predicate: (fact: KnowledgeFact) => boolean = () => true,
+): boolean {
+  return knowledgeFactById(person, factId, predicate) !== undefined;
+}
+
+/** Synchronous process-local test seam; it never enters authoritative state or serialization. */
+export function withLinearKnowledgeLookupsForDiagnostics<T>(
+  people: readonly Pick<PersonState, 'knowledge'>[],
+  work: () => T,
+): T {
+  const knowledgeArrays = people.map((person) => person.knowledge);
+  knowledgeArrays.forEach((knowledge) => {
+    linearKnowledgeLookupDepths.set(
+      knowledge,
+      (linearKnowledgeLookupDepths.get(knowledge) ?? 0) + 1,
+    );
+  });
+  try {
+    return work();
+  } finally {
+    knowledgeArrays.forEach((knowledge) => {
+      const depth = linearKnowledgeLookupDepths.get(knowledge) ?? 0;
+      if (depth <= 1) linearKnowledgeLookupDepths.delete(knowledge);
+      else linearKnowledgeLookupDepths.set(knowledge, depth - 1);
+    });
+  }
+}
+
+/** Exceptional same-array rewrites must discard the append-only sidecar. */
+export function invalidateKnowledgeIndex(person: Pick<PersonState, 'knowledge'>): void {
+  knowledgeIndexes.delete(person.knowledge);
 }
 
 /** Ordered conservative superset; synchronizeProject remains authoritative. */

@@ -64,7 +64,14 @@ import {
 import { humanReproductionCapacityFactor, HUMAN_SOFT_CARRYING_CAPACITY } from './population-capacity';
 import { hasReproductiveRecoveryCondition } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
-import { intentById, livingPeople, personById, projectById } from './state-index';
+import {
+  hasKnowledgeFact,
+  intentById,
+  knowledgeFactById,
+  livingPeople,
+  personById,
+  projectById,
+} from './state-index';
 import {
   isActionableChaosPrediction,
   personTrustsEraPrediction,
@@ -318,9 +325,10 @@ export function actionSatisfiesRecordReplicationReceipt(
   const basis = intent?.recordUseBasis;
   const project = projectById(state, goal.projectId);
   const record = state.records.find((candidate) => candidate.id === goal.recordId && candidate.kind === 'technique');
-  const reliableTechnique = person?.knowledge.find((knowledge) => knowledge.id === goal.techniqueId
-    && knowledge.kind === 'technique'
-    && knowledge.confidence >= 55);
+  const reliableTechnique = person
+    ? knowledgeFactById(person, goal.techniqueId, (knowledge) => knowledge.kind === 'technique'
+      && knowledge.confidence >= 55)
+    : undefined;
   if (!person
     || !intent
     || (intent.status !== 'active' && intent.status !== 'completed')
@@ -445,7 +453,10 @@ export function goalSatisfied(
   if (goal.kind === 'at-cell') return person.position.cellId === goal.cellId;
   if (goal.kind === 'sheltered') return Boolean(shelterGeometryAt(state.world.grid, person.position));
   if (goal.kind === 'voxel-is') return voxelAt(state.world.grid, goal.position.x, goal.position.y, goal.position.z) === goal.materialId;
-  if (goal.kind === 'knowledge') return (goal.personId ? personById(state, goal.personId) : person)?.knowledge.some((fact) => fact.id === goal.factId && fact.confidence >= (goal.minConfidence ?? 0)) ?? false;
+  if (goal.kind === 'knowledge') {
+    const owner = goal.personId ? personById(state, goal.personId) : person;
+    return Boolean(owner && hasKnowledgeFact(owner, goal.factId, (fact) => fact.confidence >= (goal.minConfidence ?? 0)));
+  }
   if (goal.kind === 'record-replication-receipt') {
     const project = projectById(state, goal.projectId);
     const record = state.records.find((candidate) => candidate.id === goal.recordId);
@@ -902,7 +913,7 @@ function executeSeparate(state: SimulationState, person: PersonState, action: Ex
     setVoxel(state.world.grid, x, y, z, replacement);
     output.push(...rule.outputs);
     const techniqueId = separationTechniqueId(rule);
-    const known = person.knowledge.find((fact) => fact.id === techniqueId);
+    const known = knowledgeFactById(person, techniqueId);
     if (known) {
       known.confidence = clamp(known.confidence + 18);
       known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
@@ -974,7 +985,7 @@ function executeInventoryCombine(state: SimulationState, person: PersonState, st
     : addInventory(person, rule.output.materialId, outputQuantity, [eventId], `stack-${person.id}-${rule.output.materialId}-${atMonth}`);
   if (exactMechanicalComponent) person.inventory.push(outputStack);
   const techniqueId = inventoryCombinationTechniqueId(rule);
-  const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  const known = knowledgeFactById(person, techniqueId);
   if (known) {
     known.confidence = clamp(known.confidence + 18);
     known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
@@ -1071,7 +1082,7 @@ function executeCombine(state: SimulationState, person: PersonState, targets: Wo
     state.containers = state.containers.filter((candidate) => candidate.id !== containerIdAt(voxelRef.position));
   }
   const techniqueId = `technique:combine:${stack.materialId}:${current}:${output}`;
-  const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+  const knownTechnique = knowledgeFactById(person, techniqueId);
   if (knownTechnique) {
     knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
     knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
@@ -1130,7 +1141,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
     );
     rememberMaterialPlace(person, rule.outputMaterialId, voxelRef.position, atMonth, eventId);
     const techniqueId = groundToolInteractionTechniqueId(rule);
-    const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+    const knownTechnique = knowledgeFactById(person, techniqueId);
     if (knownTechnique) {
       knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
       knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
@@ -1188,7 +1199,7 @@ function executeExert(state: SimulationState, person: PersonState, action: Extra
       : undefined;
     if (rule.outputLocation === 'world') setVoxel(state.world.grid, outputPosition.x, outputPosition.y, outputPosition.z, rule.outputMaterialId);
     const techniqueId = exertionTechniqueId(rule);
-    const knownTechnique = person.knowledge.find((fact) => fact.id === techniqueId);
+    const knownTechnique = knowledgeFactById(person, techniqueId);
     if (knownTechnique) {
       knownTechnique.confidence = clamp(knownTechnique.confidence + 18);
       knownTechnique.sourceEventIds = [...new Set([...knownTechnique.sourceEventIds, eventId])].slice(-24);
@@ -1621,7 +1632,7 @@ function executeHunt(state: SimulationState, person: PersonState, action: Extrac
     return [{ materialId: product.materialId, quantity }];
   });
   const techniqueId = `technique:hunt:${animal.speciesId}:${tool?.materialId ?? 'hand'}`;
-  const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  const known = knowledgeFactById(person, techniqueId);
   if (known) {
     known.confidence = clamp(known.confidence + 18);
     known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);
@@ -1657,7 +1668,7 @@ function executeExpose(state: SimulationState, person: PersonState, targets: Wor
   removeEmptyStacks(person);
   const outputStack = addInventory(person, rule.outputMaterialId, 1, [eventId], `stack-${person.id}-${rule.outputMaterialId}-${atMonth}`);
   const techniqueId = exposureTechniqueId(rule);
-  const known = person.knowledge.find((fact) => fact.id === techniqueId);
+  const known = knowledgeFactById(person, techniqueId);
   if (known) {
     known.confidence = clamp(known.confidence + 18);
     known.sourceEventIds = [...new Set([...known.sourceEventIds, eventId])].slice(-24);

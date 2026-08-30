@@ -8,7 +8,6 @@ import {
   Brain,
   Droplets,
   Eye,
-  Footprints,
   Heart,
   Lock,
   MessageCircle,
@@ -23,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { AgentHistoryView, SocietyAgent, SocietyState, StructureView } from '@/game/societyContract';
+import type { AgentMemoryView, SocietyAgent, SocietyState, StructureView } from '@/game/societyContract';
 import PersonConversation from './PersonConversation';
 import './ObservationUI.css';
 
@@ -51,10 +50,10 @@ interface FocusInspectorProps {
   runId: string;
   observedBranchId: string;
   observedMonth: number;
-  agentHistory: AgentHistoryView | null;
+  agentMemory: AgentMemoryView | null;
   agentSubtab: AgentSubtab;
-  agentHistoryLoading: boolean;
-  agentHistoryError: string;
+  agentMemoryLoading: boolean;
+  agentMemoryError: string;
   onEnterEmbodiment?: (agentId: string) => void;
   onClose: () => void;
   onAgentSubtabChange: (subtab: AgentSubtab) => void;
@@ -66,7 +65,7 @@ const AGENT_SUBTABS = [
   { key: 'overview', label: '概况', icon: UserRound },
   { key: 'conversation', label: '对话', shortcut: 'C', icon: MessageCircle },
   { key: 'inventory', label: '背包', shortcut: 'B', icon: Backpack },
-  { key: 'history', label: '行动', shortcut: 'H', icon: Footprints },
+  { key: 'history', label: '记忆', shortcut: 'H', icon: Brain },
 ] satisfies Array<{
   key: AgentSubtab;
   label: string;
@@ -267,41 +266,58 @@ function PersonRelationGraph({ agent }: { agent: SocietyAgent }) {
   );
 }
 
-function PersonActionHistory({
+const MEMORY_LANE_LABEL = {
+  episodic: '亲历',
+  semantic: '认识',
+  social: '关系印象',
+  procedural: '做事经验',
+  prospective: '仍在意',
+  dialogue: '对话',
+} as const;
+
+const MEMORY_PRECISION_LABEL = {
+  exact: '记得很清楚',
+  specific: '还记得细节',
+  general: '只剩概括',
+  faint: '已经模糊',
+} as const;
+
+function PersonMemory({
   agent,
-  history,
+  memory,
   loading,
   error,
 }: {
   agent: SocietyAgent;
-  history: AgentHistoryView | null;
+  memory: AgentMemoryView | null;
   loading: boolean;
   error: string;
 }) {
-  const events = [...(history?.events ?? [])].reverse();
+  const remembered = memory?.remembered ?? [];
   return (
-    <section aria-label={`${agent.name}的行动历史`} className="person-action-history">
+    <section aria-label={`${agent.name}此刻能想起的记忆`} className="person-action-history">
       <div className="person-action-history__heading">
-        <h3>行动历史</h3>
-        {!loading && !error && <span>{events.length} 条</span>}
+        <h3>此刻记得</h3>
+        {!loading && !error && <span>{remembered.length} 条</span>}
       </div>
-      {loading && events.length === 0 ? (
-        <p className="person-action-history__empty">正在读取行动记录…</p>
+      <p className="person-action-history__detail">这是人物现在还能召回的内容，不是完整历史档案。细节会被压缩、模糊或遗忘。</p>
+      {loading && remembered.length === 0 ? (
+        <p className="person-action-history__empty">正在回忆…</p>
       ) : error ? (
         <p className="person-action-history__error">{error}</p>
-      ) : events.length === 0 ? (
-        <p className="person-action-history__empty">暂无行动记录</p>
+      ) : remembered.length === 0 ? (
+        <p className="person-action-history__empty">此刻没有能清楚想起的事</p>
       ) : (
         <ol className="person-action-history__list">
-          {events.map((event) => (
-            <li className={`person-action-history__item person-action-history__item--${event.kind}`} key={event.id}>
+          {remembered.map((item) => (
+            <li className={`person-action-history__item person-action-history__item--${item.lane}`} key={item.id}>
               <div className="person-action-history__meta">
-                <time>{monthLabel(event.month)}</time>
-                {event.actionTick !== undefined && <span>第 {event.actionTick} 刻</span>}
+                <time>{item.firstMonth === item.lastMonth ? monthLabel(item.lastMonth) : `${monthLabel(item.firstMonth)}—${monthLabel(item.lastMonth)}`}</time>
+                <span>{MEMORY_PRECISION_LABEL[item.precision]}</span>
               </div>
-              <strong>{event.label}</strong>
-              <p>{event.summary}</p>
-              {event.detail && <p className="person-action-history__detail">{event.detail}</p>}
+              <strong>{MEMORY_LANE_LABEL[item.lane]}{item.unresolved ? ' · 还没放下' : ''}</strong>
+              <p>{item.gist}</p>
+              {item.personNames.length > 0 && <p className="person-action-history__detail">涉及：{item.personNames.join('、')}</p>}
             </li>
           ))}
         </ol>
@@ -371,10 +387,10 @@ export function FocusInspector({
   runId,
   observedBranchId,
   observedMonth,
-  agentHistory,
+  agentMemory,
   agentSubtab,
-  agentHistoryLoading,
-  agentHistoryError,
+  agentMemoryLoading,
+  agentMemoryError,
   onEnterEmbodiment,
   onClose,
   onAgentSubtabChange,
@@ -588,11 +604,11 @@ export function FocusInspector({
               runId={runId}
             />
           ) : agentSubtab === 'history' && agent ? (
-            <PersonActionHistory
+            <PersonMemory
               agent={agent}
-              error={agentHistoryError}
-              history={agentHistory}
-              loading={agentHistoryLoading}
+              error={agentMemoryError}
+              memory={agentMemory}
+              loading={agentMemoryLoading}
             />
           ) : (
           <>

@@ -1,44 +1,45 @@
-import type { DecisionRequestContext } from '../src/game/eland/kimi-decider';
+import {
+  type CharacterAgendaSummary,
+  type DecisionRequestContext,
+} from '../src/game/eland/application/model-decision/decision-context';
+import {
+  buildCharacterAgendaProbeCandidates,
+  buildDecisionProbeHandleMap,
+  type DecisionProbeHandleMap,
+} from '../src/game/eland/application/model-decision/capability-handles';
+import {
+  buildCompactDecisionRequestContext,
+  type CompactDecisionRequestContext,
+} from '../src/game/eland/application/model-decision/compact-context';
 import { validateActionOptionSemantics } from '../src/game/eland/domain/action-option-semantics';
-import type { Decision, TokenUsage } from '../src/game/eland/simulation';
+import type {
+  CharacterAgendaProbe,
+  CharacterAgendaProposal,
+  CharacterAgendaUpdate,
+} from '../src/game/eland/domain/character-agenda';
+import type { Decision, MemoryConsolidationUpdate, TokenUsage } from '../src/game/eland/simulation';
 import { loadServerEnvValue } from './env';
 import { ModelRequestError, requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
+import {
+  CHARACTER_AGENDA_EXTENSION_V2,
+  DECISION_SYSTEM_PROMPT_V2,
+  MEMORY_CONSOLIDATION_EXTENSION_V2,
+} from './agent-prompt-templates';
+
+type PublicDecisionRequestContext = Omit<DecisionRequestContext, 'person' | 'options' | 'followUpOptions'> & {
+  person: Omit<DecisionRequestContext['person'], 'characterAgenda' | 'memories'> & {
+    characterAgenda: Array<Omit<CharacterAgendaSummary, 'id' | 'basisKey' | 'projectIds'>>;
+    memories: Array<Omit<DecisionRequestContext['person']['memories'][number], 'id' | 'sourceEventIds'> & { handle?: string }>;
+  };
+  options: Array<
+    Omit<DecisionRequestContext['options'][number], 'characterAgendaItemId' | 'projectId' | 'openConversationGrounding'>
+    & { groundingFacts?: Array<{ handle: string; kind: string; summary: string }> }
+  >;
+  followUpOptions: Array<Omit<DecisionRequestContext['followUpOptions'][number], 'matchesOptionIds'>>;
+};
 
 const MAX_AGENTS = 12;
-
-const SYSTEM_PROMPT = [
-  '你是物质像素世界中的一个普通人。你只知道输入里的身体、状态、私有背包、当前意图、眼前人物、物质和行动选项。',
-  'activePressures 是当前状态正在造成的真实后果；材料 properties 是可观察或已知的同类物质性质，不代表你已经知道隐藏配方。危险状态加重时，应比较能够改变长期暴露的材料试验、建造、移动与合作机会，而不是只重复囤积已经充足的物资。',
-  '吃、喝等生存反射和既有意图的日常执行由规则引擎负责。你只选择重要的战略或社会意图，不要输出 continue。',
-  '优先处理没有持续目标的人，以及停滞但尚未完成的生产状态目标。普通寒暄、重复邀请和重复提议通常应低于采集、制作、建造、储藏、试验与履约。',
-  'activeIntent.lifecycle.reviewAtMonth 是未完成意图的到期复核月份。lifecycle.completion="on-achievement" 表示目标一旦真实达成就结算；reviewAtMonth 不是要求把已达成状态维持到该月的锁。',
-  '只有 lifecycle.completion="maintain-state" 才要求把已达成状态持续维持到 lifecycle.maintainUntilMonth。缺少 lifecycle 时，activeIntent.stateGoalUntilMonth 只是兼容旧存档的维持与复核字段。除非出现紧急危险、履约义务或明显更高价值的机会，不要仅因本月没有新动作而改换尚未完成的目标。',
-  '输入中的 options 都已通过引擎的身体、物质、距离、关系事实与权利前提检查；它们是当下可以尝试的可行意图，不是引擎建议。是否愿意做，应由你结合 HEXACO personality、motiveSensitivity、记忆、关系和风险决定。',
-  'option.id 只是选择句柄，不表达行动类别。required-response、commitment-action、edge、reproduction、conversation 与社会协作语境只能读取 option.semantics；不得从 id 文本猜测。',
-  'person.cognition 是规则引擎从本人可感知压力、有效人格、结构化亲历记忆和个人行动结果后验生成的只读因果 BDI 投影。needs 表示此刻欲望强度，outcomeBeliefs 表示本人过去经验形成的不确定先验，optionAppraisals 用于解释各合法候选如何回应这些需要。',
-  'cognition 只帮助比较输入中已经存在的合法 options：不得把它当成新世界事实、隐藏知识或已发生结果，也不得据此创造候选、跳过必须回应与履约、绕过物理或领域合法性。',
-  'person.description 只是档案原型与外貌线索，不是人格、技能、知识或历史事实；与结构化 personality 或 soul 冲突时以后两者为准。',
-  'option.socialRepetition 若存在，是从本人仍保留的沟通记忆计算出的软成本，不是合法性门禁；缺省表示该选项不是可选社交发起。负分表示本人记得曾向同一受众谈过同一语义主题，而当前没有新的事实依据；上次未回应、拒绝、保留或违约时成本更高。',
-  'socialRepetition.hasNewEvidence=true 表示同一主题出现了本人可追溯的新事实，可以重新权衡。与求助、照护或困境直接相关的显著身体危险也可能抵消旧话题成本；无关的危险不能抬高交换、生殖、共同体邀请或预言。',
-  '必须回应和履约不携带 socialRepetition，等价于重复成本为 0。不要把 socialRepetition 当成禁止选择：有相关新证据、相关紧迫压力或更高总体价值时仍可重提；没有这些理由时应尊重负分并优先做更有价值的事。',
-  'position、visiblePeople 和 visibleDrops 中的 z 是双脚或物品所在高度；同一 cellId 但 z 不同不等于近身。建造选项是不同的真实空气体素连接位置，你可以依据“落地、上方、侧面、头顶”等摘要选择空间意图，物理可行性和效果仍由引擎结算。',
-  '如果行动选项是同一提议的 accept 与 reject，你必须依据关系、记忆、风险、可履行性和自身倾向选择其中一个，不能 idle。',
-  '共同体中的 decision-rule 是成员已接受的选择方法，mandate 是按该方法授予具体人物、具体物质和期限的协调职责；它们不会让组织自动行动，也不转移私人背包。是否提议、接受、交付或分配，仍是每个人自己的决定。',
-  '选项含 communicationKind 时必须增加 utterance，用第一人称自主写一句实际会说的话。option.summary 只是规划标签，不是规则台词，不得照抄；以 option.speechAct 的结构化话题、提议、引用与立场为表达边界。',
-  'person.soul 是由长期人格确定性投影出的稳定主观视角，可以参与当前合法 option 的自主权衡与 utterance；从 sceneFacets 中只激活与当前候选和处境最接近的一个侧面，按 styleMatrix 表达，不要把全部人格平均进一句话。Soul 不创造候选、事实、记忆或需要，也不得绕过必须回应、履约和物理合法性。',
-  'utterance 还要服从人物的年龄与 communication 能力；孩子或表达能力有限的人应说得更短、更具体，不能照抄 Soul 里的成年书面句式。',
-  'utterance 的语气、直接程度和用词应体现有效 HEXACO、motiveSensitivity、听者关系、身体处境与最相关的有来源记忆；这些上下文只能改变表达风格，不能增加新事实或承诺。',
-  '如果所选选项 requiresFollowUp=true，它是一项生活对话决策：还必须从 followUpOptions 选择 followUpOptionId，表示说完后自己真正要执行的行动。对话与后续行动属于同一个意图。',
-  '对话选项若包含 communicatesFactId，表示这次话语会传递自己已经拥有、且有来源的那项认识；utterance 必须忠实表达 person.knowledge 中同 id 的认识。听者只会把它当作你的主张，不会因听见一次就自动核验为真。',
-  '此时 utterance 必须与 followUpOptionId 一致，清楚表达自己接下来准备做什么；不要只说空泛的关心、讨论或计划。',
-  'followUpOptionId 只能引用 followUpOptions 中的 id。不得把自然语言当成已经完成的行动，也不得选择另一个 communicate 作为后续行动。',
-  '严格输出一个 JSON 对象，不输出解释。格式只能是以下之一：',
-  '{"kind":"start","optionId":"输入中的行动选项id","followUpOptionId":"requiresFollowUp=true 时必填","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
-  '{"kind":"revise","intentId":"当前意图id","optionId":"输入中的行动选项id","followUpOptionId":"requiresFollowUp=true 时必填","reason":"简短理由","utterance":"仅社会意图需要的实际话语"}',
-  '{"kind":"idle","reason":"简短理由"}',
-  '只能引用输入 id，不得凭空生成物质、地点或能力。生存反射已经由引擎处理；请比较关系、记忆、承诺、风险和长期收益。',
-].join('\n');
 
 function text(value: unknown, max = 120): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -58,6 +59,360 @@ function decisionMaxOutputTokens(): number {
   return Number.isFinite(configured) ? Math.max(128, Math.min(2_000, Math.floor(configured))) : 600;
 }
 
+function usesCompactDecisionContext(): boolean {
+  return loadServerEnvValue('MODEL_DECISION_CONTEXT_MODE').trim().toLowerCase() !== 'full';
+}
+
+function usesCharacterAgendaProposal(): boolean {
+  const configured = loadServerEnvValue('MODEL_CHARACTER_AGENDA_MODE').trim().toLowerCase();
+  return configured !== 'off' && configured !== 'disabled' && configured !== 'none';
+}
+
+export function buildDecisionSystemPrompt(characterAgendaProposal = usesCharacterAgendaProposal()): string {
+  return [
+    DECISION_SYSTEM_PROMPT_V2,
+    ...(characterAgendaProposal ? [CHARACTER_AGENDA_EXTENSION_V2] : []),
+    MEMORY_CONSOLIDATION_EXTENSION_V2,
+  ].join('\n');
+}
+
+export interface DecisionModelRequestProtocol {
+  requestContext: (PublicDecisionRequestContext | CompactDecisionRequestContext) & {
+    agendaProbeCandidates?: ReturnType<typeof buildCharacterAgendaProbeCandidates>;
+  };
+  handles: DecisionProbeHandleMap;
+  compact: boolean;
+  characterAgendaProposal: boolean;
+  memoryConsolidation: boolean;
+}
+
+function withoutOpenConversationSourceIds<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutOpenConversationSourceIds) as T;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => key !== 'basisKey'
+      && key !== 'sourceFactIds'
+      && key !== 'sourceEventIds'
+      && key !== 'openGroundingCompiled')
+    .map(([key, item]) => [key, withoutOpenConversationSourceIds(item)])) as T;
+}
+
+function isModelVisibleDecisionOption(
+  option: DecisionRequestContext['options'][number],
+): boolean {
+  return !(option.semantics.conversation?.turn === 'opening'
+    && option.semantics.conversation.topic !== 'open');
+}
+
+export function buildDecisionModelRequestProtocol(
+  context: DecisionRequestContext,
+  options: { compact?: boolean; characterAgendaProposal?: boolean } = {},
+): DecisionModelRequestProtocol {
+  const characterAgendaProposal = options.characterAgendaProposal ?? usesCharacterAgendaProposal();
+  // Proposal mode must use the request-scoped capability envelope. The full
+  // legacy context contains stable runtime ids intended only for option choice.
+  const compact = characterAgendaProposal || (options.compact ?? usesCompactDecisionContext());
+  const handles = buildDecisionProbeHandleMap(context);
+  const base = compact
+    ? buildCompactDecisionRequestContext(context, handles)
+    : {
+        ...context,
+        person: {
+          ...context.person,
+          memories: context.person.memories.map(({ id, sourceEventIds: _sources, ...memory }) => ({
+            ...memory,
+            ...(handles.memories.find((candidate) => candidate.itemId === id)?.handle
+              ? { handle: handles.memories.find((candidate) => candidate.itemId === id)!.handle }
+              : {}),
+          })),
+          characterAgenda: (context.person.characterAgenda ?? []).slice(0, 4)
+            .map(({ id, basisKey, projectIds, ...item }) => item),
+        },
+        options: context.options
+          .filter(isModelVisibleDecisionOption)
+          .map(({ characterAgendaItemId, projectId, openConversationGrounding, ...option }) => ({
+            ...option,
+            ...(openConversationGrounding && option.speechAct
+              ? { speechAct: withoutOpenConversationSourceIds(option.speechAct) }
+              : {}),
+            ...(openConversationGrounding ? {
+              groundingFacts: handles.groundingFacts
+                .filter((fact) => fact.optionId === option.id)
+                .map(({ handle, kind, summary }) => ({ handle, kind, summary })),
+            } : {}),
+          })),
+        followUpOptions: context.followUpOptions.map(({ matchesOptionIds, ...option }) => option),
+      };
+  return {
+    requestContext: characterAgendaProposal
+      ? { ...base, agendaProbeCandidates: buildCharacterAgendaProbeCandidates(context, handles) }
+      : base,
+    handles,
+    compact,
+    characterAgendaProposal,
+    memoryConsolidation: handles.memories.length > 0,
+  };
+}
+
+export function sanitizeMemoryConsolidation(
+  input: unknown,
+  handles: DecisionProbeHandleMap,
+): MemoryConsolidationUpdate | undefined {
+  const raw = record(input);
+  const sourceHandles = Array.isArray(raw?.sourceHandles)
+    ? [...new Set(raw.sourceHandles.map((value) => text(value, 24)).filter(Boolean))].slice(0, 6)
+    : [];
+  if (!raw || sourceHandles.length === 0) return undefined;
+  const sourceItemIds = sourceHandles.map((handle) => handles.memories.find((item) => item.handle === handle)?.itemId);
+  if (sourceItemIds.some((itemId) => !itemId)) return undefined;
+  const gist = text(raw.gist, 260);
+  if (!gist) return undefined;
+  const topicKeys = Array.isArray(raw.topicKeys)
+    ? [...new Set(raw.topicKeys.map((value) => text(value, 60)).filter(Boolean))].slice(0, 4)
+    : [];
+  return {
+    sourceItemIds: sourceItemIds as string[],
+    gist,
+    topicKeys,
+    unresolved: raw.unresolved === true,
+    emotionalValence: typeof raw.emotionalValence === 'number' && Number.isFinite(raw.emotionalValence)
+      ? Math.max(-1, Math.min(1, raw.emotionalValence))
+      : 0,
+  };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(minimum, Math.min(maximum, Math.round(value)))
+    : fallback;
+}
+
+function heldStackId(handles: DecisionProbeHandleMap, handle: unknown): string | undefined {
+  const normalized = text(handle, 24);
+  return handles.held.find((item) => item.handle === normalized)?.stackId;
+}
+
+function voxelPosition(
+  handles: DecisionProbeHandleMap,
+  handle: unknown,
+): { x: number; y: number; z: number } | undefined {
+  const normalized = text(handle, 24);
+  const position = handles.voxels.find((item) => item.handle === normalized)?.position;
+  return position ? { ...position } : undefined;
+}
+
+function observationProbe(
+  handles: DecisionProbeHandleMap,
+  handle: unknown,
+): Extract<CharacterAgendaProbe, { kind: 'observe' }> | undefined {
+  const normalized = text(handle, 24);
+  const ownStackId = heldStackId(handles, normalized);
+  if (ownStackId) return { kind: 'observe', target: { kind: 'own-inventory-stack', stackId: ownStackId } };
+  const voxel = voxelPosition(handles, normalized);
+  if (voxel) return { kind: 'observe', target: { kind: 'voxel', position: voxel } };
+  const visible = handles.visible.find((item) => item.handle === normalized);
+  if (!visible) return undefined;
+  if (visible.kind === 'drop') return { kind: 'observe', target: { kind: 'drop', dropId: visible.dropId } };
+  if (visible.kind === 'person') return { kind: 'observe', target: { kind: 'person', personId: visible.personId } };
+  if (visible.kind === 'animal') return { kind: 'observe', target: { kind: 'animal', animalId: visible.animalId } };
+  return { kind: 'observe', target: { kind: 'container', containerId: visible.containerId } };
+}
+
+function sanitizedProbe(input: unknown, handles: DecisionProbeHandleMap): CharacterAgendaProbe | undefined {
+  const raw = record(input);
+  if (!raw) return undefined;
+  const kind = text(raw.kind, 24);
+  if (kind === 'observe') return observationProbe(handles, raw.targetHandle);
+  if (kind === 'combine') {
+    const stackHandles = Array.isArray(raw.stackHandles) ? raw.stackHandles : [];
+    if (stackHandles.length < 2 || stackHandles.length > 3) return undefined;
+    const stackIds = stackHandles.map((handle) => heldStackId(handles, handle));
+    if (stackIds.some((stackId) => !stackId) || new Set(stackIds).size !== stackIds.length) return undefined;
+    return stackIds.length === 2
+      ? { kind: 'combine', ownStackIds: [stackIds[0]!, stackIds[1]!] }
+      : { kind: 'combine', ownStackIds: [stackIds[0]!, stackIds[1]!, stackIds[2]!] };
+  }
+  if (kind === 'expose') {
+    const inputStackId = heldStackId(handles, raw.inputHandle);
+    const target = voxelPosition(handles, raw.targetHandle);
+    return inputStackId && target
+      ? { kind: 'expose', inputStackId, target: { kind: 'voxel', position: target } }
+      : undefined;
+  }
+  if (kind === 'exert') {
+    const toolStackId = heldStackId(handles, raw.toolHandle);
+    const inputStackId = heldStackId(handles, raw.inputHandle);
+    const target = voxelPosition(handles, raw.targetHandle);
+    return toolStackId && inputStackId && toolStackId !== inputStackId && target
+      ? { kind: 'exert', toolStackId, inputStackId, target: { kind: 'voxel', position: target } }
+      : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Rebuilds a proposal from an allow-list. Model-supplied facts, recipes,
+ * outputs, knowledge and dispositions never survive this boundary.
+ */
+export function sanitizeCharacterAgendaProposal(
+  input: unknown,
+  handles: DecisionProbeHandleMap,
+): CharacterAgendaProposal | undefined {
+  const raw = record(input);
+  const approach = record(raw?.approach);
+  const aim = text(raw?.aim, 240);
+  const theme = text(raw?.theme, 80);
+  const summary = text(approach?.summary, 240);
+  if (!raw || !approach || !aim || !theme || !summary) return undefined;
+  const requestedProbe = Object.prototype.hasOwnProperty.call(approach, 'probe');
+  const requestedAgendaHandle = Object.prototype.hasOwnProperty.call(raw, 'agendaHandle');
+  const agendaHandle = text(raw.agendaHandle, 24);
+  const existingAgenda = handles.agendas.find((item) => item.handle === agendaHandle);
+  if (requestedAgendaHandle && !existingAgenda) return undefined;
+  const requestedMemoryHandles = Array.isArray(raw.sourceMemoryHandles)
+    ? [...new Set(raw.sourceMemoryHandles.map((value) => text(value, 24)).filter(Boolean))].slice(0, 4)
+    : [];
+  const sourceMemories = requestedMemoryHandles.map((handle) => (
+    handles.memories.find((memory) => memory.handle === handle)
+  ));
+  if (sourceMemories.some((memory) => !memory)) return undefined;
+  const probe = sanitizedProbe(approach.probe, handles);
+  return {
+    ...(existingAgenda ? { basisKey: existingAgenda.basisKey } : {}),
+    aim,
+    theme,
+    importance: boundedNumber(raw.importance, 50, 0, 100),
+    horizonMonths: boundedNumber(raw.horizonMonths, 12, 6, 240),
+    ...(sourceMemories.length ? {
+      sourceFactIds: [...new Set(sourceMemories.flatMap((memory) => memory!.sourceFactIds))].slice(-24),
+    } : {}),
+    approach: {
+      summary,
+      disposition: probe?.kind === 'observe'
+        ? 'observation-needed'
+        : probe
+          ? 'bounded-experiment'
+          : requestedProbe
+            ? 'missing-affordance'
+            : 'executable-now',
+      ...(probe ? { probe } : {}),
+    },
+  };
+}
+
+/** One-request handles are resolved here; the domain never sees model ids. */
+export function sanitizeCharacterAgendaUpdate(
+  input: unknown,
+  handles: DecisionProbeHandleMap,
+): CharacterAgendaUpdate | undefined {
+  const raw = record(input);
+  const kind = text(raw?.kind, 24);
+  if (!raw || (kind !== 'create' && kind !== 'revise' && kind !== 'pause' && kind !== 'abandon')) {
+    return undefined;
+  }
+  const requestedHandle = Object.prototype.hasOwnProperty.call(raw, 'agendaHandle');
+  const agendaHandle = text(raw.agendaHandle, 24);
+  const existingAgenda = handles.agendas.find((item) => item.handle === agendaHandle);
+  if (kind === 'create') {
+    if (requestedHandle) return undefined;
+    const proposal = sanitizeCharacterAgendaProposal(raw, handles);
+    return proposal ? { kind, proposal } : undefined;
+  }
+  if (!existingAgenda) return undefined;
+  if (kind === 'pause' || kind === 'abandon') {
+    return {
+      kind,
+      basisKey: existingAgenda.basisKey,
+      reason: text(raw.reason, 180) || (kind === 'pause' ? '暂时搁置这个长期关切' : '不再继续这个长期关切'),
+    };
+  }
+  const proposal = sanitizeCharacterAgendaProposal(raw, handles);
+  return proposal ? { kind, proposal } : undefined;
+}
+
+export function expandDecisionModelOutput(
+  context: DecisionRequestContext,
+  input: unknown,
+  protocol: Pick<DecisionModelRequestProtocol, 'requestContext' | 'handles' | 'compact' | 'characterAgendaProposal' | 'memoryConsolidation'>,
+): unknown {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return input;
+  const raw = { ...(input as Record<string, unknown>) };
+  const requestedOption = Object.prototype.hasOwnProperty.call(raw, 'optionId');
+  const requestedFollowUp = Object.prototype.hasOwnProperty.call(raw, 'followUpOptionId');
+  const optionHandle = text(raw.optionId, 100);
+  const followUpHandle = text(raw.followUpOptionId, 100);
+  const exposedOptionIds = new Set(protocol.requestContext.options.map((option) => option.id));
+  const exposedFollowUpIds = new Set(protocol.requestContext.followUpOptions.map((option) => option.id));
+  if ((requestedOption && !exposedOptionIds.has(optionHandle))
+    || (requestedFollowUp && !exposedFollowUpIds.has(followUpHandle))) return null;
+  if (protocol.compact) {
+    const rawKind = text(raw.kind, 100);
+    if (requestedOption
+      && rawKind !== 'start'
+      && rawKind !== 'revise'
+      && rawKind !== 'idle'
+      && rawKind !== optionHandle) return null;
+    const optionIndex = /^o([1-9]\d*)$/u.exec(optionHandle);
+    const followUpIndex = /^f([1-9]\d*)$/u.exec(followUpHandle);
+    const expandedOptionId = optionIndex
+      ? context.options[Number(optionIndex[1]) - 1]?.id
+      : undefined;
+    const expandedFollowUpId = followUpIndex
+      ? context.followUpOptions[Number(followUpIndex[1]) - 1]?.id
+      : undefined;
+    if (requestedOption && !expandedOptionId) return null;
+    if (requestedFollowUp && !expandedFollowUpId) return null;
+    if (expandedOptionId) {
+      raw.optionId = expandedOptionId;
+      if (raw.kind === optionHandle) raw.kind = expandedOptionId;
+    }
+    if (expandedFollowUpId) raw.followUpOptionId = expandedFollowUpId;
+  }
+  const selectedOptionId = text(raw.optionId, 100);
+  const selectedOption = context.options.find((option) => option.id === selectedOptionId);
+  const requestedGrounding = Object.prototype.hasOwnProperty.call(raw, 'groundingFactHandles');
+  const groundingHandles = Array.isArray(raw.groundingFactHandles)
+    ? raw.groundingFactHandles.map((handle) => text(handle, 24))
+    : [];
+  if (selectedOption?.openConversationGrounding) {
+    const uniqueHandles = [...new Set(groundingHandles)];
+    const resolved = uniqueHandles.map((handle) => protocol.handles.groundingFacts.find((fact) => (
+      fact.handle === handle && fact.optionId === selectedOption.id
+    )));
+    raw.groundingSourceFactIds = (!requestedGrounding || Array.isArray(raw.groundingFactHandles))
+      && groundingHandles.length <= 3
+      && groundingHandles.every(Boolean)
+      && resolved.every(Boolean)
+      ? resolved.map((fact) => fact!.sourceFactId)
+      : null;
+  } else if (requestedGrounding) {
+    raw.groundingSourceFactIds = null;
+  }
+  if (protocol.characterAgendaProposal) {
+    const update = sanitizeCharacterAgendaUpdate(raw.characterAgendaUpdate, protocol.handles);
+    if (update) raw.characterAgendaUpdate = update;
+    else delete raw.characterAgendaUpdate;
+    const proposal = sanitizeCharacterAgendaProposal(raw.characterAgendaProposal, protocol.handles);
+    if (proposal) raw.characterAgendaProposal = proposal;
+    else delete raw.characterAgendaProposal;
+  } else {
+    delete raw.characterAgendaUpdate;
+    delete raw.characterAgendaProposal;
+  }
+  if (protocol.memoryConsolidation) {
+    const consolidation = sanitizeMemoryConsolidation(raw.memoryConsolidation, protocol.handles);
+    if (consolidation) raw.memoryConsolidation = consolidation;
+    else delete raw.memoryConsolidation;
+  } else delete raw.memoryConsolidation;
+  return raw;
+}
+
 function isReasoningOnlyOpenAiChatResponse(error: unknown, endpoint: ResolvedModelEndpoint): boolean {
   if (endpoint.protocol !== 'openai-chat'
     || !(error instanceof ModelRequestError)
@@ -70,18 +425,23 @@ function isReasoningOnlyOpenAiChatResponse(error: unknown, endpoint: ResolvedMod
 async function requestModelDecision(
   endpoint: ResolvedModelEndpoint,
   context: DecisionRequestContext,
+  protocol: DecisionModelRequestProtocol,
   correction?: { invalidContent: string; problem: string },
   conciseRetry = false,
 ): Promise<{ content: string; usage: TokenUsage }> {
-  const messages: ModelMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify(context) }];
+  const { requestContext } = protocol;
+  const messages: ModelMessage[] = [
+    { role: 'system', content: buildDecisionSystemPrompt(protocol.characterAgendaProposal) },
+    { role: 'user', content: JSON.stringify(requestContext) },
+  ];
   if (correction) messages.push(
     { role: 'assistant', content: correction.invalidContent },
     {
       role: 'user',
       content: [
         `上一个决策无效：${correction.problem}。请重新输出合法 JSON。`,
-        `合法 optionId 只有：${context.options.map((option) => option.id).join('、') || '无'}`,
-        `合法 followUpOptionId 只有：${context.followUpOptions.map((option) => option.id).join('、') || '无'}`,
+        `合法 optionId 只有：${requestContext.options.map((option) => option.id).join('、') || '无'}`,
+        `合法 followUpOptionId 只有：${requestContext.followUpOptions.map((option) => option.id).join('、') || '无'}`,
         ...(context.activeIntent ? [`当前 intentId 是：${context.activeIntent.id}`] : []),
       ].join('\n'),
     },
@@ -92,7 +452,7 @@ async function requestModelDecision(
   });
   const response = await requestModelText(endpoint, {
     messages,
-    temperature: endpoint.temperature ?? 1,
+    temperature: endpoint.temperature ?? (protocol.characterAgendaProposal ? 0.65 : 1),
     maxOutputTokens: decisionMaxOutputTokens(),
     jsonObject: true,
     timeoutMs: decisionTimeout(endpoint),
@@ -109,7 +469,24 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const followUpOptionId = text(raw.followUpOptionId, 100);
   const intentId = text(raw.intentId, 100);
   const utterance = text(raw.utterance, 180);
+  const characterAgendaProposal = record(raw.characterAgendaProposal)
+    ? raw.characterAgendaProposal as unknown as CharacterAgendaProposal
+    : undefined;
+  const characterAgendaUpdate = record(raw.characterAgendaUpdate)
+    ? raw.characterAgendaUpdate as unknown as CharacterAgendaUpdate
+    : undefined;
+  const memoryConsolidation = record(raw.memoryConsolidation)
+    ? raw.memoryConsolidation as unknown as MemoryConsolidationUpdate
+    : undefined;
   const option = context.options.find((item) => item.id === optionId);
+  const openConversation = option?.openConversationGrounding;
+  const groundingSourceFactIds = Array.isArray(raw.groundingSourceFactIds)
+    && raw.groundingSourceFactIds.length <= 3
+    && raw.groundingSourceFactIds.every((sourceFactId) => typeof sourceFactId === 'string' && sourceFactId.length > 0)
+    ? [...new Set(raw.groundingSourceFactIds as string[])]
+    : undefined;
+  if (openConversation && (!utterance || !groundingSourceFactIds)) return null;
+  if (!openConversation && Object.prototype.hasOwnProperty.call(raw, 'groundingSourceFactIds')) return null;
   const requiredOptions = context.options.filter((item) => item.semantics.obligation === 'required-response');
   const fulfillmentOptions = context.options.filter((item) => item.semantics.obligation === 'commitment-action');
   const optionAllowed = Boolean(option)
@@ -123,28 +500,80 @@ function normalizeDecision(context: DecisionRequestContext, input: unknown): Dec
   const activeIntentId = context.activeIntent?.id;
   // 部分本地模型会把被选中的 optionId 放进 kind。只有它与当前合法
   // optionId 完全相等时才做无歧义归一化，不能由任意自然语言推断行动。
-  const kind = rawKind === optionId && optionAllowed
+  const selectedLegalOption = optionAllowed && (
+    rawKind === 'start'
+    || rawKind === 'revise'
+    || rawKind === optionId
+  );
+  // start/revise is only the envelope around a legal option choice. Whether
+  // that choice starts the first Intent or revises the active one is an
+  // authoritative local fact, so repair this common model shape error without
+  // spending another request. The option handle itself is never inferred.
+  const kind = selectedLegalOption
     ? activeIntentId ? 'revise' : 'start'
     : rawKind;
   const normalizedIntentId = kind === 'revise' && !intentId ? activeIntentId : intentId;
   if (kind === 'start' && !activeIntentId && optionAllowed) {
-    return { kind, optionId, ...(option?.requiresFollowUp ? { followUpOptionId } : {}), reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
+    return {
+      kind,
+      optionId,
+      ...(option?.requiresFollowUp ? { followUpOptionId } : {}),
+      reason,
+      ...(actualUtterance ? { utterance: actualUtterance } : {}),
+      ...(openConversation ? { groundingSourceFactIds } : {}),
+      ...(characterAgendaProposal ? { characterAgendaProposal } : {}),
+      ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
+      ...(memoryConsolidation ? { memoryConsolidation } : {}),
+    };
   }
   if (kind === 'revise' && normalizedIntentId === activeIntentId && optionAllowed && activeIntentId) {
-    return { kind, intentId: activeIntentId, optionId, ...(option?.requiresFollowUp ? { followUpOptionId } : {}), reason, ...(actualUtterance ? { utterance: actualUtterance } : {}) };
+    return {
+      kind,
+      intentId: activeIntentId,
+      optionId,
+      ...(option?.requiresFollowUp ? { followUpOptionId } : {}),
+      reason,
+      ...(actualUtterance ? { utterance: actualUtterance } : {}),
+      ...(openConversation ? { groundingSourceFactIds } : {}),
+      ...(characterAgendaProposal ? { characterAgendaProposal } : {}),
+      ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
+      ...(memoryConsolidation ? { memoryConsolidation } : {}),
+    };
   }
-  if (kind === 'idle' && !requiredOptions.length && !fulfillmentOptions.length) return { kind, reason };
+  if (kind === 'idle' && !requiredOptions.length && !fulfillmentOptions.length) return {
+    kind,
+    reason,
+    ...(characterAgendaUpdate ? { characterAgendaUpdate } : {}),
+    ...(memoryConsolidation ? { memoryConsolidation } : {}),
+  };
   return null;
 }
 
-async function decideOne(context: DecisionRequestContext, endpoint: ResolvedModelEndpoint): Promise<{ decision: Decision | null; usage: TokenUsage }> {
+export function normalizeDecisionModelOutput(
+  context: DecisionRequestContext,
+  input: unknown,
+  protocol: Pick<DecisionModelRequestProtocol, 'requestContext' | 'handles' | 'compact' | 'characterAgendaProposal' | 'memoryConsolidation'>,
+): Decision | null {
+  return normalizeDecision(context, expandDecisionModelOutput(context, input, protocol));
+}
+
+interface DecisionResult {
+  decision: Decision | null;
+  usage: TokenUsage;
+  providerRequests: number;
+}
+
+async function decideOne(context: DecisionRequestContext, endpoint: ResolvedModelEndpoint): Promise<DecisionResult> {
+  const protocol = buildDecisionModelRequestProtocol(context);
   let correction: { invalidContent: string; problem: string } | undefined;
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let providerRequests = 0;
   let conciseRetry = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let completion: Awaited<ReturnType<typeof requestModelDecision>>;
     try {
-      completion = await requestModelDecision(endpoint, context, correction, conciseRetry);
+      providerRequests += 1;
+      completion = await requestModelDecision(endpoint, context, protocol, correction, conciseRetry);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const retryable = isReasoningOnlyOpenAiChatResponse(error, endpoint)
@@ -160,6 +589,12 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
     usage = {
       inputTokens: usage.inputTokens + completion.usage.inputTokens,
       outputTokens: usage.outputTokens + completion.usage.outputTokens,
+      ...((usage.cacheHitInputTokens !== undefined || completion.usage.cacheHitInputTokens !== undefined)
+        ? { cacheHitInputTokens: (usage.cacheHitInputTokens ?? 0) + (completion.usage.cacheHitInputTokens ?? 0) }
+        : {}),
+      ...((usage.cacheMissInputTokens !== undefined || completion.usage.cacheMissInputTokens !== undefined)
+        ? { cacheMissInputTokens: (usage.cacheMissInputTokens ?? 0) + (completion.usage.cacheMissInputTokens ?? 0) }
+        : {}),
     };
     let parsed: unknown;
     try {
@@ -168,14 +603,113 @@ async function decideOne(context: DecisionRequestContext, endpoint: ResolvedMode
       correction = { invalidContent: completion.content, problem: '不是 JSON 对象' };
       continue;
     }
-    const decision = normalizeDecision(context, parsed);
-    if (decision) return { decision, usage };
+    const decision = normalizeDecisionModelOutput(context, parsed, protocol);
+    if (decision) return { decision, usage, providerRequests };
     if (loadServerEnvValue('MODEL_DECISION_DEBUG') === '1') {
       console.warn(`模型端点 ${endpoint.id} 的决策未通过结构校验：${completion.content.slice(0, 500)}`);
     }
     correction = { invalidContent: completion.content, problem: '没有选择当前意图允许的合法 optionId，必须回应时选择了 idle，或对话缺少合法 followUpOptionId' };
   }
-  return { decision: null, usage };
+  return { decision: null, usage, providerRequests };
+}
+
+function decisionBatchMaxOutputTokens(agentCount: number): number {
+  return Math.max(512, Math.min(12_000, decisionMaxOutputTokens() * Math.max(1, agentCount)));
+}
+
+/**
+ * One provider request for the whole selected month. Handles remain scoped by
+ * `agentHandle`; every returned decision is still expanded and validated
+ * against exactly one private context before it can reach application code.
+ */
+async function decideBatch(
+  contexts: DecisionRequestContext[],
+  endpoint: ResolvedModelEndpoint,
+): Promise<DecisionResult[]> {
+  const protocols = contexts.map((context) => buildDecisionModelRequestProtocol(context));
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let providerRequests = 0;
+  let correction = '';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    providerRequests += 1;
+    const response = await requestModelText(endpoint, {
+      messages: [
+        {
+          role: 'system',
+          content: [
+            buildDecisionSystemPrompt(protocols.some((protocol) => protocol.characterAgendaProposal)),
+            '这是同一个月内多个彼此独立的人物意识。agentHandle 只用于把输出送回对应人物，不是人物知道的名字。',
+            '不得把一个 agent context 的私有记忆、知识、关系、选项或句柄带进另一个 agent 的 decision。每个 decision 只能使用自己 context 内的句柄。',
+            '严格输出一个 JSON：{"decisions":[{"agentHandle":"a1","decision":{单人决策对象}}, ...]}。每个输入 agentHandle 必须且只能出现一次；可用 decision:null 表示不作模型决定。',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            schemaVersion: 'monthly-agent-decisions-v1',
+            agents: protocols.map((protocol, index) => ({
+              agentHandle: `a${index + 1}`,
+              context: protocol.requestContext,
+            })),
+          }),
+        },
+        ...(correction ? [{ role: 'user' as const, content: correction }] : []),
+      ],
+      temperature: endpoint.temperature ?? 0.65,
+      maxOutputTokens: decisionBatchMaxOutputTokens(contexts.length),
+      jsonObject: true,
+      timeoutMs: decisionTimeout(endpoint),
+    });
+    usage = {
+      inputTokens: usage.inputTokens + response.usage.inputTokens,
+      outputTokens: usage.outputTokens + response.usage.outputTokens,
+      ...((usage.cacheHitInputTokens !== undefined || response.usage.cacheHitInputTokens !== undefined)
+        ? { cacheHitInputTokens: (usage.cacheHitInputTokens ?? 0) + (response.usage.cacheHitInputTokens ?? 0) }
+        : {}),
+      ...((usage.cacheMissInputTokens !== undefined || response.usage.cacheMissInputTokens !== undefined)
+        ? { cacheMissInputTokens: (usage.cacheMissInputTokens ?? 0) + (response.usage.cacheMissInputTokens ?? 0) }
+        : {}),
+    };
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = record(parseJson(response.text));
+    } catch {
+      parsed = null;
+    }
+    const rawDecisions = Array.isArray(parsed?.decisions) ? parsed.decisions : [];
+    const byHandle = new Map<string, unknown>();
+    let duplicate = false;
+    for (const item of rawDecisions) {
+      const row = record(item);
+      const handle = text(row?.agentHandle, 24);
+      if (!row || !/^a[1-9]\d*$/u.test(handle) || byHandle.has(handle)) {
+        duplicate = true;
+        continue;
+      }
+      byHandle.set(handle, row.decision);
+    }
+    const decisions = contexts.map((context, index) => {
+      const raw = byHandle.get(`a${index + 1}`);
+      return raw === null ? null : normalizeDecisionModelOutput(
+        context,
+        raw,
+        protocols[index],
+      );
+    });
+    if (!duplicate && byHandle.size === contexts.length && decisions.some(Boolean)) {
+      return decisions.map((decision, index) => ({
+        decision,
+        usage: index === 0 ? usage : { inputTokens: 0, outputTokens: 0 },
+        providerRequests: index === 0 ? providerRequests : 0,
+      }));
+    }
+    correction = '上一批输出缺少人物、重复了 agentHandle，或 decision 没有通过各自合法选项校验。请重新输出完整 decisions 数组；不要解释，不要交换人物信息。';
+  }
+  return contexts.map((_, index) => ({
+    decision: null,
+    usage: index === 0 ? usage : { inputTokens: 0, outputTokens: 0 },
+    providerRequests: index === 0 ? providerRequests : 0,
+  }));
 }
 
 function isContext(value: unknown): value is DecisionRequestContext {
@@ -209,14 +743,20 @@ export async function handleDecide(payload: unknown, requestedEndpoint?: string)
   const input = payload as { contexts?: unknown[] };
   const contexts = Array.isArray(input?.contexts) ? input.contexts.filter(isContext).slice(0, MAX_AGENTS) : [];
   if (!contexts.length) return { status: 400, body: { error: '缺少合法的月度决策上下文' } };
-  const results = [];
-  for (let index = 0; index < contexts.length; index += 3) {
-    results.push(...await Promise.all(contexts.slice(index, index + 3).map((context) => decideOne(context, endpoint))));
-  }
+  const results = contexts.length === 1
+    ? [await decideOne(contexts[0], endpoint)]
+    : await decideBatch(contexts, endpoint);
   const usage = results.reduce<TokenUsage>((sum, item) => ({
     inputTokens: sum.inputTokens + item.usage.inputTokens,
     outputTokens: sum.outputTokens + item.usage.outputTokens,
+    ...((sum.cacheHitInputTokens !== undefined || item.usage.cacheHitInputTokens !== undefined)
+      ? { cacheHitInputTokens: (sum.cacheHitInputTokens ?? 0) + (item.usage.cacheHitInputTokens ?? 0) }
+      : {}),
+    ...((sum.cacheMissInputTokens !== undefined || item.usage.cacheMissInputTokens !== undefined)
+      ? { cacheMissInputTokens: (sum.cacheMissInputTokens ?? 0) + (item.usage.cacheMissInputTokens ?? 0) }
+      : {}),
   }), { inputTokens: 0, outputTokens: 0 });
+  const providerRequests = results.reduce((sum, item) => sum + item.providerRequests, 0);
   const decisions = results.map((item) => item.decision);
   return {
     status: 200,
@@ -229,6 +769,7 @@ export async function handleDecide(payload: unknown, requestedEndpoint?: string)
       total: decisions.length,
       decisions,
       usage,
+      providerRequests,
     },
   };
 }

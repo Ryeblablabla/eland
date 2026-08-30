@@ -3,6 +3,7 @@ import type {
   AgentConversationTurn,
   AgentConversationView,
   AgentHistoryView,
+  AgentMemoryView,
   CivilizationIndexHistoryPoint,
   CosmosSnapshot,
   ElandSaveSummary,
@@ -517,6 +518,16 @@ export const elandClient = {
     requestOptions?: ElandRequestOptions,
   ) => get<AgentHistoryView | null>(
     `agent-history?runId=${encodeURIComponent(runId)}&agentId=${encodeURIComponent(agentId)}&month=${month}&limit=${limit}`,
+    requestOptions,
+  ),
+  agentMemory: (
+    runId: string,
+    agentId: string,
+    month: number,
+    limit = 24,
+    requestOptions?: ElandRequestOptions,
+  ) => get<AgentMemoryView | null>(
+    `agent-memory?runId=${encodeURIComponent(runId)}&agentId=${encodeURIComponent(agentId)}&month=${month}&limit=${limit}`,
     requestOptions,
   ),
   agentConversation: (runId: string, agentId: string, requestOptions?: ElandRequestOptions) => get<AgentConversationView>(

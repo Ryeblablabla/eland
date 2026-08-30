@@ -14,6 +14,39 @@
   #assetStage { inset: 58px 0 0 0; }
   #recipesPage,#rulesPage,#docsPage,#searchPage { inset: 58px 0 0 196px; }
   .site-nav-spacer { display: none; }
+
+  /* ================= 图鉴大厅 ================= */
+  #galleryHall { position:fixed; inset:58px 0 0 196px; z-index:6; overflow:auto;
+    background:radial-gradient(ellipse 80% 50% at 50% -10%, rgba(127,179,255,.07), transparent 60%), #070b14;
+    color:#dce8ff; font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",ui-sans-serif,system-ui,sans-serif;
+    padding:38px 44px 90px; }
+  #galleryHall[hidden]{display:none;}
+  .hall-kicker{font-size:10.5px;letter-spacing:.3em;color:#7fb3ff;text-transform:uppercase;margin:0 0 10px;}
+  .hall-hero h2{font-size:clamp(22px,2.6vw,32px);font-weight:800;margin:0 0 12px;}
+  .hall-sub{color:#8ea3c8;font-size:13.5px;line-height:1.95;max-width:780px;margin:0;}
+  .hall-legend{display:flex;align-items:center;gap:8px;margin-top:18px;flex-wrap:wrap;}
+  .hall-total{color:#5c6f92;font-size:11px;margin-left:8px;letter-spacing:.05em;}
+  .status-chip{font-size:10px;padding:2.5px 9px;border-radius:999px;border:1px solid;letter-spacing:.06em;white-space:nowrap;}
+  .status-chip.live{color:#9fe2b2;background:rgba(75,173,105,.12);border-color:rgba(94,204,128,.3);}
+  .status-chip.ready{color:#ffd08a;background:rgba(204,145,54,.12);border-color:rgba(230,171,75,.3);}
+  .status-chip.prototype{color:#a9b2be;background:rgba(138,149,163,.1);border-color:rgba(138,149,163,.24);}
+  .hall-cat{margin-top:40px;}
+  .hall-cat-head{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid rgba(127,179,255,.14);padding-bottom:10px;}
+  .hall-cat-head h3{margin:0;font-size:17px;font-weight:700;}
+  .hall-cat-count{color:#5c6f92;font-size:11px;}
+  .hall-grid-link{margin-left:auto;background:none;border:1px solid rgba(127,179,255,.22);color:#7fb3ff;font-size:11px;padding:5px 12px;border-radius:999px;cursor:pointer;font-family:inherit;}
+  .hall-grid-link:hover{background:rgba(127,179,255,.1);}
+  .hall-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(208px,1fr));gap:14px;margin-top:16px;}
+  .hall-card{border:1px solid rgba(127,179,255,.13);border-radius:12px;overflow:hidden;background:rgba(13,20,36,.55);cursor:pointer;transition:transform .18s,border-color .18s,box-shadow .18s;}
+  .hall-card:hover,.hall-card:focus-visible{transform:translateY(-3px);border-color:rgba(127,179,255,.4);box-shadow:0 10px 34px rgba(0,0,0,.4);outline:none;}
+  .hall-thumb{background:#0b0f16;aspect-ratio:8/5;display:flex;align-items:center;justify-content:center;}
+  .hall-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .hall-card-body{padding:10px 12px 12px;}
+  .hall-card-name{font-size:13.5px;font-weight:600;color:#e8eefb;}
+  .hall-card-en{font-size:9px;letter-spacing:.16em;color:#66748e;text-transform:uppercase;margin-top:3px;}
+  .hall-card-foot{display:flex;justify-content:space-between;align-items:center;margin-top:9px;gap:8px;}
+  .hall-card-group{color:#566070;font-size:9.5px;text-align:right;}
+  @media (max-width:960px){ #galleryHall{inset:58px 0 0 0;padding:26px 18px 70px;} }
 </style>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -165,6 +198,7 @@
   <div id="hint">左键旋转 · 右键平移 · 滚轮缩放 · P 人物长卷 · 9 建筑长卷 · 0 环境长卷</div>
   <div id="stats"></div>
 </div>
+<section id="galleryHall" hidden aria-label="世界图鉴大厅"></section>
 <main id="recipesPage" role="tabpanel" aria-labelledby="tabRecipes" tabindex="0" hidden></main>
 <main id="rulesPage" role="tabpanel" aria-labelledby="tabRules" tabindex="0" hidden></main>
 <main id="docsPage" role="tabpanel" aria-labelledby="tabDocs" tabindex="0" hidden></main>
@@ -3582,6 +3616,104 @@ function updateDetail(){
 }
 refreshActive();
 
+/* ================= 图鉴大厅 ================= */
+// 图鉴默认落点：分类导览 + 真实缩略图卡片；点击卡片进入 3D 舞台细看。
+// 缩略图由本舞台批量导出后离线裁切，内容与生产视觉严格一致。
+const galleryHall = document.getElementById('galleryHall');
+function hallStatusChip(status){
+  return `<span class="status-chip ${status}">${ASSET_STATUS_META[status].badge}</span>`;
+}
+function buildGalleryHall(){
+  const byCat = new Map();
+  STYLES.forEach((s)=>{ if(!byCat.has(s.cat)) byCat.set(s.cat, []); byCat.get(s.cat).push(s); });
+  const gridAction = { p:['p','人物动作长卷'], b:['b','文明建筑长卷'] };
+  const parts = [];
+  parts.push(`<div class="hall-hero">
+    <p class="hall-kicker">World Codex · 世界图鉴</p>
+    <h2>这个世界的每一处视觉，都对应一条真实规则</h2>
+    <p class="hall-sub">图鉴素材与生产代码同源：「已接入」表示正在游戏里真实工作；「待接入」与「原型」只表示视觉完成验证，不会冒充已实现的能力。点击任意卡片进入 3D 舞台细看；左栏可按分组直达。</p>
+    <div class="hall-legend">
+      ${hallStatusChip('live')}${hallStatusChip('ready')}${hallStatusChip('prototype')}
+      <span class="hall-total">${STYLES.length} 项素材 · ${assetStatusSummary(STYLES)}</span>
+    </div>
+  </div>`);
+  for (const [cat, list] of byCat){
+    const [gm, gmName] = gridAction[cat] ?? ['n', '世界素材长卷'];
+    parts.push(`<section class="hall-cat">
+      <header class="hall-cat-head">
+        <h3>${CAT_NAMES[cat] ?? cat}</h3>
+        <span class="hall-cat-count">${list.length} 项 · ${assetStatusSummary(list)}</span>
+        <button type="button" class="hall-grid-link" data-grid="${gm}">${gmName} →</button>
+      </header>
+      <div class="hall-grid">${list.map((s)=>{
+        const status = assetStatus(s);
+        const group = s.cat==='b' ? `LV.${s.lv} · ${LV_NAMES[s.lv]}` : (s.group || '');
+        return `<article class="hall-card" data-key="${s.key}" tabindex="0" role="button" aria-label="${s.name}">
+          <div class="hall-thumb"><img src="./assets/thumbs/${s.key}.png" alt="" loading="lazy" onerror="this.remove()"></div>
+          <div class="hall-card-body">
+            <div class="hall-card-name">${s.name}</div>
+            <div class="hall-card-en">${s.en}</div>
+            <div class="hall-card-foot">${hallStatusChip(status)}<span class="hall-card-group">${group}</span></div>
+          </div>
+        </article>`;
+      }).join('')}</div>
+    </section>`);
+  }
+  galleryHall.innerHTML = parts.join('');
+}
+function showGalleryHall(){
+  galleryHall.hidden = false;
+  history.replaceState(null, '', '#hall');
+}
+function hideGalleryHall(){
+  galleryHall.hidden = true;
+}
+function selectFromHall(key){
+  const index = STYLES.findIndex((style)=>style.key===key);
+  if (index < 0) return;
+  hideGalleryHall();
+  gridMode = null;
+  curStyle = index;
+  refreshActive();
+  regenerate();
+  styleBtns[index]?.scrollIntoView({ block:'center' });
+  history.replaceState(null, '', `#asset-${key}`);
+}
+buildGalleryHall();
+galleryHall.addEventListener('click', (event)=>{
+  const grid = event.target.closest('.hall-grid-link');
+  if (grid){
+    hideGalleryHall();
+    gridMode = grid.dataset.grid;
+    refreshActive();
+    regenerate();
+    return;
+  }
+  const card = event.target.closest('.hall-card');
+  if (card) selectFromHall(card.dataset.key);
+});
+galleryHall.addEventListener('keydown', (event)=>{
+  if (event.key!=='Enter' && event.key!==' ') return;
+  const card = event.target.closest('.hall-card');
+  if (card){ event.preventDefault(); selectFromHall(card.dataset.key); }
+});
+// 侧栏与长卷按钮的选择同样离开大厅
+styleBtns.forEach((b)=> b.addEventListener('click', hideGalleryHall));
+[gridBtnB, gridBtnP, gridBtnN].forEach((b)=> b.addEventListener('click', hideGalleryHall));
+// 工具栏入口：随时回到大厅
+const hallBackBtn = document.createElement('button');
+hallBackBtn.className = 'tool';
+hallBackBtn.id = 'btnHall';
+hallBackBtn.textContent = '❖ 图鉴大厅';
+hallBackBtn.onclick = ()=> showGalleryHall();
+document.getElementById('toolbar').prepend(hallBackBtn);
+addEventListener('keydown', (e)=>{
+  if (e.key==='Escape' && document.body.dataset.page==='assets') showGalleryHall();
+});
+// 切到其他页时大厅退场
+new MutationObserver(()=>{ if (document.body.dataset.page!=='assets') hideGalleryHall(); })
+  .observe(document.body, { attributes:true, attributeFilter:['data-page'] });
+
 mountRulesPage({
   assets: STYLES.map((style) => ({
     key: style.key,
@@ -3596,6 +3728,7 @@ mountRulesPage({
   selectAsset(key) {
     const index = STYLES.findIndex((style) => style.key === key);
     if (index < 0) return false;
+    hideGalleryHall();
     gridMode = null;
     curStyle = index;
     refreshActive();
@@ -3604,6 +3737,9 @@ mountRulesPage({
     return true;
   },
 });
+
+// 大厅启动：素材页且未指定具体素材时作为默认落点
+if (document.body.dataset.page==='assets' && !window.location.hash.startsWith('#asset-')) showGalleryHall();
 
 document.getElementById('btnSeed').onclick = ()=>{ seed = (Math.random()*1e9)|0; regenerate(); };
 const btnRotate = document.getElementById('btnRotate');
@@ -3662,7 +3798,7 @@ let lastWeatherRefresh = 0;
 const ANIMATED_ANIMAL_KEYS = new Set(['deer','deer-family','rabbit','boar','wolf','animal-chase','animal-state','sheep','chicken']);
 const ANIMATED_WEATHER_KEYS = new Set(['riverflow','rain','snowfall','fog','storm']);
 renderer.setAnimationLoop((now)=>{
-  if (document.body.dataset.page !== 'assets') return;
+  if (document.body.dataset.page !== 'assets' || !galleryHall.hidden) return;
   const showingPeople = gridMode==='p' || (!gridMode && STYLES[curStyle].cat==='p');
   if (showingPeople && now-lastHumanRefresh > 100){
     humanAnimPhase = now*0.006;

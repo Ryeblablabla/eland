@@ -1,6 +1,13 @@
 import type { DirectedRelation, PersonState } from './person';
 
-export const FOUNDER_INITIAL_RELATION = 55;
+/**
+ * A shared arrival means the founders recognize one another; it is not a
+ * pre-existing friendship or intimate bond.  Existing saves retain their
+ * persisted relation caches, while newly created civilizations start below
+ * every formal-companionship threshold and must grow the relation from lived
+ * evidence.
+ */
+export const FOUNDER_INITIAL_RELATION = 10;
 export const COMPANION_RELATION_THRESHOLD = 20;
 
 export function relationshipPairKey(firstId: string, secondId: string): string {

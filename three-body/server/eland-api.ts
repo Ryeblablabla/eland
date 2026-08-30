@@ -554,6 +554,13 @@ export async function handleElandApi(method: string | undefined, url: URL, bodyV
     const limit = Math.max(1, Math.floor(finite(url.searchParams.get('limit'), 80)));
     return { status: 200, body: session.agentHistory(agentId, month, limit) };
   }
+  if (route === 'agent-memory' && method === 'GET') {
+    const agentId = String(url.searchParams.get('agentId') ?? '').trim();
+    if (!agentId) return { status: 400, body: { error: '缺少 agentId' } };
+    const month = Math.max(0, Math.floor(finite(url.searchParams.get('month'), session.latest()?.elapsedMonths ?? 0)));
+    const limit = Math.max(1, Math.floor(finite(url.searchParams.get('limit'), 24)));
+    return { status: 200, body: session.agentMemory(agentId, month, limit) };
+  }
   if (route === 'agent-conversation' && method === 'GET') {
     const agentId = String(url.searchParams.get('agentId') ?? '').trim();
     if (!agentId) return { status: 400, body: { error: '缺少 agentId' } };

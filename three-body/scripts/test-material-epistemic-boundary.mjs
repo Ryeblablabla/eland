@@ -16,7 +16,7 @@ try {
     export { ensureProject } from ${JSON.stringify(path.resolve('src/game/eland/application/project-options.ts'))};
     export { compileProjectStep } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-step-compiler.ts'))};
     export { projectMaterialPlanProvenance } from ${JSON.stringify(path.resolve('src/game/eland/application/projects/project-material-provenance.ts'))};
-    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/kimi-decider.ts'))};
+    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/application/model-decision/index.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     '--bundle', '--platform=node', '--format=esm', '--loader=ts',

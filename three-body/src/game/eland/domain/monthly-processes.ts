@@ -15,6 +15,7 @@ import {
   newbornInitialTrust,
 } from './personality';
 import { createCognitionState, recordIntentGoalOutcome } from './cognition';
+import { createCharacterAgendaState } from './character-agenda';
 import { inventoryQuantity } from './person';
 import { addDrop } from './action-executor';
 import { WORLD_CELL_COUNT, cellId, cellX, cellY, cellsInRadius, neighbors4, setVoxel, surfaceMaterial, surfaceStandingPosition, topZ, voxelAt } from '../world/grid';
@@ -421,6 +422,7 @@ function newborn(state: SimulationState, mother: PersonState, fatherId: string, 
     ),
     motiveSensitivity: createMotiveSensitivity(state.seed, id),
     cognition: createCognitionState(),
+    characterAgenda: createCharacterAgendaState(),
     conditions: [], inventory: [], knowledge: [], knownPlaces: [], memories: [],
     bereavements: [],
     relations: [],

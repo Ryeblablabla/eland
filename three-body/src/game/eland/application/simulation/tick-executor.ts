@@ -29,6 +29,9 @@ import { currentRollingLedgers, prepareMonth, type PreparedMonth } from './month
 import type { ObservationProjector } from './observation-projector';
 
 const authoritativeRulePlanner = new RulePlanner();
+const modelOwnedSocialFallbackPlanner = new RulePlanner({
+  deferVoluntarySocialChoicesToModel: true,
+});
 
 function executePrepared(
   observationProjector: ObservationProjector,
@@ -104,8 +107,14 @@ async function executeSimulationAsync(
   const eligibleCandidates = batch.shouldDecide
     ? prepared.candidates.filter((context) => batch.shouldDecide?.(context, prepared.atMonth))
     : prepared.candidates;
-  const isExempt = (context: DecisionContext) => decisionBudgetExemption(context, prepared.atMonth) !== null
-    || Boolean(batch.isBudgetExempt?.(context, prepared.atMonth));
+  const isExempt = (context: DecisionContext) => {
+    const exemption = decisionBudgetExemption(context, prepared.atMonth);
+    // Bootstrap still guarantees a first local plan, but it is not an
+    // unbounded remote-call exemption: founders compete for ordinary monthly
+    // model capacity like everyone else.
+    return (exemption !== null && exemption !== 'bootstrap')
+      || Boolean(batch.isBudgetExempt?.(context, prepared.atMonth));
+  };
   const exemptContexts = eligibleCandidates.filter(isExempt);
   const ordinaryCandidates = eligibleCandidates.filter((context) => !isExempt(context));
   const ordinaryCapacity = Math.min(
@@ -125,8 +134,10 @@ async function executeSimulationAsync(
         ? 2_900
         : exemption === 'required-response'
           ? 2_700
-          : exemption === 'fulfillment'
+      : exemption === 'fulfillment'
             ? 2_500
+            : exemption === 'agenda-revision'
+              ? 2_400
             : !context.activeIntent
               ? 1_800 + (context.options.some(isProductionOption) ? 240 : 0)
               : hasUnfinishedProductionIntent(context)
@@ -146,11 +157,14 @@ async function executeSimulationAsync(
   const ordinaryContexts = rank(ordinaryCandidates).slice(0, ordinaryCapacity);
   const modelContexts = rank([...exemptContexts, ...ordinaryContexts]);
   const decisions = new Map<PersonId, { decision: Decision; usedModel: boolean }>();
+  const fallbackPlanner = batch.ownsVoluntarySocialChoices
+    ? modelOwnedSocialFallbackPlanner
+    : authoritativeRulePlanner;
   for (const context of prepared.candidates) {
     const naturalFallback = prepared.naturallyTriggeredPeople.has(context.person.id);
     decisions.set(context.person.id, {
       decision: naturalFallback
-        ? authoritativeRulePlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
+        ? fallbackPlanner.decideAt(context, { atMonth: prepared.atMonth, planningTick: 1 })
         : { kind: 'idle', reason: '对话中定下的下一步没有通过当前本地条件复核' },
       usedModel: false,
     });
@@ -176,7 +190,7 @@ async function executeSimulationAsync(
     decisions,
     batch.takeUsage?.() ?? { inputTokens: 0, outputTokens: 0 },
     { total: modelContexts.length, ordinary: ordinaryContexts.length, exempt: exemptContexts.length },
-    authoritativeRulePlanner,
+    fallbackPlanner,
     'monthly',
   );
   const ledger = result.decisionBudget.ledgers.at(-1);
@@ -184,6 +198,7 @@ async function executeSimulationAsync(
     ledger.modelEndpointId = metadata.endpointId;
     ledger.modelProtocol = metadata.protocol;
     ledger.modelName = metadata.model;
+    if (metadata.providerRequests !== undefined) ledger.providerRequests = metadata.providerRequests;
   }
   return result;
 }

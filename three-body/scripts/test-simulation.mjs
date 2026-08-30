@@ -25,7 +25,7 @@ try {
     'src/game/eland/domain/agreement.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${agreementBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
-    'src/game/eland/kimi-decider.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
+    'src/game/eland/application/model-decision/index.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${decisionBundlePath}`,
   ], { stdio: 'pipe' });
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
     'src/game/eland/domain/intent.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${intentBundlePath}`,
@@ -103,20 +103,30 @@ try {
   assert.deepEqual(initial.containers, [], '开局不应凭空存在任何储藏容器');
   const foundingFact = initial.world.past.find((event) => event.kind === 'environment' && event.change === 'founding');
   assert.deepEqual([...foundingFact.diff.participantIds].sort(), initial.people.map((person) => person.id).sort(), '开局先民的相互熟悉必须来自明确列出参与者的共同抵达事实');
-  assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 55 && relation.bond === 55 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民应有中等且可追溯的相互熟悉关系');
+  assert.ok(initial.people.every((person) => person.relations.every((relation) => relation.trust === 10 && relation.bond === 10 && relation.fear === 0 && relation.sourceEventIds.length === 1 && relation.sourceEventIds[0] === foundingFact.id)), '开局先民只有中性且可追溯的相识，不得预装亲密关系');
   const cappedLongRun = createInitialState(311_000, { endpoint: { kind: 'months', value: 99_999 } });
   assert.equal(cappedLongRun.civilization.conditions.endpoint.value, 12_000, '长期演化可持续到全员死亡，但时间硬上限暂定为一千年');
 
   const externalClimateState = createInitialState(20260822, { endpoint: { kind: 'months', value: 12 } });
   externalClimateState.civilization.externalClimate = { epoch: 'chaotic', kind: 'heat', severity: 7 };
-  const externalEpochFacts = resolveClimate(externalClimateState, 1);
-  assert.equal(externalEpochFacts[0]?.diff.epochChanged, true, '外部天象造成的恒乱纪元变化必须保留事实标记');
+  externalClimateState.civilization.externalEraRegime = {
+    sinceMonth: 0, candidateEpoch: null, candidateSinceMonth: 0, candidateConsecutiveMonths: 0,
+  };
+  const pendingExternalEpochFacts = resolveClimate(externalClimateState, 1);
+  assert.equal(externalClimateState.civilization.epoch, 'stable', '单月天象扰动不得立即升级为乱纪元');
+  assert.equal(pendingExternalEpochFacts[0]?.diff.eraConfirmationPending, true);
+  assert.equal(pendingExternalEpochFacts[0]?.diff.candidateConsecutiveMonths, 1);
+  for (let atMonth = 2; atMonth <= 5; atMonth += 1) resolveClimate(externalClimateState, atMonth);
+  assert.equal(externalClimateState.civilization.epoch, 'stable', '即使证据连续，当前纪元也必须先完成最短持续期');
+  const externalEpochFacts = resolveClimate(externalClimateState, 6);
+  assert.equal(externalClimateState.civilization.epoch, 'chaotic');
+  assert.equal(externalEpochFacts[0]?.diff.epochChanged, true, '持续天象证据确认后必须提交恒乱纪元转换事实');
   assert.equal(externalEpochFacts[0]?.diff.previousEpoch, 'stable');
   assert.equal(externalEpochFacts[0]?.diff.previousKind, 'temperate');
   assert.equal(externalEpochFacts[0]?.diff.climateKindChanged, true);
-  assert.equal(externalEpochFacts[0]?.diff.eraTransition, undefined, '外部天象变化不得冒充本地纪元排程转换');
+  assert.equal(externalEpochFacts[0]?.diff.eraTransition, true);
   externalClimateState.civilization.externalClimate = { epoch: 'chaotic', kind: 'cold', severity: 6 };
-  const externalClimateShiftFacts = resolveClimate(externalClimateState, 2);
+  const externalClimateShiftFacts = resolveClimate(externalClimateState, 7);
   assert.equal(externalClimateShiftFacts[0]?.diff.epochChanged, undefined);
   assert.equal(externalClimateShiftFacts[0]?.diff.climateKindChanged, true, '同一乱纪元内的冷热切换必须保留前后态');
   assert.equal(externalClimateShiftFacts[0]?.diff.previousKind, 'heat');
@@ -137,6 +147,7 @@ try {
       const events = resolveWeather(state, atMonth);
       const current = state.civilization.weather;
       if (current.kind !== previous.kind) {
+        if (atMonth > 1) assert.ok(atMonth - previous.sinceMonth >= 2, '普通天气过程至少持续两个完整月份');
         assert.equal(current.sinceMonth, atMonth, '新天气过程必须记录真实开始月');
       } else if (atMonth > 1) {
         assert.equal(current.sinceMonth, previous.sinceMonth, '同种天气的强度漂移不得伪造新过程');
@@ -156,7 +167,7 @@ try {
   for (const seed of [185, 20260815, 20260816]) {
     const trace = weatherTrace(seed);
     const transitionRate = (trace.length - 1) / 119;
-    assert.ok(transitionRate >= 0.25 && transitionRate <= 0.5, `天气状态变化率应保持在有持续性但仍可感知的区间，实际 ${transitionRate}`);
+    assert.ok(transitionRate >= 0.12 && transitionRate <= 0.32, `天气状态变化率应保持在更舒缓但仍可感知的区间，实际 ${transitionRate}`);
     assert.deepEqual(trace, weatherTrace(seed), '同一种子的天气过程必须完全可回放');
   }
   const incompatibleWeatherState = {
@@ -251,7 +262,7 @@ try {
   const cultivatedReciprocalRelationship = cultivatedReproductionPartner.relations.find((relation) => relation.personId === cultivatedReproductionActor.id);
   assert.ok(cultivatedRelationship && cultivatedReciprocalRelationship, '关系培养测试需要双向关系');
   const cultivatedConversationFacts = [0, 1].flatMap((month) => {
-    const basisKey = `grounded-conversation-v1|topic=everyday|speaker=${cultivatedReproductionActor.id}|listener=${cultivatedReproductionPartner.id}|sources=${foundingFact.id}`;
+    const basisKey = `grounded-conversation-v1|topic=care|speaker=${cultivatedReproductionActor.id}|listener=${cultivatedReproductionPartner.id}|sources=${foundingFact.id}`;
     const openingId = `test-feasible-cultivated-opening-${month}`;
     const responseId = `test-feasible-cultivated-response-${month}`;
     const shell = (id, orderInMonth, who, action) => ({
@@ -264,14 +275,14 @@ try {
     });
     return [
       shell(openingId, 0, cultivatedReproductionActor.id, {
-        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '聊聊近况', conversation: {
-          version: 'grounded-conversation-v1', basisKey, topic: 'everyday', turn: 'opening',
+        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '关心对方近况', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'opening',
           speakerId: cultivatedReproductionActor.id, listenerId: cultivatedReproductionPartner.id, sourceFactIds: [foundingFact.id],
         } }, audience: [cultivatedReproductionPartner.id], channel: 'voice',
       }),
       shell(responseId, 1, cultivatedReproductionPartner.id, {
-        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应近况', conversation: {
-          version: 'grounded-conversation-v1', basisKey, topic: 'everyday', turn: 'response',
+        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应对方的关心', conversation: {
+          version: 'grounded-conversation-v1', basisKey, topic: 'care', turn: 'response',
           speakerId: cultivatedReproductionPartner.id, listenerId: cultivatedReproductionActor.id,
           sourceFactIds: [foundingFact.id], referenceEventId: openingId, stance: 'supportive',
         } }, audience: [cultivatedReproductionActor.id], channel: 'voice',
@@ -285,12 +296,12 @@ try {
     diff: { process: 'shared-action-ticks', participantIds: [cultivatedReproductionActor.id, cultivatedReproductionPartner.id], excludedPairKeys: [] },
   };
   const cultivatedSourceIds = [...cultivatedConversationFacts.map((event) => event.id), cultivatedSharedLifeFact.id];
-  Object.assign(cultivatedRelationship, { trust: 5, bond: 5, sourceEventIds: cultivatedSourceIds });
+  Object.assign(cultivatedRelationship, { trust: 20, bond: 20, sourceEventIds: cultivatedSourceIds });
   Object.assign(cultivatedReciprocalRelationship, { trust: 0, bond: 0, sourceEventIds: [] });
   appendFixtureEvents(cultivatedReproductionState, [...cultivatedConversationFacts, cultivatedSharedLifeFact]);
   cultivatedReproductionState.clock.elapsedMonths = 2;
   const cultivatedReproductionContext = buildDecisionContexts(cultivatedReproductionState).find((context) => context.person.id === cultivatedReproductionActor.id);
-  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者跨月形成直接生活交流后，应由本人评估是否提出生殖，不要求固定或双向关系分数');
+  assert.ok(cultivatedReproductionContext?.options.some((option) => option.id.startsWith('offer-reproduce:')), '提议者达到 20/20 且跨月形成直接照护交流后，应由本人评估是否提出生殖，不要求对方也达到同一分数');
   for (const relation of feasibleActor.relations) Object.assign(relation, { trust: 6, bond: 6, sourceEventIds: [foundingFact.id] });
   feasibleActor.inventory = [
     { id: 'test-feasible-food', materialId: 21, quantity: 3, sourceEventIds: [] },
@@ -974,8 +985,11 @@ try {
   assert.ok(blindOptions.every((option) => !option.summary.includes('作物幼苗') && !option.reason.includes('适宜')), '盲试候选不得泄露隐藏产物或适用规则');
 
   const craftWith = async (seed, stacks, targets) => {
-    const craftState = createInitialState(seed, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
+    // Isolate primitive material consequences from other founders' first-month
+    // projects and social edges. This fixture is not testing deliberation.
+    const craftState = createInitialState(26083044, { endpoint: { kind: 'months', value: 2 }, chaosIntensity: 0 });
     const crafter = craftState.people[0];
+    craftState.people = [crafter];
     crafter.inventory = stacks;
     const intentId = `intent-test-craft-${seed}`;
     craftState.intents.push({
@@ -983,7 +997,6 @@ try {
       goal: { kind: 'knowledge', factId: `attempt:${seed}` },
       nextAction: { kind: 'act', operation: 'combine', targets: targets(crafter) }, status: 'active',
       createdAtMonth: 0, lastProgressAtMonth: 0, progress: 0, sourceDecisionEventId: `decision-test-craft-${seed}`,
-      plannedDurationMonths: 3, stateGoalUntilMonth: 2,
       sourceFactIds: [], actionEventIds: [], replanCount: 0,
     });
     crafter.activeIntentId = intentId;
@@ -1002,6 +1015,8 @@ try {
     && event.action.operation === 'combine'
     && event.diff.outputMaterialId === 23);
   assert.equal(ropeCraftFact?.diff.outputQuantity, 1, '两份私有纤维应由 combine 形成一份私有绳；绳之后可以继续被真实制作链消耗');
+  assert.equal(ropeState.intents.find((intent) => intent.id === 'intent-test-craft-37')?.goalOutcome?.kind, 'not-evaluated',
+    'attempt:* 只标识一次有界实验，不得把未创建的合成 knowledge 目标记成真实失败');
   assert.equal(ropeState.people[0].inventory.some((stack) => stack.materialId === 20), false, '制作必须消耗真实输入物质');
   const toolState = await craftWith(38, [
     { id: 'stone-craft', materialId: 1, quantity: 1, sourceEventIds: [] },
@@ -1753,9 +1768,14 @@ try {
   const personMonths = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + ledger.livingAgents, 0);
   const ordinaryCalls = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + (ledger.ordinaryModelContexts ?? ledger.modelContexts), 0);
   const exemptCalls = budgetState.decisionBudget.ledgers.reduce((sum, ledger) => sum + (ledger.exemptModelContexts ?? 0), 0);
-  assert.deepEqual(new Set(budgetBatches[0]), new Set(budgetState.people.filter((person) => person.generation === 0).map((person) => person.id)), '开局必须在一个批次中让所有先民获得初始决策');
-  assert.equal(budgetState.decisionBudget.ledgers[0]?.ordinaryModelContexts, 0, '开局批量不应占用普通人月额度');
-  assert.equal(budgetState.decisionBudget.ledgers[0]?.exemptModelContexts, budgetState.people.filter((person) => person.generation === 0).length, '开局批量应完整记录为豁免上下文');
+  const founderCount = budgetState.people.filter((person) => person.generation === 0).length;
+  const openingCapacity = Math.floor(founderCount / 3);
+  assert.equal(new Set(budgetBatches[0]).size, openingCapacity,
+    '先民可以进入模型审议，但必须与普通月份共用每 3 人月一个上下文的容量');
+  assert.equal(budgetState.decisionBudget.ledgers[0]?.ordinaryModelContexts, openingCapacity,
+    '开局模型审议必须计入普通人月额度');
+  assert.equal(budgetState.decisionBudget.ledgers[0]?.exemptModelContexts, 0,
+    '开局不得再把全部先民放大成无上限豁免调用');
   assert.ok(ordinaryCalls <= Math.floor(personMonths / 3), '普通模型上下文不得超过每 3 人月一个的滚动额度');
   assert.equal(calls, ordinaryCalls + exemptCalls, '总调用审计应等于普通与豁免调用之和');
 

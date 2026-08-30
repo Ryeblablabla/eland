@@ -16,6 +16,8 @@ export interface IntentChoice {
   completionPolicy?: ActionCompletionPolicy;
   sourceFactIds: string[];
   projectId?: string;
+  characterAgendaItemId?: string;
+  characterAgendaApproachId?: string;
   projectProposal?: ProjectProposal;
   relationshipBasis?: RelationshipCausalBasis;
   recordUseBasis?: RecordUseBasis;
@@ -86,6 +88,8 @@ export function composeIntentChoice(
       ...(selected.completionPolicy ? { completionPolicy: structuredClone(selected.completionPolicy) } : {}),
       sourceFactIds: [...selected.sourceFactIds],
       ...(selected.projectId ? { projectId: selected.projectId } : {}),
+      ...(selected.characterAgendaItemId ? { characterAgendaItemId: selected.characterAgendaItemId } : {}),
+      ...(selected.characterAgendaApproachId ? { characterAgendaApproachId: selected.characterAgendaApproachId } : {}),
       ...(selected.projectProposal ? { projectProposal: structuredClone(selected.projectProposal) } : {}),
       ...(selected.relationshipBasis ? { relationshipBasis: structuredClone(selected.relationshipBasis) } : {}),
       ...(selected.recordUseBasis ? { recordUseBasis: structuredClone(selected.recordUseBasis) } : {}),
@@ -108,6 +112,8 @@ export function composeIntentChoice(
     ...(followUp.completionPolicy ? { completionPolicy: structuredClone(followUp.completionPolicy) } : {}),
     sourceFactIds: [...new Set([...selected.sourceFactIds, ...followUp.sourceFactIds])],
     ...(followUp.projectId ? { projectId: followUp.projectId } : {}),
+    ...(followUp.characterAgendaItemId ? { characterAgendaItemId: followUp.characterAgendaItemId } : {}),
+    ...(followUp.characterAgendaApproachId ? { characterAgendaApproachId: followUp.characterAgendaApproachId } : {}),
     ...(followUp.projectProposal ? { projectProposal: structuredClone(followUp.projectProposal) } : {}),
     ...(selected.relationshipBasis ? { relationshipBasis: structuredClone(selected.relationshipBasis) } : {}),
     ...(followUp.recordUseBasis

@@ -33,12 +33,12 @@ import {
   buildRelationshipCausalBasis,
   canOfferRelationshipProposal,
   hasCultivatedCompanionRelationship,
+  substantiveRelationshipEvidenceIds,
 } from '../domain/relationship-evidence';
 import { buildGroundedConversationOptions } from './conversation-options';
 import { personalityScore } from '../domain/personality';
 import {
   liveSocialEvidenceForPersonSource,
-  liveSocialEvidenceForPersonSources,
 } from '../domain/event-index';
 import { agreementById, agreementsForPerson } from '../domain/agreement';
 import { intentsOwnedBy, personById } from '../domain/state-index';
@@ -82,16 +82,6 @@ function commitmentActionSemantics(
     edgeTrigger: 'commitment-action',
     ...(socialContext ? { socialContext } : {}),
   });
-}
-
-function groundedRelationSourceIds(state: SimulationState, person: PersonState, otherId: string): string[] {
-  const sourceEventIds = relationTo(person, otherId)?.sourceEventIds ?? [];
-  const resolved = new Set(liveSocialEvidenceForPersonSources(
-    state,
-    person,
-    sourceEventIds,
-  ).map((evidence) => evidence.eventId));
-  return sourceEventIds.filter((eventId) => resolved.has(eventId));
 }
 
 function reachableWater(state: SimulationState, person: PersonState) {
@@ -1137,7 +1127,7 @@ export function buildSocialOptions(
 
   for (const other of [...conversationalPeople].sort((left, right) => left.id.localeCompare(right.id))) {
     const relation = relationTo(person, other.id);
-    const relationshipSourceFactIds = groundedRelationSourceIds(state, person, other.id);
+    const relationshipSourceFactIds = substantiveRelationshipEvidenceIds(state, person, other);
     const companionBasis = buildRelationshipCausalBasis(state, person, other, 'companion', atMonth);
     const need: 'water' | 'food' | null = person.body.hydration < 45 ? 'water' : person.body.nutrition < 45 ? 'food' : null;
     if (need && !hasOpenAssistRequestBetween(state, person.id, other.id)) {
@@ -1154,6 +1144,11 @@ export function buildSocialOptions(
     const locallyApproachable = Math.max(0, relation?.trust ?? 0) + Math.max(0, relation?.bond ?? 0)
       >= Math.max(0, relation?.fear ?? 0);
     if (locallyApproachable
+      // Mere co-location does not justify installing a formal companionship
+      // request/agreement. People can first talk through the optional grounded
+      // conversation path; this stronger proposal needs one replayable shared
+      // relationship event chosen from the requester's own evidence.
+      && relationshipSourceFactIds.length > 0
       && !hasCultivatedCompanionRelationship(state, person, other, companionBasis)
       && !companyAssistInFlightBetween(state, person.id, other.id)
       && canRequestCompanyWithCurrentBasis(state, person.id, other.id, relationshipSourceFactIds, atMonth)
@@ -1162,9 +1157,7 @@ export function buildSocialOptions(
       options.push({
         id: `request-company:${atMonth}:${person.id}:${other.id}`,
         summary: `请求${other.name}在这里陪伴自己一段时间`,
-        reason: relationshipSourceFactIds.length
-          ? '双方此刻同地，且本人记得彼此真实发生过的关系经历；可以请求而不能预设对方同意'
-          : '双方此刻同地且可以直接沟通；这是一次低风险接近请求，不声称彼此已经建立关系',
+        reason: '双方此刻同地，且本人记得彼此真实发生过的关系经历；可以请求而不能预设对方同意',
         goal: { kind: 'representation-made', representationId },
         nextAction: {
           kind: 'communicate',

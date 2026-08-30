@@ -1,5 +1,6 @@
 import type { SpeechActView, SpeechLineView } from '../../societyContract';
 import type { SimulationState, WorldEvent } from '../simulation';
+import type { RepresentationInput } from '../domain/action';
 import { speechActFromRepresentation } from './speech-act';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
@@ -8,6 +9,10 @@ type DecisionEvent = Extract<WorldEvent, { kind: 'decision' }>;
 export interface SpeechLineDraft extends Omit<SpeechLineView, 'speechAct' | 'text' | 'source' | 'endpointId' | 'model'> {
   speechAct: SpeechActView;
   modelText?: string;
+  /** ActionFact whose already-realized model line must be supplied verbatim. */
+  replyToSourceEventId?: string;
+  /** True responses are not realizable without the exact visible parent line. */
+  requiresParentSpeech?: boolean;
 }
 
 function cleanModelText(value: string, max = 120): string {
@@ -17,6 +22,20 @@ function cleanModelText(value: string, max = 120): string {
     .replace(/\s+/gu, ' ')
     .slice(0, max)
     .trim();
+}
+
+function speechActForAutonomousTurn(content: RepresentationInput): SpeechActView {
+  const speechAct = speechActFromRepresentation(content);
+  const conversation = speechAct.details?.conversation;
+  if (!conversation || typeof conversation !== 'object' || Array.isArray(conversation)) return speechAct;
+  // Legacy grounded-conversation rules precomputed supportive/guarded. That is
+  // useful as historical schema data, but it must not decide the model's live
+  // conversational move or disposition.
+  const { stance: _stance, ...autonomousConversation } = conversation as Record<string, unknown>;
+  return {
+    ...speechAct,
+    details: { ...speechAct.details, conversation: autonomousConversation },
+  };
 }
 
 function modelDecisionFor(
@@ -50,6 +69,48 @@ function referencedFactSources(state: SimulationState, event: ActionEvent): stri
   ));
   if (referencedAction) return [referencedAction.id];
   return state.agreements.find((agreement) => agreement.id === referenceId)?.sourceEventIds ?? [];
+}
+
+function precedes(candidate: ActionEvent, event: ActionEvent): boolean {
+  return candidate.atMonth < event.atMonth
+    || candidate.atMonth === event.atMonth && candidate.orderInMonth < event.orderInMonth;
+}
+
+function communicationEventForRepresentation(
+  state: SimulationState,
+  event: ActionEvent,
+  representationId: string | undefined,
+): ActionEvent | undefined {
+  if (!representationId) return undefined;
+  return [...state.world.past].reverse().find((candidate): candidate is ActionEvent => (
+    candidate.kind === 'action'
+      && candidate.status === 'completed'
+      && candidate.action.kind === 'communicate'
+      && candidate.action.channel === 'voice'
+      && candidate.action.content.id === representationId
+      && precedes(candidate, event)
+  ));
+}
+
+function replySourceFor(
+  state: SimulationState,
+  event: ActionEvent,
+): { sourceEventId?: string; required: boolean } {
+  if (event.action.kind !== 'communicate') return { required: false };
+  const content = event.action.content;
+  if (content.kind === 'claim' && content.conversation?.turn === 'response') {
+    return { sourceEventId: content.conversation.referenceEventId, required: true };
+  }
+  if (content.kind === 'claim' && content.projectKnowledgeResponse) {
+    return { sourceEventId: content.projectKnowledgeResponse.requestEventId, required: true };
+  }
+  if (content.kind === 'accept' || content.kind === 'reject') {
+    return {
+      sourceEventId: communicationEventForRepresentation(state, event, content.referenceId)?.id,
+      required: true,
+    };
+  }
+  return { required: false };
 }
 
 /**
@@ -93,6 +154,7 @@ export function projectLiveSpeechDrafts(
     const communicatedFactSources = communicatedFactId
       ? speaker.knowledge.find((fact) => fact.id === communicatedFactId)?.sourceEventIds ?? []
       : [];
+    const replySource = replySourceFor(state, event);
 
     return [{
       id: `speech:${state.branchId}:${event.id}`,
@@ -102,7 +164,7 @@ export function projectLiveSpeechDrafts(
         ...referencedFactSources(state, event),
         ...communicatedFactSources,
         ...conversationSources,
-        ...(intent?.sourceFactIds ?? []),
+        ...(replySource.sourceEventId ? [replySource.sourceEventId] : []),
       ])],
       month: event.atMonth,
       planningTick: event.planningTick ?? event.actionTick,
@@ -112,7 +174,9 @@ export function projectLiveSpeechDrafts(
       audienceNames: audience.map((person) => person.name),
       channel: 'voice',
       communicationKind: event.action.content.kind,
-      speechAct: speechActFromRepresentation(event.action.content),
+      speechAct: speechActForAutonomousTurn(event.action.content),
+      ...(replySource.sourceEventId ? { replyToSourceEventId: replySource.sourceEventId } : {}),
+      ...(replySource.required ? { requiresParentSpeech: true } : {}),
       ...(decisionText && cleanModelText(decisionText) ? { modelText: cleanModelText(decisionText) } : {}),
     }];
   });

@@ -66,6 +66,7 @@ import { visibleCellsFor } from './project-perception';
 import { knownFacilitySite } from './project-workplace';
 import { projectsOwnedBy } from '../../domain/state-index';
 import { capabilityReplicationBasisFor } from './capability-replication';
+import { observeLocalShelterCapacity } from '../local-shelter-capacity';
 function proposal(
   state: SimulationState,
   person: PersonState,
@@ -179,11 +180,20 @@ export function activeProjectOverlapsLocalProposal(
   desiredFunction: ProjectFunction,
   beneficiaryIds: string[],
   site: ProjectState['site'],
+  shelterRequirement: ProjectProposal['shelterRequirement'],
   targetKnowledgeId: string | undefined,
   visibleCells: ReadonlySet<number>,
   atMonth: number,
 ): boolean {
   if (project.status !== 'active' || project.desiredFunction !== desiredFunction) return false;
+  if (desiredFunction === 'weather-shelter') {
+    if (Boolean(project.shelterRequirement) !== Boolean(shelterRequirement)) return false;
+    if (project.shelterRequirement && shelterRequirement
+      && (project.shelterRequirement.beneficiaryId !== shelterRequirement.beneficiaryId
+        || project.shelterRequirement.exposureKind !== shelterRequirement.exposureKind
+        || project.site?.cellId !== site?.cellId
+        || project.site?.z !== site?.z)) return false;
+  }
   if (desiredFunction === 'durable-record' && project.targetKnowledgeId !== targetKnowledgeId) return false;
   if (site && project.site) {
     if (desiredFunction === 'settled-cultivation') {
@@ -281,12 +291,6 @@ export function hasCausalShelterAdaptationNeed(state: SimulationState, person: P
     && isAlive(candidate)
     && visible.has(candidate.position.cellId));
   return Boolean(shelterAdaptationCandidate(state, person, visiblePeople, state.clock.elapsedMonths + 1));
-}
-
-function hasLocallyVisibleShelter(state: SimulationState, visible: ReadonlySet<number>): boolean {
-  return [...visible].some((cell) => neighbors4(cell).every((neighbor) => visible.has(neighbor))
-    && standingPositions(state.world.grid, cell)
-      .some((position) => Boolean(shelterGeometryAt(state.world.grid, position))));
 }
 
 function cropProcessingFacilitySite(
@@ -449,10 +453,15 @@ export function deriveProjectProposals(
   const sheltered = Boolean(ownShelter);
   const adaptation = shelterAdaptationProposal(state, person, visiblePeople, pressureView);
   if (adaptation) proposals.push(adaptation);
-  const visibleCompleteShelter = hasLocallyVisibleShelter(state, visible);
-  if (!adaptation && (exposed || severeWeather) && !sheltered && !visibleCompleteShelter) proposals.push(compileProposal('shelter-capacity', {
-    kind: 'construction', desiredFunction: 'weather-shelter', summary: '把同一处材料连接成能进入并遮蔽天气的住所',
-    beneficiaryIds: [person.id],
+  const localShelterCapacity = observeLocalShelterCapacity(state, person, visibleCells, visiblePeople);
+  const locallyUnsheltered = localShelterCapacity.unshelteredPersonIds.includes(person.id);
+  const capacityShortfall = localShelterCapacity.capacityShortfall > 0;
+  if (!adaptation && (exposed || severeWeather || capacityShortfall) && locallyUnsheltered) proposals.push(compileProposal('shelter-capacity', {
+    kind: 'construction', desiredFunction: 'weather-shelter',
+    summary: capacityShortfall
+      ? '为自己和眼前同伴补足能进入并遮蔽天气的住所位置'
+      : '把同一处材料连接成能进入并遮蔽天气的住所',
+    beneficiaryIds: [person.id, ...localShelterCapacity.unshelteredPersonIds.filter((id) => id !== person.id)],
     site: { cellId: person.position.cellId, z: person.position.z },
   }));
 
@@ -819,6 +828,7 @@ export function deriveProjectProposals(
       desiredFunction,
       beneficiaryIds,
       proposalSite,
+      undefined,
       undefined,
       visible,
       proposalMonth,

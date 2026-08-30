@@ -49,12 +49,12 @@ try {
   assert.ok(founding, '开局必须存在先民共同抵达事实');
   assert.deepEqual([...founding.diff.participantIds].sort(), state.people.map((person) => person.id).sort());
   assert.ok(state.people.every((person) => person.relations.every((relation) => (
-    relation.trust === 55
-    && relation.bond === 55
+    relation.trust === 10
+    && relation.bond === 10
     && relation.fear === 0
     && relation.sourceEventIds.length === 1
     && relation.sourceEventIds[0] === founding.id
-  ))), '先民的初始关系必须双向为 55 且有来源');
+  ))), '先民的初始关系必须双向为 10 且有来源，只表示相识');
 
   const female = state.people.find((person) => person.sex === 'female') ?? state.people[0];
   const male = state.people.find((person) => person.sex === 'male' && person.id !== female.id) ?? state.people[1];
@@ -154,17 +154,16 @@ try {
   appraisalState.clock.elapsedMonths = 3;
   let appraisalContext = buildDecisionContexts(appraisalState).find((candidate) => candidate.person.id === appraisalFemale.id);
   const lowRelationshipOffer = appraisalContext?.options.find((option) => option.id.startsWith('offer-reproduce:'));
-  assert.ok(appraisalContext && lowRelationshipOffer, '跨月直接交流形成资格后，低分关系仍由人物连续评估而非固定分数裁掉');
-  const lowRelationshipConsent = evaluateDecisionOption(appraisalContext, lowRelationshipOffer, { atMonth: 3, planningTick: 1 })
-    .votes.find((vote) => vote.tree === 'consent');
+  assert.equal(lowRelationshipOffer, undefined,
+    '跨月交流仍须积累到正式关系门槛，低分关系不能直接进入生育协商');
   Object.assign(appraisalRelation, { trust: 90, bond: 90 });
   appraisalContext = buildDecisionContexts(appraisalState).find((candidate) => candidate.person.id === appraisalFemale.id);
   const highRelationshipOffer = appraisalContext?.options.find((option) => option.id.startsWith('offer-reproduce:'));
   const highRelationshipConsent = appraisalContext && highRelationshipOffer
     ? evaluateDecisionOption(appraisalContext, highRelationshipOffer, { atMonth: 3, planningTick: 1 }).votes.find((vote) => vote.tree === 'consent')
     : undefined;
-  assert.ok(lowRelationshipConsent && highRelationshipConsent && highRelationshipConsent.score > lowRelationshipConsent.score,
-    '关系质量应连续改变人物愿不愿提出生殖，而不是充当固定资格线');
+  assert.ok(highRelationshipConsent,
+    '跨月真实交流达到关系门槛后，人物才进入连续的意愿评估');
 
   Object.assign(directedRelation, { trust: 55, bond: 55, sourceEventIds: [founding.id] });
   Object.assign(reciprocalRelation, { trust: 55, bond: 55, sourceEventIds: [founding.id] });
@@ -242,8 +241,8 @@ try {
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);
   assert.equal(directedRelation.trust, 63);
   assert.equal(directedRelation.bond, 59);
-  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), true,
-    '非开局共同活动跨过自然月后应保留首次生育协商，避免把真实繁衍频率绑死在对话调度上');
+  assert.equal(context?.options.some((option) => option.id.startsWith('offer-reproduce:')), false,
+    '跨月共同活动会积累关系，但缺少直接照护、履约或亲密回应时仍不能提出生育');
   appendGroundedExchange(state, female, male, 3, 'cultivated-month-3');
   appendGroundedExchange(state, female, male, 4, 'cultivated-month-4');
   context = buildDecisionContexts(state).find((candidate) => candidate.person.id === female.id);

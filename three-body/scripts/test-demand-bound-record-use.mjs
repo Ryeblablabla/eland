@@ -533,6 +533,22 @@ try {
     assert.ok(opening, 'shared project evidence should expose the reachable grounded-conversation regression');
     assert.equal(followUpSemanticallyMatches(opening, use), true,
       'the conversation and record use deliberately share a project action source');
+    const delayedSocialProposal = {
+      ...use,
+      id: 'move-then-unrelated-social-proposal',
+      nextAction: { kind: 'move', toCellId: fixture.author.position.cellId, toZ: fixture.author.position.z },
+      completionAction: {
+        kind: 'communicate',
+        content: { id: 'unrelated-social-proposal', kind: 'claim', summary: '另起一段社会提议' },
+        audience: [fixture.author.id], channel: 'voice',
+      },
+    };
+    assert.equal(followUpSemanticallyMatches(opening, delayedSocialProposal), false,
+      'move + completion communicate is still a separate social choice and cannot hide behind shared evidence');
+    const everydayOpening = structuredClone(opening);
+    everydayOpening.nextAction.content.conversation.topic = 'everyday';
+    assert.equal(followUpSemanticallyMatches(everydayOpening, use), false,
+      'ordinary conversation must stand on its own instead of borrowing a physical follow-up');
     assert.equal(context.followUpOptions.some((option) => option.id === use.id), false,
       'record use remains a primary option and must never become a generic conversation follow-up');
     const recordOnlyContext = { ...context, options: [use] };

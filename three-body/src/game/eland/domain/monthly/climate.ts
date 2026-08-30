@@ -6,6 +6,11 @@ import { retainedColdWorldEventsForLease, worldEventById } from '../event-index'
 import { seededFraction } from '../../world/generator';
 import { personById } from '../state-index';
 
+export const EXTERNAL_ERA_CONFIRMATION_MONTHS = 3;
+export const EXTERNAL_ERA_MIN_DURATION_MONTHS = 6;
+export const WEATHER_CONTINUATION_PROBABILITY = 0.75;
+export const MIN_WEATHER_EPISODE_MONTHS = 2;
+
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -103,30 +108,83 @@ function nextEra(state: SimulationState, atMonth: number): EraSchedule {
   };
 }
 
+function resolveExternalEra(
+  state: SimulationState,
+  atMonth: number,
+): { epoch: EraSchedule['kind']; eraTransition: boolean; pending: boolean } {
+  const external = state.civilization.externalClimate;
+  if (!external) return { epoch: state.civilization.epoch, eraTransition: false, pending: false };
+  const currentEpoch = state.civilization.epoch;
+  const regime = state.civilization.externalEraRegime;
+  // Explicit domain/test climate injection keeps its immediate semantics.
+  // Live sky sessions install this regime tracker at their adapter boundary.
+  if (!regime) return { epoch: external.epoch, eraTransition: false, pending: false };
+
+  const terminal = external.terminalCatastrophe === 'triple-sun-vaporization';
+  if (external.epoch === currentEpoch) {
+    regime.candidateEpoch = null;
+    regime.candidateSinceMonth = atMonth;
+    regime.candidateConsecutiveMonths = 0;
+    return { epoch: currentEpoch, eraTransition: false, pending: false };
+  }
+
+  if (regime.candidateEpoch === external.epoch) {
+    regime.candidateConsecutiveMonths += 1;
+  } else {
+    regime.candidateEpoch = external.epoch;
+    regime.candidateSinceMonth = atMonth;
+    regime.candidateConsecutiveMonths = 1;
+  }
+  const durationSatisfied = atMonth - regime.sinceMonth >= EXTERNAL_ERA_MIN_DURATION_MONTHS;
+  const evidenceSatisfied = regime.candidateConsecutiveMonths >= EXTERNAL_ERA_CONFIRMATION_MONTHS;
+  if (!terminal && (!durationSatisfied || !evidenceSatisfied)) {
+    return { epoch: currentEpoch, eraTransition: false, pending: true };
+  }
+
+  regime.sinceMonth = atMonth;
+  regime.candidateEpoch = null;
+  regime.candidateSinceMonth = atMonth;
+  regime.candidateConsecutiveMonths = 0;
+  state.civilization.era = {
+    sequence: state.civilization.era.sequence + 1,
+    kind: external.epoch,
+    sinceMonth: atMonth,
+    endsAtMonth: atMonth + EXTERNAL_ERA_MIN_DURATION_MONTHS - 1,
+    dominantClimate: external.kind,
+  };
+  return { epoch: external.epoch, eraTransition: true, pending: false };
+}
+
 export function resolveClimate(state: SimulationState, atMonth: number): EnvironmentFact[] {
   const events: EnvironmentFact[] = [];
   const external = state.civilization.externalClimate;
   const previousEpoch = state.civilization.epoch;
   const previousClimate = state.civilization.climate;
   let eraTransition = false;
+  let externalEraPending = false;
   if (!external && atMonth > state.civilization.era.endsAtMonth) {
     state.civilization.era = nextEra(state, atMonth);
     eraTransition = true;
   }
+  const externalEra = external ? resolveExternalEra(state, atMonth) : null;
+  if (externalEra) {
+    eraTransition = externalEra.eraTransition;
+    externalEraPending = externalEra.pending;
+  }
   const scheduled = state.civilization.era;
-  const epoch = external?.epoch ?? scheduled.kind;
-  let kind = external?.kind ?? scheduled.dominantClimate;
+  const epoch = externalEra?.epoch ?? scheduled.kind;
+  const acceptedExternalClimate = external && (external.epoch === epoch || external.terminalCatastrophe);
+  let kind = acceptedExternalClimate ? external.kind : external ? previousClimate.kind : scheduled.dominantClimate;
   if (!external && epoch === 'chaotic') {
     const shift = seededFraction(state.seed, `era-climate-shift:${scheduled.sequence}:${Math.floor((atMonth - scheduled.sinceMonth) / 3)}`);
     if (shift > 0.82) kind = kind === 'cold' ? 'heat' : kind === 'heat' ? 'cold' : 'heat';
   }
   const chaos = state.civilization.conditions.chaosIntensity / 10;
-  const severity = external?.severity
-    ?? (epoch === 'stable'
+  const severity = acceptedExternalClimate ? external.severity
+    : external ? previousClimate.severity
+      : (epoch === 'stable'
       ? 1
       : Math.min(10, 3 + Math.floor(seededFraction(state.seed, `climate-severity:${scheduled.sequence}:${atMonth}`) * (5 + chaos * 3))));
-  // Observed external epoch changes are historical facts. Keep eraTransition
-  // reserved for the local schedule because prediction rules consume it.
   const epochChanged = previousEpoch !== epoch;
   const climateKindChanged = previousClimate.kind !== kind;
   const climateSeverityChanged = previousClimate.severity !== severity;
@@ -151,6 +209,12 @@ export function resolveClimate(state: SimulationState, atMonth: number): Environ
       ...(climateKindChanged ? { climateKindChanged: true } : {}),
       ...(climateSeverityChanged ? { climateSeverityChanged: true } : {}),
       ...(eraTransition ? { eraTransition: true } : {}),
+      ...(external ? { observedEpoch: external.epoch } : {}),
+      ...(externalEraPending ? {
+        eraConfirmationPending: true,
+        candidateEpoch: state.civilization.externalEraRegime?.candidateEpoch,
+        candidateConsecutiveMonths: state.civilization.externalEraRegime?.candidateConsecutiveMonths,
+      } : {}),
     },
   );
   return events;
@@ -164,8 +228,6 @@ const WEATHER_LABEL: Record<WeatherKind, string> = {
   snow: '降雪',
   fog: '浓雾',
 };
-
-const WEATHER_CONTINUATION_PROBABILITY = 0.55;
 
 function sampledWeatherKind(state: SimulationState, atMonth: number): WeatherKind {
   const climate = state.civilization.climate;
@@ -208,11 +270,12 @@ export function resolveWeather(state: SimulationState, atMonth: number): Environ
   const previous = state.civilization.weather;
   const initialObservation = atMonth === 1 && previous.sinceMonth === 0;
   const incompatibleWithClimate = !weatherFitsClimate(previous.kind, state.civilization.climate.kind);
+  const minimumDurationSatisfied = atMonth - previous.sinceMonth >= MIN_WEATHER_EPISODE_MONTHS;
   const continuation = seededFraction(
     state.seed,
     `weather-continuation:${state.civilization.era.sequence}:${atMonth}`,
   ) < WEATHER_CONTINUATION_PROBABILITY;
-  const candidateKind = initialObservation || incompatibleWithClimate || !continuation
+  const candidateKind = initialObservation || incompatibleWithClimate || minimumDurationSatisfied && !continuation
     ? sampledWeatherKind(state, atMonth)
     : previous.kind;
 

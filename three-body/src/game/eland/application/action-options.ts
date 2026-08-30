@@ -123,6 +123,7 @@ import {
   isCommitmentActionOption,
   isRequiredResponseOption,
 } from '../domain/action-option-semantics';
+import { buildCharacterAgendaOptions } from './character-agenda';
 import {
   buildFailureRetryContext,
   isCurrentlyBodyBlockedPlacement,
@@ -204,6 +205,27 @@ function knownTechniqueOutputMaterialId(technique: ReturnType<typeof knownTechni
   if (!technique) return undefined;
   const outputMaterialId = Number(technique.id.split(':').at(-1));
   return Number.isInteger(outputMaterialId) ? outputMaterialId : undefined;
+}
+
+/**
+ * A knowledge-gain affordance must still be capable of changing knowledge at
+ * the moment it enters DecisionContext. In particular, a saturated technique
+ * must not keep creating already-achieved, zero-action Intent episodes.
+ * `attempt:*` is an execution marker rather than a persisted knowledge fact.
+ */
+function knowledgeGoalAlreadySatisfied(
+  state: SimulationState,
+  person: PersonState,
+  option: ActionOption,
+): boolean {
+  const goal = option.goal;
+  if (goal.kind !== 'knowledge' || goal.factId.startsWith('attempt:')) return false;
+  const owner = goal.personId ? personById(state, goal.personId) : person;
+  return Boolean(owner && hasKnowledgeFact(
+    owner,
+    goal.factId,
+    (fact) => fact.confidence >= (goal.minConfidence ?? 0),
+  ));
 }
 
 export function visibleRadius(person: PersonState): number {
@@ -1397,6 +1419,21 @@ function buildOptions(
     });
   }
 
+  options.push(...buildCharacterAgendaOptions({
+    state,
+    person,
+    visibleCells,
+    visiblePeople,
+    visibleDrops,
+    visibleAnimals,
+    visibleRemains,
+    options: [],
+    followUpOptions: [],
+    activeIntent: person.activeIntentId && intentById(state, person.activeIntentId)?.status === 'active'
+      ? intentById(state, person.activeIntentId)
+      : undefined,
+  }, atMonth));
+
   options.push(...buildSocialOptions(state, person, visiblePeople, atMonth));
   const failureRetryContext = buildFailureRetryContext(state, person, atMonth);
   const pathCache = new Map<string, ReturnType<typeof findStandingPath>>();
@@ -1405,6 +1442,7 @@ function buildOptions(
       const classified = classifyActionOption(option);
       const planned = withPlanning(state, person, classified, atMonth, failureRetryContext, pathCache);
       if (!planned) return [];
+      if (knowledgeGoalAlreadySatisfied(state, person, planned)) return [];
       assertClassifiedActionOption(planned);
       return [planned];
     });

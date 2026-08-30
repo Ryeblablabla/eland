@@ -41,6 +41,7 @@ import { projectIsLedBy } from '../project-leadership';
 import { maternalFirstTeachingConfidence } from '../trait';
 import { positionsWithinVoiceRange } from '../social-space';
 import { cellsInRadius } from '../../world/grid';
+import { conversationEpisodeById } from '../agent-memory';
 import { clamp, nearbyFacilityMaterial, sameIds } from './execution-helpers';
 import { addInventory } from './inventory';
 import { parsedMineralObservation } from './material-observations';
@@ -82,6 +83,15 @@ function groundedConversationSourceMatches(
     return event ? liveSocialEvidenceDescriptorFromWorldEvent(event) : undefined;
   });
   if (!sources.length || sources.some((source) => !source)) return false;
+  if (conversation.topic === 'open') {
+    if (!conversation.openGroundingCompiled || content.factId) return false;
+    const personallyAvailable = new Set([
+      ...person.memories.flatMap((memory) => memory.sourceEventIds),
+      ...person.knowledge.flatMap((knowledge) => knowledge.sourceEventIds),
+      ...(relationTo(person, listener.id)?.sourceEventIds ?? []),
+    ]);
+    return conversation.sourceFactIds.every((sourceId) => personallyAvailable.has(sourceId));
+  }
   if (conversation.topic === 'everyday'
     || conversation.topic === 'reminiscence'
     || conversation.topic === 'playful') {
@@ -163,6 +173,7 @@ function validateGroundedConversation(
   person: PersonState,
   action: Extract<PrimitiveAction, { kind: 'communicate' }>,
   reached: PersonState[],
+  atMonth: number,
 ): GroundedConversationValidation {
   if (action.content.kind !== 'claim' || !action.content.conversation) return { kind: 'none' };
   const conversation = action.content.conversation;
@@ -174,6 +185,19 @@ function validateGroundedConversation(
     || !listener
     || conversation.sourceFactIds.length === 0) {
     return { kind: 'blocked', reason: '生活对话的说话者、听者或事实来源不匹配' };
+  }
+  const episode = conversation.episodeId
+    ? conversationEpisodeById(state, conversation.episodeId)
+    : undefined;
+  if (conversation.episodeId && (!episode
+    || ![episode.initiatorId, episode.listenerId].includes(person.id)
+    || ![episode.initiatorId, episode.listenerId].includes(listener.id)
+    || (conversation.turn === 'opening' && episode.status !== 'reserved')
+    || (conversation.turn === 'response'
+      && (episode.status !== 'response-reserved'
+        || (episode.nextSpeakerId ?? episode.listenerId) !== person.id
+        || atMonth > episode.replyByMonth)))) {
+    return { kind: 'blocked', reason: '这轮对话没有有效的参与者占用、轮次或回应期限' };
   }
   if (conversation.turn === 'opening') {
     if (conversation.referenceEventId || conversation.stance) {
@@ -188,7 +212,7 @@ function validateGroundedConversation(
     if (duplicate || !groundedConversationSourceMatches(state, person, listener, action.content, conversation)) {
       return { kind: 'blocked', reason: duplicate ? '同一段生活经历已经谈过' : '生活对话没有可解析且属于双方的真实来源' };
     }
-    const lowStakesTopic = ['everyday', 'reminiscence', 'playful'].includes(conversation.topic);
+    const lowStakesTopic = ['open', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic);
     const warmTopic = ['care', 'gratitude', 'shared-work', 'family', 'loss'].includes(conversation.topic);
     return {
       kind: 'valid',
@@ -198,30 +222,34 @@ function validateGroundedConversation(
     };
   }
   const referenceId = conversation.referenceEventId;
-  const opening = referenceId ? worldEventById(state, referenceId) : undefined;
-  const openingConversation = opening?.kind === 'action'
-    && opening.status === 'completed'
-    && opening.action.kind === 'communicate'
-    && opening.action.content.kind === 'claim'
-    ? opening.action.content.conversation
+  const previousTurn = referenceId ? worldEventById(state, referenceId) : undefined;
+  const previousConversation = previousTurn?.kind === 'action'
+    && previousTurn.status === 'completed'
+    && previousTurn.action.kind === 'communicate'
+    && previousTurn.action.content.kind === 'claim'
+    ? previousTurn.action.content.conversation
     : undefined;
   const duplicateResponse = Boolean(referenceId && hasRecentGroundedConversationResponseForListener(
     state,
     person.id,
     referenceId,
   ));
-  if (!openingConversation
-    || openingConversation.turn !== 'opening'
-    || openingConversation.speakerId !== listener.id
-    || openingConversation.listenerId !== person.id
-    || openingConversation.topic !== conversation.topic
-    || openingConversation.basisKey !== conversation.basisKey
-    || !sameIds(openingConversation.sourceFactIds, conversation.sourceFactIds)
+  if (!previousConversation
+    || previousConversation.speakerId !== listener.id
+    || previousConversation.listenerId !== person.id
+    || previousConversation.topic !== conversation.topic
+    || previousConversation.basisKey !== conversation.basisKey
+    || (conversation.episodeId && previousConversation.episodeId !== conversation.episodeId)
+    || !sameIds(previousConversation.sourceFactIds, conversation.sourceFactIds)
     || duplicateResponse) {
     return { kind: 'blocked', reason: duplicateResponse ? '这段生活对话已经回应过' : '回应没有引用人员与来源一致的生活对话开场' };
   }
-  const supportive = conversation.stance !== 'guarded';
-  const lowStakesTopic = ['everyday', 'reminiscence', 'playful'].includes(conversation.topic);
+  // An omitted stance is neutral. The conversation planner must not smuggle a
+  // supportive attitude (and therefore relationship growth) into a response
+  // merely because the listener chose to speak. Only an explicit, validated
+  // supportive stance may carry that consequence.
+  const supportive = conversation.stance === 'supportive';
+  const lowStakesTopic = ['open', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic);
   return {
     kind: 'valid',
     conversation,
@@ -407,7 +435,7 @@ export function executeCommunicate(state: SimulationState, person: PersonState, 
           ? coordinationRange.has(candidate.position.cellId) && Math.abs(candidate.position.z - person.position.z) <= 2
           : positionsWithinVoiceRange(candidate.position, person.position)));
   if (!reached.length) return { status: 'blocked' as const, result: '受众不在当前沟通范围', diff: {} };
-  const groundedConversation = validateGroundedConversation(state, person, action, reached);
+  const groundedConversation = validateGroundedConversation(state, person, action, reached, atMonth);
   if (groundedConversation.kind === 'blocked') {
     return { status: 'blocked' as const, result: groundedConversation.reason, diff: { groundedConversationBlocked: true } };
   }

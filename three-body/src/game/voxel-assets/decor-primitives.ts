@@ -41,3 +41,26 @@ export function jit(hex: number, r: number): number {
   const cb = Math.min(255, (hex & 255) * f);
   return (Math.round(cr) << 16) | (Math.round(cg) << 8) | Math.round(cb);
 }
+
+/**
+ * 天气驱动的摆动强度：风暴 > 雨 > 旱 > 雪 > 雾 > 晴。
+ * 树冠摇摆旗标与地表颗粒微风共用同一权威天气映射；乱纪元加成由调用方叠加。
+ */
+export function weatherSwayStrength(weather?: { kind: string; intensity: number } | null): number {
+  if (!weather) return 0.15;
+  const kindBase: Record<string, number> = {
+    storm: 0.72, rain: 0.42, drought: 0.3, snow: 0.22, fog: 0.12, clear: 0.14,
+  };
+  const base = kindBase[weather.kind] ?? 0.15;
+  return Math.min(1, base + Math.max(0, weather.intensity) * 0.055);
+}
+
+/** 天气驱动的湿润度：雨/风暴让石头、砖、灰泥与地表变润；雪微润；其余干燥。 */
+export function weatherWetness(weather?: { kind: string; intensity: number } | null): number {
+  if (!weather) return 0;
+  const strength = Math.min(1, Math.max(0, weather.intensity) / 10);
+  if (weather.kind === 'storm') return 0.5 + strength * 0.5;
+  if (weather.kind === 'rain') return 0.3 + strength * 0.5;
+  if (weather.kind === 'snow') return 0.18;
+  return 0;
+}

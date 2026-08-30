@@ -76,6 +76,7 @@ import {
   placedFunctionEvidence,
   placedFunctionMaterialIds,
   projectActionFacts,
+  projectCultivationPlantingCells,
   projectProductionToolBaselineRank,
   verifiedProductionToolFunctions,
 } from './project-completion';
@@ -2067,7 +2068,28 @@ export function compileProjectStep(
     project,
     projectPrefersLocalFinishedOutput(project),
   );
-  const requirement = projectMaterialRequirement(state, person, project, projectAccessOptions);
+  const plannedRequirement = projectMaterialRequirement(state, person, project, projectAccessOptions);
+  const visibleCultivationSeedSource = project.desiredFunction === 'settled-cultivation'
+    && projectCultivationPlantingCells(state, project).length < 6
+    && consumableInventoryQuantity(person, Material.Seed) === 0
+    ? visibleMaterialSource(state, person, Material.Seed)
+    : null;
+  // Cultivation is a direct physical loop, not a hidden manufacturing recipe.
+  // A missing seed becomes a demand only when the actor can currently perceive
+  // a reachable berry bush or mature crop that legally yields one. This keeps
+  // the source voxel, working position and later pickup auditable without
+  // revealing an off-screen source from the engine's global map.
+  const requirement = plannedRequirement ?? (visibleCultivationSeedSource ? {
+    materialIds: [Material.Seed],
+    demands: [materialDemand(
+      person,
+      Material.Seed,
+      1,
+      `visible-renewable-source:${project.desiredFunction}:${Material.Seed}`,
+      project.triggerFactIds,
+    )],
+    sourceEventIds: [...project.triggerFactIds],
+  } : null);
   if (!requirement?.materialIds.length) return null;
   // Keep the exact current branch on the authoritative project even when the
   // finite source search has no next step. Lifecycle release can then compare

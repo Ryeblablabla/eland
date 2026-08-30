@@ -18,8 +18,26 @@ import type { MortuaryPhase } from './mortuary';
 import type { SourcedMassMeasurementAction } from './measurement';
 import type { ActionOptionSemanticsV1 } from './action-option-semantics';
 import type { ProjectLeadershipSuccessionActionBasis } from './project-leadership';
+import type { CharacterAgendaProposal, CharacterAgendaUpdate } from './character-agenda';
 
 export interface VoxelPosition { x: number; y: number; z: number }
+
+/**
+ * One finite, person-local attempt to find water without reading hidden cells.
+ * The candidate area is frozen when the episode opens; walking must not drag
+ * the search horizon forward forever.
+ */
+export interface WaterSearchBasis {
+  version: 'bounded-water-search-v1';
+  episodeId: string;
+  beneficiaryId: PersonId;
+  openedAtMonth: number;
+  origin: { cellId: number; z: number };
+  candidates: Array<{ cellId: number; z: number }>;
+  candidateIndex: number;
+  /** Only new person-local water evidence may reopen an exhausted episode. */
+  evidenceKey: string;
+}
 
 export type WorldRef =
   | { kind: 'voxel'; position: VoxelPosition }
@@ -117,6 +135,7 @@ export interface TechniqueImitationRef {
 }
 
 export type GroundedConversationTopic =
+  | 'open'
   | 'everyday'
   | 'reminiscence'
   | 'playful'
@@ -132,14 +151,35 @@ export type GroundedConversationTopic =
 /** A social utterance grounded in replayable life history rather than generic flavor text. */
 export interface GroundedConversationRef {
   version: 'grounded-conversation-v1';
+  /** Shared live coordination owned by the unified memory store. */
+  episodeId?: string;
   basisKey: string;
   topic: GroundedConversationTopic;
   turn: 'opening' | 'response';
   speakerId: PersonId;
   listenerId: PersonId;
   sourceFactIds: string[];
+  /** Present only after an open option has been rebound through a validated model decision. */
+  openGroundingCompiled?: true;
   referenceEventId?: string;
   stance?: 'supportive' | 'guarded';
+}
+
+export interface OpenConversationGroundingFact {
+  /** Exact replayable fact retained server-side; the model sees only a request handle. */
+  sourceFactId: string;
+  kind: 'memory' | 'knowledge' | 'relationship';
+  summary: string;
+  memoryKind?: string;
+  knowledgeId?: string;
+}
+
+/** Ephemeral option envelope. It is never itself an authoritative claim. */
+export interface OpenConversationGroundingEnvelope {
+  version: 'open-conversation-grounding-v1';
+  listenerId: PersonId;
+  fallbackSourceFactIds: string[];
+  facts: OpenConversationGroundingFact[];
 }
 
 export type RepresentationInput =
@@ -232,6 +272,8 @@ export type PrimitiveAction =
       caregiverRef?: PersonId;
       /** Exact current local threat and the one-step refuge response validated by the domain. */
       wildlifeThreatBasis?: WildlifeThreatBasis;
+      /** Frozen finite frontier for a locally grounded water-search episode. */
+      waterSearchBasis?: WaterSearchBasis;
     }
   | {
       kind: 'transfer';
@@ -423,7 +465,8 @@ export type IntentInterruptionKind = 'life-review'
   | 'record-use'
   | 'survival-reflex'
   | 'dependent-care'
-  | 'shelter-maintenance';
+  | 'shelter-maintenance'
+  | 'voluntary-conversation';
 export type IntentReturnOutcome = 'resumed' | 'parent-completed' | 'parent-blocked' | 'parent-unavailable';
 
 export interface LifeReviewEvidence {
@@ -489,6 +532,10 @@ export interface Intent {
   lifecycle?: IntentLifecycle;
   sourceDecisionEventId: string;
   projectId?: string;
+  /** Durable concern that this executable episode is currently serving. */
+  characterAgendaItemId?: string;
+  /** Fallible means within the durable concern; its failure does not erase the agenda item. */
+  characterAgendaApproachId?: string;
   agreementId?: string;
   /** Agreement attempts that already existed before this intent bound to it. */
   reproductionAttemptEventIdsAtStart?: string[];
@@ -503,6 +550,8 @@ export interface Intent {
   /** Present only while this parent is suspended by its current child. */
   suspendedByIntentId?: string;
   suspendedAtMonth?: number;
+  /** The executable episode yielded because its project needs an external world change. */
+  waitingFor?: 'world-change';
   /** A project parent paused for one continuous dehydrated-hibernation episode. */
   suspendedForHibernationConditionId?: string;
   lastResumedAtMonth?: number;
@@ -532,11 +581,16 @@ export interface ActionOption {
   /** Only real waiting/maintenance behavior opts in; ordinary achievements omit this field. */
   completionPolicy?: ActionCompletionPolicy;
   sourceFactIds: string[];
+  /** Server-only source allow-list for an open conversation option. */
+  openConversationGrounding?: OpenConversationGroundingEnvelope;
   requiresFollowUp?: boolean;
   domain?: 'strategic' | 'social';
   estimatedMonths?: number;
   risks?: string[];
   projectId?: string;
+  /** Optional link for an option compiled from a durable character agenda. */
+  characterAgendaItemId?: string;
+  characterAgendaApproachId?: string;
   projectProposal?: ProjectProposal;
   relationshipBasis?: RelationshipCausalBasis;
   recordUseBasis?: RecordUseBasis;
@@ -551,21 +605,49 @@ export interface ActionOption {
   semantics?: ActionOptionSemanticsV1;
 }
 
+/** A sourced, subjective compression proposal. It never creates a world fact. */
+export interface MemoryConsolidationUpdate {
+  sourceItemIds: string[];
+  gist: string;
+  topicKeys: string[];
+  unresolved: boolean;
+  emotionalValence: number;
+}
+
 export type IntentDecision =
   | {
       kind: 'start'; optionId: string; followUpOptionId?: string; reason: string;
       utterance?: string; lifeReview?: LifeReviewEvidence;
+      /** Resolved server-side source ids selected through request-scoped handles. */
+      groundingSourceFactIds?: string[];
+      /** Optional imaginative concern/approach; local rules ground it before persistence. */
+      characterAgendaProposal?: CharacterAgendaProposal;
+      /** Subjective agenda change; it never authorizes or reports a world action. */
+      characterAgendaUpdate?: CharacterAgendaUpdate;
+      memoryConsolidation?: MemoryConsolidationUpdate;
       /** Server-owned link to a player conversation that requested this model review. */
       sourceInteractionId?: string;
     }
   | {
       kind: 'revise'; intentId: string; optionId: string; followUpOptionId?: string;
       reason: string; utterance?: string; lifeReview?: LifeReviewEvidence;
+      /** Resolved server-side source ids selected through request-scoped handles. */
+      groundingSourceFactIds?: string[];
       mode?: 'replace' | 'interrupt'; interruptionKind?: IntentInterruptionKind;
+      /** Optional imaginative concern/approach; local rules ground it before persistence. */
+      characterAgendaProposal?: CharacterAgendaProposal;
+      /** Subjective agenda change; it never authorizes or reports a world action. */
+      characterAgendaUpdate?: CharacterAgendaUpdate;
+      memoryConsolidation?: MemoryConsolidationUpdate;
       /** Server-owned link to a player conversation that requested this model review. */
       sourceInteractionId?: string;
     }
   | { kind: 'suspend'; intentId: string; reason: string }
   | { kind: 'resume'; intentId: string; reason: string }
   | { kind: 'abandon'; intentId: string; reason: string }
-  | { kind: 'idle'; reason: string };
+  | {
+      kind: 'idle'; reason: string;
+      /** Allows reflection to change a durable concern without inventing an executable option. */
+      characterAgendaUpdate?: CharacterAgendaUpdate;
+      memoryConsolidation?: MemoryConsolidationUpdate;
+    };

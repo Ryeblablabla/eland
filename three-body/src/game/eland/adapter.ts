@@ -3,10 +3,12 @@ import type {
   ActionVisualView,
   AgentHistoryItem,
   AgentHistoryView,
+  AgentMemoryView,
   EraKey,
   ModernCivilizationAchievementView,
   SocietyAgent,
   SocietyState,
+  SpeechLineView,
 } from '../societyContract';
 import type { ClimateKind, EpochKind, SimulationState, TerminalCatastropheKind, WorldEvent } from './simulation';
 import { Material, materialDefinition } from './domain/material';
@@ -23,6 +25,11 @@ import { voxelAt } from './world/grid';
 import { traitDefinition, traitStatesOf } from './domain/trait';
 import { validateElectricalPowerTopology, type ElectricalPowerNetworkState } from './domain/electrical-power';
 import { observeModernCivilizationEvidence } from './domain/era-progression';
+import {
+  speechHistoryTextForEvent,
+  verifiedSpeechLinesBySourceEventId,
+} from './projection/speech-history';
+import { retrieveAgentMemories } from './domain/agent-memory';
 
 export { projectPlayerNarrative } from './projection/player-narrative';
 export type { WorldEventLookup } from './projection/player-narrative';
@@ -772,13 +779,24 @@ export function toSocietyState(state: SimulationState): SocietyState {
         ...(occurrenceCount !== undefined ? { occurrenceCount } : {}),
       })),
     },
+    epoch: state.civilization.epoch,
+    climate: { ...state.civilization.climate },
     weather: { ...state.civilization.weather },
   };
 }
 
-export function toAgentHistory(state: SimulationState, agentId: string, limit = 80): AgentHistoryView | null {
+export function toAgentHistory(
+  state: SimulationState,
+  agentId: string,
+  limit = 80,
+  speechLines: readonly SpeechLineView[] = [],
+): AgentHistoryView | null {
   const lookup = stateLookup(state);
   if (!lookup.peopleById.has(agentId)) return null;
+  const speechLinesBySourceEventId = verifiedSpeechLinesBySourceEventId(
+    speechLines,
+    new Map(state.world.past.map((event) => [event.id, event])),
+  );
   const events = state.world.past.flatMap((event): AgentHistoryItem[] => {
     if (event.kind === 'decision-opportunity') {
       if (event.who !== agentId || event.triggered) return [];
@@ -786,12 +804,21 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
     }
     if (event.kind === 'decision') {
       if (event.who !== agentId) return [];
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: '作出选择', summary: playerTextForEvent(state, event), detail: historyCellLabel(state, event.cellId), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
+      const meaningfulAgendaReflection = event.characterAgendaEvidence?.some((evidence) => (
+        evidence.outcome === 'created'
+        || evidence.outcome === 'updated'
+        || evidence.outcome === 'paused'
+        || evidence.outcome === 'abandoned'
+      ));
+      if (event.decision.kind === 'idle' && !meaningfulAgendaReflection) return [];
+      const summary = playerTextForEvent(state, event);
+      if (!summary) return [];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, cellId: event.cellId, kind: 'decision', label: event.decision.kind === 'idle' ? '长期想法变化' : '作出选择', summary, detail: historyCellLabel(state, event.cellId), ...(event.intentId ? { intentId: event.intentId } : {}), usedModel: event.usedModel }];
     }
     if (event.kind === 'action') {
       if (event.who !== agentId) return [];
       const label = event.status === 'completed' ? '行动完成' : event.status === 'blocked' ? '行动受阻' : event.status === 'failed' ? '行动失败' : '正在行动';
-      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `应对眼前危险 · ${label}` : label, summary: playerTextForEvent(state, event), detail: actionHistoryDetail(state, lookup, event), ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
+      return [{ id: event.id, month: event.atMonth, orderInMonth: event.orderInMonth, actionTick: event.actionTick, cellId: event.cellId, kind: 'action', label: event.cause === 'survival-reflex' ? `应对眼前危险 · ${label}` : label, summary: speechHistoryTextForEvent(event, speechLinesBySourceEventId) ?? playerTextForEvent(state, event), detail: actionHistoryDetail(state, lookup, event), ...(event.intentId ? { intentId: event.intentId } : {}), status: event.status }];
     }
     if (event.kind === 'environment' && event.who === agentId
       && event.change === 'animal' && event.diff.process === 'attack-human') {
@@ -813,6 +840,43 @@ export function toAgentHistory(state: SimulationState, agentId: string, limit = 
     return [];
   });
   return { agentId, throughMonth: state.clock.elapsedMonths, events: events.slice(-Math.max(1, Math.min(240, Math.floor(limit)))) };
+}
+
+export function toAgentMemory(
+  state: SimulationState,
+  agentId: string,
+  limit = 24,
+): AgentMemoryView | null {
+  const person = state.people.find((candidate) => candidate.id === agentId);
+  if (!person) return null;
+  const nameById = new Map(state.people.map((candidate) => [candidate.id, candidate.name]));
+  const remembered = retrieveAgentMemories(state, person, {
+    atMonth: state.clock.elapsedMonths,
+    unresolved: true,
+    laneLimits: {
+      episodic: 3,
+      semantic: 2,
+      social: 2,
+      procedural: 2,
+      prospective: 3,
+      dialogue: 4,
+    },
+    limit: Math.max(1, Math.min(16, Math.floor(limit))),
+    tokenBudget: 1_800,
+  }).map((memory) => ({
+    id: memory.id,
+    lane: memory.lane,
+    gist: memory.exactUtterance ? `“${memory.exactUtterance}”` : memory.gist,
+    precision: memory.precision,
+    confidence: memory.confidence,
+    salience: memory.salience,
+    emotionalValence: memory.emotionalValence,
+    unresolved: memory.unresolved,
+    personNames: memory.personIds.map((personId) => nameById.get(personId) ?? '记不清是谁'),
+    firstMonth: memory.firstExperiencedAtMonth,
+    lastMonth: memory.lastExperiencedAtMonth,
+  }));
+  return { agentId, throughMonth: state.clock.elapsedMonths, remembered };
 }
 
 export function monthSpeaker(state: SimulationState, events: WorldEvent[]): string | null {

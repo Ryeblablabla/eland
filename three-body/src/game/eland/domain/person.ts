@@ -1,5 +1,6 @@
 import type { BiologicalSex } from '../population';
 import type { NamingTradition } from '../naming';
+import type { CharacterAgendaState } from './character-agenda';
 import type { MaterialId } from './material';
 import type { BereavementState } from './mortuary';
 import type { ProjectFunction, ProjectNeed } from './project';
@@ -279,6 +280,8 @@ export interface PersonState {
   bereavements?: BereavementState[];
   /** Optional only so old schema-v17 states and small test fixtures can hydrate. */
   cognition?: CognitionState;
+  /** Durable concerns above executable Intent episodes; optional for schema-v17 saves. */
+  characterAgenda?: CharacterAgendaState;
   activeIntentId?: string;
   currentActionText: string;
   lastDecisionText: string;

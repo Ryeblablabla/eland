@@ -1,6 +1,6 @@
 import type { PrimitiveAction } from './action';
 import { materialHas } from './material';
-import type { DecisionAuthorityState, DropState, SimulationState } from './model';
+import type { DecisionAuthorityState, DropState, SimulationState, WorldEvent } from './model';
 import {
   ageMonths,
   canEnterDehydratedHibernation,
@@ -12,7 +12,7 @@ import {
   sameLocation,
   type PersonState,
 } from './person';
-import { findReachableWater, findVisibleWaterSearchDestination } from './water-access';
+import { compileBoundedWaterSearchMove, findReachableWater } from './water-access';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import { lifePlanningStage } from './life-stage';
@@ -151,7 +151,7 @@ export function dependentCareUrgency(state: SimulationState, caregiver: PersonSt
 export function chooseDependentCareReflex(
   state: SimulationState,
   caregiver: PersonState,
-  options: { suppressThermalShelter?: boolean } = {},
+  options: { suppressThermalShelter?: boolean; currentMonthEvents?: readonly WorldEvent[] } = {},
 ): PrimitiveAction | null {
   const dependent = visibleYoungDependents(state, caregiver)
     .find((candidate) => !isDormantDehydratedHibernating(candidate));
@@ -222,8 +222,14 @@ export function chooseDependentCareReflex(
       return { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
     }
     if (!water) {
-      const search = findVisibleWaterSearchDestination(state, caregiver, visible);
-      if (search) return { kind: 'move', toCellId: search.cellId, toZ: search.z };
+      const search = compileBoundedWaterSearchMove(
+        state,
+        caregiver,
+        dependent.id,
+        visible,
+        options.currentMonthEvents,
+      );
+      if (search) return search;
     }
   }
 

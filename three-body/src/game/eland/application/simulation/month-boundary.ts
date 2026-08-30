@@ -6,6 +6,7 @@ import { advanceGovernanceLifecycle } from '../../domain/governance';
 import { appendCommittedEvents, assertCommittedHistoryAppendable } from '../../domain/history';
 import { intentReviewAtMonth } from '../../domain/intent';
 import { maintainDueMemories } from '../../domain/memory';
+import { maintainAgentMemoryStore } from '../../domain/agent-memory';
 import type {
   BatchDecider,
   DecisionContext,
@@ -42,6 +43,7 @@ import {
 } from './observation-state';
 import { copyState } from './state-utils';
 import { buildDecisionContexts } from './tick-planner';
+import { reconcileCharacterAgendasForMonth } from '../character-agenda';
 
 export interface PreparedMonth {
   state: SimulationState;
@@ -112,6 +114,7 @@ export function prepareMonth(
   events.push(...advanceAgreementLifecycle(state, atMonth, events.length));
   events.push(...advancePermissionLifecycle(state, atMonth, events.length));
   maintainDueMemories(state, atMonth);
+  maintainAgentMemoryStore(state, atMonth);
   const exitedHibernationPersonIds = new Set(hibernationPhaseEvents
     .filter((event) => event.diff.exited === true)
     .map((event) => event.who));
@@ -142,6 +145,7 @@ export function prepareMonth(
     else if (exemption === 'emergency') reasons.push('紧急状态需要立即重评');
     else if (exemption === 'required-response') reasons.push('必须回应一项社会请求');
     else if (exemption === 'fulfillment') reasons.push('已有承诺或职责等待履行');
+    else if (exemption === 'agenda-revision') reasons.push('长期关切的一项办法刚被现实否定，需要重新考虑');
     if (interactionReview) reasons.push('本人准备落实对话中已经定下的下一步');
     if (reviewDue) reasons.push('持续状态目标到达复核月份');
     const naturallyMeaningful = !context.activeIntent
@@ -162,6 +166,8 @@ export function prepareMonth(
           ? `${context.person.name}获得开局初始决策`
           : exemption === 'required-response'
             ? `${context.person.name}本月必须回应一项社会请求`
+            : exemption === 'agenda-revision'
+              ? `${context.person.name}本月重新考虑一项被现实否定的长期办法`
             : `${context.person.name}本月重新考虑下一步`
         : `${context.person.name}本月延续已有意图`,
     };
@@ -244,6 +250,7 @@ export function finishMonth(
   projectionCadence: 'monthly' | 'annual',
   observationProjector: ObservationProjector,
 ): SimulationState {
+  reconcileCharacterAgendasForMonth(state, events, atMonth);
   const historyBeforeCommit = assertCommittedHistoryAppendable(state);
   const previousHistorySeal = {
     eventCount: historyBeforeCommit.eventCount,

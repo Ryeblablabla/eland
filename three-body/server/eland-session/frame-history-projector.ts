@@ -16,6 +16,12 @@ import type {
 } from '../../src/game/societyContract';
 import type { StoredFrame } from './timeline';
 import {
+  projectSpeechHistoryEntries,
+  projectSpeechHistoryEntry,
+  verifiedSpeechLinesBySourceEventId,
+} from '../../src/game/eland/projection/speech-history';
+import { playerTextForEvent } from '../../src/game/eland/projection/player-narrative';
+import {
   chronicleProjectionEntries,
   rebuildChronicleProjection,
   type ChronicleProjectionState,
@@ -126,7 +132,15 @@ export function projectFrame(input: {
           summary: input.state.civilization.outcome.summary,
         }
       : null,
-    entries: withCivilizationEntries(input.state, input.events, input.entries),
+    entries: withCivilizationEntries(
+      input.state,
+      input.events,
+      projectSpeechHistoryEntries(
+        input.entries,
+        input.speechLines,
+        new Map(input.events.map((event) => [event.id, event])),
+      ),
+    ),
     ...(input.speechLines.length ? { speechLines: input.speechLines } : {}),
     speaker: input.speechLines.at(-1)?.speakerName ?? monthSpeaker(input.state, input.events),
   };
@@ -171,19 +185,48 @@ function refreshStoredDeathEntries(
   });
 }
 
+function refreshStoredCommunicationEntries(
+  entries: FrameEntry[],
+  state: SimulationState,
+  eventsById: WorldEventLookup,
+  speechLines: readonly SpeechLineView[],
+): FrameEntry[] {
+  const speechLinesBySourceEventId = verifiedSpeechLinesBySourceEventId(speechLines, eventsById);
+  return entries.map((entry) => {
+    if (entry.kind !== 'action' || entry.sourceEventIds.length !== 1) return entry;
+    const sourceEventId = entry.sourceEventIds[0];
+    if (entry.id !== `narrative:${sourceEventId}`) return entry;
+    const event = eventsById.get(sourceEventId);
+    if (!event || event.kind !== 'action' || event.action.kind !== 'communicate') return entry;
+    const currentProjection = entriesFor(state, [event], eventsById)
+      .find((candidate) => candidate.id === entry.id
+        && candidate.kind === 'action'
+        && candidate.sourceEventIds.length === 1
+        && candidate.sourceEventIds[0] === sourceEventId);
+    const refreshed = currentProjection ?? { ...entry, text: playerTextForEvent(state, event) };
+    return projectSpeechHistoryEntry(refreshed, speechLinesBySourceEventId, eventsById);
+  });
+}
+
 export function finalizeChronicleEntries(
   projectedEntries: FrameEntry[],
   state: SimulationState | null,
   suppliedEventsById?: WorldEventLookup,
+  speechLines: readonly SpeechLineView[] = [],
 ): FrameEntry[] {
   if (!state) return projectedEntries;
   const eventsById = suppliedEventsById
     ?? new Map(state.world.past.map((event) => [event.id, event]));
-  // Stored frames keep their original presentation, but simple one-death rule
-  // entries can be safely refreshed to expose causal evidence added later.
-  // Mixed model summaries remain untouched because their identity/source set is
-  // not an exact death entry.
-  const entries = refreshStoredDeathEntries(projectedEntries, state, eventsById);
+  // Stored frames usually keep their original presentation. Exact single-death
+  // entries are refreshed when later evidence appears, and exact single-source
+  // communications are refreshed so old rule summaries cannot masquerade as
+  // quotations. Mixed summaries remain untouched.
+  const entries = refreshStoredCommunicationEntries(
+    refreshStoredDeathEntries(projectedEntries, state, eventsById),
+    state,
+    eventsById,
+    speechLines,
+  );
   const hasFounding = entries.some((entry) => entry.sourceEventIds.some((eventId) => {
     const event = eventsById.get(eventId);
     return event?.kind === 'environment' && event.change === 'founding';
@@ -200,7 +243,12 @@ export function projectChronicleFromProjection(
   state: SimulationState | null,
   eventsById?: WorldEventLookup,
 ): FrameEntry[] {
-  return finalizeChronicleEntries(chronicleProjectionEntries(projection), state, eventsById);
+  return finalizeChronicleEntries(
+    chronicleProjectionEntries(projection),
+    state,
+    eventsById,
+    [...projection.speechLinesBySourceEventId.values()],
+  );
 }
 
 export function projectChronicle(frames: StoredFrame[], state: SimulationState | null): FrameEntry[] {

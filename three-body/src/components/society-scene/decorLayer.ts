@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { EraKey, SocietyState } from '@/game/societyContract';
 import { collectDecor, type DecorBucket, type DecorInstance } from '@/game/voxelKits';
+import { weatherSwayStrength, weatherWetness } from '@/game/voxel-assets/decor-primitives';
 import { sameDecorVisuals } from './visualInvalidation';
 
 const SETTLEMENT_ERA_TRANSITION_MS = 1_000;
@@ -39,6 +40,8 @@ export interface DecorLayer {
   sync(society: SocietyState, era: EraKey): void;
   animate(now: number): void;
   updateTransition(now: number): void;
+  /** 当前近处火光的归一化强度（环境音景读取；白天火光熄灭时为 0）。 */
+  fireGlowLevel(): number;
   dispose(): void;
 }
 
@@ -110,6 +113,43 @@ export function createDecorLayer({
   const decorGroup = new THREE.Group();
   const decorBatches = new Map<string, DecorBatch>();
   let settlementDecorMaterials = cloneDecorMaterials();
+
+  // 湿润反射基线：雨/风暴时硬质材料（石/灰泥/金属/瓦/亮面）变润，有机材料只微沉。
+  // 基线在材质创建时登记为出厂值；时代切换克隆出的新组以 decorMaterials 同桶出厂值为准。
+  const WET_REFLECTIVE_BUCKETS = new Set(['stone', 'plaster', 'dark', 'accent', 'roofTile']);
+  const wetBaseline = new Map<THREE.Material, { roughness: number; envMapIntensity: number }>();
+  for (const material of Object.values(decorMaterials)) {
+    const m = material as THREE.MeshStandardMaterial;
+    wetBaseline.set(m, { roughness: m.roughness, envMapIntensity: m.envMapIntensity });
+  }
+  let wetnessSmoothed = 0;
+  let wetnessLastAt = 0;
+  const updateWetResponse = (now: number) => {
+    const target = weatherWetness(readFrame().society.weather);
+    const dt = wetnessLastAt > 0 ? Math.min(0.1, (now - wetnessLastAt) / 1000) : 0.016;
+    wetnessLastAt = now;
+    wetnessSmoothed += (target - wetnessSmoothed) * (1 - Math.exp(-2.2 * dt));
+    if (wetnessSmoothed < 0.002 && target === 0) return;
+    const materialSets = new Set<DecorMaterialSet>([
+      decorMaterials,
+      settlementDecorMaterials,
+      ...(settlementEraTransition ? [settlementEraTransition.outgoingMaterials] : []),
+    ]);
+    for (const set of materialSets) {
+      for (const [bucket, material] of Object.entries(set)) {
+        const m = material as THREE.MeshStandardMaterial;
+        let base = wetBaseline.get(m);
+        if (!base) {
+          const pristine = wetBaseline.get(decorMaterials[bucket] as THREE.MeshStandardMaterial);
+          base = pristine ?? { roughness: m.roughness, envMapIntensity: m.envMapIntensity };
+          wetBaseline.set(m, base);
+        }
+        const reflective = WET_REFLECTIVE_BUCKETS.has(bucket);
+        m.roughness = base.roughness * (1 - wetnessSmoothed * (reflective ? 0.5 : 0.12));
+        m.envMapIntensity = base.envMapIntensity * (1 + wetnessSmoothed * (reflective ? 0.9 : 0.15));
+      }
+    }
+  };
   let renderedDevelopmentStage: string | undefined;
   let settlementEraTransition: {
     startedAt: number;
@@ -285,6 +325,7 @@ export function createDecorLayer({
     }
     renderedDecorSociety = society;
     renderedDecorEra = era;
+    noteCompletedStructures(society, performance.now());
     const nextDevelopmentStage = society.observations.civilizationIndex?.stage ?? '原始部落';
     if (renderedDevelopmentStage !== undefined && renderedDevelopmentStage !== nextDevelopmentStage)
       beginSettlementEraTransition(performance.now());
@@ -396,6 +437,87 @@ export function createDecorLayer({
     return (hash >>> 0) / 0x100000000;
   };
 
+  // 火光池读取结果：供环境音景的火焰噼啪强度。
+  let lastFireGlow = 0;
+
+  // ---- 落成脉冲：权威结构首次进入 complete 状态时，在占据格中心放一圈地面波纹与尘粒 ----
+  // 只读取已提交的结构事实；首次同步只记录不播放，避免打开旧存档时全场齐鸣。
+  const COMPLETION_PULSE_MS = 1500;
+  const completionPulses: {
+    ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+    dust: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+    startAt: number;
+    active: boolean;
+  }[] = [];
+  for (let i = 0; i < 6; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.86, 1, 44),
+      new THREE.MeshBasicMaterial({
+        color: '#ffd9a0', transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.visible = false;
+    ring.renderOrder = 6;
+    scene.add(ring);
+    const dustPositions = new Float32Array(18 * 3);
+    for (let d = 0; d < 18; d++) {
+      const angle = (d / 18) * Math.PI * 2 + Math.random() * 0.3;
+      const radius = 0.3 + Math.random() * 0.8;
+      dustPositions[d * 3] = Math.cos(angle) * radius;
+      dustPositions[d * 3 + 1] = 0.06 + Math.random() * 0.2;
+      dustPositions[d * 3 + 2] = Math.sin(angle) * radius;
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+      color: '#d9c9a8', size: 0.09, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    }));
+    dust.visible = false;
+    dust.renderOrder = 6;
+    scene.add(dust);
+    completionPulses.push({ ring, dust, startAt: 0, active: false });
+  }
+  const knownCompleteStructures = new Set<string>();
+  let completionPulseSeeded = false;
+  const spawnCompletionPulse = (x: number, y: number, z: number, now: number) => {
+    const pulse = completionPulses.find((p) => !p.active) ?? completionPulses[0];
+    pulse.active = true;
+    pulse.startAt = now;
+    pulse.ring.position.set(x, y, z);
+    pulse.dust.position.set(x, y, z);
+    pulse.dust.position.y = y;
+    pulse.ring.visible = true;
+    pulse.dust.visible = true;
+  };
+  const noteCompletedStructures = (society: SocietyState, now: number) => {
+    if (!completionPulseSeeded) {
+      completionPulseSeeded = true;
+      for (const structure of society.structures) {
+        if (structure.complete) knownCompleteStructures.add(structure.id);
+      }
+      return;
+    }
+    const world = society.world;
+    for (const structure of society.structures) {
+      if (!structure.complete || knownCompleteStructures.has(structure.id)) continue;
+      knownCompleteStructures.add(structure.id);
+      if (!structure.occupiedCells.length) continue;
+      let cx = 0;
+      let cz = 0;
+      let cy = 0;
+      for (const cellId of structure.occupiedCells) {
+        cx += (cellId % world.width) - world.width / 2 + 0.5;
+        cz += Math.floor(cellId / world.width) - world.height / 2 + 0.5;
+        cy += (world.elevation[cellId] ?? 0) * cellHeight;
+      }
+      const n = structure.occupiedCells.length;
+      spawnCompletionPulse(cx / n, cy / n + 0.07, cz / n, now);
+    }
+  };
+
   // 火光池逐帧重绑：强度随昼夜（夜间为主、白天熄灭），闪烁相位与火舌动画同源。
   const updateFireLights = (now: number, fireSites: Map<string, { x: number; y: number; z: number }>) => {
     const nightFactor = THREE.MathUtils.clamp(1 - sunlight.intensity / 1.4, 0, 1);
@@ -417,6 +539,7 @@ export function createDecorLayer({
       light.position.set(site.x, site.y + 0.38, site.z);
       light.intensity = nightFactor * 2.6 * (0.85 + wave * 0.08);
     });
+    lastFireGlow = fireLights.reduce((sum, light) => sum + (light.visible ? light.intensity : 0), 0) / 2.6;
   };
 
   // 动物和火焰仍与其他装饰共享 InstancedMesh 合批；带 entityId / animation 的构件逐帧更新矩阵。
@@ -436,9 +559,10 @@ export function createDecorLayer({
       let touched = false;
       instances.forEach(({ index, instance }) => {
         if (instance.animation === 'wind') {
-          const intensity = Math.max(1, frame.society.weather?.intensity ?? 1);
+          // 幅度与频率都来自权威天气映射：风暴 > 雨 > 旱 > 雪 > 晴，不再只看强度数值。
+          const swayStrength = weatherSwayStrength(frame.society.weather);
           const seed = instance.x * 1.83 + instance.z * 2.37 + instance.y * 0.71;
-          const sway = Math.sin(now * 0.0028 * (1 + intensity * 0.05) + seed) * Math.min(0.055, 0.012 + intensity * 0.004);
+          const sway = Math.sin(now * 0.0028 * (0.7 + swayStrength * 1.6) + seed) * (0.006 + swayStrength * 0.05);
           const heightFactor = THREE.MathUtils.clamp(instance.y * 0.035, 0.2, 1);
           rotation.setFromEuler(new THREE.Euler(sway * heightFactor, 0, sway * 0.7 * heightFactor));
           matrix.compose(
@@ -660,9 +784,27 @@ export function createDecorLayer({
       if (touched) mesh.instanceMatrix.needsUpdate = true;
     }
     updateFireLights(now, fireSites);
+
+    // 落成脉冲推进：波纹扩散淡出，尘粒上浮消散。
+    for (const pulse of completionPulses) {
+      if (!pulse.active) continue;
+      const t = (now - pulse.startAt) / COMPLETION_PULSE_MS;
+      if (t >= 1) {
+        pulse.active = false;
+        pulse.ring.visible = false;
+        pulse.dust.visible = false;
+        continue;
+      }
+      const ease = 1 - Math.pow(1 - t, 3);
+      pulse.ring.scale.setScalar(0.5 + ease * 3.4);
+      pulse.ring.material.opacity = 0.72 * Math.pow(1 - t, 1.7);
+      pulse.dust.position.y = pulse.ring.position.y + ease * 0.5;
+      pulse.dust.material.opacity = 0.55 * (1 - t);
+    }
   };
 
   const updateTransition = (now: number) => {
+    updateWetResponse(now);
     const warmGlow = 1.2 + 0.18 * Math.sin(now * 0.011) + 0.1 * Math.sin(now * 0.027 + 1.4);
     const redGlow = 1.35 + 0.2 * Math.sin(now * 0.014 + 1) + 0.08 * Math.sin(now * 0.031);
     const materialSets = new Set<DecorMaterialSet>([
@@ -687,7 +829,15 @@ export function createDecorLayer({
       settlementEraTransition = null;
     }
     for (const child of [...decorGroup.children]) (child as THREE.InstancedMesh).dispose();
+    for (const pulse of completionPulses) {
+      pulse.ring.geometry.dispose();
+      pulse.ring.material.dispose();
+      pulse.ring.removeFromParent();
+      pulse.dust.geometry.dispose();
+      pulse.dust.material.dispose();
+      pulse.dust.removeFromParent();
+    }
   };
 
-  return { sync, animate, updateTransition, dispose };
+  return { sync, animate, updateTransition, fireGlowLevel: () => lastFireGlow, dispose };
 }

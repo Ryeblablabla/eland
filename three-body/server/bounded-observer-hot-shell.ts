@@ -297,6 +297,28 @@ function assertExternalClimate(value: unknown): void {
   }
 }
 
+function assertExternalEraRegime(value: unknown): void {
+  const regime = requiredRecord(value, 'civilization.externalEraRegime');
+  assertExactKeys(
+    regime,
+    ['sinceMonth', 'candidateEpoch', 'candidateSinceMonth', 'candidateConsecutiveMonths'],
+    [],
+    'civilization.externalEraRegime',
+  );
+  assertNonNegativeSafeInteger(regime.sinceMonth, 'civilization.externalEraRegime.sinceMonth');
+  if (regime.candidateEpoch !== null) {
+    assertMember(regime.candidateEpoch, EPOCHS, 'civilization.externalEraRegime.candidateEpoch');
+  }
+  assertNonNegativeSafeInteger(
+    regime.candidateSinceMonth,
+    'civilization.externalEraRegime.candidateSinceMonth',
+  );
+  assertNonNegativeSafeInteger(
+    regime.candidateConsecutiveMonths,
+    'civilization.externalEraRegime.candidateConsecutiveMonths',
+  );
+}
+
 function assertConditions(value: unknown): void {
   const conditions = requiredRecord(value, 'civilization.conditions');
   assertExactKeys(
@@ -421,7 +443,9 @@ function assertCivilization(value: unknown, canonical: boolean): asserts value i
   assertExactKeys(
     civilization,
     ['number', 'status', 'stage', 'epoch', 'era', 'climate', 'weather', 'conditions', 'civilizationIndex'],
-    canonical ? ['externalClimate', 'outcome'] : ['externalClimate', 'development', 'outcome'],
+    canonical
+      ? ['externalClimate', 'externalEraRegime', 'outcome']
+      : ['externalClimate', 'externalEraRegime', 'development', 'outcome'],
     'civilization',
   );
   assertNonNegativeSafeInteger(civilization.number, 'civilization.number');
@@ -439,6 +463,9 @@ function assertCivilization(value: unknown, canonical: boolean): asserts value i
   assertWeather(civilization.weather);
   if (civilization.externalClimate !== undefined) {
     assertExternalClimate(civilization.externalClimate);
+  }
+  if (civilization.externalEraRegime !== undefined) {
+    assertExternalEraRegime(civilization.externalEraRegime);
   }
   assertConditions(civilization.conditions);
   assertCivilizationIndex(civilization.civilizationIndex, canonical);
@@ -498,6 +525,9 @@ function cloneGameplayCivilization(
     ...(civilization.externalClimate === undefined
       ? {}
       : { externalClimate: { ...civilization.externalClimate } }),
+    ...(civilization.externalEraRegime === undefined
+      ? {}
+      : { externalEraRegime: { ...civilization.externalEraRegime } }),
     conditions: {
       civilizationNo: civilization.conditions.civilizationNo,
       climateBias: civilization.conditions.climateBias,
@@ -522,6 +552,7 @@ function gameplayCivilizationSnapshot(civilization: CivilizationState | Canonica
     climate: civilization.climate,
     weather: civilization.weather,
     externalClimate: civilization.externalClimate,
+    externalEraRegime: civilization.externalEraRegime,
     conditions: civilization.conditions,
     outcome: civilization.outcome,
   };

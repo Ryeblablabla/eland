@@ -241,10 +241,35 @@ try {
   assert.match(personalText, /伽利略仔细观察后，认出了木板。/);
   assert.match(personalText, /芙蕾雅捡起了2份木材。/);
   assert.match(personalText, /阿尔忒弥斯吃下了1份食物。/);
-  assert.match(personalText, /伽利略对芙蕾雅说：我在附近找到了木材。/);
+  assert.match(personalText, /伽利略告诉芙蕾雅，我在附近找到了木材。/);
   assert.match(personalText, /伽利略和芙蕾雅想要个孩子，但芙蕾雅没有怀上。/);
   assert.deepEqual(entries, [], '赶路、搬运、吃饭、普通对话和失败尝试不得进入文明历史');
   assert.deepEqual(events, originalEvents, '玩家叙事只能投影事件，不能改写权威事实');
+
+  const idleDecision = {
+    id: 'decision-idle', kind: 'decision', atMonth: 51, orderInMonth: 9, cellId: 4,
+    who: berryGatherer.id, usedModel: true,
+    decision: { kind: 'idle', reason: '这次不改变眼前安排' },
+    result: '伽利略在本次复核中没有改变安排',
+  };
+  const agendaDecision = {
+    ...idleDecision,
+    id: 'decision-agenda-reflection', orderInMonth: 10,
+    characterAgendaEvidence: [{
+      version: 'character-agenda-decision-v1', source: 'model-proposal',
+      outcome: 'created', operation: 'create',
+      compilerDisposition: 'deferred-missing-affordance',
+      aim: '弄清怎样让雨水留得久一点', sourceFactIds: ['weather-storm-8'],
+    }],
+  };
+  const reflectionState = structuredClone(visualProjectionState);
+  reflectionState.world.past = [idleDecision, agendaDecision];
+  const reflectionHistory = toAgentHistory(reflectionState, berryGatherer.id)?.events ?? [];
+  assert.equal(reflectionHistory.some((item) => item.id === idleDecision.id), false,
+    '无长期想法变化的模型 idle 不能刷出“继续原来的安排”式机器人记录');
+  assert.equal(reflectionHistory.find((item) => item.id === agendaDecision.id)?.summary,
+    `${berryGatherer.name}仍惦记着“弄清怎样让雨水留得久一点”，只是眼下还没有可行办法。`,
+    '只有真实保存的长期关切变化才进入人物历史');
 
   const legacyWeatherWithoutTransitionEvidence = projectPlayerNarrative(state, [{
     id: 'weather-7', kind: 'environment', change: 'weather', atMonth: 7, orderInMonth: 0, cellId: 0,
@@ -654,7 +679,14 @@ try {
   };
   const everydayNarrative = projectPlayerNarrative(state, [everydayResponse], 4);
   assert.equal(everydayNarrative.length, 1, '完整的低压力对话回应应进入近期文明纪事');
-  assert.equal(everydayNarrative[0].text, '芙蕾雅对伽利略说：说起今天吃了什么，也问对方昨夜睡得怎样。');
+  assert.equal(everydayNarrative[0].text, '芙蕾雅回应了伽利略关于近况的闲谈。');
+  assert.equal(everydayNarrative[0].text.includes(everydayResponse.action.content.summary), false,
+    '沟通意图摘要不能再冒充人物逐字对白');
+  assert.equal(everydayNarrative[0].detail, '这次关于近来的生活的回应已通过当面交谈完成。');
+  assert.equal(everydayNarrative[0].detail.includes(everydayResponse.action.content.summary), false,
+    '沟通意图摘要也不能从纪事详情泄漏');
+  assert.ok(everydayNarrative[0].importance < 80,
+    '低压力生活片段可以补充生活感，但不应压过技术与项目进展');
 
   const previousHeat = {
     id: 'heat-50', kind: 'environment', change: 'condition', atMonth: 50, orderInMonth: 9, cellId: 4,
@@ -770,6 +802,29 @@ try {
   assert.match(projectEntries[0].detail, /第 49 至 51 月/u);
   assert.doesNotMatch(projectEntries[0].detail, /格|空气结合/u, '项目详情不应继续暴露坐标或原始物质日志');
   assert.deepEqual(projectEntries[0].sourceEventIds, ['prepare-granary-plank', 'place-granary']);
+  const finishedStoneHoe = {
+    ...woodToPlank,
+    id: 'finish-stone-hoe',
+    diff: {
+      ...woodToPlank.diff,
+      outputMaterialId: Material.StoneHoe,
+    },
+  };
+  const efficientProductionState = {
+    ...state,
+    world: { ...state.world, past: [finishedStoneHoe] },
+    projects: [{
+      id: 'project-efficient-production', status: 'completed', completedAtMonth: 51,
+      completionEventIds: ['finish-stone-hoe'], actionEventIds: ['finish-stone-hoe'], createdAtMonth: 50,
+      kind: 'craft', desiredFunction: 'efficient-production', ownerId: 'galileo', contributorIds: [],
+      summary: '制成更好用的生产工具',
+    }],
+  };
+  assert.equal(
+    projectPlayerNarrative(efficientProductionState, [finishedStoneHoe], 4)[0].text,
+    '伽利略制成了石锄与石镰。',
+    '生产工具项目已有具体产物时不应继续显示泛化类别',
+  );
   const originalStructuredFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('结构化项目与技术纪事不应再调用模型'); };
   try {

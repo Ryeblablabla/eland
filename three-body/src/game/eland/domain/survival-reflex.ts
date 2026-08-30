@@ -1,6 +1,6 @@
 import type { PrimitiveAction } from './action';
 import { Material, materialDefinition, materialHas } from './material';
-import type { DropState, SimulationState } from './model';
+import type { DropState, SimulationState, WorldEvent } from './model';
 import {
   canEnterDehydratedHibernation,
   HIBERNATION_ENTRY_LEGAL_RESERVE,
@@ -13,7 +13,7 @@ import {
 import { isInfant } from './dependent-care';
 import { lifePlanningStage } from './life-stage';
 import { RULE_ACTION_TICKS_PER_MONTH } from './calendar';
-import { findReachableWater, findVisibleWaterSearchDestination } from './water-access';
+import { compileBoundedWaterSearchMove, findReachableWater } from './water-access';
 import { findReachableShelter } from './shelter-access';
 import { shelterGeometryAt } from './structure';
 import { observedHibernationEntryEvidence } from './hibernation-entry';
@@ -81,6 +81,7 @@ function visibleCaregiverRendezvous(state: SimulationState, person: PersonState)
 export function chooseHibernationRecoveryReflex(
   state: SimulationState,
   person: PersonState,
+  currentMonthEvents: readonly WorldEvent[] = [],
 ): PrimitiveAction | null {
   if (!isRecoveringFromDehydratedHibernation(person) || state.civilization.epoch !== 'stable') return null;
   const wildlifeThreat = compileWildlifeThreatResponse(state, person);
@@ -130,8 +131,8 @@ export function chooseHibernationRecoveryReflex(
       : { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
   }
   if (!water && person.body.hydration < HIBERNATION_RECOVERY_SAFE_RESERVE) {
-    const search = findVisibleWaterSearchDestination(state, person, visible);
-    if (search) return { kind: 'move', toCellId: search.cellId, toZ: search.z };
+    const search = compileBoundedWaterSearchMove(state, person, person.id, visible, currentMonthEvents);
+    if (search) return search;
   }
   if (restorativeFood && (person.body.nutrition < stableRecoveryReserve
     || (person.body.health < HIBERNATION_RECOVERY_SAFE_RESERVE && restorativeFoodHealth > 0)
@@ -192,7 +193,7 @@ export function chooseFailedShelterHibernationReflex(
 export function chooseSurvivalReflex(
   state: SimulationState,
   person: PersonState,
-  options: { suppressThermalShelter?: boolean } = {},
+  options: { suppressThermalShelter?: boolean; currentMonthEvents?: readonly WorldEvent[] } = {},
 ): PrimitiveAction | null {
   const cannotTravelAlone = isInfant(state, person, state.clock.elapsedMonths + 1);
   const caregiverRendezvous = visibleCaregiverRendezvous(state, person);
@@ -221,8 +222,14 @@ export function chooseSurvivalReflex(
         : failedShelterHibernation ?? caregiverRendezvous ?? { kind: 'move', toCellId: water.bankPosition.cellId, toZ: water.bankPosition.z };
     }
     if (!water && !cannotTravelAlone) {
-      const search = findVisibleWaterSearchDestination(state, person, visible);
-      if (search) return failedShelterHibernation ?? caregiverRendezvous ?? { kind: 'move', toCellId: search.cellId, toZ: search.z };
+      const search = compileBoundedWaterSearchMove(
+        state,
+        person,
+        person.id,
+        visible,
+        options.currentMonthEvents,
+      );
+      if (search) return failedShelterHibernation ?? caregiverRendezvous ?? search;
     }
   }
   if (food && person.body.nutrition < 52) {

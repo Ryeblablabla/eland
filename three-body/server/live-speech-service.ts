@@ -1,13 +1,19 @@
 import { ageMonths } from '../src/game/eland/domain/person';
 import { effectivePersonality } from '../src/game/eland/domain/personality';
 import { buildPersonSoul } from '../src/game/eland/domain/person-soul';
-import type { SimulationState, WorldEvent } from '../src/game/eland/simulation';
-import type { SpeechLineView } from '../src/game/societyContract';
+import type { SimulationState, TokenUsage, WorldEvent } from '../src/game/eland/simulation';
+import type {
+  DialogueDisposition,
+  DialogueMove,
+  SpeechLineView,
+} from '../src/game/societyContract';
 import type { SpeechLineDraft } from '../src/game/eland/projection/live-speech';
+import { verifiedSpeechLinesBySourceEventId } from '../src/game/eland/projection/speech-history';
 import { loadServerEnvValue } from './env';
 import { requestModelText, type ModelMessage } from './model-client';
 import { resolveModelEndpoint, type ResolvedModelEndpoint } from './model-config';
 import { communicationProfile, selectContextualMemories } from './persona-context';
+import { SPEECH_SYSTEM_PROMPT_V2 } from './agent-prompt-templates';
 
 type ActionEvent = Extract<WorldEvent, { kind: 'action' }>;
 
@@ -15,7 +21,6 @@ interface SpeechRequestItem {
   sourceEventId: string;
   speaker: {
     name: string;
-    description: string;
     ageMonths: number;
     sex: SimulationState['people'][number]['sex'];
     communicationCapacity: number;
@@ -25,8 +30,25 @@ interface SpeechRequestItem {
     personality: ReturnType<typeof effectivePersonality>;
     motiveSensitivity: SimulationState['people'][number]['motiveSensitivity'];
     soul: ReturnType<typeof buildPersonSoul>;
+    activity: {
+      currentAction: string;
+      activeIntent?: { summary: string; progress: number };
+      activeAgenda?: {
+        aim: string;
+        theme: string;
+        status: string;
+        currentApproach?: string;
+      };
+    };
   };
-  listeners: Array<{ name: string; trust: number; bond: number; fear: number }>;
+  listeners: Array<{
+    name: string;
+    trust: number;
+    bond: number;
+    fear: number;
+    currentAction: string;
+    sameCell: boolean;
+  }>;
   situation: {
     elapsedMonths: number;
     epoch: SimulationState['civilization']['epoch'];
@@ -36,6 +58,20 @@ interface SpeechRequestItem {
   communication: {
     speechAct: SpeechLineDraft['speechAct'];
     relationalFrame: RelationalSpeechFrame;
+    /** Earlier model draft, never a rule summary; model may keep or rewrite it. */
+    proposedText?: string;
+    replyTo?: {
+      speechLineId: string;
+      sourceEventId: string;
+      speakerName: string;
+      text: string;
+      pronouns: {
+        previousFirstPerson: string;
+        previousSecondPerson: string;
+      };
+      dialogueMove?: DialogueMove;
+      disposition?: DialogueDisposition;
+    };
   };
   sourcedExperiences: string[];
   recentMemories: Array<{ kind: string; summary: string; participants: string[] }>;
@@ -45,28 +81,12 @@ interface SpeechRequestItem {
 export interface LiveSpeechResult {
   lines: SpeechLineView[];
   generationErrors: string[];
+  usage: TokenUsage;
+  providerRequests: number;
 }
 
 const SPEECH_BATCH_SIZE = 6;
 const SPEECH_BATCH_CONCURRENCY = 3;
-const SYSTEM_PROMPT = [
-  '你为规则优先的物质世界中已经真实发生的口头沟通写台词。',
-  '规则只决定说话者、听者、沟通类型、事实、提议与立场，不提供可显示原话。你要依据 communication.speechAct 自主决定完整表达，但绝不能改变结构化内容。',
-  '不要把规划摘要或字段值当成对白模板照抄；要依照人物 Soul、当下关系与处境组织自然语言。',
-  '人格、身体处境、彼此关系、近期记忆和亲历事实只影响语气与用词。不得补充输入中没有的新事实、行动、承诺、知识、关系或情绪。',
-  'speaker.description 只是档案原型与外貌线索，不证明当前身份、技能、知识或历史；与结构化 personality 或 soul 冲突时以后两者为准。',
-  'personality 是 0 到 100 的 HEXACO 有效人格：高外向可更主动，高情绪性可更敏感，高宜人性可更温和，高尽责可更明确，高开放可更好奇，高诚实谦逊应少夸耀；低值表现为相反倾向，但不要机械套模板。',
-  'speaker.soul 是稳定表达锚；从 sceneFacets 中只激活与本次 speechAct 最接近的一个侧面，再按 styleMatrix 写话。不要同时表演全部人格，不复述 Soul、标签或数值，也不要改变 speechAct。',
-  '遵循 speaker.communication 的年龄与表达限制；孩子或表达有限的人要更短、更具体，不能照抄 Soul 里的成年书面语言。recentMemories 已按当前听者与话题筛选，只可改变措辞和态度。',
-  'communication.relationalFrame 是服务器根据人格、当前话语行为、身体压力、关系与有源冲突计算的本轮交谈姿态，必须遵循其中 tone、intensity、instruction 与 reasonBudget。它只改变表达，不改变 speechAct。',
-  '以 neutral 的自然日常交流为常态：说到够用，不刻意客套，也不刻意强硬。warm、familiar、guarded 和 blunt 只在 relationalFrame 明确指定时轻度改变口吻，不要把一种姿态写满整句话。',
-  '直接不等于不耐烦，少说不等于冷漠，guarded 不等于自动怀疑。不要把“别、别指望、别磨蹭”当作直接表达的固定开头；只有 speechAct 确实包含劝阻、边界，或当前有对应 frictionEvidence 时才这样说。',
-  '只有 relationalFrame.hostilityAllowed=true 时才可升级为针对具体过错的指责、羞辱或威胁，而且只能依据 frictionEvidence 中的真实伤害、背约或持续施压。',
-  'request 可以是命令式、短促式或礼貌请求；人物无需每次陈述完整理由。每句使用说话者第一人称，像当面自然说出的话，通常 2 到 90 个汉字，半句也可以。不要写旁白、舞台说明、引号、ID、坐标、系统术语或现代游戏评论。',
-  'claim 必须忠实表达 speechAct 的 subject、details 与有源经历；若 details.factId 存在，只能表达 knownFacts 中同 id 的事实。request/offer 必须保留请求或提议；accept/reject 必须保持原立场；revoke/withdraw 必须清楚表达撤回或退出。',
-  '严格输出一个 JSON 对象，不输出解释，格式为：{"lines":[{"sourceEventId":"输入中的原值","text":"实际台词"}]}。每个输入必须恰好返回一次。',
-].join('\n');
-
 function parseJson(content: string): unknown {
   return JSON.parse(content.trim().replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, ''));
 }
@@ -111,12 +131,130 @@ function stancePreserved(kind: SpeechLineView['communicationKind'], text: string
 const POLITE_REQUEST = /(?:请|帮|能不能|能否|可不可以|希望|需要)/u;
 const DIRECT_REQUEST = /(?:^(?:(?:你|我们|咱们)?(?:先|快|马上|现在|别|不要|停|走|来|去|过来|跟上|继续|动手|等等|一起)|把.+)|(?:给我|拿来|递来|递过来|送来|送过来|搬来|搬过来|交出来|放这(?:里)?|留给我)(?:[，。！？\s]|$))/u;
 
+const CHINESE_DIGIT = new Map<string, number>([
+  ['零', 0], ['〇', 0], ['一', 1], ['二', 2], ['两', 2], ['三', 3],
+  ['四', 4], ['五', 5], ['六', 6], ['七', 7], ['八', 8], ['九', 9],
+]);
+const CHINESE_UNIT = new Map<string, number>([['十', 10], ['百', 100], ['千', 1_000]]);
+const MONTH_NUMBER = '[0-9]+|[零〇一二两三四五六七八九十百千万]+';
+
+function parseChineseInteger(value: string): number | undefined {
+  if (!value || !/^[零〇一二两三四五六七八九十百千万]+$/u.test(value)) return undefined;
+  if (!/[十百千万]/u.test(value)) {
+    const decimal = [...value].map((character) => CHINESE_DIGIT.get(character));
+    if (decimal.some((digit) => digit === undefined)) return undefined;
+    return Number(decimal.join(''));
+  }
+  let total = 0;
+  let section = 0;
+  let digit = 0;
+  for (const character of value) {
+    const numeric = CHINESE_DIGIT.get(character);
+    if (numeric !== undefined) {
+      digit = numeric;
+      continue;
+    }
+    if (character === '万') {
+      total += (section + digit) * 10_000;
+      section = 0;
+      digit = 0;
+      continue;
+    }
+    const unit = CHINESE_UNIT.get(character);
+    if (!unit) return undefined;
+    section += (digit || 1) * unit;
+    digit = 0;
+  }
+  return total + section + digit;
+}
+
+function parseMonthNumber(value: string): number | undefined {
+  const normalized = value.replace(/[０-９]/gu, (character) => String(character.codePointAt(0)! - 0xfee0));
+  if (/^[0-9]+$/u.test(normalized)) {
+    const parsed = Number(normalized);
+    return Number.isSafeInteger(parsed) ? parsed : undefined;
+  }
+  return parseChineseInteger(normalized);
+}
+
+function mentionedPredictionMonths(text: string, spokenAtMonth: number): number[] {
+  const months: number[] = [];
+  const absolute = new RegExp(`第\\s*(${MONTH_NUMBER})\\s*(?:个)?月`, 'gu');
+  for (const match of text.matchAll(absolute)) {
+    const month = parseMonthNumber(match[1]!);
+    if (month !== undefined) months.push(month);
+  }
+  const relativeAfter = new RegExp(`(?:再过|还有|还要)\\s*(${MONTH_NUMBER})\\s*个?月`, 'gu');
+  for (const match of text.matchAll(relativeAfter)) {
+    const offset = parseMonthNumber(match[1]!);
+    if (offset !== undefined) months.push(spokenAtMonth + offset);
+  }
+  const relativeSuffix = new RegExp(`(${MONTH_NUMBER})\\s*个?月(?:后|以后)`, 'gu');
+  for (const match of text.matchAll(relativeSuffix)) {
+    const offset = parseMonthNumber(match[1]!);
+    if (offset !== undefined) months.push(spokenAtMonth + offset);
+  }
+  return [...new Set(months)];
+}
+
+function predictionEpochAliases(targetEpoch: unknown): string[] {
+  if (targetEpoch === 'chaotic') return ['乱纪元', '混乱纪元', '混乱时代'];
+  if (targetEpoch === 'stable') return ['恒纪元', '稳定纪元', '稳定时代'];
+  return [];
+}
+
+function explicitlyNegatesEpoch(text: string, aliases: string[]): boolean {
+  return aliases.some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    return new RegExp(`(?:不会|不可能|未必|并非|不是|没有)(?:[^，。；！？]{0,5})${escaped}`, 'u').test(text)
+      || new RegExp(`${escaped}(?:[^，。；！？]{0,5})(?:不会|不可能|未必|并非|不是|不来|不到)`, 'u').test(text);
+  });
+}
+
+function predictionMeaningPreserved(
+  line: Pick<SpeechLineDraft, 'month' | 'speechAct'>,
+  candidate: string,
+): boolean {
+  const rawPrediction = line.speechAct.details?.prediction;
+  if (!rawPrediction || typeof rawPrediction !== 'object' || Array.isArray(rawPrediction)) return false;
+  const prediction = rawPrediction as Record<string, unknown>;
+  const predictedStartMonth = Number(prediction.predictedStartMonth);
+  const aliases = predictionEpochAliases(prediction.targetEpoch);
+  if (!Number.isSafeInteger(predictedStartMonth) || predictedStartMonth < 0 || !aliases.length) return false;
+  const clauses = candidate
+    .replace(/[０-９]/gu, (character) => String(character.codePointAt(0)! - 0xfee0))
+    .split(/[，,。；;！？!?]+/u)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  for (let index = 0; index < clauses.length; index += 1) {
+    const clause = clauses[index]!;
+    if (!aliases.some((alias) => clause.includes(alias)) || explicitlyNegatesEpoch(clause, aliases)) continue;
+    const localMonths = mentionedPredictionMonths(clause, line.month);
+    if (localMonths.length) {
+      if (localMonths.includes(predictedStartMonth)) return true;
+      continue;
+    }
+    // Natural speech often puts the time and the epoch on the two sides of a
+    // pause ("第八月前后，乱纪元会来"). The adjacent clause is accepted only
+    // when the epoch clause does not assert a competing month of its own.
+    const adjacent = [clauses[index - 1], clauses[index + 1]].filter(
+      (value): value is string => Boolean(value),
+    );
+    if (adjacent.some((value) => mentionedPredictionMonths(value, line.month).includes(predictedStartMonth))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function speechLineMatchesAct(
-  line: Pick<SpeechLineDraft, 'communicationKind' | 'audienceNames'>,
+  line: Pick<SpeechLineDraft, 'communicationKind' | 'audienceNames' | 'month' | 'speechAct'>,
   candidate: string,
 ): boolean {
   if (cleanText(candidate).length < 2) return false;
+  if (line.communicationKind !== line.speechAct.kind) return false;
   if (!stancePreserved(line.communicationKind, candidate)) return false;
+  if (line.communicationKind === 'prediction') return predictionMeaningPreserved(line, candidate);
   if (line.communicationKind === 'accept' || line.communicationKind === 'reject'
     || line.communicationKind === 'revoke-agreement' || line.communicationKind === 'revoke'
     || line.communicationKind === 'withdraw') return true;
@@ -319,19 +457,95 @@ export function deriveRelationalSpeechFrame(
   };
 }
 
+function activeSpeechContext(
+  state: SimulationState,
+  speaker: SimulationState['people'][number],
+): SpeechRequestItem['speaker']['activity'] {
+  const activeIntent = (speaker.activeIntentId
+    ? state.intents.find((intent) => intent.id === speaker.activeIntentId && intent.ownerId === speaker.id)
+    : undefined)
+    ?? state.intents.find((intent) => intent.ownerId === speaker.id && intent.status === 'active');
+  const agendaItems = speaker.characterAgenda?.items ?? [];
+  const activeAgenda = (activeIntent?.characterAgendaItemId
+    ? agendaItems.find((item) => item.id === activeIntent.characterAgendaItemId)
+    : undefined)
+    ?? agendaItems
+      .filter((item) => item.status === 'active' || item.status === 'incubating' || item.status === 'suspended')
+      .sort((a, b) => b.importance - a.importance || b.lastReviewedAtMonth - a.lastReviewedAtMonth)[0];
+  const activeApproach = activeAgenda?.approaches.find((approach) => (
+    approach.id === activeIntent?.characterAgendaApproachId
+      || approach.id === activeAgenda.activeApproachId
+  ));
+  return {
+    currentAction: speaker.currentActionText?.trim().replace(/\s+/gu, ' ').slice(0, 160) || '此刻停留在原地',
+    ...(activeIntent ? {
+      activeIntent: {
+        summary: activeIntent.summary.trim().replace(/\s+/gu, ' ').slice(0, 180),
+        progress: Math.max(0, Math.min(100, Math.round(activeIntent.progress ?? 0))),
+      },
+    } : {}),
+    ...(activeAgenda ? {
+      activeAgenda: {
+        aim: activeAgenda.aim.trim().replace(/\s+/gu, ' ').slice(0, 180),
+        theme: activeAgenda.theme.trim().replace(/\s+/gu, ' ').slice(0, 80),
+        status: activeAgenda.status,
+        ...(activeApproach ? {
+          currentApproach: activeApproach.summary.trim().replace(/\s+/gu, ' ').slice(0, 180),
+        } : {}),
+      },
+    } : {}),
+  };
+}
+
+/**
+ * Resolve only a verified, earlier model utterance addressed between the same
+ * participants. A rule summary is never accepted as a substitute parent.
+ */
+export function replySpeechLineFor(
+  state: SimulationState,
+  event: ActionEvent,
+  line: SpeechLineDraft,
+  availableSpeechLines: readonly SpeechLineView[],
+): SpeechLineView | undefined {
+  if (!line.replyToSourceEventId) return undefined;
+  const eventsById = new Map(state.world.past.map((candidate) => [candidate.id, candidate]));
+  const parentEvent = eventsById.get(line.replyToSourceEventId);
+  if (!parentEvent || !eventBefore(parentEvent, event)) return undefined;
+  const parent = verifiedSpeechLinesBySourceEventId(availableSpeechLines, eventsById)
+    .get(line.replyToSourceEventId);
+  if (!parent
+    || !parent.audienceIds.includes(line.speakerId)
+    || !line.audienceIds.includes(parent.speakerId)) return undefined;
+  return parent;
+}
+
 export function buildSpeechRequestItem(
   state: SimulationState,
   events: WorldEvent[],
   line: SpeechLineDraft,
+  availableSpeechLines: readonly SpeechLineView[] = [],
 ): SpeechRequestItem | null {
   const event = events.find((candidate): candidate is ActionEvent => candidate.kind === 'action' && candidate.id === line.sourceEventId);
   if (!event || event.action.kind !== 'communicate') return null;
   const speaker = state.people.find((person) => person.id === line.speakerId);
   if (!speaker) return null;
+  const replyTo = replySpeechLineFor(state, event, line, availableSpeechLines);
+  if (line.requiresParentSpeech && !replyTo) return null;
   const authorizedFactId = typeof line.speechAct.details?.factId === 'string'
     ? line.speechAct.details.factId
     : undefined;
   const eventById = new Map(state.world.past.map((candidate) => [candidate.id, candidate]));
+  const explicitFact = authorizedFactId
+    ? speaker.knowledge.find((fact) => fact.id === authorizedFactId)
+    : undefined;
+  const contextualSourceIds = new Set([
+    ...line.sourceFactIds,
+    ...(replyTo ? [replyTo.sourceEventId, ...replyTo.sourceFactIds] : []),
+  ]);
+  const contextualMemorySourceIds = new Set([
+    ...contextualSourceIds,
+    ...(explicitFact?.sourceEventIds ?? []),
+  ]);
   const listeners = line.audienceIds.flatMap((listenerId) => {
     const listener = state.people.find((person) => person.id === listenerId);
     if (!listener) return [];
@@ -341,6 +555,8 @@ export function buildSpeechRequestItem(
       trust: relation?.trust ?? 0,
       bond: relation?.bond ?? 0,
       fear: relation?.fear ?? 0,
+      currentAction: listener.currentActionText?.trim().replace(/\s+/gu, ' ').slice(0, 120) || '此刻停留在附近',
+      sameCell: listener.position?.cellId === speaker.position?.cellId,
     }];
   });
   const sourcedExperiences = line.sourceFactIds
@@ -350,18 +566,19 @@ export function buildSpeechRequestItem(
       && source.kind !== 'decision-opportunity'
       && eventBefore(source, event))
     .sort((a, b) => a.atMonth - b.atMonth || a.orderInMonth - b.orderInMonth)
-    .slice(-6)
+    .slice(-4)
     .map((source) => source.result.slice(0, 180));
   const eligibleMemories = [...speaker.memories]
     .filter((memory) => !memory.sourceEventIds.includes(event.id))
-    .filter((memory) => memory.sourceEventIds.length === 0
-      || memory.sourceEventIds.some((sourceId) => eventBefore(eventById.get(sourceId), event)))
+    .filter((memory) => memory.sourceEventIds.length > 0
+      && memory.sourceEventIds.some((sourceId) => eventBefore(eventById.get(sourceId), event)))
+    .filter((memory) => memory.sourceEventIds.some((sourceId) => contextualMemorySourceIds.has(sourceId)))
     .sort((a, b) => b.importance - a.importance || b.createdAtMonth - a.createdAtMonth);
   const speechCue = JSON.stringify(line.speechAct);
   const recentMemories = selectContextualMemories(eligibleMemories, {
     query: speechCue,
     participantIds: line.audienceIds,
-    maximum: 6,
+    maximum: 4,
   }).map((memory) => ({
     kind: memory.kind,
     summary: memory.summary.slice(0, 180),
@@ -375,7 +592,6 @@ export function buildSpeechRequestItem(
     sourceEventId: line.sourceEventId,
     speaker: {
       name: speaker.name,
-      description: speaker.profile.description.slice(0, 200),
       ageMonths: ageMonths(speaker, state.clock.elapsedMonths),
       sex: speaker.sex,
       communicationCapacity: speaker.baselineCapacities.communication,
@@ -388,6 +604,7 @@ export function buildSpeechRequestItem(
       personality: effectivePersonality(speaker),
       motiveSensitivity: speaker.motiveSensitivity,
       soul: buildPersonSoul(speaker),
+      activity: activeSpeechContext(state, speaker),
     },
     listeners,
     situation: {
@@ -399,37 +616,73 @@ export function buildSpeechRequestItem(
     communication: {
       speechAct: line.speechAct,
       relationalFrame: deriveRelationalSpeechFrame(state, event, speaker, line.audienceIds),
+      ...(!line.requiresParentSpeech && cleanText(line.modelText)
+        ? { proposedText: cleanText(line.modelText) }
+        : {}),
+      ...(replyTo ? {
+        replyTo: {
+          speechLineId: replyTo.id,
+          sourceEventId: replyTo.sourceEventId,
+          speakerName: replyTo.speakerName,
+          text: replyTo.text,
+          pronouns: {
+            previousFirstPerson: replyTo.speakerName,
+            previousSecondPerson: speaker.name,
+          },
+          ...(replyTo.dialogueMove ? { dialogueMove: replyTo.dialogueMove } : {}),
+          ...(replyTo.disposition ? { disposition: replyTo.disposition } : {}),
+        },
+      } : {}),
     },
     sourcedExperiences,
     recentMemories,
     knownFacts: [...speaker.knowledge]
-      .filter((fact) => fact.learnedAtMonth < event.atMonth
-        || fact.learnedAtMonth === event.atMonth
-          && fact.sourceEventIds.length > 0
-          && fact.sourceEventIds.some((sourceId) => eventBefore(eventById.get(sourceId), event)))
+      .filter((fact) => fact.sourceEventIds.length > 0
+        && fact.sourceEventIds.some((sourceId) => eventBefore(eventById.get(sourceId), event))
+        && fact.learnedAtMonth <= event.atMonth)
+      .filter((fact) => fact.id === authorizedFactId
+        || fact.sourceEventIds.some((sourceId) => contextualSourceIds.has(sourceId)))
       .sort((a, b) => Number(b.id === authorizedFactId) - Number(a.id === authorizedFactId)
         || b.confidence - a.confidence)
-      .slice(0, 5)
+      .slice(0, 4)
       .map((fact) => ({ id: fact.id, summary: fact.summary.slice(0, 160), confidence: fact.confidence })),
   };
+}
+
+const DIALOGUE_MOVES = new Set<DialogueMove>([
+  'add-detail', 'correct', 'question', 'tease', 'challenge',
+  'reveal', 'deflect', 'acknowledge', 'close',
+]);
+const DIALOGUE_DISPOSITIONS = new Set<DialogueDisposition>(['continue', 'close', 'rupture']);
+
+export interface NormalizedSpeechRealization {
+  text: string;
+  dialogueMove: DialogueMove;
+  disposition: DialogueDisposition;
 }
 
 export function normalizeSpeechResponse(
   input: unknown,
   requestedLines: SpeechLineDraft[],
-): Map<string, string> {
+): Map<string, NormalizedSpeechRealization> {
   if (!input || typeof input !== 'object') return new Map();
   const rawLines = (input as { lines?: unknown }).lines;
   if (!Array.isArray(rawLines)) return new Map();
   const requested = new Map(requestedLines.map((line) => [line.sourceEventId, line]));
-  const result = new Map<string, string>();
+  const result = new Map<string, NormalizedSpeechRealization>();
   for (const raw of rawLines) {
     if (!raw || typeof raw !== 'object') continue;
     const sourceEventId = cleanText((raw as Record<string, unknown>).sourceEventId);
     const text = cleanText((raw as Record<string, unknown>).text);
+    const dialogueMove = cleanText((raw as Record<string, unknown>).dialogueMove) as DialogueMove;
+    const disposition = cleanText((raw as Record<string, unknown>).disposition) as DialogueDisposition;
     const line = requested.get(sourceEventId);
-    if (!line || result.has(sourceEventId) || !speechLineMatchesAct(line, text)) continue;
-    result.set(sourceEventId, text);
+    if (!line
+      || result.has(sourceEventId)
+      || !DIALOGUE_MOVES.has(dialogueMove)
+      || !DIALOGUE_DISPOSITIONS.has(disposition)
+      || !speechLineMatchesAct(line, text)) continue;
+    result.set(sourceEventId, { text, dialogueMove, disposition });
   }
   return result;
 }
@@ -439,9 +692,9 @@ async function realizeBatch(
   items: SpeechRequestItem[],
   lines: SpeechLineDraft[],
   timeoutMs: number,
-): Promise<SpeechLineView[]> {
+): Promise<{ lines: SpeechLineView[]; usage: TokenUsage }> {
   const messages: ModelMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: SPEECH_SYSTEM_PROMPT_V2 },
     { role: 'user', content: JSON.stringify({ lines: items }) },
   ];
   const response = await requestModelText(endpoint, {
@@ -452,28 +705,68 @@ async function realizeBatch(
     timeoutMs: Math.min(speechTimeout(endpoint), timeoutMs),
   });
   const normalized = normalizeSpeechResponse(parseJson(response.text), lines);
-  return lines.flatMap((line): SpeechLineView[] => {
-    const text = normalized.get(line.sourceEventId);
-    if (!text) return [];
-    const { modelText: _modelText, ...base } = line;
+  const itemBySourceEventId = new Map(items.map((item) => [item.sourceEventId, item]));
+  const realizedLines = lines.flatMap((line): SpeechLineView[] => {
+    const realization = normalized.get(line.sourceEventId);
+    if (!realization) return [];
+    const requestItem = itemBySourceEventId.get(line.sourceEventId);
+    const {
+      modelText: _modelText,
+      replyToSourceEventId: _replyToSourceEventId,
+      requiresParentSpeech: _requiresParentSpeech,
+      ...base
+    } = line;
     return [{
       ...base,
-      text,
+      text: realization.text,
+      dialogueMove: realization.dialogueMove,
+      disposition: realization.disposition,
+      ...(requestItem?.communication.replyTo
+        ? { replyToSpeechLineId: requestItem.communication.replyTo.speechLineId }
+        : {}),
       source: 'speech-model',
       endpointId: response.endpointId,
       model: response.model,
     }];
   });
+  return { lines: realizedLines, usage: response.usage };
 }
 
 function retainedDecisionLine(line: SpeechLineDraft): SpeechLineView | null {
+  // A decision-time utterance was generated without the preceding visible
+  // model line. Reusing it as a reply would recreate the orphan-response bug.
+  if (line.requiresParentSpeech || line.replyToSourceEventId) return null;
+  const conversation = line.speechAct.details?.conversation;
+  if (conversation
+    && typeof conversation === 'object'
+    && !Array.isArray(conversation)
+    && (conversation as Record<string, unknown>).topic === 'open'
+    && (conversation as Record<string, unknown>).turn === 'opening') return null;
   const text = cleanText(line.modelText);
   if (!text || !speechLineMatchesAct(line, text)) return null;
-  const { modelText: _modelText, ...base } = line;
-  return { ...base, text, source: 'decision-model' };
+  const {
+    modelText: _modelText,
+    replyToSourceEventId: _replyToSourceEventId,
+    requiresParentSpeech: _requiresParentSpeech,
+    dialogueMove,
+    disposition,
+    ...base
+  } = line;
+  return {
+    ...base,
+    text,
+    ...(dialogueMove && DIALOGUE_MOVES.has(dialogueMove) ? { dialogueMove } : {}),
+    ...(disposition && DIALOGUE_DISPOSITIONS.has(disposition) ? { disposition } : {}),
+    source: 'decision-model',
+  };
 }
 
-/** Keep only already validated model utterances when no speech endpoint is active. */
+/**
+ * A validated decision-time utterance is already the person's chosen wording;
+ * observer-only dialogue metadata is optional and does not justify a second
+ * model call. Exact-parent replies remain excluded until the visible parent
+ * line can be supplied to the expression sidecar.
+ */
 export function retainDecisionSpeechLines(lines: SpeechLineDraft[]): SpeechLineView[] {
   return lines.flatMap((line) => {
     const retained = retainedDecisionLine(line);
@@ -491,37 +784,83 @@ export async function realizeLiveSpeechLines(
   events: WorldEvent[],
   sourceLines: SpeechLineDraft[],
   endpointId?: string,
+  priorSpeechLines: readonly SpeechLineView[] = [],
 ): Promise<LiveSpeechResult> {
-  const retained = new Map(retainDecisionSpeechLines(sourceLines).map((line) => [line.sourceEventId, line]));
-  const candidates = sourceLines.filter((line) => !retained.has(line.sourceEventId));
-  if (!candidates.length) return { lines: [...retained.values()], generationErrors: [] };
+  // Decision-time text is a proposed thought. The expression pass sees the
+  // actual relationship, prior visible line and voice profile, so it owns all
+  // player-visible wording when a model endpoint exists.
+  const retained = new Map<string, SpeechLineView>();
+  const pending = new Map(sourceLines
+    .filter((line) => !retained.has(line.sourceEventId))
+    .map((line) => [line.sourceEventId, line]));
+  if (!pending.size) return {
+    lines: [...retained.values()], generationErrors: [],
+    usage: { inputTokens: 0, outputTokens: 0 }, providerRequests: 0,
+  };
   const endpoint = resolveModelEndpoint('decision', endpointId);
-  const indexed = candidates.flatMap((line) => {
-    const item = buildSpeechRequestItem(state, events, line);
-    return item ? [{ line, item }] : [];
-  });
-  const batches: Array<typeof indexed> = [];
-  for (let index = 0; index < indexed.length; index += SPEECH_BATCH_SIZE) {
-    batches.push(indexed.slice(index, index + SPEECH_BATCH_SIZE));
-  }
-
   const realized = new Map<string, SpeechLineView>();
   const generationErrors: string[] = [];
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let providerRequests = 0;
   const deadline = Date.now() + speechTotalTimeout();
-  for (let index = 0; index < batches.length; index += SPEECH_BATCH_CONCURRENCY) {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs < 1_000) {
-      generationErrors.push('即时台词总等待时间已到，其余沟通不显示文字气泡');
-      break;
+
+  const eventsById = new Map(state.world.past.map((event) => [event.id, event]));
+  const knownSpeech = verifiedSpeechLinesBySourceEventId(priorSpeechLines, eventsById);
+  for (const line of retained.values()) knownSpeech.set(line.sourceEventId, line);
+
+  // Generate dependency-free turns first. A response becomes eligible only
+  // after its exact parent line has survived model generation and validation.
+  while (pending.size > 0) {
+    const eligible = [...pending.values()].filter((line) => (
+      !line.requiresParentSpeech
+        || Boolean(line.replyToSourceEventId && knownSpeech.has(line.replyToSourceEventId))
+    ));
+    if (!eligible.length) break;
+    for (const line of eligible) pending.delete(line.sourceEventId);
+
+    const availableSpeech = [...knownSpeech.values()];
+    const indexed = eligible.flatMap((line) => {
+      const item = buildSpeechRequestItem(state, events, line, availableSpeech);
+      return item ? [{ line, item }] : [];
+    });
+    const batches: Array<typeof indexed> = [];
+    for (let index = 0; index < indexed.length; index += SPEECH_BATCH_SIZE) {
+      batches.push(indexed.slice(index, index + SPEECH_BATCH_SIZE));
     }
-    await Promise.all(batches.slice(index, index + SPEECH_BATCH_CONCURRENCY).map(async (batch) => {
-      try {
-        const lines = await realizeBatch(endpoint, batch.map(({ item }) => item), batch.map(({ line }) => line), remainingMs);
-        for (const line of lines) realized.set(line.sourceEventId, line);
-      } catch (error) {
-        generationErrors.push(error instanceof Error ? error.message : String(error));
+
+    for (let index = 0; index < batches.length; index += SPEECH_BATCH_CONCURRENCY) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs < 1_000) {
+        generationErrors.push('即时台词总等待时间已到，其余沟通不显示文字气泡');
+        pending.clear();
+        break;
       }
-    }));
+      await Promise.all(batches.slice(index, index + SPEECH_BATCH_CONCURRENCY).map(async (batch) => {
+        try {
+          providerRequests += 1;
+          const realizedBatch = await realizeBatch(
+            endpoint,
+            batch.map(({ item }) => item),
+            batch.map(({ line }) => line),
+            remainingMs,
+          );
+          usage = {
+            inputTokens: usage.inputTokens + realizedBatch.usage.inputTokens,
+            outputTokens: usage.outputTokens + realizedBatch.usage.outputTokens,
+            ...((usage.cacheHitInputTokens !== undefined || realizedBatch.usage.cacheHitInputTokens !== undefined)
+              ? { cacheHitInputTokens: (usage.cacheHitInputTokens ?? 0) + (realizedBatch.usage.cacheHitInputTokens ?? 0) }
+              : {}),
+            ...((usage.cacheMissInputTokens !== undefined || realizedBatch.usage.cacheMissInputTokens !== undefined)
+              ? { cacheMissInputTokens: (usage.cacheMissInputTokens ?? 0) + (realizedBatch.usage.cacheMissInputTokens ?? 0) }
+              : {}),
+          };
+          for (const line of realizedBatch.lines) realized.set(line.sourceEventId, line);
+        } catch (error) {
+          generationErrors.push(error instanceof Error ? error.message : String(error));
+        }
+      }));
+    }
+    for (const line of realized.values()) knownSpeech.set(line.sourceEventId, line);
   }
   return {
     lines: sourceLines.flatMap((line) => {
@@ -529,5 +868,7 @@ export async function realizeLiveSpeechLines(
       return visible ? [visible] : [];
     }),
     generationErrors,
+    usage,
+    providerRequests,
   };
 }

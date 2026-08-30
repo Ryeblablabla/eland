@@ -27,6 +27,7 @@ import {
 import { projectById } from '../../domain/state-index';
 import { assessFamilyReadiness, type FamilyReadinessAssessment } from './family-readiness';
 import { relationTo } from '../../domain/relation';
+import { retrieveAgentMemories } from '../../domain/agent-memory';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { appraiseSocialExpectation } from './social-expectation';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
@@ -57,6 +58,7 @@ export interface NeedAlignment {
   resource?: ReserveResource;
   bodyField?: HomeostasisField;
   projectId?: string;
+  characterAgendaItemId?: string;
   strength: number;
   reason: string;
 }
@@ -138,7 +140,7 @@ function isSuccubusReproductionOption(option: ActionOption): boolean {
 function mergeAlignments(items: NeedAlignment[]): NeedAlignment[] {
   const byKind = new Map<string, NeedAlignment>();
   for (const item of items) {
-    const key = `${item.kind}:${item.resource ?? ''}:${item.bodyField ?? ''}:${item.projectId ?? ''}`;
+    const key = `${item.kind}:${item.resource ?? ''}:${item.bodyField ?? ''}:${item.projectId ?? ''}:${item.characterAgendaItemId ?? ''}`;
     const current = byKind.get(key);
     if (!current || item.strength > current.strength) byKind.set(key, item);
   }
@@ -283,6 +285,24 @@ function optionNeedAlignments(context: DecisionContext, option: ActionOption, at
       else if (content.proposal.need === 'food') add('homeostasis', 0.9, '候选请求帮助取得食物', undefined, undefined, 'nutrition');
       else add('safety', 0.9, '候选请求帮助取得遮蔽');
     }
+    if ((content.kind === 'request' || content.kind === 'offer') && content.proposal?.kind === 'exchange') {
+      const requestedMaterialId = content.proposal.offererId === context.person.id
+        ? content.proposal.partnerMaterialId
+        : content.proposal.partnerId === context.person.id
+          ? content.proposal.offererMaterialId
+          : undefined;
+      const requestedRank = requestedMaterialId === undefined ? 0 : productionToolRank(requestedMaterialId);
+      const currentRank = productionToolRank(bestProductionToolStack(context.person)?.materialId ?? 0);
+      const groundedLabor = recentPersonalProductionLaborEvents(context.state, context.person.id, atMonth)
+        .filter((event) => option.sourceFactIds.includes(event.id));
+      if (requestedRank > currentRank && groundedLabor.length) {
+        add(
+          'capability',
+          clamp((requestedRank - currentRank) / 3 + 0.45),
+          '本人近期生产劳动表明，交换取得更高效工具可以节省后续劳动',
+        );
+      }
+    }
     if ((content.kind === 'request' || content.kind === 'offer') && content.proposal
       && ['companion', 'reproduce', 'collective', 'membership'].includes(content.proposal.kind)) {
       add('belonging', 0.9, '候选会改变一项具体社会关系');
@@ -334,8 +354,16 @@ function memoryAppraisal(context: DecisionContext, option: ActionOption, basisKe
   sourceFactIds: string[];
   reason?: string;
 } {
-  const matchingBasis = context.person.memories.filter((memory) => memory.causal?.basisKey === basisKey);
   const targetPersonId = optionTargetPersonId(context, option);
+  const matchingBasis = retrieveAgentMemories(context.state, context.person, {
+    atMonth,
+    actionBasisKey: basisKey,
+    ...(targetPersonId ? { personIds: [targetPersonId] } : {}),
+    lanes: ['episodic', 'procedural'],
+    laneLimits: { episodic: 6, procedural: 4 },
+    limit: 8,
+    tokenBudget: 700,
+  }).filter((memory) => memory.causalBasisKey === basisKey);
   const targetSpecific = targetPersonId
     ? matchingBasis.filter((memory) => memory.personIds.includes(targetPersonId))
     : [];
@@ -351,9 +379,9 @@ function memoryAppraisal(context: DecisionContext, option: ActionOption, basisKe
   let weighted = 0;
   let totalWeight = 0;
   for (const memory of related) {
-    const age = Math.max(0, atMonth - memory.createdAtMonth);
-    const weight = clamp(memory.importance / 100) * Math.exp(-age / 24);
-    weighted += (memory.causal?.valence ?? 0) * weight;
+    const age = Math.max(0, atMonth - memory.lastExperiencedAtMonth);
+    const weight = clamp(memory.salience / 100) * Math.exp(-age / 24);
+    weighted += memory.emotionalValence * weight;
     totalWeight += weight;
   }
   const value = totalWeight ? clamp(weighted / totalWeight, -1, 1) : 0;
@@ -524,6 +552,11 @@ function feasibilityAppraisal(context: DecisionContext, option: ActionOption, ex
 function continuityAppraisal(context: DecisionContext, option: ActionOption): number {
   const active = context.activeIntent;
   if (!active) return 1;
+  const sameCharacterAgenda = Boolean(active.characterAgendaItemId
+    && option.characterAgendaItemId === active.characterAgendaItemId);
+  if (sameCharacterAgenda) {
+    return 1.32 + trait(context, 'conscientiousness') * 0.36 + active.progress * 0.2;
+  }
   const optionProjectId = option.recordUseBasis
     ? currentRecordUseProject(context, option)?.id
     : option.projectId;
@@ -548,9 +581,23 @@ export function evaluateCognitiveOption(
   moment: { atMonth: number; planningTick: number },
   agenda = deriveNeedAgenda(context, moment.atMonth),
 ): CognitiveOptionAppraisal {
-  const alignments = optionNeedAlignments(context, option, moment.atMonth);
+  const exactCharacterAgendaNeed = option.characterAgendaItemId
+    ? agenda.find((need) => need.characterAgendaItemId === option.characterAgendaItemId)
+    : undefined;
+  const alignments = mergeAlignments([
+    ...optionNeedAlignments(context, option, moment.atMonth),
+    ...(exactCharacterAgendaNeed ? [{
+      kind: exactCharacterAgendaNeed.kind,
+      strength: 1,
+      reason: '候选是本人这项长期关切当前可验证的具体办法',
+      characterAgendaItemId: exactCharacterAgendaNeed.characterAgendaItemId,
+    } satisfies NeedAlignment] : []),
+  ]);
   const needForAlignment = (alignment: NeedAlignment): NeedSignal | undefined => agenda
     .filter((need) => need.kind === alignment.kind
+      && (alignment.characterAgendaItemId
+        ? need.characterAgendaItemId === alignment.characterAgendaItemId
+        : need.characterAgendaItemId === undefined)
       && (alignment.resource ? need.resource === alignment.resource : need.resource === undefined)
       && (alignment.bodyField ? need.bodyField === alignment.bodyField : need.bodyField === undefined)
       && (alignment.projectId ? need.projectId === alignment.projectId : need.projectId === undefined))

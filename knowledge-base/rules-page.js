@@ -31,8 +31,8 @@ const RULES_PAGE_MARKUP = `
           <li><span>01</span><strong>世界压力</strong><small>气候 · 饥渴 · 风险</small></li>
           <li><span>02</span><strong>局部感知</strong><small>眼前可见、可达事实</small></li>
           <li><span>03</span><strong>有源记忆</strong><small>经历 · 地点 · 承诺</small></li>
-          <li><span>04</span><strong>动态需要</strong><small>避免损失、照护、储备</small></li>
-          <li><span>05</span><strong>持续项目</strong><small>目标 · 现场 · 贡献者</small></li>
+          <li><span>04</span><strong>长期关切与需要</strong><small>主观 aim · 当前压力</small></li>
+          <li><span>05</span><strong>执行意图与项目</strong><small>唯一焦点 · 现场 · 贡献者</small></li>
           <li><span>06</span><strong>计划编译</strong><small>前置条件 · 物流 · 替代</small></li>
           <li><span>07</span><strong>合法动作</strong><small>预演后每 tick 至多一个</small></li>
           <li><span>08</span><strong>客观后果</strong><small>身体 · 物质 · 社会变化</small></li>
@@ -85,7 +85,7 @@ const RULES_PAGE_MARKUP = `
               <div class="architecture-layer-label"><span>L3</span><strong>应用编排</strong><small>组织规则，不复制规则</small></div>
               <div class="architecture-node-grid architecture-node-grid-4">
                 <div class="architecture-node"><strong>月度主循环</strong><small>15 planning ticks</small></div>
-                <div class="architecture-node"><strong>本地规划器</strong><small>反射 · BDI · Intent</small></div>
+                <div class="architecture-node"><strong>本地规划器</strong><small>反射 · Agenda · BDI · Intent</small></div>
                 <div class="architecture-node"><strong>项目编译器</strong><small>HTN · 物流 · 试验</small></div>
                 <div class="architecture-node"><strong>动作预演</strong><small>局部修复 · 重验</small></div>
               </div>
@@ -111,7 +111,7 @@ const RULES_PAGE_MARKUP = `
           </div>
           <div class="architecture-rails">
             <aside data-tone="observer"><span>READ MODEL RAIL</span><strong>Projection / Report / GameFrame</strong><p>只读取已提交状态和事件，再返回 UI；不得写回人物、建筑或文明能力。</p></aside>
-            <aside data-tone="observer"><span>OPTIONAL MODEL RAIL</span><strong>合法候选内重选 · 台词 · 提名</strong><p>缺席或失败时本地主链照常完成；所有建议仍由本地规则重验。</p></aside>
+            <aside data-tone="observer"><span>OPTIONAL MODEL RAIL</span><strong>模型拥有自愿社交 · 显式长期关切 · 台词 · 提名</strong><p>模型演进配置有效时，可选沟通与主观社会分叉由模型在合法候选内决定；本地回退只继续生存、义务、生产和物理行动，不补造寒暄或关系选择。agenda update piggyback 在既有 compact decision 请求中，所有结果仍由本地规则重验；本地模式则保留完整规则规划。</p></aside>
           </div>
         </article>
 
@@ -126,7 +126,7 @@ const RULES_PAGE_MARKUP = `
           <div class="architecture-branch-grid architecture-branch-grid-2">
             <section data-tone="world"><span>W1 · 物理世界</span><strong>空间与物质</strong><p>84 × 52 × 12 体素、掉落物、结构、容器、水流、站立位置和路径。</p></section>
             <section data-tone="world"><span>W2 · 自然世界</span><strong>时间与生态</strong><p>纪元、跨月天气、火、作物、动物、身体过程、出生、死亡与遗体。</p></section>
-            <section data-tone="agent"><span>W3 · 人物与社会</span><strong>持续状态</strong><p>人物、库存、知识、记忆、关系、Intent、Project、Agreement、Collective 与 Governance。</p></section>
+            <section data-tone="agent"><span>W3 · 人物与社会</span><strong>持续状态</strong><p>人物、库存、知识、记忆、关系、CharacterAgenda、Intent、Project、Agreement、Collective 与 Governance。</p></section>
             <section data-tone="effect"><span>W4 · 历史与控制</span><strong>因果时间线</strong><p>clock、branch、past、lastStep、决策额度、文明条件与真实终局。</p></section>
           </div>
           <div class="architecture-stage-flow" aria-label="月度世界流程">
@@ -153,14 +153,14 @@ const RULES_PAGE_MARKUP = `
               <small>不是全局真相；看不见、没经历、无来源的事实不能进入。</small>
             </section>
             <section class="bdi-node" data-tone="agent">
-              <span>D · DESIRE</span><strong>此刻什么值得做</strong>
-              <p><b>NeedAgenda</b>：身体、安全、照护、储备、能力、承诺、归属、自主与探究九类动态压力；食物与饮水储备各自计算，健康、营养与水分也精确分维。每个已被规则证明可执行的不同项目候选都从自己的压力与来源形成绑定 projectId 的需要，再进入同一套人格、经验与可行性竞争；知识保存项目与其候选一致使用探究需要，候选不能拿另一资源、身体维度或项目的压力抬高动机。</p>
-              <small>ActionOption 经人格、经验、关系、伦理和可行性门控后形成 motivation。</small>
+              <span>D · DESIRE</span><strong>跨月仍在意什么，此刻什么值得做</strong>
+              <p><b>CharacterAgenda → NeedAgenda</b>：有来源的主观 aim 可跨越某个办法失败或短期中断；approach 可以替换，但 agenda 不能直接执行。每条 agenda pressure 只激活带同一 characterAgendaItemId 的办法，不得借同属 inquiry / capability 的无关候选抬高动机；没有 executable episode 且过期的关切转为 suspended，可在新证据出现时重启。</p>
+              <small>ActionOption 经人格、经验、关系、伦理和可行性门控后形成 motivation；无模型也会从已选中的跨月方向建立 agenda。</small>
             </section>
             <section class="bdi-node" data-tone="social">
               <span>I · INTENTION</span><strong>现在决定坚持什么</strong>
-              <p><b>active Intent</b>：最高候选先跨过 aspiration，再与当前承诺、进度、停滞和切换边际比较。</p>
-              <small>每人只有一个执行焦点；急性任务用可返回的子中断处理。</small>
+              <p><b>active Intent</b>：最高候选先跨过 aspiration，再与当前承诺、同一 agenda、进度、停滞和切换边际比较。</p>
+              <small>一个 agenda 可依次关联多个 Intent / Project，但每人仍只有一个执行焦点；急性任务用可返回的子中断处理。</small>
             </section>
             <div class="bdi-plan" data-tone="effect">
               <span>P · PLAN &amp; ACTION</span><strong>Intent → Project / HTN → PrimitiveAction → ActionExecutor</strong>
@@ -173,22 +173,22 @@ const RULES_PAGE_MARKUP = `
           <div class="person-architecture">
             <section class="person-layer" data-tone="world">
               <span>P1 · 权威输入</span><strong>世界事实 + PersonState + 共享承诺状态</strong>
-              <p>身体、位置、库存、知识、记忆、关系、人格、出生时确定的永久特质，以及状态中的 Intent / Project / Agreement。</p>
+              <p>身体、位置、库存、知识、记忆、关系、人格、出生时确定的永久特质，以及状态中的 CharacterAgenda / Intent / Project / Agreement。</p>
             </section>
             <div class="architecture-arrow"><span>只投影本人可获得的事实 ↓</span></div>
             <section class="person-layer" data-tone="agent">
               <span>P2 · 局部认知视图</span><strong>DecisionContext</strong>
-              <p>可见格、人、动物、掉落物，有来源记忆、当前意图和已通过感知边界的能力证据。</p>
+              <p>可见格、人、动物、掉落物，有来源记忆、至多有界的长期关切摘要、当前意图和已通过感知边界的能力证据。</p>
             </section>
             <div class="architecture-arrow"><span>生成合法可供性 ↓</span></div>
             <section class="person-layer person-layer-split" data-tone="agent">
-              <div><span>P3-A · 硬门禁</span><strong>休眠 · 生存 · 照护 · 年龄 · 回应 · 履约</strong><p>不可推迟的事实先行；正在执行的优先义务不会被新义务无条件打断。</p></div>
-              <div><span>P3-B · 自主选择</span><strong>ActionOption → NeedAgenda → Appraisal</strong><p>motivation 跨过本人 aspiration 后，才成为 BDI 挑战者。</p></div>
+              <div><span>P3-A · 硬门禁</span><strong>休眠 · 生存 · 照护 · 年龄 · 正式回应 · 履约</strong><p>不可推迟的事实先行；正在执行的优先义务不会被新义务无条件打断。普通生活回应不在这条硬门禁中。</p></div>
+              <div><span>P3-B · 自主选择</span><strong>CharacterAgenda → NeedAgenda → ActionOption → Appraisal</strong><p>aim 保持跨月身份，approach 接受真实反证；只有 motivation 跨过本人 aspiration 的合法 option 才成为 BDI 挑战者。知识目标在候选出口还要证明能产生新增效果：当前已经达到目标置信度的复验不进入 DecisionContext，也不能生成零动作即完成的 Intent。</p></div>
             </section>
             <div class="architecture-arrow"><span>检查意图持续与切换边际 ↓</span></div>
             <section class="person-layer" data-tone="social">
               <span>P4 · 唯一执行焦点</span><strong>Intent → Project / HTN → 下一原子动作</strong>
-              <p>进度、尽责性、项目压力与个人成功后验形成承诺惯性；子中断保存可返回的父意图。</p>
+              <p>进度、尽责性、同一 agenda / 项目压力与个人成功后验形成承诺惯性；子中断保存可返回的父意图，方法失败不自动删除 aim。</p>
             </section>
             <div class="architecture-arrow"><span>领域预演与重验 ↓</span></div>
             <section class="person-layer" data-tone="effect">
@@ -197,12 +197,12 @@ const RULES_PAGE_MARKUP = `
             </section>
             <div class="person-feedback" data-tone="world">
               <span>↺ FEEDBACK</span><strong>事实反哺下一次决定</strong>
-              <p>更新本人结果后验、结构化记忆、人格学习、关系、项目和协议进度；不从模型文本学习世界事实。</p>
+              <p>更新本人结果后验、结构化记忆、agenda approach、人格学习、关系、项目和协议进度；不从模型文本学习世界事实。</p>
             </div>
           </div>
           <div class="architecture-rails architecture-rails-compact">
             <aside data-tone="observer"><span>READ-ONLY SOUL</span><strong>PersonSoul / personaFrame</strong><p>由身份与 baseline 人格确定性派生，维持表达一致性；不写入 PersonState。</p></aside>
-            <aside data-tone="observer"><span>OUTSIDE THE MIND</span><strong>文明指数 / 模型 / UI</strong><p>可以解释或在合法候选内重选，但不能制造需要、知识、动作或物质后果。</p></aside>
+            <aside data-tone="observer"><span>OUTSIDE THE MIND</span><strong>文明指数 / 模型 / UI</strong><p>模型可在默认 compact decision 协议中创建、修订、暂停或放弃主观 aim 与可失败方法，但不能制造当前需要、知识、动作、同意或物质后果；文明观察值与 UI 始终只读。</p></aside>
           </div>
         </article>
 
@@ -251,7 +251,7 @@ const RULES_PAGE_MARKUP = `
         <details class="rule-branch" data-tone="world" open>
           <summary><span>世界过程</span><small>即使无人行动也会推进</small></summary>
           <ul>
-            <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；天气按月结算但以跨月过程叠加在纪元之上，类型具有不改变长程占比的延续惯性，强度只偶发逐级变化。实时宇宙的 burned 明确携带三日凌空终局语义，普通 fire 即使达到强度 10 也不能冒充。</span></li>
+            <li><strong>时间与纪元</strong><span>恒纪元 / 乱纪元持续区段；实时天象候选需连续 3 个权威月，且当前纪元已持续至少 6 个月才确认切换。天气按月结算但普通过程至少持续 2 个月，之后每月有 75% 延续惯性，强度只偶发逐级变化。实时宇宙的 burned 明确携带三日凌空终局语义，普通 fire 即使达到强度 10 也不能冒充。</span></li>
             <li><strong>有限化身时间</strong><span>普通快进与第一人称化身共用 month-execution：进入后暂存下一月，已提交 elapsedMonths 不变；自由观察不耗刻度，每个玩家命令让稳定顺序中的全部人物执行一个完整 tick。走完第 15 刻，或交还自主后由本地规则跑完余下刻度，才进行一次月末结算和原子提交。</span></li>
             <li><strong>空间与物质</strong><span>84 × 52 × 12 体素、通行、可达位置、掉落物和材料响应。</span></li>
             <li><strong>水流与机械动力</strong><span>河道持久化有向 water current 段，段是否可用仍由当前 Water 体素与上游连通性现场派生；干旱可把河水蒸发成 Sand，后续 rain / storm 只会从相邻真实 Water 向生成河道的干涸格逐格补给，普通沙地和孤立干河格不会凭空进水。普通 Water 不能被猜成动力源。完成网络仍须现场复核水流、拓扑、输入与操作者知识；只有成功负载造成磨损。这只是受限机械网络，不代表电力、信号、计算或现代信息能力。</span></li>
@@ -266,7 +266,7 @@ const RULES_PAGE_MARKUP = `
         <details class="rule-branch" data-tone="agent" open>
           <summary><span>人物事实</span><small>规划器只能读取本人可获得的信息</small></summary>
           <ul>
-            <li><strong>创世先民</strong><span>每局按种子从 101 人档案池确定性抽取 5–12 位，也可由配置显式指定最多 12 位；共同抵达事实列明全体先民，后代不会继承这条开局来源。</span></li>
+            <li><strong>创世先民</strong><span>每局按种子从 101 人档案池确定性抽取 5–12 位，也可由配置显式指定最多 12 位；共同抵达事实列明全体先民并只赋予双向 trust / bond 10 的相识起点，后代不会继承这条开局来源，旧存档也不会被回写。</span></li>
             <li><strong>局部感知</strong><span>可见格、可见人物 / 动物 / 掉落物 / 暴露遗体，以及真实可达性；有标记墓穴可让来访者得知死者，未标记墓穴不泄漏身份。</span></li>
             <li><strong>记忆与知识</strong><span>近期事件、有来源的已知地点、技术置信度、关系和失败经验；本人亲历动作还保存机器可读的 basis、结果、效价与参与者。Action 后验用于预计努力与伤害，Intent goalOutcome Beta 后验决定目标成功预期：未受孕可以是 completed 动作与 attempted-unmet 目标，无真实受孕样本的提前阻塞是 not-evaluated，不写入目标后验。生殖方向被实际选中时，DecisionFact 另冻结 generativity、motivation、aspiration、关系门、准备度五个分量及其来源，供事后审计，不把观察器结果变成人物奖励。灵记把个人记忆容量与留存提高 50%，但不产生知识；先知出生时可靠掌握当前全部 47 项规则配方，仍不获得材料、地图或行动豁免。失败重试优先从 terminal Intent 引用的真实 blocked / failed ActionFact 读取实际动作，再比较动作、目标、数量、人物、项目、记录与关系组成的结构 basis；容量有限的自传记忆只作兼容，不比较临时 option ID 或显示摘要。成年人只有在历史估计进入未来六个月窗口后才会形成纪元预言，不能读取隐藏调度或发布几年后的远期预言。</span></li>
             <li><strong>能力证据</strong><span>observed 只证明看见；accessible portable 只含本人背包和可取得掉落物；placed facility 必须是世界中真实放置、记忆后重新核对仍在场的设施。旁人背包不能冒充本人工具或公共设施。</span></li>
@@ -282,10 +282,11 @@ const RULES_PAGE_MARKUP = `
         <details class="rule-branch" data-tone="social" open>
           <summary><span>需要与项目</span><small>持续工作以项目为单位</small></summary>
           <ul>
-            <li><strong>生存与安全</strong><span>保温、捕猎安全、照护、熟食与住所容量。</span></li>
+            <li><strong>生存与安全</strong><span>保温、捕猎安全、照护、熟食与住所容量。无可见或记忆水源时，急性找水只冻结最多四个初始可见前沿；到达或证伪后依次耗尽，移动后的新视野不能让目标无限外漂，只有新的本人水源证据或真实饮水事实才能重开。</span></li>
             <li><strong>死亡照料</strong><span>人物先因看见遗体、有标记墓穴或有来源传话得知具体死亡，再由关系与人格形成丧亲压力。完整安葬依次搬运、择地挖墓、入葬、用同一次挖掘产生的原土覆土；墓记还要真实消耗空白木板并持有合格工具。</span></li>
             <li><strong>生产与储备</strong><span>工具、耕作、储藏、供水、窑炉、冶金与功能建筑；食物与饮水是独立储备缺口，健康 / 营养 / 水分也是独立身体维度，采食不能缓解缺水，取水也不能缓解低营养。取得型候选只有在本人缺少对应可摄入库存时才承接身体压力；项目压力还绑定精确 projectId，不能被普通采食冒领。受抚养人口会提高生产和储备压力。工具项目的第一件偶然样品不会直接完成，项目来源的更优工具仍须由本人持有，并把对应制作技艺复验到可靠阈值。</span></li>
             <li><strong>住所建材边界</strong><span>住所项目只消耗尚未组装的石、木、木板等实体建材；谷仓、窑炉、容器和机械构件等 placeable 成品保持自身功能，不能被当作通用墙体再次消费。</span></li>
+            <li><strong>住所容量压力</strong><span>人物只比较完整可见范围内的存活人物与真实可通行住所位置；局部容量不足时即使天气温和也可提出扩容，一处容量已满的住所不能压制露宿者立项。局部重叠施工仍复用同一项目，不从全局人口或观察器指标生成住房任务。</span></li>
             <li><strong>公共谷仓收敛</strong><span>谷仓构件一旦由项目协作者制成，同月其他人会先等待它落地；真实落地后只继续形成首批储备，不再回退制作第二套设施。已知设施配方只能在仍有对应项目时重复制作，不能作为普通试验把成品堆进背包。仍存在的已完成谷仓会抑制项目受益人和贡献者重复立项，但不会泄露远处库存或赋予远程取用能力。</span></li>
             <li><strong>定居耕作</strong><span>本人计入自己的局部食物与身体压力；附近人口只可提高优先级，不再是启动资格。人物还必须感知到可用种源与可耕作地点；项目锚定局部地块，缺种先取种，并只用本项目真实完成播种的六个不同位置与两次真实收获判定完成。尚未播过的可耕格优先于旧格复种；若固定地块只剩本人可见、可达的夯土，人物可让手中通用生产工具进行有界地表尝试。未知时规划器不读取正确工具、规则或产物；同一工具两次真实无响应后换候选，成功后才形成有 ActionFact 来源的整地技术，工具本身不消耗。</span></li>
             <li><strong>知识与探索</strong><span>因真实缺口触发有限试验、验证、教学和耐久记录。</span></li>
@@ -323,13 +324,13 @@ const RULES_PAGE_MARKUP = `
         <details class="rule-branch" data-tone="agent" open>
           <summary><span>社会与学习</span><small>重复的真实协作才可能形成社会结构</small></summary>
           <ul>
-            <li><strong>互动</strong><span>先民双向关系从 55 开始；共同抵达只表示同群熟悉，不足以形成结伴，也不能单独作为被拒绝或撤回后的生育重提依据，但首次生育协商及完成、到期后的既有间隔保留原有机会时间带以维持人口频率。关系账本不为从未互动的陌生人预铺零值边；缺失边与旧式 canonical 全零、无来源边同义，首次真实有源互动才创建。新生儿只对出生时仍存活且精确同地的人形成由本人宜人性与外向性决定的单向弱信任 3..9，在世亲生父母另以同一出生事实保留有源亲缘 bond；异地或后来到场者不追授弱信任。“双方都行动且行动后同地”的共同活动按每个人的有效外向性 60% + 宜人性 40% 分别换算：高、中、低社会接近度每 3、4、5 个规划刻度形成一份定向 trust / bond +1，因此双方可以不同步增长；已生效的结伴双方在同一稳定生活区的不同格行动也可累计。当月已有基础增量时，未满 16 岁额外 trust +2，16–29 岁额外 trust +1，30 岁起不加；年龄加成不增加 bond，也不凭空创造关系。事实保存双方各自门槛与增量。单纯同处、空闲、休眠和失败动作不计。结伴仍要求本人有来源的 20 / 20，还需跨至少两个月的非开局双人经历并包含直接交流 / 照护；普通生殖不设关系分数门槛，首次机会保留原有时间带，拒绝后新形成的真实共同活动须经过至少三个月才能成为较弱的重评依据，后续仍由双方分别判断。魅魔是显式特质例外：成年女性可对同地成年男性形成单方生殖候选，不读取关系或对方同意，但事实不得冒充双方协议。</span></li>
-            <li><strong>柔性拥挤</strong><span>精确站位超过两名存活人物时，本人产生有界 spatial-comfort 需要，并可自愿一步挪到附近占用更低的站位。它不扣健康、不强制弹开人物、不打断必须回应或生存任务；两人同位、住所容量、人口承载与资源竞争仍按各自规则处理。</span></li>
-            <li><strong>共同生活</strong><span>结伴提议保存双方共知的稳定生活地点；生活区内可以各站不同格。日常取水、劳动、学习可各自行动；只在 24 个月约定的时间余量用尽、若不返回就无法累计 12 个月共同生活时，才以空闲生活槽位为目标返回，让待建立关系的已接受约定形成有来源的承诺需要，并按既有 fulfillment 优先协议打断普通工作。仍生效的共同生活关系按已接受 / 已建立、本人对对方的 trust / bond / fear 与当前是否处于共同生活区，连续满足一部分 belonging；多项关系按剩余缺口组合，只削减未满足压力，不删除新关系候选，也不会激活 generativity。结伴、共同体身份或仅仅看见别人都不会自动追踪实时坐标；超出相邻语音范围的生活交谈必须绑定一个有真实来源的话题和后续沟通。无任务目的的日常、回忆和轻松玩笑只在双方已处于相邻语音范围时生成，不驱动跨地追逐。</span></li>
+            <li><strong>互动</strong><span>新文明先民双向关系从 trust / bond 10 开始，旧存档保留自身已持久化数值。共同抵达 founding 只表示相识，不能单独成为 company、companion 或普通生育提议的关系证据；预测、无关环境事实与未指向这对人物的行动也被排除。关系账本不为从未互动的陌生人预铺零值边；缺失边与旧式 canonical 全零、无来源边同义，首次真实有源互动才创建。新生儿只对出生时仍存活且精确同地的人形成由本人宜人性与外向性决定的单向弱信任 3..9，在世亲生父母另以同一出生事实保留有源亲缘 bond；异地或后来到场者不追授弱信任。“双方都行动且行动后同地”的共同活动按每个人的有效外向性 60% + 宜人性 40% 分别换算：高、中、低社会接近度每 3、4、5 个规划刻度形成一份定向 trust / bond +1，因此双方可以不同步增长；已生效的结伴双方在同一稳定生活区的不同格行动也可累计。当月已有基础增量时，未满 16 岁额外 trust +2，16–29 岁额外 trust +1，30 岁起不加；年龄加成不增加 bond，也不凭空创造关系。事实保存双方各自门槛与增量。单纯同处、空闲、休眠和失败动作不计。短期 company 请求至少需要一条排除 founding 的真实双方关系事件；正式 companion 与普通生育提议都要求提议者有来源的 20 / 20、证据覆盖至少两个自然月，并包含直接照护 / 亲密回应、履约、共同养育或明确支持。普通闲聊不能独自承担这条直接证据；身体适格的生育回应者仍同时获得接受与拒绝，不要求其反向分数也达到 20 / 20。拒绝后新形成的普通共同活动至少经过三个月才成为较弱重评依据，低压力闲聊始终不能解锁。魅魔是显式特质例外：成年女性可对同地成年男性形成单方生殖候选，不读取关系或对方同意，但事实不得冒充双方协议。</span></li>
+            <li><strong>柔性拥挤</strong><span>精确站位超过两名存活人物时，本人产生有界 spatial-comfort 需要，并可自愿一步挪到附近占用更低的站位。它不扣健康、不强制弹开人物、不打断正式 required response 或生存任务；两人同位、住所容量、人口承载与资源竞争仍按各自规则处理。</span></li>
+            <li><strong>共同生活</strong><span>结伴提议保存双方共知的稳定生活地点；生活区内可以各站不同格。日常取水、劳动、学习可各自行动；只在 24 个月约定的时间余量用尽、若不返回就无法累计 12 个月共同生活时，才以空闲生活槽位为目标返回，让待建立关系的已接受约定形成有来源的承诺需要，并按既有 fulfillment 优先协议打断普通工作。仍生效的共同生活关系按已接受 / 已建立、本人对对方的 trust / bond / fear 与当前是否处于共同生活区，连续满足一部分 belonging；多项关系按剩余缺口组合，只削减未满足压力，不删除新关系候选，也不会激活 generativity。结伴、共同体身份或仅仅看见别人都不会自动追踪实时坐标；超出相邻语音范围的生活交谈必须绑定具体高价值来源和后续沟通。低压力 everyday / reminiscence 只在双方已处于相邻语音范围时生成，不驱动跨地追逐；共同抵达只能支持 everyday，只有具体共同动作或已履行约定才支持 reminiscence，规则不预造 playful 小插曲。</span></li>
             <li><strong>承诺</strong><span>提议必须回应；生效协议要通过后续行动履约。取水互助只结算当前行动意图精确绑定的协议；无协议绑定的生存反射不能冒充履约，动作当时验证的水源与饮水写入版本化事实回执，后来的冻结、融化或地形变化不能改写已经发生的帮助。正向生殖的 needActivation 只能由 NeedAgenda 的 generativity need 产生；魅魔的单方候选由本人的出生特质提供有来源的 generativity 机会，并跳过关系、双方协议和家庭准备度门控。普通生殖中 belonging 与 autonomy 不能激活正向选项，关系、恐惧、人格、同意与风险只在激活后连续门控，拒绝或撤回仍可由 autonomy 驱动。准备度只取本人可感知的当前食物、水、当前可见且确认未占用的真实住所内部位置、照护余量与气候安全，住所质量来自 weatherProtection / thermalInsulation；记忆中的远处住所只保留未验证来源，对 shelter 分量贡献 0。项目记忆不能替代资源；被拒绝或撤回后，新的直接亲密、身体窗口或责任事实可以立即重开评估，新的真实共同活动则至少等待三个月，低压力闲聊始终不能解锁。完成和到期后的既有生理间隔保持原规则。普通接受形成最长四个月的可撤回窗口；普通和魅魔单方路径都限制同一伴侣每月最多一次真实尝试。普通动作精确绑定有效协议并保存当时关系快照，魅魔动作则记录本人、目标、特质来源与 <code>succubus-unilateral</code>，不能形成虚假的 agreement。</span></li>
             <li><strong>近亲风险认识</strong><span>亲缘不改变动作合法性，而是提高后代遗传负荷、出生偏差、寿命压力与后续疾病概率。人物观察或学到这些后果后，风险知识从第一次有源证据起按置信度连续形成软成本；满置信度也不再近似否决。每个关系与身体条件合格的伴侣都保留独立候选，再由同一认知 appraisal 比较关系、责任与亲缘风险。</span></li>
-            <li><strong>再次开口</strong><span>普通可选交谈没有固定两月冷却：人物按同受众、同主题和新事实评估重复成本；日常闲聊的一段共同生活来源只生成一次开场，日常、回忆和玩笑本身不自动增加关系分。关系协议更严格：生育提议被拒绝或撤回后，新的直接亲密、身体窗口或责任事实可立即重开评估；新的真实共同活动至少经过三个月才可提供较弱的重评依据，低压力闲聊始终不能解锁。结伴提议还至少等待六个月，并要求新的直接亲密或责任事实；生育协议到期或完成后的原有生理间隔保持不变，间隔届满可重新评估。协议幂等、每人一次回应、同一事实 basis 与开场回应去重仍是硬门禁。</span></li>
-            <li><strong>情境合作后验</strong><span>人物按“目标人物 × typed cooperation context”分别学习回应、接受意愿与履约可靠性；拒绝只影响意愿，没有回应只影响回应率。只有真实履约 / 违约、带贡献证据的共同项目完成，以及授权贡献到分配闭环，才影响可靠性；生殖不进入合作信誉。多人可选发起在同情境保留后验最高两名并按人物 / 月份稳定轮换一名探索对象，required response、履约 / 撤回和生殖绕过。</span></li>
+            <li><strong>生活对话</strong><span>opening 与 response 都是 optional conversation edge；被点名者可以不回应，response 也不会过滤其他普通候选。listener pool 不取 visiblePeople 的前三项：先按可解析处境、语音距离、共享项目、关系来源、亲近度与空间距离排序，完全同档时按 speakerId + atMonth 在稳定 personId 序列中轮换，因此数组顺序不造成偏置，合法对象也不会因固定 ID 永久出局。完整本地模式仍使用 failure / discovery / everyday 等有源菜单；compact 与 full 模型请求都隐藏这些预选开场，只为 pool 中处于语音范围且已有可解析关系来源的每名听者保留一个 open affordance。模型决定实际 utterance 并从本次最多 6 个匿名事实句柄中选择 0～3 个；服务端映射后在 Intent 创建与执行前重新编译，陌生人无 fallback 不生成候选。open 本身不传知识、不增加 trust / bond。普通可选交谈没有固定两月冷却：人物按同受众、同主题和新事实评估重复成本；同一来源只生成一次开场，低压力生活对话本身不自动增加关系分。关系协议更严格：生育提议被拒绝或撤回后，新的直接亲密、身体窗口或责任事实可立即重开评估；新的真实共同活动至少经过三个月才可提供较弱的重评依据，低压力闲聊始终不能解锁。正式提议的 accept / reject 仍是 required；协议幂等、每人一次正式回应、同一事实 basis 与开场回应去重仍是硬门禁。</span></li>
+            <li><strong>情境合作后验</strong><span>人物按“目标人物 × typed cooperation context”分别学习回应、接受意愿与履约可靠性；拒绝只影响意愿，没有回应只影响回应率。只有真实履约 / 违约、带贡献证据的共同项目完成，以及授权贡献到分配闭环，才影响可靠性；生殖不进入合作信誉。多人可选发起在同情境保留后验最高两名并按人物 / 月份稳定轮换一名探索对象，正式 required response、履约 / 撤回和生殖绕过。</span></li>
             <li><strong>死讯传播</strong><span>loss 对话要求说话者先有具体死亡来源，并与听者实际完成沟通；听者此后才形成引用同一死亡事实的记忆和丧亲经历。远处未知者不会自动悲哀；远处未成年子女即使已经客观死亡，也不会自动从亲代的 reproductiveResponsibility 中消失，亲代取得引用该死亡的有来源认知后才释放责任。</span></li>
             <li><strong>传播</strong><span>观察到的成功可复查、教导、模仿或写入实体记录。直接教学通常把技术知识提升到 60；当教师可靠掌握青铜工具制作、身边学习者近期有真实生产劳动且尚无同等工具时，这项教学可进入前三个候选，并引用学习者的劳动事实。普通教学的既有排序不变。母脉出生链中的母亲第一次真实成功教导孩子时提升到 72，必须仍有完成的教导动作。阅读只形成不高于 54 的暂定知识，真实项目实验才使它上升并可能跨过 55 的可靠阈值。</span></li>
             <li><strong>记录复用</strong><span>V3 候选服务读者自己所有活跃项目的真实技术缺口，不要求该项目正占用当前 intent；只看本人背包与可见公共地面记录，并冻结 exact carrier source。地面正常链为 move → acquire → read → prepare-experiment → experiment：move 不计取得，只有精确 drop 成功转入本人背包才算 acquire，来源消失或替换时不换源。记录技术必须精确编译为该项目步骤，但阅读前不用先拿齐实验输入；阅读只形成暂定知识，后续逐 tick 重编译普通项目物流，输入到位后才绑定并执行真实实验。自解码、阅读和准备都不替代最终产物与置信度变化证据。</span></li>
@@ -349,8 +350,8 @@ const RULES_PAGE_MARKUP = `
             <li><strong>成就展示</strong><span>现代阶段的代表卡为“电力与知识站”，以发电机、导体、有用负载、度量衡和记录架表达三项可见闭环。它是只读象征预览，不会在权威世界中凭空生成建筑、设备或能力。</span></li>
             <li><strong>死亡照料观察</strong><span>只有真实死亡、完整安葬与物质墓记来源闭合才识别对应能力；多人跨时段重复安葬才可能派生制度。</span></li>
             <li><strong>事实报告</strong><span>运行摘要、转折点、毁灭原因和文明编号都来自真实历史。记录完整链还必须通过同一 basis 的身份、项目、payload / codebook、精确取得、阅读理解、实验产物、置信度从低于 55 上升到至少 55、顺序及项目进度守卫；外部 exact-lineage 交付或既有已读可按真实状态继续，但不补造阶段、不计完整链。</span></li>
-            <li><strong>文明纪事</strong><span>规则投影筛选文明开端、纪元切换、重要天气、野兽袭击、死亡、出生、协议、关键技术与项目完成，也允许已完成回应的日常、回忆和轻松玩笑进入近期纪事；只记录一轮回应，避免开场和回应重复刷屏。死亡只在来源链确实包含袭击且对象一致时归因给动物。同源原子动作在表达层归并，但纪事仍保留全部 sourceEventIds、涉及人物和可展开事实详情；模型只能压缩这组已筛事实。闲聊数量不计制度、阶段或文明指数。</span></li>
-            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul 保持同一声音；每轮只激活一个最相关情境侧面，记忆按话题与真实听者筛选，年龄 / communication 能力限制句式。speech-only 还从当前 speechAct、人格、控制敏感度、身体压力、关系及有源冲突派生 neutral / warm / familiar / guarded / blunt / confrontational 姿态：日常陈述默认 neutral，低信任通常先 guarded，blunt 只在边界话语与低宜人性、控制敏感或急迫压力共同支持时出现。命令式短句不要求礼貌词，但直接不自动等于不耐烦；敌意只由真实伤害、背约或拒绝后重复施压开放。规则动作只投影结构化 speechAct，不提供可显示原话。只有成功模型文本才绑定 completed voice communicate ActionFact 进入 GameFrame；失败时保留沟通事实但不显示文字气泡。</span></li>
+            <li><strong>文明纪事</strong><span>规则投影筛选文明开端、纪元切换、重要天气、野兽袭击、死亡、出生、协议、关键技术与项目完成，也允许有真实来源且已完成的可选生活回应作为低优先级片段进入近期纪事；只记录一轮回应，避免开场和回应重复刷屏。没有合法模型台词时只写间接沟通事实，不把规划摘要伪装成逐字对白。死亡只在来源链确实包含袭击且对象一致时归因给动物。同源原子动作在表达层归并，但纪事仍保留全部 sourceEventIds、涉及人物和可展开事实详情；模型只能压缩这组已筛事实。闲聊数量不计制度、阶段或文明指数。</span></li>
+            <li><strong>口头台词</strong><span>主动对话、决策 utterance 与 speech-only 共用人物 Soul；每轮只激活一个最相关情境侧面，记忆按话题与真实听者筛选，年龄 / communication 能力限制句式。规则动作只投影结构化 speechAct，不提供可显示原话；普通生活 response 也不预写 supportive / listened / willing 态度。不依赖精确父句且通过事实 / stance 校验的 decision utterance 在动作完成后直接成为 decision-model 原话，即使缺 dialogueMove / disposition 也不重复调用；其余 speech-only 才要求实际文本、move 与 continue / close / rupture disposition。response 以 conversation.referenceEventId 精确依赖 opening：只有父 SpeechLine 已持久化、参与者匹配时才获得父原话并保存 replyToSpeechLineId；需要父句的 response 当前仍由 speech-only 生成，缺父不请求、不发布孤儿引号台词，ActionFact 与间接摘要仍保留。成功台词按精确 sourceEventId 显示在文明纪事和人物行动历史。下一月 decision 最多读取四条本人已说或听见、早于本月且可核验的已提交原话；同月台词不回流，原话也不证明客观事实或同意。前端按 planningTick 与稳定插入顺序逐句连续播放，不再只取最后三个人。</span></li>
             <li><strong>体素装饰</strong><span>把已有建筑、动作、天气和身体事实映射成画面，不写回世界。分离动作读取已提交 ActionFact 的源材质：结果灌木显示为采集野果，成熟作物显示为收割，不因人物携带工具就把野果采集画成耕种。</span></li>
           </ul>
           <code>domain/civilization-index.ts · domain/era-progression.ts · projection/derived-observations.ts · projection/ · voxelKits.ts</code>
@@ -361,7 +362,7 @@ const RULES_PAGE_MARKUP = `
     <section class="rules-section" id="decisionTree" aria-labelledby="decisionTreeTitle">
       <div class="section-heading">
         <div><span class="section-no">03</span><div><span class="section-kicker">DECISION TREE</span><h2 id="decisionTreeTitle">每个规划刻度，人物怎样决定</h2></div></div>
-        <p>决定不是一次性抽签。稳定意图默认延续；只有紧急反射、必须回应、履约、真实的新机会、客观停滞，或人物在自然对话中亲自选定的合法方向能改变焦点。界面不要求玩家区分聊天与建议；服务端先保守判定 actionChoiceRequested。第一阶段只生成并校验角色回复，模型误带旧版行动字段不会再拖垮回复；纯问题不暴露他人的 required response，也不触发隐藏意图调用。明确行动请求才用第二个 prompt 从已生成回复中提取意图，失败时静默保留回复；只有明确承诺且通过本地校验的 accept + choice 进入行动链。下一月只做本地稳定 key 重配，不再让模型重新决定。</p>
+        <p>决定不是一次性抽签。稳定意图默认延续；只有紧急反射、正式提议的必须回应、履约、真实的新机会、客观停滞，或人物在自然对话中亲自选定的合法方向能改变焦点。普通生活 opening / response 都是可放弃的自主候选。界面不要求玩家区分聊天与建议；服务端先保守判定 actionChoiceRequested。第一阶段只生成并校验角色回复，模型误带旧版行动字段不会再拖垮回复；纯问题不暴露他人的 required response，也不触发隐藏意图调用。明确行动请求才用第二个 prompt 从已生成回复中提取意图，失败时静默保留回复；只有明确承诺且通过本地校验的 accept + choice 进入行动链。下一月只做本地稳定 key 重配，不再让模型重新决定。</p>
       </div>
 
       <div class="decision-map" aria-label="人物详细决策树">
@@ -424,14 +425,14 @@ const RULES_PAGE_MARKUP = `
           <div class="decision-tree-scroll wide-tree-scroll">
             <ol class="logic-tree">
               <li>
-                <article class="logic-node" data-kind="condition"><span>P1</span><h4>本刻度需要重新审视吗？</h4><ul><li>没有当前意图；有效生殖窗口可继续或撤回，魅魔也可形成单方候选，但同一伴侣对当月完成一次尝试后都不再重复采样。待回应 / 待履约协议只有在当前上下文确实存在合法 required / fulfillment 候选时才走独立 edge，不冒充普通复核。</li><li>共同生活协议只在剩余期限已不足以补齐 12 个生活月时形成返回义务；目标是双方共知的固定生活区，不是同伴实时位置。</li><li>tick 1：健康 &lt;35，水分 / 营养 &lt;28，或冷热 / 伤病 ≥2 级。</li><li>意图已越过有界复核月；或距上次进展 ≥2 个月且目标未满足。采集、储藏、放置、种植和知识默认达成即结算；只有选项显式声明 maintain-state 才在达成后继续维护。</li><li>另行探测：月初生活复核、真实 preview 确认匹配项目缺口的记录、技术示范请求、需回应的真实对话，以及本人在一次玩家建议回复中已经选定、等待本地重验的合法方向。</li><li>每人每月通常一次普通广义选择；本月创建、复核或跨月带入的根意图真实完成 / 阻塞 / 失败 / 放弃，且完整处理中断返回后没有父意图恢复时，下一 tick 最多再获得一次。第二次即使 idle 也在暂存月度额度与重放哈希中消费，但不制造无变化的持久 DecisionFact。真实记录、紧急生存、履约、技术示范和本月新 required proposal / 对话走独立边沿通道；required response 始终优先。</li></ul></article>
+                <article class="logic-node" data-kind="condition"><span>P1</span><h4>本刻度需要重新审视吗？</h4><ul><li>没有当前意图；有效生殖窗口可继续或撤回，魅魔也可形成单方候选，但同一伴侣对当月完成一次尝试后都不再重复采样。待回应 / 待履约协议只有在当前上下文确实存在合法 required / fulfillment 候选时才走独立 edge，不冒充普通复核；生活 opening / response 保留在普通自主候选中。</li><li>共同生活协议只在剩余期限已不足以补齐 12 个生活月时形成返回义务；目标是双方共知的固定生活区，不是同伴实时位置。</li><li>tick 1：健康 &lt;35，水分 / 营养 &lt;28，或冷热 / 伤病 ≥2 级。</li><li>意图已越过有界复核月；或距上次进展 ≥2 个月且目标未满足。采集、储藏、放置、种植和知识默认达成即结算；只有选项显式声明 maintain-state 才在达成后继续维护。</li><li>另行探测：月初生活复核、真实 preview 确认匹配项目缺口的记录、技术示范请求、正式提议回应，以及本人在一次玩家建议回复中已经选定、等待本地重验的合法方向。</li><li>每人每月通常一次普通广义选择；本月创建、复核或跨月带入的根意图真实完成 / 阻塞 / 失败 / 放弃，且完整处理中断返回后没有父意图恢复时，下一 tick 最多再获得一次。第二次即使 idle 也在暂存月度额度与重放哈希中消费，但不制造无变化的持久 DecisionFact。真实记录、紧急生存、履约、技术示范和本月新 formal required proposal 走独立边沿通道；required accept / reject 始终优先，普通生活 response 不强制。</li></ul></article>
                 <ol>
                   <li><span class="edge-label edge-no">否</span><article class="logic-node compact-node" data-kind="terminal"><span>CONTINUE</span><h4>不重新决策</h4><p>直接编译当前长期意图。</p></article></li>
                   <li><span class="edge-label edge-yes">是</span>
-                    <article class="logic-node" data-kind="process"><span>P2</span><h4>在只读快照中编译候选</h4><p>输入只有可见格 / 人 / 动物 / 掉落物、本人记忆与知识、项目、协议、权限和当前意图。记录使用只检查本人拥有的活跃项目及真实技术缺口，载体来源限于本人背包与调用方已过滤的可见公共地面掉落物；不读他人背包、知识或意图，也不进入通用对话 follow-up。精确匹配后，认知 appraisal 可从记录 basis 重新验证当前项目并继承其 need / pressure / commitment，但记录子意图仍不写普通 projectId，取得和阅读不会冒充项目进展。普通材料物流只统计空白可消费载体；旧 episode 若锁定的掉落物现已承载记录便立即失效。预览搜索路线和物流步骤不会打开真实 campaign 或改写项目；嵌套 planning preview 继承外层当月 overlay，使候选动作与提交前重编译看到相同事实。年龄门禁在每次编译时执行。固体放置与领域执行器复用同一体素结合产物规则，机械 / 电力安装从自身冻结 action basis 取得精确安装位；无论是眼前 nextAction、移动后的 completionAction，还是移动 / 物流结束后才由 active intent 重编译出的放置，目标仍是空气却被身体占据时都只等待，不提交失败事实。身体离开后下一 tick 自然重编译；目标若已不再是空气则仍进入领域失败与项目复核。相同结构失败 basis 优先从 terminal Intent 引用的真实 blocked / failed ActionFact 重建；失败当月完全相同的实际动作不会因换 goal / project 被第二次普通复议原样提交，跨月后再按完整 basis 与新来源判断。第 0–6 月冷却、第 7 月恢复，兼容 failure memory 同样显式保留这 7 个月；required / fulfillment 绕过，旧自由文本无法还原 basis 时 fail-open。相似的可选社交不按固定月份删除，而在后续认知 appraisal 中评估重复成本。</p></article>
+                    <article class="logic-node" data-kind="process"><span>P2</span><h4>在只读快照中编译候选</h4><p>输入只有可见格 / 人 / 动物 / 掉落物、本人记忆与知识、长期关切、项目、协议、权限和当前意图。仍开放 agenda 的 approach 只有在本人当前仍持有 / 看得见对应 opaque ref 且没有同 basis 无新证据的失败评价时，才编译为 observe / combine / expose / exert 的有界候选。新的 agenda 目前只从显式模型 update / proposal 创建或修改；本地 option、Project 与多月 Intent 继续保持各自客观生命周期，并只能绑定既有 agenda，不能自动合成主观关切。旧 local-deliberation item 保留兼容，玩家直接写入口尚未实现。记录使用只检查本人拥有的活跃项目及真实技术缺口，载体来源限于本人背包与调用方已过滤的可见公共地面掉落物；不读他人背包、知识或意图，也不进入通用对话 follow-up。精确匹配后，认知 appraisal 可从记录 basis 重新验证当前项目并继承其 need / pressure / commitment，但记录子意图仍不写普通 projectId，取得和阅读不会冒充项目进展。普通材料物流只统计空白可消费载体；旧 episode 若锁定的掉落物现已承载记录便立即失效。预览搜索路线和物流步骤不会打开真实 campaign 或改写项目；嵌套 planning preview 继承外层当月 overlay，使候选动作与提交前重编译看到相同事实。年龄门禁在每次编译时执行。固体放置与领域执行器复用同一体素结合产物规则，机械 / 电力安装从自身冻结 action basis 取得精确安装位；无论是眼前 nextAction、移动后的 completionAction，还是移动 / 物流结束后才由 active intent 重编译出的放置，目标仍是空气却被身体占据时都只等待，不提交失败事实。身体离开后下一 tick 自然重编译；目标若已不再是空气则仍进入领域失败与项目复核。相同结构失败 basis 优先从 terminal Intent 引用的真实 blocked / failed ActionFact 重建；失败当月完全相同的实际动作不会因换 goal / project 被第二次普通复议原样提交，跨月后再按完整 basis 与新来源判断。第 0–6 月冷却、第 7 月恢复，兼容 failure memory 同样显式保留这 7 个月；required / fulfillment 绕过，旧自由文本无法还原 basis 时 fail-open。相似的可选社交不按固定月份删除，而在后续认知 appraisal 中评估重复成本。</p></article>
                     <ol>
                       <li><span class="edge-label">候选已生成</span>
-                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>Belief → Desire → Intention</h4><ul><li><b>硬优先级先行</b>：可感知的紧急休眠先于 required response，required response 又先于 fulfillment；若当前已经在执行回应或履约，新义务保留排队，不无条件打断。</li><li><b>B · Belief</b>：DecisionContext 只含局部感知、有来源记忆 / 知识、当前项目与承诺。Action 结果后验与 Intent goalOutcome 后验分离；后者决定目标成功预期。</li><li><b>D · Desire</b>：NeedAgenda 从身体、安全、照护、储备、能力、承诺、归属、generativity、自主与探究压力派生有界需要；仍生效的共同生活按关系质量与实际同居连续满足一部分 belonging，只削减未满足缺口。正向生殖只能由 generativity 激活，belonging / autonomy 不能旁路激活。普通生殖的关系、人格、双方同意与准备度只在激活后连续门控；魅魔由特质来源形成 generativity 并跳过这些社会门控，但不能跳过成年、异性、同地、在世和未妊娠等物理事实。</li><li><b>有界前向</b>：廉价排序后只比较最多 4 个根、每节点 2 个后继、深度 3、一次人物决策 24 节点；选择与执行审计复用同一树，required / commitment 与 follow-up 不另展开。只命名本人有来源的 response / no-response / verification / replan。没有真实两难、替代项或观察不会改变下一选择时 VoI 为 0；硬义务与急性生存优先不被绕过。</li><li><b>I · Intention</b>：候选先跨过本人 aspiration，再与当前 Intent 的进度、尽责性、项目压力、停滞和切换边际比较；每人只有一个执行焦点，急性任务保存可返回父意图。</li><li><b>因果排序</b>：需要使用概率并集，其他因素使用有明确语义的乘法门控；前向 / 信息软调整分别封顶 0.08 / 0.04，不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>计划与行动</b>：Project / HTN 从 Intention 编译下一步，领域执行器重验；提交的 ActionFact 更新动作 Belief，Intent 结算再独立更新 goalOutcome Belief，直接死亡与休眠恢复终局也不能旁路这一步。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>可选模型重选</b>：实时模型与规则规划器共用 action-option-semantics-v1 完整校验；ID 只是不透明句柄。模型只看合法候选和同一只读 cognition 投影，开局、危险和既定履约不进入重选，返回后仍再次校验 option、follow-up 与结构化立场。</li></ul></article>
+                <article class="logic-node score-node" data-kind="process"><span>CAUSAL BDI</span><h4>Belief → Durable Concern → Desire → Intention</h4><ul><li><b>硬优先级先行</b>：可感知的紧急休眠先于正式 required accept / reject，后者又先于 fulfillment；普通生活 response 留在自主候选中。若当前已经在执行正式回应或履约，新义务保留排队，不无条件打断。</li><li><b>B · Belief</b>：DecisionContext 只含局部感知、有来源记忆 / 知识、当前项目与承诺。Action 结果后验与 Intent goalOutcome 后验分离；后者决定目标成功预期。</li><li><b>长期关切</b>：CharacterAgenda 的 aim 是人物主观且有来源的跨月关切，approach 是可被 response / no-response 替换的办法。一个 agenda 可关联多个 Intent / Project，却不能直接执行；方法失败不删除 aim，同 basis 无新事实不得盲重试。新 item 只由显式模型 update / proposal 创建，本地计划只能绑定既有 item；旧 local-deliberation 状态兼容。过期且无 executable episode 的 concern 会 suspended 并可让出容量。</li><li><b>D · Desire</b>：agenda need 精确绑定 characterAgendaItemId，只能激活同一关切编译的候选，不能给同属 inquiry / capability 的无关 option 冒领。其他 NeedAgenda 仍从身体、安全、照护、储备、能力、承诺、归属、generativity、自主与探究压力派生有界需要；仍生效的共同生活按关系质量与实际同居连续满足一部分 belonging，只削减未满足缺口。正向生殖只能由 generativity 激活，belonging / autonomy 不能旁路激活。普通生殖的关系、人格、双方同意与准备度只在激活后连续门控；魅魔由特质来源形成 generativity 并跳过这些社会门控，但不能跳过成年、异性、同地、在世和未妊娠等物理事实。</li><li><b>有界前向</b>：廉价排序后只比较最多 4 个根、每节点 2 个后继、深度 3、一次人物决策 24 节点；选择与执行审计复用同一树，required / commitment 与 follow-up 不另展开。只命名本人有来源的 response / no-response / verification / replan。没有真实两难、替代项或观察不会改变下一选择时 VoI 为 0；硬义务与急性生存优先不被绕过。</li><li><b>I · Intention</b>：候选先跨过本人 aspiration，再与当前 Intent 的进度、尽责性、同一 agenda / 项目压力、停滞和切换边际比较；每人只有一个执行焦点，急性任务保存可返回父意图。</li><li><b>因果排序</b>：需要使用概率并集，其他因素使用有明确语义的乘法门控；前向 / 信息软调整分别封顶 0.08 / 0.04，不再把九个任意量纲直接相加。稳定种子只以万分之一破真正同分。</li><li><b>计划与行动</b>：Project / HTN 从 Intention 编译下一步，领域执行器重验；提交的 ActionFact 更新动作 Belief，Intent 结算再独立更新 goalOutcome Belief；二者也据实评价关联 approach。无 ActionFact 的终止会 park，不留下幽灵 activeIntent；直接死亡与休眠恢复终局也不能旁路结算。</li><li><b>诊断兼容</b>：旧 factor forest 只把 need、care、commitment、learning、relationship、social-repetition、consent、feasibility、harm 投影成理由与来源，不再拥有排序权。</li><li><b>模型所有权</b>：实时模型与规则规划器共用 action-option-semantics-v1；ID 只是不透明句柄。真实 decision 路由存在时，optional communicate 的自愿社交由模型选择或 idle；本地回退和后续 tick 过滤它们，只继续 required response、commitment、生存、生产与物理行动，急迫求水 / 求食保留为本地例外。创世上下文参与普通有界容量，危险与既定履约不进入重选。compact 与 full 都隐藏 failure / discovery / everyday 等预选 opening，每个有来源近身听者只给一个 open 方向；模型用 0～3 个当次 q handle 绑定本人事实，服务端映射并在执行前重编译。返回后仍校验 option、follow-up、grounding 与正式 stance。decision 使用 compact DTO，可随 start / revise / idle 返回 create / revise / pause / abandon；不新增调用。模型还可读取至多四条本人已说或听见、早于本月且核验到 completed ActionFact 的原话，但原话不证明事实或同意。create / revise 缺匹配 option / probe 时以 missing-affordance 孵化且不创建 Intent；probe 只允许 observe / combine / expose / exert，已有 agenda 用当次 g1 / g2 handle 修订并重验引用。</li></ul></article>
                         <ol>
                           <li><span class="edge-label">检查意图</span>
                             <article class="logic-node" data-kind="condition"><span>P3</span><h4>已有当前意图？</h4><p>每人只有一个执行焦点；中断会保存可返回的父意图。</p></article>
@@ -444,7 +445,7 @@ const RULES_PAGE_MARKUP = `
                                 </ol>
                               </li>
                               <li><span class="edge-label edge-yes">已有</span>
-                                <article class="logic-node interrupt-node" data-kind="condition"><span>P4-B</span><h4>挑战者足以越过意图持续门槛？</h4><ol><li><b>优先义务</b>：紧急休眠、必须回应与履约在普通 BDI 竞争前处理；已经开始的优先义务先完成，新义务随后保留。</li><li><b>子中断</b>：回应、履约、生活复核或记录使用只有在父项目 / 返回上下文存在时保存可返回父意图。</li><li><b>生活复核</b>：低风险陪伴请求、正式结伴或生殖等具体关系候选，先满足生活压力 ≥ 项目压力 +10，随后仍须成为跨过 aspiration 的挑战者。</li><li><b>意图惯性</b>：同项目最佳步骤直接继续；否则比较进度、尽责性、项目压力、成功后验、停滞和切换边际。</li><li><b>替换证据</b>：期限已过、急性身体 / 安全 / 照护需要、持续停滞，或不同挑战者明显强于当前承诺。</li></ol></article>
+                                <article class="logic-node interrupt-node" data-kind="condition"><span>P4-B</span><h4>挑战者足以越过意图持续门槛？</h4><ol><li><b>优先义务</b>：紧急休眠、正式 required accept / reject 与履约在普通 BDI 竞争前处理；普通生活 response 自主竞争。已经开始的优先义务先完成，新义务随后保留。</li><li><b>子中断</b>：已经选择的回应、履约、生活复核或记录使用只有在父项目 / 返回上下文存在时保存可返回父意图。</li><li><b>生活复核</b>：低风险陪伴请求、正式结伴或生殖等具体关系候选，先满足生活压力 ≥ 项目压力 +10，随后仍须成为跨过 aspiration 的挑战者。</li><li><b>意图惯性</b>：同项目最佳步骤直接继续；否则比较进度、尽责性、项目压力、成功后验、停滞和切换边际。</li><li><b>替换证据</b>：期限已过、急性身体 / 安全 / 照护需要、持续停滞，或不同挑战者明显强于当前承诺。</li></ol></article>
                                 <ol>
                                   <li><span class="edge-label edge-yes">有返回上下文</span><article class="logic-node compact-node" data-kind="action"><span>INTERRUPT</span><h4>创建可返回的子中断</h4><p>回应、履约、生活复核、记录使用，以及生存 / 照护 / 避护完成后返回父意图。</p></article></li>
                                   <li><span class="edge-label edge-yes">越过持续门槛</span><article class="logic-node compact-node" data-kind="action"><span>REVISE</span><h4>改用当前最佳目标</h4><p>期限、急性需要、停滞或明显更强的不同挑战者触发替换。</p></article></li>
@@ -472,7 +473,7 @@ const RULES_PAGE_MARKUP = `
                 <ol>
                   <li><span class="edge-label edge-yes">是</span><article class="logic-node" data-kind="process"><span>C2-A</span><h4>生成直接动作</h4><p>从 move / transfer / act / attend / communicate 中选择一步；act 再指定物质操作。地面记录来源依冻结 basis 逐步执行 move → exact transfer-to-self（acquire）→ own-inventory attend（read）→ 同一项目真实 act（experiment）；acquire / read 保持为可返回的记录子意图，只有准备与实验进入项目动作账本。同月取得的多条记录以各自权威 transfer 事件区分实体栈。外部 exact-lineage 交付或既有已读只允许依当前真实状态继续，不补动作历史。</p></article></li>
                   <li><span class="edge-label edge-no">缺来源或方法</span>
-                    <article class="logic-node" data-kind="condition"><span>C2-B</span><h4>本人有可用证据？</h4><ul><li>看见不等于可用：便携物必须在本人背包或当前可取得的掉落物中；设施必须真实放入世界且记忆位置仍可核对。</li><li>可见或有来源记忆的材料地点 → 生成路线 / 取材。</li><li>固定场地合金、铁器项目与明确的公共厅堂项目可向眼前有材料的人发追加式请求；普通协调项目不扩展。贡献转移精确引用请求，并按请求余量和实时缺口截量；冶金材料送到固定作坊，不追逐 owner。</li><li>已建且可核对的铸造场承接青铜冶金；观察到青铜能力与烧结砖可提出铁匠铺，Smithy 落地后铁料、还原、锻打与工具阶段逐段返回该工位。设施必须出现在实际生产事件中，不能只靠项目标签计使用。</li><li>水力机械只接受本人 attend 过的具体可用水流段；计划冻结源与直线工地，未知部件仍走盲试。冻结格若被后来实体占用，首次失败留下来源绑定的场地冲突并停止原址重试；尚无已装部件时，当前负责人或已亲自复查水流的合法继任者只能从眼前可见、可达、为空且有承托的同水流候选中显式改址，并保留已制造 / 核验构件。部分安装或无候选时不静默搬迁。安装可跨短期失流继续，但 commissioning / operate 必须等 live flow；首次试运转的 progressed 错位故障保留输入，故障后新轴 + BronzeTool 维修，再有真实 Seed → Food 作业才完成。</li><li>未知来源 → 只在有限可见范围内搜索；耗尽后仍先保留精确缺口至复核期限，并距最后真实进展或精确关闭至少 4 个月；期间出现精确新来源便由同一项目恢复。只有期限过后且没有合法等待才阻塞。以后同功能重开必须出现并实际使用精确的新来源或新可靠计划；旧来源换栈、换项目 ID、月份流逝、压力或移动变化都不算。</li><li>未知方法 → 用眼前材料做预算受限的假说试验；问题类型只能表达可感知角色 / 性质，不能表达正确 material ID、rule ID 或预期产物。排序只继承人物自己的精确输入 / 工具经验，以及 operation、question、candidate 与当前有形来源组合都相同的 response / no-response；已核验产物只能改善该实体的感知 profile，不能给其他未试组合加分。度量项目只按对称悬挂和稳定参考角色尝试二 / 三份实体。已经耗尽实体假说的建造项目同样要有新材料类型、新计划、新目标或新 verified response 才能续证。</li><li>已有完整物理链的定居耕作不进入通用材料配方假说：缺种时寻找真实种源；等待湿润或生长时暂不行动。项目还会按本项目已完成播种的不同位置计算缺口，优先使用从未播过的可耕格；只剩本地夯土时，人物以手中通用生产工具做不预告结果的有界地表尝试，真实无响应进入记忆，真实变化才成为可复用技术。</li></ul></article>
+                    <article class="logic-node" data-kind="condition"><span>C2-B</span><h4>本人有可用证据？</h4><ul><li>看见不等于可用：便携物必须在本人背包或当前可取得的掉落物中；设施必须真实放入世界且记忆位置仍可核对。</li><li>可见或有来源记忆的材料地点 → 生成路线 / 取材。</li><li>固定场地合金、铁器项目与明确的公共厅堂项目可向眼前有材料的人发追加式请求；普通协调项目不扩展。贡献转移精确引用请求，并按请求余量和实时缺口截量；冶金材料送到固定作坊，不追逐 owner。</li><li>已建且可核对的铸造场承接青铜冶金；观察到青铜能力与烧结砖可提出铁匠铺，Smithy 落地后铁料、还原、锻打与工具阶段逐段返回该工位。设施必须出现在实际生产事件中，不能只靠项目标签计使用。</li><li>水力机械只接受本人 attend 过的具体可用水流段；计划冻结源与直线工地，未知部件仍走盲试。冻结格若被后来实体占用，首次失败留下来源绑定的场地冲突并停止原址重试；尚无已装部件时，当前负责人或已亲自复查水流的合法继任者只能从眼前可见、可达、为空且有承托的同水流候选中显式改址，并保留已制造 / 核验构件。部分安装或无候选时不静默搬迁。安装可跨短期失流继续，但 commissioning / operate 必须等 live flow；首次试运转的 progressed 错位故障保留输入，故障后新轴 + BronzeTool 维修，再有真实 Seed → Food 作业才完成。</li><li>未知来源 → 只在有限可见范围内搜索；耗尽后仍先保留精确缺口至复核期限，并距最后真实进展或精确关闭至少 4 个月；期间出现精确新来源便由同一项目恢复。只有期限过后且没有合法等待才阻塞。以后同功能重开必须出现并实际使用精确的新来源或新可靠计划；旧来源换栈、换项目 ID、月份流逝、压力或移动变化都不算。</li><li>未知方法 → 用眼前材料做预算受限的假说试验；问题类型只能表达可感知角色 / 性质，不能表达正确 material ID、rule ID 或预期产物。排序只继承人物自己的精确输入 / 工具经验，以及 operation、question、candidate 与当前有形来源组合都相同的 response / no-response；已核验产物只能改善该实体的感知 profile，不能给其他未试组合加分。`attempt:*` 只是试验身份，不是应生成的合成知识目标；ActionFact 评价 response，未生成该虚构知识不得写成目标失败。度量项目只按对称悬挂和稳定参考角色尝试二 / 三份实体。已经耗尽实体假说的建造项目同样要有新材料类型、新计划、新目标或新 verified response 才能续证。</li><li>已有完整物理链的定居耕作不进入通用材料配方假说：缺种时只有眼前确有可达浆果灌木或成熟作物，才建立绑定源体素、工作位与 Seed 缺口的 source episode；等待湿润或生长时以 world-change wait 让出当前焦点，不制造“无法编译”的失败。项目还会按本项目已完成播种的不同位置计算缺口，优先使用从未播过的可耕格；只剩本地夯土时，人物以手中通用生产工具做不预告结果的有界地表尝试，真实无响应进入记忆，真实变化才成为可复用技术。</li></ul></article>
                     <ol>
                       <li><span class="edge-label edge-yes">可补齐</span><article class="logic-node compact-node" data-kind="process"><span>REPAIR</span><h4>插入同目标前置步骤</h4><p>移动、取材、恢复、请求协助或有限试验。</p></article></li>
                       <li><span class="edge-label edge-no">仍不可知</span><article class="logic-node compact-node" data-kind="terminal"><span>BLOCKED</span><h4>留下明确阻塞</h4><p>不读取隐藏配方或全局地图。</p></article></li>
@@ -509,7 +510,7 @@ const RULES_PAGE_MARKUP = `
       <div class="authority-flow">
         <article data-tone="world"><span>01 · FACT</span><strong>世界与领域规则</strong><p>唯一事实权威。裁决空间、物质、身体、关系、时间与后果。</p></article>
         <div class="flow-arrow" aria-hidden="true">→</div>
-        <article data-tone="agent"><span>02 · DECIDE</span><strong>本地规划器</strong><p>先从人物可获得的事实中生成合法候选与完整回退决定；模型缺席时已经可以继续。</p></article>
+        <article data-tone="agent"><span>02 · DECIDE</span><strong>本地候选与硬边界</strong><p>先从人物可获得的事实中生成合法候选并处理生存、必须回应、承诺、生产与物理行动；模型模式不替模型生成可选社交，本地模式则可完整继续。</p></article>
         <div class="flow-arrow" aria-hidden="true">→</div>
         <article data-tone="effect"><span>03 · COMMIT</span><strong>WorldEvent 历史</strong><p>所有已提交变化留下可回放、可追责的事件和来源。</p></article>
         <div class="flow-arrow" aria-hidden="true">→</div>
@@ -517,7 +518,7 @@ const RULES_PAGE_MARKUP = `
       </div>
       <aside class="model-sidecar">
         <span class="sidecar-line" aria-hidden="true"></span>
-        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型可以回应玩家、重选少量合法方向、自主表达已发生的说话，并为新生儿提名，但不能绕过本地规则</strong><p>三条第一人称路径共用由人物 ID、baseline HEXACO 与控制 / 地位敏感度确定性重建的只读 Soul v2；styleMatrix 固定表层声音，scene facets 让每轮只激活与处境最相关的一面。主动对话由服务器生成 personaFrame，并按话题 / 点名对象筛选有源记忆；主只是必须回应的稳定身份，不自动意味着信任或服从。后代取名只接收模型 givenName，姓氏继承、顺序、字符、重名与回退由 naming.ts 验收，来源写入出生事实，失败保留种子姓名。明确行动请求仍用隐藏意图协议提取承诺，合法 choice 下一月只按稳定 key 本地唯一重配。</p></div>
+        <div><span>OPTIONAL MODEL SIDECAR</span><strong>模型模式拥有可选沟通与主观社会选择，也可显式更新长期关切、表达已发生的说话并为新生儿提名，但不能绕过本地规则</strong><p>decision 默认使用 compact request-scoped handles，并允许 `characterAgendaUpdate` 随 start / revise / idle 返回 create / revise / pause / abandon；更新 piggyback 在既有请求中，不新增调用。新的 agenda 目前只来自显式模型 update / proposal；本地 Project、Intent 或跨月 option 不自动合成，旧 local-deliberation 状态仍兼容，玩家直接 agenda 写入入口尚未实现。已有 concern 用 g1 / g2 修订；没有匹配 option 或合法 observe / combine / expose / exert probe 时，create / revise 降级为 missing-affordance / incubating 且不创建 Intent。新 agenda 只有 Project、记录使用、丧葬或明确多月工作的合法 option 才能直接绑定执行；一次性动作不能包装成长程目标。服务端重验本人持有、当前可见引用及 agenda / project 关联，隐藏配方、权威结果和他人同意不落地；无 probe 的 durable approach 客观达成才把 model agenda 结为 fulfilled，probe 只评价方法。模型模式请求失败时，本地只继续非模型所有的行动，不补造自愿社交；三条第一人称路径共用稳定 Soul v2。</p></div>
       </aside>
     </section>
 
@@ -530,6 +531,9 @@ const RULES_PAGE_MARKUP = `
         <article><strong>月度主循环</strong><code>application/simulation/month-boundary.ts · month-execution.ts · tick-planner.ts · tick-executor.ts</code><span>固定 atMonth、共享暂存月生命周期、15 tick、执行顺序、月初 / 月末结算与文明终局判定</span></article>
         <article><strong>有限化身</strong><code>application/player-embodiment.ts · server/eland-session/embodiment-coordinator.ts · LimitedEmbodimentHud.tsx · EmbodimentCameraController.ts</code><span>稳定合法选项、逐刻全世界执行、第一人称镜头与一次月提交；观察不耗 tick，建造不绕过领域规则</span></article>
         <article><strong>人物选项</strong><code>application/action-options.ts · domain/action-option-semantics.ts</code><span>局部感知、合法可供性、typed 候选意义与结构化失败重试 basis；option ID 不承担语义路由</span></article>
+        <article><strong>生活对话</strong><code>application/conversation-options.ts · domain/action-option-semantics.ts</code><span>本地有源菜单、模型单一 open affordance、0～3 个 request-scoped grounding handles、执行前重编译、optional response、语音门禁与 listener 轮换</span></article>
+        <article><strong>关系证据</strong><code>domain/relation.ts · domain/relationship-evidence.ts · application/social-options.ts</code><span>先民 10 / 10 相识起点；founding 不解锁 company / companion / reproduction，正式关系要求精确双方、跨月和直接照护 / 亲密 / 履约来源</span></article>
+        <article><strong>长期关切</strong><code>domain/character-agenda.ts · application/character-agenda.ts · application/simulation/model-review.ts</code><span>显式模型 create / revise / pause / abandon、缺 affordance 孵化、有界 probe、durable option 绑定、model agenda 客观达成后 fulfilled、ActionFact response / no-response 评价、无相关新证据禁重试；本地不自动合成，旧 local-deliberation 状态兼容</span></article>
         <article><strong>因果 BDI</strong><code>application/cognition/** · domain/cognition.ts</code><span>动态需要、人格 / 记忆 / 结果后验门控、有界前向 / VoI 与意图持续</span></article>
         <article><strong>人格学习</strong><code>domain/personality.ts</code><span>HEXACO 初始化、行动证据、跨情境整合与慢速变化</span></article>
         <article><strong>人物 Soul</strong><code>domain/person-soul.ts · server/persona-context.ts</code><span>baseline 人格到稳定 styleMatrix / scene facets，以及按处境、话题和听者选择的只读 personaFrame 与记忆包</span></article>
@@ -539,9 +543,9 @@ const RULES_PAGE_MARKUP = `
         <article><strong>人口承载</strong><code>domain/population-capacity.ts</code><span>受孕概率衰减与超载资源竞争</span></article>
         <article><strong>死亡善后</strong><code>domain/mortuary.ts · application/mortuary-options.ts</code><span>遗体、死亡知情、丧亲需要、物理安葬链与墓记</span></article>
         <article><strong>本地排序</strong><code>application/rule-planner.ts · application/cognition/bdi-deliberation.ts</code><span>硬优先级、aspiration、意图持续与继续 / 中断 / 改计划</span></article>
-        <article><strong>模型重选</strong><code>server/backend-decider.ts · model-decision-gateway.ts</code><span>关键上下文筛选、协议请求、候选 ID 归一化与失败回退</span></article>
+        <article><strong>模型重选</strong><code>domain/action-option-semantics.ts · application/rule-planner.ts · application/model-decision/* · server/backend-decider.ts · model-decision-gateway.ts</code><span>模型模式拥有 optional communicate，自愿社交失败不由本地补造；required / commitment / survival / physical 仍本地执行。compact / full 都隐藏规则预选 opening，默认 compact handles、开放交谈事实句柄、至多四条已提交原话、agenda update piggyback 与最终重验</span></article>
         <article><strong>人物主动对话</strong><code>server/agent-interaction-gateway.ts · server/persona-context.ts · application/player-interaction-choice.ts · PersonConversation.tsx</code><span>可见回复与隐藏意图两阶段、情境人格帧、定向记忆、表达能力、来源约束事实与本地合法 choice</span></article>
-        <article><strong>实时台词</strong><code>projection/live-speech.ts · server/live-speech-service.ts</code><span>结构化 speechAct 草稿、共用 Soul、关系姿态帧与 speech-only 批处理；中性日常为默认，直接表达无需礼貌词，强硬取决于当前话语行为，敌意必须有冲突证据</span></article>
+        <article><strong>实时台词</strong><code>projection/live-speech.ts · projection/speech-history.ts · server/live-speech-service.ts</code><span>合法非依赖 decision utterance 原话直出、结构化 speechAct 草稿、精确父 SpeechLine 依赖、speech-only dialogueMove / disposition / replyToSpeechLineId、行动历史同源原话；缺父不发孤儿引号台词</span></article>
         <article><strong>后代取名</strong><code>naming.ts · server/newborn-naming-service.ts</code><span>确定性保底姓名、父母与处境提名上下文、本地 givenName 验收、出生事实来源与失败回退</span></article>
         <article><strong>共同生活</strong><code>domain/shared-living.ts · domain/agreement.ts · application/social-options.ts</code><span>稳定生活锚点、12 / 24 月履约窗口、独立行动和不追踪成员实时位置</span></article>
         <article><strong>社会学习</strong><code>domain/social-learning.ts · application/cognition/social-expectation.ts</code><span>情境化回应 / 意愿 / 可靠性、top2 + 轮换探索、supported / contested practice 与制度提议门</span></article>
@@ -551,7 +555,7 @@ const RULES_PAGE_MARKUP = `
         <article><strong>动作裁决</strong><code>domain/action-executor.ts</code><span>五种原子动作与九种物质操作的后果</span></article>
         <article><strong>自然过程</strong><code>domain/monthly-processes.ts</code><span>纪元、天气、生态、身体、出生与死亡</span></article>
         <article><strong>观察器</strong><code>domain/civilization-index.ts · domain/era-progression.ts · projection/derived-observations.ts</code><span>文明指数、当前物理耕作区与可回放耕作闭环的只读阶段门槛</span></article>
-        <article><strong>表现层</strong><code>adapter.ts · SocietyScene3D.tsx · src/game/voxelKits.ts</code><span>按 ActionFact 源材质区分野果采集与成熟作物收割，并把其余权威状态映射成人间体素装饰</span></article>
+        <article><strong>表现层</strong><code>adapter.ts · month-playback-buffer.ts · ImmersiveGame.tsx · SocietyScene3D.tsx · society-scene/speechPlayback.ts · src/game/voxelKits.ts</code><span>一次只预取一个经 authority / sky 校验的直接后继月，播放预算覆盖逐句台词和自适应模型延迟；同一时刻只显示当前一句，其余权威状态映射成人间体素装饰</span></article>
       </div>
       <footer class="rules-footer"><span>ELAND KB · RULE MAP</span><p>规则树帮助看懂“为什么发生”；事件历史负责证明“确实发生过”。</p></footer>
     </section>

@@ -13,6 +13,8 @@ import type { ProjectState } from './project';
 import type { MechanicalPowerWorldState } from './mechanical-power';
 import type { ElectricalPowerWorldState } from './electrical-power';
 import type { HumanRemainsState, MemorialMarkerState } from './mortuary';
+import type { CharacterAgendaDecisionEvidence } from './character-agenda';
+import type { AgentMemoryStoreState } from './agent-memory';
 
 export * from './action';
 export * from './material';
@@ -69,7 +71,7 @@ export interface DropState {
 export type DecisionAuthorityState = Omit<SimulationState, 'civilization' | 'derived'> & {
   civilization: Omit<
     SimulationState['civilization'],
-    'stage' | 'civilizationIndex' | 'development'
+    'stage' | 'civilizationIndex' | 'development' | 'externalEraRegime'
   >;
 };
 
@@ -87,15 +89,29 @@ export interface DecisionContext {
 }
 
 export type Decision = IntentDecision;
-export interface TokenUsage { inputTokens: number; outputTokens: number }
-export interface AgentDecider { decide(context: DecisionContext): Decision }
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Provider-reported prefix-cache accounting when available. */
+  cacheHitInputTokens?: number;
+  cacheMissInputTokens?: number;
+}
+export interface AgentDecider {
+  decide(context: DecisionContext): Decision;
+  /** The model-backed runtime may reserve subjective social forks for model review. */
+  readonly defersVoluntarySocialChoicesToModel?: boolean;
+}
 export interface ModelInvocationMetadata {
   endpointId: string;
   protocol: string;
   model: string;
+  /** Actual upstream provider requests, distinct from person contexts. */
+  providerRequests?: number;
 }
 export interface BatchDecider {
   decideAll(contexts: DecisionContext[]): Promise<(Decision | null)[]>;
+  /** Null/error fallback and later local ticks must not invent subjective social choices. */
+  readonly ownsVoluntarySocialChoices?: boolean;
   /** Optional infrastructure policy. Omitted by deterministic tests and legacy callers. */
   shouldDecide?(context: DecisionContext, atMonth: number): boolean;
   /** A player-initiated choice may request one fresh local revalidation at the next month boundary. */
@@ -181,6 +197,8 @@ export interface DecisionFact extends BaseEvent {
   planningChannel?: 'ordinary' | 'edge';
   reproductionEvidence?: ReproductionDecisionEvidence;
   foresightEvidence?: ForesightDecisionEvidence;
+  /** Accepted subjective concerns and their locally compiled disposition. */
+  characterAgendaEvidence?: CharacterAgendaDecisionEvidence[];
   result: string;
 }
 
@@ -338,11 +356,18 @@ export interface DecisionMonthLedger {
   exemptModelContexts?: number;
   inputTokens: number;
   outputTokens: number;
+  cacheHitInputTokens?: number;
+  cacheMissInputTokens?: number;
   chargedTokens: number;
   ordinaryChargedTokens?: number;
   modelEndpointId?: string;
   modelProtocol?: string;
   modelName?: string;
+  /** Total provider calls this month, including expression calls and retries. */
+  providerRequests?: number;
+  speechInputTokens?: number;
+  speechOutputTokens?: number;
+  speechProviderRequests?: number;
 }
 
 export interface EraSchedule {
@@ -351,6 +376,18 @@ export interface EraSchedule {
   sinceMonth: number;
   endsAtMonth: number;
   dominantClimate: ClimateKind;
+}
+
+/**
+ * Sustained external-sky evidence used to distinguish a real era regime from
+ * a short orbital disturbance. The raw sky sample remains separately stored
+ * by the live session and terminal catastrophes bypass this confirmation.
+ */
+export interface ExternalEraRegime {
+  sinceMonth: number;
+  candidateEpoch: EpochKind | null;
+  candidateSinceMonth: number;
+  candidateConsecutiveMonths: number;
 }
 
 export interface EraPrediction {
@@ -517,6 +554,12 @@ export interface SimulationState {
     physicalStructureIndex?: PhysicalStructureIndex;
   };
   people: PersonState[];
+  /**
+   * Unified owner-scoped cognitive memory and live conversation coordination.
+   * Optional so existing schema-17 saves hydrate without reconstructing a past
+   * the person may no longer remember.
+   */
+  memoryStore?: AgentMemoryStoreState;
   intents: Intent[];
   agreements: Agreement[];
   records: RecordPayload[];
@@ -539,6 +582,7 @@ export interface SimulationState {
       severity: number;
       terminalCatastrophe?: TerminalCatastropheKind;
     };
+    externalEraRegime?: ExternalEraRegime;
     conditions: SimulationConfig;
     civilizationIndex: CivilizationIndex;
     /** Pure observer state. Planners and world rules must never read it. */

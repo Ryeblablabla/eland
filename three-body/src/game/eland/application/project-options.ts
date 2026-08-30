@@ -203,7 +203,7 @@ function projectInquiryExplicitlyExhausted(project: ProjectState): boolean {
   return projectInquiryExhaustedAtMonth(project) !== undefined;
 }
 
-function projectHasLegitimateWait(
+export function projectHasLegitimateWait(
   state: SimulationState,
   owner: PersonState,
   project: ProjectState,
@@ -901,6 +901,7 @@ export function buildProjectOptions(
       adaptation.desiredFunction,
       adaptation.beneficiaryIds,
       adaptation.site,
+      adaptation.shelterRequirement,
       adaptation.targetKnowledgeId,
       visible,
       atMonth,
@@ -992,6 +993,7 @@ export function ensureProject(
       proposal.desiredFunction,
       proposal.beneficiaryIds,
       proposal.site,
+      proposal.shelterRequirement,
       proposal.targetKnowledgeId,
       new Set(decisionContext.visibleCells),
       decisionContext.atMonth,

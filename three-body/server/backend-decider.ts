@@ -1,16 +1,35 @@
-import { buildDecisionRequestContext } from "../src/game/eland/kimi-decider";
-import type { BatchDecider, Decision, DecisionContext } from "../src/game/eland/simulation";
+import { buildDecisionRequestContext } from "../src/game/eland/application/model-decision/decision-context";
+import type { BatchDecider, Decision, DecisionContext, TokenUsage } from "../src/game/eland/simulation";
+import type { SpeechLineView } from '../src/game/societyContract';
 import { followUpSemanticallyMatches } from '../src/game/eland/domain/intent-follow-up';
+import { isModelOwnedVoluntarySocialOption } from '../src/game/eland/domain/action-option-semantics';
 import { intentReviewAtMonth } from '../src/game/eland/domain/intent';
 import {
   hasFulfillmentOpportunity,
   isPlayerInteractionEmergencyContext,
   isFulfillmentOption,
   isRequiredSocialOption,
+  characterAgendaModelReviewDue,
   validatePlayerInteractionChoice,
   type PlayerInteractionChoiceFailure,
 } from '../src/game/eland/infrastructure-api';
 import { handleDecide } from "./model-decision-gateway";
+
+const MAX_REMOTE_CONTEXTS_PER_REQUEST = 12;
+
+function addTokenUsage(left: TokenUsage, right?: TokenUsage): TokenUsage {
+  if (!right) return left;
+  return {
+    inputTokens: left.inputTokens + right.inputTokens,
+    outputTokens: left.outputTokens + right.outputTokens,
+    ...((left.cacheHitInputTokens !== undefined || right.cacheHitInputTokens !== undefined)
+      ? { cacheHitInputTokens: (left.cacheHitInputTokens ?? 0) + (right.cacheHitInputTokens ?? 0) }
+      : {}),
+    ...((left.cacheMissInputTokens !== undefined || right.cacheMissInputTokens !== undefined)
+      ? { cacheMissInputTokens: (left.cacheMissInputTokens ?? 0) + (right.cacheMissInputTokens ?? 0) }
+      : {}),
+  };
+}
 
 export interface PendingPlayerInteraction {
   id: string;
@@ -97,11 +116,11 @@ export function decisionFromPlayerInteraction(
 }
 
 /**
- * 实时模型只参与真正存在选择空间的关键节点。开局、身体危险和既定履约
- * 保持本地即时处理；必须回应与有多项合法方向的社会/战略转折可以请求模型。
+ * 实时模型只参与真正存在主观选择空间的关键节点。身体危险和既定履约
+ * 保持本地即时处理；先民也可进入审议，但仍与普通月份共用容量。可选对话
+ * 与关系分叉即使只有一项合法行动，也保留“做或不做”的模型选择。
  */
 export function isLiveModelDecisionContext(context: DecisionContext, atMonth: number): boolean {
-  if (atMonth === 1 && context.person.generation === 0) return false;
   if (isPlayerInteractionEmergencyContext(context)) return false;
   const required = context.options.filter(isRequiredSocialOption);
   if (required.length) {
@@ -111,7 +130,6 @@ export function isLiveModelDecisionContext(context: DecisionContext, atMonth: nu
       .filter((option) => followUpSemanticallyMatches(only, option)).length > 1);
   }
   if (hasFulfillmentOpportunity(context)) return false;
-  if (context.options.length < 2) return false;
   const hasDialogueChoice = context.options.some((option) => option.nextAction.kind === 'communicate'
     || option.completionAction?.kind === 'communicate');
   const active = context.activeIntent;
@@ -123,21 +141,32 @@ export function isLiveModelDecisionContext(context: DecisionContext, atMonth: nu
     reviewAtMonth !== undefined && atMonth > reviewAtMonth
     || atMonth - progressAnchor >= 2
   );
-  return hasDialogueChoice || turningPoint || !active;
+  if (turningPoint || characterAgendaModelReviewDue(context, atMonth)) return true;
+  if (context.options.some(isModelOwnedVoluntarySocialOption)) return true;
+  if (context.options.length < 2) return false;
+  return hasDialogueChoice || !active;
 }
 
 export function createServerLlmDecider(
   endpointId?: string,
-  options: { interactions?: PendingPlayerInteraction[]; pendingOnly?: boolean } = {},
+  options: {
+    interactions?: PendingPlayerInteraction[];
+    pendingOnly?: boolean;
+    /** Branch-local lines restored from already committed frames. */
+    priorSpeechLines?: readonly SpeechLineView[];
+  } = {},
 ): ServerLlmDecider {
-  let usage = { inputTokens: 0, outputTokens: 0 };
-  let metadata: { endpointId: string; protocol: string; model: string } | null = null;
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let metadata: { endpointId: string; protocol: string; model: string; providerRequests?: number } | null = null;
   let interactionAttempts: PlayerInteractionDecisionAttempt[] = [];
   const interactions = new Map<string, PendingPlayerInteraction>();
   for (const interaction of options.interactions ?? []) interactions.set(interaction.agentId, interaction);
   const interactionFor = (context: DecisionContext) => interactions.get(context.person.id);
   const hasActionableInteraction = (context: DecisionContext) => Boolean(interactionFor(context));
   return {
+    // A pending player interaction without a configured evolution endpoint is
+    // still an offline/rule month; only a real model route takes ownership.
+    ownsVoluntarySocialChoices: Boolean(endpointId),
     shouldDecide(context, atMonth) {
       return hasActionableInteraction(context)
         || (!options.pendingOnly && isLiveModelDecisionContext(context, atMonth));
@@ -167,39 +196,51 @@ export function createServerLlmDecider(
       if (!remoteContexts.length) return decisions;
       if (!endpointId) return decisions;
 
-      let result: Awaited<ReturnType<typeof handleDecide>>;
-      try {
-        result = await handleDecide({
-          contexts: remoteContexts.map(({ context }) => buildDecisionRequestContext(context)),
-          endpoint: endpointId,
-        }, endpointId);
-      } catch (error) {
-        if (hasDirectInteraction) return decisions;
-        throw error;
+      const projectedContexts = remoteContexts.map(({ context }) => buildDecisionRequestContext(context, {
+        committedSpeechLines: options.priorSpeechLines,
+      }));
+      const remoteDecisions: (Decision | null)[] = [];
+      let remoteUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+      let remoteMetadata: typeof metadata = null;
+      let providerRequests = 0;
+      for (let start = 0; start < projectedContexts.length; start += MAX_REMOTE_CONTEXTS_PER_REQUEST) {
+        const chunk = projectedContexts.slice(start, start + MAX_REMOTE_CONTEXTS_PER_REQUEST);
+        let result: Awaited<ReturnType<typeof handleDecide>>;
+        try {
+          result = await handleDecide({ contexts: chunk, endpoint: endpointId }, endpointId);
+        } catch (error) {
+          if (hasDirectInteraction) return decisions;
+          throw error;
+        }
+        if (result.status !== 200) {
+          const detail = result.body as { error?: string };
+          if (hasDirectInteraction) return decisions;
+          throw new Error(detail?.error ?? `模型决策失败（${result.status}）`);
+        }
+        const body = result.body as {
+          decisions?: (Decision | null)[];
+          usage?: TokenUsage;
+          endpointId?: string;
+          protocol?: string;
+          model?: string;
+          providerRequests?: number;
+        };
+        if (!Array.isArray(body.decisions) || body.decisions.length !== chunk.length) {
+          if (hasDirectInteraction) return decisions;
+          throw new Error("模型没有返回与关键决策上下文一一对应的结果");
+        }
+        remoteDecisions.push(...body.decisions);
+        remoteUsage = addTokenUsage(remoteUsage, body.usage);
+        providerRequests += body.providerRequests ?? 1;
+        if (body.endpointId && body.protocol && body.model) {
+          remoteMetadata = { endpointId: body.endpointId, protocol: body.protocol, model: body.model, providerRequests };
+        }
       }
-      if (result.status !== 200) {
-        const detail = result.body as { error?: string };
-        if (hasDirectInteraction) return decisions;
-        throw new Error(detail?.error ?? `模型决策失败（${result.status}）`);
-      }
-      const body = result.body as {
-        decisions?: (Decision | null)[];
-        usage?: typeof usage;
-        endpointId?: string;
-        protocol?: string;
-        model?: string;
-      };
-      if (!Array.isArray(body.decisions) || body.decisions.length !== remoteContexts.length) {
-        if (hasDirectInteraction) return decisions;
-        throw new Error("模型没有返回与关键决策上下文一一对应的结果");
-      }
-      body.decisions.forEach((decision, resultIndex) => {
+      remoteDecisions.forEach((decision, resultIndex) => {
         decisions[remoteContexts[resultIndex].index] = decision;
       });
-      usage = body.usage ?? usage;
-      metadata = body.endpointId && body.protocol && body.model
-        ? { endpointId: body.endpointId, protocol: body.protocol, model: body.model }
-        : null;
+      usage = addTokenUsage(usage, remoteUsage);
+      metadata = remoteMetadata;
       return decisions;
     },
     takeUsage() {

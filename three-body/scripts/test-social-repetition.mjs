@@ -12,7 +12,7 @@ try {
   const entry = `
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/application/monthly-simulation.ts'))};
     export { buildDecisionContext } from ${JSON.stringify(path.resolve('src/game/eland/application/action-options.ts'))};
-    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/kimi-decider.ts'))};
+    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/application/model-decision/index.ts'))};
     export { evaluateDecisionOption } from ${JSON.stringify(path.resolve('src/game/eland/application/decision-factor-forest.ts'))};
     export { RulePlanner } from ${JSON.stringify(path.resolve('src/game/eland/application/rule-planner.ts'))};
     export { assessSocialRepetition } from ${JSON.stringify(path.resolve('src/game/eland/domain/social-repetition.ts'))};

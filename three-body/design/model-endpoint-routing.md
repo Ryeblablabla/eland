@@ -59,7 +59,10 @@ Ollama endpoint 可用 `thinking` 控制思考输出；指向 DeepSeek 官方 AP
 - 其他生活对话、空闲人物新方向、项目停滞或状态复核也必须确有多个合法方向才进入重选；
 - 普通批次受滚动人月额度限制；未被选中的人物始终采用同月已经算好的本地决定；
 - 候选请求中的只读 Soul v2 与 HEXACO、需要、记忆、关系和风险一起参与模型在合法候选间的个人权衡；Soul 把稳定表达拆为 styleMatrix，并提供五个可按处境命中的 scene facet，每轮只激活最相关的一面；它不能生成候选、注入新事实或绕过必须回应、履约、follow-up 与物理校验；
+- 可用 `MODEL_DECISION_CONTEXT_MODE=compact` 试验紧凑请求：每个人仍使用相互独立的模型请求，保留全部合法 option / follow-up、当前压力、有效人格、一个已激活 Soul facet、当前意图 / 项目和相关记忆，只删去未激活 facet、审计来源数组与重复感知细节。当前端点没有能证明多个人物私有上下文相互隔离的原生批量协议，因此不得把不同人物的 Soul、记忆或知识合进同一次推理；未配置该变量时继续使用完整请求，便于配对回退；
+- 可用 `MODEL_CHARACTER_AGENDA_MODE=proposal-v1` 在同一次单人 decision 请求中试验长期关切提案；它会强制 compact 协议，并让模型用本次请求的 `g1 / g2` 句柄修订已有关切，或用 held / visible 句柄提出 `observe / combine / expose / exert` 小试验。提案只产生可审计的主观 aim 与 approach，不新增模型调用；本地仍须重验所选行动与 agenda / project 的关联、物品持有、局部可见性和无新证据禁重试，非法引用只能降级为等待，不能借另一个合法 option 洗白；
 - 模型只能返回当前 `optionId`、必要的 `followUpOptionId`、简短理由和人物话语；领域层再次验证候选存在、强制回应范围及对话与后续行动的因果一致性；
+- proposal compact DTO 中，已被本地关联到现有 concern / project 的 option 会携带相同 request-scoped `agendaHandle`；不带 probe 的修订只能选择同 handle option，避免靠自然语言猜关联；
 - 候选决定仍以 DecisionFact 进入权威历史；模型返回的台词不写入后续 ActionFact。
 
 口头台词路径：

@@ -37,6 +37,7 @@ import {
   ElandRequestConflictError,
   elandClient,
   getElandRunId,
+  type ElandStepResult,
   type Frame,
 } from '@/game/elandClient';
 import type {
@@ -51,6 +52,15 @@ import {
   type PreparedSkySample,
 } from '@/game/eland/transactional-sky-sampler';
 import {
+  createMonthPlaybackTicket,
+  inspectPrefetchedMonth,
+  nextModelPlaybackBudgetMs,
+  prefetchedMonthDelayMs,
+  resolveMonthPlaybackDurationMs,
+  type MonthAuthorityHead,
+  type MonthPlaybackTicket,
+} from '@/game/eland/month-playback-buffer';
+import {
   modelSettingsClient,
   type EvolutionMode,
   type ModelEndpointDraft,
@@ -59,7 +69,7 @@ import {
   type ModelSettingsSnapshot,
 } from '@/game/modelSettings';
 import type {
-  AgentHistoryView,
+  AgentMemoryView,
   CivilizationIndexHistoryPoint,
   CosmosSnapshot,
   ElandSaveSummary,
@@ -103,8 +113,18 @@ interface EvolutionEntry {
   status?: true;
 }
 
+interface MonthPlaybackSlot {
+  ticket: MonthPlaybackTicket;
+  skyAttempt: PreparedSkySample;
+  requestedAtMs: number;
+  result: ElandStepResult | null;
+  presentationTimer: ReturnType<typeof setTimeout> | null;
+}
+
 const TU_PER_MONTH = 0.8 / 12;
 const AUTO_STEP_BASE_MS = 4_000;
+const MIN_MONTH_PLAYBACK_MS = 500;
+const INITIAL_MODEL_PLAYBACK_BUDGET_MS = 10_000;
 const EVOLUTION_SPEED_STORAGE_KEY = 'threebody:eland:evolution-speed-multiplier';
 const EMPTY_MODEL_ROUTES: Record<ModelPurpose, string> = {
   decision: '', interaction: '', narrative: '', naming: '', strategy: '',
@@ -132,6 +152,18 @@ function eraKeyOf(fate: PlanetFate, fluxRel: number): EraKey {
   if (fluxRel > 1.8) return 'chaotic-heat';
   if (fluxRel < 0.45) return 'chaotic-cold';
   return 'chaotic';
+}
+
+function authoritativeEraKeyOf(society: SocietyState, fallback: EraKey): EraKey {
+  if (!society.epoch || !society.climate) return fallback;
+  if (society.epoch === 'stable') return 'stable';
+  if (society.climate.kind === 'cold') return 'chaotic-cold';
+  if (society.climate.kind === 'heat' || society.climate.kind === 'fire') return 'chaotic-heat';
+  return 'chaotic';
+}
+
+function crossesMajorEraBoundary(previous: EraKey, next: EraKey): boolean {
+  return (previous === 'stable') !== (next === 'stable');
 }
 
 function monthLabel(month: number): string {
@@ -173,6 +205,16 @@ function presentationPositionOf(view: EmbodimentView): EmbodimentPresentationPos
   };
 }
 
+function monthAuthorityHeadOf(frame: Frame): MonthAuthorityHead {
+  return {
+    runId: frame.runId,
+    authorityRevision: frame.authorityRevision,
+    civilizationId: frame.civilizationId,
+    branchId: frame.branchId,
+    elapsedMonths: frame.elapsedMonths,
+  };
+}
+
 export default function ImmersiveGame() {
   const pageVisible = useDocumentVisible();
   const [society, setSociety] = useState<SocietyState | null>(null);
@@ -204,13 +246,23 @@ export default function ImmersiveGame() {
   const [saveManagerMessage, setSaveManagerMessage] = useState('');
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
   const [focusAgentSubtab, setFocusAgentSubtab] = useState<AgentSubtab>('overview');
-  const [focusAgentHistory, setFocusAgentHistory] = useState<AgentHistoryView | null>(null);
-  const [focusAgentHistoryLoading, setFocusAgentHistoryLoading] = useState(false);
-  const [focusAgentHistoryError, setFocusAgentHistoryError] = useState('');
+  const [focusAgentMemory, setFocusAgentMemory] = useState<AgentMemoryView | null>(null);
+  const [focusAgentMemoryLoading, setFocusAgentMemoryLoading] = useState(false);
+  const [focusAgentMemoryError, setFocusAgentMemoryError] = useState('');
   const [civilizationEnding, setCivilizationEnding] = useState<CivilizationEndingView | null>(null);
   const [civilizationSettlementStatus, setCivilizationSettlementStatus] = useState<CivilizationSettlementStatus>('idle');
   const [civilizationSettlementMessage, setCivilizationSettlementMessage] = useState('');
   const [evolutionSpeed, setEvolutionSpeed] = useState<EvolutionSpeed>(readEvolutionSpeed);
+  const [modelPlaybackBudgetMs, setModelPlaybackBudgetMs] = useState(INITIAL_MODEL_PLAYBACK_BUDGET_MS);
+  const modelEvolutionActive = modelSettings?.evolutionMode === 'model'
+    || modelEvolutionModeDraft === 'model';
+  const monthPlaybackDurationMs = resolveMonthPlaybackDurationMs(
+    AUTO_STEP_BASE_MS,
+    evolutionSpeed,
+    MIN_MONTH_PLAYBACK_MS,
+    speechLines.map((line) => line.text),
+    modelEvolutionActive ? modelPlaybackBudgetMs : 0,
+  );
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>({ kind: 'observing' });
   const [embodimentTarget, setEmbodimentTarget] = useState<EmbodimentTargetView | null>(null);
   const [previewEmbodimentOption, setPreviewEmbodimentOption] = useState<EmbodimentOptionView | null>(null);
@@ -230,6 +282,9 @@ export default function ImmersiveGame() {
   const latestFrameRef = useRef<Frame | null>(null);
   const steppingRef = useRef(false);
   const sessionGenerationRef = useRef(0);
+  const visibleFrameStartedAtRef = useRef(0);
+  const monthPlaybackSlotRef = useRef<MonthPlaybackSlot | null>(null);
+  const nextMonthRequestAtRef = useRef(0);
   const historySequenceRef = useRef(0);
   const historyRef = useRef<EvolutionEntry[]>([]);
   const historyTotalCountRef = useRef(0);
@@ -243,6 +298,7 @@ export default function ImmersiveGame() {
   const canvasCivilizationSyncRef = useRef(false);
   const expectedUniverseResetTokenRef = useRef(0);
   const eraKeyRef = useRef<EraKey>('stable');
+  const presentedEraKeyRef = useRef<EraKey>('stable');
   const eraInitializedRef = useRef(false);
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skySamplerRef = useRef(new TransactionalSkySampler());
@@ -285,6 +341,19 @@ export default function ImmersiveGame() {
     setEmbodimentFeedbackValue(message);
     setEmbodimentFeedbackTone(tone);
   }, []);
+
+  const clearMonthPlaybackBuffer = useCallback(() => {
+    const slot = monthPlaybackSlotRef.current;
+    if (slot?.presentationTimer) clearTimeout(slot.presentationTimer);
+    const skyAttempt = slot?.skyAttempt ?? pendingStepSkyRef.current;
+    if (skyAttempt) skySamplerRef.current.rollback(skyAttempt);
+    monthPlaybackSlotRef.current = null;
+    pendingStepSkyRef.current = null;
+    steppingRef.current = false;
+    nextMonthRequestAtRef.current = 0;
+  }, []);
+
+  useEffect(() => () => clearMonthPlaybackBuffer(), [clearMonthPlaybackBuffer]);
 
   useEffect(() => {
     const checkpointSession = () => { void elandClient.checkpoint(runIdRef.current); };
@@ -383,6 +452,14 @@ export default function ImmersiveGame() {
   }, []);
 
   const applyFrame = useCallback((frame: Frame) => {
+    const previousFrame = latestFrameRef.current;
+    if (!previousFrame
+      || previousFrame.authorityRevision !== frame.authorityRevision
+      || previousFrame.civilizationId !== frame.civilizationId
+      || previousFrame.branchId !== frame.branchId
+      || previousFrame.elapsedMonths !== frame.elapsedMonths) {
+      visibleFrameStartedAtRef.current = performance.now();
+    }
     latestFrameRef.current = frame;
     hasFrameRef.current = true;
     const civilizationChanged = activeCivilizationRef.current !== frame.civilizationId;
@@ -396,6 +473,14 @@ export default function ImmersiveGame() {
     activeWorldSeedRef.current = frame.society.world.generator.seed;
     monthRef.current = frame.elapsedMonths;
     setSociety(frame.society);
+    const presentedEra = authoritativeEraKeyOf(frame.society, frame.skySample.fate);
+    const previousPresentedEra = presentedEraKeyRef.current;
+    presentedEraKeyRef.current = presentedEra;
+    setEraKey(presentedEra);
+    if (eraInitializedRef.current && crossesMajorEraBoundary(previousPresentedEra, presentedEra)) {
+      flashEra(presentedEra);
+    }
+    eraInitializedRef.current = true;
     setSpeaker(frame.speaker);
     setSpeechLines(frame.speechLines ?? []);
     const observedIndex = frame.society.observations.civilizationIndex;
@@ -436,7 +521,7 @@ export default function ImmersiveGame() {
         summary: frame.civilizationEnd.summary,
       });
     }
-  }, [pushHistory]);
+  }, [flashEra, pushHistory]);
 
   const startCivilization = useCallback(async (
     worldSeed = createWorldSeed(),
@@ -447,6 +532,7 @@ export default function ImmersiveGame() {
       : { id: createCivilizationCreationId(), worldSeed };
     pendingCreationRef.current = pendingCreation;
     const generation = ++sessionGenerationRef.current;
+    clearMonthPlaybackBuffer();
     sessionStartingRef.current = true;
     sessionReadyRef.current = false;
     activeWorldSeedRef.current = worldSeed;
@@ -491,7 +577,7 @@ export default function ImmersiveGame() {
     } finally {
       if (generation === sessionGenerationRef.current) sessionStartingRef.current = false;
     }
-  }, [applyFrame, showRuntimeStatus]);
+  }, [applyFrame, clearMonthPlaybackBuffer, showRuntimeStatus]);
 
   const restoreLoadedSession = useCallback((
     frame: Frame,
@@ -501,6 +587,7 @@ export default function ImmersiveGame() {
     embodiment?: EmbodimentView | null,
   ) => {
     pendingCreationRef.current = null;
+    clearMonthPlaybackBuffer();
     sessionGenerationRef.current += 1;
     sessionStartingRef.current = false;
     steppingRef.current = false;
@@ -542,8 +629,10 @@ export default function ImmersiveGame() {
     requestUniverseReset();
     setExitFocusToken((token) => token + 1);
     eraKeyRef.current = frame.skySample.fate;
+    const restoredEra = authoritativeEraKeyOf(frame.society, frame.skySample.fate);
+    presentedEraKeyRef.current = restoredEra;
     eraInitializedRef.current = true;
-    setEraKey(frame.skySample.fate);
+    setEraKey(restoredEra);
     applyFrame(frame);
     replaceHistory(frame, entries, historyTotalCount);
     setCivilizationIndexHistory(indexHistory.slice(-2_400));
@@ -561,7 +650,7 @@ export default function ImmersiveGame() {
       experienceModeRef.current = { kind: 'observing' };
       setExperienceMode({ kind: 'observing' });
     }
-  }, [applyFrame, replaceHistory, requestUniverseReset, setEmbodimentFeedback]);
+  }, [applyFrame, clearMonthPlaybackBuffer, replaceHistory, requestUniverseReset, setEmbodimentFeedback]);
 
   const finishEmbodiment = useCallback((frame: Frame) => {
     const skyAttempt = embodimentSkyAttemptRef.current;
@@ -587,7 +676,6 @@ export default function ImmersiveGame() {
     worldAdvancePausedRef.current = uiPaused;
     setExperienceMode({ kind: 'observing' });
     eraKeyRef.current = frame.skySample.fate;
-    setEraKey(frame.skySample.fate);
     applyFrame(frame);
     setUniverseTarget((target) => Math.max(frame.skySample.toTime, target) + TU_PER_MONTH);
   }, [applyFrame, setEmbodimentFeedback, uiPaused]);
@@ -625,6 +713,7 @@ export default function ImmersiveGame() {
       }
     }
     if (!pending) {
+      clearMonthPlaybackBuffer();
       const frame = latestFrameRef.current;
       const cosmos = statsRef.current?.cosmosSnapshot;
       if (!frame || !cosmos) {
@@ -744,7 +833,7 @@ export default function ImmersiveGame() {
         setEmbodimentCommandPending(false);
       }
     }
-  }, [setEmbodimentFeedback, uiPaused]);
+  }, [clearMonthPlaybackBuffer, setEmbodimentFeedback, uiPaused]);
 
   const chooseEmbodimentOption = useCallback(async (option: EmbodimentOptionView) => {
     const mode = experienceModeRef.current;
@@ -1037,8 +1126,40 @@ export default function ImmersiveGame() {
     };
   }, [restoreLoadedSession, showRuntimeStatus, startCivilization]);
 
+  const presentPrefetchedMonth = useCallback((slot: MonthPlaybackSlot) => {
+    if (monthPlaybackSlotRef.current !== slot || !slot.result) return;
+    if (slot.presentationTimer) clearTimeout(slot.presentationTimer);
+    slot.presentationTimer = null;
+    const result = slot.result;
+    const frame = result.frame;
+    const verdict = inspectPrefetchedMonth(
+      slot.ticket,
+      sessionGenerationRef.current,
+      latestFrameRef.current ? monthAuthorityHeadOf(latestFrameRef.current) : null,
+      frame ? monthAuthorityHeadOf(frame) : null,
+      result.skySampleAcknowledged,
+    );
+    monthPlaybackSlotRef.current = null;
+    steppingRef.current = false;
+    if (verdict !== 'accepted' || !frame) {
+      nextMonthRequestAtRef.current = performance.now() + Math.min(2_000, slot.ticket.playbackDurationMs);
+      return;
+    }
+
+    nextMonthRequestAtRef.current = 0;
+    applyFrame(frame);
+    if (result.authoritativeHistory && result.authoritativeHistoryTotalCount !== undefined) {
+      replaceHistory(frame, result.authoritativeHistory, result.authoritativeHistoryTotalCount);
+    }
+    if (result.authoritativeCivilizationIndexHistory) {
+      setCivilizationIndexHistory(result.authoritativeCivilizationIndexHistory.slice(-2_400));
+    }
+    setUniverseTarget((target) => Math.max(frame.skySample.toTime, target) + TU_PER_MONTH);
+  }, [applyFrame, replaceHistory]);
+
   const stepOnce = useCallback(async () => {
     if (worldAdvancePausedRef.current || steppingRef.current || sessionStartingRef.current) return;
+    if (performance.now() < nextMonthRequestAtRef.current) return;
     if (!sessionReadyRef.current) {
       const pendingCreation = pendingCreationRef.current;
       if (resumeCheckCompleteRef.current && (!hasFrameRef.current || pendingCreation)) {
@@ -1046,52 +1167,88 @@ export default function ImmersiveGame() {
       }
       return;
     }
+    const baseFrame = latestFrameRef.current;
+    const cosmos = statsRef.current?.cosmosSnapshot;
+    if (!baseFrame || !cosmos) return;
+
     const generation = sessionGenerationRef.current;
+    const skyAttempt = pendingStepSkyRef.current ?? skySamplerRef.current.prepare(eraKeyRef.current);
+    pendingStepSkyRef.current = skyAttempt;
+    const requestedAtMs = performance.now();
+    const slot: MonthPlaybackSlot = {
+      ticket: createMonthPlaybackTicket(
+        generation,
+        monthAuthorityHeadOf(baseFrame),
+        visibleFrameStartedAtRef.current || performance.now(),
+        monthPlaybackDurationMs,
+      ),
+      skyAttempt,
+      requestedAtMs,
+      result: null,
+      presentationTimer: null,
+    };
+    monthPlaybackSlotRef.current = slot;
     steppingRef.current = true;
-    let skyAttempt: PreparedSkySample | null = null;
     try {
-      const cosmos = statsRef.current?.cosmosSnapshot;
-      if (!cosmos) return;
-      skyAttempt = pendingStepSkyRef.current ?? skySamplerRef.current.prepare(eraKeyRef.current);
-      pendingStepSkyRef.current = skyAttempt;
-      const sky = skyAttempt.sample;
-      const {
-        frame,
-        authoritativeHistory,
-        authoritativeHistoryTotalCount,
-        authoritativeCivilizationIndexHistory,
-        skySampleAcknowledged,
-      } = await elandClient.stepWithRecovery(runIdRef.current, sky, cosmos);
-      if (generation !== sessionGenerationRef.current) {
+      const result = await elandClient.stepWithRecovery(
+        runIdRef.current,
+        skyAttempt.sample,
+        cosmos,
+      );
+      if (modelEvolutionActive) {
+        const observedRequestMs = performance.now() - slot.requestedAtMs;
+        setModelPlaybackBudgetMs((current) => nextModelPlaybackBudgetMs(current, observedRequestMs));
+      }
+      if (monthPlaybackSlotRef.current !== slot) return;
+      const frame = result.frame;
+      const verdict = inspectPrefetchedMonth(
+        slot.ticket,
+        sessionGenerationRef.current,
+        latestFrameRef.current ? monthAuthorityHeadOf(latestFrameRef.current) : null,
+        frame ? monthAuthorityHeadOf(frame) : null,
+        result.skySampleAcknowledged,
+      );
+      if (verdict !== 'accepted' || !frame) {
         skySamplerRef.current.rollback(skyAttempt);
+        if (frame && verdict === 'unacknowledged-sky'
+          && frame.authorityRevision === baseFrame.authorityRevision
+          && frame.civilizationId === baseFrame.civilizationId
+          && frame.branchId === baseFrame.branchId
+          && frame.elapsedMonths === baseFrame.elapsedMonths) {
+          skySamplerRef.current.restore(frame.skySample);
+        }
         if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
+        monthPlaybackSlotRef.current = null;
+        steppingRef.current = false;
+        nextMonthRequestAtRef.current = performance.now() + Math.min(2_000, monthPlaybackDurationMs);
         return;
       }
-      if (skySampleAcknowledged) {
-        skySamplerRef.current.commit(skyAttempt);
-      } else {
-        skySamplerRef.current.rollback(skyAttempt);
-        if (frame) skySamplerRef.current.restore(frame.skySample);
+      if (!skySamplerRef.current.commit(skyAttempt)) {
+        if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
+        monthPlaybackSlotRef.current = null;
+        steppingRef.current = false;
+        nextMonthRequestAtRef.current = performance.now() + Math.min(2_000, monthPlaybackDurationMs);
+        return;
       }
       if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
-      if (frame && frame.civilizationId === activeCivilizationRef.current) {
-        const advanced = frame.elapsedMonths > monthRef.current;
-        if (advanced || authoritativeHistory) applyFrame(frame);
-        if (authoritativeHistory && authoritativeHistoryTotalCount !== undefined) {
-          replaceHistory(frame, authoritativeHistory, authoritativeHistoryTotalCount);
-        }
-        if (authoritativeCivilizationIndexHistory) {
-          setCivilizationIndexHistory(authoritativeCivilizationIndexHistory.slice(-2_400));
-        }
-        if (advanced) setUniverseTarget((target) => Math.max(frame.skySample.toTime, target) + TU_PER_MONTH);
+      slot.result = result;
+      const delayMs = prefetchedMonthDelayMs(slot.ticket, performance.now());
+      if (delayMs <= 0) {
+        presentPrefetchedMonth(slot);
+      } else {
+        slot.presentationTimer = setTimeout(() => presentPrefetchedMonth(slot), delayMs);
       }
     } catch (error) {
+      if (monthPlaybackSlotRef.current !== slot) return;
       const resultUnknown = error instanceof ElandBackendUnavailableError
         || error instanceof ElandSessionMissingError;
-      if (skyAttempt && !resultUnknown) {
+      if (!resultUnknown) {
         skySamplerRef.current.rollback(skyAttempt);
         if (pendingStepSkyRef.current === skyAttempt) pendingStepSkyRef.current = null;
       }
+      monthPlaybackSlotRef.current = null;
+      steppingRef.current = false;
+      nextMonthRequestAtRef.current = performance.now() + Math.min(2_000, monthPlaybackDurationMs);
       if (generation === sessionGenerationRef.current) {
         if (error instanceof ElandSessionMissingError) {
           showRuntimeStatus('正在等待原演化会话恢复；不会自动创建新文明');
@@ -1103,20 +1260,18 @@ export default function ImmersiveGame() {
         }
         pushHistory(monthRef.current, error instanceof Error ? error.message : '本地规则演化失败', 'bad');
       }
-    } finally {
-      steppingRef.current = false;
     }
-  }, [applyFrame, pushHistory, replaceHistory, showRuntimeStatus, startCivilization]);
+  }, [modelEvolutionActive, monthPlaybackDurationMs, presentPrefetchedMonth, pushHistory, showRuntimeStatus, startCivilization]);
 
   useEffect(() => {
     if (!pageVisible || worldAdvancePaused) return;
-    const firstStep = setTimeout(() => { void stepOnce(); }, 1_000);
-    const interval = setInterval(() => { void stepOnce(); }, AUTO_STEP_BASE_MS / evolutionSpeed);
+    const firstStep = setTimeout(() => { void stepOnce(); }, 0);
+    const interval = setInterval(() => { void stepOnce(); }, monthPlaybackDurationMs);
     return () => {
       clearTimeout(firstStep);
       clearInterval(interval);
     };
-  }, [evolutionSpeed, pageVisible, stepOnce, worldAdvancePaused]);
+  }, [monthPlaybackDurationMs, pageVisible, society, stepOnce, worldAdvancePaused]);
 
   const onStats = useCallback((stats: SimStats) => {
     // “重新开始”会先重置 ThreeBodyCanvas，再创建新的权威会话。重置提交前，
@@ -1142,10 +1297,12 @@ export default function ImmersiveGame() {
     const nextEra = eraKeyOf(stats.planetFate, stats.fluxRel);
     if (nextEra !== eraKeyRef.current) {
       eraKeyRef.current = nextEra;
-      setEraKey(nextEra);
-      if (eraInitializedRef.current) flashEra(nextEra);
+      if (nextEra === 'burned' || nextEra === 'frozen' || nextEra === 'extinct') {
+        presentedEraKeyRef.current = nextEra;
+        setEraKey(nextEra);
+        if (eraInitializedRef.current) flashEra(nextEra);
+      }
     }
-    eraInitializedRef.current = true;
 
     if (stats.collapsed) {
       if (collapseHandledRef.current) return;
@@ -1162,7 +1319,12 @@ export default function ImmersiveGame() {
       previousCivilizationRef.current = stats.civilizations;
       replacementRequestedRef.current = false;
       void startCivilization(createWorldSeed(), true);
+      return;
     }
+    // The first usable cosmos snapshot may arrive after a frame was applied.
+    // Start that frame's single prefetch immediately; steppingRef keeps this
+    // render-loop callback from creating parallel requests.
+    void stepOnce();
   }, [flashEra, startCivilization, stepOnce]);
 
   const diveToSociety = useCallback(() => {
@@ -1415,12 +1577,14 @@ export default function ImmersiveGame() {
     if (newWorldLaunchingRef.current) return;
     newWorldLaunchingRef.current = true;
     setNewWorldStatus('starting');
+    clearMonthPlaybackBuffer();
     sessionReadyRef.current = false;
     steppingRef.current = false;
     replacementRequestedRef.current = false;
     collapseHandledRef.current = false;
     previousCivilizationRef.current = activeCivilizationRef.current;
     eraKeyRef.current = 'stable';
+    presentedEraKeyRef.current = 'stable';
     eraInitializedRef.current = false;
     activeBranchRef.current = '';
     activeWorldSeedRef.current = newWorldSeed;
@@ -1457,7 +1621,7 @@ export default function ImmersiveGame() {
     } else {
       setNewWorldStatus('error');
     }
-  }, [newWorldSeed, requestUniverseReset, startCivilization]);
+  }, [clearMonthPlaybackBuffer, newWorldSeed, requestUniverseReset, startCivilization]);
 
   const selectSocietyObject = useCallback((selection: SocietySceneSelection) => {
     setFocusAgentSubtab('overview');
@@ -1467,7 +1631,7 @@ export default function ImmersiveGame() {
   const closeFocus = useCallback(() => {
     setFocusTarget(null);
     setFocusAgentSubtab('overview');
-    setFocusAgentHistoryLoading(false);
+    setFocusAgentMemoryLoading(false);
   }, []);
 
   const changeFocusAgentSubtab = useCallback((subtab: AgentSubtab) => {
@@ -1494,17 +1658,17 @@ export default function ImmersiveGame() {
     if (focusAgentSubtab !== 'history' || focusTarget?.kind !== 'agent') return;
     let cancelled = false;
     const agentId = focusTarget.id;
-    setFocusAgentHistory((current) => current?.agentId === agentId ? current : null);
-    setFocusAgentHistoryLoading(true);
-    setFocusAgentHistoryError('');
-    void elandClient.agentHistory(runIdRef.current, agentId, monthRef.current, 160).then((result) => {
+    setFocusAgentMemory((current) => current?.agentId === agentId ? current : null);
+    setFocusAgentMemoryLoading(true);
+    setFocusAgentMemoryError('');
+    void elandClient.agentMemory(runIdRef.current, agentId, monthRef.current, 32).then((result) => {
       if (cancelled) return;
-      setFocusAgentHistory(result);
-      setFocusAgentHistoryLoading(false);
+      setFocusAgentMemory(result);
+      setFocusAgentMemoryLoading(false);
     }).catch((error) => {
       if (cancelled) return;
-      setFocusAgentHistoryLoading(false);
-      setFocusAgentHistoryError(error instanceof Error ? error.message : '个人行动历史读取失败');
+      setFocusAgentMemoryLoading(false);
+      setFocusAgentMemoryError(error instanceof Error ? error.message : '人物记忆读取失败');
     });
     return () => { cancelled = true; };
   }, [focusAgentSubtab, focusTarget, society]);
@@ -1522,6 +1686,7 @@ export default function ImmersiveGame() {
     setExitFocusToken((token) => token + 1);
     if (systemExtinct) {
       const nextSeed = createWorldSeed();
+      clearMonthPlaybackBuffer();
       previousCivilizationRef.current = activeCivilizationRef.current;
       collapseHandledRef.current = false;
       replacementRequestedRef.current = false;
@@ -1537,7 +1702,7 @@ export default function ImmersiveGame() {
       return;
     }
     setRespawnToken((token) => token + 1);
-  }, [requestUniverseReset, startCivilization]);
+  }, [clearMonthPlaybackBuffer, requestUniverseReset, startCivilization]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1737,6 +1902,7 @@ export default function ImmersiveGame() {
           society={society}
           era={eraKey}
           speaker={speaker}
+          monthPlaybackDurationMs={monthPlaybackDurationMs}
           speechLines={speechLines}
           sky={statsRef.current ?? undefined}
           selectedObject={!embodimentExperienceActive
@@ -1862,10 +2028,10 @@ export default function ImmersiveGame() {
         runId={runIdRef.current}
         observedBranchId={activeBranchRef.current}
         observedMonth={monthRef.current}
-        agentHistory={focusAgentHistory}
+        agentMemory={focusAgentMemory}
         agentSubtab={focusAgentSubtab}
-        agentHistoryLoading={focusAgentHistoryLoading}
-        agentHistoryError={focusAgentHistoryError}
+        agentMemoryLoading={focusAgentMemoryLoading}
+        agentMemoryError={focusAgentMemoryError}
         onEnterEmbodiment={enterEmbodiment}
         onClose={closeFocus}
         onAgentSubtabChange={changeFocusAgentSubtab}

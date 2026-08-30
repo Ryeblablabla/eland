@@ -1,6 +1,8 @@
 import { materialHas } from './material';
-import type { DecisionAuthorityState, SimulationState } from './model';
+import type { PrimitiveAction, WaterSearchBasis } from './action';
+import type { ActionFact, DecisionAuthorityState, SimulationState, WorldEvent } from './model';
 import type { PersonState } from './person';
+import { actionFactsForPerson } from './event-index';
 import {
   cellId,
   cellX,
@@ -21,6 +23,18 @@ export interface WaterAccess {
   pathLength: number;
   remembered: boolean;
   sourceEventIds: string[];
+}
+
+type WaterSearchMove = Extract<PrimitiveAction, { kind: 'move' }>;
+
+interface WaterSearchCandidate {
+  position: StandingPosition;
+  firstStepCellId: number;
+  pathLength: number;
+  x: number;
+  y: number;
+  recentVisits: number;
+  visibleTraffic: number;
 }
 
 function defaultVisibleCells(person: PersonState): number[] {
@@ -86,9 +100,17 @@ export function findVisibleWaterSearchDestination(
   person: PersonState,
   visibleCellIds: Iterable<number> = defaultVisibleCells(person),
 ): StandingPosition | null {
+  return visibleWaterSearchCandidates(state, person, visibleCellIds)[0]?.position ?? null;
+}
+
+function rankedVisibleWaterSearchCandidates(
+  state: SimulationState,
+  person: PersonState,
+  visibleCellIds: Iterable<number>,
+): WaterSearchCandidate[] {
   const recent = new Map<number, number>();
   for (const visited of person.position.lastPath) recent.set(visited, (recent.get(visited) ?? 0) + 1);
-  const candidates = [...new Set(visibleCellIds)].flatMap((candidateCell) => {
+  return [...new Set(visibleCellIds)].flatMap((candidateCell) => {
     if (candidateCell === person.position.cellId) return [];
     return standingPositions(state.world.grid, candidateCell).flatMap((position) => {
       const path = findStandingPath(state.world.grid, person.position, position);
@@ -104,7 +126,23 @@ export function findVisibleWaterSearchDestination(
       }];
     });
   });
-  if (!candidates.length) return null;
+}
+
+function candidateRank(first: WaterSearchCandidate, second: WaterSearchCandidate): number {
+  return first.recentVisits - second.recentVisits
+    || first.visibleTraffic - second.visibleTraffic
+    || second.pathLength - first.pathLength
+    || first.position.cellId - second.position.cellId
+    || first.position.z - second.position.z;
+}
+
+function visibleWaterSearchCandidates(
+  state: SimulationState,
+  person: PersonState,
+  visibleCellIds: Iterable<number>,
+): WaterSearchCandidate[] {
+  const candidates = rankedVisibleWaterSearchCandidates(state, person, visibleCellIds);
+  if (!candidates.length) return [];
   const previousStep = person.position.lastPath.length >= 2
     ? person.position.lastPath.at(-2)
     : person.position.previousCellId;
@@ -115,12 +153,14 @@ export function findVisibleWaterSearchDestination(
   const preferred = (identity + Math.floor(state.clock.elapsedMonths / 3)) % directions.length;
   const originX = cellX(person.position.cellId);
   const originY = cellY(person.position.cellId);
+  const selected: WaterSearchCandidate[] = [];
+  const selectedPositions = new Set<string>();
   for (let offset = 0; offset < directions.length; offset += 1) {
     const direction = directions[(preferred + offset) % directions.length];
     const originProjection = originX * direction.x + originY * direction.y;
     const forward = searchCandidates.filter((candidate) => candidate.x * direction.x + candidate.y * direction.y > originProjection);
     if (!forward.length) continue;
-    return forward.sort((first, second) => {
+    const candidate = forward.sort((first, second) => {
       const projection = (second.x * direction.x + second.y * direction.y)
         - (first.x * direction.x + first.y * direction.y);
       return projection
@@ -129,11 +169,115 @@ export function findVisibleWaterSearchDestination(
         || second.pathLength - first.pathLength
         || first.position.cellId - second.position.cellId
         || first.position.z - second.position.z;
-    })[0].position;
+    })[0];
+    const key = `${candidate.position.cellId}:${candidate.position.z}`;
+    if (!selectedPositions.has(key)) {
+      selected.push(candidate);
+      selectedPositions.add(key);
+    }
   }
-  return searchCandidates.sort((first, second) => first.recentVisits - second.recentVisits
-    || first.visibleTraffic - second.visibleTraffic
-    || second.pathLength - first.pathLength
-    || first.position.cellId - second.position.cellId
-    || first.position.z - second.position.z)[0].position;
+  for (const candidate of searchCandidates.sort(candidateRank)) {
+    if (selected.length >= 4) break;
+    const key = `${candidate.position.cellId}:${candidate.position.z}`;
+    if (selectedPositions.has(key)) continue;
+    selected.push(candidate);
+    selectedPositions.add(key);
+  }
+  return selected.slice(0, 4);
+}
+
+function waterSearchActions(
+  state: SimulationState,
+  person: PersonState,
+  currentMonthEvents: readonly WorldEvent[],
+): ActionFact[] {
+  const byId = new Map<string, ActionFact>();
+  for (const fact of actionFactsForPerson(state, person.id)) byId.set(fact.id, fact);
+  for (const event of currentMonthEvents) {
+    if (event.kind === 'action' && event.who === person.id) byId.set(event.id, event);
+  }
+  return [...byId.values()];
+}
+
+function currentWaterEvidenceKey(person: PersonState, actions: readonly ActionFact[]): string {
+  const places = person.knownPlaces
+    .filter((place) => materialHas(place.materialId, 'drinkable'))
+    .map((place) => `${place.id}:${place.lastConfirmedAtMonth}:${[...place.sourceEventIds].sort().join(',')}`)
+    .sort();
+  const latestDrink = [...actions].reverse().find((fact) => fact.status === 'completed'
+    && fact.action.kind === 'act'
+    && fact.action.operation === 'ingest'
+    && fact.action.targets.some((target) => target.kind === 'voxel'));
+  return `${places.join('|')}#${latestDrink?.id ?? 'no-drink-fact'}`;
+}
+
+function compactEvidenceHash(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function searchMove(
+  state: SimulationState,
+  person: PersonState,
+  basis: Omit<WaterSearchBasis, 'candidateIndex'>,
+  startIndex: number,
+): WaterSearchMove | null {
+  for (let candidateIndex = startIndex; candidateIndex < basis.candidates.length; candidateIndex += 1) {
+    const target = basis.candidates[candidateIndex];
+    const path = findStandingPath(state.world.grid, person.position, target);
+    if (path.length <= 1) continue;
+    return {
+      kind: 'move',
+      toCellId: target.cellId,
+      toZ: target.z,
+      waterSearchBasis: { ...basis, candidateIndex },
+    };
+  }
+  return null;
+}
+
+/**
+ * Continue or open one finite water-search episode. A completed/blocked target
+ * advances only within the frozen initial candidate list. The actor's newly
+ * exposed cells never extend that list, so a failed search can truly end.
+ */
+export function compileBoundedWaterSearchMove(
+  state: SimulationState,
+  person: PersonState,
+  beneficiaryId: string,
+  visibleCellIds: Iterable<number> = defaultVisibleCells(person),
+  currentMonthEvents: readonly WorldEvent[] = [],
+): WaterSearchMove | null {
+  const actions = waterSearchActions(state, person, currentMonthEvents);
+  const evidenceKey = currentWaterEvidenceKey(person, actions);
+  const latest = [...actions].reverse().find((fact) => fact.action.kind === 'move'
+    && fact.action.waterSearchBasis?.beneficiaryId === beneficiaryId);
+  const latestBasis = latest?.action.kind === 'move' ? latest.action.waterSearchBasis : undefined;
+  if (latest && latestBasis?.evidenceKey === evidenceKey) {
+    const { candidateIndex: _candidateIndex, ...episode } = latestBasis;
+    const nextIndex = latest.status === 'progressed'
+      ? latestBasis.candidateIndex
+      : latestBasis.candidateIndex + 1;
+    return searchMove(state, person, episode, nextIndex);
+  }
+
+  const candidates = visibleWaterSearchCandidates(state, person, visibleCellIds)
+    .map(({ position }) => ({ cellId: position.cellId, z: position.z }));
+  if (!candidates.length) return null;
+  const openedAtMonth = state.clock.elapsedMonths + 1;
+  const origin = { cellId: person.position.cellId, z: person.position.z };
+  const episode = {
+    version: 'bounded-water-search-v1' as const,
+    episodeId: `water-search:${person.id}:${beneficiaryId}:${openedAtMonth}:${origin.cellId}:${origin.z}:${compactEvidenceHash(evidenceKey)}`,
+    beneficiaryId,
+    openedAtMonth,
+    origin,
+    candidates,
+    evidenceKey,
+  };
+  return searchMove(state, person, episode, 0);
 }

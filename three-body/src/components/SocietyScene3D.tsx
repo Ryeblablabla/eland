@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -39,8 +39,10 @@ import {
 } from './society-scene/environmentRuntime';
 import {
   createFigureLayer,
-  latestSpeechBySpeaker,
 } from './society-scene/figureLayer';
+import { speechLinesInPlaybackOrder } from './society-scene/speechPlayback';
+import { createAmbientAudio } from './society-scene/ambientAudio';
+import { weatherSwayStrength, weatherWetness } from '@/game/voxel-assets/decor-primitives';
 import {
   sameSelectionVisuals,
   sameTerrainVisuals,
@@ -150,6 +152,8 @@ interface Props {
   society: SocietyState;
   era: EraKey;
   speaker: string | null;
+  /** Wall-clock time reserved for one authoritative month's visual playback. */
+  monthPlaybackDurationMs?: number;
   speechLines?: readonly SpeechLineView[];
   sky?: HumanSkySnapshot;
   selectedAgentId?: string | null; // 旧页面编译兼容；沉浸式场景不启用点选 UI
@@ -173,7 +177,7 @@ export type SocietySceneSelection =
   | null;
 
 const CELL_H = WORLD_CELL_HEIGHT; // 每层体素的视觉高度（世界单位）
-const MONTH_PLAYBACK_MS = 3_000; // 与 2D 地图一致的月度播放时长
+const DEFAULT_MONTH_PLAYBACK_MS = 3_000;
 const TERRAIN_APRON_CELLS = 72; // 权威网格之外的纯视觉缓冲；不参与规则、寻路或选择
 // Highest current human perception projection is eight cells; the half-cell
 // margin accounts for the eye-to-proxy vertical offset at that boundary.
@@ -194,6 +198,7 @@ export default function SocietyScene3D({
   society,
   era,
   speaker,
+  monthPlaybackDurationMs = DEFAULT_MONTH_PLAYBACK_MS,
   speechLines,
   sky,
   selectedAgentId,
@@ -212,19 +217,12 @@ export default function SocietyScene3D({
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const visibleSpeechLines = useMemo(
-    () => latestSpeechBySpeaker(speechLines ?? []),
-    [speechLines],
-  );
-  const speechBySpeaker = useMemo(
-    () => new Map(visibleSpeechLines.map((line) => [line.speakerId, line])),
-    [visibleSpeechLines],
-  );
   const propsRef = useRef({
     society,
     era,
     speaker,
-    speechBySpeaker,
+    monthPlaybackDurationMs,
+    speechLines: speechLines ?? [],
     sky,
     selectedAgentId,
     onSelectAgent,
@@ -245,7 +243,8 @@ export default function SocietyScene3D({
       society,
       era,
       speaker,
-      speechBySpeaker,
+      monthPlaybackDurationMs,
+      speechLines: speechLines ?? [],
       sky,
       selectedAgentId,
       onSelectAgent,
@@ -266,9 +265,20 @@ export default function SocietyScene3D({
   const animStart = useRef(0); // 挂载后由 effect 置为当前时间（渲染期不调非纯函数）
   useEffect(() => { animStart.current = performance.now(); }, [society]);
 
+  // FigureLayer still consumes the original 3s animation clock. Scale only
+  // its presentation timestamp so every visual layer follows the duration
+  // chosen by the authoritative month buffer without rebuilding the scene.
+  const playbackAnimationStartedAt = () => {
+    const now = performance.now();
+    const duration = Math.max(1, propsRef.current.monthPlaybackDurationMs);
+    const elapsed = Math.max(0, now - animStart.current);
+    return now - elapsed * DEFAULT_MONTH_PLAYBACK_MS / duration;
+  };
+
   // 供主循环外调用的场景 API
   const terrainApiRef = useRef<((s: SocietyState) => void) | null>(null);
   const lightApiRef = useRef<((e: EraKey) => void) | null>(null);
+  const eraDipApiRef = useRef<((now: number) => void) | null>(null);
   const decorApiRef = useRef<((s: SocietyState, e: EraKey) => void) | null>(null);
   const skyApiRef = useRef<((snapshot?: HumanSkySnapshot) => void) | null>(null);
   const selectionApiRef = useRef<((s: SocietyState) => void) | null>(null);
@@ -312,12 +322,7 @@ export default function SocietyScene3D({
         };
       },
     });
-    const {
-      camera,
-      cameraForward,
-      cameraRight,
-      cameraUp,
-    } = cameraRuntime;
+    const { camera } = cameraRuntime;
     cameraModeApiRef.current = cameraRuntime.setMode;
 
     // 非遮蔽体注册表：GTAO 计算期间临时隐藏（见 ScopedGTAOPass）
@@ -326,9 +331,6 @@ export default function SocietyScene3D({
       scene,
       renderer,
       camera,
-      cameraForward,
-      cameraRight,
-      cameraUp,
       world: world0,
       initialEra: propsRef.current.era,
       initialSky: propsRef.current.sky,
@@ -340,7 +342,10 @@ export default function SocietyScene3D({
       }),
     });
     lightApiRef.current = environmentRuntime.setEra;
+    eraDipApiRef.current = cameraRuntime.pulseEraDip;
     skyApiRef.current = environmentRuntime.setSky;
+    // 调试探针（与 ThreeBodyCanvas 的 __tbPlanet 同款）：只读，供无头验证与 e2e。
+    const dbgSociety = ((window as unknown as { __tbSociety?: Record<string, unknown> }).__tbSociety ??= {});
     const sun = environmentRuntime.sunlight;
     const fireLights = environmentRuntime.fireLights;
 
@@ -351,6 +356,27 @@ export default function SocietyScene3D({
       new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.92, metalness: 0.02 }),
       COUNT,
     );
+    // 侧面分层：顶面保留权威地表色，侧面沉入更深的土层色并按体素层高（0.3）微条带。
+    // 法线判别、无额外几何与 draw call；实例颜色仍全部来自 cellColor。
+    const landStrataMat = land.material as THREE.MeshStandardMaterial;
+    landStrataMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vStrataNy;\nvarying float vStrataY;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vStrataNy = normal.y;
+          vec4 strataWorld = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+          strataWorld = instanceMatrix * strataWorld;
+          #endif
+          vStrataY = (modelMatrix * strataWorld).y;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vStrataNy;\nvarying float vStrataY;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float strataSide = 1.0 - smoothstep(0.55, 0.75, abs(vStrataNy));
+          float strataBand = 0.93 + 0.07 * step(0.5, fract(vStrataY * 3.333));
+          diffuseColor.rgb *= mix(vec3(1.0), vec3(0.66, 0.57, 0.48) * strataBand, strataSide);`);
+    };
+    landStrataMat.customProgramCacheKey = () => 'terrain-strata-v1';
     land.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     land.castShadow = land.receiveShadow = true;
     scene.add(land);
@@ -424,6 +450,23 @@ export default function SocietyScene3D({
     groundDetail.renderOrder = 2;
     scene.add(groundDetail);
     aoExcluded.push(groundDetail);
+    // 地表颗粒微风：实例原点哈希相位做水平微位移，幅度随权威天气强度；与树冠摆动同向。
+    const groundSwayUniforms = { uTime: { value: 0 }, uWind: { value: 0.2 } };
+    const groundSwayMat = groundDetail.material as THREE.MeshStandardMaterial;
+    groundSwayMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = groundSwayUniforms.uTime;
+      shader.uniforms.uWind = groundSwayUniforms.uWind;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+          vec4 swayOrigin = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          float swayPhase = swayOrigin.x * 1.83 + swayOrigin.z * 2.37;
+          transformed.x += sin(uTime * (1.6 + uWind * 2.4) + swayPhase) * uWind * 0.02;
+          transformed.z += cos(uTime * (1.3 + uWind * 2.0) + swayPhase * 1.21) * uWind * 0.016;
+          #endif`);
+    };
+    groundSwayMat.customProgramCacheKey = () => 'ground-sway-v1';
     // 水体积仍严格来自权威液体体素；表现层把所有顶面合进一个网格，只在真实岸缘
     // 生成侧壁。这样不再渲染相邻透明盒的内部侧面，也不会出现逐格叠色形成的棋盘缝。
     const waterMat = new THREE.MeshPhysicalMaterial({
@@ -1467,13 +1510,20 @@ export default function SocietyScene3D({
       fireLights,
       boxGeometry: boxGeo,
       cellHeight: CELL_H,
-      monthPlaybackMs: MONTH_PLAYBACK_MS,
+      monthPlaybackMs: DEFAULT_MONTH_PLAYBACK_MS,
       readFrame: () => ({
         society: propsRef.current.society,
-        animationStartedAt: animStart.current,
+        animationStartedAt: playbackAnimationStartedAt(),
       }),
     });
     decorApiRef.current = decorLayer.sync;
+
+    // 环境音景：程序化风/雨/火声，跟随权威天气、纪元与近处火光；不写入任何状态。
+    // 浏览器自动播放策略要求首次用户手势后才允许出声。
+    const ambientAudio = createAmbientAudio();
+    const resumeAmbientAudio = () => ambientAudio.resume();
+    canvas.addEventListener('pointerdown', resumeAmbientAudio);
+    window.addEventListener('keydown', resumeAmbientAudio);
 
     // ---- 人物：按需创建 / 更新 / 回收 ----
     const figureLayer = createFigureLayer({
@@ -1489,11 +1539,11 @@ export default function SocietyScene3D({
           embodiedAgentId: current.cameraMode.kind === 'embodiment'
             ? current.cameraMode.agentId
             : null,
-          speechBySpeaker: current.speechBySpeaker,
+          speechLines: current.speechLines,
           speaker: current.speaker,
           selectedAgentId: current.selectedAgentId,
           selectedObject: current.selectedObject,
-          animationStartedAt: animStart.current,
+          animationStartedAt: playbackAnimationStartedAt(),
         };
       },
     });
@@ -1502,8 +1552,15 @@ export default function SocietyScene3D({
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let selectionPointerDown: { x: number; y: number } | null = null;
+    // 人物聚焦近景：点击人物镜头平滑降镜；点空白、Esc 或拖拽镜头解除。
+    let focusAgentId: string | null = null;
+    const focusScratch = new THREE.Vector3();
+    const probeScratch = new THREE.Vector3();
+    let probeAgentsAt = 0;
     const emitSelection = (selection: SocietySceneSelection) => {
       const p = propsRef.current;
+      focusAgentId = selection?.kind === 'agent' ? selection.id : null;
+      if (!focusAgentId) cameraRuntime.setOverviewFocus(null);
       p.onSelectObject?.(selection);
       p.onSelectAgent?.(selection?.kind === 'agent' ? selection.id : null);
     };
@@ -1623,6 +1680,18 @@ export default function SocietyScene3D({
     cameraRuntime.attachInput({
       onSelectionGestureCancel: () => { selectionPointerDown = null; },
     });
+    cameraRuntime.setOverviewInteractionListener((active) => {
+      // 用户拖拽/缩放镜头时解除人物聚焦，把控制权完整交还。
+      if (active && focusAgentId) {
+        focusAgentId = null;
+        cameraRuntime.setOverviewFocus(null);
+      }
+    });
+    const onEscapeKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || propsRef.current.cameraMode.kind === 'embodiment') return;
+      if (focusAgentId) emitSelection(null);
+    };
+    window.addEventListener('keydown', onEscapeKey);
     canvas.addEventListener('pointerdown', onSelectionPointerDown);
     canvas.addEventListener('pointerup', onSelectionPointerUp);
 
@@ -1730,6 +1799,7 @@ export default function SocietyScene3D({
     // ---- 主循环 ----
     let raf = 0;
     let previousFrameAt = performance.now();
+    let terrainWetness = 0;
     const tick = () => {
       raf = 0;
       if (document.hidden) return;
@@ -1739,15 +1809,61 @@ export default function SocietyScene3D({
       previousFrameAt = now;
       figureLayer.sync(now);
       decorLayer.animate(now);
+      // 环境音景跟随权威天气、纪元与近处火光（火光池本月刚重绑过）。
+      const audioProps = propsRef.current;
+      ambientAudio.update({
+        weatherKind: audioProps.society.weather?.kind ?? 'clear',
+        weatherIntensity: audioProps.society.weather?.intensity ?? 0,
+        eraChaotic: audioProps.era !== 'stable',
+        fireLevel: decorLayer.fireGlowLevel(),
+      });
       waterFlowUniforms.uTime.value = now * 0.001;
       environmentRuntime.updateBeforeCamera(now, deltaSeconds);
       waterMat.roughness = 0.21 + 0.01 * Math.sin(now * 0.0016);
       waterMat.clearcoat = 0.42 + 0.025 * Math.sin(now * 0.0019 + 0.8);
+      // 水面昼夜响应：夜里退成映星光的暗镜面，不再是霓虹河。
+      const waterDaylight = THREE.MathUtils.clamp(sun.intensity / 1.9, 0, 1);
+      waterMat.emissiveIntensity = 0.02 + 0.14 * waterDaylight;
+      waterSideMat.opacity = 0.58 + 0.18 * waterDaylight;
+      // 地表颗粒微风相位推进：风暴 > 雨 > 旱 > 雪 > 晴，乱纪元另加成。
+      groundSwayUniforms.uTime.value = now * 0.001;
+      groundSwayUniforms.uWind.value = weatherSwayStrength(audioProps.society.weather)
+        + (audioProps.era !== 'stable' ? 0.12 : 0);
+      // 地形湿润：雨/风暴时地表变深变润，与装饰层材质同源同步。
+      terrainWetness += (weatherWetness(audioProps.society.weather) - terrainWetness)
+        * (1 - Math.exp(-2.2 * deltaSeconds));
+      landStrataMat.roughness = 0.92 * (1 - terrainWetness * 0.38);
+      landStrataMat.envMapIntensity = 1 + terrainWetness * 0.55;
       decorLayer.updateTransition(now);
       const embodimentActive = cameraRuntime.isEmbodimentActive();
       if (resizedForEmbodiment !== embodimentActive) {
         resizedForEmbodiment = embodimentActive;
         resize();
+      }
+      // 人物聚焦：跟随人物当前世界坐标持续降镜；人物离开画面（死亡/安葬）自动解除。
+      if (focusAgentId) {
+        if (figureLayer.writeWorldPosition(focusAgentId, focusScratch)) {
+          cameraRuntime.setOverviewFocus(focusScratch);
+        } else {
+          focusAgentId = null;
+          cameraRuntime.setOverviewFocus(null);
+        }
+      }
+      dbgSociety.focusAgentId = focusAgentId;
+      dbgSociety.cameraDistance = camera.position.distanceTo(cameraRuntime.copyOverviewTarget(probeScratch));
+      // 每 400ms 暴露一个可点击人物点的屏幕坐标（与 __tbPlanet 同款的 e2e/无头验证钩子）。
+      if (now - probeAgentsAt > 400) {
+        probeAgentsAt = now;
+        const agent = propsRef.current.society.agents.find((a) => a.bodyDisposition !== 'interred');
+        if (agent && figureLayer.writeWorldPosition(agent.id, probeScratch)) {
+          probeScratch.project(camera);
+          dbgSociety.agentScreenPoint = probeScratch.z < 1 ? {
+            x: (probeScratch.x * 0.5 + 0.5) * window.innerWidth,
+            y: (-probeScratch.y * 0.5 + 0.5) * window.innerHeight,
+          } : null;
+        } else {
+          dbgSociety.agentScreenPoint = null;
+        }
       }
       const cameraFrame = cameraRuntime.update(now, deltaSeconds);
       if (cameraFrame.embodimentActive) {
@@ -1757,6 +1873,12 @@ export default function SocietyScene3D({
         gtaoPass.enabled = !cameraFrame.overviewControlsActive;
         tiltShiftPass.enabled = !cameraFrame.overviewControlsActive;
         updateTiltShift(deltaSeconds, cameraFrame.entryProgress);
+        // 近景/聚焦时 GTAO 升采样：接触阴影更细腻；远景保持半分辨率。
+        const gtaoScale = focusAgentId || cameraRuntime.overviewDistanceRatio() < 0.35 ? 0.75 : 0.5;
+        if (gtaoPass.resolutionScale !== gtaoScale) {
+          gtaoPass.resolutionScale = gtaoScale;
+          resize();
+        }
       }
       updateEmbodimentReticle(now);
       figureLayer.layoutSpeechBubbles();
@@ -1781,6 +1903,10 @@ export default function SocietyScene3D({
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onSelectionPointerDown);
       canvas.removeEventListener('pointerup', onSelectionPointerUp);
+      canvas.removeEventListener('pointerdown', resumeAmbientAudio);
+      window.removeEventListener('keydown', resumeAmbientAudio);
+      window.removeEventListener('keydown', onEscapeKey);
+      ambientAudio.dispose();
       cameraRuntime.dispose();
       terrainApiRef.current = null;
       lightApiRef.current = null;
@@ -1813,7 +1939,15 @@ export default function SocietyScene3D({
 
   // ---- 地形/实体随月度状态重建；光照随纪元；装饰层随状态+纪元 ----
   useEffect(() => { terrainApiRef.current?.(society); }, [society]);
-  useEffect(() => { lightApiRef.current?.(era); }, [era]);
+  const previousEraRef = useRef(era);
+  useEffect(() => {
+    lightApiRef.current?.(era);
+    // 纪元真实切换：除天空/地面光色变外，镜头做一次短暂下压抬视野，让"三日凌空"可被看见。
+    if (previousEraRef.current !== era) {
+      previousEraRef.current = era;
+      eraDipApiRef.current?.(performance.now());
+    }
+  }, [era]);
   useEffect(() => { decorApiRef.current?.(society, era); }, [society, era]);
   useEffect(() => { skyApiRef.current?.(sky); }, [sky]);
   useEffect(() => { selectionApiRef.current?.(society); }, [society]);
@@ -1834,7 +1968,7 @@ export default function SocietyScene3D({
         style={{ touchAction: 'none' }}
       />
       <div className="sr-only" aria-atomic="true" aria-live="polite" aria-relevant="additions text">
-        {visibleSpeechLines.map((line) => (
+        {speechLinesInPlaybackOrder(speechLines ?? []).map((line) => (
           <span className="block" key={line.id}>
             {line.speakerName}
             {line.audienceNames.length ? `对${line.audienceNames.join('、')}` : ''}

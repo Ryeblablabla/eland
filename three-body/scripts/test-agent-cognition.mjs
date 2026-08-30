@@ -1137,6 +1137,57 @@ try {
   assert.equal(validateModelDecision(crisisContext, illegalModelDecision, localDecision), null,
     '外部模型虚构的 optionId 必须被本地复核拒绝');
 
+  const openReviewState = createInitialState(26_082_614, {
+    endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0,
+  });
+  const openReviewSpeaker = openReviewState.people[0];
+  const openReviewListener = openReviewState.people[1];
+  const openReviewSource = openReviewSpeaker.relations
+    .find((relation) => relation.personId === openReviewListener.id)?.sourceEventIds[0];
+  const openReviewId = `conversation:open:1:${openReviewSpeaker.id}:${openReviewListener.id}`;
+  const openReviewOption = {
+    id: openReviewId, summary: '进行开放交谈', reason: '对方就在身边',
+    goal: { kind: 'representation-made', representationId: openReviewId },
+    nextAction: {
+      kind: 'communicate', content: {
+        id: openReviewId, kind: 'claim', summary: '进行开放交谈', conversation: {
+          version: 'grounded-conversation-v1', basisKey: 'open-placeholder', topic: 'open', turn: 'opening',
+          speakerId: openReviewSpeaker.id, listenerId: openReviewListener.id,
+          sourceFactIds: [openReviewSource],
+        },
+      }, audience: [openReviewListener.id], channel: 'voice',
+    },
+    target: { kind: 'person', personId: openReviewListener.id },
+    estimatedDuration: 'one-month', estimatedMonths: 1, sourceFactIds: [openReviewSource], domain: 'social',
+    openConversationGrounding: {
+      version: 'open-conversation-grounding-v1', listenerId: openReviewListener.id,
+      fallbackSourceFactIds: [openReviewSource],
+      facts: [{ kind: 'relationship', sourceFactId: openReviewSource, summary: '双方已有相识来源' }],
+    },
+  };
+  const openReviewContext = makeContext(openReviewState, openReviewSpeaker, [openReviewOption]);
+  const reviewedOpen = validateModelDecision(openReviewContext, {
+    kind: 'start', optionId: openReviewId, reason: '想问问对方的真实想法',
+    utterance: '你最近好像总在躲着大家，是出了什么事吗？',
+    groundingSourceFactIds: [openReviewSource],
+  }, { kind: 'idle', reason: '本地不替模型选择开放交谈' });
+  assert.deepEqual(reviewedOpen.groundingSourceFactIds, [openReviewSource],
+    'model-review must preserve valid open grounding through its rebuilt decision object');
+  assert.equal(validateModelDecision(openReviewContext, {
+    kind: 'start', optionId: openReviewId, reason: '夹带另一听者来源', utterance: '我想谈谈。',
+    groundingSourceFactIds: ['foreign-source'],
+  }, { kind: 'idle', reason: '本地不替模型选择开放交谈' }), null,
+  'model-review must reject sources outside the selected open envelope');
+  assert.equal(validateModelDecision(openReviewContext, {
+    kind: 'start', optionId: openReviewId, reason: '没有实际话语',
+    groundingSourceFactIds: [openReviewSource],
+  }, { kind: 'idle', reason: '本地不替模型选择开放交谈' }), null,
+  'model-review must reject an open conversation without an actual utterance');
+  assert.equal(validateModelDecision(crisisContext, {
+    kind: 'start', optionId: crisisOption.id, reason: '非 open 候选夹带来源',
+    groundingSourceFactIds: ['visible-drinkable-source'],
+  }, localDecision), null, 'non-open decisions may not carry open grounding sources');
+
   console.log('agent cognition causal-BDI checks passed');
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

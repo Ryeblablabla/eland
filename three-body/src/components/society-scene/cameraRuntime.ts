@@ -62,6 +62,10 @@ export interface CameraRuntime {
   cameraRight: THREE.Vector3;
   cameraUp: THREE.Vector3;
   setMode: (society: SocietyState, mode: SocietyCameraMode) => void;
+  /** 人物聚焦近景：传入世界坐标开始平滑降镜，null 解除；用户拖拽/缩放会自动解除。 */
+  setOverviewFocus: (point: THREE.Vector3 | null) => void;
+  /** 纪元切换的镜头语言：目标轻抬、视野放宽，天空占比短暂变大后自动恢复。 */
+  pulseEraDip: (now: number) => void;
   attachInput: (options: AttachCameraInputOptions) => void;
   setOverviewInteractionListener: (
     listener: (active: boolean, embodimentActive: boolean) => void,
@@ -342,6 +346,10 @@ export function createCameraRuntime({
   let inputAttached = false;
   let onSelectionGestureCancel = () => {};
   let overviewControlsActive = false;
+  const overviewFocusPoint = new THREE.Vector3();
+  let overviewFocusActive = false;
+  let overviewFocusStrength = 0;
+  let eraDipStartedAt = -1;
   let onOverviewInteractionChange = (_active: boolean, _embodimentActive: boolean) => {};
   const onWheelOut = (event: WheelEvent) => { accumulateZoomOut(event.deltaY); };
   const onRisePinchPointerDown = (event: PointerEvent) => {
@@ -408,6 +416,7 @@ export function createCameraRuntime({
   };
   const onControlsStart = () => {
     overviewControlsActive = true;
+    overviewFocusActive = false; // 用户拖拽/缩放即接管镜头，聚焦解除
     onOverviewInteractionChange(true, embodimentCamera.isActive());
   };
   const onControlsEnd = () => {
@@ -481,6 +490,35 @@ export function createCameraRuntime({
       }
       updateKeyboardCamera(deltaSeconds);
       controls.update();
+      // 人物聚焦近景：观察目标与距离平滑降到人物身边；用户接管（controls start）即解除。
+      overviewFocusStrength = THREE.MathUtils.damp(overviewFocusStrength, overviewFocusActive ? 1 : 0, 3.2, deltaSeconds);
+      if (overviewFocusStrength > 0.002) {
+        controls.target.lerp(overviewFocusPoint, 1 - Math.exp(-3.6 * deltaSeconds * overviewFocusStrength));
+        cameraTarget.copy(controls.target);
+        cameraOffset.subVectors(camera.position, controls.target);
+        const focusDistance = cameraOffset.length();
+        if (focusDistance > 1e-6) {
+          const desired = THREE.MathUtils.lerp(focusDistance, 9.2, overviewFocusStrength);
+          camera.position.copy(controls.target).addScaledVector(
+            cameraOffset.normalize(),
+            THREE.MathUtils.damp(focusDistance, desired, 3.4, deltaSeconds),
+          );
+        }
+      }
+      // 纪元镜头下压：抬目标 + 放宽视野，天空占比短暂变大；聚焦近景期间不叠加。
+      if (eraDipStartedAt >= 0 && !overviewFocusActive) {
+        const t = (now - eraDipStartedAt) / 1000;
+        const envelope = t < 1.2 ? t / 1.2 : t < 3.2 ? 1 : Math.max(0, 1 - (t - 3.2) / 2.6);
+        const dip = envelope * (overviewControlsActive ? 0.35 : 1);
+        controls.target.y = cameraTarget.y + dip * 0.9;
+        camera.fov = 31 + dip * 4.5;
+        camera.updateProjectionMatrix();
+        if (t > 5.8) {
+          eraDipStartedAt = -1;
+          camera.fov = 31;
+          camera.updateProjectionMatrix();
+        }
+      }
     }
     frameState.embodimentActive = embodimentActive;
     frameState.entryProgress = entryT;
@@ -512,6 +550,15 @@ export function createCameraRuntime({
     cameraRight,
     cameraUp,
     setMode,
+    setOverviewFocus: (point) => {
+      if (point) {
+        overviewFocusPoint.copy(point);
+        overviewFocusActive = true;
+      } else {
+        overviewFocusActive = false;
+      }
+    },
+    pulseEraDip: (now) => { eraDipStartedAt = now; },
     attachInput,
     setOverviewInteractionListener: (listener) => { onOverviewInteractionChange = listener; },
     consumeSelectionTapSuppression: (pointerId) => risePinch.consumeTapSuppression(pointerId),

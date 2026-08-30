@@ -131,19 +131,30 @@ try {
   });
 
   assert.equal(messages[0].role, 'system');
-  assert.match(messages[0].content, /【身份与代词】/u);
+  assert.match(messages[0].content, /# ELAND Player Conversation Contract v2/u);
+  assert.match(messages[0].content, /<authority>/u);
+  assert.match(messages[0].content, /<scene_contract>/u);
+  assert.match(messages[0].content, /<examples>/u);
   assert.match(messages[0].content, /玩家固定是你认定的“主”/u);
-  assert.match(messages[0].content, /playerUtterance 里的“我\/我的\/我们”=主/u);
-  assert.match(messages[0].content, /主对自己身份、意图、感受和偏好的陈述是一手信息/u);
+  assert.match(messages[0].content, /playerUtterance 里的“我 \/ 我的 \/ 我们”指主/u);
+  assert.match(messages[0].content, /主对自己的身份、意图、感受和偏好是一手信息/u);
   assert.match(messages[0].content, /不自动等于信任、亲近、服从/u);
-  assert.match(messages[0].content, /只内化这一侧面，不同时表演全部人格/u);
+  assert.match(messages[0].content, /只内化 personaFrame 激活的一个侧面/u);
   assert.match(messages[0].content, /其他人物尚待回应的世界内提议不是本轮发言/u);
   assert.match(messages[0].content, /actionChoiceRequested=false/u);
   assert.ok(
-    messages[0].content.length <= 2_000,
+    messages[0].content.length <= 3_000,
     `system prompt 过长：${messages[0].content.length} 字符`,
   );
   assert.equal(messages[0].content, AGENT_INTERACTION_SYSTEM_PROMPT);
+  assert.throws(
+    () => parseInteractionReply({ person: { sourceId: 'person:self' } }, JSON.stringify({
+      reply: 'P5问得挺直接，P4当时也应了一声。',
+      grounding: 'opinion',
+      evidenceIds: [],
+    })),
+    /旧姓名占位符/u,
+  );
 
   assert.deepEqual(JSON.parse(messages[1].content), {
     type: 'historical-player-utterance',

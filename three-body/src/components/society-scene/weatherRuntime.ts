@@ -69,9 +69,10 @@ export function createWeatherRuntime({
     const rainAttribute = new THREE.BufferAttribute(rainPositions, 3);
     rainAttribute.setUsage(THREE.DynamicDrawUsage);
     rainGeo.setAttribute('position', rainAttribute);
-    const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({
-      color: '#b8d8ec', transparent: true, opacity: 0.42, depthWrite: false, fog: true,
-    }));
+    const rainMaterial = new THREE.LineBasicMaterial({
+      color: '#b8d8ec', transparent: true, opacity: 0, depthWrite: false, fog: true,
+    });
+    const rain = new THREE.LineSegments(rainGeo, rainMaterial);
     rain.visible = false;
     rain.renderOrder = 12;
     scene.add(rain);
@@ -88,10 +89,11 @@ export function createWeatherRuntime({
     const snowAttribute = new THREE.BufferAttribute(snowPositions, 3);
     snowAttribute.setUsage(THREE.DynamicDrawUsage);
     snowGeo.setAttribute('position', snowAttribute);
-    const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({
-      color: '#f3f7fb', size: 2.1, sizeAttenuation: false, transparent: true, opacity: 0.72,
+    const snowMaterial = new THREE.PointsMaterial({
+      color: '#f3f7fb', size: 2.1, sizeAttenuation: false, transparent: true, opacity: 0,
       depthWrite: false, fog: true,
-    }));
+    });
+    const snow = new THREE.Points(snowGeo, snowMaterial);
     snow.visible = false;
     snow.renderOrder = 12;
     scene.add(snow);
@@ -108,10 +110,11 @@ export function createWeatherRuntime({
     const dustAttribute = new THREE.BufferAttribute(dustPositions, 3);
     dustAttribute.setUsage(THREE.DynamicDrawUsage);
     dustGeo.setAttribute('position', dustAttribute);
-    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
-      color: '#c8aa75', size: 1.45, sizeAttenuation: false, transparent: true, opacity: 0.34,
+    const dustMaterial = new THREE.PointsMaterial({
+      color: '#c8aa75', size: 1.45, sizeAttenuation: false, transparent: true, opacity: 0,
       depthWrite: false, fog: true,
-    }));
+    });
+    const dust = new THREE.Points(dustGeo, dustMaterial);
     dust.visible = false;
     dust.renderOrder = 11;
     scene.add(dust);
@@ -122,14 +125,26 @@ export function createWeatherRuntime({
       if (value > half) return -half;
       return value;
     };
+    let rainFade = 0;
+    let snowFade = 0;
+    let dustFade = 0;
     updateProjection = (now: number, deltaSeconds: number) => {
       const frame = readFrame();
       const weather = frame.society.weather ?? { kind: 'clear' as const, intensity: 0, sinceMonth: 0 };
       const strength = THREE.MathUtils.clamp(weather.intensity, 1, 10);
-      rain.visible = weather.kind === 'rain' || weather.kind === 'storm';
-      snow.visible = weather.kind === 'snow';
-      dust.visible = weather.kind === 'drought';
-      uniforms.rain.value = rain.visible ? Math.min(1, 0.35 + strength * 0.09) : 0;
+      const rainTarget = weather.kind === 'rain' || weather.kind === 'storm' ? 1 : 0;
+      const snowTarget = weather.kind === 'snow' ? 1 : 0;
+      const dustTarget = weather.kind === 'drought' ? 1 : 0;
+      rainFade = THREE.MathUtils.damp(rainFade, rainTarget, 1.35, deltaSeconds);
+      snowFade = THREE.MathUtils.damp(snowFade, snowTarget, 1.35, deltaSeconds);
+      dustFade = THREE.MathUtils.damp(dustFade, dustTarget, 1.15, deltaSeconds);
+      rain.visible = rainFade > 0.006;
+      snow.visible = snowFade > 0.006;
+      dust.visible = dustFade > 0.006;
+      rainMaterial.opacity = 0.42 * rainFade;
+      snowMaterial.opacity = 0.72 * snowFade;
+      dustMaterial.opacity = 0.34 * dustFade;
+      uniforms.rain.value = Math.min(1, 0.35 + strength * 0.09) * rainFade;
       // 日光碎金强度：跟随真实日照，阴雨/雪/雾天自动减弱，夜间归零。
       uniforms.sunGlint.value = THREE.MathUtils.clamp(sun.intensity / 1.9, 0, 1)
         * (weather.kind === 'clear' || weather.kind === 'drought' ? 1

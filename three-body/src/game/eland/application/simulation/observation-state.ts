@@ -10,7 +10,12 @@ import type {
  * The authoritative portion of schema-17 state. Observer-owned values remain
  * flat in the persisted state, but are deliberately absent from this port.
  */
-export type SimulationAuthorityState = DecisionAuthorityState;
+export type SimulationAuthorityState = Omit<DecisionAuthorityState, 'civilization'> & {
+  civilization: DecisionAuthorityState['civilization'] & Pick<
+    SimulationState['civilization'],
+    'externalEraRegime'
+  >;
+};
 
 type TypedArrayMutationMethod = 'copyWithin' | 'fill' | 'reverse' | 'set' | 'sort';
 
@@ -102,6 +107,9 @@ export function captureSimulationObservationSnapshot(
     ...(state.civilization.externalClimate === undefined
       ? {}
       : { externalClimate: state.civilization.externalClimate }),
+    ...(state.civilization.externalEraRegime === undefined
+      ? {}
+      : { externalEraRegime: state.civilization.externalEraRegime }),
     conditions: state.civilization.conditions,
     ...(state.civilization.outcome === undefined
       ? {}

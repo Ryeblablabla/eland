@@ -460,8 +460,7 @@ export function inferActionOptionSemantics(
   const socialContext = normalizedSocialContext(override.socialContext
     ?? inferredSocialContext(option, reproduction));
   const typedRequiredResponse = action?.content.kind === 'accept'
-    || action?.content.kind === 'reject'
-    || conversation?.turn === 'response';
+    || action?.content.kind === 'reject';
   const execution = executionAction(option);
   const acceptedCommitment = Boolean(acceptedAuthorization(option)
     || option.goal.kind === 'agreement-fulfilled'
@@ -582,8 +581,7 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
     throw new Error('Edge planning requires an explicit edge trigger');
   }
   if (obligation === 'required-response'
-    && edgeTrigger !== 'required-response'
-    && edgeTrigger !== 'conversation-response') {
+    && edgeTrigger !== 'required-response') {
     throw new Error('Required response must carry the required-response edge trigger');
   }
   if (obligation === 'commitment-action' && edgeTrigger !== 'commitment-action') {
@@ -596,8 +594,8 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
     throw new Error('Commitment-action edge trigger requires a commitment action');
   }
   if (edgeTrigger === 'conversation-response'
-    && (obligation !== 'required-response' || conversation?.turn !== 'response')) {
-    throw new Error('Conversation-response edge trigger requires a typed conversation response');
+    && (obligation !== 'optional' || conversation?.turn !== 'response')) {
+    throw new Error('Conversation-response edge trigger requires an optional typed conversation response');
   }
   if (edgeTrigger
     && edgeTrigger !== 'required-response'
@@ -622,8 +620,8 @@ export function validateActionOptionSemantics(value: unknown): ActionOptionSeman
     && (reproduction || obligation === 'required-response')) {
     throw new Error('Child-simple options cannot be reproduction or required social responses');
   }
-  if (conversation?.turn === 'response' && obligation !== 'required-response') {
-    throw new Error('Conversation response must be classified as required-response');
+  if (conversation?.turn === 'response' && obligation !== 'optional') {
+    throw new Error('Conversation response must remain optional');
   }
   if (conversation?.turn === 'opening' && obligation !== 'optional') {
     throw new Error('Conversation opening must remain optional');
@@ -687,8 +685,7 @@ function validateSemanticConsistency(
     ? communication.content.conversation
     : undefined;
   const typedRequiredResponse = communication?.content.kind === 'accept'
-    || communication?.content.kind === 'reject'
-    || conversation?.turn === 'response';
+    || communication?.content.kind === 'reject';
   if (typedRequiredResponse && semantics.obligation !== 'required-response') {
     throw new Error('Typed response action must be classified as required-response');
   }
@@ -771,6 +768,38 @@ export function isRequiredResponseOption(option: ActionOption): boolean {
 
 export function isCommitmentActionOption(option: ActionOption): boolean {
   return actionOptionSemantics(option).obligation === 'commitment-action';
+}
+
+export function isOpenConversationOption(option: ActionOption): boolean {
+  const conversation = actionOptionSemantics(option).conversation;
+  return conversation?.turn === 'opening' && conversation.topic === 'open';
+}
+
+/** Legacy rule-authored topic menus stay available only to the pure local planner. */
+export function isPreselectedConversationOpeningOption(option: ActionOption): boolean {
+  const conversation = actionOptionSemantics(option).conversation;
+  return conversation?.turn === 'opening' && conversation.topic !== 'open';
+}
+
+/**
+ * A voluntary expression whose subjective choice belongs to the person, not
+ * to the deterministic fallback planner while a model is available.
+ *
+ * Required replies and already accepted commitments are excluded by the
+ * obligation check. Urgent requests for water or food remain rule-plannable so
+ * a delayed model cannot make the body abandon an available rescue. Every
+ * other optional communication -- claim, prediction, teaching, project talk,
+ * relationship or governance proposal -- expresses a preference and must not
+ * be silently invented by fallback rules.
+ */
+export function isModelOwnedVoluntarySocialOption(option: ActionOption): boolean {
+  const semantics = actionOptionSemantics(option);
+  if (semantics.obligation !== 'optional') return false;
+  if (executionAction(option).kind !== 'communicate') return false;
+  const social = semantics.socialContext;
+  return !(social?.cooperationKind === 'assist'
+    && social.phase === 'proposal'
+    && (social.assistNeed === 'water' || social.assistNeed === 'food'));
 }
 
 export function isEdgeActionOption(option: ActionOption): boolean {

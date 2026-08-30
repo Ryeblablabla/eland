@@ -77,7 +77,8 @@ export const CLOUD_WEATHER: Record<SocietyWeatherKind, {
   fog:     { opacity: 0, presence: 0, shadowOpacity: 0, shadowThreshold: 0.70, speed: 0.28, light: '#ccd2d2', shade: '#858f92' },
 };
 
-/** 有真实厚度的软边云团材质；几何轮廓负责体积，噪声只用于内部明暗而不裁出硬边。 */
+/** 有真实厚度的软边云团材质；几何轮廓负责体积，噪声只用于内部明暗而不裁出硬边。
+ *  照明跟随真实天光方向与阳光色：傍晚低角度染色，三日临空时云底烧成橙红。 */
 export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
@@ -87,6 +88,8 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
       uDaylight: { value: 1 },
       uLightColor: { value: new THREE.Color(CLOUD_WEATHER.clear.light) },
       uShadeColor: { value: new THREE.Color(CLOUD_WEATHER.clear.shade) },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunColor: { value: new THREE.Color('#fff1d6') },
     }]),
     vertexShader: /* glsl */`
       varying vec3 vCloudLocal;
@@ -109,6 +112,8 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
       uniform float uDaylight;
       uniform vec3 uLightColor;
       uniform vec3 uShadeColor;
+      uniform vec3 uSunDir;
+      uniform vec3 uSunColor;
       varying vec3 vCloudLocal;
       varying vec3 vCloudNormal;
       varying vec3 vViewNormal;
@@ -129,9 +134,12 @@ export function makeCloudVolumeMaterial(noiseMap: THREE.Texture): THREE.ShaderMa
         float alpha = uOpacity * edgeFade * density;
         if (alpha < 0.004) discard;
 
+        // 照明以真实天光方向为主：朝日面亮、背日面沉；太阳低垂时亮色染成阳光色。
+        float sunFacing = clamp(dot(normalize(vCloudNormal), normalize(uSunDir)) * 0.5 + 0.5, 0.0, 1.0);
         float topLight = clamp(vCloudNormal.y * 0.5 + 0.5, 0.0, 1.0);
-        float lightMix = clamp(0.24 + uDaylight * 0.38 + topLight * 0.22 + detail * 0.13, 0.0, 1.0);
-        vec3 color = mix(uShadeColor, uLightColor, lightMix);
+        float lightMix = clamp(0.22 + uDaylight * 0.30 + sunFacing * 0.30 + topLight * 0.10 + detail * 0.12, 0.0, 1.0);
+        vec3 litColor = mix(uLightColor, uSunColor, 0.42);
+        vec3 color = mix(uShadeColor, litColor, lightMix);
         color *= 0.94 + detail * 0.08;
         gl_FragColor = vec4(color, alpha);
         #include <tonemapping_fragment>

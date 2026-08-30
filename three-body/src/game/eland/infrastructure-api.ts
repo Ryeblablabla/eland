@@ -22,6 +22,7 @@ export {
   isFulfillmentOption,
   isRequiredSocialOption,
 } from './application/rule-planner';
+export { characterAgendaModelReviewDue } from './application/simulation/model-review';
 export {
   type ObservationProjectionMode,
   type ObservationProjector,
@@ -43,3 +44,9 @@ export {
 export {
   stepOwnedSimulation as stepOwnedSimulationWithObservationProjector,
 } from './application/simulation/tick-executor';
+export {
+  writeDialogueMemory,
+  writePlayerInteractionMemory,
+  type DialogueMemoryInput,
+  type PlayerInteractionMemoryInput,
+} from './domain/agent-memory';

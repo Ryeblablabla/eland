@@ -19,6 +19,7 @@ import {
   MICRO,
   hash01,
   jit,
+  weatherSwayStrength,
   type DecorBucket,
   type DecorInstance,
 } from './voxel-assets/decor-primitives';
@@ -2168,7 +2169,6 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     ))
   ));
   const constructionCells = new Set(renderedStructures.flatMap((structure) => structure.occupiedCells));
-  const storm = society.weather?.kind === 'storm';
   const drought = society.weather?.kind === 'drought';
   const facilityCellsByMaterial = new Map<number, number[]>();
   const functionalCells = new Set<number>();
@@ -2264,21 +2264,26 @@ export function collectDecor(society: SocietyState, era: EraKey): DecorInstance[
     const wx = x - w.width / 2 + 0.5, wz = y - w.height / 2 + 0.5;
     const r = hash01(id ^ Math.imul(w.generator.seed, 0x45d9f3b), 77);
     const gt = (w.elevation[id] - featureDepth(w, id, constructionCells) + 1) * CELL_H;
+    // 树冠摇摆旗标：不再只在风暴天——摆动强度由权威天气映射（风暴>雨>旱>雪>晴）超过阈值即标记。
+    const swayStrength = weatherSwayStrength(society.weather);
     const markWind = (start: number) => {
-      if (!storm) return;
+      if (swayStrength < 0.24) return;
       for (let index = start; index < out.length; index++) {
         if (out[index].b === 'leaf' || out[index].b === 'wood') out[index].animation = 'wind';
       }
     };
+    // 同种天然素材的尺度抖动：树高、灌木大小按格子确定性变化，配合既有 90° 旋转去除克隆感。
     const kit = (build: KitBuilder) => {
       const start = out.length;
-      build(new Kit(out, wx, gt, wz, 1, Math.floor(r * 4)), r);
+      const scaleJitter = 0.9 + hash01(id ^ w.generator.seed, 79) * 0.22;
+      build(new Kit(out, wx, gt, wz, scaleJitter, Math.floor(r * 4)), r);
       markWind(start);
     };
     const smallOffset = quarterCellOffset(hash01(id ^ w.generator.seed, 78), id ^ w.generator.seed);
     const smallKit = (build: KitBuilder, scale = 0.46) => {
       const start = out.length;
-      build(new Kit(out, wx + smallOffset.x, gt, wz + smallOffset.z, scale, Math.floor(r * 4)), r);
+      const jitteredScale = scale * (0.86 + hash01(id ^ w.generator.seed, 80) * 0.32);
+      build(new Kit(out, wx + smallOffset.x, gt, wz + smallOffset.z, jitteredScale, Math.floor(r * 4)), r);
       markWind(start);
     };
 

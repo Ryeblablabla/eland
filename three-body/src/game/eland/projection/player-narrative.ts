@@ -1,6 +1,6 @@
 import type { NarrativeEntryView } from '../../societyContract';
 import type { SimulationState, WorldEvent } from '../simulation';
-import type { HolderRef } from '../domain/action';
+import type { GroundedConversationRef, GroundedConversationTopic, HolderRef } from '../domain/action';
 import { animalSpecies, type AnimalSpeciesId } from '../domain/animal';
 import { Material, materialDefinition } from '../domain/material';
 
@@ -461,6 +461,37 @@ function placedStructureText(event: ActionEvent, actor: string, outputId: number
   return `${actor}安放了${materialName(outputId)}`;
 }
 
+const GROUNDED_CONVERSATION_HISTORY: Record<GroundedConversationTopic, {
+  opening: string;
+  response: string;
+}> = {
+  open: { opening: '一次开放交谈', response: '发起的开放交谈' },
+  everyday: { opening: '近来的生活', response: '关于近况的闲谈' },
+  reminiscence: { opening: '一段共同往事', response: '谈起的一段共同往事' },
+  playful: { opening: '一件轻松的小事', response: '开的一个玩笑' },
+  care: { opening: '身体与照护', response: '对自己身体状况的关心' },
+  hardship: { opening: '眼前的难处', response: '谈起的难处' },
+  gratitude: { opening: '此前得到的帮助', response: '表达的感谢' },
+  'shared-work': { opening: '一起劳动的经历', response: '谈起的共同劳动' },
+  failure: { opening: '一次失败', response: '对一次失败的复盘' },
+  discovery: { opening: '一项新发现', response: '讲述的新发现' },
+  family: { opening: '共同养育的近况', response: '谈起的照护安排' },
+  loss: { opening: '一次失去', response: '谈起的失去' },
+};
+
+function groundedConversationHistoryText(
+  actor: string,
+  audience: string,
+  conversation: GroundedConversationRef,
+): string {
+  const wording = GROUNDED_CONVERSATION_HISTORY[conversation.topic];
+  if (conversation.turn === 'opening') return `${actor}与${audience}谈起了${wording.opening}`;
+  if (conversation.stance === 'guarded') {
+    return `${actor}听见了${audience}${wording.response}，但没有继续深谈`;
+  }
+  return `${actor}回应了${audience}${wording.response}`;
+}
+
 function dialogueText(state: SimulationState, event: ActionEvent, actor: string): string {
   if (event.action.kind !== 'communicate') return event.result;
   const audience = event.action.audience.map((id) => personName(state, id)).join('、') || '身边的人';
@@ -470,7 +501,26 @@ function dialogueText(state: SimulationState, event: ActionEvent, actor: string)
   if (content.kind === 'revoke-agreement') return `${actor}向${audience}撤回了尚未执行的生殖同意`;
   if (content.kind === 'withdraw') return `${actor}告诉${audience}，自己将退出共同体`;
   if (content.kind === 'revoke') return `${actor}撤回了给${audience}的取用许可`;
-  return `${actor}对${audience}说：${concisePlayerText(content.summary)}`;
+  if (content.kind === 'claim' && content.conversation) {
+    return groundedConversationHistoryText(actor, audience, content.conversation);
+  }
+  if (content.kind === 'request') return `${actor}向${audience}提出请求：${concisePlayerText(content.summary)}`;
+  if (content.kind === 'offer') return `${actor}向${audience}提出建议：${concisePlayerText(content.summary)}`;
+  if (content.kind === 'prediction') return `${actor}向${audience}说出了自己的预判：${concisePlayerText(content.summary)}`;
+  return `${actor}告诉${audience}，${concisePlayerText(content.summary)}`;
+}
+
+function communicationHistoryDetail(event: ActionEvent): string {
+  if (event.action.kind !== 'communicate') return event.result;
+  const channel = event.action.channel === 'voice'
+    ? '当面交谈'
+    : event.action.channel === 'gesture' ? '手势' : '记录';
+  const conversation = event.action.content.kind === 'claim'
+    ? event.action.content.conversation
+    : undefined;
+  if (!conversation) return `这次沟通已通过${channel}完成。`;
+  const turn = conversation.turn === 'opening' ? '开场' : '回应';
+  return `这次关于${GROUNDED_CONVERSATION_HISTORY[conversation.topic].opening}的${turn}已通过${channel}完成。`;
 }
 
 function transferText(state: SimulationState, event: ActionEvent, actor: string): string {
@@ -631,6 +681,23 @@ function actionText(state: SimulationState, event: ActionEvent): string {
 
 function decisionText(state: SimulationState, event: DecisionEvent): string {
   const actor = personName(state, event.who);
+  if (event.decision.kind === 'idle') {
+    const agenda = event.characterAgendaEvidence?.find((evidence) => (
+      evidence.outcome === 'created'
+      || evidence.outcome === 'updated'
+      || evidence.outcome === 'paused'
+      || evidence.outcome === 'abandoned'
+    ));
+    if (!agenda) return '';
+    if (agenda.outcome === 'paused') return `${actor}暂时搁下了“${agenda.aim}”`;
+    if (agenda.outcome === 'abandoned') return `${actor}不再打算继续“${agenda.aim}”`;
+    if (agenda.compilerDisposition === 'deferred-missing-affordance') {
+      return `${actor}仍惦记着“${agenda.aim}”，只是眼下还没有可行办法`;
+    }
+    return agenda.outcome === 'created'
+      ? `${actor}开始把“${agenda.aim}”当作一件长期要解决的事`
+      : `${actor}重新想了想“${agenda.aim}”的做法`;
+  }
   const summary = intentSummary(state, event)
     ?? event.result.split(/[：:]/u).slice(1).join('：')
     ?? '安排下一步';
@@ -639,7 +706,6 @@ function decisionText(state: SimulationState, event: DecisionEvent): string {
   if (event.decision.kind === 'resume') return `${actor}重新开始${goal}`;
   if (event.decision.kind === 'suspend') return `${actor}暂时停下${goal}`;
   if (event.decision.kind === 'abandon') return `${actor}放弃了${goal}`;
-  if (event.decision.kind === 'idle') return `${actor}继续原来的安排`;
   const verb = event.decision.kind === 'revise'
     ? event.decision.mode === 'interrupt' ? '先去' : '改为'
     : '决定';
@@ -654,7 +720,7 @@ function actionImportance(event: ActionEvent): number {
       ? event.action.content.conversation
       : undefined;
     if (conversation?.turn === 'response'
-      && ['everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return 96;
+      && ['everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return 66;
     return 88;
   }
   if (event.action.kind === 'act') {
@@ -873,7 +939,7 @@ function standaloneCandidate(state: SimulationState, event: ActionEvent | Decisi
     id: `narrative:${event.id}`,
     month: event.atMonth,
     text: finishSentence(event.kind === 'action' ? actionText(state, event) : decisionText(state, event)),
-    detail: event.result,
+    detail: event.kind === 'action' ? communicationHistoryDetail(event) : event.result,
     tone: event.kind === 'action' ? actionTone(event) : 'plain',
     kind: event.kind,
     importance: event.kind === 'action' ? actionImportance(event) : 60,
@@ -972,6 +1038,20 @@ function projectCompletionDetail(
     : `${period}，这项工作形成了 ${sourceEvents.length} 条可回放的过程事实。`;
 }
 
+function concreteProjectCompletion(
+  project: SimulationState['projects'][number],
+  sourceEvents: WorldEvent[],
+  eventsById: WorldEventLookup,
+): string | null {
+  if (project.desiredFunction !== 'efficient-production') return null;
+  const eligibleOutputs = new Set<number>([Material.StoneHoe, Material.WoodTool]);
+  const outputIds = unique(sourceEvents.flatMap((event) => {
+    const outputId = techniqueOutputMaterialId(event, eventsById);
+    return outputId !== null && eligibleOutputs.has(outputId) ? [outputId] : [];
+  }));
+  return outputIds.length === 1 ? `制成了${materialName(outputIds[0])}` : null;
+}
+
 function completedProjectCandidates(
   state: SimulationState,
   events: WorldEvent[],
@@ -989,7 +1069,8 @@ function completedProjectCandidates(
     const currentSourceEvents = sourceEvents.filter((event) => currentEventIds.has(event.id));
     const participantIds = [...new Set([project.ownerId, ...project.contributorIds])];
     const names = briefNameList(participantIds.map((personId) => personName(state, personId)));
-    const completion = PROJECT_COMPLETION_PHRASES[project.desiredFunction]
+    const completion = concreteProjectCompletion(project, sourceEvents, eventsById)
+      ?? PROJECT_COMPLETION_PHRASES[project.desiredFunction]
       ?? `完成了“${naturalIntent(project.summary)}”`;
     return [{
       id: `narrative:project:${project.id}:${project.completedAtMonth}`,

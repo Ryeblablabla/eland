@@ -28,6 +28,7 @@ import { communicationById } from './social-facts';
 import { remember, rememberAction } from './memory';
 import { recordPersonalityEvidence } from './personality';
 import { recordActionOutcomeBelief } from './cognition';
+import { recordConversationActionOutcome } from './agent-memory';
 import { applyRelationEvidence, relationTo } from './relation';
 import { activeReproductionAgreementBetween, agreementAuthorizesTransfer, agreementById, recordAgreementAction, reproductionAttemptedBetweenInMonth } from './agreement';
 import { recordCollectiveAction } from './collective';
@@ -1841,6 +1842,7 @@ export function executePrimitiveAction(
   recordPermissionAction(state, fact);
   recordInteractionFailureKnowledge(state, fact);
   recordWitnessedDeclarationFulfillment(state, fact);
+  recordConversationActionOutcome(state, fact);
   rememberAction(state, fact);
   recordPersonalityEvidence(state, fact);
   recordActionOutcomeBelief(state, fact);

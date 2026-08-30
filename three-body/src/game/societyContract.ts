@@ -94,6 +94,26 @@ export interface AgentHistoryView {
   events: AgentHistoryItem[];
 }
 
+export interface AgentMemoryItemView {
+  id: string;
+  lane: 'episodic' | 'semantic' | 'social' | 'procedural' | 'prospective' | 'dialogue';
+  gist: string;
+  precision: 'exact' | 'specific' | 'general' | 'faint';
+  confidence: number;
+  salience: number;
+  emotionalValence: number;
+  unresolved: boolean;
+  personNames: string[];
+  firstMonth: number;
+  lastMonth: number;
+}
+
+export interface AgentMemoryView {
+  agentId: string;
+  throughMonth: number;
+  remembered: AgentMemoryItemView[];
+}
+
 export type AgentConversationStance = 'answer' | 'consider' | 'accept' | 'decline';
 export type AgentConversationRequestKind = 'conversation' | 'suggestion';
 export type AgentConversationInfluenceStatus =
@@ -345,6 +365,10 @@ export interface SocietyState {
   electricalPower?: { networks: ElectricalPowerNetworkView[] };
   intents: IntentView[];
   regions: { id: string; kind: 'natural' | 'residential' | 'trail' | 'cultivated'; cells: number[]; confidence: number; label?: string }[];
+  /** 已确认的权威纪元；可选以兼容旧实时帧。 */
+  epoch?: 'stable' | 'chaotic';
+  /** 已确认纪元内的当前地表气候；可选以兼容旧实时帧。 */
+  climate?: { kind: 'temperate' | 'cold' | 'heat' | 'fire'; severity: number; sinceMonth: number };
   observations: {
     civilizationIndex?: CivilizationIndexView;
     practices: { key: string; label: string; count: number; stability: number }[];
@@ -412,8 +436,9 @@ export interface GameFrame {
   civilizationEnd: { kind: 'destroyed' | 'boundary' | 'milestones' | 'concluded'; cause: string; summary: string } | null;
   entries: NarrativeEntryView[];
   /**
-   * 已发生沟通的表层台词。它绑定权威 ActionFact，但只用于表现，
-   * 不参与知识、关系、记忆或后续规划；可选以兼容旧实时快照。
+   * 已发生沟通的模型原话。它绑定权威 ActionFact，本身不升级为知识、
+   * 关系或行动结果，但说话者与听者会把这句主观话写入可遗忘的对话记忆。
+   * 可选以兼容旧实时快照。
    */
   speechLines?: SpeechLineView[];
   speaker: string | null;
@@ -433,6 +458,24 @@ export interface SpeechActView {
   details?: Record<string, unknown>;
 }
 
+/**
+ * A conversational move is chosen by the expression model after it has seen
+ * the preceding real utterance. It is observer-only metadata: unlike the
+ * structured SpeechAct it never authorizes a world fact or social outcome.
+ */
+export type DialogueMove =
+  | 'add-detail'
+  | 'correct'
+  | 'question'
+  | 'tease'
+  | 'challenge'
+  | 'reveal'
+  | 'deflect'
+  | 'acknowledge'
+  | 'close';
+
+export type DialogueDisposition = 'continue' | 'close' | 'rupture';
+
 export interface SpeechLineView {
   id: string;
   authority: 'projection-only';
@@ -448,6 +491,12 @@ export interface SpeechLineView {
   communicationKind: SpeechCommunicationKind;
   speechAct: SpeechActView;
   text: string;
+  /** Exact visible parent line when this utterance is a reply. */
+  replyToSpeechLineId?: string;
+  /** Optional only for legacy decision-model lines and old stored frames. */
+  dialogueMove?: DialogueMove;
+  /** Optional only for legacy decision-model lines and old stored frames. */
+  disposition?: DialogueDisposition;
   /** 可见台词只允许来自模型；旧快照中的 rule 来源由渲染层忽略。 */
   source: 'decision-model' | 'speech-model';
   endpointId?: string;

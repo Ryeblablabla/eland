@@ -55,21 +55,49 @@ try {
   const reciprocalRelation = partner.relations.find((candidate) => candidate.personId === actor.id);
   assert.ok(relation, 'fixture requires a directed relation');
   assert.ok(reciprocalRelation, 'fixture requires a reciprocal relation');
-  Object.assign(relation, { trust: 90, bond: 90, sourceEventIds: ['relationship-evidence'] });
+  Object.assign(relation, {
+    trust: 90,
+    bond: 90,
+    sourceEventIds: [
+      'relationship-opening-118', 'relationship-evidence',
+      'relationship-opening-119', 'relationship-evidence-month-119',
+    ],
+  });
   Object.assign(reciprocalRelation, { trust: 90, bond: 90 });
   partner.position = structuredClone(actor.position);
   actor.inventory = [
     { id: 'life-review-ready-food', materialId: Material.Food, quantity: 8, sourceEventIds: ['relationship-evidence'] },
     { id: 'life-review-ready-water', materialId: Material.Water, quantity: 4, sourceEventIds: ['relationship-evidence'] },
   ];
-  state.world.past.push({
-    id: 'relationship-evidence', kind: 'action', actionTick: 1, atMonth: 118, orderInMonth: 0,
-    cellId: actor.position.cellId, who: actor.id, cause: 'intent',
-    action: { kind: 'attend', target: { kind: 'person', personId: partner.id } },
+  const relationshipConversationFact = (id, month, orderInMonth, who, action, basisKey) => ({
+    id, kind: 'action', actionTick: 1, atMonth: month, orderInMonth,
+    cellId: actor.position.cellId, who, cause: 'intent', action,
     fromCellId: actor.position.cellId, toCellId: actor.position.cellId,
     fromZ: actor.position.z, toZ: actor.position.z, pathSegment: [actor.position.cellId],
-    status: 'completed', result: '共同经历形成新的关系证据', diff: {},
+    status: 'completed', result: '完成有来源的直接照护交流',
+    diff: { groundedConversationBasisKey: basisKey },
   });
+  for (const month of [118, 119]) {
+    const basisKey = `grounded-conversation-v1|topic=care|speaker=${actor.id}|listener=${partner.id}|month=${month}`;
+    const openingId = `relationship-opening-${month}`;
+    const responseId = month === 118 ? 'relationship-evidence' : 'relationship-evidence-month-119';
+    const conversation = {
+      version: 'grounded-conversation-v1', basisKey, topic: 'care',
+      speakerId: actor.id, listenerId: partner.id, sourceFactIds: [state.world.past[0].id],
+    };
+    state.world.past.push(
+      relationshipConversationFact(openingId, month, 0, actor.id, {
+        kind: 'communicate', content: { id: openingId, kind: 'claim', summary: '问起真实照护近况', conversation: { ...conversation, turn: 'opening' } },
+        audience: [partner.id], channel: 'voice',
+      }, basisKey),
+      relationshipConversationFact(responseId, month, 1, partner.id, {
+        kind: 'communicate', content: { id: responseId, kind: 'claim', summary: '回应真实照护近况', conversation: {
+          ...conversation, turn: 'response', speakerId: partner.id, listenerId: actor.id,
+          referenceEventId: openingId, stance: 'supportive',
+        } }, audience: [actor.id], channel: 'voice',
+      }, basisKey),
+    );
+  }
 
   const project = {
     id: 'project-life-review-fixture', kind: 'production', need: 'food-preparation', desiredFunction: 'prepared-food',
@@ -180,10 +208,15 @@ try {
   seenBasis.state.world.past.push({
     id: 'new-relationship-evidence', kind: 'action', actionTick: 1, atMonth: 120, orderInMonth: 1,
     cellId: seenBasis.person.position.cellId, who: partner.id, cause: 'intent',
-    action: { kind: 'attend', target: { kind: 'person', personId: seenBasis.person.id } },
+    action: { kind: 'communicate', content: { id: 'new-relationship-evidence', kind: 'claim', summary: '新的直接照护回应', conversation: {
+      version: 'grounded-conversation-v1', basisKey: 'grounded-conversation-v1|new-relationship-evidence',
+      topic: 'care', turn: 'response', speakerId: partner.id, listenerId: seenBasis.person.id,
+      sourceFactIds: ['relationship-evidence'], referenceEventId: 'relationship-opening-119', stance: 'supportive',
+    } }, audience: [seenBasis.person.id], channel: 'voice' },
     fromCellId: seenBasis.person.position.cellId, toCellId: seenBasis.person.position.cellId,
     fromZ: seenBasis.person.position.z, toZ: seenBasis.person.position.z,
-    pathSegment: [seenBasis.person.position.cellId], status: 'completed', result: '新的共同经历', diff: {},
+    pathSegment: [seenBasis.person.position.cellId], status: 'completed', result: '新的直接照护回应',
+    diff: { groundedConversationBasisKey: 'grounded-conversation-v1|new-relationship-evidence' },
   });
   const changedBasis = buildRelationshipCausalBasis(seenBasis.state, seenBasis.person, seenBasis.state.people.find((person) => person.id === partner.id), 'reproduce');
   const changedLifeOption = seenBasis.options.find((option) => option.id === lifeOption.id);

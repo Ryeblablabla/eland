@@ -28,10 +28,17 @@
     overflow: hidden;
   }
   #heroCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #heroVideo {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    filter: brightness(0.78) saturate(1.06); /* 压暗实景视频，保证标题可读 */
+  }
   .hero::after {
     content: '';
     position: absolute; inset: 0;
-    background: radial-gradient(ellipse 90% 62% at 50% 44%, transparent 40%, rgba(5,7,14,0.72) 100%);
+    background:
+      radial-gradient(ellipse 90% 62% at 50% 44%, transparent 40%, rgba(5,7,14,0.72) 100%),
+      linear-gradient(180deg, rgba(5,7,14,0.3) 0%, transparent 22%, transparent 58%, rgba(5,7,14,0.9) 100%);
     pointer-events: none;
   }
   .hero-inner { position: relative; z-index: 2; max-width: 860px; padding: 0 24px; }
@@ -231,12 +238,14 @@
 
 <section class="hero">
   <canvas id="heroCanvas" aria-hidden="true"></canvas>
+  <video id="heroVideo" autoplay muted loop playsinline preload="auto" poster="./assets/hero-poster.jpg" aria-hidden="true">
+    <source src="./assets/hero-loop.mp4" type="video/mp4">
+  </video>
   <div class="hero-inner">
-    <p class="kicker">Rule-First Emergent Civilization Sim</p>
+    <p class="kicker">规则优先 · 涌现式文明模拟 · Rule-First</p>
     <h1>没有写好的历史</h1>
-    <p class="sub">一群先民在三颗太阳之下醒来。他们采集、建造、相爱、传承——
-      文明在恒纪元与乱纪元之间生长，也可能在某个三日凌空的清晨归零。
-      <b>每个文明的编号、成就与毁灭原因，都来自真正发生过的模拟。</b></p>
+    <p class="sub">三颗太阳之下，一群先民从一无所有醒来。他们采集、建造、相爱、传承——
+      也可能在某个三日凌空的清晨归零。<b>每个文明的编号、成就与毁灭原因，都来自真实发生过的模拟。</b></p>
     <div class="hero-actions">
       <a class="btn btn-primary" href="./presskit.html#wishlist">加入 Steam 愿望单</a>
       <a class="btn btn-ghost" href="./codex.html">探索世界图鉴 →</a>
@@ -257,36 +266,36 @@
   <section class="features">
     <p class="kicker">What Is ELAND</p>
     <h2 class="section-title">一只会自行生长的赛博鱼缸</h2>
-    <p class="section-sub">ELAND 的灵感来自《三体》中的三体游戏。技术不是菜单里的一棵树，
-      而是从观察、试错、学习和传承中长出来的；行动与后果由同一套世界规则裁定，没有任何预设剧本。</p>
+    <p class="section-sub">ELAND 的灵感来自《三体》中的三体游戏。启动之后，世界不再需要剧本：
+      先民只凭自己看到的、记得的、会做的作出选择；技术不是菜单里的科技树，而是从观察、试错、学习和传承中生长出来的。</p>
     <div class="feature-grid">
       <div class="feature-card">
         <span class="en">Emergence</span>
         <span class="glyph">🌱</span>
-        <h3>规则优先的涌现</h3>
-        <p>人物只能依据自己感知到的环境、记忆、需要、社会关系与已有知识作出选择。
-          大模型参与对话与协商，但行动能否发生、造成什么后果，仍由本地规则裁定。</p>
+        <h3>涌现，而非剧本</h3>
+        <p>没有科技树菜单，也没有标准答案。人物只能依据自己感知到的环境、个人记忆、
+          现实需要与已有知识行动——行动能否发生、造成什么后果，由同一套世界规则裁定。</p>
       </div>
       <div class="feature-card">
         <span class="en">Three Suns</span>
         <span class="glyph">☀️</span>
         <h3>恒纪元与乱纪元</h3>
-        <p>三颗太阳带来无法预测的气候。漫长严寒、失控野火、三日凌空——
-          数百年的积累可能顷刻归零。先民学会了预言、脱水休眠与在恒纪元复苏。</p>
+        <p>三颗太阳不讲情面。漫长严寒、失控野火、三日凌空——数百年积累可能顷刻归零。
+          先民学会预言、脱水休眠，并在恒纪元的第一个清晨醒来。</p>
       </div>
       <div class="feature-card">
         <span class="en">The Lord</span>
         <span class="glyph">👁️</span>
         <h3>他们称你为“主”</h3>
-        <p>你可以与任何先民交谈：示警、建议，甚至误导。你的话会进入他们的记忆，
-          影响此后的判断——但他们未必服从。每个人都有自己的性格与主意。</p>
+        <p>与任何先民交谈：示警、建议，甚至误导。你的话会进入记忆，影响此后的判断——
+          但每个人都有自己的性格与主意，未必服从。</p>
       </div>
       <div class="feature-card">
         <span class="en">Embodiment</span>
         <span class="glyph">🚶</span>
         <h3>化身其中</h3>
-        <p>以第一人称走进聚落，亲历一个先民的劳作、关系与生存。
-          你使用他/她真实的身体与知识，随时可以交还自主权。</p>
+        <p>以第一人称走进聚落，用一个先民真实的身体、知识与关系去劳作和生存。
+          随时交还自主权，文明继续自行前进。</p>
       </div>
     </div>
   </section>
@@ -297,7 +306,7 @@
     <p class="kicker">Screenshots · 真实画面</p>
     <h2 class="section-title">从三体宇宙到人间</h2>
     <p class="section-sub">以下画面全部来自当前开发版本的实时截取，未做任何后期修饰。
-      宇宙与人间通过连续缩放进入和退出。</p>
+      滚轮放大，就能从宇宙俯冲进入人间。</p>
     <div class="gallery-grid">
       <a href="./assets/gallery/cosmos-orbits.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/cosmos-orbits.png" alt="三体宇宙：三颗太阳与行星轨道" loading="lazy">
@@ -305,23 +314,23 @@
       </a>
       <a href="./assets/gallery/cosmos-dust.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/cosmos-dust.png" alt="尘埃带环绕的三体系统" loading="lazy">
-        <figcaption>系统尘埃带 · 慢速公转的碎屑环</figcaption>
+        <figcaption>系统边缘 · 慢速公转的尘埃环</figcaption>
       </a>
       <a href="./assets/gallery/cosmos-focus.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/cosmos-focus.png" alt="聚焦行星准备俯冲" loading="lazy">
-        <figcaption>聚焦行星 · 滚轮放大即可俯冲进入人间</figcaption>
+        <figcaption>聚焦行星 · 连续缩放是默认的进出方式</figcaption>
       </a>
       <a href="./assets/gallery/world-arrival.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/world-arrival.png" alt="第 107 号文明抵达自然地表" loading="lazy">
-        <figcaption>人间 · 第 107 号文明抵达河畔</figcaption>
+        <figcaption>第 107 号文明 · 七位先民抵达河畔</figcaption>
       </a>
       <a href="./assets/gallery/world-dialogue.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/world-dialogue.png" alt="先民在林中交谈" loading="lazy">
-        <figcaption>先民在交谈 · 每句话进入真实记忆</figcaption>
+        <figcaption>林中对话 · 每句话都会进入真实记忆</figcaption>
       </a>
       <a href="./assets/gallery/world-river.png" target="_blank" rel="noopener">
         <img src="./assets/gallery/world-river.png" alt="河流穿过森林" loading="lazy">
-        <figcaption>河流 · 世界的水源骨干，未来将驱动水力机械</figcaption>
+        <figcaption>河流 · 水源骨干，也将是水力机械的起点</figcaption>
       </a>
     </div>
   </section>
@@ -331,8 +340,8 @@
   <section class="memorial">
     <p class="kicker">Civilization Memorial · 文明纪念墙</p>
     <h2 class="section-title">每一个编号都真实发生过</h2>
-    <p class="section-sub">ELAND 不写预设结局。以下条目摘自真实模拟历史与已存档的长程运行，
-      编号、成就与毁灭原因不可指定、不可复现、不可预知。</p>
+    <p class="section-sub">ELAND 不写预设结局——编号、成就与毁灭原因不可指定、不可复现、不可预知。
+      以下条目摘自真实模拟历史与已存档的长程运行。</p>
     <div class="memorial-grid">
       <div class="memorial-card">
         <div class="civ-no">第 141 号文明</div>
@@ -347,7 +356,7 @@
       <div class="memorial-card">
         <div class="civ-no">第 61 号文明</div>
         <div class="civ-fate">在丰收中停滞。</div>
-        <div class="civ-note">粮食充足、无人挨饿，却数百年没有走向铁器——一次真实的“高粮食停滞”案例研究。</div>
+        <div class="civ-note">粮食充足、无人挨饿，却数百年没有走向铁器——真实发生过的“高粮食停滞”。</div>
       </div>
       <div class="memorial-card">
         <div class="civ-no">十代连续</div>
@@ -357,7 +366,7 @@
       <div class="memorial-card">
         <div class="civ-no">300 年长程</div>
         <div class="civ-fate">单次连续模拟 3600 个月，48 个文明里程碑。</div>
-        <div class="civ-note">权威状态全程可回放、可审计，灭绝与停滞样本一律保留。</div>
+        <div class="civ-note">权威状态全程可回放、可审计；灭绝与停滞样本一律保留。</div>
       </div>
       <div class="memorial-card">
         <div class="civ-no">第 107 号文明</div>
@@ -387,15 +396,15 @@
     <div class="diff-grid">
       <div class="diff-item">
         <h3>因果归规则，表达归模型</h3>
-        <p>行动能否发生、造成什么后果，由确定性本地规则裁定；大模型只做对话、协商与叙事增强，建议必须通过规则验证。</p>
+        <p>行动能否发生、造成什么后果，由确定性本地规则裁定。大模型只做对话、协商与叙事——它的每个建议都必须重新通过规则验证。</p>
       </div>
       <div class="diff-item">
         <h3>每个动机都有出处</h3>
         <p>人物的每个需要、每段关系、每项知识都能回溯到具体的事件 ID。观察器只读，永不反向指挥人物。</p>
       </div>
       <div class="diff-item">
-        <h3>用实验驱动进化</h3>
-        <p>每条规则的修改先提出可证伪的因果假设，再用相同种子的配对矩阵验证——文明的演化是被研究出来的。</p>
+        <h3>演化是被研究出来的</h3>
+        <p>每条规则的修改先提出可证伪的因果假设，再用相同种子的配对矩阵验证。灭绝与停滞样本一律保留。</p>
       </div>
     </div>
     <a class="more" href="./tech.html">了解技术架构 →</a>
@@ -530,6 +539,18 @@
     if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
     else if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
   });
+  // 真实游戏实录优先：视频可播放后停用 2D 示意动画；视频缺失/失败时动画继续兜底。
+  const heroVideo = document.getElementById('heroVideo');
+  if (heroVideo) {
+    heroVideo.addEventListener('playing', () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      canvas.style.display = 'none';
+    }, { once: true });
+    const dropVideo = () => heroVideo.remove();
+    heroVideo.addEventListener('error', dropVideo);
+    heroVideo.querySelector('source')?.addEventListener('error', dropVideo);
+  }
   raf = requestAnimationFrame(frame);
 })();
 </script>

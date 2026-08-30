@@ -16,6 +16,7 @@ try {
     export { compileAgreementContinuations } from ${JSON.stringify(path.resolve('src/game/eland/application/agreement-continuation.ts'))};
     export { advanceAgreementLifecycle } from ${JSON.stringify(path.resolve('src/game/eland/domain/agreement.ts'))};
     export { executePrimitiveAction } from ${JSON.stringify(path.resolve('src/game/eland/domain/action-executor.ts'))};
+    export { appendCommittedEvents } from ${JSON.stringify(path.resolve('src/game/eland/domain/history.ts'))};
     export { cellX, cellY, cellsInRadius, findStandingPath, standingPositions } from ${JSON.stringify(path.resolve('src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -25,6 +26,7 @@ try {
 
   const {
     advanceAgreementLifecycle,
+    appendCommittedEvents,
     buildSocialOptions,
     buildDecisionContexts,
     cellX,
@@ -44,7 +46,25 @@ try {
 
   const atMonth = 24;
 
-  function preparePair(seed) {
+  function addPairExperience(state, first, second, id, month = atMonth - 1) {
+    const event = {
+      id, kind: 'environment', atMonth: month, orderInMonth: 0,
+      cellId: first.position.cellId, change: 'relationship',
+      result: '双方完成了一次可回放的共同活动',
+      diff: {
+        process: 'shared-action-ticks', participantIds: [first.id, second.id],
+        excludedPairKeys: [], sourceEventIds: [], trustDelta: 1, bondDelta: 1,
+      },
+    };
+    appendCommittedEvents(state, [event]);
+    for (const [owner, other] of [[first, second], [second, first]]) {
+      const directed = owner.relations.find((candidate) => candidate.personId === other.id);
+      directed.sourceEventIds = [...new Set([...directed.sourceEventIds, id])];
+    }
+    return event;
+  }
+
+  function preparePair(seed, { substantive = true } = {}) {
     const state = createInitialState(seed, { endpoint: { kind: 'months', value: 48 }, chaosIntensity: 0 });
     state.clock.elapsedMonths = atMonth;
     const [requester, helper] = state.people;
@@ -57,7 +77,10 @@ try {
     assert.ok(relation && reciprocal, 'fixture requires reciprocal relationship caches');
     Object.assign(relation, { trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'] });
     Object.assign(reciprocal, { trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'] });
-    return { state, requester, helper, relation, reciprocal };
+    const relationshipEvent = substantive
+      ? addPairExperience(state, requester, helper, `test-pair-experience-${seed}`)
+      : undefined;
+    return { state, requester, helper, relation, reciprocal, relationshipEvent };
   }
 
   function commitAction(state, person, action, orderInMonth, intentId) {
@@ -78,7 +101,7 @@ try {
     assert.equal(option.nextAction.content.kind, 'request');
     assert.equal(option.nextAction.content.proposal?.kind, 'assist');
     assert.equal(option.nextAction.content.proposal?.need, 'company');
-    assert.deepEqual(option.sourceFactIds, ['e-0-environment-founding-0']);
+    assert.deepEqual(option.sourceFactIds, [`test-pair-experience-${state.seed}`]);
     const fact = commitAction(state, requester, option.nextAction, 0);
     assert.equal(fact.status, 'completed');
     const agreement = state.agreements.find((candidate) => candidate.proposalEventId === fact.id);
@@ -113,6 +136,15 @@ try {
   assert.ok(belonging, 'belonging must not be reverse-gated by a pre-existing social option');
   assert.ok(belonging.sourceFactIds.includes('e-0-environment-founding-0'));
 
+  const foundingOnlyFixture = preparePair(26082138, { substantive: false });
+  assert.equal(buildSocialOptions(
+    foundingOnlyFixture.state,
+    foundingOnlyFixture.requester,
+    [foundingOnlyFixture.helper],
+    atMonth,
+  ).some((option) => option.id.startsWith('request-company:')), false,
+  '共同抵达只表示相识，不能单独安装正式陪伴请求');
+
   // Zero-to-one does not wait for an accidental five-tick joint activity. A
   // locally present stranger can be asked once, while a dangling id is never
   // advertised as evidence and the higher relationship gates stay closed.
@@ -137,19 +169,11 @@ try {
   assert.deepEqual(zeroBelonging.sourceFactIds, [], 'current perception must not turn a dangling id into historical evidence');
   const zeroCompany = buildSocialOptions(zeroSourceState, zeroRequester, [zeroHelper], atMonth)
     .find((option) => option.id.startsWith('request-company:'));
-  assert.ok(zeroCompany, 'a zero-relation local pair should have one low-risk company request');
-  assert.deepEqual(zeroCompany.sourceFactIds, []);
-  Object.assign(zeroRequester.body, { health: 100, hydration: 100, nutrition: 100 });
-  Object.assign(zeroRequester.personality.baseline, { extraversion: 82, agreeableness: 82 });
-  const zeroChoice = new RulePlanner().decideAt({ ...zeroContext, options: [zeroCompany] }, {
-    atMonth, planningTick: 1,
-  });
-  assert.equal(zeroChoice.kind, 'start');
-  assert.equal(zeroChoice.optionId, zeroCompany.id,
-    'a socially receptive person should actually choose the zero-to-one request instead of merely seeing an inert option');
+  assert.equal(zeroCompany, undefined,
+    'mere co-location without replayable relationship evidence must not install a formal company request');
   const zeroDecision = buildDecisionContexts(zeroSourceState, atMonth)
     .find((context) => context.person.id === zeroRequester.id);
-  assert.ok(zeroDecision?.options.some((option) => option.id.startsWith('request-company:')));
+  assert.equal(zeroDecision?.options.some((option) => option.id.startsWith('request-company:')), false);
   assert.equal(zeroDecision?.options.some((option) => option.id.startsWith('offer-companion:')), false,
     'zero-to-one company must not bypass the companion threshold');
   assert.equal(zeroDecision?.options.some((option) => option.id.startsWith('offer-reproduce:')), false,
@@ -165,8 +189,10 @@ try {
     const outward = attentionRequester.relations.find((relation) => relation.personId === other.id);
     const inward = other.relations.find((relation) => relation.personId === attentionRequester.id);
     assert.ok(outward && inward, 'fixture requires reciprocal relation caches for every visible person');
-    Object.assign(outward, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
-    Object.assign(inward, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
+    const evidenceId = `test-attention-experience-${other.id}`;
+    Object.assign(outward, { trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'] });
+    Object.assign(inward, { trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'] });
+    addPairExperience(attentionFixture.state, attentionRequester, other, evidenceId);
   }
   const attendedIds = new Set();
   for (let month = atMonth; month < atMonth + attentionOthers.length; month += 1) {
@@ -179,7 +205,24 @@ try {
   assert.deepEqual([...attendedIds].sort(), attentionOthers.map((person) => person.id).sort(),
     'rotating attention must eventually expose every continuously visible local person instead of only the first three births');
 
-  const firstZeroRequest = commitAction(zeroSourceState, zeroRequester, zeroCompany.nextAction, 0);
+  const initialJointEvidence = {
+    id: 'e-24-environment-relationship-zero-pair',
+    kind: 'environment', atMonth, orderInMonth: 0,
+    cellId: zeroRequester.position.cellId, change: 'relationship',
+    result: '双方完成了一次真实共同活动',
+    diff: {
+      process: 'shared-action-ticks',
+      participantIds: [zeroRequester.id, zeroHelper.id],
+      sourceEventIds: [], trustDelta: 1, bondDelta: 1,
+    },
+  };
+  zeroSourceState.world.past.push(initialJointEvidence);
+  Object.assign(zeroRelation, { trust: 1, bond: 1, sourceEventIds: [initialJointEvidence.id] });
+  Object.assign(zeroReciprocal, { trust: 1, bond: 1, sourceEventIds: [initialJointEvidence.id] });
+  const sourcedZeroCompany = buildSocialOptions(zeroSourceState, zeroRequester, [zeroHelper], atMonth)
+    .find((option) => option.id.startsWith('request-company:'));
+  assert.ok(sourcedZeroCompany, 'a replayable shared relationship event may expose a company request');
+  const firstZeroRequest = commitAction(zeroSourceState, zeroRequester, sourcedZeroCompany.nextAction, 0);
   const zeroAgreement = zeroSourceState.agreements.find((agreement) => agreement.proposalEventId === firstZeroRequest.id);
   const zeroReject = buildSocialOptions(zeroSourceState, zeroHelper, [zeroRequester], atMonth)
     .find((option) => option.id === `reject-assist:${zeroAgreement.id}`);
@@ -597,13 +640,30 @@ try {
     'replayable fear that clearly exceeds trust and bond should make the visible revoke affordance actionable');
   const thirdPerson = companionFixture.state.people.find((candidate) => !companionAgreement.partyIds.includes(candidate.id));
   assert.ok(thirdPerson, 'fixture requires a third locally perceptible person');
-  const distantPosition = structuredClone(thirdPerson.position);
+  const distantPosition = cellsInRadius(companionFixture.requester.position.cellId, 20)
+    .flatMap((cellId) => standingPositions(companionFixture.state.world.grid, cellId))
+    .find((position) => findStandingPath(
+      companionFixture.state.world.grid,
+      companionFixture.requester.position,
+      position,
+    ).length > 12);
+  assert.ok(distantPosition, 'fixture requires a position outside conversational range');
   thirdPerson.position = structuredClone(companionFixture.requester.position);
   const requesterThirdRelation = companionFixture.requester.relations.find((relation) => relation.personId === thirdPerson.id);
   const thirdRequesterRelation = thirdPerson.relations.find((relation) => relation.personId === companionFixture.requester.id);
   assert.ok(requesterThirdRelation && thirdRequesterRelation, 'fixture requires reciprocal third-person relation caches');
-  Object.assign(requesterThirdRelation, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
-  Object.assign(thirdRequesterRelation, { trust: 0, bond: 0, fear: 0, sourceEventIds: [] });
+  Object.assign(requesterThirdRelation, {
+    trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'],
+  });
+  Object.assign(thirdRequesterRelation, {
+    trust: 1, bond: 1, fear: 0, sourceEventIds: ['e-0-environment-founding-0'],
+  });
+  addPairExperience(
+    companionFixture.state,
+    companionFixture.requester,
+    thirdPerson,
+    'test-third-person-company-experience',
+  );
   const widerCompanionContext = {
     ...companionContext,
     visiblePeople: [companionFixture.helper, thirdPerson],
@@ -660,6 +720,29 @@ try {
     coLocatedMonths: 0,
     sourceEventIds: ['e-0-environment-founding-0'],
   });
+  dormantFounder.cognition.socialLearning = {
+    version: 'social-learning-v1',
+    startedAtMonth: atMonth - 6,
+    beliefs: [],
+    coordinationPractices: [{
+      version: 'coordination-practice-basis-v1',
+      basisKey: `test-dormant-practice:${dormantFounder.id}:${dormantCandidate.id}`,
+      observerId: dormantFounder.id,
+      targetPersonId: dormantCandidate.id,
+      participantIds: [dormantFounder.id, dormantCandidate.id],
+      context: 'assist-company',
+      formedAtMonth: atMonth - 6,
+      lastUpdatedAtMonth: atMonth - 4,
+      support: 'supported',
+      successes: [{
+        atMonth: atMonth - 4,
+        receiptIds: ['test-dormant-practice-receipt'],
+        sourceEventIds: ['e-0-environment-founding-0'],
+      }],
+      recentCounterEvidence: [],
+      sourceFactIds: ['e-0-environment-founding-0'],
+    }],
+  };
   const dormantCollectiveId = 'collective:test-dormant-revival';
   dormantFixture.state.collectives.push({
     id: dormantCollectiveId,

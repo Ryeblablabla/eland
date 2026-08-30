@@ -21,6 +21,20 @@ const sources = [
     summary: '人物决策频率、规划刻度、模型边界、失败修复与本地规则权威。',
   },
   {
+    id: 'unified-agent-memory',
+    path: 'docs/unified-agent-memory-v1.md',
+    eyebrow: 'AGENT MEMORY',
+    title: '统一人物记忆 v1',
+    summary: '六类主观记忆的统一召回、真实对话、压缩、模糊、遗忘与多轮对话协调。',
+  },
+  {
+    id: 'agent-prompt-contract',
+    path: 'docs/agent-prompt-contract-v2.md',
+    eyebrow: 'MODEL CONTRACT',
+    title: '人物 Prompt Contract v2',
+    summary: '决策、最终台词和玩家对话的权威分工、Character Card、Scene Contract 与人工真实感审阅。',
+  },
+  {
     id: 'person-traits',
     path: 'docs/person-traits-v1.md',
     eyebrow: 'PERSON RULES',

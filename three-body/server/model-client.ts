@@ -18,7 +18,12 @@ export interface ModelTextResponse {
   model: string;
   endpointId: string;
   protocol: ModelProtocol;
-  usage: { inputTokens: number; outputTokens: number };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheHitInputTokens?: number;
+    cacheMissInputTokens?: number;
+  };
 }
 
 export type ModelRequestFailureCode = 'missing-key' | 'timeout' | 'provider-error' | 'invalid-response';
@@ -144,7 +149,16 @@ function parseOpenAiChat(body: Record<string, unknown>, endpoint: ResolvedModelE
     model: typeof body.model === 'string' ? body.model : endpoint.model,
     endpointId: endpoint.id,
     protocol: endpoint.protocol,
-    usage: { inputTokens: positiveInteger(usage.prompt_tokens), outputTokens: positiveInteger(usage.completion_tokens) },
+    usage: {
+      inputTokens: positiveInteger(usage.prompt_tokens),
+      outputTokens: positiveInteger(usage.completion_tokens),
+      ...(usage.prompt_cache_hit_tokens !== undefined
+        ? { cacheHitInputTokens: positiveInteger(usage.prompt_cache_hit_tokens) }
+        : {}),
+      ...(usage.prompt_cache_miss_tokens !== undefined
+        ? { cacheMissInputTokens: positiveInteger(usage.prompt_cache_miss_tokens) }
+        : {}),
+    },
   };
 }
 

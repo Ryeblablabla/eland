@@ -22,12 +22,34 @@ import {
 import {
   actionOptionSemantics,
   isCommitmentActionOption,
+  isModelOwnedVoluntarySocialOption,
+  isOpenConversationOption,
   isRequiredResponseOption,
 } from '../domain/action-option-semantics';
 
 export interface PlanningMoment {
   atMonth: number;
   planningTick: number;
+}
+
+export function withoutModelOwnedVoluntarySocialOptions(context: DecisionContext): DecisionContext {
+  return {
+    ...context,
+    options: context.options.filter((option) => !isModelOwnedVoluntarySocialOption(option)),
+    followUpOptions: context.followUpOptions.filter((option) => !isModelOwnedVoluntarySocialOption(option)),
+  };
+}
+
+export function withoutOpenConversationOptions(context: DecisionContext): DecisionContext {
+  return {
+    ...context,
+    options: context.options.filter((option) => !isOpenConversationOption(option)),
+    followUpOptions: context.followUpOptions.filter((option) => !isOpenConversationOption(option)),
+  };
+}
+
+export interface RulePlannerPolicy {
+  deferVoluntarySocialChoicesToModel?: boolean;
 }
 
 export function isRequiredSocialOption(option: ActionOption): boolean {
@@ -288,6 +310,12 @@ export function groundedLifeReviewOpportunity(context: DecisionContext): Grounde
  * it only ranks affordances already produced from facts visible to the person.
  */
 export class RulePlanner implements AgentDecider {
+  readonly defersVoluntarySocialChoicesToModel: boolean;
+
+  constructor(policy: RulePlannerPolicy = {}) {
+    this.defersVoluntarySocialChoicesToModel = policy.deferVoluntarySocialChoicesToModel === true;
+  }
+
   decide(context: DecisionContext): Decision {
     return this.decideAt(context, {
       atMonth: context.state.clock.elapsedMonths + 1,
@@ -296,6 +324,12 @@ export class RulePlanner implements AgentDecider {
   }
 
   decideAt(context: DecisionContext, moment: PlanningMoment): Decision {
+    // Open conversation exists only so a model can choose its own subject and
+    // wording. Pure local mode keeps using the older grounded topic menu.
+    context = withoutOpenConversationOptions(context);
+    if (this.defersVoluntarySocialChoicesToModel) {
+      context = withoutModelOwnedVoluntarySocialOptions(context);
+    }
     const active = context.activeIntent;
     const observedEmergencyHibernation = context.options.find((option) => (
       isObservedEmergencyHibernationOption(context.state, context.person, option)
@@ -403,6 +437,21 @@ export class RulePlanner implements AgentDecider {
     const persistence = assessIntentionPersistence(context, active, appraisal, moment);
     if (persistence.keep || !option || goalSatisfied(context.state, context.person, active.goal)) {
       return { kind: 'idle', reason: persistence.reason };
+    }
+
+    const voluntaryConversationAction = option.completionAction ?? option.nextAction;
+    if (voluntaryConversationAction.kind === 'communicate'
+      && voluntaryConversationAction.content.kind === 'claim'
+      && voluntaryConversationAction.content.conversation
+      && isResumableIntent(active)) {
+      return withDeliberation({
+        kind: 'revise',
+        intentId: active.id,
+        optionId: option.id,
+        mode: 'interrupt',
+        interruptionKind: 'voluntary-conversation',
+        reason: `${persistence.reason}；短暂说完这轮话后返回原来的工作；${deliberationReason}`,
+      });
     }
 
     if (lifeReview?.option.id === option.id) {

@@ -12,6 +12,8 @@
 | --- | --- |
 | [ELAND 模块边界](../three-body/src/game/eland/README.md) | 当前模块、运行链和主要源码入口 |
 | [规则优先人物架构](./rule-first-agent-architecture-v1.md) | 因果 BDI、人格 / 记忆 / 结果后验、本地规划器和可选模型的权威边界 |
+| [统一人物记忆 v1](./unified-agent-memory-v1.md) | 六类主观记忆、真实对话、压缩模糊遗忘、情境检索与 ConversationEpisode |
+| [人物 Prompt Contract v2](./agent-prompt-contract-v2.md) | Decision / Voice / Player Conversation 的权威分工、Character Card、Scene Contract 和人工真实感审阅 |
 | [人物特质](./person-traits-v1.md) | 十三种永久特质、固定先民配置、确定性遗传、随机异变与领域效果 |
 | [月度时间模型](./monthly-time-model-v1.md) | 固定月份、15 tick、身体、关系、协议与月末提交 |
 | [空间行动契约](./spatial-action-contract-v1.md) | 当前候选、意图、原子动作、执行顺序与 ActionFact |
@@ -49,6 +51,7 @@
 - [年轻信任与共同活动实验](./evolution-young-trust-ticks-experiment-2026-08-22.md)：按人格采用 3–5 刻度的定向关系积累和年轻信任加成。
 - [生殖自主同意实验](./evolution-autonomous-reproduction-consent-experiment-2026-08-22.md)：移除固定生殖关系分数，以有来源候选、个人 appraisal 和明确可撤回协议取代。
 - [BDI 项目满足与家庭准备度实验](./evolution-bdi-family-readiness-experiment-2026-08-22.md)：项目完成 episode、需要缓解、家庭准备度与生殖目标结果的三种子初步审计；结论为 `revise/preliminary`。
+- [人物真实对话与长期关切人工审阅](./agent-dialogue-agenda-human-review-2026-08-30.md)：最新 prompt 单世界 60 月真实模型样本，逐条审阅 17 条可见台词与 5 条代表 agenda；结论为 `revise`。
 - [共同生活归属满足与十代连续性实验](./evolution-social-satiation-generation-10-experiment-2026-08-23.md)：已有共同生活连续满足归属需要、四种子 10/30/50/100 年矩阵与第 10 代权威出生链；十代可达性通过，跨种子稳定性结论为 `revise`。
 - [文明高粮食停滞与时代断层修复实验](./evolution-civ61-stagnation-fixes-experiment-2026-08-22.md)：储备动机、动作投影、历史耕作门槛与铁器项目链的四项机制修复，以及三种子 10/30 年初步配对；群体结论为 `revise/preliminary`。
 - [搜索耗尽项目重复重开实验](./evolution-project-reopen-churn-experiment-2026-08-22.md)：跨项目终局机会记忆、精确来源续证和建造假说重开约束的三种子 10/30 年配对；结论为 `accept/preliminary`。
@@ -67,7 +70,7 @@
 npm run sync:docs
 ```
 
-知识库“文档”页合订导入上表全部 14 份当前规范，不导入历史实验报告或扩展目标设计。新增、替换或废止当前规范时，应同时更新本索引和同步清单；生成后的页面数量可作为漏同步的快速检查，但不替代源码审计。
+知识库“文档”页合订导入上表全部 16 份当前规范，不导入历史实验报告或扩展目标设计。新增、替换或废止当前规范时，应同时更新本索引和同步清单；生成后的页面数量可作为漏同步的快速检查，但不替代源码审计。
 
 `knowledge-base/recipes-data.js` 同样是生成文件。它从 `material.ts`、`interaction-rules.ts` 与 `separation-rules.ts` 汇总组合、施力、暴露和分离四类当前合法物质操作；修改这些领域规则后，从 `knowledge-base/` 运行 `npm run sync:recipes`，不要直接修补生成数据。
 

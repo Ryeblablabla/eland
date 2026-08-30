@@ -2,7 +2,7 @@ import { goalSatisfied } from '../../domain/action-executor';
 import { openAgreementCandidatesForPerson } from '../../domain/agreement';
 import { ORDINARY_LOCAL_DELIBERATIONS_PER_PERSON_MONTH } from '../../domain/decision-budget';
 import { inheritPlanningEventOverlay, registerPlanningEventOverlay } from '../../domain/event-index';
-import { intentReviewAtMonth } from '../../domain/intent';
+import { intentReviewAtMonth, isResumableIntent } from '../../domain/intent';
 import { lifePlanningStage } from '../../domain/life-stage';
 import { Material } from '../../domain/material';
 import { strongestBereavementUrgency } from '../../domain/mortuary';
@@ -324,14 +324,17 @@ export function planLocallyForTick(
   if (planningState !== state) registerPlanningEventOverlay(planningState, planningEvidence);
   const planningPerson = personById(planningState, person.id) ?? person;
   const hasCurrentMonthOpening = currentMonthGroundedOpenings.length > 0;
+  const localOwnsVoluntarySocialChoices = planner.defersVoluntarySocialChoicesToModel !== true;
   let compiledContext: DecisionContext | undefined;
   const contextForPlanning = (): DecisionContext => compiledContext ??= buildDecisionContext(planningState, planningPerson, atMonth);
-  const checkGroundedConversationResponse = hasCurrentMonthOpening
-    ? contextForPlanning().options.some((option) => (
-        actionOptionSemantics(option).socialContext?.cooperationKind === 'conversation'
-          && actionOptionSemantics(option).socialContext?.phase === 'response'
-      ))
-    : hasGroundedConversationResponseOpportunity(state, person, atMonth);
+  const checkGroundedConversationResponse = localOwnsVoluntarySocialChoices
+    && (!current || isResumableIntent(current))
+    && (hasCurrentMonthOpening
+      ? contextForPlanning().options.some((option) => (
+          actionOptionSemantics(option).socialContext?.cooperationKind === 'conversation'
+            && actionOptionSemantics(option).socialContext?.phase === 'response'
+        ))
+      : hasGroundedConversationResponseOpportunity(state, person, atMonth));
   const checkCurrentMonthRequiredResponse = currentMonthSocialProposals.length > 0
     && contextForPlanning().options.some(isRequiredSocialOption);
   const checkPendingAgreementWork = hasPendingAgreementWork(state, person, current, atMonth);
@@ -380,7 +383,7 @@ export function planLocallyForTick(
   reviewedPeople.add(person.id);
   // Stable plans and genuinely empty affordance sets do not produce repetitive
   // "continue living" facts. The active intent is simply executed below.
-  if (decision.kind === 'idle') return;
+  if (decision.kind === 'idle' && !decision.characterAgendaUpdate) return;
   events.push(applyDecision(
     state,
     person,

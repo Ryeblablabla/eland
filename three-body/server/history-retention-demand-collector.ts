@@ -315,6 +315,16 @@ function boundedFutureCognitiveAppraisalSourceEventIds(
     ...(person.cognition?.needResolutionEpisodes ?? []).flatMap((episode) => episode.sourceFactIds),
     ...(person.personality?.changes ?? []).slice(-6).flatMap((change) => change.sourceEventIds),
     ...(person.traits ?? []).flatMap((trait) => trait.sourceEventIds),
+    ...(person.characterAgenda?.items ?? []).flatMap((item) => [
+      ...item.sourceFactIds,
+      ...item.approaches.flatMap((approach) => [
+        ...approach.sourceFactIds,
+        ...approach.evaluations.flatMap((evaluation) => [
+          ...evaluation.basisFactIds,
+          ...evaluation.evidenceFactIds,
+        ]),
+      ]),
+    ]),
   ]);
   const eventIds = [...new Set(values.map((value) => requiredEventId(
     value,

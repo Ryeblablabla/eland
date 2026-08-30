@@ -17,13 +17,13 @@ import {
   type FigureParts,
   type SpeechBubblePlacement,
 } from './figureVisuals';
+import { activeSpeechLineAtProgress } from './speechPlayback';
 
 const RULE_TICKS = 15;
 const MONTH_PLAYBACK_MS = 3_000;
 const NAME_TAG_TARGET_GLYPH_PX = 10.5;
 const NAME_TAG_MIN_WORLD_H = 0.55;
 const NAME_TAG_MAX_WORLD_H = 3;
-const MAX_VISIBLE_SPEAKERS = 3;
 const SPEECH_TARGET_FONT_PX = 11.5;
 const SPEECH_COLLISION_GAP_PX = 8;
 
@@ -35,7 +35,7 @@ type FigureSelection =
 export interface FigureLayerFrame {
   society: SocietyState;
   embodiedAgentId: string | null;
-  speechBySpeaker: ReadonlyMap<string, SpeechLineView>;
+  speechLines: readonly SpeechLineView[];
   speaker: string | null;
   selectedAgentId?: string | null;
   selectedObject?: FigureSelection;
@@ -59,21 +59,6 @@ export interface FigureLayer {
   writeWorldPosition(agentId: string, target: THREE.Vector3): boolean;
   writeSpeechFocus(target: THREE.Vector3): boolean;
   dispose(): void;
-}
-
-/** 每位人物只保留本帧最后一句，再取最近三位说话者，避免场景被气泡铺满。 */
-export function latestSpeechBySpeaker(lines: readonly SpeechLineView[]): SpeechLineView[] {
-  const result: SpeechLineView[] = [];
-  const speakers = new Set<string>();
-  for (let index = lines.length - 1; index >= 0 && result.length < MAX_VISIBLE_SPEAKERS; index -= 1) {
-    const line = lines[index];
-    const source = (line as SpeechLineView & { source?: string }).source;
-    if (source !== 'decision-model' && source !== 'speech-model') continue;
-    if (!line.text.trim() || speakers.has(line.speakerId)) continue;
-    speakers.add(line.speakerId);
-    result.push(line);
-  }
-  return result.reverse();
 }
 
 /** 一格内的稳定局部槽位；人物按 id 排序后取槽位，避免都压在格心。 */
@@ -153,6 +138,7 @@ export function createFigureLayer({
   const speechProjected = new THREE.Vector3();
   const speechWorldScale = new THREE.Vector3();
   const speechFocusCandidate = new THREE.Vector3();
+  const activeSpeechBySpeaker = new Map<string, SpeechLineView>();
 
   const removeFigure = (figure: FigureParts) => {
     scene.remove(figure.group);
@@ -168,8 +154,10 @@ export function createFigureLayer({
     const w = frame.society.world;
     const agents = frame.society.agents;
     const embodiedAgent = frame.embodiedAgentId;
-    const speechBySpeaker = frame.speechBySpeaker;
     const motion = Math.min(1, (now - frame.animationStartedAt) / MONTH_PLAYBACK_MS);
+    activeSpeechBySpeaker.clear();
+    const activeSpeechLine = activeSpeechLineAtProgress(frame.speechLines, motion);
+    if (activeSpeechLine) activeSpeechBySpeaker.set(activeSpeechLine.speakerId, activeSpeechLine);
     const activeIntentByOwner = new Map(frame.society.intents
       .filter((intent) => intent.status === 'active')
       .map((intent) => [intent.ownerId, intent]));
@@ -283,7 +271,7 @@ export function createFigureLayer({
       f.sprite.scale.set(labelHeight * 4, labelHeight, 1);
       f.sprite.position.y = (sleeping ? 0.52 : 1.04) + labelHeight * 0.25;
 
-      const speechLine = speechBySpeaker.get(agent.id);
+      const speechLine = activeSpeechBySpeaker.get(agent.id);
       const speechKey = speechLine ? `${speechLine.id}|${speechLine.text}` : '';
       if (speechKey !== f.speechKey) {
         if (speechLine) {
@@ -519,7 +507,7 @@ export function createFigureLayer({
     if (viewportWidth <= 0 || viewportHeight <= 0) return;
     camera.updateMatrixWorld();
     const items: SpeechLayoutItem[] = [];
-    for (const line of readFrame().speechBySpeaker.values()) {
+    for (const line of activeSpeechBySpeaker.values()) {
       const figure = figures.get(line.speakerId);
       if (!figure?.speechBubble.visible) continue;
       figure.group.updateWorldMatrix(true, false);
@@ -625,7 +613,7 @@ export function createFigureLayer({
   const writeSpeechFocus = (target: THREE.Vector3) => {
     let speakerCount = 0;
     target.set(0, 0, 0);
-    for (const speakerId of readFrame().speechBySpeaker.keys()) {
+    for (const speakerId of activeSpeechBySpeaker.keys()) {
       const figure = figures.get(speakerId);
       if (!figure?.speechBubble.visible) continue;
       figure.group.updateWorldMatrix(true, false);

@@ -50,9 +50,110 @@ try {
     person,
     visibleCells: [],
     visiblePeople: [],
+    visibleDrops: [],
+    visibleAnimals: [],
+    visibleRemains: [],
     options: [option],
     followUpOptions: [],
   });
+
+  const openConversationState = createInitialState(26_082_612, {
+    endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0,
+  });
+  const openSpeaker = openConversationState.people[0];
+  const openListener = openConversationState.people[1];
+  openListener.position = structuredClone(openSpeaker.position);
+  const encounterSource = openSpeaker.relations.find((relation) => relation.personId === openListener.id)?.sourceEventIds[0];
+  assert.ok(encounterSource, 'open conversation fixture needs one replayable encounter source');
+  const openOptionId = `conversation:open:1:${openSpeaker.id}:${openListener.id}`;
+  const openConversationOption = {
+    id: openOptionId,
+    summary: `与${openListener.name}进行开放交谈`,
+    reason: '对方就在当前语音范围内',
+    goal: { kind: 'representation-made', representationId: openOptionId },
+    nextAction: {
+      kind: 'communicate',
+      content: {
+        id: openOptionId, kind: 'claim', summary: `与${openListener.name}进行开放交谈`,
+        conversation: {
+          version: 'grounded-conversation-v1',
+          basisKey: 'uncompiled-open-placeholder', topic: 'open', turn: 'opening',
+          speakerId: openSpeaker.id, listenerId: openListener.id, sourceFactIds: [encounterSource],
+        },
+      },
+      audience: [openListener.id], channel: 'voice',
+    },
+    target: { kind: 'person', personId: openListener.id },
+    estimatedDuration: 'one-month', estimatedMonths: 1, risks: [], domain: 'social',
+    sourceFactIds: [encounterSource],
+    openConversationGrounding: {
+      version: 'open-conversation-grounding-v1', listenerId: openListener.id,
+      fallbackSourceFactIds: [encounterSource],
+      facts: [{ kind: 'relationship', sourceFactId: encounterSource, summary: '双方已有相识来源' }],
+    },
+  };
+  const openContext = makeContext(openConversationState, openSpeaker, openConversationOption);
+  const originalOpenOption = structuredClone(openConversationOption);
+  const openDecision = {
+    kind: 'start', optionId: openOptionId, reason: '我想自己决定谈什么',
+    utterance: '你最近总比以前安静，是心里压着什么事吗？',
+    groundingSourceFactIds: [encounterSource],
+  };
+  const openDecisionFact = applyDecision(
+    openConversationState, openSpeaker, openContext, openDecision, true, 1, 0, 1,
+  );
+  const openIntent = openConversationState.intents.find((intent) => intent.id === openDecisionFact.intentId);
+  assert.ok(openIntent, 'validated open grounding should start a real intent');
+  assert.deepEqual(openIntent.nextAction.content.conversation.sourceFactIds, [encounterSource],
+    'Intent must contain only grounding sources actually selected by the model');
+  assert.equal(openIntent.nextAction.content.conversation.openGroundingCompiled, true,
+    'open option must be dynamically compiled before entering authoritative intent state');
+  assert.deepEqual(openConversationOption, originalOpenOption,
+    'dynamic compilation must not mutate the source DecisionContext option');
+  const relationBeforeOpen = structuredClone(openSpeaker.relations.find((relation) => relation.personId === openListener.id));
+  const listenerKnowledgeBeforeOpen = structuredClone(openListener.knowledge);
+  const openActionFact = executeActiveIntent(openConversationState, openSpeaker, 1, 1, 2, [openDecisionFact]);
+  assert.equal(openActionFact?.status, 'completed');
+  assert.equal(openActionFact?.action.content.summary, `与${openListener.name}进行开放交谈`,
+    'ActionFact must retain the generic open action rather than promoting free utterance into objective content');
+  assert.equal(openActionFact?.diff.groundedConversationTopic, 'open');
+  assert.deepEqual(openSpeaker.relations.find((relation) => relation.personId === openListener.id), relationBeforeOpen,
+    'open conversation must not automatically create relationship gain');
+  assert.deepEqual(openListener.knowledge, listenerKnowledgeBeforeOpen,
+    'open conversation must not automatically teach or verify knowledge');
+
+  const invalidOpenState = createInitialState(26_082_613, {
+    endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0,
+  });
+  const invalidSpeaker = invalidOpenState.people[0];
+  const invalidListener = invalidOpenState.people[1];
+  invalidListener.position = structuredClone(invalidSpeaker.position);
+  const invalidSource = invalidSpeaker.relations.find((relation) => relation.personId === invalidListener.id)?.sourceEventIds[0];
+  const invalidOption = structuredClone(openConversationOption);
+  invalidOption.id = `conversation:open:1:${invalidSpeaker.id}:${invalidListener.id}`;
+  invalidOption.goal.representationId = invalidOption.id;
+  invalidOption.nextAction.content.id = invalidOption.id;
+  invalidOption.nextAction.content.conversation.speakerId = invalidSpeaker.id;
+  invalidOption.nextAction.content.conversation.listenerId = invalidListener.id;
+  invalidOption.nextAction.audience = [invalidListener.id];
+  invalidOption.target.personId = invalidListener.id;
+  invalidOption.sourceFactIds = [invalidSource];
+  invalidOption.nextAction.content.conversation.sourceFactIds = [invalidSource];
+  invalidOption.openConversationGrounding = {
+    version: 'open-conversation-grounding-v1', listenerId: invalidListener.id,
+    fallbackSourceFactIds: [invalidSource],
+    facts: [{ kind: 'relationship', sourceFactId: invalidSource, summary: '双方已有相识来源' }],
+  };
+  const invalidDecision = {
+    kind: 'start', optionId: invalidOption.id, reason: '夹带不属于 envelope 的来源',
+    utterance: '我想谈谈。', groundingSourceFactIds: ['forged-source'],
+  };
+  const invalidFact = applyDecision(
+    invalidOpenState, invalidSpeaker, makeContext(invalidOpenState, invalidSpeaker, invalidOption),
+    invalidDecision, true, 1, 0, 1,
+  );
+  assert.equal(invalidFact.intentId, undefined, 'invalid open grounding must not create an Intent');
+  assert.equal(invalidSpeaker.activeIntentId, undefined);
 
   const idleEdgeState = createInitialState(26_082_610, {
     endpoint: { kind: 'months', value: 12 },
@@ -111,6 +212,47 @@ try {
   assert.equal(achievementIntent?.stateGoalUntilMonth, undefined, '新的一次性目标不得再写入 legacy 状态维持期限');
   executeActiveIntent(achievementState, achiever, 1, 0, 1, []);
   assert.equal(achievementIntent?.status, 'completed', '已经满足的一次性目标应立即完成');
+
+  const staleModelState = createInitialState(26_082_614, {
+    endpoint: { kind: 'months', value: 12 }, chaosIntensity: 0,
+  });
+  const staleModelPerson = staleModelState.people[0];
+  staleModelPerson.body.nutrition = 20;
+  const staleFallbackOption = {
+    ...achievementOption,
+    id: 'fresh-food-fallback',
+    reason: '当前营养压力要求先处理仍然存在的取食机会',
+    goal: { kind: 'inventory-at-least', materialId: 21, quantity: 2 },
+    nextAction: { kind: 'move', toCellId: staleModelPerson.position.cellId, toZ: staleModelPerson.position.z },
+  };
+  const staleModelConversation = structuredClone(openConversationOption);
+  staleModelConversation.id = 'stale-model-conversation';
+  staleModelConversation.nextAction.content.id = staleModelConversation.id;
+  staleModelConversation.nextAction.content.conversation.speakerId = staleModelPerson.id;
+  staleModelConversation.nextAction.content.conversation.listenerId = staleModelState.people[1].id;
+  staleModelConversation.nextAction.audience = [staleModelState.people[1].id];
+  staleModelConversation.target.personId = staleModelState.people[1].id;
+  const staleModelFact = applyDecision(
+    staleModelState,
+    staleModelPerson,
+    makeContext(staleModelState, staleModelPerson, staleFallbackOption),
+    {
+      kind: 'start', optionId: staleModelConversation.id, reason: '月初选择了一段后来被占用的交谈',
+      utterance: '我本来想和你说件事。', groundingSourceFactIds: [encounterSource],
+    },
+    true,
+    1,
+    0,
+    1,
+    'ordinary',
+    staleModelConversation,
+  );
+  assert.equal(staleModelFact.usedModel, false,
+    'a stale model conversation must fall back honestly instead of attributing a different action to the model');
+  assert.equal(staleModelFact.decision.optionId, staleFallbackOption.id,
+    'model decisions without a local BDI handoff still revalidate from typed commit provenance');
+  assert.ok(staleModelFact.intentId,
+    'a same-month conversation collision must not consume the actor turn when a fresh local option remains');
 
   const occupiedPlacementState = createInitialState(26_082_611, {
     endpoint: { kind: 'months', value: 12 },

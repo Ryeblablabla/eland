@@ -18,7 +18,20 @@ export function isGroundedConversationOpening(option: ActionOption): boolean {
  * with whichever unrelated action happens to have the highest score.
  */
 export function followUpSemanticallyMatches(opening: ActionOption, followUp: ActionOption): boolean {
-  if (!isGroundedConversationOpening(opening) || followUp.nextAction.kind === 'communicate') return false;
+  if (!isGroundedConversationOpening(opening)) return false;
+  const openingAction = opening.nextAction;
+  const conversation = openingAction.kind === 'communicate' && openingAction.content.kind === 'claim'
+    ? openingAction.content.conversation
+    : undefined;
+  // An ordinary social turn is complete in itself. Treating small talk as a
+  // prelude to whichever physical option shares a broad founding source made
+  // the rules invent motives the speaker never chose.
+  if (conversation && ['open', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return false;
+  // A move followed by a communication is still a social action. Looking only
+  // at nextAction used to pair one conversation with an unrelated proposal in
+  // completionAction (for example, "chat now, propose reproduction later").
+  const finalAction = followUp.completionAction ?? followUp.nextAction;
+  if (finalAction.kind === 'communicate') return false;
   if (opening.projectId && opening.projectId === followUp.projectId) return true;
   const openingTarget = targetPersonId(opening);
   if (openingTarget && openingTarget === targetPersonId(followUp)) return true;

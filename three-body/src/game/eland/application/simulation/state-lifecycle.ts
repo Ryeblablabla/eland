@@ -6,6 +6,10 @@ import {
 } from '../../population';
 import { MONTHS_PER_YEAR, PLANNING_TICKS_PER_MONTH } from '../../domain/calendar';
 import { createInitialAnimals } from '../../domain/animal';
+import {
+  createCharacterAgendaState,
+  ensureCharacterAgendaState,
+} from '../../domain/character-agenda';
 import { emptyCivilizationIndex } from '../../domain/civilization-index';
 import { createCognitionState, ensureCognitionState } from '../../domain/cognition';
 import { primeEventIndex, worldEventById } from '../../domain/event-index';
@@ -63,6 +67,10 @@ import {
 } from './observation-state';
 import { cloneValidatedSocialLearningState } from './social-learning-state';
 import { clamp, copyState } from './state-utils';
+import {
+  createAgentMemoryStore,
+  ensureAgentMemoryStore,
+} from '../../domain/agent-memory';
 
 export const MAX_SIMULATION_YEARS = 1_000;
 export const MAX_SIMULATION_MONTHS = MAX_SIMULATION_YEARS * MONTHS_PER_YEAR;
@@ -190,6 +198,7 @@ function initialPerson(seed: number, profile: CharacterProfile, spawnCell: numbe
     }, traits),
     personality: createPersonality(seed, profile.id),
     cognition: createCognitionState(),
+    characterAgenda: createCharacterAgendaState(),
     motiveSensitivity: createMotiveSensitivity(seed, profile.id),
     conditions: [],
     inventory: [{ id: `stack-${profile.id}-ration`, materialId: Material.Food, quantity: 2, sourceEventIds: [] }],
@@ -262,6 +271,7 @@ export function createInitialState(
       mechanicalPower: generated.mechanicalPower,
     },
     people,
+    memoryStore: createAgentMemoryStore(),
     intents: [],
     agreements: [],
     records: [],
@@ -318,6 +328,14 @@ export function adoptSimulationState(
   state.world.memorials ??= [];
   normalizeAnimalEcologies(state.world.animals);
   state.civilization.weather ??= { kind: 'clear', intensity: 1, sinceMonth: state.clock.elapsedMonths };
+  if (state.civilization.externalClimate && !state.civilization.externalEraRegime) {
+    state.civilization.externalEraRegime = {
+      sinceMonth: state.clock.elapsedMonths,
+      candidateEpoch: null,
+      candidateSinceMonth: state.clock.elapsedMonths,
+      candidateConsecutiveMonths: 0,
+    };
+  }
   state.civilization.civilizationIndex ??= emptyCivilizationIndex(state.clock.elapsedMonths);
   delete (state.civilization as SimulationState['civilization'] & { integrity?: number }).integrity;
   state.records ??= [];
@@ -365,6 +383,7 @@ export function adoptSimulationState(
       : emptyMechanicalPowerWorldState();
   } else migrateMechanicalPowerWorldState(state.world.mechanicalPower);
   ensureNamingMetadata(state.people);
+  ensureAgentMemoryStore(state);
   for (const drop of state.world.drops) {
     drop.z = Number.isInteger(drop.z) ? drop.z : surfaceStandingPosition(state.world.grid, drop.cellId)?.z ?? 1;
   }
@@ -393,6 +412,7 @@ export function adoptSimulationState(
       state.clock.elapsedMonths,
     );
     const cognition = ensureCognitionState(person);
+    ensureCharacterAgendaState(person, state.clock.elapsedMonths);
     if (socialLearning) cognition.socialLearning = socialLearning;
     else delete cognition.socialLearning;
     person.bereavements ??= [];

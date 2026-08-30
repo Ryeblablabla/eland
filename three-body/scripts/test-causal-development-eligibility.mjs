@@ -872,10 +872,31 @@ try {
   {
     const { state, actor, center } = createFixture(9605);
     const project = cultivationProject(state, actor, center, 'test-waiting-field-project');
+    actor.bornAtMonth = -20 * 12;
     actor.inventory.push({ id: 'waiting-seed', materialId: Material.Seed, quantity: 1, sourceEventIds: ['source:waiting-seed'] });
+    setVoxel(state.world.grid, cellX(center), cellY(center), 0, Material.CropSprout);
     const waitingAction = recompileProjectNextAction(state, actor, project.id);
-    assert.equal(waitingAction, null, '地块暂时不可播种或收获时应等待环境变化');
+    assert.equal(waitingAction, null, '作物仍在生长且暂不可收获时应等待环境变化');
     assert.equal(project.hypothesisCampaign, undefined, '等待生长或湿润不能启动通用材料假说');
+    const waitingIntent = {
+      id: 'test-waiting-field-intent', ownerId: actor.id, summary: '等待固定耕地完成生长', domain: 'strategic',
+      goal: { kind: 'project-completed', projectId: project.id },
+      nextAction: { kind: 'move', toCellId: center, toZ: actor.position.z },
+      status: 'active', createdAtMonth: 1, lastProgressAtMonth: 1, progress: 0.45,
+      sourceDecisionEventId: 'test-waiting-field-decision', projectId: project.id,
+      sourceFactIds: [...project.triggerFactIds], actionEventIds: [], replanCount: 0,
+    };
+    state.intents = [waitingIntent];
+    actor.activeIntentId = waitingIntent.id;
+    const failureMemoryCount = actor.memories.filter((memory) => memory.kind === 'failure').length;
+    const waitingFact = executeActiveIntent(state, actor, 1, 0, 1, []);
+    assert.equal(waitingFact, null, '真实自然生长等待不得伪造 ActionFact');
+    assert.equal(waitingIntent.status, 'suspended', '自然生长等待应让出当前执行焦点而不是把项目判失败');
+    assert.equal(waitingIntent.waitingFor, 'world-change', '等待必须保留可审计的外部世界变化原因');
+    assert.equal(actor.activeIntentId, undefined, '等待世界变化时人物应能在后续刻度改做其他有用工作');
+    assert.equal(waitingIntent.goalOutcome, undefined, '未发生目标尝试时不得写入 0 次达成的目标后验');
+    assert.equal(actor.memories.filter((memory) => memory.kind === 'failure').length, failureMemoryCount,
+      '合法等待不得制造失败记忆供模型反复围绕假失败提案');
   }
 
   {

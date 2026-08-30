@@ -12,6 +12,7 @@ import {
 import {
   concludeOwnedCivilization,
   validatePlayerInteractionChoice,
+  writePlayerInteractionMemory,
 } from '../src/game/eland/infrastructure-api';
 import { calendarDate } from '../src/game/eland/domain/calendar';
 import { isAlive } from '../src/game/eland/domain/person';
@@ -22,6 +23,7 @@ import {
 import {
   ERA_TO_ENV,
   toAgentHistory,
+  toAgentMemory,
   toSocietyState,
   type WorldEventLookup,
 } from '../src/game/eland/adapter';
@@ -32,7 +34,8 @@ import type {
   SkySample,
   SpeechLineView,
 } from '../src/game/societyContract';
-import type { AgentHistoryView } from '../src/game/societyContract';
+import type { AgentHistoryView, AgentMemoryView } from '../src/game/societyContract';
+import { collectSpeechLinesThroughMonth } from '../src/game/eland/projection/speech-history';
 import type {
   BeginEmbodimentRequest,
   EmbodimentReleaseResponse,
@@ -251,6 +254,10 @@ export class ElandSession {
         ended: this.latestState?.civilization.status === 'ended',
       }),
       pendingPlayerInteractions: () => this.pendingPlayerInteractions(),
+      priorSpeechLines: () => collectSpeechLinesThroughMonth(
+        this.inheritedFrames(this.activeTimeline()),
+        this.latestState?.clock.elapsedMonths ?? 0,
+      ),
       projectEntries: (state, events) => this.narrativeEntriesFor(state, events),
       commitSky: (skySample, cosmosSnapshot) => {
         this.skySample = skySample;
@@ -588,6 +595,7 @@ export class ElandSession {
         rawFrame.elapsedMonths,
         rawFrame.entries,
         this.eventById,
+        rawFrame.speechLines ?? [],
       ),
     };
     const projectionMs = perfElapsed(projectionStartedAt);
@@ -848,7 +856,15 @@ export class ElandSession {
   agentHistory(agentId: string, month: number, limit = 80): AgentHistoryView | null {
     const timeline = this.activeTimeline();
     const snapshot = this.snapshotForRead(timeline, month);
-    return snapshot ? toAgentHistory(snapshot, agentId, limit) : null;
+    if (!snapshot) return null;
+    const speechLines = collectSpeechLinesThroughMonth(this.inheritedFrames(timeline), month);
+    return toAgentHistory(snapshot, agentId, limit, speechLines);
+  }
+
+  agentMemory(agentId: string, month: number, limit = 24): AgentMemoryView | null {
+    const timeline = this.activeTimeline();
+    const snapshot = this.snapshotForRead(timeline, month);
+    return snapshot ? toAgentMemory(snapshot, agentId, limit) : null;
   }
 
   agentConversation(agentId: string): AgentConversationView | null {
@@ -1036,6 +1052,15 @@ export class ElandSession {
       usage: result.usage,
     };
     this.localConversationTurns(timeline).push(turn);
+    if (stillCurrentBranch && this.latestState && currentPerson) {
+      writePlayerInteractionMemory(this.latestState, {
+        interactionId: turn.id,
+        atMonth: completedAtMonth,
+        agentId: currentPerson.id,
+        userMessage: turn.userMessage,
+        agentReply: turn.agentReply,
+      });
+    }
 
     const conversation = stillCurrentBranch
       ? this.agentConversation(person.id)

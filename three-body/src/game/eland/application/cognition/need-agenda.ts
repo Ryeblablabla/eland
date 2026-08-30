@@ -19,6 +19,7 @@ import { relationTo } from '../../domain/relation';
 import { actionOptionSemantics } from '../../domain/action-option-semantics';
 import { recurringDutyMandateForExistingOption } from '../../domain/governance';
 import { currentRecordUseProject } from './record-use-project';
+import { characterAgendaStateOf, type CharacterAgendaItem } from '../../domain/character-agenda';
 
 export type NeedKind =
   | 'homeostasis'
@@ -46,6 +47,8 @@ export interface NeedSignal {
   bodyField?: HomeostasisField;
   /** Project pressure is scoped so unrelated ordinary actions cannot claim it. */
   projectId?: string;
+  /** Durable concerns only activate an option compiled for this exact item. */
+  characterAgendaItemId?: string;
   urgency: number;
   reasons: string[];
   sourceFactIds: string[];
@@ -114,9 +117,34 @@ function isResponseOption(context: DecisionContext): boolean {
   });
 }
 
+function durableAgendaNeedKind(item: CharacterAgendaItem): NeedKind {
+  if (item.theme === 'homeostasis') return 'homeostasis';
+  if (item.theme === 'safety') return 'safety';
+  if (item.theme === 'spatial-comfort') return 'spatial-comfort';
+  if (item.theme === 'care' || item.theme === 'mortuary-care') return 'care';
+  if (item.theme === 'resource') return 'reserve';
+  if (item.theme === 'conversation' || item.theme === 'social-coordination') return 'belonging';
+  if (item.theme === 'reproduction') return 'generativity';
+  if (item.theme === 'project' || item.theme === 'production') return 'capability';
+  return 'inquiry';
+}
+
 export function deriveNeedAgenda(context: DecisionContext, atMonth: number): NeedSignal[] {
   const person = context.person;
   const needs: NeedSignal[] = [];
+  for (const item of characterAgendaStateOf(person, atMonth).items) {
+    if (item.status === 'fulfilled' || item.status === 'abandoned' || item.status === 'suspended') continue;
+    const horizonPressure = clamp((atMonth - item.createdAtMonth + 1) / Math.max(1, item.horizonMonths));
+    const unresolvedPressure = item.status === 'blocked' ? 0.1 : item.status === 'incubating' ? 0.04 : 0.08;
+    needs.push({
+      key: `need:character-agenda:${item.id}`,
+      kind: durableAgendaNeedKind(item),
+      urgency: clamp(0.18 + item.importance / 180 + horizonPressure * 0.16 + unresolvedPressure),
+      reasons: [`本人仍把“${item.aim}”视为未解决的长期关切`],
+      sourceFactIds: [...item.sourceFactIds],
+      characterAgendaItemId: item.id,
+    });
+  }
   const positiveReproductionOptions = context.options.filter((option) => (
     actionOptionSemantics(option).reproduction?.direction === 'proceed'
   ));

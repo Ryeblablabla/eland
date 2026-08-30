@@ -23,7 +23,7 @@ try {
     export { visibleCellsFor } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/project-perception.ts'))};
     export { settledCultivationProjectStep } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/projects/steps/cultivation.ts'))};
     export { voxelNoResponseFactId } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/domain/interaction-knowledge.ts'))};
-    export { buildDecisionRequestContext } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/kimi-decider.ts'))};
+    export { buildDecisionRequestContext } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/application/model-decision/index.ts'))};
     export { cellId, cellX, cellY, cellsInRadius, setVoxel, voxelAt } from ${JSON.stringify(path.join(projectRoot, 'src/game/eland/world/grid.ts'))};
   `;
   execFileSync(path.join(projectRoot, 'node_modules/.bin/esbuild'), [

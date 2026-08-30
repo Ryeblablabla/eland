@@ -53,7 +53,12 @@ function qualifiesAsRelationshipEvidence(
   if (!event) return false;
   if (event.action) {
     if (!event.action.completed) return false;
-    if (event.action.actionKind !== 'communicate') return true;
+    if (event.action.actionKind !== 'communicate') {
+      return (event.action.actorId === partnerId
+          && event.action.supportRecipientIds.includes(proposerId))
+        || (event.action.actorId === proposerId
+          && event.action.supportRecipientIds.includes(partnerId));
+    }
     const conversation = event.action.communication?.groundedConversation;
     if (!conversation?.basisVerified) return false;
     const participants = new Set([conversation.speakerId, conversation.listenerId]);
@@ -61,12 +66,13 @@ function qualifiesAsRelationshipEvidence(
   }
   if (event.agreementFulfilled) return true;
   if (!event.environment) return false;
-  if (event.environment.change === 'founding' && !includeFounding) return false;
-  if (event.environment.change === 'prediction') return true;
-  if (event.environment.change === 'relationship'
-    && event.environment.excludedPairKeys.includes(
-      relationshipPairKey(proposerId, partnerId),
-    )) return false;
+  if (event.environment.change === 'founding') return includeFounding
+    && event.environment.participantIds.includes(proposerId)
+    && event.environment.participantIds.includes(partnerId);
+  if (event.environment.change !== 'relationship') return false;
+  if (event.environment.excludedPairKeys.includes(
+    relationshipPairKey(proposerId, partnerId),
+  )) return false;
   return event.environment.participantIds.includes(proposerId)
     && event.environment.participantIds.includes(partnerId);
 }
@@ -104,6 +110,20 @@ function relationshipEvidenceIds(
     .sort();
 }
 
+/**
+ * Resolve only replayable interpersonal experience between this exact pair.
+ * Founding familiarity, predictions and unrelated environment facts are
+ * deliberately absent, so callers cannot turn a cached relation number into
+ * a formal social request without a shared episode.
+ */
+export function substantiveRelationshipEvidenceIds(
+  state: SimulationState,
+  person: PersonState,
+  other: PersonState,
+): string[] {
+  return relationshipEvidenceIds(state, person, other);
+}
+
 function isDirectIntimacyEvidence(
   state: SimulationState,
   event: LiveSocialEvidenceDescriptor,
@@ -121,7 +141,7 @@ function isDirectIntimacyEvidence(
     const conversation = event.action.communication?.groundedConversation;
     if (!conversation?.basisVerified
       || conversation.turn !== 'response'
-      || ['discovery', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return false;
+      || ['open', 'discovery', 'everyday', 'reminiscence', 'playful'].includes(conversation.topic)) return false;
     const participants = new Set([conversation.speakerId, conversation.listenerId]);
     return participants.has(proposer.id) && participants.has(partner.id);
   }
@@ -158,7 +178,7 @@ export function buildRelationshipCausalBasis(
 ): RelationshipCausalBasis {
   const pair = [proposer.id, partner.id].sort();
   const subjectKey = `relationship:${kind}:${pair[0]}:${pair[1]}`;
-  const relationshipKeys = relationshipEvidenceIds(state, proposer, partner, kind === 'reproduce');
+  const relationshipKeys = relationshipEvidenceIds(state, proposer, partner);
   const ageBand = kind === 'reproduce' ? femaleAgeBand(proposer, partner, atMonth) : null;
   const responsibility = kind === 'reproduce'
     ? reproductiveResponsibility(state, proposer, atMonth)
@@ -190,7 +210,6 @@ export function buildRelationshipCausalBasis(
   };
 }
 
-/** Founding familiarity preserves the original first-offer window; retries need stronger evidence below. */
 export function hasSourcedReproductiveRelationship(
   state: SimulationState,
   person: PersonState,
@@ -198,9 +217,16 @@ export function hasSourcedReproductiveRelationship(
   basis = buildRelationshipCausalBasis(state, person, partner, 'reproduce'),
 ): boolean {
   if (basis.kind !== 'reproduce' || basis.proposerId !== person.id || basis.partnerId !== partner.id) return false;
-  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner, true)
+  const relation = relationTo(person, partner.id);
+  const relationshipEvents = relationshipEvidenceDescriptors(state, person, partner)
     .filter((event) => basis.relationshipKeys.includes(event.eventId));
-  return relationshipEvents.some((event) => event.atMonth < state.clock.elapsedMonths);
+  const intimateEvents = relationshipEvents
+    .filter((event) => isDirectIntimacyEvidence(state, event, person, partner));
+  return Boolean(relation
+    && relation.trust >= COMPANION_RELATION_THRESHOLD
+    && relation.bond >= COMPANION_RELATION_THRESHOLD
+    && evidenceMonths(relationshipEvents).size >= 2
+    && intimateEvents.length > 0);
 }
 
 export function hasCultivatedCompanionRelationship(

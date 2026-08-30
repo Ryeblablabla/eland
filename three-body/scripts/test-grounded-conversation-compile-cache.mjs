@@ -118,8 +118,12 @@ try {
       hasRememberedGroundedConversationOpeningBasis,
       livePersonSocialEvidenceLeaseKey,
       registerPlanningEventOverlay,
+      registerLiveSocialEvidenceDescriptors,
       registerRetainedColdWorldEventFacts,
     } from ${JSON.stringify(path.resolve('src/game/eland/domain/event-index.ts'))};
+    export {
+      liveSocialEvidenceDescriptorFromWorldEvent,
+    } from ${JSON.stringify(path.resolve('src/game/eland/domain/live-social-evidence.ts'))};
     export { createInitialState } from ${JSON.stringify(path.resolve('src/game/eland/simulation-runtime.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [
@@ -301,6 +305,23 @@ try {
     sourceEventIds: ['foreign-opening', 'foreign-opening'],
   }];
   listenerB.memories = [memory('listener-b-social-sources', ['cold-listener-b-care'])];
+  const retainedLiveSocialEvidence = [
+    { ownerId: listenerB.id, absoluteIndex: 0 },
+    { ownerId: speaker.id, absoluteIndex: 2 },
+    { ownerId: speaker.id, absoluteIndex: 4 },
+  ].map(({ ownerId, absoluteIndex }) => ({
+    ownerId,
+    absoluteIndex,
+    descriptor: api.liveSocialEvidenceDescriptorFromWorldEvent(coldEntries[absoluteIndex].event),
+  }));
+  api.registerLiveSocialEvidenceDescriptors(
+    state,
+    retainedLiveSocialEvidence,
+    retainedLiveSocialEvidence.map(({ absoluteIndex, descriptor }) => ({
+      absoluteIndex,
+      eventId: descriptor.eventId,
+    })),
+  );
   speaker.knowledge = [{
     id: 'knowledge:shared-observation',
     kind: 'observation',
@@ -351,9 +372,9 @@ try {
     assert.equal(legacy, expected, `legacy matrix mismatch: ${basisKey}`);
     assert.equal(cached, legacy, `snapshot matrix mismatch: ${basisKey}`);
   }
-  assert.equal(snapshot.eventForPersonSource(speaker.id, 'foreign-opening'), undefined,
+  assert.equal(snapshot.evidenceForPersonSource(speaker.id, 'foreign-opening'), undefined,
     'foreign exact lease must not leak through the generic retained by-id registry');
-  assert.equal(snapshot.eventForPersonSource('foreign-owner', 'foreign-opening'), undefined,
+  assert.equal(snapshot.evidenceForPersonSource('foreign-owner', 'foreign-opening'), undefined,
     'a person outside this compilation may not query its lease');
   assert.equal(directDiagnostics.personSourceSnapshots, 4);
   assert.equal(directDiagnostics.exactLeaseIndexes, 4);
@@ -387,7 +408,7 @@ try {
   assert.deepEqual(
     cachedOptions.map((option) => [option.target.personId, option.nextAction.content.conversation.topic]),
     [[listenerA.id, 'discovery'], [listenerC.id, 'care']],
-    'the first listener should skip duplicate care before routing; the second is fully duplicate');
+    'open affordances without an owned replayable fallback stay hidden; legacy duplicate suppression remains unchanged');
   assert.ok(cachedDiagnostics.personSourceSnapshots <= 4);
   assert.equal(cachedDiagnostics.exactLeaseIndexes, cachedDiagnostics.personSourceSnapshots);
   assert.equal(cachedDiagnostics.rendezvousComputations, 2);

@@ -16,7 +16,7 @@ try {
     export { Material } from ${JSON.stringify(path.resolve('src/game/eland/domain/material.ts'))};
     export { applyRelationEvidence, compactCanonicalRelations, invalidateRelationIndex, relationTo } from ${JSON.stringify(path.resolve('src/game/eland/domain/relation.ts'))};
     export { buildRelationshipCausalBasis, hasCultivatedCompanionRelationship, hasSourcedReproductiveRelationship } from ${JSON.stringify(path.resolve('src/game/eland/domain/relationship-evidence.ts'))};
-    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/kimi-decider.ts'))};
+    export { buildDecisionRequestContext } from ${JSON.stringify(path.resolve('src/game/eland/application/model-decision/index.ts'))};
     export { toSocietyState } from ${JSON.stringify(path.resolve('src/game/eland/adapter.ts'))};
   `;
   execFileSync(path.resolve('node_modules/.bin/esbuild'), [

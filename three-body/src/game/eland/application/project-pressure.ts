@@ -42,6 +42,7 @@ import {
   validateElectricalPowerMaintenanceBasis,
 } from './electrical-power-maintenance-options';
 import { validateCapabilityReplicationBasis } from './projects/capability-replication';
+import { observeLocalShelterCapacity } from './local-shelter-capacity';
 
 export const PROJECT_PRESSURE_BASIS_VERSION = 'project-pressure-basis-v1' as const;
 
@@ -377,19 +378,36 @@ function shelterBasis(
   ) && (!subject.shelterRequirement || condition.kind === subject.shelterRequirement.exposureKind));
   const shelter = beneficiary ? shelterGeometryAt(state.world.grid, beneficiary.position) : null;
   const sheltered = subject.shelterRequirement ? true : Boolean(shelter);
+  const localCapacity = observeLocalShelterCapacity(
+    state,
+    owner,
+    view.visibleCells,
+    view.visiblePeople,
+  );
   const rememberedExposure = Boolean(subject.shelterRequirement?.sourceEventIds.length);
   const severeWeather = state.civilization.weather.kind === 'storm' && state.civilization.weather.intensity >= 2;
   const severeClimate = state.civilization.climate.kind === 'fire'
     || ((state.civilization.climate.kind === 'cold' || state.civilization.climate.kind === 'heat') && state.civilization.climate.severity >= 3);
   const severity = exposure?.stage ?? (severeClimate ? state.civilization.climate.severity : severeWeather ? state.civilization.weather.intensity : 0);
+  // A large visible deficit can compete with bootstrap development, while the
+  // last few missing places remain a soft pressure instead of monopolizing work.
+  const capacityPressure = 32 + Math.min(32, localCapacity.capacityShortfall ** 2);
   const pressure = subject.shelterRequirement
     ? 48 + Math.max(1, exposure?.stage ?? 1) * 14
-    : sheltered ? 0 : severity > 0 ? 48 + severity * 16 : 20;
+    : sheltered ? 0
+    : severity > 0 ? Math.max(48 + severity * 16, capacityPressure)
+    : localCapacity.capacityShortfall > 0 ? capacityPressure
+    : 20;
   return makeBasis(subject, owner, atMonth, pressure, [
     `state:beneficiary-visible:${beneficiaryId}:${beneficiary ? 'yes' : 'no'}`,
     `state:exposure:${beneficiaryId}:${exposure?.kind ?? subject.shelterRequirement?.exposureKind ?? 'none'}:${exposure?.stage ?? (rememberedExposure ? 'remembered' : 0)}`,
     `state:sheltered:${sheltered ? 'yes' : 'no'}`,
     ...(shelter ? [`state:shelter-geometry:${shelter.enclosedSides}:${shelter.weatherProtection}:${shelter.thermalInsulation}`] : []),
+    `state:visible-shelter-population:${localCapacity.visiblePersonCount}`,
+    `state:visible-shelter-capacity:${localCapacity.shelterCapacity}`,
+    `state:visible-shelter-occupied:${localCapacity.occupiedShelterSlots}`,
+    `state:visible-shelter-free:${localCapacity.freeShelterSlots}`,
+    `state:visible-shelter-shortfall:${localCapacity.capacityShortfall}`,
     ...(subject.shelterRequirement ? [
       `state:shelter-baseline:${subject.shelterRequirement.baselineEnclosedSides}:${subject.shelterRequirement.baselineWeatherProtection}:${subject.shelterRequirement.baselineThermalInsulation}`,
       `state:shelter-target-sides:${subject.shelterRequirement.minimumEnclosedSides}`,
@@ -402,6 +420,9 @@ function shelterBasis(
     ...(!exposure && rememberedExposure ? ['remembered-shelter-exposure'] : []),
     ...(severeWeather ? ['current-severe-weather'] : []),
     ...(severeClimate ? ['current-severe-climate'] : []),
+    ...(!subject.shelterRequirement && localCapacity.capacityShortfall > 0
+      ? ['local-shelter-capacity-shortfall']
+      : []),
     ...(sheltered ? ['functional-shelter-entered'] : []),
   ], [...(exposure?.sourceEventIds ?? []), ...(subject.shelterRequirement?.sourceEventIds ?? [])]);
 }

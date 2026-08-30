@@ -144,9 +144,15 @@ export function createMonthExecution(input: {
       const freshContext = buildDecisionContext(prepared.state, person, prepared.atMonth);
       const picked = decisions.get(person.id);
       if (!picked) continue;
+      const pickedDecision = picked.decision;
+      const selectedOptionAtDecision = pickedDecision.kind === 'start' || pickedDecision.kind === 'revise'
+        ? candidate.options.find((option) => option.id === pickedDecision.optionId)
+        : undefined;
       const planningChannel = decisionPlanningChannel(freshContext, picked.decision);
       if (planningChannel === 'ordinary') ordinaryDeliberationCounts.set(person.id, 1);
-      if (picked.decision.kind !== 'idle') {
+      if (picked.decision.kind !== 'idle'
+        || picked.usedModel
+        || Boolean(picked.decision.characterAgendaUpdate)) {
         prepared.events.push(applyDecision(
           prepared.state,
           person,
@@ -157,6 +163,7 @@ export function createMonthExecution(input: {
           prepared.events.length,
           1,
           planningChannel,
+          selectedOptionAtDecision,
         ));
       }
       plannedAtTickOne.add(person.id);
@@ -186,7 +193,8 @@ function isTerminalIntent(intent: Intent | undefined): intent is Intent {
   return Boolean(intent && (intent.status === 'completed'
     || intent.status === 'blocked'
     || intent.status === 'failed'
-    || intent.status === 'abandoned'));
+    || intent.status === 'abandoned'
+    || (intent.status === 'suspended' && intent.waitingFor === 'world-change')));
 }
 
 interface RootIntentTrace {
@@ -275,7 +283,7 @@ function executeActorControl(
       execution.ordinaryReplanPermits.delete(person.id);
     }
     execution.reviewedPeople.add(person.id);
-    if (control.decision.kind !== 'idle') {
+    if (control.decision.kind !== 'idle' || Boolean(control.decision.characterAgendaUpdate)) {
       events.push(applyDecision(
         state,
         person,
@@ -325,7 +333,7 @@ export function executePlanningTick(
         continue;
       }
       if (isRecoveringFromDehydratedHibernation(person)) {
-        const recovery = chooseHibernationRecoveryReflex(state, person);
+        const recovery = chooseHibernationRecoveryReflex(state, person, events);
         if (recovery) {
           const fact = executePrimitiveAction(state, person, recovery, atMonth, events.length, {
             cause: 'survival-reflex',
@@ -339,7 +347,10 @@ export function executePlanningTick(
         continue;
       }
       const causalShelterWork = hasCausalShelterAdaptationNeed(state, person);
-      const reflex = chooseSurvivalReflex(state, person, { suppressThermalShelter: causalShelterWork });
+      const reflex = chooseSurvivalReflex(state, person, {
+        suppressThermalShelter: causalShelterWork,
+        currentMonthEvents: events,
+      });
       const queuedIntent = activeIntent(state, person);
       const queuedDehydrateTarget = queuedIntent?.nextAction.kind === 'act'
         && queuedIntent.nextAction.operation === 'dehydrate'
@@ -356,7 +367,10 @@ export function executePlanningTick(
       const awaitingCaregiver = dependentChild && hasCoLocatedLivingParent(state, person);
       const dependentCare = dependentChild
         ? null
-        : chooseDependentCareReflex(state, person, { suppressThermalShelter: causalShelterWork });
+        : chooseDependentCareReflex(state, person, {
+            suppressThermalShelter: causalShelterWork,
+            currentMonthEvents: events,
+          });
       const careIsMoreUrgent = Boolean(dependentCare)
         && (!reflex || dependentCareUrgency(state, person) > survivalReflexUrgency(state, person));
       if (careIsMoreUrgent && dependentCare) {
@@ -480,6 +494,12 @@ export function finishMonthExecution(execution: MonthExecution): SimulationState
     exemptModelContexts: execution.attempted.exempt,
     inputTokens: execution.usage.inputTokens,
     outputTokens: execution.usage.outputTokens,
+    ...(execution.usage.cacheHitInputTokens !== undefined
+      ? { cacheHitInputTokens: execution.usage.cacheHitInputTokens }
+      : {}),
+    ...(execution.usage.cacheMissInputTokens !== undefined
+      ? { cacheMissInputTokens: execution.usage.cacheMissInputTokens }
+      : {}),
     chargedTokens,
     ordinaryChargedTokens,
   }].slice(-24);

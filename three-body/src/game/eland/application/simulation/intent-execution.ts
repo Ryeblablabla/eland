@@ -47,18 +47,84 @@ import {
 } from '../action-options';
 import { ordinaryLearningChildActionAllowed } from '../age-planning';
 import { compileAgreementContinuations, type AgreementContinuation } from '../agreement-continuation';
+import { compileOpenConversationOption } from '../conversation-options';
 import { evaluateCognitiveOption } from '../cognition/option-appraisal';
 import { deliberate, takeDecisionDeliberation } from '../cognition/bdi-deliberation';
 import {
   ensureProject,
+  projectHasLegitimateWait,
   recordProjectAction,
   synchronizeProject,
 } from '../project-options';
-import { isFulfillmentOption, isRequiredSocialOption, isStateAchievementGoal } from '../rule-planner';
+import { isFulfillmentOption, isRequiredSocialOption, isStateAchievementGoal, RulePlanner } from '../rule-planner';
 import { clamp } from './state-utils';
 import { actionOptionSemantics, isEdgeActionOption } from '../../domain/action-option-semantics';
+import {
+  bindConversationEpisodeIntent,
+  cancelConversationReservation,
+  reserveConversationEpisode,
+  applyModelMemoryConsolidation,
+  pendingConversationEpisodeForListener,
+  closeConversationWithoutResponse,
+} from '../../domain/agent-memory';
+import {
+  acceptCharacterAgendaProposal,
+  acceptCharacterAgendaUpdate,
+  bindAcceptedAgendaToIntent,
+  bindExistingAgendaIntent,
+  type AcceptedCharacterAgendaProposal,
+} from '../character-agenda';
 
 const MAX_REPRODUCTION_AUDIT_SOURCE_FACTS = 32;
+const localCommitFallbackPlanner = new RulePlanner();
+const modelCommitFallbackPlanner = new RulePlanner({ deferVoluntarySocialChoicesToModel: true });
+
+function revalidateDecisionAtCommit(
+  context: DecisionContext,
+  decision: Decision,
+  usedModel: boolean,
+  atMonth: number,
+  planningTick: number,
+  selectedOptionAtDecision?: ActionOption,
+): { decision: Decision; usedModel: boolean } {
+  if ((decision.kind !== 'start' && decision.kind !== 'revise')
+    || context.options.some((option) => option.id === decision.optionId)) {
+    return { decision, usedModel };
+  }
+  const staleDeliberation = takeDecisionDeliberation(
+    decision,
+    context.person.id,
+    { atMonth, planningTick },
+  );
+  const staleSelectedOption = selectedOptionAtDecision ?? staleDeliberation?.selected?.option;
+  if (!groundedConversationForOption(staleSelectedOption)) {
+    return { decision, usedModel };
+  }
+  // Month-boundary decisions are batched against one snapshot, then committed
+  // in actor order. A conversation chosen earlier in the batch can reserve a
+  // participant and remove another actor's stale option from this fresh
+  // context. Do not commit that vanished choice or consume the actor's month
+  // with a no-Intent DecisionFact: deliberate once against the authoritative
+  // options that still exist at this exact commit boundary.
+  const fallback = (usedModel ? modelCommitFallbackPlanner : localCommitFallbackPlanner)
+    .decideAt(context, { atMonth, planningTick });
+  const prefix = '此前选择的机会已被同月行动占用，按当前仍然存在的机会重新考虑';
+  if (fallback.kind === 'start' || fallback.kind === 'revise' || fallback.kind === 'idle') {
+    return {
+      decision: { ...fallback, reason: `${prefix}；${fallback.reason}` },
+      usedModel: false,
+    };
+  }
+  return { decision: { kind: 'idle', reason: prefix }, usedModel: false };
+}
+
+function groundedConversationForOption(option: ActionOption | undefined) {
+  const action = option?.completionAction ?? option?.nextAction;
+  return action?.kind === 'communicate'
+    && action.content.kind === 'claim'
+    ? action.content.conversation
+    : undefined;
+}
 
 type IntentIdentityKind = 'ordinary' | 'interrupt' | 'agreement';
 
@@ -197,6 +263,10 @@ function failedActionGoalOutcomeKind(fact: ActionFact): 'attempted-unmet' | 'not
     && fact.diff.conceived !== false
     ? 'not-evaluated'
     : 'attempted-unmet';
+}
+
+function isAttemptOnlyGoal(intent: Intent): boolean {
+  return intent.goal.kind === 'knowledge' && intent.goal.factId.startsWith('attempt:');
 }
 
 function boundedReviewDurationMonths(duration: ActionOption['estimatedDuration'], estimatedMonths?: number): number {
@@ -350,6 +420,8 @@ export function startIntent(
     } : {}),
     ...(lifecycle ? { lifecycle } : {}),
     sourceDecisionEventId: decisionEventId,
+    ...(choice.characterAgendaItemId ? { characterAgendaItemId: choice.characterAgendaItemId } : {}),
+    ...(choice.characterAgendaApproachId ? { characterAgendaApproachId: choice.characterAgendaApproachId } : {}),
     ...(sourceAgreement ? { agreementId: sourceAgreement.id } : {}),
     ...reproductionAttemptBaselineFor(sourceAgreement),
     ...(choice.relationshipBasis ? { relationshipBasis: structuredClone(choice.relationshipBasis) } : {}),
@@ -454,6 +526,8 @@ export function startInterruptIntent(
     progress: 0,
     sourceDecisionEventId: decisionEventId,
     ...(selectedProject ? { projectId: selectedProject.id } : {}),
+    ...(selected.characterAgendaItemId ? { characterAgendaItemId: selected.characterAgendaItemId } : {}),
+    ...(selected.characterAgendaApproachId ? { characterAgendaApproachId: selected.characterAgendaApproachId } : {}),
     ...(sourceAgreement ? { agreementId: sourceAgreement.id } : {}),
     ...reproductionAttemptBaselineFor(sourceAgreement),
     ...(selected.relationshipBasis ? { relationshipBasis: structuredClone(selected.relationshipBasis) } : {}),
@@ -628,15 +702,49 @@ export function applyDecision(
   orderInMonth: number,
   planningTick: number,
   planningChannel: NonNullable<DecisionFact['planningChannel']> = 'ordinary',
+  selectedOptionAtDecision?: ActionOption,
 ): DecisionFact {
+  ({ decision, usedModel } = revalidateDecisionAtCommit(
+    context,
+    decision,
+    usedModel,
+    atMonth,
+    planningTick,
+    selectedOptionAtDecision,
+  ));
   const id = `e-${atMonth}-decision-${person.id}-${planningTick}-${orderInMonth}`;
   let intentId: string | undefined;
   let result = decision.reason;
   let domain: Intent['domain'] | undefined;
+  const characterAgendaEvidence: NonNullable<DecisionFact['characterAgendaEvidence']> = [];
   const current = activeIntent(state, person);
-  const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
+  const requestedOption = decision.kind === 'start' || decision.kind === 'revise'
     ? context.options.find((option) => option.id === decision.optionId)
     : undefined;
+  const compiledOpenOption = requestedOption?.openConversationGrounding
+    && (decision.kind === 'start' || decision.kind === 'revise')
+    && decision.groundingSourceFactIds !== undefined
+    && Boolean(decision.utterance?.trim())
+    ? compileOpenConversationOption(requestedOption, decision.groundingSourceFactIds)
+    : undefined;
+  const decisionContext = requestedOption?.openConversationGrounding
+    ? {
+        ...context,
+        options: compiledOpenOption
+          ? context.options.map((option) => option.id === requestedOption.id ? compiledOpenOption : option)
+          : context.options.filter((option) => option.id !== requestedOption.id),
+      }
+    : context;
+  const selectedOption = decision.kind === 'start' || decision.kind === 'revise'
+    ? decisionContext.options.find((option) => option.id === decision.optionId)
+    : undefined;
+  const selectedConversation = groundedConversationForOption(selectedOption);
+  const pendingResponse = usedModel
+    ? pendingConversationEpisodeForListener(state, person.id, atMonth)
+    : undefined;
+  if (pendingResponse && selectedConversation?.episodeId !== pendingResponse.id) {
+    closeConversationWithoutResponse(state, person.id, atMonth, '本人把注意力留给了别的事，没有继续这轮对话');
+  }
   const selectedReproductionOption = selectedOption
     && actionOptionSemantics(selectedOption).reproduction
     ? selectedOption
@@ -646,12 +754,12 @@ export function applyDecision(
     : undefined;
   const selectedForesightDeliberation = selectedOption
     && actionOptionSemantics(selectedOption).obligation === 'optional'
-    ? selectionTimeDeliberation ?? deliberate(context, context.options, { atMonth, planningTick })
+    ? selectionTimeDeliberation ?? deliberate(decisionContext, decisionContext.options, { atMonth, planningTick })
     : undefined;
   const selectedForesight = selectedForesightDeliberation?.foresight.options
     .find((item) => item.optionId === selectedOption?.id);
   const selectedCognitiveAppraisal = selectedReproductionOption
-    ? evaluateCognitiveOption(context, selectedReproductionOption, { atMonth, planningTick })
+    ? evaluateCognitiveOption(decisionContext, selectedReproductionOption, { atMonth, planningTick })
     : undefined;
   const selectedCognitiveSources = selectedCognitiveAppraisal?.sourceFactIds ?? [];
   const attachLifeReview = (intent: Intent | null): void => {
@@ -661,17 +769,110 @@ export function applyDecision(
     intent.lifeReview = structuredClone(decision.lifeReview);
     intent.sourceFactIds = [...new Set([...(intent.sourceFactIds ?? []), ...decision.lifeReview.sourceFactIds])];
   };
+  const recordAcceptedAgenda = (
+    accepted: AcceptedCharacterAgendaProposal,
+    intent: Intent | null,
+  ): boolean => {
+    if (accepted.item && (accepted.evidence.outcome === 'created' || accepted.evidence.outcome === 'updated')) {
+      accepted.item.sourceFactIds = [...new Set([...accepted.item.sourceFactIds, id])].slice(-24);
+    }
+    characterAgendaEvidence.push(accepted.evidence);
+    const bindableExistingAction = (accepted.evidence.outcome === 'created'
+        || accepted.evidence.outcome === 'updated')
+      && accepted.evidence.compilerDisposition === 'accepted-existing-action'
+      && accepted.approach?.disposition === 'executable-now';
+    if (intent && accepted.item && accepted.approach && bindableExistingAction) {
+      bindAcceptedAgendaToIntent(person, accepted.item, accepted.approach, intent);
+    }
+    if (accepted.item && current?.characterAgendaItemId === accepted.item.id) {
+      if (accepted.evidence.outcome === 'paused') {
+        current.status = 'suspended';
+        if (person.activeIntentId === current.id) delete person.activeIntentId;
+      } else if (accepted.evidence.outcome === 'abandoned') {
+        current.status = 'abandoned';
+        recordIntentGoalOutcome(
+          state,
+          current,
+          'not-evaluated',
+          atMonth,
+          intentGoalSourceIds(state, current, [id]),
+        );
+        if (person.activeIntentId === current.id) delete person.activeIntentId;
+      }
+    }
+    return accepted.evidence.outcome === 'created'
+      || accepted.evidence.outcome === 'updated'
+      || accepted.evidence.outcome === 'duplicate-without-new-evidence'
+      || accepted.evidence.outcome === 'paused'
+      || accepted.evidence.outcome === 'abandoned';
+  };
+  const attachCharacterAgenda = (intent: Intent | null): AcceptedCharacterAgendaProposal | null => {
+    if (intent) bindExistingAgendaIntent(person, intent);
+    const modelUpdate = 'characterAgendaUpdate' in decision ? decision.characterAgendaUpdate : undefined;
+    if (modelUpdate) {
+      const accepted = acceptCharacterAgendaUpdate(
+        person,
+        decisionContext,
+        modelUpdate,
+        selectedOption,
+        atMonth,
+      );
+      if (accepted && recordAcceptedAgenda(accepted, intent)) return accepted;
+    }
+    const modelProposal = (decision.kind === 'start' || decision.kind === 'revise')
+      ? decision.characterAgendaProposal
+      : undefined;
+    if (modelProposal) {
+      const accepted = acceptCharacterAgendaProposal(
+        person,
+        decisionContext,
+        modelProposal,
+        selectedOption,
+        atMonth,
+        'model-proposal',
+      );
+      if (accepted && recordAcceptedAgenda(accepted, intent)) return accepted;
+    }
+    // Project and Intent already preserve objective work continuity. A durable
+    // subjective concern must come from an explicit model/player proposal;
+    // local planning may bind an existing agenda, but may not manufacture one.
+    return null;
+  };
   if (decision.kind === 'start') {
-    const started = startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
+    const conversation = groundedConversationForOption(selectedOption);
+    const reservation = conversation
+      ? reserveConversationEpisode(state, conversation, id, atMonth)
+      : undefined;
+    const started = conversation && !reservation
+      ? null
+      : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
+    if (conversation?.episodeId && started) {
+      bindConversationEpisodeIntent(state, conversation.episodeId, conversation.turn, started.id);
+    } else if (conversation?.episodeId && reservation) {
+      cancelConversationReservation(state, conversation.episodeId, conversation.turn, '没有建立可执行对话意图');
+    }
     attachLifeReview(started);
+    attachCharacterAgenda(started);
     intentId = started?.id;
     domain = started?.domain;
     result = started ? `${person.name}决定：${started.summary}` : `${person.name}没有找到该行动机会`;
   } else if (decision.kind === 'revise') {
-    const started = decision.mode === 'interrupt' && decision.interruptionKind
-      ? startInterruptIntent(state, person, context, decision.optionId, id, atMonth, decision.interruptionKind)
-      : startIntent(state, person, context, decision.optionId, decision.followUpOptionId, id, atMonth);
+    const conversation = groundedConversationForOption(selectedOption);
+    const reservation = conversation
+      ? reserveConversationEpisode(state, conversation, id, atMonth)
+      : undefined;
+    const started = conversation && !reservation
+      ? null
+      : decision.mode === 'interrupt' && decision.interruptionKind
+        ? startInterruptIntent(state, person, decisionContext, decision.optionId, id, atMonth, decision.interruptionKind)
+        : startIntent(state, person, decisionContext, decision.optionId, decision.followUpOptionId, id, atMonth);
+    if (conversation?.episodeId && started) {
+      bindConversationEpisodeIntent(state, conversation.episodeId, conversation.turn, started.id);
+    } else if (conversation?.episodeId && reservation) {
+      cancelConversationReservation(state, conversation.episodeId, conversation.turn, '没有建立可执行对话意图');
+    }
     attachLifeReview(started);
+    attachCharacterAgenda(started);
     intentId = started?.id;
     domain = started?.domain;
     result = started
@@ -694,6 +895,7 @@ export function applyDecision(
     if (resumed) {
       if (current) current.status = 'suspended';
       resumed.status = 'active';
+      delete resumed.waitingFor;
       person.activeIntentId = resumed.id;
       intentId = resumed.id;
       result = `${person.name}恢复：${resumed.summary}`;
@@ -711,7 +913,34 @@ export function applyDecision(
     intentId = current.id;
     result = `${person.name}放弃：${current.summary}`;
   } else if (decision.kind === 'idle') {
-    result = `${person.name}在规划刻度 ${planningTick} 不改变当前安排：${decision.reason}`;
+    const acceptedAgenda = attachCharacterAgenda(null);
+    if (acceptedAgenda) {
+      const operation = acceptedAgenda.evidence.operation;
+      const aim = acceptedAgenda.evidence.aim;
+      if (current
+        && current.characterAgendaItemId === acceptedAgenda.item?.id
+        && (acceptedAgenda.evidence.outcome === 'paused' || acceptedAgenda.evidence.outcome === 'abandoned')) {
+        intentId = current.id;
+        domain = current.domain;
+      }
+      result = operation === 'pause'
+        ? `${person.name}暂停了长期关切：${aim}`
+        : operation === 'abandon'
+          ? `${person.name}放弃了长期关切：${aim}`
+          : acceptedAgenda.evidence.compilerDisposition === 'deferred-missing-affordance'
+            ? `${person.name}保留了尚无可行办法的长期关切：${aim}`
+            : `${person.name}重新考虑了长期关切：${aim}`;
+    } else {
+      result = `${person.name}在规划刻度 ${planningTick} 不改变当前安排：${decision.reason}`;
+    }
+  }
+  if ('memoryConsolidation' in decision && decision.memoryConsolidation) {
+    applyModelMemoryConsolidation(
+      state,
+      person.id,
+      decision.memoryConsolidation,
+      atMonth,
+    );
   }
   person.lastDecisionText = result;
   return {
@@ -773,6 +1002,7 @@ export function applyDecision(
         ...boundedAuditSourceFacts(selectedForesight?.sourceFactIds ?? []),
       },
     } : {}),
+    ...(characterAgendaEvidence.length ? { characterAgendaEvidence } : {}),
     usedModel,
     result,
   };
@@ -1018,6 +1248,23 @@ export function executeActiveIntent(
       person.currentActionText = `双方本月已经完成一次生殖尝试，等待下月重新评估：${intent.summary}`;
       return null;
     }
+    const projectLead = project
+      ? projectIsLedBy(project, person.id)
+        ? person
+        : personById(state, project.ownerId)
+      : undefined;
+    if (project && project.status === 'active' && projectLead
+      && projectHasLegitimateWait(state, projectLead, project, atMonth)) {
+      // A growing crop, another contributor's active logistics episode, or a
+      // hibernating project lead is an explicit world wait. It is not evidence
+      // that the goal or plan failed. Yield this executable episode so the
+      // bounded monthly replan can choose other useful work.
+      intent.status = 'suspended';
+      intent.waitingFor = 'world-change';
+      delete person.activeIntentId;
+      person.currentActionText = `项目正在等待世界条件变化：${intent.summary}`;
+      return null;
+    }
     intent.status = 'blocked';
     intent.blockedReason = '目标未满足，但无法编译出下一原子动作';
     recordIntentGoalOutcome(
@@ -1251,6 +1498,8 @@ export function executeActiveIntent(
           ? !reproductionGoal || conceptionFact
             ? 'achieved'
             : 'not-evaluated'
+          : processAttemptCompleted && isAttemptOnlyGoal(intent)
+            ? 'not-evaluated'
           : 'attempted-unmet',
         atMonth,
         [...new Set([fact.id, ...(conceptionFact ? [conceptionFact.id] : [])])],
@@ -1298,6 +1547,23 @@ export function executeProtectiveInterruption(
   actionTick: number,
   events: WorldEvent[],
 ): ActionFact {
+  const completedProjectIntent = activeIntent(state, person);
+  const completedProject = completedProjectIntent?.projectId
+    ? projectById(state, completedProjectIntent.projectId)
+    : undefined;
+  if (completedProjectIntent?.goal.kind === 'project-completed'
+    && completedProject?.status === 'completed') {
+    completedProjectIntent.status = 'completed';
+    completedProjectIntent.progress = 1;
+    recordIntentGoalOutcome(
+      state,
+      completedProjectIntent,
+      'achieved',
+      atMonth,
+      intentGoalSourceIds(state, completedProjectIntent, completedProject.completionEventIds),
+    );
+    delete person.activeIntentId;
+  }
   const parent = activeIntent(state, person);
   const mayInterrupt = Boolean(parent && isResumableIntent(parent));
   let child: Intent | undefined;

@@ -1,5 +1,9 @@
 import type { WorldEvent } from '../../src/game/eland/simulation';
-import type { NarrativeEntryView } from '../../src/game/societyContract';
+import type { NarrativeEntryView, SpeechLineView } from '../../src/game/societyContract';
+import {
+  projectSpeechHistoryEntry,
+  verifiedSpeechLinesBySourceEventId,
+} from '../../src/game/eland/projection/speech-history';
 
 export type ChronicleEventLookup = Pick<ReadonlyMap<string, WorldEvent>, 'get'>;
 
@@ -40,6 +44,8 @@ export interface ChronicleProjectionState {
   nextSequence: number;
   records: Map<string, ChronicleRecord>;
   recordIdBySourceEventId: Map<string, string>;
+  speechLinesBySourceEventId: Map<string, SpeechLineView>;
+  ambiguousSpeechSourceEventIds: Set<string>;
   activeWeather: WeatherEpisode | null;
 }
 
@@ -250,8 +256,29 @@ export function createChronicleProjectionState(): ChronicleProjectionState {
     nextSequence: 0,
     records: new Map(),
     recordIdBySourceEventId: new Map(),
+    speechLinesBySourceEventId: new Map(),
+    ambiguousSpeechSourceEventIds: new Set(),
     activeWeather: null,
   };
+}
+
+function indexSpeechLines(
+  state: ChronicleProjectionState,
+  speechLines: readonly SpeechLineView[],
+  events: ChronicleEventLookup,
+): void {
+  const verified = verifiedSpeechLinesBySourceEventId(speechLines, events);
+  for (const [sourceEventId, line] of verified) {
+    if (state.ambiguousSpeechSourceEventIds.has(sourceEventId)) continue;
+    const existing = state.speechLinesBySourceEventId.get(sourceEventId);
+    if (!existing) {
+      state.speechLinesBySourceEventId.set(sourceEventId, line);
+      continue;
+    }
+    if (existing.id === line.id && existing.text.trim() === line.text.trim()) continue;
+    state.speechLinesBySourceEventId.delete(sourceEventId);
+    state.ambiguousSpeechSourceEventIds.add(sourceEventId);
+  }
 }
 
 /**
@@ -263,6 +290,7 @@ export function advanceChronicleProjection(
   throughMonth: number,
   entries: NarrativeEntryView[],
   events: ChronicleEventLookup,
+  speechLines: readonly SpeechLineView[] = [],
 ): NarrativeEntryView[] {
   if (throughMonth < state.throughMonth) {
     throw new Error('文明纪事投影不能逆向推进');
@@ -271,9 +299,15 @@ export function advanceChronicleProjection(
     && throughMonth - state.activeWeather.lastAtMonth > WEATHER_EPISODE_GAP_MONTHS) {
     state.activeWeather = null;
   }
+  indexSpeechLines(state, speechLines, events);
   const emitted: NarrativeEntryView[] = [];
   const emittedWeatherIds = new Set<string>();
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    const entry = projectSpeechHistoryEntry(
+      rawEntry,
+      state.speechLinesBySourceEventId,
+      events,
+    );
     const category = categoryFor(entry, events);
     const observations = category === 'weather' ? weatherObservations(entry, events) : [];
     if (observations.length) {
@@ -335,14 +369,18 @@ export function chronicleProjectionEntries(state: ChronicleProjectionState): Nar
 }
 
 export function rebuildChronicleProjection(
-  frames: Array<{ elapsedMonths?: number; entries: NarrativeEntryView[] }>,
+  frames: Array<{
+    elapsedMonths?: number;
+    entries: NarrativeEntryView[];
+    speechLines?: SpeechLineView[];
+  }>,
   events: ChronicleEventLookup,
 ): ChronicleProjectionState {
   const state = createChronicleProjectionState();
   for (const frame of frames) {
     const throughMonth = frame.elapsedMonths
       ?? frame.entries.reduce((latest, entry) => Math.max(latest, entry.month), state.throughMonth);
-    advanceChronicleProjection(state, throughMonth, frame.entries, events);
+    advanceChronicleProjection(state, throughMonth, frame.entries, events, frame.speechLines ?? []);
   }
   return state;
 }
@@ -356,5 +394,8 @@ export function pruneChronicleProjection(
   }
   if (state.activeWeather && state.activeWeather.lastAtMonth < earliestMonth) {
     state.activeWeather = null;
+  }
+  for (const [sourceEventId, line] of state.speechLinesBySourceEventId) {
+    if (line.month < earliestMonth) state.speechLinesBySourceEventId.delete(sourceEventId);
   }
 }

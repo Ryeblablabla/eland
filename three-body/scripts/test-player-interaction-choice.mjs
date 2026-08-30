@@ -98,8 +98,20 @@ try {
   assert.equal(nextMonth.optionId, 'conversation:care:11:person-a:person-b');
 
   const requiredResponse = {
-    ...physicalOption('accept-assist:request-1'),
+    id: 'accept-assist:request-1',
     summary: '回应泊川的求助',
+    reason: '泊川正在等答复',
+    goal: { kind: 'representation-made', representationId: 'accept-assist:request-1' },
+    nextAction: {
+      kind: 'communicate',
+      content: { id: 'accept-assist:request-1', kind: 'accept', referenceId: 'request-1' },
+      audience: ['person-b'],
+      channel: 'voice',
+    },
+    target: { kind: 'person', personId: 'person-b' },
+    estimatedDuration: 'one-month',
+    sourceFactIds: ['request-1'],
+    domain: 'social',
   };
   const deferred = validatePlayerInteractionChoice(context([
     physicalOption(),
